@@ -10,6 +10,7 @@
 // knowledge:search only if find_by_title's own lookup errors/is unavailable.
 // The doc BODY is always read via knowledge:get (DB-fresh, so segment
 // recency never depended on the search index either).
+import { type ConfigSecretReveal, configSecretReveal } from "@liaison/app-sdk"
 import type { CallsCtx } from "./ctx"
 import {
   applyLinks,
@@ -294,17 +295,20 @@ export async function webhookInfoHandler(
 ): Promise<{
   data: {
     configured: boolean
-    secret: string | null
+    /** The secret, written in by the host (the app answers its marker). */
+    secret: ConfigSecretReveal | null
     signatureHeader: string
     deliveryIdHeader: string
     algorithm: string
   }
 }> {
-  const secret = (await ctx.config.get(WEBHOOK_SECRET_KEY)) as string | null
+  // The secret itself never enters the app: the host writes it in where the marker stands
+  // (the manifest lets this tool reveal WEBHOOK_SECRET_KEY, `revealsSecrets`).
+  const configured = await ctx.config.has(WEBHOOK_SECRET_KEY)
   return {
     data: {
-      configured: Boolean(secret),
-      secret: secret ?? null,
+      configured,
+      secret: configured ? configSecretReveal(WEBHOOK_SECRET_KEY) : null,
       signatureHeader: SIGNATURE_HEADER,
       deliveryIdHeader: DELIVERY_ID_HEADER,
       algorithm: "HMAC-SHA256, base64-encoded digest of the raw request body",

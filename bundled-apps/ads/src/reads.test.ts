@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import {
   account_info,
@@ -16,6 +17,7 @@ import {
   pending_approvals_list,
   targeting_search,
 } from "./reads"
+import { settingsFor } from "./test-connections.testutil"
 import { createMemoryStore, createRecordingTimers } from "./test-store"
 
 // ─── makeCtx helper ───────────────────────────────────────────────────────────
@@ -49,10 +51,11 @@ function makeCtx(fetchResponses: MockResponse[]) {
   }
   const connections = {
     meta: {
-      getCredentials: async () => ({
-        accessToken: "test_token",
-        adAccountId: "act_123456",
-      }),
+      getSettings: async () =>
+        settingsFor("meta", {
+          accessToken: "test_token",
+          adAccountId: "act_123456",
+        }),
     },
   }
   const store = createMemoryStore()

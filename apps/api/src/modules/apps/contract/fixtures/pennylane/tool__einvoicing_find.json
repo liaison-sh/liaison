@@ -1,21 +1,21 @@
 {
   "entry": "tool:einvoicing_find",
   "params": {
-    "invoice_number": "CT-mwdanmvb",
+    "invoice_number": "CT-mwea49qg",
     "issue_date": "2026-10-15"
   },
   "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["pennylane"],
-      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+      "reply": "{\"values\":{\"scope\":\"company\"},\"missing\":[\"companyId\"]}"
     },
     {
       "method": "fetch",
       "args": [
-        "https://app.pennylane.com/api/external/v2/customer_invoices?limit=5&filter=%5B%7B%22field%22%3A%22invoice_number%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22CT-mwdanmvb%22%7D%2C%7B%22field%22%3A%22date%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%222026-10-15%22%7D%5D",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+        "https://app.pennylane.com/api/external/v2/customer_invoices?limit=5&filter=%5B%7B%22field%22%3A%22invoice_number%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%22CT-mwea49qg%22%7D%2C%7B%22field%22%3A%22date%22%2C%22operator%22%3A%22eq%22%2C%22value%22%3A%222026-10-15%22%7D%5D",
+        "{\"method\":\"GET\",\"headers\":{\"Accept\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
     }

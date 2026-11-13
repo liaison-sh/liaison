@@ -11,6 +11,7 @@ import {
   retryAfterPauseMs,
 } from "~/modules/apps/connection-limiter"
 import { declaredConnectionLimits } from "~/modules/apps/connection-limits"
+import { isCustomAppName } from "~/modules/apps/custom-app-name"
 import { connectionLimiterLimits, egressLimits } from "~/modules/apps/run-limits"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
@@ -285,6 +286,22 @@ export function createFetchAuthDeps(
       const value = await shortDb((db) => readAppConfigValue(ctx, key, db))
       return typeof value === "string" && value.length > 0 ? value : null
     },
+    // The client a connection's OAuth flow uses (org, then instance), for a
+    // client credentials grant. Never for a custom app: its code holds no
+    // client of the platform's.
+    readOAuthClient: async (connectionName) => {
+      if (isCustomAppName(appName)) return null
+      if (manifest.connections?.[connectionName]?.type !== "oauth2") return null
+      const { oauthConnectionKey, resolveOAuthClientCredentials } = await import(
+        "~/modules/apps/connections/oauth-client"
+      )
+      const client = await resolveOAuthClientCredentials(
+        orgId,
+        oauthConnectionKey(appName, connectionName),
+        { auditAction: "oauth-client-credentials-grant" },
+      )
+      return client ? { clientId: client.clientId, clientSecret: client.clientSecret } : null
+    },
     send,
   }
 }
@@ -440,11 +457,11 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
       // (header, query parameter or JSON body path, on its hosts), or nowhere.
       // `wireUrl` is what goes out (a query placement carries the secret);
       // `url` stays the app's own, for every message that reaches it.
-      let wireUrl = url
+      let wireUrl = injected.url ?? url
       let secretHosts: string[][] = []
       if (configSecrets) {
         const placed = await placeConfigSecrets(
-          { url, headers: headersWithActor, body },
+          { url: wireUrl, headers: headersWithActor, body },
           configSecrets,
           grantedAuthDeps,
         )

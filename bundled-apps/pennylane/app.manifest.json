@@ -78,12 +78,14 @@
         {
           "name": "scope",
           "type": "text",
-          "label": "Scope (company|firm)"
+          "label": "Scope (company|firm)",
+          "readable": true
         },
         {
           "name": "companyId",
           "type": "text",
           "label": "Company ID (firm tokens only)",
+          "readable": true,
           "required": false
         }
       ],

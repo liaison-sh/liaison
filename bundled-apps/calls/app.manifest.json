@@ -156,6 +156,7 @@
       "requiredScopes": ["calls:admin"],
       "agentVisible": false,
       "handler": "webhookInfoHandler",
+      "revealsSecrets": ["callsWebhookSecret"],
       "params": { "type": "object", "properties": {} }
     }
   },

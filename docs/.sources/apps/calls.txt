@@ -28,3 +28,4 @@ calls_segments_since -> bundled-apps/calls/app.manifest.json:84
 calls_set_links -> bundled-apps/calls/app.manifest.json:100
 calls_list -> bundled-apps/calls/app.manifest.json:114
 webhook_info -> bundled-apps/calls/app.manifest.json:127
+webhook_info secret written in by the host (revealsSecrets); verifier by config key -> bundled-apps/calls/src/tools.ts (webhookInfoHandler) ; bundled-apps/calls/app.manifest.json (revealsSecrets) ; packages/app-sdk/src/webhook-verify.ts (verifySignedTsWebhook)

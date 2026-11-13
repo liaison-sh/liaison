@@ -28,7 +28,7 @@
         "einvoicing_inbox",
         "{\"provider_ref\":\"4242\",\"kind\":\"customer_invoice\",\"event_type\":\"customer_invoice.einvoice_status_changed\",\"envelope_id\":\"evt_contract_1\",\"received_at\":\"2026-01-01T00:00:00.000Z\",\"delivered_at\":null}"
       ],
-      "reply": "{\"id\":\"b74975cb-31d4-4fbe-b7c4-a45694557bd9\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 08:37:51.4689+00\",\"updated_at\":\"2026-11-12 08:37:51.4689+00\",\"provider_ref\":\"4242\",\"kind\":\"customer_invoice\",\"event_type\":\"customer_invoice.einvoice_status_changed\",\"envelope_id\":\"evt_contract_1\",\"received_at\":\"2026-01-01T00:00:00.000Z\",\"delivered_at\":null}"
+      "reply": "{\"id\":\"6623acea-c076-424f-8258-ee6b565ebbad\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:10:34.082163+00\",\"updated_at\":\"2026-11-13 01:10:34.082163+00\",\"provider_ref\":\"4242\",\"kind\":\"customer_invoice\",\"event_type\":\"customer_invoice.einvoice_status_changed\",\"envelope_id\":\"evt_contract_1\",\"received_at\":\"2026-01-01T00:00:00.000Z\",\"delivered_at\":null}"
     }
   ]
 }

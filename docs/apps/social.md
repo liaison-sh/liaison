@@ -34,6 +34,8 @@ After connecting Facebook, and again after adding a Page, ask an agent to run `w
 
 On a managed server, every workspace connects Facebook through the server's own Meta app, which has a single callback. `webhooks_setup` then points it at the server's callback (`/webhooks/_cell/meta`), which hands each delivery only to the workspaces holding that Page, and records the Pages it subscribed: run it again after adding a Page. Before a delivery is read, Social checks those Pages against the ones the Facebook account still manages on Meta (at most once a minute, and again on every discovery sync): a Page the account no longer manages, for example one handed to another workspace, leaves the list and its comments and messages are not stored. Disconnecting Facebook, or a token Meta refuses, empties the list. If the Meta app's callback already belongs to another server, the call is refused and nothing changes.
 
+Liaison adds each account's token to the app's requests itself, so the token never reaches the app's code. For the app-level subscription it gets the Meta app's own token from your Facebook OAuth client (client ID and secret) and writes the verify token into the request; the Meta webhook signature is checked by Liaison with the app secret.
+
 Instagram tokens renew themselves. If Instagram stops updating after some weeks, reconnect it.
 
 The Facebook token lasts about 60 days, and its access to Page data about 90 days; it cannot renew itself. At connect, Liaison asks Facebook for both dates (`debug_token`): 14 days before the earlier one, admins get a Home item with the date. Reconnect Facebook before then.

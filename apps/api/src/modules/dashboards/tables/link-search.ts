@@ -125,6 +125,10 @@ async function viaIndex(
     roleIds: viewer.roles ?? [],
     q,
     limit: 50,
+    // Narrowed in the engine: filtering a mixed top-N here let a word common
+    // in other records crowd every row of this app out of the picker.
+    app,
+    entityType,
   })
   const out: LinkTarget[] = []
   for (const h of hits) {

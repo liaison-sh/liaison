@@ -32,6 +32,7 @@ import {
   scrubSourceStatuses,
 } from "~/apps/knowledge/federated-search"
 import { requestForceOnOpenSync } from "~/apps/knowledge/force-on-open"
+import { searchLocalKnowledge } from "~/apps/knowledge/local-search"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   archiveKnowledgeDocument,
@@ -82,7 +83,7 @@ import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { knowledgeItemsRegistry } from "~/modules/apps/app-registries"
 import { hasScope } from "~/modules/permissions/permissions"
-import { globalSearch } from "~/modules/search/service"
+
 import { listShareMembers, listShareRoles } from "~/modules/sharing/targets"
 
 const K = () => sql.raw(schemaRef("kernel"))
@@ -472,32 +473,21 @@ knowledgeRoutes.post("/search", zValidator("json", knowledgeFederatedSearchSchem
           }
           try {
             const limit = Math.min(Math.max(input.limit ?? 20, 1), 20)
-            const res = await globalSearch({
-              orgId: actor.orgId,
-              userId: actor.userId,
-              scopes: actor.scopes,
-              dimensionGrants: actor.dimensionGrants,
-              roleIds: actor.roles ?? [],
+            // Narrowed to Knowledge in the engine (local-search.ts), then paged
+            // through the read guard: the index can lag an archive/delete, so
+            // a hit whose row is archived, gone or unreadable is never returned
+            // (opening it would return not_found) nor counted.
+            const kept = await searchLocalKnowledge({
+              actor,
               q,
               limit,
+              keep: (indexed) =>
+                withRequestRls(c, (tx) =>
+                  dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor),
+                ),
             })
-            const indexed = res.entities
-              .filter(
-                (e) =>
-                  e.app === "knowledge" &&
-                  (e.entityType === "document" || e.entityType === "source_link"),
-              )
-              .map((e, i) => ({
-                source: "knowledge",
-                sourceEntityId: e.id,
-                title: e.title ?? e.label,
-                type: e.entityType,
-                sourceRank: i + 1,
-              }))
-            // The index can lag an archive/delete: never hand back a hit whose
-            // row is archived or gone (opening it would return not_found).
             const { hits, syncedAppByDocId } = await withRequestRls(c, async (tx) => {
-              const hits = await dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor)
+              const hits = kept
               // Tag document hits that are mirrored from an external synced
               // source so the UI can mark their provenance. One JOIN over just
               // the returned doc ids (RLS-scoped via tx); a doc whose source

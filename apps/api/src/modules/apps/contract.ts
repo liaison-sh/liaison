@@ -119,6 +119,8 @@ const toolSchema = z.object({
         .regex(/^[^.]+$/, "a top-level param name, never a dotted path"),
     )
     .optional(),
+  // Webhook signing secrets the host writes into this tool's answer (reveal-secrets.ts).
+  revealsSecrets: z.array(z.string().min(1)).optional(),
   instructions: z.string().optional(),
   taintSource: z.boolean().optional(),
   // The tool has an external side effect or an exfiltration channel (it sends, posts,

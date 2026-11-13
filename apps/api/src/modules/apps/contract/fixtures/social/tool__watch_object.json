@@ -30,7 +30,7 @@
       "args": [
         "{\"ops\":[{\"insert\":\"watched_object\",\"as\":\"watched\",\"data\":{\"platform\":\"facebook\",\"external_id\":\"104857600000001_123450000000002\",\"object_type\":\"facebook_post\",\"reason\":\"manual\",\"status\":\"active\",\"priority\":80,\"title\":null,\"new_findings_count\":0}}]}"
       ],
-      "reply": "{\"rows\":{\"watched\":{\"id\":\"6707ae88-88f6-466c-bb60-45d83c18629f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 14:08:53.745295+00\",\"updated_at\":\"2026-11-12 14:08:53.745295+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}}}}"
+      "reply": "{\"rows\":{\"watched\":{\"id\":\"421c0ad2-e23f-4b73-b721-1742f0b56397\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.587763+00\",\"updated_at\":\"2026-11-13 01:32:43.587763+00\",\"platform\":\"facebook\",\"object_type\":\"facebook_post\",\"external_id\":\"104857600000001_123450000000002\",\"title\":null,\"permalink\":null,\"reason\":\"manual\",\"status\":\"active\",\"cadence_seconds\":3600,\"priority\":80,\"comment_cursor\":null,\"last_polled_at\":null,\"last_activity_at\":null,\"next_poll_at\":null,\"watched_by\":null,\"new_findings_count\":0,\"metadata\":{}}}}"
     }
   ]
 }

@@ -11,18 +11,18 @@
         "insights_reports",
         "1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3"
       ],
-      "reply": "{\"id\":\"1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3\",\"data\":{\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\"},\"version\":1,\"updatedAt\":\"2026-11-12T10:16:46.597Z\"}"
+      "reply": "{\"id\":\"1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3\",\"data\":{\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\"},\"version\":1,\"updatedAt\":\"2026-11-13T01:32:41.492Z\"}"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/1234000000000001",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"1234000000000001\\\",\\\"async_status\\\":\\\"Job Completed\\\",\\\"async_percent_completion\\\":100}\"}"
     },
@@ -30,7 +30,7 @@
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/1234000000000001/insights",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"date_start\\\":\\\"2025-12-31\\\",\\\"date_stop\\\":\\\"2025-12-31\\\",\\\"spend\\\":\\\"31.40\\\",\\\"impressions\\\":\\\"18234\\\",\\\"clicks\\\":\\\"412\\\",\\\"cpm\\\":\\\"6.71\\\",\\\"ctr\\\":\\\"2.26\\\",\\\"account_currency\\\":\\\"EUR\\\",\\\"ad_id\\\":\\\"120210000000000301\\\",\\\"ad_name\\\":\\\"Bass trap carousel\\\",\\\"adset_id\\\":\\\"120210000000000201\\\"},{\\\"date_start\\\":\\\"2025-12-31\\\",\\\"date_stop\\\":\\\"2025-12-31\\\",\\\"spend\\\":\\\"15.70\\\",\\\"impressions\\\":\\\"18234\\\",\\\"clicks\\\":\\\"412\\\",\\\"cpm\\\":\\\"6.71\\\",\\\"ctr\\\":\\\"2.26\\\",\\\"account_currency\\\":\\\"EUR\\\",\\\"ad_id\\\":\\\"120210000000000302\\\",\\\"ad_name\\\":\\\"Studio tour video\\\",\\\"adset_id\\\":\\\"120210000000000201\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
     },
@@ -42,7 +42,7 @@
         "{\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\",\"rows\":[{\"date_start\":\"2025-12-31\",\"date_stop\":\"2025-12-31\",\"spend\":\"31.40\",\"impressions\":\"18234\",\"clicks\":\"412\",\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"account_currency\":\"EUR\",\"ad_id\":\"120210000000000301\",\"ad_name\":\"Bass trap carousel\",\"adset_id\":\"120210000000000201\"},{\"date_start\":\"2025-12-31\",\"date_stop\":\"2025-12-31\",\"spend\":\"15.70\",\"impressions\":\"18234\",\"clicks\":\"412\",\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"account_currency\":\"EUR\",\"ad_id\":\"120210000000000302\",\"ad_name\":\"Studio tour video\",\"adset_id\":\"120210000000000201\"}]}",
         "{\"ifVersion\":1}"
       ],
-      "reply": "{\"id\":\"1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3\",\"data\":{\"rows\":[{\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"ad_id\":\"120210000000000301\",\"spend\":\"31.40\",\"clicks\":\"412\",\"ad_name\":\"Bass trap carousel\",\"adset_id\":\"120210000000000201\",\"date_stop\":\"2025-12-31\",\"date_start\":\"2025-12-31\",\"impressions\":\"18234\",\"account_currency\":\"EUR\"},{\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"ad_id\":\"120210000000000302\",\"spend\":\"15.70\",\"clicks\":\"412\",\"ad_name\":\"Studio tour video\",\"adset_id\":\"120210000000000201\",\"date_stop\":\"2025-12-31\",\"date_start\":\"2025-12-31\",\"impressions\":\"18234\",\"account_currency\":\"EUR\"}],\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\"},\"version\":2,\"updatedAt\":\"2026-11-12T10:16:46.633Z\"}"
+      "reply": "{\"id\":\"1d13b4a159663dab3b427dedc2d1f3a7f4b997716e54ebeaee7253cc1f8063d3\",\"data\":{\"rows\":[{\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"ad_id\":\"120210000000000301\",\"spend\":\"31.40\",\"clicks\":\"412\",\"ad_name\":\"Bass trap carousel\",\"adset_id\":\"120210000000000201\",\"date_stop\":\"2025-12-31\",\"date_start\":\"2025-12-31\",\"impressions\":\"18234\",\"account_currency\":\"EUR\"},{\"cpm\":\"6.71\",\"ctr\":\"2.26\",\"ad_id\":\"120210000000000302\",\"spend\":\"15.70\",\"clicks\":\"412\",\"ad_name\":\"Studio tour video\",\"adset_id\":\"120210000000000201\",\"date_stop\":\"2025-12-31\",\"date_start\":\"2025-12-31\",\"impressions\":\"18234\",\"account_currency\":\"EUR\"}],\"wakes\":0,\"startedAt\":\"2026-01-01T00:00:00.000Z\",\"reportRunId\":\"1234000000000001\"},\"version\":2,\"updatedAt\":\"2026-11-13T01:32:41.557Z\"}"
     }
   ]
 }

@@ -511,6 +511,11 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         ])
         const auth = parseFetchAuth(p.auth)
         if (auth?.exchange) throw new Error("invalid_auth: a download takes no token exchange")
+        if (auth?.grant)
+          throw new Error("invalid_auth: a download takes no client credentials grant")
+        if (auth?.scheme.startsWith("query:")) {
+          throw new Error("invalid_auth: a download sends its credential in a header")
+        }
         const { manifest: granted } = await ctx.egress()
         const deps = createFetchAuthDeps(ctx, async () => {
           throw new Error("invalid_auth: a download takes no token exchange")

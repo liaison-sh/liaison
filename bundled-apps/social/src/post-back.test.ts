@@ -7,7 +7,8 @@
 // recomputes the DM window AT SEND TIME. like_item honors the support matrix.
 
 import { describe, expect, test } from "bun:test"
-import type { SocialApproval, SocialToolCtx } from "./ctx"
+import { connectedAccountList, hostHeaders } from "./adapters/mock-fetch"
+import type { SocialApproval, SocialAuth, SocialToolCtx } from "./ctx"
 import {
   likeItem,
   likeItemPreflight,
@@ -64,9 +65,10 @@ function makeCtx(
       method?: string
       body?: Record<string, unknown> | string
       headers?: Record<string, string>
+      auth?: SocialAuth
     },
   ) => {
-    calls.push({ url, method: init?.method ?? "GET", body: init?.body, headers: init?.headers })
+    calls.push({ url, method: init?.method ?? "GET", body: init?.body, headers: hostHeaders(init) })
     const status = opts.fetchStatus ?? 200
     const match = Object.entries(opts.routes ?? {}).find(([path]) => url.includes(path))
     const json = match ? match[1] : { id: "posted-1" }
@@ -83,10 +85,8 @@ function makeCtx(
     db: opts.db ?? createMockDb(),
     fetch: fetchImpl,
     connections: {
-      getToken: async (_name: string, _identifier?: string) => {
-        if (opts.connectionToken === null) throw new Error("No access token stored")
-        return opts.connectionToken ?? "user-token"
-      },
+      // The host lists the active accounts; their token is added to a fetch host-side.
+      getAccounts: async () => (opts.connectionToken === null ? [] : connectedAccountList()),
     },
     config: { get: async () => null },
     approval: opts.approval,
@@ -311,7 +311,8 @@ describe("replyToFinding (B6 re-entry + idempotency)", () => {
     const res = await replyToFinding(ctx, { finding_id: "f1", reply_text: "hi" })
     expect(res).toMatchObject({ status: "completed" })
     const accountsCall = ctx.fetch.calls.find((c) => c.url.includes("/me/accounts"))!
-    expect(accountsCall.headers).toEqual({ Authorization: "Bearer user-token" })
+    // The connected user's credential, added by the host (the app names the account).
+    expect(accountsCall.headers).toEqual({ Authorization: "Bearer user-1" })
     const postCall = ctx.fetch.calls.find((c) => c.method === "POST")!
     expect(postCall.url).toBe("https://graph.facebook.com/v26.0/page-1_comment-9/comments")
     expect(postCall.headers).toEqual({

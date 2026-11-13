@@ -1,0 +1,2 @@
+# deploy/sandbox-firewall.sh check against a docker shim, and the compose sandbox defaults.
+deploy/sandbox-firewall.test.ts

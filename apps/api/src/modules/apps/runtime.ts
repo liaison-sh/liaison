@@ -3405,6 +3405,8 @@ async function registerSingleApp(
             }
             // The edit path a refused approval edit names (approvals/edit.ts).
             if (Array.isArray(tool.editWith)) entry.editWith = tool.editWith
+            // Webhook secrets the host writes into the answer (reveal-secrets.ts).
+            if (Array.isArray(tool.revealsSecrets)) entry.revealsSecrets = tool.revealsSecrets
             if (Array.isArray(tool.referenceableOutputs)) {
               entry.referenceableOutputs = tool.referenceableOutputs
             }

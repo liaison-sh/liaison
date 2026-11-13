@@ -35,7 +35,7 @@ async function setup(
         ? {}
         : {
             pennylane: {
-              getCredentials: async () => ({ apiToken: "tok-secret", scope: "company" }),
+              getSettings: async () => ({ values: { scope: "company" }, missing: [] }),
             },
           },
   } as unknown as PennylaneToolCtx
@@ -124,7 +124,7 @@ describe("probeWebhookUpstreamJob", () => {
   it("a connection that exists but cannot be used is no report, never a quiet one", async () => {
     const { fake, ctx } = await setup()
     ;(ctx as unknown as { connections: unknown }).connections = {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok-secret", scope: "firm" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "firm" }, missing: [] }) },
     }
     const result = await probeWebhookUpstreamJob({}, ctx)
     expect(result).toMatchObject({ probed: false })

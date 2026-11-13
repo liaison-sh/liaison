@@ -622,6 +622,10 @@ const toolSchema = {
       type: "array",
       items: { type: "string", minLength: 1, pattern: "^[^.]+$" },
     },
+    // The app's webhook signing secrets (a connection's `webhookSecretConfigKey`) this tool's
+    // answer may carry: the app answers `{ "$configSecret": "<key>" }` and the host writes the
+    // value in after the run (reveal-secrets.ts). Any other key is refused at run time.
+    revealsSecrets: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
     summarizer: { type: "string" },
     // Declarative hydration for the approval summary: before running the
     // summarizer, the kernel executes this UNGATED read tool of the SAME app

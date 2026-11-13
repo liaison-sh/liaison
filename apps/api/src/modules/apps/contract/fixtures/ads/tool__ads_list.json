@@ -8,15 +8,15 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/120210000000000201/ads?fields=id%2Cname%2Cstatus%2Ceffective_status%2Cadset_id%2Ccampaign_id%2Ccreative&limit=25&filtering=%5B%7B%22field%22%3A%22effective_status%22%2C%22operator%22%3A%22IN%22%2C%22value%22%3A%5B%22ACTIVE%22%2C%22PAUSED%22%5D%7D%5D",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"120210000000000301\\\",\\\"name\\\":\\\"Bass trap carousel\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"ACTIVE\\\",\\\"adset_id\\\":\\\"120210000000000201\\\",\\\"campaign_id\\\":\\\"120210000000000101\\\",\\\"creative\\\":{\\\"id\\\":\\\"120210000000000401\\\"}}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
     }

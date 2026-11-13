@@ -15,7 +15,7 @@
 // from the per-APP uninstall pause (kernel `pauseAppRoutinesForOrg`, Task A12).
 
 import type { Platform } from "./adapters/types"
-import type { SocialToolCtx } from "./ctx"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
 import { clearMetaPageIds } from "./meta-pages"
 
 interface ConnectionEventData {
@@ -89,49 +89,47 @@ const PLATFORM_CONNECTION: Record<Platform, string> = {
 }
 
 /**
- * Resolve the per-platform/per-account OAuth access token via the host
- * connections accessor. `ctx.connections` has two runtime shapes (same as
- * boxtal/pennylane's `getCredentials` facade):
- *   - FLAT  `{ getToken(name, identifier?) }` — the sandbox bridge group.
- *   - RECORD `{ meta: { getToken(identifier?) } }` — the SDK type / unit-test mock.
- * We normalize to one accessor so the resolver is correct under both. The
- * `identifier` is the connected account's external id (the Page / IG / channel
- * id) so a multi-account org gets the right token per account.
+ * The credential of one connected account, for `ctx.fetch` auth: the host adds
+ * the account's OAuth token (refreshed host-side) to a request that names it,
+ * so the token never enters the app. The `identifier` is the connected
+ * account's external id (the user / IG / channel id) so a multi-account org
+ * sends the right token per account.
  *
- * Returns `null` when no live token can be obtained (never connected, or the
- * stored token is empty/expired and the host throws) — the caller turns that
- * into an explicit, observable auth error rather than an unauthenticated call.
+ * Returns `null` when the account is not connected (no active account with
+ * that identifier: `getAccounts` lists only active ones, in either
+ * `ctx.connections` shape) — the caller turns that into an explicit,
+ * observable auth error rather than an unauthenticated call. A token the
+ * provider refuses later answers that call with its own 401.
  */
-export async function resolveAccessToken(
+export async function resolveAccountAuth(
   ctx: SocialToolCtx,
   platform: Platform,
   accountExternalId: string,
-): Promise<string | null> {
+): Promise<SocialAuth | null> {
   const connectionName = PLATFORM_CONNECTION[platform]
   const conns = ctx.connections as unknown
-  const flat = conns as {
-    getToken?: (name: string, identifier?: string) => Promise<string>
-  }
-  let token: string | undefined
+  const flat = conns as { getAccounts?: (name: string) => Promise<unknown> }
+  let raw: unknown
   try {
-    if (typeof flat.getToken === "function") {
-      token = await flat.getToken(connectionName, accountExternalId)
+    if (typeof flat.getAccounts === "function") {
+      raw = await flat.getAccounts(connectionName)
     } else {
-      const record = conns as Record<
-        string,
-        { getToken?: (identifier?: string) => Promise<string> } | undefined
-      >
-      const entry = record?.[connectionName]
-      if (entry && typeof entry.getToken === "function") {
-        token = await entry.getToken(accountExternalId)
-      }
+      const entry = (
+        conns as Record<string, { getAccounts?: () => Promise<unknown> } | undefined>
+      )?.[connectionName]
+      if (!entry || typeof entry.getAccounts !== "function") return null
+      raw = await entry.getAccounts()
     }
   } catch {
-    // The host throws "No connected account" / "No access token stored" when the
-    // connection is gone or the token is empty/expired — treated as "no token".
     return null
   }
-  return token && token.length > 0 ? token : null
+  const accounts = (typeof raw === "string" ? JSON.parse(raw) : raw) as Array<{
+    identifier?: string
+  }> | null
+  const connected = (accounts ?? []).some((a) => a?.identifier === accountExternalId)
+  return connected
+    ? { connection: connectionName, identifier: accountExternalId, scheme: "bearer" }
+    : null
 }
 
 async function upsertSyncState(

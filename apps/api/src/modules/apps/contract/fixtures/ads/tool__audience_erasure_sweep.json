@@ -27,15 +27,15 @@
       "reply": "[]"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/120210000000000501/users",
-        "{\"method\":\"DELETE\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"payload=%7B%22schema%22%3A%5B%22EMAIL_SHA256%22%5D%2C%22data%22%3A%5B%5B%225d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f%22%5D%5D%7D\"}"
+        "{\"method\":\"DELETE\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\"},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]},\"body\":\"payload=%7B%22schema%22%3A%5B%22EMAIL_SHA256%22%5D%2C%22data%22%3A%5B%5B%225d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f%22%5D%5D%7D\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"audience_id\\\":\\\"120210000000000501\\\",\\\"session_id\\\":\\\"4100000000000002\\\",\\\"num_received\\\":1,\\\"num_invalid_entries\\\":0,\\\"invalid_entry_samples\\\":{}}\"}"
     },
@@ -45,23 +45,23 @@
         "audience_erasure_log",
         "{\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"meta\",\"status\":\"removed\",\"consumed_at\":\"2026-01-01T00:00:00.000Z\"}"
       ],
-      "reply": "{\"id\":\"66a4b324-9731-4766-9fa1-45a6347d66c6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:45.743012+00\",\"updated_at\":\"2026-11-12 10:16:45.743012+00\",\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"meta\",\"consumed_at\":\"2026-01-01 00:00:00+00\",\"status\":\"removed\",\"note\":null}"
+      "reply": "{\"id\":\"4f370825-f2b7-4731-9ee9-dd7d23dcf0b5\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:40.366199+00\",\"updated_at\":\"2026-11-13 01:32:40.366199+00\",\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"meta\",\"consumed_at\":\"2026-01-01 00:00:00+00\",\"status\":\"removed\",\"note\":null}"
     },
     {
-      "method": "connections_getToken",
+      "method": "connections_getAccounts",
       "args": ["google"],
-      "reply": "ads-token-stand-in-2"
+      "reply": "[{\"id\":\"16533636-b894-4d01-8e7f-8ccac90a214a\",\"identifier\":\"google-ads-user\",\"displayName\":\"google-ads-user\",\"status\":\"active\"}]"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["google-config"],
-      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+      "reply": "{\"values\":{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"},\"missing\":[\"developerToken\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://googleads.googleapis.com/v26/customers/1234567890/offlineUserDataJobs:create",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"operations\\\":[{\\\"create\\\":{\\\"type\\\":\\\"CUSTOMER_MATCH_USER_LIST\\\"}}]}\"}"
+        "{\"method\":\"POST\",\"headers\":{\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"auth\":{\"connection\":\"google\",\"scheme\":\"bearer\"},\"body\":\"{\\\"operations\\\":[{\\\"create\\\":{\\\"type\\\":\\\"CUSTOMER_MATCH_USER_LIST\\\"}}]}\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"resourceName\\\":\\\"customers/1234567890/offlineUserDataJobs/8100000001\\\"}\"}"
     },
@@ -71,7 +71,7 @@
         "audience_erasure_log",
         "{\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"google\",\"status\":\"failed\",\"consumed_at\":null,\"note\":\"Google offlineUserDataJobs create did not return a job resource name\"}"
       ],
-      "reply": "{\"id\":\"45fa8e0a-f5d1-428d-8180-201d4d43a665\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:45.761439+00\",\"updated_at\":\"2026-11-12 10:16:45.761439+00\",\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"google\",\"consumed_at\":null,\"status\":\"failed\",\"note\":\"Google offlineUserDataJobs create did not return a job resource name\"}"
+      "reply": "{\"id\":\"52dc5215-06f1-4c65-bc70-163a5de07aff\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:40.392342+00\",\"updated_at\":\"2026-11-13 01:32:40.392342+00\",\"email_sha256\":\"5d41402abc4b2a76b9719d911017c592ae7b2b1e4b1b2a1f6e0b6b0b0c0d0e0f\",\"platform\":\"google\",\"consumed_at\":null,\"status\":\"failed\",\"note\":\"Google offlineUserDataJobs create did not return a job resource name\"}"
     }
   ]
 }

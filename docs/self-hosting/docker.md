@@ -90,7 +90,7 @@ The channels are explained in [Upgrade Liaison](../admin/upgrades.md#choose-a-ch
 
 | Variable | Default | What it does |
 |---|---|---|
-| `LIAISON_IMAGE` | The compose file's pinned tag | The image the stack runs |
+| `LIAISON_IMAGE` | The compose file's pinned tag | The image the stack runs: the app, the [sandbox service](sandbox.md) and the rolling processes all use it. For a private registry (ECR, ...), set it here rather than overriding `image:` on one service |
 | `LIAISON_RELEASE_CHANNEL` | `release` | `release` or `nightly`: what **Settings › System** compares the running version against |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `false` | Emergency only, not supported: start an image older than the database's schema instead of refusing |
 

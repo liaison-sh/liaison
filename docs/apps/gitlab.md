@@ -19,6 +19,8 @@ To rotate the token later, open the same form and paste the new token. It replac
 
 Only gitlab.com is supported: the connection may reach `gitlab.com` and its subdomains only.
 
+The token never reaches the app's code: Liaison adds it to each GitLab request itself.
+
 ## Ask about your projects
 
 Ask your agent, for example:

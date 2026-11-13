@@ -37,6 +37,8 @@ Connecting needs `ads:admin:connection`. Connect every account for the whole org
 
 **Settings › Ads › Account status** shows whether **Meta Ads**, **Google Ads** and **Merchant Center** are connected.
 
+The access token, the OAuth tokens and any legacy developer token never reach the app's code: Liaison adds them to each Meta and Google request itself, and refreshes the Google token. The ad account, Page and customer ids are plain settings the app reads.
+
 ## Follow spend and campaigns
 
 Open **Ads** in the activity bar.

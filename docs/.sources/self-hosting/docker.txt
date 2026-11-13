@@ -288,3 +288,4 @@ LIAISON_SANDBOX_URL names the server's own sandbox service for runs the loader c
 Sandbox service compose profile, LIAISON_APP_BRIDGE_PORT, LIAISON_APP_RUNTIME -> deploy/docker-compose.yml sandbox ; apps/api/src/modules/apps/workers/bridge-listener.ts
 /healthz sandbox dependency when the sandbox service is configured -> apps/api/src/modules/healthz/index.ts computeDetail ; apps/api/src/modules/apps/workers/sandbox-release.ts probeSandbox
 Rolling deploy recreates the sandbox service after the new processes are ready -> deploy/rolling-deploy.sh step 4b
+LIAISON_IMAGE shared by app, sandbox (anchor *liaison-image) and rolling processes (<<: *liaison-app) -> deploy/docker-compose.yml app image ; deploy/docker-compose.yml sandbox image

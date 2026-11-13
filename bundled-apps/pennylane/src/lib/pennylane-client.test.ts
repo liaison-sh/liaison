@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import type { PennylaneFetch } from "./pennylane-client"
-import { PennylaneApiError, PennylaneClient, PennylaneRateLimitError } from "./pennylane-client"
+import {
+  PENNYLANE_AUTH,
+  PennylaneApiError,
+  PennylaneClient,
+  PennylaneRateLimitError,
+} from "./pennylane-client"
 
 /** A PennylaneFetch fake: matches a route by URL substring, returns {status,headers,body}. */
 function fakeFetch(routes: Record<string, { status: number; body: unknown }>) {
@@ -20,19 +25,21 @@ function fakeFetch(routes: Record<string, { status: number; body: unknown }>) {
 }
 
 describe("PennylaneClient", () => {
-  it("sends Bearer auth, hits the v2 base, and parses a cursor page", async () => {
+  it("names the connection for the host-side token, hits the v2 base, and parses a cursor page", async () => {
     const fetch = fakeFetch({
       "/supplier_invoices": {
         status: 200,
         body: { items: [{ id: "si_1" }], next_cursor: "c2", has_more: true },
       },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok_abc" })
+    const c = new PennylaneClient({ fetch })
     const page = await c.list<{ id: string }>("/supplier_invoices", { limit: 50 })
     expect(page.items).toEqual([{ id: "si_1" }])
     expect(page.next_cursor).toBe("c2")
     expect(page.has_more).toBe(true)
-    expect(fetch.calls[0]!.opts?.headers?.Authorization).toBe("Bearer tok_abc")
+    // The token is the host's to add: the app names the connection, never holds the token.
+    expect(fetch.calls[0]!.opts?.headers?.Authorization).toBeUndefined()
+    expect(fetch.calls[0]!.opts?.auth).toEqual(PENNYLANE_AUTH)
     expect(fetch.calls[0]!.url.startsWith("https://app.pennylane.com/api/external/v2")).toBe(true)
   })
 
@@ -43,7 +50,7 @@ describe("PennylaneClient", () => {
         body: { items: [], next_cursor: null, has_more: false },
       },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     await c.list("/supplier_invoices", {
       filter: [{ field: "status", operator: "eq", value: "unpaid" }],
     })
@@ -59,7 +66,7 @@ describe("PennylaneClient", () => {
         body: { items: [], next_cursor: null, has_more: false },
       },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     await c.list("/customer_invoices", { limit: 9999 })
     expect(decodeURIComponent(fetch.calls[0]!.url)).toContain("limit=100")
   })
@@ -71,14 +78,14 @@ describe("PennylaneClient", () => {
         body: { items: [], next_cursor: null, has_more: false },
       },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     await c.list("/customer_invoices")
     expect(decodeURIComponent(fetch.calls[0]!.url)).toContain("limit=50")
   })
 
   it("throws PennylaneApiError carrying status + body on non-2xx", async () => {
     const fetch = fakeFetch({ "/bank_accounts": { status: 403, body: { message: "forbidden" } } })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     await expect(c.list("/bank_accounts")).rejects.toMatchObject({
       name: "PennylaneApiError",
       status: 403,
@@ -102,7 +109,7 @@ describe("PennylaneClient", () => {
         body: '{"message":"rate"}',
       }
     }
-    const c = new PennylaneClient({ fetch: fn, apiToken: "tok", now: () => clock })
+    const c = new PennylaneClient({ fetch: fn, now: () => clock })
     const err = await c.list("/transactions").catch((e: unknown) => e)
     expect(err).toBeInstanceOf(PennylaneRateLimitError)
     expect((err as PennylaneRateLimitError).status).toBe(429)
@@ -126,7 +133,7 @@ describe("PennylaneClient", () => {
         body: "{}",
       }
     }
-    const c = new PennylaneClient({ fetch: fn, apiToken: "tok", now: () => clock })
+    const c = new PennylaneClient({ fetch: fn, now: () => clock })
     await c.get("/me")
     const err = (await c.get("/me").catch((e: unknown) => e)) as PennylaneRateLimitError
     expect(err.retryAtMs).toBe(1_792_049_815_000)
@@ -150,7 +157,7 @@ describe("PennylaneClient", () => {
         }
       return { status: 201, headers: {}, body: '{"id":1}' }
     }
-    const c = new PennylaneClient({ fetch: fn, apiToken: "tok", companyId: "100001" })
+    const c = new PennylaneClient({ fetch: fn, companyId: "100001" })
     expect(await c.post("/customers", { name: "x" })).toEqual({ status: 201, data: { id: 1 } })
     await c.put("/customers/1", { electronic_billing_address: "123456782" })
     expect((await c.postEmpty("/customer_invoices/9/send_to_pa")).status).toBe(204)
@@ -179,26 +186,27 @@ describe("PennylaneClient", () => {
 
   it("truncates a provider error body to 2 KB", async () => {
     const fn: PennylaneFetch = async () => ({ status: 422, headers: {}, body: "x".repeat(5000) })
-    const err = (await new PennylaneClient({ fetch: fn, apiToken: "t" })
+    const err = (await new PennylaneClient({ fetch: fn })
       .post("/x", {})
       .catch((e: unknown) => e)) as PennylaneApiError
     expect(err.status).toBe(422)
     expect(err.body.length).toBeLessThanOrEqual(2049)
   })
 
-  it("get<T>() returns the parsed body and sends Bearer auth", async () => {
+  it("get<T>() returns the parsed body and names the connection for the host-side token", async () => {
     const fetch = fakeFetch({
       "/supplier_invoices/si_9": { status: 200, body: { id: "si_9", supplier_name: "Acme" } },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     const inv = await c.get<{ id: string; supplier_name: string }>("/supplier_invoices/si_9")
     expect(inv).toEqual({ id: "si_9", supplier_name: "Acme" })
-    expect(fetch.calls[0]!.opts?.headers?.Authorization).toBe("Bearer tok")
+    expect(fetch.calls[0]!.opts?.headers?.Authorization).toBeUndefined()
+    expect(fetch.calls[0]!.opts?.auth).toEqual(PENNYLANE_AUTH)
   })
 })
 
 describe("PennylaneApiError message", () => {
-  it("carries the status plus Pennylane's own message, truncated, never the token", async () => {
+  it("carries the status plus Pennylane's own message, truncated", async () => {
     const fetch = fakeFetch({
       "/trial_balance": {
         status: 400,
@@ -210,10 +218,11 @@ describe("PennylaneApiError message", () => {
       },
       "/echo": {
         status: 422,
-        body: { error: `bad token tok_secret_123 ${"x".repeat(1000)}`, status: 422 },
+        // What the app receives: the host already replaced the injected token.
+        body: { error: `bad token [redacted] ${"x".repeat(1000)}`, status: 422 },
       },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok_secret_123" })
+    const c = new PennylaneClient({ fetch })
     const err = (await c.list("/trial_balance").catch((e: unknown) => e)) as PennylaneApiError
     expect(err).toBeInstanceOf(PennylaneApiError)
     expect(err.status).toBe(400)
@@ -223,15 +232,13 @@ describe("PennylaneApiError message", () => {
     const err2 = (await c.get("/echo").catch((e: unknown) => e)) as PennylaneApiError
     expect(err2.message.startsWith("Pennylane 422: bad token [redacted] ")).toBe(true)
     expect(err2.message.length).toBeLessThanOrEqual(320)
-    expect(err2.message).not.toContain("tok_secret_123")
-    expect(err2.body).not.toContain("tok_secret_123")
   })
 
   it("passes extra query params through list() (e.g. trial_balance's period window)", async () => {
     const fetch = fakeFetch({
       "/trial_balance": { status: 200, body: { items: [], next_cursor: null, has_more: false } },
     })
-    const c = new PennylaneClient({ fetch, apiToken: "tok" })
+    const c = new PennylaneClient({ fetch })
     await c.list("/trial_balance", {
       params: { period_start: "2026-01-01", period_end: "2026-10-25" },
     })

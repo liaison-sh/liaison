@@ -382,7 +382,7 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
       // human-driven search would. Without this the tool would only ever
       // return remote (Drive) hits and the cross-source citation contract
       // breaks (Phase 11 S4).
-      const { globalSearch } = await import("~/modules/search/service")
+      const { searchLocalKnowledge } = await import("~/apps/knowledge/local-search")
       const result = await federatedKnowledgeSearch(
         {
           query: params.query ?? "",
@@ -410,33 +410,17 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
             }
             try {
               const limit = Math.min(Math.max(params.limit ?? 20, 1), 20)
-              const res = await globalSearch({
-                orgId: actor.orgId,
-                userId: actor.userId,
-                scopes: actor.scopes,
-                dimensionGrants: actor.dimensionGrants,
-                roleIds: actor.roles ?? [],
+              // Narrowed to Knowledge in the engine (local-search.ts), then
+              // paged through the read guard: the index can lag an archive or
+              // delete, so a hit whose row is archived, gone or unreadable is
+              // never returned (opening it would return not_found) nor counted.
+              const hits = await searchLocalKnowledge({
+                actor,
                 q,
                 limit,
+                keep: (indexed) =>
+                  dbStep((tx) => dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor)),
               })
-              const indexed = res.entities
-                .filter(
-                  (e) =>
-                    e.app === "knowledge" &&
-                    (e.entityType === "document" || e.entityType === "source_link"),
-                )
-                .map((e, i) => ({
-                  source: "knowledge",
-                  sourceEntityId: e.id,
-                  title: e.title ?? e.label,
-                  type: e.entityType,
-                  sourceRank: i + 1,
-                }))
-              // The index can lag an archive/delete: never hand back a hit whose
-              // row is archived or gone (opening it would return not_found).
-              const hits = await dbStep((tx) =>
-                dropArchivedKnowledgeHits(tx, actor.orgId, indexed, actor),
-              )
               return {
                 hits,
                 status: {

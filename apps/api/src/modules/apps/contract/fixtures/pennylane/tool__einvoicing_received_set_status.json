@@ -1,7 +1,7 @@
 {
   "entry": "tool:einvoicing_received_set_status",
   "params": {
-    "provider_ref": "32384166563840",
+    "provider_ref": "34553820622848",
     "status": "in_dispute",
     "reason": null,
     "comment": "Quantities differ from the delivery note."
@@ -12,17 +12,17 @@
   },
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["pennylane"],
-      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+      "reply": "{\"values\":{\"scope\":\"company\"},\"missing\":[\"companyId\"]}"
     },
     {
       "method": "fetch",
       "args": [
-        "https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+        "https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848",
+        "{\"method\":\"GET\",\"headers\":{\"Accept\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]}}"
       ],
-      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"amount\\\":\\\"120.0\\\",\\\"archived_at\\\":null,\\\"created_at\\\":\\\"2026-10-15T09:15:58.404517Z\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"currency\\\":\\\"EUR\\\",\\\"date\\\":\\\"2026-10-14\\\",\\\"deadline\\\":\\\"2026-11-13\\\",\\\"filename\\\":\\\"probe-bill.pdf\\\",\\\"id\\\":32384166563840,\\\"invoice_number\\\":\\\"PROBE-SUP-1\\\",\\\"label\\\":\\\"Facture Taxi - PROBE-SUP-1\\\",\\\"payment_status\\\":\\\"to_be_processed\\\",\\\"paid\\\":false,\\\"remaining_amount_with_tax\\\":\\\"-120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"-100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"updated_at\\\":\\\"2026-10-15T09:15:58.721789Z\\\",\\\"reconciled\\\":false,\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=sNgRGkrsJRN4YdIwVsLw6JxMtzqK5MtxcV6JLffvzz9ow1FQ7uPbNny9dANr8%2BfQBOxo%2BaoPtkEFcJwn3%2F9Eh9Tg3Jtra4MjsnRGeR2d23niifOUc4h6ha452f%2F%2BFQ%3D%3D--FioqJN1Etr3n0tYn--VGO9kKMR7ca83J6r5p6u8Q%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"accounting_status\\\":\\\"complete\\\",\\\"ledger_entry\\\":{\\\"id\\\":32384166563840},\\\"transaction_reference\\\":null,\\\"supplier\\\":{\\\"id\\\":1585214119936,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/suppliers/1585214119936\\\"},\\\"payment_method_ledger_account\\\":null,\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/invoice_lines\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/32384166563840/matched_transactions\\\"},\\\"external_reference\\\":\\\"probe-sup-1\\\",\\\"import_source\\\":null,\\\"e_invoicing\\\":null,\\\"performance_date\\\":null}\"}"
+      "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"amount\\\":\\\"120.0\\\",\\\"archived_at\\\":null,\\\"created_at\\\":\\\"2026-11-12T08:45:54.442082Z\\\",\\\"currency_amount_before_tax\\\":\\\"100.0\\\",\\\"currency_amount\\\":\\\"120.0\\\",\\\"currency_tax\\\":\\\"20.0\\\",\\\"currency\\\":\\\"EUR\\\",\\\"date\\\":\\\"2026-10-15\\\",\\\"deadline\\\":\\\"2026-11-14\\\",\\\"filename\\\":\\\"F-mwdawvzf.pdf\\\",\\\"id\\\":34553820622848,\\\"invoice_number\\\":\\\"F-mwdawvzf\\\",\\\"label\\\":\\\"Facture Restaurants - F-mwdawvzf\\\",\\\"payment_status\\\":\\\"to_be_processed\\\",\\\"paid\\\":false,\\\"remaining_amount_with_tax\\\":\\\"-120.0\\\",\\\"remaining_amount_without_tax\\\":\\\"-100.0\\\",\\\"tax\\\":\\\"20.0\\\",\\\"updated_at\\\":\\\"2026-11-12T08:45:54.640861Z\\\",\\\"reconciled\\\":false,\\\"public_file_url\\\":\\\"https://app.pennylane.com/public/invoice/pdf?encrypted_id=%2FzYtilwKZj%2FvW%2FfYwRJB9va0vlo5mP4EGI98DdumjwASwsvuP4KHIMGYzZ60pTRs1yP8ADPrNomgCW57VeV5O4VO%2Bj6W4s8wCh6XtZldwz4kTiM89iU3V2r9efJ%2BoQ%3D%3D--JbwydFrkMpX0KeVC--AiRGsa9RZ1lgPosxKNh%2B7g%3D%3D\\\",\\\"exchange_rate\\\":\\\"1.0\\\",\\\"accounting_status\\\":\\\"complete\\\",\\\"ledger_entry\\\":{\\\"id\\\":34553820622848},\\\"transaction_reference\\\":null,\\\"supplier\\\":{\\\"id\\\":1585214115840,\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/suppliers/1585214115840\\\"},\\\"payment_method_ledger_account\\\":null,\\\"invoice_lines\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/invoice_lines\\\"},\\\"categories\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/categories\\\"},\\\"payments\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/payments\\\"},\\\"matched_transactions\\\":{\\\"url\\\":\\\"https://app.pennylane.com/api/external/v2/supplier_invoices/34553820622848/matched_transactions\\\"},\\\"external_reference\\\":\\\"liaison-2dc3d324-5d0f-452d-b034-a4781fb01b5d\\\",\\\"import_source\\\":null,\\\"e_invoicing\\\":null,\\\"performance_date\\\":null}\"}"
     }
   ]
 }

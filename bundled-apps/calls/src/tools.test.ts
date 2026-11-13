@@ -260,7 +260,8 @@ describe("webhook_info", () => {
     const { ctx } = makeCtx({ config: { callsWebhookSecret: "sekret" } })
     const out = await webhookInfoHandler({}, ctx)
     expect(out.data.configured).toBe(true)
-    expect(out.data.secret).toBe("sekret")
+    // The host writes the secret in where the marker stands (revealsSecrets): the app never reads it.
+    expect(out.data.secret).toEqual({ $configSecret: "callsWebhookSecret" })
     expect(out.data.signatureHeader).toBe("x-calls-signature")
   })
 

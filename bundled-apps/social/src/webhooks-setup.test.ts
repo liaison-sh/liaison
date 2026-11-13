@@ -4,10 +4,12 @@
 // subscribed_apps are both made with the right parameters, the verify token the kernel's
 // handshake checks is provisioned before Meta is asked, a failing Page is reported, and a second
 // run changes nothing.
+
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { facebookAdapter } from "./adapters/facebook"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import { onConnectionEstablished } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { createMockDb, type MockDb } from "./test-db"
@@ -71,21 +73,34 @@ function fakeGraph(
     : {}
   const fetch = async (
     url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: unknown },
+    init?: {
+      method?: string
+      headers?: Record<string, string>
+      body?: unknown
+      auth?: { grant?: string; identifier?: string }
+      configSecrets?: Record<string, string>
+    },
   ) => {
     const u = new URL(url)
     const path = u.pathname.replace(/^\/v\d+\.\d+/, "")
     const method = init?.method ?? "GET"
-    const body =
-      typeof init?.body === "string"
-        ? (JSON.parse(init.body) as Record<string, unknown>)
-        : undefined
-    const auth = init?.headers?.Authorization
+    // The host's part: a declared config secret replaces its placeholder, and `auth`
+    // becomes the app token (client credentials grant) or the account's user token.
+    let raw = typeof init?.body === "string" ? init.body : undefined
+    for (const [placeholder, key] of Object.entries(init?.configSecrets ?? {})) {
+      raw = raw?.split(placeholder).join(String(config[key] ?? ""))
+    }
+    const body = raw !== undefined ? (JSON.parse(raw) as Record<string, unknown>) : undefined
+    const auth = init?.auth
+      ? init.auth.grant === "client_credentials"
+        ? `Bearer ${APP_ID}|${SECRET}`
+        : "Bearer user-tok"
+      : init?.headers?.Authorization
     calls.push({ method, path, auth, body })
     const ok = (b: unknown) => ({ status: 200, headers: {}, body: JSON.stringify(b) })
     if (method === "GET" && path === "/app") return ok({ id: APP_ID })
     if (path === `/${APP_ID}/subscriptions`) {
-      const token = method === "GET" ? auth?.replace(/^Bearer /, "") : body?.access_token
+      const token = auth?.replace(/^Bearer /, "")
       if (token !== `${APP_ID}|${SECRET}`)
         return {
           status: 400,
@@ -144,6 +159,7 @@ function fakeGraph(
   }
   const cfg = {
     get: async (k: string) => (k === "socialMetaAppSecret" ? SECRET : (config[k] ?? null)),
+    has: async (k: string) => k === "socialMetaAppSecret" || Boolean(config[k]),
     setSecret: async (k: string, v: string) => {
       config = { ...config, [k]: v }
     },
@@ -157,7 +173,7 @@ async function seededCtx(g: ReturnType<typeof fakeGraph>, base: string | undefin
     orgId: "org-1",
     db,
     fetch: g.fetch,
-    connections: { getToken: async () => "user-tok" },
+    connections: { getAccounts: async () => connectedAccountList() },
     config: g.cfg,
     enqueueJob: async () => {},
     logger: { warn() {}, info() {}, error() {}, debug() {} },
@@ -251,8 +267,9 @@ describe("webhooks_setup", () => {
       fields: "feed,messages",
       include_values: true,
       verify_token: g.getConfig()[VERIFY_TOKEN_KEY],
-      access_token: `${APP_ID}|${SECRET}`,
     })
+    // The app token is the host's (client credentials grant), never in the app or the body.
+    expect(appPost?.auth).toBe(`Bearer ${APP_ID}|${SECRET}`)
     // The token was stored before Meta's handshake ran, and it is a real random token.
     expect(typeof g.state.verifyTokenAtSubscribe).toBe("string")
     expect(String(g.state.verifyTokenAtSubscribe)).toMatch(/^[0-9a-f]{48}$/)

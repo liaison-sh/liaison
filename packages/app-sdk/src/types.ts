@@ -513,6 +513,12 @@ export interface LimiterClient {
 }
 
 export interface ConnectionClient {
+  /**
+   * The account's OAuth token. Refused (`secret_not_available_on_workers`) on the
+   * Workers loader and the workerd sandbox, and for every custom app: send it with
+   * `ctx.fetch(url, { auth: { connection, scheme: "bearer" } })` instead, so the
+   * token never enters app code. Only the QuickJS executor still answers it.
+   */
   getToken(identifier?: string): Promise<string>
   getAccounts(): Promise<
     Array<{
@@ -530,6 +536,9 @@ export interface ConnectionClient {
    * (empty for credentials connections, whose secrets live in
    * `credentialsEncrypted`). The host enforces the manifest declaration + the
    * caller's RLS actor context. A non-credentials connection returns `{}`.
+   *
+   * Refused like `getToken` off QuickJS: read the readable fields with
+   * `getSettings` and send the secret ones with `ctx.fetch` auth (`fields`).
    */
   getCredentials(identifier?: string): Promise<Record<string, string>>
   /**
@@ -559,6 +568,12 @@ export interface ConnectionSettings {
  *   401 answer so a retry exchanges again.
  * - `"basic"`: `Authorization: Basic base64(fields[0]:fields[1])` of a credentials
  *   connection.
+ * - `"query:<param>"`: the value as that query parameter of the URL that goes out
+ *   (the app's own URL never carries it).
+ * - `grant: "client_credentials"` (oauth2, `"bearer"`): an app token of the
+ *   connection's own OAuth client, obtained host-side at its `tokenUrl`
+ *   (RFC 6749 4.4), cached, dropped on a 401. For calls made as the app, not as a
+ *   connected account.
  */
 export interface FetchAuth {
   connection: string
@@ -570,8 +585,9 @@ export interface FetchAuth {
    * personal account.
    */
   account?: string
-  scheme: `header:${string}` | "bearer" | "basic"
+  scheme: `header:${string}` | `query:${string}` | "bearer" | "basic"
   fields?: string[]
+  grant?: "client_credentials"
   exchange?: {
     url: string
     method?: "POST" | "GET"
@@ -746,11 +762,15 @@ export interface AppContext {
   }>
   logger: Logger
   /**
-   * Read-only accessor over the app's kernel-managed `apps.config` store. Used
-   * by a credentials-connection app's connect handler to read the
-   * kernel-minted webhook secret (declared via `webhookSecretConfigKey`) and
-   * forward it to the provider's subscription API. There is no write
-   * counterpart — the kernel owns config mutation.
+   * Read-only accessor over the app's kernel-managed `apps.config` store. There
+   * is no write counterpart — the kernel owns config mutation.
+   *
+   * A declared secret key (a connection's `webhookSecretConfigKey`,
+   * `clientSecretConfigKey` or `appSecretConfigKeys`) is refused by `get` on the
+   * Workers loader, the workerd sandbox and for every custom app. Use `has` to
+   * know whether it is set, `ctx.fetch` `configSecrets` to send it to its
+   * provider, the `crypto_*ForConfig` bridge methods to sign or verify with it,
+   * and a tool's `revealsSecrets` to hand a minted webhook secret to an operator.
    */
   config: {
     get(key: string): Promise<unknown>

@@ -23,7 +23,7 @@
 import { getMetaClient } from "../lib/get-client"
 import { googleAdsMutate } from "../lib/google-client"
 import { GoogleConfigError, getGoogleClient } from "../lib/google-config"
-import { metaFetch } from "../lib/meta-client"
+import { type MetaAuth, metaFetch } from "../lib/meta-client"
 
 interface PendingErasure {
   emailSha256: string
@@ -228,7 +228,7 @@ async function removeFromMeta(
   emailSha256: string,
   audienceIds: string[],
 ): Promise<MetaRemoveResult> {
-  let client: { accessToken: string; adAccountId: string }
+  let client: { auth: MetaAuth; adAccountId: string }
   try {
     client = await getMetaClient(ctx)
   } catch (e) {
@@ -256,7 +256,7 @@ async function removeFromMeta(
         params: {
           payload: { schema: ["EMAIL_SHA256"], data: [[emailSha256]] },
         },
-        accessToken: client.accessToken,
+        auth: client.auth,
       })
     } catch (e) {
       failedAudienceIds.push(audienceId)
@@ -303,7 +303,7 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
     return { removed: false, status: "no_op_not_connected", note: `Google not connected: ${note}` }
   }
 
-  const { token, config } = client
+  const { auth, config } = client
 
   try {
     // Step 1: create the offline user data job.
@@ -311,7 +311,7 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
       customerId: config.customerId,
       path: "offlineUserDataJobs:create",
       operations: [{ create: { type: "CUSTOMER_MATCH_USER_LIST" } }],
-      token,
+      auth,
       loginCustomerId: config.loginCustomerId,
     })) as { results?: Array<{ resourceName?: string }> }
     const jobResourceName = createResult.results?.[0]?.resourceName
@@ -335,7 +335,7 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
           },
         },
       ],
-      token,
+      auth,
       loginCustomerId: config.loginCustomerId,
     })
 
@@ -344,7 +344,7 @@ async function removeFromGoogle(ctx: SweepCtx, emailSha256: string): Promise<Goo
       customerId: config.customerId,
       path: `${jobResourceName}:run`,
       operations: [],
-      token,
+      auth,
       loginCustomerId: config.loginCustomerId,
     })
 

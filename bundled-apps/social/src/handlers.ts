@@ -11,7 +11,7 @@ import { instagramAdapter } from "./adapters/instagram"
 import type { Platform, PlatformAdapter } from "./adapters/types"
 import { youtubeAdapter } from "./adapters/youtube"
 import { computeSocialAttention } from "./attention"
-import { onConnectionDisconnected, onConnectionEstablished, resolveAccessToken } from "./connection"
+import { onConnectionDisconnected, onConnectionEstablished, resolveAccountAuth } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import {
   findConversationRow,
@@ -203,27 +203,27 @@ function platformFromWebhookBody(body: unknown): Platform {
 /**
  * Manifest `verify` handler. The kernel webhook router calls this with the
  * serialized request `{ headers, body, method, query }` and a crypto/config
- * bridge (QuickJS has no `node:crypto`). The App Secret is the kernel-stored
- * `socialMetaAppSecret`; the digest is host-computed (hex) and compared in
- * constant time. Meta sends `X-Hub-Signature-256: sha256=<hex>`.
+ * bridge. The App Secret is the kernel-stored `socialMetaAppSecret`, used
+ * host-side only: the bridge checks the signature with it in constant time.
+ * Meta sends `X-Hub-Signature-256: sha256=<hex>`.
  */
 export async function metaWebhookVerifier(
   params: { headers?: Record<string, string>; body: string },
   bridge: SocialWebhookBridge,
 ): Promise<{ ok: boolean; reason?: string; replayKey?: string }> {
-  const secret = (await bridge.config_get?.(APP_SECRET_KEY)) as string | null
-  if (!secret) return { ok: false, reason: "missing_secret" }
+  if (!(await bridge.config_has(APP_SECRET_KEY))) return { ok: false, reason: "missing_secret" }
   const headers = lowercaseHeaderKeys(params.headers ?? {})
   const signature = headers["x-hub-signature-256"] ?? ""
   if (!signature) return { ok: false, reason: "missing_signature" }
-  const ok = await verifyMetaSignature(params.body, signature, secret, bridge)
+  const ok = await verifyMetaSignature(params.body, signature, APP_SECRET_KEY, bridge)
   if (!ok) return { ok: false, reason: "signature_mismatch" }
   // Meta sends no delivery id, so the body's own HMAC is the delivery identity: the kernel's replay
   // guard then drops a captured signed delivery that is sent again (Meta's own retry of the same
   // payload is deduplicated the same way, which is what the idempotent ingest wants anyway). It is
   // recomputed here rather than taken from the header, which a resender could spell differently
   // (with or without the `sha256=` prefix) to get a fresh key for the same body.
-  return { ok: true, replayKey: await bridge.crypto_hmacSha256Hex(secret, params.body) }
+  const replayKey = await bridge.crypto_hmacSha256Base64ForConfig(APP_SECRET_KEY, params.body)
+  return replayKey ? { ok: true, replayKey } : { ok: true }
 }
 
 function lowercaseHeaderKeys(h: Record<string, string>): Record<string, string> {
@@ -417,8 +417,8 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
   // unauthenticated DM sync 401s and never advances the cursor. No token is an
   // expected state (not connected), said once at info and skipped
   // (missing-token.ts).
-  const accessToken = await resolveAccessToken(ctx, s.platform, s.account_external_id)
-  if (!accessToken) {
+  const auth = await resolveAccountAuth(ctx, s.platform, s.account_external_id)
+  if (!auth) {
     await noteMissingToken(ctx, s, "social: DM sync skipped, no OAuth access token for account", {
       platform: s.platform,
       accountExternalId: s.account_external_id,
@@ -445,7 +445,7 @@ async function syncOneDmAccount(ctx: SocialToolCtx, s: DmSyncRow): Promise<void>
   }
 
   const result = await syncDms(
-    { accountExternalId: s.account_external_id, fetch: ctx.fetch, accessToken, skipMessagesBefore },
+    { accountExternalId: s.account_external_id, fetch: ctx.fetch, auth, skipMessagesBefore },
     s.cursor,
   )
   // Typed adapter failure (401/429): log it and leave the account's watermark

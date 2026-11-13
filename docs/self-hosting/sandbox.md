@@ -50,6 +50,8 @@ The service runs the same image as the app and must run the same release. Every 
 - Rolling deploys: `deploy/rolling-deploy.sh` recreates the service on the new image as soon as the new `api` and `worker` processes are ready, before the old ones drain. Sandboxed runs still started by the old processes are refused from then on.
 - By hand: `docker compose --profile sandbox up -d sandbox`.
 
+The compose file gives the service exactly the app's image: both read `LIAISON_IMAGE`, through one definition. To pull from your own registry (Amazon ECR, a private registry), set `LIAISON_IMAGE` to that image, for example `LIAISON_IMAGE=<account>.dkr.ecr.<region>.amazonaws.com/liaison:v0.3.0`: the app, the service and the rolling `api`, `worker` and `migrate` processes all follow. Do not set `image:` on `app` alone in an override file; if you must, set the same value on `sandbox` too. `deploy/sandbox-firewall.sh check` fails when the service and an app process run different images.
+
 ## Install the firewall step
 
 A Docker network marked `internal` has no route out, but its containers still reach the host on the network's gateway address (an SSH server, anything bound to `0.0.0.0`) and every port of the other containers on it, the app's main port included. The firewall step closes that: from the sandbox service only the app's bridge port answers.
@@ -59,7 +61,40 @@ sudo deploy/sandbox-firewall.sh install   # rules now, and a systemd unit for ev
 deploy/sandbox-firewall.sh check          # from inside the sandbox: only the bridge port answers
 ```
 
-`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too) and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away. The script reads the compose file's defaults (`LIAISON_SANDBOX_IP` 172.31.250.10, `LIAISON_SANDBOX_SUBNET` 172.31.250.0/24, `LIAISON_SANDBOX_BRIDGE` liaison-sbx0, `LIAISON_APP_BRIDGE_PORT` 3100); change them in both places together.
+`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too) and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away.
+
+The script finds the stack and its settings the way `docker compose` does, so give it the same options you give compose, before the command:
+
+```sh
+sudo deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env install
+deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env check
+```
+
+It accepts `-p`/`--project-name`, `--env-file` (several allowed) and `-f`/`--file` (default `deploy/docker-compose.yml`), and honours `COMPOSE_PROJECT_NAME` from the environment or the env file. Without `--env-file` it reads `deploy/.env`, as compose does. The settings it reads (environment first, then the env files) are the compose file's: `LIAISON_SANDBOX_SUBNET`, `LIAISON_SANDBOX_IP`, `LIAISON_SANDBOX_BRIDGE` (liaison-sbx0) and `LIAISON_APP_BRIDGE_PORT` (3100). `install` writes the options and values into the systemd unit.
+
+On the sandbox network the rules let through only an app process's connection to the service and the service's connection to an app process's bridge port; anything else coming from that network is dropped. `apply` and `check` stop with an error when the live network's subnet, or the service's address, is not the one in the settings.
+
+## Network address
+
+The sandbox network is a /24 with the service at a fixed address in it, both set in `deploy/.env`:
+
+```sh
+LIAISON_SANDBOX_SUBNET=10.73.250.0/24
+LIAISON_SANDBOX_IP=10.73.250.10
+```
+
+Those are the defaults. They avoid the ranges clouds and tools use by default: AWS's default VPC (172.31.0.0/16) and Docker's own address pools (172.17.0.0/16 to 172.31.0.0/16, 192.168.0.0/16), the VPCs AWS, Azure and Hetzner propose (10.0.0.0/16, 10.1.0.0/16), Google Cloud's auto mode (10.128.0.0/9), DigitalOcean's VPCs, Kubernetes, k3s and Podman networks, and Tailscale (100.64.0.0/10). If your host or its VPC already uses 10.73.250.0/24, pick another free /24 and set both values: compose and the firewall script read the same two names. The address must be inside the subnet.
+
+### An install that ran the sandbox before this change
+
+Earlier versions put the network on 172.31.250.0/24, with the service at 172.31.250.10. Docker recreates the network when its subnet changes, so upgrading without a setting would move it while the firewall unit still names the old address. To keep the network where it is, pin the old values in `deploy/.env` before you upgrade:
+
+```sh
+LIAISON_SANDBOX_SUBNET=172.31.250.0/24
+LIAISON_SANDBOX_IP=172.31.250.10
+```
+
+To move to the new default (required on a host inside an AWS default VPC, where 172.31.250.0/24 collides), set the new values, then `docker compose up -d`, then `sudo deploy/sandbox-firewall.sh install` again (with your `-p`/`--env-file`) so the unit names the new network, and `deploy/sandbox-firewall.sh check`. Until the firewall step is reinstalled, the rules drop the network's traffic and sandboxed runs fail; `LIAISON_APP_RUNTIME=quickjs` keeps apps running meanwhile.
 
 ## Size it
 

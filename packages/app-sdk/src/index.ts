@@ -92,6 +92,8 @@ export {
 } from "./pdf-builder"
 export {
   appSecretsDeclarationSchema,
+  type ConfigSecretReveal,
+  configSecretReveal,
   hostPatternCovered,
   parseSecretJsonPath,
   parseSecretPlacementTarget,

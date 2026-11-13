@@ -324,7 +324,10 @@ services:
     # before this file is published as a release asset. LIAISON_IMAGE overrides
     # it (used by validate-compose / load-test / lighthouse-ci
     # and by operators targeting a specific tag or a locally-built image).
-    image: ${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}
+    # The sandbox service names this same value (*liaison-image) and must run
+    # the same release: point a private registry (ECR, ...) at LIAISON_IMAGE,
+    # never at this line alone in an override file.
+    image: &liaison-image ${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}
     restart: unless-stopped
     # A SIGTERM runs one shutdown sequence (apps/api/src/lib/shutdown.ts):
     # /readyz goes 503, the listener stops 2 s later, then in-flight requests,
@@ -889,7 +892,9 @@ services:
   # kept for nested runs) + SANDBOX_POOL_OVERFLOW 2 at 256 MiB, cpus 2;
   # 3 GiB: SANDBOX_POOL_SIZE 10 + 2, LIAISON_SANDBOX_MEM_LIMIT=3g, cpus 3.
   sandbox:
-    image: ${LIAISON_IMAGE:-ghcr.io/liaison-sh/liaison:v0.1.0}
+    # Exactly the app's image (the anchor above, LIAISON_IMAGE): a service of
+    # another release refuses every run (sandbox_release_mismatch).
+    image: *liaison-image
     profiles: ["sandbox"]
     command: ["sandbox"]
     runtime: ${LIAISON_SANDBOX_RUNTIME:-runsc}
@@ -919,7 +924,7 @@ services:
       SANDBOX_RSS_CAP_MB: ${SANDBOX_RSS_CAP_MB:-256}
     networks:
       sandbox:
-        ipv4_address: ${LIAISON_SANDBOX_IP:-172.31.250.10}
+        ipv4_address: ${LIAISON_SANDBOX_IP:-10.73.250.10}
     # No secret, no volume: configs and sockets of the workerd processes live
     # in /tmp (memory). No capability, no privilege escalation.
     read_only: true
@@ -1074,8 +1079,18 @@ networks:
   internal:
     driver: bridge
   # The sandbox service and the app processes only. `internal`: no route out
-  # of the host. Its bridge name and subnet are fixed so the host firewall step
-  # (deploy/sandbox-firewall.sh) can name them; change both together.
+  # of the host. Its bridge name, subnet (a /24) and the service's address in
+  # it are fixed so the host firewall step (deploy/sandbox-firewall.sh) can name
+  # them. Set LIAISON_SANDBOX_SUBNET and LIAISON_SANDBOX_IP in deploy/.env: the
+  # firewall script reads the same file (or the same --env-file). The default,
+  # 10.73.250.0/24, stays clear of the ranges clouds and tools use by default:
+  # AWS's default VPC (172.31.0.0/16) and Docker's own pools (172.17-31.x,
+  # 192.168.x), AWS/Azure/Hetzner wizard VPCs (10.0.x, 10.1.x), GCP auto mode
+  # (10.128.0.0/9), DigitalOcean VPCs (10.104-10.137.x), Kubernetes, k3s and
+  # Podman (10.42-43.x, 10.88-89.x, 10.96.0.0/12, 10.244.x), Tailscale
+  # (100.64.0.0/10). Docker recreates this network when the subnet changes: an
+  # install already running the sandbox on another subnet pins it in .env
+  # (docs/self-hosting/sandbox.md, "Network address").
   sandbox:
     driver: bridge
     internal: true
@@ -1084,7 +1099,7 @@ networks:
       com.docker.network.bridge.name: ${LIAISON_SANDBOX_BRIDGE:-liaison-sbx0}
     ipam:
       config:
-        - subnet: ${LIAISON_SANDBOX_SUBNET:-172.31.250.0/24}
+        - subnet: ${LIAISON_SANDBOX_SUBNET:-10.73.250.0/24}
 
 volumes:
   postgres_data:

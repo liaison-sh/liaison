@@ -23,8 +23,9 @@
 //
 // The construction itself is the shared signed-`ts` verifier in
 // @liaison/app-sdk/webhook-verify; this file binds monitoring's header names,
-// config keys and delivery label. The bundle runs inside QuickJS, which has no
-// `node:crypto`: digest and compare go through the host bridges. This file
+// config keys and delivery label. The bundle runs in the sandbox, with no
+// `node:crypto`, and never holds the secret: the host checks the signature
+// with it (`crypto_verifyHmacForConfig`). This file
 // MUST NOT import `node:*`; the pure-node test helper lives in
 // @liaison/test-helpers/webhook-hmac.
 
@@ -50,8 +51,8 @@ export type WebhookBridge = Base64HmacWebhookBridge
  * Manifest-format webhook verifier. The kernel router calls this with a
  * serialized request descriptor and expects `{ ok, replayKey, replayTtlSeconds }`
  * (see apps/api/src/modules/webhooks/verification.ts). The signing secret is
- * the kernel-minted `monitoringWebhookSecret` in apps.config, read via the
- * sandbox `config_get` bridge.
+ * the kernel-minted `monitoringWebhookSecret` in apps.config, used host-side
+ * only (the verifier names its key).
  */
 export async function monitoringWebhookVerifier(
   params: {

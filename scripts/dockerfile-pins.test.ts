@@ -78,8 +78,9 @@ describe("self-host compose images", () => {
         .map((line) => /^\s+image:\s*(\S+)\s*$/.exec(line)?.[1])
         .filter((image): image is string => image !== undefined)
       for (const image of images) {
-        // The app image, set per release by LIAISON_IMAGE.
-        if (image.startsWith("${LIAISON_IMAGE")) continue
+        // The app image, set per release by LIAISON_IMAGE (the sandbox service
+        // names it through the YAML alias).
+        if (image.startsWith("${LIAISON_IMAGE") || image === "*liaison-image") continue
         expect(image, `${file}: ${image}`).toMatch(
           /^[a-z0-9./-]+:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$/,
         )

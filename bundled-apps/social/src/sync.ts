@@ -22,8 +22,8 @@ import {
   shouldAutoWatch,
   type WatchStatus,
 } from "./auto-watch"
-import { resolveAccessToken } from "./connection"
-import type { SocialToolCtx } from "./ctx"
+import { resolveAccountAuth } from "./connection"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
 import { emitFindingCreated, upsertFinding } from "./ingest"
 import { watchObject } from "./internal"
 import { refreshMetaPageIds } from "./meta-pages"
@@ -194,7 +194,7 @@ async function enrollOwnPosts(
   now: Date,
   accountFor: (
     platform: Platform,
-  ) => Promise<{ accountExternalId: string; accessToken: string } | null>,
+  ) => Promise<{ accountExternalId: string; auth: SocialAuth } | null>,
 ): Promise<{ enrolled: number; retired: number }> {
   let enrolled = 0
   let retired = 0
@@ -208,7 +208,7 @@ async function enrollOwnPosts(
       {
         accountExternalId: account.accountExternalId,
         fetch: ctx.fetch,
-        accessToken: account.accessToken,
+        auth: account.auth,
         logger: ctx.logger,
       },
       OWN_WATCH_CAP_PER_PLATFORM,
@@ -299,8 +299,8 @@ export async function runDiscoverySync(
   // Resolve the per-account OAuth token BEFORE the call: an unauthenticated
   // discover would 401 and never advance the watermark. No token is an expected
   // state (not connected), said once at info and skipped (missing-token.ts).
-  const accessToken = await resolveAccessToken(ctx, adapter.platform, accountExternalId)
-  if (!accessToken) {
+  const auth = await resolveAccountAuth(ctx, adapter.platform, accountExternalId)
+  if (!auth) {
     await noteMissingToken(
       ctx,
       state,
@@ -316,7 +316,7 @@ export async function runDiscoverySync(
   // The Pages a server-wide Meta callback routes here are re-checked against
   // Meta on every discovery tick (meta-pages.ts); a failed check changes nothing.
   if (adapter.platform === "facebook") {
-    await refreshMetaPageIds(ctx, accountExternalId, { force: true, token: accessToken, now })
+    await refreshMetaPageIds(ctx, accountExternalId, { force: true, auth, now })
   }
   // Monitor terms scope keyword-search discovery (currently only consulted by
   // the YouTube adapter); loading is cheap so it happens unconditionally
@@ -356,7 +356,7 @@ export async function runDiscoverySync(
   }
 
   const result = await adapter.discover(
-    { accountExternalId, fetch: ctx.fetch, accessToken, terms, logger: ctx.logger, now },
+    { accountExternalId, fetch: ctx.fetch, auth, terms, logger: ctx.logger, now },
     cursor,
   )
   if (result.error) {
@@ -574,22 +574,22 @@ export async function runWatchPoller(
   // that platform's watches with an explicit auth error).
   const accountByPlatform = new Map<
     Platform,
-    { accountExternalId: string; accessToken: string } | null
+    { accountExternalId: string; auth: SocialAuth } | null
   >()
   async function accountFor(
     platform: Platform,
-  ): Promise<{ accountExternalId: string; accessToken: string } | null> {
+  ): Promise<{ accountExternalId: string; auth: SocialAuth } | null> {
     if (accountByPlatform.has(platform)) return accountByPlatform.get(platform) ?? null
     const accountExternalId = await accountIdForPlatform(ctx, platform)
-    const token = accountExternalId
-      ? await resolveAccessToken(ctx, platform, accountExternalId)
+    const auth = accountExternalId
+      ? await resolveAccountAuth(ctx, platform, accountExternalId)
       : null
-    const account = accountExternalId && token ? { accountExternalId, accessToken: token } : null
+    const account = accountExternalId && auth ? { accountExternalId, auth } : null
     accountByPlatform.set(platform, account)
     return account
   }
-  async function tokenFor(platform: Platform): Promise<string | null> {
-    return (await accountFor(platform))?.accessToken ?? null
+  async function authFor(platform: Platform): Promise<SocialAuth | null> {
+    return (await accountFor(platform))?.auth ?? null
   }
 
   await enrollOwnPosts(ctx, opts.adapters, now, accountFor)
@@ -690,8 +690,8 @@ export async function runWatchPoller(
     }
     const adapter = opts.adapters[w.platform]
     if (!adapter) continue
-    const accessToken = await tokenFor(w.platform)
-    if (!accessToken) {
+    const auth = await authFor(w.platform)
+    if (!auth) {
       // No live token: do NOT poll unauthenticated (that would 401 and churn the
       // cadence on a CONNECTION_LOST); leave the watch untouched. Not connected
       // is an expected state, and the account's discovery sync is what says so
@@ -700,7 +700,7 @@ export async function runWatchPoller(
       continue
     }
     const result = await adapter.pollObject(
-      { accountExternalId: w.external_id, fetch: ctx.fetch, accessToken, logger: ctx.logger },
+      { accountExternalId: w.external_id, fetch: ctx.fetch, auth, logger: ctx.logger },
       w.external_id,
       null,
     )

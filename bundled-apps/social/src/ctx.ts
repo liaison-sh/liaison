@@ -19,12 +19,26 @@ export interface SocialLogger {
  *  sandbox SDK contract: a plain serialized `{status, headers, body}` record
  *  where `body` is the raw response STRING — NOT a browser Response (no .ok /
  *  .json()/.text(); typing those compiles but throws "not a function" live). */
+/**
+ * The connected account's credential, added by the host (`ctx.fetch` auth): the
+ * app names the connection and account, never holds the token. `grant` asks
+ * for the app token of the connection's own OAuth client instead (Meta's
+ * app-level calls).
+ */
+export type SocialAuth =
+  | { connection: string; identifier: string; scheme: "bearer" }
+  | { connection: string; scheme: "bearer"; grant: "client_credentials" }
+
 export type SocialFetch = (
   url: string,
   init?: {
     method?: string
     headers?: Record<string, string>
     body?: string | Record<string, unknown>
+    /** The credential the host adds (see SocialAuth). */
+    auth?: SocialAuth
+    /** `{ placeholder: configKey }`: the host writes a declared config secret there. */
+    configSecrets?: Record<string, string>
     /** Per-call deadline. A read may only tighten the host default; a write
      *  (POST) may ask for up to 30 s (the host clamps it). */
     timeoutMs?: number

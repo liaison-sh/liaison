@@ -107,7 +107,9 @@ function liveFetch(files: Map<string, { bytes: Uint8Array; filename: string }>):
     if (wait > 0) await Bun.sleep(wait)
     last = Date.now()
     let body: BodyInit | undefined
-    const headers = { ...(opts.headers ?? {}) }
+    const headers: Record<string, string> = { ...(opts.headers ?? {}) }
+    // The host's part: `auth` names the connection's token, added here as the bridge adds it.
+    if (opts.auth) headers.Authorization = `Bearer ${TOKEN}`
     if (opts.body && typeof opts.body === "object") {
       const fd = new FormData()
       for (const p of opts.body.multipart) {
@@ -170,8 +172,8 @@ describe.skipIf(!ENABLED)("Pennylane fake vs sandbox: response shapes", () => {
         valid: false,
       })
       const clients = {
-        fake: new PennylaneClient({ fetch: fake.sandboxFetch, apiToken: "tok" }),
-        sandbox: new PennylaneClient({ fetch: liveFetch(files), apiToken: TOKEN! }),
+        fake: new PennylaneClient({ fetch: fake.sandboxFetch }),
+        sandbox: new PennylaneClient({ fetch: liveFetch(files) }),
       }
 
       async function both(label: string, fn: (c: PennylaneClient) => Promise<unknown>) {

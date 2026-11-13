@@ -170,7 +170,7 @@ const LEGACY_OBJECTIVES = new Set([
 
 export async function create_campaign(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const objective = String(p.objective ?? "")
   if (!objective.startsWith("OUTCOME_") || LEGACY_OBJECTIVES.has(objective)) {
@@ -196,7 +196,7 @@ export async function create_campaign(params: unknown, ctx: CrossAppCtx): Promis
     path: `/${adAccountId}/campaigns`,
     method: "POST",
     params: postParams,
-    accessToken,
+    auth,
   })) as { id?: string }
 
   return { id: result.id, campaign: result }
@@ -240,7 +240,7 @@ export async function create_adset_preflight(params: unknown): Promise<unknown> 
 export async function create_adset(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
   throwIfRefused(preflightCreateAdsetParams(p))
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const postParams: Record<string, unknown> = {
     campaign_id: String(p.campaign_id ?? ""),
@@ -277,7 +277,7 @@ export async function create_adset(params: unknown, ctx: CrossAppCtx): Promise<u
     path: `/${adAccountId}/adsets`,
     method: "POST",
     params: postParams,
-    accessToken,
+    auth,
   })) as { id?: string }
 
   return { id: result.id, adset: result }
@@ -287,7 +287,7 @@ export async function create_adset(params: unknown, ctx: CrossAppCtx): Promise<u
 
 export async function create_ad(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const postParams: Record<string, unknown> = {
     adset_id: String(p.adset_id ?? ""),
@@ -300,7 +300,7 @@ export async function create_ad(params: unknown, ctx: CrossAppCtx): Promise<unkn
     path: `/${adAccountId}/ads`,
     method: "POST",
     params: postParams,
-    accessToken,
+    auth,
   })) as { id?: string }
 
   return { id: result.id, ad: result }
@@ -310,7 +310,7 @@ export async function create_ad(params: unknown, ctx: CrossAppCtx): Promise<unkn
 
 export async function create_creative(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   // PRE-VALIDATE carousel: child_attachments must have at least 2 items
   const assetFeedSpec = p.asset_feed_spec as Record<string, unknown> | undefined
@@ -341,7 +341,7 @@ export async function create_creative(params: unknown, ctx: CrossAppCtx): Promis
     path: `/${adAccountId}/adcreatives`,
     method: "POST",
     params: postParams,
-    accessToken,
+    auth,
   })) as { id?: string }
 
   return { id: result.id, creative: result }
@@ -365,7 +365,7 @@ export async function upload_image(params: unknown, ctx: CrossAppCtx): Promise<u
     )
   }
 
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const postParams: Record<string, unknown> = {
     bytes: imageBytes,
@@ -378,7 +378,7 @@ export async function upload_image(params: unknown, ctx: CrossAppCtx): Promise<u
     path: `/${adAccountId}/adimages`,
     method: "POST",
     params: postParams,
-    accessToken,
+    auth,
   })) as { images?: Record<string, { hash?: string }> }
 
   // Extract image_hash from Meta response envelope
@@ -461,7 +461,7 @@ export async function update_budget(params: unknown, ctx: CrossAppCtx): Promise<
   // manifest preflight runs, so the two can never drift.
   throwIfRefused(preflightUpdateBudgetParams(p, isReEntry))
 
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
 
   const level = String(p.level ?? "adset") as "campaign" | "adset"
   const objectId = String(p.object_id ?? "")
@@ -512,7 +512,7 @@ export async function update_budget(params: unknown, ctx: CrossAppCtx): Promise<
       path: `/${objectId}`,
       method: "POST",
       params: postParams,
-      accessToken,
+      auth,
     })
 
     return {
@@ -538,7 +538,7 @@ export async function update_budget(params: unknown, ctx: CrossAppCtx): Promise<
 
 export async function set_status(params: unknown, ctx: CrossAppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
 
   const objectId = String(p.object_id ?? "")
   const status = String(p.status ?? "")
@@ -552,7 +552,7 @@ export async function set_status(params: unknown, ctx: CrossAppCtx): Promise<unk
     path: `/${objectId}`,
     method: "POST",
     params: { status },
-    accessToken,
+    auth,
   })
 
   // Re-read effective_status after execution
@@ -560,7 +560,7 @@ export async function set_status(params: unknown, ctx: CrossAppCtx): Promise<unk
     path: `/${objectId}`,
     method: "GET",
     params: { fields: "id,status,effective_status" },
-    accessToken,
+    auth,
   })) as { id?: string; status?: string; effective_status?: string }
 
   return {
@@ -642,7 +642,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
   // abandoned on a later failure is an orphan on the live ad account.
   throwIfRefused(preflightCreateCustomAudienceParams(p, ctx))
 
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const subtype = String(p.subtype ?? "") as "CUSTOMER_LIST" | "WEBSITE" | "ENGAGEMENT"
   const name = String(p.name ?? "")
 
@@ -670,7 +670,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
       path: `/${adAccountId}/customaudiences`,
       method: "POST",
       params: { name, subtype: "CUSTOMER_LIST", customer_file_source: customerFileSource },
-      accessToken,
+      auth,
     })) as { id?: string }
 
     const audienceId = audienceResult.id
@@ -717,7 +717,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
             data: payload.data,
           },
         },
-        accessToken,
+        auth,
       })
     }
 
@@ -746,7 +746,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
         rule: p.rule,
         retention_days: p.retention_days,
       },
-      accessToken,
+      auth,
     })) as { id?: string }
 
     return { audience_id: result.id, subtype: "WEBSITE" }
@@ -764,7 +764,7 @@ export async function create_custom_audience(params: unknown, ctx: CrossAppCtx):
         engagement_type: p.engagement_type,
         retention_days: p.retention_days,
       },
-      accessToken,
+      auth,
     })) as { id?: string }
 
     return { audience_id: result.id, subtype: "ENGAGEMENT" }
@@ -783,7 +783,7 @@ export async function create_lookalike_audience(
   ctx: CrossAppCtx,
 ): Promise<unknown> {
   const p = params as Record<string, unknown>
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const sourceAudienceId = String(p.source_audience_id ?? "")
   const country = String(p.country ?? "")
@@ -811,7 +811,7 @@ export async function create_lookalike_audience(
           type,
         },
       },
-      accessToken,
+      auth,
     })) as { id?: string }
   }
 
@@ -899,7 +899,7 @@ export async function add_users_to_audience(params: unknown, ctx: CrossAppCtx): 
   const p = params as Record<string, unknown>
   throwIfRefused(preflightAddUsersToAudienceParams(p, ctx))
 
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
 
   const audienceId = String(p.audience_id ?? "")
   if (!audienceId) throw new Error("add_users_to_audience: audience_id is required")
@@ -947,7 +947,7 @@ export async function add_users_to_audience(params: unknown, ctx: CrossAppCtx): 
           data: payload.data,
         },
       },
-      accessToken,
+      auth,
     })
   }
 

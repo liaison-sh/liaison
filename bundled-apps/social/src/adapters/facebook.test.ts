@@ -1,24 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
 import { describe, expect, test } from "bun:test"
-import { createHmac, timingSafeEqual } from "node:crypto"
+import { createHmac } from "node:crypto"
+import { makeHmacTestBridge } from "@liaison/test-helpers/webhook-hmac"
 import { type SocialWebhookBridge, verifyMetaSignature } from "../lib/hmac"
 import { parseJsonCursor } from "./cursor"
 import { facebookAdapter, postExcerpt } from "./facebook"
-import { makeMockFetch } from "./mock-fetch"
+import { makeMockFetch, testAuth } from "./mock-fetch"
 
-/** Node-backed mock of the kernel webhook crypto bridge (host-side). */
-function mockBridge(): SocialWebhookBridge {
-  return {
-    crypto_hmacSha256Hex: async (s: string, body: string) =>
-      createHmac("sha256", s).update(body, "utf8").digest("hex"),
-    crypto_timingSafeEqual: async (a: string, b: string) => {
-      const la = Buffer.from(a)
-      const lb = Buffer.from(b)
-      if (la.length !== lb.length) return false
-      return timingSafeEqual(la, lb)
-    },
-  }
+/** The host's by-key webhook bridge, holding the app secret under its config key. */
+function mockBridge(secret = "app-secret"): SocialWebhookBridge {
+  return makeHmacTestBridge({ secretKey: "socialMetaAppSecret", secret })
 }
 
 /** One managed page's `/me/accounts` fixture entry. */
@@ -62,7 +54,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const { findings, nextCursor } = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       // Only the shopper's comment is a finding — the page's own reply comment
@@ -127,7 +119,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const { findings } = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(findings).toHaveLength(1)
@@ -148,7 +140,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const { findings } = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(findings).toEqual([])
@@ -198,7 +190,7 @@ describe("facebookAdapter (B4)", () => {
         {
           accountExternalId: "user-1",
           fetch,
-          accessToken: "user-token",
+          auth: testAuth("user-token"),
           logger: { warn: (msg, data) => warnCalls.push([msg, data]) },
         },
         null,
@@ -236,7 +228,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const { findings, nextCursor } = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(findings.map((f) => f.externalId).sort()).toEqual(["page-a_c1", "page-b_c1"])
@@ -252,7 +244,7 @@ describe("facebookAdapter (B4)", () => {
     test("no managed pages → empty result, nextCursor null", async () => {
       const fetch = makeMockFetch({ "/me/accounts": { data: [] } })
       const result = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result).toEqual({ findings: [], nextCursor: null, unitsConsumed: 0 })
@@ -261,7 +253,7 @@ describe("facebookAdapter (B4)", () => {
     test("/me/accounts 401 → CONNECTION_LOST, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me/accounts": {} }, { status: 401 })
       const result = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -274,7 +266,7 @@ describe("facebookAdapter (B4)", () => {
     test("/me/accounts 429 → RATE_LIMITED, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me/accounts": {} }, { status: 429 })
       const result = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -304,7 +296,7 @@ describe("facebookAdapter (B4)", () => {
         return { status: 401, headers: {}, body: "{}" }
       }) as typeof fetch
       const result = await facebookAdapter.discover(
-        { accountExternalId: "user-1", fetch: failingFetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch: failingFetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -319,12 +311,13 @@ describe("facebookAdapter (B4)", () => {
     const secret = "app-secret"
     const raw = JSON.stringify({ object: "page", entry: [] })
     const sig = `sha256=${createHmac("sha256", secret).update(raw).digest("hex")}`
-    const bridge = mockBridge()
-    expect(await verifyMetaSignature(raw, sig, secret, bridge)).toBe(true)
+    const bridge = mockBridge(secret)
+    const key = "socialMetaAppSecret"
+    expect(await verifyMetaSignature(raw, sig, key, bridge)).toBe(true)
     // Bare hex (no sha256= prefix) is also accepted.
-    expect(await verifyMetaSignature(raw, sig.slice("sha256=".length), secret, bridge)).toBe(true)
-    expect(await verifyMetaSignature(raw, "sha256=deadbeef", secret, bridge)).toBe(false)
-    expect(await verifyMetaSignature(raw, "", secret, bridge)).toBe(false)
+    expect(await verifyMetaSignature(raw, sig.slice("sha256=".length), key, bridge)).toBe(true)
+    expect(await verifyMetaSignature(raw, "sha256=deadbeef", key, bridge)).toBe(false)
+    expect(await verifyMetaSignature(raw, "", key, bridge)).toBe(false)
   })
 
   test("facebookAdapter does NOT carry a node:crypto verifyWebhook (bundle stays QuickJS-safe)", () => {
@@ -371,7 +364,7 @@ describe("facebookAdapter (B4)", () => {
         // accountExternalId here is the connected USER id — deliberately
         // different from "page-1" to prove direction is computed against the
         // real page id, not this.
-        { accountExternalId: "user-42", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-42", fetch, auth: testAuth("user-token") },
         null,
       )
       const { conversations, messages, nextCursor } = result ?? {
@@ -427,7 +420,7 @@ describe("facebookAdapter (B4)", () => {
         "/conv-b1/messages": { data: [] },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result?.conversations.map((c) => c.externalId).sort()).toEqual(["conv-a1", "conv-b1"])
@@ -443,7 +436,7 @@ describe("facebookAdapter (B4)", () => {
         "/page-1/conversations": { data: [], paging: { cursors: {} } },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result).toMatchObject({ conversations: [], messages: [] })
@@ -456,7 +449,7 @@ describe("facebookAdapter (B4)", () => {
     test("no managed pages → empty result, nextCursor null, no /conversations call", async () => {
       const fetch = makeMockFetch({ "/me/accounts": { data: [] } })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result).toEqual({ conversations: [], messages: [], nextCursor: null })
@@ -465,7 +458,7 @@ describe("facebookAdapter (B4)", () => {
     test("/me/accounts 401 → CONNECTION_LOST, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me/accounts": {} }, { status: 401 })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -479,7 +472,7 @@ describe("facebookAdapter (B4)", () => {
     test("/me/accounts 429 → RATE_LIMITED, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me/accounts": {} }, { status: 429 })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -504,7 +497,7 @@ describe("facebookAdapter (B4)", () => {
         return { status: 429, headers: {}, body: "{}" }
       }) as Parameters<NonNullable<typeof facebookAdapter.syncDms>>[0]["fetch"]
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch: failingFetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch: failingFetch, auth: testAuth("user-token") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -551,7 +544,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -585,7 +578,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -616,7 +609,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -690,7 +683,7 @@ describe("facebookAdapter (B4)", () => {
       }) as Parameters<NonNullable<typeof facebookAdapter.syncDms>>[0]["fetch"]
 
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(pageCalls).toBe(2) // stopped once a page returned no next cursor
@@ -740,7 +733,7 @@ describe("facebookAdapter (B4)", () => {
       }) as Parameters<NonNullable<typeof facebookAdapter.syncDms>>[0]["fetch"]
 
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(pageCalls).toBe(4) // bounded, never fetches a 5th page
@@ -763,7 +756,7 @@ describe("facebookAdapter (B4)", () => {
       })
       const skipMessagesBefore = new Map([["conv-unchanged", "2026-06-01T09:00:00+0000"]])
       const result = await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token", skipMessagesBefore },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token"), skipMessagesBefore },
         null,
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
@@ -790,7 +783,7 @@ describe("facebookAdapter (B4)", () => {
       })
       const skipMessagesBefore = new Map([["conv-changed", "2026-06-01T09:00:00+0000"]])
       await facebookAdapter.syncDms?.(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token", skipMessagesBefore },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token"), skipMessagesBefore },
         null,
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(true)
@@ -808,7 +801,7 @@ describe("facebookAdapter (B4)", () => {
         {
           accountExternalId: "user-1",
           fetch,
-          accessToken: "user-token",
+          auth: testAuth("user-token"),
           skipMessagesBefore: new Map(),
         },
         null,
@@ -828,7 +821,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.pollObject(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "page-1_post-9",
         null,
       )
@@ -861,7 +854,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.pollObject(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "111_222",
         null,
       )
@@ -880,7 +873,7 @@ describe("facebookAdapter (B4)", () => {
         },
       })
       const result = await facebookAdapter.pollObject(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "unknownprefix_post-1",
         null,
       )
@@ -891,7 +884,7 @@ describe("facebookAdapter (B4)", () => {
     test("/me/accounts 401 → CONNECTION_LOST, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me/accounts": {} }, { status: 401 })
       const result = await facebookAdapter.pollObject(
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "page-1_post-9",
         "PRIOR_CURSOR",
       )
@@ -911,7 +904,7 @@ describe("facebookAdapter (B4)", () => {
       const req = await facebookAdapter.replyRequest(
         { externalId: "page-1_comment-9" },
         "thanks!",
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
       )
       expect(req.url).toBe("https://graph.facebook.com/v26.0/page-1_comment-9/comments")
       expect(req.headers).toEqual({ Authorization: "Bearer page-1-token" })
@@ -923,7 +916,7 @@ describe("facebookAdapter (B4)", () => {
       })
       const req = await facebookAdapter.likeRequest?.(
         { externalId: "page-1_comment-9" },
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
       )
       expect(req?.headers).toEqual({ Authorization: "Bearer page-1-token" })
     })
@@ -936,7 +929,7 @@ describe("facebookAdapter (B4)", () => {
         { recipientExternalId: "cust-1" },
         "hello",
         "none",
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         "page-b",
       )
       expect(req?.headers).toEqual({ Authorization: "Bearer token-b" })
@@ -950,7 +943,7 @@ describe("facebookAdapter (B4)", () => {
         { recipientExternalId: "cust-1" },
         "hello",
         "none",
-        { accountExternalId: "user-1", fetch, accessToken: "user-token" },
+        { accountExternalId: "user-1", fetch, auth: testAuth("user-token") },
         null,
       )
       expect(req?.headers).toEqual({ Authorization: "Bearer token-a" })

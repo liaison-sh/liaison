@@ -170,7 +170,7 @@ function makeCtx(opts: {
     orgId: "org_1",
     fetch: (async () => ({ status: 200, headers: {}, body: "{}" })) as never,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
     logger: opts.logger,
     __client: client,
@@ -772,7 +772,9 @@ describe("pennylane trial balance — required period window + live line shape",
 // not an error thrown (and retried) on every tick. A connection that exists but
 // cannot be used still fails loudly.
 describe("refresh-snapshots without a Pennylane connection", () => {
-  function unconnectedCtx(getCredentials: () => Promise<Record<string, string>>) {
+  function unconnectedCtx(
+    getSettings: () => Promise<{ values: Record<string, string>; missing: string[] }>,
+  ) {
     const logged: string[] = []
     const ctx = makeCtx({
       logger: {
@@ -781,7 +783,7 @@ describe("refresh-snapshots without a Pennylane connection", () => {
       },
     }) as RefreshSnapshotsCtx & { __client?: unknown }
     delete ctx.__client
-    ;(ctx as unknown as { connections: unknown }).connections = { pennylane: { getCredentials } }
+    ;(ctx as unknown as { connections: unknown }).connections = { pennylane: { getSettings } }
     return { ctx, logged }
   }
 
@@ -795,7 +797,10 @@ describe("refresh-snapshots without a Pennylane connection", () => {
   })
 
   it("still throws when the connection exists but its credentials are incomplete", async () => {
-    const { ctx } = unconnectedCtx(async () => ({ scope: "company" }))
+    const { ctx } = unconnectedCtx(async () => ({
+      values: { scope: "company" },
+      missing: ["apiToken"],
+    }))
     await expect(refreshSnapshotsJob(ctx)).rejects.toThrow("Pennylane credentials incomplete")
   })
 })

@@ -65,7 +65,35 @@ entityId, data })`. Other apps subscribe via `events.subscribes`.
 ## Connections (external APIs)
 
 Declare a `connection` (`oauth2` or `credential`). The kernel owns the token
-lifecycle. In a handler: `const token = await ctx.connections.<name>.getToken()`.
+lifecycle. A handler never reads the token: it names the connection on
+`ctx.fetch` and the host adds it.
+
+### Credentials (the host holds them)
+
+App code never holds a secret: on the Workers and workerd executors (the
+defaults) `ctx.connections.<name>.getToken()`, `getCredentials()` and
+`ctx.config.get(<secret key>)` fail with `secret_not_available_on_workers`.
+They still answer on the legacy QuickJS executor, so unit tests pass and
+production fails: never call them.
+
+- OAuth account token: `ctx.fetch(url, { auth: { connection, identifier?, scheme: "bearer" } })`
+  (refreshed host-side). Is one connected? `ctx.connections.<name>.getAccounts()`.
+- API key / token field: `auth: { connection, scheme: "bearer" | "header:<Name>" | "query:<param>", fields: ["<field>"] }`;
+  Basic: `scheme: "basic", fields: [user, password]`; a key pair exchanged for a
+  bearer: `exchange: { url, fields: [key, secret] }`.
+- The app's own token (OAuth client credentials of the connection's client):
+  `auth: { connection, scheme: "bearer", grant: "client_credentials" }`.
+- Non-secret fields (account id, scope, base URL): mark them `"readable": true` in
+  `credentialFields`, read them with `readConnectionSettings(ctx.connections, name, required)`
+  from `@liaison/app-sdk/connection-credentials`.
+- A config secret into a request: `configSecrets` + the manifest's `secrets` map.
+- Webhook verification: `config_has(key)` + `crypto_verifyHmacForConfig(key, data, sig, "base64" | "hex")`.
+- Showing an operator a minted webhook secret: the tool lists the key in
+  `"revealsSecrets"` and answers `configSecretReveal(key)` (`@liaison/app-sdk`).
+
+`apps/api/src/modules/apps/contract/secret-free.contract.test.ts` runs every
+bundled app's contract entries on a secret-free bridge and fails on a refused read;
+a fork's app gets the same check once it is under `bundled-apps/`.
 The client secret never reaches your code.
 
 ## Scheduled jobs

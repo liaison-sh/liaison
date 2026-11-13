@@ -103,14 +103,20 @@ export async function sweepIdleProposals(now: Date = new Date()): Promise<{
   )
   let cardsCleared = 0
   for (const r of gone) {
-    if (!r.thread_id) continue
-    cardsCleared += await clearToolCardsByKey({
-      orgId: r.org_id,
-      actorId: r.created_by,
-      threadId: r.thread_id,
-      app: "projects",
-      key: `reconcile:${r.id}`,
-    })
+    const threadId = r.thread_id
+    if (!threadId) continue
+    // Each org's clear is its own write, checked again: a move frozen since the delete waits
+    // for nothing here, so the clear skips that org rather than writing into it.
+    const cleared = await writeUnlessMoving(r.org_id, () =>
+      clearToolCardsByKey({
+        orgId: r.org_id,
+        actorId: r.created_by,
+        threadId,
+        app: "projects",
+        key: `reconcile:${r.id}`,
+      }),
+    )
+    if (cleared !== SKIPPED_MOVING) cardsCleared += cleared
   }
   return { deleted: gone.length, cardsCleared }
 }

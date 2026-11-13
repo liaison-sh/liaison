@@ -255,11 +255,13 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
 
 /**
  * Entries above reviewed for having no product caller: the product files that use each function,
- * pinned (none today). src/db/privileged-org-source.test.ts fails on a new caller, so the first
- * one cannot pass unreviewed: rewrite the entry for that caller's org id, then add it here.
+ * pinned. src/db/privileged-org-source.test.ts fails on a new caller, so no caller can pass
+ * unreviewed: rewrite the entry for that caller's org id, then add it here.
  */
 export const REVIEWED_CALLERS: Record<string, readonly string[]> = {
-  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey": [],
+  "apps/api/src/modules/agent/runtime/tool-card-store.ts#clearToolCardsByKey": [
+    "apps/api/src/apps/projects/service/reconcile-sweep.ts",
+  ],
   "apps/api/src/modules/apps/org-features.ts#setOrgAppFeature": [],
 }
 

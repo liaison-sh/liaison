@@ -7,15 +7,17 @@
  * and inside automation copy, so a status looks the same everywhere.
  */
 import type { Component, JSX } from "solid-js"
+import { dataColor } from "~/modules/dashboards/dashboards-client"
 
-/** The dot colour for a status (its own, else the neutral tertiary text). */
+/** The dot colour for a status (its own when a hex colour, else the neutral tertiary text). */
 export function statusDot(color: string | null | undefined): string {
-  return color || "var(--color-text-tertiary)"
+  return dataColor(color) ?? "var(--color-text-tertiary)"
 }
 
-/** The pill's wash: the status colour mixed light into transparency. */
+/** The pill's wash: the status colour (hex only) mixed light into transparency. */
 export function statusWash(color: string | null | undefined): string {
-  return color ? `color-mix(in oklch, ${color} 18%, transparent)` : "var(--color-surface-hover)"
+  const c = dataColor(color)
+  return c ? `color-mix(in oklch, ${c} 18%, transparent)` : "var(--color-surface-hover)"
 }
 
 interface StatusPillProps {

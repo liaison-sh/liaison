@@ -1,86 +1,29 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// @liaison/app-sdk/connection-credentials: read a credentials connection's key
-// map from `ctx.connections`, whichever runtime shape it has.
+// @liaison/app-sdk/connection-credentials: read a credentials connection's
+// NON-SECRET settings from `ctx.connections`, whichever runtime shape it has.
 //
 // `ctx.connections` has two runtime shapes:
-//   - FLAT   `{ getCredentials(name, id?) }`: the sandbox bridge group.
-//   - RECORD `{ [name]: { getCredentials(id?) } }`: the SDK type and unit-test mocks.
+//   - FLAT   `{ getSettings(name, id?) }`: the sandbox bridge group.
+//   - RECORD `{ [name]: { getSettings(id?) } }`: the SDK type and unit-test mocks.
 // The raw value may arrive as a JSON string (the sandbox shim's raw path for a
 // primitive arg) or as an object.
-
-export type CredentialsAccessor = () => Promise<Record<string, string>>
-
-/** Normalize both `ctx.connections` shapes to one accessor, or null when absent. */
-export function resolveCredentialsAccessor(
-  connections: unknown,
-  name: string,
-): CredentialsAccessor | null {
-  const flat = connections as {
-    getCredentials?: (name: string, identifier?: string) => Promise<unknown>
-  }
-  if (typeof flat.getCredentials === "function") {
-    return async () => {
-      const raw = await flat.getCredentials!(name)
-      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
-    }
-  }
-  const record = connections as Record<
-    string,
-    { getCredentials?: (identifier?: string) => Promise<unknown> } | undefined
-  >
-  const entry = record?.[name]
-  if (entry && typeof entry.getCredentials === "function") {
-    return async () => {
-      const raw = await entry.getCredentials!()
-      return (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as Record<string, string>
-    }
-  }
-  return null
-}
-
-export type ConnectionCredentialsResult<K extends string> =
-  | { ok: true; credentials: Record<string, string> }
-  | {
-      ok: false
-      /**
-       * not_connected: no accessor for the connection; unreadable: the accessor
-       * threw (its text is never surfaced); empty: no keys stored; incomplete:
-       * some `requiredKeys` are missing or empty (listed in `missing`).
-       */
-      reason: "not_connected" | "unreadable" | "empty" | "incomplete"
-      missing: K[]
-    }
-
-/**
- * Read the credential map of connection `name` and check `requiredKeys`. Never
- * throws for a connection problem: the caller maps each reason to its own error
- * and message.
- */
-export async function readConnectionCredentials<K extends string>(
-  connections: unknown,
-  name: string,
-  requiredKeys: readonly K[],
-): Promise<ConnectionCredentialsResult<K>> {
-  const accessor = resolveCredentialsAccessor(connections, name)
-  if (!accessor) return { ok: false, reason: "not_connected", missing: [] }
-  let map: Record<string, string>
-  try {
-    map = await accessor()
-  } catch {
-    return { ok: false, reason: "unreadable", missing: [] }
-  }
-  if (!map || Object.keys(map).length === 0) return { ok: false, reason: "empty", missing: [] }
-  const missing = requiredKeys.filter((k) => !map[k])
-  if (missing.length > 0) return { ok: false, reason: "incomplete", missing }
-  return { ok: true, credentials: map }
-}
+//
+// App code never reads a connection's secrets (a token, an API key): the
+// Workers loader and the workerd sandbox refuse `getToken` / `getCredentials`
+// (`secret_not_available_on_workers`). The secrets reach the provider through
+// `ctx.fetch(url, { auth })`, added host-side; the readable fields the manifest
+// marks `readable: true` come from `readConnectionSettings` below.
 
 export type ConnectionSettingsResult<K extends string> =
   | { ok: true; values: Record<string, string> }
   | {
       ok: false
-      /** As `readConnectionCredentials`: the secrets are checked for presence only. */
+      /**
+       * not_connected: no accessor (or no answer) for the connection; unreadable: it threw
+       * (its text is never surfaced); empty: none of `requiredKeys` holds a value;
+       * incomplete: some do not (listed in `missing`). A secret is checked for presence only.
+       */
       reason: "not_connected" | "unreadable" | "empty" | "incomplete"
       missing: K[]
     }
@@ -113,7 +56,10 @@ export async function readConnectionSettings<K extends string>(
   let settings: { values?: Record<string, string>; missing?: string[] }
   try {
     const raw = await call()
-    settings = (typeof raw === "string" ? JSON.parse(raw) : (raw ?? {})) as typeof settings
+    // No answer at all: no connection to read (the host always answers an object).
+    if (raw === null || raw === undefined)
+      return { ok: false, reason: "not_connected", missing: [] }
+    settings = (typeof raw === "string" ? JSON.parse(raw) : raw) as typeof settings
   } catch {
     return { ok: false, reason: "unreadable", missing: [] }
   }

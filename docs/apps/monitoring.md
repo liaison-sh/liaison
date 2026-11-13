@@ -13,6 +13,7 @@ Liaison never calls out to your alerting system. The connection exists so Liaiso
 2. Fill in **Alert source label (e.g. grafana-prod)** with any name. Connecting creates the signing secret, and reconnecting reuses it.
 3. Read the secret with the `webhook_info` tool. It needs `monitoring:admin`, and agents cannot call it.
 
+The app never holds the signing secret: `webhook_info` returns it because Liaison writes it into the answer for an admin, and Liaison checks each delivery's signature itself.
 ## Send alerts
 
 Point your alerting system at the Monitoring app's `alert` webhook, `https://<your-liaison-host>/webhooks/<org-id>/monitoring/alert`.

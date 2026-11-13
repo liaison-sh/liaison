@@ -14,13 +14,13 @@
       "reply": "1"
     },
     {
-      "method": "db_findMany",
-      "args": ["finding", "{\"where\":{\"status\":\"awaiting_approval\"},\"limit\":500}"],
+      "method": "approvals_pendingFor",
+      "args": ["finding_id", "[\"social:reply_to_finding\",\"social:like_item\"]"],
       "reply": "[]"
     },
     {
-      "method": "approvals_pendingFor",
-      "args": ["finding_id", "[\"social:reply_to_finding\",\"social:like_item\"]"],
+      "method": "db_findMany",
+      "args": ["finding", "{\"where\":{\"status\":\"awaiting_approval\"},\"limit\":500}"],
       "reply": "[]"
     }
   ]

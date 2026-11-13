@@ -20,6 +20,7 @@ import {
   type InsightsPending,
   isInsightsPending,
   MetaApiError,
+  type MetaAuth,
   RateLimitError,
 } from "./lib/meta-client"
 
@@ -129,7 +130,7 @@ async function forget(ctx: InsightsReportCtx, key: string): Promise<void> {
  */
 export async function fetchInsightsReport(
   ctx: InsightsReportCtx,
-  opts: { path: string; params: Record<string, unknown>; accessToken: string },
+  opts: { path: string; params: Record<string, unknown>; auth: MetaAuth },
 ): Promise<unknown[] | InsightsPending> {
   const key = await insightsReportKey(opts.path, opts.params)
   let doc = await ctx.store.get(INSIGHTS_REPORTS, key)
@@ -170,7 +171,7 @@ export async function fetchInsightsReport(
 
   let answer: unknown[] | InsightsPending
   try {
-    answer = await checkInsightsReport(ctx.fetch, { reportRunId, accessToken: opts.accessToken })
+    answer = await checkInsightsReport(ctx.fetch, { reportRunId, auth: opts.auth })
   } catch (err) {
     // A failed or unknown run is not resumed: the next call starts afresh.
     if (!(err instanceof RateLimitError)) await forget(ctx, key)
@@ -201,9 +202,9 @@ export async function insightsReportJob(
     return { state: "expired" }
   }
 
-  let accessToken: string
+  let auth: MetaAuth
   try {
-    ;({ accessToken } = await getMetaClient(ctx))
+    ;({ auth } = await getMetaClient(ctx))
   } catch (err) {
     // Meta disconnected since the report started: nothing left to ask.
     await ctx.store.delete(INSIGHTS_REPORTS, key)
@@ -212,7 +213,7 @@ export async function insightsReportJob(
 
   let answer: unknown[] | InsightsPending
   try {
-    answer = await checkInsightsReport(ctx.fetch, { reportRunId: rec.reportRunId, accessToken })
+    answer = await checkInsightsReport(ctx.fetch, { reportRunId: rec.reportRunId, auth })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await ctx.store.set(

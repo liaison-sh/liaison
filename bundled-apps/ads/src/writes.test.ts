@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
@@ -14,6 +15,7 @@ import {
   summarizeSetStatus,
   summarizeUploadImage,
 } from "./summarizers"
+import { settingsFor } from "./test-connections.testutil"
 import {
   add_users_to_audience,
   type CrossAppEnvelope,
@@ -81,11 +83,12 @@ function makeCtx(fetchResponses: MockResponse[], executeToolResponses?: CrossApp
 
   const connections = {
     meta: {
-      getCredentials: async () => ({
-        accessToken: "test_token",
-        adAccountId: "act_123456",
-        defaultPageId: "page_1",
-      }),
+      getSettings: async () =>
+        settingsFor("meta", {
+          accessToken: "test_token",
+          adAccountId: "act_123456",
+          defaultPageId: "page_1",
+        }),
     },
   }
   return { ctx: { fetch, connections, executeTool }, calls, executeToolCalls }
@@ -654,7 +657,9 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
         throw new Error("no second Meta call expected — nothing should be uploaded")
       },
       connections: {
-        meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+        meta: {
+          getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+        },
       },
       executeTool: async (target: string, args: Record<string, unknown>) => {
         executeToolCalls.push({ target, args })
@@ -694,7 +699,9 @@ describe("create_custom_audience — CUSTOMER_LIST", () => {
         return { status: 200, headers: {}, body: JSON.stringify({ id: "aud_unreachable" }) }
       },
       connections: {
-        meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+        meta: {
+          getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+        },
       },
       executeTool: async (target: string) => {
         if (target === "shopify:customers_search") {
@@ -873,7 +880,9 @@ describe("add_users_to_audience", () => {
         throw new Error("no Meta upload call expected — nothing should be uploaded")
       },
       connections: {
-        meta: { getCredentials: async () => ({ accessToken: "t", adAccountId: "act_1" }) },
+        meta: {
+          getSettings: async () => settingsFor("meta", { accessToken: "t", adAccountId: "act_1" }),
+        },
       },
       executeTool: async (target: string, args: Record<string, unknown>) => {
         if (target === "shopify:customers_search") {

@@ -30,7 +30,7 @@
         "sync_state",
         "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
       ],
-      "reply": "{\"id\":\"6f2d7c7a-f57a-4fec-820c-0eff5c7ac5d6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 11:02:50.986339+00\",\"updated_at\":\"2026-11-12 11:02:50.986339+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      "reply": "{\"id\":\"a2bc6ce0-47e9-4406-88da-5569479e35a2\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.135248+00\",\"updated_at\":\"2026-11-13 01:32:43.135248+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"discovery\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
     },
     {
       "method": "db_findMany",
@@ -46,7 +46,7 @@
         "sync_state",
         "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
       ],
-      "reply": "{\"id\":\"6415da1f-dc7a-4eca-b32c-8eea56fc1b9f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 11:02:51.008676+00\",\"updated_at\":\"2026-11-12 11:02:51.008676+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      "reply": "{\"id\":\"b002873e-41d7-42f3-8868-fb7a17dfd88c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.155245+00\",\"updated_at\":\"2026-11-13 01:32:43.155245+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"watch\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
     },
     {
       "method": "db_findMany",
@@ -62,7 +62,7 @@
         "sync_state",
         "{\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"active\":true,\"cursor\":null,\"units_consumed_today\":0,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
       ],
-      "reply": "{\"id\":\"017cba46-6fc3-45e7-98a7-5a60bec19094\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 11:02:51.025684+00\",\"updated_at\":\"2026-11-12 11:02:51.025684+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
+      "reply": "{\"id\":\"a3095fcf-ae46-4c9d-92e4-1f9b322d2095\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.173169+00\",\"updated_at\":\"2026-11-13 01:32:43.173169+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}"
     },
     {
       "method": "enqueueJob",

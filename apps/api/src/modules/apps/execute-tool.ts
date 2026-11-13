@@ -81,6 +81,7 @@ import {
   refUnknownOutputMessage,
   sequencingHint,
 } from "~/modules/apps/ref-messages"
+import { revealDeclaredSecrets } from "~/modules/apps/reveal-secrets"
 import { resolveToolTimeoutMs } from "~/modules/apps/run-limits"
 import { withAppDimensionAliases } from "~/modules/apps/runtime-helpers"
 import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
@@ -3163,7 +3164,19 @@ export async function executeToolHandler(
         attachUpstreamTrace(err, upstreamTrace)
         throw err
       })
+    // A tool that hands an operator a platform-minted webhook secret answers a marker; the
+    // host writes the value in here, after the run, from its own config read (reveal-secrets.ts).
     const runManifestOnce = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
+      runManifestHandler(bridge, holdsTx).then((result) =>
+        revealDeclaredSecrets(result, {
+          appName: tool.appName,
+          toolName: tool.name,
+          revealsSecrets: (tool as { revealsSecrets?: readonly string[] }).revealsSecrets,
+          connections: manifest.connections,
+          readSecret: (key) => bridge.config_get(key),
+        }),
+      )
+    const runManifestHandler = (bridge: Record<string, any>, holdsTx: boolean): Promise<unknown> =>
       runApp({
         appName: tool.appName,
         orgId,

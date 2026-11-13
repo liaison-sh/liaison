@@ -122,7 +122,7 @@ export async function google_create_campaign(
   ctx: GoogleWriteCtx,
 ): Promise<unknown> {
   const p = params as CreateCampaignParams & Record<string, unknown>
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const channelType = String(p.advertising_channel_type ?? "")
   if (!ALLOWED_CHANNEL_TYPES.has(channelType)) {
@@ -164,7 +164,7 @@ export async function google_create_campaign(
         },
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
   const budgetResourceName = budgetResult.results?.[0]?.resourceName
@@ -185,7 +185,7 @@ export async function google_create_campaign(
         },
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
   const campaignResourceName = campaignResult.results?.[0]?.resourceName
@@ -218,7 +218,7 @@ export async function google_create_adgroup(
   ctx: GoogleWriteCtx,
 ): Promise<unknown> {
   const p = params as CreateAdGroupParams & Record<string, unknown>
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const campaignId = String(p.campaign_id ?? "")
   if (!campaignId) throw new Error("google_create_adgroup: campaign_id is required")
@@ -239,7 +239,7 @@ export async function google_create_adgroup(
         },
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
 
@@ -263,7 +263,7 @@ interface CreateAdParams {
 
 export async function google_create_ad(params: unknown, ctx: GoogleWriteCtx): Promise<unknown> {
   const p = params as CreateAdParams & Record<string, unknown>
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const adGroupId = String(p.ad_group_id ?? "")
   if (!adGroupId) throw new Error("google_create_ad: ad_group_id is required")
@@ -304,7 +304,7 @@ export async function google_create_ad(params: unknown, ctx: GoogleWriteCtx): Pr
         },
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
 
@@ -327,7 +327,7 @@ interface UpdateBudgetParams {
 
 export async function google_update_budget(params: unknown, ctx: GoogleWriteCtx): Promise<unknown> {
   const p = params as UpdateBudgetParams & Record<string, unknown>
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const budgetResourceName = String(p.budget_resource_name ?? "")
   if (!budgetResourceName) {
@@ -356,7 +356,7 @@ export async function google_update_budget(params: unknown, ctx: GoogleWriteCtx)
         updateMask: "amount_micros",
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })
 
@@ -462,7 +462,7 @@ export async function google_set_status(params: unknown, ctx: GoogleWriteCtx): P
   const objectId = checked.objectId
   const objectType = checked.objectType
 
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   const cfg = SET_STATUS_CONFIG[objectType]
   const resourceName = `customers/${stripDashes(config.customerId)}/${cfg.resource}/${objectId}`
 
@@ -475,7 +475,7 @@ export async function google_set_status(params: unknown, ctx: GoogleWriteCtx): P
         updateMask: "status",
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })
 
@@ -548,7 +548,7 @@ export async function google_add_negative_keywords(
   const p = params as AddNegativeKeywordsParams & Record<string, unknown>
   throwIfRefused(preflightGoogleAddNegativeKeywordsParams(p))
 
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const keywords = Array.isArray(p.keywords) ? p.keywords : []
   if (keywords.length === 0) {
@@ -585,7 +585,7 @@ export async function google_add_negative_keywords(
     customerId: config.customerId,
     path: mutatePath,
     operations,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
 
@@ -613,7 +613,7 @@ export async function google_create_conversion_action(
   ctx: GoogleWriteCtx,
 ): Promise<unknown> {
   const p = params as CreateConversionActionParams & Record<string, unknown>
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
 
   const name = String(p.name ?? "")
   if (!name) throw new Error("google_create_conversion_action: name is required")
@@ -635,7 +635,7 @@ export async function google_create_conversion_action(
         },
       },
     ],
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as { results?: Array<{ resourceName?: string }> }
 

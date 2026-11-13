@@ -418,9 +418,11 @@ frame. Write it so that it works there too:
 ## 6. Connections
 
 If your app talks to an external service, declare a `connection` in the manifest
-(`oauth2` or `credential`). The kernel owns the token lifecycle; your handler
-reads a fresh token via `ctx.connections.<name>.getToken()` and never sees the
-client secret.
+(`oauth2` or `credential`). The kernel owns the token lifecycle (refresh
+included), and your code never reads the token, the API key or the client
+secret: it names the connection on `ctx.fetch` and the host adds the credential
+(below). App code that reads a secret fails on the Workers and workerd
+executors, the default ones.
 
 ### Let the host hold the secret
 
@@ -438,7 +440,27 @@ await ctx.fetch(`https://${shop}/admin/api/graphql.json`, {
 
 `scheme` is `"header:<Name>"` (the oauth2 token, or one credentials field named
 in `fields`), `"bearer"` (with `exchange`, a client-credentials token the host
-obtains, caches and drops on a 401), or `"basic"` (two credentials fields).
+obtains, caches and drops on a 401), `"basic"` (two credentials fields) or
+`"query:<param>"` (the value as a query parameter of the URL that goes out; the
+app's own URL never carries it). `grant: "client_credentials"` with `"bearer"`
+sends an app token of an oauth2 connection's own OAuth client instead of an
+account's: the host posts the client id and secret to the connection's
+`tokenUrl` (RFC 6749 client credentials), caches the token and drops it on a 401,
+for calls a provider takes from the app itself (an app-level webhook
+subscription).
+
+| Provider wants | `auth` |
+|---|---|
+| An OAuth account's token (refreshed host-side) | `{ connection, identifier?, scheme: "bearer" }` |
+| An API key or token field as a bearer | `{ connection, scheme: "bearer", fields: ["apiToken"] }` |
+| A key in a named header | `{ connection, scheme: "header:X-Api-Key", fields: ["apiKey"] }` |
+| A key as a query parameter | `{ connection, scheme: "query:api_key", fields: ["apiKey"] }` |
+| HTTP Basic | `{ connection, scheme: "basic", fields: ["user", "password"] }` |
+| A token exchanged from a key pair | `{ connection, scheme: "bearer", exchange: { url, fields: [key, secret] } }` |
+| The app's own token (OAuth client credentials) | `{ connection, scheme: "bearer", grant: "client_credentials" }` |
+
+One request carries one connection's credential. A non-secret header a provider
+also wants (a customer id) comes from the connection's readable settings.
 `identifier` picks the account by its identifier; for an oauth2 connection,
 `account` names exactly one account by the id `ctx.accounts.list` gave (the
 organization's, or the acting person's own; any other is refused with
@@ -456,13 +478,45 @@ tells whether a secret is set without reading it. For the non-secret part of a
 credentials connection, `ctx.connections.<name>.getSettings()` returns the fields
 the manifest marks `readable: true` and names the missing ones.
 
-Secret-returning calls (`getToken`, `getCredentials`, reading a secret config
-key) work on the local sandbox for a first-party app but are refused when the
-app runs on a remote isolate executor, and for every organization's custom app
-on any executor (`secret_not_available_on_workers`), so an app that should run
-everywhere sends its secrets with `auth`. `@liaison/app-sdk/connection-credentials` reads a credentials
-connection's fields whichever shape `ctx.connections` has, for code that still
-needs them locally.
+Secret-returning calls (`getToken`, `getCredentials`, `ctx.config.get` of a
+secret config key) are refused on the Workers and workerd executors, and for
+every organization's custom app on any executor
+(`secret_not_available_on_workers`). Only the legacy QuickJS executor still
+answers them, so they pass its tests and fail in production: never use them.
+Instead:
+
+- Mark the non-secret fields of a credentials connection `"readable": true` in
+  the manifest (an account id, a scope, a base URL) and read them with
+  `readConnectionSettings(ctx.connections, "<name>", [required fields])` from
+  `@liaison/app-sdk/connection-credentials` (it checks that a secret field is
+  set without reading it).
+- Send the secret ones with `ctx.fetch` `auth` (the table above).
+- Ask whether an OAuth connection has an account with
+  `ctx.connections.<name>.getAccounts()`.
+- Verify a webhook with `ctx.config.has(key)` and
+  `crypto_verifyHmacForConfig(key, data, signature, "base64" | "hex")`
+  ([webhooks](app-webhooks.md)); sign with `crypto_hmacSha256Base64ForConfig`.
+- Hand an operator a platform-minted webhook secret (to paste into the sender)
+  from a tool: list the key in the tool's `"revealsSecrets"` and answer
+  `configSecretReveal(key)` from `@liaison/app-sdk` where the value goes; the host
+  writes the value in after the run. Only a connection's
+  `webhookSecretConfigKey` may be revealed, never by a custom app; any other
+  marker fails with `secret_reveal_refused`.
+
+```ts
+import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
+
+const settings = await readConnectionSettings(ctx.connections, "billing", ["apiToken", "accountId"])
+if (!settings.ok) return { error: { code: "not_connected", message: settings.reason } }
+const res = await ctx.fetch(`https://api.billing.example/v1/accounts/${settings.values.accountId}`, {
+  auth: { connection: "billing", scheme: "bearer", fields: ["apiToken"] },
+})
+```
+
+The contract test runs every bundled app's entries on a secret-free bridge (the
+Workers executor in process; `SECRET_FREE_EXECUTOR=workerd` runs them in the
+workerd sandbox) and fails on any refused read, and no bundled app's source may
+name a secret-returning method (`apps/api/src/modules/apps/contract/secret-free.contract.test.ts`).
 
 ### Declare where a secret goes
 

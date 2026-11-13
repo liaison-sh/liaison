@@ -11,6 +11,7 @@
 //    is unknown from the recorded echo or from a read of the target's replies.
 
 import { describe, expect, test } from "bun:test"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import type { AdapterContext, DiscoverResult, PlatformAdapter } from "./adapters/types"
 import type { SocialToolCtx } from "./ctx"
 import { parseWebhookJob, upsertFinding } from "./ingest"
@@ -70,7 +71,7 @@ function ctxFor(
       }
       return { status: 200, body: "{}" }
     },
-    connections: { getToken: async () => "user-token" },
+    connections: { getAccounts: async () => connectedAccountList() },
     config: { get: async () => null },
     approval: opts.approvalRequestId ? { approvalRequestId: opts.approvalRequestId } : undefined,
     async emit() {},

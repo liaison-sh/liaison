@@ -3202,6 +3202,8 @@ async function registerSingleApp(
             if (Array.isArray(tool.outboundTextParams)) {
               entry.outboundTextParams = tool.outboundTextParams
             }
+            // Webhook secrets the host writes into the answer (reveal-secrets.ts).
+            if (Array.isArray(tool.revealsSecrets)) entry.revealsSecrets = tool.revealsSecrets
             if (Array.isArray(tool.referenceableOutputs)) {
               entry.referenceableOutputs = tool.referenceableOutputs
             }

@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { pause } from "./pause"
+import { settingsFor } from "./test-connections.testutil"
 import { createMockDb } from "./test-db"
 
 // ─── makeCtx helper ───────────────────────────────────────────────────────────
@@ -33,10 +35,11 @@ function makeCtx(fetchResponses: MockResponse[], db = createMockDb()) {
   }
   const connections = {
     meta: {
-      getCredentials: async () => ({
-        accessToken: "test_token",
-        adAccountId: "act_123456",
-      }),
+      getSettings: async () =>
+        settingsFor("meta", {
+          accessToken: "test_token",
+          adAccountId: "act_123456",
+        }),
     },
   }
   return { ctx: { fetch, connections, db, actorId: "user_1" }, calls, db }

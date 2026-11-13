@@ -76,7 +76,7 @@ export async function merchant_feed_status(
     }
     throw err
   }
-  const { token, config } = client
+  const { auth, config } = client
   if (!config.merchantId) {
     return {
       error: {
@@ -92,7 +92,7 @@ export async function merchant_feed_status(
     // /accounts/v1/.../aggregateProductStatuses is an HTML 404, while
     // /issueresolution/v1/... routes (401 when unauthenticated).
     path: `/issueresolution/v1/accounts/${config.merchantId}/aggregateProductStatuses`,
-    token,
+    auth,
   })) as AggregateProductStatusesResponse
 
   const entries = resp.aggregateProductStatuses ?? []
@@ -195,7 +195,7 @@ export async function merchant_product_issues(
     }
     throw err
   }
-  const { token, config } = client
+  const { auth, config } = client
   if (!config.merchantId) {
     return {
       error: {
@@ -208,7 +208,7 @@ export async function merchant_product_issues(
 
   const resp = (await merchantFetch(ctx.fetch, {
     path: `/products/v1/accounts/${config.merchantId}/products`,
-    token,
+    auth,
   })) as MerchantProductsResponse
 
   const rawProducts = resp.products ?? []

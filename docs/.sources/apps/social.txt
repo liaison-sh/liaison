@@ -86,3 +86,4 @@ checks for the Page's own reply with the same words before posting -> bundled-ap
 a reply whose confirmation timed out is looked up on the platform about a minute later -> bundled-apps/social/src/post-back.ts:474 ; apps/api/src/modules/approvals/approving-reaper.ts:28
 found: approval recorded as done; not found: back to waiting -> apps/api/src/modules/approvals/reconcile-outcome.ts:60
 a reply refused as gone or blocked closes its approval; a rate limit goes back to waiting -> bundled-apps/social/src/post-back.ts:385 ; apps/api/src/modules/approvals/decide.ts:919
+Account token added host-side; app token by client credentials grant; verify token placed host-side; Meta signature verified by config key -> bundled-apps/social/src/connection.ts (resolveAccountAuth) ; bundled-apps/social/src/webhooks-setup.ts (APP_AUTH, VERIFY_TOKEN_PLACEHOLDER) ; bundled-apps/social/src/handlers.ts (metaWebhookVerifier)

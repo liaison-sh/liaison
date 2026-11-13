@@ -1,7 +1,7 @@
 {
   "entry": "tool:reply_to_finding",
   "params": {
-    "finding_id": "f72f438a-f543-44a7-8327-bffccb3cc7d6",
+    "finding_id": "1406d574-4a5e-494a-90cf-a23213ebf16d",
     "reply_text": "Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days."
   },
   "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
@@ -10,16 +10,16 @@
       "method": "db_findMany",
       "args": [
         "finding",
-        "{\"where\":{\"id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\"},\"limit\":1}"
+        "{\"where\":{\"id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.963834+00\",\"updated_at\":\"2026-11-12 10:10:30.087077+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"media_url\":null,\"permalink\":null,\"occurred_at\":\"2025-12-31 23:59:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":\"complaint\",\"sentiment\":null,\"urgency\":75,\"should_reply\":true,\"needs_human\":null,\"triage_reason\":\"The customer says the order failed at checkout\",\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"triaged\",\"metadata\":{\"siblingsAccessible\":true}}]"
+      "reply": "[{\"id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:44.132451+00\",\"updated_at\":\"2026-11-13 01:32:44.260881+00\",\"platform\":\"facebook\",\"external_id\":\"123450000000001_998800000000003\",\"relation\":\"comment_on_our_content\",\"parent_external_id\":\"104857600000001_123450000000001\",\"watched_object_id\":null,\"contact_id\":null,\"author_handle\":null,\"author_external_id\":\"6000000000000003\",\"content_text\":\"Are these panels safe to mount above a radiator?\",\"media_url\":null,\"permalink\":null,\"occurred_at\":\"2025-12-31 23:59:00+00\",\"comment_count\":0,\"brand_relevant\":false,\"edited_after_reply\":false,\"triage_category\":\"complaint\",\"sentiment\":null,\"urgency\":75,\"should_reply\":true,\"needs_human\":null,\"triage_reason\":\"The customer says the order failed at checkout\",\"suggested_reply\":null,\"approval_request_id\":null,\"status\":\"triaged\",\"metadata\":{\"siblingsAccessible\":true}}]"
     },
     {
       "method": "requestApproval",
       "args": [
-        "{\"tool_name\":\"social:reply_to_finding\",\"summary\":\"Reply publicly on facebook: Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\",\"summary_detail\":{\"subtitle\":\"Posts publicly on facebook\",\"lines\":[\"Platform: facebook\",\"Author: unknown\",\"Posted: 2025-12-31\",\"Original: Are these panels safe to mount above a radiator?\",\"Reply: Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\"]},\"current_payload\":{\"finding_id\":\"f72f438a-f543-44a7-8327-bffccb3cc7d6\",\"reply_text\":\"Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\"}}"
+        "{\"tool_name\":\"social:reply_to_finding\",\"summary\":\"Reply publicly on facebook: Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\",\"summary_detail\":{\"subtitle\":\"Posts publicly on facebook\",\"lines\":[\"Platform: facebook\",\"Author: unknown\",\"Posted: 2025-12-31\",\"Original: Are these panels safe to mount above a radiator?\",\"Reply: Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\"]},\"current_payload\":{\"finding_id\":\"1406d574-4a5e-494a-90cf-a23213ebf16d\",\"reply_text\":\"Yes, we ship to Belgium. Pick Benelux at checkout, delivery takes 3 to 5 days.\"}}"
       ],
-      "reply": "{\"approval_id\":\"d9c193a7-33d4-4153-87e6-e41dec6e2594\"}"
+      "reply": "{\"approval_id\":\"2ace1faa-9a32-46e8-828c-aa12a4dd5c60\"}"
     }
   ]
 }

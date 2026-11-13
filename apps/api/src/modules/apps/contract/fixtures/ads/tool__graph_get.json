@@ -7,15 +7,15 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/120210000000000101?fields=id%2Cname%2Cstatus%2Cdaily_budget",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000101\\\",\\\"name\\\":\\\"Bass traps – prospecting FR\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"ACTIVE\\\",\\\"objective\\\":\\\"OUTCOME_SALES\\\",\\\"daily_budget\\\":\\\"3500\\\"}\"}"
     }

@@ -42,3 +42,4 @@ incidents_resolve -> bundled-apps/monitoring/app.manifest.json:443
 incidents_summary -> bundled-apps/monitoring/app.manifest.json:463
 webhook_info -> bundled-apps/monitoring/app.manifest.json:473
 Urgent banner counts open and acknowledged incidents apart -> bundled-apps/monitoring/src/ui/format.ts:136
+webhook_info secret written in by the host (revealsSecrets); verifier by config key -> bundled-apps/monitoring/src/incidents.ts (webhookInfoHandler) ; bundled-apps/monitoring/app.manifest.json (revealsSecrets) ; packages/app-sdk/src/webhook-verify.ts (verifySignedTsWebhook)

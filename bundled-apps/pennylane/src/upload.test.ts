@@ -25,7 +25,7 @@ function setup() {
     db,
     fetch: fake.sandboxFetch,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   } as unknown as PennylaneToolCtx
   return { fake, ctx, db }

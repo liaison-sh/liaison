@@ -5,6 +5,7 @@
 // an in-memory sync_state.
 
 import { describe, expect, test } from "bun:test"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import type { SocialToolCtx } from "./ctx"
 import {
   type ConnectionAccount,
@@ -75,7 +76,7 @@ describe("connections_status", () => {
   test("a kernel without describe answers available false, never a fake Not connected", async () => {
     const res = await connectionsStatus(
       {},
-      makeCtx(createMockDb(), { getToken: async () => "t" }),
+      makeCtx(createMockDb(), { getAccounts: async () => connectedAccountList() }),
       NOW,
     )
     expect(res.available).toBe(false)

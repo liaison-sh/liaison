@@ -4,20 +4,20 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getToken",
+      "method": "connections_getAccounts",
       "args": ["google"],
-      "reply": "ads-token-stand-in-2"
+      "reply": "[{\"id\":\"16533636-b894-4d01-8e7f-8ccac90a214a\",\"identifier\":\"google-ads-user\",\"displayName\":\"google-ads-user\",\"status\":\"active\"}]"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["google-config"],
-      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+      "reply": "{\"values\":{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"},\"missing\":[\"developerToken\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT search_term_view.search_term, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view\\\"}\"}"
+        "{\"method\":\"POST\",\"headers\":{\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"auth\":{\"connection\":\"google\",\"scheme\":\"bearer\"},\"body\":\"{\\\"query\\\":\\\"SELECT search_term_view.search_term, metrics.clicks, metrics.cost_micros, metrics.conversions FROM search_term_view\\\"}\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"searchTermView\\\":{\\\"searchTerm\\\":\\\"bass trap corner\\\"},\\\"metrics\\\":{\\\"clicks\\\":\\\"41\\\",\\\"costMicros\\\":\\\"28700000\\\",\\\"conversions\\\":3}},{\\\"searchTermView\\\":{\\\"searchTerm\\\":\\\"free acoustic foam\\\"},\\\"metrics\\\":{\\\"clicks\\\":\\\"17\\\",\\\"costMicros\\\":\\\"9100000\\\",\\\"conversions\\\":0}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
     }

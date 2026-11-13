@@ -203,3 +203,4 @@ refusals carry Boxtal's own message -> bundled-apps/boxtal/src/lib/boxtal-v3-cli
 boxtal:order papers generated at To prepare, after the buy, in the pack -> bundled-apps/boxtal/src/customs-documents.ts:466
 order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602
 Boxtal shipment declares pick -> bundled-apps/boxtal/app.manifest.json:225
+Keys added host-side (fetch auth basic/exchange) -> bundled-apps/boxtal/src/lib/get-client.ts

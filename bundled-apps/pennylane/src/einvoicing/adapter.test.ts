@@ -16,7 +16,7 @@ import { pennylaneVatRate } from "./vat-rate"
 function setup() {
   const fake = new PennylaneFake()
   fake.directory[BUYER_SIREN] = [BUYER_SIREN]
-  const client = new PennylaneClient({ fetch: fake.sandboxFetch, apiToken: "tok" })
+  const client = new PennylaneClient({ fetch: fake.sandboxFetch })
   return { fake, client }
 }
 

@@ -73,7 +73,7 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
   const p = params as Record<string, unknown>
   const { ids } = throwIfRefused(preflightPauseParams(p))
 
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
 
   const reason = typeof p.reason === "string" ? p.reason : "agent-paused"
 
@@ -87,7 +87,7 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
       path: `/${objectId}`,
       method: "GET",
       params: { fields: "id,name,status,effective_status" },
-      accessToken,
+      auth,
     })) as { id?: string; name?: string; status?: string; effective_status?: string }
     const priorStatus = before.status
     const objectName = before.name
@@ -97,7 +97,7 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
       path: `/${objectId}`,
       method: "POST",
       params: { status: "PAUSED" },
-      accessToken,
+      auth,
     })
 
     // Call 3: GET re-read — confirm effective_status; do NOT trust the write echo.
@@ -105,7 +105,7 @@ export async function pause(params: unknown, ctx: AppCtx): Promise<unknown> {
       path: `/${objectId}`,
       method: "GET",
       params: { fields: "id,status,effective_status" },
-      accessToken,
+      auth,
     })) as { id?: string; status?: string; effective_status?: string }
 
     const effectiveStatus = after.effective_status

@@ -5,7 +5,7 @@
 // normalizing to these shapes so the sync/triage/post-back engine is
 // platform-agnostic.
 
-import type { SocialLogger } from "../ctx"
+import type { SocialAuth, SocialLogger } from "../ctx"
 
 export type Platform = "facebook" | "instagram" | "youtube"
 
@@ -139,6 +139,8 @@ export type AdapterFetch = (
     method?: string
     headers?: Record<string, string>
     body?: string | Record<string, unknown>
+    /** The connected account's credential, added host-side (SocialAuth). */
+    auth?: SocialAuth
   },
 ) => Promise<{
   status: number
@@ -158,8 +160,9 @@ export interface DiscoveryTerm {
 export interface AdapterContext {
   accountExternalId: string
   fetch: AdapterFetch
-  /** OAuth access token for the platform (resolved by the host). */
-  accessToken?: string
+  /** The connected account's credential, which the host adds to a request that
+   *  names it (`ctx.fetch` auth); the token never enters the app. */
+  auth?: SocialAuth
   /** Enabled monitor terms scoped to this platform (platform IS NULL or the
    *  adapter's own platform). Only consulted by adapters that support
    *  keyword-search discovery (currently YouTube); absent/empty means "no
@@ -291,4 +294,9 @@ export interface PlatformAdapter {
   parseWebhook?(body: unknown): { findings: NormalizedFinding[]; messages: NormalizedMessage[] }
   /** Verify a webhook signature (HMAC). */
   verifyWebhook?(rawBody: string, signature: string, secret: string): boolean
+}
+
+/** The fetch options that send the connected account's credential (none when unset). */
+export function accountAuth(ctx: Pick<AdapterContext, "auth">): { auth?: SocialAuth } {
+  return ctx.auth ? { auth: ctx.auth } : {}
 }

@@ -223,7 +223,8 @@ describe("webhookInfoHandler", () => {
     const { ctx } = makeCtx({ config: { monitoringWebhookSecret: "s3cret" } })
     const res = await webhookInfoHandler({}, ctx)
     expect(res.data.configured).toBe(true)
-    expect(res.data.secret).toBe("s3cret")
+    // The host writes the secret in where the marker stands (revealsSecrets): the app never reads it.
+    expect(res.data.secret).toEqual({ $configSecret: "monitoringWebhookSecret" })
     expect(res.data.signatureHeader).toBe("x-monitoring-signature")
   })
 

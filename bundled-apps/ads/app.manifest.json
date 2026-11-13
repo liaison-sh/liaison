@@ -283,12 +283,14 @@
         {
           "name": "adAccountId",
           "type": "text",
-          "label": "Ad account id (act_<id>)"
+          "label": "Ad account id (act_<id>)",
+          "readable": true
         },
         {
           "name": "defaultPageId",
           "type": "text",
           "label": "Default Facebook Page id",
+          "readable": true,
           "required": false
         }
       ]
@@ -390,17 +392,20 @@
         {
           "name": "loginCustomerId",
           "type": "text",
-          "label": "MCC login customer id (digits only, no dashes)"
+          "label": "MCC login customer id (digits only, no dashes)",
+          "readable": true
         },
         {
           "name": "customerId",
           "type": "text",
-          "label": "Operating customer id (digits only, no dashes)"
+          "label": "Operating customer id (digits only, no dashes)",
+          "readable": true
         },
         {
           "name": "merchantId",
           "type": "text",
           "label": "Merchant Center account id",
+          "readable": true,
           "required": false
         },
         {

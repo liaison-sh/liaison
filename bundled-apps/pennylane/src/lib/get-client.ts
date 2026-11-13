@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Pennylane client facade. Reads the org credentials-connection map via the
-// dual-shape getCredentials accessor (FLAT sandbox-bridge `getCredentials(name)`
-// + RECORD SDK `{pennylane:{getCredentials()}}`), validates apiToken+scope, and
-// constructs a PennylaneClient wired to ctx.fetch.
-import { readConnectionCredentials } from "@liaison/app-sdk/connection-credentials"
+// Pennylane client facade. Reads the NON-SECRET settings of the credentials connection
+// (`scope`, `companyId`; `getSettings`, both ctx.connections shapes), checks that an apiToken
+// is stored without reading it, and constructs a PennylaneClient wired to ctx.fetch: the host
+// adds the token to every request (`auth`), so it never enters the app.
+import { readConnectionSettings } from "@liaison/app-sdk/connection-credentials"
 import type { PennylaneScope } from "../types"
 import { PennylaneClient, type PennylaneFetch } from "./pennylane-client"
 
@@ -37,7 +37,7 @@ export class PennylaneConnectionError extends Error {
 
 /** Build the Pennylane client facade from the live credentials connection. */
 export async function getClient(ctx: PennylaneCtx): Promise<PennylaneFacade> {
-  const read = await readConnectionCredentials(ctx.connections, CONNECTION, REQUIRED_KEYS)
+  const read = await readConnectionSettings(ctx.connections, CONNECTION, REQUIRED_KEYS)
   if (!read.ok) {
     if (read.reason === "incomplete")
       throw new PennylaneConnectionError(
@@ -45,7 +45,7 @@ export async function getClient(ctx: PennylaneCtx): Promise<PennylaneFacade> {
       )
     throw new PennylaneConnectionError("Pennylane not connected", { notConnected: true })
   }
-  const map = read.credentials
+  const map = read.values
   const scope = map.scope
   if (scope !== "company" && scope !== "firm") {
     throw new PennylaneConnectionError(
@@ -62,7 +62,6 @@ export async function getClient(ctx: PennylaneCtx): Promise<PennylaneFacade> {
   }
   const client = new PennylaneClient({
     fetch: ctx.fetch,
-    apiToken: map.apiToken!,
     companyId: scope === "firm" ? companyId : null,
   })
   return { client, scope }

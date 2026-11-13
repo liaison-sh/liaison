@@ -78,7 +78,7 @@ export async function insights_query(
   params: InsightsQueryParams,
   ctx: InsightsCtx,
 ): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   const breakdowns = params.breakdowns ?? []
   const breakdownGroups = splitBreakdowns(breakdowns)
@@ -124,7 +124,7 @@ export async function insights_query(
       const asyncResult = await fetchInsightsReport(ctx, {
         path: `/${adAccountId}/insights`,
         params: callParams,
-        accessToken,
+        auth,
       })
       if (isInsightsPending(asyncResult)) {
         pending ??= asyncResult
@@ -136,7 +136,7 @@ export async function insights_query(
         path: `/${adAccountId}/insights`,
         method: "GET",
         params: callParams,
-        accessToken,
+        auth,
       })) as { data?: unknown[] }
       data = result.data ?? []
     }
@@ -186,7 +186,7 @@ interface CampaignsListParams {
 }
 
 export async function campaigns_list(params: CampaignsListParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const fields = (
     params.fields ?? [
       "id",
@@ -202,7 +202,7 @@ export async function campaigns_list(params: CampaignsListParams, ctx: ReadCtx):
     path: `/${adAccountId}/campaigns`,
     method: "GET",
     params: { fields, ...(params.limit ? { limit: params.limit } : {}) },
-    accessToken,
+    auth,
   })
   // budget_units: Meta returns daily_budget/lifetime_budget as INTEGER MINOR
   // UNITS (cents for EUR) — without the marker a reader can mistake "3500"
@@ -219,7 +219,7 @@ interface AdsetsListParams {
 }
 
 export async function adsets_list(params: AdsetsListParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const fields = (
     params.fields ?? [
       "id",
@@ -242,7 +242,7 @@ export async function adsets_list(params: AdsetsListParams, ctx: ReadCtx): Promi
     path,
     method: "GET",
     params: { fields, ...(params.limit ? { limit: params.limit } : {}) },
-    accessToken,
+    auth,
   })
   // See campaigns_list: budgets/bids are integer minor units.
   return { data, budget_units: "minor" }
@@ -283,7 +283,7 @@ const ADS_DEFAULT_EFFECTIVE_STATUS = [
 ]
 
 export async function ads_list(params: AdsListParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const fields = (
     params.fields ?? [
       "id",
@@ -323,7 +323,7 @@ export async function ads_list(params: AdsListParams, ctx: ReadCtx): Promise<unk
       path,
       method: "GET",
       params: baseParams,
-      accessToken,
+      auth,
     })
     return { data, after: null }
   }
@@ -333,7 +333,7 @@ export async function ads_list(params: AdsListParams, ctx: ReadCtx): Promise<unk
     path,
     method: "GET",
     params: baseParams,
-    accessToken,
+    auth,
     maxPages: params.max_pages ?? 1,
     ...(params.after ? { after: params.after } : {}),
   })
@@ -352,7 +352,7 @@ export async function targeting_search(
   params: TargetingSearchParams,
   ctx: ReadCtx,
 ): Promise<unknown> {
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
   const searchParams: Record<string, unknown> = {
     type: params.type,
     q: params.q,
@@ -363,7 +363,7 @@ export async function targeting_search(
     path: "/search",
     method: "GET",
     params: searchParams,
-    accessToken,
+    auth,
   })
 }
 
@@ -375,7 +375,7 @@ interface MediaListParams {
 }
 
 export async function media_list(params: MediaListParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const type = params.type ?? "images"
 
   if (type === "images") {
@@ -386,7 +386,7 @@ export async function media_list(params: MediaListParams, ctx: ReadCtx): Promise
         fields: "hash,name,status,width,height,url",
         ...(params.limit ? { limit: params.limit } : {}),
       },
-      accessToken,
+      auth,
     })
     return { type: "images", data }
   } else {
@@ -397,7 +397,7 @@ export async function media_list(params: MediaListParams, ctx: ReadCtx): Promise
         fields: "id,title,description,length,status",
         ...(params.limit ? { limit: params.limit } : {}),
       },
-      accessToken,
+      auth,
     })
     return { type: "videos", data }
   }
@@ -410,7 +410,7 @@ interface AudiencesListParams {
 }
 
 export async function audiences_list(params: AudiencesListParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   const data = await metaFetchPaged(ctx.fetch, {
     path: `/${adAccountId}/customaudiences`,
     method: "GET",
@@ -419,7 +419,7 @@ export async function audiences_list(params: AudiencesListParams, ctx: ReadCtx):
         "id,name,subtype,description,approximate_count_lower_bound,approximate_count_upper_bound,delivery_status{code,description},operation_status{code,description},retention_days,data_source{type,sub_type},time_created,time_updated,time_content_updated",
       ...(params.limit ? { limit: params.limit } : {}),
     },
-    accessToken,
+    auth,
   })
   return { data }
 }
@@ -427,7 +427,7 @@ export async function audiences_list(params: AudiencesListParams, ctx: ReadCtx):
 // ─── pages_list ───────────────────────────────────────────────────────────────
 
 export async function pages_list(_params: Record<string, never>, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
   // SECURITY: never request access_token — a Page access token is a live credential
   // that would land in the LLM context / transcript / persistence. We only need
   // id/name/category to resolve a page_id for create_creative.
@@ -435,7 +435,7 @@ export async function pages_list(_params: Record<string, never>, ctx: ReadCtx): 
     path: "/me/accounts",
     method: "GET",
     params: { fields: "id,name,category" },
-    accessToken,
+    auth,
   })) as { data?: unknown[] }
   return { data: result.data ?? [] }
 }
@@ -443,7 +443,7 @@ export async function pages_list(_params: Record<string, never>, ctx: ReadCtx): 
 // ─── account_info ─────────────────────────────────────────────────────────────
 
 export async function account_info(_params: Record<string, never>, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
   // AdAccount has no `pixel_id` field (Graph rejects it with #100) — pixels are
   // the `adspixels` edge. Expand it in the same GET and surface the first pixel's
   // id as `pixel_id` so the tool's result shape (and the WEBSITE custom-audience
@@ -456,7 +456,7 @@ export async function account_info(_params: Record<string, never>, ctx: ReadCtx)
     params: {
       fields: "id,name,currency,timezone_name,spend_cap,account_status,adspixels{id,name}",
     },
-    accessToken,
+    auth,
   })) as Record<string, unknown> & { adspixels?: { data?: Array<{ id?: string }> } }
   const pixel_id = result.adspixels?.data?.[0]?.id ?? null
   const { adspixels: _adspixels, ...rest } = result
@@ -471,7 +471,7 @@ interface GraphGetParams {
 }
 
 export async function graph_get(params: GraphGetParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
 
   // Low-cost path validation: graph_get is GET-only (cannot mutate), but the
   // path is concatenated raw onto the Graph base URL. Reject paths that could
@@ -513,7 +513,7 @@ export async function graph_get(params: GraphGetParams, ctx: ReadCtx): Promise<u
     path: basePath,
     method: "GET",
     params: Object.keys(merged).length > 0 ? merged : undefined,
-    accessToken,
+    auth,
   })
 }
 
@@ -534,7 +534,7 @@ interface CreativeGetParams {
 }
 
 export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken, adAccountId } = await getMetaClient(ctx)
+  const { auth, adAccountId } = await getMetaClient(ctx)
 
   let creativeId = params.creative_id
 
@@ -543,7 +543,7 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
     const adResult = (await metaFetch(ctx.fetch, {
       path: `/${params.ad_id}`,
       params: { fields: "creative" },
-      accessToken,
+      auth,
     })) as { creative?: { id?: string } }
     creativeId = adResult?.creative?.id
   }
@@ -566,7 +566,7 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
     params: {
       fields: "object_story_spec,asset_feed_spec,title,body,image_hash,video_id,thumbnail_url",
     },
-    accessToken,
+    auth,
   })) as {
     object_story_spec?: { link_data?: { image_hash?: string } }
     asset_feed_spec?: { images?: Array<{ hash?: string }> }
@@ -596,7 +596,7 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
     const result = (await metaFetch(ctx.fetch, {
       path: `/${adAccountId}/adimages`,
       params: { hashes: JSON.stringify(hashes), fields: "hash,url,permalink_url" },
-      accessToken,
+      auth,
     })) as { images?: Record<string, { url?: string }> }
 
     if (result.images) {
@@ -615,7 +615,7 @@ export async function creative_get(params: CreativeGetParams, ctx: ReadCtx): Pro
     const videoResult = (await metaFetch(ctx.fetch, {
       path: `/${videoId}`,
       params: { fields: "thumbnails{uri},picture" },
-      accessToken,
+      auth,
     })) as { thumbnails?: { data?: Array<{ uri?: string }> }; picture?: string }
     thumbnailUrl = videoResult?.thumbnails?.data?.[0]?.uri ?? videoResult?.picture ?? null
   }
@@ -658,7 +658,7 @@ interface AdPreviewSingle {
 }
 
 export async function ad_preview(params: AdPreviewParams, ctx: ReadCtx): Promise<unknown> {
-  const { accessToken } = await getMetaClient(ctx)
+  const { auth } = await getMetaClient(ctx)
   const targetId = params.ad_id ?? params.creative_id
 
   const fetchPreview = async (fmt: string): Promise<AdPreviewSingle> => {
@@ -666,7 +666,7 @@ export async function ad_preview(params: AdPreviewParams, ctx: ReadCtx): Promise
       const result = (await metaFetch(ctx.fetch, {
         path: `/${targetId}/previews`,
         params: { ad_format: fmt },
-        accessToken,
+        auth,
       })) as { data?: Array<{ body?: string }> }
       const body = result?.data?.[0]?.body ?? null
       return { ad_format: fmt, body }

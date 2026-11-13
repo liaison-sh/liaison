@@ -35,6 +35,7 @@
 import { join } from "node:path"
 import { type RunLimits, runLimits } from "~/modules/apps/run-limits"
 import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
+import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import type { ContractEntry } from "./entries"
 import type {
   ContractExecutor,
@@ -149,7 +150,11 @@ function answerOf(r: ContractRunOutcome): string {
 export async function runAppContract(
   app: AppUnderContract,
   executor: ContractExecutor,
-  opts: { limitsFor?: (entry: ContractEntry) => RunLimits } = {},
+  opts: {
+    limitsFor?: (entry: ContractEntry) => RunLimits
+    /** The bridge a run gets, from its replay bridge (a secret-free run marks it here). */
+    bridgeFor?: (entry: ContractEntry, bridge: AppBridge) => AppBridge
+  } = {},
 ): Promise<EntryVerdict[]> {
   const limitsFor = opts.limitsFor ?? productionLimits
   const verdicts: EntryVerdict[] = []
@@ -198,11 +203,12 @@ export async function runAppContract(
       const fixture = app.fixtures?.[entry.entry] ?? null
       const runOnce = async (): Promise<RunRecord> => {
         const replay = createReplayBridge(surfaceFor(app, entry), fixture)
+        const bridge = opts.bridgeFor ? opts.bridgeFor(entry, replay.bridge) : replay.bridge
         const outcome = await (isolate as ContractIsolate).run({
           exportName: entry.exportName,
           params: fixture?.params ?? {},
           ...(fixture?.extraArgs ? { extraArgs: fixture.extraArgs } : {}),
-          bridge: replay.bridge,
+          bridge,
           limits,
         })
         return { outcome, stats: replay.stats }

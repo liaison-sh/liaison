@@ -19,8 +19,8 @@
 // of this runs there.
 
 import { FB_BASE } from "./adapters/facebook"
-import { resolveAccessToken } from "./connection"
-import type { SocialToolCtx } from "./ctx"
+import { resolveAccountAuth } from "./connection"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
 
 export const META_PAGE_IDS_KEY = "meta_page_ids"
 export const META_PAGES_CHECKED_AT_KEY = "meta_pages_checked_at"
@@ -97,7 +97,7 @@ export type RefreshOutcome =
 export async function refreshMetaPageIds(
   ctx: SocialToolCtx,
   account: string,
-  opts: { force?: boolean; token?: string | null; now?: Date } = {},
+  opts: { force?: boolean; auth?: SocialAuth | null; now?: Date } = {},
 ): Promise<RefreshOutcome> {
   const rows = await facebookRows(ctx, account)
   const stored = rows.map((r) => routedIdsOf(r.metadata)).find((ids) => ids !== null) ?? null
@@ -110,9 +110,9 @@ export async function refreshMetaPageIds(
     return { kind: "ok", ids: stored }
   }
   if (stored.length === 0) return { kind: "ok", ids: [] }
-  const token =
-    opts.token !== undefined ? opts.token : await resolveAccessToken(ctx, "facebook", account)
-  if (!token) {
+  const auth =
+    opts.auth !== undefined ? opts.auth : await resolveAccountAuth(ctx, "facebook", account)
+  if (!auth) {
     // No usable token (disconnected, or the refresh failed): it authorizes nothing.
     await writeIds(ctx, rows, [], now.toISOString())
     return { kind: "ok", ids: [] }
@@ -120,7 +120,7 @@ export async function refreshMetaPageIds(
   const managed = new Set<string>()
   let url: string | null = `${FB_BASE}/me/accounts?fields=id&limit=100`
   for (let page = 0; url && page < 20; page++) {
-    const res = await ctx.fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await ctx.fetch(url, { auth })
     let parsed: {
       data?: Array<{ id?: unknown }>
       paging?: { next?: unknown }

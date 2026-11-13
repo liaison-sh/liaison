@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test"
 import type { Platform } from "./adapters/types"
-import { onConnectionDisconnected, onConnectionEstablished, resolveAccessToken } from "./connection"
+import { onConnectionDisconnected, onConnectionEstablished, resolveAccountAuth } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { createMockDb, type MockDb } from "./test-db"
 
@@ -134,59 +134,54 @@ describe("onConnectionDisconnected (B10)", () => {
   })
 })
 
-describe("resolveAccessToken — per-platform OAuth token resolution", () => {
-  // FLAT sandbox-bridge shape: connections.getToken(name, identifier).
-  function flatCtx(impl: (name: string, identifier?: string) => Promise<string>): SocialToolCtx {
-    return { connections: { getToken: impl } } as unknown as SocialToolCtx
+describe("resolveAccountAuth — the connected account's host-side credential", () => {
+  type Account = { identifier: string; status: string }
+  // FLAT sandbox-bridge shape: connections.getAccounts(name).
+  function flatCtx(impl: (name: string) => Promise<Account[] | string>): SocialToolCtx {
+    return { connections: { getAccounts: impl } } as unknown as SocialToolCtx
   }
-  // RECORD SDK shape: connections[name].getToken(identifier).
-  function recordCtx(map: Record<string, (identifier?: string) => Promise<string>>): SocialToolCtx {
-    const conns: Record<string, { getToken: (id?: string) => Promise<string> }> = {}
-    for (const [k, v] of Object.entries(map)) conns[k] = { getToken: v }
+  // RECORD SDK shape: connections[name].getAccounts().
+  function recordCtx(map: Record<string, () => Promise<Account[]>>): SocialToolCtx {
+    const conns: Record<string, { getAccounts: () => Promise<Account[]> }> = {}
+    for (const [k, v] of Object.entries(map)) conns[k] = { getAccounts: v }
     return { connections: conns } as unknown as SocialToolCtx
   }
+  const active = (identifier: string): Account => ({ identifier, status: "active" })
 
   test("maps facebook → `facebook`, instagram → `instagram`, youtube → `google`", async () => {
-    const seen: Array<{ name: string; id?: string }> = []
-    const ctx = flatCtx(async (name, id) => {
-      seen.push({ name, id })
-      return "tok"
+    const seen: string[] = []
+    const ctx = flatCtx(async (name) => {
+      seen.push(name)
+      return [active("PAGE_1"), active("IG_1"), active("CHAN_1")]
     })
-    await resolveAccessToken(ctx, "facebook" as Platform, "PAGE_1")
-    await resolveAccessToken(ctx, "instagram" as Platform, "IG_1")
-    await resolveAccessToken(ctx, "youtube" as Platform, "CHAN_1")
-    expect(seen).toEqual([
-      { name: "facebook", id: "PAGE_1" },
-      { name: "instagram", id: "IG_1" },
-      { name: "google", id: "CHAN_1" },
-    ])
-  })
-
-  test("returns the token from the FLAT bridge shape", async () => {
-    const ctx = flatCtx(async () => "flat-token")
-    expect(await resolveAccessToken(ctx, "facebook" as Platform, "PAGE_1")).toBe("flat-token")
-  })
-
-  test("returns the token from the RECORD SDK shape", async () => {
-    const ctx = recordCtx({ instagram: async () => "record-token" })
-    expect(await resolveAccessToken(ctx, "instagram" as Platform, "IG_1")).toBe("record-token")
-  })
-
-  test("returns null when the host throws (no connected account / expired token)", async () => {
-    const ctx = flatCtx(async () => {
-      throw new Error("No access token stored")
+    expect(await resolveAccountAuth(ctx, "facebook" as Platform, "PAGE_1")).toEqual({
+      connection: "facebook",
+      identifier: "PAGE_1",
+      scheme: "bearer",
     })
-    expect(await resolveAccessToken(ctx, "youtube" as Platform, "CHAN_1")).toBeNull()
+    await resolveAccountAuth(ctx, "instagram" as Platform, "IG_1")
+    expect(await resolveAccountAuth(ctx, "youtube" as Platform, "CHAN_1")).toMatchObject({
+      connection: "google",
+    })
+    expect(seen).toEqual(["facebook", "instagram", "google"])
   })
 
-  test("returns null when an empty token is stored", async () => {
-    const ctx = flatCtx(async () => "")
-    expect(await resolveAccessToken(ctx, "facebook" as Platform, "PAGE_1")).toBeNull()
+  test("reads the FLAT shape's JSON answer and the RECORD SDK shape", async () => {
+    const flat = flatCtx(async () => JSON.stringify([active("PAGE_1")]))
+    expect(await resolveAccountAuth(flat, "facebook" as Platform, "PAGE_1")).not.toBeNull()
+    const record = recordCtx({ instagram: async () => [active("IG_1")] })
+    expect(await resolveAccountAuth(record, "instagram" as Platform, "IG_1")).not.toBeNull()
   })
 
-  test("returns null when no connections accessor is present", async () => {
-    const ctx = { connections: {} } as unknown as SocialToolCtx
-    expect(await resolveAccessToken(ctx, "facebook" as Platform, "PAGE_1")).toBeNull()
+  test("returns null for an account that is not connected, a host that throws, or no accessor", async () => {
+    const other = flatCtx(async () => [active("PAGE_2")])
+    expect(await resolveAccountAuth(other, "facebook" as Platform, "PAGE_1")).toBeNull()
+    const throws = flatCtx(async () => {
+      throw new Error("No connected account")
+    })
+    expect(await resolveAccountAuth(throws, "youtube" as Platform, "CHAN_1")).toBeNull()
+    const none = { connections: {} } as unknown as SocialToolCtx
+    expect(await resolveAccountAuth(none, "facebook" as Platform, "PAGE_1")).toBeNull()
   })
 })
 
@@ -212,17 +207,19 @@ describe("instagram_unified preview leaves the instagram path untouched", () => 
     expect(ctx.__jobs).toEqual([])
   })
 
-  test("the instagram platform still resolves its token from the `instagram` connection only", async () => {
+  test("the instagram platform still sends the `instagram` connection's credential only", async () => {
     const asked: string[] = []
     const ctx = {
       connections: {
-        getToken: async (name: string) => {
+        getAccounts: async (name: string) => {
           asked.push(name)
-          return "tok"
+          return [{ identifier: "IG_1", status: "active" }]
         },
       },
     } as unknown as SocialToolCtx
-    expect(await resolveAccessToken(ctx, "instagram" as Platform, "IG_1")).toBe("tok")
+    expect(await resolveAccountAuth(ctx, "instagram" as Platform, "IG_1")).toMatchObject({
+      connection: "instagram",
+    })
     expect(asked).toEqual(["instagram"])
   })
 

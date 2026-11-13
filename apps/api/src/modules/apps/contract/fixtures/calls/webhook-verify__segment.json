@@ -13,23 +13,17 @@
   "recordedFrom": "the contract org on a local stack, record-calls.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
+      "method": "config_has",
       "args": ["callsWebhookSecret"],
-      "reply": "calls-webhook-secret-stand-in"
+      "reply": true
     },
     {
-      "method": "crypto_hmacSha256Base64",
+      "method": "crypto_verifyHmacForConfig",
       "args": [
-        "calls-webhook-secret-stand-in",
-        "{\"callRef\":\"meet-2026-01-01-weekly-sync\",\"kind\":\"segment\",\"segmentId\":\"seg-0002\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"speaker\":\"Customer\",\"text\":\"We need the first 40 units before the 15th of March, the rest can follow in April.\"}"
-      ],
-      "reply": "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk="
-    },
-    {
-      "method": "crypto_timingSafeEqual",
-      "args": [
+        "callsWebhookSecret",
+        "{\"callRef\":\"meet-2026-01-01-weekly-sync\",\"kind\":\"segment\",\"segmentId\":\"seg-0002\",\"ts\":\"2026-01-01T00:00:00.000Z\",\"speaker\":\"Customer\",\"text\":\"We need the first 40 units before the 15th of March, the rest can follow in April.\"}",
         "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk=",
-        "9xEIgRIHAgYibbV7M2WLnVHZy61u2NAbmnFDY9w8YUk="
+        "base64"
       ],
       "reply": true
     },

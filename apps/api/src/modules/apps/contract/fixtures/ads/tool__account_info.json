@@ -4,15 +4,15 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/act_1234567890123456?fields=id%2Cname%2Ccurrency%2Ctimezone_name%2Cspend_cap%2Caccount_status%2Cadspixels%7Bid%2Cname%7D",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"act_1234567890123456\\\",\\\"account_id\\\":\\\"1234567890123456\\\",\\\"name\\\":\\\"Resonant Audio Labs\\\",\\\"currency\\\":\\\"EUR\\\",\\\"timezone_name\\\":\\\"Europe/Paris\\\",\\\"account_status\\\":1,\\\"amount_spent\\\":\\\"184520\\\",\\\"spend_cap\\\":\\\"0\\\"}\"}"
     }

@@ -3,10 +3,14 @@ import { describe, expect, it } from "bun:test"
 import { GoogleAdsApiError, GoogleAuthError } from "./google-error"
 import { classifyIssue, MERCHANT_API_BASE, merchantFetch } from "./merchant-client"
 
+const GOOGLE_AUTH = { connection: "google", scheme: "bearer" as const }
+
 interface FetchCall {
   url: string
   method: string
   headers: Record<string, string>
+  /** The credential the host adds (`ctx.fetch` auth); the app never sets the header. */
+  auth?: unknown
 }
 
 interface MockResponse {
@@ -22,6 +26,7 @@ function makeFetch(responses: MockResponse[]) {
       url,
       method: String(opts?.method ?? "GET"),
       headers: (opts?.headers ?? {}) as Record<string, string>,
+      auth: opts?.auth,
     })
     const resp = responses[idx++]
     if (!resp) throw new Error(`No mock response for call ${idx} to ${url}`)
@@ -35,13 +40,14 @@ describe("merchantFetch — request shape", () => {
     const { fetch, calls } = makeFetch([{ status: 200, body: JSON.stringify({ ok: true }) }])
     await merchantFetch(fetch, {
       path: "/accounts/v1/accounts/mc_1/aggregateProductStatuses",
-      token: "oauth_tok",
+      auth: GOOGLE_AUTH,
     })
     expect(calls.length).toBe(1)
     expect(calls[0]?.url).toBe(
       `${MERCHANT_API_BASE}/accounts/v1/accounts/mc_1/aggregateProductStatuses`,
     )
-    expect(calls[0]?.headers.Authorization).toBe("Bearer oauth_tok")
+    expect(calls[0]?.headers.Authorization).toBeUndefined()
+    expect(calls[0]?.auth).toEqual(GOOGLE_AUTH)
     expect(calls[0]?.headers["developer-token"]).toBeUndefined()
     expect(calls[0]?.headers["login-customer-id"]).toBeUndefined()
   })
@@ -52,7 +58,7 @@ describe("merchantFetch — request shape", () => {
       subApi: "products",
       version: "v1",
       path: "/accounts/mc_1/products",
-      token: "oauth_tok",
+      auth: GOOGLE_AUTH,
     })
     expect(calls[0]?.url).toBe(`${MERCHANT_API_BASE}/products/v1/accounts/mc_1/products`)
   })
@@ -64,9 +70,9 @@ describe("merchantFetch — request shape", () => {
     ])
     await merchantFetch(fetch, {
       path: "/accounts/v1/accounts/mc_1/aggregateProductStatuses",
-      token: "tok",
+      auth: GOOGLE_AUTH,
     })
-    await merchantFetch(fetch, { path: "/products/v1/accounts/mc_1/products", token: "tok" })
+    await merchantFetch(fetch, { path: "/products/v1/accounts/mc_1/products", auth: GOOGLE_AUTH })
     expect(calls[0]?.url).toContain("/accounts/v1/")
     expect(calls[1]?.url).toContain("/products/v1/")
   })
@@ -79,7 +85,7 @@ describe("merchantFetch — request shape", () => {
     await expect(
       merchantFetch(fetch, {
         path: "/accounts/v1/accounts/mc_1/aggregateProductStatuses",
-        token: "bad",
+        auth: GOOGLE_AUTH,
       }),
     ).rejects.toBeInstanceOf(GoogleAuthError)
   })
@@ -92,7 +98,7 @@ describe("merchantFetch — request shape", () => {
     await expect(
       merchantFetch(fetch, {
         path: "/accounts/v1/accounts/mc_1/aggregateProductStatuses",
-        token: "tok",
+        auth: GOOGLE_AUTH,
       }),
     ).rejects.toBeInstanceOf(GoogleAdsApiError)
   })

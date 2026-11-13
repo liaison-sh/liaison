@@ -6,7 +6,7 @@
     {
       "method": "db_findMany",
       "args": ["sync_state", "{\"where\":{\"source_type\":\"dm\",\"active\":true}}"],
-      "reply": "[{\"id\":\"cb438f92-847d-4403-a26c-e0635974e46d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.004222+00\",\"updated_at\":\"2026-11-12 10:10:29.004222+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
+      "reply": "[{\"id\":\"a3095fcf-ae46-4c9d-92e4-1f9b322d2095\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.173169+00\",\"updated_at\":\"2026-11-13 01:32:43.173169+00\",\"platform\":\"facebook\",\"account_external_id\":\"104857600000001\",\"source_type\":\"dm\",\"cursor\":null,\"active\":true,\"units_consumed_today\":0,\"units_window_date\":null,\"last_synced_at\":null,\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\"}}]"
     },
     {
       "method": "db_findMany",
@@ -20,14 +20,14 @@
       "method": "db_update",
       "args": [
         "sync_state",
-        "cb438f92-847d-4403-a26c-e0635974e46d",
+        "a3095fcf-ae46-4c9d-92e4-1f9b322d2095",
         "{\"metadata\":{\"kernel_public_base_url\":\"https://liaison.example.com\",\"dmStateRepair\":{\"version\":1,\"offset\":0,\"done\":true}}}"
       ]
     },
     {
-      "method": "connections_getToken",
-      "args": ["facebook", "104857600000001"],
-      "reply": "social-secret-stand-in-2"
+      "method": "connections_getAccounts",
+      "args": ["facebook"],
+      "reply": "[{\"id\":\"cc728fa8-1522-49cc-a747-e210a0fe891d\",\"identifier\":\"104857600000001\",\"displayName\":\"Resonant Audio Labs\",\"status\":\"active\"}]"
     },
     {
       "method": "db_findMany",
@@ -41,7 +41,7 @@
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v26.0/me/accounts?fields=id,name,access_token",
-        "{\"headers\":{\"Authorization\":\"Bearer social-secret-stand-in-2\"}}"
+        "{\"auth\":{\"connection\":\"facebook\",\"identifier\":\"104857600000001\",\"scheme\":\"bearer\"}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"104857600000001\\\",\\\"name\\\":\\\"Resonant Audio Labs\\\",\\\"access_token\\\":\\\"redacted\\\"}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
     },
@@ -120,13 +120,13 @@
         "dm_conversation",
         "{\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":null,\"last_message_at\":\"2025-12-31T23:50:00+0000\",\"metadata\":{\"pageId\":\"104857600000001\"},\"contact_id\":null,\"status\":\"open\"}"
       ],
-      "reply": "{\"id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.684142+00\",\"updated_at\":\"2026-11-12 10:10:29.684142+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":null,\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":null,\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
+      "reply": "{\"id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.917666+00\",\"updated_at\":\"2026-11-13 01:32:43.917666+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":null,\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":null,\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
       ],
       "reply": "[]"
     },
@@ -134,21 +134,21 @@
       "method": "db_insert",
       "args": [
         "dm_message",
-        "{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"body\":\"Great, can you put one aside for me?\",\"occurred_at\":\"2025-12-31T23:50:00+0000\",\"delivery_status\":\"received\"}"
+        "{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"body\":\"Great, can you put one aside for me?\",\"occurred_at\":\"2025-12-31T23:50:00+0000\",\"delivery_status\":\"received\"}"
       ],
-      "reply": "{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}"
+      "reply": "{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}"
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"dm\",\"action\":\"received\",\"entityId\":\"21b85180-70f0-40da-a459-2ae43147100b\"}"
+        "{\"entity\":\"dm\",\"action\":\"received\",\"entityId\":\"4683315b-c35c-4140-b4fb-12495a0584fd\"}"
       ]
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
       ],
       "reply": "[]"
     },
@@ -156,15 +156,15 @@
       "method": "db_insert",
       "args": [
         "dm_message",
-        "{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"body\":\"Hi Camille, it is back next week.\",\"occurred_at\":\"2025-12-31T23:40:00+0000\",\"delivery_status\":\"sent\"}"
+        "{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"body\":\"Hi Camille, it is back next week.\",\"occurred_at\":\"2025-12-31T23:40:00+0000\",\"delivery_status\":\"sent\"}"
       ],
-      "reply": "{\"id\":\"6f053bf1-95f0-4824-8ed1-1b1b2063e6cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.719172+00\",\"updated_at\":\"2026-11-12 10:10:29.719172+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}"
+      "reply": "{\"id\":\"ddb9cdf8-2f02-41c6-9fb1-1c82ee9d0a8d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.94192+00\",\"updated_at\":\"2026-11-13 01:32:43.94192+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
       ],
       "reply": "[]"
     },
@@ -172,114 +172,114 @@
       "method": "db_insert",
       "args": [
         "dm_message",
-        "{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"occurred_at\":\"2025-12-31T23:30:00+0000\",\"delivery_status\":\"received\"}"
+        "{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"occurred_at\":\"2025-12-31T23:30:00+0000\",\"delivery_status\":\"received\"}"
       ],
-      "reply": "{\"id\":\"80170d56-5940-421b-846c-808eb9bc504c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.732285+00\",\"updated_at\":\"2026-11-12 10:10:29.732285+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}"
+      "reply": "{\"id\":\"306c0b3a-2fe7-4bfb-ab5f-a1ea31edfcc7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.950217+00\",\"updated_at\":\"2026-11-13 01:32:43.950217+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}"
     },
     {
       "method": "emit",
       "args": [
-        "{\"entity\":\"dm\",\"action\":\"received\",\"entityId\":\"21b85180-70f0-40da-a459-2ae43147100b\"}"
+        "{\"entity\":\"dm\",\"action\":\"received\",\"entityId\":\"4683315b-c35c-4140-b4fb-12495a0584fd\"}"
       ]
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"6f053bf1-95f0-4824-8ed1-1b1b2063e6cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.719172+00\",\"updated_at\":\"2026-11-12 10:10:29.719172+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"ddb9cdf8-2f02-41c6-9fb1-1c82ee9d0a8d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.94192+00\",\"updated_at\":\"2026-11-13 01:32:43.94192+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"80170d56-5940-421b-846c-808eb9bc504c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.732285+00\",\"updated_at\":\"2026-11-12 10:10:29.732285+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"306c0b3a-2fe7-4bfb-ab5f-a1ea31edfcc7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.950217+00\",\"updated_at\":\"2026-11-13 01:32:43.950217+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"6f053bf1-95f0-4824-8ed1-1b1b2063e6cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.719172+00\",\"updated_at\":\"2026-11-12 10:10:29.719172+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"ddb9cdf8-2f02-41c6-9fb1-1c82ee9d0a8d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.94192+00\",\"updated_at\":\"2026-11-13 01:32:43.94192+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"80170d56-5940-421b-846c-808eb9bc504c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.732285+00\",\"updated_at\":\"2026-11-12 10:10:29.732285+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"306c0b3a-2fe7-4bfb-ab5f-a1ea31edfcc7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.950217+00\",\"updated_at\":\"2026-11-13 01:32:43.950217+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"6f053bf1-95f0-4824-8ed1-1b1b2063e6cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.719172+00\",\"updated_at\":\"2026-11-12 10:10:29.719172+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"ddb9cdf8-2f02-41c6-9fb1-1c82ee9d0a8d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.94192+00\",\"updated_at\":\"2026-11-13 01:32:43.94192+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000002\",\"direction\":\"outbound\",\"author_external_id\":null,\"body\":\"Hi Camille, it is back next week.\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"sent\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:40:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"80170d56-5940-421b-846c-808eb9bc504c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.732285+00\",\"updated_at\":\"2026-11-12 10:10:29.732285+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"306c0b3a-2fe7-4bfb-ab5f-a1ea31edfcc7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.950217+00\",\"updated_at\":\"2026-11-13 01:32:43.950217+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000001\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Hi! Is the 120 cm panel back in stock soon?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:30:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findOne",
-      "args": ["dm_conversation", "21b85180-70f0-40da-a459-2ae43147100b"],
-      "reply": "{\"id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.684142+00\",\"updated_at\":\"2026-11-12 10:10:29.684142+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":null,\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":null,\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
+      "args": ["dm_conversation", "4683315b-c35c-4140-b4fb-12495a0584fd"],
+      "reply": "{\"id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.917666+00\",\"updated_at\":\"2026-11-13 01:32:43.917666+00\",\"platform\":\"facebook\",\"external_id\":\"t_10000000000000001\",\"contact_id\":null,\"participant_handle\":\"Camille Martin\",\"participant_external_id\":\"6000000000000001\",\"participant_display_name\":\"Camille Martin\",\"last_inbound_at\":null,\"last_message_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":null,\"unread_count\":0,\"status\":\"open\",\"suggested_reply\":null,\"approval_request_id\":null,\"metadata\":{\"pageId\":\"104857600000001\"}}"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\"},\"orderBy\":{\"occurred_at\":\"desc\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\"},\"orderBy\":{\"occurred_at\":\"desc\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "dm_message",
-        "{\"where\":{\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"direction\":\"inbound\"},\"orderBy\":{\"occurred_at\":\"desc\"},\"limit\":1}"
+        "{\"where\":{\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"direction\":\"inbound\"},\"orderBy\":{\"occurred_at\":\"desc\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"43e7a6c5-3dc7-4638-88b7-7efb56adbaab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:10:29.701691+00\",\"updated_at\":\"2026-11-12 10:10:29.701691+00\",\"conversation_id\":\"21b85180-70f0-40da-a459-2ae43147100b\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
+      "reply": "[{\"id\":\"e5429872-aeff-47ee-8141-cfb6c0414c1a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:43.927876+00\",\"updated_at\":\"2026-11-13 01:32:43.927876+00\",\"conversation_id\":\"4683315b-c35c-4140-b4fb-12495a0584fd\",\"external_id\":\"m_AaBbCc0000000003\",\"direction\":\"inbound\",\"author_external_id\":null,\"body\":\"Great, can you put one aside for me?\",\"attachments\":[],\"sent_via_tag\":null,\"delivery_status\":\"received\",\"approval_request_id\":null,\"occurred_at\":\"2025-12-31 23:50:00+00\",\"metadata\":{}}]"
     },
     {
       "method": "db_update",
       "args": [
         "dm_conversation",
-        "21b85180-70f0-40da-a459-2ae43147100b",
+        "4683315b-c35c-4140-b4fb-12495a0584fd",
         "{\"last_inbound_at\":\"2025-12-31 23:50:00+00\",\"last_message_snippet\":\"Great, can you put one aside for me?\"}"
       ]
     },
@@ -287,7 +287,7 @@
       "method": "db_update",
       "args": [
         "sync_state",
-        "cb438f92-847d-4403-a26c-e0635974e46d",
+        "a3095fcf-ae46-4c9d-92e4-1f9b322d2095",
         "{\"cursor\":\"eyJwYWdlcyI6eyIxMDQ4NTc2MDAwMDAwMDEiOnsiaHciOiIyMDI1LTEyLTMxVDIzOjUwOjAwLjAwMFoiLCJiZiI6bnVsbH19fQ==\",\"last_synced_at\":\"2026-01-01T00:00:00.000Z\"}"
       ]
     }

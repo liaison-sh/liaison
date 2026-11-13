@@ -12,33 +12,27 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
+      "method": "config_has",
       "args": ["socialMetaAppSecret"],
-      "reply": "social-secret-stand-in-1"
+      "reply": true
     },
     {
-      "method": "crypto_hmacSha256Hex",
+      "method": "crypto_verifyHmacForConfig",
       "args": [
-        "social-secret-stand-in-1",
-        "{\"object\":\"page\",\"entry\":[{\"id\":\"104857600000001\",\"time\":1767225600,\"changes\":[{\"field\":\"feed\",\"value\":{\"from\":{\"id\":\"6000000000000003\",\"name\":\"Lena Okafor\"},\"post\":{\"status_type\":\"added_photos\",\"is_published\":true,\"id\":\"104857600000001_123450000000001\"},\"message\":\"Are these panels safe to mount above a radiator?\",\"post_id\":\"104857600000001_123450000000001\",\"comment_id\":\"123450000000001_998800000000003\",\"created_time\":1767225540,\"item\":\"comment\",\"parent_id\":\"104857600000001_123450000000001\",\"verb\":\"add\"}}]}]}"
-      ],
-      "reply": "f2954283b6a367d75caac331664fd5aa0ff7e165c563ecb5f04f3b5aa4911814"
-    },
-    {
-      "method": "crypto_timingSafeEqual",
-      "args": [
+        "socialMetaAppSecret",
+        "{\"object\":\"page\",\"entry\":[{\"id\":\"104857600000001\",\"time\":1767225600,\"changes\":[{\"field\":\"feed\",\"value\":{\"from\":{\"id\":\"6000000000000003\",\"name\":\"Lena Okafor\"},\"post\":{\"status_type\":\"added_photos\",\"is_published\":true,\"id\":\"104857600000001_123450000000001\"},\"message\":\"Are these panels safe to mount above a radiator?\",\"post_id\":\"104857600000001_123450000000001\",\"comment_id\":\"123450000000001_998800000000003\",\"created_time\":1767225540,\"item\":\"comment\",\"parent_id\":\"104857600000001_123450000000001\",\"verb\":\"add\"}}]}]}",
         "f2954283b6a367d75caac331664fd5aa0ff7e165c563ecb5f04f3b5aa4911814",
-        "f2954283b6a367d75caac331664fd5aa0ff7e165c563ecb5f04f3b5aa4911814"
+        "hex"
       ],
       "reply": true
     },
     {
-      "method": "crypto_hmacSha256Hex",
+      "method": "crypto_hmacSha256Base64ForConfig",
       "args": [
-        "social-secret-stand-in-1",
+        "socialMetaAppSecret",
         "{\"object\":\"page\",\"entry\":[{\"id\":\"104857600000001\",\"time\":1767225600,\"changes\":[{\"field\":\"feed\",\"value\":{\"from\":{\"id\":\"6000000000000003\",\"name\":\"Lena Okafor\"},\"post\":{\"status_type\":\"added_photos\",\"is_published\":true,\"id\":\"104857600000001_123450000000001\"},\"message\":\"Are these panels safe to mount above a radiator?\",\"post_id\":\"104857600000001_123450000000001\",\"comment_id\":\"123450000000001_998800000000003\",\"created_time\":1767225540,\"item\":\"comment\",\"parent_id\":\"104857600000001_123450000000001\",\"verb\":\"add\"}}]}]}"
       ],
-      "reply": "f2954283b6a367d75caac331664fd5aa0ff7e165c563ecb5f04f3b5aa4911814"
+      "reply": "8pVCg7ajZ9dcqsMxZk/Vqg/34WXFY+y18E87WqSRGBQ="
     }
   ]
 }

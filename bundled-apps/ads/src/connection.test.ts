@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { describe, expect, it } from "bun:test"
 import { ToolError } from "@liaison/app-sdk"
 import { getMetaClient, MetaConnectionError } from "./lib/get-client"
+import { META_AUTH } from "./lib/meta-client"
+import { settingsFor } from "./test-connections.testutil"
 
 // ─── Not connected must reach the caller (sandbox boundary) ─────────────────
 //
@@ -24,7 +27,7 @@ describe("MetaConnectionError crosses the sandbox as a safe ToolError", () => {
     const unreadable = await getMetaClient({
       connections: {
         meta: {
-          getCredentials: async () => {
+          getSettings: async () => {
             throw new Error("pg: relation secret_store missing")
           },
         },
@@ -34,7 +37,7 @@ describe("MetaConnectionError crosses the sandbox as a safe ToolError", () => {
     expect(unreadable.message).not.toContain("secret_store")
     for (const ctx of [
       { connections: {} },
-      { connections: { meta: { getCredentials: async () => ({}) } } },
+      { connections: { meta: { getSettings: async () => settingsFor("meta", {}) } } },
     ]) {
       const err = await getMetaClient(ctx).catch((e) => e)
       expect(err.message).not.toMatch(/[–—]|--/)
@@ -45,79 +48,47 @@ describe("MetaConnectionError crosses the sandbox as a safe ToolError", () => {
 
 // ─── FLAT shape (sandbox bridge group) ───────────────────────────────────────
 
-describe("getMetaClient — FLAT shape (getCredentials(name))", () => {
-  it("resolves when flat.getCredentials returns a JSON STRING", async () => {
+describe("getMetaClient — FLAT shape (getSettings(name))", () => {
+  it("reads the readable settings, never the token: the host adds it to every call", async () => {
+    const seen: string[] = []
     const ctx = {
       connections: {
-        getCredentials: async (name: string) => {
-          if (name === "meta") {
-            return JSON.stringify({
+        getSettings: async (name: string) => {
+          seen.push(name)
+          return JSON.stringify(
+            settingsFor("meta", {
               accessToken: "flat_token_123",
               adAccountId: "act_999888777",
               defaultPageId: "page_42",
-            })
-          }
-          return null
+            }),
+          )
         },
       },
     }
     const creds = await getMetaClient(ctx)
-    expect(creds.accessToken).toBe("flat_token_123")
+    expect(seen).toEqual(["meta"])
+    expect(creds.auth).toEqual(META_AUTH)
+    expect(JSON.stringify(creds)).not.toContain("flat_token_123")
     expect(creds.adAccountId).toBe("act_999888777")
     expect(creds.defaultPageId).toBe("page_42")
-  })
-
-  it("resolves when flat.getCredentials returns an OBJECT (not a string)", async () => {
-    const ctx = {
-      connections: {
-        getCredentials: async (name: string) => {
-          if (name === "meta") {
-            return {
-              accessToken: "flat_obj_token",
-              adAccountId: "act_111222333",
-            }
-          }
-          return null
-        },
-      },
-    }
-    const creds = await getMetaClient(ctx)
-    expect(creds.accessToken).toBe("flat_obj_token")
-    expect(creds.adAccountId).toBe("act_111222333")
   })
 })
 
 // ─── RECORD shape (SDK type / unit-test mock) ─────────────────────────────────
 
-describe("getMetaClient — RECORD shape (meta.getCredentials())", () => {
-  it("resolves when record.meta.getCredentials returns an OBJECT", async () => {
+describe("getMetaClient — RECORD shape (meta.getSettings())", () => {
+  it("resolves from an object answer", async () => {
     const ctx = {
       connections: {
         meta: {
-          getCredentials: async () => ({
-            accessToken: "record_token_xyz",
-            adAccountId: "act_444555666",
-          }),
+          getSettings: async () =>
+            settingsFor("meta", { accessToken: "record_token_xyz", adAccountId: "act_444555666" }),
         },
       },
     }
     const creds = await getMetaClient(ctx)
-    expect(creds.accessToken).toBe("record_token_xyz")
+    expect(creds.auth).toEqual(META_AUTH)
     expect(creds.adAccountId).toBe("act_444555666")
-  })
-
-  it("resolves when record.meta.getCredentials returns a JSON STRING", async () => {
-    const ctx = {
-      connections: {
-        meta: {
-          getCredentials: async () =>
-            JSON.stringify({ accessToken: "record_str_token", adAccountId: "act_777888999" }),
-        },
-      },
-    }
-    const creds = await getMetaClient(ctx)
-    expect(creds.accessToken).toBe("record_str_token")
-    expect(creds.adAccountId).toBe("act_777888999")
   })
 })
 
@@ -129,10 +100,10 @@ describe("getMetaClient — missing connection", () => {
     await expect(getMetaClient(ctx)).rejects.toBeInstanceOf(MetaConnectionError)
   })
 
-  it("throws MetaConnectionError when flat.getCredentials returns null", async () => {
+  it("throws MetaConnectionError when flat.getSettings returns null", async () => {
     const ctx = {
       connections: {
-        getCredentials: async () => null,
+        getSettings: async () => null,
       },
     }
     await expect(getMetaClient(ctx)).rejects.toBeInstanceOf(MetaConnectionError)
@@ -142,7 +113,7 @@ describe("getMetaClient — missing connection", () => {
     const ctx = {
       connections: {
         meta: {
-          getCredentials: async () => ({}),
+          getSettings: async () => settingsFor("meta", {}),
         },
       },
     }
@@ -153,7 +124,7 @@ describe("getMetaClient — missing connection", () => {
     const ctx = {
       connections: {
         meta: {
-          getCredentials: async () => ({ adAccountId: "act_123" }),
+          getSettings: async () => settingsFor("meta", { adAccountId: "act_123" }),
         },
       },
     }
@@ -171,10 +142,11 @@ describe("getMetaClient — adAccountId normalization", () => {
     const ctx = {
       connections: {
         meta: {
-          getCredentials: async () => ({
-            accessToken: "tok",
-            adAccountId: "123456789", // bare numeric, no act_ prefix
-          }),
+          getSettings: async () =>
+            settingsFor("meta", {
+              accessToken: "tok",
+              adAccountId: "123456789", // bare numeric, no act_ prefix
+            }),
         },
       },
     }
@@ -186,10 +158,11 @@ describe("getMetaClient — adAccountId normalization", () => {
     const ctx = {
       connections: {
         meta: {
-          getCredentials: async () => ({
-            accessToken: "tok",
-            adAccountId: "act_987654321",
-          }),
+          getSettings: async () =>
+            settingsFor("meta", {
+              accessToken: "tok",
+              adAccountId: "act_987654321",
+            }),
         },
       },
     }

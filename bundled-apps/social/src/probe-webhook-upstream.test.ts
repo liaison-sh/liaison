@@ -5,7 +5,9 @@
 // pins the side it errs on: a subscribed Page reports its newest event that Meta
 // delivers to us, no live sender reports null (never pages), our own outbound
 // activity never counts, and an unreachable Graph reports NO activity at all.
+
 import { describe, expect, test } from "bun:test"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import type { SocialToolCtx } from "./ctx"
 import { probeWebhookUpstreamJob } from "./probe-webhook-upstream"
 import { createMockDb, type MockDb } from "./test-db"
@@ -26,10 +28,8 @@ function ctxWith(
     orgId: "org-1",
     db,
     connections: {
-      getToken: async () => {
-        if (!token) throw new Error("No connected account")
-        return token
-      },
+      // The host lists the active accounts; their token is added to a fetch host-side.
+      getAccounts: async () => (token ? connectedAccountList() : []),
     },
     config: { get: async () => null },
     fetch: async (url: string) => {

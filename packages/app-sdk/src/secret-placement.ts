@@ -166,3 +166,19 @@ export function secretsDeclarationErrors(manifest: unknown): string[] {
   }
   return errors
 }
+
+/**
+ * A platform-minted webhook signing secret in a tool's answer, for the operator
+ * who pastes it into the sender: the tool answers this marker where the value
+ * goes, and the host writes the value in after the run, when the tool's
+ * manifest declaration lists the key in `revealsSecrets` and a connection of
+ * the app declares it as its `webhookSecretConfigKey`. The app's code never
+ * reads the secret (it may say whether one is set with `ctx.config.has`).
+ */
+export interface ConfigSecretReveal {
+  $configSecret: string
+}
+
+export function configSecretReveal(key: string): ConfigSecretReveal {
+  return { $configSecret: key }
+}

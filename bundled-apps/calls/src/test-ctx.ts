@@ -197,7 +197,13 @@ export function makeCtx(overrides?: { config?: Record<string, unknown> }): {
     userId: TEST_USER_ID,
     orgId: TEST_ORG_ID,
     executeTool,
-    config: { get: async (key: string) => spy.config[key] ?? null },
+    config: {
+      get: async (key: string) => spy.config[key] ?? null,
+      has: async (key: string) => {
+        const v = spy.config[key]
+        return v !== undefined && v !== null && v !== ""
+      },
+    },
     logger: noopLogger(),
   } as unknown as CallsCtx
 

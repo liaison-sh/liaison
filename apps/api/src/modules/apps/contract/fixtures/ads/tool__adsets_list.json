@@ -7,15 +7,15 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/120210000000000101/adsets?fields=id%2Cname%2Cstatus%2Ceffective_status%2Ccampaign_id%2Ctargeting%2Cdaily_budget%2Clifetime_budget%2Coptimization_goal%2Cbilling_event%2Cbid_amount&limit=50",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\"}}"
+        "{\"method\":\"GET\",\"headers\":{},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"data\\\":[{\\\"id\\\":\\\"120210000000000201\\\",\\\"name\\\":\\\"FR 25-54 home studio interests\\\",\\\"status\\\":\\\"ACTIVE\\\",\\\"effective_status\\\":\\\"ACTIVE\\\",\\\"campaign_id\\\":\\\"120210000000000101\\\",\\\"daily_budget\\\":\\\"3500\\\",\\\"optimization_goal\\\":\\\"OFFSITE_CONVERSIONS\\\",\\\"billing_event\\\":\\\"IMPRESSIONS\\\",\\\"targeting\\\":{\\\"geo_locations\\\":{\\\"countries\\\":[\\\"FR\\\"]},\\\"age_min\\\":25,\\\"age_max\\\":54}}],\\\"paging\\\":{\\\"cursors\\\":{\\\"before\\\":\\\"QVFIUmFiZA\\\",\\\"after\\\":\\\"QVFIUnpiZA\\\"}}}\"}"
     }

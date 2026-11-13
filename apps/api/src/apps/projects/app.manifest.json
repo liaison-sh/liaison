@@ -445,6 +445,10 @@
       "labelField": "title",
       "handlePrefix": "task",
       "searchable": true,
+      "tableBacking": {
+        "parent": "project",
+        "provider": "taskTableBacking"
+      },
       "pick": {
         "tool": "search",
         "queryParam": "query",

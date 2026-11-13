@@ -24,7 +24,6 @@ describe("db import enforcement", () => {
   const connectionAllowlist = new Set([
     "db/rls.ts",
     "db/privileged.ts",
-    "db/portal-rls.ts", // withPortalContext: the portal role on the request pool, as db/rls.ts does for liaison_rls
     "db/index.ts",
     "infra/events/outbox-worker.ts",
     "modules/health/routes.ts",
@@ -34,19 +33,6 @@ describe("db import enforcement", () => {
     // Throughput bench harness, run by hand and never by a production build or
     // a test suite: it drives the raw pool to measure mail sync writes.
     "tests/bench/mail-sync-throughput.ts",
-    // The relation suite's worlds: they read rows as the database holds them to check that an
-    // event took, outside any request context. Loaded by that suite only.
-    // The deal tests' world: reads rows as the database holds them, loaded by those tests only.
-    "apps/projects/service/__tests__/deal-world.ts",
-    "tests/relations/approval-world.ts",
-    "tests/relations/calendar-world.ts",
-    "tests/relations/company-world.ts",
-    "tests/relations/dashboard-world.ts",
-    "tests/relations/cells.ts",
-    "tests/relations/payments-world.ts",
-    "tests/relations/recurring-world.ts",
-    "tests/relations/routine-world.ts",
-    "tests/relations/thread-world.ts",
     // The app contract fixture recorders' shared helper, run by hand against a provider's sandbox and never by a
     // production build or a suite: they install the app for the contract org with raw SQL.
     "modules/apps/contract/recording-run.test-helpers.ts",
@@ -57,9 +43,6 @@ describe("db import enforcement", () => {
     // Provisioning CLI: the connection's stored credentials are read in a privileged
     // transaction of the org being provisioned, after the plan's org-less precheck.
     "cli/provisioners/connector.ts",
-    // Deal board: the org's time zone (the organizations table is closed to row-level readers)
-    // is read in a privileged transaction of the org the caller passes, one column, no person.
-    "apps/projects/service/deals.ts",
     "modules/security/security-events.ts", // security signals: the org comes from the event the auth path raised; writes the outbox event and reads the account it names
     // Magic-wand proofread/polish assist service — reads org model config + agent
     // keys via system-db (no per-request RLS context), like other host services.
@@ -88,8 +71,6 @@ describe("db import enforcement", () => {
     "modules/auth/oauth-routes.ts",
     "modules/auth/device-flow-routes.ts",
     "modules/apps/runtime.ts",
-    // A stored tool card: a person's card action changes one field of an agent's row (whose write the RLS policy leaves to its author), after the caller's read was checked under their own context.
-    "modules/agent/runtime/tool-card-store.ts",
     // Package store: instance-wide apps_installed rows (no org), read and written by the
     // install, boot repair and peer materialise paths, which run outside any request.
     "modules/apps/package-store.ts",
@@ -176,9 +157,6 @@ describe("db import enforcement", () => {
     // instance `kernel.apps.config` rows, written after the route's
     // kernel:apps:admin check and the manifest configKeys allowlist.
     "modules/apps/app-config.ts",
-    // The one writer of kernel.org_app_features: a member has no write path on the
-    // table, so the row is written privileged after the feature's adminScope is checked.
-    "modules/apps/org-features.ts",
     // Declarative app settings (GET/PATCH /api/apps/:app/settings/org):
     // kernel.organizations is deny-all under RLS, so org-scope values are read
     // and written privileged after the route checks the section's adminScope;
@@ -217,15 +195,6 @@ describe("db import enforcement", () => {
     // lockedUpdateApproval, etc.) — extracted from the per-flow files (decide,
     // cascade, expiry) which were already on this allowlist.
     "modules/approvals/event-data.ts",
-    // Approval routing: reads away ranges and preferences of the people in one org, and moves
-    // the pending requests linked to an item that changed hands, all pinned to that org.
-    "modules/approvals/route-world.ts",
-    // Away days: the one writer of kernel.away_ranges (no member write path), its daily prune,
-    // and the next-in-line column a colleague's read needs, all pinned to one org but the prune.
-    "modules/users/away.ts",
-    // Away days from a person's own calendar: the daily refresh lists every personal primary
-    // calendar and reads each one's stored events in a system transaction of that org.
-    "apps/calendar/away-from-calendar.ts",
     "modules/approvals/expiry.ts",
     "modules/approvals/approving-reaper.ts",
     "modules/approvals/cancel.ts",
@@ -239,10 +208,6 @@ describe("db import enforcement", () => {
     // own across orgs (one bounded, paged scan), then reads one person's requests,
     // agent and permissions by org id before any request actor exists.
     "modules/approvals/reminders.ts",
-    // Routed reminders: the hourly sweep scans pending requests of every org (one bounded,
-    // paged read), then reads one org's routes, deciders and people by org id before any
-    // request actor exists.
-    "modules/approvals/routed-reminders.ts",
     // Phase 13 — compound/sequenced gated operations. The cascade engine, its
     // failure path, and the async-output poll job all run outside any
     // per-request RLS context (decide flow, BullMQ-driven poll/reinvoke).
@@ -261,16 +226,6 @@ describe("db import enforcement", () => {
     // its non-password fields leave.
     "modules/apps/connections/settings.ts",
     "modules/contacts/service.ts",
-    // A company rename rewrites the company name every linked person carries,
-    // and a delete clears the company from deals and pipelines: both run
-    // elevated in the caller's transaction (withElevatableRlsFrom + asAdmin).
-    "modules/contacts/companies.ts",
-    // After a company's manager changed or its manager came back (an event, no request
-    // context): the previous manager's Home row and the admins' unowned rows, by org id.
-    "modules/contacts/company-unowned.ts",
-    // The daily review of prospects silent for three years: one Home row per org for
-    // whoever can act on it, written across orgs by the job, never by a request.
-    "modules/contacts/prospect-retention.ts",
     // A contact's team references are counted privileged (privilegedFrom): the
     // actor cannot read every referencing table, and the answer is a count.
     "modules/contacts/references.ts",
@@ -622,21 +577,8 @@ describe("db import enforcement", () => {
     "cli/export-full.ts",
     "cli/keys-rotate.ts", // operator key rotation: re-encrypts every org's stored secrets in one system transaction
     "tests/helpers/org.ts",
-    // A client company for the tests that create a portal account.
-    "tests/helpers/company.ts",
     "tests/helpers/agent-ctx.ts",
-    // The identity a test org's commercial mail states (one settings key).
-    "tests/helpers/commercial-identity.ts",
-    // Records the lawful basis a commercial test mail needs on its recipient's contact.
-    "tests/helpers/prospect.ts",
     "tests/helpers/import-files.ts",
-    // The relation suite's worlds: an admin's deactivation, a permission read, as the product does.
-    "tests/relations/approval-world.ts",
-    "tests/relations/calendar-world.ts",
-    "tests/relations/company-world.ts",
-    "tests/relations/dashboard-world.ts",
-    "tests/relations/payments-world.ts",
-    "tests/relations/routine-world.ts",
     // The security suite's seeds: the few rows no product path writes (a file on
     // a thread, an undeclared dimension grant, a participant removed). Not
     // loaded by a production build.
@@ -696,13 +638,6 @@ describe("db import enforcement", () => {
     // upserts the caller as a participant under a privileged, org-scoped tx so a
     // non-creator caller is visible under threads_select before posting.
     "modules/threads/contact-primary.ts",
-    // An entity's discussion (a contact's, or any app entity declaring one) is
-    // found or created and the caller seated only after their own RLS proved
-    // they see the entity; it drops its enrolled people when the entity's
-    // sharing changes (they re-enrol by opening it), and is deleted with the
-    // entity: removing other people's participant rows and messages needs the
-    // privileged, org-scoped tx.
-    "modules/threads/entity-discussion.ts",
     // Knowledge content-cache downgrade invalidates cache entries under a
     // privileged, org-scoped tx (the curator role lacks knowledge:cache:manage).
     "apps/knowledge/sources.ts",
@@ -1037,27 +972,6 @@ describe("db import enforcement", () => {
     // kernel.demo_world_marks (an instance table liaison_rls cannot reach),
     // scoped to the demo org the store is answering for.
     "modules/demo/world/commerce-order.ts",
-    // The software world's beats, the same family as the ones above: each
-    // injector writes its fixed live event system-side, or finds the seeded
-    // teammate it acts as; the scenario start writes the visitor's routine,
-    // task and issuer through the seed factories. All are reached only through
-    // the registry, which refuses them outside a visitor demo org.
-    "modules/demo/worlds/saas/support-ticket.ts",
-    "modules/demo/worlds/saas/chat-question.ts",
-    "modules/demo/worlds/saas/sales-email.ts",
-    "modules/demo/worlds/saas/projects-comment.ts",
-    "modules/demo/worlds/saas/knowledge-asks.ts",
-    "modules/demo/worlds/saas/scenario-start.ts",
-    // The software world's card-payments stand-in: the demo seeder installs the
-    // org-owned connection row (sentinel key only, no caller input), and the
-    // stand-in reads the org's own mirror rows on the handle scoped to that org.
-    "modules/demo/worlds/saas/payments/connection.ts",
-    "modules/demo/worlds/saas/payments/mirror-source.ts",
-    // The software world's seed layer and the payments mirror factory write
-    // what the app's import and webhooks would have written, as the seed
-    // engine's other factories do (seed-org.ts refuses a non-demo org first).
-    "seed/worlds/saas/layer.ts",
-    "seed/factories/payments/mirror.ts",
     // The demo tier of the seed engine creates a demo org and fills it with the
     // whole world through the product's services, as its bootstrap register
     // and system jobs are privileged; every entry refuses an org that is not a
@@ -1137,9 +1051,6 @@ describe("db import enforcement", () => {
     "seed/factories/attention/events.ts",
     "seed/factories/threads/history.ts",
     "seed/factories/timeline/entries.ts",
-    // The timeline's speed test: three years of a large customer's history in
-    // one org, set-based, which only time produces.
-    "seed/factories/timeline/activity-scale-world.ts",
     "seed/tiers/lively/seed-lively.ts",
     // The standard tier (the test-lane world) seeds its fixed QA people,
     // knowledge and resting rows into the org it created or adopted: named
@@ -1572,24 +1483,6 @@ describe("db import enforcement", () => {
     // Sender contacts resolved during mail sync (no actor), bound to the org
     // and the mailbox's audience.
     "modules/mail/sender-contacts.ts",
-    // The send check reads other mailboxes' envelopes on purpose: a reply in a
-    // colleague's mailbox still stops a send. Reads only, and it names no text.
-    "modules/mail/send-guard.ts",
-    // A reply asking to stop arrives in mail sync (no actor): it reads the org's own addresses and
-    // the opt-out requests already waiting, then raises one for the mailbox's owner to decide.
-    "modules/mail/optout-wording.ts",
-    // The opt-out list is read for whoever sends (a fingerprint lookup, no address kept), and an
-    // opt-out recorded by the system (a link, a reply) has no person to act as.
-    "modules/mail/suppressions.ts",
-    // A commercial mail's opt-out link: minted on the send path and resolved by the public
-    // opt-out page, which has no person and learns the org from the link's row (a fingerprint,
-    // no address kept); the org's commercial identity is read for whoever sends.
-    "modules/mail/commercial-footer.ts",
-    // A commercial send's record, written once the provider accepted it, for whoever sent it
-    // (an agent's approved mail or a person's own): the audit row and the notice mark.
-    "modules/mail/commercial-send-record.ts",
-    // Waiting drafts to an address that opted out are cancelled, whoever staged them.
-    "modules/approvals/withdraw-on-events.ts",
     // The new-mail producer off the outbox (no actor): the account, the
     // recipient's locale (kernel.organizations) and the replay check.
     "modules/notifications/mail-producer.ts",
@@ -1656,11 +1549,6 @@ describe("db import enforcement", () => {
     // thread with replies before any API exists to seed through. Not loaded by
     // a production build.
     "modules/threads/__fixtures__/reply-thread-fixture.ts",
-    // Test fixture, the same category: it seeds a month-end run's org, schedules
-    // and drafts, then reads back run rows and pending approvals across the
-    // invoicing app schema and the kernel to assert what each edit wrote. Not
-    // loaded by a production build.
-    "tests/integration/run-edit-fixture.ts",
   ])
 
   // Allowlist: only these files may reference _publishEventInternal

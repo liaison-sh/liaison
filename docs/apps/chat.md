@@ -56,6 +56,7 @@ A channel notifies you on your phone and computer only when a post mentions you 
 ## Work with agents in chat
 
 - Message an agent directly: pick it under **Agents** in **New message**. It answers every message.
+- **A question from a page.** Some pages (a project's budget panel) put a question in your conversation with your agent, ready to send. Nothing is sent until you press Send; you can change the words first.
 - Bring an agent into a group or channel: @-mention it. The agent replies in that conversation.
 - The agent's turn shows under your message as soon as the server takes it on, before its first words. Ask it something new while it still answers and both turns show, each with its own progress, until each answer lands.
 - In a new workspace, the first administrator's conversation with their agent opens with a **Set up your space** card: what is set up, what is left, and a link to the demo. See [Set up a new workspace with your agent](../agents/how-agents-work.md#set-up-a-new-workspace-with-your-agent).

@@ -42,6 +42,7 @@ import {
   labelFilterCondition,
   resolveLabelInput,
 } from "./task-labels"
+import { attachTaskTimeKeys } from "./task-time-keys"
 
 export type { AssigneeRef, Task, TaskSummary } from "./task-detail"
 
@@ -404,7 +405,9 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
       orgId,
     })
 
-    return detail
+    // The time keys go on the answer only, never on the event every member's socket receives.
+    const [answer] = await attachTaskTimeKeys(innerTx as RlsClient, orgId, [{ ...detail }])
+    return answer ?? detail
   })
 }
 
@@ -469,7 +472,8 @@ export async function getTask(args: GetTaskArgs): Promise<TaskDetail> {
   if (args.viewerId && detail.threadId) {
     await ensureThreadParticipant(args.tx, args.orgId, detail.threadId, args.viewerId)
   }
-  return detail
+  const [withTime] = await attachTaskTimeKeys(args.tx, args.orgId, [detail])
+  return withTime ?? detail
 }
 
 /**
@@ -641,6 +645,7 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
     task.checklist = taskItems && taskItems.length > 0 ? checklistStatus(levels, taskItems) : null
   }
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   if (view === "tree") {
     items.sort((a, b) => a.depth - b.depth || a.position - b.position)
   }
@@ -786,7 +791,9 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
       orgId,
     })
 
-    return { detail, assigned }
+    // The time keys go on the answer only, never on the event every member's socket receives.
+    const [answer] = await attachTaskTimeKeys(innerTx as RlsClient, orgId, [{ ...detail }])
+    return { detail: answer ?? detail, assigned }
   })
   if (assigned) {
     // Its own transaction, after the write: a failure is logged and the assignment stands.
@@ -924,6 +931,7 @@ export async function listTasksAcrossProjects(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   // Unpaginated (no LIMIT) — the result IS the full matching set, so the sweep
   // count is exactly items.length. Returned as `totalCount` for the uniform
   // contacts/users/mail/tickets/projects convention so a sweep over "my overdue
@@ -1070,6 +1078,7 @@ export async function listProjectTasks(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   return { items, totalCount }
 }
 

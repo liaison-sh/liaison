@@ -46,7 +46,14 @@ describe("TookField", () => {
           onSaved={() => {}}
           onOff={() => {}}
         />
-        <TookField api={api} taskId="t1" datedHours={false} editable onOff={() => {}} />
+        <TookField
+          totalMinutes={0}
+          api={api}
+          taskId="t1"
+          datedHours={false}
+          editable
+          onOff={() => {}}
+        />
       </>
     ))
     const chip = await screen.findByTestId("task-timebox-chip")
@@ -65,7 +72,16 @@ describe("TookField", () => {
 
   it("an unreadable entry keeps the text and saves nothing", async () => {
     const { api, calls } = fakeApi(() => ({ mine: [], totalMinutes: 0 }))
-    render(() => <TookField api={api} taskId="t1" datedHours={false} editable onOff={() => {}} />)
+    render(() => (
+      <TookField
+        totalMinutes={0}
+        api={api}
+        taskId="t1"
+        datedHours={false}
+        editable
+        onOff={() => {}}
+      />
+    ))
     const input = (await screen.findByTestId("task-took-input")) as HTMLInputElement
     fireEvent.input(input, { target: { value: "a while" } })
     fireEvent.keyDown(input, { key: "Enter" })
@@ -81,7 +97,16 @@ describe("TookField", () => {
     const { api, calls } = fakeApi((c) =>
       c.tool === "task_time_get" ? { mine: [], totalMinutes: 0 } : { totalMinutes: 90 },
     )
-    render(() => <TookField api={api} taskId="t1" datedHours={false} editable onOff={() => {}} />)
+    render(() => (
+      <TookField
+        totalMinutes={0}
+        api={api}
+        taskId="t1"
+        datedHours={false}
+        editable
+        onOff={() => {}}
+      />
+    ))
     const input = await screen.findByTestId("task-took-input")
     fireEvent.input(input, { target: { value: "1h30" } })
     fireEvent.keyDown(input, { key: "Enter" })
@@ -101,7 +126,16 @@ describe("TookField", () => {
       mine: [mine({ enteredVia: "mcp" })],
       totalMinutes: 300,
     }))
-    render(() => <TookField api={api} taskId="t1" datedHours={false} editable onOff={() => {}} />)
+    render(() => (
+      <TookField
+        api={api}
+        taskId="t1"
+        datedHours={false}
+        editable
+        totalMinutes={300}
+        onOff={() => {}}
+      />
+    ))
     const input = (await screen.findByTestId("task-took-input")) as HTMLInputElement
     await waitFor(() => expect(input.value).toBe("2 h"))
     expect(screen.getByTestId("task-took-total").textContent).toBe("5 h so far")
@@ -112,7 +146,9 @@ describe("TookField", () => {
     const { api, calls } = fakeApi((c) =>
       c.tool === "task_time_get" ? { mine: [mine()], totalMinutes: 120 } : { totalMinutes: 180 },
     )
-    render(() => <TookField api={api} taskId="t1" datedHours editable onOff={() => {}} />)
+    render(() => (
+      <TookField totalMinutes={0} api={api} taskId="t1" datedHours editable onOff={() => {}} />
+    ))
     const date = await screen.findByTestId("task-took-date")
     fireEvent.input(date, { target: { value: "2026-11-10" } })
     const input = screen.getByTestId("task-took-input") as HTMLInputElement
@@ -133,7 +169,9 @@ describe("TookField", () => {
     const { api, calls } = fakeApi((c) =>
       c.tool === "task_time_get" ? { mine: [], totalMinutes: 0 } : { code: "planning_off" },
     )
-    render(() => <TookField api={api} taskId="t1" datedHours={false} editable onOff={onOff} />)
+    render(() => (
+      <TookField totalMinutes={0} api={api} taskId="t1" datedHours={false} editable onOff={onOff} />
+    ))
     const input = await screen.findByTestId("task-took-input")
     fireEvent.input(input, { target: { value: "1 h" } })
     fireEvent.keyDown(input, { key: "Enter" })
@@ -144,7 +182,14 @@ describe("TookField", () => {
   it("without the write scope the field only reads", async () => {
     const { api } = fakeApi(() => ({ mine: [mine()], totalMinutes: 120 }))
     render(() => (
-      <TookField api={api} taskId="t1" datedHours={false} editable={false} onOff={() => {}} />
+      <TookField
+        totalMinutes={0}
+        api={api}
+        taskId="t1"
+        datedHours={false}
+        editable={false}
+        onOff={() => {}}
+      />
     ))
     const value = await screen.findByTestId("task-took-value")
     await waitFor(() => expect(value.textContent).toBe("2 h"))

@@ -2,8 +2,8 @@
 // The "Time and budgets" switch of the project edit form (and of New project): one row, off by
 // default, with one line saying what off does. A project turned on reads "On since <date>, turned
 // on by <name>" and, under the switch, takes its plan: dated hours, how it is billed, a rate and
-// who bills it. The plan fields start as "keep as is": the server holds the plan, the form sends
-// only what the person changed. Nothing here is an organisation switch.
+// who bills it. The plan fields start from the plan the server holds, read back once; the form
+// sends only what the person changed. Nothing here is an organisation switch.
 import { type Component, createSignal, For, onMount, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { hasScope } from "~/modules/auth/auth-store"
@@ -12,16 +12,20 @@ import { fetchAssignableMembers } from "~/modules/members/assignable-members"
 import type { ProjectDetail } from "~/modules/projects/project-store"
 import {
   budgetFor,
+  readPlan,
   savePlan,
   saveRate,
   type TimeOutcome,
   type TimePlanPatch,
+  type TimePlanRead,
 } from "~/modules/projects/time-budgets"
 
 const BASES = ["hourly", "daily", "fixed", "retainer", "none"] as const
 type Basis = (typeof BASES)[number]
 
 export interface TimePlanDraft {
+  /** The plan as the server holds it, once read (null before, or when it could not be read). */
+  loaded: () => TimePlanRead | null
   dated: () => boolean
   basis: () => Basis | ""
   rate: () => string
@@ -34,18 +38,41 @@ export interface TimePlanDraft {
   apply: (api: ApiClient, projectId: string) => Promise<string | null>
 }
 
-export function createTimePlanDraft(project: ProjectDetail): TimePlanDraft {
+const rateText = (rate: number | null | undefined): string =>
+  rate === null || rate === undefined ? "" : String(rate)
+
+/**
+ * The plan fields of a project using time and budgets. They start from the plan the server
+ * holds (read back once), so the form shows the real basis, rate and biller; until that read
+ * answers they read "keep as is", and only what the person changed is sent.
+ */
+export function createTimePlanDraft(project: ProjectDetail, api?: ApiClient): TimePlanDraft {
   const known = budgetFor(project.id)
-  const datedBefore = known?.status === "ready" ? known.data.datedHours : false
-  const [dated, setDated] = createSignal(datedBefore)
+  const [loaded, setLoaded] = createSignal<TimePlanRead | null>(null)
+  const datedBefore = () =>
+    loaded()?.datedHours ?? (known?.status === "ready" ? known.data.datedHours : false)
+  const [dated, setDated] = createSignal(datedBefore())
   const [basis, setBasis] = createSignal<Basis | "">("")
   const [rate, setRate] = createSignal("")
   const [biller, setBiller] = createSignal("")
+  if (api && project.timeBudgets === true) {
+    void readPlan(api, project.id).then((out) => {
+      if (out.kind !== "ok") return
+      setLoaded(out.data)
+      setDated(out.data.datedHours)
+      setBasis(out.data.basis)
+      setRate(rateText(out.data.rate))
+      setBiller(out.data.billerId ?? "")
+    })
+  }
   const apply = async (api: ApiClient, projectId: string): Promise<string | null> => {
+    const before = loaded()
     const patch: TimePlanPatch = {}
-    if (dated() !== datedBefore) patch.datedHours = dated()
-    if (basis()) patch.basis = basis() as Basis
-    if (biller()) patch.billerId = biller()
+    if (dated() !== datedBefore()) patch.datedHours = dated()
+    if (basis() && basis() !== (before?.basis ?? "")) patch.basis = basis() as Basis
+    if (before ? biller() !== (before.billerId ?? "") : biller() !== "") {
+      patch.billerId = biller() || null
+    }
     const failed = <T,>(out: TimeOutcome<T>): string | null =>
       out.kind === "error" ? out.message : out.kind === "off" ? "off" : null
     if (Object.keys(patch).length > 0) {
@@ -53,7 +80,7 @@ export function createTimePlanDraft(project: ProjectDetail): TimePlanDraft {
       if (msg) return msg
     }
     const typedRate = rate().trim().replace(",", ".")
-    if (typedRate !== "") {
+    if (typedRate !== "" && typedRate !== rateText(before?.rate)) {
       const n = Number(typedRate)
       if (!Number.isFinite(n) || n < 0) return "invalid-rate"
       const msg = failed(await saveRate(api, projectId, n))
@@ -61,7 +88,7 @@ export function createTimePlanDraft(project: ProjectDetail): TimePlanDraft {
     }
     return null
   }
-  return { dated, basis, rate, biller, setDated, setBasis, setRate, setBiller, apply }
+  return { loaded, dated, basis, rate, biller, setDated, setBasis, setRate, setBiller, apply }
 }
 
 export const TimeBudgetsSwitch: Component<{
@@ -91,6 +118,13 @@ export const TimeBudgetsSwitch: Component<{
       .catch(() => {})
   })
   const canRate = () => hasScope("projects:money:write")
+  // The current biller stays choosable even when the member list does not hold them.
+  const billerOptions = (plan: TimePlanDraft) => {
+    const held = plan.loaded()
+    const list = members()
+    if (!held?.billerId || list.some((m) => m.id === held.billerId)) return list
+    return [{ id: held.billerId, name: held.billerName ?? held.billerId }, ...list]
+  }
 
   return (
     <div data-testid={`${props.idPrefix}.time-budgets`} class="flex flex-col gap-1.5">
@@ -137,7 +171,9 @@ export const TimeBudgetsSwitch: Component<{
                 onChange={(e) => plan().setBasis(e.currentTarget.value as Basis | "")}
                 class="rounded-sm border border-border bg-bg px-2 py-1 text-[12.5px] text-text"
               >
-                <option value="">{i18n.t("projects.time.keepAsIs")}</option>
+                <Show when={!plan().loaded()}>
+                  <option value="">{i18n.t("projects.time.keepAsIs")}</option>
+                </Show>
                 <For each={BASES}>
                   {(b) => <option value={b}>{i18n.t(`projects.time.basisOption.${b}`)}</option>}
                 </For>
@@ -165,8 +201,18 @@ export const TimeBudgetsSwitch: Component<{
                 onChange={(e) => plan().setBiller(e.currentTarget.value)}
                 class="rounded-sm border border-border bg-bg px-2 py-1 text-[12.5px] text-text"
               >
-                <option value="">{i18n.t("projects.time.keepAsIs")}</option>
-                <For each={members()}>{(m) => <option value={m.id}>{m.name}</option>}</For>
+                <option value="">
+                  {plan().loaded()
+                    ? i18n.t("projects.time.billerNone")
+                    : i18n.t("projects.time.keepAsIs")}
+                </option>
+                <For each={billerOptions(plan())}>
+                  {(m) => (
+                    <option value={m.id} selected={m.id === plan().biller()}>
+                      {m.name}
+                    </option>
+                  )}
+                </For>
               </select>
             </label>
           </div>

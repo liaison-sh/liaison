@@ -1747,6 +1747,14 @@
     "collection_manual": {
       "one": "encaissement à déclarer sur votre plateforme",
       "other": "encaissements à déclarer sur votre plateforme"
+    },
+    "first_on": {
+      "one": "projet qui utilise désormais le temps et les budgets",
+      "other": "projets qui utilisent désormais le temps et les budgets"
+    },
+    "dated_on": {
+      "one": "projet qui utilise désormais les heures datées",
+      "other": "projets qui utilisent désormais les heures datées"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",

@@ -72,15 +72,16 @@ const budget = {
   datedHours: false,
 }
 
-function apiFor() {
+function apiFor(read: Record<string, unknown> = task) {
   const calls: string[] = []
   const api = {
     post: vi.fn(async (path: string, body: { toolName?: string; params?: unknown }) => {
-      if (path === "/apps/tools/projects:get") return task
+      if (path === "/apps/tools/projects:get") return read
       const tool = body.toolName?.replace("projects:", "") ?? ""
       calls.push(tool)
-      if (tool === "task_time_get") return { mine: [], totalMinutes: 90 }
-      if (tool === "update") return { ...task, timeboxMinutes: 600, realTotalMinutes: 90 }
+      // The viewer's own entries only: the task's total comes with the task.
+      if (tool === "task_time_get") return { mine: [], totalMinutes: 0 }
+      if (tool === "update") return { ...task, timeboxMinutes: 1, realTotalMinutes: 1 }
       if (tool === "budget_get") return budget
       return {}
     }),
@@ -117,13 +118,13 @@ describe("TaskDetail time and budgets", () => {
     expect(calls).toEqual([])
   })
 
-  it("a task of a project that uses it shows the chip with its timebox and the Took field with its total", async () => {
+  it("a task of a project that uses it shows the chip and the total the task itself carries, with no write", async () => {
     projectStore._setForTest({
       projectId: "p1",
       current: project({ timeBudgets: true }),
       tasks: [],
     })
-    const { api } = apiFor()
+    const { api, calls } = apiFor({ ...task, timeboxMinutes: 600, realTotalMinutes: 90 })
     mount(api)
     await waitFor(() =>
       expect(screen.getByTestId("task-timebox-chip").textContent).toBe("Timebox 10 h"),
@@ -132,6 +133,7 @@ describe("TaskDetail time and budgets", () => {
     await waitFor(() =>
       expect(screen.getByTestId("task-took-total").textContent).toBe("1 h 30 so far"),
     )
+    expect(calls).not.toContain("update")
   })
 
   it("the chip and the field sit in the meta row", async () => {
@@ -140,7 +142,7 @@ describe("TaskDetail time and budgets", () => {
       current: project({ timeBudgets: true }),
       tasks: [],
     })
-    const { api } = apiFor()
+    const { api } = apiFor({ ...task, timeboxMinutes: 600, realTotalMinutes: 90 })
     mount(api)
     const row = await screen.findByTestId("task-detail.meta-row")
     await waitFor(() => expect(row.contains(screen.getByTestId("task-timebox-chip"))).toBe(true))

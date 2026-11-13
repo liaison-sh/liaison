@@ -80,17 +80,6 @@ export interface TaskTime {
 export const readTaskTime = (api: ApiClient, taskId: string) =>
   call<TaskTime>(api, "task_time_get", { taskId })
 
-/** The task's timebox in minutes. `update` with only the task answers the time keys and writes nothing. */
-export async function readTimebox(
-  api: ApiClient,
-  taskId: string,
-): Promise<TimeOutcome<{ timeboxMinutes: number | null }>> {
-  const out = await call<{ timeboxMinutes?: number | null }>(api, "update", { taskId })
-  return out.kind === "ok"
-    ? { kind: "ok", data: { timeboxMinutes: out.data.timeboxMinutes ?? null } }
-    : out
-}
-
 /** Save the timebox as typed ("3 days", "20 h"); null clears it. */
 export async function saveTimebox(
   api: ApiClient,
@@ -142,6 +131,41 @@ export interface TimePlanPatch {
   basis?: "none" | "hourly" | "daily" | "fixed" | "retainer"
   billerId?: string | null
   datedHours?: boolean
+}
+
+/** The plan as its edit form reads it back; the money keys only reach a holder of the money scope. */
+export interface TimePlanRead {
+  projectId: string
+  basis: "none" | "hourly" | "daily" | "fixed" | "retainer"
+  billerId: string | null
+  billerName: string | null
+  datedHours: boolean
+  rate?: number | null
+  fixedPrice?: number | null
+  currency?: string | null
+}
+
+/** Read a project's plan back (REST, under the same money-scope rule as the budget). */
+export async function readPlan(
+  api: ApiClient,
+  projectId: string,
+): Promise<TimeOutcome<TimePlanRead>> {
+  try {
+    const data = await api.get<TimePlanRead>(`/projects/${projectId}/time-plan`, {
+      suppressGlobalError: true,
+    })
+    return { kind: "ok", data }
+  } catch (err) {
+    if (err instanceof ApiError) {
+      if (err.code && OFF_CODES.has(err.code)) return { kind: "off" }
+      return { kind: "error", code: err.code ?? "error", message: err.message }
+    }
+    return {
+      kind: "error",
+      code: "error",
+      message: err instanceof Error ? err.message : String(err),
+    }
+  }
 }
 
 export const savePlan = (api: ApiClient, projectId: string, patch: TimePlanPatch) =>

@@ -37,6 +37,13 @@ export interface Task {
   checklist?: ChecklistStatus | null
   /** Effective labels as the server computed them (own and inherited); absent on optimistic rows. */
   labels?: TaskLabel[]
+  /**
+   * Time keys: the server sends them only on a task of a project using time and budgets.
+   * `realTotalMinutes` is the task's total, with no one's part named.
+   */
+  timeboxMinutes?: number | null
+  realTotalMinutes?: number
+  isMilestone?: boolean
   threadId: string
   createdBy: string
   createdAt: string

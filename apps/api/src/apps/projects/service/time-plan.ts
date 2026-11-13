@@ -9,6 +9,7 @@ import { formatDuration, parseDuration } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
+import { hasScope } from "~/modules/permissions/permissions"
 import { assertPlanningOn, orgUsesTimeBudgets, type PlanningProject } from "./planning"
 import { ProjectsServiceError } from "./statuses"
 import {
@@ -659,6 +660,70 @@ export async function setTimePlan(args: {
     },
     datedTurnedOn,
     message,
+  }
+}
+
+/** The plan as the edit form reads it back; the money keys only for a holder of the money scope. */
+export interface TimePlanRead {
+  projectId: string
+  basis: Basis
+  billerId: string | null
+  billerName: string | null
+  datedHours: boolean
+  rate?: number | null
+  fixedPrice?: number | null
+  currency?: string | null
+}
+
+/**
+ * One project's plan, read back for the form that edits it: basis, who bills, dated hours and,
+ * for a holder of `projects:money:read`, the rate or fixed price. A project that does not use
+ * time and budgets refuses `planning_off`, as every other time read does.
+ */
+export async function getTimePlan(args: {
+  tx: Tx
+  orgId: string
+  scopes: readonly string[]
+  projectId: string
+}): Promise<TimePlanRead> {
+  const { tx, orgId, scopes, projectId } = args
+  const project = await loadPlanningProject(tx, orgId, projectId)
+  requirePlanning(orgId, project, scopes)
+  const plan = extractRows<{
+    basis: Basis | null
+    biller_id: string | null
+    biller_name: string | null
+    dated_hours: boolean | null
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT tp.basis, tp.biller_id::text AS biller_id, u.name AS biller_name, tp.dated_hours
+        FROM ${projectsRel("project_time_plan")} tp
+        LEFT JOIN ${kernelRel("users")} u ON u.id = tp.biller_id AND u.org_id = tp.org_id
+       WHERE tp.project_id = ${project.id}::uuid AND tp.org_id = ${orgId}::uuid`),
+  )[0]
+  const out: TimePlanRead = {
+    projectId: project.id,
+    basis: plan?.basis ?? "none",
+    billerId: plan?.biller_id ?? null,
+    billerName: plan?.biller_name ?? null,
+    datedHours: plan?.dated_hours === true,
+  }
+  if (!hasScope("projects:money:read", [...scopes])) return out
+  const terms = extractRows<{
+    rate_minor: string | number | null
+    fixed_price_minor: string | number | null
+    currency: string | null
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT rate_minor, fixed_price_minor, currency FROM ${projectsRel("project_billing_terms")}
+       WHERE project_id = ${project.id}::uuid AND org_id = ${orgId}::uuid`),
+  )[0]
+  const major = (v: string | number | null | undefined) => (v == null ? null : Number(v) / 100)
+  return {
+    ...out,
+    rate: major(terms?.rate_minor),
+    fixedPrice: major(terms?.fixed_price_minor),
+    currency: terms?.currency ?? null,
   }
 }
 

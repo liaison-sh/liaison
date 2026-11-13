@@ -113,6 +113,46 @@ describe("ProjectEditForm time and budgets", () => {
     expect(state.updateProjectFields).not.toHaveBeenCalled()
   })
 
+  it("the plan fields start from the plan the server holds, and only a change is sent", async () => {
+    const post = vi.fn(async () => ({ message: "saved" }))
+    const get = vi.fn(async (path: string) =>
+      path === "/projects/p1/time-plan"
+        ? {
+            projectId: "p1",
+            basis: "hourly",
+            billerId: "u7",
+            billerName: "Noor Kaya",
+            datedHours: true,
+            rate: 95,
+            fixedPrice: null,
+            currency: "EUR",
+          }
+        : {},
+    )
+    const api = { ...apiWith(post), get } as unknown as ApiClient
+    render(() => (
+      <ProjectEditForm api={api} project={project({ timeBudgets: true })} onDone={() => {}} />
+    ))
+    const basis = screen.getByTestId("project-edit.time-plan-basis") as HTMLSelectElement
+    await waitFor(() => expect(basis.value).toBe("hourly"))
+    expect((screen.getByTestId("project-edit.time-plan-rate") as HTMLInputElement).value).toBe("95")
+    expect((screen.getByTestId("project-edit.time-plan-dated") as HTMLInputElement).checked).toBe(
+      true,
+    )
+    const biller = screen.getByTestId("project-edit.time-plan-biller") as HTMLSelectElement
+    await waitFor(() => expect(biller.value).toBe("u7"))
+    expect(biller.selectedOptions[0]?.textContent).toBe("Noor Kaya")
+    expect(basis.textContent).not.toContain("Keep as is")
+
+    fireEvent.change(basis, { target: { value: "daily" } })
+    fireEvent.click(screen.getByTestId("project-edit.save"))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect((post.mock.calls[0] as unknown as [string, unknown])[1]).toEqual({
+      toolName: "projects:time_plan_set",
+      params: { projectId: "p1", basis: "daily" },
+    })
+  })
+
   it("the rate field is absent without the money scope", () => {
     state.granted = new Set(["projects:projects:write"])
     render(() => (

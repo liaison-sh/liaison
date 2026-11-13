@@ -44,6 +44,7 @@ import {
   updateTask,
 } from "~/apps/projects/service/tasks"
 import { awaitTimeFeatureSync, scheduleTimeBudgetsSync } from "~/apps/projects/service/time-feature"
+import { getTimePlan } from "~/apps/projects/service/time-plan"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
 import { extractRlsContext, withRequestRls } from "~/lib/request-rls"
@@ -409,6 +410,15 @@ export const projectsRoutes = new Hono<AppEnv>()
       }
       throw err
     }
+  })
+  // The project's time and budgets plan, read back for its edit form. The money keys only reach
+  // a holder of the money scope; a project that does not use it answers planning_off.
+  .get("/:projectId/time-plan", scopeProjectsRead, async (c) => {
+    const projectId = c.req.param("projectId")
+    const orgId = c.get("orgId")
+    const scopes = [...(c.get("scopes") ?? [])]
+    const result = await withRequestRls(c, (tx) => getTimePlan({ tx, orgId, scopes, projectId }))
+    return success(c, result)
   })
   // A pipeline's board: stages with their deals, each stage's sum per currency
   // for a reader with deal access, and quiet for a reader who can read mail.

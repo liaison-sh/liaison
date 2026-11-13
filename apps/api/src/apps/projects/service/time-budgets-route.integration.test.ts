@@ -114,6 +114,161 @@ describe("the project routes carry the time and budgets switch", () => {
   })
 })
 
+describe("a task's time keys and the plan read back on the REST routes", () => {
+  const as = async (bearer: string, method: string, path: string, body?: unknown) => {
+    const res = await app.request(`/api/projects${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+    return {
+      status: res.status,
+      body: (await res.json()) as { data?: Record<string, any>; error?: any },
+    }
+  }
+  const TIME_KEYS = ["timeboxMinutes", "realTotalMinutes", "isMilestone"]
+  // A colleague who reads projects and tasks and holds no money scope.
+  const colleague = async () => {
+    const p = await minimal.person(orgId)
+    await minimal.grantScope(p.id, "projects:projects:read")
+    await minimal.grantScope(p.id, "projects:tasks:read")
+    return minimal.sessionOf(p)
+  }
+
+  it("a task of a project using it carries its timebox, total and milestone flag; another project's carries none", async () => {
+    const on = (await rest("POST", "", { name: "Keys on", timeBudgets: true })).body.data!
+    const off = (await rest("POST", "", { name: "Keys off" })).body.data!
+    const onTask = (await rest("POST", `/${on.id}/tasks`, { title: "Planned work" })).body.data!
+    const offTask = (await rest("POST", `/${off.id}/tasks`, { title: "Plain work" })).body.data!
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET timebox_minutes = 720, is_milestone = true
+       WHERE id = ${onTask.id}::uuid`)
+    const member = await colleague()
+    // Two people's time on the task, each said by its author through the tool route: the
+    // reader gets the total, never anyone's row.
+    const took = async (bearer: string, time: string) => {
+      const res = await app.request("/api/apps/run-tool", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          toolName: "projects:task_time_set",
+          params: { taskId: onTask.id, time },
+        }),
+      })
+      expect(res.status, await res.clone().text()).toBe(200)
+    }
+    await took(owner.bearer, "1h30")
+    await minimal.grantScope(member.userId, "projects:tasks:write")
+    await took((await minimal.sessionOf({ id: member.userId, orgId })).bearer, "30 min")
+    const reader = await minimal.sessionOf({ id: member.userId, orgId })
+    const read = (await as(reader.bearer, "GET", `/${on.id}/tasks/${onTask.id}`)).body.data!
+    expect(read.timeboxMinutes).toBe(720)
+    expect(read.realTotalMinutes).toBe(120)
+    expect(read.isMilestone).toBe(true)
+    const text = JSON.stringify(read)
+    expect(text).not.toContain('"userId"')
+    expect(text).not.toMatch(/"minutes":(90|30)\b/)
+
+    const listed = (await as(reader.bearer, "GET", `/${on.id}/tasks`)).body.data!.items as any[]
+    expect(listed.find((t) => t.id === onTask.id)?.realTotalMinutes).toBe(120)
+
+    const plain = (await as(reader.bearer, "GET", `/${off.id}/tasks/${offTask.id}`)).body.data!
+    for (const k of TIME_KEYS) expect(Object.hasOwn(plain, k)).toBe(false)
+    const plainList = (await as(reader.bearer, "GET", `/${off.id}/tasks`)).body.data!.items as any[]
+    for (const k of TIME_KEYS) expect(Object.hasOwn(plainList[0], k)).toBe(false)
+
+    // The edit answers with the keys too, so the open task keeps them.
+    const patched = (
+      await rest("PATCH", `/${on.id}/tasks/${onTask.id}`, { title: "Planned work 2" })
+    ).body.data!
+    expect(patched.timeboxMinutes).toBe(720)
+  })
+
+  it("the cross-project task lists carry Planned only on the rows of a project using it", async () => {
+    const on = (await rest("POST", "", { name: "List on", timeBudgets: true })).body.data!
+    const off = (await rest("POST", "", { name: "List off" })).body.data!
+    const a = (await rest("POST", `/${on.id}/tasks`, { title: "Sized", assigneeId: owner.userId }))
+      .body.data!
+    const b = (
+      await rest("POST", `/${off.id}/tasks`, { title: "Unsized", assigneeId: owner.userId })
+    ).body.data!
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET timebox_minutes = 240 WHERE id = ${a.id}::uuid`)
+    const { listTasksAcrossProjects, listProjectTasks } = await import("./tasks")
+    const { withRlsContext } = await import("~/db/rls")
+    const actor = {
+      actorType: "user" as const,
+      userId: owner.userId,
+      orgId,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    const mine = await withRlsContext(actor, (tx) =>
+      listTasksAcrossProjects({ tx: tx as never, orgId, assigneeId: owner.userId }),
+    )
+    const rowA = mine.items.find((t) => t.id === a.id) as Record<string, unknown> | undefined
+    const rowB = mine.items.find((t) => t.id === b.id) as Record<string, unknown> | undefined
+    expect(rowA?.timeboxMinutes).toBe(240)
+    expect(rowA?.realTotalMinutes).toBe(0)
+    for (const k of TIME_KEYS) expect(Object.hasOwn(rowB ?? {}, k)).toBe(false)
+    const ofOff = await withRlsContext(actor, (tx) =>
+      listProjectTasks({ tx: tx as never, orgId, projectId: off.id }),
+    )
+    for (const k of TIME_KEYS) expect(Object.hasOwn(ofOff.items[0] ?? {}, k)).toBe(false)
+  })
+
+  it("the plan reads back its basis, biller and dated hours, and its rate only with the money scope", async () => {
+    const on = (await rest("POST", "", { name: "Plan read", timeBudgets: true })).body.data!
+    const { setTimePlan, setBillingTerms } = await import("./time-plan")
+    const { withRlsContext } = await import("~/db/rls")
+    const actor = {
+      actorType: "user" as const,
+      userId: owner.userId,
+      orgId,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    await withRlsContext(actor, async (tx) => {
+      await setTimePlan({
+        tx: tx as never,
+        orgId,
+        actorId: owner.userId,
+        scopes: ["*"],
+        input: { projectId: on.id, basis: "hourly", billerId: owner.userId, datedHours: true },
+      })
+      await setBillingTerms({
+        tx: tx as never,
+        orgId,
+        scopes: ["*"],
+        input: { projectId: on.id, rate: 95, currency: "EUR" },
+      })
+    })
+    const full = await rest("GET", `/${on.id}/time-plan`)
+    expect(full.status).toBe(200)
+    expect(full.body.data).toMatchObject({
+      basis: "hourly",
+      billerId: owner.userId,
+      datedHours: true,
+      rate: 95,
+      fixedPrice: null,
+      currency: "EUR",
+    })
+    expect(typeof full.body.data?.billerName).toBe("string")
+
+    const member = await colleague()
+    const hoursOnly = (await as(member.bearer, "GET", `/${on.id}/time-plan`)).body.data!
+    expect(hoursOnly.basis).toBe("hourly")
+    for (const k of ["rate", "fixedPrice", "currency"]) {
+      expect(Object.hasOwn(hoursOnly, k)).toBe(false)
+    }
+
+    const off = (await rest("POST", "", { name: "Plan off" })).body.data!
+    const refused = await rest("GET", `/${off.id}/time-plan`)
+    expect(refused.status).toBe(409)
+    expect(refused.body.error?.code).toBe("planning_off")
+  })
+})
+
 describe("the daily sweep heals the org row", () => {
   it("a lost recompute is corrected both ways from the projects' switches", async () => {
     // A project on with the org row off: the recompute after its commit was lost.

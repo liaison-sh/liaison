@@ -4,6 +4,7 @@ import { hasVendorKey } from "@liaison/shared"
 import { CaseSensitive, Clock, Mic, Paperclip, Plus, X } from "lucide-solid"
 import {
   type Component,
+  createEffect,
   createSignal,
   createUniqueId,
   type JSX,
@@ -30,6 +31,7 @@ import { restoreStaged, StagedAttachmentChips } from "~/modules/files/StagedAtta
 import { useI18n } from "~/modules/i18n/i18n-context"
 import NodeModeMenu from "~/modules/nodes/NodeModeMenu"
 import { useApi } from "~/modules/shell/ApiContext"
+import { consumePrefill, pendingPrefill } from "~/modules/shell/dock-prefill"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { useTabId } from "~/modules/shell/TabVisibilityContext"
 import { useOptionalWs } from "~/modules/shell/WsContext"
@@ -194,6 +196,16 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
   }
 
   let editor: RichEditorHandle | undefined
+  // Words a page put here through `dock.prefill` (shell/dock-prefill.ts): they land in the field
+  // once, caret at the end, and are never sent by it.
+  const [editorReady, setEditorReady] = createSignal(false)
+  createEffect(() => {
+    const p = pendingPrefill(props.threadId)
+    if (!p || !editorReady() || !editor || props.disabled) return
+    consumePrefill(p.n)
+    editor.insertText(p.text)
+    editor.focus()
+  })
   // THE TAKE belongs to the composer: the mic left of Send starts it at every
   // tier, and so does Dictate in the phone sheet, which closes first. While it
   // runs the control line is the recorder (RecorderBar.tsx), under the field
@@ -308,6 +320,7 @@ const ComposeBar: Component<ComposeBarProps> = (props) => {
         autofocus={props.autofocus && !props.disabled}
         ref={(handle) => {
           editor = handle
+          setEditorReady(true)
         }}
         aria-label={i18n.t("kernel.writeAMessage")}
         data-testid="compose-editor"

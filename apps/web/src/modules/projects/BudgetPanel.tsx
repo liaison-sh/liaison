@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The project's budget panel: Time, Money, what is not in these numbers, and the dated hours
-// switch. A right rail over the board on a wide workspace (a rail, not a split pane: the board
+// switch, and an ask box that fills the chat's composer. A right rail over the board on a wide workspace (a rail, not a split pane: the board
 // keeps its width) and a block under the budget line on a narrow one. Never a figure for a
 // person, never red when over, no gauge. Every partial figure sits beside its coverage line;
 // without the money scope the panel shows hours only.
@@ -14,6 +14,7 @@ import {
   formatMinutes,
   savePlan,
 } from "~/modules/projects/time-budgets"
+import { dock } from "~/modules/shell/dock-prefill"
 import { DISCUSSION_RAIL_BOTTOM_PAD } from "~/modules/threads/discussion-rail"
 import { Button } from "~/ui/Button"
 
@@ -140,6 +141,62 @@ const Figures: Component<{ data: BudgetData }> = (props) => {
   )
 }
 
+/**
+ * The ask box: a question about this budget goes to the person's own agent. It only fills the
+ * chat's composer (`dock.prefill`) and opens the conversation; the person sends it themselves.
+ */
+const AskBox: Component<{ projectName: string }> = (props) => {
+  const i18n = useI18n()
+  const [text, setText] = createSignal("")
+  const ask = (question: string): void => {
+    const q = question.trim()
+    if (!q) return
+    void dock
+      .prefill(i18n.t("projects.time.askAbout", { project: props.projectName, question: q }))
+      .then(() => setText(""))
+      .catch(() => {})
+  }
+  const suggestions = () => [i18n.t("projects.time.askFits"), i18n.t("projects.time.askCheck")]
+  return (
+    <section data-testid="budget-ask" class="flex flex-col gap-2">
+      <div class="flex flex-wrap gap-1.5">
+        <For each={suggestions()}>
+          {(label, i) => (
+            <button
+              type="button"
+              data-testid={`budget-ask.suggest-${i()}`}
+              onClick={() => ask(label)}
+              class="rounded-sm border border-border-subtle px-2 py-0.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover/50 hover:text-text"
+            >
+              {label}
+            </button>
+          )}
+        </For>
+      </div>
+      <form
+        class="flex items-center gap-1.5"
+        onSubmit={(e) => {
+          e.preventDefault()
+          ask(text())
+        }}
+      >
+        <input
+          type="text"
+          data-testid="budget-ask.input"
+          value={text()}
+          aria-label={i18n.t("projects.time.askLabel")}
+          placeholder={i18n.t("projects.time.askPlaceholder")}
+          onInput={(e) => setText(e.currentTarget.value)}
+          class="min-w-0 flex-1 rounded-sm border border-border bg-bg px-2 py-1 text-[12.5px] text-text outline-none focus:border-accent-muted"
+        />
+        <Button type="submit" variant="outline" size="sm">
+          <span data-testid="budget-ask.submit">{i18n.t("projects.time.askButton")}</span>
+        </Button>
+      </form>
+    </section>
+  )
+}
+
 export const BudgetPanel: Component<{
   api: ApiClient
   projectId: string
@@ -209,6 +266,9 @@ export const BudgetPanel: Component<{
                   </p>
                 </Show>
               </section>
+              <AskBox
+                projectName={(s() as Extract<BudgetState, { status: "ready" }>).data.projectName}
+              />
             </>
           )}
         </Match>

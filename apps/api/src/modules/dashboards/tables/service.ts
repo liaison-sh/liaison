@@ -40,13 +40,17 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import {
+  type BackedDocument,
+  type BackingToolDef,
+  backedReadAccess,
+  backedRowCap,
   backingProblem,
   backingProvider,
   backingSchema,
-  MAX_BACKED_ROWS,
   matchesText,
   matchesWhere,
   mergeOverlay,
+  overlayCollision,
   parseBacking,
   readThroughColumns,
   sortDocs,
@@ -156,13 +160,21 @@ export interface TableInfo {
   updatedAt: string
   /** A backed table (tables/backing.ts): its project, the read-through keys (also in
    *  `columns`, first) and the table's own column keys. */
-  backing?: TableBacking & { readThrough: string[]; own: string[] }
+  backing?: TableBacking & {
+    readThrough: string[]
+    own: string[]
+    /** Why the reader sees no row of it (the app off, a scope it needs), when so. */
+    unavailable?: string
+  }
 }
 
 export interface Row {
   id: string
   cells: Record<string, unknown>
   version: number
+  /** A backed table's row: its record's version, given back as `ifRecordVersion` to change a
+   *  read-through cell (refused with version_conflict when the record changed since). */
+  recordVersion?: string
   updatedAt: string
   updatedBy: Actor
 }
@@ -180,7 +192,14 @@ export interface Change {
 
 export type RowOp =
   | { op: "add"; cells: Record<string, unknown> }
-  | { op: "update"; id: string; ifVersion: number; cells: Record<string, unknown> }
+  | {
+      op: "update"
+      id: string
+      ifVersion: number
+      /** A backed table: the row's `recordVersion`, needed to change a read-through cell. */
+      ifRecordVersion?: string
+      cells: Record<string, unknown>
+    }
   | { op: "delete"; id: string; ifVersion: number }
 
 export type RowResult = Row | { id: string; deleted: true }
@@ -242,6 +261,8 @@ interface LoadedTable {
     /** Null when the reader cannot read the parent record. */
     shape: { columns: Column[] } | null
     readThrough: Column[]
+    /** May the reader read the records (the app's read tool, `tool`, is what the read counts as). */
+    access: { ok: true; tool: BackingToolDef } | { ok: false; reason: string }
   }
 }
 
@@ -250,14 +271,22 @@ export function allColumns(loaded: LoadedTable): Column[] {
   return loaded.backing ? [...loaded.backing.readThrough, ...loaded.columns] : loaded.columns
 }
 
-async function withBacking(t: RlsClient, orgId: string, loaded: LoadedTable): Promise<LoadedTable> {
+async function withBacking(
+  t: RlsClient,
+  viewer: UserContext,
+  loaded: LoadedTable,
+): Promise<LoadedTable> {
   const def = parseBacking(loaded.row.backing)
   if (!def) return loaded
+  const orgId = viewer.orgId
   const provider = await backingProvider(orgId, def)
-  const shape = provider ? await provider.describe(t, orgId, def.parentId) : null
+  const access = provider
+    ? await backedReadAccess(orgId, def, provider, viewer.scopes)
+    : ({ ok: false, reason: `${def.app} offers no such table backing here` } as const)
+  const shape = provider && access.ok ? await provider.describe(t, orgId, def.parentId) : null
   return {
     ...loaded,
-    backing: { def, provider, shape, readThrough: readThroughColumns(def, shape) },
+    backing: { def, provider, shape, readThrough: readThroughColumns(def, shape), access },
   }
 }
 
@@ -277,7 +306,7 @@ export async function loadTable(
     .where(and(eq(dashboardTables.id, id), eq(dashboardTables.orgId, viewer.orgId)))
     .limit(1)
   if (!found) throw new TableError("not_found", "no such table")
-  return withBacking(t, viewer.orgId, {
+  return withBacking(t, viewer, {
     row: found.row,
     canEdit: found.canEdit === true,
     columns: found.row.columns as unknown as Column[],
@@ -317,6 +346,7 @@ function toInfo(viewer: UserContext, loaded: LoadedTable, count: number): TableI
             ...loaded.backing.def,
             readThrough: loaded.backing.readThrough.map((c) => c.key),
             own: loaded.columns.map((c) => c.key),
+            ...(loaded.backing.access.ok ? {} : { unavailable: loaded.backing.access.reason }),
           },
         }
       : {}),
@@ -356,12 +386,20 @@ export async function listTables(viewer: UserContext, tx?: RlsClient): Promise<T
     )
     const out: TableInfo[] = []
     for (const f of found) {
-      const loaded = await withBacking(t, viewer.orgId, {
+      const loaded = await withBacking(t, viewer, {
         row: f.row,
         canEdit: f.canEdit === true,
         columns: f.row.columns as unknown as Column[],
       })
-      out.push(toInfo(viewer, loaded, counts.get(tableCollection(f.row.id)) ?? 0))
+      out.push(
+        toInfo(
+          viewer,
+          loaded,
+          loaded.backing
+            ? await backedCount(t, viewer, loaded)
+            : (counts.get(tableCollection(f.row.id)) ?? 0),
+        ),
+      )
     }
     return out
   })
@@ -375,6 +413,7 @@ export async function getTable(
   assertRead(viewer)
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
+    if (loaded.backing) return toInfo(viewer, loaded, await backedCount(t, viewer, loaded))
     const counts = await rowCounts(t, viewer.orgId, [id])
     return toInfo(viewer, loaded, counts.get(tableCollection(id)) ?? 0)
   })
@@ -669,13 +708,17 @@ async function toRows(
     docs.map((d) => d.id),
   )
   const columns = allColumns(loaded)
-  return docs.map((d) => ({
-    id: d.id,
-    cells: visibleCells(viewer, columns, d.data),
-    version: d.version,
-    updatedAt: d.updatedAt,
-    updatedBy: actors.get(d.id) ?? UNKNOWN_ACTOR,
-  }))
+  return docs.map((d) => {
+    const recordVersion = (d as BackedDocument).recordVersion
+    return {
+      id: d.id,
+      cells: visibleCells(viewer, columns, d.data),
+      version: d.version,
+      ...(recordVersion !== undefined ? { recordVersion } : {}),
+      updatedAt: d.updatedAt,
+      updatedBy: actors.get(d.id) ?? UNKNOWN_ACTOR,
+    }
+  })
 }
 
 export interface ListRowsOptions {
@@ -719,7 +762,7 @@ export async function listRows(
   id: string,
   opts: ListRowsOptions = {},
   tx?: RlsClient,
-): Promise<{ rows: Row[]; nextCursor: string | null }> {
+): Promise<{ rows: Row[]; nextCursor: string | null; truncated?: boolean }> {
   assertRead(viewer)
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
@@ -731,7 +774,8 @@ export async function listRows(
       if (!Number.isInteger(offset) || offset < 0) {
         throw new TableError("invalid_request", "invalid cursor")
       }
-      let docs = await backedDocs(t, viewer, loaded)
+      const backed = await backedDocs(t, viewer, loaded)
+      let docs = backed.docs
       const columns = allColumns(loaded)
       if (opts.where) docs = docs.filter((d) => matchesWhere(d.data, opts.where))
       if (opts.q?.trim()) {
@@ -743,6 +787,8 @@ export async function listRows(
       return {
         rows: await toRows(t, viewer, loaded, page),
         nextCursor: offset + limit < docs.length ? String(offset + limit) : null,
+        // Past the cap of records (backedRowCap) the table reads the first ones only, and says so.
+        ...(backed.truncated ? { truncated: true } : {}),
       }
     }
     const page = await queryDocuments(
@@ -771,10 +817,14 @@ export async function readAllRows(
   const field = orderField(opts.sort, allColumns(loaded))
   checkWhere(opts.where, allColumns(loaded))
   if (loaded.backing) {
-    let docs = await backedDocs(t, viewer, loaded)
+    const backed = await backedDocs(t, viewer, loaded)
+    let docs = backed.docs
     if (opts.where) docs = docs.filter((d) => matchesWhere(d.data, opts.where))
     docs = sortDocs(docs, field, opts.dir ?? "asc")
-    return { docs: docs.slice(0, opts.max), truncated: docs.length > opts.max }
+    return {
+      docs: docs.slice(0, opts.max),
+      truncated: backed.truncated || docs.length > opts.max,
+    }
   }
   return readOwnDocs(t, viewer, loaded, { ...opts, field })
 }
@@ -805,24 +855,86 @@ async function readOwnDocs(
   }
 }
 
-/** A backed table's rows: the project's tasks the reader can read, with their overlay cells. */
+/**
+ * A backed table's rows: the parent's records the reader can read, with their overlay cells. The
+ * read is the app's own read tool's (`readTool`): refused without its scopes or with the app off
+ * (no row), and it taints the calling turn exactly as calling that tool would (scope-taint.ts),
+ * so record data read through a table is judged like a direct read of it.
+ */
 async function backedDocs(
   t: RlsClient,
   viewer: UserContext,
   loaded: LoadedTable,
-): Promise<StoreDocument[]> {
+): Promise<{ docs: BackedDocument[]; truncated: boolean }> {
   const b = loaded.backing!
-  if (!b.provider || !b.shape) return []
+  if (!b.provider || !b.shape || !b.access.ok) return { docs: [], truncated: false }
+  currentRunContext()?.turnScopeAccumulator?.record(b.access.tool)
   const tasks = await b.provider.rows(
     t,
     viewer.orgId,
     b.def.parentId,
     b.readThrough.map((c) => c.key),
-    { max: MAX_BACKED_ROWS },
+    { max: backedRowCap.max + 1 },
   )
-  if (tasks.length === 0) return []
+  const truncated = tasks.length > backedRowCap.max
+  if (truncated) tasks.length = backedRowCap.max
+  if (tasks.length === 0) return { docs: [], truncated }
   const own = await readOwnDocs(t, viewer, loaded, { max: 10_000 })
-  return mergeOverlay(tasks, own.docs, loaded.columns)
+  return { docs: mergeOverlay(tasks, own.docs, loaded.columns), truncated }
+}
+
+/** How many rows a backed table shows its reader: the parent's records they can read. */
+async function backedCount(
+  t: RlsClient,
+  viewer: UserContext,
+  loaded: LoadedTable,
+): Promise<number> {
+  const b = loaded.backing!
+  if (!b.provider || !b.shape || !b.access.ok) return 0
+  const ids = await b.provider.ids(t, viewer.orgId, b.def.parentId, backedRowCap.max)
+  return ids === null ? backedRowCap.max : ids.length
+}
+
+/** One backed row as it is now (the record merged with its overlay), or null when gone. */
+async function backedRow(
+  t: RlsClient,
+  viewer: UserContext,
+  loaded: LoadedTable,
+  rowId: string,
+): Promise<BackedDocument | null> {
+  const b = loaded.backing!
+  if (!b.provider || !b.shape || !b.access.ok) return null
+  const [record] = await b.provider.rows(
+    t,
+    viewer.orgId,
+    b.def.parentId,
+    b.readThrough.map((c) => c.key),
+    { id: rowId, max: 1 },
+  )
+  if (!record) return null
+  const doc = await getDocument(t, storeCaller(viewer), tableCollection(loaded.row.id), rowId)
+  return mergeOverlay([record], doc ? [doc] : [], loaded.columns)[0] ?? null
+}
+
+/**
+ * Removes the overlay documents of records the parent no longer has (a task deleted, archived or
+ * moved, the table re-pointed to another parent). Only when the writer reads every record of the
+ * parent (its read tool's scopes, the parent readable, not past the cap): a record they cannot
+ * see is never taken for a gone one.
+ */
+async function pruneOverlay(t: RlsClient, viewer: UserContext, loaded: LoadedTable): Promise<void> {
+  const b = loaded.backing
+  if (!b?.provider || !b.shape || !b.access.ok) return
+  const ids = await b.provider.ids(t, viewer.orgId, b.def.parentId, backedRowCap.max)
+  if (ids === null) return
+  const live = new Set(ids)
+  const own = await readOwnDocs(t, viewer, loaded, { max: 10_000 })
+  const caller = storeCaller(viewer)
+  const collection = tableCollection(loaded.row.id)
+  for (const doc of own.docs) {
+    if (live.has(doc.id)) continue
+    await deleteDocument(t, caller, collection, doc.id, { ifVersion: doc.version })
+  }
 }
 
 export { toRows as rowsOf }
@@ -917,7 +1029,9 @@ async function currentRow(
   loaded: LoadedTable,
   rowId: string,
 ): Promise<Row | null> {
-  const doc = await getDocument(t, storeCaller(viewer), tableCollection(loaded.row.id), rowId)
+  const doc = loaded.backing
+    ? await backedRow(t, viewer, loaded, rowId)
+    : await getDocument(t, storeCaller(viewer), tableCollection(loaded.row.id), rowId)
   if (!doc) return null
   const [row] = await toRows(t, viewer, loaded, [doc])
   return row ?? null
@@ -1108,12 +1222,11 @@ async function writeBackedRows(
   const b = loaded.backing!
   const tableId = loaded.row.id
   const provider = b.provider
+  if (!b.access.ok) throw new TableError("forbidden", `this table's rows: ${b.access.reason}`)
   if (!provider || !b.shape) {
     throw new TableError("not_found", `the table's ${b.def.app} record is not one you can read`)
   }
-  const keys = b.readThrough.map((c) => c.key)
-  const recordOf = async (id: string) =>
-    (await provider.rows(t, viewer.orgId, b.def.parentId, keys, { id, max: 1 }))[0] ?? null
+  const readKeys = b.readThrough.map((c) => c.key)
   const readThrough = new Set(b.readThrough.map((c) => c.key))
   const audience = await tableAudience(viewer.orgId, loaded.row)
   const caller = storeCaller(viewer)
@@ -1158,12 +1271,27 @@ async function writeBackedRows(
           ? validateCells(loaded.columns, ownCells, { full: op.op === "add", members })
           : {}
       let rowId: string
+      const writesRecord = Object.keys(taskCells).length > 0
       if (op.op === "add") {
         rowId = await provider.write(t, viewer, b.def.parentId, taskCells, null)
       } else {
         rowId = op.id
-        if (!(await recordOf(rowId))) {
-          throw new TableError("not_found", `${at}: no row '${rowId}'`, { rowId })
+        if (writesRecord && typeof op.ifRecordVersion !== "string") {
+          throw new TableError(
+            "invalid_request",
+            `${at}: changing ${Object.keys(taskCells).join(", ")} needs ifRecordVersion, the row's recordVersion from your read`,
+            { rowId },
+          )
+        }
+        // Held until the write commits: a change made in the app meanwhile waits, then is seen.
+        const [record] = await provider.rows(t, viewer.orgId, b.def.parentId, readKeys, {
+          id: rowId,
+          max: 1,
+          lock: writesRecord,
+        })
+        if (!record) throw new TableError("not_found", `${at}: no row '${rowId}'`, { rowId })
+        if (writesRecord && record.version !== op.ifRecordVersion) {
+          throw await conflict(t, viewer, loaded, rowId)
         }
       }
       await lockRow(t, tableId, rowId)
@@ -1196,14 +1324,7 @@ async function writeBackedRows(
           audience,
         })
       }
-      const record = await recordOf(rowId)
-      const [merged] = mergeOverlay(
-        record ? [record] : [],
-        [await getDocument(t, caller, collection, rowId)].filter(
-          (d): d is StoreDocument => d !== null,
-        ),
-        loaded.columns,
-      )
+      const merged = await backedRow(t, viewer, loaded, rowId)
       if (!merged) throw new TableError("not_found", `${at}: no row '${rowId}'`, { rowId })
       const [row] = await toRows(t, viewer, loaded, [merged])
       results.push(keys.length > 0 ? { ...row!, updatedBy: actorNow(viewer, writer) } : row!)
@@ -1241,6 +1362,7 @@ async function writeBackedRows(
   }
   await bumpGeneration(t, tableId)
   await pruneChanges(t, viewer.orgId, tableId, ops)
+  await pruneOverlay(t, viewer, loaded)
   return results
 }
 
@@ -1438,15 +1560,23 @@ export async function undoChange(
       let rowVersion: number | null
       let keys: string[]
       if (change.before === null) {
-        // Undo a create (or an undo that re-created): the row goes.
+        // Undo a create (or an undo that re-created): the row goes. A backed table's row is its
+        // record's: undoing its first own-column write empties its own cells, the row stays.
         if (!doc) throw await conflict(t, viewer, loaded, change.rowId)
         await deleteDocument(t, caller, collection, change.rowId, { ifVersion: doc.version })
         before = doc.data
         after = null
         rowVersion = null
         keys = Object.keys(doc.data).sort()
-        action = "deleted"
-        result = { id: change.rowId, deleted: true }
+        const stays = loaded.backing ? await backedRow(t, viewer, loaded, change.rowId) : null
+        if (stays) {
+          action = "updated"
+          const [row] = await toRows(t, viewer, loaded, [stays])
+          result = { ...row!, updatedBy: actorNow(viewer, writer) }
+        } else {
+          action = "deleted"
+          result = { id: change.rowId, deleted: true }
+        }
       } else if (change.after === null) {
         // Undo a delete: the row comes back with its cells and id, if they still fit the columns.
         if (doc) throw await conflict(t, viewer, loaded, change.rowId)
@@ -1459,7 +1589,7 @@ export async function undoChange(
         rowVersion = written.version
         keys = Object.keys(written.data).sort()
         action = "created"
-        result = (await toRowsNow(viewer, loaded, written, writer))!
+        result = (await toRowsNow(t, viewer, loaded, written, writer))!
       } else {
         if (!doc) throw await conflict(t, viewer, loaded, change.rowId)
         const next = applyCells(doc.data, await undoCells(t, viewer, loaded, change.before, false))
@@ -1471,7 +1601,7 @@ export async function undoChange(
         after = pick(next, keys)
         rowVersion = written.version
         action = "updated"
-        result = (await toRowsNow(viewer, loaded, written, writer))!
+        result = (await toRowsNow(t, viewer, loaded, written, writer))!
       }
       const newChangeId = await recordChange(t, viewer, writer, {
         tableId,
@@ -1532,11 +1662,18 @@ async function undoCells(
 }
 
 async function toRowsNow(
+  t: RlsClient,
   viewer: UserContext,
   loaded: LoadedTable,
   doc: StoreDocument,
   writer: Writer,
 ): Promise<Row> {
+  // A backed table's row is its record merged with the overlay just written.
+  const merged = loaded.backing ? await backedRow(t, viewer, loaded, doc.id) : null
+  if (merged) {
+    const [row] = await toRows(t, viewer, loaded, [merged])
+    return { ...row!, updatedBy: actorNow(viewer, writer) }
+  }
   return {
     id: doc.id,
     cells: visibleCells(viewer, loaded.columns, doc.data),
@@ -1867,13 +2004,13 @@ export async function updateTable(
           ? parseBackingInput(input.backing)
           : parseBacking(loaded.row.backing)
       if (input.backing !== undefined) set.backing = backing
-      if (backing && (input.backing !== undefined || input.columns)) {
-        await checkBacking(
-          t,
-          viewer,
-          backing,
-          (set.columns as unknown as Column[] | undefined) ?? loaded.columns,
-        )
+      const own = (set.columns as unknown as Column[] | undefined) ?? loaded.columns
+      if (backing && input.backing !== undefined) await checkBacking(t, viewer, backing, own)
+      else if (backing && input.columns) {
+        // A columns-only change checks only its own keys against the read-through ones: a field
+        // the parent retired since must not block every later column change.
+        const clash = overlayCollision(backing, own)
+        if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
       }
       let saved: DashboardTableRow
       try {
@@ -1898,8 +2035,15 @@ export async function updateTable(
         translateWriteError(err, set.name)
       }
       await queueTableEvent(t, viewer, "updated", saved, await tableAudience(viewer.orgId, saved))
+      const after = await loadTable(t, viewer, id)
+      // Re-pointed to another parent: the old records' overlay cells go.
+      const before = parseBacking(loaded.row.backing)
+      if (before && backing && before.parentId !== backing.parentId) {
+        await pruneOverlay(t, viewer, after)
+      }
+      if (after.backing) return toInfo(viewer, after, await backedCount(t, viewer, after))
       const counts = await rowCounts(t, viewer.orgId, [id])
-      return toInfo(viewer, await loadTable(t, viewer, id), counts.get(tableCollection(id)) ?? 0)
+      return toInfo(viewer, after, counts.get(tableCollection(id)) ?? 0)
     }),
   )
 }

@@ -80,7 +80,13 @@ interface TaskRow {
   due_date: string | Date | null
   fields: Record<string, unknown> | null
   updated_at: string | Date
+  version: string
 }
+
+// A task's version: a digest of what a backed table reads of it and of its last write time, so
+// it moves with any change, whichever write path made it and whenever it committed.
+const TASK_VERSION = sql`md5(concat_ws('|', t.title, t.status_id, t.assignee_id, t.priority,
+  t.due_date, t.fields::text, t.archived_at, (extract(epoch from t.updated_at) * 1000000)::bigint))`
 
 const iso = (d: string | Date) => (d instanceof Date ? d.toISOString() : String(d))
 const day = (d: string | Date | null) =>
@@ -91,24 +97,37 @@ async function rows(
   orgId: string,
   projectId: string,
   keys: readonly string[],
-  opts: { id?: string; max: number },
+  opts: { id?: string; max: number; lock?: boolean },
 ): Promise<BackedRecord[]> {
   const project = await readProject(t, orgId, projectId)
   if (!project) return []
   if (opts.id !== undefined && !UUID.test(opts.id)) return []
   const one = opts.id ? sql`AND t.id = ${opts.id}::uuid` : sql``
-  const found = extractRows<TaskRow>(
-    await t.execute(sql`
-      SELECT t.id, t.title, t.status_id, t.assignee_id, t.priority, t.due_date, t.fields,
-             t.updated_at
-        FROM ${projectsRel("tasks")} t
-        LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
-       WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
-         AND t.archived_at IS NULL ${one}
-       ORDER BY s."order" ASC NULLS LAST, t.position ASC, t.created_at ASC
-       LIMIT ${opts.max}
-    `),
-  )
+  const found = opts.lock
+    ? extractRows<TaskRow>(
+        await t.execute(sql`
+          SELECT t.id, t.title, t.status_id, t.assignee_id, t.priority, t.due_date, t.fields,
+                 t.updated_at, ${TASK_VERSION} AS version
+            FROM ${projectsRel("tasks")} t
+           WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
+             AND t.archived_at IS NULL ${one}
+           LIMIT 1
+           FOR UPDATE OF t
+        `),
+      )
+    : extractRows<TaskRow>(
+        await t.execute(sql`
+          SELECT t.id, t.title, t.status_id, t.assignee_id, t.priority, t.due_date, t.fields,
+                 t.updated_at, ${TASK_VERSION} AS version
+            FROM ${projectsRel("tasks")} t
+            LEFT JOIN ${projectsRel("project_statuses")} s
+                   ON s.id = t.status_id AND s.org_id = t.org_id
+           WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
+             AND t.archived_at IS NULL ${one}
+           ORDER BY s."order" ASC NULLS LAST, t.position ASC, t.created_at ASC
+           LIMIT ${opts.max}
+        `),
+      )
   const statusLabel = new Map(project.statuses.map((s) => [s.id, s.label]))
   return found.map((r) => {
     const cells: Record<string, unknown> = {}
@@ -122,7 +141,7 @@ async function rows(
       else v = r.fields?.[key]
       if (v !== undefined && v !== null) cells[key] = v
     }
-    return { id: r.id, cells, updatedAt: iso(r.updated_at) }
+    return { id: r.id, cells, updatedAt: iso(r.updated_at), version: r.version }
   })
 }
 
@@ -184,19 +203,57 @@ async function write(
   return taskId
 }
 
+/**
+ * A digest of everything a backed table shows of the project: every task's version (so a task
+ * change moves it, even one whose transaction started before the last read and committed after),
+ * the statuses (a renamed label is a changed choice) and the task field definitions.
+ */
 async function stamp(t: RlsClient, orgId: string, projectId: string): Promise<string> {
   if (!UUID.test(projectId)) return ""
-  const [row] = extractRows<{ n: number; at: string | null }>(
+  const [row] = extractRows<{ n: number; tasks: string; statuses: string; shape: string }>(
     await t.execute(sql`
-      SELECT COUNT(*)::int AS n, MAX(updated_at)::text AS at FROM ${projectsRel("tasks")}
-       WHERE org_id = ${orgId}::uuid AND project_id = ${projectId}::uuid AND archived_at IS NULL
+      SELECT
+        (SELECT COUNT(*)::int FROM ${projectsRel("tasks")} t
+          WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
+            AND t.archived_at IS NULL) AS n,
+        (SELECT md5(COALESCE(string_agg(t.id::text || ':' || ${TASK_VERSION}, ',' ORDER BY t.id), ''))
+           FROM ${projectsRel("tasks")} t
+          WHERE t.org_id = ${orgId}::uuid AND t.project_id = ${projectId}::uuid
+            AND t.archived_at IS NULL) AS tasks,
+        (SELECT md5(COALESCE(string_agg(concat_ws('|', s.id, s.label, s."order", s.terminal), ','
+                  ORDER BY s.id), ''))
+           FROM ${projectsRel("project_statuses")} s
+          WHERE s.org_id = ${orgId}::uuid AND s.project_id = ${projectId}::uuid) AS statuses,
+        (SELECT md5(COALESCE(p.task_fields::text, ''))
+           FROM ${projectsRel("projects")} p
+          WHERE p.org_id = ${orgId}::uuid AND p.id = ${projectId}::uuid) AS shape
     `),
   )
-  return `${row?.n ?? 0}:${row?.at ?? ""}`
+  return `${row?.n ?? 0}:${row?.tasks ?? ""}:${row?.statuses ?? ""}:${row?.shape ?? ""}`
+}
+
+async function ids(
+  t: RlsClient,
+  orgId: string,
+  projectId: string,
+  max: number,
+): Promise<string[] | null> {
+  if (!UUID.test(projectId)) return []
+  const found = extractRows<{ id: string }>(
+    await t.execute(sql`
+      SELECT id FROM ${projectsRel("tasks")}
+       WHERE org_id = ${orgId}::uuid AND project_id = ${projectId}::uuid AND archived_at IS NULL
+       LIMIT ${max + 1}
+    `),
+  )
+  return found.length > max ? null : found.map((r) => r.id)
 }
 
 export const taskTableBacking: TableBackingProvider = {
   writeScope: "projects:tasks:write",
+  readTool: "tasks_byProject",
+  writeTool: "update",
+  ids,
   describe: async (t, orgId, projectId) => {
     const project = await readProject(t, orgId, projectId)
     return project ? { columns: columnsOf(project) } : null

@@ -90,6 +90,7 @@ describe("a developer's desk", () => {
     const scopes = demoScopesForRole("engineering")
     expect(scopes).toContain("tickets:tickets:read")
     expect(scopes).toContain("projects:tasks:write")
-    expect(scopes.filter((s) => /^(invoicing|shopify|boxtal|stripe):/.test(s))).toEqual([])
+    const money = ["invoicing:", "shopify:", "boxtal:", "stripe:"]
+    expect(scopes.filter((s) => money.some((p) => s.startsWith(p)))).toEqual([])
   })
 })

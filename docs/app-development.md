@@ -940,6 +940,10 @@ An app raises items in the attention feed from its own events, in `attention.tra
 - `recipients.kind` is `field`, `participants`, `mentions`, `actor` or `scope_holders`. `excludeActor` (on `participants` and `scope_holders`) leaves out the person who caused the event.
 - `resolveWhen` makes the translation end an item instead of raising one, for an event that means the condition is over: `{ "always": true }`, or `{ "field": ..., "equals": ... }`.
 
+### Ship a routine template
+
+An app ships routine templates in `routines` of the manifest, keyed by template id: `description`, `kind` (`event` or a schedule), `event`, `promptTemplate` and `scopes`. A template can also be a flow: `flow` holds its steps and `eventFilter` its trigger filter, with `{{projectId}}` and `{{status:<label>}}` placeholders filled for the project chosen when the template is enabled. The filled flow is checked against the flow schema then. The Projects app's templates are the worked example; [Routines](agents/routines.md) describes flows, waits and outcomes.
+
 ## 13. List what needs attention
 
 An app can also list what needs a person's attention right now (their overdue

@@ -238,6 +238,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         /** "Recently involved": only the caller's tasks touched in the last N days. */
         involvedWithinDays?: number
         projectId?: string
+        kind?: "project" | "task"
       }
       if (params.involvedWithinDays !== undefined && params.involvedWithinDays !== null) {
         const { hasScope: checkScope } = await import("~/modules/permissions/permissions")
@@ -275,6 +276,8 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return JSON.stringify(result)
       } catch (err) {
         if ((err as Error).message === "invalid_cursor") throw new Error("invalid_cursor")
+        const { ProjectsServiceError } = await import("~/apps/projects/service/statuses")
+        if (err instanceof ProjectsServiceError) return envelopeError(err.code, err.message)
         throw err
       }
     },

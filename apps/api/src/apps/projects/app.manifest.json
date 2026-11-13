@@ -426,6 +426,14 @@
       "labelField": "name",
       "handlePrefix": "proj",
       "searchable": true,
+      "pick": {
+        "tool": "search",
+        "queryParam": "query",
+        "params": { "kind": "project" },
+        "idField": "id",
+        "labelField": "name",
+        "itemsPath": "items"
+      },
       "tableName": "projects",
       "readScope": "projects:projects:read",
       "indexFields": {
@@ -437,6 +445,14 @@
       "labelField": "title",
       "handlePrefix": "task",
       "searchable": true,
+      "pick": {
+        "tool": "search",
+        "queryParam": "query",
+        "params": { "kind": "task" },
+        "idField": "id",
+        "labelField": "title",
+        "itemsPath": "items"
+      },
       "tableName": "tasks",
       "readScope": "projects:projects:read",
       "indexFields": {
@@ -499,6 +515,11 @@
           "projectId": {
             "type": "string",
             "description": "Only with involvedWithinDays: limit the involved tasks to this project (uuid)."
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["project", "task"],
+            "description": "Optional: only projects, or only tasks (by title or key). Both when omitted."
           }
         }
       }

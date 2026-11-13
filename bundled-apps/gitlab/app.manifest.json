@@ -108,7 +108,8 @@
       "params": {
         "type": "object",
         "properties": {}
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_commits": {
       "taintSource": true,
@@ -149,7 +150,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_get_commit": {
       "taintSource": true,
@@ -180,7 +182,8 @@
           "project",
           "sha"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_merge_requests": {
       "taintSource": true,
@@ -233,7 +236,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_get_merge_request": {
       "taintSource": true,
@@ -269,7 +273,8 @@
           "project",
           "iid"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_issues": {
       "taintSource": true,
@@ -320,7 +325,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_milestones": {
       "taintSource": true,
@@ -350,7 +356,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_labels": {
       "taintSource": true,
@@ -372,7 +379,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_releases": {
       "taintSource": true,
@@ -398,7 +406,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_list_tags": {
       "taintSource": true,
@@ -420,7 +429,8 @@
         "required": [
           "project"
         ]
-      }
+      },
+      "timeoutMs": 30000
     },
     "gitlab_read_file": {
       "taintSource": true,
@@ -544,7 +554,8 @@
           "scope",
           "query"
         ]
-      }
+      },
+      "timeoutMs": 30000
     }
   },
   "roles": {

@@ -1,0 +1,2 @@
+# The suite-extras reader itself (scripts/lib/suite-extras.ts).
+scripts/lib/suite-extras.test.ts

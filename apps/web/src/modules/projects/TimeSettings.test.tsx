@@ -70,6 +70,21 @@ describe("time settings", () => {
     expect(rows).toHaveLength(1)
   })
 
+  it("a day read from the shared calendar is marked and shows no event title", async () => {
+    rows = [
+      { id: "typed", from: "2026-12-25", to: "2026-12-25", label: "Christmas", source: null },
+      { id: "cal", from: "2026-12-31", to: "2026-12-31", label: null, source: "calendar" },
+    ]
+    render(() => <ListBlock app="projects" block={daysOff} blockId="time-2" />)
+    await waitFor(() => expect(screen.getAllByTestId(/^settings-list-row-/)).toHaveLength(2))
+    expect(screen.getByTestId("settings-list-cell-cal-source").textContent).toContain(
+      "The shared calendar",
+    )
+    expect(screen.queryByTestId("settings-list-cell-typed-source")).toBeNull()
+    expect(screen.getByTestId("settings-list-cell-typed-label").textContent).toContain("Christmas")
+    expect(screen.queryByTestId("settings-list-cell-cal-label")).toBeNull()
+  })
+
   it("the note says how many projects use it, with no switch and no list of projects", async () => {
     render(() => <TimeSettingsNote />)
     const using = await screen.findByTestId("time-settings-note.using")

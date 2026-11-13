@@ -2368,6 +2368,25 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         })
       })
     },
+    /** The capacity board's "Move to <person>": gives a task to someone else and tells both. */
+    projects_capacityMove: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { taskId?: string; toUserId?: string }
+      return typedServiceCall(async () => {
+        const { moveCapacityTask } = await import("~/apps/projects/service/capacity-move")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await moveCapacityTask({
+            tx: txDb as never,
+            orgId,
+            actor,
+            input: {
+              ...(params.taskId ? { taskId: params.taskId } : {}),
+              ...(params.toUserId ? { toUserId: params.toUserId } : {}),
+            },
+          }),
+        )
+      })
+    },
     /** A company day off: one day, a range or an ISO week, resolved on the server. */
     projects_daysOffSet: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>

@@ -3,7 +3,7 @@
 // persisted item, "Ask agent to draft" on an item that needs a reply, "Ask agent to reassign"
 // on companies a departure left without an account manager, and Dismiss on a send the check
 // stopped. Urgency orders the rows; nothing here adds colour.
-import type { ApprovalSendGuard, AttentionItem } from "@liaison/shared"
+import { type ApprovalSendGuard, type AttentionItem, capacityNamedDays } from "@liaison/shared"
 import { type Component, createSignal, Show } from "solid-js"
 import { cn } from "~/lib/cn"
 import { runTool } from "~/lib/run-tool"
@@ -81,13 +81,6 @@ export function unownedCompanyIds(item: AttentionItem): string[] | null {
   if (kind !== UNOWNED_COMPANIES_KIND || !Array.isArray(ids)) return null
   const valid = ids.filter((i): i is string => typeof i === "string")
   return valid.length > 0 ? valid : null
-}
-
-/** The row that tells a person a colleague changed their days per week (`capacityNamed`), or null. */
-export function capacityNamedDays(item: AttentionItem): number | null {
-  const named = item.metadata?.capacityNamed as { daysPerWeek?: unknown } | undefined
-  const d = named?.daysPerWeek
-  return typeof d === "number" && d >= 1 && d < 5 ? d : null
 }
 
 /** The send check's line on a mail draft row, the same words the card uses. */

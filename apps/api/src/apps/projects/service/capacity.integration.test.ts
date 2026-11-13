@@ -7,17 +7,19 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { addCalendarDays } from "@liaison/shared"
+import { addCalendarDays, capacityNamedDays } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import type { AppEvent } from "~/infra/events/event-bus"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveToolCard } from "~/modules/apps/result-card"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { processTranslationEvent } from "~/modules/attention/translator"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
 import { setAway } from "~/modules/users/away"
 import { deactivateUser } from "~/modules/users/service"
@@ -235,12 +237,11 @@ describe("the week's figures", () => {
     // A range, as the settings list saves it (origin human-ui), then an agent's week.
     await call("projects_daysOffSet", { from: day(1), to: day(1) })
     expect((await capacity()).availableMinutes).toBe(10 * 21 * 60)
-    const listed = await call<{ rows: Array<{ from: string; fromCalendar: boolean }> }>(
-      "projects_daysOffList",
-      {},
-    )
+    const listed = await call<{
+      rows: Array<{ from: string; fromCalendar: boolean; source: string | null }>
+    }>("projects_daysOffList", {})
     expect(listed.rows.map((r) => r.from)).toEqual([day(0), day(1)])
-    expect(listed.rows.every((r) => r.fromCalendar === false)).toBe(true)
+    expect(listed.rows.every((r) => r.fromCalendar === false && r.source === null)).toBe(true)
     const [y, w] = nextWeek().split("-W")
     const week = await call("projects_daysOffSet", { week: Number(w), weekYear: Number(y) })
     expect(week.resolved).toMatchObject({ from: day(0), to: day(6) })
@@ -257,9 +258,14 @@ describe("the week's figures", () => {
     const out = await call("projects_daysOffRemove", { on: day(4) })
     expect(out.removed).toHaveLength(1)
     const listed = await call("projects_daysOffList", {})
-    // The calendar row is read back without its event title.
+    // The calendar row is read back without its event title, marked for the settings list.
     expect(listed.rows).toEqual([
-      expect.objectContaining({ from: day(3), fromCalendar: true, label: null }),
+      expect.objectContaining({
+        from: day(3),
+        fromCalendar: true,
+        source: "calendar",
+        label: null,
+      }),
     ])
     const kept = await call("projects_daysOffRemove", { on: day(3) })
     expect([kept.removed.length, kept.fromCalendar.length]).toEqual([0, 1])
@@ -521,6 +527,40 @@ describe("days per week", () => {
       "Paul Lead set your days per week to 2. Back to 5 days: ask your agent, or set it in your Projects time settings",
     ])
   })
+
+  it("the Home row the kernel makes from that line carries what Back to 5 days needs", async () => {
+    const lead = await newPerson("Rita Lead")
+    const target = await newPerson("Bruno Part")
+    await call(
+      "projects_timeSettingsSet",
+      { userId: target, daysPerWeek: 3 },
+      { userId: lead, scopes: LEAD_SCOPES },
+    )
+    const events = extractRows<{ payload: AppEvent }>(
+      await db.execute(drizzleSql`
+        SELECT payload FROM kernel.pending_events
+         WHERE org_id = ${orgId}::uuid
+           AND payload->'data'->'capacityNamed'->>'setBy' = ${lead}`),
+    )
+    expect(events).toHaveLength(1)
+    // The real translator, with its real insert: the row is what Home reads.
+    await processTranslationEvent(events[0]?.payload as AppEvent)
+    const rows = extractRows<{ kind: string; metadata: Record<string, unknown> | null }>(
+      await db.execute(drizzleSql`
+        SELECT kind, metadata FROM kernel.attention_events
+         WHERE org_id = ${orgId}::uuid AND user_id = ${target}::uuid`),
+    )
+    expect(rows.map((r) => r.kind)).toEqual(["agent_notification"])
+    // The same reader the Home row's button is drawn from.
+    expect(capacityNamedDays({ metadata: rows[0]?.metadata ?? null })).toBe(3)
+    // The lead who set it gets no row.
+    const leadRows = extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM kernel.attention_events
+         WHERE org_id = ${orgId}::uuid AND user_id = ${lead}::uuid`),
+    )
+    expect(leadRows[0]?.n).toBe(0)
+  })
 })
 
 describe("an agent acting for someone", () => {
@@ -662,5 +702,155 @@ describe("people who left and projects that do not use time", () => {
     await call("projects_updateProject", { projectId: counted, timeBudgets: true })
     await awaitTimeFeatureSync(orgId)
     expect(personOf(await capacity(), both)?.plannedMinutes).toBe(20 * 60)
+  })
+})
+
+describe("moving a task from the capacity board", () => {
+  let projectId = ""
+  let lead = ""
+  let nadia = ""
+  let mathis = ""
+
+  const assigneeOf = async (taskId: string) =>
+    extractRows<{ assignee: string | null; timebox: number | null; due: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT assignee_id::text AS assignee, timebox_minutes AS timebox, due_date::text AS due
+          FROM app_projects.tasks WHERE id = ${taskId}::uuid`),
+    )[0]
+  const linesAbout = async (taskId: string) =>
+    extractRows<{ target: string; summary: string }>(
+      await db.execute(drizzleSql`
+        SELECT payload->'data'->'targetUserIds'->>0 AS target, payload->'data'->>'summary' AS summary
+          FROM kernel.pending_events
+         WHERE org_id = ${orgId}::uuid AND payload->>'entity' = 'agent_notification'
+           AND payload->>'entityId' = ${taskId}`),
+    )
+  const approvalCount = async () =>
+    extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${orgId}::uuid`),
+    )[0]?.n
+
+  beforeAll(async () => {
+    projectId = await newProject("Orbit board")
+    lead = await newPerson("Léa Lead")
+    nadia = await newPerson("Nadia Board")
+    mathis = await newPerson("Mathis Board")
+  })
+
+  it("moves the task to the person named, tells both, and keeps its timebox and dates", async () => {
+    const moving = await task(projectId, nadia, "16 h", { dueDate: day(4) })
+    const before = await assigneeOf(moving)
+    const approvalsBefore = await approvalCount()
+    const out = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: mathis },
+      {
+        userId: lead,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(out.moved).toBe(true)
+    expect(out.from).toEqual({ userId: nadia, name: "Nadia Board" })
+    expect(out.to).toEqual({ userId: mathis, name: "Mathis Board" })
+    expect(out.told).toEqual(["Mathis Board", "Nadia Board"])
+    expect(out.message).toContain(
+      "is now with Mathis Board. Mathis Board and Nadia Board were both told.",
+    )
+    expect(out.message).toContain("To undo, move it back to Nadia Board.")
+    const after = await assigneeOf(moving)
+    expect(after).toEqual({ ...before, assignee: mathis })
+    const key = out.task.key as string
+    const lines = await linesAbout(moving)
+    expect(lines).toHaveLength(2)
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        { target: mathis, summary: `Léa Lead moved ${key} to you` },
+        { target: nadia, summary: `Léa Lead moved ${key} to Mathis Board` },
+      ]),
+    )
+    // The presser's own act: nothing waits for anyone's approval.
+    expect(await approvalCount()).toBe(approvalsBefore)
+    // The board reads it at once: the planned time is now Mathis's.
+    const board = await capacity()
+    expect(personOf(board, mathis)?.tasks.map((t: { id: string }) => t.id)).toContain(moving)
+    expect(personOf(board, nadia)?.tasks.map((t: { id: string }) => t.id) ?? []).not.toContain(
+      moving,
+    )
+    expect(JSON.stringify(out)).not.toMatch(/took|entered|utili|rank/i)
+  })
+
+  it("undo is the same press back, and moving it to whoever holds it changes nothing", async () => {
+    const moving = await task(projectId, nadia, "4 h", { dueDate: day(3) })
+    await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: mathis },
+      { userId: lead, scopes: LEAD_SCOPES },
+    )
+    const back = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: nadia },
+      {
+        userId: lead,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(back.moved).toBe(true)
+    expect((await assigneeOf(moving))?.assignee).toBe(nadia)
+    const lines = (await linesAbout(moving)).length
+    const same = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: nadia },
+      {
+        userId: lead,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(same.moved).toBe(false)
+    expect(same.message).toContain("Nothing changed and nobody was told.")
+    expect((await linesAbout(moving)).length).toBe(lines)
+  })
+
+  it("the person moving their own task away tells only the one who takes it", async () => {
+    const moving = await task(projectId, nadia, "2 h", { dueDate: day(3) })
+    const out = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: mathis },
+      {
+        userId: nadia,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(out.told).toEqual(["Mathis Board"])
+    expect((await linesAbout(moving)).map((l) => l.target)).toEqual([mathis])
+  })
+
+  it("refuses a person who left or a task that does not exist, and moves nothing", async () => {
+    const moving = await task(projectId, nadia, "3 h", { dueDate: day(3) })
+    const gone = await newPerson("Gone Board")
+    await db.execute(
+      drizzleSql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${gone}::uuid`,
+    )
+    const refused = await call(
+      "projects_capacityMove",
+      { taskId: moving, toUserId: gone },
+      {
+        userId: lead,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(refused.error?.code).toBe("person_unavailable")
+    expect(refused.error?.message).toContain("was not moved")
+    expect((await assigneeOf(moving))?.assignee).toBe(nadia)
+    const missing = await call(
+      "projects_capacityMove",
+      { taskId: "NOPE-999", toUserId: mathis },
+      {
+        userId: lead,
+        scopes: LEAD_SCOPES,
+      },
+    )
+    expect(["invalid_id", "not_found"]).toContain(missing.error?.code)
+    expect(await linesAbout(moving)).toEqual([])
   })
 })

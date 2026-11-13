@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.28.0",
+  "version": "1.29.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -4309,6 +4309,37 @@
         }
       }
     },
+    "capacity_move": {
+      "description": "The capacity board's Move to button: gives a task to another person and tells the person who had it and the person who has it now. Its timebox and dates stay. Read by the board.",
+      "agentVisible": false,
+      "useInstead": "update",
+      "requiredScopes": [
+        "projects:tasks:write",
+        "projects:capacity:read"
+      ],
+      "writesToTable": "app_projects.tasks",
+      "trustBoundary": "user",
+      "handler": "capacityMove",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task id or key."
+          },
+          "toUserId": {
+            "type": "string",
+            "description": "The person who takes it."
+          }
+        },
+        "required": [
+          "taskId",
+          "toUserId"
+        ],
+        "additionalProperties": false
+      }
+    },
     "days_off_set": {
       "description": "Record a company day off for everyone: one day (on), a range (from, to) or an ISO week, with an optional label and yearly. One person's days go through kernel set_away instead. Always state the exact dates recorded, with weekdays.",
       "searchKeywords": [
@@ -5184,6 +5215,19 @@
                 "key": "label",
                 "label": "Label",
                 "labelKey": "projects.settingsPage.time.label"
+              },
+              {
+                "key": "source",
+                "label": "Read from",
+                "labelKey": "projects.settingsPage.time.source",
+                "format": "enum",
+                "options": [
+                  {
+                    "value": "calendar",
+                    "label": "The shared calendar",
+                    "labelKey": "projects.settingsPage.time.sourceCalendar"
+                  }
+                ]
               }
             ],
             "createFields": [

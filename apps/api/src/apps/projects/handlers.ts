@@ -54,6 +54,7 @@ export interface ProjectsMethods {
   /** A declared cross-app call (manifest `cross_app_calls`), answered in the K4 envelope. */
   executeTool: (toolName: string, paramsJson: string) => Promise<string>
   projects_capacityGet: (paramsJson: string) => Promise<string>
+  projects_capacityMove: (paramsJson: string) => Promise<string>
   projects_timesheetGet: (paramsJson: string) => Promise<string>
   projects_timesheetExport: (paramsJson: string) => Promise<string>
   projects_daysOffSet: (paramsJson: string) => Promise<string>
@@ -1331,6 +1332,10 @@ export async function daysOffSet(params: unknown, ctx: ProjectsCtx): Promise<unk
 
 export async function daysOffList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_daysOffList(JSON.stringify(params ?? {})))
+}
+
+export async function capacityMove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_capacityMove(JSON.stringify(params ?? {})))
 }
 
 export async function daysOffRemove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {

@@ -101,13 +101,26 @@ describe("projects.manifest", () => {
     // behind their own scope; the reconcile card's reads and edits stay in a DM.
     // 1.27.0: a reconcile line changes only on a person's turn; dated sheet for members; keywords trimmed.
     // 1.28.0: margin and cost rates, and the money half of the budget read from invoicing.
-    expect(projectsManifest.version).toBe("1.28.0")
+    // 1.29.0: capacity_move for the board's Move to, and calendar days marked in the days-off list.
+    expect(projectsManifest.version).toBe("1.29.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
     const tool = (projectsManifest as any).tools.capacity_get
     expect(Object.keys(tool.params.properties).sort()).toEqual(["taskId", "week"])
     expect(JSON.stringify(tool.params)).not.toMatch(/sort|order|rank/i)
+  })
+
+  it("the board's move is the person's own act: hidden from the agent, never gated, task write scoped", () => {
+    const tool = (projectsManifest as any).tools.capacity_move
+    expect(tool.agentVisible).toBe(false)
+    expect(tool.useInstead).toBe("update")
+    expect(tool.feature).toBe("time_budgets")
+    expect(tool.requiredScopes).toEqual(["projects:tasks:write", "projects:capacity:read"])
+    expect(tool.gated ?? false).toBe(false)
+    expect(tool.approval).toBeUndefined()
+    expect(Object.keys(tool.params.properties).sort()).toEqual(["taskId", "toUserId"])
+    expect(JSON.stringify(tool)).not.toMatch(/sort|rank|utili|approv/i)
   })
 
   it("one person's days carry no label or reason in any time tool", () => {

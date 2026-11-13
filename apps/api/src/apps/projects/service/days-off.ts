@@ -35,6 +35,8 @@ export interface DayOffView {
   yearly: boolean
   label: string | null
   fromCalendar: boolean
+  /** "calendar" on a day read from the shared calendar (the settings list marks it); else null. */
+  source: "calendar" | null
 }
 
 function said(from: string, to: string): string[] {
@@ -54,6 +56,7 @@ function view(row: typeof daysOff.$inferSelect): DayOffView {
     // title may come from someone outside the org, and this read carries no outside text.
     label: row.sourceEventId === null ? row.label : null,
     fromCalendar: row.sourceEventId !== null,
+    source: row.sourceEventId !== null ? "calendar" : null,
   }
 }
 

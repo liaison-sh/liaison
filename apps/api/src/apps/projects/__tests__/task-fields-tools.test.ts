@@ -48,7 +48,6 @@ let actor: UserContext
 
 type Origin = "mcp" | "in-app-agent" | "human-ui"
 
-// biome-ignore lint/suspicious/noExplicitAny: tool results are untyped JSON read field by field
 type Json = any
 
 async function run(

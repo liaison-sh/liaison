@@ -4,7 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { getTableConfig } from "drizzle-orm/pg-core"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { projects, taskChecklistItems, taskTransitions, tasks } from "~/db/schema/app_projects"
+import { projects, taskChecklistItems, tasks, taskTransitions } from "~/db/schema/app_projects"
 import manifest from "../app.manifest.json"
 
 const snake = (s: string) => s.replace(/([A-Z])/g, "_$1").toLowerCase()

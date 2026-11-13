@@ -35,3 +35,4 @@ Root with SETUID, SETGID, CHOWN, DAC_OVERRIDE, KILL -> deploy/docker-compose.yml
 Warning when processes share one uid -> packages/sandbox-supervisor/src/main.ts (processUids)
 check probes each workerd uid -> deploy/sandbox-firewall.sh (check)
 /healthz omits the sandbox dependency while LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/sandbox-release.ts (probeSandbox)
+Rolling deploy starts a defined sandbox service when none runs, not under the quickjs switch -> deploy/rolling-deploy.sh (step 4b, sandbox_wanted)

@@ -196,6 +196,7 @@ import {
   mcpReadOfOwnServer,
   personClientWriteUnjudged,
   postDisclosureRelay,
+  resultHoldsField,
   returnsToOwnMcpServer,
   SCOPE_TAINT_BLOCKED_MESSAGE,
   SCOPE_TAINT_NO_DECIDER_MESSAGE,
@@ -6694,6 +6695,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   if ("data" in envelope && isReadOnlyTool(tool) && taintOriginStore) {
     const readOrigin = taintOriginOf(tool, validatedParams, envelope.data)
     if (readOrigin) taintOriginStore.recordOriginRows(readOrigin.table, readOrigin.rowIds)
+  }
+  // A result that carries a part classified by a narrower read scope (a project's money in its
+  // budget) adds that scope to the turn's taint, so a later write or post is judged against it as
+  // it is against the tool's own scopes. Filed from what the call RETURNED, like the origin above.
+  if ("data" in envelope && tool.resultTaintWhen && taintOriginStore) {
+    const { fields, scopes } = tool.resultTaintWhen
+    if (resultHoldsField(envelope.data, fields)) taintOriginStore.recordInjected([...scopes])
   }
 
   return envelope

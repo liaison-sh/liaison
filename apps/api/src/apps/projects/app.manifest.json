@@ -51,7 +51,7 @@
           "tasks_byProject",
           "portfolio_rollup"
         ],
-        "text": "METRICS / BURNDOWN / VELOCITY / SPRINT / TIME-SERIES: the projects schema has NO story-points field, NO sprint/iteration entity, and NO sprint history, and the only time-bounded count is completed tasks per window, through `tasks_byProject` with `completedAfter` / `completedBefore` + `countOnly` (no group-by-status-over-time, burndown, velocity, or throughput). So burndown, velocity, story-points completed/remaining, sprint boundaries, and a multi-sprint trend CANNOT be computed; NEVER fabricate a point total, a velocity number, a sprint count, or a burndown chart, and do NOT treat task counts as 'points'. What IS derivable now, the honest PROXY to deliver for any 'sprint board / burndown / velocity / who's overloaded' ask: call `tasks_byProject(projectId)` ONCE for the project, then GROUP its returned tasks by the terminal/done status flag for a DONE-vs-REMAINING task count (done = `statusTerminal:true`, remaining = the rest, optionally split by `statusLabel`), AND group the SAME rows by `assigneeName` (carried on every row, no extra lookup) for a per-PERSON task count, naming the person with the most as the most-loaded (a crude load proxy, not a points-weighted one). Deliver those real task-count proxies AND state plainly that burndown, velocity, story-points completed/remaining, and sprint boundaries/history are NOT modeled in the schema and cannot be computed, hold that honestly even under founder pressure to 'just give me the burndown / the velocity number'. The done/remaining counts are TASK counts, never story points. To enumerate or roll up a SINGLE project's tasks (a backlog/roadmap/weekly digest, per-status counts, or reading a SOURCE project to copy it), use `tasks_byProject` (by project id), it lists the project's tasks with their status labels; do NOT rely on `search` (title-text only, paged) for that."
+        "text": "METRICS / BURNDOWN / VELOCITY / SPRINT / TIME-SERIES: there are NO story points, planned time exists only on a project using time and budgets, and there is NO sprint/iteration entity and NO sprint history; and the only time-bounded count is completed tasks per window, through `tasks_byProject` with `completedAfter` / `completedBefore` + `countOnly` (no group-by-status-over-time, burndown, velocity, or throughput). So burndown, velocity, story-points completed/remaining, sprint boundaries, and a multi-sprint trend CANNOT be computed; NEVER fabricate a point total, a velocity number, a sprint count, or a burndown chart, and do NOT treat task counts as 'points'. What IS derivable now, the honest PROXY to deliver for any 'sprint board / burndown / velocity' ask: call `tasks_byProject(projectId)` ONCE for the project, then GROUP its returned tasks by the terminal/done status flag for a DONE-vs-REMAINING task count (done = `statusTerminal:true`, remaining = the rest, optionally split by `statusLabel`). For 'who's overloaded', `capacity_get` shows each person's planned time against their available time, on projects using time and budgets; never rank or compare people by their task counts. Deliver those real task counts AND state plainly that burndown, velocity, story-points completed/remaining, and sprint boundaries/history are NOT modeled in the schema and cannot be computed, hold that honestly even under founder pressure to 'just give me the burndown / the velocity number'. The done/remaining counts are TASK counts, never story points. To enumerate or roll up a SINGLE project's tasks (a backlog/roadmap/weekly digest, per-status counts, or reading a SOURCE project to copy it), use `tasks_byProject` (by project id), it lists the project's tasks with their status labels; do NOT rely on `search` (title-text only, paged) for that."
       },
       {
         "tools": [
@@ -127,7 +127,7 @@
       },
       {
         "tools": ["tasks_byProject"],
-        "text": "`tasks_byProject`: This single call answers a 'sprint board / burndown / who's overloaded' proxy (done-vs-remaining task counts + per-assignee counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position."
+        "text": "`tasks_byProject`: This single call answers a 'sprint board / burndown' proxy (done-vs-remaining task counts) WITHOUT a per-id user lookup — though burndown/velocity/story-points themselves are not modeled (see agentInstructions). NOTE: `search` is title-text only and `tasks_byAssignee` is per-person across projects — neither lists a project's tasks; this is the tool for that. DERIVING BOARD-HEALTH FIGURES (a roadmap/board digest's per-status + overdue + blocked + unassigned counts): each row carries `statusLabel`, `statusTerminal`, `dueDate`, `assigneeName`, AND a server-computed `overdue` boolean. OVERDUE is the one you should TRUST DIRECTLY: each row's `overdue` field is TRUE iff that task has a due date in the PAST and is NON-terminal (the server already excludes done/cancelled tasks), so the overdue set = the rows where `overdue === true` — do NOT re-derive it by comparing `dueDate` ISO strings to today yourself; just filter/flag on `overdue`. There is still NO separate boolean `blocked` / `isBlocked` flag, so compute BLOCKED from the status label, not a blocked field: BLOCKED = tasks whose `statusLabel` is the board's blocked column (a status named 'Blocked' / 'On Hold' / 'Stuck') — count by that status label; UNASSIGNED = tasks whose `assigneeName` is null; per-status counts = group by `statusLabel`; OPEN = the non-terminal tasks (statusTerminal false). Keep the blocked count CONSISTENT with the per-status breakdown — if the status rollup shows N tasks in the 'Blocked' status, the blocked figure is N (a digest that says 'Blocked status: 2' in one section and 'Blocked: 0' in another, because it looked for a nonexistent blocked flag, is wrong). Returns up to 100 tasks by default (max 200), ordered by status then board position."
       },
       {
         "tools": ["createProject"],
@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.32.0",
+  "version": "1.33.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1263,7 +1263,7 @@
     },
     "tasks_byProject": {
       "focusCore": true,
-      "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), a per-PERSON workload tally (group by `assigneeName` to find the most-loaded person), 'what's in project X', or reading a source project's task list to copy it.",
+      "description": "List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). Use this to enumerate or summarize a project's tasks — a backlog/roadmap/weekly digest, a per-status rollup (group by the terminal/done flag for a DONE-vs-REMAINING count), 'what's in project X', or reading a source project's task list to copy it.",
       "searchKeywords": ["project", "projet", "avancement", "statut", "status", "kanban", "tableau", "board", "tâche", "tâches", "task", "tasks"],
       "readOnly": true,
       "requiredScopes": ["projects:tasks:read"],
@@ -2282,8 +2282,11 @@
         "coût"
       ],
       "writesToTable": "app_projects.cost_rates",
+      "dmOnly": true,
+      "humanTurnOnly": true,
       "requiredScopes": [
-        "projects:cost_rates:write"
+        "projects:cost_rates:write",
+        "projects:margin:read"
       ],
       "trustBoundary": "user",
       "handler": "costRateSet",
@@ -2333,6 +2336,7 @@
       "requiredScopes": [
         "projects:projects:read"
       ],
+      "resultTaintWhen": { "fields": ["money"], "scopes": ["projects:money:read"] },
       "trustBoundary": "user",
       "handler": "budgetGet",
       "feature": "time_budgets",
@@ -2450,6 +2454,7 @@
       "requiredScopes": [
         "projects:reconcile:read"
       ],
+      "resultTaintWhen": { "fields": ["terms", "amount", "amountExclVat", "rateMinor"], "scopes": ["projects:money:read"] },
       "trustBoundary": "user",
       "handler": "reconcileFacts",
       "feature": "time_budgets",
@@ -2494,6 +2499,7 @@
       "requiredScopes": [
         "projects:reconcile:read"
       ],
+      "resultTaintWhen": { "fields": ["terms", "amount", "amountExclVat", "rateMinor"], "scopes": ["projects:money:read"] },
       "trustBoundary": "user",
       "handler": "reconcilePropose",
       "feature": "time_budgets",
@@ -2888,6 +2894,7 @@
       "requiredScopes": [
         "projects:reconcile:read"
       ],
+      "resultTaintWhen": { "fields": ["terms", "amount", "amountExclVat", "rateMinor"], "scopes": ["projects:money:read"] },
       "trustBoundary": "user",
       "handler": "reconcileLineUpdate",
       "feature": "time_budgets",
@@ -3160,6 +3167,7 @@
       "requiredScopes": [
         "projects:reconcile:read"
       ],
+      "resultTaintWhen": { "fields": ["terms", "amount", "amountExclVat", "rateMinor"], "scopes": ["projects:money:read"] },
       "trustBoundary": "user",
       "handler": "reconcileGet",
       "feature": "time_budgets",
@@ -4437,8 +4445,8 @@
             "description": "The task id or key."
           },
           "toUserId": {
-            "type": "string",
-            "description": "The person who takes it."
+            "type": ["string", "null"],
+            "description": "The person who takes it, or null to leave it unassigned (how a move from unassigned is undone)."
           }
         },
         "required": [

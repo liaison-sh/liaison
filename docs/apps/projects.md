@@ -310,7 +310,7 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 - **One line.** Real time against the planned time, in hours (days on a project billed by the day). A retainer or a day-rate project reads the month or period it is in ("November so far 18 of 40 h"). A fixed-price project over its timebox says how far over, and that the price does not change. A project with no timebox says there is nothing to compare.
 - **Which planned time counts.** A timebox set on the whole project wins the line. Without one, the line is the sum of the top tasks' timeboxes; a task's own timebox counts and the timeboxes under it do not add to it. Milestones always show their own.
 - **Coverage.** Real time is entered by people afterwards, and not on every task. The line says on how many tasks it was entered, out of the tasks that have started or are done, and any figure built on real time reads "partial" until every one has some. Coverage is about the project, never about a person.
-- **Money.** The price, what is invoiced (excluding VAT, net of credit notes) and what is left to invoice show only to people with `projects:money:read`; others read the hours alone. When invoices cannot be read, the answer says so instead of a figure.
+- **Money.** The price, what is invoiced (excluding VAT, net of credit notes) and what is left to invoice show only to people with `projects:money:read`; others read the hours alone. When invoices cannot be read, when no issued invoice is linked to the project yet, or when the price and the invoices are in different currencies, the answer says so instead of a figure. A reply that carries these figures is shown only to people who hold the same scope: posted from a DM into a conversation with someone who does not, it waits for you to decide, and a routine cannot post it.
 - **On the project page.** The budget line sits under the project's name and the budget panel beside the board. Its ask box puts your question in your conversation with your agent, ready for you to send; it sends nothing by itself.
 - **The plan in the edit form.** Edit project shows the plan as it is (how it is billed, the rate, who bills it, dated hours), read with `GET /api/projects/:projectId/time-plan`. The rate or fixed price comes back only with `projects:money:read`.
 - **Before the project used it.** If tasks closed before the project started using time and budgets, the answer says so with the date. No figure changes because of it.
@@ -325,10 +325,11 @@ Finance asks the agent in a DM ("what margin are we making on the portal project
 - **Time with no cost rate** costs nothing, and the answer says how many hours that is, never whose.
 - **No figure per person.** Margin has no person parameter and no breakdown, and it stays in chat: it is not a dashboard source.
 - **Invoices are read from Invoicing**, from the documents linked to the project. When they cannot be read, the answer says so and shows no cost alone.
+- **One currency.** Cost rates and invoices in different currencies are never subtracted: the answer says which currencies it found and computes nothing.
 
 ### Set cost rates
 
-A cost rate is one person's cost per hour from a date on (`cost_rate_set`, exact `projects:cost_rates:write`, held by `finance`). A new rate applies from its date: hours before it keep the rate they had. `cost_rates_list` shows the rates, to `projects:margin:read` only. Rates are never shown on a task, a board or to a person's manager.
+A cost rate is one person's cost per hour from a date on (`cost_rate_set`, exact `projects:cost_rates:write` and `projects:margin:read`, held by `finance`), with its currency as an ISO 4217 code (EUR, USD). Finance sets it in a DM with the agent, never in a shared conversation or from a routine. A new rate applies from its date: hours before it keep the rate they had. `cost_rates_list` shows the rates, to `projects:margin:read` only. Rates are never shown on a task, a board or to a person's manager.
 
 ## Read capacity and set days off
 

@@ -166,6 +166,30 @@ describe("what a reconcile reads through", () => {
       expect(text).not.toMatch(/withPrivilegedDb|withSystemDb|__privileged_db__/)
       expect(text).not.toMatch(/executeTool|callTool|ctx\.call/)
     }
+    // Anywhere in the projects app and its bridge, the one tool of another app it calls is the
+    // invoiced amount its money half reads, named as a literal.
+    const walk = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory()
+          ? walk(join(dir, e.name))
+          : /\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)
+            ? [join(dir, e.name)]
+            : [],
+      )
+    const sources = [
+      ...walk(join(SRC, "apps/projects")),
+      join(SRC, "modules/apps/sandbox/bridge/projects.ts"),
+    ]
+    expect(sources.length).toBeGreaterThan(20)
+    const toolCalls: string[] = []
+    for (const f of sources) {
+      const text = readFileSync(f, "utf8")
+      for (const m of text.matchAll(/\b(?:executeTool|callTool)\s*\(\s*([^,)]*)/g)) {
+        toolCalls.push(`${f.slice(SRC.length + 1)}: ${m[1]!.trim()}`)
+      }
+      expect(text).not.toMatch(/\bctx\.call\s*\(/)
+    }
+    expect(toolCalls).toEqual(['apps/projects/handlers.ts: "invoicing:project_invoiced_get"'])
     // The bridge methods of the two tools call the service alone.
     const bridge = readFileSync(join(SRC, "modules/apps/sandbox/bridge/projects.ts"), "utf8")
     for (const method of ["projects_reconcileFacts", "projects_reconcilePropose"]) {

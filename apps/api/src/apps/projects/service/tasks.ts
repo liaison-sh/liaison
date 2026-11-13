@@ -939,9 +939,8 @@ export interface CrossProjectTask extends Task {
    *  this flag (or the `terminal` filter) a caller cannot tell open from done. */
   statusTerminal: boolean
   /** The assignee's display NAME (joined from kernel.users), or null when the
-   *  task is unassigned (or the user row is missing/anonymized). Lets a caller
-   *  tally a per-PERSON workload from a single project read and NAME the
-   *  most-loaded person — without a separate per-id user lookup. `assigneeId`
+   *  task is unassigned (or the user row is missing/anonymized). Lets a readout
+   *  say who holds each task without a separate per-id user lookup. `assigneeId`
    *  alone is an opaque uuid; the name is what a human-facing readout needs. */
   assigneeName: string | null
   /** SERVER-computed overdue flag: TRUE iff the task has a non-null `due_date`

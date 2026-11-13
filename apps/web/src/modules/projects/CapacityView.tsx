@@ -105,7 +105,7 @@ export const CapacityView: Component = () => {
 
   const move = async (
     task: { id: string; key: string | null; title: string },
-    toUserId: string,
+    toUserId: string | null,
   ): Promise<MoveResult | null> => {
     if (busy()) return null
     setBusy(true)
@@ -137,8 +137,9 @@ export const CapacityView: Component = () => {
 
   const undo = async () => {
     const last = moved()
-    if (!last?.from) return
-    const out = await move(last.task, last.from.userId)
+    if (!last) return
+    // A task that had nobody goes back to nobody.
+    const out = await move(last.task, last.from?.userId ?? null)
     if (out) setMoved(null)
   }
 
@@ -187,7 +188,7 @@ export const CapacityView: Component = () => {
                       })}{" "}
                       {toldLine(m().told)}
                     </span>
-                    <Show when={m().from}>
+                    <Show when={m().moved}>
                       <button
                         type="button"
                         class="text-[12.5px] text-text-secondary underline-offset-2 hover:text-text hover:underline"

@@ -11,6 +11,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { type BudgetTask, type Coverage, coverageOf, liveTasks } from "./coverage"
+import { mixedCurrencies, parseCurrency } from "./currency"
 import { ProjectsServiceError } from "./statuses"
 import { isCalendarDate, loadPlanningProject, requirePlanning } from "./time-plan"
 
@@ -135,6 +136,8 @@ export interface MarginCost {
   coverage: Coverage
   /** The project's billing currency, when it has one. */
   currency: string | null
+  /** The currencies the costed time is in (its rates', or a frozen cost's); empty when none says. */
+  costCurrencies: string[]
 }
 
 export async function getMarginCost(args: {
@@ -152,11 +155,17 @@ export async function getMarginCost(args: {
   const from = period ? drizzleSql`${period.from}::date` : drizzleSql`NULL::date`
   const to = period ? drizzleSql`${period.to}::date` : drizzleSql`NULL::date`
 
-  const cost = extractRows<{ cost: string | number; without: string | number }>(
+  const cost = extractRows<{
+    cost: string | number
+    without: string | number
+    currencies: string[] | string | null
+  }>(
     await tx.execute(drizzleSql`
       SELECT ${projectsRel("project_time_cost")}(${projectId}::uuid, ${from}, ${to}) AS cost,
              ${projectsRel("project_time_minutes_without_rate")}(${projectId}::uuid, ${from}, ${to})
-               AS without`),
+               AS without,
+             ${projectsRel("project_time_cost_currencies")}(${projectId}::uuid, ${from}, ${to})
+               AS currencies`),
   )[0]
   const totals = extractRows<{ task_id: string; minutes: string | number; has_entries: boolean }>(
     await tx.execute(drizzleSql`
@@ -184,13 +193,27 @@ export async function getMarginCost(args: {
     partial: coverage.withEntries < coverage.total,
     coverage,
     currency: terms?.currency ?? null,
+    costCurrencies: textArray(cost?.currencies),
   }
+}
+
+/** A Postgres text[] as the driver hands it back: an array, or its literal ("{EUR,USD}"). */
+function textArray(v: string[] | string | null | undefined): string[] {
+  if (Array.isArray(v)) return v
+  if (typeof v !== "string" || v.length < 2) return []
+  const inner = v.slice(1, -1)
+  return inner === "" ? [] : inner.split(",").map((s) => s.replace(/^"|"$/g, ""))
 }
 
 /** What invoicing answered: an amount, or why it could not. */
 export type InvoicedRead =
   | { ok: true; invoicedMinor: number; currency: string | null; documents: number }
-  | { ok: false; off: boolean }
+  | {
+      ok: false
+      off: boolean
+      /** Invoicing's own refusal, passed on as it is (documents in two currencies). */
+      refusal?: { code: string; message: string; next?: string }
+    }
 
 /** The margin answer. Never built from cost alone: a failed invoice read is a refusal. */
 export type MarginResult =
@@ -224,6 +247,9 @@ const LEFT_OUT = [
 ]
 
 export function composeMargin(cost: MarginCost, invoiced: InvoicedRead): MarginResult {
+  if (!invoiced.ok && invoiced.refusal) {
+    return { error: { ...invoiced.refusal, retryable: false } }
+  }
   if (!invoiced.ok) {
     return invoiced.off
       ? {
@@ -245,7 +271,18 @@ export function composeMargin(cost: MarginCost, invoiced: InvoicedRead): MarginR
           },
         }
   }
-  const currency = invoiced.currency ?? cost.currency ?? "EUR"
+  // Invoices and time at cost must be in one currency, or the subtraction means nothing.
+  const used = [
+    ...new Set([...cost.costCurrencies, ...(invoiced.currency ? [invoiced.currency] : [])]),
+  ]
+  if (used.length > 1) {
+    return mixedCurrencies(
+      used,
+      `${cost.projectName}'s margin`,
+      "cost_rates_list shows each rate's currency; set the odd one again in the invoices' currency with cost_rate_set.",
+    )
+  }
+  const currency = invoiced.currency ?? cost.costCurrencies[0] ?? cost.currency ?? "EUR"
   const marginMinor = invoiced.invoicedMinor - cost.costMinor
   const where = cost.period ? `${cost.projectName}, ${cost.period.label}` : cost.projectName
   const cover = `Time spent is entered on ${cost.coverage.withEntries} of ${cost.coverage.total} tasks.`
@@ -385,7 +422,7 @@ export async function setCostRate(args: {
       next: "Find the person with users_search, then call again with their id.",
     })
   }
-  const currency = input.currency ? input.currency.toUpperCase().slice(0, 3) : null
+  const currency = parseCurrency(input.currency) ?? null
   const row = extractRows<Parameters<typeof toRow>[0]>(
     await tx.execute(drizzleSql`
       INSERT INTO ${projectsRel("cost_rates")} (org_id, user_id, rate_minor, currency, effective_from)

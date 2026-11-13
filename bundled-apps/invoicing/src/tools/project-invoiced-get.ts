@@ -53,25 +53,40 @@ const MAX_DOCUMENTS = 5000
 
 type Row = Record<string, unknown>
 
+/** More documents than one answer reads: the caller is refused rather than handed a partial sum. */
+class TooManyDocuments extends Error {}
+
 async function all(db: ReadsDb, where: Record<string, unknown>): Promise<Row[]> {
   const out: Row[] = []
-  for (let offset = 0; offset < MAX_DOCUMENTS; offset += PAGE) {
+  // Ordered on a unique key, so no row moves between pages while they are read.
+  for (let offset = 0; ; offset += PAGE) {
     const page = (await db.findMany("documents", {
       where,
-      orderBy: { issued_at: "asc" },
+      orderBy: { issued_at: "asc", id: "asc" },
       limit: PAGE,
       offset,
     })) as Row[]
     out.push(...page)
-    if (page.length < PAGE) break
+    if (page.length < PAGE) return out
+    if (out.length >= MAX_DOCUMENTS) throw new TooManyDocuments()
   }
-  return out
 }
 
-const day = (v: unknown): string | null => {
+/**
+ * The civil date of `issued_at`, a DATE column: the date part of what the driver hands back
+ * ("2026-11-01 00:00:00+00" or "2026-11-01"), or a Date's own calendar day, never shifted to UTC.
+ */
+export const day = (v: unknown): string | null => {
   if (v == null) return null
-  const s = v instanceof Date ? v.toISOString() : String(v)
-  return s.slice(0, 10)
+  if (v instanceof Date) {
+    if (Number.isNaN(v.getTime())) return null
+    const local = v.getHours() === 0 && v.getMinutes() === 0 && v.getSeconds() === 0
+    const [y, m, d] = local
+      ? [v.getFullYear(), v.getMonth() + 1, v.getDate()]
+      : [v.getUTCFullYear(), v.getUTCMonth() + 1, v.getUTCDate()]
+    return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`
+  }
+  return String(v).slice(0, 10)
 }
 
 const minor = (v: unknown): number => {
@@ -97,15 +112,31 @@ export async function projectInvoicedGet(
     return refused("invalid_date", "from and to are dates written YYYY-MM-DD. Nothing was read.")
   }
 
-  const own = await all(ctx.db, {
-    billing_project_id: projectId,
-    type: { in: ["invoice", "credit_note"] },
-  })
-  const invoiceIds = own.filter((r) => r.type === "invoice").map((r) => String(r.id))
-  const corrections =
-    invoiceIds.length > 0
-      ? await all(ctx.db, { type: "credit_note", original_document_id: { in: invoiceIds } })
-      : []
+  const counted = { in: [...COUNTED] }
+  let own: Row[]
+  let corrections: Row[]
+  try {
+    own = await all(ctx.db, {
+      billing_project_id: projectId,
+      type: { in: ["invoice", "credit_note"] },
+      status: counted,
+    })
+    const invoiceIds = own.filter((r) => r.type === "invoice").map((r) => String(r.id))
+    corrections =
+      invoiceIds.length > 0
+        ? await all(ctx.db, {
+            type: "credit_note",
+            original_document_id: { in: invoiceIds },
+            status: counted,
+          })
+        : []
+  } catch (err) {
+    if (!(err instanceof TooManyDocuments)) throw err
+    return refused(
+      "too_many_documents",
+      `This project has more than ${MAX_DOCUMENTS} invoices and credit notes, more than one answer reads. Nothing was summed.`,
+    )
+  }
 
   const seen = new Set<string>()
   const documents: ProjectInvoicedDocument[] = []

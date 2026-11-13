@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { createMockDb } from "@liaison/test-helpers/mock-db"
 import manifest from "../../app.manifest.json"
-import { projectInvoicedGet } from "./project-invoiced-get"
+import { day, projectInvoicedGet } from "./project-invoiced-get"
 
 const PROJECT = "7a000000-0000-4000-8000-000000000001"
 const OTHER = "7a000000-0000-4000-8000-000000000002"
@@ -116,5 +116,42 @@ describe("project_invoiced_get", () => {
     const fields = (manifest.schema as Record<string, { fields: Record<string, unknown> }>)
       .documents?.fields
     expect(fields?.billing_project_id).toBe("uuid?")
+  })
+})
+
+describe("project_invoiced_get paging and dates", () => {
+  test("documents sharing one issue day across page boundaries are each counted once", async () => {
+    const docs = Array.from({ length: 250 }, (_, i) =>
+      doc(String(1000 + i), { number: `F-${i}`, subtotal_minor: 100, issued_at: "2026-06-01" }),
+    )
+    const out = await projectInvoicedGet(ctxWith(docs) as never, { projectId: PROJECT })
+    if ("error" in out) throw new Error(out.error.message)
+    expect(out.documents).toHaveLength(250)
+    expect(new Set(out.documents.map((d) => d.id)).size).toBe(250)
+    expect(out.invoicedExcl).toBe(25_000)
+  })
+
+  test("drafts are left out by the query, so they never fill the cap", async () => {
+    const docs = [
+      ...Array.from({ length: 120 }, (_, i) => doc(String(2000 + i), { status: "draft" })),
+      doc("2999", { subtotal_minor: 700 }),
+    ]
+    const out = await projectInvoicedGet(ctxWith(docs) as never, { projectId: PROJECT })
+    if ("error" in out) throw new Error(out.error.message)
+    expect(out.invoicedExcl).toBe(700)
+  })
+
+  test("more documents than one answer reads is a refusal, never a partial sum", async () => {
+    const docs = Array.from({ length: 5001 }, (_, i) =>
+      doc(String(10_000 + i), { subtotal_minor: 1 }),
+    )
+    const out = await projectInvoicedGet(ctxWith(docs) as never, { projectId: PROJECT })
+    expect("error" in out && out.error.code).toBe("too_many_documents")
+  })
+
+  test("an issue date handed back as a Date keeps its calendar day", () => {
+    expect(day(new Date(2026, 10, 1))).toBe("2026-11-01")
+    expect(day(new Date(Date.UTC(2026, 10, 1)))).toBe("2026-11-01")
+    expect(day("2026-11-01 00:00:00+00")).toBe("2026-11-01")
   })
 })

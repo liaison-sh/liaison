@@ -1260,6 +1260,28 @@ function contextProviderErrors(manifest: any): string[] {
 }
 
 /**
+ * A `resultTaintWhen` names read scopes of the app's own (`<app>:<resource>:read`): it classifies
+ * part of what the tool returns, so it can only be a read scope of this app.
+ */
+export function resultTaintWhenErrors(manifest: any): string[] {
+  const errors: string[] = []
+  const app = typeof manifest?.name === "string" ? manifest.name : ""
+  for (const [toolName, tool] of Object.entries((manifest?.tools ?? {}) as Record<string, any>)) {
+    const decl = tool?.resultTaintWhen
+    if (decl === undefined) continue
+    for (const scope of Array.isArray(decl?.scopes) ? decl.scopes : []) {
+      const parts = typeof scope === "string" ? scope.split(":") : []
+      if (parts.length !== 3 || parts[0] !== app || parts[2] !== "read" || !parts[1]) {
+        errors.push(
+          `tools.${toolName}.resultTaintWhen.scopes: '${String(scope)}' must be a read scope of this app (${app}:<resource>:read)`,
+        )
+      }
+    }
+  }
+  return errors
+}
+
+/**
  * An activity source names a read-only, ungated tool of its own app that writes
  * nothing, and a scope that tool requires, so the scope is one the tool checks.
  * Two sources of one app never share a filter key.
@@ -1341,6 +1363,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...appIconErrors(manifest))
   errors.push(...resultCardErrors(manifest))
   errors.push(...contextProviderErrors(manifest))
+  errors.push(...resultTaintWhenErrors(manifest))
   errors.push(...activitySourceErrors(manifest))
   errors.push(
     ...importDeclarationErrors(

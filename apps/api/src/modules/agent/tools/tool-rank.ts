@@ -6,7 +6,12 @@
  * no server.
  */
 
-import { ENGLISH_LEXICON_WORDS, NAME_WORD_SYNONYMS, withoutCourtesy } from "./tool-lexicon"
+import {
+  COMPANION_SYNONYMS,
+  ENGLISH_LEXICON_WORDS,
+  NAME_WORD_SYNONYMS,
+  withoutCourtesy,
+} from "./tool-lexicon"
 import { meaningPoints, type ToolMeaning } from "./tool-meaning"
 
 /** Meaning points a tool no word matched needs to join the list: past the floor, not the tie trace. */
@@ -65,6 +70,8 @@ interface ScoringWords {
   /** The name parts and the keywords as sets, for the exact-word lookups of every query word. */
   namePartSet: Set<string>
   keywordSet: Set<string>
+  /** What the tool's keywords in another language mean in the name words ("rapport": report). */
+  keywordMeanings: Set<string>
   /** The name with its separators and case dropped: `internalCallback` is "internalcallback". */
   nameJoined: string
   keywords: string[] | undefined
@@ -113,6 +120,11 @@ function scoringWords(t: ScorableDeferredTool): ScoringWords {
     aliasParts,
     namePartSet: new Set(allNameParts),
     keywordSet: new Set(keywords),
+    keywordMeanings: new Set(
+      single
+        .filter((k) => !ENGLISH_LEXICON_WORDS.has(k))
+        .flatMap((k) => SYNONYMS_BY_STEM.get(wordStem(k)) ?? SYNONYMS_BY_STEM.get(k) ?? []),
+    ),
     nameJoined: nameParts.join(""),
     keywords,
     appLower,
@@ -184,6 +196,7 @@ const SYNONYM_KEYWORD_SCORE = 6
 const TYPO_NAME_SCORE = 6
 const TYPO_KEYWORD_SCORE = 5
 const TYPO_APP_SCORE = 4
+const KEYWORD_MEANING_SCORE = 4
 const MIN_STEM = 4
 /**
  * In a query of several words, each word's score is weighed by how few tools
@@ -314,6 +327,7 @@ const MIN_BARE_FRENCH_ROOT = 5
 const LEXICON_WORDS = new Set([
   ...Object.keys(NAME_WORD_SYNONYMS),
   ...Object.values(NAME_WORD_SYNONYMS).flat(),
+  ...Object.keys(COMPANION_SYNONYMS),
 ])
 
 /** The regular English forms of a word the catalog may hold instead ("defined" for "define"). */
@@ -484,6 +498,8 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
     appNames?: Iterable<string>
     /** The catalog whose words count as known (typos), when `tools` is a part of it. */
     vocabularyOf?: readonly ScorableDeferredTool[]
+    /** The rest of the query, when one of its words is scored alone (companion synonyms). */
+    queryWords?: readonly string[]
   },
 ): Array<{ tool: T; score: number; termsMatched: number; termCount: number }> {
   // The separators rankByKeywords splits on, plus `_` and `-`.
@@ -509,12 +525,16 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
   const termStems = terms.map(wordStem)
   // A stem too short to tell words apart ("cre") is not compared.
   const stemOk = termStems.map((stem) => stem.length >= MIN_STEM)
-  const termSynonyms = terms.map(
-    (term, i) =>
+  const termSet = new Set([...terms, ...(opts?.queryWords ?? [])])
+  const termSynonyms = terms.map((term, i) => {
+    const plain =
       SYNONYMS_BY_STEM.get(termStems[i]) ??
       SYNONYMS_BY_STEM.get(term) ??
-      (isEnglishWord(term, vocab) ? [] : frenchVerbSynonyms(term)),
-  )
+      (isEnglishWord(term, vocab) ? [] : frenchVerbSynonyms(term))
+    // A synonym that holds only beside another word of the query (tool-lexicon.ts).
+    const companion = COMPANION_SYNONYMS[term] ?? COMPANION_SYNONYMS[termStems[i]]
+    return companion?.withAny.some((w) => termSet.has(w)) ? [...plain, ...companion.names] : plain
+  })
   // The plural of each word, and the word less its final "s", built once rather than per tool.
   const termPlurals = terms.map((term) => `${term}s`)
   const termSingulars = terms.map((term) => (term.endsWith("s") ? term.slice(0, -1) : null))
@@ -576,6 +596,13 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
         score += 6 + (sortedStartsWith(descSorted, term) ? APP_WORD_DESCRIBED_SCORE : 0)
       // A translation or plain synonym of a keyword.
       else if (termSynonyms[i].some((x) => keywordSet.has(x))) score += SYNONYM_KEYWORD_SCORE
+      // The meaning of a keyword in another language ("report" for `rapport`): under a name
+      // word the tool's siblings carry, so it never outranks the tool that names it.
+      else if (
+        words.keywordMeanings.has(term) ||
+        (singular !== null && words.keywordMeanings.has(singular))
+      )
+        score += KEYWORD_MEANING_SCORE
       // A misspelt name part, keyword or app name, for a word the catalog does not hold.
       else if (unknown.has(term) && typoOf(term, words.typoNames)) score += TYPO_NAME_SCORE
       else if (unknown.has(term) && typoOf(term, words.typoKeywords)) score += TYPO_KEYWORD_SCORE
@@ -640,12 +667,13 @@ function recordStems(t: ScorableDeferredTool, actions: ReadonlySet<string>): str
 
 /**
  * A record named by two words (`cost_rate`) is one kind of its last word. A query
- * that puts another word in front of that last word ("project rate", "day rate")
- * asks for another kind, so the word matches the tool like a keyword, not like
- * its name: a project's rate is not a person's cost rate. Only a word some tool
- * or app names as its record counts: an action in front ("set rate") changes
- * nothing, nor does a query that names the record's own words anywhere ("cost
- * rate", "reconcile card line").
+ * that puts another word in front of that last word ("project rate", "day rate",
+ * "hourly rate", "Acme rate") asks for another kind, so the word matches the tool
+ * like a keyword, not like its name: a project's rate is not a person's cost rate.
+ * The word in front qualifies the head unless it is a filler, a number, or an
+ * action: a catalog action or a lexicon word for one ("set rate", "change rate")
+ * changes nothing, nor does a query that names the record's own words anywhere
+ * ("cost rate", "reconcile card line").
  */
 const QUALIFIED_HEAD_SCORE = 8
 function otherKindOf(
@@ -662,7 +690,18 @@ function otherKindOf(
   // The query names the tool's kind anywhere ("reconcile card line"): same kind.
   if (termStems.some((stem, j) => j !== i && record.slice(0, -1).includes(stem))) return false
   const before = termStems[i - 1]
-  return recordsOf(tools).nouns.has(before) && !FILLER_WORDS.has(terms[i - 1])
+  const typed = terms[i - 1]
+  if (FILLER_WORDS.has(typed) || !/^\p{L}{3,}$/u.test(typed)) return false
+  if (recordsOf(tools).nouns.has(before)) return true
+  return !isActionWord(typed, before, tools)
+}
+
+/** Is a query word an action: a catalog tool's action, or a lexicon word for one? */
+function isActionWord(term: string, stem: string, tools: readonly ScorableDeferredTool[]): boolean {
+  const { actions } = recordsOf(tools)
+  if (actions.has(stem) || actions.has(term)) return true
+  const names = SYNONYMS_BY_STEM.get(stem) ?? SYNONYMS_BY_STEM.get(term) ?? []
+  return names.some((name) => actions.has(wordStem(name)))
 }
 
 /**
@@ -671,19 +710,20 @@ function otherKindOf(
  */
 const recordStemsCache = new WeakMap<
   readonly ScorableDeferredTool[],
-  { records: Map<ScorableDeferredTool, string[]>; nouns: Set<string> }
+  { records: Map<ScorableDeferredTool, string[]>; nouns: Set<string>; actions: Set<string> }
 >()
-/** Each tool's record stems, and every stem some tool or app names as a record. */
+/** Each tool's record stems, every stem some tool or app names as a record, and the actions. */
 function recordsOf(tools: readonly ScorableDeferredTool[]): {
   records: Map<ScorableDeferredTool, string[]>
   nouns: Set<string>
+  actions: Set<string>
 } {
   const cached = recordStemsCache.get(tools)
   if (cached) return cached
   const actions = new Set(tools.map((t) => wordStem(scoringWords(t).nameParts.at(-1) ?? "")))
   const records = new Map(tools.map((t) => [t, recordStems(t, actions)]))
   const apps = tools.flatMap((t) => scoringWords(t).appParts.map(wordStem))
-  const out = { records, nouns: new Set([...records.values()].flat().concat(apps)) }
+  const out = { records, nouns: new Set([...records.values()].flat().concat(apps)), actions }
   recordStemsCache.set(tools, out)
   return out
 }
@@ -796,7 +836,9 @@ function loadingTerms(
     if (score === undefined) {
       score = Math.max(
         0,
-        ...scoreDeferredTools(tools, term, { appNames: apps }).map((s) => s.score),
+        ...scoreDeferredTools(tools, term, { appNames: apps, queryWords: terms }).map(
+          (s) => s.score,
+        ),
       )
       bests.set(term, score)
     }

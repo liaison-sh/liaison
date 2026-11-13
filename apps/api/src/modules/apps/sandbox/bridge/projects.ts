@@ -2408,7 +2408,10 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     },
     /** The capacity board's "Move to <person>": gives a task to someone else and tells both. */
     projects_capacityMove: async (paramsJson: string): Promise<string> => {
-      const params = JSON.parse(paramsJson || "{}") as { taskId?: string; toUserId?: string }
+      const params = JSON.parse(paramsJson || "{}") as {
+        taskId?: string
+        toUserId?: string | null
+      }
       return typedServiceCall(async () => {
         const { moveCapacityTask } = await import("~/apps/projects/service/capacity-move")
         const actor = await writeActor()
@@ -2419,7 +2422,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             actor,
             input: {
               ...(params.taskId ? { taskId: params.taskId } : {}),
-              ...(params.toUserId ? { toUserId: params.toUserId } : {}),
+              ...(params.toUserId || params.toUserId === null ? { toUserId: params.toUserId } : {}),
             },
           }),
         )

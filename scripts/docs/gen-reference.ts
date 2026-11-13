@@ -893,10 +893,31 @@ function stringValue(e: ts.Expression): string | undefined {
   return undefined
 }
 
+const numberOrString = (e: ts.Expression): string | undefined =>
+  ts.isNumericLiteral(e) ? e.text : stringValue(e)
+
+/** One `${...}` of a template: a literal, or a constant naming a string or a number. */
+function templatePart(e: ts.Expression, ctx: ZodCtx): string | undefined {
+  const lit = numberOrString(e)
+  if (lit !== undefined) return lit
+  if (ts.isIdentifier(e)) return resolveIdentifierLiteral(e.text, ctx, 0, numberOrString)
+  return undefined
+}
+
 /** A string literal or concatenation, or a constant naming one (this file or an import). */
 function resolveString(e: ts.Expression, ctx: ZodCtx): string | undefined {
   const direct = stringValue(e)
   if (direct !== undefined) return direct
+  // A template whose every part is a string or number constant (`up to ${MAX} rows`).
+  if (ts.isTemplateExpression(e)) {
+    let out = e.head.text
+    for (const span of e.templateSpans) {
+      const part = templatePart(span.expression, ctx)
+      if (part === undefined) return undefined
+      out += part + span.literal.text
+    }
+    return out
+  }
   if (ts.isIdentifier(e)) return resolveIdentifierLiteral(e.text, ctx, 0, stringValue)
   if (ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) return resolveString(e.expression, ctx)
   return undefined

@@ -1773,7 +1773,7 @@
       "schema": 98
     },
     "kernel__tables_rows_write": {
-      "desc": 0,
+      "desc": 511,
       "schema": 27
     },
     "kernel__thread_mute_set": {

@@ -451,7 +451,8 @@ async function writerOf(viewer: UserContext, via: WriteVia = {}): Promise<Writer
         .from(agents)
         .where(and(eq(agents.id, agentId), eq(agents.orgId, viewer.orgId)))
         .limit(1)
-      if (a) return `@${a.handle}`.slice(0, 200)
+      // Handles are stored with their "@" ("@logistics"): written once, never "@@logistics".
+      if (a) return (a.handle.startsWith("@") ? a.handle : `@${a.handle}`).slice(0, 200)
     }
     return null
   })

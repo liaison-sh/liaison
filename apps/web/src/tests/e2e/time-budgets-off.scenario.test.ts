@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Time and budgets are per project. An organisation where no project uses them shows none of
 // their test ids; once one project is turned on, only that project shows them, on a desktop
-// window and on a phone, and its task shows the Timebox chip and the Took field.
+// window and on a phone, and its task shows the Timebox chip and the Took field. The sidebar's
+// Capacity row is org-wide: it appears once any project uses time, on every project's page.
 import { api } from "@liaison/test-helpers"
 import type { Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures/test"
@@ -12,9 +13,9 @@ const TIME_IDS = [
   "task-took",
   "budget-line",
   "budget-panel",
-  "side-capacity",
   "month-close-line",
 ] as const
+const CAPACITY_ROW = "side-capacity"
 const SEE = { timeout: 20_000 } as const
 
 async function countTimeIds(page: Page): Promise<Record<string, number>> {
@@ -44,9 +45,11 @@ test.describe("time and budgets are per project", () => {
     await page.goto(`${base}/projects/${house.id}`)
     await expect(page.getByTestId("project-workspace.title")).toBeVisible(SEE)
     expect(await countTimeIds(page)).toEqual(NONE)
+    await expect(page.getByTestId(CAPACITY_ROW)).toHaveCount(0)
     await page.goto(`${base}/projects/tasks/${house.tasks[0]!.id}`)
     await expect(page.getByTestId("task-detail.meta-row")).toBeVisible(SEE)
     expect(await countTimeIds(page)).toEqual(NONE)
+    await expect(page.getByTestId(CAPACITY_ROW)).toHaveCount(0)
   })
 
   test("the project without time shows nothing and the one with it shows everything, on desktop and phone", async ({
@@ -85,6 +88,8 @@ test.describe("time and budgets are per project", () => {
       await page.goto(`${base}/projects/${house.id}`)
       await expect(page.getByTestId("project-workspace.title")).toBeVisible(SEE)
       expect(await countTimeIds(page)).toEqual(NONE)
+      // Another project uses time, so the org-wide Capacity row shows here too (desktop sidebar).
+      if (size.width >= 1024) await expect(page.getByTestId(CAPACITY_ROW)).toHaveCount(1)
       await page.goto(`${base}/projects/tasks/${house.tasks[0]!.id}`)
       await expect(page.getByTestId("task-detail.meta-row")).toBeVisible(SEE)
       expect(await countTimeIds(page)).toEqual(NONE)

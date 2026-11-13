@@ -176,6 +176,8 @@ export interface Row {
   /** A backed table's row: its record's version, given back as `ifRecordVersion` to change a
    *  read-through cell (refused with version_conflict when the record changed since). */
   recordVersion?: string
+  /** A backed table's row whose record is finished in its app: its deadlines read untinted. */
+  terminal?: true
   updatedAt: string
   updatedBy: Actor
 }
@@ -713,12 +715,13 @@ async function toRows(
   )
   const columns = allColumns(loaded)
   return docs.map((d) => {
-    const recordVersion = (d as BackedDocument).recordVersion
+    const { recordVersion, terminal } = d as BackedDocument
     return {
       id: d.id,
       cells: visibleCells(viewer, columns, d.data),
       version: d.version,
       ...(recordVersion !== undefined ? { recordVersion } : {}),
+      ...(terminal ? { terminal: true as const } : {}),
       updatedAt: d.updatedAt,
       updatedBy: actors.get(d.id) ?? UNKNOWN_ACTOR,
     }

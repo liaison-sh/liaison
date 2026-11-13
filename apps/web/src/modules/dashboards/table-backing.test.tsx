@@ -153,6 +153,28 @@ describe("a backed table reads like its project", () => {
     expect(due.querySelector(".text-error")).toBeTruthy()
   })
 
+  it("a finished record's past due date stays untinted, an open one's is tinted", async () => {
+    mountBlock(STYLED, undefined, [
+      row({ title: "Shipped", status: "Done", due: "2026-11-01" }, 0, {
+        id: "done",
+        terminal: true,
+      }),
+      row({ title: "Waiting", status: "To do", due: "2026-11-01" }, 0, { id: "open" }),
+    ])
+    await screen.findByTestId("table-block-row-open")
+    expect(screen.getByTestId("table-block-deadline-open-due").dataset.tone).toBe("late")
+    expect(screen.queryByTestId("table-block-deadline-done-due")).toBeNull()
+    expect(screen.getByTestId("table-block-cell-done-due").textContent).not.toBe("")
+  })
+
+  it("a near due date keeps its words in the text colour, the tone on the track", async () => {
+    mountBlock(STYLED, undefined, [row({ title: "Soon", due: "2026-11-14" }, 0, { id: "soon" })])
+    const due = await screen.findByTestId("table-block-deadline-soon-due")
+    expect(due.dataset.tone).toBe("soon")
+    expect(due.querySelector(".text-warning")).toBeNull()
+    expect(due.querySelector(".bg-warning")).toBeTruthy()
+  })
+
   it("a plain table has no band, a colourless choice a neutral pill", async () => {
     mountBlock({ ...STYLED, backing: undefined }, undefined, [
       row({ title: "x", status: "Doing", due: "2026-11-10" }),

@@ -24,7 +24,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const BUILTINS = ["title", "status", "assignee", "due", "priority"] as const
 
 interface ProjectShape {
-  statuses: Array<{ id: string; label: string; color: string | null }>
+  statuses: Array<{ id: string; label: string; color: string | null; terminal: boolean | null }>
   fields: Column[]
 }
 
@@ -41,9 +41,14 @@ async function readProject(
     `),
   )
   if (!p) return null
-  const statuses = extractRows<{ id: string; label: string; color: string | null }>(
+  const statuses = extractRows<{
+    id: string
+    label: string
+    color: string | null
+    terminal: boolean | null
+  }>(
     await t.execute(sql`
-      SELECT id, label, color FROM ${projectsRel("project_statuses")}
+      SELECT id, label, color, terminal FROM ${projectsRel("project_statuses")}
       WHERE project_id = ${projectId}::uuid AND org_id = ${orgId}::uuid
       ORDER BY "order" ASC
     `),
@@ -141,6 +146,9 @@ async function rows(
         `),
       )
   const statusLabel = new Map(project.statuses.map((s) => [s.id, s.label]))
+  const terminalStatus = new Set(
+    project.statuses.filter((s) => s.terminal === true).map((s) => s.id),
+  )
   return found.map((r) => {
     const cells: Record<string, unknown> = {}
     for (const key of keys) {
@@ -153,7 +161,15 @@ async function rows(
       else v = r.fields?.[key]
       if (v !== undefined && v !== null) cells[key] = v
     }
-    return { id: r.id, cells, updatedAt: iso(r.updated_at), version: r.version }
+    // A task in a terminal status (done, cancelled) is finished: its due date no longer reads late.
+    const terminal = r.status_id !== null && terminalStatus.has(r.status_id)
+    return {
+      id: r.id,
+      cells,
+      updatedAt: iso(r.updated_at),
+      version: r.version,
+      ...(terminal ? { terminal: true } : {}),
+    }
   })
 }
 

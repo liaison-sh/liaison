@@ -225,7 +225,7 @@ async function seedSaasDeals(
       const externalRef = saasDealRef(key)
       const existing = rowsOf<{ id: string }>(
         await (tx as ExecTx).execute(
-          sql`SELECT id FROM app_projects.tasks
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.tasks
               WHERE org_id = ${ctx.orgId} AND external_ref = ${externalRef} LIMIT 1`,
         ),
       )[0]

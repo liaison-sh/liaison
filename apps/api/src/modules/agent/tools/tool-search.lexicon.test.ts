@@ -141,3 +141,25 @@ describe("short misspellings", () => {
     expect(strong("lsit")).toContain("lights__list")
   })
 })
+
+describe("French words for a company", () => {
+  // Every tool here matches one query word through its keywords; only the
+  // timeline is also about a company, and says so in its name alone.
+  const catalog: Row[] = [
+    row("kernel", "audit_search", "Search the audit log.", ["historique"]),
+    row("kernel", "routine_events", "List a routine's runs.", ["historique"]),
+    row("billing", "customer_history", "A customer's past documents.", ["historique"]),
+    row("billing", "issuer_profile_list", "List issuer profiles.", ["société"]),
+    row("billing", "issuer_profile_update", "Change an issuer profile.", ["société"]),
+    row("kernel", "company_timeline", "A record's timeline, newest first.", ["historique"]),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const first = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked[0]?.tool.sdkName
+
+  it("société and entreprise read as the company a tool name speaks of", () => {
+    expect(first("historique société")).toBe("kernel__company_timeline")
+    expect(first("historique entreprise")).toBe("kernel__company_timeline")
+    expect(first("historique des sociétés")).toBe("kernel__company_timeline")
+  })
+})

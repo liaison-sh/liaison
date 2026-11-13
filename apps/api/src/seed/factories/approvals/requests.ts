@@ -21,6 +21,7 @@ import { approvalRequests } from "~/db/schema/kernel/agent-memory"
 import { contacts } from "~/db/schema/kernel/contacts"
 import { skills } from "~/db/schema/kernel/skills"
 import { threads } from "~/db/schema/kernel/threads"
+import { schemaRef } from "~/db/schema-ref"
 import { SEEDED_METADATA } from "~/modules/notifications/seeded"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { createThread } from "~/modules/threads/thread"
@@ -36,7 +37,7 @@ export async function ticketReadableBy(actor: UserContext, ticketId: string): Pr
   return asUser(actor, async (tx) => {
     const rows = rowsOf<{ id: string }>(
       await tx.execute(
-        sql`SELECT id FROM app_tickets.tickets WHERE id = ${ticketId}::uuid LIMIT 1`,
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_tickets"))}.tickets WHERE id = ${ticketId}::uuid LIMIT 1`,
       ),
     )
     return rows.length > 0

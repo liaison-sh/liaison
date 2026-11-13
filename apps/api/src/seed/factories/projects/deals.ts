@@ -11,6 +11,7 @@ import { createPipeline } from "~/apps/projects/service/create-project"
 import { setLostReason, writeDealFields } from "~/apps/projects/service/deals"
 import { createTask } from "~/apps/projects/service/tasks"
 import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "~/seed/factories/people/actors"
 
@@ -57,7 +58,7 @@ export async function seedPipeline(
   await asUser(owner, async (tx) => {
     const found = rowsOf<{ id: string }>(
       await (tx as ExecTx).execute(
-        sql`SELECT id FROM app_projects.projects
+        sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.projects
             WHERE org_id = ${orgId} AND key = ${input.spec.key} LIMIT 1`,
       ),
     )[0]
@@ -76,7 +77,7 @@ export async function seedPipeline(
       const externalRef = input.externalRefOf(deal.key)
       const existing = rowsOf<{ id: string }>(
         await (tx as ExecTx).execute(
-          sql`SELECT id FROM app_projects.tasks
+          sql`SELECT id FROM ${sql.raw(schemaRef("app_projects"))}.tasks
               WHERE org_id = ${orgId} AND external_ref = ${externalRef} LIMIT 1`,
         ),
       )[0]

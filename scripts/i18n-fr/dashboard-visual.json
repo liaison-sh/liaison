@@ -1,0 +1,8 @@
+{
+  "key": {
+    "kernel.dashboards.tables.bandFrom": "Depuis {{name}}",
+    "kernel.dashboards.tables.bandOwn": "Cette table seulement",
+    "kernel.dashboards.tables.pastDue": "En retard",
+    "kernel.dashboards.tables.dueSoon": "Échéance proche"
+  }
+}

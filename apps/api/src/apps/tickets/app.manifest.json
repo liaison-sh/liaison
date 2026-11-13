@@ -106,7 +106,7 @@
       }
     ]
   },
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2521,6 +2521,10 @@
               "type": "string"
             },
             "description": "Optional allowed origins (CORS): a list, or one string with the origins separated by commas, spaces or new lines."
+          },
+          "inboxId": {
+            "type": "string",
+            "description": "Optional inbox id (UUID). A key scoped to an inbox can only create tickets in that inbox. The inbox settings 'Generate API key' button sends it."
           }
         },
         "required": [

@@ -71,6 +71,16 @@ A key with **Allowed origins** is meant for a form in a public page, where every
 
 Keep a key without allowed origins on your server only.
 
+### Relay submissions you cannot vouch for
+
+A key without allowed origins is trusted: Liaison links the ticket to an existing contact with the same `fromEmail`, may fill in that contact's empty name from `fromName`, and repeats your subject in the acknowledgement email. If your server only passes on what an anonymous visitor typed (a public form behind your own relay), send `"unverifiedSubmitter": true`. The ticket is then handled like one from a key with allowed origins:
+
+- it links no contact and changes no contact,
+- each client address may create at most 5 tickets a minute and 100 an hour (the address Liaison sees for the request, so pass the visitor's address through your proxy),
+- the acknowledgement has a fixed subject and is capped per client address.
+
+`team`, `attachmentFileIds`, `externalRef`, `priority` and the other key fields keep working. The flag only removes trust: only `true` is accepted (`false` answers `validation_failed`), it changes nothing for a key with allowed origins or without a key, and it cannot be sent with `contactId` or `appendIfExisting`, which both say who the sender is (`400`, `unverified_submitter_conflict`). A new ticket created this way answers `{"data": {"ticketId": "…", "ticketHandle": "…", "submitter": "unverified"}}`: if `submitter` is missing, the server ignored the flag. A repeated `externalRef` answers as before, without `submitter`.
+
 ### Errors
 
 Errors come back as `{"error": {"code": "…", "message": "…"}}`. A missing, unknown or revoked key answers `401` with `invalid_api_key`. A body that does not validate answers `400` with `validation_failed` and the details. When Tickets is turned off for the org, the endpoints answer `503` (`app_disabled`). On a managed instance whose subscription is suspended or closed, they answer `403` (`org_suspended`, with `accessUntil` and `contact`), as the `/api` routes do.

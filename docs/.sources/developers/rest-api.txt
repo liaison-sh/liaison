@@ -49,3 +49,15 @@ Frozen refuses writes, reads served; draining refuses turn-starting calls -> app
 Websocket closes 4005 and the client retries every 2 s -> apps/web/src/primitives/createWebSocket.ts:496 ; packages/control-plane-contract/src/moves.ts:96
 a device sign-in's tool call is judged as a program's -> apps/api/src/modules/apps/rest-tool-call.ts:32-42
 A device sign-in's posted message is not a person typing -> apps/api/src/modules/agent/runtime/agent-service.ts:1931-1938
+unverifiedSubmitter: literal true only, key tier -> apps/api/src/modules/webhooks/tickets-public.ts:153-155
+Anonymous tier strips unverifiedSubmitter (stripApiOnlyFields keeps base fields) -> apps/api/src/modules/webhooks/tickets-public.ts:158-162
+Flag honoured for a server key only; one unverified boolean -> apps/api/src/modules/webhooks/tickets-public.ts:834-836
+unverified_submitter_conflict with contactId or appendIfExisting, 400 -> apps/api/src/modules/webhooks/tickets-public.ts:840-851
+Per-source create buckets 5/min and 100/h when unverified -> apps/api/src/modules/webhooks/tickets-public.ts:906-921
+Unverified submitter links no contact (resolveContact skipped) -> apps/api/src/modules/webhooks/tickets-public.ts:1241-1259
+Server-key ack: trusted unless unverified -> apps/api/src/modules/webhooks/tickets-public.ts:1370-1376
+Ack fixed subject when unverifiedRecipient, per-source cap on sourceIp -> apps/api/src/apps/tickets/tools.ts:1423-1430
+Ack echoSubject false for an unverified recipient -> apps/api/src/apps/tickets/tools.ts:1503
+Contact name filled only when empty (mergeAndReturn) -> apps/api/src/modules/contacts/service.ts:300
+Response echo submitter: unverified on a fresh create only -> apps/api/src/modules/webhooks/tickets-public.ts:1386-1396
+Idempotent replay answers ticketId, ticketHandle, idempotent -> apps/api/src/modules/webhooks/tickets-public.ts:966-971

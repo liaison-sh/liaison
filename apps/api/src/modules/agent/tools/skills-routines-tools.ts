@@ -2830,6 +2830,59 @@ function resolveRoutineEventFilter(
  * A table row filter names a table the routine's author can read (under their RLS: a table they
  * cannot see reads as absent) and, when it names a column, one of the table's columns.
  */
+/**
+ * A projects task filter's `fields` keys, checked against the project's active fields: an unknown
+ * key is refused (422 `unknown_field`, naming it), as a task write refuses it. Read under the
+ * caller's RLS: a project they cannot read is refused too.
+ */
+async function checkProjectFieldFilter(
+  ctx: AppContext,
+  filter: StoredEventFilter | null,
+): Promise<{ error: { code: string; message: string } } | null> {
+  const keys = Object.keys(filter?.fields ?? {})
+  const projectId = filter?.projectId
+  if (!projectId || keys.length === 0) return null
+  const { readProjectFields, activeFields } = await import("~/apps/projects/service/fields")
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  const userId = ctx.approverUserId ?? ctx.userId
+  const defs = await withPrivilegedDb(ctx.orgId, "routine-filter-fields-perms", (tx) =>
+    loadEffectivePermissions(tx, userId, ctx.orgId),
+  )
+    .then((perms) =>
+      withRlsContext(
+        {
+          actorType: "user",
+          userId,
+          orgId: ctx.orgId,
+          scopes: perms.scopes,
+          dimensionGrants: perms.dimensionGrants,
+        },
+        (tx) => readProjectFields(tx, ctx.orgId, projectId),
+      ),
+    )
+    .catch((err: unknown) => {
+      log.warn({ err, orgId: ctx.orgId, projectId }, "event filter: project fields unreadable")
+      return null
+    })
+  if (!defs) {
+    return {
+      error: {
+        code: "invalid_event_filter",
+        message: `eventFilter.projectId: no project ${projectId} you can read`,
+      },
+    }
+  }
+  const known = activeFields(defs).map((f) => f.key)
+  const unknown = keys.find((k) => !known.includes(k))
+  if (!unknown) return null
+  return {
+    error: {
+      code: "unknown_field",
+      message: `eventFilter.fields: '${unknown}' is not a field of this project${known.length ? ` (${known.join(", ")})` : ""}`,
+    },
+  }
+}
+
 async function checkTableRowFilter(
   db: RlsClient,
   orgId: string,
@@ -3154,6 +3207,8 @@ export async function handleCreateRoutine(
   if ("error" in filterCheck) return filterCheck
   const tableFilterError = await checkTableRowFilter(ctx.db, ctx.orgId, filterCheck.filter)
   if (tableFilterError) return tableFilterError
+  const fieldFilterError = await checkProjectFieldFilter(ctx, filterCheck.filter)
+  if (fieldFilterError) return fieldFilterError
   const flowCheck = parseRoutineFlow(params.flow)
   if ("error" in flowCheck) return flowCheck
   // UPSTREAM COVERAGE GATE: the prepare-shipments coverage validation runs in the PRE-GATE
@@ -3226,7 +3281,17 @@ export async function handleCreateRoutine(
     ? await loadUserEffectiveScopes(ctx.orgId, ownerUserId)
     : ctx.scopes
   const kind = params.kind ?? "recurring"
-  const requestedScopes = Array.from(new Set(params.scopes ?? []))
+  // A flow's own steps need scopes of their own (reading the trigger record, each action's tool):
+  // they are added, and a need the owner lacks is refused here, naming the step (flow-scopes.ts).
+  const { flowScopeNeeds, uncoveredFlowNeeds, flowScopeRefusal, withFlowScopes } = await import(
+    "~/modules/agent/routines/flow-scopes"
+  )
+  const flowNeeds = flowCheck.flow
+    ? flowScopeNeeds(ctx.orgId, kind === "event" ? params.event : null, flowCheck.flow)
+    : []
+  const flowRefusal = flowScopeRefusal(uncoveredFlowNeeds(flowNeeds, ownerScopes))
+  if (flowRefusal) return flowRefusal
+  const requestedScopes = withFlowScopes(params.scopes ?? [], flowNeeds)
   const { granted: routineScopes, omitted: omittedScopes } = grantableScopes(
     requestedScopes,
     ownerScopes,
@@ -3761,8 +3826,11 @@ export async function routineMutationPreflight(
 
 /** create_routine grants scopes when it sets any (auto-approve never covers it). */
 export function createRoutineGrantsScopes(params: unknown): boolean {
-  const scopes = (params as { scopes?: unknown } | null)?.scopes
-  return Array.isArray(scopes) && scopes.length > 0
+  const p = params as { scopes?: unknown; flow?: unknown } | null
+  // A flow's steps add the scopes they need (flow-scopes.ts): a flow always grants some.
+  return (
+    (Array.isArray(p?.scopes) && p.scopes.length > 0) || (p?.flow !== undefined && p?.flow !== null)
+  )
 }
 
 /**
@@ -3933,6 +4001,8 @@ export async function handleUpdateRoutine(
     if ("error" in filterCheck) return filterCheck
     const tableFilterError = await checkTableRowFilter(ctx.db, ctx.orgId, filterCheck.filter)
     if (tableFilterError) return tableFilterError
+    const fieldFilterError = await checkProjectFieldFilter(ctx, filterCheck.filter)
+    if (fieldFilterError) return fieldFilterError
     updates.eventFilter = filterCheck.filter
   } else if (prior.eventFilter && !filterFitsEvent(prior.eventFilter, nextEvent)) {
     updates.eventFilter = null
@@ -3954,6 +4024,27 @@ export async function handleUpdateRoutine(
     const flowCheck = parseRoutineFlow(params.flow)
     if ("error" in flowCheck) return flowCheck
     updates.flow = flowCheck.flow
+  }
+  // The flow's own needs (flow-scopes.ts), checked whenever the flow, the trigger or the scopes
+  // change: added to the routine's scopes, a need its owner lacks refused, naming the step.
+  const nextFlow = params.flow !== undefined ? (updates.flow ?? null) : (prior.flow ?? null)
+  if (
+    nextFlow &&
+    (params.flow !== undefined || params.event !== undefined || params.scopes !== undefined)
+  ) {
+    const { flowScopeNeeds, uncoveredFlowNeeds, flowScopeRefusal, withFlowScopes } = await import(
+      "~/modules/agent/routines/flow-scopes"
+    )
+    const needs = flowScopeNeeds(ctx.orgId, nextEvent, nextFlow)
+    const ownerScopes =
+      prior.ownerUserId === callerUserId
+        ? ctx.scopes
+        : await loadUserEffectiveScopes(ctx.orgId, prior.ownerUserId)
+    const refusal = flowScopeRefusal(uncoveredFlowNeeds(needs, ownerScopes))
+    if (refusal) return refusal
+    const current = updates.scopes ?? prior.scopes ?? []
+    const merged = withFlowScopes(current, needs)
+    if (merged.length !== current.length) updates.scopes = merged
   }
   if (params.enabled !== undefined) updates.enabled = params.enabled
   if (params.kind !== undefined) updates.kind = params.kind
@@ -4685,6 +4776,16 @@ export async function handleEnableRoutineTemplate(
   // A flow template (0303) is enabled for one project: its own routine per project.
   const flowTpl = tpl.flow ? await resolveFlowTemplate(tpl, params.projectId, ctx) : null
   if (flowTpl && "error" in flowTpl) return flowTpl
+  if (flowTpl) {
+    // The flow's own needs (flow-scopes.ts): the template's list plus what its steps need.
+    const { flowScopeNeeds, uncoveredFlowNeeds, flowScopeRefusal, withFlowScopes } = await import(
+      "~/modules/agent/routines/flow-scopes"
+    )
+    const needs = flowScopeNeeds(ctx.orgId, tpl.event ?? null, flowTpl.flow)
+    const refusal = flowScopeRefusal(uncoveredFlowNeeds(needs, ctx.scopes))
+    if (refusal) return refusal
+    templateScopes = withFlowScopes(templateScopes, needs)
+  }
   const baseName = isKernel ? params.templateKey : `${params.appName}-${params.templateKey}`
   const name = flowTpl ? `${baseName}-${flowTpl.projectId.slice(0, 8)}`.slice(0, 60) : baseName
   const row = await withPrivilegedDb(ctx.orgId, "routine-template-enable", async (tx) => {
@@ -5348,6 +5449,20 @@ function packScopeLine(verb: "read" | "change", count: number, items: readonly s
   return lines
 }
 
+/** The scopes a create's card lists: those sent plus what its flow's steps need (flow-scopes.ts). */
+async function withCardFlowScopes(
+  orgId: string | undefined,
+  event: string | null | undefined,
+  rawFlow: unknown,
+  scopes: string[],
+): Promise<string[]> {
+  if (!orgId || rawFlow === undefined || rawFlow === null) return scopes
+  const parsed = routineFlowSchema.safeParse(rawFlow)
+  if (!parsed.success) return scopes
+  const { flowScopeNeeds, withFlowScopes } = await import("~/modules/agent/routines/flow-scopes")
+  return withFlowScopes(scopes, flowScopeNeeds(orgId, event, parsed.data))
+}
+
 export async function summarizeCreateRoutine(
   params: unknown,
   ctx?: { orgId?: string },
@@ -5358,7 +5473,15 @@ export async function summarizeCreateRoutine(
   // lines, and approving this card is how the user confirms the routine's scopes.
   const lines: string[] = [
     p.description ?? "",
-    ...routineScopeLines(Array.isArray(p.scopes) ? p.scopes : [], ctx?.orgId),
+    ...routineScopeLines(
+      await withCardFlowScopes(
+        ctx?.orgId,
+        (p.kind ?? "recurring") === "event" ? p.event : null,
+        p.flow,
+        Array.isArray(p.scopes) ? p.scopes : [],
+      ),
+      ctx?.orgId,
+    ),
   ]
   if (kind === "event") {
     lines.push(`Run when ${p.event ?? ""} occurs`)

@@ -224,6 +224,76 @@ describe("routine flow authoring", () => {
     })
   })
 
+  // The flow's own needs are added to the routine's scopes (flow-scopes.ts), at create, update
+  // and template enable; a need its owner lacks is refused at save, naming the step and the scope.
+  const MSG_FLOW = (): RoutineFlow => ({
+    version: 1,
+    steps: [
+      { id: "assign", type: "action", action: "assign", args: { to: OWNER } },
+      {
+        id: "tell",
+        type: "action",
+        action: "message",
+        args: { to: "{{task.assigneeId}}", text: "Yours: {{task.title}}" },
+      },
+    ],
+  })
+  const scopesOf = async (id: string) =>
+    (
+      await sql<{ scopes: string[] }[]>`SELECT scopes FROM kernel.routines WHERE id = ${id}::uuid`
+    )[0]!.scopes
+
+  it("create adds the scopes the flow's steps and record read need", async () => {
+    const res = (await handleCreateRoutine(
+      { ...createParams("assign-scoped", MSG_FLOW()), scopes: ["projects:tasks:read"] },
+      await routineCtx(),
+    )) as { routine?: { id: string }; error?: unknown }
+    expect(res.error).toBeUndefined()
+    expect((await scopesOf(res.routine!.id)).sort()).toEqual(
+      [
+        "kernel:threads:write",
+        "projects:projects:read",
+        "projects:tasks:read",
+        "projects:tasks:write",
+      ].sort(),
+    )
+  })
+
+  it("a step whose scope the owner lacks is refused at save, naming the step and the scope", async () => {
+    const narrow = SCOPES.filter((s) => s !== "kernel:threads:write")
+    const ctx = { ...(await routineCtx()), scopes: narrow }
+    const res = (await handleCreateRoutine(createParams("assign-narrow", MSG_FLOW()), ctx)) as {
+      error?: { code: string; message: string }
+    }
+    expect(res.error?.code).toBe("flow_scope_missing")
+    expect(res.error?.message).toContain('step "tell" needs kernel:threads:write')
+  })
+
+  it("update adds the scopes a new step needs", async () => {
+    const res = (await handleCreateRoutine(
+      { ...createParams("assign-upd", FLOW()), scopes: ["projects:tasks:read"] },
+      await routineCtx(),
+    )) as { routine?: { id: string } }
+    const id = res.routine!.id
+    expect(await scopesOf(id)).not.toContain("kernel:threads:write")
+    const upd = (await handleUpdateRoutine({ id, flow: MSG_FLOW() }, await routineCtx())) as {
+      error?: unknown
+    }
+    expect(upd.error).toBeUndefined()
+    expect(await scopesOf(id)).toContain("kernel:threads:write")
+  })
+
+  it("a flow template's routine holds the project read and the notify scope", async () => {
+    const res = (await handleEnableRoutineTemplate(
+      { appName: "projects", templateKey: "remind-if-still", projectId },
+      await routineCtx(),
+    )) as { routine?: { id: string }; error?: unknown }
+    expect(res.error).toBeUndefined()
+    const scopes = await scopesOf(res.routine!.id)
+    expect(scopes).toContain("projects:projects:read")
+    expect(scopes).toContain("projects:tasks:write")
+  })
+
   it("GET ?projectId= lists the project's routines with their flow; runs return their steps", async () => {
     const res = (await handleCreateRoutine(
       { ...createParams("assign-listed", FLOW()), title: "Assign on status · Website" },
@@ -260,7 +330,7 @@ describe("routine flow authoring", () => {
         authVersion: versions!.auth_version,
         permissionVersion: versions!.permission_version,
         scopes: [...new Set([...SCOPES, ...held.scopes])],
-        dimensionGrants: {},
+        dimensionGrants: { "*": ["*"] },
       },
       env.JWT_SECRET,
     )
@@ -280,5 +350,19 @@ describe("routine flow authoring", () => {
     const runs = await app.request(`/api/agent/routines/${res.routine.id}/runs`, { headers })
     const runBody = (await runs.json()) as { data: Array<{ steps: unknown }> }
     expect(runBody.data[0]?.steps).toEqual(steps)
+
+    // An event filter on a field the project does not have is refused at save, naming the key.
+    const bad = await app.request("/api/agent/routines", {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...createParams("assign-bad-field", FLOW()),
+        eventFilter: { projectId, fields: { colour: "red" } },
+        event: "projects:task:updated",
+        flow: undefined,
+      }),
+    })
+    expect(bad.status).toBe(422)
+    expect(JSON.stringify(await bad.json())).toContain("colour")
   })
 })

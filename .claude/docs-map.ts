@@ -133,7 +133,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
     glob: "apps/api/src/modules/dashboards/tables/**",
     pages: ["agents/tools", "agents/dashboards", "agents/dashboard-tables"],
   },
-  { glob: "apps/web/src/modules/dashboards/**", pages: ["agents/dashboards"] },
+  { glob: "apps/web/src/modules/dashboards/**", pages: ["agents/dashboards", "agents/dashboard-tables"] },
   // Document templates (org admin settings); the settings page that edits them documents them.
   { glob: "apps/api/src/modules/documents/**", pages: ["admin/settings"] },
   { glob: "apps/api/src/modules/documents/{rich-text,rules,rules-store}.ts", pages: ["admin/shipping-documents"] },

@@ -15,7 +15,8 @@
 // carries its `currency`, a group holding several currencies is one row per currency, and the
 // result's `currency` is set only when every project read uses the same one.
 //
-// Each row carries `taskIds` when it holds at most 50 tasks, and `filter`, the tasks_byProject
+// Each row carries `taskIds` and `tasks` ({id, title, status, assigneeName}, what a dashboard drill
+// lists with map.drillRows "tasks") when it holds at most 50 tasks, and `filter`, the tasks_byProject
 // params that list exactly its tasks, when the group can be expressed as one (status, assignee,
 // priority, due, a choice / choices / person / checkbox field, on one project).
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
@@ -78,7 +79,16 @@ export interface AggregateRow {
   /** An amount measure: the currency of this row's value. */
   currency?: string
   taskIds?: string[]
+  /** The row's tasks as a drill-down lists them (with taskIds, at most MAX_ROW_TASK_IDS). */
+  tasks?: AggregateTask[]
   filter?: Record<string, unknown>
+}
+
+export interface AggregateTask {
+  id: string
+  title: string
+  status: string | null
+  assigneeName: string | null
 }
 
 export interface TasksAggregateResult {
@@ -93,6 +103,7 @@ export interface TasksAggregateResult {
 
 interface TaskRow {
   id: string
+  title: string
   project_id: string
   status_id: string | null
   assignee_id: string | null
@@ -590,7 +601,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
   const fetched = extractRows<TaskRow>(
     await args.tx.execute(drizzleSql`
       SELECT
-        t.id, t.project_id, t.status_id, t.assignee_id, t.priority, t.created_at,
+        t.id, t.title, t.project_id, t.status_id, t.assignee_id, t.priority, t.created_at,
         t.status_entered_at, t.fields,
         s.label AS status_label, s."order" AS status_order, s.terminal AS status_terminal,
         u.name AS assignee_name,
@@ -689,13 +700,14 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     sum: number
     valued: number
     taskIds: string[]
+    tasks: AggregateTask[]
   }
   const accs = new Map<string, Acc>()
   const accFor = (g: string | null, s: string | null, c: string | null): Acc => {
     const k = JSON.stringify([g, s, c])
     let a = accs.get(k)
     if (!a) {
-      a = { group: g, series: s, currency: c, count: 0, sum: 0, valued: 0, taskIds: [] }
+      a = { group: g, series: s, currency: c, count: 0, sum: 0, valued: 0, taskIds: [], tasks: [] }
       accs.set(k, a)
     }
     return a
@@ -719,7 +731,15 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
           a.sum += num
           a.valued++
         }
-        if (a.taskIds.length <= MAX_ROW_TASK_IDS) a.taskIds.push(t.id)
+        if (a.taskIds.length <= MAX_ROW_TASK_IDS) {
+          a.taskIds.push(t.id)
+          a.tasks.push({
+            id: t.id,
+            title: t.title,
+            status: t.status_label,
+            assigneeName: t.assignee_name,
+          })
+        }
       }
     }
   }
@@ -757,7 +777,10 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         value,
         count: a.count,
       }
-      if (a.taskIds.length <= MAX_ROW_TASK_IDS) row.taskIds = a.taskIds
+      if (a.taskIds.length <= MAX_ROW_TASK_IDS) {
+        row.taskIds = a.taskIds
+        row.tasks = a.tasks
+      }
       const filter = ctx.single
         ? mergeFilters(
             base,

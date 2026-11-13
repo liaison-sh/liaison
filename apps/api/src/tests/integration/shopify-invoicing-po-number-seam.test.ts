@@ -40,9 +40,10 @@ import { env } from "~/lib/env"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
+import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const WEBHOOK_SECRET = "shpss_po_seam_test_secret"
@@ -57,7 +58,6 @@ function bundledDescriptor(name: string): Record<string, unknown> {
   const version = (manifest.version as string) ?? "0.1.0"
   return {
     ...manifest,
-    trusted: false,
     _format: "manifest",
     _bundlePath: join(REPO_ROOT, "bundled-apps", name, version, "bundle.js"),
   }
@@ -166,13 +166,121 @@ function signBody(body: string): string {
   return createHmac("sha256", WEBHOOK_SECRET).update(body, "utf8").digest("base64")
 }
 
+/**
+ * The store's current draft orders, as the last draft webhook delivered them. A REST draft
+ * webhook never names the B2B buyer, so invoicing re-reads every webhook draft through
+ * `shopify:draft_orders_get`; the fake Admin API below answers that read from here, the way
+ * the real store answers with its current draft. Every other Admin API call stays unreachable.
+ */
+const storeDrafts = new Map<string, Record<string, unknown>>()
+
+type RestLine = {
+  id?: number
+  variant_id?: number
+  title?: string
+  quantity?: number
+  price?: string
+}
+
+/** A REST draft webhook payload as the Admin GraphQL `draftOrder` node `DraftOrderGet` reads. */
+function draftNodeFromRest(p: Record<string, unknown>): Record<string, unknown> {
+  const currency = String(p.presentment_currency ?? p.currency ?? "EUR")
+  const lines = (p.line_items as RestLine[] | undefined) ?? []
+  const money = (amount: string) => ({ presentmentMoney: { amount, currencyCode: currency } })
+  const subtotal = lines
+    .reduce((sum, li) => sum + Number(li.price ?? "0") * (li.quantity ?? 1), 0)
+    .toFixed(2)
+  const billing = p.billing_address as Record<string, string> | undefined
+  const customer = p.customer as Record<string, unknown> | undefined
+  return {
+    id: `gid://shopify/DraftOrder/${p.id}`,
+    name: p.name ?? null,
+    status: String(p.status ?? "open").toUpperCase(),
+    tags: [],
+    email: p.email ?? null,
+    note2: null,
+    taxExempt: false,
+    taxesIncluded: false,
+    currencyCode: currency,
+    totalPriceSet: { ...money(subtotal), shopMoney: { amount: subtotal, currencyCode: currency } },
+    subtotalPriceSet: money(subtotal),
+    totalTaxSet: money("0.00"),
+    poNumber: p.po_number ?? null,
+    order: null,
+    appliedDiscount: null,
+    shippingLine: null,
+    taxLines: [],
+    billingAddress: billing
+      ? {
+          company: billing.company ?? null,
+          address1: billing.address1 ?? null,
+          zip: billing.zip ?? null,
+          city: billing.city ?? null,
+          countryCodeV2: billing.country_code ?? null,
+        }
+      : null,
+    shippingAddress: null,
+    customer: customer
+      ? {
+          id: `gid://shopify/Customer/${customer.id}`,
+          email: customer.email ?? null,
+          firstName: customer.first_name ?? null,
+          lastName: customer.last_name ?? null,
+          defaultAddress: null,
+        }
+      : null,
+    customAttributes: [],
+    purchasingEntity: null,
+    lineItems: {
+      edges: lines.map((li) => ({
+        node: {
+          id: `gid://shopify/DraftOrderLineItem/${li.id}`,
+          title: li.title ?? "",
+          quantity: li.quantity ?? 1,
+          taxable: true,
+          requiresShipping: true,
+          custom: false,
+          customAttributes: [],
+          variant: { id: `gid://shopify/ProductVariant/${li.variant_id}`, product: null },
+          originalUnitPriceSet: money(li.price ?? "0.00"),
+          priceOverride: null,
+          discountedTotalSet: money((Number(li.price ?? "0") * (li.quantity ?? 1)).toFixed(2)),
+          appliedDiscount: null,
+        },
+      })),
+    },
+  }
+}
+
+/** The fake Admin API: `DraftOrderGet` reads `storeDrafts`; any other call fails to connect. */
+async function fakeAdminApi(url: string, init?: RequestInit): Promise<Response> {
+  const body = JSON.parse(String(init?.body ?? "{}")) as {
+    query?: string
+    variables?: { id?: string }
+  }
+  if (!url.includes(SHOP_DOMAIN) || !body.query?.includes("DraftOrderGet")) {
+    throw new TypeError("fetch failed: no Admin API in this test")
+  }
+  const draft = storeDrafts.get(String(body.variables?.id))
+  return new Response(JSON.stringify({ data: { draftOrder: draft ?? null } }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  })
+}
+
 /** POST a raw Shopify webhook body through the REAL route -> real verifier ->
- *  real topic handler. Returns the HTTP response. */
+ *  real topic handler. Returns the HTTP response. A draft webhook also updates the fake
+ *  store's draft first, as the store changes before it notifies. */
 async function postWebhook(
   endpoint: string,
   payload: Record<string, unknown>,
   webhookId: string,
 ): Promise<Response> {
+  if (endpoint.startsWith("draft-orders-")) {
+    const gid = `gid://shopify/DraftOrder/${payload.id}`
+    if (endpoint === "draft-orders-delete") storeDrafts.delete(gid)
+    else storeDrafts.set(gid, draftNodeFromRest(payload))
+  }
   const body = JSON.stringify(payload)
   const res = await app.request(`/webhooks/${ORG}/shopify/${endpoint}`, {
     method: "POST",
@@ -211,6 +319,9 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
 
   beforeAll(async () => {
     await acquireTestLock()
+    // Deliveries replay identical bodies on every run: a previous run's replay keys would
+    // reject them as duplicates.
+    await clearRedisPatterns([`webhook:replay:${ORG}:*`])
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
 
     await sql`INSERT INTO kernel.organizations (id, name, slug)
@@ -261,14 +372,19 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         provider_type, identifier, status, created_by, access_token_encrypted
       ) VALUES (
         ${randomUUID()}, ${ORG}, 'shopify', 'shop', 'org', NULL,
-        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER}, 'encrypted-token'
+        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER},
+        ${encryptSecret("shpat_po_seam_test", env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)}
       )`
+    SandboxBridgeTestAccess.setFetchInterceptsHost((host) => host === SHOP_DOMAIN)
+    SandboxBridgeTestAccess.setFetch(fakeAdminApi as unknown as typeof fetch)
 
     issuerProfileId = await insertIssuerProfile()
     await seedConfirmedBuyers()
   }, 60_000)
 
   afterAll(async () => {
+    SandboxBridgeTestAccess.setFetch(null)
+    SandboxBridgeTestAccess.setFetchInterceptsHost(null)
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     resetAppRegistries()
@@ -686,9 +802,8 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         currency: "EUR",
         // A real draft_orders webhook states the presentment currency
         // alongside the shop currency, and the amounts below are presentment
-        // amounts. Without it the consumer cannot know the label matches the
-        // money, so it re-reads the draft over the Shopify connection this
-        // fixture deliberately does not have, and no quote is ever created.
+        // amounts. Invoicing re-reads the draft anyway (a REST payload never
+        // names the B2B buyer); the fake Admin API answers from this payload.
         presentment_currency: "EUR",
         po_number: "PO-DRAFT-0001",
         email: "quotebuyer@po-seam.example",
@@ -736,9 +851,8 @@ describe("shopify -> invoicing PO number seam (real webhook -> real outbox -> re
         currency: "EUR",
         // A real draft_orders webhook states the presentment currency
         // alongside the shop currency, and the amounts below are presentment
-        // amounts. Without it the consumer cannot know the label matches the
-        // money, so it re-reads the draft over the Shopify connection this
-        // fixture deliberately does not have, and no quote is ever created.
+        // amounts. Invoicing re-reads the draft anyway (a REST payload never
+        // names the B2B buyer); the fake Admin API answers from this payload.
         presentment_currency: "EUR",
         po_number: "PO-DRAFT-0002",
         email: "quotebuyer@po-seam.example",

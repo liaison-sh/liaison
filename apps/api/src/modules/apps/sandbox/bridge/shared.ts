@@ -123,13 +123,6 @@ export interface AppManifestForBridge {
   capabilities?: string[]
   /** I9 — declared scopes used to intersect `grants_setUserScopes` args. */
   scopes?: string[]
-  /**
-   * Trust posture (T10): the bridge methods that hand back kernel-level
-   * primitives (currently `agent_spawn`) refuse to execute unless the manifest
-   * sets `trusted: true`. Untrusted apps can still call sandboxed methods
-   * (`fetch`, `db`, `emit`, …) but cannot manufacture nested agent runs.
-   */
-  trusted?: boolean
   connections?: Record<
     string,
     {

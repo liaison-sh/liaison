@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// T10 — Sandbox RPC bridge `agent_spawn` enforces trust + capability gates.
+// Sandbox RPC bridge `agent_spawn` / `agent_awaitRun` are gated by the
+// `agent.spawn` capability alone (declared in the manifest, granted at
+// install). No app is privileged by who published it.
 //
-//  - trusted: false           → E_NOT_TRUSTED
-//  - trusted: true, no cap    → CAPABILITY_NOT_DECLARED
-//  - trusted: true, cap set   → spawnAgent runs, runId returned
+//  - no cap → CAPABILITY_NOT_DECLARED (spawn and awaitRun)
+//  - cap    → spawnAgent runs, runId returned
 //
 // Each test plants the minimum infrastructure for spawnAgent (org/user/role
 // definition) and constructs an `AppManifestForBridge`-shaped object as the
@@ -82,14 +83,12 @@ async function makeThread(orgId: string, userId: string): Promise<string> {
 }
 
 interface ManifestArgs {
-  trusted: boolean
   capabilities: string[]
 }
 
 function makeManifest(name: string, args: ManifestArgs): Record<string, unknown> {
   return {
     name,
-    trusted: args.trusted,
     capabilities: args.capabilities,
     schema: {},
     events: { emits: [] },
@@ -115,15 +114,12 @@ describe("sandbox agent_spawn bridge (T10)", () => {
     }
   })
 
-  it("untrusted app cannot call agent_spawn — E_NOT_TRUSTED", async () => {
+  it("an app without the capability cannot await a run — CAPABILITY_NOT_DECLARED", async () => {
     const appName = await installApp(["mcp:jira:read"])
     const threadId = await makeThread(orgId, userId)
-    const manifest = makeManifest(appName, {
-      trusted: false,
-      capabilities: ["agent.spawn"],
-    })
+    const manifest = makeManifest(appName, { capabilities: [] })
 
-    await withPrivilegedDb(orgId, "bridge-untrusted", async (tx) => {
+    await withPrivilegedDb(orgId, "bridge-no-cap-await", async (tx) => {
       const bridge = createRpcBridge(
         appName,
         userId,
@@ -135,25 +131,16 @@ describe("sandbox agent_spawn bridge (T10)", () => {
         undefined,
         { actor, threadId },
       )
-      const env = await bridge.agent_spawn(
-        JSON.stringify({
-          subagentType: "ticket-investigator",
-          description: "x",
-          prompt: "go",
-        }),
-      )
+      const env = await bridge.agent_awaitRun(crypto.randomUUID())
       const parsed = JSON.parse(env) as { error?: { code?: string } }
-      expect(parsed.error?.code).toBe("E_NOT_TRUSTED")
+      expect(parsed.error?.code).toBe("CAPABILITY_NOT_DECLARED")
     })
   })
 
-  it("trusted app without capability — CAPABILITY_NOT_DECLARED", async () => {
+  it("an app without the capability cannot spawn — CAPABILITY_NOT_DECLARED", async () => {
     const appName = await installApp(["mcp:jira:read"])
     const threadId = await makeThread(orgId, userId)
-    const manifest = makeManifest(appName, {
-      trusted: true,
-      capabilities: [],
-    })
+    const manifest = makeManifest(appName, { capabilities: [] })
     await withPrivilegedDb(orgId, "bridge-no-cap", async (tx) => {
       const bridge = createRpcBridge(
         appName,
@@ -178,7 +165,7 @@ describe("sandbox agent_spawn bridge (T10)", () => {
     })
   })
 
-  it("trusted app with agent.spawn capability returns runId", async () => {
+  it("an app that declares agent.spawn spawns and gets a runId", async () => {
     const appName = await installApp(["mcp:jira:read"])
     const agentType = `inv-${crypto.randomUUID().slice(0, 6)}`
     await createSubAgentDefinition({
@@ -190,10 +177,7 @@ describe("sandbox agent_spawn bridge (T10)", () => {
       systemPrompt: "Investigate.",
     })
     const threadId = await makeThread(orgId, userId)
-    const manifest = makeManifest(appName, {
-      trusted: true,
-      capabilities: ["agent.spawn"],
-    })
+    const manifest = makeManifest(appName, { capabilities: ["agent.spawn"] })
     // A tool call's bridge runs on the caller's RLS transaction, as in production.
     await withRlsContext(actor, async (tx) => {
       const bridge = createRpcBridge(
@@ -220,7 +204,7 @@ describe("sandbox agent_spawn bridge (T10)", () => {
     })
   })
 
-  // Owner ruling: sub-agents nest at most two levels. A trusted app's
+  // Owner ruling: sub-agents nest at most two levels. An app's
   // ctx.agent.spawn must nest below the agent run that called the app tool,
   // never start a fresh chain at depth 0.
   describe("nesting depth inherits the calling run", () => {
@@ -243,7 +227,7 @@ describe("sandbox agent_spawn bridge (T10)", () => {
       frame: { runId: string; rootRunId: string; nestingDepth: number } | null,
       args: { appName: string; agentType: string; threadId: string },
     ): Promise<{ runId?: string; error?: { code?: string; message?: string } }> {
-      const manifest = makeManifest(args.appName, { trusted: true, capabilities: ["agent.spawn"] })
+      const manifest = makeManifest(args.appName, { capabilities: ["agent.spawn"] })
       // On the caller's RLS transaction, as the tool dispatch gives the bridge.
       return withRlsContext(actor, async (tx) => {
         // The bridge is built in the calling run's frame (as the tool dispatch

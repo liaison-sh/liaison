@@ -77,7 +77,6 @@ function actor(): UserContext {
 function manifest(): Record<string, unknown> {
   return {
     name: appName,
-    trusted: true,
     capabilities: ["agent.spawn"],
     schema: {},
     events: { emits: [] },
@@ -287,7 +286,7 @@ afterEach(() => {
 
 describe("sandbox agent_spawn: scope and taint of the child", () => {
   it(
-    "root spawn: a trusted app spawning outside any frame gets an untainted child that writes a non-enforcing table",
+    "root spawn: an app spawning outside any frame gets an untainted child that writes a non-enforcing table",
     async () => {
       const bridge = buildBridge()
 

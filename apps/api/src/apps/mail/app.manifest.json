@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.5",
+  "version": "1.8.6",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -547,7 +547,11 @@
         "encVersion": {
           "type": "smallint",
           "default": 0
-        }
+        },
+        "sendState": { "type": "string", "required": false, "enum": ["sending", "sent", "unknown"] },
+        "sendStartedAt": "date?",
+        "sentMessageId": "string?",
+        "sentThreadId": "string?"
       },
       "indexes": [
         [

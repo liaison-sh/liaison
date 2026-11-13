@@ -36,6 +36,7 @@ import {
   createDraft,
   discardDraft,
   getDraftForConversation,
+  mailSendErrorKey,
   scheduleDraftSave,
   sendDraft,
 } from "~/modules/mail/mail-draft-store"
@@ -66,6 +67,9 @@ export const MailReplyBar: Component<MailReplyBarProps> = (props) => {
   const [body, setBody] = createSignal("")
   const [sending, setSending] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
+  // The last send may have been delivered (the provider never confirmed it):
+  // the next Send on this draft says the person wants it sent again anyway.
+  const [confirmResend, setConfirmResend] = createSignal(false)
   const [collapsed, setCollapsed] = createSignal(!props.startExpanded)
   const [pendingFiles, setPendingFiles] = createSignal<FileRow[]>([])
   const [attachError, setAttachError] = createSignal<string | null>(null)
@@ -215,14 +219,18 @@ export const MailReplyBar: Component<MailReplyBarProps> = (props) => {
         cc: cc(),
         htmlBody: email.html,
         textBody: email.text,
+        ...(confirmResend() ? { confirmResend: true } : {}),
       })
+      setConfirmResend(false)
       setDraftId(null)
       setBody("")
       setPendingFiles([])
       setAttachError(null)
     } catch (err: any) {
       // A mailbox that cannot send says how to fix it, in the person's language.
-      const fixable = connectionErrorKey(err)
+      // A send that did not settle says whether it may have left.
+      const fixable = connectionErrorKey(err) ?? mailSendErrorKey(err)
+      setConfirmResend(fixable === "mail.sendOutcomeUnknown")
       setError(fixable ? i18n.t(fixable) : (err.message ?? "Failed to send"))
     } finally {
       setSending(false)

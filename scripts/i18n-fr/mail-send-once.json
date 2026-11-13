@@ -1,0 +1,6 @@
+{
+  "key": {
+    "mail.sendInProgress": "Ce message est encore en cours d'envoi. Patientez un instant, puis regardez dans Envoyés.",
+    "mail.sendOutcomeUnknown": "Votre fournisseur de messagerie n'a pas confirmé ce message : il a peut-être déjà été distribué. Regardez d'abord dans Envoyés. Pour l'envoyer quand même, appuyez sur Envoyer."
+  }
+}

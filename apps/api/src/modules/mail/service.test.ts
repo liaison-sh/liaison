@@ -1011,6 +1011,152 @@ describe("drafts", () => {
   })
 })
 
+describe("a person's send happens once per draft", () => {
+  let sends = 0
+  /** Gmail answers the send after `delayMs`, with `status`. */
+  function mockGmailSend(opts: { delayMs?: number; status?: number; id?: string } = {}) {
+    sends = 0
+    SandboxBridgeTestAccess.setFetch((async (input: any) => {
+      const url = String(input?.url ?? input)
+      if (url.includes("/messages/send")) {
+        sends += 1
+        if (opts.delayMs) await new Promise((r) => setTimeout(r, opts.delayMs))
+      }
+      const status = opts.status ?? 200
+      const body = status === 200 ? { id: opts.id ?? `once-${sends}`, threadId: "thread-once" } : {}
+      return new Response(JSON.stringify(body), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      })
+    }) as unknown as typeof fetch)
+  }
+  function withEnv(name: string, value: string | undefined): () => void {
+    const before = process.env[name]
+    if (value === undefined) delete process.env[name]
+    else process.env[name] = value
+    return () => {
+      if (before === undefined) delete process.env[name]
+      else process.env[name] = before
+    }
+  }
+  async function draftState(draftId: string) {
+    const [row] = extractRows<{ send_state: string | null }>(
+      await db.execute(drizzleSql`SELECT send_state FROM app_mail.drafts WHERE id = ${draftId}`),
+    )
+    return row
+  }
+  const sendIt = (draftId: string, extra: { confirmResend?: boolean } = {}) =>
+    mailService.sendDraft(mailDb, {
+      orgId,
+      userId,
+      draftId,
+      to: [{ email: "bob@test.com" }],
+      subject: "Once",
+      htmlBody: "<p>Once</p>",
+      textBody: "Once",
+      ...extra,
+    })
+
+  afterEach(() => {
+    SandboxBridgeTestAccess.setFetch(null)
+  })
+
+  it("waits for a provider slower than the sandbox default instead of failing a delivered send", async () => {
+    await seedConversation()
+    const draft = await mailService.createDraft(mailDb, { orgId, userId, accountId })
+    mockGmailSend({ delayMs: 300, id: "slow-but-sent" })
+    const restore = withEnv("LIAISON_SANDBOX_TIMEOUT_MS", "50")
+    try {
+      const result = await sendIt(draft.id)
+      expect(result.messageId).toBe("slow-but-sent")
+      expect(sends).toBe(1)
+      expect(await draftState(draft.id)).toBeUndefined()
+    } finally {
+      restore()
+    }
+  })
+
+  it("a send the provider never confirmed is reported as maybe delivered, and not sent again unless confirmed", async () => {
+    await seedConversation()
+    const draft = await mailService.createDraft(mailDb, { orgId, userId, accountId })
+    mockGmailSend({ delayMs: 200, id: "maybe-sent" })
+    const restore = withEnv("LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS", "50")
+    try {
+      await expect(sendIt(draft.id)).rejects.toMatchObject({
+        status: 409,
+        code: mailService.MAIL_SEND_OUTCOME_UNKNOWN,
+      })
+      await new Promise((r) => setTimeout(r, 250))
+      expect(sends).toBe(1)
+      expect((await draftState(draft.id))?.send_state).toBe("unknown")
+      // A retry (a second click, a lost answer) sends nothing.
+      await expect(sendIt(draft.id)).rejects.toMatchObject({
+        code: mailService.MAIL_SEND_OUTCOME_UNKNOWN,
+      })
+      expect(sends).toBe(1)
+    } finally {
+      restore()
+    }
+    // The person checked Sent and says send it again: it goes, once.
+    mockGmailSend({ id: "resent" })
+    const result = await sendIt(draft.id, { confirmResend: true })
+    expect(result.messageId).toBe("resent")
+    expect(sends).toBe(1)
+    expect(await draftState(draft.id)).toBeUndefined()
+  })
+
+  it("a send the provider refused left nothing, so it can be sent again", async () => {
+    await seedConversation()
+    const draft = await mailService.createDraft(mailDb, { orgId, userId, accountId })
+    mockGmailSend({ status: 400 })
+    await expect(sendIt(draft.id)).rejects.toMatchObject({ code: "GMAIL_SEND_FAILED" })
+    expect((await draftState(draft.id))?.send_state).toBeNull()
+    mockGmailSend({ id: "after-refusal" })
+    const result = await sendIt(draft.id)
+    expect(result.messageId).toBe("after-refusal")
+    expect(sends).toBe(1)
+  })
+
+  it("a retry of a send the provider accepted records that message and sends nothing", async () => {
+    await seedConversation()
+    const draft = await mailService.createDraft(mailDb, { orgId, userId, accountId })
+    await db.execute(drizzleSql`
+      UPDATE app_mail.drafts
+         SET send_state = 'sent', send_started_at = now(),
+             sent_message_id = 'accepted-before', sent_thread_id = 'thread-accepted'
+       WHERE id = ${draft.id}`)
+    mockGmailSend({ id: "must-not-send" })
+    const result = await sendIt(draft.id)
+    expect(result.messageId).toBe("accepted-before")
+    expect(sends).toBe(0)
+    const stored = extractRows<{ n: number }>(
+      await db.execute(
+        drizzleSql`SELECT count(*)::int AS n FROM app_mail.messages
+                    WHERE org_id = ${orgId} AND external_message_id = 'accepted-before'`,
+      ),
+    )
+    expect(stored[0].n).toBe(1)
+    expect(await draftState(draft.id)).toBeUndefined()
+  })
+
+  it("a draft another request is sending right now is refused, not sent twice", async () => {
+    await seedConversation()
+    const draft = await mailService.createDraft(mailDb, { orgId, userId, accountId })
+    await db.execute(drizzleSql`
+      UPDATE app_mail.drafts SET send_state = 'sending', send_started_at = now()
+       WHERE id = ${draft.id}`)
+    mockGmailSend()
+    await expect(sendIt(draft.id)).rejects.toMatchObject({
+      status: 409,
+      code: mailService.MAIL_SEND_IN_PROGRESS,
+    })
+    await expect(sendIt(draft.id, { confirmResend: true })).rejects.toMatchObject({
+      code: mailService.MAIL_SEND_IN_PROGRESS,
+    })
+    expect(sends).toBe(0)
+  })
+})
+
 describe("internal sender attribution", () => {
   async function withMockedSend<T>(messageId: string, fn: () => Promise<T>): Promise<T> {
     SandboxBridgeTestAccess.setFetch(

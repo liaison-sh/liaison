@@ -143,6 +143,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   "dashboard-table-changes-retention": { queueClass: "cron", priority: YIELD },
   "app-logs-retention": { queueClass: "cron", priority: YIELD },
   "app-draft-store-retention": { queueClass: "cron", priority: YIELD },
+  "app-code-modules-retention": { queueClass: "cron", priority: YIELD },
   "notification-deliveries-retention": { queueClass: "cron", priority: YIELD },
   "sync-model-pricing": { queueClass: "cron", priority: YIELD },
   "sync-openrouter-prices": { queueClass: "cron", priority: YIELD },

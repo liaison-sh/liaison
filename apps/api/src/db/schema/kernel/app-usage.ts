@@ -3,9 +3,10 @@
 // Per-org app usage per UTC day (migration 0282, modules/apps/usage/): one row
 // per (org, app, day, executor) with the runs, the bridge calls (Workers only:
 // QuickJS runs report none) and the wall milliseconds the cell counted as runs
-// settled, plus the CPU milliseconds the Workers loader measured, pulled from
-// it every hour (null until then, and always on QuickJS and on the instance's
-// sandbox service, `workerd`). For reporting (Usage
+// settled, plus CPU milliseconds: the Workers loader's measure, pulled from
+// it every hour (null until then), and on the instance's sandbox service
+// (`workerd`) the service's measure, added as each run settles (null on
+// QuickJS). For reporting (Usage
 // in Settings, the daily `apps.usage` to Control): the caps are enforced from
 // Redis day counters, never from this table. Readable by the row's org under
 // RLS; written through the privileged pool only.
@@ -27,7 +28,7 @@ export const appUsageDaily = kernel.table(
     runs: bigint("runs", { mode: "number" }).notNull().default(0),
     bridgeCalls: bigint("bridge_calls", { mode: "number" }).notNull().default(0),
     wallMs: bigint("wall_ms", { mode: "number" }).notNull().default(0),
-    /** The loader's measure (Workers); null before the pull and on other executors. */
+    /** The loader's measure (Workers, pulled) or the sandbox service's (workerd, per run); null on QuickJS. */
     cpuMs: bigint("cpu_ms", { mode: "number" }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

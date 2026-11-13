@@ -3,7 +3,8 @@
  * Saved transforms, versioned. Saving under a name adds version n+1 (the
  * first save is version 1); a version is never updated, so a run that pins
  * (id, version) runs exactly the code its preview showed and its approval
- * named. Reached through the privileged connection only (the table has no
+ * named. Saving builds the version's Worker module (execute.ts
+ * transformModule). Reached through the privileged connection only (the table has no
  * RLS read path); every call takes the org from its caller (the run row or
  * the authenticated request), never from the transform.
  */
@@ -11,6 +12,8 @@ import { and, desc, eq, max } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { importTransforms } from "~/db/schema/kernel"
 import type { ImportTransform } from "~/db/schema/kernel/import-transforms"
+import { AdhocModuleError } from "~/modules/apps/workers/adhoc-module"
+import { transformModule } from "./execute"
 import { validateTransformSource } from "./source"
 
 export const TRANSFORM_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
@@ -78,6 +81,17 @@ export async function saveTransform(
   input: SaveTransformInput,
 ): Promise<TransformRef> {
   checkInput(input)
+  // Its Worker module, built now (workers/adhoc-module.ts): code that does not
+  // build is refused at the save, not at the first run on a remote executor.
+  try {
+    await transformModule(input.orgId, input.source, tx)
+  } catch (err) {
+    if (!(err instanceof AdhocModuleError)) throw err
+    throw new TransformStoreError(
+      "invalid_transform",
+      `The transform ${err.message.replace(/^the code /, "")}.`,
+    )
+  }
   for (let attempt = 0; ; attempt++) {
     const [top] = await tx
       .select({ v: max(importTransforms.version) })

@@ -7,7 +7,9 @@
 //   1. `runApp` (the one door, run-app.ts) evaluates the template bundle
 //      (which set `globalThis.renderTemplate`) and calls
 //      `renderTemplate(data, __ctx)` inside the isolated realm on an empty
-//      bridge, in process on QuickJS — NO host code runs the template.
+//      bridge: on the app loader or the sandbox service as the template's
+//      own Worker module (templateModule), else in process on QuickJS — NO
+//      host code runs the template.
 //   2. The template returns a JSON `DrawCommand[]`, marshaled back to the host.
 //   3. `replayDrawCommands` zod-validates + bounds-checks the list and renders
 //      the PDF. A non-array / garbage return fails closed at the schema gate.
@@ -15,6 +17,7 @@
 import { runLimits } from "~/modules/apps/run-limits"
 import type { SandboxPool } from "~/modules/apps/sandbox/pool"
 import { runApp } from "~/modules/apps/sandbox/run-app"
+import { ensureScriptModule } from "~/modules/apps/workers/adhoc-module"
 import { type ReplayDrawCommandsOptions, replayDrawCommands } from "./replay"
 
 export interface RunTemplateToPdfArgs {
@@ -37,14 +40,29 @@ export interface RunTemplateToPdfArgs {
   replay?: ReplayDrawCommandsOptions
 }
 
+/**
+ * The Worker module of a template bundle (workers/adhoc-module.ts): built when
+ * its app version is installed and looked up when a render goes to a remote
+ * executor. Instance-wide, like the template.
+ */
+export function templateModule(bundleSource: string): Promise<string> {
+  return ensureScriptModule({
+    origin: "pdf-template",
+    orgId: null,
+    script: bundleSource,
+    exports: ["renderTemplate"],
+  })
+}
+
 export async function runTemplateToPdf(args: RunTemplateToPdfArgs): Promise<Uint8Array> {
   const { bundleSource, data } = args
   const commands = await runApp({
     trusted: false,
     appName: args.appName,
     orgId: args.orgId,
-    // The template's own source, not an installed Worker module.
+    // The template's own source, as its own Worker module on a remote executor.
     installed: null,
+    workerModule: async () => ({ sha256: await templateModule(bundleSource), version: "template" }),
     bundleSource,
     exportName: "renderTemplate",
     entry: "pdf-template:renderTemplate",

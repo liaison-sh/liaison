@@ -22,6 +22,8 @@ import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { freezeApp } from "../../../../../../scripts/freeze-app"
 import { startWorkerdLoader, type WorkerdLoader } from "./__fixtures__/workerd-loader"
+import { onRunSettled, type RunSettledInfo } from "./run-settled"
+import { appSandboxRelease, probeSandbox, SANDBOX_RELEASE_HEADER } from "./sandbox-release"
 import { recentRunTimings } from "./timings"
 
 const REPO = join(import.meta.dir, "../../../../../..")
@@ -159,5 +161,23 @@ describe("the sandbox service on a self-hosted instance: two orgs, one app@versi
     expect(processOf(org.A)).toBe(procA)
     expect((await echo("B", "again")).status).toBe(200)
     expect(processOf(org.B)).toBe(procB)
+  }, 120_000)
+
+  it("names this release on every run, and settles each run with the CPU the service measured", async () => {
+    const settled: RunSettledInfo[] = []
+    const off = onRunSettled((i) => {
+      if (i.app === APP) settled.push(i)
+    })
+    try {
+      expect((await echo("A", "cpu")).status).toBe(200)
+    } finally {
+      off()
+    }
+    const last = loader?.runs.at(-1)
+    expect(last?.headers[SANDBOX_RELEASE_HEADER]).toBe(appSandboxRelease())
+    expect(settled.at(-1)).toMatchObject({ executor: "workerd", ok: true })
+    expect(typeof settled.at(-1)?.cpuMs).toBe("number")
+    // The /healthz dependency: same release, and the service reaches the cell's bridge.
+    expect((await probeSandbox())?.status).toBe("ok")
   }, 120_000)
 })

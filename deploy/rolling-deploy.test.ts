@@ -157,6 +157,25 @@ describe("rolling-deploy.sh", () => {
     expect(readFileSync(path.join(state, "replicas.log"), "utf8").trim().split("\n")).not.toContain("3 1")
   })
 
+  it("recreates a running sandbox service on the new image once the new processes are ready, before the old ones stop", () => {
+    standardWorld()
+    setPs("sandbox", ["sbx1"])
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    const ready = lastIndexOf(calls, (c) => c.startsWith("inspect") && c.includes("Health"))
+    const recreate = indexOf(calls, (c) => c === "compose --profile sandbox up -d --no-deps sandbox")
+    const firstStop = indexOf(calls, (c) => c.startsWith("stop"))
+    expect(recreate).toBeGreaterThan(ready)
+    expect(firstStop).toBeGreaterThan(recreate)
+  })
+
+  it("leaves the sandbox service alone when it is not in use", () => {
+    standardWorld()
+    const { code, calls } = run()
+    expect(code).toBe(0)
+    expect(calls.some((c) => c.includes("up -d --no-deps sandbox"))).toBe(false)
+  })
+
   it("the order is migrate → scale up → readyz wait on the new ids → stop old ids", () => {
     standardWorld()
     const { code, calls, stderr } = run()

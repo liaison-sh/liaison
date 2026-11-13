@@ -954,6 +954,15 @@ export async function registerKernelJobs(): Promise<void> {
     await pruneDraftStoreNamespaces()
   })
 
+  // Worker modules of code with no installed version (drafts, import
+  // transforms, PDF templates), daily at 4:50 AM: one no run looked up for 30
+  // days goes (modules/apps/workers/adhoc-module.ts).
+  await registerScheduledJob("kernel", "app-code-modules-retention", "50 4 * * *", async () => {
+    const { pruneAdhocModules } = await import("~/modules/apps/workers/adhoc-module")
+    const pruned = await pruneAdhocModules()
+    if (pruned > 0) log.info({ pruned }, "unused Worker modules pruned")
+  })
+
   // Notification delivery log + receipts (S1): 30 days, payloads included.
   await registerScheduledJob(
     "kernel",

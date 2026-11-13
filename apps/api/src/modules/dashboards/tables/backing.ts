@@ -105,8 +105,7 @@ export async function backingProvider(
   orgId: string,
   backing: Pick<TableBacking, "app" | "entity">,
 ): Promise<TableBackingProvider | null> {
-  const { awaitOrgApps } = await import("~/modules/apps/init")
-  await awaitOrgApps(orgId)
+  // A request, a tool call and a block run have set the org's apps up already.
   const { tableBackingRegistry } = await import("~/modules/apps/app-registries")
   const decl = tableBackingRegistry.get([orgId, backing.app, backing.entity])
   if (!decl) return null

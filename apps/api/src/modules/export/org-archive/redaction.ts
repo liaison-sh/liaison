@@ -73,6 +73,9 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "app_stripe.stripe_payments.card_brand": "payment card detail",
   "app_stripe.stripe_payments.card_last4": "payment card detail",
   "app_stripe.stripe_payments.card_exp": "payment card detail",
+  // A row's frozen cost is a person's rate times their minutes; a project's cost is the money
+  // figure finance reads (withheld.ts keeps the dated sheet's rows, not the rate behind them).
+  "app_projects.task_time.cost_minor": "a person's cost on one entry",
 }
 
 /** jsonb paths written as `null` (`*` matches any key). */

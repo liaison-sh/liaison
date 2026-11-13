@@ -48,6 +48,25 @@ describe("Took reads only the person's own statement", () => {
     ).toBe("needs_person_statement")
   })
 
+  it("a quote that is only part of a different figure in the person's words is refused", () => {
+    const check = (latest: string, quote: string, minutes: number) =>
+      checkPersonStatement({
+        place: inApp,
+        minutes,
+        quote,
+        hoursPerDayMinutes: HPD,
+        latestHumanMessage: latest,
+      })?.code ?? null
+    expect(check("it took 12 hours", "2 hours", 120)).toBe("needs_person_statement")
+    expect(check("it took 1h30", "1h", 60)).toBe("needs_person_statement")
+    expect(check("it took 1 h 30", "1 h", 60)).toBe("needs_person_statement")
+    expect(check("about 15 minutes", "5 minutes", 5)).toBe("needs_person_statement")
+    expect(check("not 2 hours, more like 4", "2 hours", 120)).toBe("needs_person_statement")
+    expect(check("it took 12 hours", "12 hours", 720)).toBeNull()
+    expect(check("It took 1h30, thanks!", "1h30", 90)).toBeNull()
+    expect(check("It took 1 h 30 in the end.", "took 1 h 30", 90)).toBeNull()
+  })
+
   it("a routine or a sub-run never records time, whatever it quotes", () => {
     for (const frame of [{ routineId: "r1" }, { background: true }]) {
       expect(

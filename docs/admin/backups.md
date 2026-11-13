@@ -109,6 +109,8 @@ What is in the archive:
 
 What is left out: passwords and password hashes, two-step secrets and recovery codes, a recovery phrase's verifier, connection tokens and credentials, mailbox key wraps, API key hashes, browser push subscriptions' keys, pending command line sign-in codes, OAuth client secrets, AI provider keys, the payment card details mirrored from Stripe (brand, last four digits, expiry), and every secret the server encrypted inside app settings and connection details. They are written as `null` and listed in the manifest. Encrypted mail and sealed files are exported as stored, still encrypted, and counted in the manifest.
 
+The archive holds what an admin may read of people's time, no more. A person's own time entries are left out, except those on a project's dated sheet (entered while the project used dated hours), and each entry's cost is written as `null`. People's cost rates and proposed reconciliations, with their lines and proofs, are left out too. The manifest lists these tables under `withheld`. A full copy moves only with an instance transfer, from operator to operator.
+
 The archive is read while the organization keeps working, so it is not a point-in-time snapshot. Without ZIP64, one archive holds at most 4 GB and 65,000 entries: a larger organization's export fails and says so.
 
 ## Delete an organization

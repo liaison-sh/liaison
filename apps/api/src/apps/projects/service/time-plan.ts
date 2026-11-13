@@ -19,6 +19,19 @@ import {
   todayIn,
 } from "./took"
 
+/** A real calendar day written YYYY-MM-DD (2026-02-30 is not one). */
+export function isCalendarDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [y, m, d] = value.split("-").map(Number) as [number, number, number]
+  const day = new Date(Date.UTC(y, m - 1, d))
+  return day.getUTCFullYear() === y && day.getUTCMonth() === m - 1 && day.getUTCDate() === d
+}
+
+function pgCodeOf(err: unknown): string | undefined {
+  const e = err as { code?: string; cause?: { code?: string } }
+  return e?.cause?.code ?? e?.code
+}
+
 export const DEFAULT_HOURS_PER_DAY_MINUTES = 420
 export const UNREADABLE_TIME_MESSAGE = "Could not read this. Try 2 h, 1h30, half a day or 2 days."
 
@@ -262,7 +275,7 @@ export async function setTaskTime(args: {
     )
   }
   const date = dated ? (input.date ?? today) : undefined
-  if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  if (date !== undefined && !isCalendarDate(date)) {
     throw new ProjectsServiceError(
       400,
       "invalid_date",
@@ -457,8 +470,29 @@ export async function correctTaskTime(args: {
   const project = await loadPlanningProject(tx, orgId, entry.project_id)
   requirePlanning(orgId, project, scopes)
   const minutes = readDuration(input.time, await hoursPerDayMinutes(tx, orgId), "time")
+  if (input.date !== undefined) {
+    if (!isCalendarDate(input.date)) {
+      throw new ProjectsServiceError(
+        400,
+        "invalid_date",
+        `Nothing changed: ${input.date} is not a date (YYYY-MM-DD).`,
+        { next: "Give the day the work was done, as YYYY-MM-DD." },
+      )
+    }
+    const today = todayIn(await orgTimezone(tx, orgId))
+    if (input.date > today) {
+      throw new ProjectsServiceError(
+        400,
+        "future_date",
+        `Nothing changed: ${input.date} is after today (${today}), and time is entered for days already worked.`,
+        { next: "Give the day the work was done, today or earlier." },
+      )
+    }
+  }
   const updated = extractRows<{ id: string; date: string; user_id: string | null }>(
-    await tx.execute(drizzleSql`
+    await tx
+      .transaction(async (sp) =>
+        sp.execute(drizzleSql`
       UPDATE ${projectsRel("task_time")}
          SET minutes = ${minutes},
              work_date = ${input.date === undefined ? drizzleSql`work_date` : drizzleSql`${input.date}::date`},
@@ -466,6 +500,18 @@ export async function correctTaskTime(args: {
              updated_at = now()
        WHERE id = ${input.entryId}::uuid AND org_id = ${orgId}::uuid
        RETURNING id::text AS id, work_date::text AS date, user_id::text AS user_id`),
+      )
+      .catch((err: unknown) => {
+        if (pgCodeOf(err) === "23505") {
+          throw new ProjectsServiceError(
+            409,
+            "entry_exists",
+            `Nothing changed: the same person already has an entry on this task for ${input.date}.`,
+            { next: "Correct that day's entry instead." },
+          )
+        }
+        throw err
+      }),
   )
   const row = updated[0]
   if (!row) {
@@ -591,7 +637,7 @@ export async function setTimePlan(args: {
   let message = `${parts.join(", ")}.`
   if (datedTurnedOn) {
     message +=
-      " From today its lead and finance see each person's dated entries; entries made before today stay private to their authors. Everyone with entries is told on Home."
+      " From now on its lead and finance see each person's dated entries made on it; entries made before stay private to their authors. Everyone with entries is told on Home."
   } else if (flip) {
     message += " The timesheet is hidden and every entry is kept."
   }

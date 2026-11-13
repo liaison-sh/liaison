@@ -163,7 +163,8 @@ Time and budgets is off on every project until you turn it on, one project at a 
 - **The time tools follow the projects.** While no project uses it, the time tools are not in any agent's tool list or a coding agent's MCP list. The first project turned on adds them from the next message; the last one turned off removes them again. Nobody turns this on for the whole organisation.
 - **Turning it off keeps everything.** Its rows stay, and nothing counts them until it is turned on again.
 - **Only a person turns it.** A routine, a sub-run or a job is refused.
-- **Tell your team first.** When the first project is turned on, the person who turned it and every admin read a notice: tell the team what is recorded and why before anyone records time. With 50 or more people, consult your staff representatives first.
+- **Tell your team first.** When the first project of the organisation is turned on, the person who turned it and every admin read a notice, once: tell the team what is recorded and why before anyone records time. With 50 or more people, consult your staff representatives first. Tell them too what an admin's organisation export holds: only the entries on a project's dated sheet, never a person's own private time or cost rate.
+- **An archived project no longer counts.** While the only projects that use it are archived, the time tools leave the tool lists; restoring one brings them back.
 
 ## Record time on a task
 
@@ -172,8 +173,8 @@ On a project that uses time and budgets, a task takes a timebox ("3 days", "20 h
 - You record only your own time, and only from your own words. An agent records it only with what you said, and never proposes or rounds a figure. From your coding agent (MCP), your own connection records it, marked as said through the coding agent.
 - Without dated hours you have one entry per task: editing replaces it, clearing removes it. With dated hours, each entry has a day, today by default, never a future day.
 - Nothing reminds anyone to enter time, and colleagues see only the task's total, never your part.
-- **Dated hours** are turned on in the project's plan. From that day the project's lead and finance see each person's dated entries and can correct one; the author then sees who changed it. Entries made before stay private to their authors, and everyone with entries is told once on Home.
-- A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target.
+- **Dated hours** are turned on in the project's plan. From that moment the project's lead and finance see each person's entries made on it and can correct one, to another day that is not in the future and has no entry of that person yet; the author then sees who changed it. Entries made before, including earlier the same day, stay private to their authors, and so do they after dated hours are turned off and on again. Everyone with entries is told once on Home.
+- A task moved to another project takes its time with it at once, whatever moved it (the board, the API or an agent). A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target, one entry per person (per day with dated hours); a merge that would put more than 744 h in one entry is refused. Entries made on a project without dated hours stay private to their authors after a move or a merge into one that uses them.
 
 ## Read a project's budget
 
@@ -196,9 +197,7 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 | `finance` | `member` plus `projects:money:*`, `projects:reconcile:*`, `projects:margin:read`, `projects:cost_rates:write`, `projects:timesheet:read` and `projects:capacity:read` |
 | `admin` | `lead` plus `projects:settings:admin` and `projects:labels:admin` |
 
-`projects:money:read` shows a project's price and billing terms; `projects:money:write` sets them (rate or fixed price, and currency). `projects:reconcile:read` and `projects:reconcile:write` read and settle the reconciliation of planned and real time once a period closes.
-
-`projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
+`projects:money:read` and `projects:money:write` read and set a project's billing terms (rate or fixed price). `projects:reconcile:read` reads a reconciliation once it has left its creator's proposal, and `projects:reconcile:write` reconciles a project's period. `projects:approve` decides the approvals gated project tools raise. See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md).
 
 ## What agents can do
 

@@ -138,6 +138,8 @@ export const taskTime = appProjects.table(
     enteredVia: text("entered_via", { enum: ["field", "agent", "mcp"] }).notNull(),
     changedBy: uuid("changed_by"),
     costMinor: bigint("cost_minor", { mode: "number" }),
+    /** Entered while its project used dated hours: only such a row can join the dated sheet. */
+    enteredDated: boolean("entered_dated").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

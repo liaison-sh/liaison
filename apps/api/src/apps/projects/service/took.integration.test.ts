@@ -4,7 +4,6 @@
 // agent's tools, the MCP gateway and the app reach, on the real database.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
@@ -17,8 +16,6 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { createDashboard, getBlockData } from "~/modules/dashboards/service"
-import { seedContext } from "~/seed/context"
-import { seedThreadHistory } from "~/seed/factories/threads/history"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -86,9 +83,7 @@ async function newTask(projectId: string, title: string): Promise<string> {
 
 async function said(userId: string, text: string): Promise<string> {
   const threadId = await minimal.thread(orgId, userId)
-  await seedThreadHistory(seedContext({ orgId, now: new Date() }), [
-    { key: `said-${randomUUID()}`, threadId, actor: actorOf(userId), body: text, at: new Date() },
-  ])
+  await minimal.message(orgId, threadId, userId, text)
   return threadId
 }
 
@@ -299,7 +294,7 @@ describe("Took", () => {
 })
 
 describe("dated hours", () => {
-  it("turning dated hours on shows the lead only entries made after it, also after off and on", async () => {
+  it("turning dated hours on shows the lead only entries made after it, and off and on again hides what came before", async () => {
     const proj = await newProject("Dated reach", true)
     const taskId = await newTask(proj, "Before and after")
     const memberScopes = ["projects:tasks:write", "projects:projects:read", "projects:tasks:read"]
@@ -329,7 +324,7 @@ describe("dated hours", () => {
     expect(await leadSees()).toEqual([60])
     await setDated(proj, false)
     await setDated(proj, true)
-    expect(await leadSees()).toEqual([60])
+    expect(await leadSees()).toEqual([])
     const home = extractRows<{ n: number | string }>(
       await db.execute(drizzleSql`
         SELECT count(*) AS n FROM kernel.attention_events

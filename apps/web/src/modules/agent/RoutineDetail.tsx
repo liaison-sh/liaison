@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
+import type { RoutineFlow } from "@liaison/shared"
 import { capabilityCategories, type ReasoningLevel } from "@liaison/shared"
 import { ChevronDown } from "lucide-solid"
 import {
   type Component,
   createEffect,
   createMemo,
+  createResource,
   createSignal,
   For,
   onMount,
@@ -25,6 +28,9 @@ import { allThreads, getThread, normalizeThread, type Thread } from "~/modules/t
 import { PopupMenu } from "~/ui/PopupMenu"
 import Chip from "./Chip"
 import { cronPreview } from "./cron-preview"
+import FlowList from "./flow/FlowList"
+import { loadFlowPeople, loadFlowProject } from "./flow/flow-data"
+import { flowProblem } from "./flow/flow-model"
 import ModelOptions from "./ModelOptions"
 import ReasoningLevelRow from "./ReasoningLevelRow"
 import RoutineApproverField, { approverLabelKey } from "./RoutineApproverField"
@@ -109,7 +115,9 @@ const RoutineDetail: Component<Props> = (props) => {
   const [editing, setEditing] = createSignal(false)
   /** The pane's two tabs: what the routine did (Runs, first) and how it is set
    *  up (Settings). Editing is a Settings act, so it brings that tab forward. */
-  const [paneTab, setPaneTab] = createSignal<"runs" | "settings">("runs")
+  const [paneTabPicked, setPaneTab] = createSignal<"flow" | "runs" | "settings" | null>(null)
+  /** A flow routine opens on its Flow tab (first); a prompt routine on Runs. */
+  const paneTab = () => paneTabPicked() ?? (routine()?.flow ? "flow" : "runs")
   /** A long prompt reads as a few lines until the reader asks for all of it. */
   const [promptExpanded, setPromptExpanded] = createSignal(false)
   const [loadingOlder, setLoadingOlder] = createSignal(false)
@@ -145,6 +153,59 @@ const RoutineDetail: Component<Props> = (props) => {
   })
 
   const routine = createMemo(() => routinesForAgent(scoped()).find((r) => r.id === props.entityId))
+
+  // ── Flow (0303) ──
+  /** A non-project trigger in words, as the Settings tab says it. */
+  const triggerWords = (row: RoutineRow) =>
+    row.kind === "event"
+      ? i18n.t("kernel.agentForms.runsWhen", { event: describeRoutineEvent(row.event ?? "") })
+      : describeSchedule(row, { withTimezone: true, i18n: { t: i18n.t, locale: i18n.locale() } })
+  const flowProjectId = () => {
+    const id = routine()?.eventFilter?.projectId
+    return routine()?.flow && typeof id === "string" ? id : null
+  }
+  const [flowProject] = createResource(flowProjectId, (id) => loadFlowProject(api, id))
+  const [flowPeople] = createResource(
+    () => (routine()?.flow ? props.entityId : null),
+    () => loadFlowPeople(api),
+  )
+  const [flowDraft, setFlowDraft] = createSignal<RoutineFlow | null>(null)
+  const [filterDraft, setFilterDraft] = createSignal<RoutineEventFilter | null>(null)
+  const [flowSaving, setFlowSaving] = createSignal(false)
+  const [flowError, setFlowError] = createSignal<string | null>(null)
+  const [openRunId, setOpenRunId] = createSignal<string | null>(null)
+  function startFlowEdit() {
+    const r = routine()
+    if (!r?.flow) return
+    setFlowDraft(structuredClone(r.flow))
+    setFilterDraft(r.eventFilter ? { ...r.eventFilter } : null)
+    setFlowError(null)
+  }
+  const flowDraftProblem = () => {
+    const d = flowDraft()
+    return d ? flowProblem(i18n.t, d, routine()?.event ?? null, filterDraft()) : null
+  }
+  async function saveFlow() {
+    const r = routine()
+    const flow = flowDraft()
+    if (!r || !flow || flowDraftProblem()) return
+    setFlowSaving(true)
+    setFlowError(null)
+    try {
+      const filter = filterDraft()
+      const filterChanged = JSON.stringify(filter ?? null) !== JSON.stringify(r.eventFilter ?? null)
+      await updateRoutine(api, r.id, {
+        flow,
+        ...(filterChanged ? { eventFilter: filter } : {}),
+      })
+      setFlowDraft(null)
+      setFilterDraft(null)
+    } catch (err) {
+      setFlowError(err instanceof Error ? err.message : i18n.t("kernel.routineFlow.saveFailed"))
+    } finally {
+      setFlowSaving(false)
+    }
+  }
 
   const runs = createMemo(() => routinesStore.runs[props.entityId] ?? [])
   // A run the socket just reported carries no summary (the server reads it
@@ -589,7 +650,13 @@ const RoutineDetail: Component<Props> = (props) => {
               aria-label={r().name}
               class="flex gap-4 border-b border-border-subtle px-6"
             >
-              <For each={["runs", "settings"] as const}>
+              <For
+                each={
+                  (r().flow ? ["flow", "runs", "settings"] : ["runs", "settings"]) as Array<
+                    "flow" | "runs" | "settings"
+                  >
+                }
+              >
                 {(id) => (
                   <button
                     type="button"
@@ -605,12 +672,108 @@ const RoutineDetail: Component<Props> = (props) => {
                     }}
                   >
                     {i18n.t(
-                      id === "runs" ? "kernel.agentForms.tabRuns" : "kernel.agentForms.tabSettings",
+                      id === "flow"
+                        ? "kernel.routineFlow.tabFlow"
+                        : id === "runs"
+                          ? "kernel.agentForms.tabRuns"
+                          : "kernel.agentForms.tabSettings",
                     )}
                   </button>
                 )}
               </For>
             </div>
+
+            <Show when={r().flow}>
+              {(flow) => (
+                <div
+                  role="tabpanel"
+                  data-testid="routine-flow-panel"
+                  hidden={paneTab() !== "flow"}
+                  class="min-h-0 flex-1 overflow-auto px-4 py-3 pb-dock-runway [--dock-pad-base:0px] sm:px-6"
+                >
+                  <Show
+                    when={flowDraft()}
+                    fallback={
+                      <>
+                        <Show
+                          when={
+                            r().status !== "completed" && (scoped() ? r().canWrite === true : true)
+                          }
+                        >
+                          <div class="mb-2 flex justify-end">
+                            <button
+                              type="button"
+                              data-testid="routine-flow-edit"
+                              onClick={startFlowEdit}
+                              class="rounded-md border border-border-subtle px-3 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover"
+                            >
+                              {i18n.t("kernel.routineFlow.editFlow")}
+                            </button>
+                          </div>
+                        </Show>
+                        <FlowList
+                          flow={flow()}
+                          event={r().event}
+                          eventFilter={r().eventFilter ?? null}
+                          project={flowProject() ?? null}
+                          people={flowPeople() ?? []}
+                          mode="view"
+                          triggerFallback={triggerWords(r())}
+                        />
+                      </>
+                    }
+                  >
+                    {(draft) => (
+                      <div class="flex min-w-0 flex-col gap-3">
+                        <FlowList
+                          flow={draft()}
+                          event={r().event}
+                          eventFilter={filterDraft()}
+                          project={flowProject() ?? null}
+                          people={flowPeople() ?? []}
+                          mode="edit"
+                          onChange={setFlowDraft}
+                          onFilterChange={setFilterDraft}
+                          triggerFallback={triggerWords(r())}
+                        />
+                        <Show when={flowDraftProblem() ?? flowError()}>
+                          {(msg) => (
+                            <p
+                              data-testid="routine-flow-problem"
+                              class="text-[12px] text-amber-500"
+                            >
+                              {msg()}
+                            </p>
+                          )}
+                        </Show>
+                        <div class="flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            data-testid="routine-flow-cancel"
+                            onClick={() => {
+                              setFlowDraft(null)
+                              setFilterDraft(null)
+                            }}
+                            class="rounded-md border border-border-subtle px-3 py-1 text-[12px] text-text-secondary hover:bg-surface-hover"
+                          >
+                            {i18n.t("kernel.routineFlow.cancel")}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="routine-flow-save"
+                            disabled={flowSaving() || !!flowDraftProblem()}
+                            onClick={() => void saveFlow()}
+                            class="rounded-md bg-accent px-3 py-1 text-[12px] text-white disabled:opacity-50"
+                          >
+                            {i18n.t("kernel.routineFlow.save")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </Show>
+                </div>
+              )}
+            </Show>
 
             <div
               role="tabpanel"
@@ -632,7 +795,12 @@ const RoutineDetail: Component<Props> = (props) => {
                       <button
                         type="button"
                         data-testid={`run-history-row-${run.id}`}
-                        onClick={() => openRun(run.id)}
+                        aria-expanded={run.steps ? openRunId() === run.id : undefined}
+                        onClick={() =>
+                          run.steps && r().flow
+                            ? setOpenRunId(openRunId() === run.id ? null : run.id)
+                            : openRun(run.id)
+                        }
                         class="flex w-full flex-col gap-0.5 rounded px-2 py-2 text-left transition-colors hover:bg-surface-hover"
                       >
                         <span class="flex w-full items-center gap-2 text-[12px]">
@@ -677,6 +845,34 @@ const RoutineDetail: Component<Props> = (props) => {
                           </span>
                         </Show>
                       </button>
+                      {/* A flow run lays its step states over the routine's flow. */}
+                      <Show when={openRunId() === run.id && r().flow}>
+                        {(flow) => (
+                          <div data-testid={`run-flow-${run.id}`} class="px-2 pb-2">
+                            <FlowList
+                              flow={flow()}
+                              event={r().event}
+                              eventFilter={r().eventFilter ?? null}
+                              project={flowProject() ?? null}
+                              people={flowPeople() ?? []}
+                              mode="run"
+                              runSteps={run.steps ?? []}
+                              testid={`run-flow-list-${run.id}`}
+                              triggerFallback={triggerWords(r())}
+                            />
+                            <Show when={run.hasTranscript}>
+                              <button
+                                type="button"
+                                data-testid={`run-open-transcript-${run.id}`}
+                                onClick={() => openRun(run.id)}
+                                class="mt-2 rounded px-2 py-1 text-[12px] text-text-secondary hover:bg-surface-hover"
+                              >
+                                {i18n.t("kernel.routineFlow.openTranscript")}
+                              </button>
+                            </Show>
+                          </div>
+                        )}
+                      </Show>
                       {/* The run's own reason, under the run it belongs to: a
                           tick that skipped names the scopes it was short. */}
                       <Show when={run.errorMessage}>

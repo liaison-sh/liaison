@@ -291,5 +291,29 @@
       "description": "Groups and their values. Drag to reorder within a group; a value cannot move to another group."
     }
   },
-  "taskNotFound": "Task not found"
+  "taskNotFound": "Task not found",
+  "automations": {
+    "title": "Automations",
+    "new": "New automation",
+    "back": "Back",
+    "explainer": "An automation runs steps by itself when a task of this project changes, such as assigning it or reminding someone.",
+    "empty": "No automation yet.",
+    "loadFailed": "The automations could not be loaded.",
+    "enabled": "On",
+    "lastRun": "Last run {{when}}: {{status}}",
+    "neverRan": "Has not run yet",
+    "pickTemplate": "Start from one of these, then adjust its steps.",
+    "noTemplates": "No templates available.",
+    "template_assign_on_status": "When a status is reached, assign",
+    "template_remind_if_still": "Remind if still in a status",
+    "template_sla_to_reach": "Deadline to reach a status",
+    "template_notify_on_status": "Notify when a status is reached",
+    "name": "Name",
+    "description": "Description",
+    "nameRule": "The name uses lowercase letters, digits and hyphens.",
+    "descriptionRequired": "Add a short description.",
+    "missingStatuses": "This project has no status named {{labels}}: choose one below.",
+    "save": "Create the automation",
+    "saveFailed": "The automation could not be created."
+  }
 }

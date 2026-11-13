@@ -35,6 +35,12 @@
       },
       {
         "tools": [
+          "tasks_aggregate"
+        ],
+        "text": "MANAGER VIEWS / COUNTS PER STATUS, HANDLER, AGE OR SLA: `tasks_aggregate` groups a project's tasks (or several projects' with `projectIds`) on the server and returns one row per group: `groupBy` status, assignee, priority, due, age_in_status, sla or field:<key> (a choice, choices, person, checkbox or date field), an optional `series` to split each group, and `measure` count, sum:<field> or avg:<field> of a number or amount field. Done tasks are left out unless `includeTerminal: true`. For SLA state pass `sla: {toStatusIds, withinWorkingDays}` (met, missed, open_ok, open_late, in the org's working hours). Prefer it over tallying `tasks_byProject` rows yourself, and use it as the source of a dashboard chart (a bar on `groupLabel` / `value`). Each row's `filter` is the `tasks_byProject` params that list exactly its tasks, and `taskIds` lists them when there are at most 50."
+      },
+      {
+        "tools": [
           "tasks_byProject",
           "portfolio_rollup"
         ],
@@ -1025,6 +1031,15 @@
             "type": "number",
             "description": "Max results, default 100, max 200."
           },
+          "assigneeId": {
+            "type": ["string", "null"],
+            "description": "Optional: only tasks assigned to this user id; null = only unassigned tasks."
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "normal", "high", "urgent"],
+            "description": "Optional: only tasks of this priority."
+          },
           "countOnly": {
             "type": "boolean",
             "description": "Return ONLY `totalCount` (the count for this filter), no task rows — the cheap 'how many are left' / countdown read. NOTE: `totalCount` (a server COUNT of ALL tasks matching every filter given (project, statusId, terminal, due, release, labels, completedAfter/completedBefore), not the page size) is ALWAYS returned; use it to drive an EXHAUSTIVE sweep and report a measured remaining count — move a task to a terminal status and the next totalCount drops, so you cannot lose count."
@@ -1033,6 +1048,63 @@
         "required": [
           "projectId"
         ]
+      }
+    },
+    "tasks_aggregate": {
+      "description": "Group and count (or sum) the tasks of one project (`projectId`) or up to 50 (`projectIds`) on the server, for a manager's view or a dashboard chart: open tasks per status, per handler (assignee), per priority, per due bucket, per age in their current status, per SLA state, or per value of a choice / choices / person / checkbox / date field. Returns `rows` [{group, groupLabel, series?, seriesLabel?, value, count, taskIds? (when at most 50), filter? (the tasks_byProject params listing exactly that group's tasks)}], sorted by the board's status order, the priority or bucket order, or the choice order, then the label; `totalTasks` and `truncated` (more than 5000 tasks). Groups that can hold tasks are listed even when empty (a status, a bucket, a choice), unless `series` is set. Done (terminal) tasks are left out unless `includeTerminal` is true. RLS-scoped: it counts only tasks you can read; a project you cannot read adds nothing.",
+      "searchKeywords": ["agrégat", "aggregate", "group", "regrouper", "statut", "responsable", "assignee", "SLA", "âge", "aging", "dashboard", "chart", "graphique", "manager"],
+      "readOnly": true,
+      "requiredScopes": ["projects:tasks:read"],
+      "trustBoundary": "user",
+      "handler": "tasksAggregate",
+      "retryOnTransientDbError": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project whose tasks to group. Give this or projectIds."
+          },
+          "projectIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "maxItems": 50,
+            "description": "Several projects (1 to 50) grouped together. With several projects a status groups by its label, and rows carry no `filter`."
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "status (default), assignee, priority, due (overdue, due_soon, later, none), age_in_status (days since the task entered its status, in ageBuckets), sla (met, missed, open_ok, open_late; needs `sla`), or field:<key> for a choice, choices (a task counts once per value it holds), person, checkbox or date (by month YYYY-MM) field."
+          },
+          "series": {
+            "type": "string",
+            "description": "Optional second grouping, same values as groupBy: each row is one group and one series value."
+          },
+          "measure": {
+            "type": "string",
+            "description": "count (default), sum:<field> or avg:<field> of a number or amount field. An amount's currency is returned as `currency`."
+          },
+          "where": {
+            "type": "object",
+            "description": "Optional filters, the same as tasks_byProject: statusId, terminal, due, labels, fields, release, assigneeId (null = unassigned), priority."
+          },
+          "includeTerminal": {
+            "type": "boolean",
+            "description": "Count done (terminal) tasks too. Default false: open tasks only."
+          },
+          "ageBuckets": {
+            "type": "array",
+            "items": { "type": "number" },
+            "description": "Bucket bounds in days for age_in_status, ascending; default [1, 3, 7, 14, 30] gives less than 1 day, 1 to 3 days, ..., 30 days or more."
+          },
+          "sla": {
+            "type": "object",
+            "description": "For an sla grouping: {toStatusIds: [status ids], withinWorkingDays: N}. A task meets it when it entered one of those statuses within N working days (the org's working hours, Mon-Fri 09:00-18:00 by default) of its creation; open_late = not reached and past the deadline.",
+            "properties": {
+              "toStatusIds": { "type": "array", "items": { "type": "string" } },
+              "withinWorkingDays": { "type": "number" }
+            }
+          }
+        }
       }
     },
     "portfolio_rollup": {

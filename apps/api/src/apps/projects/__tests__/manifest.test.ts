@@ -437,6 +437,7 @@ describe("projects.manifest", () => {
       "tasks_byAssignee",
       "attentionItems",
       "portfolio_rollup",
+      "tasks_aggregate",
       "labels.list",
       "labels.tree",
     ]) {

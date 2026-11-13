@@ -3,6 +3,7 @@ import { type Component, createSignal, For, Show } from "solid-js"
 import type { ApiClient } from "~/lib/api-client"
 import { log as logger } from "~/lib/logger"
 import { handleTaskEvent, type ProjectStatus, type Task } from "~/modules/projects/project-store"
+import { statusDot, statusWash } from "~/modules/projects/StatusPill"
 import { prettyStatus } from "~/modules/projects/status-label"
 
 interface StatusPillPopoverProps {
@@ -49,12 +50,13 @@ export const StatusPillPopover: Component<StatusPillPopoverProps> = (props) => {
         data-testid="status-pill-popover.trigger"
         disabled={props.disabled}
         onClick={() => setOpen(!open())}
-        class="inline-flex h-[22px] items-center gap-1 rounded-full border border-border-subtle bg-surface px-2 text-[11px] font-medium text-text disabled:cursor-not-allowed disabled:opacity-50"
+        class="inline-flex h-[22px] items-center gap-1.5 rounded-full px-2.5 text-[12px] text-text hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ background: statusWash(props.current?.color) }}
       >
         <span
           aria-hidden="true"
           class="h-1.5 w-1.5 rounded-full"
-          style={{ background: props.current?.color ?? "var(--color-text-tertiary)" }}
+          style={{ background: statusDot(props.current?.color) }}
         />
         {props.current ? prettyStatus(props.current.label) : "-"}
       </button>
@@ -78,7 +80,7 @@ export const StatusPillPopover: Component<StatusPillPopoverProps> = (props) => {
                 <span
                   aria-hidden="true"
                   class="h-1.5 w-1.5 rounded-full"
-                  style={{ background: s.color ?? "var(--color-text-tertiary)" }}
+                  style={{ background: statusDot(s.color) }}
                 />
                 {prettyStatus(s.label)}
               </button>

@@ -1,0 +1,3 @@
+Team placeholder in the From display name and the signatures -> apps/api/src/apps/tickets/render.ts (renderTicketEmail) ; apps/api/src/apps/tickets/tools.ts (loadEffectiveSignature)
+Team placeholder in the acknowledgement body -> apps/api/src/apps/tickets/tools.ts (sendTicketAcknowledgement)
+A ticket with no team drops the placeholder with the dash or short word in front of it -> apps/api/src/apps/tickets/team-placeholder.ts (applyTeamPlaceholder)

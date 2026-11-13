@@ -20,25 +20,35 @@ import { registerEventSubscribers } from "~/infra/events/event-subscribers"
 import { REDIS_PREFIX, redisBullMQ } from "~/lib/redis"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { drainOutbox } from "~/tests/helpers/outbox"
-import { ticketsReply } from "./tools"
+import { loadEffectiveSignature, ticketsReply } from "./tools"
 
 // Eager snapshot: `realSend` is a LIVE namespace view, so mock.module patches
 // it in place — spreading it inside the restore factory would re-install the
 // mock. Snapshot the real exports BEFORE the mock so afterAll truly restores.
 const realSendModule = { ...realSend }
 
-const sendCalls: Array<{ to: unknown; subject: string; html?: string }> = []
+const sendCalls: Array<{
+  to: unknown
+  subject: string
+  html?: string
+  from?: { name?: string }
+}> = []
 let failNextSend = false
 mock.module("~/apps/tickets/send", () => ({
   ...realSendModule,
-  sendOutbound: async (email: { to: unknown; subject: string; html?: string }) => {
+  sendOutbound: async (email: {
+    to: unknown
+    subject: string
+    html?: string
+    from?: { name?: string }
+  }) => {
     if (failNextSend) {
       failNextSend = false
       throw new realSendModule.OutboundError("preflight_failed", "provider refused the message", {
         retryable: false,
       })
     }
-    sendCalls.push({ to: email.to, subject: email.subject, html: email.html })
+    sendCalls.push({ to: email.to, subject: email.subject, html: email.html, from: email.from })
     return {
       externalMessageId: `<ack-${sendCalls.length}@test>`,
       deliveryState: "delivered" as const,
@@ -597,5 +607,125 @@ describe("inbound ticket acknowledgement after commit", () => {
     expect((err as Error).message).toBe("outer transaction fails after the ingest")
     await drainOutbox()
     expect(sendCalls.length - sendsBefore).toBe(0)
+  })
+})
+
+// One inbox can serve several teams; the ticket's team fills
+// `{{team}}` in the acknowledgement text, the sender name and the signature.
+describe("{{team}} placeholder", () => {
+  let teamInboxId: string
+
+  beforeAll(async () => {
+    teamInboxId = await withSystemDb(
+      "ack-team-inbox",
+      async (tx) =>
+        rows(
+          await tx.execute(drizzleSql`
+          INSERT INTO app_tickets.inboxes
+            (id, org_id, kind, connected_account_id, name, email_address, from_display_name,
+             ack_enabled, ack_body_text, signature_text, sla_promise_phrase,
+             is_default_for_create, created_at, updated_at)
+          VALUES (gen_random_uuid(), ${orgId}, 'mailbox', ${accountId}, 'Teams',
+                  'teams@fabrikam.test', 'Help Desk - {{team}}', true,
+                  'Votre demande concernant {{team}} est bien reçue.',
+                  'L''équipe Help Desk pour {{team}}',
+                  'within 2 business days', false, now(), now())
+          RETURNING id`),
+        )[0].id,
+    )
+  })
+
+  async function ticketWithTeam(sourceInboxId: string, team: string | null): Promise<string> {
+    const ticketId = await createTicketWithInbox(sourceInboxId)
+    await withPrivilegedDb(orgId, "ack-test-team", (tx) =>
+      tx.execute(
+        drizzleSql`UPDATE app_tickets.tickets SET team = ${team} WHERE id = ${ticketId}::uuid`,
+      ),
+    )
+    return ticketId
+  }
+
+  it("names the team in the acknowledgement text, the sender name and the signature", async () => {
+    const ticketId = await ticketWithTeam(teamInboxId, "Riverside Office")
+    await sendTicketAcknowledgement(ticketId, orgId)
+    const sent = sendCalls[sendCalls.length - 1]!
+    expect(sent.html).toContain("Votre demande concernant Riverside Office est bien reçue.")
+    expect(sent.html).toContain("L'équipe Help Desk pour Riverside Office")
+    expect(sent.from?.name).toBe("Help Desk - Riverside Office")
+    expect(sent.html).not.toContain("{{")
+  })
+
+  it("a ticket without a team drops the placeholder and its separator, never leaving it literal", async () => {
+    const ticketId = await ticketWithTeam(teamInboxId, null)
+    await sendTicketAcknowledgement(ticketId, orgId)
+    const sent = sendCalls[sendCalls.length - 1]!
+    expect(sent.html).toContain("Votre demande est bien reçue.")
+    expect(sent.html).not.toContain("pour")
+    expect(sent.html).not.toContain("{{")
+    expect(sent.from?.name).toBe("Help Desk")
+  })
+
+  it("escapes a team name that carries markup", async () => {
+    const ticketId = await ticketWithTeam(teamInboxId, "<script>alert(1)</script> & Co")
+    await sendTicketAcknowledgement(ticketId, orgId)
+    const sent = sendCalls[sendCalls.length - 1]!
+    expect(sent.html).not.toContain("<script>")
+    expect(sent.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt; &amp; Co")
+  })
+
+  it("an inbox without the placeholder sends exactly what it sent before, team or not", async () => {
+    const withTeam = await ticketWithTeam(inboxId, "Riverside Office")
+    await sendTicketAcknowledgement(withTeam, orgId)
+    const a = sendCalls[sendCalls.length - 1]!
+    const without = await ticketWithTeam(inboxId, null)
+    await sendTicketAcknowledgement(without, orgId)
+    const b = sendCalls[sendCalls.length - 1]!
+    expect(a.from?.name).toBe("Fabrikam Support")
+    expect(b.from?.name).toBe("Fabrikam Support")
+    expect(a.html).not.toContain("Riverside Office")
+    expect(a.html?.replace(/ticket_\w+/g, "")).toBe(b.html?.replace(/ticket_\w+/g, ""))
+  })
+
+  it("the reply signature (composer prefill and agent draft) names the team", async () => {
+    const sig = await withPrivilegedDb(orgId, "ack-test-sig", (tx) =>
+      loadEffectiveSignature(
+        tx as never,
+        orgId,
+        teamInboxId,
+        userId,
+        undefined,
+        "Riverside Office",
+      ),
+    )
+    expect(sig?.text).toBe("L'équipe Help Desk pour Riverside Office")
+    expect(sig?.html).toContain("Riverside Office")
+  })
+
+  it("the reply signature of a ticket without a team has no placeholder and no dangling word", async () => {
+    const sig = await withPrivilegedDb(orgId, "ack-test-sig-noteam", (tx) =>
+      loadEffectiveSignature(tx as never, orgId, teamInboxId, userId, undefined, null),
+    )
+    expect(sig?.text).toBe("L'équipe Help Desk")
+    expect(sig?.html).not.toContain("{{")
+  })
+
+  it("an inbox signature without the placeholder is unchanged by the team", async () => {
+    const plainInbox = await withSystemDb(
+      "ack-plain-sig-inbox",
+      async (tx) =>
+        rows(
+          await tx.execute(drizzleSql`
+          INSERT INTO app_tickets.inboxes
+            (id, org_id, kind, connected_account_id, name, email_address, from_display_name,
+             ack_enabled, signature_text, is_default_for_create, created_at, updated_at)
+          VALUES (gen_random_uuid(), ${orgId}, 'mailbox', ${accountId}, 'PlainSig',
+                  'plainsig@fabrikam.test', 'Plain', false, 'The Fabrikam team', false, now(), now())
+          RETURNING id`),
+        )[0].id as string,
+    )
+    const sig = await withPrivilegedDb(orgId, "ack-test-sig-plain", (tx) =>
+      loadEffectiveSignature(tx as never, orgId, plainInbox, userId, undefined, "Riverside Office"),
+    )
+    expect(sig?.text).toBe("The Fabrikam team")
   })
 })

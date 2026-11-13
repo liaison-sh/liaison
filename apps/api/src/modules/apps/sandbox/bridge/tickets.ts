@@ -226,10 +226,16 @@ export function createTicketsMethods(ctx: BridgeContext): Record<string, any> {
         const { loadEffectiveSignature } = await import("~/apps/tickets/tools")
         const { withPrivilegedDb } = await import("~/db/privileged")
         const sourceInboxId = (ticket as { sourceInboxId?: string | null }).sourceInboxId ?? null
+        const ticketTeam = (ticket as { team?: string | null }).team ?? null
         composeSignatureText = await withPrivilegedDb(orgId, "tickets-compose-signature", (ptx) =>
-          loadEffectiveSignature(ptx as never, orgId, sourceInboxId, userId).then(
-            (sig) => sig?.text ?? null,
-          ),
+          loadEffectiveSignature(
+            ptx as never,
+            orgId,
+            sourceInboxId,
+            userId,
+            undefined,
+            ticketTeam,
+          ).then((sig) => sig?.text ?? null),
         )
       }
       const { wrapExternalContent: fence } = await import("~/lib/external-content")

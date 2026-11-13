@@ -34,6 +34,8 @@ import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { ShopifyFakeAdminTestAccess } from "~/modules/apps/sandbox/bridge/shopify-fake-admin"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
+import { seedOrgRow, seedUserRows, seedUserScopeGrantRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -228,13 +230,24 @@ describe("the fake Shopify Admin API on a test box, through the real sandbox", (
     })
     fakeOrigin = `http://127.0.0.1:${server.port}`
 
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Fake Admin Org', 'fake-admin-org') ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, 'fake-admin@test.com', 'hash', 'Fake Admin Tester', 'active')
-      ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${USER}, ${ORG}, 'shopify:customers:read') ON CONFLICT DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Fake Admin Org", slug: "fake-admin-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        {
+          id: USER,
+          orgId: ORG,
+          email: "fake-admin@test.com",
+          passwordHash: "hash",
+          name: "Fake Admin Tester",
+          status: "active",
+        },
+      ],
+      { onConflict: "skip" },
+    )
+    await seedUserScopeGrantRow({ userId: USER, orgId: ORG, scope: "shopify:customers:read" })
 
     await initSandboxPool()
     await initWorkerPool()
@@ -243,14 +256,23 @@ describe("the fake Shopify Admin API on a test box, through the real sandbox", (
     await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
     connectionId = randomUUID()
-    await sql`INSERT INTO kernel.connected_accounts (
-        id, org_id, app_name, connection_name, owner_type, owner_id,
-        provider_type, identifier, status, created_by, access_token_encrypted
-      ) VALUES (
-        ${connectionId}, ${ORG}, 'shopify', 'shop', 'org', NULL,
-        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER},
-        ${encryptSecret(SHOP_TOKEN, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)}
-      )`
+    await seedConnectedAccountRow({
+      id: connectionId,
+      orgId: ORG,
+      appName: "shopify",
+      connectionName: "shop",
+      ownerType: "org",
+      ownerId: null,
+      providerType: "oauth2",
+      identifier: SHOP_DOMAIN,
+      status: "active",
+      createdBy: USER,
+      accessTokenEncrypted: encryptSecret(
+        SHOP_TOKEN,
+        env.ENCRYPTION_KEY,
+        CryptoContext.connectedAccountAccessToken,
+      ),
+    })
   }, 90_000)
 
   afterEach(() => {

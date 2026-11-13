@@ -33,6 +33,10 @@ import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { ShopifyFakeAdminTestAccess } from "~/modules/apps/sandbox/bridge/shopify-fake-admin"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { seedContext } from "~/seed/context"
+import { seedIssuerProfile } from "~/seed/factories/commerce/invoicing"
+import { seedConnectedAccountRow } from "~/seed/factories/org/platform-rows"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -222,11 +226,23 @@ describe("the fake Shopify Admin API and the invoicing app, through the real san
     })
     fakeOrigin = `http://127.0.0.1:${server.port}`
 
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Fake Admin Invoicing Org', 'fake-admin-invoicing-org') ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, 'fake-admin-invoicing@test.com', 'hash', 'Fake Admin Invoicing Tester', 'active')
-      ON CONFLICT (id) DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Fake Admin Invoicing Org", slug: "fake-admin-invoicing-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        {
+          id: USER,
+          orgId: ORG,
+          email: "fake-admin-invoicing@test.com",
+          passwordHash: "hash",
+          name: "Fake Admin Invoicing Tester",
+          status: "active",
+        },
+      ],
+      { onConflict: "skip" },
+    )
 
     await initSandboxPool()
     await initWorkerPool()
@@ -250,17 +266,39 @@ describe("the fake Shopify Admin API and the invoicing app, through the real san
     await sql`DELETE FROM app_invoicing.issuer_profiles WHERE org_id = ${ORG}`
     await sql`DELETE FROM app_shopify.install_metadata WHERE org_id = ${ORG}`
     await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG} AND app_name = 'shopify'`
-    await sql`INSERT INTO kernel.connected_accounts (
-        id, org_id, app_name, connection_name, owner_type, owner_id,
-        provider_type, identifier, status, created_by, access_token_encrypted
-      ) VALUES (
-        ${randomUUID()}, ${ORG}, 'shopify', 'shop', 'org', NULL,
-        'oauth2', ${SHOP_DOMAIN}, 'active', ${USER},
-        ${encryptSecret(SHOP_TOKEN, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)}
-      )`
-    await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, vat_id, default_currency, shopify_shop_id)
-      VALUES (${randomUUID()}, ${ORG}, 'Fake Admin Issuer SAS', 'FR', 'FR41903000008', 'EUR', ${SHOP_DOMAIN})`
+    await seedConnectedAccountRow({
+      id: randomUUID(),
+      orgId: ORG,
+      appName: "shopify",
+      connectionName: "shop",
+      ownerType: "org",
+      ownerId: null,
+      providerType: "oauth2",
+      identifier: SHOP_DOMAIN,
+      status: "active",
+      createdBy: USER,
+      accessTokenEncrypted: encryptSecret(
+        SHOP_TOKEN,
+        env.ENCRYPTION_KEY,
+        CryptoContext.connectedAccountAccessToken,
+      ),
+    })
+    await seedIssuerProfile(seedContext({ orgId: ORG, now: new Date() }), {
+      key: "fake-admin",
+      legalName: "Fake Admin Issuer SAS",
+      country: "FR",
+      vatId: "FR41903000008",
+      address: "1 rue de la Paix, 75002 Paris",
+      iban: "FR7630006000011234567890189",
+      swiftBic: "AGRIFRPP",
+      bankName: "Banque test",
+      defaultCurrency: "EUR",
+      prefixes: { invoice: "F", quote: "D", proforma: "P", po: "BC", creditNote: "AV" },
+      shopifyShopId: SHOP_DOMAIN,
+      invoiceApprovalThresholdMinor: "0",
+      poApprovalThresholdMinor: "0",
+      timezone: "Europe/Paris",
+    })
   }, 90_000)
 
   afterEach(() => {

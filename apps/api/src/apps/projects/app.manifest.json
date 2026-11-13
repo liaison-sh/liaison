@@ -5277,11 +5277,12 @@
   },
   "roles": {
     "member": {
-      "description": "Project contributor: read projects, read and write tasks",
+      "description": "Project contributor: read projects, read and write tasks, and the dated sheet of the projects they own",
       "scopes": [
         "projects:projects:read",
         "projects:tasks:read",
-        "projects:tasks:write"
+        "projects:tasks:write",
+        "projects:dated_sheet:read"
       ]
     },
     "sales": {

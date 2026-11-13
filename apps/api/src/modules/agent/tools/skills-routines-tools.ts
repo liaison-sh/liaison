@@ -5828,10 +5828,16 @@ const createRoutineToolParams = (
     if (rule) ctx.addIssue({ code: "custom", path: [], message: rule })
   })
 
-/** update_routine's arguments; a kind change is answered with what that trigger needs. */
-const updateRoutineToolParams = z
-  .object({ id: z.string().uuid() })
-  .merge(updateRoutineRequestSchema)
+/**
+ * update_routine's arguments; a kind change is answered with what that trigger needs. Flow and
+ * eventFilter are checked objects, as on create_routine: their full shape rides on a refusal only.
+ */
+const updateRoutineToolParams = (
+  z.object({ id: z.string().uuid() }).merge(updateRoutineRequestSchema) as unknown as {
+    safeExtend: (shape: Record<string, z.ZodType>) => z.ZodObject
+  }
+)
+  .safeExtend({ flow: routineFlowParam, eventFilter: routineEventFilterParam })
   .superRefine((value, ctx) => {
     // A kind change must bring its own schedule columns; a patch without kind is not judged.
     if ((value as { kind?: string }).kind === undefined) return

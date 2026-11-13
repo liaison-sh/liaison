@@ -134,6 +134,30 @@ describe("create_routine diet", () => {
     expect(overBudget(create)).toBe(false)
   })
 
+  it("tools/list size of update_routine is at most 2,000 wire tokens", async () => {
+    const { orgId } = await orgWithUser()
+    expect(overBudget(wireTokens(orgId, "update_routine"))).toBe(false)
+  })
+
+  it("update_routine takes flow and eventFilter as checked objects, the full shape only on a refusal", async () => {
+    const { orgId } = await orgWithUser()
+    const def = toolRegistry.get([orgId, "kernel", "update_routine"]) as {
+      params: { safeParse: (v: unknown) => { success: boolean; error?: { issues: Array<{ message: string }> } } }
+    }
+    const id = "00000000-0000-4000-8000-000000000001"
+    const projected = JSON.stringify(
+      asSchema(providerInputSchemaOf(def.params) as never).jsonSchema,
+    )
+    expect(projected).not.toContain('"steps"')
+    for (const bad of [{ flow: { version: 2 } }, { eventFilter: { nope: [1] } }]) {
+      const out = def.params.safeParse({ id, ...bad })
+      expect(out.success).toBe(false)
+      expect(out.error?.issues[0]?.message).toContain("has this shape")
+    }
+    expect(def.params.safeParse({ id, flow: null }).success).toBe(true)
+    expect(def.params.safeParse({ id, prompt: "Summarise the week." }).success).toBe(true)
+  })
+
   it("each argument of create_routine keeps one line of its own", async () => {
     const { orgId } = await orgWithUser()
     const def = toolRegistry.get([orgId, "kernel", "create_routine"]) as { params?: unknown }

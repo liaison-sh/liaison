@@ -3283,6 +3283,15 @@
     "modelRun": true
   },
   {
+    "id": "C92",
+    "set": "seed",
+    "lang": "en",
+    "say": "show the portal project's timesheet for October, day by day",
+    "typed": ["timesheet", "dated sheet", "hours by day"],
+    "any": ["projects__timesheet_get"],
+    "modelRun": true
+  },
+  {
     "id": "C34",
     "set": "seed",
     "lang": "en",

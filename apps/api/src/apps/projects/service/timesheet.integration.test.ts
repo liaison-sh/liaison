@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql, eq } from "drizzle-orm"
+import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
@@ -32,9 +33,15 @@ let ana: minimal.Session
 let leo: minimal.Session
 let finance: minimal.Session
 
-const MEMBER = ["projects:projects:read", "projects:tasks:read", "projects:tasks:write"]
-const LEAD = [...MEMBER, "projects:projects:write", "projects:dated_sheet:read"]
-const FINANCE = [...MEMBER, "projects:timesheet:read", "projects:dated_sheet:read"]
+/** The member role's scopes: the dated sheet scope is the member's, the sheet's code decides. */
+const MEMBER = [
+  "projects:projects:read",
+  "projects:tasks:read",
+  "projects:tasks:write",
+  "projects:dated_sheet:read",
+]
+const LEAD = [...MEMBER, "projects:projects:write"]
+const FINANCE = [...MEMBER, "projects:timesheet:read"]
 const MONTH = "2026-10"
 
 type Who = { userId: string; scopes: string[] }
@@ -306,14 +313,28 @@ async function viaAgent(
 describe("where the dated sheet may be read", () => {
   const TOOLS = ["timesheet_get", "timesheet_export"] as const
 
-  it("a member without the dated sheet scope is refused both tools", async () => {
+  it("a member who owns and leads nothing is refused both tools by the sheet's own check", async () => {
     const dm = await minimal.agentDm(orgId, ana.userId)
     for (const name of TOOLS) {
       const out = await viaAgent(name, asAna(), dm, { humanTurn: true })
-      // Refused for the missing scope, before the sheet's own check would run.
-      expect(out.error?.code).toBe("forbidden")
+      expect(out.error?.code).toBe("not_allowed")
       expect(JSON.stringify(out)).not.toContain("Moodboard")
     }
+  })
+
+  it("a project's owner holding only the member role reads its sheet in a DM", async () => {
+    const dm = await minimal.agentDm(orgId, leo.userId)
+    const owner = { userId: leo.userId, scopes: MEMBER }
+    const out = await viaAgent("timesheet_get", owner, dm, { humanTurn: true })
+    expect(out.error).toBeUndefined()
+    expect(JSON.stringify(out)).toContain('"totalMinutes":2760')
+    // The member role carries the scope the tools ask for.
+    const roles = (
+      projectsAppManifest as unknown as {
+        roles: Record<string, { scopes: string[] }>
+      }
+    ).roles
+    expect(roles.member?.scopes).toContain("projects:dated_sheet:read")
   })
 
   it("the lead in a shared thread is refused both tools, and nothing is read", async () => {

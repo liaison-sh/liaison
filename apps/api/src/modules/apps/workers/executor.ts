@@ -30,7 +30,12 @@
 import type { RunBody } from "@liaison/app-loader"
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
-import { type RunEntryKind, runLimits, workersLoaderLimits } from "~/modules/apps/run-limits"
+import {
+  type RunEntryKind,
+  type RunLane,
+  runLimits,
+  workersLoaderLimits,
+} from "~/modules/apps/run-limits"
 import { type WorkersAdmission, workersAdmission } from "./admission"
 import { bridgeUrlFor, type WorkersConfig } from "./config"
 import {
@@ -82,6 +87,11 @@ export interface WorkersRunOptions {
   timeoutMs?: number
   /** The run's entry kind, whose row of the limit table the loader gets (default `tool`). */
   entryKind?: RunEntryKind
+  /**
+   * The run's lane (run-limits.ts runLaneOf; default interactive): its share
+   * of the admission here and of the sandbox service's pool, sent in the body.
+   */
+  lane?: RunLane
   signal?: AbortSignal
   holdsTx: boolean
   nested?: boolean
@@ -135,10 +145,14 @@ export interface WorkersRunInfo {
    * run: its CPU is pulled hourly (usage/loader-usage.ts).
    */
   cpuMs?: number
+  /** How long the run waited for an admission slot before its first attempt. */
+  admissionMs?: number
 }
 
 /** The sandbox service's measure of a run's CPU time (@liaison/sandbox-supervisor). */
 export const SANDBOX_CPU_HEADER = "x-liaison-sandbox-cpu-ms"
+/** How long the sandbox service's run waited for a process (@liaison/sandbox-supervisor). */
+export const SANDBOX_QUEUE_HEADER = "x-liaison-sandbox-queue-ms"
 
 interface LoaderError {
   message?: unknown
@@ -258,13 +272,16 @@ export async function executeOnWorkers(
   const timeoutMs = opts.timeoutMs ?? limits.wallMs
   const deadlineAt = now() + timeoutMs
   const info: WorkersRunInfo = { attempts: 0, bridgeCalls: 0 }
+  const lane: RunLane = opts.lane ?? "interactive"
 
   // Bridge calls come back through the public address: this process must be a reachable owner.
   await ensureRunOwnerReachable()
   let release: (() => void) | undefined
   try {
+    const admitFrom = now()
     release = await admission.acquire({
       orgId: opts.orgId,
+      lane,
       holdsTx: opts.holdsTx,
       nested: opts.nested === true,
       ...(opts.nestedParentKey !== undefined ? { nestedParentKey: opts.nestedParentKey } : {}),
@@ -272,6 +289,7 @@ export async function executeOnWorkers(
       ...(opts.signal ? { signal: opts.signal } : {}),
       appName: opts.appName,
     })
+    info.admissionMs = Math.max(0, now() - admitFrom)
     let probe = opts.probe === true
     for (;;) {
       const attemptTimeout = Math.max(1, deadlineAt - now())
@@ -388,6 +406,7 @@ async function attemptOnWorkers(
       runToken: run.runToken,
       deadlineMs: timeoutMs,
       limits: workersLoaderLimits(runLimits(opts.entryKind ?? "tool")),
+      lane: opts.lane ?? "interactive",
     }
     const body = JSON.stringify(runBody)
     const runUrl = `${opts.config.loaderUrl}/run`
@@ -475,6 +494,10 @@ async function attemptOnWorkers(
     const t = answer?.timings
     const lt = loaderTimings(t)
     if (lt) info.loader = lt
+    const queued = Number(res.headers.get(SANDBOX_QUEUE_HEADER) ?? Number.NaN)
+    if (Number.isFinite(queued) && queued >= 0) {
+      info.loader = { ...info.loader, queueMs: Math.round(queued) }
+    }
     if (t && typeof t.sleepMs === "number") info.sleepMs = t.sleepMs
     if (t && typeof t.sleepExact === "boolean") info.sleepExact = t.sleepExact
     const logs = parseWorkerLogs(answer?.logs)

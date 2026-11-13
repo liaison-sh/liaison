@@ -56,6 +56,7 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `ENABLE_QA_SEED_ROUTES` | `boolean` | `false` | no | Mounts the QA/dev seed-harness routes (/api/_test/*: the seed engine factories, app install-for-test, scope grants) outside NODE_ENV=test, so the qa/ browser harness running against `bun run dev` can provision a second org and install bundled apps. These routes create orgs + install apps with BYPASSRLS seeding logic — never expose them in production. `bun run dev` turns this on automatically; the production guard below refuses to boot with it set. Off by default everywhere else. |
 | `LIAISON_QA_ROUTES` | `boolean` | `false` | no | A11: the push matrix's QA inject route (/api/qa/notifications). Demo only: a non-demo production instance refuses to boot with it on. |
 | `LIAISON_DEMO_MODE` | `boolean` | `false` | no | LIAISON_DEMO_MODE turns this box into the PUBLIC DEMO instance. It is a product posture, not a test harness, and shares no code path with ENABLE_QA_SEED_ROUTES / /api/_test/*: nothing it mounts bypasses RLS, creates a user with arbitrary scopes or installs an arbitrary app. What it turns on, all of it narrow and all of it visible in app.ts: - POST /api/demo/orgs, the public self-serve visitor-org signup (IP rate limited ahead of the global limiter, brute-force guarded). - The outbound lockdown for orgs marked `settings.demo`: no customer mail through the sandbox SMTP bridge, no real connector credentials, system mail pinned to the console provider. - Zero platform spend: a demo org holds no credit and does NOT fall back to the deployment's own model key, so a visitor's agents run on the key they paste or not at all. The one reserved App Review org is the exception, and it carries a hard token ceiling. Deliberately NOT fatal in production (the demo instance IS a production deployment) and deliberately independent of NODE_ENV. Off by default, and when it is off none of the above exists: the routes are not mounted. |
+| `LIAISON_PRIVATE_DEMO_BOX` | `boolean` | `false` | no | LIAISON_PRIVATE_DEMO_BOX declares a demo-mode box PRIVATE: a throwaway QA box that runs the demo posture for a tester, reached only over an SSH tunnel, with no visitors. On such a box the seed may replace its own demo org and give the seeded people passwords, which the public demo refuses (`isPublicDemoInstance`). Declaring it is not enough: BASE_URL must also be a loopback origin, so a box with a public hostname stays public whatever this says. Off by default; never set it on a public instance. |
 | `LIAISON_SETUP_TOKEN` | `string` |  | no | One-time secret the FIRST registration of a fresh instance must present (see modules/auth/setup-token.ts). Unset: a value derived from JWT_SECRET is printed in the app log at boot until the instance is bootstrapped. Setting it also turns the requirement on outside production. |
 | `LIAISON_DEMO_SHOPIFY_FIXTURES` | `boolean` | `false` | no | LIAISON_DEMO_SHOPIFY_FIXTURES answers a DEMO MARKED org's Shopify calls from the demo fixtures on a box that is NOT the public demo instance. It exists for the private QA staging box, which runs the product exactly as it ships (demo mode OFF, no public signup route, no egress lockdown, no spend posture) and is filled with the demo world so a tester can walk it. Without this, a demo marked org on such a box has a Shopify connection carrying the inert sentinel token and a shop domain that resolves to nothing, so every Shopify screen is empty and the box cannot be validated at all. It is the NARROWEST thing that fixes that: it widens gate one of `maybeDemoShopifyResponse` and nothing else. Gate two is untouched, so an org with no demo marker is still never intercepted, on any box, whatever this is set to. Turning it on can only ever make traffic MORE contained: a demo marked org's `*.myshopify.com` call is answered from fixtures instead of being put on the wire with a sentinel token. Off by default, and off on the public demo box too, where LIAISON_DEMO_MODE already opens the same door. |
 | `LIAISON_DEMO_WAREHOUSE` | `boolean` | `false` | no | LIAISON_DEMO_WAREHOUSE opts this deployment into the demo seed's warehouse part: the read-only analytics schema behind the `database` connector, built by the deploy-time seed and connected to every demo org. It needs LIAISON_DEMO_WAREHOUSE_DATABASE_URL (the warehouse's own login) and, where the warehouse is built, MIGRATION_DATABASE_URL. Off by default, and never inferred from those variables: a deployment without the warehouse seeds every other part and says the warehouse is off; a deployment with it on and the warehouse failing gets a failed seed, not a quietly thinner one. Leave it off on load and test boxes. |
@@ -263,11 +264,11 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | Name | Read in |
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:139` |
-| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:771` |
-| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
-| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:74` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:32`, `apps/api/src/modules/apps/workers/admission.ts:33` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:64`, `apps/api/src/modules/apps/workers/admission.ts:34` |
+| `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:766` |
+| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:76` |
+| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:52`, `apps/api/src/modules/apps/workers/admission.ts:58` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:46` |
 | `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
 | `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
@@ -275,15 +276,15 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAMAV_HOST` | `apps/api/src/lib/clamav.ts:38` |
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:50`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5182` |
-| `GS_BIN` | `apps/api/src/modules/pdf/render.ts:376` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5380` |
+| `GS_BIN` | `apps/api/src/modules/pdf/render.ts:379` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/modules/apps/connections/api/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:77`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:213` |
-| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:52` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:223` |
+| `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:75` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:168` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
 | `LIAISON_DATABASE_ADAPTER_PATH` | `apps/api/src/modules/apps/connections/sql/catalog.ts:185` |
@@ -292,10 +293,9 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1678` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1686` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:513`, `apps/api/src/modules/apps/app-frame.ts:35` |
-| `LIAISON_TRUSTED_SUMMARIZER_APPS` | `apps/api/src/modules/apps/runtime.ts:1388` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:306` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:105` |
@@ -320,14 +320,14 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:462` |
 | `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:560`, `apps/api/src/middleware/public-surface-limits.ts:116`, `apps/api/src/middleware/rate-limiter.ts:261` |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
-| `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:62` |
-| `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:65` |
+| `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:69` |
+| `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:72` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:70` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:74` |
-| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:430` |
-| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
-| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:95` |
-| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
+| `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:435` |
+| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:99` |
+| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
+| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:97` |
 | `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1322`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
 | `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1323`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |

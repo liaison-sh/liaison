@@ -59,7 +59,18 @@ export interface RunBody {
   runToken: string
   deadlineMs: number
   limits?: { cpuMs?: number; subRequests?: number }
+  /**
+   * The run's lane: `interactive` (a person or an agent waits on it: tool
+   * calls, attention computes, summarizers, page reads) or `background` (jobs,
+   * events, syncs). A host with a bounded pool keeps part of it for the
+   * interactive lane (the sandbox service, @liaison/sandbox-supervisor).
+   * Absent: interactive. Part of the signed body like every other field.
+   */
+  lane?: RunLane
 }
+
+export const RUN_LANES = ["interactive", "background"] as const
+export type RunLane = (typeof RUN_LANES)[number]
 
 /** What the module's entrypoint receives: never the run token or the bridge URL. */
 export interface WorkerRunRequest {
@@ -100,6 +111,9 @@ export function validateRunBody(b: unknown): string | null {
   if (r.extraArgs !== undefined && !Array.isArray(r.extraArgs)) return "invalid extraArgs"
   if (typeof r.deadlineMs !== "number" || !Number.isFinite(r.deadlineMs) || r.deadlineMs <= 0) {
     return "invalid deadlineMs"
+  }
+  if (r.lane !== undefined && !(RUN_LANES as readonly unknown[]).includes(r.lane)) {
+    return "invalid lane"
   }
   return null
 }

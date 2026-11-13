@@ -140,6 +140,59 @@ export const RUN_LIMIT_TABLE: Readonly<Record<RunEntryKind, KindRow>> = Object.f
   provision: { wall: { rule: "fixed", ms: 60_000 }, memory: SANDBOX },
 })
 
+// -- Lanes ------------------------------------------------------------------------
+
+/**
+ * Which lane a run takes on a bounded executor: `interactive` when a person
+ * or an agent waits on it, `background` when nobody does. Every executor
+ * keeps part of its capacity for the interactive lane, so a burst of long
+ * background runs never starves a tool call: the self-hosted sandbox
+ * service's pool (@liaison/sandbox-supervisor, SANDBOX_POOL_RESERVED_INTERACTIVE),
+ * the Workers admission (workers/admission.ts) and the QuickJS worker pool
+ * (APP_WORKER_POOL_RESERVED_INTERACTIVE).
+ */
+export type RunLane = "interactive" | "background"
+
+/** The lane of each entry kind. */
+export const RUN_LANE_OF_KIND: Readonly<Record<RunEntryKind, RunLane>> = Object.freeze({
+  // A person or an agent waits on these.
+  tool: "interactive",
+  preflight: "interactive",
+  "webhook-verify": "interactive",
+  search: "interactive",
+  export: "interactive",
+  attention: "interactive",
+  disconnect: "interactive",
+  preview: "interactive",
+  "pdf-template": "interactive",
+  summarizer: "interactive",
+  route: "interactive",
+  provision: "interactive",
+  // Nobody waits: scheduled jobs, events, polls, deliveries, syncs, imports.
+  webhook: "background",
+  job: "background",
+  event: "background",
+  poll: "background",
+  reconcile: "background",
+  import: "background",
+  "import-transform": "background",
+  "knowledge-sync": "background",
+})
+
+/**
+ * A run's lane: its entry kind's (`tool` when its entry names none), or
+ * background when its site says so (`priority`: a tool call a routine, a job
+ * or another background run makes). The one place a lane is decided.
+ */
+export function runLaneOf(run: {
+  entry?: string | undefined
+  priority?: RunLane | undefined
+}): RunLane {
+  if (run.priority === "background") return "background"
+  const kind = (run.entry ? entryKindOf(run.entry) : null) ?? "tool"
+  return RUN_LANE_OF_KIND[kind]
+}
+
 type Env = NodeJS.ProcessEnv
 
 /**

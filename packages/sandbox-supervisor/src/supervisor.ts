@@ -11,7 +11,9 @@
 //                          network, or loopback in development), and a run can
 //                          do nothing without its own token, which the app's
 //                          bridge checks on every call.
-//                          `x-liaison-run-depth: <n>` marks a nested run.
+//                          `x-liaison-run-depth: <n>` marks a nested run;
+//                          the body's `lane` (interactive by default) picks
+//                          the top-level run's share of the pool (pool.ts).
 //   PUT  /modules/<sha256> the module bytes of an app version (content
 //                          addressed, re-hashed here and again by the loader).
 //                          A run whose module was never pushed answers
@@ -43,8 +45,9 @@
 // listener; a call for a run that is not running here goes nowhere.
 //
 // Each answer of /run carries the run's CPU time as the supervisor measured
-// it (`x-liaison-sandbox-cpu-ms`), and its peak resident memory
-// (`x-liaison-sandbox-rss-mb`), for the app's usage rows.
+// it (`x-liaison-sandbox-cpu-ms`), its peak resident memory
+// (`x-liaison-sandbox-rss-mb`), for the app's usage rows, and how long it
+// waited for a process (`x-liaison-sandbox-queue-ms`), for its timing record.
 //
 // Per-run limits, each by its own mechanism (workerd enforces none itself):
 //   wall      the run's deadline + SANDBOX_KILL_GRACE_MS, then SIGKILL
@@ -65,6 +68,7 @@ import {
   fail,
   MAX_FETCHED_BUNDLE_BYTES,
   type RunBody,
+  type RunLane,
   runLimits,
   sha256Hex,
   signCellRequestV2,
@@ -92,6 +96,7 @@ import { pinnedWorkerdVersion } from "./workerd-bin"
 export const RUN_DEPTH_HEADER = "x-liaison-run-depth"
 export const CPU_HEADER = "x-liaison-sandbox-cpu-ms"
 export const RSS_HEADER = "x-liaison-sandbox-rss-mb"
+export const QUEUE_HEADER = "x-liaison-sandbox-queue-ms"
 /** How long a caller's release counts toward /health. */
 export const RELEASE_WINDOW_MS = 120_000
 const BRIDGE_CALL = /^\/api\/app-bridge\/([^/]+)$/
@@ -106,6 +111,7 @@ export interface RunRecord {
   proc: number
   how: string
   depth: number
+  lane: RunLane
   queueMs: number
   wallMs: number
   cpuMs: number
@@ -336,16 +342,35 @@ export async function createSupervisor(
     const tq = Date.now()
     const deadlineAt = tq + deadlineDuration(body.deadlineMs, tq)
     const key = dynamicWorkerId(SANDBOX_CELL_ID, body)
+    const lane: RunLane = body.lane ?? "interactive"
     let acquired: Awaited<ReturnType<WorkerdPool["acquire"]>>
     try {
-      acquired = await pool.acquire(key, depth, deadlineAt)
+      acquired = await pool.acquire(key, depth, deadlineAt, lane)
     } catch (e) {
       if (!(e instanceof PoolError)) throw e
       if (e.code === "queue_timeout") {
-        return Response.json({
-          ok: false,
-          error: { message: "App execution timed out", kind: "timeout" },
+        // It never started: the whole deadline went waiting for a process.
+        const queueMs = Date.now() - tq
+        recent.push({
+          executor: "workerd",
+          runId: body.runId,
+          proc: 0,
+          how: "queue_timeout",
+          depth,
+          lane,
+          queueMs,
+          wallMs: 0,
+          cpuMs: 0,
+          rssMaxMb: 0,
+          killed: null,
         })
+        if (recent.length > 200) recent.splice(0, recent.length - 200)
+        const r = Response.json({
+          ok: false,
+          error: { message: "App execution timed out", kind: "timeout", code: "queue_timeout" },
+        })
+        r.headers.set(QUEUE_HEADER, String(queueMs))
+        return r
       }
       if (e.code === "stopped") return fail(503, "loader_internal", e.message, { code: "stopping" })
       return fail(429, "limit", e.message, { code: e.code })
@@ -358,6 +383,7 @@ export async function createSupervisor(
       proc: p.n,
       how,
       depth,
+      lane,
       queueMs,
       wallMs: 0,
       cpuMs: 0,
@@ -369,6 +395,7 @@ export async function createSupervisor(
     const answer = (r: Response): Response => {
       r.headers.set(CPU_HEADER, String(Math.max(0, Math.round(rec.cpuMs))))
       r.headers.set(RSS_HEADER, String(Math.round(rec.rssMaxMb)))
+      r.headers.set(QUEUE_HEADER, String(rec.queueMs))
       return r
     }
     let killed: KillReason | null = null

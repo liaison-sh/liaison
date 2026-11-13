@@ -9,10 +9,20 @@
 //   top-level runs  at most PER_ORG in flight per org; the rest wait in one
 //                   FIFO queue (bounded by the run's own timeout, and by its
 //                   caller's abort signal)
+//   lanes           a run is interactive (a person or an agent waits on it)
+//                   or background (jobs, events, syncs; run-limits.ts
+//                   runLaneOf). Background runs may hold at most
+//                   BACKGROUND_PER_ORG of their org's slots (PER_ORG less an
+//                   interactive reserve) and HOLDS_TX_BACKGROUND of the
+//                   holdsTx slots, so a burst of an org's long jobs never
+//                   starves its tool calls. Within a lane the queue is FIFO;
+//                   an interactive run passes queued background runs.
 //   holdsTx runs    at most HOLDS_TX_GLOBAL in flight across the process, the
 //                   worker pool's background cap (maxSize - reserved
 //                   interactive), so Workers never holds more transactions
-//                   open than the pool could; top-level ones queue for it
+//                   open than the pool could; top-level ones queue for it.
+//                   Background ones hold at most that less the interactive
+//                   reserve (APP_WORKER_POOL_RESERVED_INTERACTIVE).
 //   nested runs     NEVER queue: the parent holds its own slot while it waits
 //                   for the child, so a queued child can wait on its own
 //                   parent (worker-pool.ts executeNested has the same rule).
@@ -22,29 +32,51 @@
 
 import { sandboxCancelledError } from "~/lib/failure-severity"
 import { rootLogger } from "~/lib/logger"
+import type { RunLane } from "~/modules/apps/run-limits"
 
 const log = rootLogger.child({ module: "apps-workers-admission" })
 
 export const WORKERS_MAX_IN_FLIGHT_PER_ORG = 16
 export const WORKERS_MAX_NESTED_BREADTH_PER_PARENT = 8
+/** Of an org's in-flight slots, the ones background runs may not hold. */
+export const WORKERS_INTERACTIVE_RESERVE_PER_ORG = 4
+
+/** The worker pool's interactive reserve with its own defaults (worker-pool.ts). */
+function poolReservedInteractive(maxSize: number): number {
+  const reserved = Number(process.env.APP_WORKER_POOL_RESERVED_INTERACTIVE) || 1
+  return Math.max(0, Math.min(reserved, maxSize - 1))
+}
 
 /** The worker pool's background cap with its own defaults (worker-pool.ts). */
 export function poolBackgroundCap(): number {
   const maxSize = Number(process.env.APP_WORKER_POOL_MAX) || 8
-  const reserved = Number(process.env.APP_WORKER_POOL_RESERVED_INTERACTIVE) || 1
-  return Math.max(1, maxSize - Math.max(0, Math.min(reserved, maxSize - 1)))
+  return Math.max(1, maxSize - poolReservedInteractive(maxSize))
+}
+
+/** Of the holdsTx slots, the ones background runs may hold: less the interactive reserve. */
+export function holdsTxBackgroundCap(): number {
+  const maxSize = Number(process.env.APP_WORKER_POOL_MAX) || 8
+  return Math.max(1, poolBackgroundCap() - poolReservedInteractive(maxSize))
 }
 
 const UNKEYED_PARENT = "(unkeyed parent)"
 
 export interface AdmissionLimits {
   perOrg: number
+  /** Of perOrg, what background runs may hold (at most perOrg). */
+  backgroundPerOrg: number
   nestedBreadthPerParent: number
   holdsTxGlobal: number
+  /** Of holdsTxGlobal, what background runs may hold (at most holdsTxGlobal). */
+  holdsTxBackground: number
 }
+
+export type LaneCounts = Record<RunLane, number>
 
 export interface AdmissionRequest {
   orgId: string
+  /** The run's lane (default interactive); a nested run's is its parent's business. */
+  lane?: RunLane
   holdsTx: boolean
   nested: boolean
   nestedParentKey?: string
@@ -62,15 +94,22 @@ interface Waiter {
 export class WorkersAdmission {
   private limits: AdmissionLimits
   private readonly perOrg = new Map<string, number>()
+  private readonly backgroundPerOrg = new Map<string, number>()
   private holdsTx = 0
+  private holdsTxBackground = 0
   private readonly nestedByParent = new Map<string, number>()
   private readonly queue: Waiter[] = []
+  /** Top-level runs that waited in the queue, and those that timed out there, per lane. */
+  private readonly waited: LaneCounts = { interactive: 0, background: 0 }
+  private readonly timedOut: LaneCounts = { interactive: 0, background: 0 }
 
   constructor(limits?: Partial<AdmissionLimits>) {
     this.limits = {
       perOrg: WORKERS_MAX_IN_FLIGHT_PER_ORG,
+      backgroundPerOrg: WORKERS_MAX_IN_FLIGHT_PER_ORG - WORKERS_INTERACTIVE_RESERVE_PER_ORG,
       nestedBreadthPerParent: WORKERS_MAX_NESTED_BREADTH_PER_PARENT,
       holdsTxGlobal: poolBackgroundCap(),
+      holdsTxBackground: holdsTxBackgroundCap(),
       ...limits,
     }
   }
@@ -86,14 +125,36 @@ export class WorkersAdmission {
   }
 
   /** In-flight counters (tests, diagnostics). */
-  stats(): { orgs: Record<string, number>; holdsTx: number; queued: number; nested: number } {
+  stats(): {
+    orgs: Record<string, number>
+    holdsTx: number
+    queued: number
+    nested: number
+    lanes: {
+      background: { orgs: Record<string, number>; holdsTx: number }
+      queued: LaneCounts
+      waited: LaneCounts
+      timedOut: LaneCounts
+    }
+  } {
     let nested = 0
     for (const n of this.nestedByParent.values()) nested += n
+    const queued: LaneCounts = { interactive: 0, background: 0 }
+    for (const w of this.queue) queued[laneOf(w.req)]++
     return {
       orgs: Object.fromEntries(this.perOrg),
       holdsTx: this.holdsTx,
       queued: this.queue.length,
       nested,
+      lanes: {
+        background: {
+          orgs: Object.fromEntries(this.backgroundPerOrg),
+          holdsTx: this.holdsTxBackground,
+        },
+        queued,
+        waited: { ...this.waited },
+        timedOut: { ...this.timedOut },
+      },
     }
   }
 
@@ -107,11 +168,15 @@ export class WorkersAdmission {
         return Promise.reject(err)
       }
     }
-    // Never jump ahead of a queued run competing for the same slot.
+    // Never jump ahead of a queued run of the same lane competing for the
+    // same slot (an interactive run may pass queued background ones).
+    const lane = laneOf(req)
     const behind = this.queue.some(
-      (w) => w.req.orgId === req.orgId || (req.holdsTx && w.req.holdsTx),
+      (w) =>
+        laneOf(w.req) === lane && (w.req.orgId === req.orgId || (req.holdsTx && w.req.holdsTx)),
     )
     if (!behind && this.fits(req)) return Promise.resolve(this.take(req))
+    this.waited[lane]++
     return new Promise<() => void>((resolve, reject) => {
       let timer: ReturnType<typeof setTimeout> | undefined
       const leave = () => {
@@ -134,8 +199,9 @@ export class WorkersAdmission {
       timer = setTimeout(
         () => {
           leave()
+          this.timedOut[lane]++
           log.warn(
-            { orgId: req.orgId, app: req.appName, runHoldsTx: req.holdsTx, ...this.stats() },
+            { orgId: req.orgId, app: req.appName, lane, runHoldsTx: req.holdsTx, ...this.stats() },
             "Workers run timed out waiting for admission",
           )
           reject(new Error("Queued sandbox request timed out waiting for a free worker"))
@@ -152,20 +218,27 @@ export class WorkersAdmission {
   private fits(req: AdmissionRequest): boolean {
     if ((this.perOrg.get(req.orgId) ?? 0) >= this.limits.perOrg) return false
     if (req.holdsTx && this.holdsTx >= this.limits.holdsTxGlobal) return false
+    if (laneOf(req) === "background") {
+      if ((this.backgroundPerOrg.get(req.orgId) ?? 0) >= this.limits.backgroundPerOrg) return false
+      if (req.holdsTx && this.holdsTxBackground >= this.limits.holdsTxBackground) return false
+    }
     return true
   }
 
   private take(req: AdmissionRequest): () => void {
-    this.perOrg.set(req.orgId, (this.perOrg.get(req.orgId) ?? 0) + 1)
+    const background = laneOf(req) === "background"
+    bump(this.perOrg, req.orgId, 1)
+    if (background) bump(this.backgroundPerOrg, req.orgId, 1)
     if (req.holdsTx) this.holdsTx++
+    if (req.holdsTx && background) this.holdsTxBackground++
     let released = false
     return () => {
       if (released) return
       released = true
-      const n = (this.perOrg.get(req.orgId) ?? 1) - 1
-      if (n > 0) this.perOrg.set(req.orgId, n)
-      else this.perOrg.delete(req.orgId)
+      bump(this.perOrg, req.orgId, -1)
+      if (background) bump(this.backgroundPerOrg, req.orgId, -1)
       if (req.holdsTx) this.holdsTx--
+      if (req.holdsTx && background) this.holdsTxBackground--
       this.drain()
     }
   }
@@ -214,6 +287,17 @@ export class WorkersAdmission {
       }
     }
   }
+}
+
+function laneOf(req: Pick<AdmissionRequest, "lane">): RunLane {
+  return req.lane ?? "interactive"
+}
+
+/** Add `by` to a per-org count, dropping the key at zero. */
+function bump(map: Map<string, number>, key: string, by: number): void {
+  const n = (map.get(key) ?? 0) + by
+  if (n > 0) map.set(key, n)
+  else map.delete(key)
 }
 
 /** The process's admission (the Workers executor's). */

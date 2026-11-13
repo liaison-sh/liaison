@@ -120,6 +120,8 @@ Memory the service takes comes out of the host's budget: on a host whose app con
 | 2 GiB (the defaults) | `SANDBOX_POOL_SIZE=6` (2 of them kept for nested runs), `SANDBOX_POOL_OVERFLOW=2`, `LIAISON_SANDBOX_MEM_LIMIT=2g`, `LIAISON_SANDBOX_CPUS=2.0` |
 | 3 GiB | `SANDBOX_POOL_SIZE=10`, `SANDBOX_POOL_OVERFLOW=2`, `LIAISON_SANDBOX_MEM_LIMIT=3g`, `LIAISON_SANDBOX_CPUS=3.0` |
 
+**Interactive and background runs.** Runs that a person or an agent waits on (tool calls, attention computes, summarizers, page reads) are interactive; jobs, event handlers, webhook deliveries and syncs are background. Of the pool, `SANDBOX_POOL_RESERVED` processes (2) are kept for nested runs, and `SANDBOX_POOL_RESERVED_INTERACTIVE` more (2) for interactive runs: background runs hold at most `SANDBOX_POOL_SIZE` - `SANDBOX_POOL_RESERVED` - `SANDBOX_POOL_RESERVED_INTERACTIVE` processes at once (2 with the defaults, at least 1), interactive runs up to `SANDBOX_POOL_SIZE` - `SANDBOX_POOL_RESERVED` (4). So when many long jobs start together, they wait their turn and tool calls still start at once. A run waits for a process until its own deadline, then fails with a timeout. A job's deadline is its manifest `timeoutMs` (60 s when unset): if your jobs time out waiting at the top of the hour, give the pool more processes. The service logs its lane caps at start, and `GET /stats` on it shows them with each lane's busy and waiting runs and its wait counters (`pool.lanes`, `pool.counters.lanes`: runs started, how many waited and how long, deadlines passed in the queue).
+
 `SANDBOX_RSS_CAP_MB` (256) and `SANDBOX_HEAP_MB` (128) set one process's cap; `SANDBOX_RECYCLE_RUNS` (100) and `SANDBOX_IDLE_MS` (120000) when a process is replaced.
 
 ## A host without gVisor

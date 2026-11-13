@@ -8,14 +8,11 @@
 -- Additive and re-runnable.
 SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint
+-- expand-safe: a new check on a new column the previous release never writes.
 ALTER TABLE app_projects.tasks
-  ADD COLUMN IF NOT EXISTS updated_by_type text,
+  ADD COLUMN IF NOT EXISTS updated_by_type text
+    CONSTRAINT tasks_updated_by_type_chk
+    CHECK (updated_by_type IN ('user', 'agent', 'routine', 'system')),
   ADD COLUMN IF NOT EXISTS updated_by uuid,
   ADD COLUMN IF NOT EXISTS updated_by_routine_id uuid,
   ADD COLUMN IF NOT EXISTS updated_by_at timestamptz;
---> statement-breakpoint
--- expand-safe: a new check on a new column the previous release never writes.
-ALTER TABLE app_projects.tasks DROP CONSTRAINT IF EXISTS tasks_updated_by_type_chk;
---> statement-breakpoint
-ALTER TABLE app_projects.tasks ADD CONSTRAINT tasks_updated_by_type_chk
-  CHECK (updated_by_type IS NULL OR updated_by_type IN ('user', 'agent', 'routine', 'system'));

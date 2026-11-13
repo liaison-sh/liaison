@@ -8,9 +8,10 @@
 // made here, in `selectExecutor`, and nowhere else (one-door.test.ts fails on a
 // site that calls an executor itself):
 //
-//   inprocess  trusted code, or a site that keeps its QuickJS run in process
-//              (`quickjs.inProcess`), on the host's in-process QuickJS pool
-//   workers    an untrusted app whose installed version recorded a Worker
+//   inprocess  a site that keeps its QuickJS run in process (`quickjs.inProcess`:
+//              a pure function on an empty bridge), on the host's in-process
+//              QuickJS pool, only while no remote executor takes it
+//   workers    a (non-core) app whose installed version recorded a Worker
 //              module (the package's worker.js, install-service.ts), when
 //              the app loader is configured (workers/config.ts), in any role
 //   workerd    the same run on this instance's own sandbox service
@@ -23,7 +24,6 @@
 //              process with a typed host ctx (core/run-core.ts); never a sandbox
 //
 //   LIAISON_APP_RUNTIME=quickjs  every run on QuickJS (this release only)
-//   trusted                      inprocess
 //   loader + Worker module       workers; a loader fault before any bridge
 //                                call, an open breaker or an app fallback:
 //                                workerd when the sandbox service is set,
@@ -109,8 +109,6 @@ export interface InstalledIdentity {
 }
 
 export interface RunAppOptions {
-  /** The handler is platform code: it may run in-process. */
-  trusted: boolean
   appName: string
   orgId: string
   /**
@@ -176,8 +174,8 @@ export interface RunAppOptions {
    */
   holdsTx: boolean
   /**
-   * Where this site's QuickJS run goes when it is not where its trust puts it
-   * (the remote executors ignore it): `inProcess` keeps an untrusted run on
+   * Where this site's QuickJS run goes (the remote executors ignore it):
+   * `inProcess` keeps the run on
    * the in-process pool (a pure function on an empty bridge: an approval
    * summarizer, a PDF template), `inProcessPool` names that pool (a bare unit
    * test), `workerPool` is the site's own out-of-process pool (import
@@ -203,7 +201,6 @@ export type AppExecutor = "core" | "inprocess" | "pool" | "workers" | "workerd"
  * `sandboxService`: the instance's sandbox service takes it instead.
  */
 export function selectExecutor(opts: {
-  trusted: boolean
   /** The site keeps its QuickJS run on the in-process pool. */
   inProcess?: boolean
   workersBundleSha?: string | undefined
@@ -211,8 +208,8 @@ export function selectExecutor(opts: {
   /** LIAISON_APP_RUNTIME=quickjs. */
   quickjsForced?: boolean
 }): AppExecutor {
-  const quickjs = opts.trusted || opts.inProcess ? "inprocess" : "pool"
-  if (opts.trusted || opts.quickjsForced) return quickjs
+  const quickjs = opts.inProcess ? "inprocess" : "pool"
+  if (opts.quickjsForced) return quickjs
   if (opts.workersBundleSha) return "workers"
   return opts.sandboxService ? "workerd" : quickjs
 }
@@ -235,12 +232,9 @@ export interface WorkersTarget {
  * QuickJS.
  */
 export async function resolveWorkersTarget(
-  opts: Pick<
-    RunAppOptions,
-    "trusted" | "appName" | "orgId" | "installed" | "bundlePath" | "workerModule"
-  >,
+  opts: Pick<RunAppOptions, "appName" | "orgId" | "installed" | "bundlePath" | "workerModule">,
 ): Promise<WorkersTarget | null> {
-  if (opts.trusted || quickjsForced()) return null
+  if (quickjsForced()) return null
   const config = readWorkersConfig() ?? readSandboxConfig(null)
   if (!config) return null
   if (opts.installed === null) {
@@ -297,10 +291,7 @@ export function sandboxTargetOf(target: WorkersTarget): WorkersTarget | undefine
 }
 
 export async function planWorkersRun(
-  opts: Pick<
-    RunAppOptions,
-    "trusted" | "appName" | "orgId" | "installed" | "bundlePath" | "workerModule"
-  >,
+  opts: Pick<RunAppOptions, "appName" | "orgId" | "installed" | "bundlePath" | "workerModule">,
 ): Promise<WorkersPlan> {
   const target = await resolveWorkersTarget(opts)
   if (!target) return { target: null }
@@ -338,7 +329,6 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
   let info: WorkersRunInfo = {}
   let ok = false
   let executor: AppExecutor = selectExecutor({
-    trusted: opts.trusted,
     inProcess: opts.quickjs?.inProcess === true,
   })
   let fallback: WorkersFallback | undefined
@@ -366,7 +356,6 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
     const plan = await planWorkersRun(opts)
     fallback = plan.fallback
     executor = selectExecutor({
-      trusted: opts.trusted,
       inProcess: opts.quickjs?.inProcess === true,
       workersBundleSha: plan.target?.sha256,
       sandboxService: plan.sandboxTarget !== undefined,
@@ -400,7 +389,6 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       )
       fallback = "loader_fault"
       executor = selectExecutor({
-        trusted: opts.trusted,
         inProcess: opts.quickjs?.inProcess === true,
         sandboxService: sandboxTarget !== undefined,
       })
@@ -442,7 +430,7 @@ export async function runApp(opts: RunAppOptions): Promise<unknown> {
       app: opts.appName,
       orgId: opts.orgId,
       entry: opts.entry ?? (opts.toolName ? `tool:${opts.toolName}` : `handler:${opts.exportName}`),
-      // A core run is platform code, recorded like trusted in-process code.
+      // A core run is server code, recorded as in-process.
       executor: executor === "pool" ? "quickjs" : executor === "core" ? "inprocess" : executor,
       nested: opts.nested === true,
       ...(parentApp ? { parentApp } : {}),

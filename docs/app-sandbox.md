@@ -54,7 +54,7 @@ HTTP request / event / job
     → pool.release()
 ```
 
-Each invocation gets a **fresh context** — no state leaks between calls. The handler bundle is re-evaluated every time (no cached module state). The bundle file's text is checked against the file on every load, so an app reinstalled at the same version runs its new code at once, without a restart. For a trusted app's attention provider the bundle evaluated is the part the provider needs, tree-shaken once per bundle version (`modules/apps/sandbox/bundle-shake.ts`): source text derived from the bundle alone, never evaluated state. A handler bundle that carries an import attribute (`with { ... }` or `assert { ... }` on an import or export, or options passed to `import()`) fails the version's activation check and is never parsed or built by Bun on the server; the check reads the bundle with the TypeScript parser, which runs no code, so text that only mentions `with {` passes, and a bundle that parser cannot read is refused too. Timeout enforcement uses `runtime.setInterruptHandler()` polling against a deadline (default: 5s in production, 60s in development, overridable via `LIAISON_SANDBOX_TIMEOUT_MS` in non-production; production ignores the override).
+Each invocation gets a **fresh context** — no state leaks between calls. The handler bundle is re-evaluated every time (no cached module state). The bundle file's text is checked against the file on every load, so an app reinstalled at the same version runs its new code at once, without a restart. A handler bundle that carries an import attribute (`with { ... }` or `assert { ... }` on an import or export, or options passed to `import()`) fails the version's activation check and is never parsed or built by Bun on the server; the check reads the bundle with the TypeScript parser, which runs no code, so text that only mentions `with {` passes, and a bundle that parser cannot read is refused too. Timeout enforcement uses `runtime.setInterruptHandler()` polling against a deadline (default: 5s in production, 60s in development, overridable via `LIAISON_SANDBOX_TIMEOUT_MS` in non-production; production ignores the override).
 
 **Bridge call pattern:** Bridge functions use QuickJS native promises (`ctx.newPromise()`) rather than WASM asyncify. When a handler calls `ctx.db.findMany(...)`, the bridge function creates a QuickJS promise, queues the async host work, and returns the promise handle. The host resolves the promise when the work completes, then `executePendingJobs()` resumes the QuickJS event loop. This works reliably across event loop boundaries — including IPC to worker subprocesses.
 
@@ -770,21 +770,23 @@ Tools have two handler formats and two execution paths:
 handler: (params, ctx) => Promise<result>
 
 // Manifest (sandboxed — bundled apps): runs in QuickJS sandbox
-handler: { bundlePath: string, exportName: string, trusted?: boolean }
+handler: { bundlePath: string, exportName: string, core?: boolean }
 ```
 
-The `trusted` flag determines which sandbox path is used:
+There are two kinds of app, and the platform decides which an app is: no manifest field does.
 
-| Trust level | Execution path | Isolation | Bridge calls |
-|-------------|---------------|-----------|-------------|
-| `trusted: true` (default) | In-process QuickJS pool | WASM-level (same process) | Direct — host functions called in-process |
-| `trusted: false` | Worker subprocess pool | OS process-level | IPC-proxied — full RPC bridge via IPC round-trip |
+| Kind | Which apps | Where it runs |
+|------|-----------|---------------|
+| core | tickets, mail, contacts, calendar, knowledge, projects, mcp-manager (`modules/apps/core/registry.ts`) | Server code: its handlers are imported modules, called in-process with a typed host ctx |
+| app | every other app: bundled, catalog, sideloaded, custom | Sandboxed through `runApp`: Workers in Cloud, the sandbox service (workerd) self-hosted, QuickJS while `LIAISON_APP_RUNTIME=quickjs` |
+
+A manifest that carries `trusted` (true or false) is refused. Being a first-party catalog app vouches for an app's declarations (`readOnly`, its taint sinks, triggers), never for where or how it runs.
 
 Event subscribers, job handlers, and webhook handlers follow the same pattern — manifest-format handlers are wrapped in sandbox dispatch functions that call `executeInSandbox()`.
 
 An app's event subscription runs once per event, in the process that published the event, however many server processes run. Other processes do not run it again for their copy of the event.
 
-A trusted app's cross-app or system event handler, and its approval poll, run with privileged database access. They act as the app: a scope check in the database (allocating a task number, say) reads the scopes the app's manifest declares (`scopes`), and refuses a scope the app does not declare. An app nobody vouched for runs the same handlers under its own row-level security instead.
+An app's cross-app or system event handler, its approval poll and reconcile, its search, its knowledge source sync and its knowledge items run as the app, under row-level security, first-party or not: a scope check in the database (allocating a task number, say) reads the app's own scopes plus the scopes its manifest declares (`scopes`, granted at install), and refuses a scope the app does not declare. Only a core app's handlers (server code) may use a privileged database handle.
 
 ---
 

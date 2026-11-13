@@ -274,7 +274,7 @@ export async function runStateMaterializeOnce(
   await primeOrgApps(args.orgId)
   for (const [[entryOrg, appName], reg] of attentionItemsRegistry.entriesOf("*")) {
     if (entryOrg !== "*") continue
-    if (!reg.trusted) continue
+    if (!reg.core) continue
     // The event-provider surfaces already-persisted attention_events rows: it
     // does not derive new state but reads what the event pipeline already wrote.
     // Running it here would duplicate those rows as email_only inserts.

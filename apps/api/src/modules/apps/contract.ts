@@ -263,7 +263,6 @@ const appPromptSchema = z.object({ content: z.string().min(1) })
 const appDescriptorSchema = z.object({
   name: z.string().regex(NAME_REGEX, "Name must be lowercase alphanumeric + hyphens"),
   version: z.string().regex(SEMVER_REGEX, "Version must be valid semver"),
-  trusted: z.boolean().optional(),
   // Declarative settings page and app kind (app-sdk app-settings.ts). Shape
   // only here; settingsErrors (below) runs the cross-field rules.
   kind: z.enum(["app", "connector"]).optional(),
@@ -1094,7 +1093,18 @@ export function appIconErrors(manifest: { iconSvg?: unknown; iconName?: unknown 
   return errors
 }
 
+/**
+ * The refusal of a manifest that carries `trusted`. No manifest decides where
+ * its app runs: the core apps (core/registry.ts) are server code, every other
+ * app runs sandboxed.
+ */
+export const TRUSTED_FIELD_REFUSAL =
+  "trusted is not a manifest field: the platform decides which apps are core (server code); every other app runs sandboxed. Remove it."
+
 export function validateAppManifest(manifest: any): ValidationResult {
+  if (manifest !== null && typeof manifest === "object" && "trusted" in manifest) {
+    return { success: false, error: TRUSTED_FIELD_REFUSAL }
+  }
   const retired = retiredToolScopeErrors(manifest?.tools)
   if (retired.length > 0) return { success: false, error: retired.join("; ") }
 

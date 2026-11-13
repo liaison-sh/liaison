@@ -556,7 +556,7 @@ async function dispatchVerifiedWebhook(
   if (isManifestHandler(registration.handler)) {
     const holdMs = await appRunHoldMs({
       orgId: appOrgId,
-      trusted: (registration.handler as ManifestHandlerRef).trusted === true,
+      core: (registration.handler as ManifestHandlerRef).core === true,
     })
     if (holdMs !== null) {
       let held: ClaimedDelivery | null = null

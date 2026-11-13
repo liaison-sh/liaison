@@ -68,7 +68,6 @@ export async function executeManifestWebhook({
   workersBridge,
 }: ExecuteManifestWebhookOptions): Promise<unknown> {
   return runApp({
-    trusted: handlerRef.trusted === true,
     appName,
     orgId,
     bundlePath: handlerRef.bundlePath,

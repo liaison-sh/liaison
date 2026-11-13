@@ -92,7 +92,6 @@
     "summary": "Projects and tasks with owners, statuses, due dates and discussions.",
     "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/apps/api/src/apps/projects"
   },
-  "trusted": true,
   "dependencies": {
     "required": [
       "kernel"

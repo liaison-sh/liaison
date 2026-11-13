@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-// A vouched-for app's system event handler and approval poll run privileged,
-// as the app: a scope check in the database (a task number's
+// A non-core app's system event handler and approval poll run as the app, under
+// RLS, first-party or not (no app but a core one gets a privileged handle): a
+// scope check in the database (a task number's
 // `app_projects.app_has_scope('projects:tasks:write')`) reads the scopes the
-// app's manifest declares, and refuses when it declares none (runtime.ts: the
-// privileged event branch and backgroundAppSession; db/privileged.ts
-// setPrivilegedContext; migration 0210). Each check runs on the very
-// transaction the handler's bridge call gets: the event handler's whole-run
-// one, and for a poll each bridge call's own short one (no transaction is held
-// across the poll's provider call).
+// app's manifest declares, which its install granted, and refuses when it
+// declares none (runtime-helpers.ts appSelfScopes; runtime.ts: the event branch
+// and backgroundAppSession). Each check runs on the very transaction the
+// handler's bridge call gets: for a poll each bridge call's own short one (no
+// transaction is held across the poll's provider call).
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { sql } from "~/db/connection"
 import * as privilegedModule from "~/db/privileged"
+import * as rlsModule from "~/db/rls"
 import {
   initEventBus,
   _publishEventInternal as publishEvent,
@@ -69,7 +70,7 @@ function systemEvent(entityId: string) {
   }
 }
 
-/** The fixture app as a first-party install (privileged), declaring `scopes`, with a polled tool. */
+/** The fixture app as a first-party catalog install, declaring `scopes`, with a polled tool. */
 async function register(scopes: string[] | undefined, pollHandler = "listItems") {
   const tools = {
     ...testManifest.tools,
@@ -82,7 +83,6 @@ async function register(scopes: string[] | undefined, pollHandler = "listItems")
         tools,
         network: { allowedDomains: ["poll.provider.test"] },
         ...(scopes ? { scopes } : {}),
-        trusted: false,
         _installed: true,
         _firstParty: true,
         _format: "manifest",
@@ -93,9 +93,11 @@ async function register(scopes: string[] | undefined, pollHandler = "listItems")
   )
 }
 
-describe("a privileged app handler acts with the scopes its manifest declares", () => {
+describe("a first-party app's handler acts as the app, under RLS, with the scopes its manifest declares", () => {
   let seen: Seen[] = []
+  let privileged: string[] = []
   let privSpy: ReturnType<typeof spyOn>
+  let rlsSpy: ReturnType<typeof spyOn>
 
   beforeAll(async () => {
     await sql`INSERT INTO kernel.organizations (id, name, slug)
@@ -104,18 +106,29 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
     initEventBus()
     await initSandboxPool()
     const realPriv = privilegedModule.withPrivilegedDb
-    // The handler's own transaction: read what a scope check sees, then run it.
+    const realRls = rlsModule.withRlsContext
+    // No run of the app takes a privileged handle.
     privSpy = spyOn(privilegedModule, "withPrivilegedDb").mockImplementation(((
       orgId: string,
       reason: string,
+      fn: never,
+      opts: never,
+    ) => {
+      if (reason.startsWith("event:test:") || reason.startsWith("poll:test:")) {
+        privileged.push(reason)
+      }
+      return realPriv(orgId, reason, fn, opts)
+    }) as never)
+    // The app's own transaction: read what a scope check sees, then run it.
+    rlsSpy = spyOn(rlsModule, "withRlsContext").mockImplementation(((
+      ctx: { actorType: string; scopes?: string[] },
       fn: (tx: never) => Promise<unknown>,
       opts: never,
     ) =>
-      realPriv(
-        orgId,
-        reason,
+      realRls(
+        ctx as never,
         async (tx) => {
-          if (reason.startsWith("event:test:") || reason.startsWith("poll:test:")) {
+          if (ctx.actorType === "system" && ctx.scopes?.[0] === "test:*") {
             seen.push(await readScopes(tx as never))
           }
           return fn(tx as never)
@@ -127,11 +140,14 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
   afterEach(async () => {
     await teardownAppRegistrations(ORG, "test")
     resetAppRegistries()
+    expect(privileged).toEqual([])
     seen = []
+    privileged = []
   })
 
   afterAll(async () => {
     privSpy.mockRestore()
+    rlsSpy.mockRestore()
     await shutdownWorkerPool()
     await shutdownSandboxPool()
     await sql`DELETE FROM app_test.event_log WHERE org_id = ${ORG}`.catch(() => {})
@@ -143,14 +159,14 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
     await register(DECLARED)
     await publishEvent(systemEvent("evt-scopes-declared") as never)
     expect(await pollUntil(async () => seen.length > 0, 25_000)).toBe(true)
-    expect(seen[0]).toEqual({ ok: true, scopes: DECLARED.join(",") })
+    expect(seen[0]).toEqual({ ok: true, scopes: ["test:*", ...DECLARED].join(",") })
   }, 30_000)
 
   it("the event handler of an app that declares no scope is refused", async () => {
     await register(undefined)
     await publishEvent(systemEvent("evt-scopes-none") as never)
     expect(await pollUntil(async () => seen.length > 0, 25_000)).toBe(true)
-    expect(seen[0]).toEqual({ ok: false, scopes: "__none__" })
+    expect(seen[0]).toEqual({ ok: false, scopes: "test:*" })
   }, 30_000)
 
   async function pollAndRead(): Promise<Seen> {
@@ -166,12 +182,12 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
 
   it("the poll reads the declared scopes", async () => {
     await register(DECLARED)
-    expect(await pollAndRead()).toEqual({ ok: true, scopes: DECLARED.join(",") })
+    expect(await pollAndRead()).toEqual({ ok: true, scopes: ["test:*", ...DECLARED].join(",") })
   }, 30_000)
 
   it("the poll of an app that declares no scope is refused", async () => {
     await register(undefined)
-    expect(await pollAndRead()).toEqual({ ok: false, scopes: "__none__" })
+    expect(await pollAndRead()).toEqual({ ok: false, scopes: "test:*" })
   }, 30_000)
 
   it("a sandboxed poll holds no transaction while it asks its provider", async () => {
@@ -193,7 +209,7 @@ describe("a privileged app handler acts with the scopes its manifest declares", 
       expect(out).toEqual({ ready: true, result: { value: "label-1" } })
       expect(openDuringFetch).toEqual([0])
       // Its read after the provider call still ran as the app, on its own transaction.
-      expect(seen[0]).toEqual({ ok: true, scopes: DECLARED.join(",") })
+      expect(seen[0]).toEqual({ ok: true, scopes: ["test:*", ...DECLARED].join(",") })
     } finally {
       SandboxBridgeTestAccess.setFetch(null)
       SandboxBridgeTestAccess.setFetchInterceptsHost(null)

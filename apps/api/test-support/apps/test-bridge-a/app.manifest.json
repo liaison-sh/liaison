@@ -1,7 +1,6 @@
 {
   "name": "test-bridge-a",
   "version": "1.0.0",
-  "trusted": true,
   "dependencies": { "tools": ["test-bridge-b:internalCallback"] },
   "schema": {
     "audit": {

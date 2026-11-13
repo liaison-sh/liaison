@@ -84,7 +84,7 @@ export function webhookRunHoldsTx(registration: WebhookRegistration, appName: st
   if (!isManifestHandler(registration.handler)) return true
   const ref = registration.handler as ManifestHandlerRef
   return handlerRunHoldsTx({
-    trusted: ref.trusted === true,
+    core: ref.core === true,
     app: appName,
     entry: `webhook:${ref.exportName}`,
   })

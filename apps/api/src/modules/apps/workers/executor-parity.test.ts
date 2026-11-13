@@ -14,24 +14,28 @@
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { createHash, createHmac } from "node:crypto"
-import { mkdtempSync, rmSync } from "node:fs"
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import type { Server } from "bun"
 import { app } from "~/app"
 import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
 import { knowledgeActorFromContext } from "~/apps/knowledge/service"
 import { createSyncedSource } from "~/apps/knowledge/synced-sources"
 import { sql } from "~/db"
+import * as privilegedModule from "~/db/privileged"
 import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession, withRlsContext } from "~/db/rls"
 import * as jobsModule from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { appBridgeManifestRegistry, connectionConfigRegistry } from "~/modules/apps/app-registries"
+import { resetCatalogCache } from "~/modules/apps/catalog"
 import { createCredentialConnection } from "~/modules/apps/connections/service"
-import { reloadInstalledApps } from "~/modules/apps/init"
+import { isCoreApp } from "~/modules/apps/core/registry"
+import { discoverInstalledApps } from "~/modules/apps/discover-apps"
+import { installedAppDescriptor, reloadInstalledApps } from "~/modules/apps/init"
 import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
-import { buildJobBridge } from "~/modules/apps/runtime"
+import { buildJobBridge, registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
 import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { clearInstalledIdentityCache, runApp } from "~/modules/apps/sandbox/run-app"
@@ -63,6 +67,33 @@ function executorParitySuite(target: ParityTarget): void {
   const REPO = join(import.meta.dir, "../../../../../..")
   const FIXTURES = join(import.meta.dir, "__fixtures__", "apps")
   const FIXTURE_APPS = ["wparityb", "wparity"]
+  /**
+   * First-party bundled apps that moved out of the server tree and once ran their
+   * knowledge syncs in-process as vouched code: installed here from bundled-apps/
+   * like the catalog installs them, and registered as the catalog's own artifact.
+   */
+  const MOVED_APPS = ["gitlab", "database"] as const
+  const GITLAB_TOKEN = "glpat-parity-0123456789abcdef"
+  /** The recorded gitlab.com answers of a folder sync, by URL (contract fixture). */
+  const GITLAB_REPLIES = new Map(
+    (
+      JSON.parse(
+        readFileSync(
+          join(import.meta.dir, "../contract/fixtures/gitlab/knowledge-sync__folder.json"),
+          "utf8",
+        ),
+      ) as { calls: Array<{ method: string; args: unknown[]; reply: string }> }
+    ).calls
+      .filter((c) => c.method === "fetch")
+      .map((c) => [
+        String(c.args[0]),
+        JSON.parse(c.reply) as { status: number; headers: Record<string, string>; body: string },
+      ]),
+  )
+  /** The Authorization headers gitlab.com received (the credential is added host-side). */
+  const gitlabAuth: string[] = []
+  /** Every gitlab.com URL asked, in order. */
+  const gitlabAsked: string[] = []
   const CELL_ID = "cell-parity"
   const SECRETS = { carrierKey: CARRIER_KEY, cellKey: CELL_KEY }
 
@@ -76,6 +107,8 @@ function executorParitySuite(target: ParityTarget): void {
   const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, env[k]]))
   const savedRole = env.LIAISON_ROLE
   const savedAppsDir = process.env.LIAISON_APPS_DIR
+  const savedCatalogDir = process.env.LIAISON_APP_CATALOG_DIR
+  const catalogEntries: Array<Record<string, unknown>> = []
 
   let scratch = ""
   let orgId = ""
@@ -171,7 +204,7 @@ function executorParitySuite(target: ParityTarget): void {
   /**
    * Run `exportName` of an installed fixture app through runApp with the app's
    * real session bridge (one RLS transaction per bridge call, as a tool run),
-   * on the given executor: trusted in-process QuickJS, the worker pool, or
+   * on the given executor: the in-process QuickJS pool, the worker pool, or
    * Workers through the fake loader.
    */
   async function runStore(
@@ -205,7 +238,6 @@ function executorParitySuite(target: ParityTarget): void {
       opts.readOnly ? { readOnlyRunOverride: true } : undefined,
     )
     const result = await runApp({
-      trusted: executor === "inprocess",
       appName,
       orgId,
       bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", appName, "1.0.0", "bundle.js"),
@@ -214,6 +246,9 @@ function executorParitySuite(target: ParityTarget): void {
       params,
       bridge,
       holdsTx: false,
+      // The in-process QuickJS pool is a site's placement (a pure function on
+      // QuickJS), never an app's tier: asked for here to compare its bridge.
+      ...(executor === "inprocess" ? { quickjs: { inProcess: true } } : {}),
     })
     if (executor !== "inprocess") {
       expect(
@@ -229,6 +264,8 @@ function executorParitySuite(target: ParityTarget): void {
     await acquireTestLock()
     scratch = mkdtempSync(join(tmpdir(), "executor-parity-"))
     process.env.LIAISON_APPS_DIR = join(scratch, "installed")
+    process.env.LIAISON_APP_CATALOG_DIR = join(scratch, "catalog")
+    resetCatalogCache()
     ;(env as unknown as Mutable).LIAISON_ROLE = "all"
     orgId = (await createTestOrg()).id
     userA = await minimal.orgAdmin(orgId)
@@ -236,23 +273,47 @@ function executorParitySuite(target: ParityTarget): void {
     bearerA = await minimal.token(userA.id)
     bearerB = await minimal.token(userB.id)
     // A previous run's records (the namespace database outlives the install root).
-    for (const name of FIXTURE_APPS) await uninstallApp({ name }).catch(() => undefined)
+    for (const name of [...FIXTURE_APPS, ...MOVED_APPS]) {
+      await uninstallApp({ name }).catch(() => undefined)
+    }
 
-    for (const name of FIXTURE_APPS) {
-      const appDir = join(FIXTURES, name)
+    for (const name of [...FIXTURE_APPS, ...MOVED_APPS]) {
+      const moved = (MOVED_APPS as readonly string[]).includes(name)
+      const appDir = moved ? join(REPO, "bundled-apps", name) : join(FIXTURES, name)
       const { tarballPath, manifest } = await freezeApp({
         appName: name,
         appDir,
         repoRoot: REPO,
-        outDir: join(scratch, "tarballs"),
+        outDir: join(scratch, moved ? "catalog" : "tarballs"),
       })
+      if (moved) {
+        // The image's catalog bakes the moved apps: their packages are the
+        // catalog's own artifacts, as on a production instance.
+        catalogEntries.push({
+          name,
+          version: manifest.version,
+          file: basename(tarballPath),
+          scopes: manifest.scopes ?? [],
+          connections: Object.keys(manifest.connections ?? {}),
+        })
+        writeFileSync(join(scratch, "catalog", "catalog.json"), JSON.stringify(catalogEntries))
+        resetCatalogCache()
+      }
       await installAppFromTarball({
         tarballPath,
         installedBy: userA.id,
         grantedScopes: manifest.scopes ?? [],
         grantedConnections: Object.keys(manifest.connections ?? {}),
         grantedCapabilities: (manifest as { capabilities?: string[] }).capabilities ?? [],
-        grantedCrossAppCalls: name === "wparity" ? ["wparityb:echo"] : [],
+        grantedCrossAppCalls:
+          name === "wparity"
+            ? ["wparityb:echo"]
+            : moved
+              ? (
+                  (manifest as { cross_app_calls?: Array<{ target: string }> }).cross_app_calls ??
+                  []
+                ).map((c) => c.target)
+              : [],
         requireSignature: false,
         approveUiFullAccess: true,
       })
@@ -269,6 +330,20 @@ function executorParitySuite(target: ParityTarget): void {
       }
     }
     await reloadInstalledApps(orgId)
+    // The moved apps as production registers them: the catalog's own artifact,
+    // vouched first-party by the platform. Being first-party vouches for their
+    // declarations, never for where or how they run.
+    const installedMoved = (await discoverInstalledApps()).filter((a) =>
+      (MOVED_APPS as readonly string[]).includes(a.name),
+    )
+    expect(installedMoved.map((a) => a.name).sort()).toEqual([...MOVED_APPS].sort())
+    for (const discovered of installedMoved) {
+      const desc = installedAppDescriptor(discovered, { firstParty: true })
+      expect((desc as { _firstParty?: boolean })._firstParty).toBe(true)
+      expect(isCoreApp(desc)).toBe(false)
+      await teardownAppRegistrations(orgId, discovered.name)
+      await registerApps([desc], orgId)
+    }
 
     await withPrivilegedDb(orgId, "parity-carrier-connection", (tx) =>
       createCredentialConnection(tx as never, orgId, userA.id, "wparity", "carrier", {
@@ -280,9 +355,18 @@ function executorParitySuite(target: ParityTarget): void {
     )
 
     // The carrier's API, for both executors (egress happens host-side either way).
-    SandboxBridgeTestAccess.setFetchInterceptsHost((h) => h === "api.carrier.test")
+    SandboxBridgeTestAccess.setFetchInterceptsHost(
+      (h) => h === "api.carrier.test" || h === "gitlab.com",
+    )
     SandboxBridgeTestAccess.setFetch((async (url: string, init?: RequestInit) => {
       const u = new URL(String(url))
+      if (u.hostname === "gitlab.com") {
+        gitlabAsked.push(String(url))
+        gitlabAuth.push(new Headers(init?.headers).get("authorization") ?? "")
+        const reply = GITLAB_REPLIES.get(String(url))
+        if (!reply) return new Response(`not recorded: ${url}`, { status: 404 })
+        return new Response(reply.body, { status: reply.status, headers: reply.headers })
+      }
       if (u.pathname === "/bulk.jsonl") {
         return new Response('{"n":1}\n{"n":2}\n{"n":3}\n', {
           headers: { "content-type": "application/x-ndjson" },
@@ -330,13 +414,21 @@ function executorParitySuite(target: ParityTarget): void {
     cell?.stop(true)
     files?.stop(true)
     await shutdownWorkerPool()
-    for (const name of FIXTURE_APPS) await uninstallApp({ name }).catch(() => undefined)
+    for (const name of [...FIXTURE_APPS, ...MOVED_APPS]) {
+      await uninstallApp({ name }).catch(() => undefined)
+    }
     // Uninstall keeps an app's schema; these fixtures' schemas go too, so a later file that reads
     // every app schema of the database (an org transfer's closure) never meets them.
-    for (const name of FIXTURE_APPS) await sql.unsafe(`DROP SCHEMA IF EXISTS app_${name} CASCADE`)
+    for (const name of [...FIXTURE_APPS, ...MOVED_APPS]) {
+      await sql.unsafe(`DROP SCHEMA IF EXISTS app_${name} CASCADE`)
+    }
+    await sql.unsafe("DROP SCHEMA IF EXISTS parity_kb CASCADE")
     clearInstalledIdentityCache()
     if (savedAppsDir === undefined) delete process.env.LIAISON_APPS_DIR
     else process.env.LIAISON_APPS_DIR = savedAppsDir
+    if (savedCatalogDir === undefined) delete process.env.LIAISON_APP_CATALOG_DIR
+    else process.env.LIAISON_APP_CATALOG_DIR = savedCatalogDir
+    resetCatalogCache()
     rmSync(scratch, { recursive: true, force: true })
     await releaseTestLock()
   }, 120_000)
@@ -516,7 +608,6 @@ function executorParitySuite(target: ParityTarget): void {
       const bundlePath = join(process.env.LIAISON_APPS_DIR ?? "", "wparity", "1.0.0", "bundle.js")
       const r = await both("handler:approvalEcho", () =>
         runApp({
-          trusted: false,
           appName: "wparity",
           orgId,
           bundlePath,
@@ -831,7 +922,6 @@ function executorParitySuite(target: ParityTarget): void {
           )
           results.push(
             await runApp({
-              trusted: executor === "inprocess",
               appName: "wparity",
               orgId,
               bundlePath: join(process.env.LIAISON_APPS_DIR ?? "", "wparity", "1.0.0", "bundle.js"),
@@ -840,6 +930,7 @@ function executorParitySuite(target: ParityTarget): void {
               params: payload,
               bridge,
               holdsTx: false,
+              ...(executor === "inprocess" ? { quickjs: { inProcess: true } } : {}),
             }),
           )
           if (executor !== "inprocess") {
@@ -922,7 +1013,7 @@ function executorParitySuite(target: ParityTarget): void {
     /**
      * The sync job, then each continuation it enqueued (one page per job). The
      * pool and Workers run the registered dispatch (runApp picks the executor);
-     * in-process QuickJS runs the same export through runApp as trusted code.
+     * in-process QuickJS runs the same export through runApp on that pool.
      */
     async function drive(executor: StoreExecutor, sourceId: string) {
       if (executor === "workers") workersOn()
@@ -998,6 +1089,238 @@ function executorParitySuite(target: ParityTarget): void {
       }
       expect(answers.pool).toEqual(answers.inprocess)
       expect(answers.workers).toEqual(answers.inprocess)
+    }, 120_000)
+  })
+
+  describe("the moved first-party apps' knowledge sources: sandboxed, their cursors kept", () => {
+    const OWNER_SCOPES = [
+      "knowledge:sources:manage",
+      "knowledge:documents:read",
+      "gitlab:repo:read",
+      "database:reads:read",
+    ]
+    const actor = () =>
+      knowledgeActorFromContext({
+        orgId,
+        userId: userA.id,
+        scopes: OWNER_SCOPES,
+        dimensionGrants: {},
+      })
+
+    async function newSource(appName: string, kind: string, config: Record<string, unknown>) {
+      return withRlsContext(
+        { actorType: "user", orgId, userId: userA.id, scopes: OWNER_SCOPES, dimensionGrants: {} },
+        (tx) =>
+          createSyncedSource(
+            tx,
+            {
+              appName,
+              folderRef: `app-source:${kind}`,
+              sourceKind: kind,
+              sourceConfig: config,
+              displayName: `Moved ${appName} source`,
+              syncIntervalSeconds: 3600,
+              scope: "organization",
+              defaultSensitivity: "internal",
+            },
+            actor(),
+          ),
+      )
+    }
+
+    /** One scheduled sync and its continuations, through the registered dispatch. */
+    async function syncOnce(sourceId: string) {
+      const queue: Array<"schedule" | "continue"> = ["schedule"]
+      while (queue.length > 0) {
+        await runSyncWorker(
+          { sourceId, trigger: queue.shift()! },
+          {
+            appSource: {
+              setUpAppSourceOrg: async () => undefined,
+              ownerScopes: async () => OWNER_SCOPES,
+              enqueueContinuation: async () => {
+                queue.push("continue")
+              },
+              limits: { maxPagesPerJob: 10 },
+            },
+          },
+        )
+      }
+    }
+
+    async function stateOf(sourceId: string) {
+      const [row] = await sql<
+        { status: string; error: string | null; cursor: unknown; generation: number }[]
+      >`SELECT last_sync_status AS status, last_error AS error, sync_cursor AS cursor,
+               sync_generation AS generation
+        FROM app_knowledge.synced_sources WHERE id = ${sourceId}`
+      return row!
+    }
+
+    async function docsOf(sourceId: string) {
+      return [
+        ...(await sql<{ id: string; title: string; body: string; updated: string }[]>`
+          SELECT id::text, title, body, updated_at::text AS updated FROM app_knowledge.documents
+          WHERE synced_source_id = ${sourceId} AND archived_at IS NULL ORDER BY title`),
+      ]
+    }
+
+    /** The executors the app's sync runs took since `from` (timings are recorded per run). */
+    function syncExecutors(app: string, kind: string, from: number): string[] {
+      return recentRunTimings()
+        .filter((r) => r.app === app && r.entry === `knowledge-sync:${kind}` && r.at >= from)
+        .map((r) => r.executor)
+    }
+
+    /**
+     * The release's story for a source that synced before: its first pass ran
+     * on QuickJS (the worker pool, never in-process), the next one runs on the
+     * remote executor, from the cursor it kept, rewriting nothing.
+     */
+    async function movedSourceContinues(app: string, kind: string, sourceId: string) {
+      workersOff()
+      const t0 = Date.now()
+      await syncOnce(sourceId)
+      expect(syncExecutors(app, kind, t0).length).toBeGreaterThan(0)
+      expect(new Set(syncExecutors(app, kind, t0))).toEqual(new Set(["quickjs"]))
+      const first = await stateOf(sourceId)
+      expect(first).toMatchObject({ status: "ok", error: null })
+      const docs = await docsOf(sourceId)
+      expect(docs.length).toBeGreaterThan(0)
+
+      workersOn()
+      const bridgeBefore = loader.bridgeResponses.length
+      const t1 = Date.now()
+      await syncOnce(sourceId)
+      expect(syncExecutors(app, kind, t1)).toEqual([target])
+      const second = await stateOf(sourceId)
+      // The cursor is kept: no resync, no document rewritten.
+      expect(second).toMatchObject({ status: "ok", error: null, cursor: first.cursor })
+      expect(await docsOf(sourceId)).toEqual(docs)
+      return { docs, cursor: first.cursor, bridgeTexts: loader.bridgeResponses.slice(bridgeBefore) }
+    }
+
+    it("gitlab: a folder source syncs sandboxed under RLS, the token added host-side, and keeps its cursor", async () => {
+      await withPrivilegedDb(orgId, "parity-gitlab-connection", (tx) =>
+        createCredentialConnection(tx as never, orgId, userA.id, "gitlab", "gitlab", {
+          identifier: "gitlab-1",
+          credentials: { token: GITLAB_TOKEN, group: "gitlab-examples" },
+          displayName: "GitLab",
+          ownerType: "org",
+        }),
+      )
+      const privileged = spyOn(privilegedModule, "withPrivilegedDb")
+      try {
+        const source = await newSource("gitlab", "folder", { ref: "23764176:master:doc" })
+        gitlabAsked.length = 0
+        const { docs, cursor, bridgeTexts } = await movedSourceContinues(
+          "gitlab",
+          "folder",
+          source.id,
+        )
+        expect(docs.map((d) => d.title)).toEqual(["index.md"])
+        expect(cursor).toEqual({ head: "48d47d39bd747efb58ee54ddbadb319af60d79f8" })
+        // The second pass asked the branch head only: nothing moved, nothing read.
+        expect(gitlabAsked.at(-1)).toBe(
+          "https://gitlab.com/api/v4/projects/23764176/repository/branches/master",
+        )
+        expect(gitlabAsked.filter((u) => u.includes("/repository/files/"))).toHaveLength(1)
+        expect(new Set(gitlabAuth)).toEqual(new Set([`Bearer ${GITLAB_TOKEN}`]))
+        for (const text of bridgeTexts) assertNoSecretsIn(text, { gitlabToken: GITLAB_TOKEN })
+        // No sync run held a privileged (RLS-bypassing) handle.
+        const reasons = privileged.mock.calls.map((c) => String(c[1]))
+        expect(reasons.filter((r) => r.startsWith("knowledge-sync:"))).toEqual([])
+      } finally {
+        privileged.mockRestore()
+      }
+    }, 120_000)
+
+    it("database: a catalog source syncs sandboxed under RLS through the platform's SQL connection, and keeps its cursor", async () => {
+      const dsn =
+        process.env.DATABASE_URL ?? "postgres://liaison_app:liaison_app@localhost:5432/liaison_test"
+      const saved = {
+        privileged: process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION,
+        plaintext: process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL,
+        adapter: process.env.LIAISON_DATABASE_ADAPTER_PATH,
+      }
+      process.env.LIAISON_DB_ALLOW_PRIVILEGED_SESSION = "true"
+      process.env.LIAISON_DB_ALLOW_PLAINTEXT_LOCAL = "true"
+      const catalogPath = join(scratch, "parity-catalog.yaml")
+      writeFileSync(
+        catalogPath,
+        JSON.stringify({
+          adapter: "parity-kb",
+          reads: {
+            knowledge_sync_list: {
+              description: "Knowledge articles, keyset-paginated by (updated_at, id).",
+              domain: "knowledge",
+              sql:
+                "SELECT id, title, updated_at FROM parity_kb.articles " +
+                "WHERE (:after_updated_at::timestamptz IS NULL OR (updated_at, id) > (:after_updated_at::timestamptz, :after_id)) " +
+                "ORDER BY updated_at ASC, id ASC LIMIT :limit",
+              params: {
+                after_updated_at: { type: "string" },
+                after_id: { type: "string" },
+                limit: { type: "integer" },
+              },
+              columns: ["id", "title", "updated_at"],
+              tables: ["parity_kb.articles"],
+            },
+            knowledge_sync_get: {
+              description: "One knowledge article with its body.",
+              domain: "knowledge",
+              sql: "SELECT id, title, body, updated_at FROM parity_kb.articles WHERE id = :id",
+              params: { id: { type: "string" } },
+              columns: ["id", "title", "body", "updated_at"],
+              tables: ["parity_kb.articles"],
+              maxRows: 1,
+            },
+          },
+        }),
+      )
+      process.env.LIAISON_DATABASE_ADAPTER_PATH = catalogPath
+      await sql.unsafe(`
+        DROP SCHEMA IF EXISTS parity_kb CASCADE;
+        CREATE SCHEMA parity_kb;
+        CREATE TABLE parity_kb.articles (id text PRIMARY KEY, title text NOT NULL, body text NOT NULL, updated_at timestamptz NOT NULL);
+        INSERT INTO parity_kb.articles VALUES
+          ('kb-1', 'Pairing a controller', '# Pairing\nHold the button for 3 s.', '2026-05-01T00:00:00Z'),
+          ('kb-2', 'Firmware update', '# Update\nUse the desktop app.', '2026-05-02T00:00:00Z');
+      `)
+      const privileged = spyOn(privilegedModule, "withPrivilegedDb")
+      try {
+        await withPrivilegedDb(orgId, "parity-database-connection", (tx) =>
+          createCredentialConnection(tx as never, orgId, userA.id, "database", "database", {
+            identifier: "default",
+            credentials: { connectionString: dsn },
+            displayName: "Database",
+            ownerType: "org",
+          }),
+        )
+        privileged.mockClear()
+        const source = await newSource("database", "catalog", {})
+        const { docs, cursor, bridgeTexts } = await movedSourceContinues(
+          "database",
+          "catalog",
+          source.id,
+        )
+        expect(docs.map((d) => d.title)).toEqual(["Firmware update", "Pairing a controller"])
+        expect(cursor).toEqual({ updated_at: "2026-05-02T00:00:00.000Z", id: "kb-2" })
+        // The DSN never reaches the isolate.
+        for (const text of bridgeTexts) expect(text).not.toContain(dsn)
+        const reasons = privileged.mock.calls.map((c) => String(c[1]))
+        expect(reasons.filter((r) => r.startsWith("knowledge-sync:"))).toEqual([])
+      } finally {
+        privileged.mockRestore()
+        for (const [k, v] of Object.entries({
+          LIAISON_DB_ALLOW_PRIVILEGED_SESSION: saved.privileged,
+          LIAISON_DB_ALLOW_PLAINTEXT_LOCAL: saved.plaintext,
+          LIAISON_DATABASE_ADAPTER_PATH: saved.adapter,
+        })) {
+          if (v === undefined) delete process.env[k]
+          else process.env[k] = v
+        }
+      }
     }, 120_000)
   })
 

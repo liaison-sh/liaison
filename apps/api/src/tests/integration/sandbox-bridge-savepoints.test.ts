@@ -21,8 +21,12 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { setEventAgentDefault } from "~/db/queue-event"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { registerApps } from "~/modules/apps/runtime"
-import { appBridgeExtensionRegistry } from "~/modules/apps/sandbox/bridge-extensions"
-import { createSandboxRpcBridge, SANDBOX_BRIDGE_SHORT_TX } from "~/modules/apps/sandbox/rpc-bridge"
+import { bridgeTestHostMethods } from "~/modules/apps/sandbox/bridge/shared"
+import {
+  createSandboxRpcBridge,
+  SANDBOX_BRIDGE_SHORT_TX,
+  SandboxBridgeTestAccess,
+} from "~/modules/apps/sandbox/rpc-bridge"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import { seedOrgRow } from "~/seed/factories/org/rows"
 
@@ -73,7 +77,7 @@ beforeAll(async () => {
   )
   await registerApps([manifest as never], TEST_ORG)
   // A host method that writes, then fails: the case a caught error must undo.
-  appBridgeExtensionRegistry.set([TEST_ORG, APP], (ctx) => ({
+  SandboxBridgeTestAccess.setHostMethods(TEST_ORG, APP, (ctx) => ({
     sp_writeThenThrow: async (paramsJson: string) => {
       const { key } = JSON.parse(paramsJson) as { key: string }
       await insertAppRow(ctx.txDb, APP_TABLES, "claims", { org_id: TEST_ORG, key })
@@ -87,7 +91,7 @@ afterEach(async () => {
 })
 
 afterAll(async () => {
-  appBridgeExtensionRegistry.delete([TEST_ORG, APP])
+  SandboxBridgeTestAccess.setHostMethods(TEST_ORG, APP, null)
   resetAppRegistries()
   await sql.unsafe(`DROP SCHEMA IF EXISTS "${SCHEMA}" CASCADE`)
   await sql`DELETE FROM kernel.apps WHERE org_id = ${TEST_ORG} AND name = ${APP}`
@@ -183,15 +187,15 @@ describe("sandbox bridge savepoints", () => {
     expect(await keys(p)).toEqual([`${p}after`, `${p}short`])
   })
   it("without a transaction (an org-less scheduled job) a method that needs none still runs", async () => {
-    const kept = appBridgeExtensionRegistry.get([TEST_ORG, APP])
-    appBridgeExtensionRegistry.set([TEST_ORG, APP], () => ({
+    const kept = bridgeTestHostMethods.get(`${TEST_ORG}:${APP}`) ?? null
+    SandboxBridgeTestAccess.setHostMethods(TEST_ORG, APP, () => ({
       sp_noTx: async () => "ran",
     }))
     try {
       const bridge = bridgeFor(undefined)
       expect(await bridge.sp_noTx()).toBe("ran")
     } finally {
-      if (kept) appBridgeExtensionRegistry.set([TEST_ORG, APP], kept)
+      SandboxBridgeTestAccess.setHostMethods(TEST_ORG, APP, kept)
     }
   })
 })

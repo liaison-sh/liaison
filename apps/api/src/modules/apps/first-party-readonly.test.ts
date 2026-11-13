@@ -22,6 +22,7 @@ import { appsActiveVersion, appsInstalled } from "~/db/schema/kernel/apps-instal
 import { checkToolScopeTaint, UNDECLARED_WRITE_TARGET } from "~/modules/agent/scopes/scope-taint"
 import { resetAppRegistries, toolRegistry } from "~/modules/apps/app-registries"
 import { installCatalogApp, resetCatalogCache } from "~/modules/apps/catalog"
+import { isCoreApp } from "~/modules/apps/core/registry"
 import type { DiscoveredApp } from "~/modules/apps/discover-apps"
 import {
   ensureAppsForOrg,
@@ -383,8 +384,9 @@ describe("first-party trust for readOnly", () => {
       source: "installed",
     }
     const desc = installedAppDescriptor(app)
-    expect(desc.trusted).toBe(false)
+    expect("trusted" in desc).toBe(false)
     expect(desc._firstParty).toBe(false)
+    expect(isCoreApp(desc)).toBe(false)
   })
 
   // An install whose artifact carried a cosign bundle the OPERATOR's own trusted-publisher

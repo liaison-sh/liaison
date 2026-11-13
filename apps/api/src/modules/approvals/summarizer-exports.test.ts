@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Every summarizer a manifest names is one the runtime can actually reach
-// (runtime.ts, "Summarizer trust carve-out"):
-//  - a trusted in-tree app resolves it host-side from its handlers module or
-//    the sibling `summarizers.ts` (loadTrustedBundleFunction);
-//  - a sandboxed app (an in-tree `trusted: false` app, every bundled app) runs
-//    it in QuickJS from its handler bundle ALONE: a summarizer kept in another
+// (runtime.ts, summarizer registration):
+//  - a core app resolves it host-side from its handlers module or the sibling
+//    `summarizers.ts` (loadCoreSummarizer);
+//  - every other app (every bundled app) runs it in its sandbox from its
+//    handler bundle ALONE: a summarizer kept in another
 //    module is never found ("Export ... not found in bundle"), and the approval
 //    card silently falls back to the raw params.
 import { describe, expect, it } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import { pathToFileURL } from "node:url"
+import { isCoreApp } from "~/modules/apps/core/registry"
 import { esmExportsToGlobalThis, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
 
 const REPO = resolve(import.meta.dir, "../../../../..")
@@ -18,7 +19,7 @@ const REPO = resolve(import.meta.dir, "../../../../..")
 interface Declared {
   app: string
   dir: string
-  trusted: boolean
+  core: boolean
   bundled: boolean
   summarizers: string[]
 }
@@ -35,7 +36,6 @@ function declared(): Declared[] {
       if (!existsSync(file)) continue
       const manifest = JSON.parse(readFileSync(file, "utf8")) as {
         name?: string
-        trusted?: boolean
         tools?: Record<string, { summarizer?: unknown }> | Array<{ summarizer?: unknown }>
       }
       const tools = Array.isArray(manifest.tools)
@@ -52,8 +52,8 @@ function declared(): Declared[] {
       out.push({
         app: manifest.name ?? name,
         dir,
-        // Installed (bundled) apps are always sandboxed (init.ts).
-        trusted: !bundled && manifest.trusted !== false,
+        // Only a core app resolves its summarizers host-side (core/registry.ts).
+        core: !bundled && isCoreApp({ name: manifest.name ?? name }),
         bundled,
         summarizers,
       })
@@ -82,7 +82,7 @@ async function bundleSource(app: Declared): Promise<string> {
   return esmExportsToGlobalThis(await built.outputs[0].text())
 }
 
-async function trustedExports(app: Declared): Promise<Set<string>> {
+async function coreExports(app: Declared): Promise<Set<string>> {
   const found = new Set<string>()
   for (const file of ["handlers.ts", "summarizers.ts"]) {
     const path = join(app.dir, file)
@@ -96,15 +96,15 @@ async function trustedExports(app: Declared): Promise<Set<string>> {
 describe("every summarizer a manifest names is reachable by the runtime", () => {
   const apps = declared()
 
-  it("finds the declaring apps (sandboxed and trusted)", () => {
-    expect(apps.some((a) => !a.trusted)).toBe(true)
-    expect(apps.some((a) => a.trusted)).toBe(true)
+  it("finds the declaring apps (sandboxed and core)", () => {
+    expect(apps.some((a) => !a.core)).toBe(true)
+    expect(apps.some((a) => a.core)).toBe(true)
   })
 
   for (const app of apps) {
-    it(`${app.app}: ${app.trusted ? "trusted, host-side" : "sandboxed, in its bundle"}`, async () => {
-      const found = app.trusted
-        ? await trustedExports(app)
+    it(`${app.app}: ${app.core ? "core, host-side" : "sandboxed, in its bundle"}`, async () => {
+      const found = app.core
+        ? await coreExports(app)
         : sandboxGlobals(await bundleSource(app), app.summarizers)
       expect(app.summarizers.filter((s) => !found.has(s))).toEqual([])
     }, 60_000)

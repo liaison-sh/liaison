@@ -48,7 +48,7 @@ describe("executeTool — sandbox path", () => {
       name: "echo",
       description: "Echo params",
       requiredScopes: ["sandbox-test:items:read"],
-      handler: { bundlePath, exportName: "echo", trusted: true },
+      handler: { bundlePath, exportName: "echo", core: true },
       _manifest: { name: "sandbox-test", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
 
@@ -125,7 +125,7 @@ describe("executeTool — sandbox path", () => {
       name: "throwsSafe",
       description: "Throws a safe ToolError",
       requiredScopes: ["safe-throw:items:read"],
-      handler: { bundlePath, exportName: "throwsSafe", trusted: false },
+      handler: { bundlePath, exportName: "throwsSafe", core: false },
       _manifest: { name: "safe-throw", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
 
@@ -173,7 +173,7 @@ describe("executeTool — sandbox path", () => {
       name: "throwsRaw",
       description: "Throws a bare Error",
       requiredScopes: ["raw-throw:items:read"],
-      handler: { bundlePath, exportName: "throwsRaw", trusted: false },
+      handler: { bundlePath, exportName: "throwsRaw", core: false },
       _manifest: { name: "raw-throw", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
 
@@ -225,7 +225,7 @@ describe("executeTool — sandbox path", () => {
       name: "throwsUpstream4xx",
       description: "Throws an upstream 422",
       requiredScopes: ["upstream-throw:items:read"],
-      handler: { bundlePath, exportName: "throwsUpstream4xx", trusted: false },
+      handler: { bundlePath, exportName: "throwsUpstream4xx", core: false },
       _manifest: { name: "upstream-throw", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
 
@@ -279,7 +279,7 @@ describe("executeTool — sandbox path", () => {
         name: exportName,
         description: "Calls an upstream that refuses",
         requiredScopes: [`${app}:items:read`],
-        handler: { bundlePath, exportName, trusted: false },
+        handler: { bundlePath, exportName, core: false },
         _manifest: {
           name: app,
           schema: {},
@@ -381,7 +381,7 @@ describe("executeTool — sandbox path", () => {
       name: "hangs",
       description: "Never resolves",
       requiredScopes: ["hang-app:items:read"],
-      handler: { bundlePath, exportName: "hangs", trusted: false },
+      handler: { bundlePath, exportName: "hangs", core: false },
       timeoutMs: 500, // tiny budget so the test completes fast
       _manifest: { name: "hang-app", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
@@ -435,7 +435,7 @@ describe("executeTool — sandbox path", () => {
       name: "slow",
       description: "Upstream too slow",
       requiredScopes: ["slow-app:items:read"],
-      handler: { bundlePath, exportName: "slow", trusted: false },
+      handler: { bundlePath, exportName: "slow", core: false },
       _manifest: { name: "slow-app", schema: {}, events: {}, connections: {}, network: {} },
     } as any)
     let thrown: any
@@ -473,7 +473,7 @@ describe("executeTool — sandbox path", () => {
       name: "strict",
       description: "Strict params",
       requiredScopes: ["ajv-test:items:read"],
-      handler: { bundlePath, exportName: "strict", trusted: true },
+      handler: { bundlePath, exportName: "strict", core: true },
       params: {
         type: "object",
         properties: { name: { type: "string" } },
@@ -551,7 +551,7 @@ describe("executeTool — sandbox path", () => {
         description: "Calls bridge-target:gatedSend cross-app",
         requiredScopes: ["bridge-caller:items:write"],
         gated: false,
-        handler: { bundlePath: callerBundlePath, exportName: "callGated", trusted: true },
+        handler: { bundlePath: callerBundlePath, exportName: "callGated", core: true },
         _manifest: { name: "bridge-caller", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
 
@@ -821,7 +821,7 @@ describe("executeTool — sandbox path", () => {
         // Gated with no approve scope granted above, so a direct human-ui call
         // on THIS tool still parks for approval instead of bypassing.
         gated: true,
-        handler: { bundlePath: callerBundlePath, exportName: "callGated", trusted: true },
+        handler: { bundlePath: callerBundlePath, exportName: "callGated", core: true },
         _manifest: {
           name: "bridge-caller-r",
           schema: {},
@@ -981,7 +981,7 @@ describe("executeTool — sandbox path", () => {
         description: "Cross-calls ha-target:gatedSend, a DECLARED cross_app_calls target",
         requiredScopes: ["ha-caller:items:write"],
         gated: false,
-        handler: { bundlePath: callerBundlePath, exportName: "callGated", trusted: true },
+        handler: { bundlePath: callerBundlePath, exportName: "callGated", core: true },
         _manifest: { name: "ha-caller", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
 
@@ -991,7 +991,7 @@ describe("executeTool — sandbox path", () => {
         description: "GATED outer tool; approved execution cross-calls ha-target:gatedSend",
         requiredScopes: ["ha-caller:items:write"],
         gated: true,
-        handler: { bundlePath: callerBundlePath, exportName: "callGated", trusted: true },
+        handler: { bundlePath: callerBundlePath, exportName: "callGated", core: true },
         _manifest: {
           name: "ha-caller-gated",
           schema: {},
@@ -1221,7 +1221,7 @@ describe("executeTool — sandbox path", () => {
         description: "A: cross-calls B:y",
         requiredScopes: ["hop-a:items:write"],
         gated: false,
-        handler: { bundlePath: aPath, exportName: "x", trusted: true },
+        handler: { bundlePath: aPath, exportName: "x", core: true },
         _manifest: { name: "hop-a", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
       toolRegistry.set([TEST_ORG, "hop-b", "y"], {
@@ -1230,7 +1230,7 @@ describe("executeTool — sandbox path", () => {
         description: "B: calls its own gated tool",
         requiredScopes: ["hop-b:items:write"],
         gated: false,
-        handler: { bundlePath: bPath, exportName: "y", trusted: true },
+        handler: { bundlePath: bPath, exportName: "y", core: true },
         _manifest: { name: "hop-b", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
       toolRegistry.set([TEST_ORG, "hop-b", "gated"], {
@@ -1324,7 +1324,7 @@ describe("executeTool — sandbox path", () => {
         description: "asks approval for itself mid-run",
         requiredScopes: ["rq-a:items:write"],
         gated: false,
-        handler: { bundlePath: path, exportName: "x", trusted: true },
+        handler: { bundlePath: path, exportName: "x", core: true },
         _manifest: { name: "rq-a", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
     })
@@ -1405,7 +1405,7 @@ describe("executeTool — sandbox path", () => {
         description: "untrusted: cross-calls dp-b:y",
         requiredScopes: ["dp-a:items:read"],
         gated: false,
-        handler: { bundlePath: aPath, exportName: "x", trusted: false },
+        handler: { bundlePath: aPath, exportName: "x", core: false },
         _manifest: { name: "dp-a", schema: {}, events: {}, connections: {}, network: {} },
       } as any)
       toolRegistry.set([TEST_ORG, "dp-b", "y"], {
@@ -1414,7 +1414,7 @@ describe("executeTool — sandbox path", () => {
         description: "trusted: spawns a sub-agent",
         requiredScopes: ["dp-b:items:read"],
         gated: false,
-        handler: { bundlePath: bPath, exportName: "y", trusted: true },
+        handler: { bundlePath: bPath, exportName: "y", core: true },
         _manifest: {
           name: "dp-b",
           trusted: true,
@@ -1441,7 +1441,7 @@ describe("executeTool — sandbox path", () => {
         description: "gated, trusted: spawns a sub-agent once approved",
         requiredScopes: ["dp-g:items:read"],
         gated: true,
-        handler: { bundlePath: zPath, exportName: "z", trusted: true },
+        handler: { bundlePath: zPath, exportName: "z", core: true },
         _manifest: {
           name: "dp-g",
           trusted: true,

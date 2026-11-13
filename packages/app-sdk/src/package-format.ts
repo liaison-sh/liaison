@@ -82,7 +82,7 @@ const toolEntrySchema = z.object({
 /**
  * Manifest schema for a distributable `.liaisonapp`. Stricter than the runtime
  * `app.manifest.json` schema: it requires distribution metadata (license)
- * and forbids `trusted: true` — installed apps are always sandboxed.
+ * and forbids `trusted` — installed apps are always sandboxed.
  */
 export const packageManifestSchema = z
   .object({
@@ -139,12 +139,15 @@ export const packageManifestSchema = z
     listing: appListingSchema.optional(),
     // Kept for the views a package declares, so the connector rule below sees them.
     views: z.record(z.string(), z.unknown()).optional(),
-    // The `trusted` flag is in-tree-only. Installed (.liaisonapp) manifests MUST
-    // NOT claim trust — installed apps are always process-isolated. The freeze
-    // tool refuses to package a manifest with `trusted: true`; the install
-    // service force-coerces it to false regardless. Modeled as `literal(false)`
-    // so a `trusted: true` manifest is rejected in-band at the schema layer.
-    trusted: z.literal(false).optional(),
+    // No `trusted` field, with any value: every package runs sandboxed, and only
+    // the platform's own core apps run as server code (a fixed list in the
+    // server, never a manifest claim). A manifest that carries it is refused.
+    trusted: z
+      .never({
+        error:
+          "trusted is not a manifest field: every package runs sandboxed, and the platform alone decides which apps are core. Remove it.",
+      })
+      .optional(),
     // Phase 17 — opaque capability strings. The runtime gate is
     // `requireCapability` in apps/api/.../rpc-bridge.ts; there is no
     // schema-level allowlist by design (any future capability lands without a
@@ -359,8 +362,8 @@ export const appRegistryEntrySchema = z.object({
   source: z.enum(["in-tree", "installed"]),
   status: z.enum(["active", "shadowed-by-bundled", "error"]),
   statusMessage: z.string().optional(),
-  // false for all installed apps; reflects the manifest for in-tree apps.
-  trusted: z.boolean(),
+  // A core app (server code); false for every other app, installed ones included.
+  core: z.boolean(),
   grantedScopes: z.array(z.string()).optional(),
   // Capabilities the admin granted; absent for installs that pre-date capability grants.
   grantedCapabilities: z.array(z.string()).optional(),

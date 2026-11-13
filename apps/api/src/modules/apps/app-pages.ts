@@ -655,7 +655,6 @@ const defaultRouteExecutor: AppRouteExecutor = async ({ surface, exportName, act
     { actor: aliased },
   )
   return runApp({
-    trusted: surface.trusted,
     appName: surface.appName,
     orgId,
     bundlePath: surface.bundlePath,

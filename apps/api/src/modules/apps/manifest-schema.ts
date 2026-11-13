@@ -786,7 +786,6 @@ export const appManifestJsonSchema = {
   properties: {
     name: { type: "string", pattern: APP_NAME_PATTERN },
     version: { type: "string", pattern: SEMVER_PATTERN },
-    trusted: { type: "boolean" },
     rlsManagedBy: { type: "string", enum: ["migration"] },
     description: { type: "string" },
     agentInstructions: {

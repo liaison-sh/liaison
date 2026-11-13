@@ -47,31 +47,23 @@ const base = {
 describe("runApp", () => {
   afterEach(() => mock.restore())
 
-  it("selects in-process for trusted code and the worker pool otherwise", () => {
-    expect(selectExecutor({ trusted: true })).toBe("inprocess")
-    expect(selectExecutor({ trusted: false })).toBe("pool")
-    // Workers only for untrusted code with a Worker bundle resolved.
-    expect(selectExecutor({ trusted: false, workersBundleSha: "a".repeat(64) })).toBe("workers")
-    expect(selectExecutor({ trusted: true, workersBundleSha: "a".repeat(64) })).toBe("inprocess")
+  it("selects the worker pool, or Workers with a Worker bundle resolved: never in-process for an app", () => {
+    expect(selectExecutor({})).toBe("pool")
+    expect(selectExecutor({ workersBundleSha: "a".repeat(64) })).toBe("workers")
   })
 
   it("selects per the table: sandbox service, the runtime switch, a site's in-process placement", () => {
     const sha = "a".repeat(64)
     // The instance's sandbox service takes what the loader does not.
-    expect(selectExecutor({ trusted: false, sandboxService: true })).toBe("workerd")
-    expect(selectExecutor({ trusted: false, workersBundleSha: sha, sandboxService: true })).toBe(
-      "workers",
-    )
-    expect(selectExecutor({ trusted: true, sandboxService: true })).toBe("inprocess")
+    expect(selectExecutor({ sandboxService: true })).toBe("workerd")
+    expect(selectExecutor({ workersBundleSha: sha, sandboxService: true })).toBe("workers")
     // LIAISON_APP_RUNTIME=quickjs: QuickJS whatever is configured.
-    const forced = { trusted: false, quickjsForced: true, sandboxService: true }
+    const forced = { quickjsForced: true, sandboxService: true }
     expect(selectExecutor({ ...forced, workersBundleSha: sha })).toBe("pool")
     expect(selectExecutor({ ...forced, inProcess: true })).toBe("inprocess")
     // A site's in-process placement is a QuickJS placement only.
-    expect(selectExecutor({ trusted: false, inProcess: true })).toBe("inprocess")
-    expect(selectExecutor({ trusted: false, inProcess: true, sandboxService: true })).toBe(
-      "workerd",
-    )
+    expect(selectExecutor({ inProcess: true })).toBe("inprocess")
+    expect(selectExecutor({ inProcess: true, sandboxService: true })).toBe("workerd")
   })
 
   it("keeps a site's QuickJS placement: its in-process pool, or its own worker pool and limits", async () => {
@@ -80,7 +72,6 @@ describe("runApp", () => {
     expect(
       await runApp({
         ...base,
-        trusted: false,
         installed: null,
         quickjs: { inProcess: true, inProcessPool: ownPool as never },
       }),
@@ -91,7 +82,6 @@ describe("runApp", () => {
     expect(
       await runApp({
         ...base,
-        trusted: false,
         installed: null,
         quickjs: {
           workerPool: { execute: ownExecute } as never,
@@ -106,12 +96,12 @@ describe("runApp", () => {
     expect(execute).not.toHaveBeenCalled()
   })
 
-  it("runs trusted code in-process with exactly the executor's options", async () => {
+  it("runs a site's in-process placement in-process with exactly the executor's options", async () => {
     const { inProcess, execute, init } = spyBoundaries()
     const signal = new AbortController().signal
     const out = await runApp({
       ...base,
-      trusted: true,
+      quickjs: { inProcess: true },
       extraArgs: [{ h: "1" }],
       timeoutMs: 9_000,
       signal,
@@ -135,12 +125,11 @@ describe("runApp", () => {
     })
   })
 
-  it("runs untrusted code on the worker pool, initialised first, with every pool option", async () => {
+  it("runs app code on the worker pool, initialised first, with every pool option", async () => {
     const { inProcess, execute, init } = spyBoundaries()
     const signal = new AbortController().signal
     const out = await runApp({
       ...base,
-      trusted: false,
       timeoutMs: 60_000,
       signal,
       priority: "background",
@@ -176,7 +165,7 @@ describe("runApp", () => {
 
   it("leaves unset options unset (the pool and executor defaults apply)", async () => {
     const { execute } = spyBoundaries()
-    await runApp({ ...base, trusted: false })
+    await runApp(base)
     expect(Object.keys(execute.mock.calls[0]?.[0] as object).sort()).toEqual(
       ["bridge", "bundleSource", "exportName", "params"].sort(),
     )
@@ -186,7 +175,7 @@ describe("runApp", () => {
     const { execute } = spyBoundaries()
     const load = spyOn(bundleLoader, "loadBundle").mockResolvedValue("loaded-source")
     const { bundleSource: _drop, ...noSource } = base
-    await runApp({ ...noSource, trusted: false, bundlePath: "/x/kpi/1.0.0/bundle.js" })
+    await runApp({ ...noSource, bundlePath: "/x/kpi/1.0.0/bundle.js" })
     expect(load).toHaveBeenCalledWith("/x/kpi/1.0.0/bundle.js")
     expect(execute.mock.calls[0]?.[0]).toMatchObject({ bundleSource: "loaded-source" })
   })
@@ -194,7 +183,7 @@ describe("runApp", () => {
   it("refuses a call with neither bundle source nor path", async () => {
     spyBoundaries()
     const { bundleSource: _drop, ...noSource } = base
-    await expect(runApp({ ...noSource, trusted: false })).rejects.toThrow(/bundlePath/)
+    await expect(runApp(noSource)).rejects.toThrow(/bundlePath/)
   })
 })
 
@@ -244,7 +233,6 @@ describe("runApp: a loader fault before any bridge call", () => {
     runApp({
       ...base,
       appName: "lf",
-      trusted: false,
       installed: { version: "1.0.0", sha256: "c".repeat(64), workerSha256: "b".repeat(64) },
       bridge,
       timeoutMs: 4_000,
@@ -408,7 +396,6 @@ describe("resolveWorkersTarget: every sandboxed app once a loader is configured"
   }
   const WORKER = "d".repeat(64)
   const at = (installed: { version: string; sha256: string; workerSha256: string | null }) => ({
-    trusted: false,
     appName: "any-catalog-app",
     orgId: base.orgId,
     installed,
@@ -424,7 +411,7 @@ describe("resolveWorkersTarget: every sandboxed app once a loader is configured"
     ).toBeNull()
   })
 
-  it("runs any untrusted app on its recorded Worker module, no allowlist", async () => {
+  it("runs any app on its recorded Worker module, no allowlist", async () => {
     loaderOn()
     const target = await resolveWorkersTarget(
       at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: WORKER }),
@@ -432,13 +419,6 @@ describe("resolveWorkersTarget: every sandboxed app once a loader is configured"
     expect(target?.sha256).toBe(WORKER)
     expect(target?.version).toBe("1.0.0")
     expect(target?.config.cellId).toBe("cell-sel")
-    // Trusted code never goes there.
-    expect(
-      await resolveWorkersTarget({
-        ...at({ version: "1.0.0", sha256: "c".repeat(64), workerSha256: WORKER }),
-        trusted: true,
-      }),
-    ).toBeNull()
   })
 
   it("keeps a version installed without a Worker module on QuickJS", async () => {
@@ -485,7 +465,6 @@ describe("runApp on a self-hosted instance (the sandbox service, no loader)", ()
     runApp({
       ...base,
       appName: "sh",
-      trusted: false,
       installed: { version: "2.0.0", sha256: "c".repeat(64), workerSha256: WORKER },
       bridge: { config_get: async (k: string) => `value-of-${k}` },
       ...over,
@@ -523,16 +502,15 @@ describe("runApp on a self-hosted instance (the sandbox service, no loader)", ()
     expect(settled.at(-1)?.fallback).toBeUndefined()
   })
 
-  it("keeps trusted code in process, and code with no installed version on QuickJS", async () => {
+  it("keeps code with no installed version on QuickJS, in process only where its site asks", async () => {
     sandboxOn()
     const { execute, inProcess } = spyBoundaries()
     const calls = serviceAnswers()
-    expect(await run({ trusted: true })).toBe("from-inprocess")
     expect(await run({ installed: null })).toBe("from-pool")
     expect(await run({ installed: null, quickjs: { inProcess: true } })).toBe("from-inprocess")
     expect(calls).toHaveLength(0)
     expect(execute).toHaveBeenCalledTimes(1)
-    expect(inProcess).toHaveBeenCalledTimes(2)
+    expect(inProcess).toHaveBeenCalledTimes(1)
   })
 
   it("LIAISON_APP_RUNTIME=quickjs puts every run back on QuickJS", async () => {

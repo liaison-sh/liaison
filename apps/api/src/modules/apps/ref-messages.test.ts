@@ -132,7 +132,7 @@ describe("mail:reply attachments take only a file id or a whole @ref token", () 
     name: "reply",
     description: "reply",
     requiredScopes: [],
-    handler: { bundlePath: "/nonexistent.js", exportName: "reply", trusted: true },
+    handler: { bundlePath: "/nonexistent.js", exportName: "reply", core: true },
     params: mailManifest.tools.reply.params,
   } as unknown as Parameters<typeof validateParamsForTool>[0]
   const call = (attachments: string[]) =>

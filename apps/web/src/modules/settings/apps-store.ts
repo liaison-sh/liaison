@@ -18,7 +18,7 @@ export interface AppEntry {
   source: "in-tree" | "installed"
   status: "active" | "shadowed-by-bundled" | "error"
   statusMessage?: string
-  trusted?: boolean
+  core?: boolean
   grantedScopes?: string[]
   grantedCapabilities?: string[]
   grantedCrossAppCalls?: string[]

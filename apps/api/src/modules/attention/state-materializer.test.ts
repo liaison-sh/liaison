@@ -63,7 +63,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
     const { upserted, deps } = makeDeps([
       item({ urgency: 60, id: "low" }),
@@ -82,7 +82,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: false,
+      core: false,
     })
     const { upserted, deps } = makeDeps([item({ urgency: 90 })])
     await mod.runStateMaterializeOnce({ orgId: ORG }, deps)
@@ -93,7 +93,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set([ORG, "tickets"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
     const { upserted, deps } = makeDeps([item({ urgency: 90 })])
     await mod.runStateMaterializeOnce({ orgId: ORG }, deps)
@@ -112,12 +112,12 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "computeApprovalAttentionItems",
       bundlePath: "/fake/approvals",
-      trusted: true,
+      core: true,
     })
     attentionItemsRegistry.set([ORG, "social"], {
       handler: "computeSocialAttentionItems",
       bundlePath: "/fake/social",
-      trusted: true,
+      core: true,
     })
     const kernelItem = item({
       id: `kernel:approval_pending:${approvalId}`,
@@ -168,7 +168,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "computeApprovalAttentionItems",
       bundlePath: "/fake/approvals",
-      trusted: true,
+      core: true,
     })
     const approvalId = "00000000-0000-4000-8000-0000000000a2"
     const occurredAt = "2026-09-28T10:00:00.000Z"
@@ -238,7 +238,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "computeApprovalAttentionItems",
       bundlePath: "/fake/approvals",
-      trusted: true,
+      core: true,
     })
     const approvalId = "00000000-0000-4000-8000-0000000000a3"
     const chat = "00000000-0000-4000-8000-0000000000c3"
@@ -302,7 +302,7 @@ describe("runStateMaterializeOnce", () => {
       attentionItemsRegistry.set(["*", app], {
         handler: "providerFn",
         bundlePath: "/fake/bundle",
-        trusted: true,
+        core: true,
       })
     }
     const reads: Array<{ userId: string; read: Promise<unknown> }> = []
@@ -335,7 +335,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
     const upserted: any[] = []
     let calls = 0
@@ -362,7 +362,7 @@ describe("runStateMaterializeOnce", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
     const upserted: any[] = []
     let first = true
@@ -452,7 +452,7 @@ describe("state materializer fan-out", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
     const t0 = Date.now()
     const started: Record<string, number> = {}
@@ -626,7 +626,7 @@ describe("a provider pass past its time (real DB)", () => {
   afterAll(releaseTestLock)
 
   const register = (appName: string, handler: string) =>
-    attentionItemsRegistry.set(["*", appName], { handler, bundlePath: fixture, trusted: true })
+    attentionItemsRegistry.set(["*", appName], { handler, bundlePath: fixture, core: true })
 
   const held = async () => (await import("~/db/pool-diag")).getPoolGauges().request.held
 

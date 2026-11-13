@@ -34,7 +34,7 @@
 
 import { join } from "node:path"
 import { type RunLimits, runLimits } from "~/modules/apps/run-limits"
-import { esmExportsToGlobalThis, loadBundle } from "~/modules/apps/sandbox/bundle-loader"
+import { esmExportsToGlobalThis } from "~/modules/apps/sandbox/bundle-loader"
 import type { ContractEntry } from "./entries"
 import type {
   ContractExecutor,
@@ -317,9 +317,4 @@ export async function bundledAppScripts(dir: string): Promise<{
     source: { script: await buildScript(join(dir, "handlers.ts")) },
     templateSource: async (rel) => ({ script: await buildScript(join(dir, rel)) }),
   }
-}
-
-/** An in-tree app's handler script, loaded the way its runs load it. */
-export async function inTreeAppScript(bundlePath: string): Promise<ContractSource> {
-  return { script: await loadBundle(bundlePath) }
 }

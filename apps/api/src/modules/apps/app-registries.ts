@@ -27,7 +27,8 @@ export type TaintPostAudience =
    *  unstamped text (title, references) that only an approval may disclose (scope-taint.ts, 14). */
   | { participantIds: string[]; newThread?: boolean; noShortcut?: boolean }
 
-export type ManifestHandlerRef = { bundlePath: string; exportName: string; trusted?: boolean }
+/** A manifest handler: its bundle and export, and whether it is a core app's (server code). */
+export type ManifestHandlerRef = { bundlePath: string; exportName: string; core?: boolean }
 export type ToolHandler = ((params: unknown, ctx: any) => Promise<unknown>) | ManifestHandlerRef
 
 export interface OAuthClientConfig {
@@ -895,7 +896,7 @@ export const attentionItemsRegistry = createTypedRegistry<
     handler: string
     scope?: string
     bundlePath: string
-    trusted: boolean
+    core: boolean
   }
 >()
 
@@ -1103,7 +1104,7 @@ export const importRegistry = createTypedRegistry<
   [orgId: string, appName: string],
   {
     kinds: Record<string, import("~/modules/imports/kind-schema").ImportKindDecl>
-    bundle?: { bundlePath: string; trusted: boolean }
+    bundle?: { bundlePath: string; core: boolean }
     _manifest?: Record<string, unknown>
   }
 >()

@@ -128,7 +128,7 @@ describe("state materializer: computed items routed on first sighting", () => {
     attentionItemsRegistry.set(["*", "kernel"], {
       handler: "providerFn",
       bundlePath: "/fake/bundle",
-      trusted: true,
+      core: true,
     })
   })
 

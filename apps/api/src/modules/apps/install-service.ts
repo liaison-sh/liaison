@@ -2,8 +2,8 @@
 // Runtime install / upgrade / uninstall of `.liaisonapp` packages.
 //
 // All install paths verify the package (cosign + schema), enforce that every
-// scope the manifest requests was explicitly granted by the admin, force-coerce
-// `trusted: false` (installed apps are never trusted), check the app's host API
+// scope the manifest requests was explicitly granted by the admin (a manifest
+// carrying `trusted` is refused: installed apps always run sandboxed), check the app's host API
 // range against this server's (host-api.ts), then unpack to the install root and
 // record `apps_installed` rows. The companion `apps_active_version` table names the running version.
 //
@@ -861,8 +861,7 @@ export async function installAppFromTarball(opts: InstallOptions): Promise<Insta
   })
   try {
     const { manifest } = verified
-    // `packageManifestSchema` already enforces `trusted: z.literal(false).optional()`,
-    // so this point is unreachable with `trusted: true`. No runtime coercion needed.
+    // `packageManifestSchema` refuses a manifest that carries `trusted`.
 
     assertHostApiCompatible(manifest)
     assertIconClean(manifest)
@@ -1208,7 +1207,6 @@ export async function applyUpgrade(opts: ApplyUpgradeOptions): Promise<InstallRe
   })
   try {
     const { manifest } = verified
-    ;(manifest as { trusted?: boolean }).trusted = false
     if (manifest.name !== opts.name) {
       throw new Error(`Upgrade package is for '${manifest.name}', not '${opts.name}'`)
     }

@@ -42,10 +42,10 @@ export function runWideTxAllowed(app: string, entry: string): boolean {
 
 /**
  * Whether a handler run holds one transaction for its whole run: a core app's
- * (trusted) always, a sandboxed app's only when it is a listed exception.
+ * always, a sandboxed app's only when it is a listed exception.
  */
-export function handlerRunHoldsTx(opts: { trusted: boolean; app: string; entry: string }): boolean {
-  return opts.trusted || runWideTxAllowed(opts.app, opts.entry)
+export function handlerRunHoldsTx(opts: { core: boolean; app: string; entry: string }): boolean {
+  return opts.core || runWideTxAllowed(opts.app, opts.entry)
 }
 
 /**

@@ -125,7 +125,6 @@ const defaultProvisionExecutor: ProvisionExecutor = async ({
   const appName = surface.appName
   const bridge = await provisionBridge(appName, orgId, readOnly)
   return runApp({
-    trusted: surface.trusted,
     appName,
     orgId,
     bundlePath: surface.bundlePath,

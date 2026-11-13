@@ -553,7 +553,7 @@ describe("webhook routes", () => {
           appName: APP,
           orgId: TEST_ORG,
           verify: async () => ({ valid: true as const, replayKey: crypto.randomUUID() }),
-          handler: { bundlePath, exportName: "spin", trusted: true },
+          handler: { bundlePath, exportName: "spin", core: true },
           _manifest: { name: APP, schema: {}, events: {}, connections: {}, network: {} },
           ...(timeoutMs ? { timeoutMs } : {}),
         } as never)
@@ -723,7 +723,7 @@ describe("webhook routes", () => {
       webhookHandlers.set([TEST_ORG, APP, ENDPOINT], {
         appName: APP,
         orgId: TEST_ORG,
-        verify: { bundlePath, exportName: "verify", trusted: true },
+        verify: { bundlePath, exportName: "verify", core: true },
         handler: async () => ({ status: 200 }),
       })
       const errSpy = spyOn(webhooksLogger, "error")

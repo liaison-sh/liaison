@@ -131,7 +131,6 @@ export async function runTransformCall(input: TransformCallInput): Promise<Trans
   let heapBytes: number | null = null
   const started = Date.now()
   const value = await runApp({
-    trusted: false,
     appName: TRANSFORM_RUN_APP,
     orgId: input.host.orgId,
     // No installed version: the source's own Worker module, else the source

@@ -46,12 +46,15 @@ import {
   secretConfigKeysOf,
   WORKERS_RUN_BRIDGE,
 } from "~/modules/apps/sandbox/bridge/secret-free"
-import { type AppManifestForBridge, withPgCause } from "~/modules/apps/sandbox/bridge/shared"
+import {
+  type AppManifestForBridge,
+  bridgeTestHostMethods,
+  withPgCause,
+} from "~/modules/apps/sandbox/bridge/shared"
 import { createSqlMethods } from "~/modules/apps/sandbox/bridge/sql"
 import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
 import { createTicketsMethods } from "~/modules/apps/sandbox/bridge/tickets"
-import { buildBridgeExtensions } from "~/modules/apps/sandbox/bridge-extensions"
 
 export { formatStreamError } from "~/modules/apps/sandbox/bridge/agent"
 export type { RpcBridgeOptions } from "~/modules/apps/sandbox/bridge/context"
@@ -126,22 +129,10 @@ export function createRpcBridge(
     createAppSourceMethods(ctx),
   )
 
-  // Merge this app's own bridge methods (registered at install time). App-specific
-  // operations live with the app, not on the generic kernel surface, so the bridge
-  // never branches on an app-name literal to expose them. Extension methods may
-  // override a generic method of the same name for that app only.
-  const extensions = buildBridgeExtensions({
-    appName,
-    orgId,
-    userId,
-    txDb,
-    actorType,
-    callerScopes,
-    ...(bridgeOptions?.signal ? { signal: bridgeOptions.signal } : {}),
-  })
-  for (const [name, fn] of Object.entries(extensions)) {
-    rpcBridge[name] = fn
-  }
+  // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
+  // production, where every app gets the same generic surface.
+  const testMethods = bridgeTestHostMethods.get(`${orgId}:${appName}`)
+  if (testMethods) Object.assign(rpcBridge, testMethods({ txDb }))
 
   // A read-only run writes NOTHING through this surface. The generic db writes,
   // `messages_post` and the cross-app dispatch check the mark themselves, where

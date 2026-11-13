@@ -256,3 +256,4 @@ Backed table writes through Projects -> apps/api/src/modules/dashboards/tables/s
 Amount sums per currency -> apps/api/src/apps/projects/service/tasks-aggregate.ts:674
 Backed edit refused when the task changed since -> apps/api/src/modules/dashboards/tables/service.ts:1282
 Backed rows need the app's read tool scopes -> apps/api/src/modules/dashboards/tables/backing.ts:149
+Overview recipe: pipeline, who has what, time in status by status; rows carry colour and user id -> apps/api/src/apps/projects/service/tasks-aggregate.ts:363 ; apps/api/src/apps/projects/service/tasks-aggregate.ts:371 ; apps/api/src/apps/projects/app.manifest.json:11

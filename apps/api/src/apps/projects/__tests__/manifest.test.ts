@@ -94,7 +94,28 @@ describe("projects.manifest", () => {
     // 1.17.0: timeboxes, Took and the plan tools.
     // 1.20.0: the reconcile card, its line changes and its read.
     // 1.21.0: a reconcile line done for another client offers to move its task there.
-    expect(projectsManifest.version).toBe("1.21.0")
+    // 1.22.0: capacity, company days off, time settings, the capacity tab and the time section.
+    expect(projectsManifest.version).toBe("1.22.0")
+  })
+
+  it("capacity has no sort parameter and answers in name order only", () => {
+    const tool = (projectsManifest as any).tools.capacity_get
+    expect(Object.keys(tool.params.properties).sort()).toEqual(["taskId", "week"])
+    expect(JSON.stringify(tool.params)).not.toMatch(/sort|order|rank/i)
+  })
+
+  it("one person's days carry no label or reason in any time tool", () => {
+    const tools = (projectsManifest as any).tools
+    expect(Object.keys(tools.time_settings_set.params.properties).sort()).toEqual([
+      "daysOffCalendarId",
+      "daysPerWeek",
+      "hoursPerDay",
+      "userId",
+    ])
+    expect(tools.days_off_set.params.properties.userId).toBeUndefined()
+    for (const name of ["days_off_set", "time_settings_set", "capacity_get"]) {
+      expect(JSON.stringify(tools[name].params)).not.toMatch(/reason/i)
+    }
   })
 
   it("the member role holds no deal scope and sales and lead do", () => {

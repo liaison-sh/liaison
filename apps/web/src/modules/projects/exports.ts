@@ -20,6 +20,9 @@ export const ProjectsHome = lazy(() =>
 export const ProjectWorkspace = lazy(() =>
   import("~/modules/projects/ProjectWorkspace").then((m) => ({ default: m.ProjectWorkspace })),
 )
+export const CapacityView = lazy(() =>
+  import("~/modules/projects/CapacityView").then((m) => ({ default: m.CapacityView })),
+)
 export const TaskDetail = lazy(() =>
   import("~/modules/projects/TaskDetail").then((m) => ({ default: m.TaskDetail })),
 )

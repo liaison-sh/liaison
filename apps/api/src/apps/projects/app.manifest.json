@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.21.0",
+  "version": "1.22.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1751,7 +1751,8 @@
         "took",
         "temps",
         "heures",
-        "hours"
+        "hours",
+        "logged"
       ],
       "readOnly": true,
       "retryOnTransientDbError": true,
@@ -3770,6 +3771,299 @@
           "nodes"
         ]
       }
+    },
+    "capacity_get": {
+      "description": "Planned time against available time per person for one ISO week, in name order, on projects that use time and budgets. With taskId, who could take that task. Planned comes from timeboxes only; available from hours in a day, days per week, company days off and away days.",
+      "searchKeywords": [
+        "capacity",
+        "charge",
+        "workload",
+        "availability",
+        "disponibilité",
+        "free",
+        "overloaded",
+        "staffing"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:capacity:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "capacityGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "week": {
+            "type": "string",
+            "pattern": "^\\d{4}-W\\d{2}$",
+            "description": "ISO week, e.g. 2026-W48; default this week."
+          },
+          "taskId": {
+            "type": "string",
+            "description": "A task id: adds candidates who could take it."
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "week": "string",
+          "from": "string",
+          "to": "string",
+          "availableMinutes": "number",
+          "plannedMinutes": "number",
+          "people": "object",
+          "left": "object",
+          "overLine": "any",
+          "covers": "string",
+          "title": "string",
+          "groups": "object",
+          "totals": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "groups",
+        "pill": {
+          "label": "Capacity",
+          "labelKey": "projects.card.capacity"
+        },
+        "title": "{{result.title}}",
+        "columns": [
+          {
+            "key": "planned",
+            "label": {
+              "label": "Planned",
+              "labelKey": "projects.card.planned"
+            },
+            "format": "hours"
+          },
+          {
+            "key": "available",
+            "label": {
+              "label": "Available",
+              "labelKey": "projects.card.available"
+            },
+            "format": "hours"
+          }
+        ],
+        "groups": {
+          "path": "result.groups",
+          "label": "{{group.label}}",
+          "rows": {
+            "path": "group.rows",
+            "id": "row.id",
+            "name": "{{row.name}}",
+            "why": "{{row.note}}",
+            "cells": {
+              "planned": "row.plannedMinutes",
+              "available": "row.availableMinutes"
+            }
+          }
+        },
+        "tot": {
+          "path": "result.totals",
+          "k": "{{item.k}}",
+          "v": "{{item.text}}"
+        }
+      }
+    },
+    "days_off_set": {
+      "description": "Record a company day off for everyone: one day (on), a range (from, to) or an ISO week, with an optional label and yearly. One person's days go through kernel set_away instead. Always state the exact dates recorded, with weekdays.",
+      "searchKeywords": [
+        "holiday",
+        "holidays",
+        "férié",
+        "fériés",
+        "fermeture",
+        "closure",
+        "pont"
+      ],
+      "writesToTable": "app_projects.days_off",
+      "requiredScopes": [
+        "projects:settings:admin"
+      ],
+      "trustBoundary": "user",
+      "handler": "daysOffSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "on": {
+            "type": "string",
+            "description": "One day, YYYY-MM-DD, or MM-DD for its next occurrence."
+          },
+          "from": {
+            "type": "string",
+            "description": "First day of a range (YYYY-MM-DD or MM-DD)."
+          },
+          "to": {
+            "type": "string",
+            "description": "Last day of the range, included."
+          },
+          "week": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 53,
+            "description": "ISO week number."
+          },
+          "weekYear": {
+            "type": "integer",
+            "description": "Year of the ISO week; default this year's, or next if it has ended."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 60,
+            "description": "Optional name, e.g. Christmas."
+          },
+          "yearly": {
+            "type": "boolean",
+            "description": "Repeats on the same dates every year (not with week)."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "days_off_list": {
+      "description": "The company days off, each with its dates, label, yearly and fromCalendar (a day read from the shared calendar, shown without its title). Company rows only.",
+      "searchKeywords": [
+        "holidays",
+        "fériés",
+        "closures"
+      ],
+      "readOnly": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "daysOffList",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "From this day, YYYY-MM-DD."
+          },
+          "to": {
+            "type": "string",
+            "description": "To this day, YYYY-MM-DD."
+          }
+        },
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "rows": "object"
+        }
+      }
+    },
+    "days_off_remove": {
+      "description": "Remove company days off by id, or every typed row covering a day (on). A day read from the shared calendar stays and is answered in fromCalendar.",
+      "searchKeywords": [
+        "holiday",
+        "férié",
+        "remove",
+        "closure"
+      ],
+      "writesToTable": "app_projects.days_off",
+      "requiredScopes": [
+        "projects:settings:admin"
+      ],
+      "trustBoundary": "user",
+      "handler": "daysOffRemove",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The day off's id."
+          },
+          "on": {
+            "type": "string",
+            "description": "A day, YYYY-MM-DD: removes the typed rows covering it."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "time_settings_get": {
+      "description": "Hours in a day, the shared days-off calendar and how many projects use time and budgets; with userId, that person's days per week.",
+      "searchKeywords": [
+        "settings",
+        "hours",
+        "day",
+        "partiel"
+      ],
+      "readOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "timeSettingsGet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "A person's id, for their days per week."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "time_settings_set": {
+      "description": "Set hours in a day or the shared days-off calendar (settings admin), or a person's days per week, a whole number from 1 to 5 (their own, or with user admin or capacity write). No weekday and no reason is stored.",
+      "searchKeywords": [
+        "part",
+        "partiel",
+        "semaine",
+        "weekly",
+        "days",
+        "hours",
+        "day"
+      ],
+      "writesToTable": "app_projects.person_capacity",
+      "requiredScopes": [
+        "projects:projects:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "timeSettingsSet",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "hoursPerDay": {
+            "type": [
+              "number",
+              "string"
+            ],
+            "description": "Hours in a day, e.g. 7 or \"7h30\"."
+          },
+          "daysOffCalendarId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A selected calendar to read company days off from; null stops reading it."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Whose days per week; default you."
+          },
+          "daysPerWeek": {
+            "type": "integer",
+            "description": "1 to 5."
+          }
+        }
+      }
     }
   },
   "sendGuardProviders": {
@@ -4383,6 +4677,110 @@
             "maxDepth": 2
           }
         ]
+      },
+      {
+        "id": "time",
+        "title": "Time and budgets",
+        "titleKey": "projects.settingsPage.time.title",
+        "description": "Hours in a day and company days off, for the projects that use time and budgets. Each project turns it on in its own settings. Reconcile reads only what the person asking can already read.",
+        "descriptionKey": "projects.settingsPage.time.description",
+        "scope": "org",
+        "adminScope": "projects:settings:admin",
+        "feature": "time_budgets",
+        "blocks": [
+          {
+            "block": "field",
+            "key": "hoursPerDay",
+            "type": "number",
+            "label": "Hours in a day",
+            "labelKey": "projects.settingsPage.time.hoursPerDay",
+            "validation": {
+              "min": 1,
+              "max": 24
+            },
+            "source": {
+              "tool": {
+                "get": "time_settings_get",
+                "set": "time_settings_set"
+              }
+            }
+          },
+          {
+            "block": "field",
+            "key": "daysOffCalendarId",
+            "type": "select",
+            "label": "Read a shared calendar",
+            "labelKey": "projects.settingsPage.time.calendar",
+            "help": "None by default. Whole-day events of the chosen calendar become company days off.",
+            "helpKey": "projects.settingsPage.time.calendarHelp",
+            "optionsTool": "time_settings_get",
+            "source": {
+              "tool": {
+                "get": "time_settings_get",
+                "set": "time_settings_set"
+              }
+            }
+          },
+          {
+            "block": "list",
+            "ops": {
+              "list": "days_off_list",
+              "create": "days_off_set",
+              "archive": "days_off_remove"
+            },
+            "columns": [
+              {
+                "key": "from",
+                "label": "From",
+                "labelKey": "projects.settingsPage.time.from"
+              },
+              {
+                "key": "to",
+                "label": "To",
+                "labelKey": "projects.settingsPage.time.to"
+              },
+              {
+                "key": "label",
+                "label": "Label",
+                "labelKey": "projects.settingsPage.time.label"
+              }
+            ],
+            "createFields": [
+              {
+                "key": "from",
+                "type": "date",
+                "label": "From",
+                "labelKey": "projects.settingsPage.time.from",
+                "validation": {
+                  "required": true
+                }
+              },
+              {
+                "key": "to",
+                "type": "date",
+                "label": "To",
+                "labelKey": "projects.settingsPage.time.to",
+                "validation": {
+                  "required": true
+                }
+              },
+              {
+                "key": "label",
+                "type": "text",
+                "label": "Label",
+                "labelKey": "projects.settingsPage.time.label"
+              },
+              {
+                "key": "yearly",
+                "type": "toggle",
+                "label": "Every year",
+                "labelKey": "projects.settingsPage.time.yearly"
+              }
+            ],
+            "archiveLabel": "Remove",
+            "archiveLabelKey": "projects.settingsPage.time.remove"
+          }
+        ]
       }
     ]
   },
@@ -4419,6 +4817,17 @@
         "icon": "ProjectsIcon",
         "urlPattern": "/projects/tasks/:entityId",
         "referenceable": true
+      },
+      "capacity": {
+        "component": "CapacityView",
+        "sidebar": "ProjectsSidebar",
+        "label": "Capacity",
+        "labelKey": "projects.capacity.tab",
+        "icon": "ProjectsIcon",
+        "urlPattern": "/projects/capacity",
+        "singleton": true,
+        "referenceable": false,
+        "feature": "time_budgets"
       }
     },
     "activityBar": {

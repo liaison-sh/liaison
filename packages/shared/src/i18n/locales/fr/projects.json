@@ -412,5 +412,14 @@
     "askFits": "Le reste tient-il encore ?",
     "askCheck": "Comparer le prévu et le réel",
     "askAbout": "{{project}} : {{question}}"
+  },
+  "capacity": {
+    "tab": "Charge",
+    "loading": "Chargement de la charge",
+    "error": "Impossible de charger la charge. Projets n'a pas répondu. Aucune tâche n'a été déplacée.",
+    "empty": "Personne n'a de temps prévu cette semaine sur un projet qui utilise le temps et les budgets.",
+    "of": "{{planned}} sur {{available}}",
+    "left": "Assigné à des personnes parties",
+    "footnote": "Le temps prévu vient des estimations des projets qui utilisent le temps et les budgets. Rien ici ne vient du temps saisi ni de l'activité."
   }
 }

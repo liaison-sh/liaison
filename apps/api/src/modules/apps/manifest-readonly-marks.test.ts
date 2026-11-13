@@ -58,6 +58,9 @@ const READ_ONLY: Record<string, string[]> = {
     "comments",
     "task_time_get",
     "budget_get",
+    "capacity_get",
+    "days_off_list",
+    "time_settings_get",
     // A reconcile's facts: the period's tasks under the asker's own rows, nothing stored.
     "reconcile_facts",
     "reconcile_get",

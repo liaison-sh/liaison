@@ -9,6 +9,7 @@
 // pending row shows, and ending it moves it back.
 
 import {
+  type AwayDays,
   type AwayRangeDays,
   decidingScopeForToolDef,
   isAwayOn,
@@ -659,6 +660,45 @@ export async function readAwayToday(
   })
 }
 
+/**
+ * The away days of each of `userIds` between `from` and `to` (both included), for capacity: the
+ * dates only, never a reason, a source or who set them. Only active ranges count (an `asked` or
+ * `declined` one counts for nothing), a weekday range covers its weekdays, and a range ended
+ * early stops that day. A person with no away day in the window is absent from the map.
+ */
+export async function awayDays(
+  orgId: string,
+  userIds: readonly string[],
+  from: string,
+  to: string,
+): Promise<AwayDays> {
+  const out = new Map<string, string[]>()
+  if (userIds.length === 0 || to < from) return out
+  const rows = await withPrivilegedDb(orgId, "away-days", async (tx) =>
+    extractRows<RangeRow>(
+      await tx.execute(drizzleSql`
+        SELECT ${RANGE_COLUMNS} FROM ${K}.away_ranges
+        WHERE org_id = ${orgId}::uuid AND status = 'active'
+          AND user_id IN (${drizzleSql.join(
+            [...new Set(userIds)].map((id) => drizzleSql`${id}::uuid`),
+            drizzleSql`, `,
+          )})
+          AND starts_on <= ${to}::date
+          AND (ends_on IS NULL OR ends_on >= ${from}::date)
+          AND (ended_early_on IS NULL OR ended_early_on > ${from}::date)`),
+    ),
+  )
+  for (const r of rows) {
+    const range = rangeDays(r)
+    const days = out.get(r.user_id) ?? []
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      if (isAwayOn(range, d) && !days.includes(d)) days.push(d)
+    }
+    if (days.length > 0) out.set(r.user_id, days.sort())
+  }
+  return out
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------------------------
@@ -1061,6 +1101,10 @@ export async function deleteAwayRangesOf(
 ): Promise<void> {
   await tx.execute(drizzleSql`
     DELETE FROM ${K}.away_ranges WHERE org_id = ${orgId}::uuid AND user_id = ${personId}::uuid`)
+  // Their days per week go with them: capacity no longer lists them.
+  await tx.execute(drizzleSql`
+    DELETE FROM ${drizzleSql.raw(schemaRef("app_projects"))}.person_capacity
+    WHERE org_id = ${orgId}::uuid AND user_id = ${personId}::uuid`)
 }
 
 /** The daily retention: a range goes 90 days after its last day, or after the day it was ended. */

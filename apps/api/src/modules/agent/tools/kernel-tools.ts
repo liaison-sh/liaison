@@ -3820,6 +3820,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
       "line",
       "semaine",
       "week",
+      "off",
     ],
     requiredScopes: ["kernel:threads:read"],
     params: z.object({

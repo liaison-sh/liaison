@@ -230,7 +230,6 @@ See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md)
 | Tool | What it does | Approval |
 |---|---|---|
 | `listAccounts` | List the mailboxes the person can use with their sync status, last sync error and next retry (hides disconnected ones by default) | No |
-| `getAccount` | Get one connected mailbox | No |
 | `disconnectAccount` | Disconnect a mailbox (an agent connects one through the mail configuration change and a secret card) | No |
 | `search` | Search conversations by text, sender, date range, contact, status, assignee or unread | No |
 | `read` | Read a conversation, optionally with message bodies | No |

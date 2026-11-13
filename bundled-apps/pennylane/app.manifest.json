@@ -17,7 +17,7 @@
       }
     ]
   },
-  "version": "0.1.54",
+  "version": "0.1.55",
   "iconName": "calculator",
   "kind": "connector",
   "description": "Pennylane accounting connector: supplier/customer invoices, trial balance, derived P&L, cash position, transactions, spend-by-category, runway",
@@ -881,6 +881,8 @@
       }
     },
     "home_load": {
+      "agentVisible": false,
+      "useInstead": "pnl_summary",
       "description": "Load the cached P&L + cash snapshot for the Pennylane home view (reads the snapshot, not the live API).",
       "readOnly": true,
       "requiredScopes": ["pennylane:reports:read"],

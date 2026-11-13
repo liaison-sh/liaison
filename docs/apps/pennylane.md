@@ -75,7 +75,6 @@ Pennylane does not take collections (payments received) from Liaison: an invoice
 | `transactions_list` | Bank transactions | No |
 | `spend_by_category` | Spend per P&L class for a period | No |
 | `runway_estimate` | Runway in whole months | No |
-| `home_load` | Cached P&L and cash snapshot | No |
 | `supplier_invoice_upload` | Book a received supplier bill into Pennylane | Always |
 | `webhooks_setup` | Subscribe Pennylane's e-invoicing events | Always |
 

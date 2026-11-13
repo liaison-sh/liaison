@@ -1458,7 +1458,7 @@
     },
     "kernel__enable_routine_template": {
       "desc": 409,
-      "schema": 171
+      "schema": 240
     },
     "kernel__export": {
       "desc": 797,

@@ -53,6 +53,9 @@ const HIDDEN_MANIFEST: Array<[dir: string, hidden: string, useInstead: string]> 
   ["bundled-apps/github", "github_list_releases", "github_list"],
   ["bundled-apps/github", "github_list_tags", "github_list"],
   ["bundled-apps/github", "github_list_tree", "github_list"],
+  ["apps/api/src/apps/mail", "getAccount", "listAccounts"],
+  ["bundled-apps/pennylane", "home_load", "pnl_summary"],
+  ["bundled-apps/shopify", "settings_load", "home_load"],
 ]
 
 let panelReadRuns = 0

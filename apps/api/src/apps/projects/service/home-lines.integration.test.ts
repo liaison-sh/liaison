@@ -12,9 +12,11 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { readStandingInFor } from "~/modules/approvals/route-world"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { setAway } from "~/modules/users/away"
 import { seedContext } from "~/seed/context"
 import { seedReconciliation } from "~/seed/factories/projects/reconcile"
 import { seedTaskTime } from "~/seed/factories/projects/time"
@@ -208,6 +210,89 @@ describe("the month-close line", () => {
     expect(monthCloseDay(2027, 5, new Set(["2027-05-28"]))).toBe("2027-05-27")
     expect(monthCloseDay(2027, 7, new Set())).toBe("2027-07-30")
     expect(monthCloseDay(2027, 10, new Set())).toBe("2027-10-29")
+  })
+})
+
+describe("the month-close line across people", () => {
+  const monthClose = (items: Awaited<ReturnType<typeof computeAttentionItems>>) =>
+    items.filter((i) => (i.kind as string) === MONTH_CLOSE_KIND)
+
+  it("a colleague's draft for the month ends the line for a biller who cannot read reconciles", async () => {
+    const drafter = await newPerson("Ada Drafter")
+    const biller = await newPerson("Bo Biller")
+    await minimal.grantScope(drafter, "projects:reconcile:read")
+    await minimal.grantScope(drafter, "projects:reconcile:write")
+    const project = await newProject("Hourly client")
+    await call("projects_timePlanSet", { projectId: project, basis: "hourly", billerId: biller })
+    const day = noon("2027-10-29")
+    const [before] = monthClose(await feed(biller, day))
+    expect(before?.entityId).toBe(project)
+    expect(before?.summary).toBe(
+      "Hourly client: October ends soon. Reconcile it when you are ready.",
+    )
+
+    const thread = await minimal.thread(orgId, drafter)
+    await seedReconciliation(orgId, {
+      projectId: project,
+      createdBy: drafter,
+      threadId: thread,
+      state: "drafted",
+      month: "2027-10",
+      idleDays: 0,
+      basis: "hourly",
+    })
+    // The biller cannot read the colleague's draft...
+    const visible = await withRlsContext(actorOf(biller, MEMBER_SCOPES), async (tx) =>
+      extractRows<{ n: number }>(
+        await tx.execute(drizzleSql`
+          SELECT count(*)::int AS n FROM app_projects.reconciliations
+           WHERE project_id = ${project}::uuid`),
+      ),
+    )
+    expect(visible[0]?.n).toBe(0)
+    // ...and still gets no line, because the month is drafted.
+    expect(monthClose(await feed(biller, day))).toEqual([])
+    expect(monthClose(await feed(drafter, day))).toEqual([])
+  })
+
+  it("an away biller's month-close line reaches their next in line, marked for them", async () => {
+    const biller = await newPerson("Cy Away")
+    const next = await newPerson("Di Next")
+    const project = await newProject("Retainer client")
+    await call("projects_timePlanSet", { projectId: project, basis: "retainer", billerId: biller })
+    const day = noon("2027-10-29")
+    const feedOf = (userId: string) =>
+      withRlsContext(actorOf(userId, MEMBER_SCOPES), async (tx) =>
+        computeAttentionItems(
+          tx,
+          orgId,
+          userId,
+          await readStandingInFor(tx as never, orgId, userId, day),
+          day,
+        ),
+      )
+    // Not away: the line is the biller's alone.
+    expect(monthClose(await feedOf(next))).toEqual([])
+
+    // The biller says it themselves, ahead of time, naming the next in line.
+    const said = await setAway({
+      orgId,
+      actorId: biller,
+      actorScopes: MEMBER_SCOPES,
+      form: { from: "2027-10-28", to: "2027-11-03" },
+      nextInLineId: next,
+    })
+    if (!said.ok || said.action !== "set") throw new Error(`away not set: ${JSON.stringify(said)}`)
+    try {
+      const items = monthClose(await feedOf(next))
+      expect(items.map((i) => [i.entityId, i.metadata?.forUserId])).toEqual([[project, biller]])
+      expect(items[0]?.id).toBe(`projects:month_close:${project}:2027-10`)
+      // The biller's own feed keeps the line; nobody else gets it.
+      expect(monthClose(await feedOf(biller)).map((i) => i.entityId)).toEqual([project])
+      expect(monthClose(await feedOf(owner.userId))).toEqual([])
+    } finally {
+      await db.execute(drizzleSql`DELETE FROM kernel.away_ranges WHERE id = ${said.id}::uuid`)
+    }
   })
 })
 

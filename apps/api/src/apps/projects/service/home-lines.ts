@@ -3,8 +3,9 @@
 //
 // - Month close: a computed row on one day of the month only, the last working day strictly
 //   before its last calendar day, to the project's biller, for daily, hourly and retainer
-//   projects with no reconcile past proposed for that month. It reads plans, days off and
-//   reconciles only: no time entered, commit, calendar or mail. A day missed is not shown later.
+//   projects with no reconcile past proposed for that month, whoever drafted it (read
+//   privileged, as project ids alone). It reads plans, days off and reconciles only: no time
+//   entered, commit, calendar or mail. A day missed is not shown later.
 // - More planned than fits: one persisted line per person and ISO week, to the leads of the
 //   projects holding that person's planned work that week, never to the person. Planned time
 //   comes from timeboxes only (capacity), never from time entered or activity. A line once
@@ -85,6 +86,39 @@ async function companyDaysOff(tx: SqlClient, orgId: string, from: string, to: st
 }
 
 /**
+ * Which of these projects already have the month reconciled past proposed, whoever drafted it.
+ * Read privileged, since a biller without reconcile read cannot see a colleague's draft under
+ * RLS; it returns project ids only, nothing of the reconcile itself, and the line it suppresses
+ * names only the project the biller already reads.
+ */
+async function monthsReconciled(
+  orgId: string,
+  projectIds: readonly string[],
+  monthStart: string,
+  monthEnd: string,
+): Promise<Set<string>> {
+  return withPrivilegedDb(
+    orgId,
+    "projects-month-close-reconciled",
+    async (ptx) =>
+      new Set(
+        extractRows<{ project_id: string }>(
+          await ptx.execute(drizzleSql`
+          SELECT DISTINCT r.project_id::text AS project_id
+            FROM ${projectsRel("reconciliations")} r
+           WHERE r.org_id = ${orgId}::uuid AND r.state <> 'proposed'
+             AND r.project_id IN (${drizzleSql.join(
+               projectIds.map((id) => drizzleSql`${id}::uuid`),
+               drizzleSql`, `,
+             )})
+             AND r.period_start <= ${monthEnd}::date
+             AND COALESCE(r.period_end, r.period_start) >= ${monthStart}::date`),
+        ).map((r) => r.project_id),
+      ),
+  )
+}
+
+/**
  * The month-close rows for the caller (and for the people away today who name the caller next
  * in line, each tagged). Empty on every day but the month's one day.
  */
@@ -121,32 +155,36 @@ export async function monthCloseItems(
            people.map((id) => drizzleSql`${id}::uuid`),
            drizzleSql`, `,
          )})
-         AND NOT EXISTS (
-           SELECT 1 FROM ${projectsRel("reconciliations")} r
-            WHERE r.org_id = p.org_id AND r.project_id = p.id AND r.state <> 'proposed'
-              AND r.period_start <= ${monthEnd}::date
-              AND COALESCE(r.period_end, r.period_start) >= ${monthStart}::date)
        ORDER BY p.name`),
   )
+  if (rows.length === 0) return []
+  const done = await monthsReconciled(
+    orgId,
+    rows.map((r) => r.id),
+    monthStart,
+    monthEnd,
+  )
   const monthName = MONTHS[month - 1]
-  return rows.map((r) => ({
-    id: `projects:month_close:${r.id}:${today.slice(0, 7)}`,
-    app: "projects",
-    entity: "project",
-    entityId: r.id,
-    // An app-qualified kind, outside the kernel list (as kernel:away.recap is).
-    kind: MONTH_CLOSE_KIND as AttentionKind,
-    summary: `${r.name}: ${monthName} ends soon. Reconcile it when you are ready.`,
-    urgency: CALM_URGENCY,
-    occurredAt: now.toISOString(),
-    action: { type: "open_entity", tabType: "projects:project", entityId: r.id },
-    metadata: {
-      projectId: r.id,
-      projectName: r.name,
-      period: today.slice(0, 7),
-      ...(r.biller !== callerUserId ? { forUserId: r.biller } : {}),
-    },
-  }))
+  return rows
+    .filter((r) => !done.has(r.id))
+    .map((r) => ({
+      id: `projects:month_close:${r.id}:${today.slice(0, 7)}`,
+      app: "projects",
+      entity: "project",
+      entityId: r.id,
+      // An app-qualified kind, outside the kernel list (as kernel:away.recap is).
+      kind: MONTH_CLOSE_KIND as AttentionKind,
+      summary: `${r.name}: ${monthName} ends soon. Reconcile it when you are ready.`,
+      urgency: CALM_URGENCY,
+      occurredAt: now.toISOString(),
+      action: { type: "open_entity", tabType: "projects:project", entityId: r.id },
+      metadata: {
+        projectId: r.id,
+        projectName: r.name,
+        period: today.slice(0, 7),
+        ...(r.biller !== callerUserId ? { forUserId: r.biller } : {}),
+      },
+    }))
 }
 
 /** Orgs with at least one work project using time and budgets. */

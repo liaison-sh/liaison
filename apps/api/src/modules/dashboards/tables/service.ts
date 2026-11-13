@@ -47,6 +47,7 @@ import {
   backingProblem,
   backingProvider,
   backingSchema,
+  MAX_BACKED_ROWS,
   matchesText,
   matchesWhere,
   mergeOverlay,
@@ -318,6 +319,17 @@ function myRole(viewer: UserContext, loaded: LoadedTable): TableInfo["myRole"] {
   return loaded.canEdit ? "editor" : "viewer"
 }
 
+/** The rows a reader sees: a backed table's are its parent's records they can read. */
+async function rowCountOf(t: RlsClient, loaded: LoadedTable, own: number): Promise<number> {
+  const b = loaded.backing
+  if (!b) return own
+  if (!b.provider || !b.shape) return 0
+  const records = await b.provider.rows(t, loaded.row.orgId, b.def.parentId, [], {
+    max: MAX_BACKED_ROWS,
+  })
+  return records.length
+}
+
 async function rowCounts(t: RlsClient, orgId: string, ids: string[]): Promise<Map<string, number>> {
   if (ids.length === 0) return new Map()
   const rows = await t
@@ -391,15 +403,8 @@ export async function listTables(viewer: UserContext, tx?: RlsClient): Promise<T
         canEdit: f.canEdit === true,
         columns: f.row.columns as unknown as Column[],
       })
-      out.push(
-        toInfo(
-          viewer,
-          loaded,
-          loaded.backing
-            ? await backedCount(t, viewer, loaded)
-            : (counts.get(tableCollection(f.row.id)) ?? 0),
-        ),
-      )
+      const own = counts.get(tableCollection(f.row.id)) ?? 0
+      out.push(toInfo(viewer, loaded, await rowCountOf(t, loaded, own)))
     }
     return out
   })
@@ -413,9 +418,8 @@ export async function getTable(
   assertRead(viewer)
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
-    if (loaded.backing) return toInfo(viewer, loaded, await backedCount(t, viewer, loaded))
     const counts = await rowCounts(t, viewer.orgId, [id])
-    return toInfo(viewer, loaded, counts.get(tableCollection(id)) ?? 0)
+    return toInfo(viewer, loaded, await rowCountOf(t, loaded, counts.get(tableCollection(id)) ?? 0))
   })
 }
 
@@ -881,18 +885,6 @@ async function backedDocs(
   if (tasks.length === 0) return { docs: [], truncated }
   const own = await readOwnDocs(t, viewer, loaded, { max: 10_000 })
   return { docs: mergeOverlay(tasks, own.docs, loaded.columns), truncated }
-}
-
-/** How many rows a backed table shows its reader: the parent's records they can read. */
-async function backedCount(
-  t: RlsClient,
-  viewer: UserContext,
-  loaded: LoadedTable,
-): Promise<number> {
-  const b = loaded.backing!
-  if (!b.provider || !b.shape || !b.access.ok) return 0
-  const ids = await b.provider.ids(t, viewer.orgId, b.def.parentId, backedRowCap.max)
-  return ids === null ? backedRowCap.max : ids.length
 }
 
 /** One backed row as it is now (the record merged with its overlay), or null when gone. */
@@ -2004,12 +1996,12 @@ export async function updateTable(
           ? parseBackingInput(input.backing)
           : parseBacking(loaded.row.backing)
       if (input.backing !== undefined) set.backing = backing
-      const own = (set.columns as unknown as Column[] | undefined) ?? loaded.columns
-      if (backing && input.backing !== undefined) await checkBacking(t, viewer, backing, own)
+      const ownColumns = (set.columns as unknown as Column[] | undefined) ?? loaded.columns
+      if (backing && input.backing !== undefined) await checkBacking(t, viewer, backing, ownColumns)
       else if (backing && input.columns) {
         // A columns-only change checks only its own keys against the read-through ones: a field
         // the parent retired since must not block every later column change.
-        const clash = overlayCollision(backing, own)
+        const clash = overlayCollision(backing, ownColumns)
         if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
       }
       let saved: DashboardTableRow
@@ -2035,15 +2027,15 @@ export async function updateTable(
         translateWriteError(err, set.name)
       }
       await queueTableEvent(t, viewer, "updated", saved, await tableAudience(viewer.orgId, saved))
-      const after = await loadTable(t, viewer, id)
       // Re-pointed to another parent: the old records' overlay cells go.
       const before = parseBacking(loaded.row.backing)
       if (before && backing && before.parentId !== backing.parentId) {
-        await pruneOverlay(t, viewer, after)
+        await pruneOverlay(t, viewer, await loadTable(t, viewer, id))
       }
-      if (after.backing) return toInfo(viewer, after, await backedCount(t, viewer, after))
       const counts = await rowCounts(t, viewer.orgId, [id])
-      return toInfo(viewer, after, counts.get(tableCollection(id)) ?? 0)
+      const reloaded = await loadTable(t, viewer, id)
+      const own = counts.get(tableCollection(id)) ?? 0
+      return toInfo(viewer, reloaded, await rowCountOf(t, reloaded, own))
     }),
   )
 }

@@ -29,6 +29,10 @@ let ORG = ""
 let OWNER = ""
 let ALICE = ""
 let BOB = ""
+/** A member with no projects scope: cannot read a task. */
+let CAROL = ""
+/** A member who left. */
+let DAVE = ""
 const SCOPES = [
   "projects:projects:read",
   "projects:projects:write",
@@ -125,6 +129,10 @@ beforeAll(async () => {
   ALICE = (await minimal.person(ORG, { name: "Alice Example" })).id
   BOB = (await minimal.person(ORG, { name: "Bob Example" })).id
   for (const id of [OWNER, ALICE, BOB]) await minimal.grantScope(id, "*")
+  CAROL = (await minimal.person(ORG, { name: "Carol Example" })).id
+  DAVE = (await minimal.person(ORG, { name: "Dave Example" })).id
+  await minimal.grantScope(DAVE, "*")
+  await sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${DAVE}::uuid`
   await ensureAppsForOrg(ORG, {})
   const p = await withRlsContext(ctx(OWNER), (tx) =>
     createProject({ tx, orgId: ORG, actor: ctx(OWNER), input: { name: "Intake", fields: FIELDS } }),
@@ -353,4 +361,65 @@ describe("routine flows: actions", () => {
       expect((await resumeFlowOnDecision(ORG, approvalId))?.status).toBe("no_run")
     }, 60_000)
   }
+})
+
+describe("routine flows: notify", () => {
+  const notifyFlow = (to: string[]): RoutineFlow => ({
+    version: 1,
+    steps: [
+      { id: "tell", type: "action", action: "notify", args: { to, text: "Look: {{task.title}}" } },
+    ],
+  })
+  async function notified(title: string, userId: string): Promise<number> {
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM kernel.pending_events
+       WHERE org_id = ${ORG} AND payload->>'entity' = 'agent_notification'
+         AND payload->'data'->>'summary' = ${`Look: ${title}`}
+         AND payload->'data'->'targetUserIds' ? ${userId}`
+    return row!.n
+  }
+
+  it("notifies a teammate who can read the task", async () => {
+    const routineId = await flowRoutine("notify-alice", notifyFlow([ALICE]))
+    const taskId = await task("Readable")
+    const result = await tickFor(routineId, taskId, [])
+    expect((await runRow(result.runId!)).status).toBe("succeeded")
+    expect(await notified("Readable", ALICE)).toBe(1)
+  }, 60_000)
+
+  const refusals: Array<[string, () => string[], string[] | undefined, string]> = [
+    ["someone outside the org", () => [randomUUID()], undefined, "not an active member"],
+    ["a member who left", () => [DAVE], undefined, "not an active member"],
+    ["a member who cannot read the task", () => [CAROL], undefined, "cannot read the task"],
+    [
+      "a teammate, without the scope to notify others",
+      () => [ALICE],
+      ["projects:projects:read", "projects:tasks:read"],
+      "projects:tasks:write",
+    ],
+  ]
+  for (const [who, to, scopes, reason] of refusals) {
+    it(`refuses to notify ${who}: the step fails and nothing is sent`, async () => {
+      const targets = to()
+      const routineId = await flowRoutine(`notify-refused-${who}`, notifyFlow(targets), scopes)
+      const title = `Refused for ${who}`
+      const taskId = await task(title)
+      const result = await tickFor(routineId, taskId, [])
+      const row = await runRow(result.runId!)
+      expect(row.status).toBe("failed")
+      expect(row.steps?.[0]?.note).toContain(reason)
+      expect(await notified(title, targets[0]!)).toBe(0)
+    }, 60_000)
+  }
+
+  it("notifies the owner without the scope to notify others", async () => {
+    const routineId = await flowRoutine("notify-self", notifyFlow(["{{owner}}"]), [
+      "projects:projects:read",
+      "projects:tasks:read",
+    ])
+    const taskId = await task("Self only")
+    const result = await tickFor(routineId, taskId, [])
+    expect((await runRow(result.runId!)).status).toBe("succeeded")
+    expect(await notified("Self only", OWNER)).toBe(1)
+  }, 60_000)
 })

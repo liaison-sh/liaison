@@ -207,3 +207,4 @@ Routine chains stop at 5 -> apps/api/src/infra/jobs/event-routine-subscriber.ts:
 Projects flow templates -> apps/api/src/apps/projects/app.manifest.json:2654
 Template placeholders filled from the project's statuses -> packages/shared/src/validation/agent/routines.ts:701
 Routines of a project listed by projectId -> apps/api/src/modules/agent/routines/routines-routes.ts:174
+A notify to others needs projects:tasks:write, active members who can read the task -> apps/api/src/modules/agent/routines/flow-runner.ts:519

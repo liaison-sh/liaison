@@ -91,6 +91,31 @@ describe("entity opener registry", () => {
     })
   })
 
+  it("names a first-class tab by its entity, else its type's label, never the machine name", async () => {
+    registerTabType("projects:task", {
+      component: (() => null) as never,
+      sidebar: null,
+      icon: (() => null) as never,
+      urlPattern: "/projects/tasks/:entityId",
+      defaultLabel: "Task",
+      appId: "projects",
+      localType: "task",
+      resolveLabel: (id) => (id === "known" ? "SN125 screen flicker" : undefined),
+    })
+    await openEntity(mockApi, "projects", "task", "known")
+    expect(openTabMock).toHaveBeenLastCalledWith({
+      type: "projects:task",
+      entityId: "known",
+      label: "SN125 screen flicker",
+    })
+    await openEntity(mockApi, "projects", "task", "other")
+    expect(openTabMock).toHaveBeenLastCalledWith({
+      type: "projects:task",
+      entityId: "other",
+      label: "Task",
+    })
+  })
+
   it("routes an app detail-panel entity through the generic detail tab", async () => {
     // The app declares an in-app detail panel (via views.detail.<entity>) but no
     // first-class tab type — e.g. a Shopify return/refund. Must open the kernel

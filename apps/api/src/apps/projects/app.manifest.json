@@ -2605,6 +2605,7 @@
         "label": "Task",
         "icon": "ProjectsIcon",
         "urlPattern": "/projects/tasks/:entityId",
+        "resolveLabel": "resolveTaskTabLabel",
         "referenceable": true
       },
       "automations": {

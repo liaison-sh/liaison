@@ -125,9 +125,15 @@ export async function openEntity(
     })
   } else {
     const qualified = `${app}:${entityType}`
-    if (getTabType(qualified)) {
-      // The app registers a first-class tab type for this entity.
-      openTab({ type: qualified, entityId: id, label: defaultLabel ?? qualified })
+    const tabType = getTabType(qualified)
+    if (tabType) {
+      // The app registers a first-class tab type for this entity: the tab is named by the
+      // entity (its resolveLabel) or the type's own label, never the machine name.
+      openTab({
+        type: qualified,
+        entityId: id,
+        label: defaultLabel ?? tabType.resolveLabel?.(id) ?? tabType.defaultLabel,
+      })
     } else if (getPanel(namespaceRegistryKey(app, `detail:${entityType}`))) {
       // The app declares an in-app detail panel (via `views.detail.<entity>`) but
       // no first-class tab type — route through the kernel's generic `detail`

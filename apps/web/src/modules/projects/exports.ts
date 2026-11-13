@@ -5,7 +5,9 @@ import {
   registerBulkUiSelection,
   registerSavedViewsHandler,
 } from "~/framework/app-registry"
+import { crossProjectTasksStore } from "~/modules/projects/cross-project-tasks-store"
 import { ProjectsIcon } from "~/modules/projects/ProjectsIcon"
+import { projectStore } from "~/modules/projects/project-store"
 import { projectsFilterStore } from "~/modules/projects/projects-filter-store"
 import {
   clearSelection as clearProjectsSelection,
@@ -33,6 +35,18 @@ export const ProjectsSidebar = lazy(() =>
 )
 
 export { registerEntityPreviews } from "~/modules/projects/entity-preview-renderers"
+
+/**
+ * A task tab's name: the task's title, once a store holds the task (its project's list, the
+ * cross-project list), however the tab was opened (a link, a dashboard drill, its address).
+ */
+export function resolveTaskTabLabel(entityId: string): string | undefined {
+  if (!entityId) return undefined
+  const title =
+    projectStore.task(entityId)?.title ??
+    crossProjectTasksStore.items().find((t) => t.id === entityId)?.title
+  return title?.trim() ? title : undefined
+}
 
 export function registerAppHooks(): void {
   const handler = {

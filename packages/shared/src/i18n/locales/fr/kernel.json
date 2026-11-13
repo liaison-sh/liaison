@@ -6736,7 +6736,32 @@
       "newTableName": "Nom de la table",
       "nameTaken": "Une table nommée {{name}} existe déjà.",
       "createForbidden": "Vous ne pouvez pas créer de table.",
-      "createFailed": "La table n'a pas pu être créée. Réessayez."
+      "createFailed": "La table n'a pas pu être créée. Réessayez.",
+      "fromProject": "Depuis un projet",
+      "fromProjectHint": "Ses lignes sont les tâches du projet. Changer une valeur de tâche ici change la tâche.",
+      "project": "Projet",
+      "projectValues": "Valeurs des tâches à afficher",
+      "builtin": {
+        "title": "Titre",
+        "status": "Statut",
+        "assignee": "Responsable",
+        "due": "Échéance",
+        "priority": "Priorité"
+      },
+      "create": "Créer",
+      "pickProject": "Choisissez un projet.",
+      "pickValue": "Choisissez au moins une valeur.",
+      "projectUnreadable": "Ce projet n'a pas pu être lu.",
+      "theProject": "le projet",
+      "fromProjectColumn": "Vient de {{name}} : la changer change la tâche.",
+      "ownColumn": "Gardée dans cette table seulement.",
+      "fromProjectShort": "Vient du projet",
+      "projectForbidden": "Vous ne pouvez pas modifier les tâches de {{name}}. Demandez à un admin le droit de modifier les tâches.",
+      "deleteRowBacked": "Chaque ligne est une tâche de {{name}}. Pour en retirer une, archivez la tâche dans Projets.",
+      "openLink": "Ouvrir {{label}}",
+      "addTask": "Ajouter une tâche",
+      "recordChanged": "Cette tâche a changé entre-temps. Rechargez et réessayez.",
+      "recordLastChange": "Tâche modifiée {{when}}"
     }
   },
   "appBuilder": {

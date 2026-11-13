@@ -9,6 +9,8 @@ A table is the organisation's own data, kept in Liaison: a name, typed columns a
 
 In **Dashboards**, the **Tables** section of the sidebar lists the tables you can see. Select **+** (**New table**), type its **Table name** and press Enter: the table opens on its **Settings**, where you add its columns. Two tables cannot share a name. Your agent can create one too, with your approval.
 
+To make a table of a project's tasks, tick **From a project** under the name, pick the **Project**, then tick the **Task values to show** (Title, Status, Assignee and Due are ticked at first; Priority and the project's own task fields are offered too) and select **Create**. The table opens on its grid, with the project's name under its title. See [Back a table by a project](#back-a-table-by-a-project).
+
 ## Columns
 
 A table has at most 40 columns. Each has a key, a label and a type:
@@ -83,6 +85,9 @@ A table can show the tasks of one project as its rows, live: `backing: { app: "p
 - Editing a read-through cell changes the task through Projects, as the writer, and needs the right to edit tasks; the task's own history records it, not the table's.
 - Adding a row creates a task (a title is required). A row cannot be deleted: delete or archive the task in Projects.
 - An own column cannot use the key of a read-through one.
+- On the grid, a column read from the project has a small link mark; hover its header for "From <project>: changing it changes the task." The table's own columns say "Kept in this table only." On **Settings**, read-through columns say **From the project** and cannot be renamed or dropped there.
+- A change you may not make to a task says so under its row: "You can't change the tasks of <project>. Ask an admin for permission to edit tasks."
+- **Add a task** asks for the task's title and the table's own columns. The delete mark of a row is greyed out; hover it for why.
 - An app declares which of its records can back a table, on the entity in its manifest: `tableBacking: { parent, provider }`, a provider in its server code.
 
 ## Show a table on a dashboard
@@ -98,6 +103,8 @@ A [routine](routines.md) triggered by `kernel:dashboard_table_row:created`, `:up
 ## Link a record
 
 A link cell picks a record of a connected app (any app when the column names none). Records the search index holds are searched there; an app can let people pick other records through one of its own read tools, declared on the entity in its manifest: `pick: { tool, queryParam, idField, labelField, itemsPath? }`. Shopify declares it for orders, customers, products and returns, Boxtal for shipments, Projects for projects and tasks. `params` adds fixed parameters beside the query, such as Projects' `{ kind: "task" }`. A reader who cannot open a linked record sees **Linked record** instead of its label.
+
+On a table's grid, a link cell is a link: click it (or focus it and press Enter) to open the record in its app, a task in Projects for example. People who may edit the table change the link with the pencil beside it.
 
 ## The tables API
 

@@ -172,6 +172,18 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
       ? formatAxisLabel(day, locale, props.timeZone)
       : (d?.name ?? fallback ?? d?.label ?? "")
   }
+  // Counts read on whole-number ticks (1, 2, 3, never 0.2 steps): an axis whose every value is a
+  // whole number gets precision 0. Which datasets an axis carries mirrors yAxisID below.
+  const isLine = (d: ChartDataset) => props.type === "line" || area || (combo && d.asLine === true)
+  const leftWhole = wholeNumbers(
+    props.datasets.filter((d) => !(rightAxis && onRight(d, isLine(d)))),
+  )
+  const rightWhole = wholeNumbers(props.datasets.filter((d) => rightAxis && onRight(d, isLine(d))))
+  const valueTicks = (whole: boolean) => ({
+    color: text,
+    callback: (v: unknown) => fmt(v),
+    ...(whole ? { precision: 0 } : {}),
+  })
   let next = 0
   return {
     // An area is a filled line; a combo is bars with some datasets drawn as lines.
@@ -281,7 +293,7 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
               beginAtZero: true,
               stacked,
               grid: { color: grid },
-              ticks: { color: text, callback: (v: unknown) => fmt(v) },
+              ticks: valueTicks(leftWhole),
             },
             y: { stacked, grid: { display: false }, ticks: { color: text } },
           }
@@ -291,7 +303,7 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
               beginAtZero: true,
               stacked,
               grid: { color: grid },
-              ticks: { color: text, callback: (v: unknown) => fmt(v) },
+              ticks: valueTicks(leftWhole),
             },
             ...(rightAxis
               ? {
@@ -299,13 +311,26 @@ export function chartConfig(props: ChartProps, locale: string): Record<string, u
                     position: "right",
                     beginAtZero: true,
                     grid: { display: false },
-                    ticks: { color: text, callback: (v: unknown) => fmt(v) },
+                    ticks: valueTicks(rightWhole),
                   },
                 }
               : {}),
           },
     },
   }
+}
+
+/** Every value of the datasets is a whole number (at least one value): an axis of counts. */
+export function wholeNumbers(datasets: ChartDataset[]): boolean {
+  let any = false
+  for (const d of datasets) {
+    for (const v of d.values) {
+      if (v === null || v === undefined) continue
+      if (!Number.isInteger(v)) return false
+      any = true
+    }
+  }
+  return any
 }
 
 /** A click on a drawn element picks it; the pointer says it can be clicked. */

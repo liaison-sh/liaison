@@ -77,6 +77,10 @@ export const reconciliationLines = appProjects.table(
     billMinutes: integer("bill_minutes").notNull().default(0),
     billedAfterCreditMinutes: integer("billed_after_credit_minutes"),
     documentLinePosition: integer("document_line_position"),
+    /** The project this line's work belongs to, when it is not the card's own. */
+    otherProjectId: uuid("other_project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

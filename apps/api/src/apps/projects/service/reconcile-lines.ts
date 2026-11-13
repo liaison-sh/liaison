@@ -324,6 +324,8 @@ export interface ComputedLine {
   traceEstimateMinutes: number | null
   billMinutes: number
   proofs: ComputedProof[]
+  /** The project the line's work belongs to, when it is not this one (read under the asker). */
+  otherProjectId?: string
 }
 
 /** The tasks of a set that no other task of the set contains: counting them counts each once. */
@@ -368,7 +370,13 @@ export function computeLines(args: {
   projectTasks: readonly BudgetTask[]
   /** Each task's own real minutes. */
   ownReal: ReadonlyMap<string, number>
-  lines: ReadonlyArray<ProposedLine & { resolvedTaskIds: string[]; proofsOut: ComputedProof[] }>
+  lines: ReadonlyArray<
+    ProposedLine & {
+      resolvedTaskIds: string[]
+      proofsOut: ComputedProof[]
+      otherProjectId?: string
+    }
+  >
   /** Tasks of the period no line lists and the proposal did not leave out as the client's own. */
   unlisted: readonly string[]
 }): ComputedLine[] {
@@ -425,6 +433,7 @@ export function computeLines(args: {
       traceEstimateMinutes: trace,
       billMinutes: bill,
       proofs: line.proofsOut,
+      ...(line.otherProjectId ? { otherProjectId: line.otherProjectId } : {}),
     })
   }
   // Past the card's bound, the last lines fold into "Other closed tasks" with the unlisted ones.

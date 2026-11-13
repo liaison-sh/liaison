@@ -19,18 +19,21 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { resolveToolCard } from "~/modules/apps/result-card"
 import { seedContext } from "~/seed/context"
+import { seedTeamCalendar } from "~/seed/factories/calendar/events"
+import { seedKnowledgeArticles } from "~/seed/factories/knowledge/articles"
 import { seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { NOT_YOURS_TO_READ } from "./reconcile"
+import { NOT_YOURS_TO_READ, RECORD_NOT_YOURS } from "./reconcile"
 import { awaitTimeFeatureSync } from "./time-feature"
 import { awaitTimeRowWrites } from "./time-rows"
 
 let orgId = ""
 let owner: minimal.Session
 let other: minimal.Session
-let dmThread = ""
+/** Each person's direct messages with their own agent: where they ask for a card. */
+const dmOf: Record<string, string> = {}
 let projectId = ""
 const t: Record<string, string> = {}
 const HPD = 420
@@ -58,7 +61,7 @@ async function tool(
       actor: actorOf(opts.userId ?? owner.userId, opts.scopes),
       params,
       origin,
-      ...(origin === "in-app-agent" ? { threadId: dmThread } : {}),
+      ...(origin === "in-app-agent" ? { threadId: dmOf[opts.userId ?? owner.userId] } : {}),
     } as never) as Promise<Card>
   const runId = crypto.randomUUID()
   const frame = {
@@ -114,16 +117,7 @@ beforeAll(async () => {
   other = await minimal.session(orgId, { role: "member" })
   await ensureAppsForOrg(orgId)
   await primeOrgApps(orgId, 0)
-  dmThread = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${dmThread}::uuid, ${orgId}::uuid, ${`reconcile-edit-${dmThread.slice(0, 8)}`},
-            'agent_chat', ${owner.userId}::uuid)`)
-  for (const u of [owner.userId, other.userId]) {
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-      VALUES (${dmThread}::uuid, ${u}::uuid, ${orgId}::uuid, 'admin')`)
-  }
+  for (const u of [owner.userId, other.userId]) dmOf[u] = await minimal.agentDm(orgId, u)
   const made = await tool(
     "createProject",
     { name: "Maison Delorme platform", key: "ATLAS", timeBudgets: true },
@@ -330,6 +324,168 @@ describe("what the asker cannot read is named on the card", () => {
     const drawn = resolveToolCard(template, card)
     expect(drawn?.notice?.title).toBe("GitHub was not seen")
     expect(drawn?.actions?.map((a) => a.label.label)).toEqual(["Connect GitHub"])
+  })
+})
+
+describe("what someone else keeps to themselves stays off the card", () => {
+  it("a colleague's personal meeting and a document not shared with the asker are not returned, and a card citing them names them as not seen", async () => {
+    // The owner's own calendar and a document only they can open.
+    const ctx = seedContext({ orgId, now: new Date("2026-10-12T08:00:00Z") })
+    const me = actorOf(owner.userId)
+    const { eventIds } = await seedTeamCalendar(ctx, me, {
+      accountEmail: `own-${orgId.slice(0, 8)}@example.com`,
+      calendarExternalId: "own-primary",
+      calendarName: "Own calendar",
+      timezone: "Europe/Paris",
+      people: {},
+      owner: "person",
+      events: [
+        { key: "private", title: "Private appointment", day: 2, startHour: 9, attendees: [] },
+      ],
+    })
+    const { documentIds } = await seedKnowledgeArticles(ctx, me, {
+      people: { me: { userId: owner.userId } },
+      collections: [{ key: "c", name: "Own notes", description: "Notes.", owner: "me" }],
+      articles: [
+        {
+          key: "d",
+          title: "Pricing notes for the export",
+          collection: "c",
+          owner: "me",
+          summary: "Notes.",
+          tags: [],
+          body: "What the export cost us.",
+          reviewDueInDays: 30,
+          verified: false,
+          orgAccess: "none",
+        },
+      ],
+    })
+    const eventId = eventIds[0]!
+    const docId = documentIds[0]!
+
+    // The colleague holds every scope and still reads neither, through the apps' own tools.
+    const october = { timeMin: "2026-10-01T00:00:00Z", timeMax: "2026-11-01T00:00:00Z" }
+    const listed = async (userId: string) =>
+      JSON.stringify(
+        await executeToolCore({
+          toolName: "calendar:list_events",
+          orgId,
+          actor: actorOf(userId),
+          params: october,
+          origin: "human-ui",
+        } as never),
+      )
+    expect(await listed(owner.userId)).toContain(eventId)
+    expect(await listed(other.userId)).not.toContain(eventId)
+    const doc = async (userId: string) =>
+      JSON.stringify(
+        await executeToolCore({
+          toolName: "knowledge:get",
+          orgId,
+          actor: actorOf(userId),
+          params: { id: docId },
+          origin: "human-ui",
+        } as never),
+      )
+    expect(await doc(owner.userId)).toContain("What the export cost us")
+    expect(await doc(other.userId)).not.toContain("What the export cost us")
+
+    // A card citing both: the owner's keeps them, the colleague's drops them and says so.
+    const citing = () => {
+      const p = proposal()
+      p.lines[1]!.proofs = [
+        {
+          kind: "calendar_event",
+          ref: eventId,
+          label: "Private appointment",
+          occurredOn: "2026-10-14",
+        },
+        { kind: "knowledge_doc", ref: docId, label: "Pricing notes for the export" },
+      ] as never
+      return p
+    }
+    const mine = await tool("reconcile_propose", citing())
+    const monitoring = (c: Card) => (c.lines as Card[]).find((l) => l.name === "Monitoring")
+    expect(
+      monitoring(mine)
+        ?.proofs.map((p: Card) => p.kind)
+        .sort(),
+    ).toEqual(["calendar_event", "knowledge_doc"])
+    expect(mine.notSeen).toEqual([])
+
+    const theirs = await tool("reconcile_propose", citing(), { userId: other.userId })
+    expect(theirs.error).toBeUndefined()
+    expect(monitoring(theirs)?.proofs).toEqual([])
+    expect(theirs.notSeen).toEqual([
+      { source: "Calendar", why: RECORD_NOT_YOURS },
+      { source: "Knowledge", why: RECORD_NOT_YOURS },
+    ])
+    expect(JSON.stringify(resolveToolCard(template, theirs))).not.toMatch(
+      /Private appointment|Pricing notes/,
+    )
+  })
+})
+
+describe("a line done for another client", () => {
+  it("the row offers Move it to the project it names, and the click moves the task there", async () => {
+    const lumen = await tool(
+      "createProject",
+      { name: "Maison Brise site", key: "LUMEN", timeBudgets: true },
+      { origin: "human-ui" },
+    )
+    const nord = await tool(
+      "createProject",
+      { name: "Maison Nord app", key: "NORD" },
+      { origin: "human-ui" },
+    )
+    await awaitTimeFeatureSync(orgId)
+    await tool("time_plan_set", { projectId: lumen.id, basis: "daily" }, { origin: "human-ui" })
+    const stray = await tool(
+      "create",
+      { projectId: lumen.id, title: "Store locator", statusLabel: "done" },
+      { origin: "human-ui" },
+    )
+    await db.execute(drizzleSql`
+      UPDATE app_projects.tasks SET completed_at = '2026-10-21T10:00:00Z' WHERE id = ${stray.id}::uuid`)
+    const line = (otherProjectKey: string) => ({
+      project: "LUMEN",
+      month: "2026-10",
+      lines: [
+        {
+          name: "Store locator",
+          kind: "unplanned",
+          reason: "other_client",
+          otherProjectKey,
+          taskIds: [stray.id],
+          proofs: [],
+        },
+      ],
+    })
+
+    const refused = await tool("reconcile_propose", line("NOPE"))
+    expect(refused.error?.code).toBe("project_not_found")
+
+    const card = await tool("reconcile_propose", line("nord"))
+    expect(card.error).toBeUndefined()
+    const row = resolveToolCard(template, card)
+      ?.groups?.flatMap((g) => g.rows)
+      .find((r) => r.name === "Store locator")
+    expect(row?.act).toEqual({
+      kind: "tool",
+      label: { label: "Move it to NORD" },
+      tool: "move",
+      params: { taskId: stray.id, projectId: nord.id },
+    })
+
+    const moved = await tool("move", row?.act?.kind === "tool" ? row.act.params : {}, {
+      origin: "human-ui",
+    })
+    expect(moved.error).toBeUndefined()
+    const where = (await db.execute(
+      drizzleSql`SELECT project_id::text AS p FROM app_projects.tasks WHERE id = ${stray.id}::uuid`,
+    )) as unknown as Array<{ p: string }>
+    expect([...where][0]?.p).toBe(nord.id)
   })
 })
 

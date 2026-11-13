@@ -34,6 +34,7 @@ let projectId = ""
 let taskId = ""
 let dmThread = ""
 let sharedThread = ""
+let colleague = ""
 
 const TRACE_APPS = ["gitlab", "github", "calendar", "knowledge", "mail", "tickets", "threads"]
 const SRC = join(import.meta.dir, "..", "..", "..")
@@ -112,23 +113,17 @@ async function proposedCount(): Promise<number> {
   )
 }
 
+/** The person's DM with their own agent, or a shared conversation with a colleague. */
 async function thread(type: "agent_chat" | "thread"): Promise<string> {
-  const id = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${id}::uuid, ${orgId}::uuid, ${`reconcile-${type}-${id.slice(0, 8)}`}, ${type},
-            ${owner.userId}::uuid)`)
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-    VALUES (${id}::uuid, ${owner.userId}::uuid, ${orgId}::uuid, 'admin')`)
-  return id
+  if (type === "agent_chat") return minimal.agentDm(orgId, owner.userId)
+  return minimal.thread(orgId, owner.userId, { participantIds: [colleague] })
 }
 
 beforeAll(async () => {
   await acquireTestLock()
   orgId = (await createTestOrg()).id
   owner = await minimal.adminSession(orgId)
-  await minimal.session(orgId, { role: "member" })
+  colleague = (await minimal.session(orgId, { role: "member" })).userId
   await ensureAppsForOrg(orgId)
   await primeOrgApps(orgId, 0)
   const made = await call<{ id: string }>("projects_createProject", {

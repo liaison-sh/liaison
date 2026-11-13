@@ -7,6 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import {
+  seedBareProject,
+  seedBillingClaim,
+  seedReconciliation,
+} from "~/seed/factories/projects/reconcile"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -17,17 +22,19 @@ let owner: minimal.Session
 let projectId = ""
 let threadId = ""
 
-async function card(state: string, idleDays: number, period: string): Promise<string> {
-  return extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.reconciliations
-        (org_id, project_id, period_start, period_end, basis, state, created_by, thread_id,
-         updated_at)
-      VALUES (${orgId}::uuid, ${projectId}::uuid, ${`${period}-01`}::date, ${`${period}-28`}::date,
-              'daily', ${state}, ${owner.userId}::uuid, ${threadId}::uuid,
-              now() - make_interval(days => ${idleDays}))
-      RETURNING id::text AS id`),
-  )[0]!.id
+async function card(
+  state: "proposed" | "drafted",
+  idleDays: number,
+  month: string,
+): Promise<string> {
+  return seedReconciliation(orgId, {
+    projectId,
+    createdBy: owner.userId,
+    threadId,
+    state,
+    month,
+    idleDays,
+  })
 }
 
 async function storeCard(id: string): Promise<void> {
@@ -38,11 +45,7 @@ async function storeCard(id: string): Promise<void> {
     result: { reconciliationId: id, lines: [{ proofs: [{ label: "Demo, 15 Oct" }] }] },
     card: { kind: "groups", pill: { label: "Projects: reconcile" }, latestKey: `reconcile:${id}` },
   }
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.messages
-      (org_id, thread_id, author_id, author_type, content, metadata, required_scopes)
-    VALUES (${orgId}::uuid, ${threadId}::uuid, ${owner.userId}::uuid, 'user', 'A card.',
-            ${JSON.stringify({ toolCalls: [call] })}::jsonb, '{}'::text[])`)
+  await minimal.postUserMessage(orgId, threadId, owner.userId, "A card.", { toolCalls: [call] })
 }
 
 async function stillStored(id: string): Promise<{ row: boolean; card: boolean }> {
@@ -63,16 +66,12 @@ beforeAll(async () => {
   await acquireTestLock()
   orgId = (await createTestOrg()).id
   owner = await minimal.adminSession(orgId)
-  projectId = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO app_projects.projects (id, org_id, name, key, owner_id)
-    VALUES (${projectId}::uuid, ${orgId}::uuid, 'Maison Delorme platform', 'ATLAS',
-            ${owner.userId}::uuid)`)
-  threadId = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${threadId}::uuid, ${orgId}::uuid, ${`sweep-${threadId.slice(0, 8)}`}, 'agent_chat',
-            ${owner.userId}::uuid)`)
+  projectId = await seedBareProject(orgId, {
+    name: "Maison Delorme platform",
+    key: "ATLAS",
+    ownerId: owner.userId,
+  })
+  threadId = await minimal.agentDm(orgId, owner.userId)
 }, 120_000)
 
 afterAll(async () => {
@@ -104,20 +103,20 @@ describe("the hourly reconcile housekeeping", () => {
 
   it("a reservation with no document an hour on is released, and the sweep runs on empty claims", async () => {
     expect(await sweepClaims()).toEqual(expect.objectContaining({ billed: 0 }))
-    const old = extractRows<{ id: string }>(
-      await db.execute(drizzleSql`
-        INSERT INTO app_projects.billing_claims
-          (org_id, project_id, source_kind, source_ref, period_key, state, created_at)
-        VALUES (${orgId}::uuid, ${projectId}::uuid, 'task', 'ATLAS-1', '2026-10', 'reserved',
-                now() - interval '2 hours'),
-               (${orgId}::uuid, ${projectId}::uuid, 'task', 'ATLAS-2', '2026-10', 'reserved', now())
-        RETURNING id::text AS id`),
-    )
+    const claim = (sourceRef: string, ageMinutes: number) =>
+      seedBillingClaim(orgId, {
+        projectId,
+        sourceRef,
+        periodKey: "2026-10",
+        state: "reserved",
+        ageMinutes,
+      })
+    const old = [await claim("ATLAS-1", 120), await claim("ATLAS-2", 0)]
     await sweepClaims()
     const states = extractRows<{ state: string }>(
       await db.execute(drizzleSql`
         SELECT state FROM app_projects.billing_claims
-         WHERE id IN (${old[0]!.id}::uuid, ${old[1]!.id}::uuid) ORDER BY source_ref`),
+         WHERE id IN (${old[0]}::uuid, ${old[1]}::uuid) ORDER BY source_ref`),
     ).map((r) => r.state)
     expect(states).toEqual(["released", "reserved"])
   })

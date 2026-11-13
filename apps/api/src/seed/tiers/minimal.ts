@@ -47,6 +47,8 @@ import { createScope } from "~/modules/permissions/types"
 import { createThread } from "~/modules/threads/thread"
 import { createInvitation } from "~/modules/users/invites"
 import { demoId, seedContext } from "~/seed/context"
+import { seedPersonalAgent } from "~/seed/factories/agent/agents"
+import { agentDmWith } from "~/seed/factories/agent/presence"
 import { provisionAdminAndRoles, provisionOrgShell } from "~/seed/factories/org/org"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { resolveContacts } from "~/seed/factories/people/contacts"
@@ -246,12 +248,22 @@ export async function thread(
   return (created as { id: string }).id
 }
 
-/** A message `userId` wrote in `threadId`: the person's own words in that conversation. */
+/** `userId`'s direct messages with their own personal agent, opened as "Message" opens it. */
+export async function agentDm(orgId: string, userId: string): Promise<string> {
+  const agent = await seedPersonalAgent(orgId, userId, "assistant")
+  return agentDmWith(ctxOf(orgId), userId, agent.agentId)
+}
+
+/**
+ * A message `userId` wrote in `threadId`: the person's own words in that conversation, with
+ * the `metadata` a stored turn carries (its tool calls and their cards) when given.
+ */
 export async function postUserMessage(
   orgId: string,
   threadId: string,
   userId: string,
   content: string,
+  metadata?: Record<string, unknown>,
 ): Promise<void> {
   await withPrivilegedDb(orgId, "seed-minimal:message", (tx) =>
     tx.insert(messages).values({
@@ -261,6 +273,7 @@ export async function postUserMessage(
       authorType: "user",
       content,
       requiredScopes: [],
+      ...(metadata ? { metadata } : {}),
     }),
   )
 }

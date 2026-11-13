@@ -2,7 +2,11 @@
 //
 // A tool result's card, drawn from the stored card alone: no app bundle, no markup from a result,
 // and card actions and inline edits that send exactly what the stored card offers.
-import type { ResolvedCard, ResolvedCardGroupRow } from "@liaison/shared"
+import {
+  type ResolvedCard,
+  type ResolvedCardGroupRow,
+  TOOL_CARD_GROUPS_MAX_BYTES,
+} from "@liaison/shared"
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -22,6 +26,7 @@ import {
   resetMessageStore,
   type ToolCallState,
 } from "~/modules/threads/message-store"
+import reconcileFortyLines from "./__fixtures__/reconcile-forty-lines.json"
 import { ToolCard } from "./ToolCard"
 
 const THREAD = "th-1"
@@ -263,6 +268,32 @@ describe("ToolCard", () => {
     render(() => <ToolCard toolCall={call({ card: groups(rows) })} />)
     expect(screen.getAllByTestId("card-group-row")).toHaveLength(40)
     expect(screen.getByText("Item 40")).toBeInTheDocument()
+  })
+
+  it("draws the largest reconcile month, forty lines with six proofs each, under the byte bound at desktop and phone widths", () => {
+    // The resolver's own output for that month (the projects card test keeps this file equal to it).
+    const card = reconcileFortyLines as unknown as ResolvedCard
+    expect(new TextEncoder().encode(JSON.stringify(card)).length).toBeLessThan(
+      TOOL_CARD_GROUPS_MAX_BYTES,
+    )
+    for (const width of ["960px", "390px"]) {
+      const { unmount } = render(() => (
+        <div style={{ width }}>
+          <ToolCard toolCall={call({ toolName: "projects__reconcile_propose", card })} />
+        </div>
+      ))
+      expect(screen.getByTestId("card-groups")).toBeInTheDocument()
+      const rows = screen.getAllByTestId("card-group-row")
+      expect(rows).toHaveLength(40)
+      for (const row of rows) {
+        expect(row.querySelectorAll("[data-testid='card-row-link']").length).toBeLessThanOrEqual(3)
+      }
+      expect(screen.getAllByRole("button", { name: "Move it to NORD" })).toHaveLength(16)
+      expect(
+        screen.getByText("Supplier connector part 40, with its export and monitoring"),
+      ).toBeInTheDocument()
+      unmount()
+    }
   })
 
   it("draws each kind with its test id, and a number with its method and source", () => {

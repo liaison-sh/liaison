@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.20.0",
+  "version": "1.21.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2091,6 +2091,13 @@
               "label": "{{item.label}}",
               "urlPath": "item.href",
               "limit": 3
+            },
+            "act": {
+              "kind": "tool",
+              "label": { "label": "Move it" },
+              "labelPath": "row.moveLabel",
+              "tool": "move",
+              "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
             }
           }
         },
@@ -2477,6 +2484,13 @@
               "label": "{{item.label}}",
               "urlPath": "item.href",
               "limit": 3
+            },
+            "act": {
+              "kind": "tool",
+              "label": { "label": "Move it" },
+              "labelPath": "row.moveLabel",
+              "tool": "move",
+              "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
             }
           }
         },
@@ -2741,6 +2755,13 @@
               "label": "{{item.label}}",
               "urlPath": "item.href",
               "limit": 3
+            },
+            "act": {
+              "kind": "tool",
+              "label": { "label": "Move it" },
+              "labelPath": "row.moveLabel",
+              "tool": "move",
+              "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
             }
           }
         },

@@ -93,7 +93,8 @@ describe("projects.manifest", () => {
     // 1.16.0: the per-project time and budgets switch and its feature.
     // 1.17.0: timeboxes, Took and the plan tools.
     // 1.20.0: the reconcile card, its line changes and its read.
-    expect(projectsManifest.version).toBe("1.20.0")
+    // 1.21.0: a reconcile line done for another client offers to move its task there.
+    expect(projectsManifest.version).toBe("1.21.0")
   })
 
   it("the member role holds no deal scope and sales and lead do", () => {

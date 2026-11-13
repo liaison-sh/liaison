@@ -5,6 +5,8 @@
 // and nothing on it a person has to tick before anything else.
 
 import { describe, expect, it } from "bun:test"
+import { readFileSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
 import {
   type CardTemplate,
   type ResolvedCard,
@@ -219,5 +221,53 @@ describe("the reconcile card", () => {
     // A shorter month keeps its links.
     const short = draw({ lines: lines.slice(0, 5) })
     expect(rows(short)[0]?.links).toHaveLength(3)
+  })
+})
+
+/** The web renderer's own fixture: the card this resolver draws for the largest month. */
+const WEB_FIXTURE = join(
+  import.meta.dir,
+  "../../../../../web/src/modules/agent/__fixtures__/reconcile-forty-lines.json",
+)
+
+describe("the reconcile card the web draws", () => {
+  it("the forty-line card with six proofs a line, the web renderer's fixture, is the resolver's own output under the byte bound", () => {
+    const label = (n: number) =>
+      `Pull request ${n}: supplier connector export and monitoring`.padEnd(60, ".").slice(0, 60)
+    const lines = Array.from({ length: TOOL_CARD_GROUPS_MAX_ROWS }, (_, i) =>
+      line(`20000000-0000-4000-8000-${String(i).padStart(12, "0")}`, {
+        position: i,
+        name: `Supplier connector part ${i + 1}, with its export and monitoring`,
+        kind: i < 24 ? "planned" : "unplanned",
+        why: "Agreed with the client at the weekly review, then shipped and checked in production.",
+        proofs: Array.from({ length: 6 }, (_, k) => ({
+          label: label(1000 + i * 6 + k),
+          url: `https://github.com/maison-delorme/platform/pull/${1000 + i * 6 + k}`,
+        })),
+        ...(i >= 24
+          ? {
+              taskIds: [`30000000-0000-4000-8000-${String(i).padStart(12, "0")}`],
+              moveTo: { projectId: "40000000-0000-4000-8000-000000000001", key: "NORD" },
+            }
+          : {}),
+      }),
+    )
+    const card = draw({
+      lines,
+      notSeen: [{ source: "GitHub", why: "not connected" }],
+      late: "Late.",
+    })
+    expect(rows(card)).toHaveLength(TOOL_CARD_GROUPS_MAX_ROWS)
+    expect(new TextEncoder().encode(JSON.stringify(card)).length).toBeLessThan(
+      TOOL_CARD_GROUPS_MAX_BYTES,
+    )
+    expect(rows(card).filter((r) => r.act?.label.label === "Move it to NORD")).toHaveLength(16)
+    const text = `${JSON.stringify(card, null, 2)}\n`
+    // Rewritten only on purpose (UPDATE_CARD_FIXTURES=1); otherwise a drift fails here.
+    if (process.env.UPDATE_CARD_FIXTURES === "1") {
+      writeFileSync(WEB_FIXTURE, text)
+    }
+    // Compared as data: the file is formatted like any other JSON in the repo.
+    expect(JSON.parse(readFileSync(WEB_FIXTURE, "utf8"))).toEqual(card)
   })
 })

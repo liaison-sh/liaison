@@ -21,16 +21,17 @@ import {
   usageThrottled,
   walkNewestFirst,
 } from "./graph-paging"
-import type {
-  AdapterContext,
-  DiscoverResult,
-  DmSyncResult,
-  NormalizedConversation,
-  NormalizedFinding,
-  NormalizedMessage,
-  OutboundRequest,
-  OwnRecentObjectsResult,
-  PlatformAdapter,
+import {
+  type AdapterContext,
+  accountAuth,
+  type DiscoverResult,
+  type DmSyncResult,
+  type NormalizedConversation,
+  type NormalizedFinding,
+  type NormalizedMessage,
+  type OutboundRequest,
+  type OwnRecentObjectsResult,
+  type PlatformAdapter,
 } from "./types"
 
 /** Parse the sandbox fetch body string (empty body → empty object). */
@@ -128,7 +129,7 @@ async function fetchOwnMediaComments(
 ): Promise<{ findings: NormalizedFinding[]; redacted: boolean; rateLimited?: boolean }> {
   const url = `${IG_BASE}/${mediaId}/comments?fields=id,text,username,timestamp&limit=25`
   const res = await ctx.fetch(url, {
-    headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+    ...accountAuth(ctx),
   })
   if (graphError(res) === "RATE_LIMITED")
     return { findings: [], redacted: false, rateLimited: true }
@@ -229,7 +230,7 @@ async function resolveSelfIdentity(
   }
   try {
     const res = await ctx.fetch(`${IG_BASE}/me?fields=id,username`, {
-      headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+      ...accountAuth(ctx),
     })
     const err = graphError(res)
     if (err) return { self: fallback, error: err }
@@ -347,7 +348,7 @@ async function fetchConversationMessages(
   for (let page = 0; page < MESSAGE_PAGE_BOUND; page++) {
     const url = `${IG_BASE}/${conversationId}/messages?fields=id,from,message,created_time&limit=${MESSAGE_PAGE_LIMIT}${after ? `&after=${after}` : ""}`
     const res = await ctx.fetch(url, {
-      headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+      ...accountAuth(ctx),
     })
     if (res.status !== 200)
       return { messages: out, ok: false, rateLimited: graphError(res) === "RATE_LIMITED" }
@@ -377,7 +378,7 @@ async function fetchListPage<T>(
   url: string,
 ): Promise<GraphPage<T> | { error: ListError }> {
   const res = await ctx.fetch(url, {
-    headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+    ...accountAuth(ctx),
   })
   const err = graphError(res)
   if (err) return { error: err }
@@ -590,7 +591,7 @@ export const instagramAdapter: PlatformAdapter = {
   async listOwnRecentObjects(ctx: AdapterContext, limit: number): Promise<OwnRecentObjectsResult> {
     const url = `${IG_BASE}/${ctx.accountExternalId}/media?fields=id,caption,permalink,timestamp&limit=${limit}`
     const res = await ctx.fetch(url, {
-      headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+      ...accountAuth(ctx),
     })
     if (res.status === 401) return { objects: [], error: "CONNECTION_LOST" }
     const body = parseBody(res.body) as IgOwnMediaResponse & { error?: { code?: number } }
@@ -621,7 +622,7 @@ export const instagramAdapter: PlatformAdapter = {
     const after = parseCursor(cursor)
     const url = `${IG_BASE}/${objectExternalId}/comments?fields=id,text,username,timestamp${after ? `&after=${after}` : ""}`
     const res = await ctx.fetch(url, {
-      headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+      ...accountAuth(ctx),
     })
     if (res.status === 401) {
       return { findings: [], nextCursor: cursor, unitsConsumed: 0, error: "CONNECTION_LOST" }

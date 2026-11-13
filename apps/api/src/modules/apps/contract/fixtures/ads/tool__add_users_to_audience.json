@@ -11,9 +11,11 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
-      "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "method": "connections_getSettings",
+      "args": [
+        "meta"
+      ],
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "executeTool",
@@ -51,7 +53,7 @@
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/120210000000000501/users",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"payload=%7B%22schema%22%3A%5B%22EMAIL_SHA256%22%2C%22PHONE_SHA256%22%5D%2C%22data%22%3A%5B%5B%2230f6bfe4911ff4d980aabc847441bbf812c8f8597962ba88051c6ccff7bf741a%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%2C%5B%220874a506e975e942d1f2555f3a6693e46e3da4c9ee73c704f43ffd493a6bc25a%22%2Cnull%5D%2C%5B%22a375a69ca8ebfafb39503c944a3cc9374140b314eedcc29e1ae7cf30a7427cb2%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%5D%7D\"}"
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\"},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]},\"body\":\"payload=%7B%22schema%22%3A%5B%22EMAIL_SHA256%22%2C%22PHONE_SHA256%22%5D%2C%22data%22%3A%5B%5B%2230f6bfe4911ff4d980aabc847441bbf812c8f8597962ba88051c6ccff7bf741a%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%2C%5B%220874a506e975e942d1f2555f3a6693e46e3da4c9ee73c704f43ffd493a6bc25a%22%2Cnull%5D%2C%5B%22a375a69ca8ebfafb39503c944a3cc9374140b314eedcc29e1ae7cf30a7427cb2%22%2C%22875183d38a44284718401cc7de026a3cbc480bdbd2b2b31ac9508bb792957d6e%22%5D%5D%7D\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"audience_id\\\":\\\"120210000000000501\\\",\\\"session_id\\\":\\\"4100000000000001\\\",\\\"num_received\\\":3,\\\"num_invalid_entries\\\":0,\\\"invalid_entry_samples\\\":{}}\"}"
     }

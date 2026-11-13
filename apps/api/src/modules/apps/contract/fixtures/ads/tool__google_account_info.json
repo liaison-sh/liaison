@@ -4,20 +4,24 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getToken",
-      "args": ["google"],
-      "reply": "ads-token-stand-in-2"
+      "method": "connections_getAccounts",
+      "args": [
+        "google"
+      ],
+      "reply": "[{\"id\":\"16533636-b894-4d01-8e7f-8ccac90a214a\",\"identifier\":\"google-ads-user\",\"displayName\":\"google-ads-user\",\"status\":\"active\"}]"
     },
     {
-      "method": "connections_getCredentials",
-      "args": ["google-config"],
-      "reply": "{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"}"
+      "method": "connections_getSettings",
+      "args": [
+        "google-config"
+      ],
+      "reply": "{\"values\":{\"loginCustomerId\":\"9876543210\",\"customerId\":\"1234567890\",\"merchantId\":\"5550001234\"},\"missing\":[\"developerToken\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT customer.id, customer.currency_code, customer.time_zone FROM customer\\\"}\"}"
+        "{\"method\":\"POST\",\"headers\":{\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"auth\":{\"connection\":\"google\",\"scheme\":\"bearer\"},\"body\":\"{\\\"query\\\":\\\"SELECT customer.id, customer.currency_code, customer.time_zone FROM customer\\\"}\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"customer\\\":{\\\"resourceName\\\":\\\"customers/1234567890\\\",\\\"id\\\":\\\"1234567890\\\",\\\"currencyCode\\\":\\\"EUR\\\",\\\"timeZone\\\":\\\"Europe/Paris\\\"}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
     },
@@ -25,7 +29,7 @@
       "method": "fetch",
       "args": [
         "https://googleads.googleapis.com/v26/customers/1234567890/googleAds:searchStream",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-2\",\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"SELECT conversion_action.id, conversion_action.name, conversion_action.type, conversion_action.status FROM conversion_action\\\"}\"}"
+        "{\"method\":\"POST\",\"headers\":{\"login-customer-id\":\"9876543210\",\"Content-Type\":\"application/json\"},\"auth\":{\"connection\":\"google\",\"scheme\":\"bearer\"},\"body\":\"{\\\"query\\\":\\\"SELECT conversion_action.id, conversion_action.name, conversion_action.type, conversion_action.status FROM conversion_action\\\"}\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"[{\\\"results\\\":[{\\\"conversionAction\\\":{\\\"resourceName\\\":\\\"customers/1234567890/conversionActions/9001\\\",\\\"id\\\":\\\"9001\\\",\\\"name\\\":\\\"Purchase\\\",\\\"type\\\":\\\"WEBPAGE\\\",\\\"status\\\":\\\"ENABLED\\\"}}],\\\"fieldMask\\\":\\\"\\\",\\\"requestId\\\":\\\"contract-request-1\\\"}]\"}"
     }

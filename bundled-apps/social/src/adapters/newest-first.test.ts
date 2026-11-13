@@ -13,6 +13,7 @@ import { packCursor, parseJsonCursor } from "./cursor"
 import { facebookAdapter } from "./facebook"
 import { graphError, graphTime, usageThrottled } from "./graph-paging"
 import { instagramAdapter } from "./instagram"
+import { testAuth } from "./mock-fetch"
 import type { AdapterFetch } from "./types"
 
 interface Item {
@@ -109,7 +110,7 @@ describe("instagram DM sync reads newest first", () => {
     let list = items(100)
     const fetch = igDmFake(() => list)
     const first = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       "LEGACY_AFTER",
     )
     expect(first.error).toBeUndefined()
@@ -120,7 +121,7 @@ describe("instagram DM sync reads newest first", () => {
     list = [{ id: "conv-new", t: new Date(T0 + 5 * 60_000).toISOString() }, ...list]
     fetch.calls.length = 0
     const second = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       first.nextCursor,
     )
     expect(second.conversations.map((c) => c.externalId)).toEqual(["conv-new"])
@@ -136,7 +137,7 @@ describe("instagram DM sync reads newest first", () => {
     let cursor: string | null = null
     for (let tick = 0; tick < 6; tick++) {
       const r = await instagramAdapter.syncDms!(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         cursor,
       )
       for (const c of r.conversations) seen.add(c.externalId)
@@ -147,7 +148,10 @@ describe("instagram DM sync reads newest first", () => {
       (parseJsonCursor(cursor) as { conversations: { bf: unknown } }).conversations.bf,
     ).toBeNull()
     fetch.calls.length = 0
-    await instagramAdapter.syncDms!({ accountExternalId: "ig1", fetch, accessToken: "tok" }, cursor)
+    await instagramAdapter.syncDms!(
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
+      cursor,
+    )
     expect(conversationCalls(fetch.calls).length).toBe(1)
   })
 
@@ -155,7 +159,7 @@ describe("instagram DM sync reads newest first", () => {
     let list = items(30)
     const fetch = igDmFake(() => list)
     const first = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       "LEGACY_AFTER",
     )
     list = [...items(70, "burst-", T0 + 200 * 60_000), ...list]
@@ -163,7 +167,7 @@ describe("instagram DM sync reads newest first", () => {
     let cursor = first.nextCursor
     for (let tick = 0; tick < 2; tick++) {
       const r = await instagramAdapter.syncDms!(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         cursor,
       )
       for (const c of r.conversations) seen.add(c.externalId)
@@ -187,7 +191,7 @@ describe("instagram DM sync reads newest first", () => {
       ],
     ])
     const r = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       "PRIOR",
     )
     expect(r).toMatchObject({
@@ -209,7 +213,7 @@ describe("instagram DM sync reads newest first", () => {
       ],
     ])
     const r = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(conversationCalls(fetch.calls).length).toBe(1)
@@ -247,7 +251,7 @@ describe("instagram DM sync reads newest first", () => {
     )
     const prior = packCursor({ conversations: { hw: "2026-10-19T00:00:00.000Z", bf: null } })
     const r = await instagramAdapter.syncDms!(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       prior,
     )
     expect(r.error).toBeUndefined()
@@ -284,7 +288,7 @@ describe("instagram DM sync reads newest first", () => {
       {
         accountExternalId: "ig1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         skipMessagesBefore: new Map([["conv-0", new Date(graphTime(since)).toISOString()]]),
       },
       packCursor({ conversations: { hw: null, bf: null } }),
@@ -310,13 +314,13 @@ describe("facebook sync reads newest first", () => {
     const fetch = graphFake([PAGES, [/\/page-1\/conversations$/, listEdge(() => list, fbConv)]])
     const legacy = packCursor({ pages: { "page-1": "LEGACY_AFTER" } })
     const first = await facebookAdapter.syncDms!(
-      { accountExternalId: "u", fetch, accessToken: "ut" },
+      { accountExternalId: "u", fetch, auth: testAuth("ut") },
       legacy,
     )
     expect(conversationCalls(fetch.calls)[0]!.url).not.toContain("after=")
     list = [{ id: "conv-new", t: new Date(T0 + 60_000).toISOString() }, ...list]
     const second = await facebookAdapter.syncDms!(
-      { accountExternalId: "u", fetch, accessToken: "ut" },
+      { accountExternalId: "u", fetch, auth: testAuth("ut") },
       first.nextCursor,
     )
     expect(second.conversations.map((c) => c.externalId)).toEqual(["conv-new"])
@@ -344,7 +348,7 @@ describe("facebook sync reads newest first", () => {
     ])
     const keptA = { hw: "2026-10-01T00:00:00.000Z", bf: null }
     const r = await facebookAdapter.syncDms!(
-      { accountExternalId: "u", fetch, accessToken: "ut" },
+      { accountExternalId: "u", fetch, auth: testAuth("ut") },
       packCursor({ pages: { "page-a": keptA } }),
     )
     expect(r.error).toBeUndefined()
@@ -371,7 +375,7 @@ describe("facebook sync reads newest first", () => {
     for (let tick = 0; tick < 5; tick++) {
       fetch.calls.length = 0
       const r = await facebookAdapter.discover(
-        { accountExternalId: "u", fetch, accessToken: "ut" },
+        { accountExternalId: "u", fetch, auth: testAuth("ut") },
         cursor,
       )
       expect(r.error).toBeUndefined()

@@ -7,8 +7,11 @@
   "calls": [
     {
       "method": "executeTool",
-      "args": ["knowledge:search", "{\"query\":\"Appel\",\"limit\":10}"],
-      "reply": "{\"status\":\"completed\",\"result\":{\"hits\":[{\"source\":\"knowledge\",\"sourceEntityId\":\"48c71bcb-ce26-4cec-8c01-8ddeed57347b\",\"title\":\"Appel : meet-2026-01-01-weekly-sync\",\"type\":\"document\",\"sourceRank\":1,\"badges\":[\"knowledge\"],\"fusedRank\":0.01639344262295082}],\"sourceStatuses\":[{\"source\":\"knowledge\",\"state\":\"complete\",\"retryable\":false,\"hitCount\":1,\"durationMs\":56},{\"source\":\"google-drive\",\"state\":\"skipped\",\"retryable\":false,\"message\":\"Remote search skipped\",\"hitCount\":0,\"durationMs\":3},{\"source\":\"gitlab\",\"state\":\"skipped\",\"retryable\":false,\"message\":\"Remote search skipped\",\"durationMs\":15,\"hitCount\":0},{\"source\":\"database\",\"state\":\"skipped\",\"retryable\":false,\"message\":\"Remote search skipped\",\"hitCount\":0,\"durationMs\":0}],\"cursors\":{},\"duplicates\":[],\"final\":true}}"
+      "args": [
+        "knowledge:search",
+        "{\"query\":\"Appel\",\"limit\":10}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"hits\":[{\"source\":\"knowledge\",\"sourceEntityId\":\"47b9c412-0f0c-41ff-8e26-7865f41238c0\",\"title\":\"Appel : meet-2026-01-01-weekly-sync\",\"type\":\"document\",\"sourceRank\":1,\"badges\":[\"knowledge\"],\"fusedRank\":0.01639344262295082}],\"sourceStatuses\":[{\"source\":\"knowledge\",\"state\":\"complete\",\"retryable\":false,\"hitCount\":1,\"durationMs\":51}],\"cursors\":{},\"duplicates\":[],\"final\":true}}"
     }
   ]
 }

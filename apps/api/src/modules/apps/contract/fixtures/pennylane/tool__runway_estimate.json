@@ -9,28 +9,28 @@
       "reply": "[]"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["pennylane"],
-      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+      "reply": "{\"values\":{\"scope\":\"company\"},\"missing\":[\"companyId\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://app.pennylane.com/api/external/v2/bank_accounts?limit=50",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+        "{\"method\":\"GET\",\"headers\":{\"Accept\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
     },
     {
-      "method": "connections_getCredentials",
+      "method": "connections_getSettings",
       "args": ["pennylane"],
-      "reply": "{\"apiToken\":\"contract-sandbox-token\",\"scope\":\"company\"}"
+      "reply": "{\"values\":{\"scope\":\"company\"},\"missing\":[\"companyId\"]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://app.pennylane.com/api/external/v2/transactions?limit=100",
-        "{\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer contract-sandbox-token\",\"Accept\":\"application/json\"}}"
+        "{\"method\":\"GET\",\"headers\":{\"Accept\":\"application/json\"},\"auth\":{\"connection\":\"pennylane\",\"scheme\":\"bearer\",\"fields\":[\"apiToken\"]}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"items\\\":[],\\\"has_more\\\":false,\\\"next_cursor\\\":null}\"}"
     }

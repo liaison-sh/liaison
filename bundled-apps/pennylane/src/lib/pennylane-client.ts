@@ -41,6 +41,8 @@ export type PennylaneFetch = (
     headers?: Record<string, string>
     body?: string | { multipart: PennylaneMultipartPart[] }
     timeoutMs?: number
+    /** The connection credential the host adds (the app never holds the token). */
+    auth?: PennylaneAuth
   },
 ) => Promise<{
   status: number
@@ -106,9 +108,23 @@ export class PennylaneRateLimitError extends PennylaneApiError {
   }
 }
 
+/** `ctx.fetch` auth: the host sends the connection's `apiToken` as `Authorization: Bearer`. */
+export interface PennylaneAuth {
+  connection: string
+  scheme: "bearer"
+  fields: string[]
+}
+
+export const PENNYLANE_AUTH: PennylaneAuth = {
+  connection: "pennylane",
+  scheme: "bearer",
+  fields: ["apiToken"],
+}
+
 export interface PennylaneClientOptions {
   fetch: PennylaneFetch
-  apiToken: string
+  /** The credential the host adds to every request (default: the `pennylane` connection's token). */
+  auth?: PennylaneAuth
   baseUrl?: string
   /** Sent as `X-Company-Id` (required with a firm token, ignored otherwise). */
   companyId?: string | null
@@ -128,7 +144,7 @@ export interface PennylaneResponse {
 
 export class PennylaneClient {
   private readonly fetchImpl: PennylaneFetch
-  private readonly apiToken: string
+  private readonly auth: PennylaneAuth
   private readonly base: string
   private readonly companyId: string | null
   private readonly now: () => number
@@ -137,20 +153,19 @@ export class PennylaneClient {
 
   constructor(opts: PennylaneClientOptions) {
     this.fetchImpl = opts.fetch
-    this.apiToken = opts.apiToken
+    this.auth = opts.auth ?? PENNYLANE_AUTH
     this.base = opts.baseUrl ?? BASE
     this.companyId = opts.companyId ?? null
     this.now = opts.now ?? (() => Date.now())
   }
 
-  /** The credential for a host-side file download from the API host (first hop only). */
-  downloadAuthorization(): string {
-    return `Bearer ${this.apiToken}`
+  /** The credential the host adds to a file download from the API host (first hop only). */
+  downloadAuth(): PennylaneAuth {
+    return this.auth
   }
 
   private headers(extra: Record<string, string> = {}): Record<string, string> {
     return {
-      Authorization: `Bearer ${this.apiToken}`,
       Accept: "application/json",
       ...(this.companyId ? { "X-Company-Id": this.companyId } : {}),
       ...extra,
@@ -168,11 +183,6 @@ export class PennylaneClient {
     }
   }
 
-  /** An error body is logged: never let it carry our own credential back out. */
-  private redact(body: string): string {
-    return this.apiToken ? body.split(this.apiToken).join("[redacted]") : body
-  }
-
   /** One request. Refuses up front when the budget is spent; a 429 becomes a typed retryable
    *  error; any other status ≥ 400 throws PennylaneApiError (body truncated to 2 KB). */
   async request(
@@ -188,6 +198,7 @@ export class PennylaneClient {
     const res = await this.fetchImpl(url, {
       method,
       headers: this.headers(opts.contentType ? { "Content-Type": opts.contentType } : {}),
+      auth: this.auth,
       ...(body !== undefined ? { body } : {}),
       ...(opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : {}),
     })
@@ -200,9 +211,9 @@ export class PennylaneClient {
           : Math.max(this.resetAtMs, this.now() + 1000)
       this.remaining = 0
       this.resetAtMs = at
-      throw new PennylaneRateLimitError(at, this.redact(res.body ?? ""))
+      throw new PennylaneRateLimitError(at, res.body ?? "")
     }
-    if (res.status >= 400) throw new PennylaneApiError(res.status, this.redact(res.body ?? ""))
+    if (res.status >= 400) throw new PennylaneApiError(res.status, res.body ?? "")
     return {
       status: res.status,
       body: res.body,

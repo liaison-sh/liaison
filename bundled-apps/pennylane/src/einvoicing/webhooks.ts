@@ -3,9 +3,10 @@
 // Pennylane e-invoicing webhooks (endpoint `einvoicing`, `POST /webhooks/:orgId/pennylane/einvoicing`).
 //
 // Verify: `X-Pennylane-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>`,
-// |now − t| ≤ 300 s, constant-time compare (host bridge), replay key = the envelope id (900 s).
-// The secret is the one Pennylane returned once when the subscription was created, held by the
-// kernel app-secret capability (never in a tool result, approval card or log line).
+// |now − t| ≤ 300 s, replay key = the envelope id (900 s). The secret is the one Pennylane
+// returned once when the subscription was created, held by the kernel app-secret capability
+// (never in a tool result, approval card or log line, and never in this verifier: the host
+// digests and compares with it, `crypto_verifyHmacForConfig`).
 // Handle: acknowledge at once and record WHICH invoice may have changed; the payload is never
 // trusted for the status itself (the caller re-reads it through get_einvoice_status).
 //
@@ -27,9 +28,13 @@ const MAX_SKEW_SECONDS = 300
 const REPLAY_TTL_SECONDS = 900
 
 export interface VerifyBridge {
-  config_get(key: string): Promise<unknown>
-  crypto_hmacSha256Hex(secret: string, body: string): Promise<string>
-  crypto_timingSafeEqual(a: string, b: string): Promise<boolean>
+  config_has(key: string): Promise<boolean>
+  crypto_verifyHmacForConfig(
+    key: string,
+    data: string,
+    signature: string,
+    encoding: "base64" | "hex",
+  ): Promise<boolean>
 }
 
 export function parseSignature(header: string | undefined): { t: number; v1: string } | null {
@@ -58,12 +63,11 @@ export async function verifyEinvoicingWebhook(
   const headers = lowercaseHeaderKeys(params.headers)
   const sig = parseSignature(headers["x-pennylane-signature"])
   if (!sig) return { ok: false, reason: "missing_signature" }
-  const secret = (await bridge.config_get(WEBHOOK_SECRET_KEY)) as string | null
-  if (!secret) return { ok: false, reason: "missing_secret" }
+  if (!(await bridge.config_has(WEBHOOK_SECRET_KEY))) return { ok: false, reason: "missing_secret" }
   if (Math.abs(Math.floor(now() / 1000) - sig.t) > MAX_SKEW_SECONDS)
     return { ok: false, reason: "stale_timestamp" }
-  const expected = await bridge.crypto_hmacSha256Hex(secret, `${sig.t}.${params.body}`)
-  if (!(await bridge.crypto_timingSafeEqual(sig.v1, expected)))
+  const signed = `${sig.t}.${params.body}`
+  if (!(await bridge.crypto_verifyHmacForConfig(WEBHOOK_SECRET_KEY, signed, sig.v1, "hex")))
     return { ok: false, reason: "signature_mismatch" }
   let envelopeId: string | null = null
   try {

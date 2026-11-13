@@ -1,7 +1,9 @@
 {
   "entry": "preflight:pause",
   "params": {
-    "object_ids": ["120210000000000102"],
+    "object_ids": [
+      "120210000000000102"
+    ],
     "reason": "ROAS under 1.5 for 7 days"
   },
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",

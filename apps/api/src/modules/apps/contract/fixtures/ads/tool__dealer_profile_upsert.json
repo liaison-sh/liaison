@@ -16,12 +16,15 @@
         "dealer_profiles",
         "{\"dealer_name\":\"Studio Shop Lyon\",\"dealer_type\":\"boutique\",\"sku_match_hints\":\"BT-120, BT-60\",\"coverage_area\":\"Auvergne-Rhône-Alpes\",\"notes\":\"Stocks the anthracite range only\",\"reorder_cadence\":\"monthly\",\"created_by\":\"agent\"}"
       ],
-      "reply": "{\"id\":\"870441ad-fa9a-44e5-836b-031f7c9a2917\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.248524+00\",\"updated_at\":\"2026-11-12 10:16:46.248524+00\",\"dealer_name\":\"Studio Shop Lyon\",\"sku_match_hints\":\"BT-120, BT-60\",\"coverage_area\":\"Auvergne-Rhône-Alpes\",\"dealer_type\":\"boutique\",\"notes\":\"Stocks the anthracite range only\",\"reorder_cadence\":\"monthly\",\"created_by\":\"agent\"}"
+      "reply": "{\"id\":\"050ec9d8-8aa3-4de9-a2db-98bc5a7a2834\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.108293+00\",\"updated_at\":\"2026-11-13 01:32:41.108293+00\",\"dealer_name\":\"Studio Shop Lyon\",\"sku_match_hints\":\"BT-120, BT-60\",\"coverage_area\":\"Auvergne-Rhône-Alpes\",\"dealer_type\":\"boutique\",\"notes\":\"Stocks the anthracite range only\",\"reorder_cadence\":\"monthly\",\"created_by\":\"agent\"}"
     },
     {
       "method": "db_findOne",
-      "args": ["dealer_profiles", "870441ad-fa9a-44e5-836b-031f7c9a2917"],
-      "reply": "{\"id\":\"870441ad-fa9a-44e5-836b-031f7c9a2917\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.248524+00\",\"updated_at\":\"2026-11-12 10:16:46.248524+00\",\"dealer_name\":\"Studio Shop Lyon\",\"sku_match_hints\":\"BT-120, BT-60\",\"coverage_area\":\"Auvergne-Rhône-Alpes\",\"dealer_type\":\"boutique\",\"notes\":\"Stocks the anthracite range only\",\"reorder_cadence\":\"monthly\",\"created_by\":\"agent\"}"
+      "args": [
+        "dealer_profiles",
+        "050ec9d8-8aa3-4de9-a2db-98bc5a7a2834"
+      ],
+      "reply": "{\"id\":\"050ec9d8-8aa3-4de9-a2db-98bc5a7a2834\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.108293+00\",\"updated_at\":\"2026-11-13 01:32:41.108293+00\",\"dealer_name\":\"Studio Shop Lyon\",\"sku_match_hints\":\"BT-120, BT-60\",\"coverage_area\":\"Auvergne-Rhône-Alpes\",\"dealer_type\":\"boutique\",\"notes\":\"Stocks the anthracite range only\",\"reorder_cadence\":\"monthly\",\"created_by\":\"agent\"}"
     }
   ]
 }

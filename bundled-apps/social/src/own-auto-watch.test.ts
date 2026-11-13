@@ -9,7 +9,12 @@
 import { describe, expect, test } from "bun:test"
 import { facebookAdapter } from "./adapters/facebook"
 import { instagramAdapter } from "./adapters/instagram"
-import { type MockFetch, makeMockFetch } from "./adapters/mock-fetch"
+import {
+  connectedAccountList,
+  type MockFetch,
+  makeMockFetch,
+  testAuth,
+} from "./adapters/mock-fetch"
 import { META_POLLS_PER_TICK, OWN_WATCH_CAP_PER_PLATFORM, ownPostCadence } from "./auto-watch"
 import type { SocialToolCtx } from "./ctx"
 import { runWatchPoller } from "./sync"
@@ -23,7 +28,7 @@ function ctxWith(db: MockDb, fetch: MockFetch, logs: string[] = []): SocialToolC
     orgId: "org-1",
     db,
     fetch,
-    connections: { getToken: async () => "user-token" },
+    connections: { getAccounts: async () => connectedAccountList() },
     config: { get: async () => null },
     logger: {
       warn: (m: string) => logs.push(m),
@@ -375,7 +380,7 @@ describe("own-content auto-watch: watched polls read Graph throttling", () => {
   test("an Instagram comments poll answered 400 with a rate-limit code is RATE_LIMITED, not an empty read", async () => {
     const fetch: MockFetch = Object.assign(async () => throttled(80002), { calls: [] })
     const res = await instagramAdapter.pollObject(
-      { accountExternalId: "ig-1", fetch, accessToken: "t" },
+      { accountExternalId: "ig-1", fetch, auth: testAuth("t") },
       "m1",
       null,
     )
@@ -398,7 +403,7 @@ describe("own-content auto-watch: watched polls read Graph throttling", () => {
       { calls: [] },
     )
     const res = await facebookAdapter.pollObject(
-      { accountExternalId: "pg1", fetch, accessToken: "t" },
+      { accountExternalId: "pg1", fetch, auth: testAuth("t") },
       "pg1_post1",
       null,
     )

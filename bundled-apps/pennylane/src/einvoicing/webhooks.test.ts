@@ -5,8 +5,9 @@
 // id), the handler records only which invoice may have changed (never the payload's status), and
 // the gated setup stores the signing secret through the kernel without ever returning it.
 import { describe, expect, it } from "bun:test"
-import { createHmac, timingSafeEqual } from "node:crypto"
+import { createHmac } from "node:crypto"
 import { createMockDb } from "@liaison/test-helpers/mock-db"
+import { makeHmacTestBridge } from "@liaison/test-helpers/webhook-hmac"
 import type { PennylaneToolCtx } from "../ctx"
 import { PennylaneClient } from "../lib/pennylane-client"
 import { PennylaneFake } from "./fake/server"
@@ -23,14 +24,9 @@ import {
 const SECRET = "whsec_test_signing_secret_0123456789"
 const NOW = 1_792_050_000_000
 
+/** The host's by-key surface: the verifier names the secret's key, never holds it. */
 function bridge(secret: string | null = SECRET) {
-  return {
-    config_get: async (k: string) => (k === WEBHOOK_SECRET_KEY ? secret : null),
-    crypto_hmacSha256Hex: async (s: string, body: string) =>
-      createHmac("sha256", s).update(body, "utf8").digest("hex"),
-    crypto_timingSafeEqual: async (a: string, b: string) =>
-      a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b)),
-  }
+  return makeHmacTestBridge({ secretKey: WEBHOOK_SECRET_KEY, secret })
 }
 
 function signed(body: string, t = Math.floor(NOW / 1000), secret = SECRET) {
@@ -141,7 +137,7 @@ describe("webhooks_setup", () => {
     const ctx = {
       orgId: "00000000-0000-4000-8000-0000000000aa",
       db: createMockDb({}, { bridgeWhereOperators: true, ids: "uuid", stampCreatedAt: true }),
-      __client: new PennylaneClient({ fetch: fake.sandboxFetch, apiToken: "tok" }),
+      __client: new PennylaneClient({ fetch: fake.sandboxFetch }),
       config: {
         get: async (k: string) => stored[k] ?? null,
         setSecret: async (k: string, v: string) => {

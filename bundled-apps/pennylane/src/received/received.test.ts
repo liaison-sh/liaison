@@ -34,7 +34,7 @@ function setup(
     fetch: fake.sandboxFetch,
     files_importFromUrl: fake.importFromUrl,
     connections: {
-      pennylane: { getCredentials: async () => ({ apiToken: "tok-secret", scope: "company" }) },
+      pennylane: { getSettings: async () => ({ values: { scope: "company" }, missing: [] }) },
     },
   } as unknown as PennylaneToolCtx
   return { fake, ctx }
@@ -56,6 +56,7 @@ describe("fetch_received_file", () => {
       [STORAGE_HOST, null],
     ])
     expect(fake.lastImport).toMatchObject({
+      auth: { connection: "pennylane", scheme: "bearer", fields: ["apiToken"] },
       credentials: "first-hop-only",
       targetApp: "invoicing",
       targetEntityType: "received_file",
@@ -73,7 +74,8 @@ describe("fetch_received_file", () => {
     )) as R
     expect(r.sha256).toBe(fake.originalSha256(ref))
     expect(fake.downloads.map((d) => d.authorization)).toEqual([null])
-    expect((fake.lastImport as R).headers).toEqual({})
+    expect((fake.lastImport as R).headers).toBeUndefined()
+    expect((fake.lastImport as R).auth).toBeUndefined()
   })
 
   it("a file URL on a host that is not listed is refused", async () => {

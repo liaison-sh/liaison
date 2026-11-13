@@ -25,6 +25,9 @@ import { PENNYLANE_FILE_HOSTS, STORAGE_HOST } from "../../received/hosts"
 import { ciiFacts } from "../eligibility"
 import { RECORDED } from "./recorded"
 
+/** The token the fake host adds for a request whose `auth` names the connection. */
+export const FAKE_CONNECTION_TOKEN = "tok-secret"
+
 export interface FakeFileMeta {
   sha256: string
   /** null = not an e-invoice (plain PDF). */
@@ -256,6 +259,7 @@ export class PennylaneFake {
     const p = JSON.parse(argsJson) as {
       url: string
       headers?: Record<string, string>
+      auth?: { connection?: string; scheme?: string; fields?: string[] }
       credentials?: string
       filename?: string
       targetApp?: string
@@ -266,7 +270,12 @@ export class PennylaneFake {
       throw new Error("fake: expected credentials first-hop-only")
     this.lastImport = p
     let url = p.url
-    let auth: string | null = p.headers?.Authorization ?? p.headers?.authorization ?? null
+    // The host's part: `auth` names the connection's token, added to the first hop as the
+    // bridge adds it (the app never holds it).
+    let auth: string | null =
+      p.headers?.Authorization ??
+      p.headers?.authorization ??
+      (p.auth ? `Bearer ${FAKE_CONNECTION_TOKEN}` : null)
     for (let hop = 0; hop < 5; hop++) {
       const host = new URL(url).hostname
       if (!(PENNYLANE_FILE_HOSTS as readonly string[]).includes(host))

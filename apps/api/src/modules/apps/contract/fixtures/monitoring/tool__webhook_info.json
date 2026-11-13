@@ -4,9 +4,11 @@
   "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
-      "args": ["monitoringWebhookSecret"],
-      "reply": "contract-webhook-secret-not-real"
+      "method": "config_has",
+      "args": [
+        "monitoringWebhookSecret"
+      ],
+      "reply": true
     }
   ]
 }

@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test"
 import searchFixture from "../__fixtures__/youtube-search.json"
 import { packCursor, parseJsonCursor } from "./cursor"
-import { type MockFetch, makeMockFetch } from "./mock-fetch"
+import { type MockFetch, makeMockFetch, testAuth } from "./mock-fetch"
 import type { AdapterFetch } from "./types"
 import { youtubeAdapter } from "./youtube"
 
@@ -36,7 +36,7 @@ describe("youtubeAdapter (B4)", () => {
     // configured, per build spec A).
     const fetch = makeMockFetch({ "/search": searchFixture })
     const { findings, unitsConsumed, nextCursor } = await youtubeAdapter.discover(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [] },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms: [] },
       null,
     )
     expect(findings).toEqual([])
@@ -53,7 +53,7 @@ describe("youtubeAdapter (B4)", () => {
       {
         accountExternalId: "chan-1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         terms: [
           { id: "term-1", kind: "keyword", value: "OurBrand" },
           { id: "term-2", kind: "keyword", value: "widgets" },
@@ -98,7 +98,7 @@ describe("youtubeAdapter (B4)", () => {
       {
         accountExternalId: "chan-1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         terms: [{ id: "term-1", kind: "handle", value: "@ourbrand" }],
       },
       null,
@@ -128,7 +128,7 @@ describe("youtubeAdapter (B4)", () => {
       },
     })
     const { findings, unitsConsumed } = await youtubeAdapter.pollObject(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok") },
       "vid-abc",
       null,
     )
@@ -158,7 +158,7 @@ describe("youtubeAdapter (B4)", () => {
       },
     })
     const { findings } = await youtubeAdapter.pollObject(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok") },
       "vid-abc",
       null,
     )
@@ -199,7 +199,7 @@ describe("youtubeAdapter (B4)", () => {
       },
     })
     const { findings, unitsConsumed } = await youtubeAdapter.discover(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [] },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms: [] },
       null,
     )
     // channels.list (1) + playlistItems.list (1) + commentThreads.list per video (1) = 3
@@ -231,7 +231,7 @@ describe("youtubeAdapter (B4)", () => {
       "/commentThreads": { items: [] },
     })
     await youtubeAdapter.discover(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [] },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms: [] },
       null,
     )
     const urls = fetch.calls.map((c) => c.url)
@@ -289,7 +289,7 @@ describe("youtubeAdapter (B4)", () => {
       },
     })
     const { findings } = await youtubeAdapter.discover(
-      { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [] },
+      { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms: [] },
       null,
     )
     expect(findings.length).toBe(1)
@@ -350,7 +350,7 @@ describe("youtubeAdapter (B4)", () => {
     wrapped.calls = baseFetch.calls
 
     const { findings, unitsConsumed } = await youtubeAdapter.discover(
-      { accountExternalId: "chan-1", fetch: wrapped, accessToken: "tok", terms: [] },
+      { accountExternalId: "chan-1", fetch: wrapped, auth: testAuth("tok"), terms: [] },
       null,
     )
     // channels (1) + playlistItems (1) + only the SUCCESSFUL commentThreads call (1) = 3.
@@ -370,7 +370,7 @@ describe("youtubeAdapter (B4)", () => {
       {
         accountExternalId: "chan-1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         terms: [{ id: "term-1", kind: "keyword", value: "OurBrand" }],
       },
       null,
@@ -408,7 +408,7 @@ describe("youtubeAdapter (B4)", () => {
         {
           accountExternalId: "chan-1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           terms: [{ id: "term-1", kind: "keyword", value: "tessera touch" }],
         },
         null,
@@ -444,7 +444,7 @@ describe("youtubeAdapter (B4)", () => {
         {
           accountExternalId: "chan-1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           terms: [
             { id: "term-1", kind: "keyword", value: "tessera touch" },
             { id: "term-2", kind: "keyword", value: "some other keyword" },
@@ -483,7 +483,7 @@ describe("youtubeAdapter (B4)", () => {
         {
           accountExternalId: "chan-1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           terms: [{ id: "term-1", kind: "keyword", value: "tessera touch" }],
         },
         null,
@@ -514,7 +514,7 @@ describe("youtubeAdapter (B4)", () => {
         {
           accountExternalId: "chan-1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           terms: [
             { id: "term-1", kind: "keyword", value: "tessera touch" },
             { id: "term-2", kind: "keyword", value: "widgets" },
@@ -548,7 +548,7 @@ describe("youtubeAdapter (B4)", () => {
       {
         accountExternalId: "chan-1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         terms: [{ id: "term-1", kind: "keyword", value: "OurBrand" }],
       },
       null,
@@ -578,7 +578,7 @@ describe("youtubeAdapter (B4)", () => {
           : { json: { items: [] } },
       )
       const res = await youtubeAdapter.discover(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms, now: NOW },
         cursor,
       )
       const searches = fetch.calls.filter((c) => c.url.includes("/search"))
@@ -607,7 +607,7 @@ describe("youtubeAdapter (B4)", () => {
     test("a legacy single-token cursor is not replayed on any term", async () => {
       const fetch = scriptedFetch(() => ({ json: { items: [] } }))
       await youtubeAdapter.discover(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms, now: NOW },
         "CDIQAA",
       )
       const searches = fetch.calls.filter((c) => c.url.includes("/search"))
@@ -627,7 +627,7 @@ describe("youtubeAdapter (B4)", () => {
         url.includes("/search") ? { status: 403, json: QUOTA_BODY } : { json: {} },
       )
       const res = await youtubeAdapter.discover(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms, now: NOW },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms, now: NOW },
         cursor,
       )
       expect(res.quotaExhausted).toBe(true)
@@ -645,7 +645,7 @@ describe("youtubeAdapter (B4)", () => {
           : { json: { items: [] } },
       )
       const res = await youtubeAdapter.discover(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok", terms: [], now: NOW },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok"), terms: [], now: NOW },
         null,
       )
       expect(res.quotaExhausted).toBe(true)
@@ -658,7 +658,7 @@ describe("youtubeAdapter (B4)", () => {
         json: { error: { errors: [{ reason: "commentsDisabled" }] } },
       }))
       const res = await youtubeAdapter.pollObject(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok") },
         "vid-abc",
         null,
       )
@@ -668,7 +668,7 @@ describe("youtubeAdapter (B4)", () => {
     test("pollObject on quotaExceeded reports exhaustion and charges nothing", async () => {
       const fetch = scriptedFetch(() => ({ status: 403, json: QUOTA_BODY }))
       const res = await youtubeAdapter.pollObject(
-        { accountExternalId: "chan-1", fetch, accessToken: "tok" },
+        { accountExternalId: "chan-1", fetch, auth: testAuth("tok") },
         "vid-abc",
         null,
       )

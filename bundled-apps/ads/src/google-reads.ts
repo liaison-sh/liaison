@@ -92,11 +92,11 @@ export async function google_campaigns_list(
   params: CampaignsListParams,
   ctx: GoogleReadCtx,
 ): Promise<unknown> {
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: CAMPAIGNS_GAQL,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -121,7 +121,7 @@ export async function google_adgroups_list(
   params: AdGroupsListParams,
   ctx: GoogleReadCtx,
 ): Promise<unknown> {
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   let query = "SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id FROM ad_group"
   if (params.campaign_id) {
     query += ` WHERE campaign.id = ${Number(params.campaign_id)}`
@@ -129,7 +129,7 @@ export async function google_adgroups_list(
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -151,7 +151,7 @@ interface AdsListParams {
 }
 
 export async function google_ads_list(params: AdsListParams, ctx: GoogleReadCtx): Promise<unknown> {
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   let query =
     "SELECT ad_group_ad.ad.id, ad_group_ad.ad.responsive_search_ad.headlines, ad_group_ad.status, " +
     "ad_group.id, campaign.id FROM ad_group_ad"
@@ -163,7 +163,7 @@ export async function google_ads_list(params: AdsListParams, ctx: GoogleReadCtx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -206,11 +206,11 @@ export async function google_insights_query(
     }
     throw err
   }
-  const { token, config } = client
+  const { auth, config } = client
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -267,12 +267,12 @@ export async function google_account_info(
     }
     throw err
   }
-  const { token, config } = client
+  const { auth, config } = client
 
   const customerRows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: CUSTOMER_GAQL,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
   const customer = customerRows[0] ?? {}
@@ -280,7 +280,7 @@ export async function google_account_info(
   const conversionRows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: CONVERSION_ACTIONS_GAQL,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -309,11 +309,11 @@ export async function google_search_terms(
   _params: Record<string, never>,
   ctx: GoogleReadCtx,
 ): Promise<unknown> {
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: SEARCH_TERMS_GAQL,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 
@@ -337,11 +337,11 @@ export async function google_recommendations_list(
   _params: Record<string, never>,
   ctx: GoogleReadCtx,
 ): Promise<unknown> {
-  const { token, config } = await getGoogleClient(ctx)
+  const { auth, config } = await getGoogleClient(ctx)
   const rows = (await gaqlSearch(ctx.fetch, {
     customerId: config.customerId,
     query: RECOMMENDATIONS_GAQL,
-    token,
+    auth,
     loginCustomerId: config.loginCustomerId,
   })) as Row[]
 

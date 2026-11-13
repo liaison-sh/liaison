@@ -16,6 +16,7 @@ import {
   type MockDb,
 } from "@liaison/test-helpers/mock-db"
 import { packCursor } from "./adapters/cursor"
+import { connectedAccountList } from "./adapters/mock-fetch"
 import type { SocialToolCtx } from "./ctx"
 import { dmWindowTag } from "./dm-window"
 import { dmSyncJob } from "./handlers"
@@ -64,7 +65,7 @@ function ctxFor(
     orgId: "org-1",
     db,
     fetch,
-    connections: { getToken: async () => "tok" },
+    connections: { getAccounts: async () => connectedAccountList() },
     config: { get: async () => null },
     emit: async () => {},
     logger: {},

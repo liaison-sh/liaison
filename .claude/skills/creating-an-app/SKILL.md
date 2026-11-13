@@ -47,7 +47,7 @@ first real tool. Patterns (each maps to a handler in
 
 - **Read-only tool** — `async (params, ctx) => ({ data: await ctx.db.findMany(...) })`
 - **Mutation tool** — `ctx.db.insert(...)` then `await ctx.emit({ entity, action: "created", entityId })`
-- **External-API tool** — `const token = await ctx.connections.<name>.getToken(); const res = await ctx.fetch(...)`
+- **External-API tool** — `const res = await ctx.fetch(url, { auth: { connection: "<name>", scheme: "bearer" } })`: the host adds the connection's token; the app never reads it (`getToken` / `getCredentials` / `ctx.config.get` of a secret are refused on the Workers and workerd executors, see REFERENCE.md "Credentials")
 - **Scheduled job** — declare it under `jobs` in `app.manifest.json` with a cron `schedule`; the handler runs on that schedule
 - **Long work** (a backfill, a big import, waiting on a provider) — never sleep or loop past the run's limit. Declare an `onDemand` job, start it with `ctx.jobs.enqueue(name, payload)`, and inside it use `ctx.steps.run(name, { budgetMs }, async (cursor) => ({ done, cursor, wakeIn? }))`: it saves the cursor and continues in a later run. `ctx.timers.wakeIn(seconds, name, payload)` runs a job later. See REFERENCE.md, "Long work"
 - **Contacts** — `await ctx.resolveContact({ email })`

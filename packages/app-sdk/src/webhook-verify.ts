@@ -3,9 +3,12 @@
 // @liaison/app-sdk/webhook-verify: building blocks for manifest-format webhook
 // verifiers in bundled and third-party apps.
 //
-// Verifier bundles run inside the sandbox (QuickJS, no `node:crypto`): every
-// digest and comparison goes through the host `crypto_*` bridges the kernel
-// hands the verify handler. This file MUST NOT import `node:*`.
+// Verifier bundles run inside the sandbox (no `node:crypto`): every digest and
+// comparison goes through the host `crypto_*` bridges the kernel hands the
+// verify handler. The signing secret never enters the verifier: it names the
+// secret's config key and the host checks the signature with it
+// (`crypto_verifyHmacForConfig`, `config_has`), on every executor. This file
+// MUST NOT import `node:*`.
 
 /** Lower-case every header name (the kernel forwards headers as received). */
 export function lowercaseHeaderKeys(headers: Record<string, string>): Record<string, string> {
@@ -61,9 +64,18 @@ export async function freshnessTtlSeconds(
 
 /** The crypto/config bridge a base64 HMAC verifier needs. */
 export interface Base64HmacWebhookBridge {
+  /** A plain (non-secret) config value, such as the freshness override. */
   config_get: (key: string) => Promise<unknown>
+  /** Whether a config key (a declared secret included) holds a value. */
+  config_has: (key: string) => Promise<boolean>
+  /** Verify `signature` over `data` with the declared config secret `key`, host-side. */
+  crypto_verifyHmacForConfig: (
+    key: string,
+    data: string,
+    signature: string,
+    encoding: "base64" | "hex",
+  ) => Promise<boolean>
   crypto_hmacSha256Base64: (secret: string, body: string) => Promise<string>
-  crypto_timingSafeEqual: (a: string, b: string) => Promise<boolean>
 }
 
 /** How one app signs its signed-`ts` webhooks. */
@@ -108,16 +120,19 @@ export async function verifySignedTsWebhook(
   nowMs: number,
 ): Promise<SignedTsWebhookResult> {
   const headers = lowercaseHeaderKeys(params.headers)
-  const secret = (await bridge.config_get(spec.secretConfigKey)) as string | null
-  if (!secret) return { ok: false, reason: "missing_secret" }
+  if (!(await bridge.config_has(spec.secretConfigKey)))
+    return { ok: false, reason: "missing_secret" }
 
   const sig = headers[spec.signatureHeader]
   if (!sig || typeof sig !== "string") return { ok: false, reason: "missing_signature" }
 
-  const expected = await bridge.crypto_hmacSha256Base64(secret, params.body)
-  // Defer the entire comparison to the host bridge (it handles unequal lengths
-  // in constant time, no early length-oracle return here).
-  const valid = await bridge.crypto_timingSafeEqual(sig, expected)
+  // The host digests the body with the secret and compares in constant time.
+  const valid = await bridge.crypto_verifyHmacForConfig(
+    spec.secretConfigKey,
+    params.body,
+    sig,
+    "base64",
+  )
   if (!valid) return { ok: false, reason: "signature_mismatch" }
 
   // Freshness bound on the SIGNED `ts`, checked only after the signature holds:

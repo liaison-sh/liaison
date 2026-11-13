@@ -18,9 +18,10 @@ import { createHmac } from "node:crypto"
 import { join } from "node:path"
 import { sql } from "~/db/connection"
 import { schemaRef } from "~/db/schema-ref"
+import { CryptoContext, encryptSecret } from "~/lib/crypto"
+import { env } from "~/lib/env"
 import { CONTRACT_ORG_ID, CONTRACT_USER_ID } from "~/modules/apps/contract/replay-bridge"
 import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
-import type { AppBridge } from "~/modules/apps/sandbox/run-app"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { type FakeProviders, graphPage, installFakeProviders, on } from "./fake-providers"
 import {
@@ -148,6 +149,13 @@ function metaRoutes(): Parameters<typeof installFakeProviders>[1] {
       "GET",
       "/oauth/access_token",
       () => ({ access_token: `${META_APP}|redacted`, token_type: "bearer" }),
+      fb,
+    ),
+    // The host's client credentials grant (form POST): Meta answers the app access token.
+    on(
+      "POST",
+      "/oauth/access_token",
+      () => ({ access_token: `${META_APP}|${APP_SECRET}`, token_type: "bearer" }),
       fb,
     ),
     on(
@@ -558,24 +566,8 @@ const PLAN: RecordingStep<SocialState>[] = [
   },
 ]
 
-const TOKENS: Record<string, string> = {
-  facebook: USER_TOKEN,
-  instagram: IG_TOKEN,
-  instagram_unified: USER_TOKEN,
-  google: YT_TOKEN,
-}
-
-/** OAuth tokens from the stand-in providers: the recording org holds no real grant. */
-function withStandInTokens(bridge: AppBridge): AppBridge {
-  return {
-    ...bridge,
-    connections_getToken: async (connection: unknown) => {
-      const token = TOKENS[String(connection)]
-      if (!token) throw new Error(`no stand-in token for ${String(connection)}`)
-      return token
-    },
-  }
-}
+/** The stand-in token each connected account holds; the host adds it to a call that names it. */
+const TOKENS: Record<string, string> = { facebook: USER_TOKEN, google: YT_TOKEN }
 
 describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fixtures", () => {
   let installed: Awaited<ReturnType<typeof installForRecording>>
@@ -600,10 +592,23 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fix
       ["facebook", PAGE, PAGE_NAME],
       ["google", CHANNEL, PAGE_NAME],
     ] as const) {
+      const token = encryptSecret(
+        TOKENS[connection] as string,
+        env.ENCRYPTION_KEY,
+        CryptoContext.connectedAccountAccessToken,
+      )
       await sql`INSERT INTO ${K}.connected_accounts
-        (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name, status, created_by)
-        VALUES (${CONTRACT_ORG_ID}, ${APP}, ${connection}, 'org', 'oauth2', ${identifier}, ${name}, 'active', ${CONTRACT_USER_ID})`
+        (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name,
+         access_token_encrypted, token_expires_at, status, created_by)
+        VALUES (${CONTRACT_ORG_ID}, ${APP}, ${connection}, 'org', 'oauth2', ${identifier}, ${name},
+         ${token}, now() + interval '10 years', 'active', ${CONTRACT_USER_ID})`
     }
+    // The workspace's own Meta app (its OAuth client): the host's client credentials grant
+    // turns it into the app token for the app-level subscription.
+    await sql`DELETE FROM ${K}.oauth_providers WHERE org_id = ${CONTRACT_ORG_ID} AND name = 'social:facebook'`
+    await sql`INSERT INTO ${K}.oauth_providers (org_id, name, issuer_url, client_id, client_secret_encrypted)
+      VALUES (${CONTRACT_ORG_ID}, 'social:facebook', 'https://www.facebook.com', ${META_APP},
+       ${encryptSecret(APP_SECRET, env.ENCRYPTION_KEY, CryptoContext.oauthProviderClientSecret)})`
     fakes = installFakeProviders(
       ["graph.facebook.com", "graph.instagram.com", "www.googleapis.com", "youtube.googleapis.com"],
       [...metaRoutes(), ...youtubeRoutes()],
@@ -612,6 +617,8 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fix
 
   afterAll(async () => {
     fakes?.uninstall()
+    await sql`DELETE FROM ${sql(schemaRef("kernel"))}.oauth_providers
+      WHERE org_id = ${CONTRACT_ORG_ID} AND name = 'social:facebook'`
     await uninstallAfterRecording(APP)
     await releaseTestLock()
   })
@@ -637,7 +644,7 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record social contract fix
         "the contract org on a local stack with documented Meta Graph and YouTube Data API answers (no sandbox account), record-social.recorder.ts",
       fixturesDir: join(import.meta.dir, "../../src/modules/apps/contract/fixtures"),
       appConfig: CONFIG,
-      wrapBridge: withStandInTokens,
+
     })
     console.log(
       `\n${report.join("\n")}\n\nprovider misses:\n${[...new Set(fakes.misses)].join("\n")}\n`,

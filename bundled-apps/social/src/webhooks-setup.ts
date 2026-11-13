@@ -4,11 +4,15 @@
 //
 // Two subscriptions are needed before Meta delivers anything, and nothing else in the app makes
 // either of them:
-//   1. App level: the Meta app's `page` object subscription (`POST /{app-id}/subscriptions`, app
-//      access token `{app-id}|{app-secret}`) names the callback URL, the fields and the verify
-//      token. Meta checks the callback at once with the `hub.challenge` handshake, which the kernel
-//      answers against the app config key `webhookVerifyToken` (webhooks/routes.ts). The token is
-//      provisioned here (an app-held secret, encrypted at rest) BEFORE the subscription is sent.
+//   1. App level: the Meta app's `page` object subscription (`POST /{app-id}/subscriptions`, an
+//      app access token) names the callback URL, the fields and the verify token. Meta checks the
+//      callback at once with the `hub.challenge` handshake, which the kernel answers against the
+//      app config key `webhookVerifyToken` (webhooks/routes.ts). The token is provisioned here (an
+//      app-held secret, encrypted at rest) BEFORE the subscription is sent.
+//      No secret enters this code: the app token is the host's (`ctx.fetch` auth, the client
+//      credentials grant of the `facebook` connection's OAuth client), the verify token is written
+//      into the request host-side (`configSecrets`, the manifest's `secrets.webhookVerifyToken`),
+//      and the user token is the connected account's, added by the host.
 //   2. Page level: each managed Page subscribes this app (`POST /{page-id}/subscribed_apps`, Page
 //      token). This needs `pages_manage_metadata` on the user's grant.
 // The fields are exactly what the parser reads (facebook adapter `parseWebhook`): `feed` changes
@@ -26,8 +30,8 @@
 // already subscribed to both fields is not posted again, and a Page's other subscribed fields are
 // kept. A Page that fails is reported with its Graph error, never dropped.
 import { FB_BASE } from "./adapters/facebook"
-import { BASE_URL_METADATA_KEY, resolveAccessToken } from "./connection"
-import type { SocialToolCtx } from "./ctx"
+import { BASE_URL_METADATA_KEY, resolveAccountAuth } from "./connection"
+import type { SocialAuth, SocialToolCtx } from "./ctx"
 
 export const META_APP_SECRET_KEY = "socialMetaAppSecret"
 export const VERIFY_TOKEN_KEY = "webhookVerifyToken"
@@ -35,11 +39,20 @@ export const VERIFY_TOKEN_KEY = "webhookVerifyToken"
 export const CELL_CALLBACK_KEY = "cellMetaCallbackUrl"
 export const CELL_VERIFY_TOKEN_KEY = "cellMetaVerifyToken"
 export const WEBHOOK_FIELDS = ["feed", "messages"] as const
+/** Where the host writes the stored verify token in the subscription body (`configSecrets`). */
+export const VERIFY_TOKEN_PLACEHOLDER = "{{webhookVerifyToken}}"
+/** The Meta app's own token: the `facebook` connection's OAuth client, client credentials grant. */
+const APP_AUTH: SocialAuth = {
+  connection: "facebook",
+  scheme: "bearer",
+  grant: "client_credentials",
+}
 const WEBHOOK_ENDPOINT = "meta"
 
 type SetupCtx = SocialToolCtx & {
   config: {
     get(key: string): Promise<unknown>
+    has(key: string): Promise<boolean>
     setSecret?(key: string, value: string): Promise<void>
   }
 }
@@ -75,7 +88,15 @@ class GraphError extends Error {}
 async function graph<T>(
   ctx: SocialToolCtx,
   url: string,
-  init: { method?: string; token?: string; body?: Record<string, unknown> } = {},
+  init: {
+    method?: string
+    /** A Page token the app holds (Meta answered it), sent as a bearer. */
+    token?: string
+    /** Or a credential the host adds (the connected account's, or the app token). */
+    auth?: SocialAuth
+    body?: Record<string, unknown>
+    configSecrets?: Record<string, string>
+  } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {}
   if (init.token) headers.Authorization = `Bearer ${init.token}`
@@ -83,7 +104,9 @@ async function graph<T>(
   const res = await ctx.fetch(url, {
     method: init.method ?? "GET",
     headers,
+    ...(init.auth ? { auth: init.auth } : {}),
     ...(init.body ? { body: JSON.stringify(init.body) } : {}),
+    ...(init.configSecrets ? { configSecrets: init.configSecrets } : {}),
   })
   let parsed: unknown = {}
   try {
@@ -114,7 +137,6 @@ function metadataOf(v: unknown): Record<string, unknown> {
 interface Prereqs {
   accounts: string[]
   callbackUrl: string
-  appSecret: string
   /** Managed edition: the server's handshake token (the workspace mints none). */
   cellVerifyToken: string | null
 }
@@ -146,7 +168,8 @@ async function prerequisites(
       "No Facebook account is connected: connect Facebook in Settings, Social first.",
     )
   }
-  const appSecret = await ctx.config.get(META_APP_SECRET_KEY)
+  // Whether the Meta app secret is stored, never its value (the host uses it).
+  const hasAppSecret = await ctx.config.has(META_APP_SECRET_KEY)
   const cell = await cellCallback(ctx)
   if (cell) {
     if (!/^https:\/\/[^/\s]+\/webhooks\/_cell\/meta$/.test(cell.url)) {
@@ -155,10 +178,10 @@ async function prerequisites(
         `The server's Meta callback is not an https address: ${cell.url}`,
       )
     }
-    if (typeof appSecret !== "string" || !appSecret) {
+    if (!hasAppSecret) {
       return fail("app_secret_missing", "The Meta app secret is not stored: reconnect Facebook.")
     }
-    return { accounts, callbackUrl: cell.url, appSecret, cellVerifyToken: cell.verifyToken }
+    return { accounts, callbackUrl: cell.url, cellVerifyToken: cell.verifyToken }
   }
   const stored = rows
     .map((r) => metadataOf(r.metadata)[BASE_URL_METADATA_KEY])
@@ -170,7 +193,7 @@ async function prerequisites(
       "The instance's public HTTPS address is not known: reconnect Facebook, or pass callback_base_url (the https address Liaison is reached at).",
     )
   }
-  if (typeof appSecret !== "string" || !appSecret) {
+  if (!hasAppSecret) {
     return fail(
       "app_secret_missing",
       "The Meta app secret is not stored: provision the Facebook OAuth client (client id and secret) and reconnect Facebook.",
@@ -184,7 +207,6 @@ async function prerequisites(
   return {
     accounts,
     callbackUrl: `${base}/webhooks/${orgId}/social/${WEBHOOK_ENDPOINT}`,
-    appSecret,
     cellVerifyToken: null,
   }
 }
@@ -200,14 +222,12 @@ function newVerifyToken(): string {
   return token
 }
 
-async function ensureVerifyToken(ctx: SetupCtx): Promise<string> {
-  const existing = await ctx.config.get(VERIFY_TOKEN_KEY)
-  if (typeof existing === "string" && existing) return existing
+/** Store a verify token unless one is set; the host writes it into the subscription request. */
+async function ensureVerifyToken(ctx: SetupCtx): Promise<void> {
+  if (await ctx.config.has(VERIFY_TOKEN_KEY)) return
   if (typeof ctx.config.setSecret !== "function")
     throw new GraphError("this host cannot store the webhook verify token")
-  const token = newVerifyToken()
-  await ctx.config.setSecret(VERIFY_TOKEN_KEY, token)
-  return token
+  await ctx.config.setSecret(VERIFY_TOKEN_KEY, newVerifyToken())
 }
 
 interface AppSubscription {
@@ -235,10 +255,10 @@ export async function webhooksSetup(
 ): Promise<SetupResult | SetupError> {
   const pre = await prerequisites(params, ctx)
   if ("status" in pre) return pre
-  const { accounts, callbackUrl, appSecret, cellVerifyToken } = pre
+  const { accounts, callbackUrl, cellVerifyToken } = pre
 
-  const firstToken = await resolveAccessToken(ctx, "facebook", accounts[0] as string)
-  if (!firstToken) {
+  const firstAuth = await resolveAccountAuth(ctx, "facebook", accounts[0] as string)
+  if (!firstAuth) {
     return fail(
       "connection_lost",
       `The Facebook token for account ${accounts[0]} is missing or expired: reconnect Facebook.`,
@@ -249,15 +269,14 @@ export async function webhooksSetup(
   let appId: string
   let appStatus: "subscribed" | "unchanged"
   try {
-    const app = await graph<{ id?: string }>(ctx, `${FB_BASE}/app?fields=id`, { token: firstToken })
+    const app = await graph<{ id?: string }>(ctx, `${FB_BASE}/app?fields=id`, { auth: firstAuth })
     if (!app.id)
       return fail("provider_rejected", "Meta did not return the app id for the Facebook token.")
     appId = app.id
-    const appToken = `${appId}|${appSecret}`
     const current = await graph<{ data?: AppSubscription[] }>(
       ctx,
       `${FB_BASE}/${appId}/subscriptions`,
-      { token: appToken },
+      { auth: APP_AUTH },
     )
     const page = (current.data ?? []).find((s) => s.object === "page")
     const have = new Set(fieldNames(page?.fields))
@@ -279,17 +298,22 @@ export async function webhooksSetup(
     if (matches) {
       appStatus = "unchanged"
     } else {
-      const verifyToken = cellVerifyToken ?? (await ensureVerifyToken(ctx))
+      // The server's own handshake token is plain instance config; the workspace's is a
+      // secret the host writes in where its placeholder stands.
+      if (cellVerifyToken === null) await ensureVerifyToken(ctx)
       await graph(ctx, `${FB_BASE}/${appId}/subscriptions`, {
         method: "POST",
+        auth: APP_AUTH,
         body: {
           object: "page",
           callback_url: callbackUrl,
           fields: WEBHOOK_FIELDS.join(","),
           include_values: true,
-          verify_token: verifyToken,
-          access_token: appToken,
+          verify_token: cellVerifyToken ?? VERIFY_TOKEN_PLACEHOLDER,
         },
+        ...(cellVerifyToken === null
+          ? { configSecrets: { [VERIFY_TOKEN_PLACEHOLDER]: VERIFY_TOKEN_KEY } }
+          : {}),
       })
       appStatus = "subscribed"
     }
@@ -303,9 +327,9 @@ export async function webhooksSetup(
   // ── 2. Per-Page `subscribed_apps` ────────────────────────────────────────
   const pages: PageResult[] = []
   for (const account of accounts) {
-    const userToken =
-      account === accounts[0] ? firstToken : await resolveAccessToken(ctx, "facebook", account)
-    if (!userToken) {
+    const userAuth =
+      account === accounts[0] ? firstAuth : await resolveAccountAuth(ctx, "facebook", account)
+    if (!userAuth) {
       pages.push({
         page_id: "",
         name: null,
@@ -322,7 +346,7 @@ export async function webhooksSetup(
           await graph<{ data?: Array<{ id: string; name?: string; access_token?: string }> }>(
             ctx,
             `${FB_BASE}/me/accounts?fields=id,name,access_token`,
-            { token: userToken },
+            { auth: userAuth },
           )
         ).data ?? []
     } catch (e) {

@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test"
 import { packCursor, parseJsonCursor } from "./cursor"
 import { instagramAdapter } from "./instagram"
-import { makeMockFetch } from "./mock-fetch"
+import { makeMockFetch, testAuth } from "./mock-fetch"
 
 // Every test account uses this shape: the connection-scoped id ("ig1") is
 // DIFFERENT from the professional-account id `/me` returns ("pro-ig1") — the
@@ -17,7 +17,7 @@ describe("instagramAdapter (B4)", () => {
       "/ig1/media": { data: [], paging: { cursors: {} } },
     })
     const { findings, nextCursor } = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(findings).toEqual([])
@@ -38,7 +38,7 @@ describe("instagramAdapter (B4)", () => {
       {
         accountExternalId: "ig1",
         fetch,
-        accessToken: "tok",
+        auth: testAuth("tok"),
         logger: { info: (msg, data) => infoCalls.push([msg, data]) },
       },
       null,
@@ -50,7 +50,7 @@ describe("instagramAdapter (B4)", () => {
   test("401 on the own-media fetch surfaces as CONNECTION_LOST (no findings)", async () => {
     const fetch = makeMockFetch({ ...ME_ROUTE, "/ig1/media": {} }, { status: 401 })
     const res = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(res.findings.length).toBe(0)
@@ -60,7 +60,7 @@ describe("instagramAdapter (B4)", () => {
   test("401 on the self-identity (/me) fetch surfaces as CONNECTION_LOST before the own-media fetch", async () => {
     const fetch = makeMockFetch({ "/me?fields=id,username": {} }, { status: 401 })
     const res = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(res.findings.length).toBe(0)
@@ -71,7 +71,7 @@ describe("instagramAdapter (B4)", () => {
   test("429 on the self-identity (/me) fetch surfaces as RATE_LIMITED", async () => {
     const fetch = makeMockFetch({ "/me?fields=id,username": {} }, { status: 429 })
     const res = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(res.findings.length).toBe(0)
@@ -109,7 +109,7 @@ describe("instagramAdapter (B4)", () => {
     }) as Parameters<typeof instagramAdapter.discover>[0]["fetch"]
 
     const res = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       null,
     )
     expect(res.error).toBeUndefined()
@@ -126,7 +126,7 @@ describe("instagramAdapter (B4)", () => {
     })
     const oldCursor = packCursor({ mentions: "STALE", ownMedia: "PRIOR" })
     const { nextCursor } = await instagramAdapter.discover(
-      { accountExternalId: "ig1", fetch, accessToken: "tok" },
+      { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
       oldCursor,
     )
     expect(nextCursor).toBeDefined()
@@ -175,7 +175,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const { findings } = await instagramAdapter.discover(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       const ownComments = findings.filter((f) => f.relation === "comment_on_our_content")
@@ -205,7 +205,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const { findings } = await instagramAdapter.discover(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       const ids = findings.map((f) => f.externalId)
@@ -257,7 +257,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const { findings } = await instagramAdapter.discover(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       const ids = findings.map((f) => f.externalId)
@@ -270,7 +270,7 @@ describe("instagramAdapter (B4)", () => {
         "/ig1/media": { data: [], paging: { cursors: {} } },
       })
       const { findings } = await instagramAdapter.discover(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(findings).toEqual([])
@@ -305,7 +305,7 @@ describe("instagramAdapter (B4)", () => {
         {
           accountExternalId: "ig1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           logger: { warn: (msg, data) => warnCalls.push([msg, data]) },
         },
         null,
@@ -330,7 +330,7 @@ describe("instagramAdapter (B4)", () => {
         {
           accountExternalId: "ig1",
           fetch,
-          accessToken: "tok",
+          auth: testAuth("tok"),
           logger: { warn: (msg, data) => warnCalls.push([msg, data]) },
         },
         null,
@@ -377,7 +377,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
 
@@ -432,7 +432,7 @@ describe("instagramAdapter (B4)", () => {
         "/conv-1/messages": { data: [] },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -457,7 +457,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.messages).toEqual(
@@ -487,7 +487,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.messages).toEqual([
@@ -513,7 +513,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.messages).toEqual([
@@ -548,7 +548,7 @@ describe("instagramAdapter (B4)", () => {
       }) as Parameters<NonNullable<typeof instagramAdapter.syncDms>>[0]["fetch"]
 
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       // Degraded (accountExternalId-only) matching still recognizes "ig1" as self.
@@ -564,7 +564,7 @@ describe("instagramAdapter (B4)", () => {
         "/me/conversations": { data: [], paging: { cursors: {} } },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result).toMatchObject({ conversations: [], messages: [] })
@@ -577,7 +577,7 @@ describe("instagramAdapter (B4)", () => {
     test("401 on /me/conversations → CONNECTION_LOST, cursor unchanged", async () => {
       const fetch = makeMockFetch({ ...ME_ROUTE, "/me/conversations": {} }, { status: 401 })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -591,7 +591,7 @@ describe("instagramAdapter (B4)", () => {
     test("429 on /me/conversations → RATE_LIMITED, cursor unchanged", async () => {
       const fetch = makeMockFetch({ ...ME_ROUTE, "/me/conversations": {} }, { status: 429 })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -605,7 +605,7 @@ describe("instagramAdapter (B4)", () => {
     test("401 on the self-identity (/me) fetch surfaces as CONNECTION_LOST, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me?fields=id,username": {} }, { status: 401 })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -620,7 +620,7 @@ describe("instagramAdapter (B4)", () => {
     test("429 on the self-identity (/me) fetch surfaces as RATE_LIMITED, cursor unchanged", async () => {
       const fetch = makeMockFetch({ "/me?fields=id,username": {} }, { status: 429 })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         "PRIOR_CURSOR",
       )
       expect(result).toMatchObject({
@@ -656,7 +656,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -690,7 +690,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -723,7 +723,7 @@ describe("instagramAdapter (B4)", () => {
         },
       })
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(result?.conversations).toEqual([
@@ -776,7 +776,7 @@ describe("instagramAdapter (B4)", () => {
       }) as Parameters<NonNullable<typeof instagramAdapter.syncDms>>[0]["fetch"]
 
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok" },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok") },
         null,
       )
       expect(pageCalls).toBe(4) // bounded at 4 pages
@@ -799,7 +799,7 @@ describe("instagramAdapter (B4)", () => {
       })
       const skipMessagesBefore = new Map([["conv-unchanged", "2026-06-01T09:00:00+0000"]])
       const result = await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok", skipMessagesBefore },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok"), skipMessagesBefore },
         null,
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(false)
@@ -825,7 +825,7 @@ describe("instagramAdapter (B4)", () => {
       })
       const skipMessagesBefore = new Map([["conv-changed", "2026-06-01T09:00:00+0000"]])
       await instagramAdapter.syncDms?.(
-        { accountExternalId: "ig1", fetch, accessToken: "tok", skipMessagesBefore },
+        { accountExternalId: "ig1", fetch, auth: testAuth("tok"), skipMessagesBefore },
         null,
       )
       expect(fetch.calls.some((c) => c.url.includes("/messages"))).toBe(true)

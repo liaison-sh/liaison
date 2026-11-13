@@ -9,7 +9,7 @@
 // for the fast-ack ingest path (B5).
 //
 // PAGE TOKENS (the core fix here): the `facebook` OAuth connection resolves
-// the connected account from `/me` — the USER node — so `ctx.accessToken` is
+// the connected account from `/me` — the USER node — so `ctx.auth` is
 // a USER access token. Page content (feed, comments, Messenger conversations)
 // lives on the PAGE node and requires a PAGE access token, obtained via
 // `GET /me/accounts` (using the user token), which returns each managed
@@ -32,17 +32,18 @@ import {
   usageThrottled,
   walkNewestFirst,
 } from "./graph-paging"
-import type {
-  AdapterContext,
-  DiscoverResult,
-  DmSyncResult,
-  NormalizedConversation,
-  NormalizedFinding,
-  NormalizedMessage,
-  OutboundRequest,
-  OwnRecentObjectsResult,
-  OwnReplyLookup,
-  PlatformAdapter,
+import {
+  type AdapterContext,
+  accountAuth,
+  type DiscoverResult,
+  type DmSyncResult,
+  type NormalizedConversation,
+  type NormalizedFinding,
+  type NormalizedMessage,
+  type OutboundRequest,
+  type OwnRecentObjectsResult,
+  type OwnReplyLookup,
+  type PlatformAdapter,
 } from "./types"
 
 /** Parse the sandbox fetch body string (empty body → empty object). */
@@ -81,7 +82,7 @@ interface ResolvedPages {
 async function resolveManagedPages(ctx: AdapterContext): Promise<ResolvedPages> {
   const url = `${FB_BASE}/me/accounts?fields=id,name,access_token`
   const res = await ctx.fetch(url, {
-    headers: ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {},
+    ...accountAuth(ctx),
   })
   const err = graphError(res)
   if (err) return { pages: [], error: err }
@@ -380,7 +381,7 @@ const MESSAGE_PAGE_BOUND = 4
  * [conversation_id, external_id]) makes overlapping pages idempotent. A
  * failed page ends the fetch with `ok: false` so the caller does not advance
  * the conversation's last-message mark past messages that never landed.
- * Takes an explicit Page access token (not `ctx.accessToken`, which is the
+ * Takes an explicit Page access token (not `ctx.auth`, which is the
  * user token): each Page's conversations are authorized with THAT page's token.
  */
 async function fetchConversationMessages(

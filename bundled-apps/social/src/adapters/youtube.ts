@@ -22,13 +22,14 @@
 
 import { decodeHtmlEntities } from "../lib/html-entities"
 import { packCursor, parseCursor, parseJsonCursor } from "./cursor"
-import type {
-  AdapterContext,
-  DiscoverResult,
-  DiscoveryTerm,
-  NormalizedFinding,
-  OutboundRequest,
-  PlatformAdapter,
+import {
+  type AdapterContext,
+  accountAuth,
+  type DiscoverResult,
+  type DiscoveryTerm,
+  type NormalizedFinding,
+  type OutboundRequest,
+  type PlatformAdapter,
 } from "./types"
 
 /** Parse the sandbox fetch body string (empty body → empty object). */
@@ -246,10 +247,6 @@ interface YtVideosStatisticsResponse {
   items?: Array<{ id?: string; statistics?: { commentCount?: string } }>
 }
 
-function authHeaders(ctx: AdapterContext): Record<string, string> {
-  return ctx.accessToken ? { Authorization: `Bearer ${ctx.accessToken}` } : {}
-}
-
 /**
  * Keyword-search discovery: ONE search.list (100 units) per term per run,
  * sorted by date and windowed by the term's own publishedAfter watermark, so a
@@ -285,7 +282,7 @@ async function discoverKeywordMatches(
     const after = state.after ? `&publishedAfter=${encodeURIComponent(state.after)}` : ""
     const page = state.pageToken ? `&pageToken=${encodeURIComponent(state.pageToken)}` : ""
     const url = `${YT_BASE}/search?part=snippet&type=video&order=date&maxResults=50&q=${q}${after}${page}`
-    const res = await ctx.fetch(url, { headers: authHeaders(ctx) })
+    const res = await ctx.fetch(url, { ...accountAuth(ctx) })
     if (res.status === 401) {
       return { findings: [], nextCursor: cursor, unitsConsumed, error: "CONNECTION_LOST" }
     }
@@ -373,7 +370,7 @@ async function populateKeywordCommentCounts(
   for (let i = 0; i < videoIds.length; i += VIDEOS_BATCH_SIZE) {
     const batch = videoIds.slice(i, i + VIDEOS_BATCH_SIZE)
     const url = `${YT_BASE}/videos?part=statistics&id=${batch.map(encodeURIComponent).join(",")}`
-    const res = await ctx.fetch(url, { headers: authHeaders(ctx) })
+    const res = await ctx.fetch(url, { ...accountAuth(ctx) })
     if (isYoutubeQuotaRefusal(res)) {
       quotaExhausted = true
       break
@@ -417,7 +414,7 @@ async function discoverOwnChannelComments(
   let unitsConsumed = 0
 
   const channelsRes = await ctx.fetch(`${YT_BASE}/channels?part=contentDetails&mine=true`, {
-    headers: authHeaders(ctx),
+    ...accountAuth(ctx),
   })
   if (isYoutubeQuotaRefusal(channelsRes))
     return { findings: [], unitsConsumed, quotaExhausted: true }
@@ -436,7 +433,7 @@ async function discoverOwnChannelComments(
 
   const playlistRes = await ctx.fetch(
     `${YT_BASE}/playlistItems?part=snippet,contentDetails&playlistId=${uploadsPlaylistId}&maxResults=${OWN_CHANNEL_RECENT_UPLOADS}`,
-    { headers: authHeaders(ctx) },
+    { ...accountAuth(ctx) },
   )
   if (isYoutubeQuotaRefusal(playlistRes))
     return { findings: [], unitsConsumed, quotaExhausted: true }
@@ -459,7 +456,7 @@ async function discoverOwnChannelComments(
     const url = `${YT_BASE}/commentThreads?part=snippet&videoId=${video.videoId}&maxResults=${OWN_CHANNEL_COMMENTS_PER_VIDEO}&order=time`
     let res: { status: number; body: string }
     try {
-      res = await ctx.fetch(url, { headers: authHeaders(ctx) })
+      res = await ctx.fetch(url, { ...accountAuth(ctx) })
     } catch {
       // Network/adapter-level throw for one video — swallow and continue with
       // the rest of the recent uploads (per build spec: "a per-video comments
@@ -533,7 +530,7 @@ export const youtubeAdapter: PlatformAdapter = {
   ): Promise<DiscoverResult> {
     const pageToken = parseCursor(cursor)
     const url = `${YT_BASE}/commentThreads?part=snippet&videoId=${objectExternalId}&maxResults=100${pageToken ? `&pageToken=${pageToken}` : ""}`
-    const res = await ctx.fetch(url, { headers: authHeaders(ctx) })
+    const res = await ctx.fetch(url, { ...accountAuth(ctx) })
     if (res.status === 401) {
       return { findings: [], nextCursor: cursor, unitsConsumed: 0, error: "CONNECTION_LOST" }
     }

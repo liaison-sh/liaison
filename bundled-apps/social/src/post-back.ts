@@ -27,7 +27,7 @@ import type {
   PlatformAdapter,
 } from "./adapters/types"
 import { youtubeAdapter } from "./adapters/youtube"
-import { resolveAccessToken } from "./connection"
+import { resolveAccountAuth } from "./connection"
 import type { SocialToolCtx } from "./ctx"
 import { dmReplyWindow, dmWindowTag } from "./dm-window"
 import { refreshConversationState } from "./ingest"
@@ -170,13 +170,13 @@ interface SyncStateAccountRow {
  * Build an `AdapterContext` for an outbound (post-back) call: resolves the
  * platform's connected-account external id from any active `sync_state` row
  * (mirroring sync.ts's `accountIdForPlatform`; post-back has no watch/finding
- * row carrying it) and the corresponding OAuth token via `resolveAccessToken`.
+ * row carrying it) and the account's credential via `resolveAccountAuth` (added host-side).
  * Adapters that need an async page-token lookup (Facebook's `replyRequest`/
- * `dmRequest`/`likeRequest`) use this `ctx.accessToken` (the connected USER
- * token) to call `/me/accounts` themselves and resolve the correct PAGE
+ * `dmRequest`/`likeRequest`) use this `ctx.auth` (the connected USER
+ * account) to call `/me/accounts` themselves and resolve the correct PAGE
  * token — see facebook.ts. `accountExternalId` is left blank; the outbound
  * adapters here don't use it (they resolve Page ids from the target's own
- * externalId or explicit `pageId`), only `fetch`/`accessToken` matter.
+ * externalId or explicit `pageId`), only `fetch`/`auth` matter.
  */
 async function resolveOutboundAdapterContext(
   ctx: SocialToolCtx,
@@ -186,10 +186,14 @@ async function resolveOutboundAdapterContext(
     where: { platform, active: true },
     limit: 1,
   })) as SyncStateAccountRow[]
-  const accessToken = state
-    ? ((await resolveAccessToken(ctx, platform, state.account_external_id)) ?? undefined)
+  const auth = state
+    ? ((await resolveAccountAuth(ctx, platform, state.account_external_id)) ?? undefined)
     : undefined
-  return { accountExternalId: state?.account_external_id ?? "", fetch: ctx.fetch, accessToken }
+  return {
+    accountExternalId: state?.account_external_id ?? "",
+    fetch: ctx.fetch,
+    ...(auth ? { auth } : {}),
+  }
 }
 
 /**

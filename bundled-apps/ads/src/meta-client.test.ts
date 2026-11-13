@@ -7,6 +7,7 @@ import {
   createInsightsReport,
   fromAccountCurrency,
   GRAPH,
+  META_AUTH,
   MetaApiError,
   metaFetch,
   metaFetchPaged,
@@ -23,6 +24,8 @@ interface FetchCall {
   url: string
   method: string
   headers: Record<string, string>
+  /** The credential the host adds (`ctx.fetch` auth); the app never sets the header. */
+  auth?: unknown
   body?: string
 }
 
@@ -43,6 +46,7 @@ function makeCtx(fetchResponses: MockResponse[]): {
       url,
       method: String(opts?.method ?? "GET"),
       headers: (opts?.headers ?? {}) as Record<string, string>,
+      auth: opts?.auth,
       body: typeof opts?.body === "string" ? opts.body : undefined,
     })
     const resp = fetchResponses[idx++]
@@ -52,14 +56,12 @@ function makeCtx(fetchResponses: MockResponse[]): {
   return { fetch, calls }
 }
 
-const ACCESS_TOKEN = "test_token_abc"
-
 // ─── Version pin ──────────────────────────────────────────────────────────────
 
 describe("metaFetch — version pin", () => {
   it("uses graph.facebook.com/v25.0 in the URL", async () => {
     const { fetch, calls } = makeCtx([{ status: 200, body: JSON.stringify({ id: "123" }) }])
-    await metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN })
+    await metaFetch(fetch, { path: "/me", auth: META_AUTH })
     expect(calls[0]?.url).toContain("graph.facebook.com/v25.0")
     expect(calls[0]?.url).toContain(GRAPH)
   })
@@ -67,11 +69,12 @@ describe("metaFetch — version pin", () => {
 
 // ─── Authorization header ─────────────────────────────────────────────────────
 
-describe("metaFetch — Authorization header", () => {
-  it("sends Authorization: Bearer <token>", async () => {
+describe("metaFetch — host-side credential", () => {
+  it("names the meta connection's token for the host, never sets Authorization itself", async () => {
     const { fetch, calls } = makeCtx([{ status: 200, body: JSON.stringify({}) }])
-    await metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN })
-    expect(calls[0]?.headers["Authorization"]).toBe(`Bearer ${ACCESS_TOKEN}`)
+    await metaFetch(fetch, { path: "/me", auth: META_AUTH })
+    expect(calls[0]?.headers["Authorization"]).toBeUndefined()
+    expect(calls[0]?.auth).toEqual(META_AUTH)
   })
 })
 
@@ -84,7 +87,7 @@ describe("metaFetch — form-encoding", () => {
       path: "/act_123/campaigns",
       method: "GET",
       params: { fields: ["name", "status"], limit: 10 },
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })
     const url = calls[0]?.url ?? ""
     // Array value should be JSON.stringify'd in query string
@@ -101,7 +104,7 @@ describe("metaFetch — form-encoding", () => {
         special_ad_categories: [],
         targeting: { geo_locations: { countries: ["US"] } },
       },
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })
     const body = calls[0]?.body ?? ""
     // special_ad_categories=[] should be JSON-encoded
@@ -124,9 +127,9 @@ describe("metaFetch — typed errors", () => {
         body: JSON.stringify({ error: { code: 190, message: "Invalid token", fbtrace_id: "abc" } }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(AuthError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      AuthError,
+    )
   })
 
   it("102 → AuthError", async () => {
@@ -138,9 +141,9 @@ describe("metaFetch — typed errors", () => {
         }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(AuthError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      AuthError,
+    )
   })
 
   it("100 → ParamError", async () => {
@@ -150,9 +153,9 @@ describe("metaFetch — typed errors", () => {
         body: JSON.stringify({ error: { code: 100, message: "Invalid param", fbtrace_id: "def" } }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(ParamError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      ParamError,
+    )
   })
 
   it("4 → RateLimitError", async () => {
@@ -162,9 +165,9 @@ describe("metaFetch — typed errors", () => {
         body: JSON.stringify({ error: { code: 4, message: "Rate limited", fbtrace_id: "ghi" } }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(RateLimitError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      RateLimitError,
+    )
   })
 
   it("613 + error_subcode 1487632 → BudgetCapError (the ad-set ~4/hr budget cap)", async () => {
@@ -176,9 +179,9 @@ describe("metaFetch — typed errors", () => {
         }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(BudgetCapError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      BudgetCapError,
+    )
   })
 
   it("bare 613 WITHOUT subcode 1487632 → RateLimitError (NOT BudgetCapError)", async () => {
@@ -190,7 +193,7 @@ describe("metaFetch — typed errors", () => {
         }),
       },
     ])
-    const err = await metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }).catch((e) => e)
+    const err = await metaFetch(fetch, { path: "/me", auth: META_AUTH }).catch((e) => e)
     expect(err).toBeInstanceOf(RateLimitError)
     expect(err).not.toBeInstanceOf(BudgetCapError)
   })
@@ -202,9 +205,9 @@ describe("metaFetch — typed errors", () => {
         body: JSON.stringify({ error: { code: 1, message: "Transient", fbtrace_id: "pqr" } }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(TransientError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      TransientError,
+    )
   })
 
   it("2 → TransientError", async () => {
@@ -214,9 +217,9 @@ describe("metaFetch — typed errors", () => {
         body: JSON.stringify({ error: { code: 2, message: "Transient", fbtrace_id: "stu" } }),
       },
     ])
-    await expect(
-      metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }),
-    ).rejects.toBeInstanceOf(TransientError)
+    await expect(metaFetch(fetch, { path: "/me", auth: META_AUTH })).rejects.toBeInstanceOf(
+      TransientError,
+    )
   })
 
   it("errors include fbtrace_id in the message", async () => {
@@ -228,9 +231,7 @@ describe("metaFetch — typed errors", () => {
         }),
       },
     ])
-    const err = await metaFetch(fetch, { path: "/me", accessToken: ACCESS_TOKEN }).catch(
-      (e: Error) => e,
-    )
+    const err = await metaFetch(fetch, { path: "/me", auth: META_AUTH }).catch((e: Error) => e)
     expect((err as Error).message).toContain("TRACE123")
   })
 })
@@ -258,7 +259,7 @@ describe("metaFetchPaged — cursor paging", () => {
     const result = await metaFetchPaged(fetch, {
       path: "/act_123/campaigns",
       method: "GET",
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })
     expect(result).toHaveLength(3)
     expect((result[0] as { id: string }).id).toBe("a")
@@ -295,7 +296,7 @@ describe("fromAccountCurrency", () => {
 // ─── Async insights ───────────────────────────────────────────────────────────
 
 describe("createInsightsReport / checkInsightsReport", () => {
-  const RUN = { reportRunId: "RUN_42", accessToken: ACCESS_TOKEN }
+  const RUN = { reportRunId: "RUN_42", auth: META_AUTH }
 
   it("createInsightsReport POSTs async=true and answers the report run id", async () => {
     const { fetch, calls } = makeCtx([
@@ -304,7 +305,7 @@ describe("createInsightsReport / checkInsightsReport", () => {
     const id = await createInsightsReport(fetch, {
       path: "/act_123/insights",
       params: { level: "account", date_preset: "last_7d" },
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })
     expect(id).toBe("RUN_42")
     expect(calls[0]?.method).toBe("POST")
@@ -317,7 +318,7 @@ describe("createInsightsReport / checkInsightsReport", () => {
     const err = await createInsightsReport(fetch, {
       path: "/a/insights",
       params: {},
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     }).catch((e) => e)
     expect(err).toBeInstanceOf(MetaApiError)
   })
@@ -402,7 +403,7 @@ describe("metaFetch — throttle headers never throw on a successful 2xx", () =>
     ])
     const result = (await metaFetch(fetch, {
       path: "/act_123/campaigns",
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })) as { data: unknown[] }
     // Busy-but-OK account: the completed read is returned, not thrown away.
     expect(result.data).toHaveLength(1)
@@ -422,7 +423,7 @@ describe("metaFetch — throttle headers never throw on a successful 2xx", () =>
     ])
     const result = (await metaFetch(fetch, {
       path: "/act_123/insights",
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     })) as { data: unknown[] }
     expect(result.data).toHaveLength(1)
   })
@@ -451,7 +452,7 @@ describe("metaFetch: production error envelopes classify as expected upstream an
     ])
     const err = await metaFetch(fetch, {
       path: "/act_1/insights",
-      accessToken: ACCESS_TOKEN,
+      auth: META_AUTH,
     }).catch((e) => e)
     expect(err).toBeInstanceOf(RateLimitError)
     expect((err as MetaApiError).httpStatus).toBe(400)
@@ -460,16 +461,14 @@ describe("metaFetch: production error envelopes classify as expected upstream an
 
   it("#10 'Application does not have permission' is a PermissionError", async () => {
     const { fetch } = makeCtx([{ status: 403, body: graphError(10) }])
-    const err = await metaFetch(fetch, { path: "/act_1/x", accessToken: ACCESS_TOKEN }).catch(
-      (e) => e,
-    )
+    const err = await metaFetch(fetch, { path: "/act_1/x", auth: META_AUTH }).catch((e) => e)
     expect(err).toBeInstanceOf(PermissionError)
     expect((err as MetaApiError).httpStatus).toBe(403)
   })
 })
 
 describe("checkInsightsReport: transient Meta answers are pending, not errors", () => {
-  const RUN = { reportRunId: "RUN_S", accessToken: ACCESS_TOKEN }
+  const RUN = { reportRunId: "RUN_S", auth: META_AUTH }
 
   it("report-not-ready delivered as #100 with subcode 1815005 answers not_ready instead of throwing", async () => {
     const notReady = graphError(100, {

@@ -6,12 +6,14 @@
 //     connection: "<name>",          // a connection the manifest declares
 //     identifier?: "<account>",      // which account (as for connections_getToken)
 //     account?: "<account id>",      // oauth2: exactly this account (an id ctx.accounts.list gave)
-//     scheme: "header:<Name>" | "bearer" | "basic",
+//     scheme: "header:<Name>" | "bearer" | "basic" | "query:<param>",
 //     fields?: [...],                // a credentials connection: the field(s) to send
 //     exchange?: {                   // bearer only: client-credentials token exchange
 //       url, method?, fields: [keyField, secretField],
 //       tokenField?: "accessToken", expiresInField?: "expiresIn",
 //     },
+//     grant?: "client_credentials",  // oauth2 + bearer: an app token from the connection's
+//                                    // own OAuth client, not an account's token
 //   }
 //   configSecrets: { "<placeholder>": "<config key>" }   // placed where the manifest's
 //                                                       // `secrets.<key>` says
@@ -22,6 +24,18 @@
 // host of that connection's own `allowedDomains` (every redirect hop is held to
 // them too), replaces any header of the same name the app set, and every value
 // injected is redacted from what comes back, in case the upstream echoes it.
+//
+// `query:<param>` writes the value as that query parameter of the URL that goes
+// out (the app's own URL never carries it, and every message back is redacted).
+//
+// A bearer `grant: "client_credentials"` (an oauth2 connection) posts the
+// connection's OAuth client id and secret (the client its OAuth flow uses: the
+// org's own, else the instance's) to the connection's `tokenUrl` with
+// `grant_type=client_credentials` (RFC 6749 4.4), host-side, and sends the app
+// token it answers (`access_token`, cached until 60 s before `expires_in`, or an
+// hour when the provider gives none, dropped on a 401). For calls a provider
+// makes as the app itself, not as a connected account (Meta's app-level
+// subscriptions).
 //
 // A bearer `exchange` posts Basic(keyField:secretField) to the provider's token
 // URL host-side, caches the bearer until 60 s before its declared expiry, and
@@ -56,6 +70,8 @@ export interface FetchAuth {
   scheme: string
   fields?: string[]
   exchange?: FetchAuthExchange
+  /** oauth2 + bearer: an app token of the connection's OAuth client (client credentials grant). */
+  grant?: "client_credentials"
 }
 
 export interface FetchAuthDeps {
@@ -74,6 +90,10 @@ export interface FetchAuthDeps {
   readCredentials: (connection: string, identifier?: string) => Promise<Record<string, unknown>>
   /** A declared config secret, decrypted (config_get's lookup); null when unset. */
   readConfigSecret: (key: string) => Promise<string | null>
+  /** The OAuth client of an oauth2 connection (its flow's: org, else instance); null when none. */
+  readOAuthClient?: (
+    connection: string,
+  ) => Promise<{ clientId: string; clientSecret: string } | null>
   /** This bridge's own fetch, for the token exchange (returns its JSON answer). */
   send: (url: string, optsJson: string) => Promise<string>
 }
@@ -85,6 +105,9 @@ export interface FetchResult {
 }
 
 const HEADER_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9-]{0,63}$/
+const QUERY_PARAM_RE = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/
+/** An app token whose provider gives no lifetime is kept this long. */
+const GRANT_DEFAULT_TTL_MS = 3_600_000
 /** Headers no credential may be placed in: they frame the request, or a provider may log them. */
 const FORBIDDEN_HEADERS = SECRET_FORBIDDEN_HEADERS
 const IDENT_RE = /^[A-Za-z0-9_.:-]{1,128}$/
@@ -112,8 +135,16 @@ export function parseFetchAuth(raw: unknown): FetchAuth | null {
   const connection = ident(r.connection, "connection")
   const scheme = r.scheme
   if (typeof scheme !== "string") throw invalid("scheme is required")
-  if (scheme !== "bearer" && scheme !== "basic" && !scheme.startsWith("header:")) {
+  if (
+    scheme !== "bearer" &&
+    scheme !== "basic" &&
+    !scheme.startsWith("header:") &&
+    !scheme.startsWith("query:")
+  ) {
     throw invalid(`unknown scheme "${scheme}"`)
+  }
+  if (scheme.startsWith("query:") && !QUERY_PARAM_RE.test(scheme.slice("query:".length))) {
+    throw invalid(`query parameter "${scheme.slice("query:".length)}" is not a parameter name`)
   }
   if (scheme.startsWith("header:")) {
     const name = scheme.slice("header:".length)
@@ -139,6 +170,14 @@ export function parseFetchAuth(raw: unknown): FetchAuth | null {
       throw invalid("fields must name one or two credential fields")
     }
     out.fields = r.fields.map((f) => ident(f, "field"))
+  }
+  if (r.grant !== undefined) {
+    if (r.grant !== "client_credentials") throw invalid(`unknown grant "${String(r.grant)}"`)
+    if (scheme !== "bearer") throw invalid("grant is for the bearer scheme")
+    if (r.exchange !== undefined || r.fields !== undefined || out.identifier || out.account) {
+      throw invalid("a client credentials grant names only the connection")
+    }
+    out.grant = "client_credentials"
   }
   if (r.exchange !== undefined) {
     if (scheme !== "bearer") throw invalid("exchange is for the bearer scheme")
@@ -422,9 +461,95 @@ async function exchangedBearer(
   return { failed: out }
 }
 
+/**
+ * The app token of `connection`'s OAuth client (client credentials grant), cached per org,
+ * app, connection, token URL and client (a keyed fingerprint of its id and secret, so a
+ * rotated or replaced client never reuses the old one's token).
+ */
+async function grantedBearer(
+  deps: FetchAuthDeps,
+  connection: string,
+  tokenUrl: string | undefined,
+  timeoutMs: number | undefined,
+): Promise<{ key: string; bearer: CachedBearer } | { failed: FetchResult }> {
+  if (!tokenUrl) throw invalid(`connection "${connection}" declares no tokenUrl`)
+  assertConnectionHost(deps.manifest, connection, tokenUrl)
+  const client = deps.readOAuthClient ? await deps.readOAuthClient(connection) : null
+  if (!client) {
+    throw typedError(
+      409,
+      "credential_missing",
+      `Connection "${connection}" has no OAuth client configured. Set its client id and secret in Settings.`,
+    )
+  }
+  const fingerprint = createHmac("sha256", FINGERPRINT_KEY)
+    .update(`${client.clientId.length}:${client.clientId}\u0000${client.clientSecret}`, "utf8")
+    .digest("hex")
+  const slot = [deps.orgId, deps.appName, connection, tokenUrl, "client_credentials"].join("\u0000")
+  const key = `${slot}\u0000${fingerprint}`
+  const previous = bearerSlots.get(slot)
+  if (previous !== undefined && previous !== key) bearerCache.delete(previous)
+  bearerSlots.set(slot, key)
+  const cached = bearerCache.get(key)
+  if (cached && Date.now() < cached.expiresAtMs) return { key, bearer: cached }
+  let inflight = bearerInflight.get(key)
+  if (!inflight) {
+    inflight = (async (): Promise<CachedBearer | FetchResult> => {
+      const form = new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: client.clientId,
+        client_secret: client.clientSecret,
+      }).toString()
+      const answer = JSON.parse(
+        await deps.send(
+          tokenUrl,
+          JSON.stringify({
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+              Accept: "application/json",
+            },
+            body: form,
+            ...(timeoutMs ? { timeoutMs } : {}),
+          }),
+        ),
+      ) as FetchResult
+      const secrets = [client.clientSecret, encodeURIComponent(client.clientSecret)]
+      if (answer.status >= 400) return { ...answer, body: redactSecrets(answer.body, secrets) }
+      let parsed: Record<string, unknown>
+      try {
+        parsed = JSON.parse(answer.body) as Record<string, unknown>
+      } catch {
+        throw typedError(502, "auth_exchange_invalid", "token endpoint answered with no JSON")
+      }
+      const token = parsed.access_token
+      if (typeof token !== "string" || token.length === 0) {
+        throw typedError(502, "auth_exchange_invalid", "token endpoint answered with no token")
+      }
+      const expiresIn = parsed.expires_in
+      const ttl =
+        typeof expiresIn === "number" && expiresIn > 0
+          ? Math.max(expiresIn * 1000 - TOKEN_SKEW_MS, 0)
+          : GRANT_DEFAULT_TTL_MS
+      return { token, expiresAtMs: Date.now() + ttl }
+    })().finally(() => {
+      bearerInflight.delete(key)
+    })
+    bearerInflight.set(key, inflight)
+  }
+  const out = await inflight
+  if ("token" in out) {
+    bearerCache.set(key, out)
+    return { key, bearer: out }
+  }
+  return { failed: out }
+}
+
 export interface InjectedAuth {
   /** Every value written into the request, for redaction. */
   secrets: string[]
+  /** `query:` scheme: the URL to send, carrying the credential (the app's own URL never does). */
+  url?: string
   /** Set when a cached bearer was used: a 401 answer drops it. */
   bearerKey?: string
   /** The token exchange failed: answer the app with this instead of fetching. */
@@ -458,6 +583,14 @@ export async function injectFetchAuth(
     throw invalid("account names an oauth2 account; a credentials connection uses identifier")
   }
   const declared = new Set((declaration.credentialFields ?? []).map((f) => f.name))
+
+  if (auth.grant) {
+    if (isCredentials) throw invalid("a client credentials grant needs an oauth2 connection")
+    const got = await grantedBearer(deps, auth.connection, declaration.tokenUrl, timeoutMs)
+    if ("failed" in got) return { secrets: [], failed: got.failed }
+    setHeader(headers, "Authorization", `Bearer ${got.bearer.token}`)
+    return { secrets: [got.bearer.token], bearerKey: got.key }
+  }
 
   if (auth.exchange) {
     if (!isCredentials) throw invalid("a bearer exchange needs a credentials connection")
@@ -502,6 +635,15 @@ export async function injectFetchAuth(
     }
     boundHost = accountBoundHost(deps.manifest, auth.connection, account.identifier)
     assertAccountHost(boundHost, auth.connection, url)
+  }
+  if (auth.scheme.startsWith("query:")) {
+    const wire = new URL(url)
+    wire.searchParams.set(auth.scheme.slice("query:".length), value)
+    return {
+      secrets: [value, encodeURIComponent(value)],
+      url: wire.toString(),
+      ...(boundHost ? { boundHost } : {}),
+    }
   }
   if (auth.scheme === "bearer") {
     setHeader(headers, "Authorization", `Bearer ${value}`)

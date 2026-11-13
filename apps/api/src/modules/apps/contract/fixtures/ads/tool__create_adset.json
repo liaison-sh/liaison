@@ -10,7 +10,9 @@
     "status": "PAUSED",
     "targeting": {
       "geo_locations": {
-        "countries": ["BE"]
+        "countries": [
+          "BE"
+        ]
       },
       "age_min": 25,
       "age_max": 54,
@@ -25,15 +27,17 @@
   "recordedFrom": "the contract org on a local stack with documented Meta Marketing, Google Ads and Merchant API answers (no sandbox account), record-ads.recorder.ts",
   "calls": [
     {
-      "method": "connections_getCredentials",
-      "args": ["meta"],
-      "reply": "{\"accessToken\":\"ads-token-stand-in-1\",\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"}"
+      "method": "connections_getSettings",
+      "args": [
+        "meta"
+      ],
+      "reply": "{\"values\":{\"adAccountId\":\"act_1234567890123456\",\"defaultPageId\":\"104857600000001\"},\"missing\":[]}"
     },
     {
       "method": "fetch",
       "args": [
         "https://graph.facebook.com/v25.0/act_1234567890123456/adsets",
-        "{\"method\":\"POST\",\"headers\":{\"Authorization\":\"Bearer ads-token-stand-in-1\",\"Content-Type\":\"application/x-www-form-urlencoded\"},\"body\":\"campaign_id=120210000000000101&name=BE%2025-54%20home%20studio%20interests&optimization_goal=OFFSITE_CONVERSIONS&billing_event=IMPRESSIONS&status=PAUSED&targeting=%7B%22geo_locations%22%3A%7B%22countries%22%3A%5B%22BE%22%5D%7D%2C%22age_min%22%3A25%2C%22age_max%22%3A54%2C%22interests%22%3A%5B%7B%22id%22%3A%226003139266461%22%2C%22name%22%3A%22Home%20recording%22%7D%5D%7D&daily_budget=2500\"}"
+        "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\"},\"auth\":{\"connection\":\"meta\",\"scheme\":\"bearer\",\"fields\":[\"accessToken\"]},\"body\":\"campaign_id=120210000000000101&name=BE%2025-54%20home%20studio%20interests&optimization_goal=OFFSITE_CONVERSIONS&billing_event=IMPRESSIONS&status=PAUSED&targeting=%7B%22geo_locations%22%3A%7B%22countries%22%3A%5B%22BE%22%5D%7D%2C%22age_min%22%3A25%2C%22age_max%22%3A54%2C%22interests%22%3A%5B%7B%22id%22%3A%226003139266461%22%2C%22name%22%3A%22Home%20recording%22%7D%5D%7D&daily_budget=2500\"}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json\"},\"body\":\"{\\\"id\\\":\\\"120210000000000202\\\"}\"}"
     }

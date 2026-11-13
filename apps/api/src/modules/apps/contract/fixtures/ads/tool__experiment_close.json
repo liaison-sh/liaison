@@ -1,7 +1,7 @@
 {
   "entry": "tool:experiment_close",
   "params": {
-    "experiment_id": "b308a76d-877d-4c0b-89ad-dee00fb4402d",
+    "experiment_id": "ca24bc38-bb58-4ebf-9d16-07d29c72be31",
     "verdict": "win",
     "learnings": "CPA held at 26 € with the higher budget; keep 45 €/day."
   },
@@ -9,21 +9,27 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["experiments", "b308a76d-877d-4c0b-89ad-dee00fb4402d"],
-      "reply": "{\"id\":\"b308a76d-877d-4c0b-89ad-dee00fb4402d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.155702+00\",\"updated_at\":\"2026-11-12 10:16:46.175191+00\",\"title\":\"Belgium prospecting at 45 € a day\",\"hypothesis\":\"Raising the BE prospecting budget to 45 € a day keeps the cost per purchase under 30 €.\",\"platforms\":\"meta\",\"metric_tier\":\"purchase\",\"primary_metric\":\"cpa\",\"variants\":\"control: 25 €/day; test: 45 €/day\",\"start_date\":\"2026-01-05 00:00:00+00\",\"decision_date\":\"2026-02-02 00:00:00+00\",\"minimum_sample\":50,\"status\":\"running\",\"verdict\":null,\"learnings\":null,\"linked_campaign_ids\":\"120210000000000101\",\"created_by\":\"agent\"}"
+      "args": [
+        "experiments",
+        "ca24bc38-bb58-4ebf-9d16-07d29c72be31"
+      ],
+      "reply": "{\"id\":\"ca24bc38-bb58-4ebf-9d16-07d29c72be31\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.015451+00\",\"updated_at\":\"2026-11-13 01:32:41.035517+00\",\"title\":\"Item a6bd4fe0\",\"hypothesis\":\"Raising the BE prospecting budget to 45 € a day keeps the cost per purchase under 30 €.\",\"platforms\":\"meta\",\"metric_tier\":\"purchase\",\"primary_metric\":\"cpa\",\"variants\":\"control: 25 €/day; test: 45 €/day\",\"start_date\":\"2026-01-05 00:00:00+00\",\"decision_date\":\"2026-02-02 00:00:00+00\",\"minimum_sample\":50,\"status\":\"running\",\"verdict\":null,\"learnings\":null,\"linked_campaign_ids\":\"120210000000000101\",\"created_by\":\"agent\"}"
     },
     {
       "method": "db_update",
       "args": [
         "experiments",
-        "b308a76d-877d-4c0b-89ad-dee00fb4402d",
+        "ca24bc38-bb58-4ebf-9d16-07d29c72be31",
         "{\"status\":\"decided\",\"verdict\":\"win\",\"learnings\":\"CPA held at 26 € with the higher budget; keep 45 €/day.\"}"
       ]
     },
     {
       "method": "db_findOne",
-      "args": ["experiments", "b308a76d-877d-4c0b-89ad-dee00fb4402d"],
-      "reply": "{\"id\":\"b308a76d-877d-4c0b-89ad-dee00fb4402d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-12 10:16:46.155702+00\",\"updated_at\":\"2026-11-12 10:16:46.198897+00\",\"title\":\"Belgium prospecting at 45 € a day\",\"hypothesis\":\"Raising the BE prospecting budget to 45 € a day keeps the cost per purchase under 30 €.\",\"platforms\":\"meta\",\"metric_tier\":\"purchase\",\"primary_metric\":\"cpa\",\"variants\":\"control: 25 €/day; test: 45 €/day\",\"start_date\":\"2026-01-05 00:00:00+00\",\"decision_date\":\"2026-02-02 00:00:00+00\",\"minimum_sample\":50,\"status\":\"decided\",\"verdict\":\"win\",\"learnings\":\"CPA held at 26 € with the higher budget; keep 45 €/day.\",\"linked_campaign_ids\":\"120210000000000101\",\"created_by\":\"agent\"}"
+      "args": [
+        "experiments",
+        "ca24bc38-bb58-4ebf-9d16-07d29c72be31"
+      ],
+      "reply": "{\"id\":\"ca24bc38-bb58-4ebf-9d16-07d29c72be31\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-13 01:32:41.015451+00\",\"updated_at\":\"2026-11-13 01:32:41.065497+00\",\"title\":\"Item a6bd4fe0\",\"hypothesis\":\"Raising the BE prospecting budget to 45 € a day keeps the cost per purchase under 30 €.\",\"platforms\":\"meta\",\"metric_tier\":\"purchase\",\"primary_metric\":\"cpa\",\"variants\":\"control: 25 €/day; test: 45 €/day\",\"start_date\":\"2026-01-05 00:00:00+00\",\"decision_date\":\"2026-02-02 00:00:00+00\",\"minimum_sample\":50,\"status\":\"decided\",\"verdict\":\"win\",\"learnings\":\"CPA held at 26 € with the higher budget; keep 45 €/day.\",\"linked_campaign_ids\":\"120210000000000101\",\"created_by\":\"agent\"}"
     }
   ]
 }

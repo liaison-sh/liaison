@@ -12,23 +12,17 @@
   "recordedFrom": "a Pennylane sandbox company, record-pennylane.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
+      "method": "config_has",
       "args": ["einvoicingWebhookSecret"],
-      "reply": "contract-webhook-secret-not-real"
+      "reply": true
     },
     {
-      "method": "crypto_hmacSha256Hex",
+      "method": "crypto_verifyHmacForConfig",
       "args": [
-        "contract-webhook-secret-not-real",
-        "1767225600.{\"id\":\"evt_contract_1\",\"type\":\"customer_invoice.einvoice_status_changed\",\"data\":{\"object\":{\"id\":4242}}}"
-      ],
-      "reply": "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354"
-    },
-    {
-      "method": "crypto_timingSafeEqual",
-      "args": [
+        "einvoicingWebhookSecret",
+        "1767225600.{\"id\":\"evt_contract_1\",\"type\":\"customer_invoice.einvoice_status_changed\",\"data\":{\"object\":{\"id\":4242}}}",
         "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354",
-        "dc685965c312a016768bc26a5866d517599e085046f55e076be03415c4ac7354"
+        "hex"
       ],
       "reply": true
     }

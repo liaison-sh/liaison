@@ -381,6 +381,10 @@ export const toolRegistry = createTypedRegistry<
      *  a DM). A call whose text there holds an unfilled placeholder ("[DATE]", "{{name}}", "TBD")
      *  is refused before any gate stages an approval (outbound-placeholders.ts). */
     outboundTextParams?: readonly string[]
+    /** Webhook signing secrets (`webhookSecretConfigKey`s) this tool's answer may carry: the
+     *  host writes each where the tool put its `{ "$configSecret": key }` marker
+     *  (reveal-secrets.ts), so the app's code never reads the secret. */
+    revealsSecrets?: readonly string[]
     handler: ToolHandler
     // A tool's params is either a Zod-like schema (validated via `safeParse` in
     // execute-tool) or a JSON Schema object (compiled via ajv in execute-tool /

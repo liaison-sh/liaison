@@ -9,10 +9,14 @@ import {
 } from "./google-client"
 import { GoogleAdsApiError, GoogleAuthError } from "./google-error"
 
+const GOOGLE_AUTH = { connection: "google", scheme: "bearer" as const }
+
 interface FetchCall {
   url: string
   method: string
   headers: Record<string, string>
+  /** The credential the host adds (`ctx.fetch` auth); the app never sets the header. */
+  auth?: unknown
   body?: string
 }
 
@@ -29,6 +33,7 @@ function makeFetch(responses: MockResponse[]) {
       url,
       method: String(opts?.method ?? "GET"),
       headers: (opts?.headers ?? {}) as Record<string, string>,
+      auth: opts?.auth,
       body: typeof opts?.body === "string" ? opts.body : undefined,
     })
     const resp = responses[idx++]
@@ -49,7 +54,7 @@ describe("gaqlSearch — request shape", () => {
     await gaqlSearch(fetch, {
       customerId: "1234567890",
       query: "SELECT campaign.id, campaign.name FROM campaign",
-      token: "tok_abc",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     expect(calls.length).toBe(1)
@@ -67,11 +72,12 @@ describe("gaqlSearch — request shape", () => {
     await gaqlSearch(fetch, {
       customerId: "1234567890",
       query: "SELECT campaign.id FROM campaign",
-      token: "tok_abc",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     const h = calls[0]?.headers ?? {}
-    expect(h.Authorization).toBe("Bearer tok_abc")
+    expect(h.Authorization).toBeUndefined()
+    expect(calls[0]?.auth).toEqual(GOOGLE_AUTH)
     expect(Object.keys(h)).not.toContain("developer-token")
     expect(h["login-customer-id"]).toBe("9998887777")
     expect(h["Content-Type"]).toBe("application/json")
@@ -85,14 +91,14 @@ describe("gaqlSearch — request shape", () => {
     await gaqlSearch(fetch, {
       customerId: "1234567890",
       query: "SELECT campaign.id FROM campaign",
-      token: "tok_abc",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     await googleAdsMutate(fetch, {
       customerId: "1234567890",
       path: "campaigns:mutate",
       operations: [],
-      token: "tok_abc",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     for (const call of calls) {
@@ -107,7 +113,7 @@ describe("gaqlSearch — request shape", () => {
     await gaqlSearch(fetch, {
       customerId: "123-456-7890",
       query: "SELECT campaign.id FROM campaign",
-      token: "tok",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "999-888-7777",
     })
     expect(calls[0]?.url).toContain("/customers/1234567890/")
@@ -127,7 +133,7 @@ describe("gaqlSearch — request shape", () => {
     const rows = await gaqlSearch(fetch, {
       customerId: "1234567890",
       query: "SELECT campaign.id FROM campaign",
-      token: "tok",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     expect(rows.length).toBe(3)
@@ -138,7 +144,7 @@ describe("gaqlSearch — request shape", () => {
     const rows = await gaqlSearch(fetch, {
       customerId: "1234567890",
       query: "SELECT campaign.id FROM campaign",
-      token: "tok",
+      auth: GOOGLE_AUTH,
       loginCustomerId: "9998887777",
     })
     expect(rows).toEqual([])
@@ -171,7 +177,7 @@ describe("gaqlSearch — error surfacing", () => {
       gaqlSearch(fetch, {
         customerId: "1234567890",
         query: "SELECT foo FROM campaign",
-        token: "tok",
+        auth: GOOGLE_AUTH,
         loginCustomerId: "9998887777",
       }),
     ).rejects.toBeInstanceOf(GoogleAdsApiError)
@@ -186,7 +192,7 @@ describe("gaqlSearch — error surfacing", () => {
       gaqlSearch(fetch, {
         customerId: "1234567890",
         query: "SELECT campaign.id FROM campaign",
-        token: "tok",
+        auth: GOOGLE_AUTH,
         loginCustomerId: "9998887777",
       }),
     ).rejects.toBeInstanceOf(GoogleAuthError)

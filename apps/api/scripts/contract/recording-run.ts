@@ -133,6 +133,27 @@ export async function connectCredentials(
   return row!.id
 }
 
+/**
+ * An org OAuth2 account of `app`'s `connection` holding `token` (a stand-in, never a real
+ * token), beside the app's other accounts: what the host adds to a `ctx.fetch` that names the
+ * connection (`auth`), as a connected account's token would be.
+ */
+export async function connectOAuthAccount(
+  app: string,
+  connection: string,
+  identifier: string,
+  token: string,
+): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`INSERT INTO ${K}.connected_accounts
+    (org_id, app_name, connection_name, owner_type, provider_type, identifier, display_name,
+     access_token_encrypted, token_expires_at, status, created_by)
+    VALUES (${CONTRACT_ORG_ID}, ${app}, ${connection}, 'org', 'oauth2', ${identifier},
+     ${identifier}, ${encryptSecret(token, env.ENCRYPTION_KEY, CryptoContext.connectedAccountAccessToken)},
+     now() + interval '10 years', 'active', ${CONTRACT_USER_ID})
+    RETURNING id`
+  return row!.id
+}
+
 export async function uninstallAfterRecording(app: string): Promise<void> {
   await teardownAppRegistrations(CONTRACT_ORG_ID, app)
   toolRegistry.deleteByPrefix([CONTRACT_ORG_ID])

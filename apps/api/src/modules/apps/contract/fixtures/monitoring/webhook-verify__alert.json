@@ -13,29 +13,27 @@
   "recordedFrom": "the contract org on a local stack, record-monitoring.recorder.ts",
   "calls": [
     {
-      "method": "config_get",
-      "args": ["monitoringWebhookSecret"],
-      "reply": "contract-webhook-secret-not-real"
-    },
-    {
-      "method": "crypto_hmacSha256Base64",
+      "method": "config_has",
       "args": [
-        "contract-webhook-secret-not-real",
-        "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedupKey\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"ts\":\"2026-01-01T00:00:00.000Z\"}"
+        "monitoringWebhookSecret"
       ],
-      "reply": "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY="
+      "reply": true
     },
     {
-      "method": "crypto_timingSafeEqual",
+      "method": "crypto_verifyHmacForConfig",
       "args": [
+        "monitoringWebhookSecret",
+        "{\"source\":\"watchdog\",\"severity\":\"critical\",\"title\":\"API health check failing on node a\",\"body\":\"GET /healthz answered 503 three times in a row\",\"dedupKey\":\"api-health-node-a\",\"url\":\"https://status.example.com/checks/api-health\",\"ts\":\"2026-01-01T00:00:00.000Z\"}",
         "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY=",
-        "hbdGre9uqfjJfmuG/iTjYNMQlwYpgfupHcIZKUkkrlY="
+        "base64"
       ],
       "reply": true
     },
     {
       "method": "config_get",
-      "args": ["monitoringAlertTtlSeconds"],
+      "args": [
+        "monitoringAlertTtlSeconds"
+      ],
       "reply": null
     },
     {

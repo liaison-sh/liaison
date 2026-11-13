@@ -594,6 +594,16 @@ export async function createSupervisor(
         modules: modules.size,
         network: network.verdict,
         processUids: cfg.processUids,
+        // The effective sizes, what they were derived from, and the lane caps.
+        sizes: {
+          poolSize: cfg.poolSize,
+          reserved: cfg.reserved,
+          reservedInteractive: cfg.reservedInteractive,
+          overflow: cfg.overflow,
+          rssCapMb: cfg.rssCapMb,
+          laneCaps: pool.caps,
+          sizing: cfg.sizing ?? null,
+        },
         pool: pool.stats(),
         recent: recent.slice(-20),
       })

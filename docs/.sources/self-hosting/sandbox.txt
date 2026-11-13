@@ -40,3 +40,8 @@ Background runs hold at most POOL_SIZE - RESERVED - RESERVED_INTERACTIVE, intera
 A run waits FIFO in its lane until its deadline, then times out -> packages/sandbox-supervisor/src/pool.ts (acquire, wakeOne) ; packages/sandbox-supervisor/src/supervisor.ts (queue_timeout)
 Lane caps logged at start; /stats pool.lanes and pool.counters.lanes -> packages/sandbox-supervisor/src/main.ts ; packages/sandbox-supervisor/src/pool.ts (stats)
 Compose passes SANDBOX_POOL_RESERVED_INTERACTIVE (2) -> deploy/docker-compose.yml (sandbox environment)
+Pool sized from memory over RSS cap less overflow, at most 4 per CPU, 2 to 32; reserves a third each -> packages/sandbox-supervisor/src/config.ts (autoPoolSize, autoReserves, PROCS_PER_CPU, MAX_AUTO_POOL)
+Limits from SANDBOX_SERVICE_MEM_LIMIT / SANDBOX_SERVICE_CPUS, else cgroup v2/v1, else host -> packages/sandbox-supervisor/src/config.ts (envServiceLimits, detectServiceLimits)
+Compose passes LIAISON_SANDBOX_MEM_LIMIT / LIAISON_SANDBOX_CPUS, pool settings empty by default -> deploy/docker-compose.yml (sandbox environment)
+Explicit pool settings win each on its own -> packages/sandbox-supervisor/src/config.ts (readSupervisorConfig, fromEnv)
+Sizes logged at start, /stats sizes -> packages/sandbox-supervisor/src/main.ts ; packages/sandbox-supervisor/src/supervisor.ts (/stats)

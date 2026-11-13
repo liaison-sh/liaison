@@ -5,7 +5,7 @@
 // (CellEditor). A save sends only the changed field: `onSave({ [key]: value })`, which the page
 // turns into the task PATCH `{ fields }`. A checkbox toggles in place. Nothing renders when the
 // project declares no field.
-import { type Component, createSignal, For, onMount, Show } from "solid-js"
+import { type Component, createEffect, createSignal, For, Show } from "solid-js"
 import { CellEditor } from "~/modules/dashboards/blocks/CellEditor"
 import { cellText, isEmptyCell, parseCellInput } from "~/modules/dashboards/blocks/table-cells"
 import { loadPeople, personName } from "~/modules/dashboards/blocks/table-people"
@@ -27,7 +27,8 @@ export const TaskFieldsSection: Component<TaskFieldsSectionProps> = (props) => {
   const [editing, setEditing] = createSignal<string | null>(null)
   const [error, setError] = createSignal<{ key: string; message: string } | null>(null)
 
-  onMount(() => {
+  // The member directory names person values (read once per session; the project may load late).
+  createEffect(() => {
     if (props.fields.some((f) => f.type === "person")) void loadPeople(api)
   })
 

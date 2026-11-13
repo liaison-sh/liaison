@@ -170,6 +170,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_search: "read",
   projects_taskTimeGet: "read",
   projects_budgetGet: "read",
+  projects_reconcileFacts: "read",
   projects_tasksByAssignee: "read",
   projects_tasksByProject: "read",
   pubsub_verifyGoogleOidcJwt: "read",

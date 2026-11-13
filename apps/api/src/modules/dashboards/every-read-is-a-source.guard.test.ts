@@ -119,6 +119,11 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "DM only",
     why: "the sample app's tool an agent runs only in its DM with the person",
   },
+  {
+    tool: "projects:reconcile_facts",
+    reason: "human turn",
+    why: "a reconcile starts only on a person's own turn in their DM or coding agent; a dashboard would read the period's work on a schedule, which no surface does",
+  },
   // ── Kernel reads ──
   {
     tool: "kernel:contacts_identity",

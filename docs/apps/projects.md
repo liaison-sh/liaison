@@ -187,6 +187,16 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 - **Before the project used it.** If tasks closed before the project started using time and budgets, the answer says so with the date. No figure changes because of it.
 - **Archived tasks.** Their time is not counted, and the answer says how much is left out.
 
+## Reconcile a project's month
+
+On a project that uses time and budgets, ask your agent in your DM with it, or your own coding agent, to reconcile a period ("reconcile Atlas October"). The agent reads the period's closed tasks, then the traces you can read yourself (commits, meetings, notes, mail), and proposes a card of lines: what was planned, what was spent and what to bill.
+
+- **Only on your own turn, in a DM.** A routine, a sub-run, a job or a shared conversation is refused. The agent reads only what you can read, so the card says what it did not see, and that someone else may see more.
+- **The server works out every figure.** A line groups tasks and says why; its planned time comes from the tasks' timeboxes, its real time from what people entered, and its bill by a fixed rule: a planned line bills what was planned, never more; a line not in the plan bills nothing; a retainer bills what was spent. Nothing a commit or a note says changes a figure.
+- **No one is named.** A line that names a member of the team is refused; a client's own contact may be named. Tasks the client's own people did can be left out, and every other task of the period appears, in "Other closed tasks" if no line lists it.
+- **An estimate is not time.** Where no time was entered, the agent may show an estimate tied to a proof, marked `~`. It never counts as time spent, in the budget, the coverage or the bill.
+- **Only you see it.** The card stays yours while it is a proposal. Asking again with nothing changed returns the same card; a change updates it. Asked after the period ended, the card says the invoice issues with today's date.
+
 ## Roles and scopes
 
 | Role | Scopes |

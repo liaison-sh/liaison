@@ -1,0 +1,273 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Who a reconcile reads for and where it may run: the projects app reaches into no trace app and
+// opens no privileged handle for it, the two tools run only on a person's own turn and in a DM
+// (or the person's own coding agent), a turn that read elsewhere can still save its own card, and
+// what the agent did not see is said on the card.
+
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { readdirSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { sql as drizzleSql } from "drizzle-orm"
+import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
+import { extractRows } from "~/db"
+import { __privileged_db__ as db } from "~/db/connection"
+import type { UserContext } from "~/db/rls"
+import { withRlsContext } from "~/db/rls"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { toolRegistry } from "~/modules/apps/app-registries"
+import { executeToolCore } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
+import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { NOT_EVERYTHING_SEEN } from "./reconcile-lines"
+import { awaitTimeFeatureSync } from "./time-feature"
+import { awaitTimeRowWrites } from "./time-rows"
+
+let orgId = ""
+let owner: minimal.Session
+let projectId = ""
+let taskId = ""
+let dmThread = ""
+let sharedThread = ""
+
+const TRACE_APPS = ["gitlab", "github", "calendar", "knowledge", "mail", "tickets", "threads"]
+const SRC = join(import.meta.dir, "..", "..", "..")
+
+function actorOf(userId: string, scopes: string[] = ["*"]): UserContext {
+  return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
+}
+
+async function call<T = Record<string, any>>(method: string, input: unknown): Promise<T> {
+  const a = actorOf(owner.userId)
+  const out = await withRlsContext(a, async (tx) => {
+    const bridge = createRpcBridge(
+      "projects",
+      a.userId,
+      orgId,
+      tx,
+      { name: "projects" },
+      a.scopes,
+      "user",
+      undefined,
+      { origin: "human-ui" } as never,
+    )
+    return JSON.parse(await bridge[method](JSON.stringify(input))) as T
+  })
+  await awaitTimeRowWrites()
+  return out
+}
+
+const proposal = (why = "The export.") => ({
+  project: "ORBIT",
+  lines: [{ name: "Export", kind: "planned", why, taskIds: [taskId], proofs: [] }],
+  notSeen: [{ source: "GitHub", why: "not connected" }],
+})
+
+type Outcome = { error?: { code?: string }; data?: unknown; [k: string]: unknown }
+
+async function viaTool(
+  name: "reconcile_facts" | "reconcile_propose",
+  params: Record<string, unknown>,
+  opts: {
+    origin: "in-app-agent" | "mcp"
+    threadId?: string
+    frame?: Record<string, unknown>
+    turnTaintScopes?: string[]
+  },
+): Promise<Outcome> {
+  const run = () =>
+    executeToolCore({
+      toolName: `projects:${name}`,
+      orgId,
+      actor: actorOf(owner.userId),
+      params,
+      origin: opts.origin,
+      ...(opts.threadId ? { threadId: opts.threadId } : {}),
+      ...(opts.turnTaintScopes ? { turnTaintScopes: opts.turnTaintScopes } : {}),
+    } as never) as Promise<Outcome>
+  if (!opts.frame) return run()
+  const runId = crypto.randomUUID()
+  const frame = {
+    runId,
+    parentRunId: null,
+    rootRunId: runId,
+    nestingDepth: 0,
+    turnScopeAccumulator: createTurnScopeAccumulator({ orgId }),
+    ...opts.frame,
+  }
+  return runContextStore.run(frame as never, run)
+}
+
+async function proposedCount(): Promise<number> {
+  return (
+    extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM app_projects.reconciliations WHERE org_id = ${orgId}::uuid`),
+    )[0]?.n ?? 0
+  )
+}
+
+async function thread(type: "agent_chat" | "thread"): Promise<string> {
+  const id = crypto.randomUUID()
+  await db.execute(drizzleSql`
+    INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
+    VALUES (${id}::uuid, ${orgId}::uuid, ${`reconcile-${type}-${id.slice(0, 8)}`}, ${type},
+            ${owner.userId}::uuid)`)
+  await db.execute(drizzleSql`
+    INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
+    VALUES (${id}::uuid, ${owner.userId}::uuid, ${orgId}::uuid, 'admin')`)
+  return id
+}
+
+beforeAll(async () => {
+  await acquireTestLock()
+  orgId = (await createTestOrg()).id
+  owner = await minimal.adminSession(orgId)
+  await minimal.session(orgId, { role: "member" })
+  await ensureAppsForOrg(orgId)
+  await primeOrgApps(orgId, 0)
+  const made = await call<{ id: string }>("projects_createProject", {
+    name: "Orbit",
+    key: "ORBIT",
+    timeBudgets: true,
+  })
+  projectId = made.id
+  await awaitTimeFeatureSync(orgId)
+  const t = await call<{ id: string }>("projects_createTask", {
+    projectId,
+    title: "Export",
+    statusLabel: "done",
+    timebox: "2 h",
+  })
+  taskId = t.id
+  dmThread = await thread("agent_chat")
+  sharedThread = await thread("thread")
+}, 120_000)
+
+afterAll(async () => {
+  forgetOrgApps(orgId)
+  await releaseTestLock()
+})
+
+describe("what a reconcile reads through", () => {
+  it("the projects app declares no cross-app call into a trace app and reconcile code reads nothing privileged", () => {
+    const calls = JSON.stringify(
+      (projectsAppManifest as Record<string, unknown>).cross_app_calls ?? [],
+    )
+    for (const app of TRACE_APPS) expect(calls).not.toContain(`"${app}:`)
+    const files = [
+      ...readdirSync(join(SRC, "apps/projects/service"))
+        .filter((f) => f === "reconcile.ts" || f === "reconcile-lines.ts")
+        .map((f) => join(SRC, "apps/projects/service", f)),
+    ]
+    expect(files.length).toBe(2)
+    for (const f of files) {
+      const text = readFileSync(f, "utf8")
+      expect(text).not.toMatch(/withPrivilegedDb|withSystemDb|__privileged_db__/)
+      expect(text).not.toMatch(/executeTool|callTool|ctx\.call/)
+    }
+    // The bridge methods of the two tools call the service alone.
+    const bridge = readFileSync(join(SRC, "modules/apps/sandbox/bridge/projects.ts"), "utf8")
+    for (const method of ["projects_reconcileFacts", "projects_reconcilePropose"]) {
+      const start = bridge.indexOf(`${method}: async`)
+      expect(start).toBeGreaterThan(0)
+      const body = bridge.slice(start, bridge.indexOf("\n    },\n", start))
+      expect(body).not.toMatch(/withPrivilegedDb|withSystemDb|executeTool/)
+    }
+  })
+
+  it("both tools run only on a person's turn and in a DM, refused from a routine, a sub-run or a shared thread", async () => {
+    const facts = { project: "ORBIT" }
+    for (const frame of [
+      { routineId: "00000000-0000-4000-8000-000000000001" },
+      { background: true },
+    ]) {
+      for (const name of ["reconcile_facts", "reconcile_propose"] as const) {
+        const out = await viaTool(name, name === "reconcile_facts" ? facts : proposal(), {
+          origin: "in-app-agent",
+          threadId: dmThread,
+          frame,
+        })
+        expect(out.error?.code).toBe("human_turn_only")
+      }
+    }
+    for (const name of ["reconcile_facts", "reconcile_propose"] as const) {
+      const out = await viaTool(name, name === "reconcile_facts" ? facts : proposal(), {
+        origin: "in-app-agent",
+        threadId: sharedThread,
+        frame: { humanTurn: true },
+      })
+      expect(out.error?.code).toBe("dm_only")
+    }
+    expect(await proposedCount()).toBe(0)
+    const inDm = await viaTool("reconcile_facts", facts, {
+      origin: "in-app-agent",
+      threadId: dmThread,
+      frame: { humanTurn: true },
+    })
+    expect(inDm.error).toBeUndefined()
+  })
+
+  it("the same proposal through the coding agent and through chat stores equal lines", async () => {
+    const chat = await viaTool("reconcile_propose", proposal(), {
+      origin: "in-app-agent",
+      threadId: dmThread,
+      frame: { humanTurn: true },
+    })
+    const viaChat = (chat.data ?? chat) as Record<string, any>
+    expect(viaChat.error).toBeUndefined()
+    const mcp = await viaTool("reconcile_propose", proposal(), {
+      origin: "mcp",
+      frame: { mcpGateway: true },
+    })
+    const viaMcp = (mcp.data ?? mcp) as Record<string, any>
+    expect(viaMcp.error).toBeUndefined()
+    expect(viaMcp.reconciliationId).toBe(viaChat.reconciliationId)
+    expect(viaMcp.revision).toBe(viaChat.revision)
+    expect(viaMcp.lines).toEqual(viaChat.lines)
+  })
+
+  it("what was not seen is kept on the card, with the sentence that someone else may see more", async () => {
+    const out = await call("projects_reconcilePropose", proposal())
+    expect(out.notSeen).toEqual([{ source: "GitHub", why: "not connected" }])
+    expect(out.notes).toContain(NOT_EVERYTHING_SEEN)
+  })
+})
+
+describe("a turn that read another app's records", () => {
+  it("a turn that read another app's records can still save its card; without the self-readers declaration the same save does not run", async () => {
+    const taint = ["calendar:events:read"]
+    const saved = await viaTool("reconcile_propose", proposal("Saved after a read."), {
+      origin: "in-app-agent",
+      threadId: dmThread,
+      frame: { humanTurn: true },
+      turnTaintScopes: taint,
+    })
+    const card = (saved.data ?? saved) as Record<string, any>
+    expect(card.error).toBeUndefined()
+    expect(card.lines?.[0]?.why).toBe("Saved after a read.")
+    const key: [string, string, string] = [orgId, "projects", "reconcile_propose"]
+    const entry = toolRegistry.get(key)
+    expect(entry?.sinkReadersSelf).toBe(true)
+    if (!entry) return
+    toolRegistry.set(key, { ...entry, sinkReadersSelf: false })
+    try {
+      const plain = await viaTool("reconcile_propose", proposal("Saved without the key."), {
+        origin: "in-app-agent",
+        threadId: dmThread,
+        frame: { humanTurn: true },
+        turnTaintScopes: taint,
+      })
+      const text = JSON.stringify(plain)
+      expect(text).not.toContain("Saved without the key.")
+      expect(text).toMatch(/E_SCOPE_TAINT_BLOCKED|approvalRequestId|"blocked":true/)
+    } finally {
+      toolRegistry.set(key, entry)
+    }
+  })
+})

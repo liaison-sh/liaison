@@ -115,12 +115,19 @@ export async function hoursPerDayMinutes(tx: Tx, orgId: string): Promise<number>
   return rows[0]?.m ?? DEFAULT_HOURS_PER_DAY_MINUTES
 }
 
+/**
+ * The org's zone, for "today" and for the day a task closed. A person's own row security does
+ * not read `kernel.organizations`, so the zone comes from the one org-zone reader (cached a
+ * minute); a privileged caller's own read still answers first.
+ */
 export async function orgTimezone(tx: Tx, orgId: string): Promise<string> {
   const rows = extractRows<{ tz: string | null }>(
     await tx.execute(drizzleSql`
       SELECT timezone AS tz FROM ${kernelRel("organizations")} WHERE id = ${orgId}::uuid LIMIT 1`),
   )
-  return rows[0]?.tz || "UTC"
+  if (rows[0]?.tz) return rows[0].tz
+  const { dashboardTimezone } = await import("~/modules/dashboards/execute")
+  return dashboardTimezone(orgId)
 }
 
 export async function datedHoursOn(tx: Tx, orgId: string, projectId: string): Promise<boolean> {

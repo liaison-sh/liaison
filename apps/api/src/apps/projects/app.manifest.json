@@ -122,7 +122,7 @@
       }
     ]
   },
-  "version": "1.18.0",
+  "version": "1.19.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1893,6 +1893,230 @@
         }
       }
     },
+    "reconcile_facts": {
+      "description": "Start a reconcile of one project and period (month YYYY-MM, or from and to): the tasks closed in it with planned and real time, the client's markers and what is already billed. No person is named. Then read the period's traces with your own tools and call reconcile_propose.",
+      "searchKeywords": [
+        "reconcile",
+        "reconciliation",
+        "rapprocher",
+        "facturer",
+        "rapprochement"
+      ],
+      "readOnly": true,
+      "humanTurnOnly": true,
+      "dmOnly": true,
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:reconcile:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "reconcileFacts",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project id, key or name, or its client's name."
+          },
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM. Default: this month."
+          },
+          "from": {
+            "type": "string",
+            "description": "YYYY-MM-DD, with to."
+          },
+          "to": {
+            "type": "string",
+            "description": "YYYY-MM-DD, with from."
+          }
+        },
+        "required": [
+          "project"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_propose": {
+      "description": "Save the reconcile card for a project and period from reconcile_facts and the traces you read: lines group tasks, with wording and proofs only. The server works out planned, real and bill; never send a figure. Asked again, the same card is updated.",
+      "searchKeywords": [
+        "reconcile",
+        "reconciliation",
+        "rapprocher",
+        "card"
+      ],
+      "writesToTable": "app_projects.reconciliations",
+      "humanTurnOnly": true,
+      "dmOnly": true,
+      "sinkReadersSelf": true,
+      "requiredScopes": [
+        "projects:reconcile:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "reconcilePropose",
+      "feature": "time_budgets",
+      "params": {
+        "type": "object",
+        "properties": {
+          "project": {
+            "type": "string",
+            "description": "Project id, key or name, as for reconcile_facts."
+          },
+          "month": {
+            "type": "string",
+            "description": "YYYY-MM."
+          },
+          "from": {
+            "type": "string",
+            "description": "YYYY-MM-DD."
+          },
+          "to": {
+            "type": "string",
+            "description": "YYYY-MM-DD."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The work, never who did it."
+                },
+                "why": {
+                  "type": "string"
+                },
+                "taskIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "planned",
+                    "unplanned"
+                  ]
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "our_mistake",
+                    "client_asked",
+                    "other_client"
+                  ]
+                },
+                "otherProjectKey": {
+                  "type": "string"
+                },
+                "traceEstimate": {
+                  "type": "string",
+                  "description": "Only on a line with no real time, from its proofs."
+                },
+                "proofs": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "task",
+                          "commit",
+                          "pull_request",
+                          "merge_request",
+                          "calendar_event",
+                          "knowledge_doc",
+                          "mail",
+                          "ticket",
+                          "note"
+                        ]
+                      },
+                      "ref": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "occurredOn": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "ref"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "excluded": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "client_own"
+                  ]
+                }
+              },
+              "required": [
+                "taskId",
+                "reason"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "notSeen": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string"
+                },
+                "why": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "sources": {
+            "type": "object",
+            "description": "Counts of what you read: closedTasks, commits, pullRequests, meetings."
+          }
+        },
+        "required": [
+          "project",
+          "lines"
+        ],
+        "additionalProperties": false
+      }
+    },
     "task_time_correct": {
       "description": "Change one Took entry of another person on a project with dated hours: only its lead or finance. The person then sees who changed it.",
       "searchKeywords": [
@@ -3384,7 +3608,8 @@
       "label:reordered",
       "deal:closed",
       "deal:reopened",
-      "time_feature:changed"
+      "time_feature:changed",
+      "reconciliation:proposed"
     ]
   },
   "kind": "app",

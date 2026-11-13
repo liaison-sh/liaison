@@ -44,6 +44,8 @@ export interface ProjectsMethods {
   projects_billingTermsSet: (paramsJson: string) => Promise<string>
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
+  projects_reconcileFacts: (paramsJson: string) => Promise<string>
+  projects_reconcilePropose: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -1182,4 +1184,13 @@ export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promi
 
 export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {})))
+}
+
+// Reconcile: the period's facts, then the proposal the agent groups from its traces.
+export async function reconcileFacts(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileFacts(JSON.stringify(params ?? {})))
+}
+
+export async function reconcilePropose(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcilePropose(JSON.stringify(params ?? {})))
 }

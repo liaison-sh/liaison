@@ -894,6 +894,26 @@ async function runAgentStep(
   return { kind: "next" }
 }
 
+/**
+ * The bump loop an agent invoker runs after a flow agent step's turn (kernel-jobs.ts): ask for the
+ * steer, re-prompt the tick with it, until none is left or a re-prompt cannot be posted. Returns
+ * how many re-prompts ran. `nextSteer` itself caps them at the step's `maxBumps`.
+ */
+export async function driveFlowBumps(
+  nextSteer: (() => Promise<string | null>) | undefined,
+  reprompt: (steer: string) => Promise<boolean>,
+): Promise<number> {
+  if (!nextSteer) return 0
+  let n = 0
+  for (let i = 0; i < 10; i++) {
+    const steer = await nextSteer()
+    if (!steer) break
+    if (!(await reprompt(steer))) break
+    n++
+  }
+  return n
+}
+
 /** Pure: one outcome, as the bump and the flag name it. */
 export function describeOutcome(o: RoutineFlowOutcome): string {
   if (o.kind === "message_posted") {

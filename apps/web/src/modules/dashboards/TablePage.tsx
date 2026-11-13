@@ -3,6 +3,8 @@
 // ONE TABLE, FULL WIDTH (`/dashboard-table/:id`), beside the Dashboards sidebar: its name, then
 // three tabs at the top. Grid is the editable table (every column, 50 rows a page), Settings its
 // columns, sharing and the agent-approval switch, History every change to its rows, with Undo.
+// A table backed by a project names it under the title.
+import { Link2 } from "lucide-solid"
 import { type Component, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -12,6 +14,7 @@ import { EditableTableBlock } from "./blocks/EditableTableBlock"
 import { RowHistoryPanel } from "./blocks/RowHistoryPanel"
 import { getTable, type TableInfo, type TablesApi } from "./dashboards-client"
 import { TableSettings } from "./TableSettings"
+import { backingName } from "./table-backing"
 import { rememberTable } from "./tables-store"
 
 type PageTab = "grid" | "settings" | "history"
@@ -51,6 +54,19 @@ export const TablePage: Component<{ entityId: string }> = (props) => {
           </h1>
           <Show when={table()?.description}>
             <p class="truncate text-[12.5px] text-text-tertiary">{table()?.description}</p>
+          </Show>
+          <Show when={table()?.backing}>
+            {(b) => (
+              <p
+                data-testid="table-page-backing"
+                class="flex min-w-0 items-center gap-1 truncate text-[12.5px] text-text-tertiary"
+              >
+                <Link2 size={12} class="shrink-0" />
+                <span class="truncate">
+                  {backingName(api, b()) ?? i18n.t("kernel.dashboards.tables.fromProjectShort")}
+                </span>
+              </p>
+            )}
           </Show>
         </div>
         <div

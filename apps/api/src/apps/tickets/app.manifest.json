@@ -2684,6 +2684,10 @@
               "type": "string"
             },
             "description": "Optional allowed origins (CORS): a list, or one string with the origins separated by commas, spaces or new lines."
+          },
+          "inboxId": {
+            "type": "string",
+            "description": "Optional inbox id (UUID). A key scoped to an inbox can only create tickets in that inbox. The inbox settings 'Generate API key' button sends it."
           }
         },
         "required": [

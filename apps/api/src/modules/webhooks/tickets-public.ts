@@ -114,6 +114,13 @@ type ApiKeyedPayload = AnonymousPayload & {
    * created earlier (mirrors the IMAP "In-Reply-To" path in `inbound.ts`).
    */
   appendIfExisting?: boolean
+  /**
+   * Restrict-only: a server key that relays submissions it cannot vouch for (a
+   * public form behind a server-side relay) declares its submitter unverified,
+   * so the create is treated like a browser-key submission (no contact
+   * linking, per-source buckets, fixed-subject acknowledgement).
+   */
+  unverifiedSubmitter?: true
 }
 
 const nonEmptyBody = (v: string | undefined): boolean => typeof v === "string" && v.length > 0
@@ -143,6 +150,9 @@ const ticketCreateApiKeyed = ticketCreateBase.extend({
   sourceInboxId: z.string().uuid().optional(),
   contactId: z.string().uuid().optional(),
   appendIfExisting: z.boolean().optional(),
+  // Only `true` is meaningful: the flag can narrow trust, never widen it, so
+  // `false` is refused rather than read as "trust me".
+  unverifiedSubmitter: z.literal(true).optional(),
 })
 
 function stripApiOnlyFields(payload: unknown): AnonymousPayload {
@@ -815,6 +825,30 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
     }
   }
 
+  // Who vouches for the submitter. Anonymous and browser-key submissions name
+  // any address they like. A server key is a trusted backend, unless it says it
+  // relays anonymous visitors (`unverifiedSubmitter`): the flag only narrows
+  // trust, so it changes nothing for the other tiers. This one boolean drives
+  // every per-submitter control below: contact linking, the per-source create
+  // buckets and the acknowledgement.
+  const serverKeyUnverified =
+    tierResult.tier === "api_keyed" && !browserKey && input.unverifiedSubmitter === true
+  const unverified = tierResult.tier === "anonymous" || browserKey || serverKeyUnverified
+  // `contactId` and `appendIfExisting` are both claims about who the submitter
+  // is, which a caller that cannot vouch for its submitter has no basis for.
+  // Refused before any rate-limit spend or side effect.
+  if (
+    serverKeyUnverified &&
+    (input.contactId !== undefined || input.appendIfExisting !== undefined)
+  ) {
+    return json(400, {
+      error: {
+        code: "unverified_submitter_conflict",
+        message: "unverifiedSubmitter cannot be combined with contactId or appendIfExisting",
+      },
+    })
+  }
+
   // --- inbox targeting: per-inbox URL + inbox-scoped API keys ----------------
   // The generic endpoint keeps taking `sourceInboxId` in the body. The per-inbox
   // endpoint pins the inbox from the URL (`forcedInboxId`). An API key may also
@@ -869,9 +903,10 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
             limit: 10_000,
             windowSeconds: 3600,
           },
-          // A browser key is public: also cap each source, so one visitor cannot
+          // A browser key is public, and a relay of anonymous visitors forwards
+          // each visitor's address: also cap each source, so one visitor cannot
           // spend the key's whole budget.
-          ...(browserKey
+          ...(unverified
             ? [
                 {
                   identifier: `webhook:tickets:create:ip:${ip}:minute`,
@@ -1203,13 +1238,15 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
       // A public form never adds its sender to the organisation's contacts
       // (that is a person's choice): it links an org contact that already
       // exists for the address, or none.
-      // The address on an anonymous or browser-key form is whatever the visitor
-      // typed, so it links no contact (the contact's profile would sit beside
-      // attacker-written text). A server key is a trusted caller.
+      // The address on an anonymous, browser-key or unverified-submitter form is
+      // whatever the visitor typed, so it links no contact (the contact's
+      // profile would sit beside attacker-written text). A server key that
+      // vouches for its submitter is a trusted caller. (An explicit contactId
+      // never comes with the flag: refused above as a conflict.)
       const resolvedContactId =
         tierResult.tier === "api_keyed" && input.contactId
           ? input.contactId
-          : tierResult.tier === "api_keyed" && !browserKey
+          : tierResult.tier === "api_keyed" && !unverified
             ? ((
                 await resolveContact(
                   tx as never,
@@ -1331,10 +1368,9 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
   try {
     const { sendTicketAcknowledgement } = await import("~/apps/tickets/tools")
     // A server key is a trusted backend that vouches for its customer (and
-    // relays every customer from one address); an anonymous or browser-key
-    // submission names any address it likes, so it gets the fixed-subject ack
-    // and a per-source cap.
-    const unverified = tierResult.tier === "anonymous" || browserKey
+    // relays every customer from one address); an anonymous, browser-key or
+    // unverified-submitter submission names any address it likes, so it gets
+    // the fixed-subject ack and a per-source cap (`unverified`, above).
     const ack = await sendTicketAcknowledgement(result.ticketId, orgId, {
       sourceIp: unverified ? ip : null,
       unverifiedRecipient: unverified,
@@ -1348,7 +1384,14 @@ async function handleTicketCreate(c: Context<AppEnv>, forcedInboxId: string | nu
 
   return new Response(
     JSON.stringify({
-      data: { ticketId: result.ticketId, ticketHandle: result.ticketHandle },
+      data: {
+        ticketId: result.ticketId,
+        ticketHandle: result.ticketHandle,
+        // Echoed only when a server key declared the flag, so a relay can tell
+        // a Liaison that honoured it from one that silently dropped the unknown
+        // field (zod strips unknown keys). Other tiers answer as before.
+        ...(serverKeyUnverified ? { submitter: "unverified" as const } : {}),
+      },
     }),
     { status: 200, headers: { "content-type": "application/json", ...cors } },
   )

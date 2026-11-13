@@ -155,19 +155,33 @@ export async function sendEmailOnce(
 // mail server, where that log line is the only way to receive a sign-in code;
 // the quickstart sets it), and then at warn so it stands out.
 
-/** `step` applied until the text stops changing: a removal can join the pieces of another match. */
-function untilStable(text: string, step: (s: string) => string): string {
-  let prev = text
+/**
+ * The HTML without its style and script elements, read by position rather than by pattern: an
+ * opening tag up to its closing tag goes, contents and all; an unclosed one takes the rest.
+ */
+function withoutStyleAndScript(html: string): string {
+  const lower = html.toLowerCase()
+  let out = ""
+  let at = 0
   for (;;) {
-    const next = step(prev)
-    if (next === prev) return next
-    prev = next
+    const starts = ["style", "script"]
+      .map((tag) => ({ tag, start: lower.indexOf(`<${tag}`, at) }))
+      .filter((m) => m.start >= 0)
+      .sort((a, b) => a.start - b.start)
+    const next = starts[0]
+    if (!next) return out + html.slice(at)
+    out += html.slice(at, next.start)
+    const close = lower.indexOf(`</${next.tag}`, next.start)
+    if (close < 0) return out
+    const end = lower.indexOf(">", close)
+    if (end < 0) return out
+    at = end + 1
   }
 }
 
 export function consoleEmailBody(message: EmailMessage): string {
   if (message.text) return message.text
-  return untilStable(message.html, (s) => s.replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, ""))
+  return withoutStyleAndScript(message.html)
     .replace(/<br\s*\/?>|<\/(p|div|tr|h[1-6]|li)>/gi, "\n")
     .replace(/<[^>]*>?/g, "")
     .replace(/</g, "")

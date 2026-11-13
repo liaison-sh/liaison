@@ -220,8 +220,17 @@ template_save copies a project -> apps/api/src/apps/projects/service/templates.t
 instantiate_template creates statuses, fields and tasks -> apps/api/src/apps/projects/service/tasks.ts:1582
 tasks_byProject fields filter -> apps/api/src/apps/projects/service/fields.ts:437
 template_save and templates_list tools -> apps/api/src/apps/projects/app.manifest.json:1173
-Routine flow templates of the Projects app -> apps/api/src/apps/projects/app.manifest.json:2654
-remind-if-still waits two working days -> apps/api/src/apps/projects/app.manifest.json:2692
-sla-to-reach three working days -> apps/api/src/apps/projects/app.manifest.json:2733
-notify-on-status -> apps/api/src/apps/projects/app.manifest.json:2782
+Routine flow templates of the Projects app -> apps/api/src/apps/projects/app.manifest.json:2662
+remind-if-still waits two working days -> apps/api/src/apps/projects/app.manifest.json:2700
+sla-to-reach three working days -> apps/api/src/apps/projects/app.manifest.json:2741
+notify-on-status -> apps/api/src/apps/projects/app.manifest.json:2790
 Flow actions run without an agent -> apps/api/src/modules/agent/routines/flow-runner.ts:142
+Automations in the project top bar -> apps/web/src/modules/projects/ProjectWorkspace.tsx:624
+Automations in the phone project menu -> apps/web/src/modules/projects/ProjectWorkspace.tsx:668
+Automations list by project -> apps/web/src/modules/projects/ProjectAutomations.tsx:71
+On/off switch -> apps/web/src/modules/projects/ProjectAutomations.tsx:151
+Only the Projects flow templates offered -> apps/web/src/modules/projects/ProjectAutomations.tsx:76
+Template prefilled for the project -> apps/web/src/modules/projects/ProjectAutomations.tsx:94
+Missing status left to pick -> apps/web/src/modules/projects/ProjectAutomations.tsx:348
+Saved through the routines create path -> apps/web/src/modules/projects/ProjectAutomations.tsx:130
+Automations labels -> packages/shared/src/i18n/locales/en/projects.json:295

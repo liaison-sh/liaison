@@ -15,6 +15,7 @@ import { ArrowDown, ArrowUp, Pencil, Trash2 } from "lucide-solid"
 import { type Component, createSignal, For, Index, Show } from "solid-js"
 import { formatDateTime } from "~/lib/relative-time"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { prettyStatus } from "~/modules/projects/status-label"
 import Chip, { type ChipTone } from "../Chip"
 import { FlowStepForm, fieldClass } from "./FlowStepForm"
 import {
@@ -144,7 +145,7 @@ const FlowList: Component<Props> = (props) => {
                 <option value="">{i18n.t("kernel.routineFlow.anyStatus")}</option>
                 <option value="__new">{i18n.t("kernel.routineFlow.newTask")}</option>
                 <For each={props.project?.statuses ?? []}>
-                  {(s) => <option value={s.id}>{s.label}</option>}
+                  {(s) => <option value={s.id}>{prettyStatus(s.label)}</option>}
                 </For>
               </select>
             </label>
@@ -160,7 +161,7 @@ const FlowList: Component<Props> = (props) => {
               >
                 <option value="">{i18n.t("kernel.routineFlow.pickStatus")}</option>
                 <For each={props.project?.statuses ?? []}>
-                  {(s) => <option value={s.id}>{s.label}</option>}
+                  {(s) => <option value={s.id}>{prettyStatus(s.label)}</option>}
                 </For>
               </select>
             </label>

@@ -7,6 +7,7 @@
 import type { RoutineFlowCondition, RoutineFlowOutcome, RoutineFlowStep } from "@liaison/shared"
 import { type Component, For, Index, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { prettyStatus } from "~/modules/projects/status-label"
 import {
   ACTION_KINDS,
   type ActionKind,
@@ -85,7 +86,7 @@ const StatusSelect: Component<{
       >
         <option value="">{i18n.t("kernel.routineFlow.pickStatus")}</option>
         <For each={props.ctx.project?.statuses ?? []}>
-          {(s) => <option value={s.id}>{s.label}</option>}
+          {(s) => <option value={s.id}>{prettyStatus(s.label)}</option>}
         </For>
       </select>
     </label>

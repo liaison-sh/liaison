@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import ts from "typescript"
 import { collectKernelTools, loadManifests } from "../../../../../../../scripts/docs/gen-reference"
+import { hiddenToolAliases } from "../tool-rank"
 
 export const REPO_ROOT = join(import.meta.dir, "../../../../../../..")
 
@@ -21,6 +22,10 @@ export interface BenchTool {
   appName: string
   description: string
   keywords?: readonly string[]
+  /** The hidden tools that send an agent here, by name (tool-rank.ts `hiddenToolAliases`). */
+  aliases?: readonly string[]
+  /** For a hidden tool, the visible one it sends an agent to, as declared. */
+  useInstead?: string
   /** `deferLoading` as declared, absent when the tool states none. */
   declaredDeferLoading?: boolean
   /** Announced and found by search, rather than loaded on every turn. */
@@ -38,6 +43,7 @@ interface ManifestTool {
   description?: string
   searchKeywords?: string[]
   agentVisible?: boolean
+  useInstead?: string
   deferLoading?: boolean
   contractOnly?: boolean
   routineOnly?: boolean
@@ -183,6 +189,7 @@ export function loadBenchCatalog(root: string = REPO_ROOT): BenchTool[] {
         ...(def.deferLoading !== undefined ? { declaredDeferLoading: def.deferLoading } : {}),
         deferred: def.deferLoading ?? true,
         agentVisible: def.agentVisible !== false,
+        ...(def.useInstead ? { useInstead: def.useInstead } : {}),
         routineOnly: def.routineOnly === true,
         schemaChars: def.params === undefined ? 0 : JSON.stringify(def.params).length,
       })
@@ -200,11 +207,18 @@ export function loadBenchCatalog(root: string = REPO_ROOT): BenchTool[] {
       ...(t.deferLoading !== undefined ? { declaredDeferLoading: t.deferLoading } : {}),
       deferred: t.deferLoading ?? false,
       agentVisible: t.agentVisible,
+      ...(t.useInstead ? { useInstead: t.useInstead } : {}),
       routineOnly: t.routineOnly,
       schemaChars: t.paramsChars,
     })
   }
-  return out.sort((a, b) => a.sdkName.localeCompare(b.sdkName))
+  const aliases = hiddenToolAliases(out)
+  return out
+    .map((t) => {
+      const names = aliases.get(t.sdkName)
+      return names ? { ...t, aliases: names } : t
+    })
+    .sort((a, b) => a.sdkName.localeCompare(b.sdkName))
 }
 
 /** The tools `tool_search` ranks: agent-visible, and deferred or routine-only. */

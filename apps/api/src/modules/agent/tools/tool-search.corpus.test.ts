@@ -10,7 +10,7 @@ import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { env } from "~/lib/env"
 import { isDeferredTool } from "~/modules/agent/tools/tool-bridge"
-import { rankDeferredTools } from "~/modules/agent/tools/tool-rank"
+import { hiddenToolAliases, rankDeferredTools } from "~/modules/agent/tools/tool-rank"
 import { registerAppBuilderTools } from "~/modules/app-builder/tools"
 import {
   agentInstructionsRegistry,
@@ -36,22 +36,36 @@ interface CatalogTool {
   appName: string
   description: string
   keywords?: readonly string[]
+  aliases?: readonly string[]
 }
 
 const sdkNameOf = (app: string, tool: string) => `${app}__${tool.replace(/[^a-zA-Z0-9_-]/g, "_")}`
 
 function registeredTools(): CatalogTool[] {
   const out: CatalogTool[] = []
+  const aliases = hiddenToolAliases(
+    [...toolRegistry.entries()]
+      .filter(([key]) => key[0] === ORG_ID)
+      .map(([key, def]) => ({
+        appName: key[1],
+        toolName: key[2],
+        agentVisible: def.agentVisible,
+        useInstead: def.useInstead,
+      })),
+  )
   for (const [key, def] of toolRegistry.entries()) {
     if (key[0] !== ORG_ID || LEFT_OUT_APPS.has(key[1]) || key[1].startsWith("test")) continue
     if (def.agentVisible === false) continue
     if (!isDeferredTool(key[1], def) && !def.routineOnly) continue
+    const sdkName = sdkNameOf(key[1], key[2])
+    const names = aliases.get(sdkName)
     out.push({
-      sdkName: sdkNameOf(key[1], key[2]),
+      sdkName,
       toolName: key[2],
       appName: key[1],
       description: def.description,
       ...(def.searchKeywords?.length ? { keywords: def.searchKeywords } : {}),
+      ...(names ? { aliases: names } : {}),
     })
   }
   return out
@@ -131,13 +145,16 @@ describe("a tool is found by what people say", () => {
 
   it("the catalog read from source is the one registration builds", () => {
     const registered = new Map(
-      registeredTools().map((t) => [t.sdkName, { d: t.description, k: t.keywords ?? [] }]),
+      registeredTools().map((t) => [
+        t.sdkName,
+        { d: t.description, k: t.keywords ?? [], a: t.aliases ?? [] },
+      ]),
     )
     const regApps = new Set([...registered.keys()].map((n) => n.split("__")[0]))
     const fromSource = new Map(
       searchableTools(loadBenchCatalog())
         .filter((t) => regApps.has(t.appName))
-        .map((t) => [t.sdkName, { d: t.description, k: t.keywords ?? [] }]),
+        .map((t) => [t.sdkName, { d: t.description, k: t.keywords ?? [], a: t.aliases ?? [] }]),
     )
     expect([...fromSource.keys()].sort()).toEqual([...registered.keys()].sort())
     for (const [name, def] of registered) expect(fromSource.get(name), name).toEqual(def)

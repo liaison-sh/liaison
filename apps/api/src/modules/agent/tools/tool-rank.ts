@@ -56,7 +56,10 @@ interface ScoringWords {
   /** Name parts and keywords with their stems, which a misspelling is compared to ("refnud", "refund"). */
   typoNames: string[]
   typoKeywords: string[]
+  /** The tool's own name parts, without its aliases: the record and action read from these. */
   nameParts: string[]
+  /** The parts of the names in `aliases`, which match as name parts do. */
+  aliasParts: string[]
   /** The name parts and the keywords as sets, for the exact-word lookups of every query word. */
   namePartSet: Set<string>
   keywordSet: Set<string>
@@ -77,27 +80,36 @@ interface ScoringWords {
  */
 const scoringWordsCache = new WeakMap<ScorableDeferredTool, ScoringWords>()
 
+/** A tool name's words: `bulkDeactivateUsers` is bulk, deactivate, users. */
+function namePartsOf(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+}
+
 function scoringWords(t: ScorableDeferredTool): ScoringWords {
   const cached = scoringWordsCache.get(t)
   if (cached) return cached
   const appLower = t.appName.toLowerCase()
-  // camelCase splits too: `bulkDeactivateUsers` is bulk, deactivate, users.
-  const nameParts = t.toolName
-    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
+  const nameParts = namePartsOf(t.toolName)
+  const aliasParts = [...new Set((t.aliases ?? []).flatMap(namePartsOf))].filter(
+    (p) => p !== "" && !nameParts.includes(p),
+  )
+  const allNameParts = [...nameParts, ...aliasParts]
   const keywords = t.keywords?.map(foldSearchText)
   const appParts = appLower.split(/[^a-z0-9]+/)
   const descWords = foldSearchText(t.description).split(/[^\p{L}\p{N}]+/u)
   const single = (keywords ?? []).filter((k) => !/\s/.test(k))
   const words: ScoringWords = {
-    nameStems: byStem(nameParts),
+    nameStems: byStem(allNameParts),
     keywordStems: byStem(single),
     descStems: new Set(descWords.map(wordStem)),
-    typoNames: [...new Set([...nameParts, ...nameParts.map(wordStem)])],
+    typoNames: [...new Set([...allNameParts, ...allNameParts.map(wordStem)])],
     typoKeywords: [...new Set([...single, ...single.map(wordStem)])],
     nameParts,
-    namePartSet: new Set(nameParts),
+    aliasParts,
+    namePartSet: new Set(allNameParts),
     keywordSet: new Set(keywords),
     nameJoined: nameParts.join(""),
     keywords,
@@ -344,7 +356,7 @@ function vocabularyOf(tools: readonly ScorableDeferredTool[]): Set<string> {
   const vocab = new Set<string>()
   for (const t of tools) {
     const w = scoringWords(t)
-    for (const list of [w.nameParts, w.keywords ?? [], w.appParts, w.descWords])
+    for (const list of [w.nameParts, w.aliasParts, w.keywords ?? [], w.appParts, w.descWords])
       for (const word of list) vocab.add(word)
   }
   vocabularyCache.set(tools, vocab)
@@ -411,6 +423,30 @@ function editDistance(a: string, b: string, max: number): number {
 }
 
 /** The minimal shape the keyword scorer needs from a deferred-tool row. */
+/** A tool as its registration declares it, for the hidden-tool aliases below. */
+export interface AliasSource {
+  appName: string
+  toolName: string
+  agentVisible?: boolean
+  useInstead?: string
+}
+
+/**
+ * The names each visible tool answers to for the hidden tools that send an agent
+ * to it, keyed by the visible tool's SDK name (`<app>__<tool>`). `useInstead`
+ * names a tool of the same app, or of another app as `<app>__<tool>`.
+ */
+export function hiddenToolAliases(tools: Iterable<AliasSource>): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  for (const t of tools) {
+    if (t.agentVisible !== false || !t.useInstead) continue
+    const target = t.useInstead.includes("__") ? t.useInstead : `${t.appName}__${t.useInstead}`
+    out.set(target, [...(out.get(target) ?? []), t.toolName])
+  }
+  for (const names of out.values()) names.sort()
+  return out
+}
+
 export interface ScorableDeferredTool {
   toolName: string
   appName: string
@@ -421,6 +457,13 @@ export interface ScorableDeferredTool {
    * "crm"), which its static description cannot know.
    */
   keywords?: readonly string[]
+  /**
+   * The names of hidden tools that send an agent here (their `useInstead`): one
+   * read that took over several by a parameter (`github_list` for
+   * `github_list_pull_requests`) still answers to the names it replaced. Their
+   * parts match as name parts do.
+   */
+  aliases?: readonly string[]
 }
 
 /**
@@ -521,6 +564,7 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
       else if (
         substringOk(term) &&
         (startsWord(nameParts, term) ||
+          startsWord(words.aliasParts, term) ||
           (term.length > nameParts[0].length && nameJoined.startsWith(term)))
       )
         score += 5

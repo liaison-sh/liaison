@@ -7,7 +7,7 @@
 import { describe, expect, it } from "bun:test"
 import { withoutCourtesy } from "./tool-lexicon"
 import { type TextEmbedder, type ToolMeaning, ToolMeaningIndex } from "./tool-meaning"
-import { rankDeferredTools, scoreDeferredTools } from "./tool-rank"
+import { hiddenToolAliases, rankDeferredTools, scoreDeferredTools } from "./tool-rank"
 
 interface Row {
   sdkName: string
@@ -15,6 +15,7 @@ interface Row {
   appName: string
   description: string
   keywords?: string[]
+  aliases?: string[]
 }
 
 const row = (appName: string, toolName: string, description: string, keywords?: string[]): Row => ({
@@ -161,5 +162,48 @@ describe("French words for a company", () => {
     expect(first("historique société")).toBe("kernel__company_timeline")
     expect(first("historique entreprise")).toBe("kernel__company_timeline")
     expect(first("historique des sociétés")).toBe("kernel__company_timeline")
+  })
+})
+
+describe("a read that took over hidden reads", () => {
+  // One list read answers several kinds by a parameter; the per-kind reads it
+  // replaced are hidden from agents and name it as the tool to use instead.
+  const hidden = [
+    { appName: "code", toolName: "list_pull_requests", agentVisible: false, useInstead: "list" },
+    { appName: "code", toolName: "list_releases", agentVisible: false, useInstead: "list" },
+    { appName: "code", toolName: "list_drafts", agentVisible: false, useInstead: "kernel__drafts" },
+    { appName: "code", toolName: "get_pull_request", useInstead: "list" },
+  ]
+  const catalog = (aliases?: string[]): Row[] => [
+    {
+      ...row("code", "list", "List a repository's items by kind."),
+      ...(aliases ? { aliases } : {}),
+    },
+    row("code", "get_pull_request", "Read one pull request."),
+    row("review", "list_merge_requests", "List merge requests."),
+    row("review", "list_releases", "List releases."),
+  ]
+  const first = (rows: Row[], query: string) =>
+    rankDeferredTools(rows, query, { cap: 5, appNames: new Set(["code", "review"]) }).ranked[0]
+      ?.tool.sdkName
+
+  it("names each visible tool by the hidden tools that send an agent to it", () => {
+    const aliases = hiddenToolAliases(hidden)
+    expect(aliases.get("code__list")).toEqual(["list_pull_requests", "list_releases"])
+    expect(aliases.get("kernel__drafts")).toEqual(["list_drafts"])
+    // A visible tool that names another is no alias of it.
+    expect([...aliases.keys()].sort()).toEqual(["code__list", "kernel__drafts"])
+  })
+
+  it("the list read answers to the names of the reads it replaced", () => {
+    const aliases = hiddenToolAliases(hidden).get("code__list")
+    expect(first(catalog(), "code pull requests")).toBe("code__get_pull_request")
+    expect(first(catalog(aliases), "code pull requests")).toBe("code__list")
+    expect(first(catalog(aliases), "list code releases")).toBe("code__list")
+  })
+
+  it("another app's tool named by the query still leads its app's words", () => {
+    const aliases = hiddenToolAliases(hidden).get("code__list")
+    expect(first(catalog(aliases), "review releases")).toBe("review__list_releases")
   })
 })

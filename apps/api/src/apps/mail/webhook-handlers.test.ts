@@ -1,18 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { executeInSandbox } from "~/modules/apps/sandbox/executor"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { runMailHandler } from "~/apps/mail/test-mail-runner"
 
 describe("verifyGmailPush", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("returns valid result with replayKey from Pub/Sub messageId", async () => {
     const bridge: Record<string, any> = {
       getUserId: () => "system",
@@ -45,9 +35,7 @@ describe("verifyGmailPush", () => {
       log_debug: () => {},
     }
 
-    const result = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = await runMailHandler({
       exportName: "verifyGmailPush",
       params: {
         headers: {},
@@ -70,9 +58,7 @@ describe("verifyGmailPush", () => {
 
   it("refuses the static-token fallback unless ALLOW_INSECURE_PUSH is on, whatever NODE_ENV says", async () => {
     const run = (allow: boolean | undefined) =>
-      executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      runMailHandler({
         exportName: "verifyGmailPush",
         params: {
           headers: {},
@@ -143,9 +129,7 @@ describe("verifyGmailPush", () => {
     // Query-token must be rejected when OIDC config is present, even if the
     // token is correct — real Pub/Sub push delivers OIDC bearer auth, not a
     // query-string secret.
-    const queryOnly = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const queryOnly = await runMailHandler({
       exportName: "verifyGmailPush",
       params: {
         headers: {},
@@ -160,9 +144,7 @@ describe("verifyGmailPush", () => {
     expect(oidcCalls.length).toBe(0)
 
     // Bearer with valid OIDC verification must succeed.
-    const oidcOk = await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const oidcOk = await runMailHandler({
       exportName: "verifyGmailPush",
       params: {
         headers: { authorization: "Bearer eyJ-fake" },
@@ -181,13 +163,6 @@ describe("verifyGmailPush", () => {
 })
 
 describe("onGmailPush", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("drops and acknowledges a push for an account gone or disconnected, storing nothing", async () => {
     const encoded = Buffer.from(
       JSON.stringify({ emailAddress: "gone@gmail.com", historyId: "42" }),
@@ -207,9 +182,7 @@ describe("onGmailPush", () => {
         log_warn: (...args: unknown[]) => logged.push(args.join(" ")),
         log_error: (...args: unknown[]) => logged.push(args.join(" ")),
       }
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource,
+      await runMailHandler({
         exportName: "onGmailPush",
         params: { message: { data: encoded, messageId: "m1" } },
         bridge,
@@ -257,9 +230,7 @@ describe("onGmailPush", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMailHandler({
       exportName: "onGmailPush",
       params: {
         message: {
@@ -278,13 +249,6 @@ describe("onGmailPush", () => {
 })
 
 describe("onContactMerge", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
-
   it("updates conversations referencing the merged source contact", async () => {
     const updateManyCalls: any[] = []
     const emits: any[] = []
@@ -327,9 +291,7 @@ describe("onContactMerge", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMailHandler({
       exportName: "onContactMerge",
       params: {
         data: { sourceId: "contact-old", targetId: "contact-new" },

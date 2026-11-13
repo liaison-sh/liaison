@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { processMessages } from "~/apps/mail/handlers"
+import { mailPageRunner } from "~/apps/mail/test-page-write-bridge"
+
+const runMail = mailPageRunner({
+  __test_processMessages: (params, ctx) =>
+    processMessages(params.messages, params.account, ctx, params.origin ?? "incremental"),
+})
 
 /**
  * A synthetic stand-in for the host's `mailbox_sealAndInsert`, for the sync
@@ -48,14 +51,6 @@ async function stubSealAndInsert(bridge: Record<string, any>, paramsJson: string
 }
 
 describe("processMessages pipeline", () => {
-  let bundleSource: string
-
-  beforeAll(async () => {
-    await initSandboxPool()
-    const source = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-    bundleSource = `${source}\nasync function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx, params.origin ?? "incremental") }`
-  })
-
   it("creates conversation and message for new thread", async () => {
     const inserts: any[] = []
     const emits: any[] = []
@@ -102,9 +97,7 @@ describe("processMessages pipeline", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "__test_processMessages",
       params: {
         messages: [
@@ -199,9 +192,7 @@ describe("processMessages pipeline", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "__test_processMessages",
       params: {
         messages: [
@@ -285,9 +276,7 @@ describe("processMessages pipeline", () => {
       log_debug: () => {},
     }
 
-    await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    await runMail({
       exportName: "__test_processMessages",
       params: {
         messages: [

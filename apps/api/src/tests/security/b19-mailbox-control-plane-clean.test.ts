@@ -21,7 +21,6 @@
 // fails, that is a HARD failure, never a skip.
 
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import path from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
 import { mailAppManifest } from "~/apps/mail/manifest-descriptor"
 import {
@@ -56,6 +55,18 @@ import type { SearchableEntityRegistration } from "~/modules/search/searchable-e
 import * as minimal from "~/seed/tiers/minimal"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 import { createTestOrg } from "~/tests/helpers/org"
+
+/** The mail handlers, with this file's test-only entries beside them. */
+async function mailTestRunner() {
+  const [{ mailRunner }, mail] = await Promise.all([
+    import("~/apps/mail/test-mail-runner"),
+    import("~/apps/mail/handlers"),
+  ])
+  return mailRunner({
+    __test_processMessages: (params, ctx) =>
+      mail.processMessages(params.messages, params.account, ctx, "initial"),
+  })
+}
 
 const MAIL_SCHEMA = schemaRef("app_mail")
 const MAIL = drizzleSql.raw(`"${MAIL_SCHEMA}"`)
@@ -143,7 +154,6 @@ describe("Invariant K: the control plane holds no mail plaintext", () => {
   let userId: string
   let readyAccountId: string
   let orgAccountId: string
-  let bundle: string
   let conversationIds: string[] = []
   let orgConversationId = ""
 
@@ -198,9 +208,6 @@ describe("Invariant K: the control plane holds no mail plaintext", () => {
                   'open', '[]'::jsonb, false, false, 1, 'alice@b19.test')`)
       })
 
-      const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-      const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-      await initSandboxPool()
       initEventBus()
       DurableConsumersTestAccess.reset()
       registerEventSubscribers({
@@ -209,9 +216,6 @@ describe("Invariant K: the control plane holds no mail plaintext", () => {
         addThreadMember: () => {},
         removeThreadMember: () => {},
       } as never)
-      const source = await loadBundle(path.resolve(import.meta.dir, "../../apps/mail/handlers.ts"))
-      bundle = `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx, "initial") }`
     } catch (err) {
       await releaseAppSchemaJsLock("app_mail")
       throw err
@@ -342,13 +346,10 @@ async function __test_processMessages(params, ctx) { await processMessages(param
         log_error: () => {},
         log_debug: () => {},
       }
-      const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-      const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+      const runMailHandler = await mailTestRunner()
       let error: unknown = null
       try {
-        await executeInSandbox({
-          pool: getSandboxPool(),
-          bundleSource: bundle,
+        await runMailHandler({
           exportName: "__test_processMessages",
           params: {
             messages,

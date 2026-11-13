@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { beforeAll, describe, expect, it } from "bun:test"
-import path from "node:path"
-import { executeInSandbox } from "~/apps/mail/test-page-write-bridge"
-import { loadBundle } from "~/modules/apps/sandbox/bundle-loader"
-import { getSandboxPool, initSandboxPool } from "~/modules/apps/sandbox/pool"
+import { describe, expect, it } from "bun:test"
+import { runMail } from "~/apps/mail/test-page-write-bridge"
 
 // An IMAP mailbox's sync beyond new INBOX mail: the Sent folder joins the
 // conversations, a message moved back into the INBOX elsewhere reopens its
@@ -154,19 +151,12 @@ const ACCOUNT: Row = {
 }
 
 describe("IMAP sync: Sent folder and INBOX read-back", () => {
-  let bundleSource: string
-  beforeAll(async () => {
-    await initSandboxPool()
-    bundleSource = await loadBundle(path.resolve(import.meta.dir, "handlers.ts"))
-  })
   const run = (
     exportName: string,
     bridge: Row,
     params: Row = { orgId: "org-1", accountId: "acc-1" },
   ) =>
-    executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    runMail({
       exportName,
       params,
       bridge,

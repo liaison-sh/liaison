@@ -12,10 +12,9 @@
 // `~/*` bound to `apps/web/src` (its own tsconfig), so importing
 // `apps/api/src/modules/...` from a web scenario resolves `~/db` to the WEB
 // tree and fails. Running the same code as a child process with cwd = apps/api
-// gets the API's own path mapping, the API's own `schemaRef`, its own sandbox
-// pool, and adds NO test-only route to the shipped app. What the plan cared
+// gets the API's own path mapping, the API's own `schemaRef`, and adds NO test-only route to the shipped app. What the plan cared
 // about is preserved exactly: the real bridge, the real `system:mail:sync`
-// actor, the real sandbox, the real bundle, the real database trigger, and only
+// actor, the real mail handlers, the real database trigger, and only
 // the outbound provider methods stubbed. The bridge is built the way production
 // mail sync builds it (`createSessionRpcBridge` over an RLS session, see
 // modules/mail/service.ts), so each bridge call commits its own short
@@ -33,6 +32,18 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { createRlsSession } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+
+/** The mail handlers, with this file's test-only entries beside them. */
+async function mailTestRunner() {
+  const [{ mailRunner }, mail] = await Promise.all([
+    import("~/apps/mail/test-mail-runner"),
+    import("~/apps/mail/handlers"),
+  ])
+  return mailRunner({
+    __test_processMessages: (params, ctx) =>
+      mail.processMessages(params.messages, params.account, ctx),
+  })
+}
 
 const MAIL = drizzleSql.raw(`"${schemaRef("app_mail")}"`)
 
@@ -53,18 +64,6 @@ interface BackfillParams {
   maxBatches?: number
 }
 
-async function buildBundle(): Promise<string> {
-  const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-  const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-  await initSandboxPool()
-  const nodePath = await import("node:path")
-  const source = await loadBundle(
-    nodePath.resolve(import.meta.dir, "../../../apps/mail/handlers.ts"),
-  )
-  return `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx) }`
-}
-
 async function ingest(params: IngestParams): Promise<unknown> {
   // App registration, exactly as the API process runs it at boot.
   //
@@ -75,11 +74,10 @@ async function ingest(params: IngestParams): Promise<unknown> {
   // and says nothing at all about the product.
   const { ensureAppsForOrg } = await import("~/modules/apps/init")
   await ensureAppsForOrg(params.orgId)
-  const bundle = await buildBundle()
   const logs: string[] = []
   const enqueued: string[] = []
   // The account lookup is its OWN short privileged transaction. Nothing is held
-  // open across the sandbox run below.
+  // open across the handler run below.
   const account = await withPrivilegedDb(params.orgId, "mailbox-harness-account", async (tx) =>
     extractRows<{
       id: string
@@ -149,13 +147,10 @@ async function ingest(params: IngestParams): Promise<unknown> {
       log_debug: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
     }
 
-    const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-    const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
+    const runMailHandler = await mailTestRunner()
     let error: string | null = null
     try {
-      await executeInSandbox({
-        pool: getSandboxPool(),
-        bundleSource: bundle,
+      await runMailHandler({
         exportName: "__test_processMessages",
         params: {
           messages: params.messages,
@@ -168,8 +163,7 @@ async function ingest(params: IngestParams): Promise<unknown> {
         },
         bridge,
         timeoutMs: 120_000,
-        // biome-ignore lint/suspicious/noExplicitAny: executor options are wider than this call needs
-      } as any)
+      })
     } catch (e) {
       error = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
     }

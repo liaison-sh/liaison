@@ -26,11 +26,24 @@ import * as minimal from "~/seed/tiers/minimal"
 import { acquireAppSchemaJsLock, releaseAppSchemaJsLock } from "~/tests/helpers/app-schema-lock"
 import { createTestOrg } from "~/tests/helpers/org"
 
+/** The mail handlers, with this file's test-only entries beside them. */
+async function mailTestRunner() {
+  const [{ mailRunner }, mail] = await Promise.all([
+    import("~/apps/mail/test-mail-runner"),
+    import("~/apps/mail/handlers"),
+  ])
+  return mailRunner({
+    __test_processMessages: (params, ctx) =>
+      mail.processMessages(params.messages, params.account, ctx),
+    __test_recompute: (params, ctx) =>
+      mail.recomputeConversationState(params.conversationId, params.account, ctx),
+  })
+}
+
 const MAIL_SCHEMA = schemaRef("app_mail")
 const KEY_ID = 44
 
 describe("T-INT-6: archiving an encrypted conversation keeps its sealed snippet", () => {
-  let bundle: string
   let orgId: string
   let userId: string
   let keys: CryptoKeyPair
@@ -59,17 +72,6 @@ describe("T-INT-6: archiving an encrypted conversation keeps its sealed snippet"
         VALUES (${orgId}::uuid, ${userId}::uuid, ${KEY_ID}, ${ecdhSpki}, ${signSpki},
                 ${Buffer.from("attestation")}, 'active')`),
     )
-
-    const { initSandboxPool } = await import("~/modules/apps/sandbox/pool")
-    const { loadBundle } = await import("~/modules/apps/sandbox/bundle-loader")
-    await initSandboxPool()
-    const nodePath = await import("node:path")
-    const source = await loadBundle(
-      nodePath.resolve(import.meta.dir, "../../apps/mail/handlers.ts"),
-    )
-    bundle = `${source}
-async function __test_processMessages(params, ctx) { await processMessages(params.messages, params.account, ctx) }
-async function __test_recompute(params, ctx) { await recomputeConversationState(params.conversationId, params.account, ctx) }`
   }, 120_000)
 
   afterAll(async () => {
@@ -113,11 +115,8 @@ async function __test_recompute(params, ctx) { await recomputeConversationState(
           log_error: () => {},
           log_debug: () => {},
         }
-        const { executeInSandbox } = await import("~/modules/apps/sandbox/executor")
-        const { getSandboxPool } = await import("~/modules/apps/sandbox/pool")
-        await executeInSandbox({
-          pool: getSandboxPool(),
-          bundleSource: bundle,
+        const runMailHandler = await mailTestRunner()
+        await runMailHandler({
           exportName,
           params,
           bridge,

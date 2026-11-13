@@ -7021,7 +7021,7 @@ function isProviderRejection(err: any): boolean {
 }
 
 export async function agentMailReplyPreflight(
-  params: { conversationId: string },
+  params: { conversationId: string; to?: unknown },
   ctx: MailCtx,
 ): Promise<any> {
   const conversation = JSON.parse(await ctx.db_findOne("conversations", params.conversationId))
@@ -7531,7 +7531,7 @@ export async function agentMailForwardPreflight(
 }
 
 export async function agentMailComposePreflight(
-  params: { accountId?: string },
+  params: { accountId?: string; to?: unknown },
   ctx: MailCtx,
 ): Promise<any> {
   // `accountId` is REQUIRED: there is no implicit send-from mailbox, because a silent fallback to the

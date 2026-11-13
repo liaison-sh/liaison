@@ -1111,9 +1111,7 @@ describe("mail agent handlers", () => {
           captured: true,
         }),
     }
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Reply body" },
       bridge,
@@ -1126,9 +1124,7 @@ describe("mail agent handlers", () => {
   })
 
   it("a reply that went out says it was sent, with no captured mark", async () => {
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailReply",
       params: { conversationId: "conv-1", textBody: "Reply body" },
       bridge: makeReplyBridge({ onSmtp: () => {} }),
@@ -1149,9 +1145,7 @@ describe("mail agent handlers", () => {
           captured: true,
         }),
     }
-    const result = (await executeInSandbox({
-      pool: getSandboxPool(),
-      bundleSource,
+    const result = (await runMail({
       exportName: "agentMailCompose",
       params: {
         accountId: "account-1",

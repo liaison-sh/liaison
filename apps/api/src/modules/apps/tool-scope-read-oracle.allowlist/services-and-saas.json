@@ -43,5 +43,10 @@
     "bundled-apps/invoicing/src/handlers/stripe-refund-created.ts",
     "(fresh.scope as string | null) ?? null,",
     "an invoice document's goods or software split"
+  ],
+  [
+    "bundled-apps/github/src/tools.ts",
+    "const searchKind = params.scope",
+    "the GitHub search tool's own kind of result (code, commits, issues, pull requests)"
   ]
 ]

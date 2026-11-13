@@ -307,7 +307,12 @@ describe("context providers", () => {
     const customer = spyOn(customerContext, "loadCustomerContextBlock").mockImplementation(
       async () => {
         await sleep(1_400)
-        return "Customer record from Fixture CRM."
+        const customer = { listTool: "list", readTool: "read", writeTool: "write" }
+        const decl = { readScope: "r", writeScope: "w", adminScope: "a", customerContext: customer }
+        return {
+          text: "Customer record from Fixture CRM.",
+          source: { orgId: orgB, app: "fixture-crm", connection: "api", decl, customer },
+        }
       },
     )
     try {

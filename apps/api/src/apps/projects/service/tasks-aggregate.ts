@@ -74,6 +74,14 @@ export interface AggregateRow {
   groupLabel: string
   series?: string | null
   seriesLabel?: string
+  /** The group's colour (a status group: its status colour), when it has one. */
+  color?: string
+  /** The series' colour (a status series: its status colour), when it has one. */
+  seriesColor?: string
+  /** A person group (assignee, a person field): the person's user id. */
+  userId?: string
+  /** A person series: the person's user id. */
+  seriesUserId?: string
   value: number | null
   count: number
   /** An amount measure: the currency of this row's value. */
@@ -130,6 +138,7 @@ interface StatusRow {
   id: string
   project_id: string
   label: string
+  color: string | null
   order: number
   terminal: boolean
 }
@@ -348,6 +357,23 @@ function labelOf(g: Grouping, key: string | null, ctx: Context): string {
       if (g.column.type === "checkbox") return key === "true" ? "Yes" : "No"
       return key
   }
+}
+
+/** A status group's colour (by id on one project, by label across several), when it has one. */
+function colorOfGroup(g: Grouping, key: string | null, ctx: Context): string | null {
+  if (g.kind !== "status" || key === null) return null
+  if (ctx.single) return ctx.statuses.get(key)?.color ?? null
+  for (const s of ctx.statuses.values()) if (s.label === key && s.color) return s.color
+  return null
+}
+
+/** A person group's user id (assignee, a person field), when the key is one. */
+function userOfGroup(g: Grouping, key: string | null): string | null {
+  if (key === null) return null
+  if (g.kind === "assignee" || (g.kind === "field" && g.column.type === "person")) {
+    return UUID_RE.test(key) ? key : null
+  }
+  return null
 }
 
 /** The group's sort position: the grouping's own order, then the label. */
@@ -634,7 +660,7 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
     )
     for (const s of extractRows<StatusRow>(
       await args.tx.execute(drizzleSql`
-        SELECT id, project_id, label, "order", terminal FROM ${projectsRel("project_statuses")}
+        SELECT id, project_id, label, color, "order", terminal FROM ${projectsRel("project_statuses")}
         WHERE org_id = ${args.orgId}::uuid AND project_id IN (${readable})
         ORDER BY "order" ASC
       `),
@@ -800,6 +826,16 @@ export async function tasksAggregate(args: TasksAggregateArgs): Promise<TasksAgg
         : null
       if (filter) row.filter = filter
       if (a.currency) row.currency = a.currency
+      const gColor = colorOfGroup(group, a.group, ctx)
+      if (gColor) row.color = gColor
+      const gUser = userOfGroup(group, a.group)
+      if (gUser) row.userId = gUser
+      if (series) {
+        const sColor = colorOfGroup(series, a.series, ctx)
+        if (sColor) row.seriesColor = sColor
+        const sUser = userOfGroup(series, a.series)
+        if (sUser) row.seriesUserId = sUser
+      }
       return row
     })
 

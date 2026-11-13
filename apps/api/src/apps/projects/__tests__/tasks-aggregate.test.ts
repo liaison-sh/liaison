@@ -188,6 +188,40 @@ describe("tasks_aggregate: groups and measures", () => {
     ])
   })
 
+  it("status groups carry their status colour, person groups their user id", async () => {
+    const project = await ok("createProject", {
+      name: `agg-c-${randomUUID().slice(0, 8)}`,
+      statuses: [
+        { label: "Inbound", color: "#6b7280" },
+        { label: "Received", color: "#3b82f6" },
+        { label: "Closed", terminal: true },
+      ],
+    })
+    const by = (label: string) =>
+      project.statuses.find((s: { label: string }) => s.label === label).id as string
+    const b = { id: project.id, todo: by("Inbound"), doing: by("Received"), done: by("Closed") }
+    await task(b, { statusId: b.todo, assigneeId: otherId })
+    await task(b, { statusId: b.doing })
+    const status = await ok("tasks_aggregate", { projectId: b.id })
+    expect(status.rows.map((r: Json) => [r.groupLabel, r.color])).toEqual([
+      ["Inbound", "#6b7280"],
+      ["Received", "#3b82f6"],
+    ])
+    const who = await ok("tasks_aggregate", {
+      projectId: b.id,
+      groupBy: "assignee",
+      series: "status",
+    })
+    const bo = who.rows.find((r: Json) => r.group === otherId)
+    expect(bo).toMatchObject({ userId: otherId, seriesLabel: "Inbound", seriesColor: "#6b7280" })
+    const nobody = who.rows.find((r: Json) => r.group === null)
+    expect(nobody.userId).toBeUndefined()
+    expect(nobody.seriesColor).toBe("#3b82f6")
+    // Several projects: a status groups by its label and still carries its colour.
+    const many = await ok("tasks_aggregate", { projectIds: [b.id] })
+    expect(many.rows[0].color).toBe("#6b7280")
+  })
+
   it("by a choice field and a person field; sum and avg of an amount field", async () => {
     const b = await makeBoard()
     await task(b, { fields: { problem: "Noise", cost: 10, handler: otherId } })
@@ -468,20 +502,41 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
           source: aggregate({}),
           map: { value: "value", agg: "sum" },
         },
-        { id: "status", type: "bar", title: "By status", source: aggregate({}), map: bar },
+        {
+          id: "status",
+          type: "bar",
+          title: "Pipeline",
+          width: 2,
+          source: aggregate({}),
+          map: { ...bar, colorField: "color", keepOrder: true, stackedSingle: true },
+        },
         {
           id: "handler",
           type: "bar",
-          title: "By handler",
-          source: aggregate({ groupBy: "assignee" }),
-          map: bar,
+          title: "Who has what",
+          source: aggregate({ groupBy: "assignee", series: "status" }),
+          map: {
+            ...bar,
+            series: "seriesLabel",
+            colorField: "seriesColor",
+            personField: "userId",
+            keepOrder: true,
+            horizontal: true,
+            stacked: true,
+          },
         },
         {
           id: "aging",
           type: "bar",
           title: "Time in status",
-          source: aggregate({ groupBy: "age_in_status" }),
-          map: bar,
+          source: aggregate({ groupBy: "age_in_status", series: "status" }),
+          map: {
+            ...bar,
+            series: "seriesLabel",
+            colorField: "seriesColor",
+            keepOrder: true,
+            stacked: true,
+          },
         },
         {
           id: "sla",
@@ -531,6 +586,21 @@ describe("the Project overview dashboard (docs/apps/projects.md)", () => {
     for (const block of ["status", "handler", "aging", "sla"]) {
       expect({ block, ok: (await run(block)).ok }).toEqual({ block, ok: true })
     }
+    // The pipeline: the board's status order, one segment per status.
+    const pipeline = await run("status")
+    expect(pipeline.data.labels).toEqual(["Todo", "Doing"])
+    expect(pipeline.data.display).toMatchObject({ stackedSingle: true })
+    // Who has what: one row per person, named by their user id, split by status.
+    const handler = await run("handler")
+    expect(handler.data.labels).toContain("Bo Handler")
+    expect(handler.data.paint.people[handler.data.labels.indexOf("Bo Handler")]).toBe(otherId)
+    expect(handler.data.series.map((x: { name: string }) => x.name).sort()).toEqual([
+      "Doing",
+      "Todo",
+    ])
+    // Time in status keeps the buckets' order.
+    const aging = await run("aging")
+    expect(aging.data.labels[0]).toBe("Less than 1 day")
     const overdue = await run("overdue")
     expect(overdue.ok).toBe(true)
     expect(overdue.data.rows).toHaveLength(1)

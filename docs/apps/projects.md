@@ -129,7 +129,7 @@ Every status change of a task is recorded: the status it left, the one it entere
 
 ### A project overview dashboard
 
-Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, bars by status, by handler and by time in status, a metric of missed SLAs, and a table of overdue tasks that opens each task. Example spec, with your project and status ids:
+Ask an agent for "a project overview of Repairs" and it creates one dashboard in one call: a metric of open tasks, the pipeline (one bar split by status, in the board's order and colours, its legend giving each count), who has what (one row per handler with their avatar and a bar split by status), time in status (split by status), a metric of missed SLAs, and a table of overdue tasks that opens each task. A click on a segment lists its tasks. Example spec, with your project and status ids:
 
 ```json
 {
@@ -138,15 +138,18 @@ Ask an agent for "a project overview of Repairs" and it creates one dashboard in
     { "id": "open", "type": "metric", "title": "Open tasks",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
       "map": { "value": "value", "agg": "sum" } },
-    { "id": "status", "type": "bar", "title": "By status",
+    { "id": "status", "type": "bar", "title": "Pipeline", "width": 2,
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
-    { "id": "handler", "type": "bar", "title": "By handler",
-      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+      "map": { "x": "groupLabel", "y": "value", "colorField": "color", "keepOrder": true, "stackedSingle": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+    { "id": "handler", "type": "bar", "title": "Who has what",
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "assignee", "series": "status" } },
+      "map": { "x": "groupLabel", "y": "value", "series": "seriesLabel", "colorField": "seriesColor", "personField": "userId", "keepOrder": true, "horizontal": true, "stacked": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "aging", "type": "bar", "title": "Time in status",
-      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status" } },
-      "map": { "x": "groupLabel", "y": "value", "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
+      "source": { "kind": "tool", "tool": "projects:tasks_aggregate", "params": { "projectId": "<project id>", "groupBy": "age_in_status", "series": "status" } },
+      "map": { "x": "groupLabel", "y": "value", "series": "seriesLabel", "colorField": "seriesColor", "keepOrder": true, "stacked": true,
+        "drillRows": "tasks", "drillColumns": [{ "field": "title", "label": "Title" }, { "field": "status", "label": "Status" }, { "field": "assigneeName", "label": "Handler" }, { "field": "dueDate", "label": "Due" }], "link": { "entity": "task", "idField": "id", "app": "projects" } } },
     { "id": "sla", "type": "metric", "title": "SLA missed",
       "source": { "kind": "tool", "tool": "projects:tasks_aggregate",
         "params": { "projectId": "<project id>", "groupBy": "sla", "sla": { "toStatusIds": ["<status id>"], "withinWorkingDays": 2 } } },

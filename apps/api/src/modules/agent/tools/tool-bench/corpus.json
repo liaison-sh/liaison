@@ -3272,5 +3272,32 @@
     "typed": ["time spent project", "project budget", "hours project"],
     "any": ["projects__budget_get"],
     "modelRun": true
+  },
+  {
+    "id": "C12",
+    "set": "seed",
+    "lang": "en",
+    "say": "bill Atlas for October",
+    "typed": ["reconcile", "month end billing", "invoice project month", "bill the month"],
+    "any": ["projects__reconcile_propose", "projects__reconcile_facts"],
+    "modelRun": true
+  },
+  {
+    "id": "C13",
+    "set": "seed",
+    "lang": "fr",
+    "say": "facture Atlas pour octobre",
+    "typed": ["facturer projet", "facture du mois", "clôture mensuelle", "rapprochement"],
+    "any": ["projects__reconcile_propose", "projects__reconcile_facts"],
+    "modelRun": true
+  },
+  {
+    "id": "C73",
+    "set": "seed",
+    "lang": "en",
+    "say": "check planned vs done for Orbit",
+    "typed": ["planned vs done", "planned done project", "month close"],
+    "any": ["projects__reconcile_facts", "projects__reconcile_propose"],
+    "modelRun": true
   }
 ]

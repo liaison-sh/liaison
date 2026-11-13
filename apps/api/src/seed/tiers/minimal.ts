@@ -247,7 +247,7 @@ export async function thread(
 }
 
 /** A message `userId` wrote in `threadId`: the person's own words in that conversation. */
-export async function message(
+export async function postUserMessage(
   orgId: string,
   threadId: string,
   userId: string,

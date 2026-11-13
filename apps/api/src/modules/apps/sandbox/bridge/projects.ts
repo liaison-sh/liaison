@@ -2068,6 +2068,49 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         return getBudget({ tx: txDb, orgId, scopes: callerScopes ?? [], projectId })
       })
     },
+    /** The facts of one project's period, for a reconcile the person asked for. */
+    projects_reconcileFacts: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        project?: string
+        month?: string
+        from?: string
+        to?: string
+      }
+      return typedCall(async () => {
+        const { reconcileFacts } = await import("~/apps/projects/service/reconcile")
+        const actor = await writeActor()
+        return reconcileFacts({
+          tx: txDb,
+          orgId,
+          userId: actor.userId,
+          scopes: callerScopes ?? [],
+          input: {
+            project: params.project ?? "",
+            ...(params.month !== undefined ? { month: params.month } : {}),
+            ...(params.from !== undefined ? { from: params.from } : {}),
+            ...(params.to !== undefined ? { to: params.to } : {}),
+          },
+        })
+      })
+    },
+    /** The reconcile card: the agent's grouping and proofs, every figure the server's. */
+    projects_reconcilePropose: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { reconcilePropose } = await import("~/apps/projects/service/reconcile")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await reconcilePropose({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            ...(bridgeOptions?.threadId ? { threadId: bridgeOptions.threadId } : {}),
+            input: params as never,
+          }),
+        )
+      })
+    },
     projects_attentionItems: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_attentionItems is only available to the projects app")

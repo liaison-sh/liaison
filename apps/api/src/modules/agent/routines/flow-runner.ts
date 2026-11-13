@@ -511,6 +511,81 @@ async function loadOrgWorkingCalendar(
 
 type ActionStep = Extract<RoutineFlowStep, { type: "action" }>
 
+/**
+ * The scope a `notify` step needs to notify anyone but the routine's owner. The attention event
+ * itself asks for none (`notify_user` is self-targeted), so notifying a teammate about a task
+ * takes the right to act on the task: the trigger app's write scope.
+ */
+export const FLOW_NOTIFY_OTHERS_SCOPE = "projects:tasks:write"
+
+/**
+ * Why a `notify` step may not reach its targets, or null. The owner alone is always allowed (the
+ * same as `notify_user`). Anyone else must be an active member of the org, the run must hold
+ * `FLOW_NOTIFY_OTHERS_SCOPE`, and each target must be able to read the trigger task under their
+ * own grants and RLS: the summary carries the task's title and fields.
+ */
+async function notifyRefusal(
+  run: FlowRun,
+  targets: string[],
+  task: FlowTask | null,
+): Promise<string | null> {
+  const others = targets.filter((t) => t !== run.routine.ownerUserId)
+  if (others.length === 0) return null
+  const { isScopeCovered } = await import("~/modules/agent/scopes/scope-coverage")
+  if (!isScopeCovered([FLOW_NOTIFY_OTHERS_SCOPE], run.actor.scopes)) {
+    return `Notifying someone other than the routine's owner needs the scope ${FLOW_NOTIFY_OTHERS_SCOPE}, which this routine does not hold.`
+  }
+  const { users } = await import("~/db/schema/kernel")
+  const active = await withPrivilegedDb(run.orgId, "routine-flow-notify-targets", (tx) =>
+    tx
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(eq(users.orgId, run.orgId), inArray(users.id, others), eq(users.status, "active")),
+      ),
+  )
+  const activeIds = new Set(active.map((u) => u.id))
+  const notMembers = others.filter((t) => !activeIds.has(t))
+  if (notMembers.length > 0) {
+    return `Cannot notify ${notMembers.join(", ")}: not an active member of this organization.`
+  }
+  if (!task) return null
+  const blind: string[] = []
+  for (const userId of others) {
+    if (!(await userCanReadTask(run, userId, task.id))) blind.push(userId)
+  }
+  if (blind.length > 0) {
+    return `Cannot notify ${blind.join(", ")}: they cannot read the task that triggered the routine.`
+  }
+  return null
+}
+
+/** Whether a member can read the task, under their own grants and RLS. */
+async function userCanReadTask(run: FlowRun, userId: string, taskId: string): Promise<boolean> {
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  const perms = await withPrivilegedDb(run.orgId, "routine-flow-notify-perms", (tx) =>
+    loadEffectivePermissions(tx, userId, run.orgId),
+  )
+  const { loadTaskDetails } = await import("~/apps/projects/service/task-detail")
+  try {
+    const rows = await withRlsContext(
+      {
+        actorType: "user",
+        userId,
+        orgId: run.orgId,
+        scopes: perms.scopes,
+        dimensionGrants: perms.dimensionGrants,
+      },
+      (tx) => loadTaskDetails(tx, run.orgId, [taskId]),
+      { pool: "jobs" },
+    )
+    return rows.length > 0
+  } catch (err) {
+    log.warn({ err, routineId: run.routine.id, userId, taskId }, "flow: notify target read check")
+    return false
+  }
+}
+
 async function defaultCallTool(call: FlowToolCall): Promise<FlowToolResult> {
   const { executeTool } = await import("~/modules/apps/execute-tool")
   try {
@@ -602,6 +677,8 @@ async function runAction(
       ),
     ]
     if (targets.length === 0) return fail("Nobody to notify: the task has no assignee.")
+    const refused = await notifyRefusal(run, targets, task)
+    if (refused) return fail(refused)
     const summary = interpolateFlowText(
       step.args.text,
       task,
@@ -804,7 +881,7 @@ export async function resumeFlowWait(
   // The step's state by its id (never by position: the flow may have been edited meanwhile).
   const index = steps.findIndex((s) => s.id === stepId)
   const state = steps[index]
-  if (!state || state.type !== "wait" || state.state !== "waiting") {
+  if (state?.type !== "wait" || state.state !== "waiting") {
     return { status: "no_run", runId }
   }
   const deadline = new Date(String(state.output?.deadline ?? ""))
@@ -826,7 +903,7 @@ export async function resumeFlowWait(
   if (!(await claimRun(orgId, runId, "waiting"))) return { status: "no_run", runId }
   return withClaimedRun(orgId, routine, runRow, steps, index + 1, deps, async (run) => {
     const step = run.flow.steps[index]
-    if (!step || step.type !== "wait" || step.id !== stepId) {
+    if (step?.type !== "wait" || step.id !== stepId) {
       throw new Error(`the flow has no wait step ${stepId} at position ${index + 1}`)
     }
     const task = await readTriggerTask(run)

@@ -143,7 +143,7 @@ An app that runs on the Workers or workerd executor never receives a secret: the
 | Files | `files_importAttachment`, `files_listAttachments`, `files_getAttachmentBytes`, `files_attachToParent`, `files_reparent`, `files_analyzeDocument` (capability `files.analyzeDocument`: reads one of the app's own PDFs or images with the workspace's media analysis model, answering the app's prompt; credits apply, and an admin can turn the `apps` media surface off) |
 | Bulk data | `bulk_fetchToBlob`, `bulk_iterateJsonl_next`, `bulk_deleteBlob` — streaming helpers for large payloads |
 | Approvals | `approval_recordStarted`, `approval_recordEffectLanded`, `approval_recordSucceeded`, `approval_recordFailedNoEffect`, `approval_recordAmbiguous` |
-| Agents | `agent_run`, `agent_spawn`, `agent_awaitRun` |
+| Agents | `agent_run`, `agent_spawn`, `agent_awaitRun` (`agent_spawn` and `agent_awaitRun` need the `agent.spawn` capability: declared in the manifest, listed on the install screen and granted by the admin who installs the app; no app gets it from who published it, and an organization's custom app may not declare it) |
 | Cross-app tools | `executeTool` — one app calling another app's declared tool |
 
 A tool reached through `executeTool` runs with the target app's own access plus the calling app's. So it can read a file the calling app stored on one of its own records (with `files_importAttachment`) and handed over by id, for example as `attachments` to `tickets:addNote`, and nothing the calling app cannot read. The target app copies such a file onto its own record under its own write access, not the caller's. A file copied by a webhook or job, which has no user, records no uploader.

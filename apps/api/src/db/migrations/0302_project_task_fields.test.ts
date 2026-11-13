@@ -13,13 +13,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, eq } from "drizzle-orm"
 import { createProject } from "~/apps/projects/service/create-project"
 import { createTask } from "~/apps/projects/service/tasks"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { tasks } from "~/db/schema/app_projects"
+import { auditLog } from "~/db/schema/kernel"
+import { seedAuditEntry, seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0302_project_task_fields.sql")
@@ -48,23 +51,19 @@ let statusB: string
 
 beforeAll(async () => {
   await acquireTestLock()
-  const [org] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), '0302 Org', ${`m0302-${Date.now()}-${Math.random()}`}) RETURNING id
-    `),
-  )
-  orgId = org!.id
-  const [u] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`m0302-${Date.now()}@test.com`}, 'Owner', 'active', 'hash', 1, 1)
-      RETURNING id
-    `),
-  )
+  orgId = await seedOrgRow({ name: "0302 Org", slug: `m0302-${Date.now()}-${Math.random()}` })
+  const ownerId = await seedUserRow({
+    orgId,
+    email: `m0302-${Date.now()}@test.com`,
+    name: "Owner",
+    status: "active",
+    passwordHash: "hash",
+    authVersion: 1,
+    permissionVersion: 1,
+  })
   actor = {
     actorType: "user",
-    userId: u!.id,
+    userId: ownerId,
     orgId,
     scopes: SCOPES,
     dimensionGrants: { "*": ["*"] },
@@ -101,11 +100,16 @@ async function legacyTask(title: string, createdAt: string): Promise<string> {
 }
 
 async function audit(taskId: string, action: string, statusId: string, at: string): Promise<void> {
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.audit_log (org_id, "timestamp", actor_type, app, entity_type, entity_id, action, changes)
-    VALUES (${orgId}::uuid, ${at}::timestamptz, 'user', 'projects', 'task', ${taskId}, ${action},
-            ${JSON.stringify({ statusId, changedFields: ["statusId"] })}::jsonb)
-  `)
+  await seedAuditEntry({
+    orgId,
+    timestamp: new Date(at),
+    actorType: "user",
+    app: "projects",
+    entityType: "task",
+    entityId: taskId,
+    action,
+    changes: { statusId, changedFields: ["statusId"] },
+  })
 }
 
 async function state(taskId: string) {
@@ -164,22 +168,40 @@ describe("0302 project task fields", () => {
     await withSystemDb("0302-test-bulk", async (tx) => {
       // Tasks shaped like the legacy one (no transition), each with ten audit events: A then B
       // alternating, the last one B (its current status), at hourly steps.
-      await tx.execute(drizzleSql`
-        INSERT INTO app_projects.tasks
-          (id, org_id, project_id, status_id, number, title, thread_id, created_by, created_at)
-        SELECT gen_random_uuid(), t.org_id, t.project_id, t.status_id, 1000000 + g, 'bulk',
-               t.thread_id, t.created_by, t.created_at
-        FROM app_projects.tasks t, generate_series(1, ${TASKS}) g
-        WHERE t.id = ${template}::uuid
-      `)
-      await tx.execute(drizzleSql`
-        INSERT INTO kernel.audit_log (org_id, "timestamp", actor_type, app, entity_type, entity_id, action, changes)
-        SELECT t.org_id, '2026-01-01T00:00:00Z'::timestamptz + make_interval(hours => k), 'user',
-               'projects', 'task', t.id::text, 'task.updated',
-               jsonb_build_object('statusId', CASE WHEN k % 2 = 1 THEN ${statusB} ELSE ${statusA} END)
-        FROM app_projects.tasks t, generate_series(0, ${PER_TASK - 1}) k
-        WHERE t.project_id = ${projectId}::uuid AND t.title = 'bulk'
-      `)
+      const [tpl] = await tx.select().from(tasks).where(eq(tasks.id, template))
+      const copies = Array.from({ length: TASKS }, (_, i) => ({
+        orgId: tpl!.orgId,
+        projectId: tpl!.projectId,
+        statusId: tpl!.statusId,
+        number: 1_000_001 + i,
+        title: "bulk",
+        threadId: tpl!.threadId,
+        createdBy: tpl!.createdBy,
+        createdAt: tpl!.createdAt,
+      }))
+      const bulkIds: string[] = []
+      for (let i = 0; i < copies.length; i += 1000) {
+        const out = await tx
+          .insert(tasks)
+          .values(copies.slice(i, i + 1000))
+          .returning({ id: tasks.id })
+        for (const r of out) bulkIds.push(r.id)
+      }
+      const events = bulkIds.flatMap((taskId) =>
+        Array.from({ length: PER_TASK }, (_, k) => ({
+          orgId,
+          timestamp: new Date(Date.parse("2026-01-01T00:00:00Z") + k * 3_600_000),
+          actorType: "user" as const,
+          app: "projects",
+          entityType: "task",
+          entityId: taskId,
+          action: "task.updated",
+          changes: { statusId: k % 2 === 1 ? statusB : statusA },
+        })),
+      )
+      for (let i = 0; i < events.length; i += 4000) {
+        await tx.insert(auditLog).values(events.slice(i, i + 4000))
+      }
     })
     const started = performance.now()
     await runMigration()

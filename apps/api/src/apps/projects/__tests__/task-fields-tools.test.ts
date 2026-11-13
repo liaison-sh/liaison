@@ -24,9 +24,12 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { ActorContext, UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { taskTransitions } from "~/db/schema/app_projects"
 import { eventDataForOwner, ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { eraseUser } from "~/modules/erasure/erase-user"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { seedProjectTemplateRow } from "~/seed/factories/projects/templates"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 // Hermetic copy of execute-tool (a neighbouring file mock.module()s it; see
@@ -150,26 +153,20 @@ async function storedFields(taskId: string): Promise<Record<string, unknown>> {
 }
 
 async function insertUser(name: string): Promise<string> {
-  const [u] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`${name}-${randomUUID()}@test.com`}, ${name}, 'active', 'hash', 1, 1)
-      RETURNING id
-    `),
-  )
-  return u!.id
+  return seedUserRow({
+    orgId,
+    email: `${name}-${randomUUID()}@test.com`,
+    name,
+    status: "active",
+    passwordHash: "hash",
+    authVersion: 1,
+    permissionVersion: 1,
+  })
 }
 
 beforeAll(async () => {
   await acquireTestLock()
-  const [org] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (gen_random_uuid(), 'Task Fields Org', ${`task-fields-${randomUUID()}`})
-      RETURNING id
-    `),
-  )
-  orgId = org!.id
+  orgId = await seedOrgRow({ name: "Task Fields Org", slug: `task-fields-${randomUUID()}` })
   userId = await insertUser("Field Tester")
   otherMemberId = await insertUser("Second Member")
   actor = { actorType: "user", userId, orgId, scopes: SCOPES, dimensionGrants: { "*": ["*"] } }
@@ -612,11 +609,13 @@ describe("tasks_byProject: field filters and rows", () => {
 describe("templates v2", () => {
   it("a legacy array template still instantiates its task tree", async () => {
     const templateId = randomUUID()
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_templates (id, org_id, name, structure, created_by)
-      VALUES (${templateId}::uuid, ${orgId}::uuid, 'Legacy',
-        ${JSON.stringify([{ title: "Parent", children: [{ title: "Child" }] }])}::jsonb, ${userId}::uuid)
-    `)
+    await seedProjectTemplateRow({
+      id: templateId,
+      orgId,
+      name: "Legacy",
+      structure: [{ title: "Parent", children: [{ title: "Child" }] }],
+      createdBy: userId,
+    })
     const out = await ok("instantiate_template", {
       templateId,
       projectName: `legacy-${randomUUID().slice(0, 6)}`,
@@ -680,11 +679,13 @@ describe("templates v2", () => {
   it("a stored v1 template with a long description instantiates its tasks; an unreadable one refuses loudly", async () => {
     const templateId = randomUUID()
     const long = "d".repeat(30_000)
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_templates (id, org_id, name, structure, created_by)
-      VALUES (${templateId}::uuid, ${orgId}::uuid, 'Long v1',
-        ${JSON.stringify([{ title: "Long one", description: long, extra: 1 }])}::jsonb, ${userId}::uuid)
-    `)
+    await seedProjectTemplateRow({
+      id: templateId,
+      orgId,
+      name: "Long v1",
+      structure: [{ title: "Long one", description: long, extra: 1 }],
+      createdBy: userId,
+    })
     const out = await ok("instantiate_template", {
       templateId,
       projectName: `long-${randomUUID().slice(0, 6)}`,
@@ -693,11 +694,13 @@ describe("templates v2", () => {
     expect(rows.map((t) => t.title)).toEqual(["Long one"])
 
     const brokenId = randomUUID()
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.project_templates (id, org_id, name, structure, created_by)
-      VALUES (${brokenId}::uuid, ${orgId}::uuid, 'Broken',
-        ${JSON.stringify({ version: 2, tasks: [{ title: "" }] })}::jsonb, ${userId}::uuid)
-    `)
+    await seedProjectTemplateRow({
+      id: brokenId,
+      orgId,
+      name: "Broken",
+      structure: { version: 2, tasks: [{ title: "" }] },
+      createdBy: userId,
+    })
     const broken = await run("instantiate_template", {
       templateId: brokenId,
       projectName: `broken-${randomUUID().slice(0, 6)}`,
@@ -762,13 +765,11 @@ describe("RLS on fields and transitions", () => {
     expect(await count({ ...actor, userId: otherMemberId, scopes: ["projects:tasks:read"] })).toBe(
       2,
     )
-    const [org2] = extractRows<{ id: string }>(
-      await db.execute(drizzleSql`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), 'Other Org', ${`task-fields-other-${randomUUID()}`}) RETURNING id
-      `),
-    )
-    expect(await count({ ...actor, orgId: org2!.id })).toBe(0)
+    const otherOrgId = await seedOrgRow({
+      name: "Other Org",
+      slug: `task-fields-other-${randomUUID()}`,
+    })
+    expect(await count({ ...actor, orgId: otherOrgId })).toBe(0)
   })
 })
 
@@ -785,32 +786,32 @@ describe("task_transitions is append-only for every scope holder", () => {
     expect(generated.length).toBeGreaterThan(0)
 
     // A task of another org, made by that org's own member.
-    const [org2] = extractRows<{ id: string }>(
-      await db.execute(drizzleSql`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), 'Foreign Org', ${`task-fields-foreign-${randomUUID()}`}) RETURNING id
-      `),
-    )
-    await ensureAppsForOrg(org2!.id, {})
-    const [u2] = extractRows<{ id: string }>(
-      await db.execute(drizzleSql`
-        INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-        VALUES (gen_random_uuid(), ${org2!.id}::uuid, ${`foreign-${randomUUID()}@test.com`}, 'Foreign', 'active', 'hash', 1, 1)
-        RETURNING id
-      `),
-    )
-    const foreignActor: UserContext = { ...actor, orgId: org2!.id, userId: u2!.id }
+    const foreignOrgId = await seedOrgRow({
+      name: "Foreign Org",
+      slug: `task-fields-foreign-${randomUUID()}`,
+    })
+    await ensureAppsForOrg(foreignOrgId, {})
+    const foreignUserId = await seedUserRow({
+      orgId: foreignOrgId,
+      email: `foreign-${randomUUID()}@test.com`,
+      name: "Foreign",
+      status: "active",
+      passwordHash: "hash",
+      authVersion: 1,
+      permissionVersion: 1,
+    })
+    const foreignActor: UserContext = { ...actor, orgId: foreignOrgId, userId: foreignUserId }
     const foreign = await withRlsContext(foreignActor, async (tx) => {
       const { createProject } = await import("~/apps/projects/service/create-project")
       const p = await createProject({
         tx,
-        orgId: org2!.id,
+        orgId: foreignOrgId,
         actor: foreignActor,
         input: { name: `foreign-${randomUUID().slice(0, 6)}` },
       })
       const t = await createTask({
         tx,
-        orgId: org2!.id,
+        orgId: foreignOrgId,
         actor: foreignActor,
         input: { projectId: p.id, title: "foreign" },
       })
@@ -840,12 +841,14 @@ describe("task_transitions is append-only for every scope holder", () => {
       expect({ scopes, touched }).toEqual({ scopes, touched: 0 })
       {
         const inserted = await withRlsContext(who, (tx) =>
-          tx.execute(drizzleSql`
-            INSERT INTO app_projects.task_transitions
-              (org_id, project_id, task_id, from_status_id, to_status_id, actor_type)
-            VALUES (${orgId}::uuid, ${foreign.project_id}::uuid, ${foreign.id}::uuid, NULL,
-                    ${foreign.status_id}::uuid, 'user')
-          `),
+          tx.insert(taskTransitions).values({
+            orgId,
+            projectId: foreign.project_id,
+            taskId: foreign.id,
+            fromStatusId: null,
+            toStatusId: foreign.status_id,
+            actorType: "user",
+          }),
         ).then(
           () => "inserted",
           () => "refused",

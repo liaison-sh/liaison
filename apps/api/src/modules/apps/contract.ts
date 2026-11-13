@@ -687,6 +687,16 @@ export function pickDeclarationErrors(app: unknown): string[] {
         `pick_tool_invalid: ${where}.queryParam: tool "${toolName}" takes no parameter "${queryParam}"`,
       )
     }
+    for (const key of Object.keys(asRecord(pick.params) ?? {})) {
+      if (properties && !(key in properties)) {
+        errors.push(
+          `pick_tool_invalid: ${where}.params: tool "${toolName}" takes no parameter "${key}"`,
+        )
+      }
+      if (key === queryParam) {
+        errors.push(`pick_tool_invalid: ${where}.params: "${key}" is the query parameter`)
+      }
+    }
   }
   return errors
 }

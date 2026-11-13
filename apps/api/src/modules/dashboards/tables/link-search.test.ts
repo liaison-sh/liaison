@@ -34,3 +34,22 @@ describe("pick tool dispatch", () => {
     })
   })
 })
+
+describe("pick tool dispatch with fixed params", () => {
+  it("passes the declaration's params beside the query, the query winning its own key", () => {
+    const pick = {
+      tool: "search",
+      queryParam: "query",
+      params: { kind: "task" },
+      idField: "id",
+      labelField: "title",
+    }
+    expect(pickToolCall(viewer, "projects", pick, "amp", { origin: "human-ui" }).params).toEqual({
+      kind: "task",
+      query: "amp",
+    })
+    expect(pickToolCall(viewer, "projects", pick, "", { origin: "human-ui" }).params).toEqual({
+      kind: "task",
+    })
+  })
+})

@@ -16,6 +16,25 @@ export interface MetricBlockProps {
   compareMode?: "lastYear" | "previousPeriod"
   /** Shown instead of "No value yet" when the block follows the dashboard's range. */
   emptyText?: string
+  /** map.higherIsBetter: the change reads in the success or error tone by its direction. Absent:
+   *  neutral (a count going up is not good or bad by itself). */
+  higherIsBetter?: boolean
+}
+
+/** The change's tone: "good", "bad", or "neutral" (no direction said, or no change). */
+export function deltaTone(
+  delta: number,
+  higherIsBetter: boolean | undefined,
+): "good" | "bad" | "neutral" {
+  if (higherIsBetter === undefined || delta === 0) return "neutral"
+  return delta > 0 === higherIsBetter ? "good" : "bad"
+}
+
+const TONE_TEXT = { good: "text-success", bad: "text-error", neutral: "text-text-secondary" }
+const TONE_STROKE = {
+  good: "var(--color-success)",
+  bad: "var(--color-error)",
+  neutral: "var(--color-chart-1)",
 }
 
 /** A change as it reads: "+12 %", "−3 %", "0 %". */
@@ -44,9 +63,10 @@ export function sparklinePoints(values: number[], w = 100, h = 24): string {
 }
 
 /**
- * One number, large. Under it, calmly (no red or green): the change against the comparison
- * window, a sparkline of the same rows, and the goal as "x of y" with a thin bar. A metric with
- * no value says so rather than showing 0.
+ * One number, large, in the display face. Beside it the change against the comparison window
+ * (neutral unless the block says which direction is better: then the success or error tone, on
+ * the text only), under it a sparkline of the same rows in the series colour, and the goal as
+ * "x of y" with a thin bar. A metric with no value says so rather than showing 0.
  */
 export const MetricBlock: Component<MetricBlockProps> = (props) => {
   const i18n = useI18n()
@@ -69,6 +89,10 @@ export const MetricBlock: Component<MetricBlockProps> = (props) => {
     if (typeof t !== "number" || t <= 0 || typeof v !== "number") return null
     return Math.max(0, Math.min(1, v / t))
   }
+  const tone = () => {
+    const d = delta()
+    return d === null ? "neutral" : deltaTone(d, props.higherIsBetter)
+  }
   const spark = () => {
     const s = props.data.sparkline?.values.filter((v) => typeof v === "number") ?? []
     return s.length > 1 ? s : null
@@ -82,53 +106,55 @@ export const MetricBlock: Component<MetricBlockProps> = (props) => {
         </p>
       }
     >
-      <div class="flex items-end justify-between gap-3 py-2">
+      <div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5 gap-y-1 pt-1 pb-1">
         <p
           data-testid="block-metric-value"
-          class="min-w-0 truncate text-[28px] font-semibold leading-tight tabular-nums text-text"
+          class="min-w-0 truncate font-display text-[36px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-text"
         >
           {text()}
         </p>
-        <Show when={spark()}>
-          {(values) => (
-            <svg
-              data-testid="block-metric-sparkline"
-              viewBox="0 0 100 24"
-              preserveAspectRatio="none"
-              class="mb-1 h-6 w-24 shrink-0 text-text-tertiary"
-              aria-hidden="true"
-            >
-              <polyline
-                points={sparklinePoints(values())}
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                vector-effect="non-scaling-stroke"
-                stroke-linejoin="round"
-                stroke-linecap="round"
-              />
-            </svg>
-          )}
+        <Show when={delta() !== null}>
+          <p
+            data-testid="block-metric-delta"
+            data-direction={delta()! > 0 ? "up" : delta()! < 0 ? "down" : "flat"}
+            data-tone={tone()}
+            title={i18n.t("kernel.dashboards.previousValue", { value: fmt(props.data.previous) })}
+            class={`flex items-center gap-1 text-[12.5px] tabular-nums ${TONE_TEXT[tone()]}`}
+          >
+            {delta()! > 0 ? (
+              <ArrowUpRight size={13} aria-hidden="true" />
+            ) : delta()! < 0 ? (
+              <ArrowDownRight size={13} aria-hidden="true" />
+            ) : (
+              <ArrowRight size={13} aria-hidden="true" />
+            )}
+            <span>
+              {formatDelta(delta()!, locale())} {compareText()}
+            </span>
+          </p>
         </Show>
       </div>
-      <Show when={delta() !== null}>
-        <p
-          data-testid="block-metric-delta"
-          data-direction={delta()! > 0 ? "up" : delta()! < 0 ? "down" : "flat"}
-          title={i18n.t("kernel.dashboards.previousValue", { value: fmt(props.data.previous) })}
-          class="flex items-center gap-1 text-[12px] tabular-nums text-text-secondary"
-        >
-          {delta()! > 0 ? (
-            <ArrowUpRight size={13} aria-hidden="true" />
-          ) : delta()! < 0 ? (
-            <ArrowDownRight size={13} aria-hidden="true" />
-          ) : (
-            <ArrowRight size={13} aria-hidden="true" />
-          )}
-          <span>
-            {formatDelta(delta()!, locale())} {compareText()}
-          </span>
-        </p>
+      <Show when={spark()}>
+        {(values) => (
+          <svg
+            data-testid="block-metric-sparkline"
+            viewBox="0 0 200 32"
+            preserveAspectRatio="none"
+            class="mt-1 h-8 w-full"
+            aria-hidden="true"
+          >
+            <polyline
+              points={sparklinePoints(values(), 200, 28)}
+              transform="translate(0 2)"
+              fill="none"
+              stroke={TONE_STROKE[tone()]}
+              stroke-width="2"
+              vector-effect="non-scaling-stroke"
+              stroke-linejoin="round"
+              stroke-linecap="round"
+            />
+          </svg>
+        )}
       </Show>
       <Show when={progress() !== null}>
         <div data-testid="block-metric-target" class="mt-2">

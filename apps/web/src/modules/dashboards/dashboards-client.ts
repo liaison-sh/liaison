@@ -55,6 +55,8 @@ export interface DashboardBlockMap {
   /** A metric's goal: shown as "x of y" with a thin bar. */
   target?: number
   sparkline?: { field: string; bucket?: DateBucket }
+  /** A metric: which direction of its change is good (absent: neither, the change reads neutral). */
+  higherIsBetter?: boolean
   /** Every value multiplied by this (0.01: cents to units). The server applies it. */
   scale?: number
   /** Each value of a chart is its share of its series' total, in percent (0-100). */
@@ -248,6 +250,18 @@ export interface ChartDisplay {
   curve?: "smooth"
   /** A layered chart: the series drawn against the right-hand axis. */
   rightAxis?: string[]
+  /** One bar of segments, one per category (a pipeline), its legend carrying the counts. */
+  stackedSingle?: boolean
+}
+
+/**
+ * Colours and people a chart's rows carry (map.colorField, map.personField), index by index with
+ * its categories and its series: a hex colour (checked again here), a user id; null: none.
+ */
+export interface ChartPaint {
+  labels?: Array<string | null>
+  series?: Array<string | null>
+  people?: Array<string | null>
 }
 
 /** One headline figure over the block's window: a total, a series' total, or a computed figure. */
@@ -294,6 +308,7 @@ export interface SeriesData {
   inProgressLabel?: string
   /** A blended chart's layers, in the block's order. */
   layers?: ChartLayer[]
+  paint?: ChartPaint
 }
 
 /** Stages in order and each one's value: the conversion between steps is worked out here. */
@@ -317,6 +332,7 @@ export interface PieData {
   kind: "pie"
   labels: Array<string | number>
   values: Array<number | null>
+  paint?: ChartPaint
   format?: ValueFormat
   currency?: string
   truncated?: boolean
@@ -479,6 +495,7 @@ function displayFrom(v: unknown): ChartDisplay | undefined {
   }
   if (v.secondaryAxis === true) d.secondaryAxis = true
   if (v.curve === "smooth") d.curve = "smooth"
+  if (v.stackedSingle === true) d.stackedSingle = true
   if (Array.isArray(v.rightAxis)) {
     d.rightAxis = v.rightAxis.filter((n): n is string => typeof n === "string")
   }
@@ -566,6 +583,30 @@ export function isAppPath(href: string): boolean {
   if (!/^\/(?![/\\])/.test(href) || /\s/.test(href)) return false
   for (let i = 0; i < href.length; i++) if (href.charCodeAt(i) < 0x20) return false
   return true
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+
+/** A data colour as drawn: a hex colour only, never other CSS (a row's value reaches a style). */
+export function dataColor(v: unknown): string | null {
+  return typeof v === "string" && HEX_COLOR.test(v) ? v : null
+}
+
+function paintList(v: unknown, read: (x: unknown) => string | null): Array<string | null> | null {
+  return Array.isArray(v) ? v.map(read) : null
+}
+
+/** A chart's paint, checked: colours are hex only, people are ids. */
+export function paintPart(v: unknown): { paint?: ChartPaint } {
+  if (!isRecord(v)) return {}
+  const paint: ChartPaint = {}
+  const labels = paintList(v.labels, dataColor)
+  const series = paintList(v.series, dataColor)
+  const people = paintList(v.people, (x) => (typeof x === "string" && x ? x : null))
+  if (labels) paint.labels = labels
+  if (series) paint.series = series
+  if (people) paint.people = people
+  return Object.keys(paint).length ? { paint } : {}
 }
 
 /** What the server answered for a block, checked: an unknown shape is a source error. */
@@ -662,6 +703,7 @@ export function parseBlockResponse(body: unknown): BlockResult {
               ? { inProgressLabel: body.inProgressLabel }
               : {}),
             ...(layers ? { layers } : {}),
+            ...paintPart(body.paint),
           },
           ...withInfo,
         }
@@ -695,7 +737,13 @@ export function parseBlockResponse(body: unknown): BlockResult {
       if (Array.isArray(body.labels) && Array.isArray(values)) {
         return {
           ok: true,
-          data: { kind: "pie", labels: body.labels, values: values as PieData["values"], ...shown },
+          data: {
+            kind: "pie",
+            labels: body.labels,
+            values: values as PieData["values"],
+            ...shown,
+            ...paintPart(body.paint),
+          },
           ...withInfo,
         }
       }

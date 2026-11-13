@@ -124,6 +124,10 @@ describe("the spec", () => {
     expect(mapProblems("metric", { value: "n", colorField: "c" })).toContain(
       "map.colorField is for a bar, line, area, combo or pie chart",
     )
+    expect(mapProblems("bar", { x: "d", y: "n", higherIsBetter: true })).toContain(
+      "map.higherIsBetter is for a metric",
+    )
+    expect(mapProblems("metric", { value: "n", higherIsBetter: false })).toEqual([])
     expect(mapProblems("line", { x: "d", y: "n", personField: "u" })).toContain(
       "map.personField is for a bar or pie chart",
     )

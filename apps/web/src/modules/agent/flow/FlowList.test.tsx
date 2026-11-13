@@ -107,6 +107,77 @@ describe("FlowList", () => {
     expect(screen.queryByTestId("routine-flow-step-assign-edit")).toBeNull()
   })
 
+  it("view mode names a message's placeholders as words; edit mode keeps the raw text", () => {
+    renderList("view")
+    const text = screen.getByTestId("routine-flow-step-tell-text")
+    expect(text.textContent).toBe("Yours: task title")
+    const tokens = screen.getAllByTestId("routine-flow-step-tell-token")
+    expect(tokens.map((t) => t.dataset.token)).toEqual(["{{task.title}}"])
+    expect(text.textContent).not.toContain("{{")
+    cleanup()
+    renderList("edit")
+    expect(screen.getByTestId("routine-flow-step-tell-text").textContent).toBe(
+      "Yours: {{task.title}}",
+    )
+  })
+
+  it("every known placeholder has words, a project field by its label, an unknown one stays", () => {
+    const flow: RoutineFlow = {
+      version: 1,
+      steps: [
+        {
+          id: "tell",
+          type: "action",
+          action: "comment",
+          args: {
+            text: "{{task.key}} {{task.url}} {{task.assigneeName}} {{task.fields.kind}} {{task.nope}}",
+          },
+        },
+      ],
+    }
+    render(() => (
+      <FlowList flow={flow} event={null} eventFilter={null} project={PROJECT} mode="view" />
+    ))
+    expect(screen.getByTestId("routine-flow-step-tell-text").textContent).toBe(
+      "task key task link assignee field: Kind {{task.nope}}",
+    )
+  })
+
+  it("the Insert menu puts a placeholder in at the caret", () => {
+    const { flow } = renderList("edit")
+    fireEvent.click(screen.getByTestId("routine-flow-step-tell-edit"))
+    const area = screen.getByTestId("flow-step-tell-text") as HTMLTextAreaElement
+    area.setSelectionRange(6, 6) // after "Yours:"
+    const menu = screen.getByTestId("flow-step-tell-text-insert") as HTMLSelectElement
+    const offered = [...menu.querySelectorAll("option")].map((o) => o.textContent)
+    expect(offered).toEqual([
+      "Insert…",
+      "task title",
+      "task key",
+      "task link",
+      "assignee",
+      "field: Kind",
+    ])
+    fireEvent.change(menu, { target: { value: "{{task.url}}" } })
+    const tell = flow().steps[1]
+    expect(tell?.type === "action" && tell.action === "message" ? tell.args.text : null).toBe(
+      "Yours: {{task.url}} {{task.title}}",
+    )
+    expect(menu.value).toBe("")
+  })
+
+  it("a field filter on the trigger reads as its own 'and <field> is <value>' line", () => {
+    renderList("view", {
+      eventFilter: { projectId: P_ID, toStatusId: S_DONE, fields: { kind: ["Bug", "Idea"] } },
+    })
+    expect(screen.getByTestId("routine-flow-trigger-text").textContent).toBe(
+      "When a task in Website moves to Done",
+    )
+    expect(screen.getByTestId("routine-flow-trigger-field-0").textContent).toBe(
+      "and Kind is Bug or Idea",
+    )
+  })
+
   it("edits produce the right flow JSON: action kind, status pick, wait amount, move, remove, add", () => {
     const { flow, filter } = renderList("edit")
     // Change the first step to "Change its status" -> Done.

@@ -1531,6 +1531,8 @@ export interface RoutineListItem {
   approver: "default" | "owner"
   /** Its flow (0303): the steps after the trigger. Null = a legacy routine (its prompt). */
   flow: unknown
+  /** Its human name (0304). Null = `name` is what people see. */
+  title: string | null
 }
 
 /**
@@ -1622,6 +1624,7 @@ export async function handleListRoutines(
       eventFilter: r.eventFilter ?? null,
       approver: r.approver ?? "default",
       flow: r.flow ?? null,
+      title: r.title ?? null,
     })),
     notes: listRoutinesNotes(),
   }
@@ -3380,6 +3383,7 @@ export async function handleCreateRoutine(
           eventFilter: filterCheck.filter,
           // The flow (0303): its steps after the trigger; null = a legacy routine.
           flow: flowCheck.flow,
+          title: params.title ?? null,
           approver: params.approver ?? "default",
           enabled: params.enabled ?? true,
           status: "active",
@@ -3858,6 +3862,7 @@ export async function handleUpdateRoutine(
   const updates: Partial<typeof routinesTbl.$inferInsert> = { updatedAt: new Date() }
   if (params.name !== undefined) updates.name = params.name
   if (params.description !== undefined) updates.description = params.description
+  if (params.title !== undefined) updates.title = params.title
   if (params.prompt !== undefined) updates.prompt = params.prompt
   // D20: the scopes change only when `scopes` is sent, and then they are exactly that list. A
   // prompt edit leaves them as they are (nothing is inferred from the prompt, and nothing stored is

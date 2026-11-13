@@ -221,3 +221,6 @@ Run state chips over the flow -> apps/web/src/modules/agent/flow/FlowList.tsx:25
 Flow run row expands to the overlay -> apps/web/src/modules/agent/RoutineDetail.tsx:802
 Flow labels (Flow, Edit flow, Add a wait, state names) -> packages/shared/src/i18n/locales/en/kernel.json:6818
 Save checks the flow first -> apps/web/src/modules/agent/flow/flow-model.ts:465
+Placeholders as words in view mode -> apps/web/src/modules/agent/flow/flow-model.ts:341
+Trigger field filter on its own line -> apps/web/src/modules/agent/flow/FlowList.tsx:144
+Insert placeholder menu -> apps/web/src/modules/agent/flow/FlowStepForm.tsx:225

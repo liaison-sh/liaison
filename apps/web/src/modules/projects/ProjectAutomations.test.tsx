@@ -1,10 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
-import { routineFlowSchema } from "@liaison/shared"
+import { routineFlowSchema, routineNameSchema } from "@liaison/shared"
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { resetRoutinesStore } from "~/modules/agent/routines-store"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import { ProjectAutomations } from "./ProjectAutomations"
+
+const { openTab } = vi.hoisted(() => ({ openTab: vi.fn() }))
+vi.mock("~/modules/shell/tab-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/modules/shell/tab-store")>()),
+  openTab,
+}))
 
 afterEach(() => {
   cleanup()
@@ -133,6 +139,33 @@ describe("ProjectAutomations", () => {
     )
   })
 
+  it("a row shows the routine's human name and opens it on its owner agent's Routines tab", async () => {
+    openTab.mockClear()
+    setup([{ ...ROUTINE, title: "Tell people when done · Website" }])
+    await waitFor(() =>
+      expect(screen.getByTestId("project-automations.open-r-1")).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("project-automations.open-r-1").textContent).toBe(
+      "Tell people when done · Website",
+    )
+    fireEvent.click(screen.getByTestId("project-automations.open-r-1"))
+    expect(openTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Tell people when done · Website",
+        routePath: expect.stringMatching(/^\/agents\/.+\/routines\?selected=r-1$/),
+      }),
+    )
+  })
+
+  it("a routine without a human name shows its identifier", async () => {
+    setup([ROUTINE])
+    await waitFor(() =>
+      expect(screen.getByTestId("project-automations.open-r-1").textContent).toBe(
+        "notify-on-status-website",
+      ),
+    )
+  })
+
   it("explains an automation in one line when there is none", async () => {
     setup([])
     await waitFor(() => expect(screen.getByTestId("project-automations.empty")).toBeInTheDocument())
@@ -157,9 +190,17 @@ describe("ProjectAutomations", () => {
     expect(screen.getByTestId("routine-flow-trigger-text").textContent).toBe(
       "When a task in Website moves to Todo",
     )
+    // A human name, "<template> · <project>", never the routine's identifier.
     expect((screen.getByTestId("project-automations.name") as HTMLInputElement).value).toBe(
-      "assign-on-status-website",
+      "When a status is reached, assign · Website",
     )
+    // The editor keeps the message's raw text, placeholders and all (view mode shows words).
+    expect(screen.getByTestId("routine-flow-step-tell-text").textContent).toBe(
+      "Yours: {{task.title}} {{task.url}}",
+    )
+    fireEvent.input(screen.getByTestId("project-automations.name"), {
+      target: { value: "Assign new work · Website" },
+    })
     // Assign to Ana instead of the owner.
     await waitFor(() => expect(api.getEnvelope).toHaveBeenCalled())
     fireEvent.click(screen.getByTestId("routine-flow-step-assign-edit"))
@@ -174,7 +215,7 @@ describe("ProjectAutomations", () => {
     const [path, body] = api.post.mock.calls[0] as [string, Record<string, unknown>]
     expect(path).toBe("/agent/routines")
     expect(body).toMatchObject({
-      name: "assign-on-status-website",
+      title: "Assign new work · Website",
       kind: "event",
       event: "projects:task:status_changed",
       enabled: true,
@@ -189,6 +230,9 @@ describe("ProjectAutomations", () => {
       ],
     })
     expect(routineFlowSchema.safeParse(body.flow).success).toBe(true)
+    // The identifier stays kebab-case, made from the template and project.
+    expect(body.name).toMatch(/^assign-on-status-website-[a-z0-9]+$/)
+    expect(routineNameSchema.safeParse(body.name).success).toBe(true)
     // Back on the list, which reads itself again.
     await waitFor(() => expect(screen.getByTestId("project-automations.list")).toBeInTheDocument())
   })

@@ -24,7 +24,6 @@ import {
   describeCondition,
   describeOutcome,
   describeStep,
-  describeTrigger,
   type FlowEventFilter,
   type FlowNames,
   type FlowPerson,
@@ -36,6 +35,8 @@ import {
   replaceStep,
   runStateFor,
   stepText,
+  textParts,
+  triggerParts,
 } from "./flow-model"
 
 export type FlowListMode = "view" | "edit" | "run"
@@ -124,9 +125,32 @@ const FlowList: Component<Props> = (props) => {
         <p class="text-[11px] uppercase tracking-wide text-text-tertiary">
           {i18n.t("kernel.routineFlow.triggerHeading")}
         </p>
-        <p data-testid={`${tid()}-trigger-text`} class="break-words text-[13px] text-text">
-          {describeTrigger(names(), props.event, props.eventFilter, props.triggerFallback ?? "")}
-        </p>
+        <Show
+          when={triggerParts(names(), props.event, props.eventFilter)}
+          fallback={
+            <p data-testid={`${tid()}-trigger-text`} class="break-words text-[13px] text-text">
+              {props.triggerFallback ?? ""}
+            </p>
+          }
+        >
+          {(parts) => (
+            <>
+              <p data-testid={`${tid()}-trigger-text`} class="break-words text-[13px] text-text">
+                {parts().head}
+              </p>
+              <For each={parts().fields}>
+                {(phrase, j) => (
+                  <p
+                    data-testid={`${tid()}-trigger-field-${j()}`}
+                    class="break-words text-[13px] text-text"
+                  >
+                    {i18n.t("kernel.routineFlow.triggerAndField", { phrase })}
+                  </p>
+                )}
+              </For>
+            </>
+          )}
+        </Show>
         <Show when={editing() && isProjectStatusTrigger() && props.onFilterChange}>
           <div class="mt-2 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
             <label class="flex min-w-0 flex-col gap-1">
@@ -210,8 +234,28 @@ const FlowList: Component<Props> = (props) => {
                       </p>
                       <Show when={stepText(step())}>
                         {(text) => (
-                          <p class="mt-0.5 whitespace-pre-wrap break-words text-[12px] text-text-secondary">
-                            {text()}
+                          <p
+                            data-testid={`${tid()}-step-${step().id}-text`}
+                            class="mt-0.5 whitespace-pre-wrap break-words text-[12px] text-text-secondary"
+                          >
+                            <Show when={!editing()} fallback={text()}>
+                              <For each={textParts(names(), text())}>
+                                {(part) =>
+                                  part.kind === "token" ? (
+                                    <span
+                                      data-testid={`${tid()}-step-${step().id}-token`}
+                                      data-token={part.token}
+                                      title={part.token}
+                                      class="mx-px inline-block rounded bg-surface-hover px-1 text-[11px] leading-[18px] text-text-secondary"
+                                    >
+                                      {part.label}
+                                    </span>
+                                  ) : (
+                                    part.text
+                                  )
+                                }
+                              </For>
+                            </Show>
                           </p>
                         )}
                       </Show>

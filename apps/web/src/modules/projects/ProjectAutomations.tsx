@@ -18,18 +18,18 @@ import {
   fillTemplate,
   flowProblem,
 } from "~/modules/agent/flow/flow-model"
+import { openRoutineOnAgentPage } from "~/modules/agent/open-routine"
 import { runStatusLabel } from "~/modules/agent/routine-status-copy"
 import {
   createRoutine,
   loadProjectRoutines,
   type RoutineRow,
   type RoutineTemplateRow,
+  routineLabel,
   updateRoutine,
 } from "~/modules/agent/routines-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
-import { openTab } from "~/modules/shell/tab-store"
-import { AGENT_PAGE_TAB_TYPE, canonicalAgentPageEntityId } from "~/modules/threads/agent-directory"
 import { Button } from "~/ui/Button"
 import { Switch } from "~/ui/Switch"
 
@@ -38,7 +38,10 @@ const fieldClass =
 
 interface Draft {
   templateKey: string
+  /** The routine's identifier, made from the template and project (never shown). */
   name: string
+  /** Its human name, prefilled "<template> · <project>" and editable. */
+  title: string
   description: string
   event: string
   prompt: string
@@ -48,14 +51,21 @@ interface Draft {
   missing: string[]
 }
 
-/** A routine name (kebab-case, at most 60) from a template key and the project. */
+const TITLE_MAX = 120
+
+/**
+ * A routine identifier (kebab-case, at most 60) from a template key and the project, with a
+ * short time suffix so the same template set up twice does not collide.
+ */
 function draftName(templateKey: string, projectName: string): string {
   const slug = `${templateKey}-${projectName}`
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-  return slug.slice(0, 60).replace(/-+$/g, "") || templateKey
+  const suffix = Date.now().toString(36).slice(-5)
+  const base = slug.slice(0, 60 - suffix.length - 1).replace(/-+$/g, "") || templateKey
+  return `${base}-${suffix}`
 }
 
 export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
@@ -83,6 +93,9 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
   const [saving, setSaving] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
 
+  const templateTitle = (templateKey: string) =>
+    i18n.t(`projects.automations.template_${templateKey.replace(/-/g, "_")}`)
+
   const names = () => ({
     project: project() ?? null,
     people: people() ?? [],
@@ -100,6 +113,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
     setDraft({
       templateKey: t.templateKey,
       name: draftName(t.templateKey, p.name),
+      title: `${templateTitle(t.templateKey)} · ${p.name}`.slice(0, TITLE_MAX),
       description: t.description,
       event: t.event,
       prompt: t.prompt ?? t.description,
@@ -115,7 +129,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
   const problem = () => {
     const d = draft()
     if (!d) return null
-    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(d.name)) return i18n.t("projects.automations.nameRule")
+    if (!d.title.trim()) return i18n.t("projects.automations.nameRequired")
     if (!d.description.trim()) return i18n.t("projects.automations.descriptionRequired")
     return flowProblem(i18n.t, d.flow, d.event, d.eventFilter)
   }
@@ -128,6 +142,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
     try {
       await createRoutine(api, {
         name: d.name,
+        title: d.title.trim(),
         description: d.description.trim().slice(0, 200),
         kind: "event",
         event: d.event,
@@ -157,15 +172,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
   }
 
   /** A routine lives on its owner agent's page, Routines tab, opened on it. */
-  function open(r: RoutineRow) {
-    const agent = canonicalAgentPageEntityId(r.ownerAgentId ?? "self")
-    openTab({
-      type: AGENT_PAGE_TAB_TYPE,
-      entityId: agent,
-      label: r.name,
-      routePath: `/agents/${agent}/routines?selected=${encodeURIComponent(r.id)}`,
-    })
-  }
+  const open = (r: RoutineRow) => openRoutineOnAgentPage(r)
 
   return (
     <div data-testid="project-automations" class="flex h-full min-w-0 flex-col">
@@ -246,7 +253,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                       class="min-w-0 flex-1 truncate text-left text-[13px] font-medium text-text hover:underline"
                       onClick={() => open(r)}
                     >
-                      {r.name}
+                      {routineLabel(r)}
                     </button>
                     <Switch
                       checked={r.enabled}
@@ -308,7 +315,7 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                     class="flex h-full w-full min-w-0 flex-col gap-1 rounded-md border border-border-subtle bg-surface px-3 py-2 text-left hover:bg-surface-hover disabled:opacity-50"
                   >
                     <span class="text-[13px] font-medium text-text">
-                      {i18n.t(`projects.automations.template_${t.templateKey.replace(/-/g, "_")}`)}
+                      {templateTitle(t.templateKey)}
                     </span>
                     <span class="break-words text-[12px] text-text-secondary">{t.description}</span>
                   </button>
@@ -329,8 +336,9 @@ export const ProjectAutomations: Component<{ entityId: string }> = (props) => {
                 <input
                   data-testid="project-automations.name"
                   class={fieldClass}
-                  value={d().name}
-                  onInput={(e) => setDraft({ ...d(), name: e.currentTarget.value })}
+                  maxLength={TITLE_MAX}
+                  value={d().title}
+                  onInput={(e) => setDraft({ ...d(), title: e.currentTarget.value })}
                 />
               </label>
               <label class="flex min-w-0 flex-col gap-1">

@@ -40,6 +40,7 @@ test.describe("Project automations at phone width", () => {
       token: qa.admin.token,
       body: {
         name: `phone-flow-${Date.now()}`,
+        title: "Assign and remind · Phone",
         description: "Assign new work and remind when it sits still",
         kind: "event",
         event: "projects:task:status_changed",
@@ -104,6 +105,7 @@ test.describe("Project automations at phone width", () => {
     await view.getByTestId(`project-automations.open-${routineId}`).tap()
     const detail = page.getByTestId("routine-detail")
     await expect(detail).toBeVisible({ timeout: 10_000 })
+    await expect(detail.getByTestId("routine-detail-title")).toHaveText("Assign and remind · Phone")
     await expect(detail.getByTestId("routine-flow-step-wait")).toBeVisible()
     await expect(detail.getByTestId("routine-flow-step-wait")).toHaveAttribute(
       "data-indented",

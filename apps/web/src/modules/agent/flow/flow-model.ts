@@ -191,6 +191,24 @@ export function describeTrigger(
   filter: FlowEventFilter | null | undefined,
   fallback: string,
 ): string {
+  const parts = triggerParts(names, event, filter)
+  if (!parts) return fallback
+  if (parts.fields.length === 0) return parts.head
+  return names.t("kernel.routineFlow.triggerWithFields", {
+    trigger: parts.head,
+    fields: joinList(names, parts.fields, "and"),
+  })
+}
+
+/**
+ * A projects task trigger in words, its event line and one phrase per field filter
+ * ("Priority is high or urgent"); null when the event is not a projects task event.
+ */
+export function triggerParts(
+  names: FlowNames,
+  event: string | null | undefined,
+  filter: FlowEventFilter | null | undefined,
+): { head: string; fields: string[] } | null {
   const project = names.project?.name ?? names.t("kernel.routineFlow.aProject")
   const f = filter ?? {}
   let head: string
@@ -219,10 +237,9 @@ export function describeTrigger(
   } else if (event === "projects:task:updated") {
     head = names.t("kernel.routineFlow.triggerUpdated", { project })
   } else {
-    return fallback
+    return null
   }
   const fields = f.fields && typeof f.fields === "object" ? Object.entries(f.fields) : []
-  if (fields.length === 0) return head
   const parts = fields.map(([key, v]) => {
     const vals = Array.isArray(v) ? v : [v]
     return names.t("kernel.routineFlow.condIn", {
@@ -234,10 +251,7 @@ export function describeTrigger(
       ),
     })
   })
-  return names.t("kernel.routineFlow.triggerWithFields", {
-    trigger: head,
-    fields: joinList(names, parts, "and"),
-  })
+  return { head, fields: parts }
 }
 
 /** One step in words (its title line). */
@@ -293,6 +307,70 @@ export function describeStep(names: FlowNames, step: RoutineFlowStep): string {
 }
 
 /** The step's text body (a message, a note), shown under its title. */
+// ── Placeholders ──────────────────────────────────────────────────────────────
+
+/** A placeholder a message can carry, and its words ("task title"). */
+export interface FlowPlaceholder {
+  token: string
+  label: string
+}
+
+const TASK_PLACEHOLDERS = ["title", "key", "url", "assigneeName"] as const
+
+/** The placeholders a message step offers: the task's own, then each project field. */
+export function flowPlaceholders(names: FlowNames): FlowPlaceholder[] {
+  const own = TASK_PLACEHOLDERS.map((k) => ({
+    token: `{{task.${k}}}`,
+    label: names.t(`kernel.routineFlow.ph_${k}`),
+  }))
+  const fields = (names.project?.fields ?? []).map((f) => ({
+    token: `{{task.fields.${f.key}}}`,
+    label: names.t("kernel.routineFlow.ph_field", { label: f.label }),
+  }))
+  return [...own, ...fields]
+}
+
+export type FlowTextPart =
+  | { kind: "text"; text: string }
+  | { kind: "token"; token: string; label: string }
+
+/**
+ * A message's text cut into plain runs and placeholders, each placeholder named in words
+ * ("task title", "field: Priority") for view mode. A token it does not know stays text.
+ */
+export function textParts(names: FlowNames, text: string): FlowTextPart[] {
+  const parts: FlowTextPart[] = []
+  const re = /\{\{\s*task\.([a-zA-Z]+)(?:\.([^}\s]+))?\s*\}\}/g
+  let last = 0
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const [token, head, key] = m
+    let label: string | null = null
+    if (head === "fields" && key) {
+      label = names.t("kernel.routineFlow.ph_field", { label: fieldLabel(names, key) })
+    } else if (!key && (TASK_PLACEHOLDERS as readonly string[]).includes(head ?? "")) {
+      label = names.t(`kernel.routineFlow.ph_${head}`)
+    } else if (!key && head === "assigneeId") {
+      label = names.t("kernel.routineFlow.ph_assigneeName")
+    }
+    if (label === null) continue
+    if (m.index > last) parts.push({ kind: "text", text: text.slice(last, m.index) })
+    parts.push({ kind: "token", token, label })
+    last = m.index + token.length
+  }
+  if (last < text.length) parts.push({ kind: "text", text: text.slice(last) })
+  return parts
+}
+
+/** `text` with `token` put in at `at` (a caret offset), a space added where words would touch. */
+export function insertPlaceholder(text: string, at: number, token: string): string {
+  const pos = Math.max(0, Math.min(at, text.length))
+  const before = text.slice(0, pos)
+  const after = text.slice(pos)
+  const lead = before && !/\s$/.test(before) ? " " : ""
+  const tail = after && !/^\s/.test(after) ? " " : ""
+  return `${before}${lead}${token}${tail}${after}`
+}
+
 export function stepText(step: RoutineFlowStep): string | null {
   if (step.type !== "action") return null
   if (step.action === "message" || step.action === "notify" || step.action === "comment") {

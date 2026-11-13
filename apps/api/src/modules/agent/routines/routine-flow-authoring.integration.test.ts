@@ -177,6 +177,15 @@ describe("routine flow authoring", () => {
     >`SELECT flow FROM kernel.routines WHERE id = ${id}::uuid`
     expect(row!.flow).toEqual(one)
     await handleUpdateRoutine({ id, flow: null }, await routineCtx())
+    // The human name (0304): set, then cleared back to the identifier.
+    await handleUpdateRoutine({ id, title: "Assign stored · Website" }, await routineCtx())
+    let [named] = await sql<{ title: string | null }[]>`
+      SELECT title FROM kernel.routines WHERE id = ${id}::uuid`
+    expect(named!.title).toBe("Assign stored · Website")
+    await handleUpdateRoutine({ id, title: null }, await routineCtx())
+    ;[named] = await sql<{ title: string | null }[]>`
+      SELECT title FROM kernel.routines WHERE id = ${id}::uuid`
+    expect(named!.title).toBeNull()
     ;[row] = await sql<{ flow: unknown }[]>`SELECT flow FROM kernel.routines WHERE id = ${id}::uuid`
     expect(row!.flow).toBeNull()
 
@@ -217,7 +226,7 @@ describe("routine flow authoring", () => {
 
   it("GET ?projectId= lists the project's routines with their flow; runs return their steps", async () => {
     const res = (await handleCreateRoutine(
-      createParams("assign-listed", FLOW()),
+      { ...createParams("assign-listed", FLOW()), title: "Assign on status · Website" },
       await routineCtx(),
     )) as {
       routine: { id: string }
@@ -258,9 +267,13 @@ describe("routine flow authoring", () => {
     const headers = { Authorization: `Bearer ${token}` }
     const list = await app.request(`/api/agent/routines?projectId=${projectId}`, { headers })
     expect(list.status).toBe(200)
-    const body = (await list.json()) as { data: Array<{ name: string; flow: unknown }> }
+    const body = (await list.json()) as {
+      data: Array<{ name: string; title?: string | null; flow: unknown }>
+    }
     const listed = body.data.find((r) => r.name === "assign-listed")
     expect(listed?.flow).toEqual(FLOW())
+    // The human name travels with the row; the kebab identifier stays the name.
+    expect(listed?.title).toBe("Assign on status · Website")
     expect(
       body.data.every((r) => r.name.startsWith("assign-") || r.name.startsWith("projects-")),
     ).toBe(true)

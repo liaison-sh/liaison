@@ -351,7 +351,7 @@
     "template_notify_on_status": "Notifier quand un statut est atteint",
     "name": "Nom",
     "description": "Description",
-    "nameRule": "Le nom utilise des minuscules, des chiffres et des tirets.",
+    "nameRequired": "Donnez-lui un nom.",
     "descriptionRequired": "Ajoutez une courte description.",
     "missingStatuses": "Ce projet n'a pas de statut nommé {{labels}} : choisissez-en un ci-dessous.",
     "save": "Créer l'automatisation",

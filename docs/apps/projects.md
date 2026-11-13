@@ -187,6 +187,18 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 - **Before the project used it.** If tasks closed before the project started using time and budgets, the answer says so with the date. No figure changes because of it.
 - **Archived tasks.** Their time is not counted, and the answer says how much is left out.
 
+## Read capacity and set days off
+
+Once a project uses time and budgets, ask the agent who is free ("who has room next week") or open **Capacity** in Projects. It lists, for one week, each person's planned time against their available time, in name order, with a note when someone has more than fits (over by more than 3 h) or has room (5 h free or more).
+
+- **Planned time comes from timeboxes only**, on projects that use time and budgets. A task with a start and a due date spreads over its working days; with a due date only it falls in that week; with no date, in the current week. Time people entered never changes capacity.
+- **Available time** is hours in a day times the person's working days that week: weekdays that are not company days off or their away days, at most their days per week. A colleague's day off shows only as a smaller available figure, with no date or reason.
+- **Who is listed.** People with planned work in that week or later. Open work assigned to someone who has left shows in one row, "Assigned to people who have left". There is no sort and no ranking.
+- **Who can take a task.** Asked about one task, the answer lists people with enough room, those already working on that project first.
+- **Company days off** (a day, a range or an ISO week, optionally every year) are set in **Settings > Projects > Time and budgets**, or by asking the agent, with `projects:settings:admin`. The answer states the exact dates. One person's own days are away days, set from their profile or with the agent.
+- **Days per week.** A person working part time sets their days per week (1 to 5) by asking the agent; a lead with `projects:capacity:write` or an admin with `kernel:users:admin` can set it for them, and the person gets a line on Home saying who did. No weekday or reason is stored.
+- **Hours in a day** (7 by default) are set in the same settings section.
+
 ## Reconcile a project's month
 
 On a project that uses time and budgets, ask your agent in your DM with it, or your own coding agent, to reconcile a period ("reconcile Atlas October"). The agent reads the period's closed tasks, then the traces you can read yourself (commits, meetings, notes, mail), and proposes a card of lines: what was planned, what was spent and what to bill.

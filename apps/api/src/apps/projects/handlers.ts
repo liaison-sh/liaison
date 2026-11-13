@@ -44,6 +44,12 @@ export interface ProjectsMethods {
   projects_billingTermsSet: (paramsJson: string) => Promise<string>
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
+  projects_capacityGet: (paramsJson: string) => Promise<string>
+  projects_daysOffSet: (paramsJson: string) => Promise<string>
+  projects_daysOffList: (paramsJson: string) => Promise<string>
+  projects_daysOffRemove: (paramsJson: string) => Promise<string>
+  projects_timeSettingsGet: (paramsJson: string) => Promise<string>
+  projects_timeSettingsSet: (paramsJson: string) => Promise<string>
   projects_reconcileFacts: (paramsJson: string) => Promise<string>
   projects_reconcilePropose: (paramsJson: string) => Promise<string>
   projects_reconcileLineUpdate: (paramsJson: string) => Promise<string>
@@ -1186,6 +1192,31 @@ export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promi
 
 export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {})))
+}
+
+// Capacity, company days off and time settings.
+export async function capacityGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_capacityGet(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffSet(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffList(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffRemove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffRemove(JSON.stringify(params ?? {})))
+}
+
+export async function timeSettingsGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timeSettingsGet(JSON.stringify(params ?? {})))
+}
+
+export async function timeSettingsSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timeSettingsSet(JSON.stringify(params ?? {})))
 }
 
 // Reconcile: the period's facts, then the proposal the agent groups from its traces.

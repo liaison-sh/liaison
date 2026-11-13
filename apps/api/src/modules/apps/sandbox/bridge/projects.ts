@@ -2147,6 +2147,119 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         )
       })
     },
+    /** Planned against available time per person for one ISO week, in name order. */
+    projects_capacityGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { week?: string; taskId?: string }
+      return typedCall(async () => {
+        const { getCapacity } = await import("~/apps/projects/service/capacity")
+        return getCapacity({
+          tx: txDb,
+          orgId,
+          ...(params.week ? { week: params.week } : {}),
+          ...(params.taskId ? { taskId: params.taskId } : {}),
+        })
+      })
+    },
+    /** A company day off: one day, a range or an ISO week, resolved on the server. */
+    projects_daysOffSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { setDaysOff } = await import("~/apps/projects/service/days-off")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await setDaysOff({
+            tx: txDb,
+            orgId,
+            actorId: actor.userId,
+            scopes: callerScopes ?? [],
+            via: bridgeOptions?.origin === "human-ui" ? "settings" : "agent",
+            input: params as never,
+          }),
+        )
+      })
+    },
+    /** The company days off, each marked when it was read from the shared calendar. */
+    projects_daysOffList: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { from?: string; to?: string }
+      return typedCall(async () => {
+        const { listDaysOff } = await import("~/apps/projects/service/days-off")
+        return listDaysOff({
+          tx: txDb,
+          orgId,
+          ...(params.from ? { from: params.from } : {}),
+          ...(params.to ? { to: params.to } : {}),
+        })
+      })
+    },
+    /** Removes typed company days off by id or by a day they cover; imported ones stay. */
+    projects_daysOffRemove: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { id?: string; on?: string }
+      return typedServiceCall(async () => {
+        const { removeDaysOff } = await import("~/apps/projects/service/days-off")
+        return JSON.stringify(
+          await removeDaysOff({
+            tx: txDb,
+            orgId,
+            scopes: callerScopes ?? [],
+            input: {
+              ...(params.id ? { id: params.id } : {}),
+              ...(params.on ? { on: params.on } : {}),
+            },
+          }),
+        )
+      })
+    },
+    /** Hours in a day, the shared calendar, how many projects use time; or one person's days per week. */
+    projects_timeSettingsGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { userId?: string }
+      return typedCall(async () => {
+        const { getTimeSettings } = await import("~/apps/projects/service/time-settings")
+        const actor = await writeActor()
+        return getTimeSettings({
+          tx: txDb,
+          orgId,
+          userId: actor.userId,
+          scopes: callerScopes ?? [],
+          input: params.userId ? { userId: params.userId } : {},
+        })
+      })
+    },
+    /** Saves hours in a day, the shared calendar, or one person's days per week. */
+    projects_timeSettingsSet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as {
+        hoursPerDay?: number | string
+        daysOffCalendarId?: string | null
+        userId?: string
+        daysPerWeek?: number
+      }
+      return typedServiceCall(async () => {
+        const { setTimeSettings } = await import("~/apps/projects/service/time-settings")
+        const actor = await writeActor()
+        const [me] = extractRows<{ name: string | null }>(
+          await txDb.execute(
+            drizzleSql`SELECT name FROM ${drizzleSql.raw(schemaRef("kernel"))}.users
+              WHERE id = ${actor.userId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
+          ),
+        )
+        return JSON.stringify(
+          await setTimeSettings({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            ...(me?.name ? { userName: me.name } : {}),
+            scopes: callerScopes ?? [],
+            input: {
+              ...(params.hoursPerDay !== undefined ? { hoursPerDay: params.hoursPerDay } : {}),
+              ...(params.daysOffCalendarId !== undefined
+                ? { daysOffCalendarId: params.daysOffCalendarId }
+                : {}),
+              ...(params.userId ? { userId: params.userId } : {}),
+              ...(params.daysPerWeek !== undefined ? { daysPerWeek: params.daysPerWeek } : {}),
+            },
+          }),
+        )
+      })
+    },
     projects_attentionItems: async (paramsJson: string): Promise<string> => {
       if (appName !== "projects") {
         throw new Error("projects_attentionItems is only available to the projects app")

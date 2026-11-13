@@ -3315,5 +3315,56 @@
     "say": "remontre-moi la carte de rapprochement d'octobre",
     "typed": ["carte rapprochement", "rapprochement enregistré"],
     "any": ["projects__reconcile_get", "projects__reconcile_facts"]
+  },
+  {
+    "id": "C31",
+    "set": "seed",
+    "lang": "en",
+    "say": "company holidays this year",
+    "typed": ["public holidays", "days off", "jours fériés", "office closed"],
+    "any": ["projects__days_off_list", "projects__days_off_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C32",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui est dispo la semaine prochaine",
+    "typed": ["capacity", "disponibilité", "charge équipe", "who is free"],
+    "any": ["projects__capacity_get"],
+    "modelRun": true
+  },
+  {
+    "id": "C75",
+    "set": "seed",
+    "lang": "en",
+    "say": "Nadia works 4 days a week",
+    "typed": [
+      "part time",
+      "days per week",
+      "temps partiel",
+      "4 jours par semaine",
+      "capacity person"
+    ],
+    "any": ["projects__time_settings_set"],
+    "modelRun": true
+  },
+  {
+    "id": "C80",
+    "set": "seed",
+    "lang": "en",
+    "say": "take the 11 November closure off the company days",
+    "typed": ["remove day off", "remove holiday", "supprimer jour férié"],
+    "any": ["projects__days_off_remove"],
+    "modelRun": true
+  },
+  {
+    "id": "C81",
+    "set": "seed",
+    "lang": "fr",
+    "say": "combien d'heures fait une journée chez nous",
+    "typed": ["hours per day", "time settings", "heures par jour"],
+    "any": ["projects__time_settings_get", "projects__time_settings_set"],
+    "modelRun": true
   }
 ]

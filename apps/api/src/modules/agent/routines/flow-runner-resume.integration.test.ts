@@ -71,7 +71,9 @@ let openStatus = ""
 
 // The trigger fires after the tasks are created: `status_unchanged_since_trigger` holds.
 const T0 = new Date(Date.now() + 60_000)
-const LATER = new Date(T0.getTime() + 3 * 86400_000)
+// Past the one working day the wait counts from any start: from a Friday evening that day ends
+// on Monday or Tuesday, so three calendar days were not always enough.
+const LATER = new Date(T0.getTime() + 7 * 86400_000)
 
 const WAIT_THEN = (then: RoutineFlow["steps"][number]): RoutineFlow => ({
   version: 1,

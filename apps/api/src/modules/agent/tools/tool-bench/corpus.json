@@ -3468,5 +3468,45 @@
       "joindre rapport à la facture"
     ],
     "any": ["invoicing__document_attachment_add"]
+  },
+  {
+    "id": "C35",
+    "set": "seed",
+    "lang": "fr",
+    "say": "facture d'acompte de 30%",
+    "typed": ["acompte", "deposit invoice", "advance invoice", "down payment"],
+    "any": ["invoicing__advance_draft_create"]
+  },
+  {
+    "id": "C36",
+    "set": "seed",
+    "lang": "fr",
+    "say": "facture le jalon 2",
+    "typed": ["jalon", "milestone invoice", "bill milestone"],
+    "any": ["invoicing__milestone_draft_create"]
+  },
+  {
+    "id": "C97",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre l'échéancier de facturation du projet",
+    "typed": ["échéancier facturation", "billing plan", "plan de facturation"],
+    "any": ["invoicing__billing_plan_get", "invoicing__billing_plan_set"]
+  },
+  {
+    "id": "C98",
+    "set": "seed",
+    "lang": "en",
+    "say": "set the billing plan from the quote: an advance, three milestones and the final",
+    "typed": ["set billing plan", "échéancier du devis", "milestones from quote"],
+    "any": ["invoicing__billing_plan_set"]
+  },
+  {
+    "id": "C99",
+    "set": "seed",
+    "lang": "fr",
+    "say": "le projet s'arrête, rembourse l'acompte",
+    "typed": ["rembourser acompte", "avoir sur acompte", "refund advance"],
+    "any": ["invoicing__advance_refund_prepare"]
   }
 ]

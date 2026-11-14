@@ -51,6 +51,20 @@ export function facturxEligible(type: string, doc: Row): boolean {
   )
 }
 
+/** A final after deposit: the advance invoices it deducts, as its draft recorded them. */
+function precedingOf(doc: Row): Array<{ number: string; issue_date: string }> | null {
+  const refs = doc.external_refs as Row | null | undefined
+  const list =
+    refs && Array.isArray(refs.preceding_invoices) ? (refs.preceding_invoices as Row[]) : []
+  const out = list
+    .filter(
+      (p) =>
+        typeof p.number === "string" && typeof p.issue_date === "string" && p.issue_date !== "",
+    )
+    .map((p) => ({ number: String(p.number), issue_date: String(p.issue_date) }))
+  return out.length ? out : null
+}
+
 export interface FacturxSource {
   type: "invoice" | "credit_note"
   doc: Row
@@ -154,6 +168,9 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
     po_number: str(d.po_number),
     iban: str(i.iban),
     bic: str(i.swift_bic),
+    invoice_role:
+      d.invoice_role === "advance" || d.invoice_role === "final" ? d.invoice_role : "standard",
+    preceding: src.type === "invoice" ? precedingOf(src.doc) : null,
     original:
       src.type === "credit_note" && src.original?.number && src.original.issue_date
         ? { number: src.original.number, issue_date: src.original.issue_date }

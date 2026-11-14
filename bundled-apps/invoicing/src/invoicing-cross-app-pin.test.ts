@@ -20,7 +20,11 @@ test("invoicing calls only the declared projects reads and the mark", () => {
     .map((c) => c.target)
     .filter((t) => t.startsWith("projects:"))
     .sort()
-  expect(projects).toEqual(["projects:reconcile_lines_read", "projects:reconcile_mark"])
+  expect(projects).toEqual([
+    "projects:milestone_status_read",
+    "projects:reconcile_lines_read",
+    "projects:reconcile_mark",
+  ])
   for (const c of manifest.cross_app_calls.filter((x) => x.target.startsWith("projects:"))) {
     expect(c.reason.length).toBeGreaterThan(20)
   }

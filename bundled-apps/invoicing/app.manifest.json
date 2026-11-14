@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.23.0",
+  "version": "0.24.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1404,7 +1404,8 @@
           "type": "string",
           "enum": ["planned", "drafted", "issued", "paid", "cancelled"],
           "default": "planned"
-        }
+        },
+        "no_invoice_noticed_on": "day?"
       },
       "constraints": {
         "unique": [
@@ -2544,6 +2545,150 @@
           "partial": { "type": "boolean", "description": "The file covers only part of the invoice's period." }
         },
         "required": ["documentId", "fileId", "kind"],
+        "additionalProperties": false
+      }
+    },
+    "billing_plan_get": {
+      "description": "A project's billing plan: the steps its quote is invoiced in (advances, milestones, the final), each with its amount, its task and the invoice it made.",
+      "searchKeywords": ["échéancier", "jalon", "acompte", "plan", "milestone"],
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "billingPlanGetHandler",
+      "readOnly": true,
+      "timeoutMs": 20000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "title": "string",
+          "quote": "object",
+          "steps": "array",
+          "milestonesTotal": "object",
+          "advancesTotal": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "entity",
+        "pill": { "label": "Billing plan" },
+        "title": "{{result.title}}",
+        "rows": [
+          { "label": { "label": "Milestones" }, "value": "{{result.milestonesTotal}}", "format": "money" },
+          { "label": { "label": "Advances" }, "value": "{{result.advancesTotal}}", "format": "money" }
+        ]
+      }
+    },
+    "billing_plan_set": {
+      "description": "Save a fixed-price project's billing plan from its quote: advances, milestones (each tied to its task) and the final. Milestone and final amounts must add up to the quote's total excl. VAT; an advance does not count, it is deducted from the final. Refused on a project billed by the hour or the day.",
+      "searchKeywords": ["échéancier", "jalon", "acompte", "solde", "plan", "milestone"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "billingPlanSetHandler",
+      "externalEffect": true,
+      "writesToTable": "app_invoicing.billing_steps",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." },
+          "quoteDocumentId": { "type": "string", "description": "The quote the plan follows." },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 40,
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "enum": ["advance", "milestone", "final"] },
+                "label": { "type": "string" },
+                "amountMinor": { "type": "integer", "description": "Excl. VAT, in minor units." },
+                "percent": { "type": "number", "description": "Or a percent of the quote's total excl. VAT." },
+                "taskId": { "type": "string", "description": "Milestones and the final: the task whose completion invoices it." },
+                "quoteLinePosition": { "type": "integer" },
+                "taxRateBp": { "type": "integer", "description": "A VAT rate other than the usual one, in basis points." }
+              },
+              "required": ["kind", "label"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["projectId", "quoteDocumentId", "steps"],
+        "additionalProperties": false
+      },
+      "returns": {
+        "schema": {
+          "title": "string",
+          "quote": "object",
+          "steps": "array",
+          "milestonesTotal": "object",
+          "advancesTotal": "object"
+        }
+      },
+      "resultCard": {
+        "kind": "entity",
+        "pill": { "label": "Billing plan" },
+        "title": "{{result.title}}",
+        "rows": [
+          { "label": { "label": "Milestones" }, "value": "{{result.milestonesTotal}}", "format": "money" },
+          { "label": { "label": "Advances" }, "value": "{{result.advancesTotal}}", "format": "money" }
+        ]
+      }
+    },
+    "milestone_draft_create": {
+      "description": "Draft the invoice of a done milestone, from its task only: the amount comes from the billing plan, never from hours. Refused unless the task is done and flagged a milestone. The final deducts the project's advances by itself. Takes no number; issuing waits on its approval.",
+      "searchKeywords": ["jalon", "solde", "milestone"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "milestoneDraftCreateHandler",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The milestone task." }
+        },
+        "required": ["taskId"],
+        "additionalProperties": false
+      }
+    },
+    "advance_draft_create": {
+      "description": "Draft an advance invoice (acompte) for a project: an ordinary invoice in the normal series, with VAT, from a plan step or an amount received. The final invoice deducts it. Takes no number; issuing waits on its approval.",
+      "searchKeywords": ["acompte", "advance", "deposit"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "advanceDraftCreateHandler",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." },
+          "stepId": { "type": "string", "description": "The plan's advance step, when it has one." },
+          "amountMinor": { "type": "integer", "description": "Without a step: the advance excl. VAT, in minor units." },
+          "receivedOn": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "The day the money was received, when it came first." },
+          "contactId": { "type": "string", "description": "Without a plan: the customer's contact." }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+      }
+    },
+    "advance_refund_prepare": {
+      "description": "Give an advance invoice back when its project stops before the final: a credit note citing the advance, capped at what remains of it. Refused while a final invoice deducts the advance.",
+      "searchKeywords": ["acompte"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "advanceRefundPrepareHandler",
+      "preflight": "advanceRefundPreflightHandler",
+      "conditionalGate": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "advanceDocumentId": { "type": "string", "description": "The issued advance invoice." }
+        },
+        "required": ["advanceDocumentId"],
         "additionalProperties": false
       }
     },
@@ -6520,6 +6665,7 @@
       "detail:order_edited",
       "detail:order_cancelled",
       "detail:document_overdue",
+      "billing_step:milestone_no_invoice",
       "invoicing:contact_conflict",
       "document:created",
       "document:issued",
@@ -6587,6 +6733,7 @@
       {"event": "stripe_payment:unmatched", "kind": "invoicing:stripe_payment.unmatched", "urgency": 60, "summary": "Stripe payment {{data.charge_id}} of {{data.amount}} from {{data.customer}} has no invoice. Create the invoice or link it to one.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "deferred:stripe_tax_review", "kind": "invoicing:stripe_invoice.tax_review", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: its tax needs a decision ({{data.reason}}).", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
+      {"event": "billing_step:milestone_no_invoice", "kind": "invoicing:billing_step.milestone_no_invoice", "urgency": 70, "summary": "{{data.task_title}} is done and has no invoice yet ({{data.step_label}}). Draft it from the billing plan.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:partial", "kind": "invoicing:recurring_run.partial", "urgency": 70, "summary": "Draft {{data.document_id}} of the month-end run was not issued ({{data.code}}): {{data.reason}} It stays a draft and used no number.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:due", "kind": "invoicing:recurring_run.due", "urgency": 85, "summary": "The month-end run for {{data.period}} waits for approval. {{data.when}}: invoices must issue by {{data.latest_issue_on}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:held", "kind": "invoicing:recurring_run.held", "urgency": 90, "summary": "Month-end invoicing is held until {{data.until}} by the organisation's daily app limit ({{data.job}}). Nothing was drafted or issued meanwhile; it resumes by itself after that time.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
@@ -6970,6 +7117,13 @@
       "schedule": "*/5 * * * *",
       "timeoutMs": 120000
     },
+    "billing-steps-sweep": {
+      "handler": "billingStepsSweepJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "billing_steps", "where": {"state": {"in": ["planned", "drafted", "issued"]}}}},
+      "schedule": "20 * * * *",
+      "timeoutMs": 120000
+    },
     "overdue-scan": {
       "handler": "overdueScanJobHandler",
       "atomic": true,
@@ -7025,6 +7179,10 @@
     {
       "target": "projects:reconcile_lines_read",
       "reason": "before issuing a draft made from a planned vs done card, confirm its reconciliation still holds the work it bills"
+    },
+    {
+      "target": "projects:milestone_status_read",
+      "reason": "a milestone's invoice is drafted only once its task is done: read whether the plan's tasks are done and flagged milestones, and the project's billing basis (no assignee, time or activity)"
     },
     {
       "target": "projects:reconcile_mark",

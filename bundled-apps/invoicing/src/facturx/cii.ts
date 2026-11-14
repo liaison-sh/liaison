@@ -85,6 +85,10 @@ export interface FacturxInput {
   bic?: string | null
   /** Credit notes: the invoice they correct. */
   original?: { number: string; issue_date: string } | null
+  /** An advance (386) or a final after deposit; anything else is a standard invoice (380). */
+  invoice_role?: "standard" | "advance" | "final" | null
+  /** A final after deposit: the advance invoices it deducts (BG-3, BT-25 and BT-26). */
+  preceding?: Array<{ number: string; issue_date: string }> | null
   /** Non-EUR: VAT total in EUR minor units at the stored ECB rate. */
   tax_total_eur_minor?: bigint | null
   lines: FacturxLine[]
@@ -99,6 +103,8 @@ export type FacturxBuildErrorCode =
   | "facturx_buyer_incomplete"
   | "facturx_fx_missing"
   | "facturx_original_missing"
+  | "facturx_advance_final"
+  | "facturx_preceding_missing"
   | "facturx_totals_inconsistent"
   | "facturx_no_lines"
   | "facturx_data_missing"
@@ -127,6 +133,19 @@ const PAYMENT_DIGIT: Record<PaymentState, string> = {
   due: "1",
   paid: "2",
   final_after_deposit: "4",
+}
+
+/**
+ * BT-3, the invoice type code (UNTDID 1001): 381 a credit note, 386 an advance (prepayment)
+ * invoice, 380 any other invoice. A final invoice after deposit stays 380: it carries the deposit
+ * in BT-23 (B4, S4, M4), and a type of the advance family is refused with those codes. Read in the
+ * DGFiP external specifications of electronic invoicing, version 3.2, and XP Z12-012.
+ */
+export function typeCode(
+  input: Pick<FacturxInput, "type" | "invoice_role">,
+): "380" | "381" | "386" {
+  if (input.type === "credit_note") return "381"
+  return input.invoice_role === "advance" ? "386" : "380"
 }
 
 /** BT-23: one of B1 S1 M1 B2 S2 M2 B4 S4 M4. */
@@ -349,6 +368,19 @@ export function buildCii(raw: FacturxInput): string {
       `A ${currency} e-invoice needs its VAT total in EUR at the ECB rate, and no rate is stored on the document.`,
     )
   }
+  // A final after deposit (B4, S4, M4) is never of the advance family, and cites its advances.
+  if (input.type === "invoice" && input.payment_state === "final_after_deposit") {
+    if (input.invoice_role === "advance")
+      throw new FacturxBuildError(
+        "facturx_advance_final",
+        "An advance invoice (386) cannot be a final invoice after deposit.",
+      )
+    if (input.invoice_role === "final" && !input.preceding?.length)
+      throw new FacturxBuildError(
+        "facturx_preceding_missing",
+        "A final invoice after deposit must cite the number and date of the advances it deducts.",
+      )
+  }
   if (
     input.type === "credit_note" &&
     (!input.original || blank(input.original.number) || blank(input.original.issue_date))
@@ -440,7 +472,7 @@ export function buildCii(raw: FacturxInput): string {
     "</rsm:ExchangedDocumentContext>" +
     "<rsm:ExchangedDocument>" +
     el("ram:ID", input.number.replace(/\s+/g, "")) +
-    `<ram:TypeCode>${input.type === "credit_note" ? "381" : "380"}</ram:TypeCode>` +
+    `<ram:TypeCode>${typeCode(input)}</ram:TypeCode>` +
     `<ram:IssueDateTime><udt:DateTimeString format="102">${date102(input.issue_date)}</udt:DateTimeString></ram:IssueDateTime>` +
     note("BAR", "B2B") +
     note("PMT", PAYMENT_NOTES.PMT) +
@@ -477,6 +509,17 @@ export function buildCii(raw: FacturxInput): string {
     `<ram:TotalPrepaidAmount>${amount(prepaid, exp)}</ram:TotalPrepaidAmount>` +
     `<ram:DuePayableAmount>${amount(duePayable, exp)}</ram:DuePayableAmount>` +
     "</ram:SpecifiedTradeSettlementHeaderMonetarySummation>" +
+    (input.type === "invoice" && input.preceding?.length
+      ? input.preceding
+          .map(
+            (p) =>
+              "<ram:InvoiceReferencedDocument>" +
+              el("ram:IssuerAssignedID", p.number.replace(/\s+/g, "")) +
+              `<ram:FormattedIssueDateTime><qdt:DateTimeString format="102">${date102(p.issue_date)}</qdt:DateTimeString></ram:FormattedIssueDateTime>` +
+              "</ram:InvoiceReferencedDocument>",
+          )
+          .join("")
+      : "") +
     (input.type === "credit_note" && input.original
       ? "<ram:InvoiceReferencedDocument>" +
         el("ram:IssuerAssignedID", input.original.number.replace(/\s+/g, "")) +

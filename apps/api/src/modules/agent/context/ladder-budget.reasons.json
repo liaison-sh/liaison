@@ -6,5 +6,9 @@
   {
     "key": "phone:visibleTools",
     "capability": "filing an activity report or a timesheet on an invoice (invoicing document_attachment_add), deferred-loaded: it costs its index line only"
+  },
+  {
+    "key": "time-and-budgets:announcementTokens",
+    "capability": "billing a fixed-price project by its plan: the plan read and set, milestone and advance invoices and an advance's refund (invoicing billing_plan_get, billing_plan_set, milestone_draft_create, advance_draft_create, advance_refund_prepare), deferred-loaded: they cost their index lines only"
   }
 ]

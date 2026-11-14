@@ -53,7 +53,7 @@
   },
   "app_projects.tasks": {
     "rows": 120,
-    "digest": "b54fc92a0147fd09"
+    "digest": "2b410c41e079dc79"
   },
   "app_projects.time_settings": {
     "rows": 1,
@@ -72,8 +72,8 @@
     "digest": "524db101cc33e4a6"
   },
   "kernel.apps": {
-    "rows": 18,
-    "digest": "dfe147f70753c3a1"
+    "rows": 19,
+    "digest": "a574308049107243"
   },
   "kernel.away_ranges": {
     "rows": 1,
@@ -104,12 +104,12 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 351,
-    "digest": "0966bd69f944df11"
+    "rows": 354,
+    "digest": "02b89233287e854d"
   },
   "kernel.roles": {
-    "rows": 30,
-    "digest": "c0f3f6681ddb50b2"
+    "rows": 32,
+    "digest": "b5d0feb3a042f17a"
   },
   "kernel.saved_views": {
     "rows": 8,

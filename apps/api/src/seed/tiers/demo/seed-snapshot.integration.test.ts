@@ -43,6 +43,10 @@ const CATALOG_DEMO_APPS = [
   "shopify",
   "monitoring",
   "stripe",
+  // The oracle layer's headless app, a catalog app on a demo box like the others. Installed here
+  // as the demo world test installs it: an app is installed for the whole instance, so a suite run
+  // after that file would otherwise see one app more than this file alone.
+  "database",
 ]
 /** The software world's file, beside the products world's (which keeps its old name). */
 const SAAS_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.saas.expected.json")

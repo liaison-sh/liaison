@@ -161,7 +161,7 @@
   },
   "app_projects.tasks": {
     "rows": 36,
-    "digest": "6fab9bddae5d2676"
+    "digest": "b6006c9fd350ef87"
   },
   "app_social.dm_conversation": {
     "rows": 3,
@@ -244,8 +244,8 @@
     "digest": "9f916c3abef3049b"
   },
   "kernel.apps": {
-    "rows": 18,
-    "digest": "238b18fdd3849a2e"
+    "rows": 19,
+    "digest": "052d98e5fb6708ac"
   },
   "kernel.audit_log": {
     "rows": 35,
@@ -280,16 +280,16 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 359,
-    "digest": "038bea9b76b12a25"
+    "rows": 362,
+    "digest": "c08156c69d178f7d"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 30,
-    "digest": "c0f3f6681ddb50b2"
+    "rows": 32,
+    "digest": "b5d0feb3a042f17a"
   },
   "kernel.routines": {
     "rows": 7,

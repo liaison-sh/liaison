@@ -93,7 +93,7 @@
   },
   "app_projects.tasks": {
     "rows": 35,
-    "digest": "32f8389f932c649b"
+    "digest": "a7fc55c030ce3bea"
   },
   "app_stripe.install_metadata": {
     "rows": 1,
@@ -164,8 +164,8 @@
     "digest": "66cbcf6ee4ae6f3e"
   },
   "kernel.apps": {
-    "rows": 18,
-    "digest": "27cb4927ab5aae0a"
+    "rows": 19,
+    "digest": "b22608206986816c"
   },
   "kernel.away_ranges": {
     "rows": 2,
@@ -204,12 +204,12 @@
     "digest": "8b59c9fe4bb9015b"
   },
   "kernel.pending_events": {
-    "rows": 507,
-    "digest": "67d9ae79e6023258"
+    "rows": 510,
+    "digest": "36c8a8a6b88a68f0"
   },
   "kernel.roles": {
-    "rows": 30,
-    "digest": "7eb4392f39d2db53"
+    "rows": 32,
+    "digest": "cce509371351aef5"
   },
   "kernel.routines": {
     "rows": 3,

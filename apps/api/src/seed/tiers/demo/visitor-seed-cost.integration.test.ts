@@ -43,6 +43,10 @@ const CATALOG_DEMO_APPS = [
   "shopify",
   "monitoring",
   "stripe",
+  // The oracle layer's headless app, a catalog app on a demo box like the others. Installed here
+  // as the demo world test installs it: an app is installed for the whole instance, so a suite run
+  // after that file would otherwise see one app more than this file alone.
+  "database",
 ]
 
 /**
@@ -104,9 +108,12 @@ const CATALOG_DEMO_APPS = [
  * 6 615 in 644 on a Linux runner, 359 outbox events: one status change event
  * per seeded task (+36), less the role events of the apps that left the
  * in-tree set (-11). The pin is the runner's figure.
+ * With the database app installed here as on a demo box (it was only when an
+ * earlier file of the suite had installed it): 362 outbox events, its role
+ * events (+3), on the runner and locally alike.
  */
 const PRODUCTS_BASELINE = {
-  outboxEvents: 359,
+  outboxEvents: 362,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
@@ -135,7 +142,8 @@ const SAAS_BASELINE = {
   // Re-measured 2026-11-14 at 8 049 in 817 locally, 8 102 in 828 on a Linux
   // runner, 507 outbox events: a status change event per seeded task (+35), less
   // the role events of the four apps that moved to the catalog (-12).
-  outboxEvents: 507,
+  // 510 with the database app installed here as on a demo box (+3 role events).
+  outboxEvents: 510,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
@@ -157,10 +165,11 @@ const SAAS_BASELINE = {
  * time writer, and finance each cost rate through the rate writer, one entry
  * per transaction, as the product does: 11 540 round trips in 1 106
  * transactions locally, 11 648 in 1 128 on a Linux runner (the pin), 351
- * outbox events.
+ * outbox events; 354 with the database app installed here as on a demo box
+ * (+3 role events).
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 351,
+  outboxEvents: 354,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,

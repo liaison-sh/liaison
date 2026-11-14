@@ -28,6 +28,7 @@ import {
 import { inWrappedShell } from "~/modules/auth/auth-store"
 import { BugReportDialog } from "~/modules/bug-report/BugReportDialog"
 import DesktopServersMenu from "~/modules/desktop/DesktopServersMenu"
+import { HelpButton } from "~/modules/help/HelpButton"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import {
   fitRailEntries,
@@ -50,7 +51,6 @@ import { openTab, tabStore } from "~/modules/shell/tab-store"
 import { toggleTabletSidebar } from "~/modules/shell/tablet-sidebar-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { useWs } from "~/modules/shell/WsContext"
-import { ToursHelpButton } from "~/modules/tours/ToursMenu"
 import { PopupMenu } from "~/ui/PopupMenu"
 import { Tooltip } from "~/ui/Tooltip"
 
@@ -701,7 +701,7 @@ export const ActivityBar: Component<ActivityBarProps> = (props) => {
       </Show>
 
       {/* "Show me how": the guided tours for the installed apps. */}
-      <ToursHelpButton buttonClass={buttonClass} />
+      <HelpButton buttonClass={buttonClass} />
 
       <Tooltip openDelay={0} placement="right" content={i18n.t("kernel.bugReport.title")}>
         <button

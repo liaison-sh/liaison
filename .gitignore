@@ -72,6 +72,8 @@ coverage/
 .turbo/
 
 apps/web/test-results/
+# The Help tab's docs bundle, written by the help-docs Vite plugin on every dev start and build.
+apps/web/public/help-docs/
 test-results/
 
 # Test logs

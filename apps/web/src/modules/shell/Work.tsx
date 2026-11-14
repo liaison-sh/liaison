@@ -22,6 +22,7 @@ import {
   registryLabel,
   resolveRegisteredTabType,
 } from "~/framework/app-registry"
+import { HelpWorkRow } from "~/modules/help/HelpButton"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { applyActivityBarOrder } from "~/modules/shell/activity-bar-order-store"
 import { appSquareColor } from "~/modules/shell/app-color"
@@ -34,7 +35,6 @@ import {
 import { homeApprovalCount } from "~/modules/shell/home-action-count"
 import { isHiddenFromSidebar } from "~/modules/shell/sidebar-visibility"
 import { openTab } from "~/modules/shell/tab-store"
-import { ToursWorkRow } from "~/modules/tours/ToursMenu"
 import { PullToRefresh } from "~/ui/PullToRefresh"
 
 /** Tab types that already own a fixed seat in the phone bar. */
@@ -223,7 +223,7 @@ export const Work: Component = () => {
         />
         <WorkGroup testId="work-group-apps" label={i18n.t("kernel.workApps")} entries={apps()} />
         <div class="pt-4">
-          <ToursWorkRow />
+          <HelpWorkRow />
         </div>
       </div>
     </PullToRefresh>

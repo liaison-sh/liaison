@@ -35,9 +35,8 @@ const BLOB_BASE = `${REPO}/blob/main/`
 const THEME_DIR = join(import.meta.dir, "../../docs/_theme")
 const DESCRIPTION_MAX = 160
 
-export interface BuildOptions {
+export interface RenderOptions {
   docsDir: string
-  out: string
   nav: { landing: NavPage; sections: NavSection[] }
   /** Smoke renders only: a nav page without a file renders as a "Coming soon" stub. */
   allowMissing?: boolean
@@ -48,6 +47,10 @@ export interface BuildOptions {
    * the file on disk: the generated reference pages, rendered fresh from the source.
    */
   pageOverrides?: ReadonlyMap<string, string>
+}
+
+export interface BuildOptions extends RenderOptions {
+  out: string
 }
 
 export interface BrokenLink {
@@ -72,7 +75,7 @@ export class DocsBuildError extends Error {
   }
 }
 
-interface Heading {
+export interface Heading {
   depth: number
   text: string
   id: string
@@ -80,7 +83,7 @@ interface Heading {
 
 type HeadingToken = Tokens.Heading & { id?: string }
 
-interface Page {
+export interface Page {
   nav: NavPage
   section: NavSection | null
   /** Source path relative to the docs dir, e.g. `apps/mail.md`. */
@@ -163,7 +166,7 @@ function relHref(fromDir: string, toPath: string, isDir: boolean): string {
   return rel === "" ? "./" : `${rel}/`
 }
 
-function decodeEntities(s: string): string {
+export function decodeEntities(s: string): string {
   return s
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -172,7 +175,7 @@ function decodeEntities(s: string): string {
     .replace(/&amp;/g, "&")
 }
 
-function htmlToText(html: string): string {
+export function htmlToText(html: string): string {
   return decodeEntities(
     html
       .replace(/<(script|style)[\s\S]*?<\/\1>/g, " ")
@@ -181,7 +184,25 @@ function htmlToText(html: string): string {
   ).trim()
 }
 
-export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> {
+/** One page rendered: its body HTML, links already resolved relative to its own directory. */
+export interface RenderedPage {
+  page: Page
+  html: string
+  screenshot?: { src: string; alt: string }
+}
+
+export interface RenderedDocs {
+  /** Landing first, then nav order. */
+  pages: Page[]
+  rendered: RenderedPage[]
+  byId: Map<string, Page>
+}
+
+/**
+ * Loads and renders every page listed in the nav: what the site (buildDocs) and the in-app
+ * Help tab's copy (./build-app-bundle.ts) are both written from.
+ */
+export function renderDocs(opts: RenderOptions): RenderedDocs {
   const docsDir = resolve(opts.docsDir)
   const repoRoot = dirname(docsDir)
   const marked = new Marked({ gfm: true })
@@ -372,7 +393,7 @@ export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> 
       .replaceAll("</table>", "</table></div>")
   }
 
-  const rendered = pages.map((page) => {
+  const rendered: RenderedPage[] = pages.map((page) => {
     let screenshot: { src: string; alt: string } | undefined
     if (page.screenshot) {
       if (!existsSync(join(docsDir, page.screenshot))) {
@@ -391,6 +412,13 @@ export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> 
     if (!opts.warnBroken) throw err
     console.warn(err.message.replace("failed", "warnings (--warn-broken)"))
   }
+
+  return { pages, rendered, byId }
+}
+
+export async function buildDocs(opts: BuildOptions): Promise<{ pages: number }> {
+  const docsDir = resolve(opts.docsDir)
+  const { pages, rendered, byId } = renderDocs(opts)
 
   // ---- 4. Write --------------------------------------------------------------
   const out = resolve(opts.out)

@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 /**
  * "Show me how": the tours available for the org's installed apps (the
- * server filters the catalogue), each with its status and Start/Resume. A
- * popup menu off the activity bar on desktop and tablet; a list in a bottom
- * sheet from the Work screen on phone.
+ * server filters the catalogue), each with its status and Start/Resume. Only a
+ * demo deployment lists them, under Documentation in the Help menu
+ * (help/HelpButton.tsx): a group of that menu on desktop and tablet, rows in its
+ * bottom sheet on phone. Elsewhere "?" opens the docs.
  */
 import type { TourListItem } from "@liaison/shared"
-import { ChevronRight, CircleHelp } from "lucide-solid"
-import { type Component, createSignal, For, Show } from "solid-js"
+import { type Component, For, Show } from "solid-js"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { OverlaySheet } from "~/ui/OverlaySheet"
 import { PopupMenu } from "~/ui/PopupMenu"
-import { Tooltip } from "~/ui/Tooltip"
 import { tourStore } from "./tour-store"
 
 type T = ReturnType<typeof useI18n>["t"]
@@ -104,73 +102,50 @@ const RowText: Component<{ item: TourListItem }> = (props) => {
   )
 }
 
-/** Desktop/tablet: the "?" in the activity bar's bottom cluster. */
-export const ToursHelpButton: Component<{ buttonClass: (extra?: string) => string }> = (props) => {
+/**
+ * Desktop/tablet: the tours as a group of the Help menu (help/HelpButton.tsx),
+ * which shows it on a demo deployment only. The menu refreshes the list on open.
+ */
+export const ToursMenuGroup: Component = () => {
   const i18n = useI18n()
-  const [open, setOpen] = createSignal(false)
-  const onOpenChange = (next: boolean) => {
-    setOpen(next)
-    if (next) void tourStore.refreshList()
-  }
   return (
-    <PopupMenu open={open()} onOpenChange={onOpenChange} placement="right-end">
-      <Tooltip placement="right" content={i18n.t("tours.engine.showMeHow")}>
-        <PopupMenu.Trigger
-          aria-label={i18n.t("tours.engine.showMeHow")}
-          data-testid="tours-help-button"
-          class={props.buttonClass(
-            open()
-              ? "bg-surface-hover text-text-secondary"
-              : "text-text-tertiary hover:bg-surface-hover hover:text-text-secondary",
-          )}
-        >
-          <CircleHelp size={18} />
-        </PopupMenu.Trigger>
-      </Tooltip>
-      <PopupMenu.Content
-        aria-label={i18n.t("tours.engine.showMeHow")}
-        data-testid="tours-menu"
-        class="w-72"
+    <PopupMenu.Group>
+      <PopupMenu.Label>{i18n.t("tours.engine.showMeHow")}</PopupMenu.Label>
+      <Show
+        when={tourStore.items.length > 0}
+        fallback={
+          <p data-testid="tours-menu-empty" class="px-3 py-2 text-[12.5px] text-text-tertiary">
+            {tourStore.itemsLoaded
+              ? i18n.t("tours.engine.noTours")
+              : i18n.t("tours.engine.loading")}
+          </p>
+        }
       >
-        <PopupMenu.Group>
-          <PopupMenu.Label>{i18n.t("tours.engine.showMeHow")}</PopupMenu.Label>
-          <Show
-            when={tourStore.items.length > 0}
-            fallback={
-              <p data-testid="tours-menu-empty" class="px-3 py-2 text-[12.5px] text-text-tertiary">
-                {tourStore.itemsLoaded
-                  ? i18n.t("tours.engine.noTours")
-                  : i18n.t("tours.engine.loading")}
-              </p>
-            }
-          >
-            <For each={listed(i18n.t)}>
-              {(item) => (
-                <PopupMenu.Item
-                  data-testid="tours-menu-item"
-                  textValue={i18n.t(item.title)}
-                  onSelect={() => void tourStore.resume(item.tourId, "help")}
+        <For each={listed(i18n.t)}>
+          {(item) => (
+            <PopupMenu.Item
+              data-testid="tours-menu-item"
+              textValue={i18n.t(item.title)}
+              onSelect={() => void tourStore.resume(item.tourId, "help")}
+            >
+              <span
+                class="flex w-full min-w-0 items-center gap-2"
+                data-tour-id={item.tourId}
+                data-status={statusOf(item)}
+              >
+                <RowText item={item} />
+                <span
+                  data-testid="tours-menu-action"
+                  class="shrink-0 text-[12px] font-medium text-accent"
                 >
-                  <span
-                    class="flex w-full min-w-0 items-center gap-2"
-                    data-tour-id={item.tourId}
-                    data-status={statusOf(item)}
-                  >
-                    <RowText item={item} />
-                    <span
-                      data-testid="tours-menu-action"
-                      class="shrink-0 text-[12px] font-medium text-accent"
-                    >
-                      {tourActionLabel(item, i18n.t)}
-                    </span>
-                  </span>
-                </PopupMenu.Item>
-              )}
-            </For>
-          </Show>
-        </PopupMenu.Group>
-      </PopupMenu.Content>
-    </PopupMenu>
+                  {tourActionLabel(item, i18n.t)}
+                </span>
+              </span>
+            </PopupMenu.Item>
+          )}
+        </For>
+      </Show>
+    </PopupMenu.Group>
   )
 }
 
@@ -214,45 +189,5 @@ export const ToursList: Component<{ onPicked?: () => void }> = (props) => {
         </For>
       </Show>
     </div>
-  )
-}
-
-/**
- * Phone entry: the Work screen's "Show me how" row (the five-seat tab bar has
- * no overflow), opening the list in a bottom sheet.
- */
-export const ToursWorkRow: Component = () => {
-  const i18n = useI18n()
-  const [open, setOpen] = createSignal(false)
-  return (
-    <>
-      <button
-        type="button"
-        data-testid="work-row-tours"
-        onClick={() => {
-          setOpen(true)
-          void tourStore.refreshList()
-        }}
-        class="flex h-[46px] w-full shrink-0 items-center gap-3 px-4 text-left text-[16px] text-text hover:bg-surface-hover"
-      >
-        <span
-          aria-hidden="true"
-          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-sunken text-text-secondary"
-        >
-          <CircleHelp size={16} />
-        </span>
-        <span class="min-w-0 flex-1 truncate">{i18n.t("tours.engine.showMeHow")}</span>
-        <ChevronRight size={16} class="shrink-0 text-text-tertiary" />
-      </button>
-      <OverlaySheet
-        open={open()}
-        onClose={() => setOpen(false)}
-        variant="bottom"
-        title={i18n.t("tours.engine.showMeHow")}
-        closeLabel={i18n.t("tours.engine.close")}
-      >
-        <ToursList onPicked={() => setOpen(false)} />
-      </OverlaySheet>
-    </>
   )
 }

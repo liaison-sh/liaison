@@ -15,6 +15,7 @@
       "!apps/api/scripts/dictation-bakeoff-results/**",
       "!apps/web/test-results/**",
       "!apps/web/dist/**",
+      "!apps/web/public/help-docs/**",
       "!apps/web/dist-native/**",
       "!apps/desktop/dist/**",
       "!apps/desktop/src-tauri/target/**",

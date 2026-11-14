@@ -115,6 +115,7 @@ export const KERNEL_OPEN_VIEWS: readonly OpenView[] = [
   kernelTab("sessions", "Sessions"),
   kernelTab("session-import", "Import sessions"),
   kernelTab("settings", "Settings"),
+  kernelTab("help", "Help"),
 ]
 
 /** Records that open inside a tab without having a tab type or a detail panel of their own. */

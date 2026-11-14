@@ -320,11 +320,12 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         rows={rows()}
         emptyState={
           group() === "flat"
-            ? emptyListText(filter(), tr, (iso) =>
+            ? // A date-only ISO string is read as UTC midnight.
+              emptyListText(filter(), tr, (iso) =>
                 new Intl.DateTimeFormat(uiLocale(), {
                   dateStyle: "medium",
                   timeZone: "UTC",
-                }).format(new Date(iso)), // a date-only ISO string is read as UTC midnight
+                }).format(new Date(iso)),
               )
             : tr("No {{noun}} to group.", { noun: noun() })
         }

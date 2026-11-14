@@ -1088,7 +1088,10 @@ replaced by an older run that finished later.
 
 A refresh runs the provider only for the people who are around: online now, or
 who read their feed in the last 30 minutes. When someone comes back, their
-first feed read recomputes their lists.
+first feed read recomputes their lists. A stored list older than 30 minutes is
+not shown meanwhile, since it may no longer be true (a dated item past its day,
+a task done since): the feed shows the app's items once the new list is stored,
+and the person's devices reload it then.
 
 Each run replaces the person's whole list, so an item the provider no longer
 returns is cleared. A person without the provider's scope gets an empty list. A

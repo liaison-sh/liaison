@@ -160,10 +160,11 @@ describe("Work screen", () => {
     expect(getTabType("kernel:work")?.hidePhoneTopBar).toBe(true)
   })
 
-  it("offers Show me how (the phone entry to the guided tours) in a bottom sheet", async () => {
+  it("offers Help, which opens the docs in the Help tab", () => {
     renderWork()
-    fireEvent.click(screen.getByTestId("work-row-tours"))
-    expect(await screen.findByTestId("tours-sheet")).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("work-row-help"))
+    const active = tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
+    expect(active?.type).toBe("kernel:help")
   })
 
   it("leaves out an app hidden from the sidebar, and shows it again once shown", () => {

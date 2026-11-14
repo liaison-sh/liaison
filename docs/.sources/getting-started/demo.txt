@@ -40,8 +40,10 @@ Budget link in banner -> packages/shared/src/i18n/locales/en/kernel.json:940
 Budget spent: everything stays open -> packages/shared/src/i18n/locales/en/kernel.json:943
 Add your own model key prompt, stored encrypted, own workspace only -> packages/shared/src/i18n/locales/en/kernel.json:875
 BYOK providers Anthropic, OpenAI, Google, Mistral, OpenRouter -> apps/web/src/modules/demo/DemoByokPrompt.tsx:37
-Show me how button in activity bar -> apps/web/src/modules/shell/ActivityBar.tsx:620
-Show me how label -> packages/shared/src/i18n/locales/en/tours.json:365
+Help button in the activity bar -> apps/web/src/modules/shell/ActivityBar.tsx:704
+Demo deployment: Help opens a menu, Documentation then the tours -> apps/web/src/modules/help/HelpButton.tsx:30
+Phone: Help row on the Work screen, sheet with Documentation and the tours -> apps/web/src/modules/help/HelpButton.tsx:121
+Show me how label -> packages/shared/src/i18n/locales/en/tours.json:367
 Tour status labels, Next, Skip, Do it for me, End the tour -> packages/shared/src/i18n/locales/en/tours.json:336
 Step says the agent is working -> packages/shared/src/i18n/locales/en/tours.json:406
 Agent answered without doing the step: reply, try again, or skip -> packages/shared/src/i18n/locales/en/tours.json:404

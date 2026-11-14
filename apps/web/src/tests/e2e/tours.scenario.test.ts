@@ -390,9 +390,26 @@ test.describe("guided tours against the real server", () => {
   }) => {
     test.setTimeout(120_000)
     const base = `http://localhost:${env.ports[1]}`
+    // The tours walk the demo's seeded scenarios, so only a demo deployment lists them, under
+    // Documentation in the Help menu. The branding read is the server saying it is one.
+    await page.route("**/api/settings/branding", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: {
+            orgName: "Resonant Audio Labs",
+            logoUrl: null,
+            flags: { demo: true },
+            byokModelIds: [],
+          },
+        }),
+      }),
+    )
     await page.goto(`${base}/`)
-    await page.getByTestId("tours-help-button").click()
-    const menu = page.getByTestId("tours-menu")
+    await page.getByTestId("help-button").click()
+    const menu = page.getByTestId("help-menu")
+    await expect(menu.getByTestId("help-menu-docs")).toBeVisible()
     await expect(menu).toBeVisible()
     await expect(menu.getByTestId("tours-menu-item").first()).toBeVisible({ timeout: 15_000 })
     const threads = menu.locator('[data-tour-id="kernel.threads"]')

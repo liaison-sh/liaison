@@ -1,0 +1,16 @@
+{
+  "key": {
+    "kernel.help.title": "Aide",
+    "kernel.help.documentation": "Documentation",
+    "kernel.help.searchLabel": "Rechercher dans la documentation",
+    "kernel.help.searchPlaceholder": "Rechercher dans la doc",
+    "kernel.help.noResults": "Rien dans la documentation ne correspond à « {{query}} ».",
+    "kernel.help.loading": "Chargement de la documentation…",
+    "kernel.help.loadFailed": "La documentation n’a pas pu être chargée.",
+    "kernel.help.retry": "Réessayer",
+    "kernel.help.openInBrowser": "Ouvrir dans le navigateur",
+    "kernel.help.contents": "Sommaire",
+    "kernel.help.copy": "Copier",
+    "kernel.help.copied": "Copié"
+  }
+}

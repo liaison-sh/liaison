@@ -107,7 +107,10 @@ describe("TookField", () => {
         onOff={() => {}}
       />
     ))
-    const input = await screen.findByTestId("task-took-input")
+    const input = (await screen.findByTestId("task-took-input")) as HTMLInputElement
+    // Empty, the field reads as an example, never as time already entered.
+    expect(input.value).toBe("")
+    expect(input.placeholder).toBe("e.g. 2 h")
     fireEvent.input(input, { target: { value: "1h30" } })
     fireEvent.keyDown(input, { key: "Enter" })
     await waitFor(() =>

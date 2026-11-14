@@ -377,7 +377,7 @@
     "unreadable": "Lecture impossible. Essayez 2 h, 1h30, une demi-journée ou 2 jours.",
     "took": "Passé",
     "tookNone": "Rien pour l'instant",
-    "tookPlaceholder": "2 h",
+    "tookPlaceholder": "ex. 2 h",
     "tookHint": "Ce que vous avez passé sur cette tâche, avec vos mots : 2 h, 1h30, une demi-journée. Entrée pour enregistrer.",
     "tookSoFar": "{{time}} au total",
     "tookViaMcp": "dit via l'agent de code",

@@ -1219,7 +1219,9 @@ export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promi
 export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   const out = JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {}))) as {
     projectId?: string
-    money?: { price: number; currency: string | null }
+    money?:
+      | { price: number; currency: string | null }
+      | { rate: number; per: string; currency: string | null }
     totals?: Array<{ k: string; text: string }>
   }
   // The money half: a holder of the money scope also reads what is invoiced and what is left.
@@ -1246,13 +1248,20 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
         "No issued invoice is linked to this project, so what is invoiced and left to invoice are not shown."
     } else if (read.ok) {
       const invoiced = read.invoicedMinor / 100
-      const left = Math.round((out.money.price - invoiced) * 100) / 100
-      out.money = { ...out.money, invoiced, leftToInvoice: left } as typeof out.money
       const fmt = (v: number) => formatMoney(v, out.money?.currency ?? read.currency)
-      out.totals?.push(
-        { k: "Invoiced", text: fmt(invoiced) },
-        { k: "Left to invoice", text: fmt(left) },
-      )
+      if ("price" in out.money) {
+        const left = Math.round((out.money.price - invoiced) * 100) / 100
+        out.money = { ...out.money, invoiced, leftToInvoice: left } as typeof out.money
+        out.totals?.push(
+          { k: "Invoiced", text: fmt(invoiced) },
+          { k: "Left to invoice", text: fmt(left) },
+        )
+      } else {
+        // A project billed by the day or the hour has no total to subtract from: what is
+        // invoiced stands alone.
+        out.money = { ...out.money, invoiced } as typeof out.money
+        out.totals?.push({ k: "Invoiced", text: fmt(invoiced) })
+      }
     } else {
       ;(out.money as Record<string, unknown>).invoicedUnavailable = read.refusal
         ? read.refusal

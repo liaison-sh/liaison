@@ -29,6 +29,8 @@ function declared(): Declared[] {
   for (const [root, bundled] of [
     [join(REPO, "apps/api/src/apps"), false],
     [join(REPO, "bundled-apps"), true],
+    // The test fixtures the e2e and Playwright approval cards run against.
+    [join(REPO, "apps/api/test-support/apps"), false],
   ] as const) {
     for (const name of readdirSync(root)) {
       const dir = join(root, name)
@@ -74,7 +76,9 @@ function sandboxGlobals(source: string, names: string[]): Set<string> {
 }
 
 async function bundleSource(app: Declared): Promise<string> {
-  const entry = join(app.dir, "handlers.ts")
+  // A test-support app's bundle is its `handler-bundle.ts`.
+  const fixtureBundle = join(app.dir, "handler-bundle.ts")
+  const entry = existsSync(fixtureBundle) ? fixtureBundle : join(app.dir, "handlers.ts")
   if (!app.bundled) return loadBundle(entry)
   // As the installed tarball's bundle.js is built (bundle-loader.ts side channel).
   const built = await Bun.build({ entrypoints: [entry], target: "bun", external: ["node:*"] })

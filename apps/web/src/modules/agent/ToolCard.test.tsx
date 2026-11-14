@@ -176,6 +176,17 @@ describe("ToolCard", () => {
     }
   })
 
+  it("each group names its columns over the figures once the card is wide enough", () => {
+    render(() => <ToolCard toolCall={call({ card: groups([groupRow(1), groupRow(2)]) })} />)
+    const headings = screen.getAllByTestId("card-column-heading")
+    expect(headings.map((h) => [h.dataset.column, h.textContent])).toEqual([
+      ["qty", "Qty"],
+      ["total", "Total"],
+    ])
+    // On a narrow card each cell carries its own label instead.
+    for (const h of headings) expect(h.className).toContain("@md:block")
+  })
+
   it("an entity card's label and value stack until the card is wide enough", () => {
     render(() => (
       <ToolCard

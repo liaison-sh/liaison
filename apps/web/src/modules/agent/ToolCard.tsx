@@ -771,9 +771,26 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
           <For each={p.c.groups}>
             {(group) => (
               <section class="mt-2" data-testid="card-group">
-                <h4 class="text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
-                  {group.label}
-                </h4>
+                {/* The group's name, then each column's heading over its figures (wide card). */}
+                <div
+                  class="@md:grid @md:grid-cols-[minmax(0,2fr)_repeat(var(--card-cols),minmax(0,1fr))] @md:items-baseline @md:gap-x-3"
+                  style={{ "--card-cols": String(Math.max((p.c.columns ?? []).length, 1)) }}
+                >
+                  <h4 class="text-[11px] font-semibold uppercase tracking-wide text-text-tertiary">
+                    {group.label}
+                  </h4>
+                  <For each={p.c.columns ?? []}>
+                    {(col) => (
+                      <span
+                        class="hidden text-right text-[11px] text-text-tertiary @md:block"
+                        data-testid="card-column-heading"
+                        data-column={col.key}
+                      >
+                        {cardLabel(col.label, i18n.t)}
+                      </span>
+                    )}
+                  </For>
+                </div>
                 <ul class="mt-0.5">
                   <For each={group.rows}>{(row) => <GroupRow c={p.c} row={row} />}</For>
                 </ul>

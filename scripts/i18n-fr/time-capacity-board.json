@@ -6,7 +6,7 @@
     "projects.capacity.summary": "{{planned}} prévues, sur {{available}} disponibles.",
     "projects.capacity.whoCanTake": "Qui peut la prendre ?",
     "projects.capacity.whoMessage": "Qui peut prendre {{task}} ?",
-    "projects.capacity.footnoteDays": "Les jours non travaillés de l'entreprise et les absences réduisent ce qui rentre. Aucun motif n'est affiché.",
+    "projects.capacity.footnoteDays": "Les jours non travaillés réduisent ce qui rentre.",
     "projects.capacity.sidebar": "Charge",
     "projects.timeSettings.using": "{{count}} projets utilisent le temps et les budgets. Chaque projet l'active dans ses propres réglages.",
     "projects.timeSettings.usingOne": "1 projet utilise le temps et les budgets. Il est activé dans les réglages de ce projet.",

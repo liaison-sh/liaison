@@ -7,7 +7,7 @@
     "projects.time.unreadable": "Lecture impossible. Essayez 2 h, 1h30, une demi-journée ou 2 jours.",
     "projects.time.took": "Passé",
     "projects.time.tookNone": "Rien pour l'instant",
-    "projects.time.tookPlaceholder": "2 h",
+    "projects.time.tookPlaceholder": "ex. 2 h",
     "projects.time.tookHint": "Ce que vous avez passé sur cette tâche, avec vos mots : 2 h, 1h30, une demi-journée. Entrée pour enregistrer.",
     "projects.time.tookSoFar": "{{time}} au total",
     "projects.time.tookViaMcp": "dit via l'agent de code",

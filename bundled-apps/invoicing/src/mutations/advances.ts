@@ -16,6 +16,7 @@ import {
   refuse,
   shortDate,
   stepsOf,
+  takeDownMilestoneLine,
 } from "./billing-plan"
 import { creditNoteCreateAndIssue } from "./credit-notes"
 import { resolveIssuerProfileOrError } from "./db-helpers"
@@ -202,6 +203,7 @@ export async function advanceDraftCreate(
 
   const totals = await draftTotals(ctx, recipient as never, items)
   const title = `Advance invoice draft, ${label}`
+  await takeDownMilestoneLine(ctx, projectId)
   const approvalId = await raiseIssueApproval(ctx, draftId, title, [
     `${formatMoneyMinor(amount, currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
     ...(receivedOn ? [`Received on ${shortDate(receivedOn)}`] : []),

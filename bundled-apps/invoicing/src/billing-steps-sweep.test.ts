@@ -4,8 +4,16 @@
 // line, once per step, and drafts nothing; the line goes once the step has its invoice.
 
 import { describe, expect, test } from "bun:test"
-import { done, harness, T_BETA, withPlan } from "./__tests__/billing-plan-fixtures"
+import {
+  done,
+  harness,
+  PROJECT,
+  T_BETA,
+  T_GAMMA,
+  withPlan,
+} from "./__tests__/billing-plan-fixtures"
 import { billingStepsSweep } from "./billing-steps-sweep"
+import { invoiceIssue } from "./mutations"
 import { milestoneDraftCreate } from "./mutations/billing-plan"
 
 type Row = Record<string, unknown>
@@ -52,5 +60,37 @@ describe("billing steps sweep", () => {
       data: { resolved: true },
     })
     expect((await billingStepsSweep(sweepCtx(h, emitted))).resolved).toBe(0)
+  })
+
+  test("two milestones done in one month make one Home line for the project, and a waiting draft holds it", async () => {
+    const h = harness()
+    await withPlan(h)
+    const emitted: Row[] = []
+    h.ctx.emit = async (e: Row) => {
+      emitted.push(e)
+    }
+    done(h, T_BETA)
+    done(h, T_GAMMA)
+    const first = await billingStepsSweep(sweepCtx(h, emitted))
+    expect(first.raised).toBe(1)
+    const raisedLines = () => emitted.filter((e) => (e.data as Row).resolved === false)
+    expect(raisedLines()).toHaveLength(1)
+    expect(raisedLines()[0]).toMatchObject({ entityId: PROJECT })
+    expect(String((raisedLines()[0]?.data as Row).task_title)).toContain("Beta")
+    expect(String((raisedLines()[0]?.data as Row).task_title)).toContain("Gamma")
+    // Drafting one of them takes the line down at once: its issue approval is the project's item.
+    const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
+    if (d.status !== "completed") throw new Error(JSON.stringify(d))
+    expect(emitted.at(-1)).toMatchObject({ entityId: PROJECT, data: { resolved: true } })
+    // While the draft waits, Gamma raises no second line.
+    const waiting = await billingStepsSweep(sweepCtx(h, emitted))
+    expect(waiting.raised).toBe(0)
+    expect(raisedLines()).toHaveLength(1)
+    // Once it is issued, Gamma's line comes up, alone.
+    await invoiceIssue(h.ctx, { draft_id: d.draftId })
+    const after = await billingStepsSweep(sweepCtx(h, emitted))
+    expect(after.raised).toBe(1)
+    expect(raisedLines()).toHaveLength(2)
+    expect(String((raisedLines()[1]?.data as Row).task_title)).toBe("Gamma")
   })
 })

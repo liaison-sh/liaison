@@ -542,6 +542,24 @@ async function pendingIssueApproval(ctx: MutationsCtx, draftId: string): Promise
   }
 }
 
+/**
+ * Take the project's "done with no invoice yet" Home line down: a draft of the project now waits
+ * with its own issue approval, which is the project's one money item (billing-steps-sweep).
+ * Best effort: the hourly sweep takes it down too.
+ */
+export async function takeDownMilestoneLine(ctx: MutationsCtx, projectId: string): Promise<void> {
+  try {
+    await ctx.emit({
+      entity: "billing_step",
+      action: "milestone_no_invoice",
+      entityId: projectId,
+      data: { project_id: projectId, resolved: true },
+    })
+  } catch {
+    // The sweep takes it down within the hour.
+  }
+}
+
 /** Raise the issue approval of a billing draft; null when it cannot park (issue it from the pending list). */
 export async function raiseIssueApproval(
   ctx: MutationsCtx & { logger?: { warn?: (m: string, d?: Row) => void } },
@@ -786,6 +804,7 @@ export async function milestoneDraftCreate(
     ),
     `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
   ]
+  await takeDownMilestoneLine(ctx, projectId)
   const approvalId = await raiseIssueApproval(ctx, draftId, title, lines)
   return {
     status: "completed" as const,

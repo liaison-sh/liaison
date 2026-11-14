@@ -17,8 +17,8 @@
 //                    and the buyer as the mirror holds them.
 //
 // A charge's invoice is its `invoice` field when the object carries one; otherwise
-// the invoice payment of its payment intent (`GET /v1/invoice_payments`), the way the
-// current API links them. The document a charge becomes is keyed by
+// the customer's invoice whose payments name its payment intent (`GET /v1/invoices`
+// with `data.payments` expanded), the way the current API links them. The document a charge becomes is keyed by
 // `stripeDocumentRef`: its invoice when it has one, else the charge itself.
 import { StripeApiError, type StripeHttpCtx, stripeFetch } from "./http"
 import {
@@ -81,22 +81,49 @@ export function refundItem(obj: Obj): RefundItem {
   }
 }
 
-/** The invoice a charge pays, or null when no invoice explains it. */
+/** How many of a customer's invoices, newest first, are searched for the one a charge pays. */
+const INVOICE_SEARCH_PAGES = 5
+
+/**
+ * The invoice a charge pays, or null when no invoice explains it. The charge's own `invoice` field
+ * when it carries one; otherwise, under the current API (no such field), the customer's invoice
+ * whose payments name the charge's payment intent, read from the invoices list with their payments
+ * expanded (`GET /v1/invoices?customer=`): a read under Invoices, never the invoice payments list.
+ */
 export async function invoiceOfCharge(ctx: StripeHttpCtx, charge: Obj): Promise<string | null> {
   const direct = idOf(charge.invoice)
   if (direct) return direct
   const intent = idOf(charge.payment_intent)
-  if (!intent) return null
-  try {
-    const list = await stripeFetch<{ data?: Obj[] }>(ctx, "/v1/invoice_payments", {
-      params: { payment: { type: "payment_intent", payment_intent: intent }, limit: 1 },
+  const customer = idOf(charge.customer)
+  if (!intent || !customer) return null
+  let after: string | null = null
+  for (let page = 0; page < INVOICE_SEARCH_PAGES; page++) {
+    let list: { data?: Obj[]; has_more?: boolean }
+    try {
+      list = await stripeFetch<{ data?: Obj[]; has_more?: boolean }>(ctx, "/v1/invoices", {
+        params: {
+          customer,
+          limit: 100,
+          expand: ["data.payments"],
+          ...(after ? { starting_after: after } : {}),
+        },
+      })
+    } catch (err) {
+      // A customer Stripe does not know for this key or account: no invoice is known.
+      if (err instanceof StripeApiError && (err.status === 404 || err.status === 400)) return null
+      throw err
+    }
+    const data = list?.data ?? []
+    const paid = data.find((inv) => {
+      const payments = ((inv.payments as Obj | null)?.data ?? []) as Obj[]
+      return payments.some((p) => idOf((p.payment as Obj | null)?.payment_intent) === intent)
     })
-    return idOf(list?.data?.[0]?.invoice)
-  } catch (err) {
-    // A list Stripe does not serve for this key or account: no invoice is known.
-    if (err instanceof StripeApiError && (err.status === 404 || err.status === 400)) return null
-    throw err
+    if (paid) return idOf(paid.id)
+    const last = data[data.length - 1]
+    if (!list?.has_more || !last) return null
+    after = String(last.id)
   }
+  return null
 }
 
 /** A charge's date from its mirror row or its Stripe object; a missing date (the epoch) is none. */

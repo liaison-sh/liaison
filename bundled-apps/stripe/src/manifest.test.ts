@@ -23,8 +23,8 @@ const CARD_PARAM =
   /[cC]ard_?[nN]umber|[cC][vV][cC]|[cC][vV][vV]|(^|_)([pP]an|PAN)($|_|[A-Z])|Pan($|[A-Z_])|[eE]xpir/
 
 describe("stripe manifest", () => {
-  it("is at version 0.1.32", () => {
-    expect(load().version).toBe("0.1.32")
+  it("is at version 0.1.33", () => {
+    expect(load().version).toBe("0.1.33")
   })
 
   it("paces Stripe calls with the connection's shared limits, never inside a run", () => {

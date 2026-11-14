@@ -112,11 +112,21 @@ const stripeFetch: IngestCtx["fetch"] = async (url) => {
       has_more: false,
     })
   }
-  if (u.pathname === "/v1/invoice_payments") {
-    const pi = u.searchParams.get("payment[payment_intent]")
+  // A charge's invoice, under the current API: the customer's invoices with their payments.
+  if (u.pathname === "/v1/invoices" && u.searchParams.get("customer") === "cus_E1") {
     return ok({
       object: "list",
-      data: pi === "pi_E1" ? [{ id: "inpay_E1", invoice: "in_E1" }] : [],
+      data: [
+        {
+          id: "in_E1",
+          object: "invoice",
+          payments: {
+            object: "list",
+            data: [{ payment: { type: "payment_intent", payment_intent: "pi_E1" } }],
+            has_more: false,
+          },
+        },
+      ],
       has_more: false,
     })
   }

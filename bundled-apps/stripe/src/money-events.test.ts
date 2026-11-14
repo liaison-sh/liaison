@@ -42,22 +42,43 @@ class Tables extends MemDb {
   }
 }
 
-/** Stripe: the mock, plus the invoice payments and tax rates it does not serve. */
+/**
+ * Stripe: the mock, plus a customer's invoices with their payments and the tax rates it does not
+ * serve. The invoice payments list is outside the key's permissions (a restricted key made to the
+ * documented set answers 403 there): a charge's invoice is found from the customer's invoices.
+ */
 const invoicePayments = new Map<string, string>()
 const taxRates = new Map<string, number>()
 const fetchStripe: IngestCtx["fetch"] = async (url, opts) => {
   const u = new URL(url)
   if (u.pathname === "/v1/invoice_payments") {
-    const intent = u.searchParams.get("payment[payment_intent]") ?? ""
-    const inv = invoicePayments.get(intent)
+    return {
+      status: 403,
+      headers: {},
+      body: JSON.stringify({ error: { type: "invalid_request_error", message: "not permitted" } }),
+    }
+  }
+  const expand = [...u.searchParams.entries()]
+    .filter(([k]) => k.startsWith("expand["))
+    .map(([, v]) => v)
+  if (
+    u.pathname === "/v1/invoices" &&
+    u.searchParams.get("customer") &&
+    expand.includes("data.payments")
+  ) {
+    const data = [...invoicePayments.entries()].map(([intent, inv]) => ({
+      id: inv,
+      object: "invoice",
+      payments: {
+        object: "list",
+        data: [{ payment: { type: "payment_intent", payment_intent: intent } }],
+        has_more: false,
+      },
+    }))
     return {
       status: 200,
       headers: {},
-      body: JSON.stringify({
-        object: "list",
-        data: inv ? [{ id: `inpay_${intent}`, invoice: inv }] : [],
-        has_more: false,
-      }),
+      body: JSON.stringify({ object: "list", data, has_more: false }),
     }
   }
   const rate = /^\/v1\/tax_rates\/(.+)$/.exec(u.pathname)?.[1]
@@ -115,7 +136,11 @@ const refund = (id: string, charge: string, amount: number, status: string) =>
 
 describe("refunds reach invoicing", () => {
   it("a refunded charge emits refund:created listing each of its refunds by id, with its invoice, and mirrors them", async () => {
-    seedCharge("ch_R1", 12000, 5000, { payment_intent: "pi_R1", status: "succeeded" })
+    seedCharge("ch_R1", 12000, 5000, {
+      customer: "cus_R1",
+      payment_intent: "pi_R1",
+      status: "succeeded",
+    })
     invoicePayments.set("pi_R1", "in_R1")
     refund("re_A", "ch_R1", 3000, "succeeded")
     refund("re_B", "ch_R1", 2000, "pending")
@@ -394,7 +419,7 @@ describe("finalized invoices carry what invoicing issues from", () => {
 
 describe("the reads invoicing calls", () => {
   it("refunds_for_charge lists a charge's refunds from Stripe by id and refuses a malformed id", async () => {
-    seedCharge("ch_Q1", 9000, 4000, { payment_intent: "pi_Q1" })
+    seedCharge("ch_Q1", 9000, 4000, { customer: "cus_Q1", payment_intent: "pi_Q1" })
     invoicePayments.set("pi_Q1", "in_Q1")
     refund("re_Q1", "ch_Q1", 1500, "succeeded")
     refund("re_Q2", "ch_Q1", 2500, "succeeded")

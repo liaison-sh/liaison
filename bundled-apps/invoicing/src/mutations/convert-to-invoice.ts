@@ -25,6 +25,7 @@ import {
   readDraftOrderId,
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
+import { convertedSource } from "./issue-handover"
 import { counterpartyFromRow } from "./lines"
 import {
   type DocumentRowSummary,
@@ -291,6 +292,8 @@ export async function documentsConvertLocal(
       // notes carry onto the invoice, same rule as po_number above.
       notes: (notes.value === undefined ? source.notes : notes.value) ?? null,
       lines: sourceLines,
+      // The project the quote billed stays on the invoice (margin reads it).
+      source: convertedSource(source.source),
     },
     commit_with: [
       {

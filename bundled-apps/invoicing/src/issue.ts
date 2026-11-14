@@ -267,6 +267,21 @@ export interface DraftLine {
   external_id: string | null
 }
 
+/**
+ * What a document says about the work it bills, carried from a draft onto the invoice that
+ * replaces it at issue: the project, the role in a billing plan, the service period, who approved
+ * the draft and when, and the last day it should issue. A plain draft carries none of them.
+ */
+export interface SourceColumns {
+  billing_project_id?: string | null
+  invoice_role?: "standard" | "advance" | "final" | null
+  service_period_start?: string | null
+  service_period_end?: string | null
+  approved_by?: string | null
+  approved_at?: string | null
+  latest_issue_on?: string | null
+}
+
 export interface Draft {
   currency: string
   incoterm: string
@@ -279,6 +294,10 @@ export interface Draft {
    *  top-level column with no legacy JSON home, so `documents.notes` is the single source. */
   notes?: string | null
   lines: DraftLine[]
+  /** What the document bills, carried from the draft it replaces (the project, the role in a
+   *  billing plan, the service period, the approval, the last issue day). Only set values are
+   *  written, so a plain draft issues exactly as before. */
+  source?: SourceColumns
 }
 
 /**
@@ -405,6 +424,7 @@ export type IssueBatchOp =
       merge?: Record<string, Record<string, unknown>>
     }
   | { delete: string; id: string | { $ref: string } }
+  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 
 export interface IssueBatchSequence {
   key: string
@@ -642,6 +662,8 @@ export interface DocumentInsert {
   einvoice?: Partial<RegimeSnapshotColumns>
   lifecycle_log: Array<Record<string, unknown>>
   /** The unique source key of the document, when one produced it (a dedup key, unique when set). */
+  /** What the document bills, carried from its draft (see Draft.source). */
+  source?: SourceColumns
   external_ref?: string | null
 }
 export interface DocumentRow extends DocumentInsert {
@@ -762,8 +784,17 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
       : {}),
     ...(row.einvoice ?? {}),
     ...(row.external_ref ? { external_ref: row.external_ref } : {}),
+    ...setSourceColumns(row.source),
     lifecycle_log: row.lifecycle_log,
   }
+}
+
+/** The source columns that hold a value: an unset one keeps the column's default. */
+function setSourceColumns(source: SourceColumns | undefined): Record<string, unknown> {
+  if (!source) return {}
+  return Object.fromEntries(
+    Object.entries(source).filter(([, v]) => v !== null && v !== undefined && v !== ""),
+  )
 }
 
 /** The link / regime columns of a credit note. The regime is the ORIGINAL's stored regime (never
@@ -1330,6 +1361,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         }
       : creditNoteOriginalColumns(type, issuer, input.original ?? null)),
     ...(input.external_ref ? { external_ref: input.external_ref } : {}),
+    ...(draft.source ? { source: draft.source } : {}),
     lifecycle_log: [
       ...(input.lifecycle_carry ?? []),
       { event: "issued", actor: userId, ts: nowIso },

@@ -16,6 +16,7 @@ import {
   type ErrorEnvelope,
   type MutationsDb,
   normaliseNotesOrThrow,
+  type SourceColumns,
   toBigInt,
 } from "./shared"
 
@@ -288,6 +289,7 @@ export async function findDocumentSummary(
   if (!row) return null
   return {
     id: String(row.id),
+    source: sourceColumnsOf(row),
     type: (row.type as DocumentType | string) ?? "invoice",
     status: (row.status as string | undefined) ?? "draft",
     counterparty_contact_id: (row.counterparty_contact_id as string | null) ?? null,
@@ -437,8 +439,26 @@ export async function getDraft(db: MutationsDb, draftId: string): Promise<DraftR
     po_number: (doc.po_number as string | null) ?? null,
     notes: (doc.notes as string | null) ?? null,
     ...draftEinvoiceFieldsOf(doc),
+    external_ref: (doc.external_ref as string | null) ?? null,
+    source: sourceColumnsOf(doc),
     lines,
     created_at: (doc.created_at as string | null) ?? null,
+  }
+}
+
+/** A document row's source columns (shared.ts SourceColumns), null when unset. */
+export function sourceColumnsOf(doc: Record<string, unknown>): SourceColumns {
+  const text = (v: unknown): string | null =>
+    typeof v === "string" && v !== "" ? v : v instanceof Date ? v.toISOString() : null
+  const role = doc.invoice_role
+  return {
+    billing_project_id: text(doc.billing_project_id),
+    invoice_role: role === "advance" || role === "final" || role === "standard" ? role : null,
+    service_period_start: text(doc.service_period_start),
+    service_period_end: text(doc.service_period_end),
+    approved_by: text(doc.approved_by),
+    approved_at: text(doc.approved_at),
+    latest_issue_on: text(doc.latest_issue_on),
   }
 }
 

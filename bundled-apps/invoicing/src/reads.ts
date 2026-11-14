@@ -180,6 +180,8 @@ export interface DocumentsSearchInput {
   contact?: string
   /** Only documents made out to the people of this company (kernel:companies_read). */
   company_id?: string
+  /** Only documents that bill this project (`billing_project_id`). */
+  project_id?: string
   date_range?: { from?: string | null; to?: string | null }
   treatment?: string
   /** "newest" (default) or "oldest" first, by issue date. */
@@ -732,6 +734,12 @@ export async function documentsSearch(
   if (input.treatment) where.tax_treatment = input.treatment
   const contactFilter = input.contact_id?.trim() || input.contact?.trim()
   if (contactFilter) where.counterparty_contact_id = contactFilter
+  const projectId = input.project_id?.trim()
+  if (projectId) {
+    // A malformed id matches nothing rather than failing the read on the uuid column.
+    if (!UUID_RE.test(projectId)) return input.countOnly ? { totalCount: 0 } : []
+    where.billing_project_id = projectId
+  }
   if (input.company_id?.trim() && !contactFilter) {
     const people = await companyPeople(ctx, input.company_id.trim())
     if (people.length === 0) return input.countOnly ? { totalCount: 0 } : []

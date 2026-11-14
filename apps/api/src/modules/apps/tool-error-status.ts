@@ -192,6 +192,10 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   received_reason_invalid: 400,
   document_not_editable: 409,
   already_invoiced: 409,
+  // A draft from a planned vs done card: its card changed since (issue refused), or its lines
+  // belong to the card (edit refused).
+  reconcile_changed: 409,
+  from_reconcile_change_on_card: 409,
   hs_code_in_use: 409,
   stale_reissue_approval: 409,
   reissue_needs_second_approval: 409,

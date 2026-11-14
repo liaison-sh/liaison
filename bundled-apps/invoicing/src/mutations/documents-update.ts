@@ -16,6 +16,7 @@ import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads
 import { runItemDraftRefusal } from "../recurring/run-card"
 import { type ClassifyInput, classify } from "../tax"
 import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, isCalendarDate } from "./db-helpers"
+import { cardLinesLockedError } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLine } from "./lines"
 import { ensureDocumentPdf } from "./pdf"
 import {
@@ -482,6 +483,14 @@ async function documentsUpdateRun(
   if (currentStatus === "draft") {
     const runRefusal = await runItemDraftRefusal(ctx, doc, "documents_update")
     if (runRefusal) return runRefusal
+    if (rawInput.lines !== undefined) {
+      const locked = cardLinesLockedError({
+        id,
+        external_ref: (doc.external_ref as string | null) ?? null,
+        external_refs: (doc.external_refs as Record<string, unknown> | null) ?? null,
+      })
+      if (locked) return locked
+    }
   }
   if (NOT_EDITABLE_STATUSES.has(currentStatus)) {
     return {

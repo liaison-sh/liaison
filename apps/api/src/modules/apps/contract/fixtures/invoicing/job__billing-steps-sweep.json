@@ -5,17 +5,12 @@
   "calls": [
     {
       "method": "time_civil",
-      "args": [
-        "{\"timezone\":\"UTC\"}"
-      ],
+      "args": ["{\"timezone\":\"UTC\"}"],
       "reply": "{\"date\":\"2026-11-14\",\"year\":2026,\"month\":11,\"day\":14,\"hour\":22,\"minute\":15,\"weekday\":6,\"zone\":\"UTC\"}"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "billing_steps",
-        "{\"limit\":2000}"
-      ],
+      "args": ["billing_steps", "{\"limit\":2000}"],
       "reply": "[]"
     }
   ]

@@ -182,7 +182,7 @@ const approvalCtx = (h: Harness) =>
   }) as unknown as MutationsCtx
 
 describe("a correction of a billed line", () => {
-  test('"Data export was 2.5 days, not 3" gives a pending credit note of -465.00, -93.00, -558.00 citing the invoice\'s number and date', async () => {
+  test(`"Data export was 2.5 days, not 3" gives a pending credit note of -465.00, -93.00, -558.00 citing the invoice's number and date`, async () => {
     const h = harness()
     const invoice = await issuedInvoice(h)
     h.person.value = false

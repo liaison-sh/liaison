@@ -310,6 +310,18 @@ export async function currentStripeInvoice(ctx: StripeCtx, stored: unknown): Pro
   }
 }
 
+/** Why a park of an invoice Stripe no longer holds open (void, uncollectible) was dropped. */
+export const NOT_OPEN_IN_STRIPE = "not_open_in_stripe"
+
+/**
+ * Whether Stripe still holds the invoice as one to invoice: open or paid. A payload with no status
+ * (an older park) reads as the finalized invoice it was parked as.
+ */
+export function isInvoiceable(p: { status?: string | null }): boolean {
+  const status = typeof p.status === "string" ? p.status.trim() : ""
+  return status === "" || status === "open" || status === "paid"
+}
+
 export interface FinalizedOptions {
   /** A person decided this invoice (issue-now click, or the approval of the threshold card). */
   byPerson?: boolean
@@ -343,6 +355,13 @@ export async function onStripeInvoiceFinalized(
     )
     await resolveOpenParks(ctx, ref, "already_issued")
     return { status: "skipped", reason: "duplicate_document", document_id: String(existing.id) }
+  }
+
+  // An invoice voided or written off in Stripe since it was finalized (a park retried later
+  // reads it again) has nothing left to invoice: its park is dropped and no number is taken.
+  if (!isInvoiceable(p)) {
+    await resolveOpenParks(ctx, ref, NOT_OPEN_IN_STRIPE)
+    return { status: "skipped", reason: NOT_OPEN_IN_STRIPE }
   }
 
   // 2. Who issues.

@@ -6,6 +6,8 @@
 //   payment failed: the document never changes; attention only when a person can act (no next
 //         attempt, or an expired card); otherwise Stripe is still retrying.
 //   voided, uncollectible: attention only, no document change.
+
+import { resolveOpenParks } from "../deferred"
 import { reportCollection } from "../einvoicing/collection"
 import type { EinvCtx } from "../einvoicing/transmit"
 import { civilDateOf } from "../issue-date"
@@ -14,6 +16,7 @@ import { ensureDocumentPdf } from "../mutations/pdf"
 import {
   documentByRef,
   type FinalizedResult,
+  NOT_OPEN_IN_STRIPE,
   onStripeInvoiceFinalized,
   payloadOf,
   type StripeCtx,
@@ -173,6 +176,8 @@ export async function onStripeInvoiceClosed(
   const p = payloadOf<StripeInvoicePayload>(event)
   if (!p?.stripe_invoice_id) return { status: "skipped" as const, reason: "invalid_payload" }
   const doc = await documentByRef(ctx, stripeRef(p.stripe_invoice_id))
+  // Not issued yet and parked: there is nothing left to invoice, so the park is dropped.
+  if (!doc) await resolveOpenParks(ctx, stripeRef(p.stripe_invoice_id), NOT_OPEN_IN_STRIPE)
   await ctx.emit({
     entity: "stripe_invoice",
     action: how,

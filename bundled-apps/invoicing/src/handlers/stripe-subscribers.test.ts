@@ -80,6 +80,56 @@ describe("Stripe invoices handled by invoicing", () => {
     expect(JSON.stringify(docs[0])).toContain("3 rue Neuve")
   })
 
+  test("a parked invoice voided in Stripe is dropped from the parked list once its buyer is complete, never numbered", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    const parked = await onStripeInvoiceFinalized(
+      {
+        data: finalized({
+          customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR" },
+        }),
+      },
+      ctx,
+    )
+    expect(parked).toMatchObject({ status: "deferred", reason: "awaiting_data" })
+
+    for (const status of ["void", "uncollectible"]) {
+      const fresh = stripeCtx(db, {
+        executeTool: (async (tool: string) =>
+          tool === "stripe:invoice_payload"
+            ? { status: "completed", result: { invoice: finalized({ status }) } }
+            : { status: "error", error: { code: "tool_not_found", message: "absent" } }) as never,
+      })
+      await deferredRetryJobHandler(
+        undefined,
+        fresh as unknown as Parameters<typeof deferredRetryJobHandler>[1],
+        { now: new Date(Date.UTC(2030, 0, 2)) },
+      )
+      expect(invoices(db)).toHaveLength(0)
+    }
+    expect(db.__all("__sequences")).toHaveLength(0)
+    const park = parks(db)[0] as Record<string, unknown>
+    expect(park.status).toBe("resolved")
+    expect(park.reason).toBe("not_open_in_stripe")
+  })
+
+  test("a voided Stripe invoice resolves its park at once", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    await onStripeInvoiceFinalized(
+      {
+        data: finalized({
+          customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR" },
+        }),
+      },
+      ctx,
+    )
+    await onStripeInvoiceClosed({ data: finalized({ status: "void" }) }, ctx, "voided")
+    const park = parks(db)[0] as Record<string, unknown>
+    expect(park.status).toBe("resolved")
+    expect(park.reason).toBe("not_open_in_stripe")
+  })
+
   test("a tax difference of 2 minor units on a line parks for review and 1 does not", async () => {
     // Inclusive price: 49.99 with 20% inside is 41.66 before tax, on which Liaison computes 8.33.
     const line = (tax: string) => ({

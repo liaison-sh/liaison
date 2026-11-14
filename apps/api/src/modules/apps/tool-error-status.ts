@@ -212,6 +212,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   advance_needs_final: 400,
   advance_not_issued: 409,
   already_drafted: 409,
+  final_already_drafted: 409,
   invalid_step: 400,
   invalid_task: 400,
   no_billing_step: 404,

@@ -100,6 +100,19 @@ export async function advanceDraftCreate(
         : `This advance was already invoiced as ${String(existing.number ?? existing.id)}; nothing new was drafted.`,
     )
 
+  // An advance drafted after the project's final would never be deducted: the final took its
+  // deductions when it was drafted.
+  const finals = (await ctx.db.findMany("documents", {
+    where: { billing_project_id: projectId, invoice_role: "final" },
+    limit: 20,
+  })) as Row[]
+  const final = finals.find((d) => d.status !== "cancelled" && d.status !== "voided")
+  if (final)
+    return refuse(
+      "final_already_drafted",
+      `This project's final invoice ${final.number ? String(final.number) : `draft ${String(final.id)}`} already exists, so no advance was drafted: an advance after the final is never deducted. ${final.number ? "Bill the rest as an ordinary invoice." : "Discard the final's draft, draft the advance, then draft the final again."}`,
+    )
+
   // The customer: the plan's quote, else the contact named.
   const quoteId = (step ?? steps.find((s) => typeof s.quote_document_id === "string"))
     ?.quote_document_id

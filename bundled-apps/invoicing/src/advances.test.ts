@@ -16,7 +16,7 @@ import {
 import { typeCode } from "./facturx/cii"
 import { facturxInputFrom } from "./facturx/input"
 import { creditNoteCreateAndIssue, draftsDiscard, invoiceIssue } from "./mutations"
-import { advanceRefundPrepare } from "./mutations/advances"
+import { advanceDraftCreate, advanceRefundPrepare } from "./mutations/advances"
 import { milestoneDraftCreate } from "./mutations/billing-plan"
 import { counterpartyFromRow } from "./mutations/lines"
 
@@ -90,6 +90,26 @@ describe("an advance", () => {
     expect((res as { error: { message: string } }).error.message).toContain("F-2026-0300")
     expect(h.db.__all("documents")).toHaveLength(before)
     expect(h.db.__all("advance_deductions")).toHaveLength(1)
+  })
+})
+
+describe("an advance after the final", () => {
+  test("an advance is refused once the project's final is drafted, so none goes undeducted", async () => {
+    const h = harness()
+    await withPlan(h)
+    await issuedAdvance(h)
+    done(h, T_LAUNCH)
+    const fin = await milestoneDraftCreate(h.ctx, { taskId: T_LAUNCH })
+    if (fin.status !== "completed") throw new Error(JSON.stringify(fin))
+    const before = h.db.__all("documents").length
+    const late = await advanceDraftCreate(h.ctx, {
+      projectId: PROJECT,
+      amountMinor: 50_000,
+      receivedOn: "2026-06-20",
+    })
+    expect(late).toMatchObject({ status: "error", error: { code: "final_already_drafted" } })
+    expect((late as { error: { message: string } }).error.message).toContain(fin.draftId)
+    expect(h.db.__all("documents")).toHaveLength(before)
   })
 })
 

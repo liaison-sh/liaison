@@ -76,8 +76,8 @@ describe("billing steps sweep", () => {
     const raisedLines = () => emitted.filter((e) => (e.data as Row).resolved === false)
     expect(raisedLines()).toHaveLength(1)
     expect(raisedLines()[0]).toMatchObject({ entityId: PROJECT })
-    expect(String((raisedLines()[0]?.data as Row).step_label)).toContain("Beta")
-    expect(String((raisedLines()[0]?.data as Row).step_label)).toContain("Gamma")
+    expect(String((raisedLines()[0]?.data as Row | undefined)?.step_label)).toContain("Beta")
+    expect(String((raisedLines()[0]?.data as Row | undefined)?.step_label)).toContain("Gamma")
     // Drafting one of them takes the line down at once: its issue approval is the project's item.
     const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
     if (d.status !== "completed") throw new Error(JSON.stringify(d))
@@ -91,6 +91,6 @@ describe("billing steps sweep", () => {
     const after = await billingStepsSweep(sweepCtx(h, emitted))
     expect(after.raised).toBe(1)
     expect(raisedLines()).toHaveLength(2)
-    expect(String((raisedLines()[1]?.data as Row).step_label)).toBe("Gamma")
+    expect(String((raisedLines()[1]?.data as Row | undefined)?.step_label)).toBe("Gamma")
   })
 })

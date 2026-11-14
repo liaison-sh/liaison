@@ -181,8 +181,11 @@ describe("what a billing draft keeps", () => {
       draftsUpdate(h.ctx, { draft_id: id, patch: { external_refs: {} } } as never),
     ).rejects.toThrow(/billing_draft_locked/)
     expect(
-      (h.db.__all("documents").find((d) => d.id === id)?.external_refs as Record<string, unknown>)
-        .reconciliation_id,
+      (
+        h.db.__all("documents").find((d) => d.id === id)?.external_refs as
+          | Record<string, unknown>
+          | undefined
+      )?.reconciliation_id,
     ).toBe("7a1d2c3e-0000-4000-8000-0000000000ab")
   })
 

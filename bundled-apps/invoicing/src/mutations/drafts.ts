@@ -4,7 +4,7 @@
 
 import { asHandlerSummary } from "../approval-cards"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
-import type { DraftLine, DraftLineInput } from "../issue"
+import type { DraftLine, DraftLineInput, IssueBatchOp } from "../issue"
 import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
 import { recipientOf } from "../recipient"
 import {
@@ -40,6 +40,7 @@ import {
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
+import { cardLinesLockedError, markReconciliation } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
 import {
   type DocumentType,
@@ -1033,6 +1034,17 @@ async function updateDraft(
       if (held) return held
     }
   }
+  if ("lines" in p) {
+    const linked = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
+    const locked = linked
+      ? cardLinesLockedError({
+          id: input.draft_id,
+          external_ref: (linked.external_ref as string | null) ?? null,
+          external_refs: (linked.external_refs as Record<string, unknown> | null) ?? null,
+        })
+      : null
+    if (locked) throw new Error(`${locked.error.code}: ${locked.error.message}`)
+  }
   const rd = await runDraftOf(ctx, input.draft_id)
   if (rd) return updateRunDraft(ctx, input, mode, rd)
   return updatePlainDraft(ctx, { draft_id: input.draft_id, patch: input.patch ?? {} }, mode)
@@ -1196,6 +1208,45 @@ export async function draftsDiscard(
   // A month-end run's draft is taken out through the run's own rules: how far, and what it leaves.
   const rd = await runDraftOf(ctx, input.draft_id)
   if (rd) return discardRunDraft(ctx as EditCtx, rd, input)
+  const row = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
+  if (row && String(row.status ?? "draft") === "draft") await discardDependents(ctx, row)
   await deleteDraftRow(ctx.db, input.draft_id)
+  // A draft made from a planned vs done card gives its month back: projects moves the
+  // reconciliation to proposed and frees its claims (a lost call is healed by its sweep).
+  if (row) {
+    await markReconciliation(
+      ctx,
+      {
+        external_ref: (row.external_ref as string | null) ?? null,
+        external_refs: (row.external_refs as Record<string, unknown> | null) ?? null,
+      },
+      { to: "released" },
+    )
+  }
   return { ok: true, itemState: null, notes: [] }
+}
+
+/**
+ * The rows that hang off a draft go with it: its activity report and annexes are deleted, an
+ * advance deduction it reserved is released, a billing step it drafted is planned again. They
+ * reference the draft with `restrict`, so they move before the draft's delete.
+ */
+async function discardDependents(ctx: MutationsCtx, row: Row): Promise<void> {
+  const id = String(row.id)
+  const ops: IssueBatchOp[] = []
+  for (const table of ["activity_reports", "document_attachments"]) {
+    const rows = (await ctx.db.findMany(table, { where: { document_id: id }, limit: 500 })) as Row[]
+    for (const r of rows) ops.push({ delete: table, id: String(r.id) })
+  }
+  const deductions = (await ctx.db.findMany("advance_deductions", {
+    where: { final_document_id: id },
+    limit: 500,
+  })) as Row[]
+  for (const r of deductions) ops.push({ delete: "advance_deductions", id: String(r.id) })
+  ops.push({
+    updateMany: "billing_steps",
+    where: { document_id: id },
+    data: { document_id: null, state: "planned" },
+  })
+  await ctx.db.batch({ ops })
 }

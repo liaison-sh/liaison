@@ -9,7 +9,7 @@ import type { CrossAppExecuteTool } from "../cross-app"
 import type { CustomerKind } from "../einvoicing/classify"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import type { EinvoiceRowColumns } from "../einvoicing/issue-gate"
-import type { DraftLine, IssueCtx, IssueDb } from "../issue"
+import type { DraftLine, IssueCtx, IssueDb, SourceColumns } from "../issue"
 import { lineSubtotal } from "../money"
 import type { ReadsFetch } from "../reads"
 
@@ -79,8 +79,15 @@ export interface DraftInsert {
   lines: DraftLine[]
 }
 
+export type { SourceColumns }
+
 export interface DraftRow extends DraftInsert {
   id: string
+  /** The draft's dedupe key (`documents.external_ref`): a billing source's key, handed to the
+   *  issued document at issue. */
+  external_ref?: string | null
+  /** The source columns the issued document keeps (see SourceColumns). */
+  source?: SourceColumns
   /** The draft's stored e-invoicing columns (read only: identity facts and confirmation are
    *  written by the identity tools, never by a draft patch). */
   einvoice?: EinvoiceRowColumns
@@ -93,6 +100,8 @@ export interface DraftRow extends DraftInsert {
 
 export interface DocumentRowSummary {
   id: string
+  /** What the document bills (project, period, ...), for the convert paths to carry. */
+  source?: SourceColumns
   type: DocumentType | string
   status?: string
   counterparty_contact_id: string | null

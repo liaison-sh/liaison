@@ -39,3 +39,9 @@ src/ui/RunDetail.test.tsx
 src/ui/ScheduleEditor.test.tsx
 # A project's invoiced amount, net of credit notes, for the projects app's margin (pure store).
 src/tools/project-invoiced-get.test.ts
+# Issuing a draft hands its source key, project, period and dependent rows to the invoice (pure store).
+src/issue-handover.test.ts
+# A draft from a planned vs done card keeps the card's lines; run drafts stay editable (pure store).
+src/draft-lock.test.ts
+# The projects targets invoicing may call, pinned.
+src/invoicing-cross-app-pin.test.ts

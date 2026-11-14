@@ -802,7 +802,7 @@
     },
     "invoicing__documents_search": {
       "desc": 729,
-      "schema": 472
+      "schema": 494
     },
     "invoicing__documents_send_to_customer": {
       "desc": 496,

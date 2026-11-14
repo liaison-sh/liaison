@@ -23,6 +23,7 @@ import {
   type IssuerProfileRow,
   resolveIssuerProfileOrError,
 } from "./db-helpers"
+import { handOverDraft } from "./issue-handover"
 import {
   buildIssueInputFromDraft,
   checkTwoEyes,
@@ -210,10 +211,10 @@ async function issueFromDraftWithGating(
   if (!when.ok) return when.error
   // The draft goes in the same commit as the document that replaces it: a re-run finds no
   // draft (not_found) instead of issuing it twice.
-  const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
-    commit_with: [{ delete: "documents", id: draft.id }],
-  }
+  const issueInput = handOverDraft(
+    draft,
+    buildIssueInputFromDraft(draft, issuer, counterparty, when),
+  )
   const result = await issueDocument(ctx, issueInput)
   return {
     status: "completed",

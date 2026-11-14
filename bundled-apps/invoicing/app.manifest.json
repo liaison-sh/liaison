@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.21.21",
+  "version": "0.22.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1069,7 +1069,17 @@
             "required": false
           },
           "external_ref": "text?",
-          "billing_project_id": "uuid?"
+          "billing_project_id": "uuid?",
+          "invoice_role": {
+            "type": "string",
+            "enum": ["standard", "advance", "final"],
+            "default": "standard"
+          },
+          "approved_by": "uuid?",
+          "approved_at": "date?",
+          "service_period_start": "day?",
+          "service_period_end": "day?",
+          "latest_issue_on": "day?"
       },
       "constraints": {
         "unique": [
@@ -1346,10 +1356,117 @@
         "version": { "type": "integer", "default": 1 },
         "last_document_id": "uuid?",
         "created_by": "text",
-        "external_ref": "text?"
+        "external_ref": "text?",
+        "retainer_project_id": "uuid?",
+        "retainer_minutes": "integer?",
+        "retainer_overage_rate_minor": "bigint?",
+        "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" }
       },
       "constraints": { "unique": [["external_ref"]] },
-      "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"]]
+      "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]
+    },
+    "billing_steps": {
+      "rlsScope": "documents",
+      "legalRetention": { "parent": { "table": "documents", "column": "document_id" } },
+      "fields": {
+        "billing_project_id": "uuid",
+        "position": "integer",
+        "kind": { "type": "string", "enum": ["advance", "milestone", "final"] },
+        "label": "text",
+        "amount_minor": "bigint",
+        "currency": "string",
+        "tax_rate_bp": "integer?",
+        "task_id": "uuid?",
+        "quote_document_id": {
+          "type": "uuid",
+          "required": false,
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "quote_line_position": "integer?",
+        "agreement_ref": "text?",
+        "document_id": {
+          "type": "uuid",
+          "required": false,
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "state": {
+          "type": "string",
+          "enum": ["planned", "drafted", "issued", "paid", "cancelled"],
+          "default": "planned"
+        }
+      },
+      "constraints": {
+        "unique": [
+          ["billing_project_id", "position"],
+          { "columns": ["task_id"], "where": "task_id IS NOT NULL" }
+        ]
+      },
+      "indexes": [["document_id"]]
+    },
+    "advance_deductions": {
+      "rlsScope": "documents",
+      "legalRetention": { "parent": { "table": "documents", "column": "advance_document_id" } },
+      "fields": {
+        "advance_document_id": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "final_document_id": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "amount_minor": "bigint",
+        "tax_rate_bp": "integer",
+        "line_position": "integer",
+        "state": {
+          "type": "string",
+          "enum": ["reserved", "issued", "released"],
+          "default": "reserved"
+        }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": ["advance_document_id"],
+            "where": "state <> 'released'"
+          }
+        ]
+      },
+      "indexes": [["final_document_id"]]
+    },
+    "activity_reports": {
+      "rlsScope": "documents",
+      "legalRetention": { "parent": { "table": "documents", "column": "document_id" } },
+      "fields": {
+        "document_id": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "version": "integer",
+        "content": { "type": "json", "default": {} },
+        "file_id": "uuid?",
+        "corrects_version": "integer?",
+        "credit_note_id": {
+          "type": "uuid",
+          "required": false,
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        }
+      },
+      "constraints": { "unique": [["document_id", "version"]] }
+    },
+    "document_attachments": {
+      "rlsScope": "documents",
+      "legalRetention": { "parent": { "table": "documents", "column": "document_id" } },
+      "fields": {
+        "document_id": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "restrict" }
+        },
+        "file_id": "uuid",
+        "kind": { "type": "string", "enum": ["activity_report", "timesheet"] },
+        "partial": { "type": "boolean", "default": false }
+      },
+      "indexes": [["document_id"]]
     },
     "recurring_runs": {
       "rlsScope": "documents",
@@ -2280,6 +2397,10 @@
           "company_id": {
             "type": "string",
             "description": "Company's people only."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "Only documents that bill this project."
           },
           "treatment": {
             "type": "string"
@@ -3642,6 +3763,7 @@
       "timeoutMs": 60000,
       "preflight": "invoiceIssuePreflightHandler",
       "gated": true,
+      "noAutoApprove": true,
       "approvalImpact": "external",
       "params": {
         "type": "object",
@@ -6820,6 +6942,14 @@
     }
   ],
   "cross_app_calls": [
+    {
+      "target": "projects:reconcile_lines_read",
+      "reason": "before issuing a draft made from a planned vs done card, confirm its reconciliation still holds the work it bills"
+    },
+    {
+      "target": "projects:reconcile_mark",
+      "reason": "once a draft made from a planned vs done card is issued or discarded, mark its reconciliation billed or released"
+    },
     {
       "target": "mail:composeForApp",
       "reason": "auto-flow email of issued document PDFs to counterparties"

@@ -34,6 +34,7 @@ import {
   updateDraftRow,
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
+import { handOverDraft, markReconciliation, reconcileStillReserved } from "./issue-handover"
 import {
   buildIssueInputFromDraft,
   checkTwoEyes,
@@ -160,6 +161,10 @@ async function preflightInvoiceIssueParams(
   const buyer = await checkDraftBuyer(ctx, draft, issuer, counterparty)
   if (!buyer.ok) return buyer
   const issuedCounterparty = buyer.counterparty
+  // A draft made from a planned vs done card issues only while its reconciliation still reserves
+  // the work under this draft's key: before any card is parked or any number taken.
+  const changed = await reconcileStillReserved(ctx, draft)
+  if (changed) return { ok: false, error: changed }
   // E-invoicing gate, same rule: a French business buyer without the data its e-invoice needs is
   // refused here (enforce) with the fields and the tools that fix them.
   const gate = await checkEinvoiceGate(ctx, {
@@ -262,14 +267,20 @@ export async function invoiceIssue(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
   // The draft is discarded in the same commit as the invoice that replaces it, so a
-  // re-invocation refuses with not_found rather than re-issuing.
-  const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
-    commit_with: [{ delete: "documents", id: input.draft_id }],
-  }
+  // re-invocation refuses with not_found rather than re-issuing. Its key, project and period,
+  // and the rows that point at it, move to the invoice in that commit (issue-handover.ts).
+  const issueInput = handOverDraft(
+    draft,
+    buildIssueInputFromDraft(draft, issuer, counterparty, when),
+  )
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
+  await markReconciliation(ctx, draft, {
+    to: "billed",
+    documentId: result.document_id,
+    documentNumber: result.number,
+  })
   return {
     status: "completed",
     document_id: result.document_id,
@@ -301,17 +312,24 @@ export async function issueRunDraft(
   const { draft, issuer, counterparty } = pre
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
-  const issueInput = buildIssueInputFromDraft(draft, issuer, counterparty, when)
-  // The draft is discarded in the same commit as the invoice that replaces it.
-  const issued = await issueWithFxRate(ctx, {
-    ...issueInput,
-    external_ref: input.external_ref,
-    lifecycle_carry: input.lifecycle_log,
-    ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
-    commit_before: [{ update: "documents", id: input.draft_id, data: { external_ref: null } }],
-    commit_with: [{ delete: "documents", id: input.draft_id }, ...(input.commit_with ?? [])],
-  })
+  // The draft is discarded in the same commit as the invoice that replaces it, handing over the
+  // run's period key (cleared on the draft first) and whatever points at the draft.
+  const issueInput = handOverDraft(
+    draft,
+    {
+      ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+      lifecycle_carry: input.lifecycle_log,
+      ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
+    },
+    { externalRef: input.external_ref, commitWith: input.commit_with },
+  )
+  const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
+  await markReconciliation(ctx, draft, {
+    to: "billed",
+    documentId: issued.result.document_id,
+    documentNumber: issued.result.number,
+  })
   return {
     status: "completed",
     document_id: issued.result.document_id,

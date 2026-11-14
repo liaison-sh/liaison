@@ -3904,7 +3904,6 @@
       },
       "trustBoundary": "user",
       "handler": "reconcileUndo",
-      "feature": "time_budgets",
       "timeoutMs": 60000,
       "returns": {
         "schema": {

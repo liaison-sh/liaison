@@ -315,7 +315,36 @@ export async function reconcileUndoStep(args: StepArgs & { step: UndoStep }) {
       reconciliationId: head.id,
       said,
       ...(args.now ? { now: args.now } : {}),
-    }).then((s) => s.card)
+    })
+      .then((s) => s.card as Record<string, unknown>)
+      .catch((err: unknown) => {
+        // A project turned off since keeps its money moving (Undo still frees the claims), but it
+        // has no card to draw any more: say what happened instead.
+        if (!(err instanceof ProjectsServiceError) || err.code !== "planning_off") throw err
+        return {
+          reconciliationId: head.id,
+          revision: head.revision,
+          state: "proposed",
+          title: facts.name,
+          end: "",
+          sub: `${facts.name} no longer uses time and budgets, so its card is not drawn again.`,
+          fit: "",
+          groups: [],
+          cardNotes: [],
+          tot: [],
+          cover: null,
+          notice: null,
+          connectGithub: null,
+          fixedPrice: null,
+          editable: null,
+          foot: null,
+          createInvoice: null,
+          summary: null,
+          undo: null,
+          locked: null,
+          message: `${said} ${facts.name} no longer uses time and budgets, so its card is not drawn again.`,
+        } as Record<string, unknown>
+      })
 
   if (args.step === "undo_prepare") {
     if (head.state === "proposed") {

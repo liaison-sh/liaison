@@ -34,6 +34,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { seedContext } from "~/seed/context"
+import { insertAppRow, jsonCell } from "~/seed/factories/app-tables"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { seedTaskTime } from "~/seed/factories/projects/time"
@@ -270,28 +271,39 @@ const issuerProfileId = () =>
 
 /** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
 async function retainerSchedule(projectId: string): Promise<string> {
-  const issuer = await issuerProfileId()
-  const row = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO app_invoicing.recurring_schedules
-        (org_id, issuer_profile_id, company_id, status, repeats, billing_day, covers, issue_mode,
-         lines, version, created_by, retainer_project_id, retainer_minutes,
-         retainer_overage_rate_minor, retainer_rollover, retainer_from)
-      VALUES (${orgId}::uuid, ${issuer}::uuid, ${delorme}::uuid, 'active', 'month', 'last',
-              'period_ended', 'review',
-              ${JSON.stringify([{ description: "Monthly retainer", qty: 1, unit_price_minor: 450000, vat_bp: 2000 }])}::jsonb,
-              1, ${owner.userId}, ${projectId}::uuid, 2400, 12000, 'none', '2026-01')
-      RETURNING id::text AS id`),
-  )
-  return String(row[0]?.id)
+  const id = crypto.randomUUID()
+  await insertAppRow(db as never, "invoicing", "recurring_schedules", {
+    id,
+    org_id: orgId,
+    issuer_profile_id: await issuerProfileId(),
+    company_id: delorme,
+    status: "active",
+    repeats: "month",
+    billing_day: "last",
+    lines: jsonCell([
+      { description: "Monthly retainer", qty: 1, unit_price_minor: 450000, vat_bp: 2000 },
+    ]),
+    created_by: owner.userId,
+    retainer_project_id: projectId,
+    retainer_minutes: 2400,
+    retainer_overage_rate_minor: 12000,
+    retainer_from: "2026-01",
+  })
+  return id
 }
 
 async function retainerTimebox(projectId: string, schedule: string, from: string, to: string) {
-  await db.execute(drizzleSql`
-    INSERT INTO app_projects.project_timeboxes
-      (org_id, project_id, period_start, period_end, minutes, source, source_ref, created_by)
-    VALUES (${orgId}::uuid, ${projectId}::uuid, ${from}::date, ${to}::date, 2400, 'retainer',
-            ${schedule}, ${owner.userId}::uuid)`)
+  await insertAppRow(db as never, "projects", "project_timeboxes", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    project_id: projectId,
+    period_start: from,
+    period_end: to,
+    minutes: 2400,
+    source: "retainer",
+    source_ref: schedule,
+    created_by: owner.userId,
+  })
 }
 
 const create = (card: Record<string, any>, opts: Parameters<typeof run>[2] = {}) =>

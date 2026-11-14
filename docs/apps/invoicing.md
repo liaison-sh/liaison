@@ -166,6 +166,7 @@ A schedule bills one customer on a fixed cadence: every month, quarter or year, 
 - **Ending.** `recurring_schedule_update` with `status` set to `ended` stops billing for good. A schedule whose end date falls before a period creates nothing for it.
 - **Reading.** `recurring_list` shows the schedules with their next issue day and draft day. Reading and saving need `invoicing:documents:read` and `invoicing:documents:write`; reading the issuer's time zone needs `invoicing:settings:read`, and a member without it is told the issuer cannot be read.
 - **Importing.** Schedules from another tool can be imported as **Recurring invoice schedules** (`recurring-schedule`) records. They arrive as drafts that bill nothing until a person starts them.
+- **Retainers.** A schedule with included hours and an overage rate is a retainer: its month is invoiced from the project's planned vs done card (`retainer_draft_from_reconcile`, called by the projects app only), never by the month-end run, and it refuses issuing by itself. See [Recurring invoices](recurring.md#bill-a-monthly-retainer). The daily `retainer-timebox-roll` job sets the next month's included hours on the project.
 
 ### Work with schedules in the app
 

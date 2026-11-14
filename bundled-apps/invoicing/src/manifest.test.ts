@@ -1638,6 +1638,7 @@ describe("invoicing manifest", () => {
     // 0.21.3: no tool holds a transaction across its run: credit notes and convert-to-invoice commit
     //   their writes with the document, and order_reissue_apply issues the credit note and its
     //   replacement in one commit (both or neither).
+    // 0.21.9: a unique-key race reads as one when a sandboxed call rejects with its text alone.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

@@ -222,7 +222,14 @@ export function buildHostServices(opts: BuildHostServicesOptions): HostServices 
       // A direct tool run counts as the person's click: never for a person-only act.
       const personOnly = personOnlyTool(`${appName}:${toolName}`)
       if (personOnly) throw new PersonOnlyActionError(personOnly.action)
-      return toolClient.post<T>(`/api/apps/${appName}/tools/${toolName}`, args)
+      // The arguments go in the route's explicit `params` envelope: posted bare, a
+      // tool with a parameter of its own named `params` (api-connector's
+      // settings_adapter_test) had the route take that field for the whole
+      // argument object and drop the rest. A thread the call names still anchors it.
+      return toolClient.post<T>(`/api/apps/${appName}/tools/${toolName}`, {
+        params: args,
+        ...(typeof args.threadId === "string" ? { threadId: args.threadId } : {}),
+      })
     },
 
     // Resource factory for plugins (app.createResource). Delegates to the

@@ -385,11 +385,14 @@ const PLANS: Record<string, TourPlan> = {
       // The admin pastes their adapter and enters its key.
       add: async (ctx) => {
         const token = await ctx.token()
-        const put = await fetch(`${ctx.env.serverUrl}/api/api-connector/adapters/${CONNECTION}`, {
-          method: "PUT",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify(adapter()),
-        })
+        const put = await fetch(
+          `${ctx.env.serverUrl}/api/apps/api-connector/tools/settings_adapter_save`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+            body: JSON.stringify({ identifier: CONNECTION, document: JSON.stringify(adapter()) }),
+          },
+        )
         expect(put.status, await put.text()).toBe(200)
         const creds = await api(
           ctx.env.serverUrl,

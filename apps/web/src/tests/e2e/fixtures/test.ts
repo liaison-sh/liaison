@@ -9,7 +9,6 @@ import {
   laneWorkerEnv,
   resetLane,
   type StandardWorld,
-  seedStandardWorld,
   spawnViteServer,
   TestWorld,
   type WorkerEnv,
@@ -31,6 +30,7 @@ import {
   PW_PORT_COUNT,
   pwServerEnv,
   requestPwLane,
+  seedPwWorld,
   viteMode,
   WEB_DIR,
 } from "../pw-lanes"
@@ -407,7 +407,7 @@ const baseTest = base.extend<TestFixtures, WorkerFixtures>({
       }
       await env.waitForReady(30_000) // Ensure apps are registered before seeding
       const t0 = performance.now()
-      const qa = await seedStandardWorld(env, PW_ADMIN)
+      const qa = await seedPwWorld(env, PW_ADMIN)
       timing(`qa-seed ${secs(performance.now() - t0)}`)
       await use(qa)
     },

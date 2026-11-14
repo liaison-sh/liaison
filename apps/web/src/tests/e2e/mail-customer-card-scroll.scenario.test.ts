@@ -98,8 +98,12 @@ test("mail.customer-card-stays-above-the-scrolled-thread", async ({
     )
   await page.getByTestId("api-connector-adapter-save").click()
   await expect(page.getByTestId(`api-connector-connection-${slug}`)).toBeVisible(SEE)
-  await page.getByTestId("api-connector-cred-apiKey").fill(API_KEY)
+  // The key is typed in the host's credential dialog, never in the app's own page.
   await page.getByTestId("api-connector-cred-save").click()
+  const credDialog = page.getByTestId("connect-app-dialog")
+  await expect(credDialog).toBeVisible({ timeout: 10_000 })
+  await credDialog.getByTestId("connect-field-apiKey").fill(API_KEY)
+  await credDialog.getByTestId("connect-submit").click()
   await expect(page.getByTestId("api-connector-cred-saved")).toBeVisible(SEE)
 
   await page.goto(`${web}/mail/${conversationId}`)

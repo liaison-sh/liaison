@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { type ChildProcess, execSync, spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, rmSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { bundledAppTarball } from "./bundled-app-tarball"
+import { APP_CATALOG_DIR_ENV, LANE_CATALOG_APPS, stageLaneCatalog } from "./lane-catalog"
 import { buildPwWeb, PW_LANE_REGISTRY_ENV, startPwLaneRegistry } from "./pw-lanes"
 
 const thisDir = dirname(new URL(import.meta.url).pathname)
@@ -23,7 +24,16 @@ const buildBundledAppScript = resolve(liaisonRoot, "scripts", "build-bundled-app
 // made the exists-check permanently stale after every app bump.
 // Every bundled app a scenario installs (boxtal and monitoring were missing,
 // so a fresh checkout failed those scenarios on "bundle missing").
-const BUNDLED_APPS: string[] = ["shopify", "invoicing", "ads", "boxtal", "monitoring", "social"]
+// The catalog apps every lane installs (lane-catalog.ts) are built here too.
+const BUNDLED_APPS: string[] = [
+  "shopify",
+  "invoicing",
+  "ads",
+  "boxtal",
+  "monitoring",
+  "social",
+  ...LANE_CATALOG_APPS,
+]
 
 function buildBundledAppsIfMissing() {
   if (!existsSync(buildBundledAppScript)) return
@@ -105,6 +115,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // Build the first-party bundled-app bundles (shopify, invoicing) if missing.
   buildBundledAppsIfMissing()
 
+  // The lanes' app catalog (lane-catalog.ts), read by every API server the run
+  // boots: the apps that ship only through the catalog install from it.
+  const catalogDir = stageLaneCatalog(liaisonRoot)
+  process.env[APP_CATALOG_DIR_ENV] = catalogDir
+
   // E2E_WEB_PREVIEW=1 with per-worker stacks: serve a real production build.
   // Built once per run, here, because every worker's `vite preview` serves the
   // same `dist/`. Shared lanes always serve a production build (below).
@@ -159,13 +174,15 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // (serving this web build) + seeded world per worker slot, created when a
   // worker of that slot first asks. LIAISON_PW_SHARED_STACK=0 lets every
   // worker boot its own instead.
-  if (!shared) return async () => {}
+  const removeCatalog = () => rmSync(catalogDir, { recursive: true, force: true })
+  if (!shared) return async () => removeCatalog()
   buildPwWeb()
   const logDir = process.env.LOG_DIR ?? resolve(thisDir, "..", "..", "..", "logs")
   const registry = startPwLaneRegistry(logDir)
   process.env[PW_LANE_REGISTRY_ENV] = registry.url
   return async () => {
     await registry.close()
+    removeCatalog()
   }
 }
 

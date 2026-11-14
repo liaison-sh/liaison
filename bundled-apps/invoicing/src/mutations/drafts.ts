@@ -37,10 +37,17 @@ import {
   findIssuerProfile,
   getDraft,
   insertDraftRow,
+  loadDraftLines,
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
-import { cardLinesLockedError, markReconciliation, withdrawIssueApprovals } from "./issue-handover"
+import {
+  billingDraftHeaderLockedError,
+  cardLinesLockedError,
+  deductionLinesLockedError,
+  markReconciliation,
+  withdrawIssueApprovals,
+} from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
 import {
   type DocumentType,
@@ -1034,14 +1041,27 @@ async function updateDraft(
       if (held) return held
     }
   }
-  if ("lines" in p) {
+  if ("lines" in p || "currency" in p || "type" in p || "external_refs" in p) {
     const linked = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
-    const locked = linked
-      ? cardLinesLockedError({
+    const keyed = linked
+      ? {
           id: input.draft_id,
+          type: linked.type,
+          currency: linked.currency,
           external_ref: (linked.external_ref as string | null) ?? null,
           external_refs: (linked.external_refs as Record<string, unknown> | null) ?? null,
-        })
+        }
+      : null
+    const locked = keyed
+      ? (billingDraftHeaderLockedError(keyed, p as Row) ??
+        ("lines" in p ? cardLinesLockedError(keyed) : null) ??
+        ("lines" in p && Array.isArray(p.lines)
+          ? deductionLinesLockedError(
+              input.draft_id,
+              await loadDraftLines(ctx.db, input.draft_id),
+              p.lines,
+            )
+          : null))
       : null
     if (locked) throw new Error(`${locked.error.code}: ${locked.error.message}`)
   }

@@ -148,3 +148,82 @@ describe("lines of a draft from planned vs done", () => {
     expect(lineQuantities(h.db, id)).toEqual(["5"])
   })
 })
+
+describe("what a billing draft keeps", () => {
+  const CARD = { external_ref: "reconcile:7a1d2c3e-0000-4000-8000-0000000000aa:2" }
+
+  test("a card draft's currency and type cannot change, its due date can", async () => {
+    const h = makeCtx()
+    const id = await draft(h, CARD)
+    for (const patch of [{ currency: "USD" }, { type: "quote" }]) {
+      await expect(draftsUpdate(h.ctx, { draft_id: id, patch } as never)).rejects.toThrow(
+        /billing_draft_locked/,
+      )
+    }
+    const row = h.db.__all("documents").find((d) => d.id === id)
+    expect(row?.currency).toBe("EUR")
+    expect(row?.type).toBe("invoice")
+    // Restating the same values is no change.
+    await draftsUpdate(h.ctx, {
+      draft_id: id,
+      patch: { currency: "EUR", type: "invoice", due_at: "2026-12-20" },
+    } as never)
+    expect(h.db.__all("documents").find((d) => d.id === id)?.due_at).toBe("2026-12-20")
+  })
+
+  test("a retainer month's draft keeps its link to the reconciliation", async () => {
+    const h = makeCtx()
+    const id = await draft(h, {
+      external_ref: "retainer:schedule-1:2026-10",
+      external_refs: { reconciliation_id: "7a1d2c3e-0000-4000-8000-0000000000ab" },
+    })
+    await expect(
+      draftsUpdate(h.ctx, { draft_id: id, patch: { external_refs: {} } } as never),
+    ).rejects.toThrow(/billing_draft_locked/)
+    expect(
+      (h.db.__all("documents").find((d) => d.id === id)?.external_refs as Record<string, unknown>)
+        .reconciliation_id,
+    ).toBe("7a1d2c3e-0000-4000-8000-0000000000ab")
+  })
+
+  test("a final's advance deduction lines cannot be dropped or changed, its own line can", async () => {
+    const h = makeCtx()
+    const deduction = {
+      position: 2,
+      description: "Advance invoice F-2026-0201 of 16 Apr 2026",
+      quantity: "-1",
+      unit_price_minor: 1_280_000n,
+      line_kind: "service",
+      product_source: null,
+      external_id: "advance_deduction:adv-1:2000",
+      tax_rate_bp_override: 2000,
+    }
+    const created = await draftsCreate(h.ctx, {
+      type: "invoice",
+      issuer_profile_id: ISSUER.id,
+      currency: "EUR",
+      items: [{ ...LINE, unit_price_minor: 1_600_000n, quantity: "1" }, deduction],
+      ...RECIPIENT,
+    } as never)
+    const id = created.draft_id
+    await h.db.update("documents", id, { external_ref: "milestone:step-3" })
+    const main = { ...LINE, quantity: "1", unit_price_minor: "1600000" }
+    const asWire = { ...deduction, unit_price_minor: "1280000" }
+    for (const lines of [[main], [main, { ...asWire, unit_price_minor: "1500000" }]]) {
+      await expect(
+        draftsUpdate(h.ctx, { draft_id: id, patch: { lines } } as never),
+      ).rejects.toThrow(/billing_draft_locked/)
+      const viaEditor = await documentsUpdate(h.ctx, { id, lines } as never)
+      expect(viaEditor).toMatchObject({ status: "error", error: { code: "billing_draft_locked" } })
+    }
+    await draftsUpdate(h.ctx, {
+      draft_id: id,
+      patch: { lines: [{ ...main, description: "Launch, final" }, asWire] },
+    } as never)
+    const lines = h.db.__all("document_lines").filter((l) => l.document_id === id)
+    expect(lines.map((l) => String(l.description))).toContain("Launch, final")
+    expect(
+      lines.filter((l) => String(l.external_id).startsWith("advance_deduction:")),
+    ).toHaveLength(1)
+  })
+})

@@ -139,6 +139,101 @@ export function cardLinesLockedError(draft: {
   }
 }
 
+const DEDUCTION_PREFIX = "advance_deduction:"
+
+const lockedError = (draftId: string, what: string, next: string): ErrorEnvelope => ({
+  status: "error",
+  error: {
+    code: "billing_draft_locked",
+    message: `${what} of draft ${draftId} come from its billing source and were not changed. ${next}`,
+  },
+})
+
+/**
+ * The header a billing draft (a card, a billing step, an advance, a retainer month) keeps: its
+ * currency and type (the lines are priced and claimed in them; a quote never issues, so its claims
+ * would stay reserved), and its link to the reconciliation it bills. Restating a value is no change.
+ */
+export function billingDraftHeaderLockedError(
+  draft: {
+    id: string
+    type?: unknown
+    currency?: unknown
+    external_ref?: string | null
+    external_refs?: Record<string, unknown> | null
+  },
+  patch: Record<string, unknown>,
+): ErrorEnvelope | null {
+  if (!billingKeyOf(draft) && !reconciliationOf(draft)) return null
+  const changed: string[] = []
+  for (const k of ["currency", "type"] as const) {
+    if (k in patch && patch[k] !== undefined && String(patch[k]) !== String(draft[k] ?? ""))
+      changed.push(k)
+  }
+  if ("external_refs" in patch && patch.external_refs !== undefined) {
+    const next = (patch.external_refs ?? {}) as Record<string, unknown>
+    const was = draft.external_refs ?? {}
+    for (const k of ["reconciliation_id", "reconciliation_revision"]) {
+      if ((next[k] ?? null) !== (was[k] ?? null)) changed.push(`external_refs.${k}`)
+    }
+  }
+  if (changed.length === 0) return null
+  return lockedError(
+    draft.id,
+    `The ${changed.join(", ")}`,
+    "Discard the draft and make it again from its source to change them; the due date and notes can be edited here.",
+  )
+}
+
+/** The parts of a line the deduction lock reads, stored (`loadDraftLines`) or patched. */
+interface LockLine {
+  external_id?: string | null
+  quantity?: unknown
+  unit_price_minor?: unknown
+  tax_rate_bp_override?: unknown
+  tax_rate_bp?: unknown
+}
+
+const rateOf = (l: LockLine): string | null => {
+  const r = l.tax_rate_bp_override ?? l.tax_rate_bp
+  return r === null || r === undefined ? null : String(Number(r))
+}
+
+/** A line's identity for the deduction lock: what it takes off (its rate is its external id's). */
+const deductionSig = (l: LockLine): string =>
+  [
+    String(l.external_id ?? ""),
+    String(Number(l.quantity ?? 0)),
+    String(l.unit_price_minor ?? ""),
+  ].join("|")
+
+/**
+ * A final invoice's advance deduction lines are what `advance_deductions` records as taken: a
+ * lines edit keeps every one of them as it is (dropping one bills the advance twice, enlarging
+ * one takes off more than the advance). The final's own lines stay editable.
+ */
+export function deductionLinesLockedError(
+  draftId: string,
+  current: ReadonlyArray<LockLine>,
+  next: ReadonlyArray<LockLine>,
+): ErrorEnvelope | null {
+  const isDeduction = (l: LockLine) => String(l.external_id ?? "").startsWith(DEDUCTION_PREFIX)
+  const was = current.filter(isDeduction).map(deductionSig).sort()
+  const now = next.filter(isDeduction).map(deductionSig).sort()
+  if (was.length === 0 && now.length === 0) return null
+  const rateKept = next.filter(isDeduction).every((l) => {
+    const given = rateOf(l)
+    const own = current.find((c) => c.external_id === l.external_id)
+    return given === null || !own || rateOf(own) === null || given === rateOf(own)
+  })
+  if (rateKept && was.length === now.length && was.every((v, i) => v === now[i])) return null
+  return lockedError(
+    draftId,
+    "The advance deduction lines",
+    "Keep them as they are; to change an advance's deduction, discard this final's draft and draft it again.",
+  )
+}
+
 interface MarkCtx {
   executeTool?: CrossAppExecuteTool
   logger?: { warn?: (msg: string, data?: Record<string, unknown>) => void }

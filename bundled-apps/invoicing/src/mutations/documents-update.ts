@@ -15,8 +15,14 @@ import { documentRollup, lineSubtotal, lineTax, lineTotal } from "../money"
 import { type DocumentFull, documentsGet, isUuid, type ReadsCtx } from "../reads"
 import { runItemDraftRefusal } from "../recurring/run-card"
 import { type ClassifyInput, classify } from "../tax"
-import { dateOnly, FOREIGN_ID_CHARS, findIssuerProfile, isCalendarDate } from "./db-helpers"
-import { cardLinesLockedError } from "./issue-handover"
+import {
+  dateOnly,
+  FOREIGN_ID_CHARS,
+  findIssuerProfile,
+  isCalendarDate,
+  loadDraftLines,
+} from "./db-helpers"
+import { cardLinesLockedError, deductionLinesLockedError } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLine } from "./lines"
 import { ensureDocumentPdf } from "./pdf"
 import {
@@ -484,11 +490,15 @@ async function documentsUpdateRun(
     const runRefusal = await runItemDraftRefusal(ctx, doc, "documents_update")
     if (runRefusal) return runRefusal
     if (rawInput.lines !== undefined) {
-      const locked = cardLinesLockedError({
-        id,
-        external_ref: (doc.external_ref as string | null) ?? null,
-        external_refs: (doc.external_refs as Record<string, unknown> | null) ?? null,
-      })
+      const locked =
+        cardLinesLockedError({
+          id,
+          external_ref: (doc.external_ref as string | null) ?? null,
+          external_refs: (doc.external_refs as Record<string, unknown> | null) ?? null,
+        }) ??
+        (Array.isArray(rawInput.lines)
+          ? deductionLinesLockedError(id, await loadDraftLines(ctx.db, id), rawInput.lines)
+          : null)
       if (locked) return locked
     }
   }

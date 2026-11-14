@@ -34,7 +34,7 @@ function ctxWith(opts: { issuer?: boolean; steps?: Row[]; contactCompany?: strin
   return {
     db,
     executeTool: async (target: string) => {
-      if (target === "kernel:contacts_read")
+      if (target === "kernel:contacts_identity")
         return {
           status: "completed" as const,
           result: { contact: { companyId: opts.contactCompany ?? COMPANY } },

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.24.1",
+  "version": "0.25.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1371,7 +1371,8 @@
         "retainer_project_id": "uuid?",
         "retainer_minutes": "integer?",
         "retainer_overage_rate_minor": "bigint?",
-        "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" }
+        "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" },
+        "retainer_from": "text?"
       },
       "constraints": { "unique": [["external_ref"]] },
       "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]
@@ -2504,7 +2505,10 @@
               "properties": { "billMinutes": { "type": "number" } },
               "additionalProperties": true
             }
-          }
+          },
+          "periodFrom": { "type": ["string", "null"], "description": "A retainer card's first day." },
+          "timeboxMinutes": { "type": ["number", "null"], "description": "A retainer month's timebox on the project." },
+          "waiveOverage": { "type": "boolean", "description": "A retainer month billed with no overage." }
         },
         "required": ["projectId", "basis"],
         "additionalProperties": false
@@ -2523,9 +2527,47 @@
         "properties": {
           "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
           "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
+          "leadName": { "type": ["string", "null"], "description": "The project lead's name, signing the activity report." },
+          "contactId": { "type": ["string", "null"], "description": "The contact of the project's company the invoice goes to." }
+        },
+        "required": ["reconciliationId", "revision"],
+        "additionalProperties": false
+      }
+    },
+    "retainer_draft_from_reconcile": {
+      "description": "Make the invoice draft of one retainer month from its planned vs done card: the fee, any hours above the retainer, the activity report, and its issue approval. Takes no number. Called by the projects app only.",
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "retainerDraftFromReconcileHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
+          "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
+          "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." },
           "leadName": { "type": ["string", "null"], "description": "The project lead's name, signing the activity report." }
         },
         "required": ["reconciliationId", "revision"],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_draft_discard": {
+      "description": "Discard the unissued invoice draft a planned vs done card made, for Undo on the card. Refuses any other document. Called by the projects app only.",
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "reconcileDraftDiscardHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "draft_id": { "type": "string", "description": "The card's draft." }
+        },
+        "required": ["draft_id"],
         "additionalProperties": false
       }
     },
@@ -3144,6 +3186,10 @@
           "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
           "due_days": { "type": ["integer", "null"] },
           "language": { "type": "string" },
+          "retainer_project_id": { "type": ["string", "null"], "description": "A retainer: the project its months are reconciled on." },
+          "retainer_minutes": { "type": ["integer", "null"], "description": "A retainer's included minutes a month." },
+          "retainer_overage_rate_minor": { "type": ["integer", "null"], "description": "A retainer's rate per hour above them." },
+          "retainer_rollover": { "type": "string", "enum": ["none", "next"] },
           "notes": { "type": ["string", "null"] },
           "lines": {
             "type": "array",
@@ -3196,6 +3242,10 @@
           "due_rule": { "type": "string", "enum": ["days_30", "on_issue", "days_n"] },
           "due_days": { "type": ["integer", "null"] },
           "language": { "type": "string" },
+          "retainer_project_id": { "type": ["string", "null"], "description": "A retainer: the project its months are reconciled on." },
+          "retainer_minutes": { "type": ["integer", "null"], "description": "A retainer's included minutes a month." },
+          "retainer_overage_rate_minor": { "type": ["integer", "null"], "description": "A retainer's rate per hour above them." },
+          "retainer_rollover": { "type": "string", "enum": ["none", "next"] },
           "notes": { "type": ["string", "null"] },
           "lines": {
             "type": "array",
@@ -6596,6 +6646,11 @@
             "dueDays": { "type": "integer" },
             "language": { "type": "string" },
             "notes": { "type": "string" },
+            "issueMode": { "type": "string", "enum": ["review", "auto"] },
+            "retainerProjectId": { "type": "string" },
+            "retainerMinutes": { "type": "integer" },
+            "retainerOverageRateMinor": { "type": "integer" },
+            "retainerRollover": { "type": "string", "enum": ["none", "next"] },
             "lines": {
               "type": "array",
               "items": {
@@ -7119,6 +7174,13 @@
       "schedule": "*/5 * * * *",
       "timeoutMs": 120000
     },
+    "retainer-timebox-roll": {
+      "handler": "retainerTimeboxRollJobHandler",
+      "atomic": false,
+      "runsFor": {"rows": {"entity": "recurring_schedules", "where": {"status": "active", "retainer_minutes": {"not": null}}}},
+      "schedule": "40 3 * * *",
+      "timeoutMs": 120000
+    },
     "billing-steps-sweep": {
       "handler": "billingStepsSweepJobHandler",
       "atomic": false,
@@ -7185,6 +7247,10 @@
     {
       "target": "projects:milestone_status_read",
       "reason": "a milestone's invoice is drafted only once its task is done: read whether the plan's tasks are done and flagged milestones, and the project's billing basis (no assignee, time or activity)"
+    },
+    {
+      "target": "projects:period_timebox_set",
+      "reason": "a retainer's included hours are its project's monthly timebox: saving the retainer and the daily roll write this and next month's"
     },
     {
       "target": "projects:reconcile_mark",

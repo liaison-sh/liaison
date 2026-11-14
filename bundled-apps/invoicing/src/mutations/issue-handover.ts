@@ -62,9 +62,18 @@ export function reconciliationOf(draft: {
       return { id, revision }
     }
   }
-  const linked = draft.external_refs?.reconciliation_id
+  let refs = draft.external_refs as unknown
+  if (typeof refs === "string") {
+    try {
+      refs = JSON.parse(refs)
+    } catch {
+      refs = null
+    }
+  }
+  const r = (refs ?? null) as Record<string, unknown> | null
+  const linked = r?.reconciliation_id
   if (typeof linked === "string" && linked !== "") {
-    const rev = draft.external_refs?.reconciliation_revision
+    const rev = r?.reconciliation_revision
     return { id: linked, revision: typeof rev === "number" ? rev : null }
   }
   return null
@@ -350,11 +359,23 @@ export async function markReconciliation(
  */
 export async function reconcileStillReserved(
   ctx: MarkCtx,
-  draft: { id: string; external_ref?: string | null },
+  draft: { id: string; external_ref?: string | null; external_refs?: unknown },
 ): Promise<ErrorEnvelope | null> {
   const ref = draft.external_ref
-  if (typeof ref !== "string" || !ref.startsWith("reconcile:")) return null
-  const rec = reconciliationOf(draft)
+  if (typeof ref !== "string" || !(ref.startsWith("reconcile:") || ref.startsWith("retainer:")))
+    return null
+  let refs = draft.external_refs
+  if (typeof refs === "string") {
+    try {
+      refs = JSON.parse(refs)
+    } catch {
+      refs = null
+    }
+  }
+  const rec = reconciliationOf({
+    external_ref: ref,
+    external_refs: (refs as Record<string, unknown> | null) ?? null,
+  })
   const refused = (why: string): ErrorEnvelope => ({
     status: "error",
     error: {

@@ -120,7 +120,11 @@ describe("projects.manifest", () => {
     // 1.37.0: internal reads and marks for invoicing (the billed lines, claims after an invoice
     //   moved, milestone status), the claims sweep by the draft's key.
     // 1.38.0: Create invoice and Undo on the reconcile card, priced by invoicing with VAT.
-    expect(projectsManifest.version).toBe("1.38.0")
+    // 1.39.0: a retainer month's card drafts its fee and overage; Undo discards through the
+    //   card's own discard; turning time off is refused while a retainer bills the project.
+    // 1.39.1: a billed line with no task claims itself; a superseded drafted card is set aside;
+    //   the milestone status read carries no task title.
+    expect(projectsManifest.version).toBe("1.39.1")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

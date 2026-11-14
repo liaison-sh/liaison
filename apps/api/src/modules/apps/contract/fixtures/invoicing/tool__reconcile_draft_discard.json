@@ -1,0 +1,17 @@
+{
+  "entry": "tool:reconcile_draft_discard",
+  "params": {
+    "draft_id": "7f000000-0000-4000-8000-00000000c2a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-retainer.recorder.test.ts",
+  "expectError": {
+    "reason": "no draft made from a card has this id, so nothing is discarded: pins that refusal; the discard path is proven by retainer.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["documents", "7f000000-0000-4000-8000-00000000c2a1"],
+      "reply": "null"
+    }
+  ]
+}

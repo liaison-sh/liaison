@@ -865,7 +865,16 @@ export async function setPeriodTimebox(args: {
   orgId: string
   actorId: string
   scopes: readonly string[]
-  input: { projectId: string; month?: string; from?: string; to?: string; timebox: string | null }
+  input: {
+    projectId: string
+    month?: string
+    from?: string
+    to?: string
+    timebox: string | null
+    /** Set only by the retainer's own declared call from invoicing. */
+    source?: "retainer"
+    sourceRef?: string | null
+  }
 }): Promise<{
   projectId: string
   from: string
@@ -909,6 +918,7 @@ export async function setPeriodTimebox(args: {
         DELETE FROM ${projectsRel("project_timeboxes")}
          WHERE org_id = ${orgId}::uuid AND project_id = ${project.id}::uuid
            AND period_start = ${from}::date
+           AND (${input.source === "retainer"} = false OR source = 'retainer')
          RETURNING id::text AS id`),
     )
     return {
@@ -925,12 +935,18 @@ export async function setPeriodTimebox(args: {
   }
   const minutes = readDuration(input.timebox, await hoursPerDayMinutes(tx, orgId), "timebox")
   await tx.execute(drizzleSql`
-    INSERT INTO ${projectsRel("project_timeboxes")}
-      (org_id, project_id, period_start, period_end, minutes, source, created_by)
+    INSERT INTO ${projectsRel("project_timeboxes")} AS tb
+      (org_id, project_id, period_start, period_end, minutes, source, source_ref, created_by)
     VALUES (${orgId}::uuid, ${project.id}::uuid, ${from}::date, ${to}::date, ${minutes},
-            'manual', ${actorId}::uuid)
+            ${input.source === "retainer" ? "retainer" : "manual"},
+            ${input.source === "retainer" ? (input.sourceRef ?? null) : null}, ${actorId}::uuid)
     ON CONFLICT (org_id, project_id, period_start) DO UPDATE SET
-      period_end = EXCLUDED.period_end, minutes = EXCLUDED.minutes, updated_at = now()`)
+      period_end = EXCLUDED.period_end, minutes = EXCLUDED.minutes,
+      source = CASE WHEN EXCLUDED.source = 'manual' THEN tb.source
+                    ELSE EXCLUDED.source END,
+      source_ref = CASE WHEN EXCLUDED.source = 'manual' THEN tb.source_ref
+                        ELSE EXCLUDED.source_ref END,
+      updated_at = now()`)
   return {
     projectId: project.id,
     from,

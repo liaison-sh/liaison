@@ -233,7 +233,37 @@ export async function updateProject(
   params: Record<string, unknown> | undefined,
   ctx: ProjectsCtx,
 ): Promise<unknown> {
-  return JSON.parse(await ctx.projects_updateProject(JSON.stringify(params ?? {})))
+  const out = JSON.parse(await ctx.projects_updateProject(JSON.stringify(params ?? {})))
+  // A retainer holds time on: name its schedule, read once from invoicing.
+  const err = out?.error as
+    | { code?: string; message?: string; details?: Record<string, unknown> }
+    | undefined
+  const scheduleId = err?.details?.scheduleId
+  if (err?.code !== "retainer_needs_reconcile" || typeof scheduleId !== "string") return out
+  const list = await invoicingCall(() =>
+    ctx.executeTool("invoicing:recurring_list", JSON.stringify({ status: "active", limit: 200 })),
+  )
+  const rows =
+    list.ok && Array.isArray(list.body.rows)
+      ? (list.body.rows as Array<Record<string, unknown>>)
+      : []
+  const s = rows.find((r) => r.id === scheduleId)
+  const scheduleLines = s?.lines
+  const first = (
+    Array.isArray(scheduleLines) ? (scheduleLines as Array<Record<string, unknown>>) : []
+  )[0]
+  const name = typeof first?.description === "string" ? first.description : null
+  const named = name
+    ? `the retainer schedule "${name}" (${scheduleId})`
+    : `retainer schedule ${scheduleId}`
+  return {
+    ...out,
+    error: {
+      ...err,
+      message: `${err.message} It is billed by ${named}.`,
+      details: { ...err.details, scheduleName: name },
+    },
+  }
 }
 
 export async function updateStatus(
@@ -1526,6 +1556,7 @@ const MISSING_SAID: Record<string, string> = {
   rate: "the project's rate",
   currency: "the project's currency",
   counterparty_mismatch: "a contact of the project's own company",
+  retainer: "the project's retainer on its recurring schedule in Invoicing",
 }
 
 /** The refusal code Create answers for the first thing missing. */
@@ -1536,6 +1567,7 @@ const MISSING_CODE: Record<string, string> = {
   currency: "currency_missing",
   counterparty_mismatch: "counterparty_mismatch",
   basis: "basis_not_billable",
+  retainer: "no_retainer_schedule",
 }
 
 type CardResult = Record<string, unknown> & {
@@ -1640,6 +1672,13 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
         rateMinor: prep.rateMinor ?? null,
         hoursPerDayMinutes: prep.hoursPerDayMinutes ?? null,
         lines: prep.lines ?? [],
+        ...(prep.basis === "retainer"
+          ? {
+              periodFrom: prep.periodFrom ?? null,
+              timeboxMinutes: prep.timeboxMinutes ?? null,
+              waiveOverage: p.waiveOverage === true,
+            }
+          : {}),
       }),
     ),
   )
@@ -1670,15 +1709,28 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   const reserved = await step(ctx.projects_reconcileCreate, { ...base, step: "reserve" })
   if (reserved.error) return reserved
 
+  // A retainer month drafts its fee and overage; any other card its billed lines.
+  const contactId = typeof p.contactId === "string" && p.contactId ? p.contactId : null
   const draft = await invoicingCall(() =>
-    ctx.executeTool(
-      "invoicing:draft_from_reconcile",
-      JSON.stringify({
-        reconciliationId: prep.reconciliationId,
-        revision: prep.revision,
-        leadName: prep.leadName ?? null,
-      }),
-    ),
+    prep.basis === "retainer"
+      ? ctx.executeTool(
+          "invoicing:retainer_draft_from_reconcile",
+          JSON.stringify({
+            reconciliationId: prep.reconciliationId,
+            revision: prep.revision,
+            leadName: prep.leadName ?? null,
+            ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+          }),
+        )
+      : ctx.executeTool(
+          "invoicing:draft_from_reconcile",
+          JSON.stringify({
+            reconciliationId: prep.reconciliationId,
+            revision: prep.revision,
+            leadName: prep.leadName ?? null,
+            ...(contactId ? { contactId } : {}),
+          }),
+        ),
   )
   if (!draft.ok) {
     // No draft: the reservation is given back (kept only if a document carries the key).
@@ -1691,7 +1743,12 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   }
   const d = draft.body
   const documentId = String(d.draftId ?? "")
-  const finished = await step(ctx.projects_reconcileCreate, { ...base, step: "finish", documentId })
+  const finished = await step(ctx.projects_reconcileCreate, {
+    ...base,
+    step: "finish",
+    documentId,
+    ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+  })
   if (finished.error) return finished
 
   const totals = (d.totals ?? {}) as { incl?: number; currency?: string }
@@ -1738,7 +1795,7 @@ export async function reconcileUndo(params: unknown, ctx: ProjectsCtx): Promise<
   }
   const discard = await invoicingCall(() =>
     ctx.executeTool(
-      "invoicing:drafts_discard",
+      "invoicing:reconcile_draft_discard",
       JSON.stringify({ draft_id: String(prep.documentId ?? "") }),
     ),
   )

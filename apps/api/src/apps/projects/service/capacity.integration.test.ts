@@ -894,3 +894,31 @@ describe("moving a task from the capacity board", () => {
     expect(await linesAbout(moving)).toEqual([])
   })
 })
+
+describe("a past week", () => {
+  it("whose planned tasks were all closed is never read as nobody planned work", async () => {
+    // An org of its own (it replaces the file's org, so this runs last): nobody there has open
+    // work ahead that would list them anyway.
+    orgId = (await createTestOrg()).id
+    await db.execute(
+      drizzleSql`UPDATE kernel.organizations SET timezone = 'UTC' WHERE id = ${orgId}::uuid`,
+    )
+    owner = await minimal.adminSession(orgId)
+    await ensureAppsForOrg(orgId)
+    await primeOrgApps(orgId, 0)
+    const projectId = await newProject("Closed sprint")
+    const past = isoWeekOf(addDays(today(), -21))
+    const id = await task(projectId, await newPerson("Sacha Dumont"), "6 h", {
+      dueDate: addDays(weekRange(past).from, 2),
+    })
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = now() WHERE id = ${id}::uuid`,
+    )
+    const out = await capacity({ week: past })
+    expect(out.nothingPlanned).toBeUndefined()
+    // A past week with no planned task at all still says so.
+    const empty = await capacity({ week: isoWeekOf(addDays(today(), -70)) })
+    expect(empty.nothingPlanned).toStartWith("Nobody has planned work in week")
+    forgetOrgApps(orgId)
+  }, 120_000)
+})

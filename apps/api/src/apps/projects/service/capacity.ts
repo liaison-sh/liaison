@@ -336,7 +336,9 @@ export async function getCapacity(args: {
     covers:
       "Planned time from timeboxes on projects that use time and budgets; available time from hours in a day, days per week, company days off and away days. Nothing here comes from time entered or from activity.",
   }
-  if (out.length === 0 && left.length === 0) {
+  // Only a week with no counted task in it reads as nobody planned work: a past week whose
+  // planned tasks were all closed lists nobody ahead, yet its work was planned.
+  if (!live.some((r) => inWeek(r) > 0)) {
     result.nothingPlanned = await nothingPlannedLine(tx, orgId, week, from, to)
   }
   if (args.taskId) {

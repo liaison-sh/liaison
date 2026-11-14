@@ -93,7 +93,7 @@ interface MilestoneRead {
 }
 
 /** The project's billing basis and the named tasks' done state, through projects' milestone read. */
-async function readMilestones(
+export async function readMilestones(
   ctx: MutationsCtx,
   projectId: string,
   taskIds: string[],

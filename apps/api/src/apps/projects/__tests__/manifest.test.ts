@@ -124,7 +124,10 @@ describe("projects.manifest", () => {
     //   card's own discard; turning time off is refused while a retainer bills the project.
     // 1.39.1: a billed line with no task claims itself; a superseded drafted card is set aside;
     //   the milestone status read carries no task title.
-    expect(projectsManifest.version).toBe("1.39.1")
+    // 1.40.0: a task on a live billing claim refuses a move or a merge; the sweep records a
+    //   partial credit's billed figures; a card's draft and the timesheet tab file the month's
+    //   timesheet on the draft.
+    expect(projectsManifest.version).toBe("1.40.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

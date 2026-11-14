@@ -371,3 +371,89 @@ export async function exportTimesheet(args: {
     throw err
   }
 }
+
+/**
+ * "Attach to invoice" on the timesheet tab: the month's sheet is exported as a PDF for the person
+ * and that file, the one this call just made and no other, is filed on the named invoice draft
+ * through invoicing's `document_attachment_add`, as the person (their own file and invoicing
+ * scopes). A partial sheet asks once, as the export does; once accepted the file carries its
+ * coverage line and is filed marked partial.
+ */
+export async function attachTimesheet(args: {
+  viewer: UserContext
+  scopes: readonly string[]
+  projectId: string
+  month?: string
+  documentId: string
+  acceptPartial: boolean
+  threadId?: string | null
+  now?: Date
+}): Promise<Record<string, unknown>> {
+  const { withRlsContext } = await import("~/db/rls")
+  const exported = await withRlsContext(args.viewer, (tx) =>
+    exportTimesheet({
+      tx,
+      viewer: args.viewer,
+      scopes: args.scopes,
+      projectId: args.projectId,
+      ...(args.month !== undefined ? { month: args.month } : {}),
+      format: "pdf",
+      acceptPartial: args.acceptPartial,
+      ...(args.now ? { now: args.now } : {}),
+    }),
+  )
+  if (exported.needsConfirm) {
+    return {
+      ...exported,
+      filed: false,
+      message: String(exported.message).replace("No file was made", "Nothing was filed"),
+      next: "Ask the person once whether to file it as it is; if yes, attach again with acceptPartial: true. The file then carries the coverage line and is marked partial.",
+    }
+  }
+  // The file this call just exported, and no other.
+  const fileId = String(exported.fileId ?? "")
+  const partial = exported.partial === true
+  const { executeTool } = await import("~/modules/apps/execute-tool")
+  let data: Record<string, unknown> = {}
+  let failed: { code?: string; message?: string } | undefined
+  try {
+    const out = await executeTool<Record<string, unknown>>({
+      toolName: "invoicing:document_attachment_add",
+      orgId: args.viewer.orgId,
+      actor: args.viewer,
+      params: { documentId: args.documentId, fileId, kind: "timesheet", partial },
+      ...(args.threadId ? { threadId: args.threadId } : {}),
+      origin: "human-ui",
+    })
+    data = (out.data ?? {}) as Record<string, unknown>
+    if (data.status === "error") failed = data.error as { code?: string; message?: string }
+  } catch (err) {
+    const e = err as { code?: unknown; message?: unknown }
+    failed = {
+      ...(typeof e.code === "string" ? { code: e.code } : {}),
+      ...(typeof e.message === "string" ? { message: e.message } : {}),
+    }
+  }
+  if (failed || data.status !== "completed") {
+    const code = (failed as { code?: string } | undefined)?.code ?? "attach_failed"
+    const said =
+      (failed as { message?: string } | undefined)?.message ??
+      "Invoicing did not file it, so nothing was filed."
+    throw new ProjectsServiceError(
+      code === "not_found" ? 404 : code === "forbidden" ? 403 : 409,
+      code,
+      `The sheet was exported for you, but not filed on the invoice: ${said}`,
+      { fileId, next: "Fix what is said and attach again, or attach the exported file by hand." },
+    )
+  }
+  return {
+    filed: true,
+    documentId: args.documentId,
+    attachmentId: data.attachmentId ?? null,
+    fileId: data.fileId ?? null,
+    partial,
+    coverageLine: exported.coverageLine ?? null,
+    message:
+      `${String(data.message ?? "Filed the timesheet on the invoice.")} ${String(exported.coverageLine ?? "")}`.trim(),
+  }
+}

@@ -4,6 +4,7 @@ import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient, type RlsTx } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { readProjectLevels, remapChecklistValidations } from "./checklist"
+import { refuseClaimedTasks } from "./claim-holds"
 import { dealTargetStatusForMove, refuseDealAsSubtask, syncDealOutcome } from "./deals"
 import { fieldsForProject, lockProjectFields, readProjectFields, sameFields } from "./fields"
 import { resolveStatusRef } from "./resolve"
@@ -336,6 +337,12 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
           JOIN ${projectsRel("tasks")} t ON t.id = m.id
           LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = m.status_id
         `),
+      )
+      // A task on a live billing claim stays on the project its invoice bills.
+      await refuseClaimedTasks(
+        orgId,
+        subtree.map((t) => t.id),
+        "moved to another project",
       )
       // A deal only moves to another pipeline, and lands on the stage that
       // matches its outcome (refused into a work project, nothing written).

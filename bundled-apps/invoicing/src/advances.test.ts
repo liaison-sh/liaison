@@ -113,6 +113,25 @@ describe("an advance after the final", () => {
   })
 })
 
+describe("an advance on a project billed by the day or the hour", () => {
+  test("an advance outside a billing plan is refused on a daily or hourly project and says how to take one", async () => {
+    for (const basis of ["daily", "hourly"]) {
+      const h = harness()
+      h.basis.value = basis
+      const before = h.db.__all("documents").length
+      const res = await advanceDraftCreate(h.ctx, {
+        projectId: PROJECT,
+        amountMinor: 300_000,
+        receivedOn: "2026-06-20",
+        contactId: crypto.randomUUID(),
+      })
+      expect(res).toMatchObject({ status: "error", error: { code: "advance_on_rate_project" } })
+      expect((res as { error: { message: string } }).error.message).toContain("billing_plan_set")
+      expect(h.db.__all("documents")).toHaveLength(before)
+    }
+  })
+})
+
 describe("refunding an advance", () => {
   test("a stopped project's advance refund is capped at what remains", async () => {
     const h = harness()

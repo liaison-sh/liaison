@@ -19,7 +19,7 @@ import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
 import { documentsForRef } from "./reconcile-sweep"
 import { retainerDocumentRef, retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
-import { hoursPerDayMinutes } from "./time-plan"
+import { datedHoursOn, hoursPerDayMinutes } from "./time-plan"
 
 type Tx = RlsClient
 
@@ -204,6 +204,9 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       currency: facts.currency,
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
       leadName: facts.leadName,
+      // A project with dated hours files the month's timesheet on the draft.
+      datedHours: await datedHoursOn(tx, orgId, head.project_id),
+      month: head.period_start ? head.period_start.slice(0, 7) : null,
       lines: lines.map((l) => ({ billMinutes: l.bill_minutes })),
       ...retainerFields,
     }

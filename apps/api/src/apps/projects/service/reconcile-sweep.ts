@@ -23,7 +23,7 @@ import {
   sweepSkippingMoving,
   writeUnlessMoving,
 } from "~/modules/org/transfer-state/skip-moving"
-import { releaseReconciliation } from "./claims"
+import { releaseReconciliation, SUPERSEDED } from "./claims"
 import { syncTimeBudgetsFeature, TIME_FEATURE } from "./time-feature"
 
 const log = rootLogger.child({ module: "projects/reconcile-sweep" })
@@ -346,7 +346,7 @@ export async function sweepClaims(): Promise<{
           )[0]?.created_by
           if (by) proposedAgain.push({ id, org, by })
         }
-        if (out.state === "drafted") {
+        if (out.state === SUPERSEDED || out.state === "drafted") {
           // A newer proposal of the same person and period holds the proposed slot: this one,
           // with no claim and no document left, would only block a later bill.
           await tx.execute(drizzleSql`
@@ -354,6 +354,15 @@ export async function sweepClaims(): Promise<{
              WHERE id = ${id}::uuid AND org_id = ${org}::uuid AND state = 'drafted'`)
         }
       }
+      // A drafted card set aside for a newer one (no key, no draft): nothing points at it.
+      await tx.execute(drizzleSql`
+        DELETE FROM ${projectsRel("reconciliations")} r
+         WHERE r.state = 'drafted' AND r.document_ref IS NULL AND r.document_id IS NULL
+           AND ${notMoving(drizzleSql.raw("r.org_id"))}
+           AND NOT EXISTS (
+             SELECT 1 FROM ${projectsRel("billing_claims")} c
+              WHERE c.org_id = r.org_id AND c.reconciliation_id = r.id
+                AND c.state IN ('reserved', 'billed'))`)
       return { billed, invoiced, credited, released: freed.length }
     }),
   )

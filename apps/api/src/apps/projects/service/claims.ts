@@ -332,16 +332,32 @@ export async function releaseReconciliation(
               AND o.period_start IS NOT DISTINCT FROM r.period_start)
       RETURNING state`),
   )[0]
+  if (back) return { released, state: back.state }
+  // A newer card of the same person and period holds the proposed slot: this one gives up its key
+  // and its draft, so no reader is shown it again and the sweep deletes it ("superseded").
+  const aside = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      UPDATE ${projectsRel("reconciliations")}
+         SET document_id = NULL, document_ref = NULL, drafted_at = NULL, drafted_by = NULL,
+             updated_at = now()
+       WHERE id = ${reconciliationId}::uuid AND org_id = ${orgId}::uuid AND state = 'drafted'
+      RETURNING id::text AS id`),
+  )
+  if (aside.length > 0) return { released, state: SUPERSEDED }
   const state =
-    back?.state ??
     extractRows<{ state: string }>(
       await tx.execute(drizzleSql`
         SELECT state FROM ${projectsRel("reconciliations")}
          WHERE id = ${reconciliationId}::uuid AND org_id = ${orgId}::uuid`),
-    )[0]?.state ??
-    "gone"
+    )[0]?.state ?? "gone"
   return { released, state }
 }
+
+/**
+ * What `releaseReconciliation` answers for a drafted reconciliation set aside: a newer card of the
+ * same person and period stands. The row stays `drafted` with no key until the sweep deletes it.
+ */
+export const SUPERSEDED = "superseded"
 
 // ── reconcile_mark ──────────────────────────────────────────────────────────
 
@@ -428,7 +444,9 @@ export async function reconcileMark(args: {
       out.released > 0 || out.state !== r.state,
       out.state,
       out.released,
-      `Released ${out.released} claim${out.released === 1 ? "" : "s"} of ${label}; it is ${out.state} again, and its work can be billed again.`,
+      out.state === SUPERSEDED
+        ? `Released ${out.released} claim${out.released === 1 ? "" : "s"} of ${label}; a newer card of the same person and period stands, so this one is set aside, and its work can be billed again.`
+        : `Released ${out.released} claim${out.released === 1 ? "" : "s"} of ${label}; it is ${out.state} again, and its work can be billed again.`,
       null,
     )
   }

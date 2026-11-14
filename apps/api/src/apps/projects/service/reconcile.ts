@@ -361,7 +361,7 @@ export async function reconcileFacts(args: {
     await tx.execute(drizzleSql`
       SELECT max(period_end)::text AS "end" FROM ${projectsRel("reconciliations")}
        WHERE org_id = ${orgId}::uuid AND project_id = ${c.project.id}::uuid
-         AND state IN ('drafted', 'invoiced')`),
+         AND (state = 'invoiced' OR (state = 'drafted' AND document_ref IS NOT NULL))`),
   )[0]?.end
   const unbilledEarlier = lastBilled
     ? c.rows.filter(
@@ -973,7 +973,8 @@ export async function reconcilePropose(args: {
       SELECT id::text AS id, revision, state, created_by::text AS created_by
         FROM ${projectsRel("reconciliations")}
        WHERE org_id = ${orgId}::uuid AND project_id = ${c.project.id}::uuid
-         AND period_start = ${c.period.from}::date AND state IN ('drafted', 'invoiced')
+         AND period_start = ${c.period.from}::date
+         AND (state = 'invoiced' OR (state = 'drafted' AND document_ref IS NOT NULL))
        ORDER BY updated_at DESC
        LIMIT 1`),
   )[0]

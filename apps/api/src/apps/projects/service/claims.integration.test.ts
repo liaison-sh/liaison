@@ -17,10 +17,11 @@ import {
   claimsWorld,
   forgetClaimsWorld,
   heldClaim,
+  reconciliationRow,
   storedReconciliation,
 } from "~/tests/helpers/projects-claims"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { reconcileLinesRead, reserveClaims } from "./claims"
+import { reconcileLinesRead, reconcileMark, reserveClaims } from "./claims"
 import { sweepClaims } from "./reconcile-sweep"
 import { ProjectsServiceError } from "./statuses"
 
@@ -171,5 +172,31 @@ describe("billing claims at Create", () => {
     const again = await reserve(r.id).catch((e) => e as ProjectsServiceError)
     expect((again as ProjectsServiceError).code).toBe("already_on")
     expect((again as ProjectsServiceError).message).toContain('"Line 1"')
+  })
+
+  it("a released draft whose period has a newer card of the same person is set aside, never shown again, and swept", async () => {
+    const r = await storedReconciliation(w, {
+      month: "2026-02",
+      state: "drafted",
+      documentRef: "pending",
+      lines: [{ tasks: ["CLAIM-8"], bill: 120 }],
+    })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET document_ref = ${`reconcile:${r.id}:1`}
+       WHERE id = ${r.id}::uuid`)
+    await reserve(r.id)
+    // The same person reconciled the period again meanwhile.
+    await storedReconciliation(w, { month: "2026-02", lines: [] })
+    const out = await asPerson(w, (tx) =>
+      reconcileMark({ tx, orgId: w.orgId, input: { reconciliationId: r.id, to: "released" } }),
+    )
+    expect(out.state).toBe("superseded")
+    expect(out.message).toContain("newer card")
+    expect((await claimsOf(r.id)).map((c) => c.state)).toEqual(["released"])
+    expect(await reconciliationRow(r.id)).toEqual(
+      expect.objectContaining({ state: "drafted", document_ref: null }),
+    )
+    await sweepClaims()
+    expect(await reconciliationRow(r.id)).toBeUndefined()
   })
 })

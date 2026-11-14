@@ -14,7 +14,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
-import { reconcileMark, releaseReconciliation, reserveClaims } from "./claims"
+import { reconcileMark, releaseReconciliation, reserveClaims, SUPERSEDED } from "./claims"
 import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
 import { documentsForRef } from "./reconcile-sweep"
 import { ProjectsServiceError } from "./statuses"
@@ -314,6 +314,37 @@ export async function reconcileUndoStep(args: StepArgs & { step: UndoStep }) {
     orgId,
     input: { reconciliationId: head.id, to: "released" },
   })
+  if (mark.state === SUPERSEDED) {
+    // A newer card of the same person and period stands: this one was set aside, so Undo shows
+    // that card.
+    const newer = extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT o.id::text AS id FROM ${projectsRel("reconciliations")} o
+          JOIN ${projectsRel("reconciliations")} r ON r.id = ${head.id}::uuid AND r.org_id = o.org_id
+         WHERE o.org_id = ${orgId}::uuid AND o.project_id = r.project_id AND o.state = 'proposed'
+           AND o.created_by = r.created_by AND o.id <> r.id
+           AND o.period_start IS NOT DISTINCT FROM r.period_start
+         LIMIT 1`),
+    )[0]?.id
+    if (newer) {
+      const shown = await storedCard({
+        tx,
+        orgId,
+        userId,
+        scopes: args.scopes,
+        reconciliationId: newer,
+        said: "Undone: the invoice draft was discarded, no number was used, and every claim is free again. A newer card of this period stands; here it is.",
+        ...(args.now ? { now: args.now } : {}),
+      })
+      return { undone: true, card: shown.card }
+    }
+    return {
+      undone: true,
+      card: await card(
+        "Undone: the invoice draft was discarded, no number was used, and every claim is free again. A newer card of this period, by the person who made it, stands.",
+      ),
+    }
+  }
   const again = await reconciliationHead(tx, orgId, head.id)
   if (again.state !== "proposed") {
     throw new ProjectsServiceError(409, "undo_incomplete", `${mark.message}`, {

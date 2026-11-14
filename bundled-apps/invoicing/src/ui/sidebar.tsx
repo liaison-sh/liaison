@@ -210,6 +210,9 @@ const DOCUMENTS: NavLink[] = [
 // There is no separate customs/export view: export documents are just invoices
 // that carry extra fields (HS codes, country of origin, incoterm), shown inside
 // the document itself (detail + editor), not split into their own surface.
+// Recurring invoicing: the schedules, with how many bill.
+const RECURRING: NavLink[] = [{ href: "/invoicing/recurring", label: "Schedules" }]
+
 const FOCUSED_VIEWS: NavLink[] = [
   { href: "/invoicing/dashboards/awaiting-payment", label: "Awaiting payment" },
 ]
@@ -244,6 +247,19 @@ async function loadCounts(): Promise<{ pendingApproval: number; deferred: number
     return { pendingApproval: pendingCount, deferred: deferredCount }
   } catch {
     return { pendingApproval: 0, deferred: 0 }
+  }
+}
+
+/** Schedules that bill (active), through the app's own recurring_list, the same the agent reads. */
+async function loadScheduleCount(): Promise<number> {
+  try {
+    const r = await app.invokeTool<{ rows?: unknown[] }>("recurring_list", {
+      status: "active",
+      limit: 200,
+    })
+    return r?.rows?.length ?? 0
+  } catch {
+    return 0
   }
 }
 
@@ -371,6 +387,7 @@ export const InvoicingSidebar: Component = () => {
   const pathname = usePathname()
   const [pendingApproval, setPendingApproval] = createSignal(0)
   const [deferredCount, setDeferredCount] = createSignal(0)
+  const [scheduleCount, setScheduleCount] = createSignal(0)
   // Writes (a new document, the approval queue, the readiness fixes) are offered
   // only to a viewer holding invoicing:documents:write; a read-only member sees
   // the documents and nothing it would be refused.
@@ -385,6 +402,7 @@ export const InvoicingSidebar: Component = () => {
     const { pendingApproval: p, deferred: d } = await loadCounts()
     setPendingApproval(p)
     setDeferredCount(d)
+    setScheduleCount(await loadScheduleCount())
   }
   onMount(() => {
     void refresh()
@@ -445,6 +463,13 @@ export const InvoicingSidebar: Component = () => {
           ))}
         </ul>
 
+        <SectionHeader label={tr("Recurring")} icon={ClockIcon} />
+        <ul class="flex flex-col gap-0.5">
+          {RECURRING.map((l) => (
+            <Row href={l.href} label={l.label} pathname={pathname()} badge={scheduleCount()} />
+          ))}
+        </ul>
+
         <SectionHeader label={tr("Views")} icon={ChartIcon} />
         <ul class="flex flex-col gap-0.5">
           {FOCUSED_VIEWS.map((l) => (
@@ -492,7 +517,8 @@ export const InvoicingSidebar: Component = () => {
       <div class="mt-auto border-t border-border-subtle px-4 py-2">
         <div class="flex items-center gap-1.5 text-[10.5px] text-text-tertiary">
           <GearIcon />
-          <span>{tr("Invoicing v0.1")}</span>
+          {/* No version number: a fixed one went stale as the app moved on. */}
+          <span>{tr("Invoicing")}</span>
         </div>
       </div>
     </nav>

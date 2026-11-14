@@ -51,7 +51,7 @@ import type { AttentionItem, AttentionProviderError } from "@liaison/shared"
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { type ActorContext, createRlsSession, type UserContext } from "~/db/rls"
+import { type ActorContext, createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
 import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { type AppEvent, onEvent } from "~/infra/events/event-bus"
@@ -60,6 +60,7 @@ import { bounded } from "~/infra/websocket-state/redis"
 import { appsLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
+import { readStandingInFor } from "~/modules/approvals/route-world"
 import {
   appBridgeManifest,
   attentionItemsRegistry,
@@ -111,6 +112,8 @@ interface ProviderRegistration {
   scope?: string
   bundlePath: string
   core: boolean
+  /** Declared `passesOn`: also given the people away today who name the person next in line. */
+  passesOn?: boolean
 }
 
 /** The (org, app) entries that are app providers: org-scoped, not the kernel's wildcard ones. */
@@ -129,8 +132,12 @@ export async function invokeAppProvider(
   appName: string,
   actor: ActorContext,
   orgId: string,
+  forUserIds: readonly string[] = [],
 ): Promise<AttentionItem[]> {
   const source = await loadBundle(reg.bundlePath)
+  // Only a provider that declared `passesOn` hears of anyone but the person.
+  const passOn =
+    reg.passesOn === true && forUserIds.length > 0 ? { forUserIds: [...forUserIds] } : {}
   const aliasedActor = withAppDimensionAliases(actor, appName)
   const userId = aliasedActor.actorType === "user" ? aliasedActor.userId : "system"
   // The bridge must carry the app's REAL manifest: db_findMany validates every
@@ -162,7 +169,7 @@ export async function invokeAppProvider(
     bundleSource: source,
     exportName: reg.handler,
     entry: `${ATTENTION_ENTRY_PREFIX}${reg.handler}`,
-    params: { actor: aliasedActor },
+    params: { actor: aliasedActor, ...passOn },
     bridge,
     holdsTx: false,
     appId: appName,
@@ -253,6 +260,7 @@ export interface AttentionStoreDeps {
     appName: string,
     actor: ActorContext,
     orgId: string,
+    forUserIds?: readonly string[],
   ) => Promise<unknown>
   /** Tell a person's devices that their feed changed. */
   notify: (orgId: string, userId: string, appName: string) => Promise<void>
@@ -443,8 +451,20 @@ export async function refreshAppAttention(
       const allowed =
         !isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))
       if (allowed) {
+        // A provider that passes items on also lists those of the people away today who name
+        // this person next in line (read as this person; unreadable means nobody). The minute
+        // tick re-reads it, so a return from leave clears within a minute.
+        const forUserIds =
+          reg.passesOn === true
+            ? await withRlsContext(actor, (tx) => readStandingInFor(tx, orgId, userId)).catch(
+                (err: unknown) => {
+                  log.warn({ err, orgId, userId }, "could not read whom the person stands in for")
+                  return [] as string[]
+                },
+              )
+            : []
         const raw = await withTimeout(
-          deps.invoke(reg, appName, actor, orgId),
+          deps.invoke(reg, appName, actor, orgId, forUserIds),
           PROVIDER_RUN_TIMEOUT_MS + 1_000,
         )
         const normalized = normalizeProviderItems(raw)
@@ -483,6 +503,53 @@ export async function refreshAppAttention(
   })
   await Promise.all(lanes)
   return { people: people.length, changed }
+}
+
+/**
+ * Every app provider of the org, refreshed now, in this process, one app after
+ * the other, for every active member (around or not): for a caller that must
+ * find the lists stored when it returns (a seeded demo workspace, one just
+ * claimed), never a wake. Wakes and the minute
+ * tick queue jobs instead (scheduleAttentionRefresh,
+ * scheduleAllAppAttentionRefresh). The people and each one's permissions are
+ * read once for the whole pass, not once per app.
+ */
+export async function refreshAllAppAttention(
+  orgId: string,
+  partial: Partial<AttentionStoreDeps> & { userIds?: string[] } = {},
+): Promise<void> {
+  const apps = [...attentionItemsRegistry.entriesOf(orgId)]
+    .map(([[entryOrg, appName]]) => (entryOrg === orgId ? appName : null))
+    .filter((a): a is string => a !== null)
+  if (apps.length === 0) return
+  let userIds: string[]
+  try {
+    // Every active member, not only the people around: the caller needs every
+    // list stored when this returns (nobody is around in a workspace just seeded).
+    userIds = partial.userIds ?? (await (partial.listActiveUsers ?? listEveryActiveUser)(orgId))
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention refresh failed: the org's people could not be read")
+    return
+  }
+  const loadOnce = partial.loadPersonActor ?? defaultDeps.loadPersonActor
+  const actors = new Map<string, Promise<UserContext>>()
+  const loadPersonActor = (o: string, userId: string): Promise<UserContext> => {
+    let loaded = actors.get(userId)
+    if (!loaded) {
+      loaded = loadOnce(o, userId)
+      // A failed read is not kept: the next app asks again.
+      loaded.catch(() => actors.delete(userId))
+      actors.set(userId, loaded)
+    }
+    return loaded
+  }
+  for (const appName of apps) {
+    try {
+      await refreshAppAttention(orgId, appName, { ...partial, userIds, loadPersonActor })
+    } catch (err) {
+      log.warn({ err, orgId, app: appName }, "Attention refresh failed")
+    }
+  }
 }
 
 // --- Wakes: a queued job per (org, app) and interval -----------------------------

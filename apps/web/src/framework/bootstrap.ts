@@ -34,6 +34,7 @@ import {
   collectDeclaredComponentNames,
   collectSettingsBlockComponentNames,
 } from "~/framework/manifest-exports"
+import { loadOrgFeatures, setEnabledOrgFeatures } from "~/framework/org-features"
 import { subscribeResync } from "~/framework/resync"
 import { isAppUnavailable, onAppsChanged, setUnavailableApps } from "~/framework/unavailable-apps"
 import { onApiReady } from "~/lib/api-ready"
@@ -510,8 +511,10 @@ export function bootstrapKernelApps(): void {
         referenceable: false,
       },
       search: {
+        // No sidebar: Home's sidebar carries its own list filter, and a second
+        // search box beside "Search everything" reads as the one that searches.
         component: lazy(() => import("~/modules/search/SearchTab")),
-        sidebar: HomeSidebar,
+        sidebar: null,
         icon: Search,
         urlPattern: "/search",
         defaultLabel: "Search",
@@ -1390,6 +1393,10 @@ export function bootstrapKernelApps(): void {
     tabType: "contacts:contact-detail",
     entityId: id,
   }))
+  registerEntityOpener("kernel", "company", (_api, id) => ({
+    tabType: "contacts:company-detail",
+    entityId: id,
+  }))
   // Connection-health attention items ("reconnect X") deep-link into Settings.
   // The tab type MUST be fully qualified: bare "settings" is an ambiguous alias
   // (the invoicing app registers its own local `settings` type), so it resolves
@@ -1485,6 +1492,7 @@ export function bootstrapKernelApps(): void {
   // runtime — register the bulk decl on the frontend so <BulkActionToolbar app="kernel">
   // can read it from the manifest cache.
   registerManifestAppData("kernel", {
+    attention: { groupLabel: { label: "Team", labelKey: "kernel.homeGroupTeam" } },
     bulk: {
       deactivateUsers: {
         label: "Deactivate users",
@@ -1682,6 +1690,7 @@ async function fetchManifestEntries(): Promise<ManifestEntry[] | null> {
         ? unavailable.filter((n): n is string => typeof n === "string")
         : [],
     )
+    await loadOrgFeatures(apiUrl("/apps/features"), accessToken() ?? token)
     return (json.data ?? []) as ManifestEntry[]
   } catch {
     // Network failure — non-fatal, manifest apps won't be registered
@@ -2011,6 +2020,7 @@ export async function reloadManifestApps(): Promise<void> {
 
 onSessionTeardown(() => {
   setUnavailableApps([])
+  setEnabledOrgFeatures([])
   clearCompatMode()
   clearManifestRetry()
   manifestAppsLoaded = false

@@ -24,7 +24,9 @@ To see them all, open **Agents**. Your own agent is marked **Your agent** in the
 1. Open **Agents** and pick an agent.
 2. Click **Message** to open a direct conversation with it.
 
-Some tool calls draw a card under the agent's message that you act on, such as a Connect card, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click). A tool that opens one of an app's own pages (a file picker, a form) draws an **Open** button: it opens the page in a new window, once, for you only; an expired link says to ask again.
+Some tool calls draw a card under the agent's message that you act on, such as a Connect card, or, on a server that sends bug reports only to the Liaison team, the bug report the agent prepared with **Send to the Liaison team** (only you see it, and nothing is sent until you click). A tool that opens one of an app's own pages (a file picker, a form) draws an **Open** button: it opens the page in a new window, once, for you only; an expired link says to ask again. Some tools also have a card of their own: an app can say how a tool's result is drawn, for example a few labelled facts and a button that opens the record. A card shows only what the tool returned to the agent, nothing more, and when a result does not fit the card, the conversation shows the ordinary tool row instead.
+
+Under its reply the agent may offer up to four next steps as buttons. Clicking one either sends the words on the button as your own message or opens the tab it names. The buttons show only under the newest message, and never in a conversation that holds outside text, such as a mail or a web page the agent read.
 
 The agent knows the page you send from. When a record is open there, whether the page is its own or a pane, a drawer or an expanded row of a list, "this" means that record, even if the conversation was about another one before. A record is open once you opened it: the first row a list shows by itself does not count until you click it.
 
@@ -64,6 +66,8 @@ An agent never has more access than the people in the conversation. On every tur
 - In a channel or group conversation: the ceiling intersected with the permissions of every person in the room. Adding a colleague with less access narrows what the agent can do there.
 - Which records it can read follows the person who asked: the documents shared with them, directly or through one of their roles. This holds when you mention an agent in a thread as well as in a DM, so a document shared with the Finance role is readable through any agent a Finance member asks, and through no agent anyone else asks.
 - In a routine run: the routine runs as its owner with the scopes chosen on the routine. If the owner no longer holds one of them, the routine pauses.
+
+An agent never sees a full card number or a Stripe key in what it reads: messages, tickets, notes, emails and the text of an encrypted mailbox reach it with card numbers shown as `•••• •••• •••• 4242` and keys cut to their prefix. Links an agent opens on the web may not carry a card number either.
 
 When a room removes capabilities, the message says **Some capabilities are unavailable here** and offers **Continue in a DM**. See [Agent permissions](../agents/permissions.md).
 

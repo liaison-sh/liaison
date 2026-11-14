@@ -22,6 +22,7 @@ import {
   processAttentionRefreshJob,
   REFRESH_MIN_INTERVAL_MS,
   readStoredAttention,
+  refreshAllAppAttention,
   refreshAppAttention,
   wireAttentionRefreshWakes,
 } from "~/modules/apps/attention-store"
@@ -110,6 +111,54 @@ describe("stored app attention", () => {
     attentionItemsRegistry.delete([orgId, APP])
     AttentionStoreTestAccess.reset()
     await releaseTestLock()
+  })
+
+  it("a pass over every app reads the people and each one's permissions once, not once per app", async () => {
+    const SECOND = `${APP}2`
+    attentionItemsRegistry.set([orgId, SECOND], {
+      handler: "computeAttention",
+      bundlePath: "/nonexistent/attention-store-test-bundle.js",
+      trusted: false,
+    } as never)
+    let listings = 0
+    let loads = 0
+    const ran: string[] = []
+    try {
+      await refreshAllAppAttention(orgId, {
+        ...deps,
+        listActiveUsers: async () => {
+          listings++
+          return [userId]
+        },
+        loadPersonActor: async (o, u) => {
+          loads++
+          return deps.loadPersonActor(o, u)
+        },
+        invoke: async (_reg, appName) => {
+          ran.push(appName)
+          return []
+        },
+      })
+      expect(ran).toContain(APP)
+      expect(ran).toContain(SECOND)
+      expect([listings, loads]).toEqual([1, 1])
+    } finally {
+      attentionItemsRegistry.delete([orgId, SECOND])
+    }
+  })
+
+  it("a pass over every app runs for every active member, also one who is not around", async () => {
+    // Nobody is around in a workspace just seeded: its lists must still be stored.
+    const ranFor: string[] = []
+    await refreshAllAppAttention(orgId, {
+      loadPersonActor: deps.loadPersonActor,
+      notify: deps.notify,
+      invoke: async (_reg, appName, actor) => {
+        if (appName === APP && actor.actorType === "user") ranFor.push(actor.userId)
+        return []
+      },
+    })
+    expect(ranFor).toEqual([userId])
   })
 
   it("a feed poll runs no app code: it reads the stored list", async () => {

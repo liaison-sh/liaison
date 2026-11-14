@@ -3143,7 +3143,7 @@
     "lang": "fr",
     "say": "les bugs ouverts sur GitHub pour le site",
     "typed": ["github issues", "bugs github"],
-    "any": ["github__github_list"]
+    "any": ["github__github_list", "github__github_search"]
   },
   {
     "id": "GH07",

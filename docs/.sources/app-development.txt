@@ -145,3 +145,5 @@ tableBacking parent is another entity -> apps/api/src/modules/apps/contract.ts:7
 tableBacking registered for core apps only -> apps/api/src/modules/apps/runtime.ts:4121
 A stored list older than 30 minutes is not shown; the refresh reloads the person's feed -> apps/api/src/modules/apps/attention-store.ts:102 ; apps/api/src/modules/apps/attention-store.ts:880 ; apps/api/src/modules/apps/attention-store.ts:506
 A pinned param is never required: the manifest is refused -> apps/api/src/modules/apps/contract.ts:1427-1435
+A stored list too old to show lists the app as out of date on the feed -> apps/api/src/modules/apps/attention-store.ts:108
+A failed run keeps the stored list's date -> apps/api/src/modules/apps/attention-store.ts:432

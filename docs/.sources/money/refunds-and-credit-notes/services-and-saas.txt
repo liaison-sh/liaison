@@ -11,3 +11,4 @@ credit note once per succeeded refund, none for failed or canceled -> bundled-ap
 credit note only when Liaison issues card invoices -> bundled-apps/stripe/src/tools/refunds.ts (cardStreamIssuer)
 refund pending waits, failed or canceled none -> bundled-apps/stripe/src/dispatch.ts (moneyEvents)
 safety job 35 days refunds without credit note -> bundled-apps/stripe/src/tools/money-reads.ts (reconcileCandidates) ; bundled-apps/stripe/src/tools/money-reads.ts (refundsForCharge)
+A payment synced without its invoice is looked up in Stripe before no_invoice_for_refund -> bundled-apps/stripe/src/tools/refunds.ts:213

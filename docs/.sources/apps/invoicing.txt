@@ -212,3 +212,5 @@ number taken in the same step that saves the document, lines and commit_with wri
 no gap, no shared number under concurrency -> apps/api/src/tests/integration/sandbox-bridge-batch.test.ts:1
 deferred-retry renders a document still pending after ten minutes and parks the owed paid-order email -> bundled-apps/invoicing/src/handlers/resume-interrupted.ts:21 ; bundled-apps/invoicing/src/handlers/deferred-dispatch.ts:202
 automatic refund/cancel credit note never issued twice per invoice -> bundled-apps/invoicing/src/einvoicing/parked-credit-note.ts:115
+A parked Stripe invoice voided or uncollectible in Stripe is dropped and never numbered -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:362 ; bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts:180
+A payment is reported to the platform once whatever marked it paid -> bundled-apps/invoicing/src/einvoicing/collection.ts:73

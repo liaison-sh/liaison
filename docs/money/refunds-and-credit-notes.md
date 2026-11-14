@@ -11,7 +11,7 @@ On a customer's page, click **Refund** next to the payment, or ask the agent (`r
 
 Before any approval waits, Liaison reads the payment from Stripe and refuses, with nothing to approve, when the payment is already refunded in full (`already_refunded`), is disputed (`charge_disputed`), or the amount is above what is left (`amount_over_refundable`).
 
-If Liaison issues your card subscriptions' invoices, it also refuses when no Liaison invoice is behind the payment (`no_invoice_for_refund`): say which invoice the credit note goes against. If it cannot read who issues them, it says `issuer_unknown`: try again in a minute. A reason that holds a card number is refused (`card_number_refused`).
+If Liaison issues your card subscriptions' invoices, it also refuses when no Liaison invoice is behind the payment (`no_invoice_for_refund`; a payment synced without its invoice is looked up in Stripe first): say which invoice the credit note goes against. If it cannot read who issues them, it says `issuer_unknown`: try again in a minute. A reason that holds a card number is refused (`card_number_refused`).
 
 ## After approval
 

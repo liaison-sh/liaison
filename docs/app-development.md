@@ -1092,12 +1092,14 @@ A refresh runs the provider only for the people who are around: online now, or
 who read their feed in the last 30 minutes. When someone comes back, their
 first feed read recomputes their lists. A stored list older than 30 minutes is
 not shown meanwhile, since it may no longer be true (a dated item past its day,
-a task done since): the feed shows the app's items once the new list is stored,
-and the person's devices reload it then.
+a task done since): the feed lists the app as out of date ("This list is out of
+date and is being refreshed.") instead of showing nothing, shows the app's items
+once the new list is stored, and the person's devices reload it then.
 
 Each run replaces the person's whole list, so an item the provider no longer
 returns is cleared. A person without the provider's scope gets an empty list. A
-failed run keeps the last list and shows the error in the feed.
+failed run keeps the last list and shows the error in the feed; it keeps that
+list's date, so a list too old to show stays hidden.
 
 ## 14. Approval card summaries
 

@@ -272,3 +272,5 @@ A task opened from a dashboard drill is named by its title -> apps/web/src/modul
 A project's task table names who last changed each task -> apps/api/src/apps/projects/service/table-backing.ts:138
 A week nobody has planned says so, with the projects using time and how time gets planned -> apps/api/src/apps/projects/service/capacity.ts:340 ; apps/api/src/apps/projects/service/capacity.ts:352
 A reconcile names a source repository only to a reader of its host -> apps/api/src/apps/projects/service/reconcile.ts:445 ; apps/api/src/apps/projects/service/reconcile.ts:556
+On a day or hour rate the money half shows what is invoiced, with no left to invoice -> apps/api/src/apps/projects/handlers.ts:1252
+A past week whose planned tasks are all done is not a week nobody planned -> apps/api/src/apps/projects/service/capacity.ts:341

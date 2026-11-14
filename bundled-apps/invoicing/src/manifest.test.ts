@@ -1727,6 +1727,8 @@ describe("invoicing manifest", () => {
     // 0.25.0: retainers: terms on a schedule, the month drafted from its planned vs done card
     //   with fee and overage, rollover, prepaid finals, the daily timebox roll; the card's own
     //   discard for Undo.
+    // 0.26.0: a billed line of an issued planned vs done invoice is corrected by a credit note
+    //   with a corrected activity report; a credit-note draft of a deducted advance is refused.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

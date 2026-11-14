@@ -87,6 +87,10 @@ import {
   advanceRefundPrepare,
 } from "./mutations/advances"
 import { billingPlanGet, billingPlanSet, milestoneDraftCreate } from "./mutations/billing-plan"
+import {
+  creditFromReconcile,
+  creditFromReconcilePreflight,
+} from "./mutations/credit-from-reconcile"
 import { draftFromReconcile } from "./mutations/from-reconcile"
 import { reconcileDraftDiscard, retainerDraftFromReconcile } from "./mutations/retainer"
 import { lineAmountsError } from "./mutations/shared"
@@ -285,6 +289,14 @@ export const advanceRefundPreflightHandler = (
   params: Parameters<typeof advanceRefundPreflight>[1],
   ctx: Parameters<typeof advanceRefundPreflight>[0],
 ) => advanceRefundPreflight(ctx, params)
+export const creditFromReconcileHandler = (
+  params: Parameters<typeof creditFromReconcile>[1],
+  ctx: Parameters<typeof creditFromReconcile>[0],
+) => creditFromReconcile(ctx, params)
+export const creditFromReconcilePreflightHandler = (
+  params: Parameters<typeof creditFromReconcilePreflight>[1],
+  ctx: Parameters<typeof creditFromReconcilePreflight>[0],
+) => creditFromReconcilePreflight(ctx, params)
 export const documentAttachmentAddHandler = (
   params: Parameters<typeof documentAttachmentAdd>[1],
   ctx: Parameters<typeof documentAttachmentAdd>[0],

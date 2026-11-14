@@ -7,7 +7,7 @@ The final's draft deducts every issued advance of the project by itself, one lin
 An advance larger than the final, or not yet issued, is refused and nothing is drafted -> bundled-apps/invoicing/src/mutations/billing-plan.ts (milestoneDraftCreate)
 An advance is an ordinary invoice in the normal series, with its VAT -> bundled-apps/invoicing/src/mutations/advances.ts (advanceDraftCreate)
 An advance is deducted from one final only -> bundled-apps/invoicing/app.manifest.json (schema.advance_deductions) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (projectAdvances)
-An advance a live final deducts cannot be credited -> bundled-apps/invoicing/src/mutations/advance-guard.ts (advanceDeductedRefusal) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (preflightCreditNoteCreateAndIssueParams)
+An advance a live final deducts cannot be credited -> bundled-apps/invoicing/src/mutations/advance-guard.ts (advanceDeductedRefusal) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (preflightCreditNoteCreateAndIssueParams) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (preflightCreditNoteIssueParams)
 When a project stops before its final, the advance is credited within what remains of it, and the credit note waits on its approval -> bundled-apps/invoicing/src/mutations/advances.ts (advanceRefundPrepare)
 A done milestone with no invoice raises one Home line within the hour, and nothing is drafted by itself -> bundled-apps/invoicing/src/billing-steps-sweep.ts (billingStepsSweep)
 Factur-X type code: 386 for an advance invoice, 380 for a final after deposit, 381 for a credit note -> bundled-apps/invoicing/src/facturx/cii.ts (typeCode)

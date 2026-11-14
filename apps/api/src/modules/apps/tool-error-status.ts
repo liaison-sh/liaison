@@ -238,6 +238,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   task_gone: 404,
   task_not_in_project: 404,
   task_on_other_plan: 409,
+  // Correcting a billed line of a planned vs done invoice by a credit note.
+  correction_by_hand: 422,
+  line_not_found: 404,
+  line_not_on_invoice: 422,
+  not_invoiced: 409,
+  nothing_to_credit: 409,
+  use_new_line: 422,
   hs_code_in_use: 409,
   stale_reissue_approval: 409,
   reissue_needs_second_approval: 409,

@@ -3508,5 +3508,13 @@
     "say": "le projet s'arrête, rembourse l'acompte",
     "typed": ["rembourser acompte", "avoir sur acompte", "refund advance"],
     "any": ["invoicing__advance_refund_prepare"]
+  },
+  {
+    "id": "C100",
+    "set": "seed",
+    "lang": "en",
+    "say": "the invoice was issued, but data export was 2.5 days, not 3: correct that line",
+    "typed": ["correct invoiced line", "avoir correction ligne", "corriger la facture émise"],
+    "any": ["invoicing__credit_note_from_reconcile"]
   }
 ]

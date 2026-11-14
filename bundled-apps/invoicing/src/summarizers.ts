@@ -934,6 +934,25 @@ export function summarizeAdvanceRefundPrepare(
   })
 }
 
+export function summarizeCreditNoteFromReconcile(
+  params: { correctedQuantity?: unknown; reason?: string | null },
+  _ctx?: unknown,
+  _meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const to = text(
+    params.correctedQuantity === undefined ? null : String(params.correctedQuantity),
+    12,
+  )
+  const reason = text(params.reason, 160)
+  return done({
+    kind: "credit_note_from_reconcile",
+    title: `Correct a billed line of a planned vs done invoice${to ? ` to ${to}` : ""}`,
+    subtitle:
+      "Issues a credit note citing the invoice for what the line billed too much; the invoice itself is not changed",
+    lines: reason ? [`Reason: ${reason}`] : [],
+  })
+}
+
 export function summarizeConvertToInvoice(
   params: { source_document_id?: string; notes?: string | null },
   _ctx?: unknown,

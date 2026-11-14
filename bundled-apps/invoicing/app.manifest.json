@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.25.1",
+  "version": "0.26.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2733,6 +2733,35 @@
           "advanceDocumentId": { "type": "string", "description": "The issued advance invoice." }
         },
         "required": ["advanceDocumentId"],
+        "additionalProperties": false
+      }
+    },
+    "credit_note_from_reconcile": {
+      "description": "Correct one billed line of an invoice made from planned vs done, after it was issued: a credit note citing the invoice for what the line billed too much (billed minus corrected, at the line's rate), with a corrected activity report. Never raises a billed figure.",
+      "searchKeywords": ["avoir", "correction", "corriger"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "creditFromReconcileHandler",
+      "preflight": "creditFromReconcilePreflightHandler",
+      "summarizer": "summarizeCreditNoteFromReconcile",
+      "conditionalGate": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 60000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": {
+            "type": "string",
+            "description": "The planned vs done reconciliation the invoice was made from."
+          },
+          "lineId": { "type": "string", "description": "The billed line to correct." },
+          "correctedQuantity": {
+            "type": ["number", "string"],
+            "description": "What the line should have billed, in its unit (days or hours), e.g. 2.5."
+          },
+          "reason": { "type": ["string", "null"], "description": "Why, printed on the credit note." }
+        },
+        "required": ["reconciliationId", "lineId", "correctedQuantity"],
         "additionalProperties": false
       }
     },

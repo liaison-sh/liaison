@@ -1,0 +1,8 @@
+A billed line of an issued invoice is corrected by a credit note citing the invoice, for the difference at the line's rate -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess) ; bundled-apps/invoicing/app.manifest.json (tools.credit_note_from_reconcile)
+It needs invoicing:documents:write -> bundled-apps/invoicing/app.manifest.json (tools.credit_note_from_reconcile)
+An agent's or a coding agent's correction waits for a person; a person's click issues it -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile) ; apps/api/src/modules/apps/execute-tool.ts (createHandlerApprovalRequest)
+Checked again when approved, so a line already corrected is not credited twice -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess)
+The activity report gets a corrected version linked to the credit note -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile)
+The project's billed figure moves only when the credit note issues; a full credit frees the card's work -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile) ; apps/api/src/apps/projects/service/claims.ts (reconcileMark)
+A correction that would bill more is refused, and so is one above what remains of the invoice -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (preflightCreditNoteCreateAndIssueParams)
+Time entered after the issue changes the margin only: the correction starts from the issued line -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess)

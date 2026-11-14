@@ -1730,6 +1730,8 @@ describe("invoicing manifest", () => {
     // 0.25.1: an issue fails when its draft went away after the checks; a final deducts what
     //   remains of each advance; a billing draft keeps its currency, type, link and deductions;
     //   annexes stop once the invoice is sent; the advance refund's approval card has a summary.
+    // 0.26.0: a billed line of an issued planned vs done invoice is corrected by a credit note
+    //   with a corrected activity report; a credit-note draft of a deducted advance is refused.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

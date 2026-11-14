@@ -728,6 +728,12 @@ async function preflightCreditNoteIssueParams(
     originalTotal = original.grand_total_minor
   }
 
+  // An advance a live final deducts is not credited from a draft either (the final takes it off).
+  if (originalDocumentUuid) {
+    const deducted = await advanceDeductedRefusal(ctx.db, originalDocumentUuid)
+    if (deducted) return { ok: false, error: deducted }
+  }
+
   const counterparty = counterpartyFromRow(draft, issuer)
   const cnIncompleteErr = counterpartyCompletenessError(counterparty)
   if (cnIncompleteErr) return { ok: false, error: { status: "error", error: cnIncompleteErr } }

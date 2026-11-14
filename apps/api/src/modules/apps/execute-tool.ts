@@ -254,7 +254,7 @@ import {
   resolveApprovalResourceOwner,
   resolveRoutineOwnerApprover,
 } from "~/modules/approvals/resource-owner"
-import { resolveProposeRoute } from "~/modules/approvals/route-world"
+import { BACKGROUND_ROUTE_BUDGET_MS, resolveProposeRoute } from "~/modules/approvals/route-world"
 import {
   narrowPendingApprovalForTaint,
   rowTaintMustHold,
@@ -1632,7 +1632,13 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // transaction and within a short budget. An owner's own request is theirs alone and asks nothing.
   const routeColumns = resourceOwnerId
     ? {}
-    : await resolveProposeRoute({ orgId, toolName, summary, requestedBy })
+    : await resolveProposeRoute({
+        orgId,
+        toolName,
+        summary,
+        requestedBy,
+        ...(origin === "system" ? { budgetMs: BACKGROUND_ROUTE_BUDGET_MS } : {}),
+      })
 
   // When `bundleId` is set, we wrap the tx in a retry loop: concurrent inserts
   // into the same bundle (READ COMMITTED) can both read MAX(bundle_position) =

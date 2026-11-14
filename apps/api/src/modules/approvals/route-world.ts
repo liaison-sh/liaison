@@ -518,6 +518,12 @@ export async function readStandingInFor(
 /** How long a proposal waits for its app to say who it is for before it goes to the usual deciders. */
 export const PROPOSE_ROUTE_BUDGET_MS = 300
 
+/**
+ * The same wait for a request background work proposes (origin "system": a job, a cron): no person
+ * waits on its answer, and the app's sandbox may be busy with that very job, so its app gets longer.
+ */
+export const BACKGROUND_ROUTE_BUDGET_MS = 5_000
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface SummaryLink {

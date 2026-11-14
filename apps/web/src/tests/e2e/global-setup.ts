@@ -48,9 +48,9 @@ function buildBundledAppsIfMissing() {
         cwd: liaisonRoot,
       })
     } catch (err) {
-      // Surface the failure but don't kill OIDC startup — the absence of a
-      // bundle blocks only that app's install-dependent scenarios.
-      console.warn(`[global-setup] ${name} bundle build failed: ${(err as Error).message}`)
+      // Stop the run: a bundle that fails to build (a type error, say) would
+      // otherwise surface later as a misleading "bundle missing" in its tests.
+      throw new Error(`[global-setup] ${name} bundle build failed: ${(err as Error).message}`)
     }
   }
 }

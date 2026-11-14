@@ -438,9 +438,13 @@ async function acquireTestLockAs(caller: string | null): Promise<void> {
   // Ensure Postgres/Redis/Meilisearch/SeaweedFS are up before any test setup runs.
   // Idempotent + cached per process, so this is effectively free after first call.
   await ensureTestInfra()
-  if (_resolve && _holderFile && caller && _holderFile !== caller) {
+  // Held while a file asks: its holder has finished (files run one after
+  // another), whether or not its file name could be read from its stack. A
+  // holder named null (no `.test.ts` frame in its stack) used to be waited on
+  // forever: the next file's beforeAll hung silently to its hook cap.
+  if (_resolve) {
     log.error(
-      { holder: _holderFile, next: caller },
+      { holder: _holderFile ?? "unknown", next: caller ?? "unknown" },
       "route test lock: a finished test file never released the lock (its afterAll threw " +
         "before releaseTestLock); the next file takes it over",
     )
@@ -500,6 +504,6 @@ export const releaseTestLockKeepRows = (() => releaseTestLockImpl(false)) as () 
 
 /** Test seam: acquire as if called from `file` (the stale-holder takeover). */
 export const RouteTestLockTestAccess = {
-  acquireAs: (file: string) => acquireTestLockAs(file),
+  acquireAs: (file: string | null) => acquireTestLockAs(file),
   holder: () => _holderFile,
 }

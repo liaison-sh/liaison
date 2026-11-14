@@ -333,7 +333,7 @@ A cost rate is one person's cost per hour from a date on (`cost_rate_set`, exact
 
 ## Read capacity and set days off
 
-Once a project uses time and budgets, ask the agent who is free ("who has room next week") or open **Capacity** in Projects. It lists, for one week, each person's planned time against their available time, in name order, with a note when someone has more than fits (over by more than 3 h) or has room (5 h free or more).
+Once a project uses time and budgets, ask the agent who is free ("who has room next week") or open **Capacity** in Projects. It lists, for one week, each person's planned time against their available time, in name order, with a note when someone has more than fits (over by more than 3 h) or has room (5 h free or more). It opens on this week; **Next week** shows the week after. Its footnote says "Days off reduce what fits."
 
 - **Planned time comes from timeboxes only**, on projects that use time and budgets. A task with a start and a due date spreads over its working days; with a due date only it falls in that week; with no date, in the current week. Time people entered never changes capacity.
 - **Available time** is hours in a day times the person's working days that week: weekdays that are not company days off or their away days, at most their days per week. A colleague's day off shows only as a smaller available figure, with no date or reason.

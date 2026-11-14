@@ -8,9 +8,9 @@ import {
   addCalendarDays,
   expandDaysOff,
   isoWeekdayOf,
+  isoWeekOf,
   isoWeekRange,
   isoWeeksIn,
-  isoYearOf,
   overNote,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -80,16 +80,6 @@ export interface CapacityResult {
     }>
   }>
   totals: Array<{ k: string; text: string }>
-}
-
-/** The ISO week label (`2026-W48`) of a date. */
-export function isoWeekOf(date: string): string {
-  const year = isoYearOf(date)
-  const monday = addCalendarDays(date, 1 - isoWeekdayOf(date))
-  const first = isoWeekRange(year, 1)?.from ?? monday
-  const week =
-    1 + Math.round((Date.parse(`${monday}Z`) - Date.parse(`${first}Z`)) / (7 * 86_400_000))
-  return `${year}-W${String(week).padStart(2, "0")}`
 }
 
 /** Monday to Sunday of an ISO week label, or a refusal naming the form. */

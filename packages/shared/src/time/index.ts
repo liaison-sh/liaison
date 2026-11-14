@@ -5,9 +5,11 @@ export {
   addDays as addCalendarDays,
   dayLabel,
   isoWeekdayOf,
+  isoWeekOf,
   isoWeekRange,
   isoWeeksIn,
   isoYearOf,
+  nextIsoWeek,
 } from "./dates"
 export {
   type DayFormInput,

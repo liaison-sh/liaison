@@ -5,7 +5,7 @@
 // at all that reminds anyone about time.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { addCalendarDays } from "@liaison/shared"
+import { addCalendarDays, isoWeekOf } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { computeAttentionItems } from "~/apps/projects/attention"
 import { extractRows } from "~/db"
@@ -24,7 +24,6 @@ import { seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { isoWeekOf } from "./capacity"
 import { syncDaysOffCalendar } from "./days-off-calendar"
 import {
   CAPACITY_OVER_KIND,

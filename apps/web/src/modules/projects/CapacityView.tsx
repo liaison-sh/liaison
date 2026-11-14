@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The capacity tab: one week of planned time against available time per person, in name order,
-// on the projects that use time and budgets. A person's row opens onto the tasks that make up
+// on the projects that use time and budgets. It opens on this week; Next week shows the one after. A person's row opens onto the tasks that make up
 // their planned time. "Who can take this?" asks the agent about one of them and lists, from the
 // same capacity read, who has that much free planned time, each with "Move to <name>". A move is
 // the presser's own act (no approval): it tells both people, and the line it leaves at the top
 // offers Undo. Calm: no sort control, no colour by load, no percent, no comparison to real time,
 // and a colleague's day off shows only as a smaller available figure.
-import { formatDuration } from "@liaison/shared"
+import { formatDuration, nextIsoWeek } from "@liaison/shared"
 import { ChevronDown, ChevronRight } from "lucide-solid"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { runTool } from "~/lib/run-tool"
@@ -65,8 +65,22 @@ const taskName = (t: { key: string | null; title: string }) => t.key ?? t.title
 export const CapacityView: Component = () => {
   const api = useApi()
   const i18n = useI18n()
-  const [data, { refetch }] = createResource(() =>
-    runTool<CapacityData>(api, "projects:capacity_get", {}, { suppressGlobalError: true }),
+  /** This week, as the first read named it; the week after it is a click away. */
+  const [thisWeek, setThisWeek] = createSignal<string | null>(null)
+  const [showNext, setShowNext] = createSignal(false)
+  const nextWeek = () => {
+    const w = thisWeek()
+    return w ? nextIsoWeek(w) : null
+  }
+  const [data, { refetch }] = createResource(
+    () => ({ week: showNext() ? nextWeek() : null }),
+    async ({ week }) => {
+      const out = await runTool<CapacityData>(api, "projects:capacity_get", week ? { week } : {}, {
+        suppressGlobalError: true,
+      })
+      if (!week && out.week) setThisWeek(out.week)
+      return out
+    },
   )
   const [open, setOpen] = createSignal<ReadonlySet<string>>(new Set())
   const toggle = (id: string) =>
@@ -174,7 +188,37 @@ export const CapacityView: Component = () => {
         <Match when={data.latest}>
           {(d) => (
             <>
-              <h2 class="text-[15px] font-medium text-text">{d().title}</h2>
+              <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <h2 class="text-[15px] font-medium text-text">{d().title}</h2>
+                <Show when={nextWeek()}>
+                  <div class="flex gap-1" data-testid="capacity-view.weeks">
+                    <Button
+                      variant={showNext() ? "ghost" : "outline"}
+                      size="sm"
+                      aria-pressed={!showNext()}
+                      data-testid="capacity-view.this-week"
+                      onClick={() => {
+                        setAsking(null)
+                        setShowNext(false)
+                      }}
+                    >
+                      {i18n.t("projects.capacity.thisWeek")}
+                    </Button>
+                    <Button
+                      variant={showNext() ? "outline" : "ghost"}
+                      size="sm"
+                      aria-pressed={showNext()}
+                      data-testid="capacity-view.next-week"
+                      onClick={() => {
+                        setAsking(null)
+                        setShowNext(true)
+                      }}
+                    >
+                      {i18n.t("projects.capacity.nextWeek")}
+                    </Button>
+                  </div>
+                </Show>
+              </div>
               <Show when={moved()}>
                 {(m) => (
                   <p

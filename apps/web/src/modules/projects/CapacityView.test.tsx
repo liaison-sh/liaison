@@ -123,10 +123,21 @@ describe("CapacityView", () => {
 
   it("the footnote says days off reduce what fits and the board carries no urgency colour", async () => {
     render(() => <CapacityView />)
-    expect((await screen.findByTestId("capacity-view.footnote-days")).textContent).toContain(
-      "reduce what fits",
+    expect((await screen.findByTestId("capacity-view.footnote-days")).textContent).toBe(
+      "Days off reduce what fits.",
     )
     expect(screen.getByTestId("capacity-view").innerHTML).not.toMatch(/text-(error|danger|warning)/)
+  })
+
+  it("opens on this week and reaches next week, with nothing to sort", async () => {
+    render(() => <CapacityView />)
+    fireEvent.click(await screen.findByTestId("capacity-view.next-week"))
+    await waitFor(() =>
+      expect(answers.calls.map((c) => c.params)).toEqual([{}, { week: "2026-W48" }]),
+    )
+    fireEvent.click(screen.getByTestId("capacity-view.this-week"))
+    await waitFor(() => expect(answers.calls.at(-1)?.params).toEqual({}))
+    expect(screen.getByTestId("capacity-view").innerHTML).not.toMatch(/sort/i)
   })
 
   it("Who can take this? offers Move to each person with the time, and the move tells both", async () => {

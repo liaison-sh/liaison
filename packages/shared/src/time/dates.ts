@@ -67,6 +67,25 @@ export function isoWeeksIn(year: number): number {
   )
 }
 
+/** The ISO week label (`2026-W48`) of a date. */
+export function isoWeekOf(date: string): string {
+  const year = isoYearOf(date)
+  const monday = addDays(date, 1 - isoWeekdayOf(date))
+  const week =
+    1 +
+    Math.round(
+      (utcDay(monday).getTime() - utcDay(isoWeekMonday(year, 1)).getTime()) / (7 * 86_400_000),
+    )
+  return `${year}-W${String(week).padStart(2, "0")}`
+}
+
+/** The ISO week after a `2026-W48` label, or null when the label is not one. */
+export function nextIsoWeek(week: string): string | null {
+  const m = /^(\d{4})-W(\d{2})$/.exec(week)
+  const range = m ? isoWeekRange(Number(m[1]), Number(m[2])) : null
+  return range ? isoWeekOf(addDays(range.from, 7)) : null
+}
+
 /** Monday to Sunday of an ISO week, or null when that year has no such week. */
 export function isoWeekRange(year: number, week: number): { from: string; to: string } | null {
   if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1 || week > isoWeeksIn(year)) {

@@ -5,3 +5,5 @@ Timebox and dates stay; the old and new holder each get a Home line; the presser
 Undo moves it back -> apps/web/src/modules/projects/CapacityView.tsx (undo)
 Calendar days are marked in the days off list with no title -> apps/api/src/apps/projects/service/days-off.ts (view)
 The days off list column -> apps/api/src/apps/projects/app.manifest.json (settings.sections.time)
+Capacity opens on this week; Next week shows the week after -> apps/web/src/modules/projects/CapacityView.tsx:71 (CapacityView, nextWeek) ; packages/shared/src/time/dates.ts:79 (nextIsoWeek)
+The capacity footnote: Days off reduce what fits -> packages/shared/src/i18n/locales/en/projects.json:446 (capacity.footnoteDays)

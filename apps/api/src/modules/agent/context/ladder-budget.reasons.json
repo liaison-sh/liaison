@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "key": "all-apps:visibleTools",
+    "capability": "filing an activity report or a timesheet on an invoice (invoicing document_attachment_add), deferred-loaded: it costs its index line only"
+  },
+  {
+    "key": "phone:visibleTools",
+    "capability": "filing an activity report or a timesheet on an invoice (invoicing document_attachment_add), deferred-loaded: it costs its index line only"
+  }
+]

@@ -159,16 +159,20 @@ const asJson = (v: unknown): unknown => {
 }
 
 /**
- * Withdraw the issue approvals still waiting on a draft that is gone: issued by another path (the
- * Issue button, a month-end run) or discarded. The approval being decided right now is not
+ * Withdraw the issue approvals still waiting on a draft made from a billing source once it is gone:
+ * issued by another path (the Issue button, a month-end run) or discarded. The approval being decided right now is not
  * pending, so it is never touched. Best effort and never throws: a stale approval that stays only
  * ends in "draft not found" when someone approves it, never in a second issue.
  */
 export async function withdrawIssueApprovals(
   ctx: WithdrawCtx,
-  draftId: string,
+  draft: { id: string; external_ref?: string | null },
   why: "issued" | "discarded",
 ): Promise<string[]> {
+  // Only a draft made from a billing source has an issue approval raised for it at creation; any
+  // other draft's issue is asked for by the issue itself, so there is nothing left to withdraw.
+  if (!billingKeyOf(draft)) return []
+  const draftId = draft.id
   const pendingFor = ctx.approvals?.pendingFor
   const withdraw = ctx.approvals?.withdraw
   if (!pendingFor || !withdraw) return []

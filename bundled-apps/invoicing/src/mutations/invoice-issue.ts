@@ -281,7 +281,7 @@ export async function invoiceIssue(
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
-  await withdrawIssueApprovals(ctx, input.draft_id, "issued")
+  await withdrawIssueApprovals(ctx, draft, "issued")
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: result.document_id,
@@ -331,7 +331,7 @@ export async function issueRunDraft(
   )
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
-  await withdrawIssueApprovals(ctx, input.draft_id, "issued")
+  await withdrawIssueApprovals(ctx, draft, "issued")
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: issued.result.document_id,

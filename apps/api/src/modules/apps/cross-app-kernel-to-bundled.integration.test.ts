@@ -117,11 +117,20 @@ describe("a core app's call into a bundled app", () => {
     }
   })
 
-  it("projects declares exactly one cross-app target", () => {
-    expect(
-      (projectsAppManifest as { cross_app_calls?: Array<{ target: string }> }).cross_app_calls?.map(
-        (c) => c.target,
-      ),
-    ).toEqual(["invoicing:project_invoiced_get"])
+  it("projects declares exactly its invoicing targets, and never the issue", () => {
+    const targets = (
+      projectsAppManifest as { cross_app_calls?: Array<{ target: string }> }
+    ).cross_app_calls?.map((c) => c.target)
+    // The invoiced figure, the card's preview, its draft, the draft's discard on Undo and the
+    // timesheet annex: nothing that issues or numbers a document.
+    expect(targets).toEqual([
+      "invoicing:project_invoiced_get",
+      "invoicing:preview_totals",
+      "invoicing:draft_from_reconcile",
+      "invoicing:drafts_discard",
+      "invoicing:document_attachment_add",
+    ])
+    expect(targets).not.toContain("invoicing:recurring_item_issue")
+    expect(targets?.some((t) => /issue/.test(t))).toBe(false)
   })
 })

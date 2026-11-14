@@ -918,6 +918,22 @@ export function summarizeRecordRefund(
   })
 }
 
+export function summarizeAdvanceRefundPrepare(
+  params: { advanceDocumentId?: string },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const doc = docOf(meta)
+  return done({
+    kind: "advance_refund_prepare",
+    title: `Refund what remains of advance ${docWithCustomer(doc, "invoice")}`,
+    subtitle:
+      "Prepares a credit note citing the advance, capped at what remains of it; the credit note asks for its own approval before it is issued",
+    lines: docFacts(doc),
+    links: openLink(params.advanceDocumentId, doc),
+  })
+}
+
 export function summarizeConvertToInvoice(
   params: { source_document_id?: string; notes?: string | null },
   _ctx?: unknown,

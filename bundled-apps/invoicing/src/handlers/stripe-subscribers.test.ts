@@ -142,6 +142,21 @@ describe("Stripe invoices handled by invoicing", () => {
     expect((born[0] as Record<string, unknown>).payment_status).toBe("paid")
   })
 
+  test("an invoice already paid when its finalized event is handled still triggers its collection report once on invoice.paid", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    const paidAt = new Date(Date.UTC(2026, 10, 17, 10, 0)).toISOString()
+    // The finalized event re-read the invoice after the card was charged: the document is born paid.
+    await onStripeInvoiceFinalized(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    expect((invoices(db)[0] as Record<string, unknown>).payment_status).toBe("paid")
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    await onStripeInvoicePaid(finalized({ status: "paid", paid_at: paidAt }), ctx)
+    const log = (invoices(db)[0] as Record<string, unknown>).lifecycle_log as Array<
+      Record<string, unknown>
+    >
+    expect(log.filter((e) => e.event === "collection_due")).toHaveLength(1)
+  })
+
   test("a Stripe payment of an e-invoice where VAT is due on receipt reports its collection to the platform once", async () => {
     setSystemTime(new Date(Date.UTC(2026, 10, 15, 12, 0)))
     const db = stripeDb()

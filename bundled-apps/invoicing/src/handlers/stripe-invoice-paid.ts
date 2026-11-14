@@ -42,8 +42,10 @@ export async function onStripeInvoicePaid(event: unknown, ctx: StripeCtx): Promi
     return { status: "ok", document_id: String(doc.id), paid_at: String(doc.paid_at ?? "") }
   }
   if (doc.payment_status === "paid") {
-    // A collection report that failed is tried again on the next delivery or safety-job run.
-    if (doc.collection_state === "failed") await reportPaid(ctx, doc)
+    // Born paid (its finalized event read the invoice after the charge): the collection report is
+    // still triggered, once. One that failed is tried again on the next delivery or safety-job run.
+    if (!hasCollectionMark(doc)) await recordCollection(ctx, doc)
+    else if (doc.collection_state === "failed") await reportPaid(ctx, doc)
     return { status: "skipped", reason: "already_paid", document_id: String(doc.id) }
   }
   const issuer = await findIssuerProfile(ctx.db, String(doc.issuer_profile_id ?? ""))
@@ -91,10 +93,16 @@ export async function onStripeInvoicePaid(event: unknown, ctx: StripeCtx): Promi
   return { status: "ok", document_id: String(doc.id), paid_at: paid.date }
 }
 
+/** Whether a document's collection report was triggered (its `collection_due` lifecycle mark). */
+export function hasCollectionMark(doc: Row): boolean {
+  const log = Array.isArray(doc.lifecycle_log) ? (doc.lifecycle_log as Row[]) : []
+  return log.some((e) => e.event === "collection_due")
+}
+
 /** The collection of a paid Stripe invoice is reported once: a lifecycle mark the e-invoicing report reads. */
 async function recordCollection(ctx: StripeCtx, doc: Row): Promise<void> {
   const log = Array.isArray(doc.lifecycle_log) ? (doc.lifecycle_log as Row[]) : []
-  if (log.some((e) => e.event === "collection_due")) return
+  if (hasCollectionMark(doc)) return
   await ctx.db.update("documents", String(doc.id), {
     lifecycle_log: [
       ...log,

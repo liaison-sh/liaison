@@ -22,7 +22,7 @@ import {
   type StripeInvoicePayload,
   stripeRef,
 } from "./stripe-invoice-finalized"
-import { onStripeInvoicePaid } from "./stripe-invoice-paid"
+import { hasCollectionMark, onStripeInvoicePaid } from "./stripe-invoice-paid"
 import {
   flagLongRefundWaits,
   onStripeRefundCreated,
@@ -138,7 +138,9 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
     }
     if (
       inv.status === "paid" &&
-      (doc.payment_status !== "paid" || doc.collection_state === "failed")
+      (doc.payment_status !== "paid" ||
+        doc.collection_state === "failed" ||
+        !hasCollectionMark(doc))
     ) {
       const r = await onStripeInvoicePaid(inv, ctx)
       if (r.status === "ok") paid += 1

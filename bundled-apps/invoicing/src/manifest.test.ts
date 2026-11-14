@@ -1714,6 +1714,7 @@ describe("invoicing manifest", () => {
     // 0.21.16: a month-end card drawn again shows what changed only once its rows are read.
     // 0.21.17: the documents list names the period it is empty for; the footer opens settings.
     // 0.21.18: a parked Stripe invoice is retried as Stripe answers for it now (stripe:invoice_payload).
+    // 0.21.19: a Stripe invoice born paid still triggers its collection report once.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

@@ -116,7 +116,8 @@ describe("projects.manifest", () => {
     //   company days-off list in settings carries its heading.
     // 1.36.0: a day or hour-billed budget shows its rate; reconcile facts word their figures; the
     //   card's next step and notes promise no step it lacks; a dated sheet that is off says so.
-    expect(projectsManifest.version).toBe("1.36.0")
+    // 1.36.1: capacity on a week where nobody has planned work says so and how time gets planned.
+    expect(projectsManifest.version).toBe("1.36.1")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

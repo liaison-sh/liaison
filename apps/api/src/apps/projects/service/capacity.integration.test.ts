@@ -190,6 +190,17 @@ describe("the week's figures", () => {
     expect(personOf(out, people["Bastien Morel"] as string)?.plannedMinutes).toBe(28 * 60)
   })
 
+  it("a week where nobody has planned work says so and how time gets planned", async () => {
+    expect((await capacity()).nothingPlanned).toBeUndefined()
+    const far = isoWeekOf(addDays(today(), 40 * 7))
+    const out = await capacity({ week: far })
+    expect(out.people).toEqual([])
+    const line = out.nothingPlanned as string
+    expect(line).toStartWith(`Nobody has planned work in week ${Number(far.slice(6))}`)
+    expect(line).toMatch(/no task on the \d+ projects? that uses? time and budgets has a timebox/)
+    expect(line).toContain("giving a task a timebox and an assignee")
+  })
+
   it("draws its card from the manifest within the card bound", async () => {
     const out = await capacity()
     const template = (projectsAppManifest as any).tools.capacity_get.resultCard

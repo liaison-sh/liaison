@@ -65,6 +65,11 @@ export interface CapacityResult {
   overLine: string | null
   /** What the figures cover, said with every answer. */
   covers: string
+  /**
+   * Only when nobody has planned work that week: what that means and how time gets planned,
+   * so an empty list never reads as "nobody has room" or "no project uses time".
+   */
+  nothingPlanned?: string
   candidates?: CapacityCandidate[]
   taskId?: string
   /** The card's own reading of the above: the people, then the quiet row of who has left. */
@@ -331,6 +336,9 @@ export async function getCapacity(args: {
     covers:
       "Planned time from timeboxes on projects that use time and budgets; available time from hours in a day, days per week, company days off and away days. Nothing here comes from time entered or from activity.",
   }
+  if (out.length === 0 && left.length === 0) {
+    result.nothingPlanned = await nothingPlannedLine(tx, orgId, week, from, to)
+  }
   if (args.taskId) {
     // A key ("ATLAS-3") or an id; anything else is refused by name, never a raw cast error.
     const taskId = await resolveTaskRef(tx, orgId, String(args.taskId).trim())
@@ -338,6 +346,34 @@ export async function getCapacity(args: {
     result.candidates = await candidatesFor(tx, orgId, taskId, out, rows)
   }
   return result
+}
+
+/** The answer for a week where nobody has planned work, with how time gets planned. */
+async function nothingPlannedLine(
+  tx: Tx,
+  orgId: string,
+  week: string,
+  from: string,
+  to: string,
+): Promise<string> {
+  const projects = Number(
+    extractRows<{ n: number }>(
+      await tx.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM ${projectsRel("projects")}
+         WHERE org_id = ${orgId}::uuid AND time_budgets_on AND kind = 'work' AND archived_at IS NULL`),
+    )[0]?.n ?? 0,
+  )
+  const label = `week ${Number(week.slice(6))} (${from} to ${to})`
+  const how =
+    "Time is planned by giving a task a timebox and an assignee, with a due date or dates in the week (a task with no dates counts in the current week)."
+  if (projects === 0) {
+    return `Nobody has planned work in ${label}: no project uses time and budgets yet, and planned time exists only there. Time and budgets are switched on in a project's settings. ${how}`
+  }
+  const which =
+    projects === 1
+      ? "the 1 project that uses time and budgets"
+      : `the ${projects} projects that use time and budgets`
+  return `Nobody has planned work in ${label}: no task on ${which} has a timebox and an assignee in that week, so this says nothing yet about who has room. Each person's available time is their hours in a day and days per week, less company days off and away days. ${how}`
 }
 
 /** "Who can take this?": people with enough free time, those already on the project first. */

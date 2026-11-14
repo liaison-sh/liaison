@@ -174,23 +174,34 @@ export const LinkedDocuments: Component<LinkedDocumentsProps> = (props) => {
   const canUpload = !!useOptionalApi()
   const fromDescription = createMemo(() => linkedItemsFromDescription(props.description))
 
-  const [attachments, { refetch }] = createResource(
+  // The source is compared by its values: a host that re-reads its task (a
+  // store event, a field edit) re-evaluates these props with the same task, and
+  // a fresh object each time would list the files again. The list is read with
+  // `.latest` below, so a reload (an upload bumping the version) keeps the
+  // section as it is instead of suspending the whole page around it.
+  const attachmentsSource = createMemo(
     () =>
       props.taskId
         ? { api: props.api, taskId: props.taskId, version: props.attachmentsVersion }
         : null,
-    async (src) => {
-      try {
-        return await listFiles(src.api, {
-          app: "projects",
-          entityType: "task",
-          entityId: src.taskId,
-        })
-      } catch {
-        return [] as FileRow[]
-      }
+    undefined,
+    {
+      equals: (a, b) =>
+        a === b ||
+        (!!a && !!b && a.api === b.api && a.taskId === b.taskId && a.version === b.version),
     },
   )
+  const [attachments, { refetch }] = createResource(attachmentsSource, async (src) => {
+    try {
+      return await listFiles(src.api, {
+        app: "projects",
+        entityType: "task",
+        entityId: src.taskId,
+      })
+    } catch {
+      return [] as FileRow[]
+    }
+  })
 
   // The discussion's messages come from the shared message store, which the
   // task page's discussion loads too. Every page is read, so a file posted
@@ -243,7 +254,7 @@ export const LinkedDocuments: Component<LinkedDocumentsProps> = (props) => {
   const items = createMemo<LinkedItem[]>(() => {
     const linked = fromDescription()
     const listedFileIds = new Set(linked.filter((l) => l.kind === "file").map((l) => l.entityId))
-    const attached = (attachments() ?? [])
+    const attached = (attachments.latest ?? [])
       .filter((f) => !listedFileIds.has(f.id))
       .map<LinkedItem>((f) => ({
         key: `kernel:file:${f.id}`,

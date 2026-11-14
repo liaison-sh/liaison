@@ -102,7 +102,7 @@ For a quote linked to a Shopify draft order, this completes the draft order in S
 
 ## Attach an activity report or a timesheet
 
-An agent can file an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes with the invoice. It needs `invoicing:documents:write`, and the file must be one you can read yourself: otherwise nothing is filed. A sent or paid invoice takes no new annex; correct it with a credit note.
+An agent can file an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes with the invoice. It needs `invoicing:documents:write`, and the file must be one you can read yourself: otherwise nothing is filed. A sent or paid invoice takes no new annex; correct it with a credit note. Sending an invoice to the customer records the send on it, and an e-invoice the platform took counts as sent.
 
 When a draft is issued from the editor or a month-end run, or discarded, the issue approval still waiting on it is withdrawn, so nobody is asked to issue it twice.
 

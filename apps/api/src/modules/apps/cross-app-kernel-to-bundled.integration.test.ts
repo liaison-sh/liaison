@@ -121,15 +121,19 @@ describe("a core app's call into a bundled app", () => {
     const targets = (
       projectsAppManifest as { cross_app_calls?: Array<{ target: string }> }
     ).cross_app_calls?.map((c) => c.target)
-    // The invoiced figure, the card's preview, its draft, the draft's discard on Undo and the
-    // timesheet annex: nothing that issues or numbers a document.
+    // The invoiced figure, the card's preview, its draft, a retainer month's draft, the card's own
+    // discard on Undo, the retainer schedule read and the timesheet annex: nothing that issues or
+    // numbers a document.
     expect(targets).toEqual([
       "invoicing:project_invoiced_get",
       "invoicing:preview_totals",
       "invoicing:draft_from_reconcile",
-      "invoicing:drafts_discard",
+      "invoicing:retainer_draft_from_reconcile",
+      "invoicing:reconcile_draft_discard",
+      "invoicing:recurring_list",
       "invoicing:document_attachment_add",
     ])
+    expect(targets).not.toContain("invoicing:drafts_discard")
     expect(targets).not.toContain("invoicing:recurring_item_issue")
     expect(targets?.some((t) => /issue/.test(t))).toBe(false)
   })

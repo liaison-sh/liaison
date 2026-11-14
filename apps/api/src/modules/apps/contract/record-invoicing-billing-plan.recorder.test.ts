@@ -3,8 +3,8 @@
 // Records the invoicing app's contract fixtures for the billing plan tools and the sweep of done
 // milestones (fixtures/invoicing/tool__billing_plan_get.json, tool__billing_plan_set.json,
 // tool__milestone_draft_create.json, tool__advance_draft_create.json,
-// tool__advance_refund_prepare.json, preflight__advance_refund_prepare.json,
-// job__billing-steps-sweep.json): an empty plan read, a plan
+// tool__advance_refund_prepare.json, job__billing-steps-sweep.json; the refund preflight is
+// recorded by record-invoicing-retainer.recorder.test.ts): an empty plan read, a plan
 // whose project cannot be read (no projects app in the contract org), a task with no plan step, an
 // advance with no customer, a refund of a document that is not an advance, and a sweep over an
 // org with no plan. Not part of any suite run (it skips unless CONTRACT_RECORD=1): run it by path
@@ -104,16 +104,6 @@ const PLAN: RecordingStep[] = [
       expectError: {
         reason:
           "no advance invoice has this id, so no credit note is made: pins that refusal; the refund path is proven by advances.test.ts",
-      },
-    }),
-  },
-  {
-    entry: "preflight:advance_refund_prepare",
-    input: () => ({
-      params: { advanceDocumentId: OTHER },
-      expectError: {
-        reason:
-          "no advance invoice has this id, so the refund is refused before any approval is raised: pins that refusal; the refund path is proven by advances.test.ts",
       },
     }),
   },

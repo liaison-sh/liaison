@@ -16,7 +16,13 @@ import {
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { resolveToolCard } from "~/modules/apps/result-card"
 import { resultCardErrors } from "~/modules/apps/result-card-schema"
-import { type CardInput, type CardLine, reconcileCardFields, shownProof } from "./reconcile-card"
+import {
+  type CardInput,
+  type CardLine,
+  linesForViewer,
+  reconcileCardFields,
+  shownProof,
+} from "./reconcile-card"
 import { NOT_EVERYTHING_SEEN } from "./reconcile-lines"
 
 const HPD = 420
@@ -203,7 +209,13 @@ describe("the reconcile card", () => {
   })
 
   it("the reconcile card resolves without the app bundle and the largest fixture of forty lines stays under the byte bound", () => {
-    for (const name of ["reconcile_propose", "reconcile_line_update", "reconcile_get"]) {
+    for (const name of [
+      "reconcile_propose",
+      "reconcile_line_update",
+      "reconcile_get",
+      "reconcile_create_invoice",
+      "reconcile_undo",
+    ]) {
       expect(tools[name]?.resultCard).toEqual(template)
       // Every value the card reads is one the tool says it returns.
       const returned = Object.keys(
@@ -329,5 +341,102 @@ describe("a line's proof chips", () => {
     ])
     expect(shownProof(four, 1).map((p) => p.label)).toEqual(["DATA-15"])
     expect(shownProof(four, 0)).toEqual([])
+  })
+})
+
+describe("the card's money states", () => {
+  const priced = (extra: Record<string, unknown>, input: Partial<CardInput> = {}) => {
+    const fields = reconcileCardFields({ ...base, lines: [line("a"), line("b")], ...input })
+    return resolveToolCard(template, {
+      reconciliationId: "11111111-1111-4111-8111-111111111111",
+      revision: 2,
+      state: input.state ?? "proposed",
+      ...fields,
+      cardNotes: fields.notes,
+      createInvoice: null,
+      summary: null,
+      undo: null,
+      ...extra,
+    })
+  }
+
+  it("Create invoice is enabled on the first render", () => {
+    const card = priced({ createInvoice: "yes" })
+    const create = (card?.actions ?? []).find((a) => a.kind === "tool")
+    expect(create).toMatchObject({
+      kind: "tool",
+      tool: "reconcile_create_invoice",
+      primary: true,
+      params: { reconciliationId: "11111111-1111-4111-8111-111111111111", revision: 2 },
+    })
+    expect(JSON.stringify(create)).not.toMatch(/confirm|disabled/)
+    // Not offered while invoicing has not priced the card.
+    expect((priced({})?.actions ?? []).some((a) => a.kind === "tool")).toBe(false)
+  })
+
+  it("Create replaces the stored card by its summary line and Undo brings it back", () => {
+    const created = priced(
+      { summary: "Created and approved, €7,812.00 incl. VAT", undo: "yes" },
+      { state: "drafted" },
+    )
+    expect(created?.summary?.text).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(created?.summary?.actions).toEqual([
+      expect.objectContaining({
+        kind: "tool",
+        tool: "reconcile_undo",
+        params: { reconciliationId: "11111111-1111-4111-8111-111111111111" },
+      }),
+    ])
+    expect(created?.latestKey).toBe("reconcile:11111111-1111-4111-8111-111111111111")
+    const back = priced({ createInvoice: "yes" })
+    expect(back?.summary).toBeUndefined()
+    expect(back?.latestKey).toBe(created?.latestKey)
+    expect(rows(back as ResolvedCard)).toHaveLength(2)
+  })
+
+  it("the largest card with VAT rows stays under the byte bound", () => {
+    const lines = Array.from({ length: TOOL_CARD_GROUPS_MAX_ROWS }, (_, i) =>
+      line(`20000000-0000-4000-8000-${String(i).padStart(12, "0")}`, {
+        position: i,
+        name: `Supplier connector part ${i + 1}, with its export and monitoring`,
+        why: "Agreed with the client at the weekly review, then shipped and checked in production.",
+        proofs: Array.from({ length: 6 }, (_, k) => ({
+          label: `PR #${2000 + i * 6 + k}`,
+          url: `https://github.com/maison-delorme/platform/pull/${2000 + i * 6 + k}`,
+        })),
+      }),
+    )
+    const card = priced(
+      {
+        createInvoice: "yes",
+        tot: [
+          { k: "Excl. VAT", v: { minor: 99_999_999, currency: "EUR" } },
+          { k: "VAT", v: { minor: 19_999_999, currency: "EUR" } },
+          { k: "Incl. VAT", v: { minor: 119_999_998, currency: "EUR" } },
+        ],
+        notice: {
+          title: "Before Create invoice",
+          text: "To create the invoice from this card, set the project's company, the project's rate.",
+        },
+      },
+      { lines, notSeen: [{ source: "Calendar", why: "no access" }], late: "Late." },
+    )
+    if (!card) throw new Error("the card fell back to the plain tool row")
+    expect(card.tot).toHaveLength(3)
+    expect(new TextEncoder().encode(JSON.stringify(card)).length).toBeLessThan(
+      TOOL_CARD_GROUPS_MAX_BYTES,
+    )
+  })
+
+  it("a note on time spent is shown to its author only once the card is drafted", () => {
+    const noted = [line("a", { realNoteMinutes: d(5) })]
+    expect(linesForViewer(noted, "proposed", "reader", "author")[0]?.realNoteMinutes).toBe(d(5))
+    expect(linesForViewer(noted, "drafted", "author", "author")[0]?.realNoteMinutes).toBe(d(5))
+    for (const state of ["drafted", "invoiced", "credited"] as const) {
+      const seen = linesForViewer(noted, state, "reader", "author")
+      expect(seen[0]).not.toHaveProperty("realNoteMinutes")
+      const card = reconcileCardFields({ ...base, state, lines: seen })
+      expect(JSON.stringify(card)).not.toContain("5 d")
+    }
   })
 })

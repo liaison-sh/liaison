@@ -14,7 +14,10 @@ import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
-import { clearToolCardsByKeyIn } from "~/modules/agent/runtime/tool-card-store"
+import {
+  clearToolCardsByKeyIn,
+  restoreToolCardsByKey,
+} from "~/modules/agent/runtime/tool-card-store"
 import {
   SKIPPED_MOVING,
   sweepSkippingMoving,
@@ -249,7 +252,9 @@ export async function sweepClaims(): Promise<{
   credited: number
   released: number
 }> {
-  return sweepSkippingMoving((notMoving) =>
+  // The cards a release gave back their month: each comes back in its thread once the write is in.
+  const proposedAgain: Array<{ id: string; org: string; by: string }> = []
+  const out = await sweepSkippingMoving((notMoving) =>
     withSystemDb("projects-reconcile-sweep", async (tx) => {
       const docs = await documentsTable(tx)
       const issued = drizzleSql.join(
@@ -333,6 +338,14 @@ export async function sweepClaims(): Promise<{
       for (const f of freed) if (f.reconciliation_id) touched.set(f.reconciliation_id, f.org_id)
       for (const [id, org] of touched) {
         const out = await releaseReconciliation(tx as never, { orgId: org, reconciliationId: id })
+        if (out.state === "proposed") {
+          const by = extractRows<{ created_by: string }>(
+            await tx.execute(drizzleSql`
+              SELECT created_by::text AS created_by FROM ${projectsRel("reconciliations")}
+               WHERE id = ${id}::uuid AND org_id = ${org}::uuid`),
+          )[0]?.created_by
+          if (by) proposedAgain.push({ id, org, by })
+        }
         if (out.state === "drafted") {
           // A newer proposal of the same person and period holds the proposed slot: this one,
           // with no claim and no document left, would only block a later bill.
@@ -344,6 +357,15 @@ export async function sweepClaims(): Promise<{
       return { billed, invoiced, credited, released: freed.length }
     }),
   )
+  for (const r of proposedAgain) {
+    await restoreToolCardsByKey({
+      orgId: r.org,
+      actorId: r.by,
+      app: "projects",
+      key: `reconcile:${r.id}`,
+    })
+  }
+  return out
 }
 
 /** One run of the hourly sweep: reconcile housekeeping every hour, the heal at its hour. */

@@ -119,7 +119,8 @@ describe("projects.manifest", () => {
     // 1.36.1: capacity on a week where nobody has planned work says so and how time gets planned.
     // 1.37.0: internal reads and marks for invoicing (the billed lines, claims after an invoice
     //   moved, milestone status), the claims sweep by the draft's key.
-    expect(projectsManifest.version).toBe("1.37.0")
+    // 1.38.0: Create invoice and Undo on the reconcile card, priced by invoicing with VAT.
+    expect(projectsManifest.version).toBe("1.38.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

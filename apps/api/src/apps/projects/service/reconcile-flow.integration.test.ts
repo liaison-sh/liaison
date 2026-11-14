@@ -265,10 +265,10 @@ describe("the October card of a project billed by the day", () => {
     expect(e3.real).toBe("1 d")
   })
 
-  it("the card's next step names no accept step and no invoice button, which do not exist", () => {
-    expect(card.next).toContain("no accept step")
-    expect(card.next).toContain("creates no invoice")
-    expect(card.next).not.toMatch(/until they act/)
+  it("the card's next step says its Create invoice drafts the invoice and a person issues it", () => {
+    expect(card.next).toContain("Create invoice drafts the invoice")
+    expect(card.next).toContain("a person issues it")
+    expect(card.next).not.toMatch(/until they act|accept step/)
   })
 
   it("a late ask works and says it is late", () => {

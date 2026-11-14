@@ -264,8 +264,15 @@ describe("changing a line of the card", () => {
     )
     expect(theirs.error).toBeUndefined()
     expect(monitoring(theirs)?.real).toBe("4 d")
-    expect(row(theirs)?.cells.realNote).toBe("4 d")
+    // A drafted card draws as its one line, "On draft", with no row and no note.
+    expect(row(theirs)).toBeUndefined()
+    expect(resolveToolCard(template, theirs)?.summary?.text).toContain("On draft")
     expect(JSON.stringify(theirs)).not.toContain("4.5")
+    // The period is proposed again for the cards below (asked again, a drafted period answers
+    // its drafted card).
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'proposed'
+       WHERE id = ${card.reconciliationId}::uuid`)
   })
 
   it("wording that names a member is refused on a line change too", async () => {

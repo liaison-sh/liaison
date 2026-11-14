@@ -387,9 +387,19 @@ On a project that uses time and budgets, ask your agent in your DM with it, or y
 - **What you cannot open stays off.** A meeting from a colleague's personal calendar, or a document not shared with you, cited as proof is dropped from the card, and the card lists Calendar or Knowledge as not seen. When you cannot read GitHub or GitLab, the agent is not told which repositories the project uses, and the card lists that host as not seen.
 - **Work for another client.** A line of one task done for another client, with that client's project named, offers "Move it to" that project's key on the card; the click moves the task there. A project you cannot open is refused when the card is saved.
 - **Only you see it.** The card stays yours while it is a proposal. Asking again with nothing changed returns the same card; a change updates it. Asked after the period ended, the card says the invoice issues with today's date.
-- **Where the card lives.** The card is in your conversation with the agent; ask it again ("show me the saved reconcile for Atlas") to open it. Its actions are changing a line, **Connect GitHub** and **Move it to** another project. It has no accept step and creates no invoice: draft the invoice for its lines in Invoicing.
+- **Where the card lives.** The card is in your conversation with the agent; ask it again ("show me the saved reconcile for Atlas") to open it. Its actions are changing a line, **Connect GitHub**, **Move it to** another project and **Create invoice**.
 - **Proof on a line.** A line shows at most three proofs; when it has more, the last chip counts the rest ("+2").
 - **Lines not in the plan.** The card's note counts them and says nothing is asked of you about them: each is left off the bill until you change its line to bill it.
+
+## Create the invoice from the card
+
+With Invoicing on, a card of a daily or hourly project shows the VAT and the total including it, priced by Invoicing, and a **Create invoice** button. There is no accept step: Create invoice is it.
+
+- **What to set first.** When something is missing (the issuer profile in Invoicing settings, the project's company, its rate or its currency), the card has no Create invoice and says what to set. A fixed-price project, a project billed from a billing plan and a retainer project are not invoiced from the card. A project whose billing plan still has steps not invoiced cannot switch to a rate.
+- **What Create does.** One draft invoice of the card's billed lines, with its activity report, and no number: the number is taken only when a person issues it. Its issue approval goes to the people who can issue invoices. The card collapses to one line: "Created and approved, €7,812.00 incl. VAT" when you can issue invoices yourself, "Created, waiting for finance" when you cannot. Pressing it twice, or again after a timeout, makes one draft. A card changed since it was drawn is refused with the latest card.
+- **Undo.** Before the draft is issued, **Undo** on that line discards the draft, uses no number, frees the card's work and brings the card back. A draft discarded in Invoicing brings the card and the month's Home line back too. In a conversation that read outside text, the discard waits for your own approval first.
+- **After issue.** The card's lines are locked: a change goes through a credit note. Asking again for that month shows the invoiced card; new work waits for its own period. Asking again while the draft waits shows the drafted card to anyone who can read it, and a time-spent note stays its author's.
+- **Not from a coding agent.** Over your own coding agent, the invoice is created from the card in Liaison, never from the terminal.
 
 ## Roles and scopes
 

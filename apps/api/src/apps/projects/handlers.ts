@@ -68,6 +68,8 @@ export interface ProjectsMethods {
   projects_reconcilePropose: (paramsJson: string) => Promise<string>
   projects_reconcileLineUpdate: (paramsJson: string) => Promise<string>
   projects_reconcileGet: (paramsJson: string) => Promise<string>
+  projects_reconcileCreate: (paramsJson: string) => Promise<string>
+  projects_reconcileUndo: (paramsJson: string) => Promise<string>
   projects_reconcileLinesRead: (paramsJson: string) => Promise<string>
   projects_reconcileMark: (paramsJson: string) => Promise<string>
   projects_milestoneStatusRead: (paramsJson: string) => Promise<string>
@@ -1212,6 +1214,35 @@ export async function timePlanSet(params: unknown, ctx: ProjectsCtx): Promise<un
 }
 
 export async function billingTermsSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  // A project billed from a plan keeps that route while a step of it is not invoiced yet: a rate
+  // would bill the same work again from planned vs done.
+  if (typeof p.rate === "number" && p.rate > 0) {
+    const project = await preflightResolveProject(p, ctx)
+    if (project.kind === "resolved") {
+      const preview = await invoicingCall(() =>
+        ctx.executeTool(
+          "invoicing:preview_totals",
+          JSON.stringify({ projectId: project.projectId, basis: "hourly" }),
+        ),
+      )
+      const open = preview.ok ? Number(preview.body.openPlanSteps ?? 0) : 0
+      if (open > 0) {
+        return {
+          error: {
+            code: "plan_steps_open",
+            status: 409,
+            retryable: false,
+            message: `This project is billed from its billing plan, and ${open} step${open === 1 ? " is" : "s are"} not invoiced yet, so it cannot switch to a rate. Nothing changed.`,
+            details: {
+              openPlanSteps: open,
+              next: "Invoice or remove the open plan steps first, then set the rate.",
+            },
+          },
+        }
+      }
+    }
+  }
   return JSON.parse(await ctx.projects_billingTermsSet(JSON.stringify(params ?? {})))
 }
 
@@ -1424,15 +1455,319 @@ export async function reconcileFacts(params: unknown, ctx: ProjectsCtx): Promise
 }
 
 export async function reconcilePropose(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.projects_reconcilePropose(JSON.stringify(params ?? {})))
+  return priced(JSON.parse(await ctx.projects_reconcilePropose(JSON.stringify(params ?? {}))), ctx)
 }
 
 export async function reconcileLineUpdate(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.projects_reconcileLineUpdate(JSON.stringify(params ?? {})))
+  return priced(
+    JSON.parse(await ctx.projects_reconcileLineUpdate(JSON.stringify(params ?? {}))),
+    ctx,
+  )
 }
 
 export async function reconcileGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.projects_reconcileGet(JSON.stringify(params ?? {})))
+  return priced(JSON.parse(await ctx.projects_reconcileGet(JSON.stringify(params ?? {}))), ctx)
+}
+
+// ── Create invoice and Undo ─────────────────────────────────────────────────
+
+type InvoicingAnswer =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; off: boolean; code: string; message: string; approvalId?: string | null }
+
+/** A declared call into invoicing, its K4 envelope read once: the body, or why there is none. */
+async function invoicingCall(sent: () => Promise<string>): Promise<InvoicingAnswer> {
+  let env: {
+    status?: string
+    result?: unknown
+    approval_id?: string | null
+    error?: { code?: string; message?: string }
+  }
+  try {
+    env = JSON.parse(await sent())
+  } catch (err) {
+    return { ok: false, off: false, code: "invoicing_failed", message: String(err) }
+  }
+  if (env.status === "completed") {
+    const body = (env.result ?? {}) as Record<string, unknown>
+    const own = body.error as { code?: unknown; message?: unknown } | undefined
+    if (body.status === "error" || own) {
+      return {
+        ok: false,
+        off: false,
+        code: String(own?.code ?? "invoicing_refused"),
+        message: String(own?.message ?? "Invoicing refused."),
+      }
+    }
+    return { ok: true, body }
+  }
+  if (env.status === "pending_approval") {
+    return {
+      ok: false,
+      off: false,
+      code: "pending_approval",
+      message: "It waits for an approval.",
+      approvalId: typeof env.approval_id === "string" ? env.approval_id : null,
+    }
+  }
+  const code = String(env.error?.code ?? env.status ?? "invoicing_failed")
+  return {
+    ok: false,
+    off: INVOICING_ABSENT.has(code),
+    code,
+    message: String(env.error?.message ?? "Invoicing did not answer."),
+  }
+}
+
+/** What to set before a card can make an invoice, said in the person's words. */
+const MISSING_SAID: Record<string, string> = {
+  issuer_profile: "the issuer profile in Invoicing settings",
+  company: "the project's company",
+  rate: "the project's rate",
+  currency: "the project's currency",
+  counterparty_mismatch: "a contact of the project's own company",
+}
+
+/** The refusal code Create answers for the first thing missing. */
+const MISSING_CODE: Record<string, string> = {
+  issuer_profile: "no_issuer_profile",
+  company: "company_missing",
+  rate: "rate_missing",
+  currency: "currency_missing",
+  counterparty_mismatch: "counterparty_mismatch",
+  basis: "basis_not_billable",
+}
+
+type CardResult = Record<string, unknown> & {
+  reconciliationId?: string
+  state?: string
+  fit?: string
+  error?: unknown
+}
+
+function money(minor: number, currency: string): { minor: number; currency: string } {
+  return { minor, currency }
+}
+
+/** "€7,812.00": an amount as the card's summary line says it. */
+function moneyText(minor: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100)
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`
+  }
+}
+
+/** The step answer of the bridge, or its typed error as the tool's own answer. */
+async function step(
+  call: (json: string) => Promise<string>,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return JSON.parse(await call(JSON.stringify(input))) as Record<string, unknown>
+}
+
+/**
+ * A proposed card, priced by invoicing: the VAT and the total including it, and Create invoice
+ * when invoicing finds nothing missing. Invoicing off or unable to answer: the card compares
+ * planned and done as before, with no Create.
+ */
+async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
+  if (!card || card.error || card.state !== "proposed" || !card.reconciliationId) return card
+  const facts = await step(ctx.projects_reconcileCreate, {
+    step: "facts",
+    reconciliationId: card.reconciliationId,
+  })
+  if (facts.error) return card
+  const preview = await invoicingCall(() =>
+    ctx.executeTool("invoicing:preview_totals", JSON.stringify(facts)),
+  )
+  if (!preview.ok) return card
+  const p = preview.body
+  const currency = typeof p.currency === "string" ? p.currency : null
+  const out: CardResult = { ...card }
+  if (
+    currency &&
+    typeof p.excl === "number" &&
+    typeof p.vat === "number" &&
+    typeof p.incl === "number"
+  ) {
+    out.tot = [
+      { k: "Excl. VAT", v: money(p.excl, currency) },
+      { k: "VAT", v: money(p.vat, currency) },
+      { k: "Incl. VAT", v: money(p.incl, currency) },
+    ]
+  }
+  const missing = (Array.isArray(p.missing) ? p.missing : []).map(String)
+  if (p.ready === true && card.fit !== "nothing") {
+    out.createInvoice = "yes"
+    return out
+  }
+  const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
+  if (toSet.length > 0 && card.fit !== "nothing") {
+    const text = `To create the invoice from this card, set ${toSet.join(", ")}.`
+    if (!out.notice) out.notice = { title: "Before Create invoice", text }
+    else out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
+  }
+  return out
+}
+
+/** A refusal of Create, in the tool's error shape. */
+function refusal(code: string, message: string, details: Record<string, unknown> = {}) {
+  return { error: { code, status: 409, retryable: false, message, details } }
+}
+
+export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const base = { reconciliationId: p.reconciliationId, revision: p.revision }
+  const prep = await step(ctx.projects_reconcileCreate, {
+    ...base,
+    step: "prepare",
+    ...(typeof p.contactId === "string" ? { contactId: p.contactId } : {}),
+  })
+  if (prep.error) return prep
+  const name = String(prep.projectName ?? "the project")
+
+  // Priced and checked before anything is written.
+  const preview = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:preview_totals",
+      JSON.stringify({
+        projectId: prep.projectId,
+        basis: prep.basis,
+        companyId: prep.companyId ?? null,
+        contactId: typeof p.contactId === "string" && p.contactId ? p.contactId : null,
+        currency: prep.currency ?? null,
+        rateMinor: prep.rateMinor ?? null,
+        hoursPerDayMinutes: prep.hoursPerDayMinutes ?? null,
+        lines: prep.lines ?? [],
+      }),
+    ),
+  )
+  if (!preview.ok) {
+    return preview.off
+      ? refusal(
+          "invoicing_off",
+          `Invoicing is not on, so no invoice can be made for ${name}. Nothing was created.`,
+          {
+            next: "Turn the Invoicing app on to invoice from the card.",
+          },
+        )
+      : refusal(preview.code, `${preview.message} Nothing was created.`)
+  }
+  const missing = (Array.isArray(preview.body.missing) ? preview.body.missing : []).map(String)
+  if (preview.body.ready !== true) {
+    const first = missing[0] ?? "basis"
+    const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
+    return refusal(
+      MISSING_CODE[first] ?? "not_ready",
+      first === "basis"
+        ? `${name} is billed by a fixed price or a billing plan, not from planned vs done. Nothing was created.`
+        : `No invoice can be made for ${name} yet: set ${toSet.join(", ")}. Nothing was created.`,
+      { missing, next: "Set what is missing, then press Create invoice again." },
+    )
+  }
+
+  const reserved = await step(ctx.projects_reconcileCreate, { ...base, step: "reserve" })
+  if (reserved.error) return reserved
+
+  const draft = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:draft_from_reconcile",
+      JSON.stringify({
+        reconciliationId: prep.reconciliationId,
+        revision: prep.revision,
+        leadName: prep.leadName ?? null,
+      }),
+    ),
+  )
+  if (!draft.ok) {
+    // No draft: the reservation is given back (kept only if a document carries the key).
+    await step(ctx.projects_reconcileCreate, { ...base, step: "release" })
+    return refusal(
+      draft.code,
+      `${draft.message} The card's work was released, so it can be billed again.`,
+      { next: "Fix what is said, then press Create invoice again." },
+    )
+  }
+  const d = draft.body
+  const documentId = String(d.draftId ?? "")
+  const finished = await step(ctx.projects_reconcileCreate, { ...base, step: "finish", documentId })
+  if (finished.error) return finished
+
+  const totals = (d.totals ?? {}) as { incl?: number; currency?: string }
+  const approved = d.approved === true
+  const approvalId = typeof d.approvalId === "string" ? d.approvalId : null
+  const incl =
+    typeof totals.incl === "number" && totals.currency
+      ? moneyText(totals.incl, totals.currency)
+      : null
+  const summary = approved
+    ? `Created and approved${incl ? `, ${incl} incl. VAT` : ""}`
+    : "Created, waiting for finance"
+  const title = String(d.draftTitle ?? finished.title ?? "")
+  const pending =
+    approvalId === null
+      ? "Its issue approval could not be raised: issue it from the pending list."
+      : approved
+        ? `Issuing it waits on approval ${approvalId}.`
+        : `Issuing it waits for someone who can issue invoices (approval ${approvalId}); you cannot issue it.`
+  const createdText = `${summary}. ${title} has no number until a person issues it.`
+  return {
+    ...finished,
+    summary: approvalId === null ? `${summary}; issue it from the pending list` : summary,
+    undo: "yes",
+    createInvoice: null,
+    documentId,
+    approved,
+    approvalId,
+    title,
+    createdText,
+    message: `${createdText} ${pending}`,
+    next: "Tell the person the draft is made. Undo on the card discards it; a person issues it.",
+  }
+}
+
+export async function reconcileUndo(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const base = { reconciliationId: p.reconciliationId }
+  const prep = await step(ctx.projects_reconcileUndo, { ...base, step: "undo_prepare" })
+  if (prep.error) return prep
+  if (prep.undone === false) {
+    const card = prep.card as Record<string, unknown>
+    return { ...card, undone: false, message: `${String(card.message ?? "")}` }
+  }
+  const discard = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:drafts_discard",
+      JSON.stringify({ draft_id: String(prep.documentId ?? "") }),
+    ),
+  )
+  // A conversation that read outside text holds the discard for the person's own approval;
+  // once approved, the draft goes and the card comes back on its own.
+  if (!discard.ok && discard.code === "pending_approval") {
+    const card = (await step(ctx.projects_reconcileGet, {
+      reconciliationId: p.reconciliationId,
+    })) as CardResult
+    return {
+      ...card,
+      undone: false,
+      approvalId: discard.approvalId ?? null,
+      message: `Discarding the draft waits for your approval${discard.approvalId ? ` (approval ${discard.approvalId})` : ""}, because this conversation read outside text. Nothing was discarded yet; once approved, the card comes back.`,
+      next: "Tell the person to approve the discard; the card comes back once it runs.",
+    }
+  }
+  const finished = await step(ctx.projects_reconcileUndo, { ...base, step: "undo_finish" })
+  if (finished.error) {
+    if (!discard.ok) {
+      return refusal(
+        discard.code,
+        `${discard.message} The draft was not discarded; nothing was undone.`,
+      )
+    }
+    return finished
+  }
+  const card = finished.card as CardResult
+  return priced({ ...card, undone: true }, ctx)
 }
 
 // Task field definitions and project templates: pass-throughs to their bridge methods.

@@ -136,14 +136,18 @@ export async function seedBillingTerms(
   })
 }
 
-/** Cost rates per person from a date, as an exact holder of the cost-rate scope. */
+/**
+ * Cost rates per person from a date, as an exact holder of the cost-rate scope.
+ * A `null` currency is a rate written before a currency was required: the writer
+ * refuses one now, the column still holds them.
+ */
 export async function seedCostRates(
   ctx: SeedContext,
   writer: UserContext,
   rows: ReadonlyArray<{
     userId: string
     rateMinor: number
-    currency: string
+    currency: string | null
     effectiveFrom: string
   }>,
 ): Promise<void> {

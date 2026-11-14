@@ -120,6 +120,7 @@ app_projects.tasks.parent_task_id
 app_projects.tasks.project_id
 app_projects.tasks.status_id
 app_projects.tasks.thread_id
+app_projects.tasks.updated_by_routine_id
 app_projects.time_settings.days_off_calendar_id
 app_tickets.api_keys.inbox_id
 app_tickets.categories.parent_id

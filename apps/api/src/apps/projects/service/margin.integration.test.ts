@@ -29,7 +29,7 @@ import {
   type InvoicingDocumentSpec,
   seedInvoicingHistory,
 } from "~/seed/factories/commerce/invoicing"
-import { seedTaskTime } from "~/seed/factories/projects/time"
+import { seedCostRates, seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -453,9 +453,18 @@ describe("currencies", () => {
       await minimal.session(orgId, { role: "member" }),
     ]
     // A rate written before a currency was required.
-    await db.execute(drizzleSql`
-      INSERT INTO app_projects.cost_rates (org_id, user_id, rate_minor, currency, effective_from)
-      VALUES (${orgId}::uuid, ${unlabelled!.userId}::uuid, 5000, NULL, '2026-01-01')`)
+    await seedCostRates(
+      seedContext({ orgId, now: new Date() }),
+      actorOf(owner.userId, ["projects:cost_rates:write"]),
+      [
+        {
+          userId: unlabelled!.userId,
+          rateMinor: 5000,
+          currency: null,
+          effectiveFrom: "2026-01-01",
+        },
+      ],
+    )
     expect(
       (
         await run(costRateSet, {

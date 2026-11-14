@@ -199,6 +199,8 @@ async function seed(): Promise<void> {
   put("projects:project", seededProject.projectId, "Spring launch")
   // A project's automations page opens on the project it belongs to.
   put("projects:automations", seededProject.projectId, "Spring launch")
+  // So does its dated hours sheet.
+  put("projects:timesheet", seededProject.projectId, "Spring launch")
   put("projects:task", seededProject.taskIds[0]!, "Fix the pump")
 
   const doc = await withRlsContext(everything(viewer), (tx) =>
@@ -313,6 +315,7 @@ describe("open_app under real row security", () => {
     "projects:project",
     "projects:task",
     "projects:automations",
+    "projects:timesheet",
     "knowledge:document",
     "mail:conversation",
     "calendar:event",

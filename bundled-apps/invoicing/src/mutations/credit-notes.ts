@@ -23,6 +23,7 @@ import {
 import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { formatMoneyMinor } from "../money"
 import type { ClassifyInput } from "../tax"
+import { advanceDeductedRefusal } from "./advance-guard"
 import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import type { IssuerProfileRow } from "./db-helpers"
 import {
@@ -373,6 +374,12 @@ async function preflightCreditNoteCreateAndIssueParams(
         }
       }
     }
+  }
+
+  // An advance a live final deducts is not credited: the final already takes it off the bill.
+  if (originalDocumentUuid) {
+    const deducted = await advanceDeductedRefusal(ctx.db, originalDocumentUuid)
+    if (deducted) return { ok: false, error: deducted }
   }
 
   // E-invoicing gate: a credit note follows its original's regime and buyer snapshot; a legacy

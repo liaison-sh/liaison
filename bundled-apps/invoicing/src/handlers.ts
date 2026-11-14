@@ -81,6 +81,12 @@ import {
   settingsIssuerProfileUpdate,
   settingsIssuerProfileWritePreflight,
 } from "./mutations"
+import {
+  advanceDraftCreate,
+  advanceRefundPreflight,
+  advanceRefundPrepare,
+} from "./mutations/advances"
+import { billingPlanGet, billingPlanSet, milestoneDraftCreate } from "./mutations/billing-plan"
 import { draftFromReconcile } from "./mutations/from-reconcile"
 import { lineAmountsError } from "./mutations/shared"
 import { ordersInvoiceabilityCheck } from "./order-invoiceability"
@@ -177,6 +183,9 @@ export async function onShopifyOrderUpdated(
   if (observed.status !== "noop") return observed
   return catchUpMissedPaidOrder(event as Parameters<typeof catchUpMissedPaidOrder>[0], ctx)
 }
+// `overdueScanJobHandler` is the kernel-shaped `(payload, ctx)` wrapper; the
+// inner `overdueScanJob(ctx, opts)` keeps its readable shape for unit tests.
+export { billingStepsSweepJobHandler } from "./billing-steps-sweep"
 // ONE-TIME backfill (remove once prod reports 0 remaining): records the human
 // Shopify order number on documents issued before the column existed, so the
 // whole history is searchable by order number. Fills from external_refs when the
@@ -190,8 +199,6 @@ export { deferredRetryJobHandler } from "./handlers/deferred-dispatch"
 // Writes the Boxtal shipment(s) created against an invoice back onto it (external_refs.shipments)
 // through boxtal's public search tool, so invoice and parcel resolve each other in one hop.
 export { linkShipmentsJobHandler } from "./handlers/link-shipments"
-// `overdueScanJobHandler` is the kernel-shaped `(payload, ctx)` wrapper; the
-// inner `overdueScanJob(ctx, opts)` keeps its readable shape for unit tests.
 export { overdueScanJobHandler } from "./handlers/overdue-scan"
 // `reconcileShopifyPaymentsJobHandler` is the kernel-shaped `(payload, ctx)`
 // wrapper; the inner `reconcileShopifyPayments(ctx, opts)` keeps its readable
@@ -244,6 +251,30 @@ export const draftFromReconcileHandler = (
   params: Parameters<typeof draftFromReconcile>[1],
   ctx: Parameters<typeof draftFromReconcile>[0],
 ) => draftFromReconcile(ctx, params)
+export const billingPlanGetHandler = (
+  params: Parameters<typeof billingPlanGet>[1],
+  ctx: Parameters<typeof billingPlanGet>[0],
+) => billingPlanGet(ctx, params)
+export const billingPlanSetHandler = (
+  params: Parameters<typeof billingPlanSet>[1],
+  ctx: Parameters<typeof billingPlanSet>[0],
+) => billingPlanSet(ctx, params)
+export const milestoneDraftCreateHandler = (
+  params: Parameters<typeof milestoneDraftCreate>[1],
+  ctx: Parameters<typeof milestoneDraftCreate>[0],
+) => milestoneDraftCreate(ctx, params)
+export const advanceDraftCreateHandler = (
+  params: Parameters<typeof advanceDraftCreate>[1],
+  ctx: Parameters<typeof advanceDraftCreate>[0],
+) => advanceDraftCreate(ctx, params)
+export const advanceRefundPrepareHandler = (
+  params: Parameters<typeof advanceRefundPrepare>[1],
+  ctx: Parameters<typeof advanceRefundPrepare>[0],
+) => advanceRefundPrepare(ctx, params)
+export const advanceRefundPreflightHandler = (
+  params: Parameters<typeof advanceRefundPreflight>[1],
+  ctx: Parameters<typeof advanceRefundPreflight>[0],
+) => advanceRefundPreflight(ctx, params)
 export const documentAttachmentAddHandler = (
   params: Parameters<typeof documentAttachmentAdd>[1],
   ctx: Parameters<typeof documentAttachmentAdd>[0],

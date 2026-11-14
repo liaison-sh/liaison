@@ -1182,7 +1182,14 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       // The payment state AT ISSUE is recorded for every invoice (BT-23 x1 / x2 reads it, never
       // the later payment_status: a Factur-X first rendered after a mark-paid must still say due).
       payment_state:
-        input.payment_state ?? (type === "invoice" ? (input.settlement ? "paid" : "due") : null),
+        input.payment_state ??
+        (type === "invoice"
+          ? input.settlement
+            ? "paid"
+            : draft.source?.invoice_role === "final"
+              ? "final_after_deposit"
+              : "due"
+          : null),
       original: type === "credit_note" ? (input.original ?? null) : null,
       origin: input.origin ?? "manual",
     },

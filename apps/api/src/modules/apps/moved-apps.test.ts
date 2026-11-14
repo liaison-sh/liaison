@@ -44,6 +44,21 @@ const RULES = { finance: { tier: "confidential", roles: ["r1"] } }
 let catalogDir: string
 let installRoot: string
 
+// The reconcile installs a moved app on behalf of the first org it finds when no
+// org lists it in enabledApps, and registers it there: on a shared test
+// database that is often another file's org, never this file's. `usedMovedApps`
+// reads every org, so a registration left there makes the next test see an
+// instance that already ran the app. Each test removes the rows it caused.
+const INSTALLED_NAMES = [APP, ...MOVED_APPS.map((a) => a.name)]
+let appRowsBefore = new Set<string>()
+const appRowKey = (r: { org_id: string; name: string }) => `${r.org_id}/${r.name}`
+async function movedAppRows(): Promise<Array<{ org_id: string; name: string }>> {
+  return [
+    ...(await sql<Array<{ org_id: string; name: string }>>`SELECT org_id, name FROM kernel.apps
+      WHERE name IN ${sql(INSTALLED_NAMES)}`),
+  ]
+}
+
 function bakeCatalog(withApp: boolean, name: string = APP): void {
   const entries: unknown[] = []
   if (withApp) {
@@ -199,6 +214,7 @@ async function snapshot(): Promise<Record<string, unknown[]>> {
 }
 
 beforeEach(async () => {
+  appRowsBefore = new Set((await movedAppRows()).map(appRowKey))
   catalogDir = mkdtempSync(join(tmpdir(), "moved-catalog-"))
   installRoot = mkdtempSync(join(tmpdir(), "moved-install-root-"))
   process.env.LIAISON_APP_CATALOG_DIR = catalogDir
@@ -243,6 +259,10 @@ afterEach(async () => {
   await sql`DELETE FROM app_knowledge.collections WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.apps WHERE org_id = ${ORG}`
+  for (const row of await movedAppRows()) {
+    if (appRowsBefore.has(appRowKey(row))) continue
+    await sql`DELETE FROM kernel.apps WHERE org_id = ${row.org_id} AND name = ${row.name}`
+  }
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })

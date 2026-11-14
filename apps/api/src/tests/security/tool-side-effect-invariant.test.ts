@@ -600,6 +600,12 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "calendar:update_event": "same host gate as create_event",
   "google-drive:upload":
     "externalEffect: parks after outside text (execute-tool.ts:4352-4470) unless Agent Safety off (owner verdict)",
+  "invoicing:advance_draft_create":
+    "an advance invoice draft: takes no number and sends nothing; its issue parks as invoicing:invoice_issue, never auto-approved",
+  "invoicing:advance_refund_prepare":
+    "conditionalGate: prepares the refund only; the credit note parks as invoicing:credit_note_create_and_issue before anything is issued or sent",
+  "invoicing:billing_plan_set":
+    "externalEffect: a project's billing plan rows in invoicing, parked after outside text; nothing is numbered and nothing leaves Liaison",
   "invoicing:contact_relationships_set": "local relationship row",
   "invoicing:credit_note_create_and_issue":
     "gated: parks via the handler's ctx.requestApproval (conditionalGate; execute-tool.ts:2767-2900), person shortcut only for origin human-ui (:2879)",

@@ -27,7 +27,11 @@
 //     time alone changes (an SLA closing in, a task falling overdue): the next
 //     minute for an org that changed, within HEARTBEAT_MINUTES otherwise;
 //   - when the feed finds no stored list for the reader (a new person, a new
-//     app): that read shows nothing for the app until then.
+//     app), or one computed more than STORED_LIST_MAX_AGE_MS ago (a person away
+//     since, whose list was left out of the refreshes): that read shows nothing
+//     for the app until then, never a list that may no longer be true (a dated
+//     line past its day, a task done since). The refresh tells their devices to
+//     reload the feed, even when the list came out the same.
 //
 // A wake never runs a provider where it happens (a request, a tool call): it
 // queues a refresh job on the attention queue (`app-attention-refresh`, its
@@ -90,6 +94,12 @@ export const ORG_REFRESHES_PER_MINUTE = 12
 export const ORG_PROVIDER_RUNS_PER_MINUTE = 120
 /** A person who read their feed this recently is refreshed even when not online. */
 export const SEEN_WINDOW_MS = 30 * 60_000
+/**
+ * The oldest stored list the feed serves. A person around is refreshed within
+ * the minute tick's heartbeat (10 minutes), so a list older than this was left
+ * out of the refreshes while its person was away: it is recomputed, not shown.
+ */
+export const STORED_LIST_MAX_AGE_MS = SEEN_WINDOW_MS
 /** How long a feed read or a refresh waits on Redis for the audience. */
 const REDIS_ANSWER_MS = 2_000
 const seenKey = (orgId: string) => `attention:seen:${orgId}`
@@ -371,18 +381,21 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 async function readStoredLists(
   orgId: string,
   appName: string,
-): Promise<Map<string, { items: AttentionItem[]; error: unknown }>> {
+): Promise<Map<string, { items: AttentionItem[]; error: unknown; computedAt: Date }>> {
   const rows = await withPrivilegedDb(orgId, "attention-store:read", (tx) =>
     tx
       .select({
         userId: appAttentionItems.userId,
         items: appAttentionItems.items,
         error: appAttentionItems.error,
+        computedAt: appAttentionItems.computedAt,
       })
       .from(appAttentionItems)
       .where(and(eq(appAttentionItems.orgId, orgId), eq(appAttentionItems.app, appName))),
   )
-  return new Map(rows.map((r) => [r.userId, { items: r.items ?? [], error: r.error }]))
+  return new Map(
+    rows.map((r) => [r.userId, { items: r.items ?? [], error: r.error, computedAt: r.computedAt }]),
+  )
 }
 
 /**
@@ -489,7 +502,10 @@ export async function refreshAppAttention(
     }
     const itemsChanged =
       items !== null && JSON.stringify(before?.items ?? []) !== JSON.stringify(items)
-    if (itemsChanged || (before === undefined && items !== null)) {
+    // The feed did not serve a list this old (readStoredAttention): it reloads once stored.
+    const wasHidden =
+      before !== undefined && isStoredListTooOld(before.computedAt, startedAt.getTime())
+    if (itemsChanged || (items !== null && (before === undefined || wasHidden))) {
       changed++
       await deps.notify(orgId, userId, appName).catch(() => {})
     }
@@ -823,10 +839,18 @@ export interface StoredAttention {
   error: Omit<AttentionProviderError, "app"> | null
 }
 
+/** Was this list computed too long ago to be served (STORED_LIST_MAX_AGE_MS)? */
+export function isStoredListTooOld(computedAt: Date | string, now: number): boolean {
+  const at = new Date(computedAt).getTime()
+  return !Number.isFinite(at) || at < now - STORED_LIST_MAX_AGE_MS
+}
+
 /**
  * The reader's stored lists of these apps, under the reader's RLS context. An
- * app with no stored list for the reader is absent from the map (and is
- * scheduled for a refresh in the background).
+ * app with no stored list for the reader, or with one computed more than
+ * STORED_LIST_MAX_AGE_MS ago, is absent from the map (and is scheduled for a
+ * refresh in the background): the feed never shows a list that may no longer
+ * be true.
  */
 export async function readStoredAttention(
   tx: RlsClient,
@@ -841,6 +865,7 @@ export async function readStoredAttention(
       app: appAttentionItems.app,
       items: appAttentionItems.items,
       error: appAttentionItems.error,
+      computedAt: appAttentionItems.computedAt,
     })
     .from(appAttentionItems)
     .where(
@@ -850,7 +875,9 @@ export async function readStoredAttention(
         inArray(appAttentionItems.app, apps),
       ),
     )
+  const now = Date.now()
   for (const r of rows) {
+    if (isStoredListTooOld(r.computedAt, now)) continue
     out.set(r.app, {
       items: Array.isArray(r.items) ? r.items : [],
       error: (r.error as StoredAttention["error"]) ?? null,

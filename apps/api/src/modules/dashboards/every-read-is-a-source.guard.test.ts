@@ -145,6 +145,16 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     why: "each person's cost rate, for finance in a DM only; never shown on a board, a page or a task",
   },
   {
+    tool: "projects:reconcile_lines_read",
+    reason: "trust boundary",
+    why: "an internal read the invoicing app reaches through its declared cross-app call, for the invoice made from a reconcile card; people read the card through reconcile_get",
+  },
+  {
+    tool: "projects:milestone_status_read",
+    reason: "trust boundary",
+    why: "an internal read the invoicing app reaches through its declared cross-app call, for a billing plan's milestones; people read tasks through the projects reads",
+  },
+  {
     tool: "invoicing:project_invoiced_get",
     reason: "trust boundary",
     why: "an internal read the projects app reaches through its declared cross-app call; people read invoices through documents_search",

@@ -117,7 +117,9 @@ describe("projects.manifest", () => {
     // 1.36.0: a day or hour-billed budget shows its rate; reconcile facts word their figures; the
     //   card's next step and notes promise no step it lacks; a dated sheet that is off says so.
     // 1.36.1: capacity on a week where nobody has planned work says so and how time gets planned.
-    expect(projectsManifest.version).toBe("1.36.1")
+    // 1.37.0: internal reads and marks for invoicing (the billed lines, claims after an invoice
+    //   moved, milestone status), the claims sweep by the draft's key.
+    expect(projectsManifest.version).toBe("1.37.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

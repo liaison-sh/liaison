@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.36.1",
+  "version": "1.37.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -3410,6 +3410,68 @@
         "required": [
           "reconciliationId"
         ],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_lines_read": {
+      "description": "What one reconciliation bills, for the invoice made from it: each billed line's wording, quantity in the project's unit, proof labels and the rate frozen at Create, plus its state, revision, key and whether its claims are reserved. Never real time, a time-spent note, a trace estimate or a person. Called by the invoicing app only.",
+      "readOnly": true,
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "timeoutMs": 10000,
+      "requiredScopes": ["projects:reconcile:read"],
+      "handler": "reconcileLinesRead",
+      "readsFromTable": "app_projects.reconciliation_lines",
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": { "type": "string", "description": "The reconciliation's id." }
+        },
+        "required": ["reconciliationId"],
+        "additionalProperties": false
+      }
+    },
+    "reconcile_mark": {
+      "description": "Move a reconciliation's claims after its invoice moved: billed once the invoice carrying its key is issued, released when no document carries the key, credited when credit notes took the invoice back whole, or the billed-after-credit figure per line after a partial credit. Checked against the invoicing documents first and compare-and-set, so a repeat or a call on a draft changes nothing. Called by the invoicing app only.",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "timeoutMs": 10000,
+      "requiredScopes": ["projects:reconcile:write"],
+      "handler": "reconcileMark",
+      "writesToTable": "app_projects.billing_claims",
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
+          "to": { "type": "string", "enum": ["billed", "released", "credited", "partly_credited"] },
+          "documentId": { "type": "string", "description": "The issued invoice's id, checked against the key." },
+          "documentNumber": { "type": "string" },
+          "creditedMinutesByLine": {
+            "type": "object",
+            "additionalProperties": { "type": "integer", "minimum": 0 },
+            "description": "Minutes credited so far on each line, all credit notes together, by line id."
+          }
+        },
+        "required": ["reconciliationId", "to"],
+        "additionalProperties": false
+      }
+    },
+    "milestone_status_read": {
+      "description": "Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and, per task, its title, done state, milestone mark and completion day. No assignee, time or activity. Called by the invoicing app only.",
+      "readOnly": true,
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "timeoutMs": 10000,
+      "requiredScopes": ["projects:tasks:read"],
+      "handler": "milestoneStatusRead",
+      "readsFromTable": "app_projects.tasks",
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." },
+          "taskIds": { "type": "array", "items": { "type": "string" }, "maxItems": 200 }
+        },
+        "required": ["projectId", "taskIds"],
         "additionalProperties": false
       }
     },

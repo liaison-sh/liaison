@@ -16,6 +16,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { resolveEffectivePermissions } from "~/modules/permissions/permissions"
 import { insertSql } from "~/seed/factories/org/test-rows"
+import { milestoneStatusRead, reconcileLinesRead, reconcileMark } from "./claims"
 
 const ORG = crypto.randomUUID()
 const OTHER_ORG = crypto.randomUUID()
@@ -745,5 +746,35 @@ describe("the read-only role and other orgs", () => {
       ),
     )
     expect(own[0]?.n).toBe(1)
+  })
+
+  it("two orgs see none of each other's claims through the new reads", async () => {
+    const outsider = ctx(["*"], OUTSIDER, OTHER_ORG)
+    const before = await sql<{ id: string; state: string }[]>`
+      SELECT id::text AS id, state FROM app_projects.billing_claims WHERE org_id = ${ORG} ORDER BY id`
+    // Named by its own org or by theirs, the other org's reconciliation and tasks are not there.
+    for (const orgId of [ORG, OTHER_ORG]) {
+      const calls = [
+        () =>
+          withRlsContext(outsider, (tx) =>
+            reconcileLinesRead({ tx, orgId, input: { reconciliationId: DRAFTED } }),
+          ),
+        () =>
+          withRlsContext(outsider, (tx) =>
+            reconcileMark({ tx, orgId, input: { reconciliationId: DRAFTED, to: "released" } }),
+          ),
+        () =>
+          withRlsContext(outsider, (tx) =>
+            milestoneStatusRead({ tx, orgId, input: { projectId: DATED, taskIds: [DATED_TASK] } }),
+          ),
+      ]
+      for (const call of calls) {
+        const err = await call().catch((e: unknown) => e as { code?: string })
+        expect((err as { code?: string }).code).toBe("not_found")
+      }
+    }
+    const after = await sql<{ id: string; state: string }[]>`
+      SELECT id::text AS id, state FROM app_projects.billing_claims WHERE org_id = ${ORG} ORDER BY id`
+    expect(after).toEqual(before)
   })
 })

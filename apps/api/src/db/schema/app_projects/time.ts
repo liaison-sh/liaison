@@ -109,6 +109,8 @@ export const projectTimeboxes = appProjects.table(
     periodEnd: date("period_end").notNull(),
     minutes: integer("minutes").notNull(),
     source: text("source", { enum: ["manual", "retainer"] }).notNull(),
+    /** The retainer schedule a derived timebox comes from (migration 0328). */
+    sourceRef: text("source_ref"),
     createdBy: uuid("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

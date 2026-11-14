@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql } from "drizzle-orm"
 import {
+  bigint,
   boolean,
   date,
   index,
@@ -14,7 +15,7 @@ import {
 import { appProjects, projects } from "./projects"
 
 /*
- * Reconciling a project's period (migration 0320). Tables and policies are
+ * Reconciling a project's period (migrations 0322 and 0328). Tables and policies are
  * owned by the migration; these mirror it. Left out of the projects
  * manifest's schema block for the reason given in ./time.ts: a proposed
  * reconciliation is its creator's alone.
@@ -42,6 +43,14 @@ export const reconciliations = appProjects.table(
     excludedCount: integer("excluded_count").notNull().default(0),
     documentId: uuid("document_id"),
     waivedOverage: boolean("waived_overage").notNull().default(false),
+    /** The exact external_ref the draft invoice got at Create; claims follow it to the invoice. */
+    documentRef: text("document_ref"),
+    /** The rate, currency and hours in a day as they stood at Create, frozen. */
+    createRateMinor: bigint("create_rate_minor", { mode: "number" }),
+    createCurrency: text("create_currency"),
+    createHoursPerDayMinutes: integer("create_hours_per_day_minutes"),
+    draftedAt: timestamp("drafted_at", { withTimezone: true }),
+    draftedBy: uuid("drafted_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -52,6 +61,9 @@ export const reconciliations = appProjects.table(
       .where(sql`state = 'proposed'`),
     index("reconciliations_project_idx").on(t.projectId),
     index("reconciliations_creator_idx").on(t.createdBy),
+    index("reconciliations_document_ref_idx")
+      .on(t.orgId, t.documentRef)
+      .where(sql`document_ref IS NOT NULL`),
   ],
 )
 
@@ -153,6 +165,9 @@ export const billingClaims = appProjects.table(
     index("billing_claims_reconciliation_idx")
       .on(t.reconciliationId)
       .where(sql`reconciliation_id IS NOT NULL`),
+    index("billing_claims_document_idx")
+      .on(t.orgId, t.documentId)
+      .where(sql`document_id IS NOT NULL`),
   ],
 )
 

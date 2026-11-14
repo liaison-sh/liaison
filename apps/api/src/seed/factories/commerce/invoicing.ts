@@ -223,6 +223,8 @@ export interface InvoicingDocumentSpec {
   externalRefs?: Record<string, string>
   /** The project the document bills (a services company's invoice). */
   billingProjectId?: string
+  /** The source key the document carries (`reconcile:<id>:<revision>` and the like). */
+  externalRef?: string
   /** A credit note: the key of the document it corrects. */
   correctsKey?: string
 }
@@ -575,6 +577,7 @@ export async function seedInvoicingHistory(
         notes: d.spec.notes ?? null,
         lifecycle_log: jsonCell(buildLifecycleLog(d)),
         ...(d.spec.billingProjectId ? { billing_project_id: d.spec.billingProjectId } : {}),
+        ...(d.spec.externalRef ? { external_ref: d.spec.externalRef } : {}),
         ...(d.spec.correctsKey
           ? { original_document_id: ctx.id("document", d.spec.correctsKey) }
           : {}),

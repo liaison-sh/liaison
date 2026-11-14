@@ -166,6 +166,8 @@ describe("isDetailRoute - only an entity tail is a detail route", () => {
       // One dashboard table (kernel:dashboard_table).
       "/dashboard-table/:entityId": true,
       "/detail/:entityId+": true,
+      // The Help tab: one screen, its page picked inside it.
+      "/help": false,
       // The Sessions app's import take-over: one screen, no entity tail.
       "/import-sessions": false,
       "/invoicing/documents/:typeFilter": false,

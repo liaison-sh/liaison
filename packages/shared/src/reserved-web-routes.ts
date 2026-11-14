@@ -31,6 +31,9 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "search",
   "detail",
   "agents",
+  // The Help tab (`/help`) and the docs bundle it reads (`/help-docs/`, static files).
+  "help",
+  "help-docs",
   // The kernel's dashboard tab (`/dashboard/:id`) and its list, and the
   // agent's own data store namespace (`agent`), which no app may own.
   "agent",

@@ -18,9 +18,14 @@ const TIME_IDS = [
 const CAPACITY_ROW = "side-capacity"
 const SEE = { timeout: 20_000 } as const
 
+/**
+ * The time ids the reader can see. Every open tab stays mounted, the inactive ones hidden, so after
+ * a visit to the project using time its task tab (restored on the next page load) still holds a
+ * hidden Timebox chip and Took field: what this page shows is the visible ones.
+ */
 async function countTimeIds(page: Page): Promise<Record<string, number>> {
   const out: Record<string, number> = {}
-  for (const id of TIME_IDS) out[id] = await page.getByTestId(id).count()
+  for (const id of TIME_IDS) out[id] = await page.getByTestId(id).filter({ visible: true }).count()
   return out
 }
 

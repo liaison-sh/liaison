@@ -571,6 +571,29 @@ describe("stripe event dispatch", () => {
 })
 
 describe("mirror write", () => {
+  it("a re-read of a charge (reconcile, list) keeps the invoice its webhook found: the current API's charge names none", async () => {
+    const mem = new MemDb()
+    const d = mem as unknown as MirrorDb
+    await writeMirror(
+      d,
+      "stripe_payments",
+      { stripe_id: "ch_1", invoice_id: "in_1", status: "succeeded" },
+      "2026-12-04T09:00:43.000Z",
+    )
+    // The reconcile reads the charge by id: paymentRow has no invoice to give.
+    expect(
+      await writeMirror(
+        d,
+        "stripe_payments",
+        { stripe_id: "ch_1", invoice_id: null, status: "succeeded", refunded_minor: 100 },
+        "2026-12-04T09:02:37.000Z",
+      ),
+    ).toBe("updated")
+    expect(mem.rows("stripe_payments")[0]).toMatchObject({
+      invoice_id: "in_1",
+      refunded_minor: 100,
+    })
+  })
   it("an older re-fetch never overwrites a newer row", async () => {
     const mem = new MemDb()
     const d = mem as unknown as MirrorDb

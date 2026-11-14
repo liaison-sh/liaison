@@ -322,12 +322,20 @@ export async function writeMirror(
     const seen = current.stripe_updated
     const seenMs = instantMs(seen)
     if (Number.isFinite(seenMs) && seenMs > mine) return "stale"
+    // A charge's invoice never changes once known, and under the current API the charge object
+    // names none: only its webhook finds it (invoiceOfCharge). A later re-read (reconcile, list)
+    // keeps the invoice the row already holds.
+    const keepInvoice =
+      entity === "stripe_payments" &&
+      (data.invoice_id === null || data.invoice_id === undefined) &&
+      typeof current.invoice_id === "string" &&
+      current.invoice_id !== ""
     const { count } = await db.updateMany(entity, {
       where:
         seen === null || seen === undefined
           ? { stripe_id: stripeId, stripe_updated: null }
           : { stripe_id: stripeId, stripe_updated: seen },
-      data,
+      data: keepInvoice ? { ...data, invoice_id: current.invoice_id } : data,
     })
     if (count > 0) {
       await written?.(current)

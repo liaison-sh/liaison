@@ -330,6 +330,17 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       actingAgentId: origin === "mcp" ? (bridgeActingAgentId ?? null) : null,
     }
   }
+  /** A reconcile card collapsed to its summary line comes back in every thread that holds it. */
+  const restoreReconcileCards = async (reconciliationId: string): Promise<void> => {
+    if (!reconciliationId) return
+    const { restoreToolCardsByKey } = await import("~/modules/agent/runtime/tool-card-store")
+    await restoreToolCardsByKey({
+      orgId,
+      actorId: userId,
+      app: "projects",
+      key: `reconcile:${reconciliationId}`,
+    })
+  }
   /**
    * The user actor of a write: the inherited user, else the bridge user (the
    * webhook fallback user for a system run) with the caller's scopes.
@@ -2417,6 +2428,55 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         )
       })
     },
+    /** One step of Create invoice on a reconcile card (facts, prepare, reserve, finish, release). */
+    projects_reconcileCreate: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { reconcileCreateStep } = await import("~/apps/projects/service/reconcile-create")
+        const actor = await writeActor()
+        const step = String(params.step ?? "")
+        if (!["facts", "prepare", "reserve", "finish", "release"].includes(step)) {
+          throw new Error(`projects_reconcileCreate: unknown step ${step}`)
+        }
+        return JSON.stringify(
+          await reconcileCreateStep({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            ...(bridgeOptions?.origin ? { origin: bridgeOptions.origin } : {}),
+            step: step as never,
+            input: params,
+          }),
+        )
+      })
+    },
+    /** One step of Undo on a reconcile card whose invoice is a draft. */
+    projects_reconcileUndo: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      const step = String(params.step ?? "")
+      const out = await typedServiceCall(async () => {
+        const { reconcileUndoStep } = await import("~/apps/projects/service/reconcile-create")
+        const actor = await writeActor()
+        if (step !== "undo_prepare" && step !== "undo_finish") {
+          throw new Error(`projects_reconcileUndo: unknown step ${step}`)
+        }
+        return JSON.stringify(
+          await reconcileUndoStep({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            scopes: callerScopes ?? [],
+            step,
+            input: params,
+          }),
+        )
+      })
+      if (step === "undo_finish" && !(JSON.parse(out) as { error?: unknown }).error) {
+        await restoreReconcileCards(String(params.reconciliationId ?? ""))
+      }
+      return out
+    },
     /** What a reconciliation bills, for the invoice made from it (internal: invoicing reads it). */
     projects_reconcileLinesRead: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as { reconciliationId?: string }
@@ -2436,7 +2496,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
       return typedServiceCall(async () => {
         const { reconcileMark } = await import("~/apps/projects/service/claims")
-        return JSON.stringify(await reconcileMark({ tx: txDb, orgId, input: params as never }))
+        const out = await reconcileMark({ tx: txDb, orgId, input: params as never })
+        // A released card is back to proposed: its collapsed card in the thread comes back too.
+        if (out.to === "released" && out.changed && out.state === "proposed") {
+          await restoreReconcileCards(out.reconciliationId)
+        }
+        return JSON.stringify(out)
       })
     },
     /** Whether a project's named tasks are done, for a billing plan (internal). */

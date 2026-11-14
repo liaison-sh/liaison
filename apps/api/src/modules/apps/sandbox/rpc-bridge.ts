@@ -408,6 +408,9 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "projects_reconcileGet",
   // A reconciliation's claims after its invoice moved (the invoicing app's declared call).
   "projects_reconcileMark",
+  // Create invoice and Undo on a reconcile card: claims, the card's state, its draft link.
+  "projects_reconcileCreate",
+  "projects_reconcileUndo",
   // An app's own knowledge sources: ensure, sync now, purge an account's content.
   "knowledge_appSourceWrite",
 ])

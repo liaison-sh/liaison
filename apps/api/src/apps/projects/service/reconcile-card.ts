@@ -44,6 +44,23 @@ export interface CardInput {
   late: string | null
 }
 
+/**
+ * The lines as one reader may see them: once a card is past proposed (on a draft or an invoice),
+ * a time-spent note is shown to its author only; anyone else sees the time entered on the tasks.
+ */
+export function linesForViewer<L extends { realNoteMinutes?: number | null }>(
+  lines: readonly L[],
+  state: CardInput["state"],
+  viewerId: string | undefined,
+  createdBy: string | undefined,
+): L[] {
+  if (state === "proposed" || viewerId === undefined || viewerId === createdBy) return [...lines]
+  return lines.map((l) => {
+    const { realNoteMinutes: _note, ...rest } = l
+    return rest as L
+  })
+}
+
 /** The seven situations a card can be in, read by the card's status. */
 export type CardFit = "fits" | "over" | "estimated" | "fixed" | "nothing"
 
@@ -230,6 +247,11 @@ export function reconcileCardFields(input: CardInput) {
 
   const repo = input.notSeen.find((n) => REPO_SOURCE.test(n.source))
   const notes: Array<{ text: string }> = []
+  if (input.state === "invoiced") {
+    notes.push({
+      text: "Already invoiced: these lines are locked, and new work waits for its own period. A change goes through a credit note.",
+    })
+  }
   if (input.late) notes.push({ text: input.late })
   if (offBill > 0) {
     notes.push({

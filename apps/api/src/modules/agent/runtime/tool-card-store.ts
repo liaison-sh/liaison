@@ -422,6 +422,50 @@ export async function clearToolCardsByKeyIn(
   return cleared
 }
 
+/**
+ * Bring back the cards of a key that an action collapsed to their summary line (a reconcile card
+ * whose invoice draft was undone or discarded): each is resolved again from its own call's stored
+ * result, with that call's own template. A card that cannot be resolved again keeps what it has.
+ * Answers how many cards came back; a failure is logged and answers 0, never a broken write.
+ */
+export async function restoreToolCardsByKey(params: {
+  orgId: string
+  actorId: string
+  app: string
+  key: string
+}): Promise<number> {
+  const { orgId, app, key } = params
+  try {
+    return await withPrivilegedDb(orgId, "tool-card-restore", async (tx) => {
+      const rows = await tx
+        .select(ROW_FACTS)
+        .from(messages)
+        .where(and(eq(messages.orgId, orgId), holdsKey(key)))
+        .orderBy(asc(messages.id))
+        .for("update")
+      let restored = 0
+      for (const row of rows) {
+        let changed = false
+        const next = storedCalls(row.metadata).map((tc): StoredToolCall => {
+          if (tc.card?.latestKey !== key || appOfStoredToolName(tc.toolName) !== app) return tc
+          if (!tc.card.summary || tc.result === null || tc.result === undefined) return tc
+          const template = templateOf(orgId, tc.toolName)
+          const fresh = template ? resolvedOrNull(template, tc.result, tc.toolName) : null
+          if (!fresh || fresh.summary) return tc
+          changed = true
+          restored++
+          return { ...tc, card: fresh, cardRevision: storedCardRevision(tc) + 1 }
+        })
+        if (changed) await writeToolCalls(tx, orgId, params.actorId, row, next)
+      }
+      return restored
+    })
+  } catch (err) {
+    log.warn({ err, orgId, key }, "Could not bring back the cards of a key")
+    return 0
+  }
+}
+
 /** A request's `cardRef`: absent, well formed, or refused before anything runs. */
 export function parseToolCardRef(raw: unknown): ToolCardRef | null | "invalid" {
   if (raw === undefined || raw === null) return null

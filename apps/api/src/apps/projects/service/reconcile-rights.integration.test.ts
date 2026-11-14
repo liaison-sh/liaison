@@ -197,6 +197,23 @@ describe("what a reconcile reads through", () => {
       (projectsAppManifest as Record<string, unknown>).cross_app_calls ?? [],
     )
     for (const app of TRACE_APPS) expect(calls).not.toContain(`"${app}:`)
+    // The declared targets, exactly: the invoiced amount, the card's preview, its draft, the
+    // draft's Undo and the timesheet filed on it. Issuing is never one of them.
+    const targets = (
+      ((projectsAppManifest as Record<string, unknown>).cross_app_calls ?? []) as Array<{
+        target: string
+      }>
+    )
+      .map((c) => c.target)
+      .sort()
+    expect(targets).toEqual([
+      "invoicing:document_attachment_add",
+      "invoicing:draft_from_reconcile",
+      "invoicing:drafts_discard",
+      "invoicing:preview_totals",
+      "invoicing:project_invoiced_get",
+    ])
+    expect(targets).not.toContain("invoicing:invoice_issue")
     const files = [
       ...readdirSync(join(SRC, "apps/projects/service"))
         .filter((f) => f === "reconcile.ts" || f === "reconcile-lines.ts")
@@ -208,8 +225,8 @@ describe("what a reconcile reads through", () => {
       expect(text).not.toMatch(/withPrivilegedDb|withSystemDb|__privileged_db__/)
       expect(text).not.toMatch(/executeTool|callTool|ctx\.call/)
     }
-    // Anywhere in the projects app and its bridge, the one tool of another app it calls is the
-    // invoiced amount its money half reads, named as a literal.
+    // Anywhere in the projects app and its bridge, the tools of another app it calls are named as
+    // literals: the invoiced amount its money half reads, and the card's preview, draft and Undo.
     const walk = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory()
@@ -230,7 +247,12 @@ describe("what a reconcile reads through", () => {
       expect(text).not.toMatch(/\bctx\.call\s*\(/)
       if (f.includes("/apps/projects/")) expect(importsExecuteTool(text)).toBe(false)
     }
-    expect(toolCalls).toEqual(['apps/projects/handlers.ts: "invoicing:project_invoiced_get"'])
+    expect([...new Set(toolCalls)].sort()).toEqual([
+      'apps/projects/handlers.ts: "invoicing:draft_from_reconcile"',
+      'apps/projects/handlers.ts: "invoicing:drafts_discard"',
+      'apps/projects/handlers.ts: "invoicing:preview_totals"',
+      'apps/projects/handlers.ts: "invoicing:project_invoiced_get"',
+    ])
     // The bridge methods of the two tools call the service alone.
     const bridge = readFileSync(join(SRC, "modules/apps/sandbox/bridge/projects.ts"), "utf8")
     for (const method of ["projects_reconcileFacts", "projects_reconcilePropose"]) {

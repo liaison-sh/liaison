@@ -1,0 +1,669 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Create invoice and Undo on a reconcile card, on the real database, with the invoicing app
+// registered from source: the projects handler runs each step in its own short transaction (as
+// the core host runs it) around invoicing's preview, draft and discard. No number is ever taken
+// here; a person issues the draft.
+
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import type { CardTemplate, ResolvedCard } from "@liaison/shared"
+import { sql as drizzleSql } from "drizzle-orm"
+import {
+  billingTermsSet,
+  reconcileCreateInvoice,
+  reconcileGet,
+  reconcileLineUpdate,
+  reconcilePropose,
+  reconcileUndo,
+} from "~/apps/projects/handlers"
+import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
+import { extractRows } from "~/db"
+import { __privileged_db__ as db } from "~/db/connection"
+import type { UserContext } from "~/db/rls"
+import { createRlsSession, withRlsContext } from "~/db/rls"
+import { clearTaintFlag } from "~/modules/agent/scopes/taint"
+import { executeTool } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
+import { resolveToolCard } from "~/modules/apps/result-card"
+import { registerApps } from "~/modules/apps/runtime"
+import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { seedContext } from "~/seed/context"
+import { seedCompanies } from "~/seed/factories/people/companies"
+import { resolveContacts } from "~/seed/factories/people/contacts"
+import { seedTaskTime } from "~/seed/factories/projects/time"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { awaitTimeFeatureSync } from "./time-feature"
+import { awaitTimeRowWrites } from "./time-rows"
+
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
+const HPD = 420
+const day = (d: number) => Math.round(d * HPD)
+
+const PROJECTS = ["projects:*"]
+const ISSUING = ["invoicing:documents:read", "invoicing:documents:write", "invoicing:settings:read"]
+const LEAD = [...PROJECTS, "invoicing:documents:read"]
+const FINANCE = [...PROJECTS, ...ISSUING, "invoicing:approve"]
+
+let orgId = ""
+let owner: minimal.Session
+let otherLead: minimal.Session
+let thread = ""
+let delorme = ""
+let erika = ""
+
+function actorOf(userId: string, scopes: string[]): UserContext {
+  return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
+}
+
+type Handler = (params: unknown, ctx: never) => Promise<unknown>
+
+/**
+ * A projects handler run as a person, as the core host runs it: one short transaction per bridge
+ * call, so a step's writes are committed before invoicing reads them.
+ */
+async function run<T = Record<string, any>>(
+  handler: Handler,
+  input: unknown,
+  opts: {
+    userId?: string
+    scopes?: string[]
+    origin?: string
+    patch?: Record<string, unknown>
+  } = {},
+): Promise<T> {
+  const a = actorOf(opts.userId ?? owner.userId, opts.scopes ?? FINANCE)
+  const bridge = createSessionRpcBridge(
+    "projects",
+    a.userId,
+    orgId,
+    createRlsSession(a),
+    projectsAppManifest as never,
+    a.scopes,
+    "user",
+    undefined,
+    {
+      origin: opts.origin ?? "human-ui",
+      threadId: thread,
+      // As the core host passes it: a person's own click who holds the tool's approve scope.
+      humanAuthorized:
+        (opts.origin ?? "human-ui") === "human-ui" &&
+        a.scopes.some((s) => s === "*" || s === "projects:*" || s === "projects:approve"),
+    } as never,
+  )
+  const out = (await handler(input, { ...bridge, ...(opts.patch ?? {}) } as never)) as T
+  await awaitTimeRowWrites()
+  return out
+}
+
+/** A projects bridge method as the owner (setup only). */
+async function call<T = Record<string, any>>(method: string, input: unknown): Promise<T> {
+  const a = actorOf(owner.userId, ["*"])
+  const out = await withRlsContext(a, async (tx) => {
+    const bridge = createRpcBridge(
+      "projects",
+      a.userId,
+      orgId,
+      tx,
+      { name: "projects" },
+      a.scopes,
+      "user",
+      undefined,
+      { origin: "human-ui" } as never,
+    )
+    return JSON.parse(await bridge[method](JSON.stringify(input))) as T
+  })
+  await awaitTimeRowWrites()
+  return out
+}
+
+async function invoicing(tool: string, params: Record<string, unknown>, scopes = FINANCE) {
+  return executeTool<Record<string, unknown>>({
+    toolName: `invoicing:${tool}`,
+    orgId,
+    actor: actorOf(owner.userId, scopes),
+    params,
+    threadId: thread,
+    origin: "human-ui",
+  })
+}
+
+function invoicingDescriptor(): Record<string, unknown> {
+  const manifest = JSON.parse(
+    readFileSync(join(REPO_ROOT, "bundled-apps", "invoicing", "app.manifest.json"), "utf8"),
+  ) as Record<string, unknown>
+  return {
+    ...manifest,
+    trusted: false,
+    _format: "manifest",
+    _bundlePath: join(
+      REPO_ROOT,
+      "bundled-apps",
+      "invoicing",
+      String(manifest.version),
+      "bundle.js",
+    ),
+  }
+}
+
+let keys = 0
+/**
+ * A project billed by the day at 930 EUR, closed in October: Data export planned and spent 3 d,
+ * Monitoring 4 d. Answers its id and its card.
+ */
+async function october(
+  opts: {
+    basis?: "daily" | "hourly" | "fixed" | "retainer"
+    rate?: number | null
+    company?: string | null
+  } = {},
+) {
+  keys++
+  const key = `INV${keys}`
+  const made = await call<{ id: string }>("projects_createProject", {
+    name: `Maison Delorme ${key}`,
+    key,
+    ...(opts.company === null ? {} : { companyId: opts.company ?? delorme }),
+    timeBudgets: true,
+  })
+  await awaitTimeFeatureSync(orgId)
+  await call("projects_timePlanSet", { projectId: made.id, basis: opts.basis ?? "daily" })
+  if (opts.basis === "fixed") {
+    await call("projects_billingTermsSet", {
+      projectId: made.id,
+      fixedPrice: 6000,
+      currency: "EUR",
+    })
+  } else if (opts.rate !== null) {
+    await call("projects_billingTermsSet", {
+      projectId: made.id,
+      rate: opts.rate ?? 930,
+      currency: "EUR",
+    })
+  }
+  const t: Record<string, string> = {}
+  for (const [k, box] of [
+    ["e", 3],
+    ["m", 4],
+  ] as const) {
+    const task = await call<{ id: string }>("projects_createTask", {
+      projectId: made.id,
+      title: `Task ${k}`,
+      statusLabel: "done",
+      timebox: `${box} days`,
+    })
+    t[k] = task.id
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-10-20 10:00+00'::timestamptz WHERE id = ${task.id}::uuid`,
+    )
+    await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+      { taskId: task.id, projectId: made.id, workDate: "2026-10-12", minutes: day(box) },
+    ])
+  }
+  const card = await run(reconcilePropose, {
+    project: key,
+    month: "2026-10",
+    lines: [
+      { name: "Data export", taskIds: [t.e], proofs: [{ kind: "task", ref: t.e }] },
+      { name: "Monitoring", taskIds: [t.m], proofs: [] },
+    ],
+  })
+  if (card.error) throw new Error(`no card: ${JSON.stringify(card.error)}`)
+  return { projectId: made.id, key, card }
+}
+
+const docsOf = (projectId: string) =>
+  db
+    .execute(drizzleSql`
+      SELECT id::text AS id, status, number, external_ref, approved_by::text AS approved_by,
+             subtotal_minor::text AS excl
+        FROM app_invoicing.documents
+       WHERE org_id = ${orgId}::uuid AND billing_project_id = ${projectId}::uuid`)
+    .then((r) => extractRows<Record<string, string | null>>(r))
+
+const claimsOf = (id: string) =>
+  db
+    .execute(drizzleSql`
+      SELECT state FROM app_projects.billing_claims
+       WHERE reconciliation_id = ${id}::uuid ORDER BY state`)
+    .then((r) => extractRows<{ state: string }>(r).map((c) => c.state))
+
+const stateOf = (id: string) =>
+  db
+    .execute(drizzleSql`
+      SELECT state, document_ref, document_id::text AS document_id
+        FROM app_projects.reconciliations WHERE id = ${id}::uuid`)
+    .then(
+      (r) =>
+        extractRows<{ state: string; document_ref: string | null; document_id: string | null }>(
+          r,
+        )[0],
+    )
+
+const numbersTaken = () =>
+  db
+    .execute(drizzleSql`
+      SELECT count(*)::int AS n FROM app_invoicing.documents
+       WHERE org_id = ${orgId}::uuid AND number IS NOT NULL`)
+    .then((r) => Number(extractRows<{ n: number }>(r)[0]?.n ?? 0))
+
+const issueApprovals = (draftId: string) =>
+  db
+    .execute(drizzleSql`
+      SELECT status FROM kernel.approval_requests
+       WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+         AND current_payload->>'draft_id' = ${draftId}`)
+    .then((r) => extractRows<{ status: string }>(r).map((a) => a.status))
+
+const create = (card: Record<string, any>, opts: Parameters<typeof run>[2] = {}) =>
+  run(
+    reconcileCreateInvoice,
+    { reconciliationId: card.reconciliationId, revision: card.revision },
+    opts,
+  )
+
+beforeAll(async () => {
+  await acquireTestLock()
+  process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
+  orgId = (await createTestOrg()).id
+  await db.execute(
+    drizzleSql`UPDATE kernel.organizations SET timezone = 'UTC' WHERE id = ${orgId}::uuid`,
+  )
+  owner = await minimal.adminSession(orgId)
+  otherLead = await minimal.session(orgId, { role: "admin" })
+  thread = await minimal.thread(orgId, owner.userId)
+  await ensureAppsForOrg(orgId)
+  await initSandboxPool()
+  await initWorkerPool()
+  await registerApps([invoicingDescriptor() as never], orgId)
+  await primeOrgApps(orgId, 0)
+  const ctx = seedContext({ orgId, now: new Date() })
+  const people = await resolveContacts(ctx, actorOf(owner.userId, ["*"]), [
+    { key: "erika", email: "erika@autre.example", name: "Erika Mustermann" },
+  ])
+  erika = people[0]![1].id
+  const companies = await seedCompanies(
+    ctx,
+    actorOf(owner.userId, ["*"]),
+    [
+      { key: "delorme", name: "Maison Delorme", domain: "delorme.example" },
+      { key: "autre", name: "Maison Autre", domain: "autre.example", contactKeys: ["erika"] },
+    ],
+    { erika },
+  )
+  delorme = companies.delorme!
+  const issuer = await invoicing(
+    "settings_issuer_profile_create",
+    {
+      legal_name: "Studio Issuer SAS",
+      country: "FR",
+      vat_id: "FR40902000009",
+      address: "1 rue de Test, 75011 Paris",
+      default_currency: "EUR",
+      default_language: "en",
+    },
+    ["invoicing:*"],
+  )
+  if (!(issuer.data as { id?: string } | undefined)?.id) {
+    throw new Error(`no issuer profile: ${JSON.stringify(issuer)}`)
+  }
+}, 300_000)
+
+afterAll(async () => {
+  forgetOrgApps(orgId)
+  await shutdownWorkerPool()
+  await shutdownSandboxPool()
+  await releaseTestLock()
+})
+
+describe("Create invoice on a reconcile card", () => {
+  let october1: Awaited<ReturnType<typeof october>>
+  let created: Record<string, any> = {}
+  let numbersBefore = 0
+
+  beforeAll(async () => {
+    october1 = await october()
+    numbersBefore = await numbersTaken()
+    created = await create(october1.card)
+  }, 120_000)
+
+  it("Create invoice is offered on the card with its VAT and total", () => {
+    expect(october1.card.createInvoice).toBe("yes")
+    expect(october1.card.tot).toEqual([
+      { k: "Excl. VAT", v: { minor: 651000, currency: "EUR" } },
+      { k: "VAT", v: { minor: 130200, currency: "EUR" } },
+      { k: "Incl. VAT", v: { minor: 781200, currency: "EUR" } },
+    ])
+  })
+
+  it("pressing Create on the October card makes one approved draft of 7,812.00 and a report, and the card says so with Undo", async () => {
+    expect(created.error).toBeUndefined()
+    expect(created.summary).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(created.undo).toBe("yes")
+    expect(created.createInvoice).toBeNull()
+    expect(created.state).toBe("drafted")
+    const docs = await docsOf(october1.projectId)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({
+      id: created.documentId,
+      status: "draft",
+      number: null,
+      external_ref: `reconcile:${october1.card.reconciliationId}:${october1.card.revision}`,
+      approved_by: owner.userId,
+    })
+    const items = extractRows<{ quantity: string; unit_price_minor: string }>(
+      await db.execute(drizzleSql`
+        SELECT quantity::text AS quantity, unit_price_minor::text AS unit_price_minor
+          FROM app_invoicing.document_lines
+         WHERE document_id = ${created.documentId}::uuid ORDER BY position`),
+    )
+    expect(items.map((l) => [Number(l.quantity), Number(l.unit_price_minor)])).toEqual([
+      [3, 93000],
+      [4, 93000],
+    ])
+    const reports = extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM app_invoicing.activity_reports
+         WHERE document_id = ${created.documentId}::uuid`),
+    )
+    expect(reports[0]?.n).toBe(1)
+    expect(await claimsOf(october1.card.reconciliationId)).toEqual(["reserved", "reserved"])
+    const lines = extractRows<{ document_line_position: number | null }>(
+      await db.execute(drizzleSql`
+        SELECT document_line_position FROM app_projects.reconciliation_lines
+         WHERE reconciliation_id = ${october1.card.reconciliationId}::uuid ORDER BY position`),
+    )
+    expect(lines.map((l) => l.document_line_position)).toEqual([1, 2])
+  })
+
+  it("a clicker holding the issuing and approving scopes takes no number at Create", async () => {
+    expect(await numbersTaken()).toBe(numbersBefore)
+    expect(await issueApprovals(created.documentId)).toEqual(["pending"])
+    expect(created.approvalId).toBeTruthy()
+  })
+
+  it("asking again while a draft waits shows the drafted card, to another lead too", async () => {
+    const again = (userId: string) =>
+      run(
+        reconcilePropose,
+        {
+          project: october1.key,
+          month: "2026-10",
+          lines: [{ name: "Something else", taskIds: [], proofs: [] }],
+        },
+        { userId },
+      )
+    for (const who of [owner.userId, otherLead.userId]) {
+      const card = await again(who)
+      expect(card.error).toBeUndefined()
+      expect(card.reconciliationId).toBe(october1.card.reconciliationId)
+      expect(card.state).toBe("drafted")
+      expect(card.summary).toContain("On draft")
+      expect(card.createInvoice).toBeNull()
+    }
+    const rows = extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM app_projects.reconciliations
+         WHERE project_id = ${october1.projectId}::uuid`),
+    )
+    expect(rows[0]?.n).toBe(1)
+  })
+
+  it("Undo before issue returns the card, frees every claim, discards the draft and uses no number", async () => {
+    // The person's next turn starts clean: what the card's turn read no longer holds the click.
+    await clearTaintFlag(thread, orgId)
+    const undone = await run(reconcileUndo, { reconciliationId: october1.card.reconciliationId })
+    expect(undone.error).toBeUndefined()
+    expect(undone.undone).toBe(true)
+    expect(undone.state).toBe("proposed")
+    expect(undone.summary).toBeNull()
+    expect(undone.createInvoice).toBe("yes")
+    expect(await docsOf(october1.projectId)).toEqual([])
+    expect(await claimsOf(october1.card.reconciliationId)).toEqual(["released", "released"])
+    expect(await stateOf(october1.card.reconciliationId)).toEqual({
+      state: "proposed",
+      document_ref: null,
+      document_id: null,
+    })
+    expect(await issueApprovals(created.documentId)).not.toContain("pending")
+    expect(await numbersTaken()).toBe(numbersBefore)
+  })
+})
+
+describe("the card in its conversation", () => {
+  it("Create replaces the stored card by its summary line and Undo brings it back", async () => {
+    const p = await october()
+    const template = (
+      projectsAppManifest as unknown as { tools: Record<string, { resultCard: CardTemplate }> }
+    ).tools.reconcile_create_invoice!.resultCard
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    // The thread's stored call: the proposal's result, its card collapsed by the Create click.
+    const collapsed = resolveToolCard(template, out)
+    expect(collapsed?.summary?.text).toBe("Created and approved, €7,812.00 incl. VAT")
+    await minimal.postUserMessage(orgId, thread, owner.userId, "", {
+      toolCalls: [
+        {
+          toolCallId: "call-1",
+          toolName: "projects__reconcile_propose",
+          result: p.card,
+          card: collapsed,
+        },
+      ],
+    })
+    await clearTaintFlag(thread, orgId)
+    const undone = await run(reconcileUndo, { reconciliationId: p.card.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const stored = extractRows<{
+      metadata: { toolCalls: Array<{ card?: ResolvedCard; cardRevision?: number }> }
+    }>(
+      await db.execute(drizzleSql`
+        SELECT metadata FROM kernel.messages
+         WHERE thread_id = ${thread}::uuid AND metadata -> 'toolCalls' @> ${JSON.stringify([
+           { toolCallId: "call-1" },
+         ])}::text::jsonb`),
+    )
+    const card = stored.at(-1)?.metadata.toolCalls[0]?.card
+    expect(card?.summary).toBeUndefined()
+    expect((card?.groups ?? []).flatMap((g) => g.rows)).toHaveLength(2)
+    expect(stored.at(-1)?.metadata.toolCalls[0]?.cardRevision).toBe(2)
+  })
+})
+
+describe("Undo on a conversation that read outside text", () => {
+  it("Undo waits for the person's approval of the discard and changes nothing before it", async () => {
+    const p = await october()
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    await db.execute(
+      drizzleSql`UPDATE kernel.threads SET tainted = true WHERE id = ${thread}::uuid`,
+    )
+    const undone = await run(reconcileUndo, { reconciliationId: p.card.reconciliationId })
+    expect(undone.error).toBeUndefined()
+    expect(undone.undone).toBe(false)
+    expect(undone.approvalId).toBeTruthy()
+    expect(undone.message).toContain("waits for your approval")
+    expect((await stateOf(p.card.reconciliationId))?.state).toBe("drafted")
+    expect(await docsOf(p.projectId)).toHaveLength(1)
+    await clearTaintFlag(thread, orgId)
+  })
+})
+
+describe("who presses Create", () => {
+  it("a creator without the issuing scope is told it waits for finance and cannot issue", async () => {
+    const p = await october()
+    const out = await create(p.card, { scopes: LEAD })
+    expect(out.error).toBeUndefined()
+    expect(out.summary).toBe("Created, waiting for finance")
+    expect(out.message).toContain("you cannot issue it")
+    const docs = await docsOf(p.projectId)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.approved_by).toBeNull()
+    expect(await issueApprovals(String(out.documentId))).toEqual(["pending"])
+  })
+
+  it("over a coding agent's connection Create is refused and the answer points to the card", async () => {
+    const p = await october()
+    const out = await create(p.card, { origin: "mcp" })
+    expect(out.error?.code).toBe("create_on_card")
+    expect(out.error?.details?.next).toContain("press Create invoice")
+    expect(await docsOf(p.projectId)).toEqual([])
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+})
+
+describe("one draft per card", () => {
+  it("two clicks at once and a retry after a timeout make one draft", async () => {
+    const p = await october()
+    const [a, b] = await Promise.all([create(p.card), create(p.card)])
+    const retry = await create(p.card)
+    const docs = await docsOf(p.projectId)
+    expect(docs).toHaveLength(1)
+    for (const out of [a, b, retry].filter((o) => !o.error)) {
+      expect(out.documentId).toBe(docs[0]?.id)
+    }
+    expect([a, b, retry].some((o) => !o.error)).toBe(true)
+    expect(await claimsOf(p.card.reconciliationId)).toEqual(["reserved", "reserved"])
+  })
+})
+
+describe("what Create refuses", () => {
+  it("a project billed to another company refuses and creates nothing", async () => {
+    const p = await october()
+    const out = await run(reconcileCreateInvoice, {
+      reconciliationId: p.card.reconciliationId,
+      revision: p.card.revision,
+      contactId: erika,
+    })
+    expect(out.error?.code).toBe("counterparty_mismatch")
+    expect(await docsOf(p.projectId)).toEqual([])
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("a project with no company asks for one and creates nothing", async () => {
+    const p = await october({ company: null })
+    expect(p.card.createInvoice).toBeNull()
+    expect(JSON.stringify([p.card.notice, p.card.cardNotes])).toContain("the project's company")
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("company_missing")
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("with no rate the card names what to set and shows no Create", async () => {
+    const p = await october({ rate: null })
+    expect(p.card.createInvoice).toBeNull()
+    expect(JSON.stringify([p.card.notice, p.card.cardNotes])).toContain("the project's rate")
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("rate_missing")
+    expect(await docsOf(p.projectId)).toEqual([])
+  })
+
+  it("an old revision is refused with the latest card", async () => {
+    const p = await october()
+    const edited = await run(reconcileLineUpdate, {
+      reconciliationId: p.card.reconciliationId,
+      revision: p.card.revision,
+      lineId: p.card.lines[0].lineId,
+      bill: 2,
+    })
+    expect(edited.revision).toBe(p.card.revision + 1)
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("card_changed")
+    expect(out.error?.details?.latest?.revision).toBe(p.card.revision + 1)
+    expect(await docsOf(p.projectId)).toEqual([])
+  })
+
+  it("with invoicing off the card still compares and has no Create", async () => {
+    const off = async () =>
+      JSON.stringify({ status: "error", error: { code: "app_not_enabled", message: "off" } })
+    const p = await october()
+    const card = await run(
+      reconcileGet,
+      { reconciliationId: p.card.reconciliationId },
+      { patch: { executeTool: off } },
+    )
+    expect(card.error).toBeUndefined()
+    expect(card.lines).toHaveLength(2)
+    expect(card.createInvoice).toBeNull()
+    const out = await create(p.card, { patch: { executeTool: off } })
+    expect(out.error?.code).toBe("invoicing_off")
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("a fixed-price card has no Create and the tool refuses", async () => {
+    const p = await october({ basis: "fixed" })
+    expect(p.card.createInvoice).toBeNull()
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("basis_not_billable")
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("a retainer project's Create is refused until retainers are built", async () => {
+    const p = await october({ basis: "retainer" })
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("retainer_not_yet")
+    expect(await docsOf(p.projectId)).toEqual([])
+  })
+
+  it("a fixed-price project with plan steps still open cannot switch to hourly", async () => {
+    const p = await october({ basis: "fixed" })
+    await db.execute(drizzleSql`
+      INSERT INTO app_invoicing.billing_steps
+        (org_id, billing_project_id, position, kind, label, amount_minor, currency, state)
+      VALUES (${orgId}::uuid, ${p.projectId}::uuid, 1, 'milestone', 'Beta', 300000, 'EUR', 'planned')`)
+    const out = await run(billingTermsSet, { projectId: p.projectId, rate: 90, currency: "EUR" })
+    expect(out.error?.code).toBe("plan_steps_open")
+    const terms = extractRows<{ rate_minor: string | null; fixed_price_minor: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT rate_minor::text AS rate_minor, fixed_price_minor::text AS fixed_price_minor
+          FROM app_projects.project_billing_terms WHERE project_id = ${p.projectId}::uuid`),
+    )
+    expect(terms[0]).toEqual({ rate_minor: null, fixed_price_minor: "600000" })
+  })
+})
+
+describe("after the draft", () => {
+  it("a draft discarded in the editor brings the month line and the card back", async () => {
+    const p = await october()
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    const discard = await invoicing("drafts_discard", { draft_id: out.documentId })
+    expect(JSON.stringify(discard)).not.toContain("error")
+    expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
+    expect(await claimsOf(p.card.reconciliationId)).toEqual(["released", "released"])
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    expect(card.state).toBe("proposed")
+    expect(card.createInvoice).toBe("yes")
+  })
+
+  it("a billed line cannot change after issue", async () => {
+    const p = await october()
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    // The invoice is issued (the hand-over marks the card invoiced).
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'invoiced'
+       WHERE id = ${p.card.reconciliationId}::uuid`)
+    const edit = await run(reconcileLineUpdate, {
+      reconciliationId: p.card.reconciliationId,
+      revision: p.card.revision,
+      lineId: p.card.lines[0].lineId,
+      bill: 1,
+    })
+    expect(edit.error?.code).toBe("reconcile_locked")
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    expect(card.locked).toBe("yes")
+    expect(card.createInvoice).toBeNull()
+    expect(JSON.stringify(card.cardNotes)).toContain("Already invoiced")
+    const undo = await run(reconcileUndo, { reconciliationId: p.card.reconciliationId })
+    expect(undo.error?.code).toBe("already_issued")
+    const again = await create(p.card)
+    expect(again.error?.code).toBe("already_issued")
+  })
+})

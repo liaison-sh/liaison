@@ -74,9 +74,11 @@ describe("nothing shipped calls a reconcile tool on its own", () => {
       if (NAMES.test(readFileSync(path.join(API_SRC, f), "utf8"))) named.push(f)
     }
     // claims.ts is the reconcile service's claims half: it implements reconcile_mark and
-    // reconcile_lines_read (heading comments only), it calls no tool.
+    // reconcile_lines_read (heading comments only), it calls no tool. reconcile-create.ts is the
+    // service's Create invoice and Undo steps, which the card's own tools call; it calls no tool.
     expect(named.sort()).toEqual([
       "apps/projects/service/claims.ts",
+      "apps/projects/service/reconcile-create.ts",
       "apps/projects/service/reconcile.ts",
       "seed/factories/projects/reconcile.ts",
     ])

@@ -15,7 +15,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
-import { reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
+import { linesForViewer, reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
 import {
   amountMinor,
   type ComputedLine,
@@ -957,6 +957,40 @@ export async function reconcilePropose(args: {
     excludedCount: [...excludedIds].filter((id) => c.inPeriod.some((r) => r.id === id)).length,
   }
 
+  // A period already on a draft or an invoice is not proposed again: whoever can read that card
+  // gets it, as stored, until the draft is issued or released (no second row for the period).
+  const onInvoice = extractRows<{
+    id: string
+    revision: number
+    state: StoredHead["state"]
+    created_by: string
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT id::text AS id, revision, state, created_by::text AS created_by
+        FROM ${projectsRel("reconciliations")}
+       WHERE org_id = ${orgId}::uuid AND project_id = ${c.project.id}::uuid
+         AND period_start = ${c.period.from}::date AND state IN ('drafted', 'invoiced')
+       ORDER BY updated_at DESC
+       LIMIT 1`),
+  )[0]
+  if (onInvoice) {
+    return cardData({
+      c,
+      id: onInvoice.id,
+      revision: onInvoice.revision,
+      outcome: "unchanged",
+      state: onInvoice.state,
+      shape: await readStored(tx, orgId, onInvoice.id),
+      viewerId: userId,
+      createdBy: onInvoice.created_by,
+      said:
+        onInvoice.state === "drafted"
+          ? "This period is already on an invoice draft, so its card is returned as stored; nothing new was saved."
+          : "This period is already invoiced, so its card is returned as stored; nothing new was saved.",
+      ...(args.origin ? { origin: args.origin } : {}),
+    })
+  }
+
   // One proposed card per asker, project and period: asked again unchanged, the same row and
   // revision come back; changed, its lines are replaced and the revision moves on.
   const existing = await ownProposal(tx, orgId, userId, c)
@@ -1032,9 +1066,16 @@ function cardData(args: {
   state?: "proposed" | "drafted" | "invoiced" | "credited"
   said?: string
   origin?: string
+  /** Who reads the card and who made it: past proposed, a time-spent note is its author's alone. */
+  viewerId?: string
+  createdBy?: string
 }) {
-  const { c, id, revision, outcome, shape } = args
+  const { c, id, revision, outcome } = args
   const state = args.state ?? "proposed"
+  const shape = {
+    ...args.shape,
+    lines: linesForViewer(args.shape.lines, state, args.viewerId, args.createdBy),
+  }
   const q = (m: number) => worded(m, c.basis, c.hpd)
   const money =
     c.rateMinor !== null && (c.basis === "daily" || c.basis === "hourly" || c.basis === "retainer")
@@ -1162,18 +1203,43 @@ function cardData(args: {
           }),
         }
       : {}),
-    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} No invoice was created.`,
-    next: CARD_NEXT,
+    // The card's money state. Create invoice is added by the handler once invoicing has priced
+    // the lines and found nothing missing; every key is present, null when it does not apply.
+    createInvoice: null as "yes" | null,
+    summary: state === "drafted" ? `On draft: ${draftTitle(c)}.` : null,
+    undo: state === "drafted" ? ("yes" as const) : null,
+    locked: state === "invoiced" ? ("yes" as const) : null,
+    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} ${STATE_SAID[state]}`,
+    next: state === "proposed" ? CARD_NEXT : STATE_NEXT[state],
   }
+}
+
+/** The title invoicing gives the draft a card makes, so the card can name it. */
+export function draftTitle(c: { project: { name: string }; period: { from: string; to: string } }) {
+  return `Invoice draft for ${c.project.name}, ${c.period.from} to ${c.period.to}`
+}
+
+/** What the message says of the card's invoice, by its state. */
+const STATE_SAID: Record<"proposed" | "drafted" | "invoiced" | "credited", string> = {
+  proposed: "No invoice was created.",
+  drafted: "Its invoice draft exists; it has no number until a person issues it.",
+  invoiced: "It is invoiced: its billed lines are locked, and new work waits for its own period.",
+  credited: "Its invoice was credited in full; that work can be billed again on a new card.",
+}
+
+const STATE_NEXT: Record<"drafted" | "invoiced" | "credited", string> = {
+  drafted:
+    "Show the card. A person issues the draft from its approval; Undo on the card discards the draft and brings the card back.",
+  invoiced: "To change a billed line, offer a credit note.",
+  credited: "Reconcile the period again to bill that work on a new card.",
 }
 
 /**
  * What the model is told to do with a saved card. The card lives in this conversation (reconcile_get
- * reopens it) and its actions are Change, Connect GitHub and Move it: it has no accept step and no
- * invoice button, so nothing here may suggest one.
+ * reopens it); its Create invoice drafts the invoice, and a person issues it.
  */
 export const CARD_NEXT =
-  "Show the person the card here: it lives in this conversation, and reconcile_get opens it again. They change a line by telling you or on the card. The card has no accept step and creates no invoice; an invoice for its lines is drafted in Invoicing."
+  "Show the person the card here: it lives in this conversation, and reconcile_get opens it again. They change a line by telling you or on the card. The card's Create invoice drafts the invoice; a person issues it."
 
 // ── reconcile_line_update and reconcile_get ─────────────────────────────────
 
@@ -1186,6 +1252,7 @@ interface StoredHead {
   state: "proposed" | "drafted" | "invoiced" | "credited"
   basis: Basis
   created_by: string
+  document_id: string | null
 }
 
 async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> {
@@ -1195,7 +1262,8 @@ async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> 
         await tx.execute(drizzleSql`
           SELECT id::text AS id, project_id::text AS project_id,
                  period_start::text AS period_start, period_end::text AS period_end,
-                 revision, state, basis, created_by::text AS created_by
+                 revision, state, basis, created_by::text AS created_by,
+                 document_id::text AS document_id
             FROM ${projectsRel("reconciliations")}
            WHERE id = ${uuid}::uuid AND org_id = ${orgId}::uuid`),
       )[0]
@@ -1450,21 +1518,22 @@ export async function reconcileGet(args: {
       tot: [],
       cardNotes: [],
       foot: null,
+      createInvoice: null,
+      summary: null,
+      undo: null,
+      locked: head.state === "invoiced" ? "yes" : null,
       lines: billed,
       message: `${billed.length} billed line${billed.length === 1 ? "" : "s"} of a card that is ${head.state}. The project no longer uses time and budgets, so planned and time spent are not shown.`,
       next: "Answer from the billed lines; a correction goes through a credit note.",
     }
   }
+  // A time-spent note is its author's alone: another reader of the card sees the time entered on
+  // the tasks.
   const stored = await readStored(tx, orgId, head.id)
-  // A time-spent note is its author's alone: another reader of a card past proposed sees the
-  // time entered on the tasks.
   const shape =
     head.created_by === args.userId
       ? stored
-      : {
-          ...stored,
-          lines: stored.lines.map(({ realNoteMinutes: _note, ...l }) => l),
-        }
+      : { ...stored, lines: stored.lines.map(({ realNoteMinutes: _note, ...l }) => l) }
   return cardData({
     c,
     id: head.id,
@@ -1472,6 +1541,52 @@ export async function reconcileGet(args: {
     outcome: "unchanged",
     state: head.state,
     shape,
+    viewerId: args.userId,
+    createdBy: head.created_by,
     said: `The card as stored, revision ${head.revision}.`,
   })
+}
+
+/**
+ * A stored card as its reader may see it, for the create and undo steps: the same card
+ * reconcile_get draws, with what the step says.
+ */
+export async function storedCard(args: {
+  tx: Tx
+  orgId: string
+  userId: string
+  scopes: readonly string[]
+  reconciliationId: string
+  said: string
+  now?: Date
+}) {
+  const head = await readHead(args.tx, args.orgId, args.reconciliationId)
+  const c = await loadContext({
+    tx: args.tx,
+    orgId: args.orgId,
+    scopes: args.scopes,
+    project: head.project_id,
+    ...periodInput(head),
+    ...(args.now ? { now: args.now } : {}),
+  })
+  const stored = await readStored(args.tx, args.orgId, head.id)
+  return {
+    head,
+    card: cardData({
+      c,
+      id: head.id,
+      revision: head.revision,
+      outcome: "unchanged",
+      state: head.state,
+      shape: stored,
+      viewerId: args.userId,
+      createdBy: head.created_by,
+      said: args.said,
+    }),
+  }
+}
+
+/** A stored card's head, for the create and undo steps. */
+export async function reconciliationHead(tx: Tx, orgId: string, id: string) {
+  return readHead(tx, orgId, id)
 }

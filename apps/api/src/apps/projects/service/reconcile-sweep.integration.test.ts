@@ -15,8 +15,6 @@ import {
 } from "~/seed/factories/projects/reconcile"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { reconcileMark, reserveClaims } from "./claims"
 import {
   asPerson,
   type ClaimsWorld,
@@ -28,7 +26,9 @@ import {
   invoiceCarrying,
   reconciliationRow,
   storedReconciliation,
-} from "./claims.test-helpers"
+} from "~/tests/helpers/projects-claims"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { reconcileMark, reserveClaims } from "./claims"
 import {
   IDLE_PROPOSAL_DAYS,
   idleCutoff,

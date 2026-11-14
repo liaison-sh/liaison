@@ -8,8 +8,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { reconcileMark } from "./claims"
 import {
   asPerson,
   type ClaimsWorld,
@@ -20,7 +18,9 @@ import {
   invoiceCarrying,
   reconciliationRow,
   storedReconciliation,
-} from "./claims.test-helpers"
+} from "~/tests/helpers/projects-claims"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { reconcileMark } from "./claims"
 
 let w: ClaimsWorld
 

@@ -324,6 +324,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/apps/projects/service/reconcile-sweep.ts#sweepClaims": {
     docs: 'schemaRef("app_invoicing") plus the literal table name documents, checked with to_regclass first',
   },
+  "apps/api/src/apps/projects/service/reconcile-sweep.ts#documentsForRef": {
+    docs: 'documentsTable(): schemaRef("app_invoicing") plus the literal table name documents, checked with to_regclass first; org id and ref bound as parameters',
+  },
   "apps/api/src/apps/projects/service/reconcile.ts#readableProofRefs": {
     rel: "schemaRef() and table name from the code constant OWNED_PROOFS, checked with to_regclass first",
   },

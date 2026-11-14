@@ -61,6 +61,21 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason:
       "the record of Drive files imported into Liaison files (the files themselves are kernel files)",
   },
+  "app_invoicing.activity_reports": {
+    exempt: "derived",
+    reason:
+      "the activity report of an invoice, made from its reconciliation and handed over with the document on issue; follows its document, never imported",
+  },
+  "app_invoicing.advance_deductions": {
+    exempt: "derived",
+    reason:
+      "an advance invoice's deduction from a final invoice, written when the final invoice is made; follows its documents, never imported",
+  },
+  "app_invoicing.billing_steps": {
+    exempt: "derived",
+    reason:
+      "a project's billing schedule (advance, milestones, final), planned in the app and moved by the invoices made from it; follows its documents, never imported",
+  },
   "app_invoicing.contact_primary_thread": {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",
@@ -74,6 +89,11 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     reason: "e-invoicing and FX sync state",
   },
   "app_invoicing.deferred_events": { exempt: "sync", reason: "e-invoicing and FX sync state" },
+  "app_invoicing.document_attachments": {
+    exempt: "derived",
+    reason:
+      "annexes of an invoice (activity report, timesheet) linking kernel files to it; follows its document, never imported",
+  },
   "app_invoicing.einvoice_book_batches": {
     exempt: "sync",
     reason: "e-invoicing and FX sync state",

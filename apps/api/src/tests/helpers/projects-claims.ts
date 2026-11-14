@@ -80,7 +80,7 @@ export function asPerson<T>(
   return withRlsContext(actorOf(w, opts.scopes, opts.userId), fn)
 }
 
-const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 
 /** The invoicing app registered for the org from source, so its documents table exists. */
 async function registerInvoicing(orgId: string): Promise<void> {

@@ -9,8 +9,6 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import * as minimal from "~/seed/tiers/minimal"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { reserveClaims } from "./claims"
 import {
   asPerson,
   type ClaimsWorld,
@@ -20,7 +18,9 @@ import {
   forgetClaimsWorld,
   heldClaim,
   storedReconciliation,
-} from "./claims.test-helpers"
+} from "~/tests/helpers/projects-claims"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { reserveClaims } from "./claims"
 import { sweepClaims } from "./reconcile-sweep"
 import { ProjectsServiceError } from "./statuses"
 

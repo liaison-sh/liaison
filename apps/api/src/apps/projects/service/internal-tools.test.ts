@@ -10,15 +10,15 @@ import projectsManifest from "~/apps/projects/app.manifest.json"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { seedReconciliationLine } from "~/seed/factories/projects/reconcile"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { milestoneStatusRead, reconcileLinesRead } from "./claims"
 import {
   asPerson,
   type ClaimsWorld,
   claimsWorld,
   forgetClaimsWorld,
   storedReconciliation,
-} from "./claims.test-helpers"
+} from "~/tests/helpers/projects-claims"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { milestoneStatusRead, reconcileLinesRead } from "./claims"
 
 let w: ClaimsWorld
 let ownerName = ""

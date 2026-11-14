@@ -135,6 +135,8 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_boxtal.prep_quote.input_hash": CONTENT_HASH,
   "app_calendar.calendars.sync_token": "provider sync cursor, grants no access",
   "app_invoicing.counterparty_identities.verified_by": "who approved the identity, not a verifier",
+  "app_invoicing.advance_deductions.state": STATUS,
+  "app_invoicing.billing_steps.state": STATUS,
   "app_invoicing.einvoice_book_batches.state": STATUS,
   "app_invoicing.einvoice_send_batches.state": STATUS,
   "app_invoicing.einvoice_transmissions.idempotency_key": CONTENT_HASH,

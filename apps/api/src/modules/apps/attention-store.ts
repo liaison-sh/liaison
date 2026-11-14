@@ -100,6 +100,12 @@ export const SEEN_WINDOW_MS = 30 * 60_000
  * out of the refreshes while its person was away: it is recomputed, not shown.
  */
 export const STORED_LIST_MAX_AGE_MS = SEEN_WINDOW_MS
+/**
+ * What the feed says for an app whose stored list was too old to serve: its items are hidden
+ * until the refresh lands, and the app reads as out of date rather than as nothing to do (a
+ * stalled refresh queue never empties the feed in silence).
+ */
+export const STALE_LIST_MESSAGE = "This list is out of date and is being refreshed."
 /** How long a feed read or a refresh waits on Redis for the audience. */
 const REDIS_ANSWER_MS = 2_000
 const seenKey = (orgId: string) => `attention:seen:${orgId}`
@@ -847,10 +853,11 @@ export function isStoredListTooOld(computedAt: Date | string, now: number): bool
 
 /**
  * The reader's stored lists of these apps, under the reader's RLS context. An
- * app with no stored list for the reader, or with one computed more than
- * STORED_LIST_MAX_AGE_MS ago, is absent from the map (and is scheduled for a
- * refresh in the background): the feed never shows a list that may no longer
- * be true.
+ * app with no stored list for the reader is absent from the map; one computed
+ * more than STORED_LIST_MAX_AGE_MS ago comes back with no items and the
+ * out-of-date error (STALE_LIST_MESSAGE). Both are scheduled for a refresh in
+ * the background: the feed never shows a list that may no longer be true, and
+ * never hides one without saying so.
  */
 export async function readStoredAttention(
   tx: RlsClient,
@@ -876,8 +883,13 @@ export async function readStoredAttention(
       ),
     )
   const now = Date.now()
+  const fresh = new Set<string>()
   for (const r of rows) {
-    if (isStoredListTooOld(r.computedAt, now)) continue
+    if (isStoredListTooOld(r.computedAt, now)) {
+      out.set(r.app, { items: [], error: { reason: "error", message: STALE_LIST_MESSAGE } })
+      continue
+    }
+    fresh.add(r.app)
     out.set(r.app, {
       items: Array.isArray(r.items) ? r.items : [],
       error: (r.error as StoredAttention["error"]) ?? null,
@@ -886,10 +898,10 @@ export async function readStoredAttention(
   // Queued, never run here: the read runs no app code. A reader back from
   // away was left out of the refreshes meanwhile: every app is recomputed.
   // The mark is not awaited here: the read may hold a transaction.
-  for (const app of apps) if (!out.has(app)) scheduleAttentionRefresh(orgId, app)
+  for (const app of apps) if (!fresh.has(app)) scheduleAttentionRefresh(orgId, app)
   track(
     (wakeDeps.markReader ?? markAttentionReader)(orgId, userId).then((returning) => {
-      if (returning) for (const app of out.keys()) scheduleAttentionRefresh(orgId, app)
+      if (returning) for (const app of fresh) scheduleAttentionRefresh(orgId, app)
     }),
   )
   return out

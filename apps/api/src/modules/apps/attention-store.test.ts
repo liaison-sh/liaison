@@ -25,6 +25,7 @@ import {
   readStoredAttention,
   refreshAllAppAttention,
   refreshAppAttention,
+  STALE_LIST_MESSAGE,
   STORED_LIST_MAX_AGE_MS,
   wireAttentionRefreshWakes,
 } from "~/modules/apps/attention-store"
@@ -83,6 +84,15 @@ describe("stored app attention", () => {
       orgId,
       actor: { actorType: "user", userId, orgId, scopes: ["*"], dimensionGrants: {} },
     })
+
+  // Back-date the stored list, as if its refreshes had stopped that long ago.
+  const ageList = async (ms: number) =>
+    withPrivilegedDb(orgId, "test:age-attention-list", (tx) =>
+      tx.execute(
+        sql`UPDATE kernel.app_attention_items SET computed_at = now() - make_interval(secs => ${ms / 1000})
+            WHERE org_id = ${orgId}::uuid AND app = ${APP}`,
+      ),
+    )
 
   beforeAll(async () => {
     await acquireTestLock()
@@ -294,6 +304,24 @@ describe("stored app attention", () => {
     ])
     await attentionRefreshesSettled()
     expect(providerRuns).toBe(0)
+  })
+
+  it("a list too old to serve says so on the feed: the app reads as out of date, never as nothing to do", async () => {
+    listed = [item("stalled")]
+    await refreshAppAttention(orgId, APP, deps)
+    await ageList(STORED_LIST_MAX_AGE_MS + 60_000)
+    const res = await feed()
+    expect(res.items.filter((i) => i.app === APP)).toEqual([])
+    expect(res.errors).toContainEqual({
+      app: APP,
+      reason: "error",
+      message: STALE_LIST_MESSAGE,
+    })
+    await attentionRefreshesSettled()
+    // Recomputed: served again, the marker gone.
+    const after = await feed()
+    expect(after.items.filter((i) => i.app === APP).map((i) => i.id)).toEqual(["stalled"])
+    expect(after.errors.filter((e) => e.app === APP)).toEqual([])
   })
 
   it("drops malformed items and caps nothing it should not", async () => {

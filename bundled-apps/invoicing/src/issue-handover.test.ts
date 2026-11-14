@@ -230,7 +230,7 @@ async function draftWith(
     ...SOURCE,
     ...(opts.refs ? { external_refs: opts.refs } : {}),
   })
-  if (key?.startsWith("reconcile:")) h.reserved.documentRef = key
+  if (key?.startsWith("reconcile:") || key?.startsWith("retainer:")) h.reserved.documentRef = key
   return id
 }
 

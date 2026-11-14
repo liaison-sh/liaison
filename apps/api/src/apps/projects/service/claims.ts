@@ -12,11 +12,13 @@
 // widened scope of a declared cross-app call) and is compare-and-set on the state it expects, so
 // the hourly sweep and `reconcile_mark` may run in either order. The one read outside the caller's
 // rows is the invoicing documents read the sweep already does (`documentsForRef`).
+
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { worded } from "./reconcile-lines"
 import { documentsForRef, ISSUED_STATES, type RefDocument } from "./reconcile-sweep"
+import { retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
 import { type Basis, hoursPerDayMinutes, orgTimezone } from "./time-plan"
 
@@ -590,6 +592,10 @@ export async function reconcileLinesRead(args: {
     )[0]?.n ?? 0
   const per = basis === "daily" ? hpd : 60
   const unit = basis === "daily" ? "day" : "hour"
+  const retainer =
+    basis === "retainer" && r.period_start
+      ? await retainerMonthFacts(tx, orgId, r.project_id, r.period_start)
+      : null
   return {
     reconciliationId: r.id,
     projectId: r.project_id,
@@ -601,6 +607,7 @@ export async function reconcileLinesRead(args: {
     documentRef: r.document_ref,
     claimsReserved: reserved > 0,
     period: { from: r.period_start, to: r.period_end },
+    ...(retainer ? { timeboxMinutes: retainer.timeboxMinutes } : {}),
     rate: {
       rateMinor: frozen?.rate === null || frozen?.rate === undefined ? null : Number(frozen.rate),
       currency: frozen?.currency ?? null,

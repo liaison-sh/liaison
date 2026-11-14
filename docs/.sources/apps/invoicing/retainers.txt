@@ -1,0 +1,4 @@
+A retainer's month is invoiced from the project's card, never by the run, and refuses issuing by itself -> bundled-apps/invoicing/src/mutations/retainer.ts (retainerDraftFromReconcile) ; bundled-apps/invoicing/app.manifest.json (tools.retainer_draft_from_reconcile)
+The daily retainer-timebox-roll job sets the next month's included hours on the project -> bundled-apps/invoicing/app.manifest.json (jobs.retainer-timebox-roll) ; bundled-apps/invoicing/src/retainer-timebox-roll.ts (retainerTimeboxRoll)
+The card's preview prices a retainer month as its draft will be -> bundled-apps/invoicing/src/tools/preview-totals.ts (retainerPreview)
+A contact named on Create receives the draft; the preview checks it is of the project's company -> bundled-apps/invoicing/src/mutations/from-reconcile.ts (draftFromReconcile) ; bundled-apps/invoicing/src/tools/preview-totals.ts (companyOfContact)

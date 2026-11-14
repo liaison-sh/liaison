@@ -2228,7 +2228,11 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         from?: string
         to?: string
         timebox?: string | null
+        sourceRef?: string
       }
+      // A retainer's months come from invoicing's own declared call: the row is marked derived
+      // from the schedule, never from a parameter a person or agent could set.
+      const fromRetainer = bridgeOptions?.callerApp === "invoicing"
       return typedServiceCall(async () => {
         const { setPeriodTimebox } = await import("~/apps/projects/service/time-plan")
         const { resolveProjectId } = await import("~/apps/projects/service/resolve")
@@ -2243,6 +2247,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             input: {
               projectId,
               timebox: params.timebox ?? null,
+              ...(fromRetainer
+                ? {
+                    source: "retainer" as const,
+                    sourceRef: typeof params.sourceRef === "string" ? params.sourceRef : null,
+                  }
+                : {}),
               ...(params.month !== undefined ? { month: params.month } : {}),
               ...(params.from !== undefined ? { from: params.from } : {}),
               ...(params.to !== undefined ? { to: params.to } : {}),

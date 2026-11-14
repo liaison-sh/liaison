@@ -11,6 +11,7 @@ import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { SCHEDULE_PAUSED } from "./end-schedule"
 import { type EditCtx, logRunEdit, stageRunCardAfterRemoval } from "./restage"
+import { isRetainerSchedule, monthOf, nextMonth, PREPAID_WARNING } from "./retainer"
 import {
   type Cadence,
   datesFrom,
@@ -33,6 +34,8 @@ export type RecurringCtx = Pick<MutationsCtx, "getUserId" | "db"> & {
   }) => Promise<void>
   approval?: MutationsCtx["approval"] | null
   executeTool?: MutationsCtx["executeTool"]
+  /** The caller's own scopes (never a widened cross-app actor): a retainer needs projects money. */
+  hasScope?(scope: string): Promise<boolean>
   turn?: { get(): Promise<unknown> }
 }
 
@@ -64,6 +67,11 @@ export interface ScheduleFields {
   notes?: string | null
   /** What the schedule bills when the customer also pays a live Stripe subscription (a person's statement). */
   billsOtherThanStripe?: string | null
+  /** A retainer: the project its month is reconciled on, its included minutes, its overage rate. */
+  retainer_project_id?: string | null
+  retainer_minutes?: number | null
+  retainer_overage_rate_minor?: number | null
+  retainer_rollover?: "none" | "next"
 }
 
 export interface ScheduleCreateInput extends ScheduleFields {
@@ -106,6 +114,11 @@ export interface ScheduleRow extends Cadence {
   last_document_id?: string | null
   bills_other_than_stripe?: string | null
   created_by?: string
+  retainer_project_id?: string | null
+  retainer_minutes?: number | null
+  retainer_overage_rate_minor?: number | string | null
+  retainer_rollover?: string
+  retainer_from?: string | null
 }
 
 type Fail = ErrorEnvelope
@@ -215,6 +228,8 @@ function withCoercedLines<T extends { lines?: ScheduleLineInput[] }>(input: T): 
 /** Stage-time check of a save: everything that can be refused without writing. */
 export function checkScheduleInput(raw: ScheduleFields & { issue_mode?: string }): Fail | null {
   const input = withCoercedLines(raw)
+  const retainer = retainerErrors(input)
+  if (retainer) return retainer
   if (input.issue_mode === "auto") {
     return fail(
       "auto_needs_update",
@@ -223,6 +238,96 @@ export function checkScheduleInput(raw: ScheduleFields & { issue_mode?: string }
   }
   const errors = [...validateSchedule(input), ...extraErrors(input)]
   return errors.length > 0 ? invalid(errors) : null
+}
+
+/** What a retainer's terms must hold, and the one thing a retainer can never do: issue by itself. */
+function retainerErrors(s: {
+  retainer_project_id?: unknown
+  retainer_minutes?: unknown
+  retainer_overage_rate_minor?: unknown
+  retainer_rollover?: unknown
+  issue_mode?: unknown
+}): Fail | null {
+  const any =
+    (s.retainer_minutes !== undefined && s.retainer_minutes !== null) ||
+    (s.retainer_project_id !== undefined && s.retainer_project_id !== null)
+  if (!any) return null
+  const errors: string[] = []
+  if (!(Number.isInteger(s.retainer_minutes) && (s.retainer_minutes as number) > 0))
+    errors.push("retainer_minutes: the included hours, in minutes above zero")
+  const rate = s.retainer_overage_rate_minor
+  if (!(Number.isInteger(Number(rate)) && Number(rate) >= 0 && rate !== null && rate !== undefined))
+    errors.push("retainer_overage_rate_minor: the overage rate in minor units, zero or more")
+  if (typeof s.retainer_project_id !== "string" || s.retainer_project_id === "")
+    errors.push("retainer_project_id: the project the month is reconciled on")
+  if (errors.length > 0)
+    return fail("invalid_schedule", `The retainer was not saved: ${errors.join("; ")}.`)
+  if (s.issue_mode === "auto") {
+    return fail(
+      "retainer_needs_reconcile",
+      "A retainer cannot issue by itself: its month is invoiced from the project's planned vs done card, which a person reconciles. Nothing was saved; keep issue_mode review.",
+    )
+  }
+  return null
+}
+
+/** Retainer terms are money on a project: they need the person's own projects money scope. */
+async function retainerScopeRefusal(
+  ctx: RecurringCtx,
+  patch: {
+    retainer_minutes?: unknown
+    retainer_project_id?: unknown
+    retainer_overage_rate_minor?: unknown
+    retainer_rollover?: unknown
+  },
+): Promise<Fail | null> {
+  const touches =
+    patch.retainer_minutes !== undefined ||
+    patch.retainer_project_id !== undefined ||
+    patch.retainer_overage_rate_minor !== undefined ||
+    patch.retainer_rollover !== undefined
+  if (!touches) return null
+  const own = ctx.hasScope ? await ctx.hasScope("projects:money:write") : false
+  if (own) return null
+  return fail(
+    "retainer_needs_project_money",
+    "Setting a project's retainer needs the projects money scope (a project lead or finance in projects). Nothing was saved.",
+  )
+}
+
+/**
+ * The retainer's months on its project: this month (on a new retainer) and the next, with the
+ * included hours, written through projects' own timebox tool. Best effort: the daily roll adds a
+ * missing month. Returns what it wrote.
+ */
+export async function writeRetainerTimeboxes(
+  ctx: RecurringCtx,
+  s: { id: string; retainer_project_id?: string | null; retainer_minutes?: number | null },
+  months: string[],
+  minutes: number | null,
+): Promise<string[]> {
+  if (!ctx.executeTool || !s.retainer_project_id) return []
+  const done: string[] = []
+  for (const month of months) {
+    const timebox =
+      minutes === null
+        ? null
+        : minutes % 60 === 0
+          ? `${minutes / 60}h`
+          : `${Math.floor(minutes / 60)}h ${minutes % 60}`
+    try {
+      const env = await ctx.executeTool("projects:period_timebox_set", {
+        projectId: s.retainer_project_id,
+        month,
+        timebox,
+        sourceRef: s.id,
+      })
+      if (env?.status === "completed") done.push(month)
+    } catch {
+      // The daily roll writes it.
+    }
+  }
+  return done
 }
 
 /**
@@ -252,6 +357,7 @@ export async function checkScheduleCreate(
 ): Promise<Fail | null> {
   return (
     checkScheduleInput(raw) ??
+    (await retainerScopeRefusal(ctx, raw)) ??
     (await scheduleGuard(ctx, raw, raw.billsOtherThanStripe, "preflight"))
   )
 }
@@ -266,6 +372,8 @@ export async function recurringScheduleCreate(
       scheduleStatus: string
       nextIssueOn: string | null
       nextDraftOn: string | null
+      timeboxMonths?: string[]
+      warning?: string
       message: string
     }
   | Fail
@@ -273,6 +381,7 @@ export async function recurringScheduleCreate(
   const input = withCoercedLines(raw)
   const refused =
     checkScheduleInput(input) ??
+    (await retainerScopeRefusal(ctx, input)) ??
     (await scheduleGuard(ctx, input, input.billsOtherThanStripe, "handler"))
   if (refused) return refused
   const issuer = await issuerOf(ctx, input.issuer_profile_id)
@@ -299,6 +408,15 @@ export async function recurringScheduleCreate(
     language: input.language ?? issuer.default_language ?? "en",
     lines: input.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" })),
     notes: input.notes ?? null,
+    ...(isRetainerSchedule(input)
+      ? {
+          retainer_project_id: input.retainer_project_id,
+          retainer_minutes: input.retainer_minutes,
+          retainer_overage_rate_minor: input.retainer_overage_rate_minor ?? 0,
+          retainer_rollover: input.retainer_rollover ?? "none",
+          retainer_from: monthOf(now.date),
+        }
+      : {}),
     ...(billsOtherOf(input.billsOtherThanStripe)
       ? {
           bills_other_than_stripe: billsOtherOf(input.billsOtherThanStripe),
@@ -311,6 +429,35 @@ export async function recurringScheduleCreate(
     created_by: userId,
   }
   const created = (await ctx.db.insert(ENTITY, row)) as { id: string }
+  if (isRetainerSchedule(input)) {
+    const month = monthOf(now.date)
+    const months =
+      status === "active"
+        ? await writeRetainerTimeboxes(
+            ctx,
+            { id: created.id, retainer_project_id: input.retainer_project_id ?? null },
+            [month, nextMonth(month)],
+            Number(input.retainer_minutes),
+          )
+        : []
+    return {
+      status: "completed",
+      id: created.id,
+      scheduleStatus: status,
+      nextIssueOn: null,
+      nextDraftOn: null,
+      timeboxMonths: months,
+      ...(input.covers === "period_ahead" ? { warning: PREPAID_WARNING } : {}),
+      message:
+        `Retainer ${created.id} saved${status === "active" ? " and active" : " as a draft"}. The month-end run never drafts it: each month is invoiced from the project's planned vs done card once a person reconciles it. ` +
+        (months.length > 0
+          ? `Included hours are set on the project for ${months.join(" and ")}.`
+          : status === "active"
+            ? "The project's monthly timeboxes were not written yet; the daily roll adds them."
+            : "Start it with recurring_schedule_update status active.") +
+        (input.covers === "period_ahead" ? ` ${PREPAID_WARNING}` : ""),
+    }
+  }
   return {
     status: "completed",
     id: created.id,
@@ -357,6 +504,12 @@ export async function checkScheduleUpdate(
   const next = merged(current, patch)
   const errors = [...validateSchedule(next), ...extraErrors(next)]
   if (errors.length > 0) return invalid(errors)
+  const retainer =
+    retainerErrors({
+      ...next,
+      retainer_overage_rate_minor: next.retainer_overage_rate_minor ?? 0,
+    }) ?? (await retainerScopeRefusal(ctx, patch))
+  if (retainer) return retainer
   // Ending a schedule bills nothing more, so it never meets the guard.
   if (raw.status === "ended") return null
   return scheduleGuard(ctx, next, billsOtherThanStripe ?? current.bills_other_than_stripe, stage)
@@ -397,6 +550,7 @@ export async function recurringScheduleUpdate(
       issueMode: string
       scheduleStatus: string
       nextIssueOn: string | null
+      warning?: string
       message: string
     }
   | Fail
@@ -427,6 +581,12 @@ export async function recurringScheduleUpdate(
   }
   if (patch.lines)
     data.lines = patch.lines.map((l) => ({ ...l, line_kind: l.line_kind ?? "service" }))
+  // A schedule made a retainer during a month keeps that month on the run: the retainer bills
+  // from the next month. Ending the retainer (no included hours) clears it.
+  const becomes = merged(current, patch)
+  if (isRetainerSchedule(becomes) && !isRetainerSchedule(current))
+    data.retainer_from = nextMonth(monthOf(now.date))
+  else if (!isRetainerSchedule(becomes) && isRetainerSchedule(current)) data.retainer_from = null
 
   // Who turned automatic issuing on is the person who decided it: the approver of an agent's
   // request, or the person who clicked.
@@ -459,6 +619,38 @@ export async function recurringScheduleUpdate(
   data.version = current.version + 1
   await ctx.db.update(ENTITY, current.id, data)
   await announceScheduleChange(ctx, current.id, current.version + 1)
+  // A retainer's terms changed mid-month apply from the next month: this month keeps its
+  // timebox. Ending it removes its months to come (the derived rows are the signal projects reads).
+  let retainerNote = ""
+  const after = merged(current, patch)
+  if (isRetainerSchedule(after) || isRetainerSchedule(current)) {
+    const nextM = nextMonth(monthOf(now.date))
+    const target = {
+      id: current.id,
+      retainer_project_id: after.retainer_project_id ?? current.retainer_project_id ?? null,
+    }
+    if (status === "ended" || !isRetainerSchedule(after)) {
+      await writeRetainerTimeboxes(ctx, target, [nextM], null)
+      retainerNote = ` Its months after this one are taken off the project.`
+    } else if (
+      patch.retainer_minutes !== undefined ||
+      patch.retainer_project_id !== undefined ||
+      wanted === "active"
+    ) {
+      const wrote = await writeRetainerTimeboxes(
+        ctx,
+        target,
+        [nextM],
+        Number(after.retainer_minutes),
+      )
+      retainerNote =
+        wrote.length > 0
+          ? ` New retainer terms apply from ${nextM}; this month keeps what it had.`
+          : ` New retainer terms apply from ${nextM}; the project's timebox for it is added by the daily roll.`
+    }
+    if (status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead")
+      retainerNote += ` ${PREPAID_WARNING}`
+  }
   const issueMode = String(data.issue_mode ?? current.issue_mode)
   const nextIssueOn =
     (data.next_issue_on as string | null | undefined) ??
@@ -474,7 +666,11 @@ export async function recurringScheduleUpdate(
       `Schedule ${current.id} changed to version ${current.version + 1}. ` +
       (status === "ended"
         ? "It has ended and bills nothing more."
-        : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`),
+        : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`) +
+      retainerNote,
+    ...(status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead"
+      ? { warning: PREPAID_WARNING }
+      : {}),
   }
 }
 
@@ -544,6 +740,12 @@ export async function recurringSchedulePause(
     version: current.version + 1,
   })
   await announceScheduleChange(ctx, current.id, current.version + 1)
+  // A paused retainer takes its months to come off the project; resuming writes them again.
+  if (isRetainerSchedule(current) && !checkOnly) {
+    const issuer = await issuerOf(ctx, current.issuer_profile_id)
+    const now = isFail(issuer) ? null : await today(ctx, issuer)
+    if (now?.ok) await writeRetainerTimeboxes(ctx, current, [nextMonth(monthOf(now.date))], null)
+  }
   const leftOut = await leaveOutOpenRows(ctx, current.id)
   const runNote =
     leftOut > 0

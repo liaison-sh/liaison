@@ -32,6 +32,8 @@ export interface DraftFromReconcileInput {
   revision?: number
   /** The project lead's name, signing the activity report (the projects app passes it). */
   leadName?: string | null
+  /** The contact of the project's company the invoice goes to (projects checked it is of the company). */
+  contactId?: string | null
 }
 
 export interface DraftFromReconcileCtx extends MutationsCtx {
@@ -227,10 +229,13 @@ export async function draftFromReconcile(
     return refuse("nothing_billed", "The card bills no line. No draft was made.")
   }
 
+  const contactId =
+    typeof input.contactId === "string" && UUID.test(input.contactId) ? input.contactId : null
   const preview = await previewTotals(ctx, {
     projectId: read.projectId,
     basis: read.basis,
     companyId: read.companyId ?? null,
+    contactId,
     currency,
     rateMinor: read.rate?.rateMinor ?? null,
     hoursPerDayMinutes: read.rate?.hoursPerDayMinutes ?? null,
@@ -246,10 +251,10 @@ export async function draftFromReconcile(
   const unit = unitOfBasis(read.basis)
   const hpd = read.rate.hoursPerDayMinutes
   const rate = read.rate.rateMinor as number
-  const recipient = await recipientOf(ctx, { contactId: null, companyId: read.companyId ?? null })
+  const recipient = await recipientOf(ctx, { contactId, companyId: read.companyId ?? null })
   const created = await draftsCreate(ctx, {
     type: "invoice",
-    counterparty_contact_id: null,
+    counterparty_contact_id: contactId,
     ...recipient,
     currency: currency as string,
     operation_category: "services",

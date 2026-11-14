@@ -56,7 +56,16 @@ Each schedule's invoice for a period is made by the month-end run of its issuer 
 
 A run opens in its own tab. It shows who approved it, the period and the number range. A partial run lists the rows that could not issue, each with **Fix**, which opens its draft.
 
+## Bill a monthly retainer
+
+A retainer is a schedule with included hours a month and a rate for the hours above them. Set them on the schedule: the project its months are reconciled on, the included hours (`retainer_minutes`), the overage rate (`retainer_overage_rate_minor`, per hour) and whether unused hours roll over to the next month (`retainer_rollover`). Setting them needs the projects money scope of a project lead or finance, not only the invoicing scopes.
+
+- **No month-end run.** The run never drafts a retainer month. Each month is invoiced from the project's planned vs done card once a person reconciles it and presses **Create invoice**: the schedule's fee, then the hours above the included and rolled-in hours at the overage rate. Under the included hours there is no overage line. A retainer can never issue by itself.
+- **Waive.** The overage can be waived for one month; the next month is billed as usual.
+- **Rollover.** With rollover on, the hours a month did not use are added to the next month only, at most one month's included hours, and never carried further.
+- **Prepaid.** With **covers** set to the period ahead, each month's fee is invoiced ahead as an advance, and the month-end invoice deducts it and adds any overage, so it can total zero. The schedule says so when saved: check this way of billing with your accountant.
+- **Included hours on the project.** Saving a retainer sets this month's and next month's timebox on its project; a daily job adds the next month. Terms changed during a month apply from the next one. A schedule made a retainer during a month keeps that month on the run and is reconciled from the next.
+
 ## Not built yet
 
 - Asking the client to confirm a schedule first.
-- Retainer fields on schedules and invoices.

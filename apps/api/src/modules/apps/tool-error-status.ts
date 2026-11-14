@@ -206,6 +206,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   invalid_kind: 400,
   invalid_project: 400,
   nothing_billed: 422,
+  // A retainer: its terms, its month drafted from its card, and the card's own discard.
+  no_retainer_schedule: 409,
+  not_a_card_draft: 409,
+  not_a_retainer: 409,
+  period_on_run: 409,
+  retainer_needs_project_money: 403,
+  retainer_needs_reconcile: 409,
   // A billing plan, its milestone and advance invoices, and an advance's refund.
   advance_already_deducted: 409,
   advance_exceeds_invoice: 422,

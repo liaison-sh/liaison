@@ -26,9 +26,11 @@ import { getDraft } from "./mutations/db-helpers"
 import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
 import { DRAFT_DEPENDENTS, handOverDraft } from "./mutations/issue-handover"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
+import { documentsSendToCustomer } from "./mutations/send-to-customer"
 import { documentsSearch } from "./reads"
 import { createMockDb, type MockDb } from "./test-db"
 import { testTime } from "./test-time"
+import { documentAttachmentAdd } from "./tools/document-attachment-add"
 
 type Row = Record<string, unknown>
 
@@ -643,6 +645,33 @@ describe("a draft that goes away while it is being issued", () => {
     expect(res.status).toBe("error")
     expect(issuedDocs(h.db)).toHaveLength(0)
     expect(sequenceTotal(h.db)).toBe(0)
+  })
+})
+
+describe("an annex once the invoice was sent", () => {
+  test("an annex is filed on an issued invoice before it is sent, and refused once it was sent", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:12`)
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    if (res.status !== "completed") throw new Error(JSON.stringify(res))
+    const annexCtx = {
+      db: h.db,
+      hasScope: async () => true,
+      files: { attachToParent: async () => ({ id: crypto.randomUUID() }) },
+    }
+    const add = () =>
+      documentAttachmentAdd(annexCtx as never, {
+        documentId: res.document_id,
+        fileId: crypto.randomUUID(),
+        kind: "timesheet",
+      })
+    expect((await add()).status).toBe("completed")
+    const sent = await documentsSendToCustomer(h.ctx as never, { document_id: res.document_id })
+    expect(sent).toMatchObject({ status: "completed" })
+    const refused = await add()
+    expect(refused.status === "error" && refused.error.code).toBe("document_sent")
+    expect(refused.status === "error" && refused.error.message).toContain(res.number)
+    expect(h.db.__all("document_attachments")).toHaveLength(1)
   })
 })
 

@@ -239,7 +239,7 @@ describe("filing an annex on an invoice", () => {
     }
   }
 
-  test("an annex is filed on a draft and refused on a sent invoice", async () => {
+  test("an annex is filed on a draft and refused on a document past issued", async () => {
     const a = annexCtx("draft", true)
     const r = await documentAttachmentAdd(a.ctx as never, {
       documentId: DOC,

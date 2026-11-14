@@ -6,6 +6,7 @@
 // paid or otherwise settled invoice takes no new annex (send a credit note and a new invoice).
 
 import type { MutationsDb } from "../mutations/shared"
+import { wasSent } from "../sent-record"
 
 export interface DocumentAttachmentAddInput {
   documentId?: string
@@ -77,11 +78,18 @@ export async function documentAttachmentAdd(
     return refuse("not_found", `No invoice ${documentId} you can read. Nothing was filed.`)
   }
   const status = String(doc.status ?? "draft")
+  const label = doc.number ? `Invoice ${String(doc.number)}` : `Invoice ${documentId}`
   if (!OPEN.has(status)) {
-    const label = doc.number ? `Invoice ${String(doc.number)}` : `Invoice ${documentId}`
     return refuse(
       "document_sent",
       `${label} is ${status}, so nothing was filed on it. An annex goes on an invoice before it is sent; correct a sent one with a credit note.`,
+    )
+  }
+  // Sending leaves the status at issued: the send's own record says it went out.
+  if (status === "issued" && (await wasSent(ctx.db, doc))) {
+    return refuse(
+      "document_sent",
+      `${label} was already sent to the customer, so nothing was filed on it. An annex goes on an invoice before it is sent; correct a sent one with a credit note.`,
     )
   }
   if (!ctx.files?.attachToParent) {

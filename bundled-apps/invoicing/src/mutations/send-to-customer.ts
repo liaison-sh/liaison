@@ -4,6 +4,7 @@
 
 import { closeAutoEmailParks } from "../deferred"
 import { deliveryFileId } from "../legal-originals/delivery"
+import { recordSent } from "../sent-record"
 import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
 import {
@@ -189,7 +190,10 @@ export async function documentsSendToCustomer(
     originating_approval_id: ctx.approval?.approvalRequestId ?? "",
   })
   if (composeResult.status === "completed") {
-    // The document went out: its automatic mail, parked or unknown, must not go as well.
+    // The document went out: its automatic mail, parked or unknown, must not go as well, and it
+    // takes no new annex from now on.
+    // The mail is gone whatever happens to the record: a failed write never fails the send.
+    await recordSent(ctx.db, doc.id, await ctx.getUserId()).catch(() => undefined)
     await closeAutoEmailParks(ctx, doc.id)
     return { status: "completed", dispatched: true }
   }

@@ -80,6 +80,12 @@ export interface ProfiledWorkerEnv extends WorkerEnv {
    * through it too (`serverUrl` takes this value).
    */
   serverUrlAfterRestart?: string
+  /**
+   * Set by a managed restart: the world's org is a customer's, and installing
+   * apps is the instance operator's power there (modules/apps/operator-org.ts),
+   * so the world gets no catalog installs, as a customer org on a managed cell.
+   */
+  noCatalogInstalls?: boolean
 }
 
 interface TestFixtures {
@@ -267,10 +273,11 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
       // `world` first: it registers the org and its admin the seed fills.
       async ({ world: _world, env }, use) => {
         await env.waitForReady(30_000)
-        const qa = await seedPwWorld(env, {
-          email: "admin@test.com",
-          password: "12345678",
-        })
+        const qa = await seedPwWorld(
+          env,
+          { email: "admin@test.com", password: "12345678" },
+          { catalogApps: !env.noCatalogInstalls },
+        )
         await use(qa)
       },
       // The seed, then the catalog apps' installs.

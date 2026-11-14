@@ -107,6 +107,16 @@ describe("the reconcile card", () => {
     expect(rows(over)[0]?.cells.bill).toBe("3 d")
     expect(over.sub).toContain("Billed stays at what was planned")
 
+    // Billed above the period's plan reads over, however the lines are grouped.
+    const billedOver = draw({
+      lines: [
+        line("export"),
+        line("review", { kind: "unplanned", plannedMinutes: null, billMinutes: d(1) }),
+      ],
+    })
+    expect(billedOver.status?.label.label).toBe("Over the plan")
+    expect(billedOver.sub).toBe("Planned 3 d. Billed 4 d, more than planned. Time spent 6 d.")
+
     // Little time spent: an estimate reads with ~, and the cover says it is partial.
     const estimated = draw({
       coverage: { withEntries: 2, total: 9 },

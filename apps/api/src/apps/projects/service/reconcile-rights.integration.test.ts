@@ -65,7 +65,7 @@ async function call<T = Record<string, any>>(method: string, input: unknown): Pr
 
 const proposal = (why = "The export.") => ({
   project: "ORBIT",
-  lines: [{ name: "Export", kind: "planned", why, taskIds: [taskId], proofs: [] }],
+  lines: [{ name: "Export", why, taskIds: [taskId], proofs: [] }],
   notSeen: [{ source: "GitHub", why: "not connected" }],
 })
 

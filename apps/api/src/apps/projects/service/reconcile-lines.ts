@@ -135,7 +135,6 @@ const LINE_KEYS: ReadonlySet<string> = new Set([
   "name",
   "why",
   "taskIds",
-  "kind",
   "reason",
   "otherProjectKey",
   "traceEstimate",
@@ -156,7 +155,6 @@ export interface ProposedLine {
   name: string
   why?: string
   taskIds: string[]
-  kind: "planned" | "unplanned"
   reason?: LineReason
   otherProjectKey?: string
   traceEstimate?: string
@@ -178,7 +176,7 @@ export function cutText(text: string, max: number): string {
 /**
  * A proposal's lines as the agent may send them: grouping, wording and proofs. A line that
  * carries a figure (planned, real, bill or anything else not listed) is refused whole: the
- * server works out every figure.
+ * server works out every figure, and whether the line is in the plan, from its tasks.
  */
 export function readProposedLines(raw: unknown): ProposedLine[] {
   if (!Array.isArray(raw)) throw bad("lines must be a list of lines.")
@@ -188,14 +186,11 @@ export function readProposedLines(raw: unknown): ProposedLine[] {
     const extra = Object.keys(line).filter((k) => !LINE_KEYS.has(k))
     if (extra.length > 0) {
       throw bad(
-        `line ${i + 1} carries ${extra.join(", ")}: a line takes no figure, the server works out planned, real and bill from its tasks. Nothing was saved.`,
+        `line ${i + 1} carries ${extra.join(", ")}: a line takes a name, why, tasks, reason and proofs only. The server works out planned, real, bill and whether the line is in the plan from its tasks. Nothing was saved.`,
       )
     }
     if (typeof line.name !== "string" || line.name.trim() === "") {
       throw bad(`line ${i + 1} needs a name.`)
-    }
-    if (line.kind !== "planned" && line.kind !== "unplanned") {
-      throw bad(`line ${i + 1}: kind is planned or unplanned.`)
     }
     if (
       line.reason !== undefined &&
@@ -216,7 +211,6 @@ export function readProposedLines(raw: unknown): ProposedLine[] {
         ? { why: cutText(line.why.trim(), LINE_WHY_MAX) }
         : {}),
       taskIds: taskIds as string[],
-      kind: line.kind,
       ...(line.reason !== undefined ? { reason: line.reason as LineReason } : {}),
       ...(typeof line.otherProjectKey === "string"
         ? { otherProjectKey: line.otherProjectKey }
@@ -390,20 +384,29 @@ function rootsOf(ids: readonly string[], byId: ReadonlyMap<string, BudgetTask>):
 }
 
 /**
- * The default bill (deterministic): a planned line bills what it planned, never its overage; an
- * unplanned line bills nothing; a retainer bills what was spent; a line with no plan on a rate
- * project bills its real time if any, else nothing, tagged so.
+ * Whether a line is in the plan, from its tasks alone: it is when at least one of them carries
+ * planned time in the period. The caller never says so.
+ */
+export function lineKindOf(planned: number | null): "planned" | "unplanned" {
+  return planned !== null && planned > 0 ? "planned" : "unplanned"
+}
+
+/**
+ * The default bill (deterministic): a line in the plan bills what it planned, never its
+ * overage; a line not in the plan bills nothing; a retainer bills what was spent. Only when the
+ * period has no plan at all does a line on a daily or hourly project bill its real time, else
+ * nothing, tagged so. The person may still bill any line.
  */
 export function defaultBill(
   basis: Basis,
   kind: LineKind,
   planned: number | null,
   real: number,
+  periodPlanned: boolean,
 ): { bill: number; tag?: string } {
   if (basis === "retainer") return { bill: real }
-  if (kind !== "planned") return { bill: 0 }
-  if (planned !== null && planned > 0) return { bill: planned }
-  if (basis === "hourly" || basis === "daily") {
+  if (kind === "planned" && planned !== null && planned > 0) return { bill: planned }
+  if (kind === "unplanned" && !periodPlanned && (basis === "hourly" || basis === "daily")) {
     return real > 0 ? { bill: real } : { bill: 0, tag: NO_PLAN_TAG }
   }
   return { bill: 0 }
@@ -435,9 +438,14 @@ export function computeLines(args: {
     const r = roots.reduce((s, id) => s + (real.get(id) ?? args.ownReal.get(id) ?? 0), 0)
     return { planned: p > 0 ? p : null, real: r }
   }
+  // The period's plan: the planned time of every task on the card, each counted once.
+  const periodPlanned =
+    (figures([...new Set([...args.lines.flatMap((l) => l.resolvedTaskIds), ...args.unlisted])])
+      .planned ?? 0) > 0
   const out: ComputedLine[] = []
   for (const line of args.lines) {
     const f = figures(line.resolvedTaskIds)
+    const kind = lineKindOf(f.planned)
     let trace: number | null = null
     if (line.traceEstimate !== undefined) {
       if (f.real > 0) {
@@ -465,12 +473,12 @@ export function computeLines(args: {
         )
       }
     }
-    const { bill, tag } = defaultBill(args.basis, line.kind, f.planned, f.real)
+    const { bill, tag } = defaultBill(args.basis, kind, f.planned, f.real, periodPlanned)
     out.push({
       position: out.length,
       name: line.name,
       ...(line.why ? { why: line.why } : {}),
-      kind: line.kind,
+      kind,
       ...(line.reason ? { reason: line.reason } : {}),
       ...(tag ? { tag } : {}),
       taskIds: line.resolvedTaskIds,
@@ -496,7 +504,7 @@ export function computeLines(args: {
   if (otherIds.length > 0) {
     const ids = [...new Set(otherIds)]
     const f = figures(ids)
-    const { bill } = defaultBill(args.basis, "other", f.planned, f.real)
+    const { bill } = defaultBill(args.basis, "other", f.planned, f.real, periodPlanned)
     out.push({
       position: out.length,
       name: OTHER_LINE_NAME,

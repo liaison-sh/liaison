@@ -225,33 +225,28 @@ describe("the services world's figures at the board date", () => {
       lines: [
         {
           name: "Data export",
-          kind: "planned",
           taskIds: ["ALPINE-11", "ALPINE-13", "ALPINE-14", "ALPINE-15"].map(id),
           proofs: [],
         },
         {
           name: "Monitoring",
-          kind: "planned",
           taskIds: ["ALPINE-6", "ALPINE-7", "ALPINE-16", "ALPINE-17"].map(id),
           proofs: [],
         },
         {
           name: "Staging outage",
-          kind: "unplanned",
           reason: "our_mistake",
           taskIds: [id("ALPINE-8")],
           proofs: [],
         },
         {
           name: "Extra report",
-          kind: "unplanned",
           reason: "client_asked",
           taskIds: [id("ALPINE-18")],
           proofs: [],
         },
         {
           name: "Rights database export",
-          kind: "unplanned",
           reason: "other_client",
           otherProjectKey: "SOREL",
           taskIds: [id("ALPINE-19")],
@@ -274,6 +269,82 @@ describe("the services world's figures at the board date", () => {
       currency: "EUR",
     })
     expect(card.coverageText).toBe("Real time entered on 9 of 11 tasks")
+    expect(card.fit).toBe("over")
+  })
+
+  it("however the lines group last month's tasks, the card bills the plan, and billing more reads over", async () => {
+    const month = lastMonth(BOARD_DATE)
+    const facts = await call("bastien", "projects_reconcileFacts", { project: "ALPINE", month })
+    const id = (key: string) => facts.tasks.find((t: any) => t.key === key)?.id as string
+    const line = (name: string, keys: string[]) => ({ name, taskIds: keys.map(id), proofs: [] })
+    const groupings = {
+      // The review and scheduling tasks carry no plan, put on a line of their own.
+      split: [
+        line("Export format review and export scheduling", ["ALPINE-11", "ALPINE-13"]),
+        line("Stock export", ["ALPINE-14"]),
+        line("Supplier export", ["ALPINE-15"]),
+        line("Monitoring", ["ALPINE-6", "ALPINE-7", "ALPINE-16", "ALPINE-17"]),
+        line("Staging outage fix", ["ALPINE-8"]),
+        line("Extra stock report", ["ALPINE-18"]),
+        line("Rights database export", ["ALPINE-19"]),
+      ],
+      // Metrics, and review and scheduling, as lines with no plan of their own.
+      metrics: [
+        line("Metrics", ["ALPINE-6", "ALPINE-7"]),
+        line("Format review and scheduling", ["ALPINE-11", "ALPINE-13"]),
+        line("Exports", ["ALPINE-14", "ALPINE-15"]),
+        line("Alerts and dashboards", ["ALPINE-16", "ALPINE-17"]),
+        line("Staging outage fix", ["ALPINE-8"]),
+        line("Extra stock report", ["ALPINE-18"]),
+      ],
+      // The board's lines, with the outage fix as one more line.
+      board: [
+        line("Data export", ["ALPINE-11", "ALPINE-13", "ALPINE-14", "ALPINE-15"]),
+        line("Monitoring", ["ALPINE-6", "ALPINE-7", "ALPINE-16", "ALPINE-17"]),
+        line("Staging outage fix", ["ALPINE-8"]),
+        line("Extra report", ["ALPINE-18"]),
+        line("Rights database export", ["ALPINE-19"]),
+      ],
+    }
+    for (const [name, lines] of Object.entries(groupings)) {
+      const card = await call("bastien", "projects_reconcilePropose", {
+        project: "ALPINE",
+        month,
+        lines,
+      })
+      expect(card.error).toBeUndefined()
+      // In the plan only where a task carries planned time; the rest bills 0 by default.
+      for (const l of card.lines.filter((l: any) => l.kind !== "other")) {
+        expect([name, l.name, l.kind]).toEqual([
+          name,
+          l.name,
+          l.plannedMinutes > 0 ? "planned" : "unplanned",
+        ])
+        if (l.kind === "unplanned") expect([name, l.name, l.billMinutes]).toEqual([name, l.name, 0])
+      }
+      expect([name, card.totals.bill, card.totals.amountExclVat]).toEqual([name, "7 d", 6510])
+      if (name === "board") {
+        expect(card.lines.map((l: any) => [l.name, l.planned, l.real, l.bill, l.amount])).toEqual([
+          ["Data export", "3 d", "3.5 d", "3 d", 2790],
+          ["Monitoring", "4 d", "4 d", "4 d", 3720],
+          ["Staging outage fix", null, "0.5 d", "0 d", 0],
+          ["Extra report", null, null, "0 d", 0],
+          ["Rights database export", null, null, "0 d", 0],
+        ])
+        continue
+      }
+      expect([name, card.fit]).toEqual([name, "fits"])
+      // The person bills a line not in the plan: the card bills above the plan and says so.
+      const extra = card.lines.find((l: any) => l.kind === "unplanned" && l.realMinutes > 0)
+      const billed = await call("bastien", "projects_reconcileLineUpdate", {
+        reconciliationId: card.reconciliationId,
+        revision: card.revision,
+        lineId: extra.lineId,
+        bill: "1 d",
+      })
+      expect(billed.error).toBeUndefined()
+      expect([name, billed.totals.bill, billed.fit]).toEqual([name, "8 d", "over"])
+    }
   })
 
   it("margin's cost is each hour taken at its person's rate, read as finance", async () => {

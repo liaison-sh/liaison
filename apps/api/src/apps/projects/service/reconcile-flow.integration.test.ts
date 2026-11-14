@@ -118,7 +118,6 @@ describe("the October card of a project billed by the day", () => {
     lines: [
       {
         name: "Data export",
-        kind: "planned",
         why: "Stock and supplier export, running since 16 Oct.",
         taskIds: [t.e1, t.e2, t.e3],
         proofs: [
@@ -132,10 +131,9 @@ describe("the October card of a project billed by the day", () => {
           { kind: "calendar_event", ref: "evt-1", label: "Demo", occurredOn: "2026-10-15" },
         ],
       },
-      { name: "Monitoring", kind: "planned", taskIds: [t.m1, t.m2, t.m3], proofs: [] },
+      { name: "Monitoring", taskIds: [t.m1, t.m2, t.m3], proofs: [] },
       {
         name: "Staging outage",
-        kind: "unplanned",
         reason: "our_mistake",
         why: "Our deploy on 14 Oct took staging down.",
         taskIds: [t.u1],
@@ -143,7 +141,6 @@ describe("the October card of a project billed by the day", () => {
       },
       {
         name: "Extra report the client asked for",
-        kind: "unplanned",
         reason: "client_asked",
         why: "Nadia Perrin asked for it on 21 Oct.",
         taskIds: [t.u2],
@@ -152,7 +149,6 @@ describe("the October card of a project billed by the day", () => {
       },
       {
         name: "Small fixes",
-        kind: "unplanned",
         reason: "other_client",
         taskIds: [t.u3, t.u4],
         proofs: [],

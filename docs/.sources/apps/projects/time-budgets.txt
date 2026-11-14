@@ -59,3 +59,6 @@ Calendar days stay on remove -> apps/api/src/apps/projects/service/days-off.ts (
 Days per week 1 to 5, who may set, Home line -> apps/api/src/apps/projects/service/time-settings.ts (setTimeSettings)
 Settings section Time and budgets, Capacity tab -> apps/api/src/apps/projects/app.manifest.json (settings.sections, views.tabTypes.capacity)
 Settings keys hoursPerDay, daysOffCalendarId, yearly; the tools take the same names -> apps/api/src/apps/projects/app.manifest.json (settings.time: hoursPerDay, daysOffCalendarId and its help on whole-day events, yearly; tools.time_settings_set, tools.days_off_set)
+A line is in the plan when one of its tasks has planned time in the period; the caller never says so -> apps/api/src/apps/projects/service/reconcile-lines.ts:390 (lineKindOf)
+A line not in the plan bills nothing; with no plan in the period a daily or hourly line bills its time -> apps/api/src/apps/projects/service/reconcile-lines.ts:400 (defaultBill)
+Over the plan when the card bills more than the period's plan, or work in the plan took longer -> apps/api/src/apps/projects/service/reconcile-card.ts:83 (billedOverPlan)

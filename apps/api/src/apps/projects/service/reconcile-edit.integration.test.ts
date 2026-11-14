@@ -87,11 +87,10 @@ const proposal = () => ({
   lines: [
     {
       name: "Data export",
-      kind: "planned",
       taskIds: [t.e1, t.e2],
       proofs: [{ kind: "pull_request", ref: "212", label: "PR #212" }],
     },
-    { name: "Monitoring", kind: "planned", taskIds: [t.m1, t.m2], proofs: [] },
+    { name: "Monitoring", taskIds: [t.m1, t.m2], proofs: [] },
   ],
 })
 
@@ -485,7 +484,6 @@ describe("a line done for another client", () => {
       lines: [
         {
           name: "Store locator",
-          kind: "unplanned",
           reason: "other_client",
           otherProjectKey,
           taskIds: [stray.id],

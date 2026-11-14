@@ -74,9 +74,21 @@ function moneyOf(
   return undefined
 }
 
+/** The period's plan: the planned time of every line on the card, however they are grouped. */
+function periodPlanOf(lines: readonly CardLine[]): number {
+  return lines.reduce((s, l) => s + (l.plannedMinutes ?? 0), 0)
+}
+
+/** Whether the card bills more than the period's plan, whatever the grouping. */
+function billedOverPlan(input: CardInput): boolean {
+  const plan = periodPlanOf(input.lines)
+  return plan > 0 && input.lines.reduce((s, l) => s + l.billMinutes, 0) > plan
+}
+
 function fitOf(input: CardInput): CardFit {
   if (input.lines.length === 0) return "nothing"
   if (input.basis === "fixed") return "fixed"
+  if (billedOverPlan(input)) return "over"
   const { withEntries, total } = input.coverage
   if (total > 0 && withEntries * 2 < total) return "estimated"
   const over = input.lines.some(
@@ -186,7 +198,7 @@ export function reconcileCardFields(input: CardInput) {
 
   const billMinutes = input.lines.reduce((s, l) => s + l.billMinutes, 0)
   const realMinutes = input.lines.reduce((s, l) => s + l.realMinutes, 0)
-  const plannedMinutes = planned.reduce((s, l) => s + (l.plannedMinutes ?? 0), 0)
+  const plannedMinutes = periodPlanOf(input.lines)
   const total = fixed
     ? undefined
     : moneyOf(billMinutes, basis, input.rateMinor, input.currency, hpd)
@@ -197,9 +209,11 @@ export function reconcileCardFields(input: CardInput) {
       ? `No closed task, time or trace I can read for ${input.periodLabel}, so nothing to bill.`
       : fixed
         ? `Fixed price, so this bills nothing. Planned ${q(plannedMinutes)}, time spent ${q(realMinutes)}.`
-        : fit === "over"
-          ? `Planned ${q(plannedMinutes)}. Time spent ${q(realMinutes)}, so Billed stays at what was planned: ${q(billMinutes)}.`
-          : `Planned ${q(plannedMinutes)}. Time spent ${q(realMinutes)}. Billed ${q(billMinutes)}.`
+        : fit === "over" && billMinutes > plannedMinutes
+          ? `Planned ${q(plannedMinutes)}. Billed ${q(billMinutes)}, more than planned. Time spent ${q(realMinutes)}.`
+          : fit === "over"
+            ? `Planned ${q(plannedMinutes)}. Time spent ${q(realMinutes)}, so Billed stays at what was planned: ${q(billMinutes)}.`
+            : `Planned ${q(plannedMinutes)}. Time spent ${q(realMinutes)}. Billed ${q(billMinutes)}.`
 
   const repo = input.notSeen.find((n) => REPO_SOURCE.test(n.source))
   const notes: Array<{ text: string }> = []

@@ -95,43 +95,36 @@ describe("the period an ask means", () => {
 
 describe("what a line may carry", () => {
   it("a line carrying a planned, real or bill figure is refused whole", () => {
-    for (const figure of ["planned", "real", "bill", "plannedMinutes", "amount"]) {
+    for (const figure of ["planned", "real", "bill", "plannedMinutes", "amount", "kind"]) {
       expect(
-        codeOf(() =>
-          readProposedLines([{ name: "Export", kind: "planned", taskIds: [], [figure]: 100 }]),
-        ),
+        codeOf(() => readProposedLines([{ name: "Export", taskIds: [], [figure]: 100 }])),
       ).toBe("invalid_params")
     }
-    expect(
-      readProposedLines([{ name: "Export", kind: "planned", taskIds: ["A-1"], proofs: [] }]),
-    ).toEqual([{ name: "Export", kind: "planned", taskIds: ["A-1"], proofs: [] }])
+    expect(readProposedLines([{ name: "Export", taskIds: ["A-1"], proofs: [] }])).toEqual([
+      { name: "Export", taskIds: ["A-1"], proofs: [] },
+    ])
   })
 
   it("a proof is a reference: a body or any other key is refused", () => {
     expect(
       codeOf(() =>
-        readProposedLines([
-          { name: "Export", kind: "planned", proofs: [{ kind: "commit", ref: "a1", body: "x" }] },
-        ]),
+        readProposedLines([{ name: "Export", proofs: [{ kind: "commit", ref: "a1", body: "x" }] }]),
       ),
     ).toBe("invalid_params")
   })
 
   it("a line's name and why are cut to their bound when read, so a long wording cannot push the card out", () => {
-    const [l] = readProposedLines([
-      { name: "n".repeat(700), why: "w".repeat(900), kind: "planned", taskIds: [] },
-    ])
+    const [l] = readProposedLines([{ name: "n".repeat(700), why: "w".repeat(900), taskIds: [] }])
     expect(l?.name.length).toBeLessThanOrEqual(LINE_NAME_MAX)
     expect(l?.name.endsWith("…")).toBe(true)
     expect(l?.why?.length).toBeLessThanOrEqual(LINE_WHY_MAX)
-    const [short] = readProposedLines([{ name: "Export fix", kind: "planned" }])
+    const [short] = readProposedLines([{ name: "Export fix" }])
     expect(short?.name).toBe("Export fix")
   })
 
   it("a knowledge document cited by anything but its id is refused, so its title is always read again", () => {
     const line = (ref: string) => ({
       name: "Export",
-      kind: "planned",
       proofs: [{ kind: "knowledge_doc", ref, label: "Pricing notes" }],
     })
     expect(() => readProposedLines([line("pricing-notes")])).toThrow(/knowledge document/)
@@ -187,12 +180,16 @@ describe("what a line may carry", () => {
 
 describe("the default bill", () => {
   it("default bill follows the plan, never the overage", () => {
-    expect(defaultBill("daily", "planned", day(3), day(3.5))).toEqual({ bill: day(3) })
-    expect(defaultBill("daily", "planned", day(4), day(2))).toEqual({ bill: day(4) })
-    expect(defaultBill("daily", "unplanned", null, day(1))).toEqual({ bill: 0 })
-    expect(defaultBill("retainer", "planned", day(2), day(3))).toEqual({ bill: day(3) })
-    expect(defaultBill("hourly", "planned", null, 90)).toEqual({ bill: 90 })
-    expect(defaultBill("hourly", "planned", null, 0)).toEqual({ bill: 0, tag: NO_PLAN_TAG })
+    expect(defaultBill("daily", "planned", day(3), day(3.5), true)).toEqual({ bill: day(3) })
+    expect(defaultBill("daily", "planned", day(4), day(2), true)).toEqual({ bill: day(4) })
+    expect(defaultBill("daily", "unplanned", null, day(1), true)).toEqual({ bill: 0 })
+    expect(defaultBill("retainer", "planned", day(2), day(3), true)).toEqual({ bill: day(3) })
+    // A period with no plan at all: a line bills its time spent, or nothing, tagged so.
+    expect(defaultBill("hourly", "unplanned", null, 90, false)).toEqual({ bill: 90 })
+    expect(defaultBill("hourly", "unplanned", null, 0, false)).toEqual({
+      bill: 0,
+      tag: NO_PLAN_TAG,
+    })
   })
 
   it("a trace estimate is refused where real time exists and never reaches real or bill", () => {
@@ -205,7 +202,6 @@ describe("the default bill", () => {
     }
     const line = (ids: string[], proofs: number) => ({
       name: "Report",
-      kind: "planned" as const,
       taskIds: ids,
       resolvedTaskIds: ids,
       traceEstimate: "1 day",
@@ -243,7 +239,6 @@ describe("the default bill", () => {
       lines: [
         {
           name: "Feature",
-          kind: "planned",
           taskIds: ["p", "c"],
           resolvedTaskIds: ["p", "c"],
           proofs: [],
@@ -258,6 +253,46 @@ describe("the default bill", () => {
     ])
   })
 
+  it("a line is in the plan only when one of its tasks carries planned time, whatever the caller groups", () => {
+    // Two tasks plan 2 d and 1 d; two more carry time spent and no plan.
+    const tasks = [task("s", day(2)), task("u", day(1)), task("a", null), task("b", null)]
+    const ownReal = new Map([
+      ["s", day(1.5)],
+      ["u", day(1)],
+      ["a", day(0.5)],
+      ["b", day(0.5)],
+    ])
+    const line = (name: string, ids: string[]) => ({
+      name,
+      taskIds: ids,
+      resolvedTaskIds: ids,
+      proofs: [],
+      proofsOut: [],
+    })
+    const out = computeLines({
+      basis: "daily",
+      hoursPerDayMinutes: HPD,
+      projectTasks: tasks,
+      ownReal,
+      lines: [line("Review and scheduling", ["a", "b"]), line("Export", ["s", "u"])],
+      unlisted: [],
+    })
+    expect(out.map((l) => [l.name, l.kind, l.plannedMinutes, l.billMinutes])).toEqual([
+      ["Review and scheduling", "unplanned", null, 0],
+      ["Export", "planned", day(3), day(3)],
+    ])
+    // A project with no plan at all in the period bills a line's time spent.
+    const noPlan = computeLines({
+      basis: "hourly",
+      hoursPerDayMinutes: HPD,
+      projectTasks: [task("a", null)],
+      ownReal: new Map([["a", 90]]),
+      lines: [line("Support", ["a"])],
+      unlisted: [],
+    })
+    expect(noPlan.map((l) => [l.kind, l.billMinutes])).toEqual([["unplanned", 90]])
+  })
+
   it("past the card's bound the last lines fold into the other line", () => {
     const tasks = Array.from({ length: 45 }, (_, i) => task(`t${i}`, 60))
     const lines = computeLines({
@@ -267,7 +302,6 @@ describe("the default bill", () => {
       ownReal: new Map(),
       lines: tasks.map((t) => ({
         name: t.id,
-        kind: "planned" as const,
         taskIds: [t.id],
         resolvedTaskIds: [t.id],
         proofs: [],

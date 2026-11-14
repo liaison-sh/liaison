@@ -659,6 +659,8 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
        WHERE l.reconciliation_id = ${id}::uuid AND p.org_id = ${orgId}::uuid
        ORDER BY p.created_at, p.id`),
   )
+  // The period had a plan when any stored line carries planned time.
+  const periodPlanned = lines.some((l) => (l.planned_minutes ?? 0) > 0)
   return {
     lines: lines.map((l) => ({
       id: l.id,
@@ -677,6 +679,7 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
               l.kind as LineKind,
               l.planned_minutes,
               l.real_minutes ?? 0,
+              periodPlanned,
             )
             return tag && l.bill_minutes === 0 ? { tag } : {}
           })()

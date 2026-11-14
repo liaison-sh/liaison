@@ -324,6 +324,22 @@ describe("stored app attention", () => {
     expect(after.errors.filter((e) => e.app === APP)).toEqual([])
   })
 
+  it("a failed refresh of an old list does not make it fresh: the old items stay hidden", async () => {
+    listed = [item("days-old")]
+    await refreshAppAttention(orgId, APP, deps)
+    await ageList(3 * 24 * 60 * 60_000)
+    await refreshAppAttention(orgId, APP, {
+      ...deps,
+      invoke: async () => {
+        throw new Error("provider slow")
+      },
+    })
+    const res = await feed()
+    expect(res.items.filter((i) => i.app === APP)).toEqual([])
+    expect(res.errors.filter((e) => e.app === APP).length).toBeGreaterThan(0)
+    await attentionRefreshesSettled()
+  })
+
   it("drops malformed items and caps nothing it should not", async () => {
     listed = [item("ok"), { id: "bad" } as unknown as AttentionItem]
     await refreshAppAttention(orgId, APP, deps)

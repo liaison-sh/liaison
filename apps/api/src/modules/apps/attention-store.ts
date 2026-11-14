@@ -421,11 +421,17 @@ async function writeStoredList(
   const newer = sql`${appAttentionItems.computedAt} <= excluded.computed_at`
   return withPrivilegedDb(orgId, "attention-store:write", async (tx) => {
     if (items === null) {
-      // A failed run keeps the last good list, with the failure beside it.
+      // A failed run keeps the last good list, with the failure beside it, and keeps that list's
+      // own date: the list is no truer for a run that failed, so one too old to serve stays
+      // hidden. The failure is written only over a list computed before this run started.
       const rows = await tx
         .insert(appAttentionItems)
         .values({ orgId, app: appName, userId, items: [], error, computedAt: startedAt })
-        .onConflictDoUpdate({ target, set: { error, computedAt: startedAt }, setWhere: newer })
+        .onConflictDoUpdate({
+          target,
+          set: { error },
+          setWhere: sql`${appAttentionItems.computedAt} <= ${startedAt.toISOString()}::timestamptz`,
+        })
         .returning({ userId: appAttentionItems.userId })
       return rows.length > 0
     }

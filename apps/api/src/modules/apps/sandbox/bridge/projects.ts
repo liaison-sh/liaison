@@ -2417,6 +2417,47 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         )
       })
     },
+    /** What a reconciliation bills, for the invoice made from it (internal: invoicing reads it). */
+    projects_reconcileLinesRead: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { reconciliationId?: string }
+      return typedServiceCall(async () => {
+        const { reconcileLinesRead } = await import("~/apps/projects/service/claims")
+        return JSON.stringify(
+          await reconcileLinesRead({
+            tx: txDb,
+            orgId,
+            input: { reconciliationId: params.reconciliationId ?? "" },
+          }),
+        )
+      })
+    },
+    /** A reconciliation's claims after its invoice moved (internal: invoicing calls it). */
+    projects_reconcileMark: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { reconcileMark } = await import("~/apps/projects/service/claims")
+        return JSON.stringify(await reconcileMark({ tx: txDb, orgId, input: params as never }))
+      })
+    },
+    /** Whether a project's named tasks are done, for a billing plan (internal). */
+    projects_milestoneStatusRead: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { projectId?: string; taskIds?: unknown }
+      return typedServiceCall(async () => {
+        const { milestoneStatusRead } = await import("~/apps/projects/service/claims")
+        return JSON.stringify(
+          await milestoneStatusRead({
+            tx: txDb,
+            orgId,
+            input: {
+              projectId: params.projectId ?? "",
+              taskIds: Array.isArray(params.taskIds)
+                ? params.taskIds.filter((t): t is string => typeof t === "string")
+                : [],
+            },
+          }),
+        )
+      })
+    },
     /** Planned against available time per person for one ISO week, in name order. */
     projects_capacityGet: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as { week?: string; taskId?: string }

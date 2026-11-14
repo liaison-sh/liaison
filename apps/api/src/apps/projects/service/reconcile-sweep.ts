@@ -5,8 +5,9 @@
 // follow it to its project. It reads only the projects' switch state and the
 // task each time row belongs to, never anyone's activity, and tells no one.
 // Every hour it also tidies reconcile state it stored itself: a proposal nobody touched for
-// 30 days is deleted with the cards it drew, a reservation that never got its document is
-// released, and a reservation whose document was issued becomes billed. It reads no trace.
+// 30 days is deleted with the cards it drew, and claims follow the key their reconciliation's
+// draft got (billed on issue, credited on a full credit, released only when no document carries
+// the key). It reads no trace.
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows } from "~/db"
@@ -19,6 +20,7 @@ import {
   sweepSkippingMoving,
   writeUnlessMoving,
 } from "~/modules/org/transfer-state/skip-moving"
+import { releaseReconciliation } from "./claims"
 import { syncTimeBudgetsFeature, TIME_FEATURE } from "./time-feature"
 
 const log = rootLogger.child({ module: "projects/reconcile-sweep" })
@@ -78,7 +80,7 @@ export const IDLE_PROPOSAL_DAYS = 30
 /** A reservation with no document after this many hours is released. */
 export const RESERVATION_HOLD_HOURS = 1
 /** Document states in which a reserved claim is billed. */
-const ISSUED_STATES = ["issued", "paid", "overdue"] as const
+export const ISSUED_STATES = ["issued", "paid", "overdue"] as const
 
 /** The moment before which an untouched proposal is idle. */
 export function idleCutoff(now: Date): string {
@@ -174,41 +176,172 @@ export async function sweepIdleProposals(
   return { deleted, cardsCleared, failedOrgs }
 }
 
+/** The invoicing documents table, or null where the app was never installed. */
+async function documentsTable(tx: {
+  execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown>
+}): Promise<string | null> {
+  const docs = `${schemaRef("app_invoicing")}.documents`
+  const present = extractRows<{ present: boolean }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${docs}) IS NOT NULL AS present`),
+  )[0]?.present
+  return present ? docs : null
+}
+
+/** A document carrying a reconciliation's key, with what credit notes took back from it. */
+export interface RefDocument {
+  id: string
+  number: string | null
+  status: string
+  grandTotalMinor: bigint
+  creditedMinor: bigint
+}
+
+/** Credit notes that count against an invoice: any but a draft or one that never went out. */
+const CREDIT_COUNTS = drizzleSql`cn.status NOT IN ('draft', 'pending_approval', 'voided', 'cancelled')`
+
 /**
- * Claims follow their document: a reservation whose document was issued is billed, and one
- * that still has no document an hour on is released, so its work can be billed again.
+ * Every document of the org that carries `ref` as its key, in any state, with the total its
+ * credit notes took back. A system read: the claims' own writers run under the caller's rows,
+ * which may not reach invoicing's tables.
  */
-export async function sweepClaims(): Promise<{ billed: number; released: number }> {
+export async function documentsForRef(orgId: string, ref: string): Promise<RefDocument[]> {
+  return withSystemDb("projects-reconcile-claims", async (tx) => {
+    const docs = await documentsTable(tx)
+    if (!docs) return []
+    const rows = extractRows<{
+      id: string
+      number: string | null
+      status: string
+      grand: string | number | null
+      credited: string | number | null
+    }>(
+      await tx.execute(drizzleSql`
+        SELECT d.id::text AS id, d.number, d.status, d.grand_total_minor::text AS grand,
+               (SELECT coalesce(sum(abs(cn.grand_total_minor)), 0)::text
+                  FROM ${drizzleSql.raw(docs)} cn
+                 WHERE cn.org_id = d.org_id AND cn.type = 'credit_note'
+                   AND cn.original_document_id = d.id AND ${CREDIT_COUNTS}) AS credited
+          FROM ${drizzleSql.raw(docs)} d
+         WHERE d.org_id = ${orgId}::uuid AND d.external_ref = ${ref}
+           AND d.type <> 'credit_note'`),
+    )
+    return rows.map((r) => ({
+      id: r.id,
+      number: r.number,
+      status: r.status,
+      grandTotalMinor: BigInt(r.grand ?? 0),
+      creditedMinor: BigInt(r.credited ?? 0),
+    }))
+  })
+}
+
+/**
+ * Claims follow their reconciliation's key, in one write and in this order:
+ * 1. a reserved claim is billed once an issued invoice carries the key (a draft never flips it);
+ * 2. a drafted reconciliation whose invoice is issued is invoiced;
+ * 3. an invoice credit notes took back whole frees its claims (credited) and its reconciliation;
+ * 4. a reservation an hour old is released only when no document carries the key in any state,
+ *    with its reconciliation's left-off claims, and a drafted reconciliation is proposed again.
+ */
+export async function sweepClaims(): Promise<{
+  billed: number
+  invoiced: number
+  credited: number
+  released: number
+}> {
   return sweepSkippingMoving((notMoving) =>
     withSystemDb("projects-reconcile-sweep", async (tx) => {
-      const released = extractRows<{ id: string }>(
+      const docs = await documentsTable(tx)
+      const issued = drizzleSql.join(
+        ISSUED_STATES.map((st) => drizzleSql`${st}`),
+        drizzleSql`, `,
+      )
+      let billed = 0
+      let invoiced = 0
+      let credited = 0
+      if (docs) {
+        const D = drizzleSql.raw(docs)
+        billed = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            UPDATE ${projectsRel("billing_claims")} c
+               SET state = 'billed', document_id = d.id, document_number = d.number,
+                   updated_at = now()
+              FROM ${projectsRel("reconciliations")} r, ${D} d
+             WHERE c.state = 'reserved' AND r.id = c.reconciliation_id AND r.org_id = c.org_id
+               AND d.org_id = r.org_id AND d.external_ref = r.document_ref
+               AND d.type <> 'credit_note' AND d.status IN (${issued})
+               AND ${notMoving(drizzleSql.raw("c.org_id"))}
+            RETURNING c.id::text AS id`),
+        ).length
+        invoiced = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            UPDATE ${projectsRel("reconciliations")} r
+               SET state = 'invoiced', document_id = d.id, updated_at = now()
+              FROM ${D} d
+             WHERE r.state = 'drafted' AND d.org_id = r.org_id AND d.external_ref = r.document_ref
+               AND d.type <> 'credit_note' AND d.status IN (${issued})
+               AND ${notMoving(drizzleSql.raw("r.org_id"))}
+            RETURNING r.id::text AS id`),
+        ).length
+        const whole = extractRows<{ id: string; org_id: string; doc: string }>(
+          await tx.execute(drizzleSql`
+            SELECT r.id::text AS id, r.org_id::text AS org_id, d.id::text AS doc
+              FROM ${projectsRel("reconciliations")} r
+              JOIN ${D} d ON d.org_id = r.org_id AND d.external_ref = r.document_ref
+               AND d.type <> 'credit_note'
+             WHERE r.state IN ('drafted', 'invoiced')
+               AND d.status NOT IN ('draft', 'pending_approval')
+               AND abs(d.grand_total_minor) > 0
+               AND (SELECT coalesce(sum(abs(cn.grand_total_minor)), 0) FROM ${D} cn
+                     WHERE cn.org_id = d.org_id AND cn.type = 'credit_note'
+                       AND cn.original_document_id = d.id AND ${CREDIT_COUNTS})
+                   >= abs(d.grand_total_minor)
+               AND ${notMoving(drizzleSql.raw("r.org_id"))}`),
+        )
+        for (const w of whole) {
+          credited += extractRows<{ id: string }>(
+            await tx.execute(drizzleSql`
+              UPDATE ${projectsRel("billing_claims")}
+                 SET state = 'credited', document_id = ${w.doc}::uuid, updated_at = now()
+               WHERE org_id = ${w.org_id}::uuid AND reconciliation_id = ${w.id}::uuid
+                 AND state IN ('reserved', 'billed')
+              RETURNING id::text AS id`),
+          ).length
+          await tx.execute(drizzleSql`
+            UPDATE ${projectsRel("reconciliations")}
+               SET state = 'credited', document_id = ${w.doc}::uuid, updated_at = now()
+             WHERE id = ${w.id}::uuid AND org_id = ${w.org_id}::uuid
+               AND state IN ('drafted', 'invoiced')`)
+        }
+      }
+      const carried = docs
+        ? drizzleSql`EXISTS (
+            SELECT 1 FROM ${projectsRel("reconciliations")} r
+              JOIN ${drizzleSql.raw(docs)} d ON d.org_id = r.org_id AND d.external_ref = r.document_ref
+             WHERE r.id = c.reconciliation_id AND r.org_id = c.org_id)`
+        : drizzleSql`false`
+      const freed = extractRows<{ reconciliation_id: string | null; org_id: string }>(
         await tx.execute(drizzleSql`
-          UPDATE ${projectsRel("billing_claims")} SET state = 'released', updated_at = now()
-           WHERE state = 'reserved' AND document_id IS NULL
-             AND created_at < now() - make_interval(hours => ${RESERVATION_HOLD_HOURS})
-             AND ${notMoving(drizzleSql.raw("org_id"))}
-          RETURNING id::text AS id`),
-      ).length
-      const docs = `${schemaRef("app_invoicing")}.documents`
-      const present = extractRows<{ present: boolean }>(
-        await tx.execute(drizzleSql`SELECT to_regclass(${docs}) IS NOT NULL AS present`),
-      )[0]?.present
-      if (!present) return { billed: 0, released }
-      const billed = extractRows<{ id: string }>(
-        await tx.execute(drizzleSql`
-          UPDATE ${projectsRel("billing_claims")} c
-             SET state = 'billed', document_number = coalesce(c.document_number, d.number),
-                 updated_at = now()
-            FROM ${drizzleSql.raw(docs)} d
-           WHERE c.state = 'reserved' AND d.id = c.document_id AND d.org_id = c.org_id
-             AND d.status IN (${drizzleSql.join(
-               ISSUED_STATES.map((st) => drizzleSql`${st}`),
-               drizzleSql`, `,
-             )})
+          UPDATE ${projectsRel("billing_claims")} c SET state = 'released', updated_at = now()
+           WHERE c.state = 'reserved'
+             AND c.created_at < now() - make_interval(hours => ${RESERVATION_HOLD_HOURS})
+             AND NOT ${carried}
              AND ${notMoving(drizzleSql.raw("c.org_id"))}
-          RETURNING c.id::text AS id`),
-      ).length
-      return { billed, released }
+          RETURNING c.reconciliation_id::text AS reconciliation_id, c.org_id::text AS org_id`),
+      )
+      const touched = new Map<string, string>()
+      for (const f of freed) if (f.reconciliation_id) touched.set(f.reconciliation_id, f.org_id)
+      for (const [id, org] of touched) {
+        const out = await releaseReconciliation(tx as never, { orgId: org, reconciliationId: id })
+        if (out.state === "drafted") {
+          // A newer proposal of the same person and period holds the proposed slot: this one,
+          // with no claim and no document left, would only block a later bill.
+          await tx.execute(drizzleSql`
+            DELETE FROM ${projectsRel("reconciliations")}
+             WHERE id = ${id}::uuid AND org_id = ${org}::uuid AND state = 'drafted'`)
+        }
+      }
+      return { billed, invoiced, credited, released: freed.length }
     }),
   )
 }

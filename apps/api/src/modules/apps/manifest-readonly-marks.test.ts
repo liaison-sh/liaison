@@ -70,6 +70,9 @@ const READ_ONLY: Record<string, string[]> = {
     // A reconcile's facts: the period's tasks under the asker's own rows, nothing stored.
     "reconcile_facts",
     "reconcile_get",
+    // The invoicing app's internal reads: a reconciliation's billed lines, tasks' done state.
+    "reconcile_lines_read",
+    "milestone_status_read",
     "tasks_byAssignee",
     "attentionItems",
     "tasks_byProject",

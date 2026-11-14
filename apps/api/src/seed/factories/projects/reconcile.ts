@@ -40,6 +40,10 @@ export async function seedReconciliation(
     month: string
     idleDays: number
     basis?: string
+    /** The key its draft invoice got at Create. */
+    documentRef?: string
+    /** The first day of the period, when it is not the month's first. */
+    periodStart?: string
     /** The instant ages count back from. */
     now: Date
   },
@@ -49,17 +53,62 @@ export async function seedReconciliation(
     id,
     org_id: orgId,
     project_id: input.projectId,
-    period_start: `${input.month}-01`,
+    period_start: input.periodStart ?? `${input.month}-01`,
     period_end: `${input.month}-28`,
     basis: input.basis ?? "daily",
     state: input.state,
     created_by: input.createdBy,
     thread_id: input.threadId,
     updated_at: ago(input.now, input.idleDays * DAY_MS),
+    ...(input.documentRef ? { document_ref: input.documentRef } : {}),
   }
   await withPrivilegedDb(orgId, "seed-reconcile:reconciliation", (tx) =>
     upsertAppRow(tx, "projects", "reconciliations", row),
   )
+  return id
+}
+
+/** One line of a stored reconciliation, with its tasks, its bill and its proofs. */
+export async function seedReconciliationLine(
+  orgId: string,
+  input: {
+    reconciliationId: string
+    position: number
+    name: string
+    taskIds: string[]
+    billMinutes: number
+    realMinutes?: number
+    realNoteMinutes?: number
+    traceEstimateMinutes?: number
+    proofs?: Array<{ kind: string; ref: string; label: string }>
+  },
+): Promise<string> {
+  const id = crypto.randomUUID()
+  await withPrivilegedDb(orgId, "seed-reconcile:line", async (tx) => {
+    await upsertAppRow(tx, "projects", "reconciliation_lines", {
+      id,
+      org_id: orgId,
+      reconciliation_id: input.reconciliationId,
+      position: input.position,
+      name: input.name,
+      kind: "planned",
+      task_ids: `{${input.taskIds.join(",")}}`,
+      real_minutes: input.realMinutes ?? null,
+      real_note_minutes: input.realNoteMinutes ?? null,
+      trace_estimate_minutes: input.traceEstimateMinutes ?? null,
+      bill_minutes: input.billMinutes,
+    })
+    for (const p of input.proofs ?? []) {
+      await upsertAppRow(tx, "projects", "reconciliation_proofs", {
+        id: crypto.randomUUID(),
+        org_id: orgId,
+        line_id: id,
+        kind: p.kind,
+        ref: p.ref,
+        label: p.label,
+      })
+    }
+  })
   return id
 }
 
@@ -70,8 +119,10 @@ export async function seedBillingClaim(
     projectId: string
     sourceRef: string
     periodKey: string
-    state: "reserved" | "billed" | "released"
+    state: "reserved" | "billed" | "released" | "left_off"
     ageMinutes: number
+    /** The reconciliation that reserved it. */
+    reconciliationId?: string
     /** The instant ages count back from. */
     now: Date
   },
@@ -87,6 +138,7 @@ export async function seedBillingClaim(
       period_key: input.periodKey,
       state: input.state,
       created_at: ago(input.now, input.ageMinutes * 60_000),
+      ...(input.reconciliationId ? { reconciliation_id: input.reconciliationId } : {}),
     }),
   )
   return id

@@ -68,6 +68,9 @@ export interface ProjectsMethods {
   projects_reconcilePropose: (paramsJson: string) => Promise<string>
   projects_reconcileLineUpdate: (paramsJson: string) => Promise<string>
   projects_reconcileGet: (paramsJson: string) => Promise<string>
+  projects_reconcileLinesRead: (paramsJson: string) => Promise<string>
+  projects_reconcileMark: (paramsJson: string) => Promise<string>
+  projects_milestoneStatusRead: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -1456,3 +1459,16 @@ export async function listTemplates(
 
 // The routine flow record readers (entities.task.routineFlow), server code the kernel calls in process.
 export { routineFlowLeastLoaded, routineFlowReadRecords } from "./routine-flow-record"
+
+// Internal reads and marks for the invoicing app's declared calls: never agent-visible.
+export async function reconcileLinesRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileLinesRead(JSON.stringify(params ?? {})))
+}
+
+export async function reconcileMark(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileMark(JSON.stringify(params ?? {})))
+}
+
+export async function milestoneStatusRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_milestoneStatusRead(JSON.stringify(params ?? {})))
+}

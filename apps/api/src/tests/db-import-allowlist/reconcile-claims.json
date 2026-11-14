@@ -1,0 +1,5 @@
+{
+  "connection": {
+    "apps/projects/service/claims.test-helpers.ts": "Test fixture for the billing claims tests: seeds an org, a project, stored reconciliations and invoicing documents through the seed factories, then reads claim and reconciliation rows back across orgs to assert what the claims writers and the sweep did. Not loaded by a production build."
+  }
+}

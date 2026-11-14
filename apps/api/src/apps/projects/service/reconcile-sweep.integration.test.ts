@@ -16,6 +16,19 @@ import {
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { reconcileMark, reserveClaims } from "./claims"
+import {
+  asPerson,
+  type ClaimsWorld,
+  claimState,
+  claimsOf,
+  claimsWorld,
+  forgetClaimsWorld,
+  heldClaim,
+  invoiceCarrying,
+  reconciliationRow,
+  storedReconciliation,
+} from "./claims.test-helpers"
 import {
   IDLE_PROPOSAL_DAYS,
   idleCutoff,
@@ -199,5 +212,151 @@ describe("the hourly reconcile housekeeping", () => {
          WHERE id IN (${old[0]}::uuid, ${old[1]}::uuid) ORDER BY source_ref`),
     ).map((r) => r.state)
     expect(states).toEqual(["released", "reserved"])
+  })
+})
+
+describe("claims follow the key their draft got", () => {
+  let w: ClaimsWorld
+  beforeAll(async () => {
+    w = await claimsWorld("SWEEP", 12)
+  }, 120_000)
+  afterAll(() => forgetClaimsWorld(w))
+
+  async function drafted(
+    month: string,
+    taskKey: string,
+    opts: { basis?: string; ref?: string } = {},
+  ) {
+    const ref = opts.ref ?? `reconcile:${crypto.randomUUID()}:1`
+    const r = await storedReconciliation(w, {
+      month,
+      state: "drafted",
+      documentRef: ref,
+      ...(opts.basis ? { basis: opts.basis } : {}),
+      lines: [{ tasks: [taskKey], bill: 480 }],
+    })
+    const periodKey = opts.basis === "retainer" ? month : "all"
+    const claim = await heldClaim(w, taskKey, r.id, 120, periodKey)
+    return { ...r, ref, claim }
+  }
+  const markAs = (id: string, to: "billed" | "released") =>
+    asPerson(w, (tx) => reconcileMark({ tx, orgId: w.orgId, input: { reconciliationId: id, to } }))
+
+  it("a claim whose mark was lost is billed by the next sweep, matched by the invoice's key", async () => {
+    const rate = await drafted("2026-09", "SWEEP-1")
+    const retainer = await drafted("2026-10", "SWEEP-2", {
+      basis: "retainer",
+      ref: `retainer:${crypto.randomUUID()}:2026-10`,
+    })
+    const a = await invoiceCarrying(w, { externalRef: rate.ref, status: "issued" })
+    const b = await invoiceCarrying(w, { externalRef: retainer.ref, status: "issued" })
+    await sweepClaims()
+    expect(await claimsOf(rate.id)).toEqual([
+      expect.objectContaining({ state: "billed", document_number: a.number }),
+    ])
+    expect(await claimsOf(retainer.id)).toEqual([
+      expect.objectContaining({ state: "billed", document_number: b.number }),
+    ])
+    expect((await reconciliationRow(rate.id))?.state).toBe("invoiced")
+    expect((await reconciliationRow(retainer.id))?.state).toBe("invoiced")
+  })
+
+  it("a claim whose issue committed but whose mark has not run is never released, in either order of sweep and mark", async () => {
+    const sweepFirst = await drafted("2026-08", "SWEEP-3")
+    const markFirst = await drafted("2026-07", "SWEEP-4")
+    await invoiceCarrying(w, { externalRef: sweepFirst.ref, status: "issued" })
+    await invoiceCarrying(w, { externalRef: markFirst.ref, status: "issued" })
+    await sweepClaims()
+    expect((await markAs(sweepFirst.id, "billed")).changed).toBe(false)
+    expect((await markAs(markFirst.id, "billed")).changed).toBe(false)
+    const third = await drafted("2026-06", "SWEEP-5")
+    await invoiceCarrying(w, { externalRef: third.ref, status: "issued" })
+    expect((await markAs(third.id, "billed")).changed).toBe(true)
+    await sweepClaims()
+    for (const r of [sweepFirst, markFirst, third]) {
+      expect(await claimState(r.claim)).toBe("billed")
+      expect((await reconciliationRow(r.id))?.state).toBe("invoiced")
+    }
+  })
+
+  it("a draft carrying the key never flips a claim to billed", async () => {
+    const r = await drafted("2026-05", "SWEEP-6")
+    await invoiceCarrying(w, { externalRef: r.ref, status: "draft" })
+    await sweepClaims()
+    // Nor is it released: a document still carries the key, however old the claim.
+    expect(await claimState(r.claim)).toBe("reserved")
+    expect((await reconciliationRow(r.id))?.state).toBe("drafted")
+  })
+
+  it("a claim whose draft was discarded is released", async () => {
+    const r = await drafted("2026-04", "SWEEP-7")
+    await sweepClaims()
+    expect(await claimState(r.claim)).toBe("released")
+    expect((await reconciliationRow(r.id))?.state).toBe("proposed")
+  })
+
+  it("a released month is back to proposed and survives the idle delete", async () => {
+    const r = await storedReconciliation(w, {
+      month: "2026-03",
+      state: "drafted",
+      documentRef: `reconcile:${crypto.randomUUID()}:1`,
+      lines: [{ tasks: ["SWEEP-8"], bill: 480 }],
+      idleDays: IDLE_PROPOSAL_DAYS + 5,
+    })
+    const claim = await heldClaim(w, "SWEEP-8", r.id, 120)
+    await sweepClaims()
+    expect(await claimState(claim)).toBe("released")
+    expect(await reconciliationRow(r.id)).toEqual({
+      state: "proposed",
+      fresh: true,
+      document_ref: null,
+    })
+    await sweepIdleProposals()
+    expect((await reconciliationRow(r.id))?.state).toBe("proposed")
+  })
+
+  it("after Undo a line left at zero is offered again", async () => {
+    const r = await storedReconciliation(w, {
+      month: "2026-02",
+      state: "drafted",
+      documentRef: `reconcile:${crypto.randomUUID()}:1`,
+      lines: [
+        { tasks: ["SWEEP-9"], bill: 480 },
+        { tasks: ["SWEEP-10"], bill: 0 },
+      ],
+    })
+    await heldClaim(w, "SWEEP-9", r.id, 5)
+    const leftOff = await heldClaim(w, "SWEEP-10", r.id, 5, "all", "left_off")
+    // Undo: the draft is gone, the month is released.
+    expect((await markAs(r.id, "released")).state).toBe("proposed")
+    expect(await claimState(leftOff)).toBe("released")
+    // The facts read only reserved, billed and left-off claims: the task is new work again.
+    const live = extractRows<{ n: number }>(
+      await db.execute(drizzleSql`
+        SELECT count(*)::int AS n FROM app_projects.billing_claims
+         WHERE source_ref = ${w.tasks["SWEEP-10"]!} AND state IN ('reserved', 'billed', 'left_off')`),
+    )[0]?.n
+    expect(live).toBe(0)
+  })
+
+  it("a fully credited invoice frees its sources", async () => {
+    const r = await drafted("2026-01", "SWEEP-11")
+    await invoiceCarrying(w, { externalRef: r.ref, status: "issued", creditMinor: 120_000 })
+    await sweepClaims()
+    expect(await claimState(r.claim)).toBe("credited")
+    expect((await reconciliationRow(r.id))?.state).toBe("credited")
+    // The same task can be billed again under a new key.
+    const again = await storedReconciliation(w, {
+      month: "2025-12",
+      lines: [{ tasks: ["SWEEP-11"], bill: 240 }],
+    })
+    const out = await asPerson(w, (tx) =>
+      reserveClaims(tx, {
+        orgId: w.orgId,
+        reconciliationId: again.id,
+        documentRef: `reconcile:${again.id}:2`,
+      }),
+    )
+    expect(out.reserved).toBe(1)
   })
 })

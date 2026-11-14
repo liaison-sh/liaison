@@ -181,6 +181,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_daysOffList: "read",
   projects_timeSettingsGet: "read",
   projects_reconcileFacts: "read",
+  projects_reconcileLinesRead: "read",
+  projects_milestoneStatusRead: "read",
   projects_tasksByAssignee: "read",
   projects_tasksByProject: "read",
   pubsub_verifyGoogleOidcJwt: "read",

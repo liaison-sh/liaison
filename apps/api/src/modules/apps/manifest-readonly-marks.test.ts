@@ -330,6 +330,7 @@ const READ_ONLY: Record<string, string[]> = {
     "subscription_cancel_effect", // the cancel card's MRR and invoice lines, plus the projects app's own deal search
     "refunds_for_charge", // a charge's refunds listed live upstream, by id; nothing stored
     "reconcile_candidates", // mirror rows an event may have missed, missing invoices re-read upstream; nothing stored
+    "invoice_payload", // one invoice re-read upstream with the mirror's buyer, for a parked invoice's retry; nothing stored
   ],
   pennylane: [
     "supplier_invoices_list",

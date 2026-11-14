@@ -1,7 +1,7 @@
 {
   "entry": "preflight:refunds_create",
   "params": {
-    "chargeId": "ch_contract_1",
+    "charge": "ch_contract_1",
     "amountMinor": "1500"
   },
   "unrecorded": {

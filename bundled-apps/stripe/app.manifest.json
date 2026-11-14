@@ -1,6 +1,6 @@
 {
   "name": "stripe",
-  "version": "0.1.31",
+  "version": "0.1.32",
   "kind": "app",
   "iconName": "credit-card",
   "description": "Stripe connector: a read mirror of customers, subscriptions, invoices, payments, refunds and disputes, kept current by a signed webhook.",
@@ -820,6 +820,29 @@
         "additionalProperties": false
       },
       "timeoutMs": 60000
+    },
+    "invoice_payload": {
+      "readOnly": true,
+      "agentVisible": false,
+      "description": "One Stripe invoice read again in the invoice:finalized shape, with the buyer the mirror holds now, for invoicing's retry of a parked invoice.",
+      "requiredScopes": [
+        "stripe:internal"
+      ],
+      "trustBoundary": "user",
+      "handler": "invoicePayload",
+      "params": {
+        "type": "object",
+        "properties": {
+          "stripeInvoiceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stripeInvoiceId"
+        ],
+        "additionalProperties": false
+      },
+      "timeoutMs": 15000
     },
     "invoice_send_state": {
       "readOnly": true,

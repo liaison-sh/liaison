@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The two reads invoicing makes of the Stripe app, hidden from the agent:
+// The reads invoicing makes of the Stripe app, hidden from the agent:
 //
 //   refunds_for_charge   every refund of one charge, by id, read from Stripe
 //                        (`GET /v1/refunds?charge=`), never the charge's cumulative
@@ -12,6 +12,9 @@
 //                        invoices of the last 3 days that name one (to mark them paid),
 //                        and succeeded refunds of the last 35 days with no credit note.
 //                        Invoicing's own handlers decide; each is idempotent by its key.
+//   invoice_payload      one Stripe invoice read again (`GET /v1/invoices/{id}`), in the
+//                        `invoice:finalized` shape, with the buyer the mirror holds now: the
+//                        retry of an invoice invoicing parked (a buyer's address added since).
 import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { type MirrorDb, newTally } from "../mirror"
@@ -32,6 +35,7 @@ export interface MoneyReadCtx extends StripeHttpCtx {
 }
 
 const CHARGE = /^(ch|py)_[A-Za-z0-9_]+$/
+const INVOICE = /^in_[A-Za-z0-9_]+$/
 const DAY = 86_400_000
 const WINDOW_DAYS = 35
 const PAID_DAYS = 3
@@ -229,5 +233,52 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
     invoices,
     refunds,
     summary: `${missing.length} Stripe invoice(s) with no Liaison document${unread ? ` (${unread} not read from Stripe this time)` : ""}, ${paidRows.length} paid invoice(s) to check, ${refunds.length} succeeded refund(s) with no credit note recorded.`,
+  }
+}
+
+export async function invoicePayload(params: Obj | undefined, ctx: MoneyReadCtx) {
+  const id = typeof params?.stripeInvoiceId === "string" ? params.stripeInvoiceId.trim() : ""
+  if (!INVOICE.test(id)) {
+    return refuseTool(
+      "invoice_id_invalid",
+      `"${id}" is not a Stripe invoice id (in_...), so no invoice was read.`,
+    )
+  }
+  const hold = await moneyActionHold(ctx.db)
+  if (hold)
+    return refuseTool(
+      hold.error.code ?? "stripe_unavailable",
+      `Stripe cannot be asked about invoice ${id}: ${hold.error.message}`,
+      { retryable: true },
+    )
+  const [row] = (await ctx.db.findMany("stripe_invoices", {
+    where: { stripe_id: id },
+    limit: 1,
+  })) as Obj[]
+  if (!row) {
+    return refuseTool(
+      "invoice_not_mirrored",
+      `Invoice ${id} is not in the Stripe mirror yet, so it was not read. It is read again on the next run.`,
+      { retryable: true },
+    )
+  }
+  try {
+    const obj = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, {})
+    return {
+      invoice: await invoiceEventPayload(
+        ctx,
+        row,
+        obj,
+        newTally(),
+        new Date().toISOString(),
+        false,
+      ),
+    }
+  } catch (err) {
+    return refuseTool(
+      "stripe_unavailable",
+      `Stripe did not answer for invoice ${id} (${err instanceof Error ? err.message : String(err)}). Nothing changed; it is read again on the next run.`,
+      { retryable: true },
+    )
   }
 }

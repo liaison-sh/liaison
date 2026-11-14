@@ -288,6 +288,28 @@ async function counterpartyOf(
   }
 }
 
+/**
+ * A parked Stripe invoice as Stripe answers for it now: the Stripe app reads the invoice again and
+ * the buyer as its mirror holds them today, so a buyer completed in Stripe after the park (an
+ * address, a name, an email) reaches the retry. When the Stripe app cannot answer, the stored
+ * payload is retried: it can only park again for what it lacked, never issue with less.
+ */
+export async function currentStripeInvoice(ctx: StripeCtx, stored: unknown): Promise<unknown> {
+  const p = payloadOf<StripeInvoicePayload>(stored)
+  if (!ctx.executeTool || !p || typeof p.stripe_invoice_id !== "string" || !p.stripe_invoice_id)
+    return stored
+  try {
+    const env = await ctx.executeTool("stripe:invoice_payload", {
+      stripeInvoiceId: p.stripe_invoice_id,
+    })
+    if (env.status !== "completed") return stored
+    const fresh = (env.result as { invoice?: StripeInvoicePayload } | null)?.invoice
+    return fresh && fresh.stripe_invoice_id === p.stripe_invoice_id ? fresh : stored
+  } catch {
+    return stored
+  }
+}
+
 export interface FinalizedOptions {
   /** A person decided this invoice (issue-now click, or the approval of the threshold card). */
   byPerson?: boolean

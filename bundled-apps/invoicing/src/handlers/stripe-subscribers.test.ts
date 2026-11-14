@@ -5,6 +5,7 @@
 // money paths (one document under replay and concurrency, the legal date) are in the api
 // integration suite.
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
+import { deferredRetryJobHandler } from "./deferred-dispatch"
 import { reconcileStripePayments } from "./reconcile-stripe-payments"
 import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
 import {
@@ -40,6 +41,43 @@ describe("Stripe invoices handled by invoicing", () => {
     expect(Number(line.tax_rate_bp)).toBe(2000)
     // The Stripe invoice is told which document it became.
     expect(ctx.calls.some((c) => c.tool === "stripe:invoice_document_link")).toBe(true)
+  })
+
+  test("an invoice parked for a missing address issues once the address is in Stripe: the retry reads the invoice again", async () => {
+    const db = stripeDb()
+    const noAddress = finalized({
+      customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR" },
+    })
+    const ctx = stripeCtx(db)
+    const parked = await onStripeInvoiceFinalized({ data: noAddress }, ctx)
+    expect(parked).toMatchObject({ status: "deferred", reason: "awaiting_data" })
+    expect(parks(db)[0]?.reason).toBe("customer_address_missing")
+
+    // The Stripe app cannot answer: the stored payload is retried and still waits.
+    const cronCtx = ctx as unknown as Parameters<typeof deferredRetryJobHandler>[1]
+    await deferredRetryJobHandler(undefined, cronCtx, { now: new Date(Date.UTC(2030, 0, 1)) })
+    expect(invoices(db)).toHaveLength(0)
+
+    // The address was added in Stripe: the Stripe app answers the invoice as it reads now.
+    const reads: unknown[] = []
+    const fresh = stripeCtx(db, {
+      executeTool: (async (tool: string, params: unknown) => {
+        if (tool !== "stripe:invoice_payload")
+          return { status: "error", error: { code: "tool_not_found", message: "absent" } }
+        reads.push(params)
+        return { status: "completed", result: { invoice: finalized() } }
+      }) as never,
+    })
+    await deferredRetryJobHandler(
+      undefined,
+      fresh as unknown as Parameters<typeof deferredRetryJobHandler>[1],
+      { now: new Date(Date.UTC(2030, 0, 2)) },
+    )
+    expect(reads).toEqual([{ stripeInvoiceId: "in_1" }])
+    const docs = invoices(db)
+    expect(docs).toHaveLength(1)
+    expect(String(docs[0]?.external_ref)).toBe("stripe:in_1")
+    expect(JSON.stringify(docs[0])).toContain("3 rue Neuve")
   })
 
   test("a tax difference of 2 minor units on a line parks for review and 1 does not", async () => {

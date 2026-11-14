@@ -1713,6 +1713,7 @@ describe("invoicing manifest", () => {
     // 0.21.15: a unique-key race reads as one when a sandboxed call rejects with its text alone.
     // 0.21.16: a month-end card drawn again shows what changed only once its rows are read.
     // 0.21.17: the documents list names the period it is empty for; the footer opens settings.
+    // 0.21.18: a parked Stripe invoice is retried as Stripe answers for it now (stripe:invoice_payload).
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

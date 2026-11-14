@@ -181,6 +181,10 @@ function cases(db: MemDb): Record<string, Case | string> {
     refunds_for_charge: () =>
       refundsForCharge({ chargeId: "ch_card" }, { ...money, db: money.db as never }),
     reconcile_candidates: () => reconcileCandidates({}, { db: db as never, fetch: mockFetch }),
+    // Invoicing's read, never the agent's (agentVisible false, stripe:internal): it carries the
+    // buyer's address on purpose, as the invoice:finalized event does, for a legal invoice.
+    invoice_payload:
+      "the buyer's address for invoicing's retry, as the invoice:finalized event carries it (money-events.test.ts)",
     invoice_send_state: () =>
       invoiceSendState(
         { ref: { kind: "stripe:invoice", id: "in_FIXTURE0001" } },

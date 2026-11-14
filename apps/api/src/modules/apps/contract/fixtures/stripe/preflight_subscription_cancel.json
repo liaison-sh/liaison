@@ -1,7 +1,7 @@
 {
   "entry": "preflight:subscription_cancel",
   "params": {
-    "subscriptionId": "sub_contract_1",
+    "subscription": "sub_contract_1",
     "atPeriodEnd": true
   },
   "unrecorded": {

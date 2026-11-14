@@ -9,7 +9,7 @@ import { handleStripeEvent, type IngestCtx } from "./dispatch"
 import { MemDb } from "./mem-db.testkit"
 import { mockFetch, moneyCtx, seedCharge, stripeMockReset, stripeMockSeed } from "./money.testkit"
 import { stripeDocumentRef } from "./money-events"
-import { reconcileCandidates, refundsForCharge } from "./tools/money-reads"
+import { invoicePayload, reconcileCandidates, refundsForCharge } from "./tools/money-reads"
 import { refundsCreate } from "./tools/refunds"
 import { invoiceDocumentLink, refundDocumentLink } from "./tools/routes"
 
@@ -408,6 +408,48 @@ describe("the reads invoicing calls", () => {
     ])
     expect(((await refundsForCharge({ chargeId: "nope" }, ctx)) as Obj).error.code).toBe(
       "charge_id_invalid",
+    )
+  })
+
+  it("invoice_payload reads one invoice again, with the buyer the mirror holds now, and refuses an id it does not know", async () => {
+    db.seed("stripe_invoices", [
+      {
+        stripe_id: "in_P1",
+        customer_id: "cus_P1",
+        status: "open",
+        total_minor: 12000,
+        currency: "eur",
+        finalized_at: new Date(Date.now() - 86_400_000).toISOString(),
+        issuer: "liaison",
+        liaison_document_id: null,
+      },
+    ])
+    db.seed("stripe_customers", [
+      {
+        stripe_id: "cus_P1",
+        name: "Lumen Studio",
+        email: "billing@lumen.example",
+        address: { line1: "3 rue Neuve", postal_code: "69001", city: "Lyon", country: "FR" },
+      },
+    ])
+    stripeMockSeed("invoices", {
+      id: "in_P1",
+      status: "open",
+      lines: { object: "list", has_more: false, data: [] },
+    })
+    const ctx = { db: db as never, fetch: fetchStripe }
+    const res = (await invoicePayload({ stripeInvoiceId: "in_P1" }, ctx)) as Obj
+    expect(res.invoice).toMatchObject({
+      stripe_invoice_id: "in_P1",
+      customer_id: "cus_P1",
+      total_minor: "12000",
+      customer: { name: "Lumen Studio", country: "FR", address: "3 rue Neuve, 69001 Lyon" },
+    })
+    expect(((await invoicePayload({ stripeInvoiceId: "in_NOPE" }, ctx)) as Obj).error.code).toBe(
+      "invoice_not_mirrored",
+    )
+    expect(((await invoicePayload({ stripeInvoiceId: "x" }, ctx)) as Obj).error.code).toBe(
+      "invoice_id_invalid",
     )
   })
 

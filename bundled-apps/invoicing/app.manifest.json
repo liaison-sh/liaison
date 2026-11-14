@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.21.17",
+  "version": "0.21.18",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6875,6 +6875,10 @@
     {
       "target": "stripe:refunds_for_charge",
       "reason": "a credit note follows each refund of a charge by its own id, never the charge's cumulative amount"
+    },
+    {
+      "target": "stripe:invoice_payload",
+      "reason": "the retry of a parked Stripe invoice reads it again as Stripe answers now, so a buyer's address added since is what it issues with"
     },
     {
       "target": "stripe:reconcile_candidates",

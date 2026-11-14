@@ -26,7 +26,11 @@ import {
   type OrderPaidPayload,
   onShopifyOrderPaid,
 } from "./shopify-order-paid"
-import { onStripeInvoiceFinalized, STRIPE_PARK_PREFIX } from "./stripe-invoice-finalized"
+import {
+  currentStripeInvoice,
+  onStripeInvoiceFinalized,
+  STRIPE_PARK_PREFIX,
+} from "./stripe-invoice-finalized"
 import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-refund-created"
 
 // The cron ctx is the full bundled-app bridge, so it satisfies both the
@@ -180,7 +184,12 @@ export async function deferredRetryJobHandler(
       ) {
         return { status: "still_blocked", reason: row.reason ?? "waits_for_a_person" }
       }
-      const r = await onStripeInvoiceFinalized(row.event_payload_json, ctx)
+      // The invoice as Stripe answers for it now, never the payload frozen at the park: a buyer
+      // completed in Stripe since (the address a park waited for) is what this retry issues with.
+      const r = await onStripeInvoiceFinalized(
+        await currentStripeInvoice(ctx, row.event_payload_json),
+        ctx,
+      )
       return r.status === "deferred" || r.status === "error" || r.status === "pending_approval"
         ? { status: "still_blocked", reason: r.status === "deferred" ? r.reason : r.status }
         : { status: "ok" }

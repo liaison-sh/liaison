@@ -147,7 +147,7 @@ const ApiConnectorAdapters: Component = () => {
               void refresh()
             }}
           >
-            {i18n.t("kernel.common.retry2")}
+            {i18n.t("api-connector.common.retry")}
           </Button>
         </div>
       </Show>
@@ -230,7 +230,7 @@ const ApiConnectorAdapters: Component = () => {
                             data-testid={`api-connector-delete-${id}`}
                             onClick={() => toggle(id, "delete")}
                           >
-                            {i18n.t("kernel.common.delete")}
+                            {i18n.t("api-connector.common.delete")}
                           </Button>
                         </Show>
                       </div>
@@ -267,7 +267,7 @@ const ApiConnectorAdapters: Component = () => {
                           loading={deleting()}
                           onClick={() => void confirmDelete(id)}
                         >
-                          {i18n.t("kernel.common.delete")}
+                          {i18n.t("api-connector.common.delete")}
                         </Button>
                         <Button
                           variant="ghost"
@@ -275,7 +275,7 @@ const ApiConnectorAdapters: Component = () => {
                           data-testid={`api-connector-delete-no-${id}`}
                           onClick={() => setOpen(null)}
                         >
-                          {i18n.t("kernel.common.cancel")}
+                          {i18n.t("api-connector.common.cancel")}
                         </Button>
                         <Show when={deleteFailed()}>
                           <span data-testid={`api-connector-delete-error-${id}`} class="text-error">

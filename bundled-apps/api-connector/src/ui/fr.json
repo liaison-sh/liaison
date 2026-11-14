@@ -112,5 +112,10 @@
     },
     "wipeWarning": "Cet adaptateur fait passer la connexion de {{from}} à {{to}}. L'enregistrer supprime les identifiants enregistrés, qu'il faudra saisir à nouveau.",
     "saveAnyway": "Enregistrer et supprimer les identifiants"
+  },
+  "common": {
+    "delete": "Supprimer",
+    "cancel": "Annuler",
+    "retry": "Réessayer"
   }
 }

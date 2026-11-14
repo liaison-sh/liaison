@@ -1816,7 +1816,12 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
       ...bunTestFlags,
       ...(fileFilter
         ? fileArg
-        : ["src/handlers.test.ts", "src/manifest.test.ts", "src/ui/params-form.test.ts"]),
+        : [
+            "src/handlers.test.ts",
+            "src/manifest.test.ts",
+            "src/ui/params-form.test.ts",
+            "src/ui/copy-keys.test.ts",
+          ]),
     ],
     cwd: path.join(ROOT, "bundled-apps/api-connector"),
   },

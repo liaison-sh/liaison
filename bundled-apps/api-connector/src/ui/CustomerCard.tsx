@@ -246,7 +246,7 @@ export const CustomerCard: Component<{
               class="rounded-sm border border-border px-2 py-0.5 text-xs text-text-secondary hover:bg-surface-hover hover:text-text"
               onClick={() => setAttempt((n) => n + 1)}
             >
-              {i18n.t("kernel.common.retry2")}
+              {i18n.t("api-connector.common.retry")}
             </button>
           </div>
         </Show>

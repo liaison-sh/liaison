@@ -112,7 +112,8 @@ describe("projects.manifest", () => {
     //   and the task tab resolves its label.
     // 1.34.0: cost_rate_set asks for the currency of a new rate.
     // 1.34.1: merged with main: tasks record who made their last edit.
-    // 1.35.0: a reconcile line no longer says whether it is in the plan; its tasks decide.
+    // 1.35.0: a reconcile line no longer says whether it is in the plan; its tasks decide. The
+    //   company days-off list in settings carries its heading.
     expect(projectsManifest.version).toBe("1.35.0")
   })
 

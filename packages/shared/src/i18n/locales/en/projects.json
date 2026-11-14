@@ -291,6 +291,7 @@
       "description": "Groups and their values. Drag to reorder within a group; a value cannot move to another group."
     },
     "time": {
+      "daysOff": "Company days off",
       "calendar": "Read a shared calendar",
       "calendarHelp": "None by default. Whole-day events of the chosen calendar become company days off.",
       "description": "Hours in a day and company days off, for the projects that use time and budgets. Each project turns it on in its own settings. Reconcile reads only what the person asking can already read.",

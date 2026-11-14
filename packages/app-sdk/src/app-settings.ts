@@ -190,6 +190,9 @@ const connectionsBlockSchema = z
 const listBlockSchema = z
   .object({
     block: z.literal("list"),
+    /** A heading over the list, saying what its rows are and what Add adds. */
+    title: z.string().min(1).optional(),
+    titleKey: labelKey.optional(),
     ops: z
       .object({
         list: toolRef,

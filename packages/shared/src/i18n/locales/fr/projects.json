@@ -291,6 +291,7 @@
       "description": "Les groupes et leurs valeurs. Faites glisser pour réordonner dans un groupe ; une valeur ne peut pas changer de groupe."
     },
     "time": {
+      "daysOff": "Jours non travaillés de l'entreprise",
       "calendar": "Lire un calendrier partagé",
       "calendarHelp": "Aucun par défaut. Les événements sur la journée entière du calendrier choisi deviennent des jours non travaillés de l'entreprise.",
       "description": "Heures dans une journée et jours non travaillés de l'entreprise, pour les projets qui utilisent le temps et les budgets. Chaque projet l'active dans ses propres réglages. Le rapprochement ne lit que ce que la personne qui le demande peut déjà lire.",

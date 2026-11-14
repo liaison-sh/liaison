@@ -5326,6 +5326,8 @@
           },
           {
             "block": "list",
+            "title": "Company days off",
+            "titleKey": "projects.settingsPage.time.daysOff",
             "ops": {
               "list": "days_off_list",
               "create": "days_off_set",

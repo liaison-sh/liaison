@@ -109,14 +109,14 @@ async function canWriteSubscriptions(ctx: MoneyCtx): Promise<boolean | ToolRefus
   }
 }
 
-async function cancelChecks(p: Obj, ctx: MoneyCtx): Promise<ToolRefusal | LiveSub> {
+async function cancelChecks(rawId: unknown, p: Obj, ctx: MoneyCtx): Promise<ToolRefusal | LiveSub> {
   const hold = await moneyActionHold(ctx.db)
   if (hold) return hold
-  const id = typeof p.subscriptionId === "string" ? p.subscriptionId.trim() : ""
+  const id = typeof rawId === "string" ? rawId.trim() : ""
   if (!SUB_ID.test(id)) {
     return refuseTool(
       "subscription_ref_missing",
-      "No Stripe subscription (sub_...) was named, so nothing was staged. Next step: find it with subscriptions_search.",
+      "No Stripe subscription (sub_...) was named in subscription, so nothing was staged. Next step: find it with subscriptions_search and pass its id as subscription.",
     )
   }
   const sub = await readSub(ctx, id)
@@ -138,7 +138,9 @@ async function cancelChecks(p: Obj, ctx: MoneyCtx): Promise<ToolRefusal | LiveSu
 
 export async function subscriptionCancelPreflight(params: Obj | undefined, ctx: MoneyCtx) {
   const p = params ?? {}
-  const sub = await cancelChecks(p, ctx)
+  // The caller names the subscription in `subscription`; `subscriptionId` is pinned here, from the
+  // subscription Stripe answered for (a caller's own `subscriptionId` is dropped first).
+  const sub = await cancelChecks(p.subscription, p, ctx)
   if (isRefusal(sub)) return sub
   const writable = await canWriteSubscriptions(ctx)
   if (isRefusal(writable)) return writable
@@ -158,7 +160,8 @@ export async function subscriptionCancel(params: Obj | undefined, ctx: MoneyCtx)
     await ctx.approval_recordFailedNoEffect?.(approval.toolName, JSON.stringify(r.error))
     return r
   }
-  const sub = await cancelChecks(p, ctx)
+  // The subscription its preflight pinned when the cancel was staged.
+  const sub = await cancelChecks(p.subscriptionId, p, ctx)
   if (isRefusal(sub)) return noEffect(sub)
   const atPeriodEnd = p.atPeriodEnd !== false
   await ctx.approval_recordStarted?.(approval.toolName)

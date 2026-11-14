@@ -49,10 +49,10 @@ describe("refunds_create before approval", () => {
     seedCharge("ch_old", 10000)
     const ctx = moneyCtx(db, null)
     const answers = {
-      already_refunded: await refundsCreatePreflight({ chargeId: "ch_done" }, ctx),
-      charge_disputed: await refundsCreatePreflight({ chargeId: "ch_disputed" }, ctx),
+      already_refunded: await refundsCreatePreflight({ charge: "ch_done" }, ctx),
+      charge_disputed: await refundsCreatePreflight({ charge: "ch_disputed" }, ctx),
       amount_over_refundable: await refundsCreatePreflight(
-        { chargeId: "ch_small", amountMinor: 1001 },
+        { charge: "ch_small", amountMinor: 1001 },
         ctx,
       ),
     }
@@ -65,18 +65,18 @@ describe("refunds_create before approval", () => {
     }
     // 1000 left: N-1 and N pass, N+1 (above) was refused.
     expect(
-      (await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 999 }, ctx)) as Obj,
+      (await refundsCreatePreflight({ charge: "ch_small", amountMinor: 999 }, ctx)) as Obj,
     ).toMatchObject({ ok: true })
     expect(
-      (await refundsCreatePreflight({ chargeId: "ch_small", amountMinor: 1000 }, ctx)) as Obj,
+      (await refundsCreatePreflight({ charge: "ch_small", amountMinor: 1000 }, ctx)) as Obj,
     ).toMatchObject({ ok: true })
 
     // When Liaison issues the invoices, a charge with no Liaison invoice behind it is a person's call.
-    expect((await refundsCreatePreflight({ chargeId: "ch_old" }, ctx)) as Obj).toMatchObject({
+    expect((await refundsCreatePreflight({ charge: "ch_old" }, ctx)) as Obj).toMatchObject({
       ok: true,
     })
     const old = await refundsCreatePreflight(
-      { chargeId: "ch_old" },
+      { charge: "ch_old" },
       moneyCtx(db, null, { cardIssuer: "liaison" }),
     )
     expect(codeOf(old)).toBe("no_invoice_for_refund")
@@ -87,7 +87,7 @@ describe("refunds_create before approval", () => {
   it("an allowed refund pins the charge and is always decided by a person", async () => {
     seedCharge("ch_ok", 5000)
     const out = (await refundsCreatePreflight(
-      { chargeId: "ch_ok", amountMinor: 2000 },
+      { charge: "ch_ok", amountMinor: 2000 },
       moneyCtx(connectedDb(), null),
     )) as Obj
     expect(out).toEqual({ ok: true, noAutoApprove: true, pinnedParams: { chargeId: "ch_ok" } })
@@ -102,12 +102,27 @@ describe("refunds_create before approval", () => {
       editableFields: [{ field: "amountMinor", label: "Amount incl. VAT", widget: "text" }],
       summarizerContext: { tool: "payments_search", params: { id: "chargeId" } },
     })
+    // The caller names the charge in `charge`: the pinned `chargeId` is dropped before the
+    // preflight, so it is never the one the caller must pass.
+    expect(t.params.required).toEqual(["charge"])
+    expect(t.params.required).not.toContain("chargeId")
+    const cancel = manifest().tools.subscription_cancel
+    expect(cancel.pinnedParams).toEqual(["subscriptionId"])
+    expect(cancel.params.required).toEqual(["subscription"])
+  })
+
+  it("a refund naming only chargeId names no charge: that param is set by Liaison", async () => {
+    seedCharge("ch_ok", 5000)
+    const out = await refundsCreatePreflight({ chargeId: "ch_ok" }, moneyCtx(connectedDb(), null))
+    expect(codeOf(out)).toBe("charge_ref_missing")
+    expect((out as Obj).error.message).toContain("pass its id as charge")
+    expect(refundPosts()).toHaveLength(0)
   })
 
   it("while the key is refused the refund is refused with the reason and the next step, and Stripe is not called", async () => {
     seedCharge("ch_ok", 5000)
     const db = connectedDb("connected+key_invalid")
-    const staged = await refundsCreatePreflight({ chargeId: "ch_ok" }, moneyCtx(db, null))
+    const staged = await refundsCreatePreflight({ charge: "ch_ok" }, moneyCtx(db, null))
     expect(codeOf(staged)).toBe("key_invalid")
     expect((staged as Obj).error.message).toContain("Next step")
     const ctx = moneyCtx(db, "apr-held")
@@ -137,7 +152,7 @@ describe("refunds_create after approval", () => {
     const db = connectedDb()
     expect(
       (await refundsCreatePreflight(
-        { chargeId: "ch_ok", amountMinor: 3000 },
+        { charge: "ch_ok", amountMinor: 3000 },
         moneyCtx(db, null),
       )) as Obj,
     ).toMatchObject({ ok: true })
@@ -249,7 +264,7 @@ describe("subscription_cancel", () => {
   it("cancel without the write permission is blocked and parks nothing; check again is a card action on the check, never on cancel", async () => {
     stripeMockFailNext("/v1/subscriptions/sub_liaison_probe", 403)
     const out = (await subscriptionCancelPreflight(
-      { subscriptionId: "sub_live" },
+      { subscription: "sub_live" },
       moneyCtx(connectedDb(), null),
     )) as Obj
     expect(out.error).toMatchObject({ code: "permission_missing", refusal: true })
@@ -263,7 +278,7 @@ describe("subscription_cancel", () => {
     })
     // With the permission back, the same call stages.
     const again = (await subscriptionCancelPreflight(
-      { subscriptionId: "sub_live" },
+      { subscription: "sub_live" },
       moneyCtx(connectedDb(), null),
     )) as Obj
     expect(again).toEqual({

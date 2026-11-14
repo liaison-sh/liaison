@@ -1422,6 +1422,19 @@ export function validateAppManifest(manifest: any): ValidationResult {
           )
         }
       }
+      if (Array.isArray(tool.pinnedParams) && Array.isArray(tool.params?.required)) {
+        // A caller's value for a pinned param is dropped before the preflight
+        // (execute-tool.ts), so a pinned param the caller must pass refuses every
+        // call: the caller names the target under a param of its own, the
+        // preflight pins what it checked.
+        for (const key of tool.pinnedParams as string[]) {
+          if ((tool.params.required as unknown[]).includes(key)) {
+            errors.push(
+              `tools.${toolName}.pinnedParams: pinned param "${key}" is required, but a caller's value for it is dropped before the preflight; take the caller's reference under another param and pin "${key}" from the preflight`,
+            )
+          }
+        }
+      }
       if (tool.approvalImpact !== undefined) {
         // Same gating rule as editableFields below: `approvalImpact`
         // classifies the pending approval a gated call parks, so it is only

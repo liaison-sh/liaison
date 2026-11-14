@@ -186,8 +186,8 @@ function cases(db: MemDb): Record<string, Case | string> {
         { ref: { kind: "stripe:invoice", id: "in_FIXTURE0001" } },
         { db: db as never, fetch: mockFetch },
       ),
-    refunds_create: () => refundsCreatePreflight({ chargeId: "ch_card", amountMinor: 500 }, money),
-    subscription_cancel: () => subscriptionCancelPreflight({ subscriptionId: "sub_1" }, money),
+    refunds_create: () => refundsCreatePreflight({ charge: "ch_card", amountMinor: 500 }, money),
+    subscription_cancel: () => subscriptionCancelPreflight({ subscription: "sub_1" }, money),
     subscription_cancel_effect: () => subscriptionCancelEffect({ subscriptionId: "sub_1" }, money),
     card_update_link: () =>
       cardUpdateLink(

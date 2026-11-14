@@ -240,17 +240,22 @@ function amountOf(v: unknown): number | null | ToolRefusal {
   )
 }
 
+/** The charge id in a param, trimmed, or "" when it names none. */
+function chargeIdIn(v: unknown): string {
+  return typeof v === "string" ? v.trim() : ""
+}
+
 async function checks(
+  chargeId: string,
   params: Obj,
   ctx: MoneyCtx,
 ): Promise<ToolRefusal | { charge: Charge; amount: number; left: number }> {
   const hold = await moneyActionHold(ctx.db)
   if (hold) return hold
-  const chargeId = typeof params.chargeId === "string" ? params.chargeId.trim() : ""
   if (!ID.test(chargeId)) {
     return refuseTool(
       "charge_ref_missing",
-      "No Stripe charge (ch_...) was named, so nothing was staged or sent. Next step: find it with payments_search.",
+      "No Stripe charge (ch_...) was named in charge, so nothing was staged or sent. Next step: find it with payments_search and pass its id as charge.",
     )
   }
   const card = cardNumberRefusal("reason", params.reason)
@@ -267,7 +272,9 @@ async function checks(
 
 export async function refundsCreatePreflight(params: Obj | undefined, ctx: MoneyCtx) {
   const p = params ?? {}
-  const checked = await checks(p, ctx)
+  // The caller names the charge in `charge`; `chargeId` is pinned here, from the charge Stripe
+  // answered for, and a caller's own `chargeId` never reaches this point (it is dropped first).
+  const checked = await checks(chargeIdIn(p.charge), p, ctx)
   if (isRefusal(checked)) return checked
   const behind = await invoiceBehind(ctx, checked.charge.id)
   if (isRefusal(behind)) return behind
@@ -409,7 +416,8 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
       "A refund runs only after a person approves it, so nothing was sent to Stripe. Next step: call refunds_create through its approval.",
     )
   }
-  const chargeId = typeof p.chargeId === "string" ? p.chargeId.trim() : ""
+  // The charge its preflight pinned when the refund was staged, never the caller's reference.
+  const chargeId = chargeIdIn(p.chargeId)
   const hold = await moneyActionHold(ctx.db)
   if (hold) return noEffect(ctx, hold)
 
@@ -434,7 +442,7 @@ export async function refundsCreate(params: Obj | undefined, ctx: MoneyCtx) {
   }
 
   // 2. Read the charge again and refuse against what is left now.
-  const checked = await checks(p, ctx)
+  const checked = await checks(chargeId, p, ctx)
   if (isRefusal(checked)) return noEffect(ctx, checked)
   const { charge, amount } = checked
 

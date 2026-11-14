@@ -23,7 +23,7 @@ describe("card numbers and payment details", () => {
     seedCharge("ch_ok", 5000)
     for (const reason of [`customer asked, card ${CARD}`, "5555555555554444"]) {
       const out = (await refundsCreatePreflight(
-        { chargeId: "ch_ok", reason },
+        { charge: "ch_ok", reason },
         moneyCtx(connectedDb(), null),
       )) as any
       expect(out.error.code).toBe("card_number_refused")
@@ -38,7 +38,7 @@ describe("card numbers and payment details", () => {
     // A plain order reference passes.
     expect(
       await refundsCreatePreflight(
-        { chargeId: "ch_ok", reason: "order 1000234 damaged" },
+        { charge: "ch_ok", reason: "order 1000234 damaged" },
         moneyCtx(connectedDb(), null),
       ),
     ).toMatchObject({ ok: true })

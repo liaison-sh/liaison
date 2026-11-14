@@ -2,8 +2,12 @@
 //
 // One pending refund per charge, and a person's pending refund is never
 // rewritten by someone else's. The refund tool is registered with the gate,
-// the dedupe key and the same-requester rule the shipped manifest declares, and
-// staged through the real executeTool gate by two people of one org.
+// the pinned params, the dedupe key and the same-requester rule the shipped
+// manifest declares, and staged through the real executeTool gate by two people
+// of one org. Its preflight keeps the shipped contract: it reads the charge the
+// caller names and pins the charge id it checked (a caller's own value for a
+// pinned param is dropped before the preflight, so the caller names the charge
+// under a param that is not pinned).
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { randomUUID } from "node:crypto"
 import { readFileSync } from "node:fs"
@@ -46,7 +50,11 @@ const SHIPPED = MANIFEST.tools.refunds_create as {
   approvalDedupeKeyParam: string
   approvalDedupeSameRequester: boolean
   approvalExpiryHours: number
+  pinnedParams: string[]
+  params: { required: string[] }
 }
+// The param the caller names the charge with: required, and never pinned.
+const CHARGE_REF = SHIPPED.params.required[0] as string
 
 let orgId: string
 let alice: string
@@ -89,7 +97,21 @@ beforeAll(async () => {
     gated: SHIPPED.gated,
     noAutoApprove: SHIPPED.noAutoApprove,
     approvalImpact: "external",
-    params: z.object({ chargeId: z.string(), amountMinor: z.string().optional() }).passthrough(),
+    params: z
+      .object({
+        [CHARGE_REF]: z.string(),
+        chargeId: z.string().optional(),
+        amountMinor: z.string().optional(),
+      })
+      .passthrough(),
+    pinnedParams: SHIPPED.pinnedParams,
+    preflight: async (p: Record<string, unknown>) => {
+      const ref = p[CHARGE_REF]
+      if (typeof ref !== "string" || !ref.startsWith("ch_")) {
+        return { error: { code: "charge_ref_missing", message: "No Stripe charge was named." } }
+      }
+      return { ok: true, noAutoApprove: true, pinnedParams: { chargeId: ref } }
+    },
     handler: async () => {
       runs++
       return { refundId: "re_never" }
@@ -116,7 +138,7 @@ function stage(userId: string, chargeId: string, amountMinor: string) {
       scopes: ["stripe:refunds:write"],
       dimensionGrants: {},
     } as never,
-    params: { chargeId, amountMinor },
+    params: { [CHARGE_REF]: chargeId, amountMinor },
     origin: "in-app-agent",
   })
 }
@@ -132,6 +154,17 @@ async function pending(chargeId: string) {
     ),
   )
 }
+
+describe("staging a refund", () => {
+  it("a refund naming its charge is staged with the charge its preflight pinned", async () => {
+    const out = await stage(alice, "ch_staged", "400")
+    expect(out.error).toBeUndefined()
+    expect(out.blocked?.reason).toBe("gated")
+    const rows = await pending("ch_staged")
+    expect(rows.map((r) => [r.requested_by, r.amount])).toEqual([[alice, "400"]])
+    expect(runs).toBe(0)
+  })
+})
 
 describe("a pending refund per charge", () => {
   it("a second requester's refund on the same charge leaves the first card unchanged and is told which one waits", async () => {

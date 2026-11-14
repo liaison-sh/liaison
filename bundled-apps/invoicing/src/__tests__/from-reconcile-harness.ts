@@ -135,7 +135,7 @@ export function harness(): Harness {
       if (target === "mail:composeForApp") {
         mails.push(args)
         return mail.fail
-          ? { status: "error" as const, error: { code: "smtp_down", message: "mail is down" } }
+          ? { status: "error" as const, error: { code: "send_failed", message: "mail is down" } }
           : { status: "completed" as const, result: { messageId: "<m-1>" } }
       }
       if (target.startsWith("stripe:"))

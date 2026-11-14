@@ -11,7 +11,6 @@ import { ensureTestInfra } from "@liaison/test-helpers"
 import postgres from "postgres"
 import { sql } from "~/db"
 import { withAcquireTimeout } from "~/db/acquire-timeout"
-import { getPoolGauges } from "~/db/pool-diag"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { REDIS_PREFIX, redis } from "~/lib/redis"
@@ -58,7 +57,8 @@ const ROUTE_TEST_LOCK_WAIT_MS = (() => {
 
 let _lock: Promise<void> = Promise.resolve()
 let _resolve: (() => void) | null = null
-let _dbLockConnection: Awaited<ReturnType<typeof sql.reserve>> | null = null
+type LockConnection = ReturnType<typeof postgres>
+let _dbLockConnection: LockConnection | null = null
 
 async function acquireMutex(): Promise<void> {
   // Wait for the previous holder to finish
@@ -118,7 +118,7 @@ export function testFileFromStack(stack: string | undefined): string | null {
  * silent one.
  */
 export async function acquireAdvisoryLock(
-  conn: Awaited<ReturnType<typeof sql.reserve>>,
+  conn: typeof sql,
   lockId: number,
   timeoutMs: number,
 ): Promise<void> {
@@ -140,71 +140,49 @@ export async function acquireAdvisoryLock(
 }
 
 /**
- * A connection of the main pool for the lock, within `waitMs`. `sql.reserve()`
- * waits for a free connection with no bound of its own: with every connection
- * of the pool busy, the asking file's beforeAll sat silent until its hook cap
- * (a 180 s "(unnamed)" failure with no line saying what it waited on). It now
- * fails at the lock's own wait, and says what held the connections.
+ * The lock's own connection: a client of one connection, opened for the hold
+ * and closed with it, never a connection reserved from the main pool. postgres.js
+ * drops a `reserve()` asked for while the pool's idle connections are closing
+ * on their idle timeout: the promise never settles. A test file that ran
+ * longer than that timeout without touching the pool (the live-install cell
+ * scenario: its work runs in child processes) left the next file's beforeAll
+ * waiting, silent, until its hook cap. A dedicated connection has no pool to
+ * wait on and no idle timeout or lifetime to lose the session lock to.
  */
-async function reserveLockConnection(
-  waitMs: number,
-): Promise<Awaited<ReturnType<typeof sql.reserve>>> {
-  const pending = sql.reserve()
-  try {
-    return await withAcquireTimeout("route-test-lock:reserve", waitMs, pending)
-  } catch (error) {
-    // A connection that turns up after the wait goes straight back to the pool.
-    pending.then(
-      (late) => late.release(),
-      () => {},
-    )
-    log.error(
-      { waitMs, pool: getPoolGauges().main, sessions: await busySessions() },
-      "route test lock: no connection of the main pool came free within the wait; the " +
-        "sessions below held this database's connections",
-    )
-    throw error
-  }
-}
-
-/** This database's other sessions, read on a connection of their own (the pool has none free). */
-async function busySessions(): Promise<unknown[]> {
-  const probe = postgres(env.DATABASE_URL, { max: 1, connect_timeout: 5, onnotice: () => {} })
-  try {
-    return [
-      ...(await withAcquireTimeout(
-        "route-test-lock:sessions",
-        5_000,
-        probe`
-          SELECT pid, application_name, state, wait_event_type, wait_event,
-            (now() - xact_start)::text AS in_transaction, left(query, 160) AS query
-          FROM pg_stat_activity
-          WHERE datname = current_database() AND pid <> pg_backend_pid()
-          ORDER BY xact_start NULLS LAST`,
-      )),
-    ]
-  } catch (error) {
-    return [{ unreadable: error instanceof Error ? error.message : String(error) }]
-  } finally {
-    await probe.end({ timeout: 1 }).catch(() => {})
-  }
+function openLockConnection(): LockConnection {
+  return postgres(env.DATABASE_URL, {
+    max: 1,
+    idle_timeout: 0,
+    max_lifetime: null,
+    connect_timeout: 10,
+    onnotice: () => {},
+  })
 }
 
 async function acquireDbLock(): Promise<void> {
-  const waitMs = Math.max(env.DB_ACQUIRE_TIMEOUT_MS, ROUTE_TEST_LOCK_WAIT_MS)
-  const conn = await reserveLockConnection(waitMs)
-  await acquireAdvisoryLock(conn, ROUTE_TEST_LOCK_ID, waitMs)
+  const conn = openLockConnection()
+  try {
+    await acquireAdvisoryLock(
+      conn,
+      ROUTE_TEST_LOCK_ID,
+      Math.max(env.DB_ACQUIRE_TIMEOUT_MS, ROUTE_TEST_LOCK_WAIT_MS),
+    )
+  } catch (error) {
+    // Closing the session also drops a lock granted after the wait gave up.
+    await conn.end({ timeout: 0 }).catch(() => {})
+    throw error
+  }
   _dbLockConnection = conn
 }
 
 async function releaseDbLock(): Promise<void> {
-  if (!_dbLockConnection) return
-
+  const conn = _dbLockConnection
+  if (!conn) return
+  _dbLockConnection = null
   try {
-    await _dbLockConnection`SELECT pg_advisory_unlock(${ROUTE_TEST_LOCK_ID})`
+    await conn`SELECT pg_advisory_unlock(${ROUTE_TEST_LOCK_ID})`
   } finally {
-    _dbLockConnection.release()
-    _dbLockConnection = null
+    await conn.end({ timeout: 1 }).catch(() => {})
   }
 }
 
@@ -555,5 +533,6 @@ export const releaseTestLockKeepRows = (() => releaseTestLockImpl(false)) as () 
 export const RouteTestLockTestAccess = {
   acquireAs: (file: string | null) => acquireTestLockAs(file),
   holder: () => _holderFile,
-  reserveLockConnection: (waitMs: number) => reserveLockConnection(waitMs),
+  lockSession: () => acquireDbLock(),
+  unlockSession: () => releaseDbLock(),
 }

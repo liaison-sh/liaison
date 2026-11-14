@@ -1506,7 +1506,7 @@ describe("db import enforcement", () => {
     "index.ts", // Server startup (RLS role check)
     "lib/shutdown-phases.ts", // graceful shutdown closes the pool (sql.end())
     "tests/route-test-setup.ts", // Test infrastructure (TRUNCATE)
-    "tests/helpers/app-schema-lock.ts", // Test infrastructure (sql.reserve for advisory locks)
+    "tests/helpers/app-schema-lock.ts", // Test infrastructure (advisory lock holder reads)
     // Test infrastructure, the same category as its app_schema-lock sibling: it
     // renames an app schema aside so a fixture can own the name, then renames it
     // back. `ALTER SCHEMA ... RENAME TO` and `CREATE SCHEMA` are DDL on the

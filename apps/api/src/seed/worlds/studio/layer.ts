@@ -25,6 +25,7 @@ import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
 import { setBillingTerms, setPeriodTimebox, setTaskTime } from "~/apps/projects/service/time-plan"
 import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
+import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
@@ -391,4 +392,15 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
     )
   }
   await seedStudioAway(ctx, org, owner, plan)
+
+  // The product writes each task now, at the seed's run, and setting its timebox touches it
+  // again; a task the plan closed weeks ago was last changed when it closed. Its row says so,
+  // so a list's "updated" day is the close, not the day the world was seeded.
+  await withPrivilegedDb(ctx.orgId, "seed-studio:task-closed-at", (tx) =>
+    tx.execute(sql`
+      UPDATE ${sql.raw(schemaRef("app_projects"))}.tasks
+         SET updated_at = completed_at, created_at = least(created_at, completed_at)
+       WHERE org_id = ${ctx.orgId}::uuid AND completed_at IS NOT NULL
+         AND external_ref LIKE ${`${studioTaskRef("")}%`}`),
+  )
 }

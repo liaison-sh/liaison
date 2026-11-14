@@ -164,6 +164,42 @@ describe("the services world's figures at the board date", () => {
       Beta: [200, 189],
       Launch: [90, 28],
     })
+    // In plan order, whichever column each milestone sits in.
+    expect(out.milestones.map((m: any) => m.name)).toEqual([
+      "Discovery",
+      "Design",
+      "Beta",
+      "Launch",
+    ])
+  })
+
+  it("a task closed before the seed day was last changed when it closed, not on the seed day", async () => {
+    const rows = await withPrivilegedDb(orgId, "studio-figures:closed-at", async (tx) =>
+      rowsOf<{ closed: number; at_close: number; created_after: number }>(
+        await tx.execute(
+          sql`SELECT count(*)::int AS closed,
+                     count(*) FILTER (WHERE updated_at = completed_at)::int AS at_close,
+                     count(*) FILTER (WHERE created_at > completed_at)::int AS created_after
+                FROM app_projects.tasks
+               WHERE org_id = ${orgId}::uuid AND completed_at IS NOT NULL`,
+        ),
+      ),
+    )
+    expect(rows[0]?.closed).toBeGreaterThan(0)
+    expect(rows[0]?.at_close).toBe(rows[0]?.closed)
+    expect(rows[0]?.created_after).toBe(0)
+  })
+
+  it("the retainer's budget counts this month's tasks as its dated sheet does", async () => {
+    const budget = await call("bastien", "projects_budgetGet", {
+      projectName: "Publishing retainer",
+    })
+    const sheet = await call("bastien", "projects_timesheetGet", {
+      projectName: "Publishing retainer",
+      month: BOARD_DATE.toISOString().slice(0, 7),
+    })
+    expect(sheet.coverage.total).toBeGreaterThan(0)
+    expect(budget.coverage).toEqual(sheet.coverage)
   })
 
   it("next week's capacity reads 350 and 336 with the people and hours of the plan, in name order", async () => {

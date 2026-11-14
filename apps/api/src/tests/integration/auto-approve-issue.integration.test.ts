@@ -338,4 +338,52 @@ describe("an auto-approve policy on invoicing", () => {
     const res = await call("credit_note_issue", { draft_id: draftId }, "in-app-agent")
     await expectWaitsForPerson(res, before)
   })
+
+  it("with an auto-approve policy an agent's or a coding agent's correction of a billed line still waits for a person, and a person's own click runs", async () => {
+    // The approval the correction's handler asks for, exactly as it asks: its own tool, the
+    // deciding scope of the people who issue invoices, never auto-approvable.
+    await withPrivilegedDb(ORG, "test:auto-approve-policy", (tx) =>
+      tx
+        .insert(autoApprovePolicies)
+        .values({ orgId: ORG, toolName: "invoicing:credit_note_from_reconcile", createdBy: ADMIN })
+        .onConflictDoNothing(),
+    )
+    const input = {
+      tool_name: "invoicing:credit_note_from_reconcile",
+      summary: "Credit 558.00 on the October invoice",
+      current_payload: {
+        reconciliationId: randomUUID(),
+        lineId: randomUUID(),
+        correctedQuantity: "2.5",
+      },
+      approve_scope: "invoicing:documents:write",
+    }
+    for (const origin of ["in-app-agent", "mcp"] as const) {
+      const parked = await createHandlerApprovalRequest({
+        orgId: ORG,
+        requestedBy: ADMIN,
+        actorScopes: SCOPES,
+        defaultAppName: "invoicing",
+        threadId: THREAD,
+        origin,
+        input,
+      })
+      expect(parked.auto_approved).not.toBe(true)
+      const [req] = await sql<Array<{ status: string }>>`
+        SELECT status FROM kernel.approval_requests WHERE id = ${String(parked.approval_id)}`
+      expect(req?.status).toBe("pending")
+    }
+    // A person's own click, holding the tool's scope: decided by it, nothing parks.
+    const own = await createHandlerApprovalRequest({
+      orgId: ORG,
+      requestedBy: ADMIN,
+      actorScopes: SCOPES,
+      defaultAppName: "invoicing",
+      origin: "human-ui",
+      personScopes: SCOPES,
+      personToolRequiredScopes: ["invoicing:documents:write"],
+      input,
+    })
+    expect(own).toMatchObject({ approval_id: null, auto_approved: true })
+  })
 })

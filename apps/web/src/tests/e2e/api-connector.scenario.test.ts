@@ -72,8 +72,12 @@ test("[API connector] settings, customer card on tickets and mail, scope gate", 
   await expect(row).toBeVisible({ timeout: 15_000 })
   // The credentials form opens next, asking for exactly the apiKey field.
   await expect(page.getByTestId("api-connector-credentials-form")).toBeVisible()
-  await page.getByTestId("api-connector-cred-apiKey").fill(API_KEY)
+  // The key is typed in the host's credential dialog, never in the app's own page.
   await page.getByTestId("api-connector-cred-save").click()
+  const credDialog = page.getByTestId("connect-app-dialog")
+  await expect(credDialog).toBeVisible({ timeout: 10_000 })
+  await credDialog.getByTestId("connect-field-apiKey").fill(API_KEY)
+  await credDialog.getByTestId("connect-submit").click()
   await expect(page.getByTestId("api-connector-cred-saved")).toBeVisible({ timeout: 10_000 })
 
   await page.getByTestId(`api-connector-test-${slug}`).click()
@@ -161,10 +165,11 @@ test("[API connector] settings, customer card on tickets and mail, scope gate", 
     schemaPrefix: env.schemaPrefix,
   })
   // The data layer refuses the lookup itself, whatever the page does.
-  const refused = await fetch(
-    `${env.serverUrl}/api/api-connector/customer?email=${encodeURIComponent(ACME_CONTACT)}`,
-    { headers: { authorization: `Bearer ${member.token}` } },
-  )
+  const refused = await fetch(`${env.serverUrl}/api/apps/api-connector/tools/customer_lookup`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${member.token}` },
+    body: JSON.stringify({ email: ACME_CONTACT }),
+  })
   expect(refused.status).toBe(403)
   const memberContext = await browser.newContext()
   const memberPage = await memberContext.newPage()

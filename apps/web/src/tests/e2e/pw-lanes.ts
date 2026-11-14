@@ -41,8 +41,10 @@ import {
   deterministicPorts,
   type E2eLane,
   type LaneInfo,
+  type StandardWorld,
   seedStandardWorld,
 } from "@liaison/test-helpers"
+import { installLaneCatalogApps, laneCatalogEnv } from "./lane-catalog"
 
 /** Set by global-setup: the registry's URL. Unset = the old per-worker stacks. */
 export const PW_LANE_REGISTRY_ENV = "LIAISON_PW_LANE_REGISTRY"
@@ -94,7 +96,22 @@ export function pwServerEnv(ports: number[]): Record<string, string> {
     // delegates every prompt WITHOUT its marker to the real `streamText`.
     AGENT_STREAM_STUB: path.join(API_TEST_HELPERS, "timeline-interleave-stub.ts"),
     ENCRYPTION_KEY: PW_ENCRYPTION_KEY,
+    // The catalog global-setup staged (lane-catalog.ts).
+    ...laneCatalogEnv(),
   }
+}
+
+/**
+ * The world every Playwright stack starts from: the `standard` seed tier, then
+ * the catalog apps installed as its admin through the App store (lane-catalog.ts).
+ */
+export async function seedPwWorld(
+  env: Parameters<typeof seedStandardWorld>[0],
+  admin: { email: string; password: string },
+): Promise<StandardWorld> {
+  const world = await seedStandardWorld(env, admin)
+  await installLaneCatalogApps(env.serverUrl, world.admin.token)
+  return world
 }
 
 /** E2E_WEB_PREVIEW=1 serves the production build global-setup made. */
@@ -153,7 +170,7 @@ async function createPwLane(parallelIndex: number, logDir: string): Promise<E2eL
     admin: PW_ADMIN,
     seed: async (env) => {
       tSeed = performance.now()
-      return seedStandardWorld(env, PW_ADMIN)
+      return seedPwWorld(env, PW_ADMIN)
     },
   })
   process.stderr.write(

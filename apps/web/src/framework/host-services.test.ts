@@ -79,7 +79,29 @@ describe("buildHostServices", () => {
     await host.invokeTool("shopify", "staff_overrides_upsert", { liaisonUserId: "u1" })
     expect(calls[0].path).toContain("/api/apps/shopify/tools/staff_overrides_upsert")
     expect(calls[0].method).toBe("POST")
-    expect(JSON.parse(calls[0].body ?? "{}").liaisonUserId).toBe("u1")
+    expect(JSON.parse(calls[0].body ?? "{}").params.liaisonUserId).toBe("u1")
+  })
+
+  it("invokeTool keeps a tool parameter named params beside the others", async () => {
+    const host = buildHostServices({
+      getAccessToken: () => "tok",
+      onUnauthorized: () => {},
+      onError: () => {},
+    })
+    await host.invokeTool("api-connector", "settings_adapter_test", {
+      identifier: "crm",
+      operation: "find_customers",
+      params: { email: "a@b.example" },
+      threadId: "t-1",
+    })
+    const body = JSON.parse(calls[0].body ?? "{}")
+    expect(body.params).toEqual({
+      identifier: "crm",
+      operation: "find_customers",
+      params: { email: "a@b.example" },
+      threadId: "t-1",
+    })
+    expect(body.threadId).toBe("t-1")
   })
 
   it("invokeTool failure rejects WITHOUT firing the global error toast", async () => {

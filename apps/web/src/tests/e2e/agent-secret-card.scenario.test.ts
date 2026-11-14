@@ -40,29 +40,33 @@ test("the agent asks for a secret through a card and never sees it", async ({
   const crmToken = `crm-e2e-${randomUUID()}`
   const identifier = `crm-${randomUUID().slice(0, 6)}`
 
-  const adapter = await api(env.serverUrl, `/api/api-connector/adapters/${identifier}`, {
-    method: "PUT",
+  // Saved as the connector's settings screen saves it: its own tool, the adapter as text.
+  const adapter = await api(env.serverUrl, "/api/apps/api-connector/tools/settings_adapter_save", {
+    method: "POST",
     token,
     body: {
-      id: identifier,
-      name: "Example CRM",
-      version: "1.0.0",
-      baseUrl: "https://crm.example.com/api",
-      auth: { type: "bearer" },
-      operations: [
-        {
-          name: "find_customer",
-          description: "Find companies by contact email.",
-          kind: "read",
-          method: "GET",
-          path: "/companies",
-          params: { type: "object", properties: { email: { type: "string" } } },
-          query: { email: "{email}" },
-          items: "/data",
-          fields: ["id", "name"],
-          role: "customer.lookup",
-        },
-      ],
+      identifier,
+      document: JSON.stringify({
+        id: identifier,
+        name: "Example CRM",
+        version: "1.0.0",
+        baseUrl: "https://crm.example.com/api",
+        auth: { type: "bearer" },
+        operations: [
+          {
+            name: "find_customer",
+            description: "Find companies by contact email.",
+            kind: "read",
+            method: "GET",
+            path: "/companies",
+            params: { type: "object", properties: { email: { type: "string" } } },
+            query: { email: "{email}" },
+            items: "/data",
+            fields: ["id", "name"],
+            role: "customer.lookup",
+          },
+        ],
+      }),
     },
   })
   expect(adapter.status, JSON.stringify(adapter.body)).toBe(200)
@@ -96,7 +100,8 @@ test("the agent asks for a secret through a card and never sees it", async ({
         ],
       },
       { text: ASKED_CRM },
-      { echo: 'api-connector api credentials [^\\]"]*saved by [^\\]"]*' },
+      // The line fences the connection slug it names (external content), quotes included.
+      { echo: 'api-connector api credentials [^\\]]*?saved by [^\\]"]*' },
     ],
   })
 
@@ -158,7 +163,11 @@ test("the agent asks for a secret through a card and never sees it", async ({
   await page.screenshot({ path: path.join(SHOT_DIR, "p2-connector-saved.png") })
 
   // 3. Stored where it belongs, and nowhere else.
-  const status = await api(env.serverUrl, "/api/api-connector/adapters", { token })
+  const status = await api(env.serverUrl, "/api/apps/api-connector/tools/settings_connections", {
+    method: "POST",
+    token,
+    body: {},
+  })
   expect(JSON.stringify(status.body)).toContain(identifier)
   const ks = `${env.schemaPrefix}kernel`
   const surfaces: Record<string, string> = {}

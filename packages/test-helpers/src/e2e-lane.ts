@@ -31,7 +31,7 @@
  * that prefix opt out (file-orphan-gc).
  */
 
-import { mkdirSync, readdirSync, rmSync } from "node:fs"
+import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs"
 import path from "node:path"
 import type Redis from "ioredis"
 import { bootstrap } from "./auth"
@@ -148,6 +148,10 @@ export async function createE2eLane(
   // ── snapshot ──────────────────────────────────────────────────────────────
   await snapshotWorkerData(sql, workerId)
   const appsAtSnapshot = await installedAppsFingerprint(sql, workerId)
+  // The app versions on disk at snapshot time (a seed that installed apps) are
+  // part of the snapshot, like their rows: an attach keeps them and removes only
+  // what a file installed after it.
+  const appsOnDiskAtSnapshot = new Set(appVersionDirs())
   if (!options.keepScheduledTicksHeld) await redis.del(ticksHeldKey)
 
   async function scanLaneKeys(): Promise<string[]> {
@@ -296,9 +300,39 @@ export async function createE2eLane(
     await Promise.all((await laneIndexes()).map(resetIndex))
   }
 
+  /** `<app>/<version>` of every unpacked app under the lane's install root. */
+  function appVersionDirs(): string[] {
+    const out: string[] = []
+    for (const app of readdirSync(env.appsInstallDir)) {
+      const appDir = path.join(env.appsInstallDir, app)
+      if (!statSync(appDir).isDirectory()) {
+        out.push(app)
+        continue
+      }
+      const versions = readdirSync(appDir)
+      if (versions.length === 0) out.push(app)
+      for (const version of versions) out.push(`${app}/${version}`)
+    }
+    return out
+  }
+
+  /** A file installed, upgraded or removed an app on disk since the snapshot. */
+  function appsDirChanged(): boolean {
+    const now = appVersionDirs()
+    return now.length !== appsOnDiskAtSnapshot.size || now.some((d) => !appsOnDiskAtSnapshot.has(d))
+  }
+
+  /** Remove what a file unpacked after the snapshot; the snapshot's own apps stay. */
   function clearAppsDir(): void {
-    for (const entry of readdirSync(env.appsInstallDir)) {
+    for (const entry of appVersionDirs()) {
+      if (appsOnDiskAtSnapshot.has(entry)) continue
       rmSync(path.join(env.appsInstallDir, entry), { recursive: true, force: true })
+    }
+    for (const app of readdirSync(env.appsInstallDir)) {
+      const appDir = path.join(env.appsInstallDir, app)
+      if (statSync(appDir).isDirectory() && readdirSync(appDir).length === 0) {
+        rmSync(appDir, { recursive: true, force: true })
+      }
     }
   }
 
@@ -332,7 +366,7 @@ export async function createE2eLane(
     // What the server env would be: the base plus the file's overrides.
     const wantedKey = stableKey({ ...baseEnv, ...wanted })
     const appsChanged = (await installedAppsFingerprint(sql, workerId)) !== appsAtSnapshot
-    const appsDirUsed = readdirSync(env.appsInstallDir).length > 0
+    const appsDirUsed = appsDirChanged()
     const why = !env.isRunning()
       ? "server down"
       : runningKey !== wantedKey

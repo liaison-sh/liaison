@@ -6,13 +6,13 @@ import {
   createWorkerEnv,
   deterministicPorts,
   type StandardWorld,
-  seedStandardWorld,
   spawnViteServer,
   TestWorld,
   type WorkerEnv,
 } from "@liaison/test-helpers"
 import { test as base, type Page } from "@playwright/test"
-import { previewBuildDir, viteMode } from "../pw-lanes"
+import { laneCatalogEnv } from "../lane-catalog"
+import { previewBuildDir, seedPwWorld, viteMode } from "../pw-lanes"
 import { loginAs } from "./test"
 import { PROFILE_WORKER_SLOTS } from "./worker-slots"
 
@@ -195,7 +195,8 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
           beforeResult = await profile.before(ports)
           env = await createWorkerEnv(workerId, {
             portCount: profile.portCount,
-            serverEnv: beforeResult.env,
+            // The run's catalog apps (lane-catalog.ts), as on every other stack.
+            serverEnv: { ...laneCatalogEnv(), ...beforeResult.env },
           })
           // The production build global-setup made, through `vite preview`,
           // as the shared lanes serve it: a dev server compiled the whole app
@@ -266,13 +267,14 @@ export function createProfiledE2ETest(profile: ProfiledFixtureProfile) {
       // `world` first: it registers the org and its admin the seed fills.
       async ({ world: _world, env }, use) => {
         await env.waitForReady(30_000)
-        const qa = await seedStandardWorld(env, {
+        const qa = await seedPwWorld(env, {
           email: "admin@test.com",
           password: "12345678",
         })
         await use(qa)
       },
-      { scope: "worker", timeout: 60000 },
+      // The seed, then the catalog apps' installs.
+      { scope: "worker", timeout: 120000 },
     ],
 
     page: async ({ page, env, qa, world }, use, testInfo) => {

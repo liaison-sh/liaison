@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { fireEvent, render, waitFor } from "@solidjs/testing-library"
+import { createSignal, Suspense } from "solid-js"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const auth = vi.hoisted(() => ({
@@ -135,6 +136,44 @@ describe("LinkedDocuments", () => {
       "file",
     ])
     expect(getByTestId("linked-documents").textContent).toContain("notes.md")
+  })
+
+  it("a host re-reading the same task lists its files once, and a reload keeps the page mounted", async () => {
+    const api = makeApi(async (path: string) => {
+      throw new Error(`unexpected ${path}`)
+    })
+    api.getEnvelope = vi.fn(async () => ({
+      data: [{ id: "file-2", filename: "notes.md", mimeType: "text/markdown", sizeBytes: 12 }],
+    }))
+    // The task page passes `taskId={t().id}` from a memo that changes on every
+    // store event about the task: same id, a new task object each time.
+    const [task, setTask] = createSignal({ id: "t1", rev: 0 })
+    const [version, setVersion] = createSignal(0)
+    const { getAllByTestId, queryByTestId } = render(() => (
+      <Suspense fallback={<div data-testid="suspended" />}>
+        <div data-testid="page">
+          <LinkedDocuments
+            description="nothing linked"
+            api={api}
+            taskId={task().id}
+            attachmentsVersion={version()}
+          />
+        </div>
+      </Suspense>
+    ))
+    await waitFor(() => expect(getAllByTestId("linked-document")).toHaveLength(1))
+    expect(api.getEnvelope).toHaveBeenCalledTimes(1)
+
+    setTask({ id: "t1", rev: 1 })
+    setTask({ id: "t1", rev: 2 })
+    expect(queryByTestId("suspended")).toBeNull()
+    expect(api.getEnvelope).toHaveBeenCalledTimes(1)
+
+    // A new upload reloads the list without suspending the page around it.
+    setVersion(1)
+    expect(api.getEnvelope).toHaveBeenCalledTimes(2)
+    expect(queryByTestId("suspended")).toBeNull()
+    expect(queryByTestId("page")).not.toBeNull()
   })
 
   it("lists the files posted in the task's discussion, labelled as such, read from the thread's messages", async () => {

@@ -119,7 +119,7 @@ describe("ensureDerivedIdentity", () => {
     const db = {
       findMany: async () => [],
       insert: async () => {
-        throw 'Failed query: INSERT INTO "app_invoicing"."counterparty_identities" — pg: duplicate key value violates unique constraint "counterparty_identities_org_id_contact_id_key" (23505)'
+        throw 'Failed query — pg: duplicate key value violates unique constraint "counterparty_identities_org_id_contact_id_key" (23505)'
       },
     }
     const id = await ensureDerivedIdentity(db, { contact_id: "c-1", customer_kind: "individual" })

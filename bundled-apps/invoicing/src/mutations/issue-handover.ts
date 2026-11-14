@@ -30,6 +30,8 @@ export const DRAFT_DEPENDENTS: ReadonlyArray<{ table: string; column: string }> 
   { table: "advance_deductions", column: "final_document_id" },
 ]
 
+const ONE_ROW = { minRows: 1, maxRows: 1 }
+
 interface KeyedDraft {
   id: string
   external_ref?: string | null
@@ -90,12 +92,16 @@ export function handOverDraft(
     ...(key ? { external_ref: key } : {}),
     commit_before: [
       ...(input.commit_before ?? []),
-      ...(key ? [{ update: "documents", id: draft.id, data: { external_ref: null } }] : []),
+      // Exactly one row each: a draft discarded (Undo, the invoicing list) or issued elsewhere
+      // after the checks fails this commit, so no invoice exists for claims already released.
+      ...(key
+        ? [{ update: "documents", id: draft.id, data: { external_ref: null }, expect: ONE_ROW }]
+        : []),
     ],
     commit_with: [
       ...(input.commit_with ?? []),
       ...repoints,
-      { delete: "documents", id: draft.id },
+      { delete: "documents", id: draft.id, expect: ONE_ROW },
       ...(opts.commitWith ?? []),
     ],
   }

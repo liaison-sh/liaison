@@ -422,8 +422,13 @@ export type IssueBatchOp =
       data?: Record<string, unknown>
       append?: Record<string, unknown[]>
       merge?: Record<string, Record<string, unknown>>
+      expect?: { minRows?: number; maxRows?: number }
     }
-  | { delete: string; id: string | { $ref: string } }
+  | {
+      delete: string
+      id: string | { $ref: string }
+      expect?: { minRows?: number; maxRows?: number }
+    }
   | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 
 export interface IssueBatchSequence {

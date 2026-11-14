@@ -606,6 +606,46 @@ describe("a draft from a planned vs done card", () => {
   })
 })
 
+describe("a draft that goes away while it is being issued", () => {
+  test("a draft discarded between the checks and the commit issues nothing and uses no number", async () => {
+    // Undo (or a discard from the invoicing list) commits while Issue is between its checks and
+    // its commit: the card's claims are released, so the invoice must not exist either.
+    const h = harness()
+    const key = `reconcile:${RECONCILIATION}:11`
+    const draftId = await draftWith(h, key)
+    const batch = h.db.batch.bind(h.db)
+    h.db.batch = async (spec) => {
+      await h.db.delete("documents", draftId)
+      return batch(spec)
+    }
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(res.status).toBe("error")
+    expect((res as { error: { code: string; message: string } }).error.code).toBe("not_found")
+    expect((res as { error: { message: string } }).error.message).toContain(draftId)
+    expect(issuedDocs(h.db)).toHaveLength(0)
+    expect(sequenceTotal(h.db)).toBe(0)
+    expect(marks(h)).toHaveLength(0)
+  })
+
+  test("a month-end run's draft discarded before its commit issues nothing either", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const batch = h.db.batch.bind(h.db)
+    h.db.batch = async (spec) => {
+      await h.db.delete("documents", draftId)
+      return batch(spec)
+    }
+    const res = await issueRunDraft(h.ctx, {
+      draft_id: draftId,
+      external_ref: "recurring:schedule-1:2026-10",
+      lifecycle_log: [],
+    })
+    expect(res.status).toBe("error")
+    expect(issuedDocs(h.db)).toHaveLength(0)
+    expect(sequenceTotal(h.db)).toBe(0)
+  })
+})
+
 describe("a project's documents", () => {
   test("documents_search finds the invoices that bill one project", async () => {
     const h = harness()

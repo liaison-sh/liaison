@@ -14,6 +14,8 @@ let rows: Array<Record<string, unknown>> = []
 let schedules: Array<Record<string, unknown>> = []
 let toolAnswers: Record<string, unknown> = {}
 const previews: string[] = []
+/** When set, `recurring_run_get` answers only once it resolves (a slow read). */
+let holdRunRead: Promise<void> | null = null
 const ELODIE = "0e1d0000-0000-4000-8000-000000000001"
 const SARA = "5a7a0000-0000-4000-8000-000000000002"
 
@@ -96,6 +98,7 @@ vi.mock("@liaison/host", () => ({
     invokeTool: async (tool: string, params: Record<string, unknown>) => {
       calls.push({ tool, params })
       if (tool === "recurring_run_get") {
+        if (holdRunRead) await holdRunRead
         return {
           status: "completed",
           run: { id: "run-1", issue_on: "2026-11-30", period: "November 2026", status: "drafted" },
@@ -330,6 +333,57 @@ describe("the month-end panel", () => {
     )
     fireEvent.click(screen.getByTestId("month-end-approve-new"))
     await waitFor(() => expect(decided).toEqual([["appr-redraw", "approve", "hash-2"]]))
+  })
+
+  it("drawn again while its rows are still being read, the panel shows what changed only once they answer", async () => {
+    const first = [item("a", "h-a", "58800"), item("b", "h-b", "58800")]
+    render(() => (
+      <MonthEndRunPanel
+        approvalId="appr-slow"
+        status="pending"
+        payload={{ run_id: "run-1", items: first }}
+        payloadHash="hash-1"
+        canDecide
+        viewerScopes={[]}
+      />
+    ))
+    await screen.findByTestId("month-end-row-open-a")
+    cleanup()
+    rows = [
+      row("a", "Hôtels Belcour", "78000", { latest_change: { actor_user_id: SARA, fields: [] } }),
+      row("b", "Le Comptoir Sud", "58800"),
+    ]
+    const reads = () => calls.filter((c) => c.tool === "recurring_run_get").length
+    const readsBefore = reads()
+    let release = () => {}
+    holdRunRead = new Promise<void>((r) => {
+      release = r
+    })
+    try {
+      render(() => (
+        <MonthEndRunPanel
+          approvalId="appr-slow"
+          status="pending"
+          payload={{
+            run_id: "run-1",
+            items: [item("a", "h-a2", "78000"), item("b", "h-b", "58800")],
+          }}
+          payloadHash="hash-2"
+          canDecide
+          viewerScopes={[]}
+        />
+      ))
+      await waitFor(() => expect(reads()).toBeGreaterThan(readsBefore))
+      expect(screen.queryByTestId("month-end-changed")).toBeNull()
+      release()
+      const box = await screen.findByTestId("month-end-changed")
+      expect(within(box).getByTestId("month-end-change-a").textContent).toContain(
+        "Hôtels Belcour changed",
+      )
+    } finally {
+      holdRunRead = null
+      release()
+    }
   })
 
   it("a row shows its account manager when the name is known and no line otherwise, and Ask puts a mention in the box without sending", async () => {

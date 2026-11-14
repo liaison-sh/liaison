@@ -184,7 +184,9 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
   const month = () => monthOf(run()?.run.period)
   const changes = createMemo(() => {
     const before = shownItems()
-    if (!before) return null
+    // Drawn again for a rewritten card, the panel reads its rows anew: until they answer (or the
+    // read fails), a change could name no customer ("A row") and offer to approve nothing.
+    if (!before || (run() === null && !failed())) return null
     const diff = runChanges(before, items(), rows(), names())
     return diff.changes.length > 0 ? diff : null
   })

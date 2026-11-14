@@ -17,8 +17,12 @@
 //   mismatches and the persistent half runs.
 //
 // Asserts: ready(300) ≤ 1.2 × ready(10) (median, api and worker); RSS(300) −
-// RSS(10) ≤ 50 MB; boot transactions(300) ≤ 1.2 × transactions(10) + 20; no
-// app registered by the boot itself; first-touch p95 ≤ 2 s matching, ≤ 10 s
+// RSS(10) ≤ 50 MB, each the lowest of its boots: allocator noise only ever
+// adds to an RSS (a boot can retain 100 MB more pages than its twin after the
+// same forced GC, with no work logged), so the floor is the boot's footprint
+// and a median of 3 still lets two noisy boots through; boot
+// transactions(300) ≤ 1.2 × transactions(10) + 20; no app registered by the
+// boot itself; first-touch p95 ≤ 2 s matching, ≤ 10 s
 // mismatching, serial and burst. A failing burst is reported, never relaxed. The
 // two latency bounds are for a dedicated machine: a hosted CI runner sets
 // BOOT_FLAT_LATENCY_FACTOR (the gate workflow does) and gets that multiple of
@@ -290,13 +294,13 @@ async function measure(n: number): Promise<SizeResult> {
       api: {
         boots: apiBoots,
         readyMs: median(apiBoots.map((b) => b.readyMs)),
-        rssKb: median(apiBoots.map((b) => b.rssKb)),
+        rssKb: Math.min(...apiBoots.map((b) => b.rssKb)),
         transactions: median(apiBoots.map((b) => b.transactions ?? Number.NaN)),
       },
       worker: {
         boots: workerBoots,
         readyMs: median(workerBoots.map((b) => b.readyMs)),
-        rssKb: median(workerBoots.map((b) => b.rssKb)),
+        rssKb: Math.min(...workerBoots.map((b) => b.rssKb)),
       },
       touch: { matchSerial, matchBurst, mismatchSerial, mismatchBurst },
     }
@@ -331,7 +335,9 @@ describe("S19: boot flat in the org count, first touch bounded", () => {
         results.set(n, r)
         console.log(
           `boot-flat N=${n}: api ready ${Math.round(r.api.readyMs)} ms, rss ${Math.round(r.api.rssKb / MB)} MB, ` +
-            `tx ${r.api.transactions}; worker ready ${Math.round(r.worker.readyMs)} ms, rss ${Math.round(r.worker.rssKb / MB)} MB; ` +
+            `tx ${r.api.transactions}; worker ready ${Math.round(r.worker.readyMs)} ms, rss ${Math.round(r.worker.rssKb / MB)} MB ` +
+            `(per boot: api ${r.api.boots.map((b) => Math.round(b.rssKb / MB)).join("/")}, ` +
+            `worker ${r.worker.boots.map((b) => Math.round(b.rssKb / MB)).join("/")} MB); ` +
             `touch p95 match ${Math.round(r.touch.matchSerial.p95)}/${Math.round(r.touch.matchBurst.p95)} ms, ` +
             `mismatch ${Math.round(r.touch.mismatchSerial.p95)}/${Math.round(r.touch.mismatchBurst.p95)} ms (serial/burst)`,
         )

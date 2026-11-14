@@ -8,13 +8,18 @@ import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { seedContext } from "~/seed/context"
+import { seedApprovalRequests } from "~/seed/factories/approvals/requests"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
-const ORG = randomUUID()
-const OTHER_ORG = randomUUID()
-const USER = randomUUID()
-const OTHER_USER = randomUUID()
-const THREAD = randomUUID()
-const OTHER_THREAD = randomUUID()
+let ORG = ""
+let OTHER_ORG = ""
+let USER = ""
+let OTHER_USER = ""
+let THREAD = ""
+let OTHER_THREAD = ""
 
 const IDS = {
   pending: randomUUID(),
@@ -24,23 +29,28 @@ const IDS = {
   otherOrg: randomUUID(),
 }
 
-async function insertApproval(
+/** One parked request, through the approvals factory (a pending or denied one). */
+async function seedApproval(
   id: string,
-  opts: { org?: string; thread?: string; toolName?: string; status?: string; expiresInMs?: number },
+  opts: { org?: string; toolName?: string; status?: "pending" | "denied" },
 ) {
   const org = opts.org ?? ORG
-  const thread = opts.thread ?? THREAD
   const user = org === ORG ? USER : OTHER_USER
-  const expires = new Date(Date.now() + (opts.expiresInMs ?? 3_600_000)).toISOString()
-  await sql`
-    INSERT INTO kernel.approval_requests (
-      id, org_id, handle, status, tool_name, tool_params, summary, current_payload,
-      thread_id, originating_thread_id, requested_by, notify_user_ids, expires_at
-    ) VALUES (
-      ${id}, ${org}, ${`agw-${id.slice(0, 8)}`}, ${opts.status ?? "pending"},
-      ${opts.toolName ?? "invoicing:received_einvoice_set_status"}, '{}'::jsonb, '{"title":"t"}'::jsonb, '{}'::jsonb,
-      ${thread}, ${thread}, ${user}, ${sql.array([user], 2950)}, ${expires}::timestamptz
-    )`
+  await seedApprovalRequests(seedContext({ orgId: org, now: new Date() }), [
+    {
+      id,
+      handle: `agw-${id.slice(0, 8)}`,
+      threadId: org === ORG ? THREAD : OTHER_THREAD,
+      toolName: opts.toolName ?? "invoicing:received_einvoice_set_status",
+      payload: {},
+      requestedBy: user,
+      agentId: null,
+      notifyUserIds: [user],
+      status: opts.status ?? "pending",
+      ...(opts.status === "denied" ? { decidedBy: user, decidedAt: new Date() } : {}),
+      createdAt: new Date(),
+    },
+  ])
 }
 
 function methods(appName: string, orgId = ORG) {
@@ -65,28 +75,28 @@ const statusOf = async (id: string) =>
 
 describe("approvals_withdraw", () => {
   beforeAll(async () => {
-    for (const [org, thread, user] of [
-      [ORG, THREAD, USER],
-      [OTHER_ORG, OTHER_THREAD, OTHER_USER],
-    ] as const) {
-      await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${org}, 'Approval withdraw org', ${`agw-${org.slice(0, 8)}`})`
-      await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash) VALUES (${user}, ${org}, ${`agw-${user.slice(0, 8)}@example.com`}, 'U', 'active', 'hash')`
-      await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${thread}, ${org}, ${`agw-${thread.slice(0, 8)}`}, 'approval', ${user})`
-    }
-    await insertApproval(IDS.pending, {})
-    await insertApproval(IDS.approving, { status: "approving" })
-    await insertApproval(IDS.denied, { status: "denied" })
-    await insertApproval(IDS.otherApp, { toolName: "invoicingx:anything" })
-    await insertApproval(IDS.otherOrg, { org: OTHER_ORG, thread: OTHER_THREAD })
+    await acquireTestLock()
+    ORG = (await createTestOrg()).id
+    USER = (await minimal.adminSession(ORG)).userId
+    const other = await minimal.secondOrg({ name: "Approval withdraw org" })
+    OTHER_ORG = other.orgId
+    OTHER_USER = other.adminUserId
+    THREAD = await minimal.thread(ORG, USER)
+    OTHER_THREAD = await minimal.thread(OTHER_ORG, OTHER_USER)
+    await seedApproval(IDS.pending, {})
+    // A request a person is approving right now: parked, then mid-decision.
+    await seedApproval(IDS.approving, {})
+    await sql`UPDATE kernel.approval_requests SET status = 'approving' WHERE id = ${IDS.approving}`
+    await seedApproval(IDS.denied, { status: "denied" })
+    await seedApproval(IDS.otherApp, { toolName: "invoicingx:anything" })
+    await seedApproval(IDS.otherOrg, { org: OTHER_ORG })
   })
 
   afterAll(async () => {
     for (const org of [ORG, OTHER_ORG]) {
       await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${org}`
-      await sql`DELETE FROM kernel.threads WHERE org_id = ${org}`
-      await sql`DELETE FROM kernel.users WHERE org_id = ${org}`
-      await sql`DELETE FROM kernel.organizations WHERE id = ${org}`
     }
+    await releaseTestLock()
   })
 
   it("an app withdraws its own pending approval, with the reason", async () => {

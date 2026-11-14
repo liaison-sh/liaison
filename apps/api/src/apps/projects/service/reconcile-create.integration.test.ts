@@ -613,18 +613,40 @@ describe("what Create refuses", () => {
 
   it("a fixed-price project with plan steps still open cannot switch to hourly", async () => {
     const p = await october({ basis: "fixed" })
-    await db.execute(drizzleSql`
-      INSERT INTO app_invoicing.billing_steps
-        (org_id, billing_project_id, position, kind, label, amount_minor, currency, state)
-      VALUES (${orgId}::uuid, ${p.projectId}::uuid, 1, 'milestone', 'Beta', 300000, 'EUR', 'planned')`)
-    const out = await run(billingTermsSet, { projectId: p.projectId, rate: 90, currency: "EUR" })
+    // Invoicing counts the project's plan steps not invoiced yet; one is still open.
+    const asked: string[] = []
+    const oneOpen = async (tool: string, json: string) => {
+      asked.push(`${tool} ${json}`)
+      return JSON.stringify({
+        status: "completed",
+        result: { projectId: p.projectId, ready: false, missing: ["basis"], openPlanSteps: 1 },
+      })
+    }
+    const out = await run(
+      billingTermsSet,
+      { projectId: p.projectId, rate: 90, currency: "EUR" },
+      { patch: { executeTool: oneOpen } },
+    )
     expect(out.error?.code).toBe("plan_steps_open")
+    expect(asked).toEqual([
+      `invoicing:preview_totals ${JSON.stringify({ projectId: p.projectId, basis: "hourly" })}`,
+    ])
     const terms = extractRows<{ rate_minor: string | null; fixed_price_minor: string | null }>(
       await db.execute(drizzleSql`
         SELECT rate_minor::text AS rate_minor, fixed_price_minor::text AS fixed_price_minor
           FROM app_projects.project_billing_terms WHERE project_id = ${p.projectId}::uuid`),
     )
     expect(terms[0]).toEqual({ rate_minor: null, fixed_price_minor: "600000" })
+    // With every plan step invoiced, the project may switch to a rate.
+    const noneOpen = async () =>
+      JSON.stringify({ status: "completed", result: { ready: false, openPlanSteps: 0 } })
+    const switched = await run(
+      billingTermsSet,
+      { projectId: p.projectId, rate: 90, currency: "EUR" },
+      { patch: { executeTool: noneOpen } },
+    )
+    expect(switched.error).toBeUndefined()
+    expect(switched.rate).toBe(90)
   })
 })
 

@@ -320,10 +320,14 @@ describe("the reconcile card the web draws", () => {
 
 describe("a line's proof chips", () => {
   it("four tasks on a line show two chips and a count, never three of four as if complete", () => {
-    const four = ["T-15", "T-11", "T-13", "T-14"].map((label) => ({ label }))
-    expect(shownProof(four, 3).map((p) => p.label)).toEqual(["T-15", "T-11", "+2"])
-    expect(shownProof(four.slice(0, 3), 3).map((p) => p.label)).toEqual(["T-15", "T-11", "T-13"])
-    expect(shownProof(four, 1).map((p) => p.label)).toEqual(["T-15"])
+    const four = ["DATA-15", "DATA-11", "DATA-13", "DATA-14"].map((label) => ({ label }))
+    expect(shownProof(four, 3).map((p) => p.label)).toEqual(["DATA-15", "DATA-11", "+2"])
+    expect(shownProof(four.slice(0, 3), 3).map((p) => p.label)).toEqual([
+      "DATA-15",
+      "DATA-11",
+      "DATA-13",
+    ])
+    expect(shownProof(four, 1).map((p) => p.label)).toEqual(["DATA-15"])
     expect(shownProof(four, 0)).toEqual([])
   })
 })

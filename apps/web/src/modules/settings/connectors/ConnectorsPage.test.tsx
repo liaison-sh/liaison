@@ -128,15 +128,18 @@ describe("ConnectorsPage", () => {
         "Not connected",
       ),
     )
-    api.on("get", "/apps/database/connections", () => [
-      {
-        name: "database",
-        type: "credentials",
-        credentialFields: [{ name: "token", label: "Token", type: "password" }],
-        accounts: { active: 1, error: 0 },
-      },
-    ])
-    await appsStore.loadConnections(api, "database")
+    // What the card's Connection block does after a connect: reload the app's connections.
+    appsStore.setConnections({
+      ...appsStore.connections(),
+      database: [
+        {
+          name: "database",
+          type: "credentials",
+          credentialFields: [{ name: "token", label: "Token", type: "password" }],
+          accounts: { active: 1, error: 0 },
+        },
+      ],
+    })
     await waitFor(() =>
       expect(screen.getByTestId("connector-status-database").textContent).toBe("Connected"),
     )

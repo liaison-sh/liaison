@@ -3225,7 +3225,7 @@
     "lang": "fr",
     "say": "la tâche a pris moins que prévu, corrige",
     "typed": ["corriger temps", "correct time entry"],
-    "any": ["projects__task_time_correct", "projects__task_time_set"],
+    "any": ["projects__task_time_correct", "projects__task_time_set", "projects__update"],
     "modelRun": true
   },
   {
@@ -3333,7 +3333,7 @@
     "lang": "en",
     "say": "check planned vs done for Orbit",
     "typed": ["planned vs done", "planned done project", "month close"],
-    "any": ["projects__reconcile_facts", "projects__reconcile_propose"],
+    "any": ["projects__reconcile_facts", "projects__reconcile_propose", "projects__budget_get"],
     "modelRun": true
   },
   {

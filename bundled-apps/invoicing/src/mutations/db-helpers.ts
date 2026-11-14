@@ -16,6 +16,7 @@ import {
   type ErrorEnvelope,
   type MutationsDb,
   normaliseNotesOrThrow,
+  type SourceColumns,
   toBigInt,
 } from "./shared"
 
@@ -288,6 +289,7 @@ export async function findDocumentSummary(
   if (!row) return null
   return {
     id: String(row.id),
+    source: sourceColumnsOf(row),
     type: (row.type as DocumentType | string) ?? "invoice",
     status: (row.status as string | undefined) ?? "draft",
     counterparty_contact_id: (row.counterparty_contact_id as string | null) ?? null,
@@ -351,9 +353,15 @@ export async function loadDraftLines(db: MutationsDb, documentId: string): Promi
       country_of_origin: (r.country_of_origin as string | null) ?? null,
       product_source: (r.product_source as string | null) ?? null,
       external_id: (r.external_id as string | null) ?? null,
+      // A service line stays a service from draft to issue (classification, the PDF's groups).
+      ...(isLineKind(r.line_kind) ? { line_kind: r.line_kind } : {}),
     }
   })
 }
+
+const LINE_KINDS: ReadonlySet<string> = new Set(["goods", "software", "service", "shipping"])
+const isLineKind = (v: unknown): v is NonNullable<DraftLine["line_kind"]> =>
+  typeof v === "string" && LINE_KINDS.has(v)
 
 async function insertDraftLines(
   db: MutationsDb,
@@ -395,6 +403,7 @@ async function insertDraftLines(
       customs_description: l.customs_description ?? null,
       product_source: l.product_source,
       external_id: l.external_id,
+      ...(isLineKind(l.line_kind) ? { line_kind: l.line_kind } : {}),
     })
   }
 }
@@ -437,8 +446,26 @@ export async function getDraft(db: MutationsDb, draftId: string): Promise<DraftR
     po_number: (doc.po_number as string | null) ?? null,
     notes: (doc.notes as string | null) ?? null,
     ...draftEinvoiceFieldsOf(doc),
+    external_ref: (doc.external_ref as string | null) ?? null,
+    source: sourceColumnsOf(doc),
     lines,
     created_at: (doc.created_at as string | null) ?? null,
+  }
+}
+
+/** A document row's source columns (shared.ts SourceColumns), null when unset. */
+export function sourceColumnsOf(doc: Record<string, unknown>): SourceColumns {
+  const text = (v: unknown): string | null =>
+    typeof v === "string" && v !== "" ? v : v instanceof Date ? v.toISOString() : null
+  const role = doc.invoice_role
+  return {
+    billing_project_id: text(doc.billing_project_id),
+    invoice_role: role === "advance" || role === "final" || role === "standard" ? role : null,
+    service_period_start: text(doc.service_period_start),
+    service_period_end: text(doc.service_period_end),
+    approved_by: text(doc.approved_by),
+    approved_at: text(doc.approved_at),
+    latest_issue_on: text(doc.latest_issue_on),
   }
 }
 

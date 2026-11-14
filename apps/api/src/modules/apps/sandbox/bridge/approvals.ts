@@ -13,8 +13,89 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
     bridgeTurnTaintScopes,
     bridgePersonClient,
     orgId,
+    userId,
+    callerScopes,
   } = ctx
   return {
+    // The turn this handler runs in: which agent acts (null: no agent, a job or a webhook) and
+    // whether a person is behind it (false for a routine tick, a background or coordinated turn,
+    // a job). Read-only, from the frame captured when the bridge was built. `ctx.turn.get()`.
+    turn_get: async (): Promise<string> =>
+      JSON.stringify({
+        agentId: bridgeActingAgentId,
+        hasPerson: bridgeSpawnParentFrame?.hasPerson === true,
+      }),
+
+    // An app refreshes the payload of one of ITS OWN approvals still awaiting a decision, after
+    // the records it describes changed (a month-end card whose drafts were edited). Not a tool:
+    // agents cannot reach it. `fields` maps payload paths to new values. The row lock, schema
+    // validation, sign-off reset, taint narrowing and the thread note (`note`, or a default naming
+    // the app and the fields) apply as to any edit (approvals/edit.ts, `appRestage`).
+    // Returns `{ok:true, approval_id, payload_hash, changed}` or `{ok:false, code, message}` with
+    // code `not_pending` (decided, expired or withdrawn: stage a new approval), `forbidden`
+    // (another app's approval), `not_found` or `invalid_edit`.
+    approvals_restagePayload: async (
+      approvalRequestId: string,
+      fieldsJson: string,
+      note?: string,
+    ): Promise<string> => {
+      const id = String(approvalRequestId ?? "")
+      const refuse = (code: string, message: string) => JSON.stringify({ ok: false, code, message })
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+        return refuse("not_found", `No approval ${id} in this organization. Nothing was changed.`)
+      let fields: unknown
+      try {
+        fields = typeof fieldsJson === "string" ? JSON.parse(fieldsJson) : fieldsJson
+      } catch {
+        fields = null
+      }
+      if (!fields || typeof fields !== "object" || Array.isArray(fields))
+        return refuse("invalid_edit", "fields must be an object of payload paths to new values.")
+      // A turn whose taint cannot be known never widens an approval's readers.
+      if (bridgeTurnTaintScopes === null)
+        return refuse(
+          "forbidden",
+          `What this turn read is not known, so approval ${id} was not changed.`,
+        )
+      const { updatePayload, UpdatePayloadError } = await import("~/modules/approvals/edit")
+      try {
+        const result = await updatePayload({
+          orgId,
+          requestId: id,
+          fields: fields as Record<string, unknown>,
+          actor: {
+            actorType: "user",
+            userId,
+            orgId,
+            scopes: callerScopes ?? [],
+            dimensionGrants: {},
+          },
+          actingAgentId: bridgeActingAgentId,
+          turnTaintScopes: bridgeTurnTaintScopes,
+          appRestage: {
+            appName,
+            ...(typeof note === "string" && note.trim() !== "" ? { note } : {}),
+          },
+        })
+        return JSON.stringify({
+          ok: true,
+          approval_id: result.id,
+          payload_hash: result.payloadHash,
+          changed: result.lastEdit !== null,
+        })
+      } catch (err) {
+        if (!(err instanceof UpdatePayloadError)) throw err
+        if (err.code === "stale_status") {
+          const status = (err.details as { currentStatus?: string } | undefined)?.currentStatus
+          return refuse(
+            "not_pending",
+            `Approval ${id} is no longer waiting for a decision${status ? ` (${status})` : ""}, so its payload was not changed. Stage a new approval for the change.`,
+          )
+        }
+        return refuse(err.code, err.message)
+      }
+    },
+
     // Where one of THIS app's own approval requests stands (a job releasing work whose approval
     // was declined or expired): `{status, expired}` (`expired`: pending or deferred past its deadline,
     // before the sweep reaches it), or `{status:null}` for an id that is not an
@@ -41,6 +122,59 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
       return JSON.stringify(
         r ? { status: r.status, expired: r.expired === true } : { status: null },
       )
+    },
+
+    // An app withdraws one of ITS OWN approvals still awaiting a decision, once the records it
+    // would act on made it pointless (a draft already issued by another path). Not a tool: agents
+    // cannot reach it. Only a `pending` request of this app's tools in this org moves, to
+    // `cancelled` with `reason`; one being approved, decided or another app's is left alone.
+    // Returns `{ok:true, approval_id}` or `{ok:false, code}` with code `not_pending` (not waiting,
+    // or not this app's) or `not_found`.
+    approvals_withdraw: async (approvalRequestId: string, reason?: string): Promise<string> => {
+      const id = String(approvalRequestId ?? "")
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+        return JSON.stringify({ ok: false, code: "not_found" })
+      const why =
+        typeof reason === "string" && reason.trim() !== ""
+          ? reason.trim().slice(0, 1000)
+          : `Cancelled: ${appName} no longer needs this decision`
+      const { withPrivilegedDb } = await import("~/db/privileged")
+      const { extractRows } = await import("~/db")
+      const { sql: drizzleSql } = await import("drizzle-orm")
+      const { schemaRef } = await import("~/db/schema-ref")
+      const { cancelDeferredBundleSiblings, loadApprovalSummary } = await import(
+        "~/modules/approvals/event-data"
+      )
+      const KS = drizzleSql.raw(schemaRef("kernel"))
+      const cancelled = await withPrivilegedDb(orgId, "approval-app-withdraw", async (tx) => {
+        const rows = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            UPDATE ${KS}.approval_requests
+               SET status = 'cancelled', decided_at = now(), reason = ${why}
+             WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid AND status = 'pending'
+               AND starts_with(tool_name, ${`${appName}:`})
+            RETURNING id::text AS id`),
+        )
+        if (rows.length === 0) return false
+        await cancelDeferredBundleSiblings(tx, id)
+        await tx.queueEvent({
+          app: "kernel",
+          entity: "approval_request",
+          action: "update",
+          entityId: id,
+          orgId,
+          actorId: userId ?? null,
+          actorType: "system",
+          data: await loadApprovalSummary(tx, orgId, id),
+        })
+        return true
+      })
+      if (!cancelled) return JSON.stringify({ ok: false, code: "not_pending" })
+      const { continueRoutinesAfterWithdrawal } = await import(
+        "~/modules/approvals/withdraw-on-events"
+      )
+      await continueRoutinesAfterWithdrawal(orgId, [id])
+      return JSON.stringify({ ok: true, approval_id: id })
     },
 
     // The approvals still awaiting a decision on this app's own tools whose payload carries
@@ -264,6 +398,8 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
         current_payload: unknown
         editable_fields?: string[]
         auto_approvable?: boolean
+        approve_scope?: string
+        expiry_hours?: number
       }
       // FX13: the same captured value `ctx.executeTool` forwards below. A
       // handler that parks itself mid-run reaches the identical recording site

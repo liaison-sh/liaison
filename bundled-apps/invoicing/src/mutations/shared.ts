@@ -9,9 +9,10 @@ import type { CrossAppExecuteTool } from "../cross-app"
 import type { CustomerKind } from "../einvoicing/classify"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import type { EinvoiceRowColumns } from "../einvoicing/issue-gate"
-import type { DraftLine, IssueCtx, IssueDb } from "../issue"
+import type { DraftLine, IssueCtx, IssueDb, SourceColumns } from "../issue"
 import { lineSubtotal } from "../money"
 import type { ReadsFetch } from "../reads"
+import type { OwnApprovals } from "./issue-handover"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -79,8 +80,15 @@ export interface DraftInsert {
   lines: DraftLine[]
 }
 
+export type { SourceColumns }
+
 export interface DraftRow extends DraftInsert {
   id: string
+  /** The draft's dedupe key (`documents.external_ref`): a billing source's key, handed to the
+   *  issued document at issue. */
+  external_ref?: string | null
+  /** The source columns the issued document keeps (see SourceColumns). */
+  source?: SourceColumns
   /** The draft's stored e-invoicing columns (read only: identity facts and confirmation are
    *  written by the identity tools, never by a draft patch). */
   einvoice?: EinvoiceRowColumns
@@ -93,6 +101,8 @@ export interface DraftRow extends DraftInsert {
 
 export interface DocumentRowSummary {
   id: string
+  /** What the document bills (project, period, ...), for the convert paths to carry. */
+  source?: SourceColumns
   type: DocumentType | string
   status?: string
   counterparty_contact_id: string | null
@@ -282,6 +292,10 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
     /** Carry on at once when the org's auto-approve policy for `tool_name` approves the call:
      *  the kernel then answers `auto_approved: true` and the handler proceeds as approved. */
     auto_approvable?: boolean
+    /** The scope whose holders decide it, when it is not the tool's own. */
+    approve_scope?: string
+    /** How long it waits for a decision. */
+    expiry_hours?: number
   }): Promise<RequestedApproval>
 
   decideApproval(input: {
@@ -290,6 +304,9 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   }): Promise<{ status: "ok" } | ErrorEnvelope>
 
   executeTool: CrossAppExecuteTool
+
+  /** This app's own approvals (kernel bridge): list the pending ones, withdraw one. */
+  approvals?: OwnApprovals
 
   /** Kernel-mediated outbound HTTP (allowlisted hosts): the VIES check of a buyer VAT number.
    *  Optional: absent, a VAT number is reported "not verified (VIES unavailable)". */

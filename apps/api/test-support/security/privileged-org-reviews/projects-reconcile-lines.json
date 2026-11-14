@@ -1,0 +1,5 @@
+{
+  "reviewedOutsideRoutes": {
+    "apps/api/src/seed/factories/projects/reconcile.ts#seedReconciliationLine": "the reconcile seed factory (tests only, no product caller): privileged inserts of one reconciliation line and its proofs under fresh random ids, with org_id the org a test just created (createTestOrg), on that test's own reconciliation"
+  }
+}

@@ -27,7 +27,11 @@
 //     time alone changes (an SLA closing in, a task falling overdue): the next
 //     minute for an org that changed, within HEARTBEAT_MINUTES otherwise;
 //   - when the feed finds no stored list for the reader (a new person, a new
-//     app): that read shows nothing for the app until then.
+//     app), or one computed more than STORED_LIST_MAX_AGE_MS ago (a person away
+//     since, whose list was left out of the refreshes): that read shows nothing
+//     for the app until then, never a list that may no longer be true (a dated
+//     line past its day, a task done since). The refresh tells their devices to
+//     reload the feed, even when the list came out the same.
 //
 // A wake never runs a provider where it happens (a request, a tool call): it
 // queues a refresh job on the attention queue (`app-attention-refresh`, its
@@ -51,7 +55,7 @@ import type { AttentionItem, AttentionProviderError } from "@liaison/shared"
 import { and, eq, inArray, sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
-import { type ActorContext, createRlsSession, type UserContext } from "~/db/rls"
+import { type ActorContext, createRlsSession, type UserContext, withRlsContext } from "~/db/rls"
 import { appAttentionItems } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { type AppEvent, onEvent } from "~/infra/events/event-bus"
@@ -60,6 +64,7 @@ import { bounded } from "~/infra/websocket-state/redis"
 import { appsLogger as log } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { isReadOnlyTool } from "~/modules/agent/runtime/read-only-run"
+import { readStandingInFor } from "~/modules/approvals/route-world"
 import {
   appBridgeManifest,
   attentionItemsRegistry,
@@ -89,6 +94,18 @@ export const ORG_REFRESHES_PER_MINUTE = 12
 export const ORG_PROVIDER_RUNS_PER_MINUTE = 120
 /** A person who read their feed this recently is refreshed even when not online. */
 export const SEEN_WINDOW_MS = 30 * 60_000
+/**
+ * The oldest stored list the feed serves. A person around is refreshed within
+ * the minute tick's heartbeat (10 minutes), so a list older than this was left
+ * out of the refreshes while its person was away: it is recomputed, not shown.
+ */
+export const STORED_LIST_MAX_AGE_MS = SEEN_WINDOW_MS
+/**
+ * What the feed says for an app whose stored list was too old to serve: its items are hidden
+ * until the refresh lands, and the app reads as out of date rather than as nothing to do (a
+ * stalled refresh queue never empties the feed in silence).
+ */
+export const STALE_LIST_MESSAGE = "This list is out of date and is being refreshed."
 /** How long a feed read or a refresh waits on Redis for the audience. */
 const REDIS_ANSWER_MS = 2_000
 const seenKey = (orgId: string) => `attention:seen:${orgId}`
@@ -111,6 +128,8 @@ interface ProviderRegistration {
   scope?: string
   bundlePath: string
   core: boolean
+  /** Declared `passesOn`: also given the people away today who name the person next in line. */
+  passesOn?: boolean
 }
 
 /** The (org, app) entries that are app providers: org-scoped, not the kernel's wildcard ones. */
@@ -129,8 +148,12 @@ export async function invokeAppProvider(
   appName: string,
   actor: ActorContext,
   orgId: string,
+  forUserIds: readonly string[] = [],
 ): Promise<AttentionItem[]> {
   const source = await loadBundle(reg.bundlePath)
+  // Only a provider that declared `passesOn` hears of anyone but the person.
+  const passOn =
+    reg.passesOn === true && forUserIds.length > 0 ? { forUserIds: [...forUserIds] } : {}
   const aliasedActor = withAppDimensionAliases(actor, appName)
   const userId = aliasedActor.actorType === "user" ? aliasedActor.userId : "system"
   // The bridge must carry the app's REAL manifest: db_findMany validates every
@@ -162,7 +185,7 @@ export async function invokeAppProvider(
     bundleSource: source,
     exportName: reg.handler,
     entry: `${ATTENTION_ENTRY_PREFIX}${reg.handler}`,
-    params: { actor: aliasedActor },
+    params: { actor: aliasedActor, ...passOn },
     bridge,
     holdsTx: false,
     appId: appName,
@@ -253,6 +276,7 @@ export interface AttentionStoreDeps {
     appName: string,
     actor: ActorContext,
     orgId: string,
+    forUserIds?: readonly string[],
   ) => Promise<unknown>
   /** Tell a person's devices that their feed changed. */
   notify: (orgId: string, userId: string, appName: string) => Promise<void>
@@ -363,18 +387,21 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 async function readStoredLists(
   orgId: string,
   appName: string,
-): Promise<Map<string, { items: AttentionItem[]; error: unknown }>> {
+): Promise<Map<string, { items: AttentionItem[]; error: unknown; computedAt: Date }>> {
   const rows = await withPrivilegedDb(orgId, "attention-store:read", (tx) =>
     tx
       .select({
         userId: appAttentionItems.userId,
         items: appAttentionItems.items,
         error: appAttentionItems.error,
+        computedAt: appAttentionItems.computedAt,
       })
       .from(appAttentionItems)
       .where(and(eq(appAttentionItems.orgId, orgId), eq(appAttentionItems.app, appName))),
   )
-  return new Map(rows.map((r) => [r.userId, { items: r.items ?? [], error: r.error }]))
+  return new Map(
+    rows.map((r) => [r.userId, { items: r.items ?? [], error: r.error, computedAt: r.computedAt }]),
+  )
 }
 
 /**
@@ -394,11 +421,17 @@ async function writeStoredList(
   const newer = sql`${appAttentionItems.computedAt} <= excluded.computed_at`
   return withPrivilegedDb(orgId, "attention-store:write", async (tx) => {
     if (items === null) {
-      // A failed run keeps the last good list, with the failure beside it.
+      // A failed run keeps the last good list, with the failure beside it, and keeps that list's
+      // own date: the list is no truer for a run that failed, so one too old to serve stays
+      // hidden. The failure is written only over a list computed before this run started.
       const rows = await tx
         .insert(appAttentionItems)
         .values({ orgId, app: appName, userId, items: [], error, computedAt: startedAt })
-        .onConflictDoUpdate({ target, set: { error, computedAt: startedAt }, setWhere: newer })
+        .onConflictDoUpdate({
+          target,
+          set: { error },
+          setWhere: sql`${appAttentionItems.computedAt} <= ${startedAt.toISOString()}::timestamptz`,
+        })
         .returning({ userId: appAttentionItems.userId })
       return rows.length > 0
     }
@@ -443,8 +476,20 @@ export async function refreshAppAttention(
       const allowed =
         !isAppUnavailableFor(orgId, appName, userId) && (!reg.scope || hasScope(reg.scope, scopes))
       if (allowed) {
+        // A provider that passes items on also lists those of the people away today who name
+        // this person next in line (read as this person; unreadable means nobody). The minute
+        // tick re-reads it, so a return from leave clears within a minute.
+        const forUserIds =
+          reg.passesOn === true
+            ? await withRlsContext(actor, (tx) => readStandingInFor(tx, orgId, userId)).catch(
+                (err: unknown) => {
+                  log.warn({ err, orgId, userId }, "could not read whom the person stands in for")
+                  return [] as string[]
+                },
+              )
+            : []
         const raw = await withTimeout(
-          deps.invoke(reg, appName, actor, orgId),
+          deps.invoke(reg, appName, actor, orgId, forUserIds),
           PROVIDER_RUN_TIMEOUT_MS + 1_000,
         )
         const normalized = normalizeProviderItems(raw)
@@ -469,7 +514,10 @@ export async function refreshAppAttention(
     }
     const itemsChanged =
       items !== null && JSON.stringify(before?.items ?? []) !== JSON.stringify(items)
-    if (itemsChanged || (before === undefined && items !== null)) {
+    // The feed did not serve a list this old (readStoredAttention): it reloads once stored.
+    const wasHidden =
+      before !== undefined && isStoredListTooOld(before.computedAt, startedAt.getTime())
+    if (itemsChanged || (items !== null && (before === undefined || wasHidden))) {
       changed++
       await deps.notify(orgId, userId, appName).catch(() => {})
     }
@@ -483,6 +531,53 @@ export async function refreshAppAttention(
   })
   await Promise.all(lanes)
   return { people: people.length, changed }
+}
+
+/**
+ * Every app provider of the org, refreshed now, in this process, one app after
+ * the other, for every active member (around or not): for a caller that must
+ * find the lists stored when it returns (a seeded demo workspace, one just
+ * claimed), never a wake. Wakes and the minute
+ * tick queue jobs instead (scheduleAttentionRefresh,
+ * scheduleAllAppAttentionRefresh). The people and each one's permissions are
+ * read once for the whole pass, not once per app.
+ */
+export async function refreshAllAppAttention(
+  orgId: string,
+  partial: Partial<AttentionStoreDeps> & { userIds?: string[] } = {},
+): Promise<void> {
+  const apps = [...attentionItemsRegistry.entriesOf(orgId)]
+    .map(([[entryOrg, appName]]) => (entryOrg === orgId ? appName : null))
+    .filter((a): a is string => a !== null)
+  if (apps.length === 0) return
+  let userIds: string[]
+  try {
+    // Every active member, not only the people around: the caller needs every
+    // list stored when this returns (nobody is around in a workspace just seeded).
+    userIds = partial.userIds ?? (await (partial.listActiveUsers ?? listEveryActiveUser)(orgId))
+  } catch (err) {
+    log.warn({ err, orgId }, "Attention refresh failed: the org's people could not be read")
+    return
+  }
+  const loadOnce = partial.loadPersonActor ?? defaultDeps.loadPersonActor
+  const actors = new Map<string, Promise<UserContext>>()
+  const loadPersonActor = (o: string, userId: string): Promise<UserContext> => {
+    let loaded = actors.get(userId)
+    if (!loaded) {
+      loaded = loadOnce(o, userId)
+      // A failed read is not kept: the next app asks again.
+      loaded.catch(() => actors.delete(userId))
+      actors.set(userId, loaded)
+    }
+    return loaded
+  }
+  for (const appName of apps) {
+    try {
+      await refreshAppAttention(orgId, appName, { ...partial, userIds, loadPersonActor })
+    } catch (err) {
+      log.warn({ err, orgId, app: appName }, "Attention refresh failed")
+    }
+  }
 }
 
 // --- Wakes: a queued job per (org, app) and interval -----------------------------
@@ -756,10 +851,19 @@ export interface StoredAttention {
   error: Omit<AttentionProviderError, "app"> | null
 }
 
+/** Was this list computed too long ago to be served (STORED_LIST_MAX_AGE_MS)? */
+export function isStoredListTooOld(computedAt: Date | string, now: number): boolean {
+  const at = new Date(computedAt).getTime()
+  return !Number.isFinite(at) || at < now - STORED_LIST_MAX_AGE_MS
+}
+
 /**
  * The reader's stored lists of these apps, under the reader's RLS context. An
- * app with no stored list for the reader is absent from the map (and is
- * scheduled for a refresh in the background).
+ * app with no stored list for the reader is absent from the map; one computed
+ * more than STORED_LIST_MAX_AGE_MS ago comes back with no items and the
+ * out-of-date error (STALE_LIST_MESSAGE). Both are scheduled for a refresh in
+ * the background: the feed never shows a list that may no longer be true, and
+ * never hides one without saying so.
  */
 export async function readStoredAttention(
   tx: RlsClient,
@@ -774,6 +878,7 @@ export async function readStoredAttention(
       app: appAttentionItems.app,
       items: appAttentionItems.items,
       error: appAttentionItems.error,
+      computedAt: appAttentionItems.computedAt,
     })
     .from(appAttentionItems)
     .where(
@@ -783,7 +888,14 @@ export async function readStoredAttention(
         inArray(appAttentionItems.app, apps),
       ),
     )
+  const now = Date.now()
+  const fresh = new Set<string>()
   for (const r of rows) {
+    if (isStoredListTooOld(r.computedAt, now)) {
+      out.set(r.app, { items: [], error: { reason: "error", message: STALE_LIST_MESSAGE } })
+      continue
+    }
+    fresh.add(r.app)
     out.set(r.app, {
       items: Array.isArray(r.items) ? r.items : [],
       error: (r.error as StoredAttention["error"]) ?? null,
@@ -792,10 +904,10 @@ export async function readStoredAttention(
   // Queued, never run here: the read runs no app code. A reader back from
   // away was left out of the refreshes meanwhile: every app is recomputed.
   // The mark is not awaited here: the read may hold a transaction.
-  for (const app of apps) if (!out.has(app)) scheduleAttentionRefresh(orgId, app)
+  for (const app of apps) if (!fresh.has(app)) scheduleAttentionRefresh(orgId, app)
   track(
     (wakeDeps.markReader ?? markAttentionReader)(orgId, userId).then((returning) => {
-      if (returning) for (const app of out.keys()) scheduleAttentionRefresh(orgId, app)
+      if (returning) for (const app of fresh) scheduleAttentionRefresh(orgId, app)
     }),
   )
   return out

@@ -634,11 +634,6 @@ describe("db import enforcement", () => {
     // upserts the caller as a participant under a privileged, org-scoped tx so a
     // non-creator caller is visible under threads_select before posting.
     "modules/threads/contact-primary.ts",
-    // A contact's discussion drops its enrolled people when the contact's
-    // sharing changes (they re-enrol by opening it, which proves visibility),
-    // and is deleted with the contact: removing other people's participant rows
-    // and messages needs the privileged, org-scoped tx.
-    "modules/contacts/discussion.ts",
     // Knowledge content-cache downgrade invalidates cache entries under a
     // privileged, org-scoped tx (the curator role lacks knowledge:cache:manage).
     "apps/knowledge/sources.ts",
@@ -1511,7 +1506,7 @@ describe("db import enforcement", () => {
     "index.ts", // Server startup (RLS role check)
     "lib/shutdown-phases.ts", // graceful shutdown closes the pool (sql.end())
     "tests/route-test-setup.ts", // Test infrastructure (TRUNCATE)
-    "tests/helpers/app-schema-lock.ts", // Test infrastructure (sql.reserve for advisory locks)
+    "tests/helpers/app-schema-lock.ts", // Test infrastructure (advisory lock holder reads)
     // Test infrastructure, the same category as its app_schema-lock sibling: it
     // renames an app schema aside so a fixture can own the name, then renames it
     // back. `ALTER SCHEMA ... RENAME TO` and `CREATE SCHEMA` are DDL on the

@@ -464,6 +464,18 @@ describe("manifest schema extensions", () => {
       expect(r.success).toBe(false)
       expect(r.error).toContain("pinned")
     }
+    // A caller's value for a pinned param is dropped before the preflight, so a pinned param
+    // the caller must pass could never be satisfied: every call would be refused.
+    const required = manifestWith({
+      pinnedParams: ["target"],
+      params: {
+        type: "object",
+        properties: { note: { type: "string" }, target: { type: "object" } },
+        required: ["target"],
+      },
+    })
+    expect(required.success).toBe(false)
+    expect(required.error).toContain('pinned param "target" is required')
   })
 
   it("descriptor pinnedParams entries never contain a dot", () => {

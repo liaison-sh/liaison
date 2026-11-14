@@ -1,0 +1,4 @@
+an issued invoice keeps its draft's project, service period and source key -> bundled-apps/invoicing/src/mutations/issue-handover.ts (handOverDraft)
+a draft from a planned vs done card keeps the card's lines; its due date stays editable -> bundled-apps/invoicing/src/mutations/issue-handover.ts (cardLinesLockedError)
+an agent's invoice issue always waits for a person, even under an auto-approve policy -> bundled-apps/invoicing/app.manifest.json (invoice_issue)
+documents_search finds the documents that bill one project -> bundled-apps/invoicing/src/reads.ts (documentsSearch)

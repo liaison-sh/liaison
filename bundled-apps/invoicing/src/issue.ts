@@ -51,7 +51,7 @@ import { documentLegalMention } from "./einvoicing/mentions"
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
-import type { TimeSurface } from "./issue-date"
+import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
 import { documentRollup, lineAmounts } from "./money"
 import { numberingSequence } from "./numbering"
@@ -214,9 +214,11 @@ export class CounterpartyIncompleteError extends Error {
  *   - `goods`    (default) physical products; customs enrichment applies on exports.
  *   - `software` digital items (license keys, downloads) — never customs goods,
  *                rendered in their own "Software" group on the PDF.
+ *   - `service`  work done for the buyer (consulting, a retainer): a service in the operation
+ *                category and the tax classification, never customs goods.
  *   - `shipping` carriage lines — never customs goods, rendered last.
  */
-export type LineKind = "goods" | "software" | "shipping"
+export type LineKind = "goods" | "software" | "service" | "shipping"
 
 export interface DraftLineInput {
   position?: number
@@ -265,6 +267,21 @@ export interface DraftLine {
   external_id: string | null
 }
 
+/**
+ * What a document says about the work it bills, carried from a draft onto the invoice that
+ * replaces it at issue: the project, the role in a billing plan, the service period, who approved
+ * the draft and when, and the last day it should issue. A plain draft carries none of them.
+ */
+export interface SourceColumns {
+  billing_project_id?: string | null
+  invoice_role?: "standard" | "advance" | "final" | null
+  service_period_start?: string | null
+  service_period_end?: string | null
+  approved_by?: string | null
+  approved_at?: string | null
+  latest_issue_on?: string | null
+}
+
 export interface Draft {
   currency: string
   incoterm: string
@@ -277,6 +294,10 @@ export interface Draft {
    *  top-level column with no legacy JSON home, so `documents.notes` is the single source. */
   notes?: string | null
   lines: DraftLine[]
+  /** What the document bills, carried from the draft it replaces (the project, the role in a
+   *  billing plan, the service period, the approval, the last issue day). Only set values are
+   *  written, so a plain draft issues exactly as before. */
+  source?: SourceColumns
 }
 
 /**
@@ -334,13 +355,22 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** Change-log entries the issued document carries over from the draft it replaces. */
+  lifecycle_carry?: Array<Record<string, unknown>>
+  /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
+   *  for the daily send card instead of its own send approval. */
+  einvoice_send?: "stage" | "batch" | "held"
   /** Writes that must commit with the document (the draft it replaces, the invoice a credit
    *  note credits): appended to the issuing batch. `{ $ref: "document" }` is the new document's
    *  id, `{ $seq: "formatted" }` its number. */
   commit_with?: IssueBatchOp[]
-  /** A dedup key for the document (`documents.external_ref`, unique), e.g. the automatic credit
-   *  note of one Shopify refund. */
-  external_ref?: string
+  /** Writes that must commit with the document but land before it in the batch (a draft giving
+   *  up the unique key the new document takes). */
+  commit_before?: IssueBatchOp[]
+  /** A dedup key for the document (`documents.external_ref`, unique): the automatic credit note
+   *  of one Shopify or Stripe refund, or a month-end run's period key (the draft hands its own
+   *  over, after clearing it on the draft, so the period stays billed once). */
+  external_ref?: string | null
 }
 
 export interface IssueResult {
@@ -394,6 +424,7 @@ export type IssueBatchOp =
       merge?: Record<string, Record<string, unknown>>
     }
   | { delete: string; id: string | { $ref: string } }
+  | { updateMany: string; where: Record<string, unknown>; data: Record<string, unknown> }
 
 export interface IssueBatchSequence {
   key: string
@@ -535,8 +566,6 @@ export interface IssueCtx {
 }
 
 export interface DocumentInsert {
-  /** Dedup key (unique when set). */
-  external_ref?: string
   type: string
   scope: DocumentScope | null
   status: string
@@ -632,6 +661,10 @@ export interface DocumentInsert {
   /** The e-invoicing snapshot written by the issue gate (regime, buyer, billing, category). */
   einvoice?: Partial<RegimeSnapshotColumns>
   lifecycle_log: Array<Record<string, unknown>>
+  /** The unique source key of the document, when one produced it (a dedup key, unique when set). */
+  /** What the document bills, carried from its draft (see Draft.source). */
+  source?: SourceColumns
+  external_ref?: string | null
 }
 export interface DocumentRow extends DocumentInsert {
   id: string
@@ -751,8 +784,17 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
       : {}),
     ...(row.einvoice ?? {}),
     ...(row.external_ref ? { external_ref: row.external_ref } : {}),
+    ...setSourceColumns(row.source),
     lifecycle_log: row.lifecycle_log,
   }
+}
+
+/** The source columns that hold a value: an unset one keeps the column's default. */
+function setSourceColumns(source: SourceColumns | undefined): Record<string, unknown> {
+  if (!source) return {}
+  return Object.fromEntries(
+    Object.entries(source).filter(([, v]) => v !== null && v !== undefined && v !== ""),
+  )
 }
 
 /** The link / regime columns of a credit note. The regime is the ORIGINAL's stored regime (never
@@ -1017,6 +1059,28 @@ export async function enrichLineCustoms(
   return { hs_code, country_of_origin, customs_description, fetchFailure }
 }
 
+/** Documents in these statuses were never issued: a profile holding only them is at its first issue. */
+const NEVER_ISSUED_STATUSES: ReadonlySet<string> = new Set(["draft", "pending_approval"])
+
+/**
+ * True at the first issue on an issuer profile nobody gave a time zone, in an organization that
+ * has none either: the one moment the zone is asked (the line is raised once, after the number is
+ * taken). A profile with a zone, an organization with a zone, or a profile with issued documents
+ * (no backfill) is never asked.
+ */
+async function timezoneAskDue(ctx: IssueCtx, issuer: IssuerProfile): Promise<boolean> {
+  if (!issuerTimezoneUnset(issuer)) return false
+  const org = await ctx.time.civil({ timezone: DEFAULT_ZONE })
+  if (org.zone !== DEFAULT_ZONE) return false
+
+  const rows = (await ctx.db.findMany("documents", {
+    where: { issuer_profile_id: issuer.id },
+    select: ["id", "status"],
+    limit: 200,
+  })) as Array<{ status?: string | null }>
+  return rows.every((r) => NEVER_ISSUED_STATUSES.has(String(r.status ?? "draft")))
+}
+
 export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<IssueResult> {
   const prepared = await prepareIssue(ctx, input)
   // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
@@ -1233,6 +1297,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     year_of_issue: draft.year_of_issue,
   })
 
+  const askTimezone = await timezoneAskDue(ctx, issuer)
+
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
@@ -1271,7 +1337,6 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
         ? draft.external_refs.shopify_order_id
         : null,
     shopify_order_number: readOrderNumber(draft.external_refs),
-    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
     shipment_ref:
       typeof draft.external_refs.shipment_ref === "string"
         ? draft.external_refs.shipment_ref
@@ -1295,7 +1360,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           }),
         }
       : creditNoteOriginalColumns(type, issuer, input.original ?? null)),
+    ...(input.external_ref ? { external_ref: input.external_ref } : {}),
+    ...(draft.source ? { source: draft.source } : {}),
     lifecycle_log: [
+      ...(input.lifecycle_carry ?? []),
       { event: "issued", actor: userId, ts: nowIso },
       // Warn mode: the gate's refusal is recorded, calmly, on the document it did not block.
       ...(gateRefusal
@@ -1335,6 +1403,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   }
   // The writes of step 6 (see issueDocument): the document, its lines, the caller's own.
   const ops: IssueBatchOp[] = [
+    ...(input.commit_before ?? []),
     {
       insert: "documents",
       as: "document",
@@ -1395,6 +1464,19 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
             grand_total_minor: rollup.grand_total_minor.toString(),
             paid_at: input.settlement.paid_at,
             payment_status: "paid",
+          },
+        })
+      }
+      if (askTimezone) {
+        // One Home line to the holders of the settings scope; a zone set on the profile resolves it.
+        await ctx.emit({
+          entity: "issuer_profile",
+          action: "timezone_unset",
+          entityId: issuer.id,
+          data: {
+            issuer_profile_id: issuer.id,
+            legal_name: issuer.legal_name,
+            document_id: documentId,
           },
         })
       }
@@ -1590,7 +1672,9 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     let einvoiceSend: { approval_id: string } | null = null
     if (pdfStatus === "ready" && pdfFileId && ctx.requestApproval) {
       try {
-        const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId)
+        const staged = await stageSendAfterIssue(ctx as unknown as EinvCtx, documentId, {
+          send: input.einvoice_send ?? "stage",
+        })
         if (staged) einvoiceSend = { approval_id: staged }
       } catch (err) {
         newLog.push({

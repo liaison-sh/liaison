@@ -1,0 +1,4 @@
+An agent can file an activity report or a timesheet on a draft, or on an issued invoice before it is sent -> bundled-apps/invoicing/src/tools/document-attachment-add.ts (documentAttachmentAdd) ; bundled-apps/invoicing/app.manifest.json (tools.document_attachment_add)
+It needs invoicing:documents:write and a file the caller can read; otherwise nothing is filed -> bundled-apps/invoicing/src/tools/document-attachment-add.ts (documentAttachmentAdd)
+A sent or paid invoice takes no new annex -> bundled-apps/invoicing/src/tools/document-attachment-add.ts (OPEN)
+Issuing or discarding a draft withdraws the issue approval still waiting on it -> bundled-apps/invoicing/src/mutations/issue-handover.ts (withdrawIssueApprovals) ; bundled-apps/invoicing/src/mutations/invoice-issue.ts (invoiceIssue) ; bundled-apps/invoicing/src/mutations/drafts.ts (draftsDiscard)

@@ -1,0 +1,47 @@
+{
+  "entry": "tool:document_attachment_add",
+  "params": {
+    "documentId": "7d000000-0000-4000-8000-0000000000a1",
+    "fileId": "7f000000-0000-4000-8000-0000000000a1",
+    "kind": "timesheet",
+    "partial": false
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-reconcile.recorder.test.ts",
+  "expectError": {
+    "reason": "no file with this id is readable by the recording actor, so the annex is refused and nothing is filed: pins that refusal; the filing path is proven by preview-totals.test.ts"
+  },
+  "calls": [
+    {
+      "method": "hasScope",
+      "args": ["invoicing:documents:write"],
+      "reply": true
+    },
+    {
+      "method": "db_findOne",
+      "args": ["documents", "7d000000-0000-4000-8000-0000000000a1"],
+      "reply": "{\"id\":\"7d000000-0000-4000-8000-0000000000a1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-14 21:49:01.331981+00\",\"updated_at\":\"2026-11-14 21:49:01.331981+00\",\"einvoice_send_approval_id\":null,\"einvoice_send_requested_at\":null,\"einvoice_send_attempt\":null,\"type\":\"invoice\",\"scope\":null,\"status\":\"draft\",\"payment_status\":\"unpaid\",\"number\":null,\"number_int\":null,\"year_of_issue\":null,\"issuer_profile_id\":\"7b000000-0000-4000-8000-00000000c1de\",\"counterparty_contact_id\":null,\"counterparty_name\":null,\"counterparty_address\":null,\"counterparty_shipping_address\":null,\"counterparty_shipping_name\":null,\"counterparty_vat_id\":null,\"counterparty_email\":null,\"counterparty_country\":null,\"currency\":\"EUR\",\"subtotal_minor\":\"0\",\"tax_total_minor\":\"0\",\"grand_total_minor\":\"0\",\"tax_treatment\":null,\"incoterm\":\"DAP\",\"issued_at\":null,\"due_at\":null,\"paid_at\":null,\"voided_at\":null,\"pdf_file_id\":null,\"pdf_status\":null,\"external_refs\":{},\"shopify_order_id\":null,\"shopify_order_number\":null,\"shipment_ref\":null,\"shopify_draft_order_id\":null,\"shopify_draft_order_name\":null,\"po_number\":null,\"notes\":null,\"lifecycle_log\":[],\"regime\":null,\"regime_reasons\":null,\"operation_category\":null,\"operation_category_source\":null,\"payment_state\":null,\"vat_on_debits\":null,\"customer_kind\":null,\"buyer_siren\":null,\"buyer_siret\":null,\"buyer_routing_address\":null,\"buyer_legal_name\":null,\"billing_line1\":null,\"billing_line2\":null,\"billing_postcode\":null,\"billing_city\":null,\"billing_country_code\":null,\"delivery_name\":null,\"delivery_line1\":null,\"delivery_line2\":null,\"delivery_postcode\":null,\"delivery_city\":null,\"delivery_country_code\":null,\"fx_rate\":null,\"fx_rate_date\":null,\"fx_source\":null,\"legal_original_sha256\":null,\"einvoice_state\":null,\"einvoice_state_raw\":null,\"collection_state\":null,\"collection_reports\":null,\"pa_provider\":null,\"tax_point_date\":null,\"tax_total_eur_minor\":null,\"original_document_id\":null,\"legal_original_id\":null,\"internal_cancellation\":null,\"buyer_siren_confirmed_via\":null,\"external_ref\":null,\"billing_project_id\":null,\"invoice_role\":\"standard\",\"approved_by\":null,\"approved_at\":null,\"service_period_start\":null,\"service_period_end\":null,\"latest_issue_on\":null}"
+    },
+    {
+      "method": "db_insert",
+      "args": [
+        "document_attachments",
+        "{\"document_id\":\"7d000000-0000-4000-8000-0000000000a1\",\"file_id\":\"7f000000-0000-4000-8000-0000000000a1\",\"kind\":\"timesheet\",\"partial\":false}"
+      ],
+      "reply": "{\"id\":\"254b1ee4-346c-4037-87bb-0efc328f070c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-14 21:49:01.356611+00\",\"updated_at\":\"2026-11-14 21:49:01.356611+00\",\"document_id\":\"7d000000-0000-4000-8000-0000000000a1\",\"file_id\":\"7f000000-0000-4000-8000-0000000000a1\",\"kind\":\"timesheet\",\"partial\":false}"
+    },
+    {
+      "method": "files_attachToParent",
+      "args": [
+        "{\"sourceFileId\":\"7f000000-0000-4000-8000-0000000000a1\",\"targetApp\":\"invoicing\",\"targetEntityType\":\"document_attachment\",\"targetEntityId\":\"254b1ee4-346c-4037-87bb-0efc328f070c\"}"
+      ],
+      "error": {
+        "message": "Source file not visible to caller",
+        "code": "PARENT_NOT_FOUND"
+      }
+    },
+    {
+      "method": "db_delete",
+      "args": ["document_attachments", "254b1ee4-346c-4037-87bb-0efc328f070c"]
+    }
+  ]
+}

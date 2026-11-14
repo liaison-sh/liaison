@@ -112,5 +112,10 @@
     },
     "wipeWarning": "This adapter moves the connection from {{from}} to {{to}}. Saving it deletes the stored credentials, which must be entered again.",
     "saveAnyway": "Save and delete credentials"
+  },
+  "common": {
+    "delete": "Delete",
+    "cancel": "Cancel",
+    "retry": "Retry"
   }
 }

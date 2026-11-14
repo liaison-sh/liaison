@@ -66,8 +66,41 @@ async function providerRef(ctx: EinvCtx, documentId: string): Promise<string | n
 }
 
 /**
- * Report one payment (`paid`) or refund (`refund`) of a document. Idempotent per `ref`: the same
- * payment reported twice sends once.
+ * The dedupe key of one collection. A document is paid once, whoever says so (a person marking it
+ * paid, Stripe's paid event, the safety job), so a payment's key is the document and its amount
+ * alone; a refund is keyed by its own reference, since a document can be refunded several times.
+ */
+function collectionKey(
+  documentId: string,
+  event: { kind: "paid" | "refund"; amount_minor: bigint; ref: string },
+): string {
+  return event.kind === "paid"
+    ? sha256Text(`${documentId}|collection|paid|${event.amount_minor}`)
+    : sha256Text(`${documentId}|collection|refund|${event.ref}|${event.amount_minor}`)
+}
+
+/**
+ * The keys this collection may already be stored under: its own, and for a payment the keys
+ * earlier releases wrote per source (the mark-paid date, Stripe), so a payment reported before
+ * one key per document is not sent again.
+ */
+function earlierKeys(
+  documentId: string,
+  doc: Row,
+  event: { kind: "paid" | "refund"; amount_minor: bigint; ref: string },
+): string[] {
+  const keys = [collectionKey(documentId, event)]
+  if (event.kind !== "paid") return keys
+  const paidOn = String(doc.paid_at ?? "").slice(0, 10)
+  const refs = new Set([event.ref, "stripe:paid", ...(paidOn ? [`paid:${paidOn}`] : [])])
+  for (const ref of refs)
+    keys.push(sha256Text(`${documentId}|collection|paid|${ref}|${event.amount_minor}`))
+  return keys
+}
+
+/**
+ * Report one payment (`paid`) or refund (`refund`) of a document. Idempotent (`collectionKey`): the same
+ * payment reported twice sends once, whichever path reports it.
  */
 export async function reportCollection(
   ctx: EinvCtx,
@@ -90,11 +123,9 @@ export async function reportCollection(
       message: `${number}: VAT is not due on receipt, so no collection is reported (Not needed).`,
     }
   }
-  const key = sha256Text(
-    `${documentId}|collection|${event.kind}|${event.ref}|${event.amount_minor}`,
-  )
+  const key = collectionKey(documentId, event)
   const done = (Array.isArray(doc.collection_reports) ? doc.collection_reports : []) as string[]
-  if (done.includes(key))
+  if (earlierKeys(documentId, doc, event).some((k) => done.includes(k)))
     return {
       state: (doc.collection_state as CollectionState) ?? "reported",
       message: `${number}: this payment was already reported; nothing was sent again.`,

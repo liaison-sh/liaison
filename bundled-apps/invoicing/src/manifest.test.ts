@@ -1716,6 +1716,7 @@ describe("invoicing manifest", () => {
     // 0.21.18: a parked Stripe invoice is retried as Stripe answers for it now (stripe:invoice_payload).
     // 0.21.19: a Stripe invoice born paid still triggers its collection report once.
     // 0.21.20: a parked Stripe invoice voided or written off in Stripe is dropped, never numbered.
+    // 0.21.21: a document's payment is reported to the platform once, whoever marked it paid.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

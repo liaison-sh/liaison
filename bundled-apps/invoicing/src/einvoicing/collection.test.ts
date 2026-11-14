@@ -10,7 +10,7 @@ import { join } from "node:path"
 import type { ContractEnvelope } from "@liaison/app-sdk/contracts"
 import { createMockDb, type ManifestSchema } from "@liaison/test-helpers/mock-db"
 import { COLLECTION_MANUAL_LABEL, collectionLabel, reportCollection } from "./collection"
-import { type EinvCtx, refreshStatus } from "./transmit"
+import { type EinvCtx, refreshStatus, sha256Text } from "./transmit"
 
 const SCHEMA = (
   JSON.parse(readFileSync(join(import.meta.dir, "..", "..", "app.manifest.json"), "utf8")) as {
@@ -157,6 +157,32 @@ describe("reporting a collection", () => {
       expect(collectionLabel((await w.one(other.id)) as Row)).toBe("Not needed")
     }
     expect(w.calls).toHaveLength(2)
+  })
+
+  it("a document's payment is reported once whatever marked it paid: by hand, then by Stripe", async () => {
+    const d = await w.doc()
+    const byHand = { kind: "paid" as const, amount_minor: 17500n, date: "2026-11-20" }
+    await reportCollection(w.ctx, String(d.id), { ...byHand, ref: "paid:2026-11-20" })
+    expect(w.calls).toHaveLength(1)
+    const again = await reportCollection(w.ctx, String(d.id), { ...byHand, ref: "stripe:paid" })
+    expect(again.message).toContain("already reported")
+    expect(w.calls).toHaveLength(1)
+  })
+
+  it("a payment reported under an earlier per-source key is not reported again", async () => {
+    const d = await w.doc({ paid_at: "2026-11-20" })
+    const earlier = sha256Text(`${String(d.id)}|collection|paid|paid:2026-11-20|17500`)
+    await w.db.update("documents", String(d.id), {
+      collection_state: "reported",
+      collection_reports: [earlier],
+    })
+    await reportCollection(w.ctx, String(d.id), {
+      kind: "paid",
+      amount_minor: 17500n,
+      date: "2026-11-20",
+      ref: "stripe:paid",
+    })
+    expect(w.calls).toHaveLength(0)
   })
 
   it("a provider without the op shows To report at your platform", async () => {

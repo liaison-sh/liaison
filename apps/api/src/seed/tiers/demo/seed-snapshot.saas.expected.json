@@ -21,7 +21,7 @@
   },
   "app_invoicing.documents": {
     "rows": 418,
-    "digest": "f037c6e35827e8a4"
+    "digest": "31a057ff8776fd1c"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -29,7 +29,7 @@
   },
   "app_invoicing.recurring_schedules": {
     "rows": 10,
-    "digest": "a3e061489016c1ea"
+    "digest": "b387e71a202226f1"
   },
   "app_invoicing.stripe_streams": {
     "rows": 1,

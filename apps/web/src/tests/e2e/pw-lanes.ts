@@ -104,13 +104,16 @@ export function pwServerEnv(ports: number[]): Record<string, string> {
 /**
  * The world every Playwright stack starts from: the `standard` seed tier, then
  * the catalog apps installed as its admin through the App store (lane-catalog.ts).
+ * `catalogApps: false` skips the installs: a managed worker's org is a
+ * customer's, which may not install apps (helpers/managed-edition.ts).
  */
 export async function seedPwWorld(
   env: Parameters<typeof seedStandardWorld>[0],
   admin: { email: string; password: string },
+  opts: { catalogApps?: boolean } = {},
 ): Promise<StandardWorld> {
   const world = await seedStandardWorld(env, admin)
-  await installLaneCatalogApps(env.serverUrl, world.admin.token)
+  if (opts.catalogApps !== false) await installLaneCatalogApps(env.serverUrl, world.admin.token)
   return world
 }
 

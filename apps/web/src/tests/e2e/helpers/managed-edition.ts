@@ -45,7 +45,10 @@ export async function managedEditionAfterWorld({
     world.org.id,
   ])
   const vitePort = env.ports[1]
-  ;(env as ProfiledWorkerEnv).serverUrlAfterRestart = `http://localhost:${vitePort}`
+  const profiled = env as ProfiledWorkerEnv
+  profiled.serverUrlAfterRestart = `http://localhost:${vitePort}`
+  // The operator org below is not the world's, so its admin cannot install apps.
+  profiled.noCatalogInstalls = true
   return {
     LIAISON_EDITION: "managed",
     // Another org holds the instance powers: the world's org is a customer's.

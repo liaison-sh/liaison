@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto"
 import { sql } from "~/db"
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG = randomUUID()
 const OTHER_ORG = randomUUID()
@@ -32,15 +34,23 @@ async function insertApproval(
   const thread = opts.thread ?? THREAD
   const user = org === ORG ? USER : OTHER_USER
   const expires = new Date(Date.now() + (opts.expiresInMs ?? 3_600_000)).toISOString()
-  await sql`
-    INSERT INTO kernel.approval_requests (
-      id, org_id, handle, status, tool_name, tool_params, summary, current_payload,
-      thread_id, originating_thread_id, requested_by, notify_user_ids, expires_at
-    ) VALUES (
-      ${id}, ${org}, ${`agw-${id.slice(0, 8)}`}, ${opts.status ?? "pending"},
-      ${opts.toolName ?? "invoicing:received_einvoice_set_status"}, '{}'::jsonb, '{"title":"t"}'::jsonb, '{}'::jsonb,
-      ${thread}, ${thread}, ${user}, ${sql.array([user], 2950)}, ${expires}::timestamptz
-    )`
+  await sql.unsafe(
+    insertSql("kernel.approval_requests", {
+      id,
+      org_id: org,
+      handle: `agw-${id.slice(0, 8)}`,
+      status: opts.status ?? "pending",
+      tool_name: opts.toolName ?? "invoicing:received_einvoice_set_status",
+      tool_params: { raw: "'{}'::jsonb" },
+      summary: { raw: `'{"title":"t"}'::jsonb` },
+      current_payload: { raw: "'{}'::jsonb" },
+      thread_id: thread,
+      originating_thread_id: thread,
+      requested_by: user,
+      notify_user_ids: { raw: `ARRAY['${user}']::uuid[]` },
+      expires_at: { raw: `'${expires}'::timestamptz` },
+    }),
+  )
 }
 
 function methods(appName: string, orgId = ORG) {
@@ -69,9 +79,24 @@ describe("approvals_withdraw", () => {
       [ORG, THREAD, USER],
       [OTHER_ORG, OTHER_THREAD, OTHER_USER],
     ] as const) {
-      await sql`INSERT INTO kernel.organizations (id, name, slug) VALUES (${org}, 'Approval withdraw org', ${`agw-${org.slice(0, 8)}`})`
-      await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash) VALUES (${user}, ${org}, ${`agw-${user.slice(0, 8)}@example.com`}, 'U', 'active', 'hash')`
-      await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by) VALUES (${thread}, ${org}, ${`agw-${thread.slice(0, 8)}`}, 'approval', ${user})`
+      await seedOrgRow({ id: org, name: "Approval withdraw org", slug: `agw-${org.slice(0, 8)}` })
+      await seedUserRow({
+        id: user,
+        orgId: org,
+        email: `agw-${user.slice(0, 8)}@example.com`,
+        name: "U",
+        status: "active",
+        passwordHash: "hash",
+      })
+      await sql.unsafe(
+        insertSql("kernel.threads", {
+          id: thread,
+          org_id: org,
+          handle: `agw-${thread.slice(0, 8)}`,
+          type: "approval",
+          created_by: user,
+        }),
+      )
     }
     await insertApproval(IDS.pending, {})
     await insertApproval(IDS.approving, { status: "approving" })

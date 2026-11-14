@@ -440,7 +440,9 @@ export async function reconcileFacts(args: {
       .filter((r): r is TaskRow => Boolean(r))
       .map((r) => ({ key: r.key, title: r.title })),
     coverage,
-    sourceRepos: c.sourceRepos,
+    // A repository is named only to a reader of its host: to anyone else it is
+    // part of what they cannot read, which the card says without naming it.
+    sourceRepos: readableSourceRepos(c.sourceRepos, args.scopes),
     clientMarkers: {
       domains: [...new Set(markers.map((m) => m.domain).filter((d): d is string => !!d))],
       contactEmails: [...new Set(markers.map((m) => m.email).filter((e): e is string => !!e))],
@@ -548,6 +550,17 @@ async function readableProofRefs(
     for (const r of rows) seen.add(r.id.toLowerCase())
   }
   return out
+}
+
+/** The project's source repositories on a host whose trace scope the caller holds. */
+export function readableSourceRepos(
+  repos: ReadonlyArray<{ provider: string; repo: string }>,
+  scopes: readonly string[],
+): Array<{ provider: string; repo: string }> {
+  return repos.filter((r) => {
+    const host = TRACE_SOURCES.find((t) => t.source.toLowerCase() === r.provider.toLowerCase())
+    return !!host && hasScope(host.scope, [...scopes])
+  })
 }
 
 /**

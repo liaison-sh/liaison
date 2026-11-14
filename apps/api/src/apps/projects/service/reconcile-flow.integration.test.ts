@@ -217,6 +217,22 @@ describe("the October card of a project billed by the day", () => {
     expect(text).not.toMatch(/assignee|userId|enteredBy/)
   })
 
+  // A member who cannot read GitHub got the repository's name in the facts, and
+  // her card then named it as what was not seen. The name is hidden like the
+  // rest of what she cannot read: the card still says GitHub was not seen.
+  it("facts name a source repository only to a reader of its host", async () => {
+    expect(facts.sourceRepos).toEqual([{ provider: "github", repo: "studio/orbit" }])
+    const member = await call(
+      "projects_reconcileFacts",
+      { project: "ORBIT", month: "2026-10" },
+      { scopes: ["projects:*"] },
+    )
+    expect(member.error).toBeUndefined()
+    expect(member.tasks).toHaveLength(11)
+    expect(member.sourceRepos).toEqual([])
+    expect(JSON.stringify(member)).not.toContain("studio/orbit")
+  })
+
   it("the October fixture gives 7 days to bill, 6,510.00 excluding VAT, three unplanned lines at zero and 9 of 11", () => {
     expect(card.error).toBeUndefined()
     const rows = card.lines.map((l: any) => [l.name, l.planned, l.real, l.bill, l.amount])

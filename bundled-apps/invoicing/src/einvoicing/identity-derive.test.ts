@@ -115,6 +115,17 @@ describe("ensureDerivedIdentity", () => {
     expect(id).toBeNull()
   })
 
+  test("the same race in a sandboxed run, where the failed insert rejects with its text alone", async () => {
+    const db = {
+      findMany: async () => [],
+      insert: async () => {
+        throw 'Failed query: INSERT INTO "app_invoicing"."counterparty_identities" — pg: duplicate key value violates unique constraint "counterparty_identities_org_id_contact_id_key" (23505)'
+      },
+    }
+    const id = await ensureDerivedIdentity(db, { contact_id: "c-1", customer_kind: "individual" })
+    expect(id).toBeNull()
+  })
+
   test("any other insert failure still throws", async () => {
     const db = {
       findMany: async () => [],

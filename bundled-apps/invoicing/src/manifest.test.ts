@@ -1710,6 +1710,7 @@ describe("invoicing manifest", () => {
     //   reads a project's invoiced amount through project_invoiced_get.
     // 0.21.14: project_invoiced_get pages on a unique order, counts only issued statuses in the
     //   query, refuses past its cap and reads an issue date as a calendar day.
+    // 0.21.15: a unique-key race reads as one when a sandboxed call rejects with its text alone.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

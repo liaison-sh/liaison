@@ -21,3 +21,14 @@ Desktop apps macOS, Windows, Linux installers -> apps/web/src/lib/desktop-downlo
 Mobile shell iOS, Android -> README.md:146
 FSL-1.1-ALv2 terms and Apache 2.0 after two years -> README.md:273
 About 9 minutes best case -> README.md:59
+Help button at the bottom of the left bar -> apps/web/src/modules/shell/ActivityBar.tsx:704
+Help opens the docs in a tab (no demo) -> apps/web/src/modules/help/HelpButton.tsx:22
+Help and Documentation labels, Search the docs, Open in browser -> packages/shared/src/i18n/locales/en/kernel.json:6998
+Phone: Help row on the Work screen -> apps/web/src/modules/shell/Work.tsx:226
+Work screen label -> packages/shared/src/i18n/locales/en/kernel.json:2026
+Docs of the running version, offline: bundled into every web build -> apps/web/vite.config.ts:59
+Search: titles, headings and text, accents ignored -> apps/web/src/modules/help/help-docs.ts:113
+Accents ignored -> apps/web/src/modules/help/help-docs.ts:93
+Page links stay in the tab, other links open in the browser -> apps/web/src/modules/help/HelpTab.tsx:70
+Open in browser opens the page on liaison.sh -> packages/shared/src/help-docs.ts:19
+Demo: Help opens a menu with Documentation and Show me how -> apps/web/src/modules/help/HelpButton.tsx:30

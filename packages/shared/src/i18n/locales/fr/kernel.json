@@ -7352,5 +7352,19 @@
     "run_done": "terminé",
     "run_pending": "pas commencé",
     "agentNoteHeading": "Ce qu'a rapporté l'étape agent"
+  },
+  "help": {
+    "title": "Aide",
+    "documentation": "Documentation",
+    "searchLabel": "Rechercher dans la documentation",
+    "searchPlaceholder": "Rechercher dans la doc",
+    "noResults": "Rien dans la documentation ne correspond à « {{query}} ».",
+    "loading": "Chargement de la documentation…",
+    "loadFailed": "La documentation n’a pas pu être chargée.",
+    "retry": "Réessayer",
+    "openInBrowser": "Ouvrir dans le navigateur",
+    "contents": "Sommaire",
+    "copy": "Copier",
+    "copied": "Copié"
   }
 }

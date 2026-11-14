@@ -189,6 +189,9 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/demo/**", pages: ["getting-started/demo"] },
   { glob: "apps/api/src/modules/tours/**", pages: ["getting-started/demo"] },
   { glob: "apps/web/src/modules/tours/**", pages: ["getting-started/demo"] },
+  // The Help tab and the "?" that opens it; on a demo the menu also lists the tours.
+  { glob: "apps/web/src/modules/help/**", pages: ["getting-started/introduction", "getting-started/demo"] },
+  { glob: "packages/shared/src/help-docs.ts", pages: ["getting-started/introduction"] },
   { glob: "packages/shared/src/demo/**", pages: ["getting-started/demo"] },
   { glob: "packages/shared/src/tours/**", pages: ["getting-started/demo", "sales/research-prospects"] },
   { glob: ".claude/skills/setup-liaison/**", pages: ["getting-started/install"] },

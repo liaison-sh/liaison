@@ -41,6 +41,16 @@ Liaison is self-hosted. The stack is one app image plus PostgreSQL, Redis, Meili
 
 Liaison is source-available under the Functional Source License 1.1 (FSL-1.1-ALv2). You can use, modify and self-host it for your own internal use, including commercial use, but not offer it as a competing product or service. Each release becomes available under the Apache License 2.0 two years after it ships.
 
+## Read these docs in Liaison
+
+Click **Help** (**?**) at the bottom of the left bar to open these docs in a tab. On a phone, **Help** is a row of the **Work** screen. The tab shows the docs that ship with your version of Liaison, and opens without an internet connection.
+
+- To find a page, type in **Search the docs**. Search looks at every page's title, headings and text, with or without accents, and lists the matching pages and headings.
+- A link to another page opens it in the same tab. A link to another site opens in your browser.
+- **Open in browser** opens the page you are reading on liaison.sh.
+
+On the demo, **Help** opens a menu: **Documentation** opens these docs, and the guided tours are under **Show me how** (see [Follow a guided tour](demo.md#follow-a-guided-tour)).
+
 ## Next steps
 
 - [Try the demo](demo.md): your own temporary copy of a sample company, nothing to install.

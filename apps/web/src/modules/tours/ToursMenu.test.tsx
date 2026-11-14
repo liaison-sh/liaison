@@ -15,9 +15,7 @@ import type { TourApi } from "./tour-api"
 vi.mock("~/modules/shell/shell-tier", () => ({ shellTier: () => "desktop" }))
 
 const { resetTourStore, setTourApi, tourStore } = await import("./tour-store")
-const { ToursHelpButton, ToursList, arrangeTours, tourActionLabel, tourStatusLabel } = await import(
-  "./ToursMenu"
-)
+const { ToursList, arrangeTours, tourActionLabel, tourStatusLabel } = await import("./ToursMenu")
 const { TourHost } = await import("./TourHost")
 
 function progress(over: Partial<TourProgress> = {}): TourProgress {
@@ -120,17 +118,6 @@ describe("Show me how", () => {
     expect(screen.getByTestId("tours-menu-empty").textContent).toBe(
       "No tours for the apps in this workspace yet.",
     )
-  })
-
-  it("desktop: the activity bar button opens the list and refreshes it", async () => {
-    const api = fakeApi([item(null)])
-    setTourApi(api)
-    render(() => <ToursHelpButton buttonClass={(x) => x ?? ""} />)
-    const trigger = screen.getByTestId("tours-help-button")
-    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" })
-    expect(await screen.findByTestId("tours-menu")).toBeTruthy()
-    await waitFor(() => expect(api.list).toHaveBeenCalled())
-    expect(await screen.findByTestId("tours-menu-item")).toBeTruthy()
   })
 })
 

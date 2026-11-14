@@ -1011,6 +1011,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/test-gate.test.ts",
             // The docs guard's own tests (#207), listed by no suite until now.
             "scripts/check-docs.test.ts",
+            // The docs site renderer, and the Help tab's copy of the docs it also writes.
+            "scripts/docs/build.test.ts",
+            "scripts/docs/build-app-bundle.test.ts",
             // Shipped manifest regexes: the proven list is exactly them, each proves
             // linear, none costs a small server more than a share of the check's ceiling.
             "scripts/manifest-regex-proven.test.ts",

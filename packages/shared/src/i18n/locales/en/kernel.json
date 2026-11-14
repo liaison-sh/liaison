@@ -7355,5 +7355,19 @@
     "run_done": "done",
     "run_pending": "not started",
     "agentNoteHeading": "What the agent step reported"
+  },
+  "help": {
+    "title": "Help",
+    "documentation": "Documentation",
+    "searchLabel": "Search the documentation",
+    "searchPlaceholder": "Search the docs",
+    "noResults": "Nothing in the docs matches “{{query}}”.",
+    "loading": "Loading the docs…",
+    "loadFailed": "The docs could not be loaded.",
+    "retry": "Try again",
+    "openInBrowser": "Open in browser",
+    "contents": "Contents",
+    "copy": "Copy",
+    "copied": "Copied"
   }
 }

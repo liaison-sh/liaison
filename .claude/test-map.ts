@@ -265,6 +265,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "scripts/compose-*.test.ts", suites: ["root"] },
   // The secret and address gates: the hooks, their config and their test.
   { glob: "scripts/git-hooks/**", suites: ["root"] },
+  // The docs renderer feeds the site and the web build's Help tab bundle (modules/help).
+  { glob: "scripts/docs/**", suites: ["root"] },
   { glob: "scripts/git-hooks.test.ts", suites: ["root"] },
   { glob: ".gitleaks.toml", suites: ["root"] },
   { glob: "scripts/load-test*.ts", suites: ["root"] },

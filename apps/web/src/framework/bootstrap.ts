@@ -3,6 +3,7 @@
 // bootstrap.ts is a leaf module: it imports from stores, but no store imports from it.
 
 import {
+  BookOpen,
   Hammer,
   Home,
   LayoutDashboard,
@@ -507,6 +508,18 @@ export function bootstrapKernelApps(): void {
         urlPattern: "/approvals",
         defaultLabel: "Approvals",
         defaultLabelKey: "kernel.nav.approvals",
+        singleton: true,
+        referenceable: false,
+      },
+      // The user docs (HelpTab.tsx): the "?" in the activity bar and the phone's Work
+      // screen open it. Its sidebar is the docs' search and contents.
+      help: {
+        component: lazy(() => import("~/modules/help/HelpTab")),
+        sidebar: lazy(() => import("~/modules/help/HelpSidebar")),
+        icon: BookOpen,
+        urlPattern: "/help",
+        defaultLabel: "Help",
+        defaultLabelKey: "kernel.help.title",
         singleton: true,
         referenceable: false,
       },

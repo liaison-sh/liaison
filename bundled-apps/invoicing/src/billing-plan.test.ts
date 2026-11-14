@@ -310,6 +310,32 @@ describe("the final invoice", () => {
     }
   })
 
+  test("a final deducts only what remains of an advance after its credit notes", async () => {
+    const h = harness()
+    await withPlan(h)
+    const adv = await issuedAdvance(h)
+    // 4,000.00 net (4,800.00 incl. VAT) of the 12,800.00 advance was credited.
+    h.db.__seed("documents", [
+      {
+        id: crypto.randomUUID(),
+        type: "credit_note",
+        status: "issued",
+        number: "A-2026-0001",
+        original_document_id: adv.id,
+        grand_total_minor: -480_000n,
+      },
+    ])
+    done(h, T_LAUNCH)
+    const res = await milestoneDraftCreate(h.ctx, { taskId: T_LAUNCH })
+    if (res.status !== "completed") throw new Error(JSON.stringify(res))
+    expect(res.deductions.map((d) => d.amountMinor)).toEqual([880_000])
+    expect(res.totals).toMatchObject({ excl: 720_000 })
+    const deductionLine = linesOf(h.db, res.draftId).find((l) =>
+      String(l.external_id ?? "").startsWith("advance_deduction:"),
+    )
+    expect(String(deductionLine?.unit_price_minor)).toBe("880000")
+  })
+
   test("a final whose advance is not issued yet is refused and drafts nothing", async () => {
     const h = harness()
     await withPlan(h)

@@ -476,8 +476,11 @@ async function projectAdvances(
       where: { document_id: String(d.id) },
       limit: 200,
     })) as Row[]
-    // A credited advance has nothing left to deduct (credited before the final).
-    if (await advanceFullyCredited(ctx, d)) continue
+    // A credited advance has nothing left to deduct (credited before the final); a partly
+    // credited one is deducted for what remains, split over its VAT rates as issued.
+    const total = absBig(d.grand_total_minor)
+    const remaining = total === 0n ? 0n : await advanceRemaining(ctx, d)
+    if (total !== 0n && remaining <= 0n) continue
     const taken = (await ctx.db.findMany("advance_deductions", {
       where: { advance_document_id: String(d.id) },
       limit: 20,
@@ -490,7 +493,16 @@ async function projectAdvances(
         `Advance ${String(d.number ?? d.id)} is already deducted from ${final?.number ? `invoice ${String(final.number)}` : `draft ${String(holding.final_document_id)}`}, so nothing was drafted. An advance is deducted from one final only.`,
       )
     }
-    out.push({ doc: d, lines })
+    out.push({
+      doc: d,
+      lines:
+        total !== 0n && remaining < total
+          ? lines.map((l) => ({
+              ...l,
+              subtotal_minor: (asBig(l.subtotal_minor) * remaining) / total,
+            }))
+          : lines,
+    })
   }
   return { ok: out }
 }
@@ -510,8 +522,9 @@ export async function advanceRemaining(ctx: MutationsCtx, doc: Row): Promise<big
   return (total < 0n ? -total : total) - credited
 }
 
-async function advanceFullyCredited(ctx: MutationsCtx, doc: Row): Promise<boolean> {
-  return asBig(doc.grand_total_minor) !== 0n && (await advanceRemaining(ctx, doc)) <= 0n
+const absBig = (v: unknown): bigint => {
+  const n = asBig(v)
+  return n < 0n ? -n : n
 }
 
 async function pendingIssueApproval(ctx: MutationsCtx, draftId: string): Promise<string | null> {

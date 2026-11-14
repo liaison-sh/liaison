@@ -554,6 +554,12 @@ export const toolRegistry = createTypedRegistry<
      *  folder, cloning or dispatching there are not the session's to do
      *  (modules/mcp/node-session-connection.ts). Defaults off. */
     notForNodeSessions?: boolean
+    /** When true, a person with no computer set up for Liaison is not offered
+     *  it (in-app agent turns): a tool that reads the person's own computer
+     *  (its repositories, what its signed-in gh and glab reach) has nothing to
+     *  read, and its description would read as a claim that a computer exists.
+     *  The turn sets `RunContext.noOwnComputer`; defaults off. */
+    needsOwnComputer?: boolean
     /** When true, this tool is hidden from the outbound MCP server projection
      *  (`listMcpTools` / `buildToolSet({audience: "gateway"})`). Inbound MCP
      *  tools whose connection has `expose_via_gateway=false` set this flag at

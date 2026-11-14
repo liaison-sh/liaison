@@ -875,6 +875,8 @@ export function buildToolSet(
     // missing frame would strip the tool from every MCP client, agent bound
     // ones included.
     if (audience === "agent" && toolDef.agentBoundOnly && !runFrame?.agentId) continue
+    // A tool that reads the person's own computer, for a person with none.
+    if (audience === "agent" && toolDef.needsOwnComputer && runFrame?.noOwnComputer) continue
 
     // Outbound MCP server: gateway-hidden tools are invisible
     if (audience === "gateway" && toolDef.gatewayHidden) continue
@@ -1471,8 +1473,14 @@ export function listDeferredTools(
   actor?: ActorContext,
   audience: "agent" | "gateway" = "agent",
   includeLocked = false,
+  // Whether the person has no computer set up for Liaison: tools that read
+  // it are then left out. Defaults to the running turn's frame (tool_search);
+  // the system prompt, assembled outside it, passes its own read.
+  turn: { noOwnComputer?: boolean } = {
+    noOwnComputer: runContextStore.getStore()?.noOwnComputer,
+  },
 ): ReturnType<typeof listCatalogTools> {
-  return listCatalogTools(orgId, actor, audience, includeLocked, true)
+  return listCatalogTools(orgId, actor, audience, includeLocked, true, turn.noOwnComputer === true)
 }
 
 /**
@@ -1538,6 +1546,8 @@ function listCatalogTools(
   // When true, keep only tools gated behind discovery (`listDeferredTools`).
   // When false, return every tool the audience can see (`listGatewayTools`).
   onlyDeferred = true,
+  // When true, tools marked `needsOwnComputer` are left out (agent audience).
+  noOwnComputer = false,
 ): Array<{
   sdkName: string
   appName: string
@@ -1596,6 +1606,7 @@ function listCatalogTools(
     if (toolDef.agentVisible === false) continue
     if (audience === "gateway" && toolDef.gatewayHidden) continue
     if (audience === "gateway" && toolDef.requiresAgentExecutionThread) continue
+    if (audience === "agent" && noOwnComputer && toolDef.needsOwnComputer) continue
 
     // Unreachable MCP tools — hidden from the deferred catalog too. Personal
     // tools also hidden from non-owners (review B6). These are NOT RBAC-scope

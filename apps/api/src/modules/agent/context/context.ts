@@ -1264,6 +1264,14 @@ async function readNodePresence(
   }
 }
 
+/**
+ * True when the person a turn answers has no computer set up for Liaison (a
+ * failed read counts as none; the tools it hides refuse without one anyway).
+ */
+export async function personHasNoComputer(orgId: string, actor: UserContext): Promise<boolean> {
+  return (await readNodePresence(orgId, actor)) === undefined
+}
+
 // --- Main assembler ---
 
 export async function assembleContext(
@@ -1514,6 +1522,11 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // (agent-service.ts, guide-notes.ts).
   // The turn's tool scopes, as buildToolSet and tool_search judge them.
   const turnScopes = turnToolScopes(actor.scopes ?? [], { effectiveScope })
+  // Whether the person has a computer set up for Liaison: read once, for the
+  // runtime-context tail below and for the catalogs, which leave out the
+  // tools that read the person's own computer when they have none.
+  const nodePresenceRead = readNodePresence(orgId, actor)
+  const catalogTurn = { noOwnComputer: (await nodePresenceRead) === undefined }
   // The customer behind the ticket or mail in view, from the org's API
   // connector (customer-context.ts): only for a turn whose effective scopes
   // hold the connector's read scope, bounded at 1.5 s. Looked up BEFORE the
@@ -1532,7 +1545,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     const names = customerContextTools(source)
     customerTools ??= new Set(
       discoveredTools
-        ? listDeferredTools(orgId, { ...actor, scopes: turnScopes })
+        ? listDeferredTools(orgId, { ...actor, scopes: turnScopes }, "agent", false, catalogTurn)
             .filter((tool) => tool.appName === source.app && names.has(tool.toolName))
             .map((tool) => tool.sdkName)
         : [],
@@ -1558,7 +1571,13 @@ Write numbers, amounts and dates the way that language writes them, never as a r
       callableTools: discoveredTools
         ? (app, names) =>
             new Set(
-              listDeferredTools(orgId, { ...actor, scopes: turnScopes })
+              listDeferredTools(
+                orgId,
+                { ...actor, scopes: turnScopes },
+                "agent",
+                false,
+                catalogTurn,
+              )
                 .filter((tool) => tool.appName === app && names.includes(tool.toolName))
                 .map((tool) => tool.sdkName),
             )
@@ -1948,7 +1967,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   )
   // Where the person is, per turn, and whether they have a node: which way
   // to their computer applies.
-  const node = await readNodePresence(orgId, actor)
+  const node = await nodePresenceRead
   tailLines.push(renderClientSurfaceLine(clientSurface, node?.presence, node?.recordedComputer))
 
   // A step budget, said where the model plans: the semi-stable suffix, the
@@ -1975,7 +1994,13 @@ Write numbers, amounts and dates the way that language writes them, never as a r
   // The catalog is the whole deferred set, loaded or not: which of them the
   // thread has loaded changes from turn to turn, and the system prompt must not
   // (the guide note above). A loaded tool is in the tool list, which says so.
-  const allDeferred = listDeferredTools(orgId, { ...actor, scopes: turnScopes })
+  const allDeferred = listDeferredTools(
+    orgId,
+    { ...actor, scopes: turnScopes },
+    "agent",
+    false,
+    catalogTurn,
+  )
   // A run without tool_search keeps what it was given for the whole run.
   const deferred = allDeferred.filter((t) => !discoveredTools?.has(t.sdkName))
   // The org's connected business systems (API connections), on every surface:

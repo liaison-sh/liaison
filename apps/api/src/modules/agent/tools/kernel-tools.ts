@@ -1633,6 +1633,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "find_repos_on_my_computer",
     deferLoading: true,
     description: FIND_REPOS_DESCRIPTION,
+    // Nothing to read for a person with no computer set up (tool-bridge.ts).
+    needsOwnComputer: true,
     requiredScopes: ["kernel:threads:read"],
     readOnly: true,
     // Folder and repository names come from the computer and the hosts.
@@ -1647,6 +1649,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "list_my_remote_repos",
     deferLoading: true,
     description: LIST_REMOTE_REPOS_DESCRIPTION,
+    // Nothing to read for a person with no computer set up (tool-bridge.ts).
+    needsOwnComputer: true,
     requiredScopes: ["kernel:threads:read"],
     readOnly: true,
     // Folder and repository names come from the computer and the hosts.
@@ -1668,6 +1672,8 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     name: "computer_session_import_list",
     deferLoading: true,
     description: IMPORT_LIST_DESCRIPTION,
+    // Nothing to read for a person with no computer set up (tool-bridge.ts).
+    needsOwnComputer: true,
     requiredScopes: ["kernel:threads:read"],
     readOnly: true,
     // The rows were written on the computer: the turn has read untrusted text.

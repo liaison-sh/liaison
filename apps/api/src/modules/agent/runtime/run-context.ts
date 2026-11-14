@@ -186,6 +186,12 @@ export interface RunContext {
    * A demo visitor's turn (box key or the visitor's own key): its tool results
    * reach the model at the visitor limits (result-truncation.ts).
    */
+  /**
+   * The person this turn answers has no computer set up for Liaison (no
+   * enabled node). Tools marked `needsOwnComputer` are then in no catalog and
+   * no tool set of the turn. Absent: offered as usual.
+   */
+  noOwnComputer?: boolean
   visitorTurn?: boolean
   /**
    * Mutable set of deferred-tool SDK names the model has unlocked in THIS run

@@ -64,6 +64,7 @@ import { estimateTokens, runCompaction } from "~/modules/agent/context/compactio
 import {
   assembleContext,
   estimateToolSchemaTokens,
+  personHasNoComputer,
   RUNTIME_TAIL_OPEN,
   stepInputBreakdown,
   TURN_TOOL_SCHEMA_TOKEN_CAP,
@@ -2323,6 +2324,7 @@ async function runAgentChatTurn(
   const rootRunId = crypto.randomUUID()
   // A demo visitor's turn (step budget, visitor tool result limits).
   const visitorTurn = await isVisitorTurn(orgId, creditCheck.demo !== undefined)
+  const noOwnComputer = await personHasNoComputer(orgId, actor)
   // A routine run's token account (S17, A34), inherited BY REFERENCE from the
   // frame this turn was started in: the routine tick's frame, or the asking
   // turn's frame for an agents_ask callee. Every step of this turn adds to it,
@@ -2393,6 +2395,8 @@ async function runAgentChatTurn(
     // Code on the person's own machine (run_on_my_computer) runs without an approval only here.
     humanTurn: humanTypedTurn,
     ...(visitorTurn ? { visitorTurn: true } : {}),
+    // A person with no computer set up for Liaison is offered no tool that reads one.
+    ...(noOwnComputer ? { noOwnComputer: true } : {}),
     // Client-minted turn nonce for the mailbox decrypt protocol. Its presence is
     // what lets this turn ask the browser to decrypt; its absence is the locked
     // path (blueprint Task 9.2).
@@ -2459,7 +2463,9 @@ async function runAgentChatTurn(
   )
   for (const name of Object.keys(tools)) runFrame.turnToolNames.add(name)
   // Deferred SDK names the actor could unlock (scope-visible, chat-reachable).
-  const deferredNames = new Set(listDeferredTools(orgId, actor).map((t) => t.sdkName))
+  const deferredNames = new Set(
+    listDeferredTools(orgId, actor, "agent", false, { noOwnComputer }).map((t) => t.sdkName),
+  )
   // A tool registered after the set above was built (an MCP server's tool list
   // arriving with the dial tool_search makes) joins it when tool_search loads
   // it, so it is callable on the next step of THIS turn. Only the loaded names

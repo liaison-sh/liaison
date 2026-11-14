@@ -20,7 +20,7 @@ import {
   storedReconciliation,
 } from "~/tests/helpers/projects-claims"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
-import { reserveClaims } from "./claims"
+import { reconcileLinesRead, reserveClaims } from "./claims"
 import { sweepClaims } from "./reconcile-sweep"
 import { ProjectsServiceError } from "./statuses"
 
@@ -142,5 +142,34 @@ describe("billing claims at Create", () => {
       lines: [{ tasks: ["CLAIM-6"], bill: 120 }],
     })
     expect(await reserve(later.id)).toEqual(expect.objectContaining({ reserved: 1 }))
+  })
+
+  it("a billed line with no task and no proof is claimed by itself, so its card can issue and the line cannot be reserved twice", async () => {
+    const r = await storedReconciliation(w, {
+      month: "2026-03",
+      lines: [{ tasks: [], bill: 240 }],
+    })
+    const out = await reserve(r.id)
+    expect(out).toEqual(expect.objectContaining({ reserved: 1, reused: false }))
+    const claims = extractRows<{ source_kind: string; source_ref: string; state: string }>(
+      await db.execute(drizzleSql`
+        SELECT source_kind, source_ref, state FROM app_projects.billing_claims
+         WHERE reconciliation_id = ${r.id}::uuid`),
+    )
+    expect(claims).toEqual([{ source_kind: "line", source_ref: r.lineIds[0]!, state: "reserved" }])
+    // The issue's check: the card still reserves its work under the draft's key.
+    const read = await asPerson(w, (tx) =>
+      reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: r.id } }),
+    )
+    expect(read.claimsReserved).toBe(true)
+    // The same line held live elsewhere is refused, naming it.
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET reconciliation_id = NULL
+       WHERE reconciliation_id = ${r.id}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET document_ref = NULL WHERE id = ${r.id}::uuid`)
+    const again = await reserve(r.id).catch((e) => e as ProjectsServiceError)
+    expect((again as ProjectsServiceError).code).toBe("already_on")
+    expect((again as ProjectsServiceError).message).toContain('"Line 1"')
   })
 })

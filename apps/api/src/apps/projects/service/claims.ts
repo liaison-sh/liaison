@@ -61,6 +61,9 @@ async function readReconciliation(tx: Tx, orgId: string, id: string, lock = fals
   return row
 }
 
+/** The claim kind of a billed line that names no task and no proof: the line itself. */
+export const LINE_SOURCE = "line"
+
 interface Source {
   lineId: string
   kind: string
@@ -112,6 +115,7 @@ async function sourcesOf(
   for (const l of lines) {
     if (l.bill_minutes <= 0) continue
     const tasks = taskIds(l.task_ids)
+    const before = billed.length
     for (const t of tasks) {
       add(billed, { lineId: l.id, kind: "task", ref: t, periodKey: taskKey, label: l.name ?? "" })
     }
@@ -120,6 +124,17 @@ async function sourcesOf(
       // A task proof names a task already claimed through the line's tasks.
       if (p.kind === "task" && tasks.includes(p.ref)) continue
       add(billed, { lineId: l.id, kind: p.kind, ref: p.ref, periodKey: "all", label: p.label })
+    }
+    // A billed line with no task and no proof is its own source: without a claim it could be
+    // billed again, and a card made only of such lines would reserve nothing and never issue.
+    if (billed.length === before) {
+      add(billed, {
+        lineId: l.id,
+        kind: LINE_SOURCE,
+        ref: l.id,
+        periodKey: "all",
+        label: l.name ?? "",
+      })
     }
   }
   // Left off: the tasks of lines at zero, on this project, that no billed line claims.

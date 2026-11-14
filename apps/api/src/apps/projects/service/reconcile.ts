@@ -14,6 +14,7 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { hasScope } from "~/modules/permissions/permissions"
+import { LINE_SOURCE } from "./claims"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
 import { linesForViewer, reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
 import {
@@ -448,7 +449,10 @@ export async function reconcileFacts(args: {
       contactEmails: [...new Set(markers.map((m) => m.email).filter((e): e is string => !!e))],
     },
     billedRefs: claims
-      .filter((cl) => cl.source_kind !== "task" && cl.state === "billed")
+      .filter(
+        (cl) =>
+          cl.source_kind !== "task" && cl.source_kind !== LINE_SOURCE && cl.state === "billed",
+      )
       .map((cl) => ({
         kind: cl.source_kind,
         ref: cl.source_ref,

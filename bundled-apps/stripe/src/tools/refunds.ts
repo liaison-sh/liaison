@@ -69,6 +69,9 @@ interface Charge {
   disputed: boolean
   currency: string
   customer: string | null
+  /** What finds the charge's invoice (invoiceOfCharge): its own field, or its payment intent. */
+  invoice: string | null
+  payment_intent: string | null
   card: { brand: string | null; last4: string | null; exp: string | null } | null
 }
 
@@ -87,6 +90,13 @@ export function money(minor: number, currency: string): string {
 }
 
 /** The charge as these tools may show and log it: card as brand, last 4 and expiry. */
+/** A Stripe reference, given as its id or as the expanded object. */
+function idOfRef(v: unknown): string | null {
+  if (typeof v === "string") return v || null
+  const id = (v as Obj | null)?.id
+  return typeof id === "string" && id ? id : null
+}
+
 function toCharge(raw: Obj): Charge {
   const card = ((raw.payment_method_details as Obj | undefined)?.card ?? null) as Obj | null
   return {
@@ -97,6 +107,8 @@ function toCharge(raw: Obj): Charge {
     disputed: raw.disputed === true,
     currency: String(raw.currency ?? ""),
     customer: typeof raw.customer === "string" ? raw.customer : null,
+    invoice: idOfRef(raw.invoice),
+    payment_intent: idOfRef(raw.payment_intent),
     card: card
       ? {
           brand: typeof card.brand === "string" ? card.brand : null,
@@ -183,16 +195,27 @@ async function cardStreamIssuer(ctx: MoneyCtx): Promise<string | null | ToolRefu
 /** When Liaison issues the invoices (mode A), the Liaison invoice behind this charge, or null. */
 async function invoiceBehind(
   ctx: MoneyCtx,
-  chargeId: string,
+  charge: Charge,
 ): Promise<{ modeA: boolean; documentId: string | null } | ToolRefusal> {
   const issuer = await cardStreamIssuer(ctx)
   if (isRefusal(issuer)) return issuer
   if (issuer !== "liaison") return { modeA: false, documentId: null }
   const db = ctx.db
   const payment = (
-    (await db.findMany("stripe_payments", { where: { stripe_id: chargeId }, limit: 1 })) as Obj[]
+    (await db.findMany("stripe_payments", { where: { stripe_id: charge.id }, limit: 1 })) as Obj[]
   )[0]
-  const invoiceId = typeof payment?.invoice_id === "string" ? payment.invoice_id : null
+  let invoiceId =
+    typeof payment?.invoice_id === "string" && payment.invoice_id ? payment.invoice_id : null
+  if (!invoiceId) {
+    // Mirrored by the first sync or the safety job, which read the charge alone: its invoice is
+    // found as the webhook finds it. A read only (a preflight writes nothing); an unreadable
+    // answer leaves no invoice, and the refund is refused as before.
+    invoiceId = await invoiceOfCharge(ctx, {
+      invoice: charge.invoice,
+      payment_intent: charge.payment_intent,
+      customer: charge.customer,
+    }).catch(() => null)
+  }
   if (!invoiceId) return { modeA: true, documentId: null }
   const invoice = (
     (await db.findMany("stripe_invoices", { where: { stripe_id: invoiceId }, limit: 1 })) as Obj[]
@@ -276,7 +299,7 @@ export async function refundsCreatePreflight(params: Obj | undefined, ctx: Money
   // answered for, and a caller's own `chargeId` never reaches this point (it is dropped first).
   const checked = await checks(chargeIdIn(p.charge), p, ctx)
   if (isRefusal(checked)) return checked
-  const behind = await invoiceBehind(ctx, checked.charge.id)
+  const behind = await invoiceBehind(ctx, checked.charge)
   if (isRefusal(behind)) return behind
   const { modeA, documentId } = behind
   if (modeA && !documentId) {

@@ -84,6 +84,21 @@ describe("refunds_create before approval", () => {
     expect(refundPosts()).toHaveLength(0)
   })
 
+  it("a charge mirrored with no invoice (sync or safety job) finds its Liaison invoice as the webhook does", async () => {
+    const db = connectedDb()
+    // Mirrored by the first sync: the charge read names no invoice.
+    db.seed("stripe_payments", [
+      { stripe_id: "ch_synced", amount_minor: 10000, refunded_minor: 0, currency: "eur" },
+    ])
+    db.seed("stripe_invoices", [{ stripe_id: "in_synced", liaison_document_id: "doc-1" }])
+    seedCharge("ch_synced", 10000, 0, { invoice: "in_synced" })
+    const out = await refundsCreatePreflight(
+      { charge: "ch_synced" },
+      moneyCtx(db, null, { cardIssuer: "liaison" }),
+    )
+    expect(out as Obj).toMatchObject({ ok: true, pinnedParams: { chargeId: "ch_synced" } })
+  })
+
   it("an allowed refund pins the charge and is always decided by a person", async () => {
     seedCharge("ch_ok", 5000)
     const out = (await refundsCreatePreflight(

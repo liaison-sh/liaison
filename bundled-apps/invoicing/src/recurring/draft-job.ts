@@ -20,6 +20,7 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { recipientOf } from "../recipient"
 import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
 import { rowIssuerHold, runItemState } from "./item-state"
+import { isRetainerMonth, retainerDocumentRef } from "./retainer"
 import {
   currentItemHash,
   dayOf,
@@ -245,6 +246,11 @@ async function draftSchedule(
   const end = periodEnd(s.repeats, start)
   const label = periodLabel(key)
   const externalRef = `recurring:${s.id}:${key}`
+  // A retainer month is invoiced from its planned vs done card, never by the run; so is any month
+  // that already holds the retainer's own invoice.
+  if (isRetainerMonth(s, key)) return null
+  if (await findOneWhere(ctx, "documents", { external_ref: retainerDocumentRef(s.id, key) }))
+    return null
   const issuer = (await ctx.db.findOne("issuer_profiles", s.issuer_profile_id)) as Row | null
   if (!issuer) return null
 

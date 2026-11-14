@@ -17,6 +17,7 @@ import {
   reconcileLineUpdate,
   reconcilePropose,
   reconcileUndo,
+  updateProject,
 } from "~/apps/projects/handlers"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
@@ -261,6 +262,38 @@ const issueApprovals = (draftId: string) =>
          AND current_payload->>'draft_id' = ${draftId}`)
     .then((r) => extractRows<{ status: string }>(r).map((a) => a.status))
 
+const issuerProfileId = () =>
+  db
+    .execute(drizzleSql`
+      SELECT id::text AS id FROM app_invoicing.issuer_profiles WHERE org_id = ${orgId}::uuid LIMIT 1`)
+    .then((r) => String(extractRows<{ id: string }>(r)[0]?.id))
+
+/** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
+async function retainerSchedule(projectId: string): Promise<string> {
+  const issuer = await issuerProfileId()
+  const row = extractRows<{ id: string }>(
+    await db.execute(drizzleSql`
+      INSERT INTO app_invoicing.recurring_schedules
+        (org_id, issuer_profile_id, company_id, status, repeats, billing_day, covers, issue_mode,
+         lines, version, created_by, retainer_project_id, retainer_minutes,
+         retainer_overage_rate_minor, retainer_rollover, retainer_from)
+      VALUES (${orgId}::uuid, ${issuer}::uuid, ${delorme}::uuid, 'active', 'month', 'last',
+              'period_ended', 'review',
+              ${JSON.stringify([{ description: "Monthly retainer", qty: 1, unit_price_minor: 450000, vat_bp: 2000 }])}::jsonb,
+              1, ${owner.userId}, ${projectId}::uuid, 2400, 12000, 'none', '2026-01')
+      RETURNING id::text AS id`),
+  )
+  return String(row[0]?.id)
+}
+
+async function retainerTimebox(projectId: string, schedule: string, from: string, to: string) {
+  await db.execute(drizzleSql`
+    INSERT INTO app_projects.project_timeboxes
+      (org_id, project_id, period_start, period_end, minutes, source, source_ref, created_by)
+    VALUES (${orgId}::uuid, ${projectId}::uuid, ${from}::date, ${to}::date, 2400, 'retainer',
+            ${schedule}, ${owner.userId}::uuid)`)
+}
+
 const create = (card: Record<string, any>, opts: Parameters<typeof run>[2] = {}) =>
   run(
     reconcileCreateInvoice,
@@ -477,7 +510,7 @@ describe("the card in its conversation", () => {
 })
 
 describe("Undo on a conversation that read outside text", () => {
-  it("Undo waits for the person's approval of the discard and changes nothing before it", async () => {
+  it("Undo discards the card's own draft at once, even after outside text was read, and brings the card back", async () => {
     const p = await october()
     const out = await create(p.card)
     expect(out.error).toBeUndefined()
@@ -486,11 +519,9 @@ describe("Undo on a conversation that read outside text", () => {
     )
     const undone = await run(reconcileUndo, { reconciliationId: p.card.reconciliationId })
     expect(undone.error).toBeUndefined()
-    expect(undone.undone).toBe(false)
-    expect(undone.approvalId).toBeTruthy()
-    expect(undone.message).toContain("waits for your approval")
-    expect((await stateOf(p.card.reconciliationId))?.state).toBe("drafted")
-    expect(await docsOf(p.projectId)).toHaveLength(1)
+    expect(undone.undone).toBe(true)
+    expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
+    expect(await docsOf(p.projectId)).toEqual([])
     await clearTaintFlag(thread, orgId)
   })
 })
@@ -604,11 +635,84 @@ describe("what Create refuses", () => {
     expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
 
-  it("a retainer project's Create is refused until retainers are built", async () => {
+  it("a retainer month's Create drafts the fee and the hours above the retainer under the month's key, and Undo discards it", async () => {
     const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId)
+    await retainerTimebox(p.projectId, schedule, "2026-10-01", "2026-10-31")
+    const before = await numbersTaken()
     const out = await create(p.card)
-    expect(out.error?.code).toBe("retainer_not_yet")
+    expect(out.error).toBeUndefined()
+    expect(out.state).toBe("drafted")
+    const docs = await docsOf(p.projectId)
+    expect(docs).toHaveLength(1)
+    // 49 h billed on a 40 h retainer: the 4,500.00 fee and 9 h at 120.00.
+    expect(docs[0]).toMatchObject({
+      status: "draft",
+      number: null,
+      external_ref: `retainer:${schedule}:2026-10`,
+    })
+    const items = extractRows<{ quantity: string; unit_price_minor: string }>(
+      await db.execute(drizzleSql`
+        SELECT quantity::text AS quantity, unit_price_minor::text AS unit_price_minor
+          FROM app_invoicing.document_lines
+         WHERE document_id = ${docs[0]?.id}::uuid ORDER BY position`),
+    )
+    expect(items.map((l) => [Number(l.quantity), Number(l.unit_price_minor)])).toEqual([
+      [1, 450000],
+      [9, 12000],
+    ])
+    expect((await stateOf(p.card.reconciliationId))?.document_ref).toBe(
+      `retainer:${schedule}:2026-10`,
+    )
+    expect(await claimsOf(p.card.reconciliationId)).toEqual(["reserved", "reserved"])
+    const undone = await run(reconcileUndo, { reconciliationId: p.card.reconciliationId })
+    expect(undone.undone).toBe(true)
     expect(await docsOf(p.projectId)).toEqual([])
+    expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
+    expect(await numbersTaken()).toBe(before)
+  })
+
+  it("turning time off on a project with an active retainer is refused and names the schedule", async () => {
+    const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId)
+    await retainerTimebox(p.projectId, schedule, "2099-01-01", "2099-01-31")
+    const out = await run(updateProject as never, { projectId: p.projectId, timeBudgets: false })
+    expect(out.error?.code).toBe("retainer_needs_reconcile")
+    expect(String(out.error?.message)).toContain("Monthly retainer")
+    expect(String(out.error?.message)).toContain("Nothing was changed")
+    const on = extractRows<{ on: boolean }>(
+      await db.execute(
+        drizzleSql`SELECT time_budgets_on AS on FROM app_projects.projects WHERE id = ${p.projectId}::uuid`,
+      ),
+    )[0]
+    expect(on?.on).toBe(true)
+  })
+
+  it("saving a retainer writes this and next month's timeboxes on its project, marked as the retainer's", async () => {
+    const p = await october({ basis: "retainer" })
+    const issuerId = await issuerProfileId()
+    const saved = await invoicing("recurring_schedule_create", {
+      issuer_profile_id: issuerId,
+      company_id: delorme,
+      contact_id: erika,
+      repeats: "month",
+      billing_day: "last",
+      lines: [{ description: "Monthly retainer", qty: 1, unit_price_minor: 450000, vat_bp: 2000 }],
+      retainer_project_id: p.projectId,
+      retainer_minutes: 2400,
+      retainer_overage_rate_minor: 12000,
+    })
+    const id = (saved.data as { id?: string } | undefined)?.id
+    expect(id, JSON.stringify(saved)).toBeDefined()
+    const rows = extractRows<{ source: string; source_ref: string | null; minutes: number }>(
+      await db.execute(drizzleSql`
+        SELECT source, source_ref, minutes FROM app_projects.project_timeboxes
+         WHERE project_id = ${p.projectId}::uuid ORDER BY period_start`),
+    )
+    expect(rows).toHaveLength(2)
+    expect(
+      rows.every((r) => r.source === "retainer" && r.source_ref === id && r.minutes === 2400),
+    ).toBe(true)
   })
 
   it("a fixed-price project with plan steps still open cannot switch to hourly", async () => {

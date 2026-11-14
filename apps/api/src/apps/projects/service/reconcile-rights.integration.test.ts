@@ -209,9 +209,11 @@ describe("what a reconcile reads through", () => {
     expect(targets).toEqual([
       "invoicing:document_attachment_add",
       "invoicing:draft_from_reconcile",
-      "invoicing:drafts_discard",
       "invoicing:preview_totals",
       "invoicing:project_invoiced_get",
+      "invoicing:reconcile_draft_discard",
+      "invoicing:recurring_list",
+      "invoicing:retainer_draft_from_reconcile",
     ])
     expect(targets).not.toContain("invoicing:invoice_issue")
     const files = [
@@ -249,9 +251,11 @@ describe("what a reconcile reads through", () => {
     }
     expect([...new Set(toolCalls)].sort()).toEqual([
       'apps/projects/handlers.ts: "invoicing:draft_from_reconcile"',
-      'apps/projects/handlers.ts: "invoicing:drafts_discard"',
       'apps/projects/handlers.ts: "invoicing:preview_totals"',
       'apps/projects/handlers.ts: "invoicing:project_invoiced_get"',
+      'apps/projects/handlers.ts: "invoicing:reconcile_draft_discard"',
+      'apps/projects/handlers.ts: "invoicing:recurring_list"',
+      'apps/projects/handlers.ts: "invoicing:retainer_draft_from_reconcile"',
     ])
     // The bridge methods of the two tools call the service alone.
     const bridge = readFileSync(join(SRC, "modules/apps/sandbox/bridge/projects.ts"), "utf8")

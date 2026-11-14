@@ -17,6 +17,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { reconcileMark, releaseReconciliation, reserveClaims } from "./claims"
 import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
 import { documentsForRef } from "./reconcile-sweep"
+import { retainerDocumentRef, retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
 import { hoursPerDayMinutes } from "./time-plan"
 
@@ -94,7 +95,18 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
   const revision = Number(input.revision)
   const head = await reconciliationHead(tx, orgId, id)
   const facts = await projectFacts(tx, orgId, head.project_id)
-  const key = reconcileDocumentRef(head.id, revision)
+  // A retainer month's draft is keyed by its schedule and month; any other card by its revision.
+  const retainer =
+    head.basis === "retainer" && head.period_start
+      ? await retainerMonthFacts(tx, orgId, head.project_id, head.period_start)
+      : null
+  const key =
+    retainer?.scheduleId && head.period_start
+      ? retainerDocumentRef(retainer.scheduleId, head.period_start)
+      : reconcileDocumentRef(head.id, revision)
+  const retainerFields = retainer
+    ? { periodFrom: head.period_start, timeboxMinutes: retainer.timeboxMinutes }
+    : {}
 
   // What invoicing prices a card from, read under the reader's own rows: no check, no write.
   if (args.step === "facts") {
@@ -107,6 +119,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       rateMinor: facts.rateMinor,
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
       lines: lines.map((l) => ({ billMinutes: l.bill_minutes })),
+      ...retainerFields,
     }
   }
 
@@ -150,12 +163,14 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         { next: "A fixed price or a billing plan is invoiced from its milestones." },
       )
     }
-    if (head.basis === "retainer") {
+    if (head.basis === "retainer" && !retainer?.scheduleId) {
       throw new ProjectsServiceError(
         409,
-        "retainer_not_yet",
-        `${facts.name} is billed by a monthly retainer, and a retainer month cannot be invoiced from its card yet. Nothing was created.`,
-        { next: "Draft the retainer month's invoice in Invoicing." },
+        "no_retainer_schedule",
+        `${facts.name} is billed by a monthly retainer, but this month has no retainer timebox from a recurring schedule, so nothing was created.`,
+        {
+          next: "Save the retainer on its recurring schedule in Invoicing, then press Create invoice again.",
+        },
       )
     }
     // A contact named for the invoice belongs to the project's own company, or nothing is made.
@@ -190,6 +205,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
       leadName: facts.leadName,
       lines: lines.map((l) => ({ billMinutes: l.bill_minutes })),
+      ...retainerFields,
     }
   }
 
@@ -245,7 +261,8 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       UPDATE ${projectsRel("reconciliations")}
          SET state = 'drafted', document_id = ${documentId}::uuid,
              drafted_at = coalesce(drafted_at, now()),
-             drafted_by = coalesce(drafted_by, ${userId}::uuid), updated_at = now()
+             drafted_by = coalesce(drafted_by, ${userId}::uuid),
+             waived_overage = ${input.waiveOverage === true}, updated_at = now()
        WHERE id = ${head.id}::uuid AND org_id = ${orgId}::uuid AND revision = ${revision}
          AND state IN ('proposed', 'drafted') AND document_ref = ${key}
       RETURNING id::text AS id`),

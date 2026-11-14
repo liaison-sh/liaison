@@ -22,6 +22,7 @@ test("invoicing calls only the declared projects reads and the mark", () => {
     .sort()
   expect(projects).toEqual([
     "projects:milestone_status_read",
+    "projects:period_timebox_set",
     "projects:reconcile_lines_read",
     "projects:reconcile_mark",
   ])

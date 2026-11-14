@@ -1724,6 +1724,9 @@ describe("invoicing manifest", () => {
     //   report; annexes are filed on a draft; issuing or discarding a draft withdraws its approval.
     // 0.24.0: billing plans, milestone and advance invoices, the final's deductions, advance
     //   refunds, type code 386 and the hourly sweep of done milestones with no invoice.
+    // 0.25.0: retainers: terms on a schedule, the month drafted from its planned vs done card
+    //   with fee and overage, rollover, prepaid finals, the daily timebox roll; the card's own
+    //   discard for Undo.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

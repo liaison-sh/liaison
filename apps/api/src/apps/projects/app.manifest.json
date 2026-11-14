@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.38.0",
+  "version": "1.39.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -673,8 +673,16 @@
       "reason": "Create invoice on a reconcile card makes its invoice draft, with no number"
     },
     {
-      "target": "invoicing:drafts_discard",
-      "reason": "Undo on a reconcile card discards the invoice draft it made, before it is issued"
+      "target": "invoicing:retainer_draft_from_reconcile",
+      "reason": "Create invoice on a retainer month's card makes its draft: the fee and any hours above the retainer, with no number"
+    },
+    {
+      "target": "invoicing:reconcile_draft_discard",
+      "reason": "Undo on a reconcile card discards the invoice draft it made, before it is issued, and nothing else"
+    },
+    {
+      "target": "invoicing:recurring_list",
+      "reason": "turning time off on a project names the retainer schedule that bills it"
     },
     {
       "target": "invoicing:document_attachment_add",
@@ -3862,6 +3870,10 @@
           "contactId": {
             "type": "string",
             "description": "The contact the invoice goes to, when the person names one."
+          },
+          "waiveOverage": {
+            "type": "boolean",
+            "description": "On a retainer month: bill no hours above the retainer, this month only."
           }
         },
         "required": [
@@ -4471,6 +4483,10 @@
               "null"
             ],
             "description": "Planned size for the period; null removes it."
+          },
+          "sourceRef": {
+            "type": "string",
+            "description": "Set by invoicing for a retainer month."
           }
         },
         "required": [

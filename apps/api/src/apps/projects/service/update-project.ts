@@ -123,6 +123,29 @@ export async function updateProjectWithOutcome(
       )
       throw new ProjectsServiceError(409, "planning_off", body.message, body)
     }
+    // A retainer bills this project from its card each month: turning time off would stop its
+    // invoice silently. Its months to come are timeboxes derived from the schedule.
+    if (timeBudgets === false && row.time_budgets_on) {
+      const held = extractRows<{ source_ref: string | null }>(
+        await innerTx.execute(drizzleSql`
+          SELECT source_ref FROM ${projectsRel("project_timeboxes")}
+           WHERE org_id = ${orgId}::uuid AND project_id = ${projectId}::uuid
+             AND source = 'retainer' AND period_end >= current_date
+           ORDER BY period_start LIMIT 1
+        `),
+      )[0]
+      if (held) {
+        throw new ProjectsServiceError(
+          409,
+          "retainer_needs_reconcile",
+          `Time and budgets stay on for ${row.name}: a retainer bills it from its planned vs done card each month, so its month-end invoice depends on it. Nothing was changed.`,
+          {
+            scheduleId: held.source_ref,
+            next: "End or change the retainer's recurring schedule in Invoicing first, then turn time off.",
+          },
+        )
+      }
+    }
     const flip =
       timeBudgets !== undefined && timeBudgets !== row.time_budgets_on ? timeBudgets : undefined
     const otherFields = Object.values(patch).some((v) => v !== undefined)

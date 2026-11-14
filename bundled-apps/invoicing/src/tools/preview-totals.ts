@@ -9,6 +9,7 @@
 import type { CrossAppExecuteTool } from "../cross-app"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
+import { retainerPlan, retainerScheduleOf } from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
 import { recipientOf } from "../recipient"
 import { planTax } from "../tax-plan"
@@ -21,6 +22,7 @@ export type PreviewMissing =
   | "currency"
   | "counterparty_mismatch"
   | "basis"
+  | "retainer"
 
 export interface PreviewTotalsInput {
   projectId?: string
@@ -35,6 +37,11 @@ export interface PreviewTotalsInput {
   rateMinor?: number | null
   hoursPerDayMinutes?: number | null
   lines?: Array<{ billMinutes?: number }>
+  /** A retainer card's first day: the month it bills. */
+  periodFrom?: string | null
+  /** A retainer month's timebox on the project. */
+  timeboxMinutes?: number | null
+  waiveOverage?: boolean
 }
 
 export interface PreviewTotalsCtx {
@@ -72,6 +79,7 @@ const WHAT_TO_SET: Record<PreviewMissing, string> = {
   counterparty_mismatch:
     "a contact of the project's own company (the contact named belongs to another one)",
   basis: "nothing: this project bills by a fixed price or a billing plan, not from planned vs done",
+  retainer: "the project's retainer on its recurring schedule in invoicing",
 }
 
 /** The unit a basis bills its lines in. */
@@ -85,7 +93,7 @@ async function companyOfContact(
 ): Promise<string | null | undefined> {
   if (!ctx.executeTool) return undefined
   try {
-    const env = await ctx.executeTool("kernel:contacts_read", { contactId })
+    const env = await ctx.executeTool("kernel:contacts_identity", { contactId })
     if (env.status !== "completed") return undefined
     const c = ((env.result ?? {}) as { contact?: Record<string, unknown> }).contact ?? {}
     const id = c.companyId ?? c.company_id
@@ -132,6 +140,18 @@ export async function previewTotals(
     const ofContact = await companyOfContact(ctx, contactId)
     if (ofContact && ofContact !== companyId) missing.push("counterparty_mismatch")
   }
+
+  if (basis === "retainer" && !missing.includes("basis"))
+    return retainerPreview(
+      ctx,
+      input,
+      projectId,
+      missing,
+      openPlanSteps,
+      issuer,
+      companyId,
+      contactId,
+    )
 
   const rateMinor =
     typeof input.rateMinor === "number" && Number.isFinite(input.rateMinor) && input.rateMinor > 0
@@ -197,5 +217,74 @@ export async function previewTotals(
     currency,
     openPlanSteps,
     message,
+  }
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+/** A retainer card priced as its draft will be: the schedule's fee, then any overage. */
+async function retainerPreview(
+  ctx: PreviewTotalsCtx,
+  input: PreviewTotalsInput,
+  projectId: string,
+  missing: PreviewMissing[],
+  openPlanSteps: number,
+  issuer: Awaited<ReturnType<typeof resolveIssuerProfileOrError>>,
+  companyId: string | null,
+  contactId: string | null,
+): Promise<PreviewTotalsResult> {
+  const s = await retainerScheduleOf(ctx, projectId)
+  const from =
+    typeof input.periodFrom === "string" && DAY.test(input.periodFrom) ? input.periodFrom : null
+  if (!s || !from) missing.push("retainer")
+  let excl: number | null = null
+  let vat: number | null = null
+  let incl: number | null = null
+  let rateBp: number | null = null
+  let currency: string | null = null
+  if (s && from && issuer.ok) {
+    const used = (input.lines ?? []).reduce(
+      (a, l) => a + Math.max(0, Math.round(Number(l.billMinutes) || 0)),
+      0,
+    )
+    const [y, m] = from.split("-").map(Number) as [number, number]
+    const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
+    const plan = await retainerPlan(ctx, s, {
+      projectId,
+      period: { from, to: `${from.slice(0, 8)}${String(last).padStart(2, "0")}` },
+      usedMinutes: used,
+      timeboxMinutes: input.timeboxMinutes ?? null,
+      waived: input.waiveOverage === true,
+    })
+    currency = plan.currency
+    const recipient =
+      companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
+    const tax = planTax({
+      issuerCountry: issuer.issuer.country,
+      pricesIncludeTax: false,
+      taxCountry: recipient?.counterparty_country ?? null,
+      hasVatId: !!recipient?.counterparty_vat_id,
+      lines: plan.items as never,
+      linesAreNet: true,
+    })
+    excl = Number(tax.subtotal_minor)
+    vat = Number(tax.tax_minor)
+    incl = Number(tax.total_minor)
+    rateBp = tax.rate_bp
+  }
+  const ready = missing.length === 0
+  return {
+    projectId,
+    ready,
+    missing,
+    excl,
+    vat,
+    incl,
+    rateBp,
+    currency,
+    openPlanSteps,
+    message: ready
+      ? `The retainer month can be invoiced: ${excl} excl. VAT, ${vat} VAT, ${incl} incl. VAT (minor units, ${currency}). Nothing was created.`
+      : `No invoice can be made for this retainer month yet. Set ${missing.map((m) => WHAT_TO_SET[m]).join("; ")}. Nothing was created.`,
   }
 }

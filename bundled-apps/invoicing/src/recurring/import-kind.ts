@@ -4,8 +4,10 @@
 // schedules from another tool. A record becomes a DRAFT schedule: it bills nothing until a person
 // starts it, and it issues for review, never by itself. Dedup is the record's `externalRef`
 // (`<source>:<key>`); an existing schedule is never touched.
+
 import type { DbClient } from "@liaison/app-sdk"
 import type { ImportBatch, ImportResult } from "../import-kind"
+import { isRetainerSchedule } from "./retainer"
 import { checkScheduleInput, type ScheduleLineInput } from "./tools"
 
 type Row = Record<string, unknown>
@@ -69,6 +71,15 @@ async function prepare(ctx: Ctx, record: Row, dedupValue: string): Promise<Row |
     due_days: typeof record.dueDays === "number" ? record.dueDays : null,
     lines: toLines(record.lines),
     issue_mode: record.issueMode as "review" | "auto" | undefined,
+    ...(record.retainerMinutes !== undefined || record.retainerProjectId !== undefined
+      ? {
+          retainer_project_id: str(record.retainerProjectId),
+          retainer_minutes: record.retainerMinutes as number,
+          retainer_overage_rate_minor: (record.retainerOverageRateMinor as number) ?? 0,
+          retainer_rollover:
+            record.retainerRollover === "next" ? ("next" as const) : ("none" as const),
+        }
+      : {}),
   }
   const refused = checkScheduleInput(fields)
   if (refused) throw new Error(`${refused.error.code}: ${refused.error.message}`)
@@ -89,6 +100,14 @@ async function prepare(ctx: Ctx, record: Row, dedupValue: string): Promise<Row |
     language: str(record.language) ?? issuer.language ?? "en",
     lines: fields.lines,
     notes: str(record.notes),
+    ...(isRetainerSchedule(fields)
+      ? {
+          retainer_project_id: fields.retainer_project_id,
+          retainer_minutes: fields.retainer_minutes,
+          retainer_overage_rate_minor: fields.retainer_overage_rate_minor,
+          retainer_rollover: fields.retainer_rollover,
+        }
+      : {}),
     external_ref: dedupValue,
     next_issue_on: null,
     next_draft_on: null,

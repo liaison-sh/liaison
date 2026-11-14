@@ -301,7 +301,7 @@ export async function writeMirror(
   if (typeof stripeId !== "string" || stripeId.length === 0)
     throw new Error(`${entity}: a row without a Stripe id`)
   const mine = Date.parse(stripeUpdated)
-  const data = { ...row, stripe_updated: stripeUpdated }
+  const data: Obj = { ...row, stripe_updated: stripeUpdated }
   let lastError: unknown = null
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const [current] = (await db.findMany(entity, {

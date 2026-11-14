@@ -64,6 +64,7 @@ import {
   invoiceCreateAndIssuePreflight,
   invoiceIssue,
   invoiceIssuePreflight,
+  isUniqueViolation,
   liftMisplacedCountry,
   liftMisplacedCountryOnLine,
   liftMisplacedHsCode,
@@ -10913,5 +10914,18 @@ describe("the other minor-unit fields read as issuing reads them", () => {
     expect(await draftsCreatePreflightHandler({ ...input, items: sampleDraftItems }, ctx)).toEqual({
       ok: true,
     })
+  })
+})
+
+describe("isUniqueViolation", () => {
+  test("reads a unique-key conflict from an error, its cause, or a sandboxed call's rejection text", () => {
+    const text =
+      'Failed query — pg: duplicate key value violates unique constraint "documents_org_id_external_ref_key" (23505)'
+    expect(isUniqueViolation(Object.assign(new Error("x"), { code: "23505" }))).toBe(true)
+    expect(isUniqueViolation(new Error("outer", { cause: new Error(text) }))).toBe(true)
+    // A failed bridge call without an HTTP status reaches a sandboxed handler as a plain string.
+    expect(isUniqueViolation(text)).toBe(true)
+    expect(isUniqueViolation("connection reset")).toBe(false)
+    expect(isUniqueViolation(new Error("connection reset"))).toBe(false)
   })
 })

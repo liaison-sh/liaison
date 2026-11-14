@@ -794,23 +794,24 @@ async function findByDraftOrderId(
 
 /** True for a Postgres unique-violation surfaced through the sandbox bridge. The bridge
  *  flattens the driver error, so the code can arrive as `err.code` (23505), on a nested
- *  `cause`, or only inside the message text. */
+ *  `cause`, or only inside the message text; a sandboxed run's failed call rejects with that
+ *  text alone, a plain string. */
 export function isUniqueViolation(err: unknown): boolean {
+  if (typeof err === "string") return isUniqueViolationText(err)
   const seen = new Set<unknown>()
   let cur: unknown = err
   while (cur && typeof cur === "object" && !seen.has(cur)) {
     seen.add(cur)
     const rec = cur as { code?: unknown; message?: unknown; cause?: unknown }
     if (rec.code === "23505" || rec.code === "unique_violation") return true
-    if (
-      typeof rec.message === "string" &&
-      (rec.message.includes("23505") ||
-        /duplicate key value violates unique constraint/i.test(rec.message))
-    )
-      return true
+    if (typeof rec.message === "string" && isUniqueViolationText(rec.message)) return true
     cur = rec.cause
   }
   return false
+}
+
+function isUniqueViolationText(text: string): boolean {
+  return text.includes("23505") || /duplicate key value violates unique constraint/i.test(text)
 }
 
 export type QuoteCreateAndIssueResult = MutationResult<

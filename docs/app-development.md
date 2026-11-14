@@ -306,7 +306,9 @@ the caller passes for one is dropped before the preflight runs, and a call
 that carries an `@ref:` token to an earlier step (which skips the preflight)
 is refused at staging with "this tool can't take a reference to an earlier
 step; call it after that step completes". A pinned name is a top-level
-param, never a dotted path. No `editableFields` entry may reach a pinned param
+param, never a dotted path, and never a `required` one: the caller names
+the target under a param of its own (for example `charge`), and the preflight
+pins the id it checked (`chargeId`). No `editableFields` entry may reach a pinned param
 (the param itself, a field under it or above it): the manifest is refused,
 and an edit of such a field is refused too. A handler cannot park an approval
 for a tool with pinned params through `ctx.requestApproval`; call the tool

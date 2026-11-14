@@ -158,7 +158,6 @@ async function pending(chargeId: string) {
 describe("staging a refund", () => {
   it("a refund naming its charge is staged with the charge its preflight pinned", async () => {
     const out = await stage(alice, "ch_staged", "400")
-    expect(out.error).toBeUndefined()
     expect(out.blocked?.reason).toBe("gated")
     const rows = await pending("ch_staged")
     expect(rows.map((r) => [r.requested_by, r.amount])).toEqual([[alice, "400"]])

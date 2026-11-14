@@ -324,7 +324,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
                 new Intl.DateTimeFormat(uiLocale(), {
                   dateStyle: "medium",
                   timeZone: "UTC",
-                }).format(new Date(`${iso}T00:00:00Z`)),
+                }).format(new Date(iso)), // a date-only ISO string is read as UTC midnight
               )
             : tr("No {{noun}} to group.", { noun: noun() })
         }

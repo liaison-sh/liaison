@@ -24,6 +24,14 @@
         "{\"where\":{\"external_ref\":\"advance:7a000000-0000-4000-8000-00000000b1a1:undated:100000\"},\"limit\":1}"
       ],
       "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\",\"invoice_role\":\"final\"},\"limit\":20}"
+      ],
+      "reply": "[]"
     }
   ]
 }

@@ -156,7 +156,7 @@ export const HistoryPanel: Component<{
                           data-testid={`api-connector-restore-cancel-${v.id}`}
                           onClick={() => setConfirming(null)}
                         >
-                          {i18n.t("kernel.common.cancel")}
+                          {i18n.t("api-connector.common.cancel")}
                         </Button>
                       </div>
                     </Show>

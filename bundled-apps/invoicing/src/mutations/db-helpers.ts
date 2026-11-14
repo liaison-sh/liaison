@@ -353,9 +353,15 @@ export async function loadDraftLines(db: MutationsDb, documentId: string): Promi
       country_of_origin: (r.country_of_origin as string | null) ?? null,
       product_source: (r.product_source as string | null) ?? null,
       external_id: (r.external_id as string | null) ?? null,
+      // A service line stays a service from draft to issue (classification, the PDF's groups).
+      ...(isLineKind(r.line_kind) ? { line_kind: r.line_kind } : {}),
     }
   })
 }
+
+const LINE_KINDS: ReadonlySet<string> = new Set(["goods", "software", "service", "shipping"])
+const isLineKind = (v: unknown): v is NonNullable<DraftLine["line_kind"]> =>
+  typeof v === "string" && LINE_KINDS.has(v)
 
 async function insertDraftLines(
   db: MutationsDb,
@@ -397,6 +403,7 @@ async function insertDraftLines(
       customs_description: l.customs_description ?? null,
       product_source: l.product_source,
       external_id: l.external_id,
+      ...(isLineKind(l.line_kind) ? { line_kind: l.line_kind } : {}),
     })
   }
 }

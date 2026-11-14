@@ -100,6 +100,12 @@ An amount in minor units is a whole number: 41940 for 419.40. Anything else, suc
 
 For a quote linked to a Shopify draft order, this completes the draft order in Shopify with payment pending. Shopify creates the order and the invoice is issued from it moments later. Do not issue a second invoice by hand. Any other quote or proforma converts here in one step: if it fails, the quote is left as it was and no number is used.
 
+## Attach an activity report or a timesheet
+
+An agent can file an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes with the invoice. It needs `invoicing:documents:write`, and the file must be one you can read yourself: otherwise nothing is filed. A sent or paid invoice takes no new annex; correct it with a credit note.
+
+When a draft is issued from the editor or a month-end run, or discarded, the issue approval still waiting on it is withdrawn, so nobody is asked to issue it twice.
+
 ## Work with an issued document
 
 Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quotes**, **Proformas**, **Purchase Orders**, **Credit notes**). The list footer counts the rows with the right noun ("1 invoice", "2 invoices"). An empty list names the dates it looked at ("No documents from 1 Oct 2026 to 31 Oct 2026."), or says "No documents yet." when no date or filter is set. The buttons at the top of a document, next to its number and status, offer:

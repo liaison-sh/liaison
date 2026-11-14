@@ -138,6 +138,70 @@ interface MarkCtx {
   logger?: { warn?: (msg: string, data?: Record<string, unknown>) => void }
 }
 
+/** This app's own approvals, as the kernel bridge offers them (absent on an older kernel). */
+export interface OwnApprovals {
+  pendingFor?: (payloadKey: string, toolNames?: string[]) => Promise<unknown>
+  withdraw?: (approvalId: string, reason?: string) => Promise<unknown>
+}
+
+interface WithdrawCtx extends MarkCtx {
+  approvals?: OwnApprovals
+  approval?: { approvalRequestId: string } | null
+}
+
+const asJson = (v: unknown): unknown => {
+  if (typeof v !== "string") return v
+  try {
+    return JSON.parse(v)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Withdraw the issue approvals still waiting on a draft made from a billing source once it is gone:
+ * issued by another path (the Issue button, a month-end run) or discarded. The approval being decided right now is not
+ * pending, so it is never touched. Best effort and never throws: a stale approval that stays only
+ * ends in "draft not found" when someone approves it, never in a second issue.
+ */
+export async function withdrawIssueApprovals(
+  ctx: WithdrawCtx,
+  draft: { id: string; external_ref?: string | null },
+  why: "issued" | "discarded",
+): Promise<string[]> {
+  // Only a draft made from a billing source has an issue approval raised for it at creation; any
+  // other draft's issue is asked for by the issue itself, so there is nothing left to withdraw.
+  if (!billingKeyOf(draft)) return []
+  const draftId = draft.id
+  const pendingFor = ctx.approvals?.pendingFor
+  const withdraw = ctx.approvals?.withdraw
+  if (!pendingFor || !withdraw) return []
+  const done: string[] = []
+  try {
+    const raw = asJson(await pendingFor("draft_id", ["invoicing:invoice_issue"]))
+    const rows = (Array.isArray(raw) ? raw : []) as Array<{ id?: unknown; target_id?: unknown }>
+    const current = ctx.approval?.approvalRequestId ?? null
+    for (const r of rows) {
+      if (r.target_id !== draftId || typeof r.id !== "string" || r.id === current) continue
+      const res = asJson(
+        await withdraw(
+          r.id,
+          why === "issued"
+            ? `Cancelled: draft ${draftId} was already issued`
+            : `Cancelled: draft ${draftId} was discarded`,
+        ),
+      ) as { ok?: unknown } | null
+      if (res?.ok === true) done.push(r.id)
+    }
+  } catch (err) {
+    ctx.logger?.warn?.("withdrawing the draft's issue approval failed", {
+      draftId,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return done
+}
+
 /**
  * Tell projects what became of a reconciliation's draft: `billed` once it issued (with the new
  * document), `released` once it was discarded. Best effort: a lost call is healed by the projects

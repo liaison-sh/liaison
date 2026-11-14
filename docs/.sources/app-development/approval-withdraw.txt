@@ -1,0 +1,1 @@
+ctx.approvals.withdraw: own app only, pending only, cancelled with the reason, not_pending otherwise -> packages/app-sdk/src/types.ts (AppContext) ; apps/api/src/modules/apps/sandbox/bridge/approvals.ts (approvals_withdraw)

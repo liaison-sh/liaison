@@ -553,6 +553,12 @@ export async function reconcileLinesRead(args: {
   )[0]
   const hpd = frozen?.hpd ?? (await hoursPerDayMinutes(tx, orgId))
   const basis = r.basis as Basis
+  // The company the invoice goes to: the project's own (never a person).
+  const company = extractRows<{ company_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT company_id::text AS company_id FROM ${projectsRel("projects")}
+       WHERE id = ${r.project_id}::uuid AND org_id = ${orgId}::uuid`),
+  )[0]
   const lines = extractRows<{
     id: string
     position: number
@@ -587,6 +593,8 @@ export async function reconcileLinesRead(args: {
   return {
     reconciliationId: r.id,
     projectId: r.project_id,
+    projectName: r.project_name,
+    companyId: company?.company_id ?? null,
     basis,
     state: r.state,
     revision: r.revision,

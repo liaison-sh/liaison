@@ -34,7 +34,12 @@ import {
   updateDraftRow,
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
-import { handOverDraft, markReconciliation, reconcileStillReserved } from "./issue-handover"
+import {
+  handOverDraft,
+  markReconciliation,
+  reconcileStillReserved,
+  withdrawIssueApprovals,
+} from "./issue-handover"
 import {
   buildIssueInputFromDraft,
   checkTwoEyes,
@@ -276,6 +281,7 @@ export async function invoiceIssue(
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   const result = issued.result
+  await withdrawIssueApprovals(ctx, draft, "issued")
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: result.document_id,
@@ -325,6 +331,7 @@ export async function issueRunDraft(
   )
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
+  await withdrawIssueApprovals(ctx, draft, "issued")
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: issued.result.document_id,

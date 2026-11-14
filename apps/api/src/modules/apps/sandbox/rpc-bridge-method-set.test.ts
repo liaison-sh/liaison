@@ -35,6 +35,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["approvals_pendingFor", "async"],
   ["approvals_restagePayload", "async"],
   ["approvals_statusOf", "async"],
+  ["approvals_withdraw", "async"],
   ["bulk_deleteBlob", "async"],
   ["bulk_fetchToBlob", "async"],
   ["bulk_iterateJsonl_next", "async"],

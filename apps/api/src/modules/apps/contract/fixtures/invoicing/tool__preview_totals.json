@@ -1,0 +1,48 @@
+{
+  "entry": "tool:preview_totals",
+  "params": {
+    "projectId": "7a000000-0000-4000-8000-00000000c1de",
+    "basis": "daily",
+    "companyId": "7c000000-0000-4000-8000-00000000c1de",
+    "currency": "EUR",
+    "rateMinor": 93000,
+    "hoursPerDayMinutes": 420,
+    "lines": [
+      {
+        "billMinutes": 1260
+      },
+      {
+        "billMinutes": 1680
+      }
+    ]
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-reconcile.recorder.test.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000c1de\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["issuer_profiles", "{\"limit\":100}"],
+      "reply": "[{\"id\":\"7b000000-0000-4000-8000-00000000c1de\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-14 21:49:01.129175+00\",\"updated_at\":\"2026-11-14 21:49:01.129175+00\",\"legal_name\":\"Contract Issuer SAS\",\"country\":\"FR\",\"vat_id\":\"FR60902000009\",\"tax_registration_id\":null,\"address\":\"2 rue Test, 75001 Paris\",\"iban\":null,\"swift_bic\":null,\"bank_name\":null,\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"INV-{YYYY}-\",\"prefix_quote\":\"QUO-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"PO-{YYYY}-\",\"prefix_credit_note\":\"CN-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"UTC\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":null,\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":null,\"address_line1\":null,\"address_line2\":null,\"postcode\":null,\"city\":null,\"country_code\":null,\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "issuer_profiles",
+        "{\"where\":{\"id\":\"7b000000-0000-4000-8000-00000000c1de\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"7b000000-0000-4000-8000-00000000c1de\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-14 21:49:01.129175+00\",\"updated_at\":\"2026-11-14 21:49:01.129175+00\",\"legal_name\":\"Contract Issuer SAS\",\"country\":\"FR\",\"vat_id\":\"FR60902000009\",\"tax_registration_id\":null,\"address\":\"2 rue Test, 75001 Paris\",\"iban\":null,\"swift_bic\":null,\"bank_name\":null,\"logo_file_id\":null,\"default_currency\":\"EUR\",\"default_language\":\"fr\",\"default_payment_terms_days\":30,\"prefix_invoice\":\"INV-{YYYY}-\",\"prefix_quote\":\"QUO-{YYYY}-\",\"prefix_proforma\":\"PRO-{YYYY}-\",\"prefix_po\":\"PO-{YYYY}-\",\"prefix_credit_note\":\"CN-{YYYY}-\",\"invoice_approval_threshold_minor\":null,\"po_approval_threshold_minor\":null,\"require_two_eyes\":false,\"auto_email_enabled\":false,\"prices_include_tax\":false,\"mail_account_id\":null,\"timezone\":\"UTC\",\"email_templates\":{},\"shopify_shop_id\":null,\"archived_at\":null,\"siren\":null,\"siret\":null,\"legal_form\":null,\"share_capital\":null,\"rcs_city\":null,\"routing_address\":null,\"address_line1\":null,\"address_line2\":null,\"postcode\":null,\"city\":null,\"country_code\":null,\"vat_on_debits_default\":null}]"
+    },
+    {
+      "method": "executeTool",
+      "args": ["kernel:companies_read", "{\"companyId\":\"7c000000-0000-4000-8000-00000000c1de\"}"],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"Company not found: 7c000000-0000-4000-8000-00000000c1de. Only pass an id you saw in a kernel__companies_search result.\",\"retryable\":false}}"
+    }
+  ]
+}

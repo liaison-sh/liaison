@@ -116,7 +116,7 @@ describe("the internal reads for invoicing", () => {
     expectNothingPersonal(out, [517, 503, 489, 211])
   })
 
-  it("the milestone status read carries no assignee, time or activity", async () => {
+  it("the milestone status read carries no task title, assignee, time or activity", async () => {
     const out = await asPerson(w, (tx) =>
       milestoneStatusRead({
         tx,
@@ -126,20 +126,15 @@ describe("the internal reads for invoicing", () => {
     )
     expect(out.tasks).toHaveLength(2)
     const milestone = out.tasks.find((t) => t.id === w.tasks["INTL-1"])
-    expect(milestone).toEqual(
-      expect.objectContaining({ title: "Work item 1", terminal: true, isMilestone: true }),
-    )
+    expect(milestone).toEqual(expect.objectContaining({ terminal: true, isMilestone: true }))
     expect(milestone?.completedOn).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     for (const t of out.tasks) {
-      expect(Object.keys(t).sort()).toEqual([
-        "completedOn",
-        "id",
-        "isMilestone",
-        "terminal",
-        "title",
-      ])
+      expect(Object.keys(t).sort()).toEqual(["completedOn", "id", "isMilestone", "terminal"])
     }
     expect(Object.keys(out).sort()).toEqual(["basis", "tasks"])
+    // Read in another app's call with that app's wide row access: a title would name work in a
+    // project the person may not open.
+    expect(JSON.stringify(out)).not.toContain("Work item")
     expectNothingPersonal(out, [])
   })
 

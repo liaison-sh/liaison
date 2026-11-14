@@ -84,7 +84,7 @@ describe("a billing plan", () => {
     // Only the declared milestone read, never projects:get or a time read.
     expect(new Set(reads.map((c) => c.target))).toEqual(new Set(["projects:milestone_status_read"]))
     const text = JSON.stringify(reads.map((c) => c.result))
-    for (const field of ["assignee", "realMinutes", "minutes", "activity", "estimate"])
+    for (const field of ["title", "assignee", "realMinutes", "minutes", "activity", "estimate"])
       expect(text).not.toContain(field)
   })
 })

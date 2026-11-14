@@ -140,7 +140,7 @@ export function harness(): Harness {
     executeTool: async (target: string, args: Row) => {
       let result: unknown = {}
       if (target === "projects:milestone_status_read") {
-        // What projects' read returns: done state only, never assignee or time.
+        // What projects' read returns: done state only, never a title, assignee or time.
         const ids = (args.taskIds as string[]) ?? []
         result = {
           basis: basis.value,
@@ -149,7 +149,6 @@ export function harness(): Harness {
             .filter((t): t is Task => !!t)
             .map((t) => ({
               id: t.id,
-              title: t.title,
               terminal: t.terminal,
               isMilestone: t.isMilestone,
               completedOn: t.completedOn,

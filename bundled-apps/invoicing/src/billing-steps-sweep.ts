@@ -108,7 +108,7 @@ export async function billingStepsSweep(
       continue
     }
     let read: {
-      tasks?: Array<{ id: string; title: string; terminal: boolean; isMilestone: boolean }>
+      tasks?: Array<{ id: string; terminal: boolean; isMilestone: boolean }>
     }
     try {
       const env = await ctx.executeTool("projects:milestone_status_read", {
@@ -130,8 +130,6 @@ export async function billingStepsSweep(
     }
     // Raised once: again only when a step joins the line.
     if (doneSteps.every((s) => s.no_invoice_noticed_on)) continue
-    const titleOf = (s: Row) =>
-      (read.tasks ?? []).find((t) => t.id === s.task_id)?.title ?? String(s.label)
     await ctx.emit({
       entity: "billing_step",
       action: "milestone_no_invoice",
@@ -139,7 +137,6 @@ export async function billingStepsSweep(
       data: {
         project_id: projectId,
         step_ids: doneSteps.map((s) => String(s.id)),
-        task_title: doneSteps.map(titleOf).join(", "),
         step_label: doneSteps.map((s) => String(s.label)).join(", "),
         resolved: false,
       },

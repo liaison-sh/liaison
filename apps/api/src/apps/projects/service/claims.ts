@@ -693,13 +693,12 @@ export async function milestoneStatusRead(args: {
       ? []
       : extractRows<{
           id: string
-          title: string
           terminal: boolean
           is_milestone: boolean
           completed_on: string | null
         }>(
           await tx.execute(drizzleSql`
-            SELECT t.id::text AS id, t.title, coalesce(s.terminal, false) AS terminal,
+            SELECT t.id::text AS id, coalesce(s.terminal, false) AS terminal,
                    t.is_milestone,
                    CASE WHEN t.completed_at IS NOT NULL OR s.terminal
                         THEN (coalesce(t.completed_at, t.updated_at) AT TIME ZONE ${tz})::date::text
@@ -715,9 +714,10 @@ export async function milestoneStatusRead(args: {
         )
   return {
     basis: project.basis,
+    // No title: the read runs in another app's call with that app's wide row access, so a title
+    // would name work in a project the person may not open. The step's own label names it.
     tasks: tasks.map((t) => ({
       id: t.id,
-      title: t.title,
       terminal: t.terminal,
       isMilestone: t.is_milestone,
       completedOn: t.completed_on,

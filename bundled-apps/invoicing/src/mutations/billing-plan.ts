@@ -86,7 +86,6 @@ interface MilestoneRead {
   basis: string
   tasks: Array<{
     id: string
-    title: string
     terminal: boolean
     isMilestone: boolean
     completedOn: string | null
@@ -672,7 +671,7 @@ export async function milestoneDraftCreate(
   if (!task.terminal || !task.isMilestone)
     return refuse(
       "not_done",
-      `"${task.title}" is ${task.isMilestone ? "not done yet" : "not a milestone"}, so nothing was drafted. Its invoice is drafted once it is done${task.isMilestone ? "" : " and flagged a milestone"}.`,
+      `The task of step "${String(step.label)}" is ${task.isMilestone ? "not done yet" : "not a milestone"}, so nothing was drafted. Its invoice is drafted once it is done${task.isMilestone ? "" : " and flagged a milestone"}.`,
     )
 
   const steps = await stepsOf(ctx, projectId)
@@ -816,7 +815,7 @@ export async function milestoneDraftCreate(
     paymentState: deductions.length > 0 ? "final_after_deposit" : "due",
     deductions,
     message:
-      `Created ${title} (draft ${draftId}) from "${task.title}", done on ${shortDate(completedOn)}: ${formatMoneyMinor(BigInt(totals.excl), currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT` +
+      `Created ${title} (draft ${draftId}) from the done task of step "${String(step.label)}", on ${shortDate(completedOn)}: ${formatMoneyMinor(BigInt(totals.excl), currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT` +
       (deductions.length
         ? `, after deducting ${deductions
             .map((d) => d.advanceNumber)

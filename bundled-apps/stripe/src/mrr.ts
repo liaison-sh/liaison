@@ -155,6 +155,18 @@ export function computeMrr(input: MrrInput): number {
   return Number((2n * n + d) / (2n * d))
 }
 
+/**
+ * What a subscription read expands: its discounts with their coupons (at the pinned API version a
+ * discount names its coupon by id under `source.coupon`, so without this every coupon would be
+ * left out of MRR) and the card it bills. `SUBSCRIPTION_LIST_EXPAND` is the same on a list.
+ */
+export const SUBSCRIPTION_EXPAND = [
+  "discounts",
+  "discounts.source.coupon",
+  "default_payment_method",
+]
+export const SUBSCRIPTION_LIST_EXPAND = SUBSCRIPTION_EXPAND.map((path) => `data.${path}`)
+
 const asObj = (v: unknown): Obj | null =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : null
 

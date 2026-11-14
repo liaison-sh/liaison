@@ -1,25 +1,33 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The MRR rules against a real Stripe sandbox. Each run creates its own test clock with its own
-// customers and subscriptions, reads them back as the mirror would (the app's own row mapping,
-// then `mrr_query`), compares the figure with the amounts written below, and deletes what it made.
+// The MRR rules against a real Stripe sandbox. Each run creates its own test clocks (Stripe puts
+// at most 3 customers on one clock) with their customers and subscriptions, reads them back as the
+// mirror would (the mirror's own expand, row mapping, then `mrr_query`), compares the figure with
+// the amounts written below, and deletes what it made.
 //
 // Skipped unless the sandbox keys are in the environment:
 //   LIAISON_STRIPE_TEST_SECRET_KEY      sk_test_..., creates and deletes the fixtures
-//   LIAISON_STRIPE_TEST_RESTRICTED_KEY  rk_test_..., reads them back as the connector does
+//   LIAISON_STRIPE_TEST_RESTRICTED_KEY  rk_test_... (or a sandbox sk_test_... key when no
+//                                       restricted key can be made), reads them back as the
+//                                       connector does
 // Set LIAISON_STRIPE_ORACLE_REQUIRED=1 for a run that must not skip: with no key it fails, and a
 // run that executed no oracle test always fails. The run prints how many oracle tests ran, and
 // never a key.
 import { afterAll, describe, expect, it } from "bun:test"
 import { STRIPE_API_VERSION } from "./http"
 import { newTally, subscriptionRow } from "./mirror"
+import { SUBSCRIPTION_EXPAND } from "./mrr"
 import { civil, MemDb } from "./mrr-fixtures.testkit"
 import { mrrQuery } from "./tools/mrr-query"
 
 const SECRET = process.env.LIAISON_STRIPE_TEST_SECRET_KEY ?? ""
 const RESTRICTED = process.env.LIAISON_STRIPE_TEST_RESTRICTED_KEY ?? ""
 const REQUIRED = process.env.LIAISON_STRIPE_ORACLE_REQUIRED === "1"
-const HAVE_KEYS = SECRET.startsWith("sk_test_") && RESTRICTED.startsWith("rk_test_")
+const HAVE_KEYS =
+  SECRET.startsWith("sk_test_") &&
+  (RESTRICTED.startsWith("rk_test_") || RESTRICTED.startsWith("sk_test_"))
+/** Stripe refuses a fourth customer on one test clock. */
+const CUSTOMERS_PER_CLOCK = 3
 
 type Obj = Record<string, unknown>
 
@@ -35,7 +43,7 @@ const PLAN = {
 const EXPECTED_TOTAL = 4900 + 5000 + 9900 + 2400
 
 let ran = 0
-const made: { clock?: string; product?: string; coupon?: string } = {}
+const made: { clocks: string[]; product?: string; coupon?: string } = { clocks: [] }
 
 function form(data: Obj, prefix = ""): string[] {
   return Object.entries(data).flatMap(([k, v]) => {
@@ -70,11 +78,8 @@ async function stripe(key: string, method: string, path: string, data: Obj = {})
 
 async function build(run: string): Promise<{ subs: Obj[]; cancelledId: string }> {
   const frozen = Math.floor(Date.now() / 1000)
-  const clock = await stripe(SECRET, "POST", "/v1/test_helpers/test_clocks", {
-    frozen_time: frozen,
-    name: `mrr-oracle-${run}`,
-  })
-  made.clock = String(clock.id)
+  let clock: Obj = {}
+  let onClock = CUSTOMERS_PER_CLOCK
   const product = await stripe(SECRET, "POST", "/v1/products", { name: `mrr-oracle-${run}` })
   made.product = String(product.id)
   const coupon = await stripe(SECRET, "POST", "/v1/coupons", {
@@ -96,6 +101,15 @@ async function build(run: string): Promise<{ subs: Obj[]; cancelledId: string }>
       },
     ]
   >) {
+    if (onClock === CUSTOMERS_PER_CLOCK) {
+      clock = await stripe(SECRET, "POST", "/v1/test_helpers/test_clocks", {
+        frozen_time: frozen,
+        name: `mrr-oracle-${run}-${made.clocks.length + 1}`,
+      })
+      made.clocks.push(String(clock.id))
+      onClock = 0
+    }
+    onClock++
     const customer = await stripe(SECRET, "POST", "/v1/customers", {
       name: `oracle ${name} ${run}`,
       test_clock: clock.id,
@@ -132,11 +146,9 @@ async function build(run: string): Promise<{ subs: Obj[]; cancelledId: string }>
 }
 
 async function cleanUp(): Promise<void> {
-  // Deleting the clock deletes its customers and their subscriptions.
-  if (made.clock)
-    await stripe(SECRET, "DELETE", `/v1/test_helpers/test_clocks/${made.clock}`).catch(
-      () => undefined,
-    )
+  // Deleting a clock deletes its customers and their subscriptions.
+  for (const id of made.clocks)
+    await stripe(SECRET, "DELETE", `/v1/test_helpers/test_clocks/${id}`).catch(() => undefined)
   if (made.coupon)
     await stripe(SECRET, "DELETE", `/v1/coupons/${made.coupon}`).catch(() => undefined)
   if (made.product)
@@ -162,7 +174,7 @@ describe.skipIf(!HAVE_KEYS)("the MRR rules against the Stripe sandbox", () => {
     const perPlan: Record<string, number> = {}
     for (const s of subs) {
       const obj = await stripe(RESTRICTED, "GET", `/v1/subscriptions/${s.id}`, {
-        expand: { "0": "discounts" },
+        expand: Object.fromEntries(SUBSCRIPTION_EXPAND.map((path, i) => [String(i), path])),
       })
       const row = subscriptionRow(obj, newTally(), new Date())
       perPlan[String(s.plan)] =

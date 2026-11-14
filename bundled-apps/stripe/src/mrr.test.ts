@@ -288,6 +288,58 @@ describe("movements", () => {
     })
   })
 
+  it("a coupon Stripe names by id (the pinned API version's discount shape) is read and taken off, on a webhook and on a reconcile", async () => {
+    connect()
+    api.coupons.set("co_seats20", {
+      id: "co_seats20",
+      object: "coupon",
+      duration: "forever",
+      percent_off: 20,
+    })
+    const byId = [
+      {
+        id: "di_1",
+        object: "discount",
+        end: null,
+        source: { type: "coupon", coupon: "co_seats20" },
+      },
+    ]
+    // 3 seats of 1000 with a 20% forever coupon: 2400, never 3000.
+    stored(sub("sub_seats", { unit: 1000, qty: 3 }))
+    api.objects.set("/v1/subscriptions/sub_seats", {
+      livemode: false,
+      ...sub("sub_seats", { unit: 1000, qty: 3, discounts: byId }),
+    })
+    await handleStripeEvent(
+      webhook(
+        "evt_seats",
+        "customer.subscription.updated",
+        "sub_seats",
+        "2026-11-12T09:00:00.000Z",
+      ),
+      ingestCtx(),
+    )
+    const row = () => db.rows("stripe_subscriptions").find((r) => r.stripe_id === "sub_seats")
+    expect(row()?.mrr_minor).toBe(2400)
+    expect(row()?.discount_percent).toBe(20)
+
+    // The same subscription read by the reconcile's list.
+    db = new MemDb()
+    connect()
+    stored(sub("sub_seats", { unit: 1000, qty: 3 }))
+    db.rows("stripe_customers").push({
+      id: "m-c",
+      stripe_id: "cus_sub_seats",
+      stripe_updated: "2026-11-01T00:00:00.000Z",
+      deleted_at: null,
+    })
+    api.list("/v1/customers", [{ id: "cus_sub_seats", object: "customer" }])
+    api.list("/v1/subscriptions", [sub("sub_seats", { unit: 1000, qty: 3, discounts: byId })])
+    lists()
+    await runReconcile(syncCtx(), { now: () => new Date(clock) })
+    expect(row()?.mrr_minor).toBe(2400)
+  })
+
   it("a reconcile-healed change followed by the late webhook adds one movement", async () => {
     connect()
     stored(sub("sub_p", { unit: 4900 }))

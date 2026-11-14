@@ -20,6 +20,7 @@
 // webhook wrote after this run's read is left alone. No typed event, no document.
 import { StripeApiError, stripeFetch } from "../http"
 import { newTally, writeMirror } from "../mirror"
+import { SUBSCRIPTION_EXPAND } from "../mrr"
 import { recordMovement } from "../mrr-events"
 import { runMrrRebuild } from "../mrr-rebuild"
 import { blockedOverlay, type Install, moveState, readInstall } from "../states"
@@ -220,9 +221,7 @@ async function readBackAbsent(
       const obj = await stripeFetch<Obj>(
         ctx,
         `${res.byId}${encodeURIComponent(id)}`,
-        res.entity === "stripe_subscriptions"
-          ? { params: { expand: ["discounts", "default_payment_method"] } }
-          : {},
+        res.entity === "stripe_subscriptions" ? { params: { expand: SUBSCRIPTION_EXPAND } } : {},
       )
       if (obj?.deleted === true) {
         if (res.entity === "stripe_customers" && mayDelete)

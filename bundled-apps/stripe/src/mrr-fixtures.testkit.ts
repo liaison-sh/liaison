@@ -96,6 +96,22 @@ export class StripeApi {
   lists = new Map<string, Obj[]>()
   objects = new Map<string, Obj>()
   events: Obj[] = []
+  /** Coupons by id: a discount naming one by id (Stripe's shape at the pinned API version,
+   *  `source: { type: "coupon", coupon: "<id>" }`) is served with the coupon object only when
+   *  the request expands `discounts.source.coupon` (`data.` in front on a list). */
+  coupons = new Map<string, Obj>()
+  private expanded(o: Obj, expand: string[], prefix: string): Obj {
+    if (!expand.includes(`${prefix}discounts.source.coupon`) || !Array.isArray(o.discounts))
+      return o
+    return {
+      ...o,
+      discounts: o.discounts.map((d) => {
+        const src = (d as Obj)?.source as Obj | undefined
+        const coupon = typeof src?.coupon === "string" ? this.coupons.get(src.coupon) : undefined
+        return coupon ? { ...(d as Obj), source: { ...src, coupon } } : d
+      }),
+    }
+  }
   list(path: string, items: Obj[]) {
     const withMode: Obj[] = items.map((o) => ({ livemode: false, ...o }))
     this.lists.set(path, withMode)
@@ -114,11 +130,17 @@ export class StripeApi {
         .sort((a, b) => (b.created as number) - (a.created as number))
       return ok({ data, has_more: false })
     }
+    const expand = [...u.searchParams.entries()]
+      .filter(([k]) => k.startsWith("expand["))
+      .map(([, v]) => v)
     const list = this.lists.get(path)
-    if (list) return ok({ object: "list", data: list, has_more: false })
+    if (list) {
+      const data = list.map((o) => this.expanded(o, expand, "data."))
+      return ok({ object: "list", data, has_more: false })
+    }
     const obj = this.objects.get(path)
     return obj
-      ? ok(obj)
+      ? ok(this.expanded(obj, expand, ""))
       : { status: 404, headers: {}, body: JSON.stringify({ error: { message: "No such object" } }) }
   }
 }

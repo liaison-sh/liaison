@@ -57,6 +57,7 @@ import {
   refundEvent,
   unmatchedPayload,
 } from "./money-events"
+import { SUBSCRIPTION_EXPAND } from "./mrr"
 import { recordMovement } from "./mrr-events"
 import { claimDelivery, type LedgerDb, settleDelivery } from "./webhooks"
 
@@ -463,9 +464,7 @@ export async function handleStripeEvent(
       obj = await stripeFetch<Obj>(
         ctx,
         `${route.path}${encodeURIComponent(event.objectId)}`,
-        route === SUBSCRIPTION
-          ? { params: { expand: ["discounts", "default_payment_method"] } }
-          : {},
+        route === SUBSCRIPTION ? { params: { expand: SUBSCRIPTION_EXPAND } } : {},
       )
     } catch (err) {
       if (!(err instanceof StripeApiError)) throw err

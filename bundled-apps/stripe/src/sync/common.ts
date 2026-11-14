@@ -24,6 +24,7 @@ import {
   refundRow,
   subscriptionRow,
 } from "../mirror"
+import { SUBSCRIPTION_LIST_EXPAND } from "../mrr"
 
 type Obj = Record<string, unknown>
 
@@ -84,7 +85,7 @@ export const RESOURCES: readonly SyncResource[] = [
     list: "/v1/subscriptions",
     byId: "/v1/subscriptions/",
     row: subscriptionRow,
-    params: { status: "all", expand: ["data.discounts", "data.default_payment_method"] },
+    params: { status: "all", expand: SUBSCRIPTION_LIST_EXPAND },
   },
   {
     resource: "invoices",

@@ -104,6 +104,16 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
   // recorded AT ISSUE counts: the current payment_status is a later fact (a Factur-X first
   // rendered after a mark-paid still describes an invoice that was due when issued).
   const paymentState: PaymentState = src.type === "credit_note" ? "due" : (stored ?? "due")
+  // The service month a document bills (planned vs done, a retainer month, a schedule run): every
+  // line states it, and so does the document.
+  // At issue the columns are still nested under the insert's `source`; read back they are flat.
+  const source = d.source && typeof d.source === "object" ? (d.source as Row) : {}
+  const periodStart = dateOnly(d.service_period_start ?? source.service_period_start)
+  const periodEnd = dateOnly(d.service_period_end ?? source.service_period_end)
+  const servicePeriod =
+    periodStart && periodEnd && periodStart <= periodEnd
+      ? { start: periodStart, end: periodEnd }
+      : null
   const lines: FacturxLine[] = [...src.lines]
     .sort((a, b) => a.position - b.position)
     .map((l) => ({
@@ -115,6 +125,7 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
       tax_rate_bp: Number(l.tax_rate_bp),
       subtotal_minor: big(l.subtotal_minor),
       tax_minor: big(l.tax_minor),
+      period: servicePeriod,
     }))
   const deliveryLine = str(d.delivery_line1)
   return {
@@ -179,6 +190,7 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
       d.tax_total_eur_minor == null || d.tax_total_eur_minor === ""
         ? null
         : big(d.tax_total_eur_minor),
+    service_period: servicePeriod,
     lines,
     subtotal_minor: big(d.subtotal_minor),
     tax_total_minor: big(d.tax_total_minor),

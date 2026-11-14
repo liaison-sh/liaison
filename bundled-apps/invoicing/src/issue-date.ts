@@ -122,3 +122,20 @@ export async function checkIssuerTimezone(
     throw err
   }
 }
+
+/**
+ * Where a draft stands against its latest issue day (the last day of its service month): `late`
+ * once that day is past, from the draft's creation on when it was made after it, which is the
+ * usual case for a month reconciled in the next month's first days. Lateness only shows: the draft
+ * issues with the date of the day it is issued (`issueDateParts`), never its latest day, so the
+ * dates of a series never go back. Null for a draft with no latest day.
+ */
+export function issueLateness(
+  latestIssueOn: string | null | undefined,
+  today: string,
+): "on_time" | "ends_today" | "late" | null {
+  const latest = typeof latestIssueOn === "string" ? latestIssueOn.slice(0, 10) : ""
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(latest)) return null
+  if (today > latest) return "late"
+  return today === latest ? "ends_today" : "on_time"
+}

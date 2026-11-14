@@ -122,3 +122,20 @@ describe("bt23", () => {
     expect(bt23("mixed", "final_after_deposit")).toBe("M4")
   })
 })
+
+describe("an invoice made from planned vs done", () => {
+  test("service lines from planned vs done classify as services, S1", async () => {
+    const { harness, issuedFromCard } = await import("../__tests__/from-reconcile-harness")
+    const h = harness()
+    const inv = await issuedFromCard(h)
+    const lines = h.db.__all("document_lines").filter((l) => l.document_id === inv.id)
+    expect(lines.map((l) => l.line_kind)).toEqual(["service", "service"])
+    const op = operationCategory(lines as Array<{ line_kind?: string | null }>, {
+      authoritative: true,
+    })
+    expect(op.category).toBe("services")
+    const doc = h.db.__all("documents").find((d) => d.id === inv.id) as Record<string, unknown>
+    expect(doc.operation_category).toBe("services")
+    expect(bt23("services", (doc.payment_state as "due") ?? "due")).toBe("S1")
+  })
+})

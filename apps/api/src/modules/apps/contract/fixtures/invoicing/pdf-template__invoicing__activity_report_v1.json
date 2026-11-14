@@ -1,0 +1,32 @@
+{
+  "entry": "pdf-template:invoicing:activity_report_v1",
+  "params": {
+    "kind": "activity_report",
+    "title": "Rapport d'activité",
+    "project": "Maison Alpine platform",
+    "period": "Du 01/10/2026 au 31/10/2026",
+    "invoice": "Annexe à la facture F-2026-0001",
+    "issuer": "Maison Studio SAS",
+    "customer": "Maison Alpine SA",
+    "columns": {
+      "work": "Travail livré",
+      "billed": "Facturé",
+      "proofs": "Preuves"
+    },
+    "rows": [
+      {
+        "wording": "Data export",
+        "billed": "3 jours",
+        "proofs": "Export merged"
+      },
+      {
+        "wording": "Monitoring",
+        "billed": "4 jours",
+        "proofs": "Dashboard delivered"
+      }
+    ],
+    "signature": "Signé : Claire Martin"
+  },
+  "recordedFrom": "hand-written: the template input as activityReportPdfData builds it (src/activity-report.ts)",
+  "calls": []
+}

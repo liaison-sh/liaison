@@ -1010,7 +1010,7 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
  *  whatever the source; pass anything else through untouched. */
 function formatDateLike(value: string): string {
   const m = /^(\d{4}-\d{2}-\d{2})/.exec(String(value))
-  return m ? m[1] : String(value)
+  return m?.[1] ?? String(value)
 }
 
 /** Two addresses are "the same address" when they differ only in whitespace or case, so a

@@ -112,6 +112,8 @@ interface TaskRow {
   closed: boolean
   started: boolean
   completed_at: string | null
+  /** The day it closed, in the org's zone. */
+  closed_on: string | null
 }
 
 /**
@@ -119,7 +121,7 @@ interface TaskRow {
  * column (the default board's backlog and todo count as not started) and closed in a done
  * column; one in a cancelled column is in neither, so it never lowers coverage.
  */
-async function readTasks(tx: Tx, orgId: string, projectId: string) {
+async function readTasks(tx: Tx, orgId: string, projectId: string, tz: string) {
   return extractRows<TaskRow>(
     await tx.execute(drizzleSql`
       SELECT t.id::text AS id, t.parent_task_id::text AS parent_id, t.title, t.position,
@@ -131,7 +133,10 @@ async function readTasks(tx: Tx, orgId: string, projectId: string) {
                                 WHERE s2.project_id = t.project_id)
                   AND lower(s.label) NOT IN ('backlog', 'todo', 'to do')))) AS started,
              CASE WHEN NOT cancelled.is AND (t.completed_at IS NOT NULL OR s.terminal)
-                  THEN coalesce(t.completed_at, t.updated_at)::text END AS completed_at
+                  THEN coalesce(t.completed_at, t.updated_at)::text END AS completed_at,
+             CASE WHEN NOT cancelled.is AND (t.completed_at IS NOT NULL OR s.terminal)
+                  THEN (coalesce(t.completed_at, t.updated_at) AT TIME ZONE ${tz})::date::text
+             END AS closed_on
         FROM ${projectsRel("tasks")} t
         JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
         CROSS JOIN LATERAL (SELECT lower(s.label) IN ('cancelled', 'canceled') AS is) cancelled
@@ -190,7 +195,7 @@ export async function getBudget(args: {
         )[0]
       : undefined
 
-  const rows = await readTasks(tx, orgId, projectId)
+  const rows = await readTasks(tx, orgId, projectId, tz)
   const tasks: BudgetTask[] = rows.map((r) => ({
     id: r.id,
     parentId: r.parent_id,
@@ -226,7 +231,22 @@ export async function getBudget(args: {
     if (r.has_entries) hasEntries.add(r.task_id)
   }
   const real = [...own.values()].reduce((a, b) => a + b, 0)
-  const coverage = coverageOf(live, hasEntries)
+  // A period's figures count the period's tasks: those closed in it or holding time of it, as
+  // the dated sheet counts them. Without a period, every started or closed task.
+  const closedOn = new Map(rows.map((r) => [r.id, r.closed_on]))
+  const coverage = coverageOf(
+    period
+      ? live.map((t) => {
+          const on = closedOn.get(t.id)
+          return {
+            ...t,
+            closed: !!on && on >= period.start && on <= period.end,
+            started: hasEntries.has(t.id),
+          }
+        })
+      : live,
+    hasEntries,
+  )
   const partial = coverage.withEntries < coverage.total
 
   const planned = plannedByTask(live)
@@ -238,7 +258,9 @@ export async function getBudget(args: {
   const milestoneState = (t: BudgetTask) => (t.closed ? "done" : t.started ? "started" : "todo")
   const milestones: BudgetMilestone[] = live
     .filter((t) => t.isMilestone)
-    .sort((a, b) => a.position - b.position || a.number - b.number)
+    // In plan order: the order the project's tasks were numbered in. A board position only
+    // orders a status column, so it cannot order milestones across columns.
+    .sort((a, b) => a.number - b.number)
     .map((t) => {
       const p = planned.get(t.id) ?? 0
       return {

@@ -387,6 +387,15 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
           changed: true,
         }),
       ),
+      withdraw: mock(
+        async (
+          approvalId: string,
+          _reason?: string,
+        ): ReturnType<AppContext["approvals"]["withdraw"]> => ({
+          ok: true,
+          approval_id: approvalId,
+        }),
+      ),
     },
     // An in-memory effect ledger: claimed, then done or released.
     effects: {

@@ -159,6 +159,11 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "trust boundary",
     why: "an internal read the projects app reaches through its declared cross-app call; people read invoices through documents_search",
   },
+  {
+    tool: "invoicing:preview_totals",
+    reason: "trust boundary",
+    why: "an internal read the projects app reaches through its declared cross-app call, for a reconcile card's invoice preview; people read the card through reconcile_get",
+  },
   // ── Kernel reads ──
   {
     tool: "kernel:contacts_identity",

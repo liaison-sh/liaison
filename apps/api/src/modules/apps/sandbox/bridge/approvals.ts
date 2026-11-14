@@ -124,6 +124,59 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
       )
     },
 
+    // An app withdraws one of ITS OWN approvals still awaiting a decision, once the records it
+    // would act on made it pointless (a draft already issued by another path). Not a tool: agents
+    // cannot reach it. Only a `pending` request of this app's tools in this org moves, to
+    // `cancelled` with `reason`; one being approved, decided or another app's is left alone.
+    // Returns `{ok:true, approval_id}` or `{ok:false, code}` with code `not_pending` (not waiting,
+    // or not this app's) or `not_found`.
+    approvals_withdraw: async (approvalRequestId: string, reason?: string): Promise<string> => {
+      const id = String(approvalRequestId ?? "")
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
+        return JSON.stringify({ ok: false, code: "not_found" })
+      const why =
+        typeof reason === "string" && reason.trim() !== ""
+          ? reason.trim().slice(0, 1000)
+          : `Cancelled: ${appName} no longer needs this decision`
+      const { withPrivilegedDb } = await import("~/db/privileged")
+      const { extractRows } = await import("~/db")
+      const { sql: drizzleSql } = await import("drizzle-orm")
+      const { schemaRef } = await import("~/db/schema-ref")
+      const { cancelDeferredBundleSiblings, loadApprovalSummary } = await import(
+        "~/modules/approvals/event-data"
+      )
+      const KS = drizzleSql.raw(schemaRef("kernel"))
+      const cancelled = await withPrivilegedDb(orgId, "approval-app-withdraw", async (tx) => {
+        const rows = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            UPDATE ${KS}.approval_requests
+               SET status = 'cancelled', decided_at = now(), reason = ${why}
+             WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid AND status = 'pending'
+               AND starts_with(tool_name, ${`${appName}:`})
+            RETURNING id::text AS id`),
+        )
+        if (rows.length === 0) return false
+        await cancelDeferredBundleSiblings(tx, id)
+        await tx.queueEvent({
+          app: "kernel",
+          entity: "approval_request",
+          action: "update",
+          entityId: id,
+          orgId,
+          actorId: userId ?? null,
+          actorType: "system",
+          data: await loadApprovalSummary(tx, orgId, id),
+        })
+        return true
+      })
+      if (!cancelled) return JSON.stringify({ ok: false, code: "not_pending" })
+      const { continueRoutinesAfterWithdrawal } = await import(
+        "~/modules/approvals/withdraw-on-events"
+      )
+      await continueRoutinesAfterWithdrawal(orgId, [id])
+      return JSON.stringify({ ok: true, approval_id: id })
+    },
+
     // The approvals still awaiting a decision on this app's own tools whose payload carries
     // `payloadKey` (e.g. "finding_id"), newest first, optionally narrowed to some of this app's tool
     // names. An app derives "awaiting approval" for its own rows at read time from this, so a parked

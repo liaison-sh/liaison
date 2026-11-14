@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.22.0",
+  "version": "0.23.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -384,6 +384,17 @@
         "tableName": "documents",
         "schemaRef": "app_invoicing",
         "joinOn": "pdf_file_id",
+        "readScope": "invoicing:documents:read",
+        "writeScope": "invoicing:documents:write"
+      }
+    },
+    "document_attachment": {
+      "labelField": "kind",
+      "tableName": "document_attachments",
+      "fileParent": {
+        "tableName": "document_attachments",
+        "schemaRef": "app_invoicing",
+        "joinOn": "id",
         "readScope": "invoicing:documents:read",
         "writeScope": "invoicing:documents:write"
       }
@@ -2464,6 +2475,75 @@
           "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the issue date, YYYY-MM-DD." }
         },
         "required": ["projectId"],
+        "additionalProperties": false
+      }
+    },
+    "preview_totals": {
+      "description": "What a planned vs done card's billed lines would invoice (excl. VAT, VAT, incl. VAT, in minor units) and what is missing before an invoice can be made from them. Called by the projects app only.",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "previewTotalsHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "readOnly": true,
+      "timeoutMs": 20000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string", "description": "The project's id." },
+          "basis": { "type": "string", "description": "The project's billing basis: daily, hourly, retainer, fixed or none." },
+          "companyId": { "type": ["string", "null"], "description": "The project's company." },
+          "contactId": { "type": ["string", "null"], "description": "The contact the invoice would go to, when the project names one." },
+          "currency": { "type": ["string", "null"], "description": "ISO currency code." },
+          "rateMinor": { "type": ["number", "null"], "description": "The rate per unit, in minor units." },
+          "hoursPerDayMinutes": { "type": ["number", "null"], "description": "Minutes in a billed day." },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": { "billMinutes": { "type": "number" } },
+              "additionalProperties": true
+            }
+          }
+        },
+        "required": ["projectId", "basis"],
+        "additionalProperties": false
+      }
+    },
+    "draft_from_reconcile": {
+      "description": "Make the invoice draft of a planned vs done card, with its activity report, and raise its issue approval. Takes no number. Called by the projects app only.",
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "draftFromReconcileHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "writesToTable": "app_invoicing.documents",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
+          "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
+          "leadName": { "type": ["string", "null"], "description": "The project lead's name, signing the activity report." }
+        },
+        "required": ["reconciliationId", "revision"],
+        "additionalProperties": false
+      }
+    },
+    "document_attachment_add": {
+      "description": "File an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes out with it.",
+      "searchKeywords": ["annexe", "joindre", "attach"],
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "documentAttachmentAddHandler",
+      "writesToTable": "app_invoicing.document_attachments",
+      "timeoutMs": 20000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "documentId": { "type": "string", "description": "The invoice or draft id." },
+          "fileId": { "type": "string", "description": "The file to attach." },
+          "kind": { "type": "string", "enum": ["activity_report", "timesheet"], "description": "What the file is." },
+          "partial": { "type": "boolean", "description": "The file covers only part of the invoice's period." }
+        },
+        "required": ["documentId", "fileId", "kind"],
         "additionalProperties": false
       }
     },

@@ -40,7 +40,7 @@ import {
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
-import { cardLinesLockedError, markReconciliation } from "./issue-handover"
+import { cardLinesLockedError, markReconciliation, withdrawIssueApprovals } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
 import {
   type DocumentType,
@@ -1211,6 +1211,7 @@ export async function draftsDiscard(
   const row = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
   if (row && String(row.status ?? "draft") === "draft") await discardDependents(ctx, row)
   await deleteDraftRow(ctx.db, input.draft_id)
+  if (row) await withdrawIssueApprovals(ctx, input.draft_id, "discarded")
   // A draft made from a planned vs done card gives its month back: projects moves the
   // reconciliation to proposed and frees its claims (a lost call is healed by its sweep).
   if (row) {

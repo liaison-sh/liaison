@@ -1007,6 +1007,15 @@ export interface AppContext {
       fields: Record<string, unknown>,
       note?: string,
     ): Promise<RestagePayloadResult>
+    /**
+     * Withdraws one of this app's approvals still awaiting a decision, once the records it would
+     * act on made it pointless (a draft already issued by another path). It is cancelled with
+     * `reason`; a request being approved, decided, or another app's answers `not_pending`.
+     */
+    withdraw(
+      approvalId: string,
+      reason?: string,
+    ): Promise<{ ok: true; approval_id: string } | { ok: false; code: "not_pending" | "not_found" }>
   }
   /**
    * K6 — Post-approval re-entry signal. `undefined` on first invocation;

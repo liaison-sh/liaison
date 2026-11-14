@@ -244,6 +244,7 @@ export async function items_create(
 | `ctx.resolveContact` | Resolve or create a contact |
 | `ctx.turn.get()` | The turn the handler runs in: `agentId` (null for a job, a webhook or a person's own click) and `hasPerson` (false for a routine, a background turn and a job) |
 | `ctx.approvals.restagePayload` | Rewrite fields of one of your app's own approvals still waiting for a decision, after the records it describes changed. Recorded sign-offs reset and the approval's conversation gets one note. Another app's approval answers `forbidden`; a decided one `not_pending` |
+| `ctx.approvals.withdraw` | Withdraw one of your app's own approvals still waiting for a decision, once the records it would act on made it pointless (a draft already issued another way). It is cancelled with your reason. One being approved, already decided, or another app's answers `not_pending` |
 | `ctx.logger` | Structured logging |
 
 **Refusing a call.** When a tool declines a call on purpose (a check failed,

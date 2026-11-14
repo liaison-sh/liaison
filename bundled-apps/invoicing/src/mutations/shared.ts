@@ -12,6 +12,7 @@ import type { EinvoiceRowColumns } from "../einvoicing/issue-gate"
 import type { DraftLine, IssueCtx, IssueDb, SourceColumns } from "../issue"
 import { lineSubtotal } from "../money"
 import type { ReadsFetch } from "../reads"
+import type { OwnApprovals } from "./issue-handover"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -291,6 +292,10 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
     /** Carry on at once when the org's auto-approve policy for `tool_name` approves the call:
      *  the kernel then answers `auto_approved: true` and the handler proceeds as approved. */
     auto_approvable?: boolean
+    /** The scope whose holders decide it, when it is not the tool's own. */
+    approve_scope?: string
+    /** How long it waits for a decision. */
+    expiry_hours?: number
   }): Promise<RequestedApproval>
 
   decideApproval(input: {
@@ -299,6 +304,9 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   }): Promise<{ status: "ok" } | ErrorEnvelope>
 
   executeTool: CrossAppExecuteTool
+
+  /** This app's own approvals (kernel bridge): list the pending ones, withdraw one. */
+  approvals?: OwnApprovals
 
   /** Kernel-mediated outbound HTTP (allowlisted hosts): the VIES check of a buyer VAT number.
    *  Optional: absent, a VAT number is reported "not verified (VIES unavailable)". */

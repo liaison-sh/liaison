@@ -3447,5 +3447,26 @@
     "typed": ["set cost rate", "cost per hour", "taux de coût"],
     "any": ["projects__cost_rate_set"],
     "modelRun": true
+  },
+  {
+    "id": "C95",
+    "set": "seed",
+    "lang": "fr",
+    "say": "joins la feuille de temps d'octobre à la facture",
+    "typed": ["joindre feuille de temps facture", "attach timesheet to invoice", "annexe facture"],
+    "any": ["invoicing__document_attachment_add"],
+    "modelRun": true
+  },
+  {
+    "id": "C96",
+    "set": "seed",
+    "lang": "en",
+    "say": "attach the activity report to the invoice draft",
+    "typed": [
+      "attach activity report",
+      "annexe rapport d'activité",
+      "joindre rapport à la facture"
+    ],
+    "any": ["invoicing__document_attachment_add"]
   }
 ]

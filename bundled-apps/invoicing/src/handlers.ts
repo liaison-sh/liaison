@@ -81,6 +81,7 @@ import {
   settingsIssuerProfileUpdate,
   settingsIssuerProfileWritePreflight,
 } from "./mutations"
+import { draftFromReconcile } from "./mutations/from-reconcile"
 import { lineAmountsError } from "./mutations/shared"
 import { ordersInvoiceabilityCheck } from "./order-invoiceability"
 import {
@@ -131,6 +132,8 @@ import {
   issuerStreamSetPreflight,
   onStripeConnectionChanged,
 } from "./streams"
+import { documentAttachmentAdd } from "./tools/document-attachment-add"
+import { previewTotals } from "./tools/preview-totals"
 import { projectInvoicedGet } from "./tools/project-invoiced-get"
 import { vatLookup } from "./vat-lookup"
 
@@ -233,6 +236,18 @@ export const projectInvoicedGetHandler = (
   params: Parameters<typeof projectInvoicedGet>[1],
   ctx: Parameters<typeof projectInvoicedGet>[0],
 ) => projectInvoicedGet(ctx, params)
+export const previewTotalsHandler = (
+  params: Parameters<typeof previewTotals>[1],
+  ctx: Parameters<typeof previewTotals>[0],
+) => previewTotals(ctx, params)
+export const draftFromReconcileHandler = (
+  params: Parameters<typeof draftFromReconcile>[1],
+  ctx: Parameters<typeof draftFromReconcile>[0],
+) => draftFromReconcile(ctx, params)
+export const documentAttachmentAddHandler = (
+  params: Parameters<typeof documentAttachmentAdd>[1],
+  ctx: Parameters<typeof documentAttachmentAdd>[0],
+) => documentAttachmentAdd(ctx, params)
 export const customerHistoryHandler = (
   params: Parameters<typeof customerHistory>[1],
   ctx: Parameters<typeof customerHistory>[0],

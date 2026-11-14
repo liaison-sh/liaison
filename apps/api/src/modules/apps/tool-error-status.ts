@@ -196,6 +196,16 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // belong to the card (edit refused).
   reconcile_changed: 409,
   from_reconcile_change_on_card: 409,
+  // Making a draft from a planned vs done card: the card moved on, or could not be read.
+  card_changed: 409,
+  card_unreadable: 502,
+  // Filing an annex: the invoice was sent, the file is not the caller's to read, or files are off.
+  document_sent: 409,
+  file_not_readable: 403,
+  files_unavailable: 503,
+  invalid_kind: 400,
+  invalid_project: 400,
+  nothing_billed: 422,
   hs_code_in_use: 409,
   stale_reissue_approval: 409,
   reissue_needs_second_approval: 409,

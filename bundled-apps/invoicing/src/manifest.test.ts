@@ -1720,6 +1720,8 @@ describe("invoicing manifest", () => {
     // 0.22.0: issuing a draft hands its source key, project, period and dependent rows to the
     //   invoice; billing plan, advance, activity report and annex tables; an agent's invoice_issue
     //   never auto-approves.
+    // 0.23.0: a planned vs done card previews its invoice and makes its draft with an activity
+    //   report; annexes are filed on a draft; issuing or discarding a draft withdraws its approval.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

@@ -45,3 +45,6 @@ src/issue-handover.test.ts
 src/draft-lock.test.ts
 # The projects targets invoicing may call, pinned.
 src/invoicing-cross-app-pin.test.ts
+# A draft from planned vs done, its preview, report and annexes (pure store).
+src/from-reconcile.test.ts
+src/preview-totals.test.ts

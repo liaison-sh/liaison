@@ -14,7 +14,11 @@ import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { autoApprovePolicies } from "~/db/schema/kernel"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
-import { executeTool, type ToolOrigin } from "~/modules/apps/execute-tool"
+import {
+  createHandlerApprovalRequest,
+  executeTool,
+  type ToolOrigin,
+} from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
@@ -179,5 +183,159 @@ describe("an auto-approve policy on invoicing", () => {
       SELECT status, tool_name FROM kernel.approval_requests
       WHERE id = ${String(res.blocked?.approvalRequestId)}`
     expect(req).toMatchObject({ status: "pending", tool_name: "invoicing:invoice_issue" })
+  })
+
+  const COUNTERPARTY = {
+    legal_name: "Erika Mustermann",
+    country: "DE",
+    address: "Hauptstrasse 1, 10115 Berlin",
+    email: "erika@example.com",
+    customer_kind: "individual",
+  }
+
+  /** The approval an agent's call parked on: the gate's block, or the handler's own park. */
+  function parkedId(res: Called): string | null {
+    const handler = res.data as { status?: unknown; approval_id?: unknown } | undefined
+    if (res.blocked?.approvalRequestId) return res.blocked.approvalRequestId
+    if (handler?.status === "pending_approval" && typeof handler.approval_id === "string")
+      return handler.approval_id
+    return null
+  }
+
+  async function expectWaitsForPerson(res: Called, before: number): Promise<void> {
+    expect(await issuedCount()).toBe(before)
+    const id = parkedId(res)
+    expect(id).toBeTruthy()
+    const [req] = await sql<Array<{ status: string }>>`
+      SELECT status FROM kernel.approval_requests WHERE id = ${String(id)}`
+    expect(req?.status).toBe("pending")
+  }
+
+  it("with an auto-approve policy a draft from planned vs done still waits for a person to issue it", async () => {
+    // The issue approval a draft made from a planned vs done card raises, exactly as its handler
+    // asks for it: through a cross-app hop (no person's own scopes, the in-app agent's origin),
+    // with the deciding scope of the people who issue invoices.
+    const draft = await call(
+      "drafts_create",
+      {
+        type: "invoice",
+        currency: "EUR",
+        counterparty_name: COUNTERPARTY.legal_name,
+        counterparty_country: COUNTERPARTY.country,
+        counterparty_address: COUNTERPARTY.address,
+        counterparty_email: COUNTERPARTY.email,
+        customer_kind: "individual",
+        operation_category: "services",
+        items: [
+          {
+            description: "Data export, 3 d",
+            quantity: "3",
+            unit_price_minor: 93000,
+            line_kind: "service",
+          },
+        ],
+      },
+      "human-ui",
+    )
+    const draftId = String(draft.data?.draft_id ?? "")
+    expect(draftId).not.toBe("")
+    const before = await issuedCount()
+    const parked = await createHandlerApprovalRequest({
+      orgId: ORG,
+      requestedBy: ADMIN,
+      actorScopes: [...SCOPES, "invoicing:*"],
+      defaultAppName: "invoicing",
+      origin: "in-app-agent",
+      input: {
+        tool_name: "invoicing:invoice_issue",
+        summary: "Issue the invoice draft from planned vs done",
+        current_payload: { draft_id: draftId },
+        approve_scope: "invoicing:documents:write",
+        expiry_hours: 720,
+      },
+    })
+    expect(parked.auto_approved).not.toBe(true)
+    expect(parked.approval_id).toBeTruthy()
+    const [req] = await sql<Array<{ status: string; thread_id: string | null }>>`
+      SELECT status, thread_id FROM kernel.approval_requests WHERE id = ${String(parked.approval_id)}`
+    expect(req?.status).toBe("pending")
+    // With no thread an anchor thread holds the approval.
+    expect(req?.thread_id).toBeTruthy()
+    expect(await issuedCount()).toBe(before)
+  })
+
+  it("with an auto-approve policy an agent's create-and-issue of an invoice still waits for a person", async () => {
+    const before = await issuedCount()
+    const res = await call(
+      "invoice_create_and_issue",
+      {
+        counterparty: COUNTERPARTY,
+        currency: "EUR",
+        operation_category: "services",
+        items: [
+          {
+            description: "Monitoring, 4 d",
+            quantity: "4",
+            unit_price_minor: 93000,
+            line_kind: "service",
+          },
+        ],
+      },
+      "in-app-agent",
+    )
+    await expectWaitsForPerson(res, before)
+  })
+
+  it("with an auto-approve policy an agent's credit note still waits for a person", async () => {
+    const before = await issuedCount()
+    const res = await call(
+      "credit_note_create_and_issue",
+      {
+        counterparty: COUNTERPARTY,
+        currency: "EUR",
+        operation_category: "services",
+        reason: "Monitoring billed one day too many",
+        items: [
+          {
+            description: "Monitoring, 1 d",
+            quantity: "1",
+            unit_price_minor: -93000,
+            line_kind: "service",
+          },
+        ],
+      },
+      "in-app-agent",
+    )
+    await expectWaitsForPerson(res, before)
+  })
+
+  it("with an auto-approve policy an agent's issue of a credit note draft still waits for a person", async () => {
+    const draft = await call(
+      "drafts_create",
+      {
+        type: "credit_note",
+        currency: "EUR",
+        counterparty_name: COUNTERPARTY.legal_name,
+        counterparty_country: COUNTERPARTY.country,
+        counterparty_address: COUNTERPARTY.address,
+        counterparty_email: COUNTERPARTY.email,
+        customer_kind: "individual",
+        operation_category: "services",
+        items: [
+          {
+            description: "Data export, 1 d",
+            quantity: "1",
+            unit_price_minor: -93000,
+            line_kind: "service",
+          },
+        ],
+      },
+      "human-ui",
+    )
+    const draftId = String(draft.data?.draft_id ?? "")
+    expect(draftId).not.toBe("")
+    const before = await issuedCount()
+    const res = await call("credit_note_issue", { draft_id: draftId }, "in-app-agent")
+    await expectWaitsForPerson(res, before)
   })
 })

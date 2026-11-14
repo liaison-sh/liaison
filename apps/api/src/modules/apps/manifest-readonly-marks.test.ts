@@ -302,6 +302,8 @@ const READ_ONLY: Record<string, string[]> = {
     "customer_history",
     // A project's invoiced amount, for the projects app's margin; writes nothing.
     "project_invoiced_get",
+    // A planned vs done card's invoice preview and what it lacks, for the projects app; writes nothing.
+    "preview_totals",
     // Recurring schedules and a month-end run with its rows, read as stored.
     "recurring_list",
     "recurring_run_get",

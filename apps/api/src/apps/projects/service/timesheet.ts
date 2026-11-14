@@ -65,8 +65,8 @@ function refuse(message: string, next: string): never {
 
 /**
  * The sheet of `projectId` for `month` (YYYY-MM, default this month in the org's zone).
- * Refuses `planning_off` when the project does not use time and budgets, and `not_allowed`
- * when it has no dated hours or the asker is neither its lead nor a timesheet reader.
+ * Refuses `planning_off` when the project does not use time and budgets, `dated_hours_off` when
+ * it has no dated hours, and `not_allowed` when the asker is neither its lead nor a timesheet reader.
  */
 export async function getTimesheet(args: {
   tx: Tx
@@ -89,9 +89,13 @@ export async function getTimesheet(args: {
        WHERE p.id = ${projectId}::uuid AND p.org_id = ${orgId}::uuid`),
   )[0]
   if (!head?.dated) {
-    refuse(
+    throw new ProjectsServiceError(
+      403,
+      "dated_hours_off",
       `${project.name} has no dated sheet: dated hours are off, so its time stays with each person. Nothing is shown.`,
-      "Dated hours are turned on in the project's settings; entries made before stay private.",
+      {
+        next: "Dated hours are turned on with the Dated hours switch in the project's budget panel; entries made before stay private.",
+      },
     )
   }
   if (head.owner_id !== userId && !scopes.includes(TIMESHEET_READ_SCOPE)) {

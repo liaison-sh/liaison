@@ -113,15 +113,31 @@ const Figures: Component<{ data: BudgetData }> = (props) => {
             </p>
           </Match>
           <Match when={d().money}>
-            {(m) => (
-              <dl>
-                <Row
-                  testid="budget-panel.price"
-                  label={i18n.t("projects.time.price")}
-                  value={i18n.fmtCurrency(m().price, m().currency ?? "EUR")}
-                />
-              </dl>
-            )}
+            {(m) => {
+              const out = m()
+              return (
+                <dl>
+                  {"rate" in out ? (
+                    <Row
+                      testid="budget-panel.rate"
+                      label={i18n.t("projects.time.budgetRate")}
+                      value={i18n.t(
+                        out.per === "hour"
+                          ? "projects.time.ratePerHour"
+                          : "projects.time.ratePerDay",
+                        { amount: i18n.fmtCurrency(out.rate, out.currency ?? "EUR") },
+                      )}
+                    />
+                  ) : (
+                    <Row
+                      testid="budget-panel.price"
+                      label={i18n.t("projects.time.price")}
+                      value={i18n.fmtCurrency(out.price, out.currency ?? "EUR")}
+                    />
+                  )}
+                </dl>
+              )
+            }}
           </Match>
           <Match when={true}>
             <p class="text-[12px] text-text-tertiary">{i18n.t("projects.time.noPrice")}</p>

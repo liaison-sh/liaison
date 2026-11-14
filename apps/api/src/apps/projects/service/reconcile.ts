@@ -297,6 +297,9 @@ export interface FactsTask {
   isMilestone: boolean
   plannedMinutes: number | null
   realMinutes: number
+  /** The same figures in the project's own unit ("1.5 d", "3 h"), as the card and the budget say them. */
+  planned: string | null
+  real: string
   hasEntries: boolean
   claim: { state: string; documentNumber: string | null } | null
 }
@@ -344,6 +347,9 @@ export async function reconcileFacts(args: {
     isMilestone: r.is_milestone,
     plannedMinutes: (planned.get(r.id) ?? 0) > 0 ? (planned.get(r.id) as number) : null,
     realMinutes: c.ownReal.get(r.id) ?? 0,
+    planned:
+      (planned.get(r.id) ?? 0) > 0 ? worded(planned.get(r.id) as number, c.basis, c.hpd) : null,
+    real: worded(c.ownReal.get(r.id) ?? 0, c.basis, c.hpd),
     hasEntries: c.hasEntries.has(r.id),
     claim: taskClaim.get(r.id) ?? null,
   })
@@ -419,7 +425,13 @@ export async function reconcileFacts(args: {
     },
     period: { from: c.period.from, to: c.period.to, label: c.period.label },
     terms: c.rateMinor !== null ? { rate: c.rateMinor / 100, currency: c.currency, unit } : null,
-    timebox: timeboxRow?.minutes ? { minutes: timeboxRow.minutes, source: "plan" } : null,
+    timebox: timeboxRow?.minutes
+      ? {
+          minutes: timeboxRow.minutes,
+          text: worded(timeboxRow.minutes, c.basis, c.hpd),
+          source: "plan",
+        }
+      : null,
     tasks,
     unbilledEarlier: unbilledEarlier.map(shape),
     leftOff: claims
@@ -1138,9 +1150,17 @@ function cardData(args: {
         }
       : {}),
     message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} No invoice was created.`,
-    next: "Show the person the card. They change a line by telling you or on the card; nothing is billed until they act.",
+    next: CARD_NEXT,
   }
 }
+
+/**
+ * What the model is told to do with a saved card. The card lives in this conversation (reconcile_get
+ * reopens it) and its actions are Change, Connect GitHub and Move it: it has no accept step and no
+ * invoice button, so nothing here may suggest one.
+ */
+export const CARD_NEXT =
+  "Show the person the card here: it lives in this conversation, and reconcile_get opens it again. They change a line by telling you or on the card. The card has no accept step and creates no invoice; an invoice for its lines is drafted in Invoicing."
 
 // ── reconcile_line_update and reconcile_get ─────────────────────────────────
 

@@ -3,6 +3,7 @@
 // total and the coverage line; an aside with who sees it and what it is not. No input, no grid,
 // no reminder and no list of who has not entered. A partial sheet asks once before it exports.
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
+import { ApiError } from "~/lib/api-error"
 import { runTool } from "~/lib/run-tool"
 import { getDownloadUrl } from "~/modules/files/file-service"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -42,6 +43,24 @@ function shiftMonth(month: string, by: number): string {
   const [y, m] = month.split("-").map(Number) as [number, number]
   const d = new Date(Date.UTC(y, m - 1 + by, 1))
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`
+}
+
+/** The code of a refusal, thrown (`ApiError`) or answered in the result (`{ error: { code } }`). */
+function refusalCode(failure: unknown): string | undefined {
+  if (failure instanceof ApiError) return failure.code
+  const code = (failure as { error?: { code?: unknown } } | undefined)?.error?.code
+  return typeof code === "string" ? code : undefined
+}
+
+/**
+ * Why there is no sheet, in words that say what to do: a project with dated hours off is turned
+ * on in its budget panel; a project not using time and budgets has no sheet; anyone else is not
+ * its lead or finance.
+ */
+export function noSheetKey(code: string | undefined): string {
+  if (code === "dated_hours_off") return "projects.timesheet.datedOff"
+  if (code === "planning_off") return "projects.timesheet.planningOff"
+  return "projects.timesheet.noAccess"
 }
 
 export const TimesheetView: Component<{ entityId: string }> = (props) => {
@@ -98,7 +117,7 @@ export const TimesheetView: Component<{ entityId: string }> = (props) => {
         </Match>
         <Match when={data.error || !data()?.lines}>
           <p class="text-[13px] text-text-secondary" data-testid="timesheet-view.no-access">
-            {i18n.t("projects.timesheet.noAccess")}
+            {i18n.t(noSheetKey(refusalCode(data.error ?? data())))}
           </p>
         </Match>
         <Match when={data()}>

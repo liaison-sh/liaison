@@ -61,6 +61,13 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     expect(sidebarSource).not.toContain('tr("Settings")')
   })
 
+  it("the footer opens this app's settings page for a viewer who may read them, and is plain text otherwise", () => {
+    expect(sidebarSource).toContain('SETTINGS_PATH = "/settings/apps/invoicing"')
+    expect(sidebarSource).toContain("onClick={() => navigate(SETTINGS_PATH)}")
+    expect(sidebarSource).toContain("when={access().settings_read}")
+    expect(sidebarSource).toContain('tr("Invoicing settings")')
+  })
+
   it("the New-document menu offers exactly quote, proforma and purchase order", () => {
     // Invoices come from orders or from converting a quote/proforma; credit
     // notes come from refunds. Neither can be started by hand.

@@ -102,6 +102,19 @@ export const ROWS_BYTE_BUDGET = 17_000
 /** A row draws at most this many proof links: past it the line's proof is in the stored card. */
 export const PROOF_LINKS_SHOWN = 3
 
+/**
+ * The proof a row draws, at most `links` chips. When some are left out the last chip says how
+ * many ("+2"), so a line's title never names work its chips seem not to hold.
+ */
+export function shownProof<P extends { label: string; href?: string }>(
+  proof: P[],
+  links: number,
+): Array<P | { label: string }> {
+  if (proof.length <= links) return proof
+  if (links < 2) return proof.slice(0, links)
+  return [...proof.slice(0, links - 1), { label: `+${proof.length - (links - 1)}` }]
+}
+
 type Row = { name: string; why?: string; proof: Array<{ label: string; href?: string }> } & Record<
   string,
   unknown
@@ -120,7 +133,7 @@ function fitGroups<G extends { label: string; rows: Row[] }>(groups: G[]): G[] {
       rows: g.rows.map(({ why: rowWhy, ...r }) => ({
         ...r,
         ...(name !== null ? { name: cutText(r.name, name) } : {}),
-        proof: r.proof.slice(0, links),
+        proof: shownProof(r.proof, links),
         ...(rowWhy !== undefined && why !== 0
           ? { why: why === null ? rowWhy : cutText(rowWhy, why) }
           : {}),
@@ -220,7 +233,7 @@ export function reconcileCardFields(input: CardInput) {
   if (input.late) notes.push({ text: input.late })
   if (offBill > 0) {
     notes.push({
-      text: `${offBill} line${offBill === 1 ? "" : "s"} not in the plan ${offBill === 1 ? "is" : "are"} left off the bill. None needs an answer.`,
+      text: `${offBill} line${offBill === 1 ? "" : "s"} not in the plan ${offBill === 1 ? "is" : "are"} left off the bill. Nothing is asked of you about ${offBill === 1 ? "it" : "them"}; to bill one, change its line.`,
     })
   }
   if (input.notSeen.length > 0 || fit === "nothing") notes.push({ text: NOT_EVERYTHING_SEEN })
@@ -293,7 +306,7 @@ export function reconcileCodingAgentText(args: {
     out.push(`Not seen: ${args.notSeen.map((n) => n.source).join(", ")}.`)
   }
   out.push(
-    "Nothing is billed from here. The card is saved in Liaison; creating and issuing the invoice is a click there, by you.",
+    "Nothing is billed from here. The card is saved in Liaison and has no accept or invoice step yet: an invoice for its lines is drafted in Invoicing, by you.",
   )
   if (args.link) out.push(args.link)
   return out.join("\n")

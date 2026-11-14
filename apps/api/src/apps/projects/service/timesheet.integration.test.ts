@@ -172,7 +172,8 @@ describe("the dated sheet", () => {
   it("a project without dated hours has no sheet, even for its lead", async () => {
     const plain = await newProject("Maison Delorme plain", false)
     const refused = await call("projects_timesheetGet", { projectId: plain, month: MONTH }, asLeo())
-    expect(refused.error?.code).toBe("not_allowed")
+    // Its own code, so a screen can say how the sheet is turned on rather than who may read it.
+    expect(refused.error?.code).toBe("dated_hours_off")
   })
 
   it("the sheet never calls itself a working-time record", async () => {

@@ -51,6 +51,12 @@ export interface BudgetMilestone {
   realMinutes: number
 }
 
+export interface BudgetRate {
+  rate: number
+  per: "day" | "hour"
+  currency: string | null
+}
+
 export interface BudgetResult {
   projectId: string
   projectName: string
@@ -62,7 +68,8 @@ export interface BudgetResult {
   left?: number
   partial: boolean
   coverage: Coverage
-  money?: { price: number; currency: string | null }
+  /** A fixed price, or the rate of a project billed by the day or by the hour. */
+  money?: { price: number; currency: string | null } | BudgetRate
   state?: "hours-only"
   milestones: BudgetMilestone[]
   notInNumbers: Array<{ text: string }>
@@ -314,12 +321,21 @@ export async function getBudget(args: {
   const canMoney = hasScope(MONEY_READ_SCOPE, [...scopes])
   let moneyOut: BudgetResult["money"]
   if (canMoney) {
-    const terms = extractRows<{ price: string | number | null; currency: string | null }>(
+    const terms = extractRows<{
+      price: string | number | null
+      rate: string | number | null
+      currency: string | null
+    }>(
       await tx.execute(drizzleSql`
-        SELECT fixed_price_minor AS price, currency FROM ${projectsRel("project_billing_terms")}
+        SELECT fixed_price_minor AS price, rate_minor AS rate, currency
+          FROM ${projectsRel("project_billing_terms")}
          WHERE project_id = ${projectId}::uuid AND org_id = ${orgId}::uuid`),
     )[0]
-    if (terms?.price !== null && terms?.price !== undefined) {
+    // A project billed by the day or the hour has a rate, not a price: it is shown as such.
+    const per = basis === "daily" ? "day" : basis === "hourly" ? "hour" : null
+    if (per && terms?.rate !== null && terms?.rate !== undefined) {
+      moneyOut = { rate: Number(terms.rate) / 100, per, currency: terms.currency }
+    } else if (terms?.price !== null && terms?.price !== undefined) {
       moneyOut = { price: Number(terms.price) / 100, currency: terms.currency }
     }
   }
@@ -336,7 +352,14 @@ export async function getBudget(args: {
   if (plannedLine !== null) totalsOut.push({ k: "Planned", text: fmt(plannedLine) })
   totalsOut.push({ k: "Real", text: fmt(real) })
   if (plannedLine !== null) totalsOut.push({ k: "Left", text: fmt(plannedLine - real) })
-  if (moneyOut) totalsOut.push({ k: "Price", text: money(moneyOut.price, moneyOut.currency) })
+  if (moneyOut && "rate" in moneyOut) {
+    totalsOut.push({
+      k: "Rate",
+      text: `${money(moneyOut.rate, moneyOut.currency)} a${moneyOut.per === "hour" ? "n" : ""} ${moneyOut.per}`,
+    })
+  } else if (moneyOut) {
+    totalsOut.push({ k: "Price", text: money(moneyOut.price, moneyOut.currency) })
+  }
 
   return {
     projectId,

@@ -111,7 +111,10 @@ export interface BudgetData {
   left?: number
   partial: boolean
   coverage: { withEntries: number; total: number }
-  money?: { price: number; currency: string | null }
+  /** A fixed price, or the rate of a project billed by the day or by the hour. */
+  money?:
+    | { price: number; currency: string | null }
+    | { rate: number; per: "day" | "hour"; currency: string | null }
   state?: "hours-only"
   milestones: Array<{
     id: string

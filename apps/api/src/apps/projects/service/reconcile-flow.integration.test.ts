@@ -240,6 +240,21 @@ describe("the October card of a project billed by the day", () => {
     expect(card.coverageText).toBe("Real time entered on 9 of 11 tasks")
   })
 
+  it("facts give every figure in the project's own unit beside its minutes", () => {
+    const e2 = facts.tasks.find((x: any) => x.id === t.e2)
+    expect(e2.planned).toBe("1.5 d")
+    expect(e2.real).toBe("1.5 d")
+    const e3 = facts.tasks.find((x: any) => x.id === t.e3)
+    expect(e3.planned).toBeNull()
+    expect(e3.real).toBe("1 d")
+  })
+
+  it("the card's next step names no accept step and no invoice button, which do not exist", () => {
+    expect(card.next).toContain("no accept step")
+    expect(card.next).toContain("creates no invoice")
+    expect(card.next).not.toMatch(/until they act/)
+  })
+
   it("a late ask works and says it is late", () => {
     expect(card.late).toBe(true)
     expect(card.notes[0]).toContain("October's invoice should have issued by 31 Oct.")

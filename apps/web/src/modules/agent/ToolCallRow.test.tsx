@@ -484,6 +484,19 @@ describe("ToolCallRow", () => {
       expect(screen.getByTestId("tool-rollup-summary")).toHaveTextContent("Billing did not answer")
     })
 
+    it("an app whose refused call was made again and answered did answer", () => {
+      const calls = [
+        read("r1", "kernel", "Kernel", {
+          status: "error",
+          result: null,
+        }),
+        read("r2", "kernel", "Kernel"),
+      ]
+      render(() => <TurnCalls calls={calls} />)
+      expect(screen.getByTestId("tool-rollup-title")).toHaveTextContent("Read 1 app")
+      expect(screen.getByTestId("tool-rollup").textContent).not.toContain("did not answer")
+    })
+
     it("an app with no connection is neither read nor reported as not answering", () => {
       const calls = [
         read("r1", "contacts", "Contacts"),

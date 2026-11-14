@@ -455,16 +455,18 @@ function ReadRollup(props: ToolCallGroupProps) {
   const running = () =>
     props.toolCalls.some((tc) => tc.status === "running" || tc.status === "pending")
   const apps = () => {
-    const seen: { label: string; failed: boolean }[] = []
+    // An app "did not answer" only when none of its calls got an answer. A call refused for its
+    // own arguments and then made again (the model's retry) was answered: the app is up.
+    const seen: { label: string; answered: boolean }[] = []
     for (const tc of props.toolCalls) {
       // An app with no connection was not read and did not fail: it is left out of the line.
       if (answeredNotConnected(tc)) continue
       const label = callAppLabel(tc)
       const known = seen.find((a) => a.label === label)
-      if (known) known.failed ||= toolCallFailed(tc)
-      else seen.push({ label, failed: toolCallFailed(tc) })
+      if (known) known.answered ||= !toolCallFailed(tc)
+      else seen.push({ label, answered: !toolCallFailed(tc) })
     }
-    return seen
+    return seen.map((a) => ({ label: a.label, failed: !a.answered }))
   }
   const failed = () => apps().filter((a) => a.failed)
   const title = () => {

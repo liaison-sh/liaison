@@ -16,7 +16,7 @@ import {
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { resolveToolCard } from "~/modules/apps/result-card"
 import { resultCardErrors } from "~/modules/apps/result-card-schema"
-import { type CardInput, type CardLine, reconcileCardFields } from "./reconcile-card"
+import { type CardInput, type CardLine, reconcileCardFields, shownProof } from "./reconcile-card"
 import { NOT_EVERYTHING_SEEN } from "./reconcile-lines"
 
 const HPD = 420
@@ -155,7 +155,10 @@ describe("the reconcile card", () => {
     expect(extra?.rows.map((r) => [r.name, r.why, r.cells.bill])).toEqual([
       ["Staging outage", "Our deploy took staging down.", "0 d"],
     ])
-    expect(unplanned.notes?.[0]?.text).toContain("left off the bill. None needs an answer.")
+    // The note never says "none needs an answer": a line's own why may ask for one before billing.
+    expect(unplanned.notes?.[0]?.text).toBe(
+      "1 line not in the plan is left off the bill. Nothing is asked of you about it; to bill one, change its line.",
+    )
 
     // Nothing found: no row, nothing to change, and the sentence about what was read.
     const nothing = draw({ lines: [], coverage: { withEntries: 0, total: 0 } })
@@ -228,9 +231,10 @@ describe("the reconcile card", () => {
     expect(bytes).toBeLessThan(TOOL_CARD_GROUPS_MAX_BYTES)
     // Every line is still on it, each with its own bill and something of its proof.
     expect(rows(card).every((r) => r.cells.bill === "3 d" && r.edit?.bill?.value === 3)).toBe(true)
-    // A shorter month keeps its links.
+    // A shorter month keeps its links, the last one counting the proof left out.
     const short = draw({ lines: lines.slice(0, 5) })
     expect(rows(short)[0]?.links).toHaveLength(3)
+    expect(rows(short)[0]?.links?.[2]?.label).toBe("+4")
   })
 
   it("forty lines with very long names still draw under the byte bound, each name shortened", () => {
@@ -311,5 +315,15 @@ describe("the reconcile card the web draws", () => {
     }
     // Compared as data: the file is formatted like any other JSON in the repo.
     expect(JSON.parse(readFileSync(WEB_FIXTURE, "utf8"))).toEqual(card)
+  })
+})
+
+describe("a line's proof chips", () => {
+  it("four tasks on a line show two chips and a count, never three of four as if complete", () => {
+    const four = ["T-15", "T-11", "T-13", "T-14"].map((label) => ({ label }))
+    expect(shownProof(four, 3).map((p) => p.label)).toEqual(["T-15", "T-11", "+2"])
+    expect(shownProof(four.slice(0, 3), 3).map((p) => p.label)).toEqual(["T-15", "T-11", "T-13"])
+    expect(shownProof(four, 1).map((p) => p.label)).toEqual(["T-15"])
+    expect(shownProof(four, 0)).toEqual([])
   })
 })

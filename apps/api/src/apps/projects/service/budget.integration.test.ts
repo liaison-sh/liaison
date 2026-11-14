@@ -300,6 +300,13 @@ describe("the line", () => {
     expect(dailyOut.line).toContain(`${monthName} so far 3.5 of 7 d.`)
     expect(dailyOut.timebox).toBe(7 * 420)
     expect(dailyOut.real).toBe(3.5 * 420)
+    // No price yet: no money key, so the panel says no price is set.
+    expect(dailyOut.money).toBeUndefined()
+    await call("projects_billingTermsSet", { projectId: daily, rate: 930, currency: "EUR" })
+    const rated = await call("projects_budgetGet", { projectId: daily })
+    expect(rated.money).toEqual({ rate: 930, per: "day", currency: "EUR" })
+    expect(rated.totals.find((t: any) => t.k === "Rate")?.text).toBe("€930.00 a day")
+    expect(rated.totals.find((t: any) => t.k === "Price")).toBeUndefined()
 
     const fixed = await newProject("Studio fixed")
     const fTask = await newTask(fixed, "Ship", { statusLabel: "done" })

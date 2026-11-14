@@ -101,6 +101,15 @@ describe("TimesheetView", () => {
     expect(screen.queryByTestId("timesheet-view.line")).toBeNull()
   })
 
+  it("a project with dated hours off says how the sheet is turned on, not who may read it", async () => {
+    answers.sheet = { error: { code: "dated_hours_off" } }
+    render(() => <TimesheetView entityId="p1" />)
+    const text = (await screen.findByTestId("timesheet-view.no-access")).textContent ?? ""
+    expect(text).toContain("Dated hours are off on this project")
+    expect(text).toContain("budget panel")
+    expect(text).not.toContain("Only the project's lead and finance")
+  })
+
   it("no cell is editable and lines add up to the total", async () => {
     render(() => <TimesheetView entityId="p1" />)
     await waitFor(() => expect(screen.getAllByTestId("timesheet-view.line")).toHaveLength(2))

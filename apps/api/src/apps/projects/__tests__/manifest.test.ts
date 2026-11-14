@@ -114,7 +114,9 @@ describe("projects.manifest", () => {
     // 1.34.1: merged with main: tasks record who made their last edit.
     // 1.35.0: a reconcile line no longer says whether it is in the plan; its tasks decide. The
     //   company days-off list in settings carries its heading.
-    expect(projectsManifest.version).toBe("1.35.0")
+    // 1.36.0: a day or hour-billed budget shows its rate; reconcile facts word their figures; the
+    //   card's next step and notes promise no step it lacks; a dated sheet that is off says so.
+    expect(projectsManifest.version).toBe("1.36.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

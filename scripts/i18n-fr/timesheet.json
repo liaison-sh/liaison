@@ -2,7 +2,7 @@
   "key": {
     "projects.timesheet.tab": "Heures datées",
     "projects.timesheet.loading": "Chargement de la feuille datée",
-    "projects.timesheet.noAccess": "Seuls le responsable du projet et la finance voient cette feuille, sur un projet aux heures datées.",
+    "projects.timesheet.noAccess": "Seuls le responsable du projet et la finance voient cette feuille. Le temps total du projet est dans son panneau de budget.",
     "projects.timesheet.empty": "Aucune ligne sur la feuille datée ce mois-ci.",
     "projects.timesheet.previous": "Mois précédent",
     "projects.timesheet.next": "Mois suivant",

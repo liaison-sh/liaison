@@ -11,7 +11,7 @@ The Invoicing app issues invoices, quotes, proformas, purchase orders and credit
 
 An issuer profile is the legal entity your documents are issued from. Nothing can be issued until one exists.
 
-1. Open **Settings › Invoicing › Issuer profiles**.
+1. Open **Settings › Invoicing › Issuer profiles**, or click **Invoicing settings** at the foot of the Invoicing side panel (shown to people who may read the settings).
 2. Click **+ New issuer profile**.
 3. Fill in **Legal name**, **Country** and **Default currency** (required), and optionally **VAT ID**, **IBAN** and **Default language** (`en`, `fr` or `de`).
 4. Turn **Prices include tax** on if the prices you type include tax. Match your Shopify tax setting when the profile is mapped to a shop.
@@ -102,7 +102,7 @@ For a quote linked to a Shopify draft order, this completes the draft order in S
 
 ## Work with an issued document
 
-Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quotes**, **Proformas**, **Purchase Orders**, **Credit notes**). The list footer counts the rows with the right noun ("1 invoice", "2 invoices"). The buttons at the top of a document, next to its number and status, offer:
+Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quotes**, **Proformas**, **Purchase Orders**, **Credit notes**). The list footer counts the rows with the right noun ("1 invoice", "2 invoices"). An empty list names the dates it looked at ("No documents from 1 Oct 2026 to 31 Oct 2026."), or says "No documents yet." when no date or filter is set. The buttons at the top of a document, next to its number and status, offer:
 
 | Button | What it does |
 | --- | --- |

@@ -104,8 +104,9 @@ describe("each typed form against the baseline", () => {
   // catalog per distinct typed form, so the work bound counts those scorings (a form two lines
   // type is ranked once). The CPU bound is a ratio to a fixed workload measured in this process,
   // so a slow or loaded runner does not fail it (cpu-budget.ts). Wall clock is only printed: a
-  // loaded CI runner stretches it with no change here. Today: 665 distinct forms, about 0.47 M
-  // scorings. The counter is the whole process's, so this file runs in a process of its own
+  // loaded CI runner stretches it with no change here. Today: 750 distinct forms, about 0.51 M
+  // scorings; the work bound grows with the corpus (two lines per new tool), the CPU bound does
+  // not. The counter is the whole process's, so this file runs in a process of its own
   // (test-unit-parallel.ts).
   it("ranks within its budget of tool scorings and CPU time", () => {
     const scorings = distinctForms(files.corpus).length * searchableTools(catalog).length
@@ -119,7 +120,7 @@ describe("each typed form against the baseline", () => {
     console.log(
       `tool-bench: ${Math.round(ms)} ms wall, ${Math.round(rankingCpuMs)} ms ranking CPU (${Math.round(workloadMs)} ms workload), ${scorings} scorings\n${report.lines.join("\n")}`,
     )
-    expect(scorings).toBeLessThan(500_000)
+    expect(scorings).toBeLessThan(600_000)
     expect(withinCpuBudget(rankingCpuMs, workloadMs)).toBe(true)
   })
 

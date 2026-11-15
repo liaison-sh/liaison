@@ -133,7 +133,7 @@
   },
   "kernel.companies": {
     "rows": 6,
-    "digest": "49e4672526bdbaaf"
+    "digest": "a01f4ebaa697f33d"
   },
   "kernel.config_applied_fields": {
     "rows": 8,
@@ -141,7 +141,7 @@
   },
   "kernel.contacts": {
     "rows": 7,
-    "digest": "7fb535ae7813dc1c"
+    "digest": "357467897b38fbf6"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -160,8 +160,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 359,
-    "digest": "77169cacc2352a70"
+    "rows": 372,
+    "digest": "5ce186e23ed00d4a"
   },
   "kernel.roles": {
     "rows": 32,

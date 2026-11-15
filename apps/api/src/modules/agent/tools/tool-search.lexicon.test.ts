@@ -5,7 +5,7 @@
 // conjugated away from its infinitive ("réponds", "ouvre"), or with two letters
 // of a short word swapped ("mial"). Pure: a fixture catalog, no server.
 import { describe, expect, it } from "bun:test"
-import { withoutCourtesy } from "./tool-lexicon"
+import { NAME_WORD_SYNONYMS, withoutCourtesy } from "./tool-lexicon"
 import { type TextEmbedder, type ToolMeaning, ToolMeaningIndex } from "./tool-meaning"
 import { hiddenToolAliases, rankDeferredTools, scoreDeferredTools } from "./tool-rank"
 
@@ -273,5 +273,70 @@ describe("a rate of one kind and a rate of another", () => {
         (s) => s.tool.toolName === "reconcile_line_update",
       )?.score
     expect(score("reconcile card line")).toBe(score("line reconcile card"))
+  })
+})
+
+describe("French words for advances, milestones and credit notes", () => {
+  // No tool here declares a keyword: the French word reaches the tool by its name alone.
+  const catalog: Row[] = [
+    row("billing", "invoice_issue", "Issue a draft invoice."),
+    row("billing", "invoice_create_and_issue", "Make and issue an invoice."),
+    row("billing", "documents_search", "Find invoices and quotes."),
+    row("billing", "advance_draft_create", "Draft an advance invoice on a project."),
+    row("billing", "milestone_draft_create", "Draft the invoice of a finished milestone."),
+    row("billing", "credit_note_issue", "Issue a credit note draft."),
+    row("billing", "recurring_schedule_create", "Bill a customer on a schedule.", ["retainer"]),
+    row("work", "time_plan_set", "Set a project's planned time or a fixed price."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const first = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked[0]?.tool.sdkName
+  // Words that write: a French noun for a record never stands for one of them.
+  const WRITE_WORDS = ["create", "issue", "set", "update", "send", "add", "delete", "draft"]
+
+  it("acompte, jalon and avoir reach the invoicing tools and never an English write synonym", () => {
+    expect(first("facture d'acompte de 30%")).toBe("billing__advance_draft_create")
+    expect(first("acompte")).toBe("billing__advance_draft_create")
+    expect(first("facture le jalon 2")).toBe("billing__milestone_draft_create")
+    expect(first("jalon")).toBe("billing__milestone_draft_create")
+    expect(first("avoir")).toBe("billing__credit_note_issue")
+    for (const word of ["acompte", "jalon", "avoir", "mensuel"]) {
+      const names = NAME_WORD_SYNONYMS[word] ?? NAME_WORD_SYNONYMS[`${word}s`] ?? []
+      expect(names.length).toBeGreaterThan(0)
+      expect(names.filter((n) => WRITE_WORDS.includes(n))).toEqual([])
+    }
+  })
+
+  it("a monthly forfait reads as a retainer, a forfait alone does not", () => {
+    expect(first("forfait mensuel")).toBe("billing__recurring_schedule_create")
+    expect(first("forfait")).not.toBe("billing__recurring_schedule_create")
+  })
+})
+
+describe("a name word another word qualifies", () => {
+  // The tools that should lose come first, so a tie would not pass for a lead.
+  const catalog: Row[] = [
+    row("billing", "advance_refund_prepare", "Prepare the credit note that refunds an advance."),
+    row("billing", "credit_note_from_reconcile", "Correct one billed line of a reconcile card."),
+    row("pay", "refunds_create", "Give a customer their payment back."),
+    row("work", "reconcile_propose", "Save a period's card of client lines."),
+    row("work", "reconcile_get", "A saved card again."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const listed = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked.map((s) => s.tool.sdkName)
+
+  it("a refund alone reaches refunds before the refund of an advance", () => {
+    expect(listed("refund")[0]).toBe("pay__refunds_create")
+    expect(listed("refund advance")[0]).toBe("billing__advance_refund_prepare")
+    expect(listed("rembourser l'acompte")[0]).toBe("billing__advance_refund_prepare")
+  })
+
+  it("a reconcile alone reaches the reconcile tools before a correction made from one", () => {
+    expect(listed("reconcile").slice(0, 2).sort()).toEqual([
+      "work__reconcile_get",
+      "work__reconcile_propose",
+    ])
+    expect(listed("credit note reconcile")[0]).toBe("billing__credit_note_from_reconcile")
   })
 })

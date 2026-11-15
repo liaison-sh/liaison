@@ -134,7 +134,8 @@ describe("projects.manifest", () => {
     //   overage.
     // 1.41.1: the 1.40.1 and 1.41.0 changes together; Create bills the billing contact of the
     //   project's company, and a company with none has no Create.
-    expect(projectsManifest.version).toBe("1.41.1")
+    // 1.41.2: the reconcile skill says a person creates the invoice on the card.
+    expect(projectsManifest.version).toBe("1.41.2")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
@@ -849,15 +850,16 @@ describe("projects.manifest", () => {
       }
     })
 
-    it("the reconcile skill is a playbook of the time feature with its seven rules", () => {
+    it("the reconcile skill is a playbook of the time feature with its eight rules", () => {
       const skill = skills.reconcile
       expect(skill.kind).toBe("playbook")
       expect(skill.feature).toBe("time_budgets")
       expect(skill.description.length).toBeLessThanOrEqual(100)
-      expect(skill.body.split("\n")).toHaveLength(7)
+      expect(skill.body.split("\n")).toHaveLength(8)
       expect(skill.body).toContain("Never rank, count or compare people")
       expect(skill.body).toContain("Absence of activity is never evidence of anything")
       expect(skill.body).toContain("Say what you could not see")
+      expect(skill.body).toContain("A person creates the invoice on the card; you never issue")
     })
 
     it("task_time_set takes only the person's own words in their own message", () => {

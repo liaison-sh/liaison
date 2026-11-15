@@ -251,6 +251,9 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   banque: ["transactions"],
   transaction: ["transactions"],
   avoirs: ["credit"],
+  acompte: ["advance", "deposit"],
+  jalon: ["milestone"],
+  mensuel: ["monthly"],
   taxe: ["tax", "vat"],
   tva: ["vat"],
   incident: ["incidents"],
@@ -268,11 +271,11 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
 /**
  * Synonyms that hold only beside another word. "Report" means an export only when the query also
  * names a file ("the report as a PDF"); alone ("the monthly report for the client") it asks for
- * the report itself, not for whatever exports.
+ * the report itself, not for whatever exports. A "forfait" alone is a fixed price; a monthly one
+ * ("forfait mensuel") is a retainer.
  */
-export const COMPANION_SYNONYMS: Readonly<
-  Record<string, { names: readonly string[]; withAny: readonly string[] }>
-> = {
+type Companions = Readonly<Record<string, { names: readonly string[]; withAny: readonly string[] }>>
+const ENGLISH_COMPANIONS: Companions = {
   report: {
     names: ["export"],
     withAny: [
@@ -290,11 +293,15 @@ export const COMPANION_SYNONYMS: Readonly<
     ],
   },
 }
+export const COMPANION_SYNONYMS: Companions = {
+  ...ENGLISH_COMPANIONS,
+  forfait: { names: ["retainer"], withAny: ["mensuel", "mensuelle", "monthly", "mois"] },
+}
 
 /** The English words of the lexicon: its English entries and every name word. */
 export const ENGLISH_LEXICON_WORDS: ReadonlySet<string> = new Set([
   ...Object.keys(ENGLISH_SYNONYMS),
-  ...Object.keys(COMPANION_SYNONYMS),
+  ...Object.keys(ENGLISH_COMPANIONS),
   ...Object.values(NAME_WORD_SYNONYMS).flat(),
 ])
 

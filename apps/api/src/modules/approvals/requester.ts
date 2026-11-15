@@ -11,7 +11,7 @@
 // a personal agent is "Routine {name}"; a personal agent's own turn is
 // "{Person}'s agent". A call an MCP client made with no agent row behind it (an
 // AI assistant on a connection bound to no agent; `metadata.origin` is "mcp") is
-// "{Person}'s agent" too: the person did not write it.
+// "{Person}'s coding agent": the person did not write it, and no agent of theirs did.
 // Only a person's own direct action names the person. A routine the reader
 // cannot see is still a routine: its agent, else "Routine", never the person.
 //
@@ -53,7 +53,7 @@ export function pickApprovalRequester(
     return { kind: "agent", id: agent.id, name: `${user?.name ?? "User"}'s agent` }
   }
   if (origin === "mcp") {
-    return { kind: "agent", id: requestedBy, name: `${user?.name ?? "User"}'s agent` }
+    return { kind: "agent", id: requestedBy, name: `${user?.name ?? "User"}'s coding agent` }
   }
   // An app's scheduled job raised it: the member it is filed under did not ask for it.
   if (origin === "system") {

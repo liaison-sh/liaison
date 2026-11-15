@@ -9,19 +9,26 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
-import { budgetGet, costRateSet, costRatesList, marginGet } from "~/apps/projects/handlers"
+import {
+  budgetGet,
+  costRateSet,
+  costRatesList,
+  marginGet,
+  reconcileCreateInvoice,
+  reconcilePropose,
+} from "~/apps/projects/handlers"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
-import { withRlsContext } from "~/db/rls"
+import { createRlsSession, withRlsContext } from "~/db/rls"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { dashboardSourceRefusal } from "~/modules/apps/execute-tool"
+import { dashboardSourceRefusal, executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
-import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { seedContext } from "~/seed/context"
 import {
@@ -29,6 +36,7 @@ import {
   type InvoicingDocumentSpec,
   seedInvoicingHistory,
 } from "~/seed/factories/commerce/invoicing"
+import { seedCompanies } from "~/seed/factories/people/companies"
 import { seedCostRates, seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -127,7 +135,12 @@ async function enter(
 }
 
 /** Issued documents of the invoicing app, laid by the seed factory with the project they bill. */
-async function invoices(projectId: string, docs: InvoicingDocumentSpec[]): Promise<void> {
+async function invoices(
+  projectId: string,
+  docs: InvoicingDocumentSpec[],
+  /** Added to each number, for a second call (each call numbers from 1). */
+  shift = 0,
+): Promise<void> {
   const ctx = seedContext({ orgId, now: NOW })
   const parties = new Map([[CLIENT.key, CLIENT]])
   await seedInvoicingHistory(ctx, {
@@ -139,6 +152,14 @@ async function invoices(projectId: string, docs: InvoicingDocumentSpec[]): Promi
       documents: docs.map((d) => (d.correctsKey ? d : { ...d, billingProjectId: projectId })),
       parties,
       skus: new Map(),
+    }).map((d) => {
+      if (!shift || d.numberInt === null || d.number === null) return d
+      const numberInt = d.numberInt + shift
+      return {
+        ...d,
+        numberInt,
+        number: d.number.replace(/\d{4}$/, String(numberInt).padStart(4, "0")),
+      }
     }),
     contactIdsByPartyKey: {},
   })
@@ -661,5 +682,145 @@ describe("who reads margin and cost", () => {
       expect(tool).toBeTruthy()
       expect(dashboardSourceRefusal(tool!)).toBe("it runs only in a DM with the agent")
     }
+  })
+})
+
+describe("once issued", () => {
+  const ISSUING = [
+    ...FINANCE,
+    "projects:*",
+    "invoicing:documents:read",
+    "invoicing:documents:write",
+    "invoicing:settings:read",
+    "invoicing:approve",
+  ]
+
+  /** A projects handler as the owner, one short transaction per bridge call (as the host). */
+  async function session<T = Record<string, any>>(handler: Handler, input: unknown): Promise<T> {
+    const a = actorOf(owner.userId, ISSUING)
+    const bridge = createSessionRpcBridge(
+      "projects",
+      a.userId,
+      orgId,
+      createRlsSession(a),
+      projectsAppManifest as never,
+      a.scopes,
+      "user",
+      undefined,
+      { origin: "human-ui", humanAuthorized: true } as never,
+    )
+    const out = (await handler(input, bridge as never)) as T
+    await awaitTimeRowWrites()
+    return out
+  }
+
+  /** A person's own click on Issue, for a draft whose recipient is complete. */
+  async function issue(draftId: string) {
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.documents
+         SET counterparty_name = 'Maison Delorme', counterparty_country = 'DE',
+             counterparty_address = 'Hauptstrasse 1, 10115 Berlin',
+             counterparty_email = 'billing@delorme.example', counterparty_vat_id = 'DE811907980',
+             billing_line1 = 'Hauptstrasse 1', billing_postcode = '10115', billing_city = 'Berlin',
+             billing_country_code = 'DE'
+       WHERE id = ${draftId}::uuid`)
+    const out = await executeTool<Record<string, unknown>>({
+      toolName: "invoicing:invoice_issue",
+      orgId,
+      actor: actorOf(owner.userId, ISSUING),
+      params: { draft_id: draftId },
+      origin: "human-ui",
+    })
+    expect((out.data as { status?: string } | undefined)?.status).toBe("completed")
+  }
+
+  it("a fixed price reads invoiced 44,800 and 19,200 left from issued invoices", async () => {
+    const fixed = await newProject("Maison Delorme platform")
+    await call("projects_billingTermsSet", {
+      projectId: fixed,
+      fixedPrice: 64000,
+      currency: "EUR",
+    })
+    // 35,800 issued, and a 9,000 draft that is issued below through the real issue.
+    await invoices(
+      fixed,
+      [
+        doc("m-advance", "invoice", 1_280_000, 90, { status: "paid", paymentStatus: "paid" }),
+        doc("m-discovery", "invoice", 2_300_000, 60),
+        doc("m-beta", "invoice", 900_000, null),
+      ],
+      100,
+    )
+    const before = await run(budgetGet, { projectId: fixed })
+    expect(before.money).toEqual(expect.objectContaining({ invoiced: 35800, leftToInvoice: 28200 }))
+    const draft = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM app_invoicing.documents
+         WHERE org_id = ${orgId}::uuid AND billing_project_id = ${fixed}::uuid
+           AND status = 'draft'`),
+    )[0]!
+    await issue(draft.id)
+    const out = await run(budgetGet, { projectId: fixed })
+    expect(out.error).toBeUndefined()
+    expect(out.money).toEqual({
+      price: 64000,
+      currency: "EUR",
+      invoiced: 44800,
+      leftToInvoice: 19200,
+    })
+  })
+
+  it("an hourly project's October reads 3,598, partial 9 of 11, once issued", async () => {
+    const ctx = seedContext({ orgId, now: new Date() })
+    const companies = await seedCompanies(
+      ctx,
+      actorOf(owner.userId),
+      [{ key: "lavande", name: "Maison Lavande", domain: "lavande.example" }],
+      {},
+    )
+    const made = await call<{ id: string }>("projects_createProject", {
+      name: "Maison Lavande site",
+      key: "ALPOCT",
+      companyId: companies.lavande,
+      timeBudgets: true,
+    })
+    await awaitTimeFeatureSync(orgId)
+    await call("projects_timePlanSet", { projectId: made.id, basis: "hourly" })
+    await call("projects_billingTermsSet", { projectId: made.id, rate: 257, currency: "EUR" })
+    // Eleven tasks closed in October; time on nine of them, 14 h in all.
+    const ids: string[] = []
+    for (let i = 0; i < 11; i++) {
+      const id = await newTask(made.id, `Page ${i + 1}`)
+      ids.push(id)
+      await db.execute(
+        drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-10-20 10:00+00'::timestamptz WHERE id = ${id}::uuid`,
+      )
+    }
+    await enter(
+      people[0]!.userId,
+      ids.slice(0, 9).map((taskId, i) => ({
+        projectId: made.id,
+        taskId,
+        minutes: hours(i < 5 ? 2 : 1),
+        date: "2026-10-12",
+      })),
+    )
+    const card = await session(reconcilePropose, {
+      project: "ALPOCT",
+      month: "2026-10",
+      lines: [{ name: "Site pages", taskIds: ids.slice(0, 9), proofs: [] }],
+    })
+    expect(card.error).toBeUndefined()
+    const created = await session(reconcileCreateInvoice, {
+      reconciliationId: card.reconciliationId,
+      revision: card.revision,
+    })
+    expect(created.error).toBeUndefined()
+    await issue(String(created.documentId))
+    const out = await run(marginGet, { projectId: made.id })
+    expect(out.error).toBeUndefined()
+    expect(out.invoiced).toBe(3598)
+    expect(out.partial).toBe(true)
+    expect(out.coverage).toEqual({ withEntries: 9, total: 11 })
   })
 })

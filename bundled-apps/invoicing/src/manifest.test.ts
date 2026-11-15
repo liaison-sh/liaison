@@ -1735,6 +1735,8 @@ describe("invoicing manifest", () => {
     // 0.27.0: the send carries the activity report (a PDF template of its own) and the filed
     //   annexes in one mail; approval cards name the latest issue date and a late draft; each
     //   Factur-X line states the period it covers.
+    // 0.27.1: an advance outside a billing plan is refused on a project billed by the day or
+    //   the hour.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

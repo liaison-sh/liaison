@@ -25,6 +25,7 @@ import {
 } from "~/modules/org/transfer-state/skip-moving"
 import { releaseReconciliation, SUPERSEDED } from "./claims"
 import { syncTimeBudgetsFeature, TIME_FEATURE } from "./time-feature"
+import { hoursPerDayMinutes } from "./time-plan"
 
 const log = rootLogger.child({ module: "projects/reconcile-sweep" })
 
@@ -238,11 +239,86 @@ export async function documentsForRef(orgId: string, ref: string): Promise<RefDo
   })
 }
 
+type SweepTx = { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown> }
+
+/**
+ * Partial credits: an invoiced reconciliation whose invoice credit notes took back in part gets,
+ * on each line those notes name (`reconcile_line:<lineId>`), the figure it still bills: the
+ * invoice line's quantity less every counting credit note's, in minutes of the card's unit. The
+ * same figure invoicing hands projects after a partial credit; this settles it when that
+ * call was lost. Compare-and-set: a line already at its figure is not written.
+ */
+async function settlePartialCredits(
+  tx: SweepTx,
+  D: ReturnType<typeof drizzleSql.raw>,
+  notMoving: (col: ReturnType<typeof drizzleSql.raw>) => ReturnType<typeof drizzleSql>,
+): Promise<number> {
+  const LINES = drizzleSql.raw(`${schemaRef("app_invoicing")}.document_lines`)
+  const rows = extractRows<{
+    org_id: string
+    line_id: string
+    basis: string
+    hpd: number | null
+    bill_minutes: number
+    billed: string
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT r.org_id::text AS org_id, l.id::text AS line_id, r.basis,
+             r.create_hours_per_day_minutes AS hpd, l.bill_minutes,
+             (il.quantity - cl.quantity)::text AS billed
+        FROM ${projectsRel("reconciliations")} r
+        JOIN ${D} d ON d.org_id = r.org_id AND d.external_ref = r.document_ref
+         AND d.type <> 'credit_note' AND d.status IN ('issued', 'paid', 'overdue')
+        JOIN ${projectsRel("reconciliation_lines")} l
+          ON l.reconciliation_id = r.id AND l.org_id = r.org_id
+        JOIN LATERAL (
+          SELECT sum(abs(x.quantity)) AS quantity FROM ${LINES} x
+           WHERE x.document_id = d.id AND x.external_id = 'reconcile_line:' || l.id::text
+        ) il ON il.quantity IS NOT NULL
+        JOIN LATERAL (
+          SELECT sum(abs(x.quantity)) AS quantity
+            FROM ${D} cn JOIN ${LINES} x ON x.document_id = cn.id
+           WHERE cn.org_id = d.org_id AND cn.type = 'credit_note'
+             AND cn.original_document_id = d.id AND ${CREDIT_COUNTS}
+             AND x.external_id = 'reconcile_line:' || l.id::text
+        ) cl ON cl.quantity IS NOT NULL
+       WHERE r.state = 'invoiced'
+         AND ${notMoving(drizzleSql.raw("r.org_id"))}`),
+  )
+  let lines = 0
+  const hpdOf = new Map<string, number>()
+  for (const row of rows) {
+    let per = 60
+    if (row.basis === "daily") {
+      if (row.hpd !== null) per = row.hpd
+      else {
+        if (!hpdOf.has(row.org_id)) {
+          hpdOf.set(row.org_id, await hoursPerDayMinutes(tx as never, row.org_id))
+        }
+        per = hpdOf.get(row.org_id)!
+      }
+    }
+    const billedMinutes = Math.max(0, Math.round(Number(row.billed) * per))
+    const figure = Math.min(row.bill_minutes, billedMinutes)
+    lines += extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        UPDATE ${projectsRel("reconciliation_lines")}
+           SET billed_after_credit_minutes = ${figure}, updated_at = now()
+         WHERE id = ${row.line_id}::uuid AND org_id = ${row.org_id}::uuid
+           AND billed_after_credit_minutes IS DISTINCT FROM ${figure}
+        RETURNING id::text AS id`),
+    ).length
+  }
+  return lines
+}
+
 /**
  * Claims follow their reconciliation's key, in one write and in this order:
  * 1. a reserved claim is billed once an issued invoice carries the key (a draft never flips it);
  * 2. a drafted reconciliation whose invoice is issued is invoiced;
  * 3. an invoice credit notes took back whole frees its claims (credited) and its reconciliation;
+ *    one they took back in part records each corrected line's billed-after-credit figure, from
+ *    the credit notes' `reconcile_line:<lineId>` lines (the claims stay billed);
  * 4. a reservation an hour old is released only when no document carries the key in any state,
  *    with its reconciliation's left-off claims, and a drafted reconciliation is proposed again.
  */
@@ -250,6 +326,7 @@ export async function sweepClaims(): Promise<{
   billed: number
   invoiced: number
   credited: number
+  partlyCredited: number
   released: number
 }> {
   // The cards a release gave back their month: each comes back in its thread once the write is in.
@@ -264,6 +341,7 @@ export async function sweepClaims(): Promise<{
       let billed = 0
       let invoiced = 0
       let credited = 0
+      let partlyCredited = 0
       if (docs) {
         const D = drizzleSql.raw(docs)
         billed = extractRows<{ id: string }>(
@@ -318,6 +396,7 @@ export async function sweepClaims(): Promise<{
              WHERE id = ${w.id}::uuid AND org_id = ${w.org_id}::uuid
                AND state IN ('drafted', 'invoiced')`)
         }
+        partlyCredited = await settlePartialCredits(tx, D, notMoving)
       }
       const carried = docs
         ? drizzleSql`EXISTS (
@@ -363,7 +442,7 @@ export async function sweepClaims(): Promise<{
              SELECT 1 FROM ${projectsRel("billing_claims")} c
               WHERE c.org_id = r.org_id AND c.reconciliation_id = r.id
                 AND c.state IN ('reserved', 'billed'))`)
-      return { billed, invoiced, credited, released: freed.length }
+      return { billed, invoiced, credited, partlyCredited, released: freed.length }
     }),
   )
   for (const r of proposedAgain) {

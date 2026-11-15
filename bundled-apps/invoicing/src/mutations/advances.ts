@@ -12,6 +12,7 @@ import {
   advanceRemaining,
   draftTotals,
   raiseIssueApproval,
+  readMilestones,
   recipientOfQuote,
   refuse,
   shortDate,
@@ -88,6 +89,17 @@ export async function advanceDraftCreate(
       "invalid_amount",
       "An advance needs a positive amountMinor (excl. VAT), or the plan step it bills. Nothing was drafted.",
     )
+
+  // A project billed by the day or the hour bills its work from planned vs done, which deducts
+  // no advance: an advance outside a billing plan there would be paid twice.
+  if (!step) {
+    const read = await readMilestones(ctx, projectId, [])
+    if (read && (read.basis === "daily" || read.basis === "hourly"))
+      return refuse(
+        "advance_on_rate_project",
+        `This project is billed by the ${read.basis === "daily" ? "day" : "hour"} from planned vs done, which deducts no advance, so no advance was drafted. To take an advance and deduct it, bill the project from a billing plan (billing_plan_set with an advance step and a final); otherwise invoice the work done as it is reconciled.`,
+      )
+  }
 
   const key = step
     ? `advance:${String(step.id)}`

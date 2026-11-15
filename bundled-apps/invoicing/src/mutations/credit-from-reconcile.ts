@@ -222,7 +222,9 @@ async function assess(
       position: 1,
       description: `${String(invoiceLine.description ?? line.wording)}: corrected from ${words(billedH)} to ${words(correctedH)}`,
       quantity: fromHundredths(billedH - correctedH),
-      unit_price_minor: -BigInt(String(invoiceLine.unit_price_minor ?? 0)),
+      // A number, as every caller of the credit-note path passes it: the line goes through the
+      // sandbox's JSON bridge, which carries no BigInt.
+      unit_price_minor: -Number(String(invoiceLine.unit_price_minor ?? 0)),
       line_kind: "service",
       tax_rate_bp_override: Number(invoiceLine.tax_rate_bp ?? 0),
       external_id: `reconcile_line:${lineId}`,

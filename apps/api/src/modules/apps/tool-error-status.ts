@@ -231,6 +231,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   not_done: 409,
   nothing_to_refund: 409,
   plan_on_rate_project: 409,
+  advance_on_rate_project: 409,
   plan_total_mismatch: 422,
   project_unreadable: 502,
   quote_not_found: 404,

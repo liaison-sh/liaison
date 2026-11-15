@@ -18,6 +18,14 @@
       "reply": "[]"
     },
     {
+      "method": "executeTool",
+      "args": [
+        "projects:milestone_status_read",
+        "{\"projectId\":\"7a000000-0000-4000-8000-00000000b1a1\",\"taskIds\":[]}"
+      ],
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"not_found\",\"message\":\"No project 7a000000-0000-4000-8000-00000000b1a1 you can read. Nothing was read.\",\"retryable\":false}}"
+    },
+    {
       "method": "db_findMany",
       "args": [
         "documents",

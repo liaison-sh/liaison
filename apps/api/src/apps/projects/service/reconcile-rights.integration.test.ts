@@ -228,7 +228,8 @@ describe("what a reconcile reads through", () => {
       expect(text).not.toMatch(/executeTool|callTool|ctx\.call/)
     }
     // Anywhere in the projects app and its bridge, the tools of another app it calls are named as
-    // literals: the invoiced amount its money half reads, and the card's preview, draft and Undo.
+    // literals: the invoiced amount its money half reads, the card's preview, draft and Undo, and
+    // the month's timesheet filed on the draft.
     const walk = (dir: string): string[] =>
       readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
         e.isDirectory()
@@ -250,6 +251,7 @@ describe("what a reconcile reads through", () => {
       if (f.includes("/apps/projects/")) expect(importsExecuteTool(text)).toBe(false)
     }
     expect([...new Set(toolCalls)].sort()).toEqual([
+      'apps/projects/handlers.ts: "invoicing:document_attachment_add"',
       'apps/projects/handlers.ts: "invoicing:draft_from_reconcile"',
       'apps/projects/handlers.ts: "invoicing:preview_totals"',
       'apps/projects/handlers.ts: "invoicing:project_invoiced_get"',

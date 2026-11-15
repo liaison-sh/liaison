@@ -139,8 +139,11 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     await expect(panel).toBeVisible(SEE)
     await expect(panel.getByTestId("sourced-draft-badge")).toHaveText("From planned vs done")
     await expect(panel.getByTestId("sourced-draft-no-number")).toBeVisible()
+    // The draft's page shows what it charges before it issues (no VAT to a customer outside the EU).
+    await expect(page.getByTestId("document-subtotal")).toContainText(/6.510\.00/)
+    await expect(page.getByTestId("document-grand-total")).toContainText(/6.510\.00/)
     const issue = panel.getByTestId("sourced-draft-issue")
-    await expect(issue).toHaveText(/^Issue, .*6.510\.00 EUR excl\. VAT$/)
+    await expect(issue).toHaveText(/^Issue, .*6.510\.00 EUR$/)
     await issue.click()
 
     await expect

@@ -142,3 +142,16 @@ export function treatmentWords(
       return "issuer country has no tax rules, no tax computed"
   }
 }
+
+/**
+ * What net lines charge for a recipient, as a card is priced: the issuer's country, the
+ * recipient's tax country and VAT number. A draft's page shows its totals the same way.
+ */
+export function netLinesTotals(input: {
+  issuerCountry: string | null | undefined
+  taxCountry: string | null | undefined
+  hasVatId: boolean
+  lines: TaxPlanLine[]
+}): TaxPlan {
+  return planTax({ ...input, pricesIncludeTax: false, linesAreNet: true })
+}

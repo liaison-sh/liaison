@@ -806,7 +806,7 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
 
       {/* Totals — right-aligned summary, grand total emphasised. */}
       <div class="ml-auto w-full max-w-xs flex-col gap-1.5">
-        <div class="flex items-center justify-between py-1">
+        <div class="flex items-center justify-between py-1" data-testid="document-subtotal">
           <span class="text-text-secondary">{tr("Subtotal")}</span>
           <Money
             minor={p.doc.subtotal_minor}
@@ -814,7 +814,7 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
             class="text-text-secondary"
           />
         </div>
-        <div class="flex items-center justify-between py-1">
+        <div class="flex items-center justify-between py-1" data-testid="document-tax">
           <span class="text-text-secondary">{tr("Tax")}</span>
           <Money
             minor={p.doc.tax_total_minor}
@@ -822,7 +822,10 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
             class="text-text-secondary"
           />
         </div>
-        <div class="mt-1 flex items-center justify-between border-t border-border pt-2">
+        <div
+          class="mt-1 flex items-center justify-between border-t border-border pt-2"
+          data-testid="document-grand-total"
+        >
           <span class="font-medium text-text">{tr("Grand total")}</span>
           <Money
             minor={p.doc.grand_total_minor}

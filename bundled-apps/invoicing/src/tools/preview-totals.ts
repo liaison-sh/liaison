@@ -12,7 +12,7 @@ import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
 import { retainerPlan, retainerScheduleOf } from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
 import { recipientOf } from "../recipient"
-import { planTax } from "../tax-plan"
+import { netLinesTotals } from "../tax-plan"
 
 /** What can keep a card from making an invoice. */
 export type PreviewMissing =
@@ -192,13 +192,11 @@ export async function previewTotals(
         quantity: lineQuantity(m, unit, hpd ?? 60),
         unit_price_minor: BigInt(rateMinor),
       }))
-    const plan = planTax({
+    const plan = netLinesTotals({
       issuerCountry: issuer.issuer.country,
-      pricesIncludeTax: false,
       taxCountry: recipient?.counterparty_country ?? null,
       hasVatId: !!recipient?.counterparty_vat_id,
       lines,
-      linesAreNet: true,
     })
     excl = Number(plan.subtotal_minor)
     vat = Number(plan.tax_minor)
@@ -264,13 +262,11 @@ async function retainerPreview(
     overageMinutes = plan.fig.overageMinutes
     const recipient =
       companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
-    const tax = planTax({
+    const tax = netLinesTotals({
       issuerCountry: issuer.issuer.country,
-      pricesIncludeTax: false,
       taxCountry: recipient?.counterparty_country ?? null,
       hasVatId: !!recipient?.counterparty_vat_id,
       lines: plan.items as never,
-      linesAreNet: true,
     })
     excl = Number(tax.subtotal_minor)
     vat = Number(tax.tax_minor)

@@ -595,6 +595,48 @@ describe("documentsGet (E5)", () => {
     expect(String(result!.grand_total_minor)).toBe("12000")
   })
 
+  // A draft stores no totals until it issues: its page shows what it would charge, priced as
+  // preview_totals prices a card (the issuer's country, the recipient's country and VAT number).
+  test("a draft with no stored totals shows what its lines would charge", async () => {
+    const draft = {
+      ...sampleDocs[0],
+      number: null,
+      status: "draft",
+      issued_at: null,
+      counterparty_country: "FR",
+      counterparty_vat_id: null,
+      subtotal_minor: "0",
+      tax_total_minor: "0",
+      grand_total_minor: "0",
+    }
+    const line = (id: string, position: number, unit: string, quantity: string) => ({
+      id,
+      document_id: draft.id,
+      position,
+      description: "Consulting",
+      quantity,
+      unit_price_minor: unit,
+      tax_rate_bp: null,
+      subtotal_minor: String(Number(unit) * Number(quantity)),
+      tax_minor: "0",
+      total_minor: String(Number(unit) * Number(quantity)),
+    })
+    const { ctx } = makeCtx({
+      documents: [draft],
+      document_lines: [line("l1", 1, "93000", "3"), line("l2", 2, "93000", "4")],
+      issuer_profiles: [{ id: "issuer-1", country: "FR", is_default: true }],
+    })
+    const result = await documentsGet(ctx, { id: draft.id as string })
+    expect(String(result?.subtotal_minor)).toBe("651000")
+    expect(String(result?.tax_total_minor)).toBe("130200")
+    expect(String(result?.grand_total_minor)).toBe("781200")
+    // An issued document keeps the totals it issued at.
+    const issued = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, {
+      id: "00000000-0000-4000-8000-000000000001",
+    })
+    expect(String(issued?.grand_total_minor)).toBe("12000")
+  })
+
   // red: drop the po_number field from toDocumentHeader -> documents_get can no longer show
   // an operator where a document's PO reference came from without a raw DB query.
   test("returns po_number", async () => {

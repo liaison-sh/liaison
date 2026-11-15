@@ -79,8 +79,8 @@ export function isApproved(doc: Pick<SourcedDocument, "approved_by">): boolean {
 }
 
 /**
- * The amount a button names: the document's total once it has one; a draft's total is worked out
- * when it issues, so until then its lines' sum, said excluding VAT.
+ * The amount a button names: the document's total once it has one (a draft's, as documents_get
+ * works it out from its lines); with none, its lines' sum, said excluding VAT.
  */
 export function shownAmount(doc: SourcedDocument, lines: SourcedLine[]): string {
   const total = BigInt(String(doc.grand_total_minor ?? "0"))

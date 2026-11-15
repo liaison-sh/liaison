@@ -1745,7 +1745,8 @@ describe("invoicing manifest", () => {
     //   a month credited in full is drafted again; a retainer repeats every month.
     // 0.29.0: a Pending Approval tab lists the waiting requests and opens each one's document;
     //   a retainer card's preview says the month's hours above the retainer; a billing plan tab.
-    // 0.29.1: the 0.28.1 and 0.29.0 changes together.
+    // 0.29.1: the 0.28.1 and 0.29.0 changes together; documents_get gives a draft the totals its
+    //   lines would charge, priced as preview_totals prices a card.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

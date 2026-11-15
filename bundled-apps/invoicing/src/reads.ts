@@ -26,6 +26,7 @@ import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date
 import { deliveryFileId } from "./legal-originals/delivery"
 import { type AnnexListing, annexListing } from "./mutations/send-annexes"
 import { toBigInt } from "./mutations/shared"
+import { netLinesTotals } from "./tax-plan"
 
 export interface DocumentHeader {
   id: string
@@ -986,6 +987,44 @@ function textOrNull(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null
 }
 
+/**
+ * A draft's totals: it stores none until it issues, so its page shows what its lines would charge,
+ * priced as preview_totals prices a card. Any other document, or a draft that stores its totals,
+ * keeps its own. Null when there is nothing to work out.
+ */
+async function draftTotals(
+  db: ReadsDb,
+  doc: Record<string, unknown>,
+  lines: Array<Record<string, unknown>>,
+): Promise<{ subtotal_minor: string; tax_total_minor: string; grand_total_minor: string } | null> {
+  if (doc.status !== "draft" || lines.length === 0) return null
+  if (String(doc.grand_total_minor ?? "0") !== "0") return null
+  // The draft's issuer, else the org's only one (as a draft without one issues).
+  const id = textOrNull(doc.issuer_profile_id)
+  const profiles = (await db.findMany("issuer_profiles", {
+    ...(id ? { where: { id } } : {}),
+    limit: 2,
+  })) as Array<Record<string, unknown>>
+  const country = profiles.length === 1 ? textOrNull(profiles[0]?.country) : null
+  if (!country) return null
+  const plan = netLinesTotals({
+    issuerCountry: country,
+    taxCountry: textOrNull(doc.counterparty_country),
+    hasVatId: !!textOrNull(doc.counterparty_vat_id),
+    lines: lines.map((l) => ({
+      quantity: l.quantity,
+      unit_price_minor: l.unit_price_minor,
+      discount_minor: l.discount_minor,
+      ...(l.tax_rate_bp != null ? { tax_rate_bp_override: Number(l.tax_rate_bp) } : {}),
+    })),
+  })
+  return {
+    subtotal_minor: String(plan.subtotal_minor),
+    tax_total_minor: String(plan.tax_minor),
+    grand_total_minor: String(plan.total_minor),
+  }
+}
+
 export async function documentsGet(
   ctx: ReadsCtx,
   input: { id: string },
@@ -1000,11 +1039,17 @@ export async function documentsGet(
     limit: 1000,
   })
   const header = toDocumentHeader(doc)
+  const drafted = await draftTotals(ctx.db, doc, lineRows as Array<Record<string, unknown>>)
   return {
     ...header,
+    ...(drafted ? { grand_total_minor: drafted.grand_total_minor as unknown as bigint } : {}),
     billing_project_id: textOrNull(doc.billing_project_id),
-    subtotal_minor: String(doc.subtotal_minor ?? "0") as unknown as bigint,
-    tax_total_minor: String(doc.tax_total_minor ?? "0") as unknown as bigint,
+    subtotal_minor: String(
+      drafted?.subtotal_minor ?? doc.subtotal_minor ?? "0",
+    ) as unknown as bigint,
+    tax_total_minor: String(
+      drafted?.tax_total_minor ?? doc.tax_total_minor ?? "0",
+    ) as unknown as bigint,
     tax_treatment: (doc.tax_treatment as string | null) ?? null,
     incoterm: String(doc.incoterm ?? "DAP"),
     issuer_profile_id: String(doc.issuer_profile_id ?? ""),

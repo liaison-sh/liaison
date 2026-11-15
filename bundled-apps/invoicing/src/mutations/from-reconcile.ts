@@ -108,6 +108,18 @@ const MISSING_REFUSAL: Record<string, [string, string]> = {
     "counterparty_mismatch",
     "the invoice's customer is not the project's company, so no draft was made.",
   ],
+  billing_address: [
+    "billing_address_missing",
+    "the customer has no billing address, so no draft was made. Add it to the customer, then press Create invoice again.",
+  ],
+  email: [
+    "customer_email_missing",
+    "the customer has no email address, so no draft was made. Add it to the customer, then press Create invoice again.",
+  ],
+  siren: [
+    "siren_missing",
+    "the customer has no SIREN, so no draft was made. Add it to the customer, then press Create invoice again.",
+  ],
   basis: [
     "basis_not_billable",
     "this project bills by a fixed price or a billing plan, not from planned vs done, so no draft was made.",

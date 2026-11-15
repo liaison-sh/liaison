@@ -66,6 +66,7 @@ let compta = ""
 let solo = ""
 let seule = ""
 let vide = ""
+let nue = ""
 
 function actorOf(userId: string, scopes: string[]): UserContext {
   return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
@@ -276,6 +277,24 @@ const issuerProfileId = () =>
       SELECT id::text AS id FROM app_invoicing.issuer_profiles WHERE org_id = ${orgId}::uuid LIMIT 1`)
     .then((r) => String(extractRows<{ id: string }>(r)[0]?.id))
 
+/** A buyer's registry identity (its SIREN), as a registry check records it. */
+async function registryIdentity(contactId: string, siren: string, name: string) {
+  await insertAppRow(db as never, "invoicing", "counterparty_identities", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    contact_id: contactId,
+    customer_kind: "business",
+    siren,
+    registry_name: name,
+    registry_country_code: "FR",
+    registry_status: "A",
+    registry_checked_at: "2026-10-01",
+    source: "registry",
+    confirmed_via: "auto",
+    changed_at: "2026-10-01",
+  })
+}
+
 /** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
 async function retainerSchedule(projectId: string): Promise<string> {
   const id = crypto.randomUUID()
@@ -342,6 +361,7 @@ beforeAll(async () => {
       { key: "marc", email: "marc@delorme.example", name: "Marc Delorme" },
       { key: "compta", email: "compta@delorme.example", name: "Delorme accounts" },
       { key: "solo", email: "solo@seule.example", name: "Sacha Seule" },
+      { key: "nue", email: "nadia@nue.example", name: "Nadia Nue" },
     ]),
   )
   const idOf = (key: string) => people.get(key)!.id
@@ -361,12 +381,14 @@ beforeAll(async () => {
       { key: "autre", name: "Maison Autre", domain: "autre.example", contactKeys: ["erika"] },
       { key: "seule", name: "Maison Seule", domain: "seule.example", contactKeys: ["solo"] },
       { key: "vide", name: "Maison Vide", domain: "vide.example" },
+      { key: "nue", name: "Maison Nue", domain: "nue.example", contactKeys: ["nue"] },
     ],
-    { erika, marc: idOf("marc"), compta, solo },
+    { erika, marc: idOf("marc"), compta, solo, nue: idOf("nue") },
   )
   delorme = companies.delorme!
   seule = companies.seule!
   vide = companies.vide!
+  nue = companies.nue!
   // Delorme's accounts desk has the billing address; Maison Seule's one person is its main contact.
   await asUser(actorOf(owner.userId, ["*"]), (tx) =>
     addAddress(tx as never, {
@@ -382,8 +404,26 @@ beforeAll(async () => {
       },
     }),
   )
+  // Maison Seule's one person has an address that is not marked billing.
+  await asUser(actorOf(owner.userId, ["*"]), (tx) =>
+    addAddress(tx as never, {
+      orgId,
+      userId: owner.userId,
+      contactId: solo,
+      fields: {
+        role: "other",
+        street1: "9 quai Seul",
+        postalCode: "13002",
+        city: "Marseille",
+        countryIso2: "FR",
+      },
+    }),
+  )
   await db.execute(
     drizzleSql`UPDATE kernel.companies SET main_contact_id = ${solo}::uuid WHERE id = ${seule}::uuid`,
+  )
+  await db.execute(
+    drizzleSql`UPDATE kernel.companies SET main_contact_id = ${idOf("nue")}::uuid WHERE id = ${nue}::uuid`,
   )
   const issuer = await invoicing(
     "settings_issuer_profile_create",
@@ -400,6 +440,8 @@ beforeAll(async () => {
   if (!(issuer.data as { id?: string } | undefined)?.id) {
     throw new Error(`no issuer profile: ${JSON.stringify(issuer)}`)
   }
+  await registryIdentity(compta, "900000001", "MAISON DELORME")
+  await registryIdentity(solo, "900000019", "MAISON SEULE")
 }, 300_000)
 
 afterAll(async () => {
@@ -665,6 +707,17 @@ describe("what Create refuses", () => {
           FROM app_invoicing.documents WHERE id = ${out.documentId}::uuid`),
     )
     expect(doc?.contact).toBe(solo)
+  })
+
+  it("a customer with no billing address and no SIREN has no Create, and Create names both and creates nothing", async () => {
+    const p = await october({ company: nue })
+    expect(p.card.createInvoice ?? null).toBeNull()
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("billing_address_missing")
+    expect(out.error?.message).toContain("the customer's billing address")
+    expect(out.error?.message).toContain("the customer's SIREN")
+    expect(await docsOf(p.projectId)).toEqual([])
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
 
   it("a company with no billing contact has no Create, says to set one, and Create creates nothing", async () => {
@@ -990,24 +1043,6 @@ describe("after the draft", () => {
 
 describe("issuing the card's draft", () => {
   it("a person issuing the draft from its approval marks the card invoiced and bills every claim on the invoice", async () => {
-    // The buyer's registry identity, so the e-invoice gate lets the issue through.
-    await insertAppRow(db as never, "invoicing", "counterparty_identities", {
-      id: crypto.randomUUID(),
-      org_id: orgId,
-      contact_id: compta,
-      customer_kind: "business",
-      siren: "900000001",
-      registry_name: "MAISON DELORME",
-      registry_line1: "4 rue des Lilas",
-      registry_postcode: "69002",
-      registry_city: "Lyon",
-      registry_country_code: "FR",
-      registry_status: "A",
-      registry_checked_at: "2026-10-01",
-      source: "registry",
-      confirmed_via: "auto",
-      changed_at: "2026-10-01",
-    })
     const p = await october()
     const out = await create(p.card)
     expect(out.error).toBeUndefined()

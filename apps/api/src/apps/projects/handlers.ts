@@ -1558,6 +1558,9 @@ const MISSING_SAID: Record<string, string> = {
   counterparty_mismatch: "a contact of the project's own company",
   billing_contact: "a billing contact on the project's company",
   retainer: "the project's retainer on its recurring schedule in Invoicing",
+  billing_address: "the customer's billing address",
+  email: "the customer's email address",
+  siren: "the customer's SIREN",
 }
 
 /** The refusal code Create answers for the first thing missing. */
@@ -1570,6 +1573,9 @@ const MISSING_CODE: Record<string, string> = {
   billing_contact: "billing_contact_missing",
   basis: "basis_not_billable",
   retainer: "no_retainer_schedule",
+  billing_address: "billing_address_missing",
+  email: "customer_email_missing",
+  siren: "siren_missing",
 }
 
 type CardResult = Record<string, unknown> & {

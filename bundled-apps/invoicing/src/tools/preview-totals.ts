@@ -7,11 +7,13 @@
 // before anyone presses Create. Nothing is written.
 
 import type { CrossAppExecuteTool } from "../cross-app"
+import { prepareEinvoiceGate } from "../einvoicing/issue-gate"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
+import { counterpartyFromRow } from "../mutations/lines"
 import { retainerPlan, retainerScheduleOf } from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
-import { recipientOf } from "../recipient"
+import { type Recipient, recipientOf } from "../recipient"
 import { netLinesTotals } from "../tax-plan"
 
 /** What can keep a card from making an invoice. */
@@ -23,6 +25,9 @@ export type PreviewMissing =
   | "counterparty_mismatch"
   | "basis"
   | "retainer"
+  | "billing_address"
+  | "email"
+  | "siren"
 
 export interface PreviewTotalsInput {
   projectId?: string
@@ -83,6 +88,72 @@ const WHAT_TO_SET: Record<PreviewMissing, string> = {
     "a contact of the project's own company (the contact named belongs to another one)",
   basis: "nothing: this project bills by a fixed price or a billing plan, not from planned vs done",
   retainer: "the project's retainer on its recurring schedule in invoicing",
+  billing_address: "the customer's billing address",
+  email: "the customer's email address",
+  siren: "the customer's SIREN",
+}
+
+const blank = (v: unknown) => typeof v !== "string" || v.trim() === ""
+
+/**
+ * What the customer lacks for its invoice to issue, checked as the issue checks it: a postal
+ * address and an email on the recipient, and what the e-invoice gate refuses without (a French
+ * business's SIREN, its structured billing address). Read only.
+ */
+async function recipientGaps(
+  ctx: PreviewTotalsCtx,
+  issuer: { country: string; vat_id?: string | null; vat_on_debits_default?: boolean | null },
+  contactId: string | null,
+  recipient: Recipient,
+): Promise<PreviewMissing[]> {
+  const gaps = new Set<PreviewMissing>()
+  if (blank(recipient.counterparty_address) || blank(recipient.counterparty_country))
+    gaps.add("billing_address")
+  if (blank(recipient.counterparty_email)) gaps.add("email")
+  const counterparty = counterpartyFromRow(
+    {
+      counterparty_contact_id: contactId,
+      counterparty_name: recipient.counterparty_name,
+      counterparty_address: recipient.counterparty_address,
+      counterparty_country: recipient.counterparty_country,
+      counterparty_vat_id: recipient.counterparty_vat_id,
+      counterparty_email: recipient.counterparty_email,
+    },
+    issuer,
+  )
+  const kinds = ["business", "individual", "public_entity", "non_registered_entity"] as const
+  const kind = kinds.find((k) => k === recipient.customer_kind) ?? null
+  const prepared = await prepareEinvoiceGate(
+    ctx as never,
+    {
+      type: "invoice",
+      issuer: {
+        country: issuer.country,
+        vat_id: issuer.vat_id ?? null,
+        vat_on_debits_default: issuer.vat_on_debits_default ?? null,
+      },
+      counterparty: {
+        ...counterparty,
+        customer_kind: kind,
+        billing_line1: recipient.billing_line1,
+        billing_line2: recipient.billing_line2,
+        billing_postcode: recipient.billing_postcode,
+        billing_city: recipient.billing_city,
+        billing_country_code: recipient.billing_country_code,
+      },
+      lines: [{ line_kind: "service" }],
+      operation_category: "services",
+    },
+    { materialise: false },
+  )
+  const refusal = prepared.evaluation.refusal
+  if (refusal && refusal.mode === "enforce") {
+    for (const m of refusal.missing) {
+      if (m.field.startsWith("buyer_sir")) gaps.add("siren")
+      else if (m.field.startsWith("billing_")) gaps.add("billing_address")
+    }
+  }
+  return [...gaps]
 }
 
 /** The unit a basis bills its lines in. */
@@ -202,6 +273,9 @@ export async function previewTotals(
     vat = Number(plan.tax_minor)
     incl = Number(plan.total_minor)
     rateBp = plan.rate_bp
+    // Only once the invoice has its contact: without one, setting the contact comes first.
+    if (recipient && contactId && missing.length === 0)
+      missing.push(...(await recipientGaps(ctx, issuer.issuer, contactId, recipient)))
   }
   const ready = missing.length === 0
   const message = ready

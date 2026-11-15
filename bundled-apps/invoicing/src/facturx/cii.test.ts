@@ -319,7 +319,7 @@ describe("an invoice made from planned vs done", () => {
     )?.[0]
     expect(att?.name).toBe("factur-x.xml")
     const xml = Buffer.from(String(att?.bytesBase64), "base64").toString("utf8")
-    expect(xml).toContain("<ram:ID>S1</ram:ID>")
+    expect(xml).toContain(`<ram:ID>${businessProcessCode("services", "due")}</ram:ID>`)
     const period =
       '<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">20261001</udt:DateTimeString></ram:StartDateTime>' +
       '<ram:EndDateTime><udt:DateTimeString format="102">20261031</udt:DateTimeString></ram:EndDateTime></ram:BillingSpecifiedPeriod>'

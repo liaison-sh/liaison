@@ -5,7 +5,7 @@
 import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { contactLabel, pickedContactPatch } from "./ContactPicker"
+import { contactLabel, customerLabel, pickedContactPatch } from "./ContactPicker"
 
 const contact = {
   id: "c0000000-0000-0000-0000-000000000001",
@@ -24,6 +24,17 @@ describe("contactLabel", () => {
 
   it("never falls back to the contact id", () => {
     expect(contactLabel({ name: null, company: null, email: null })).not.toContain("c0000000")
+  })
+})
+
+describe("customerLabel", () => {
+  it("names the company a person belongs to, then the person", () => {
+    expect(
+      customerLabel({ name: "Thomas Blanc", email: "t@x.example", company: "Éditions Sorel" }),
+    ).toBe("Éditions Sorel")
+    expect(customerLabel({ name: "Thomas Blanc", email: "t@x.example", company: null })).toBe(
+      "Thomas Blanc",
+    )
   })
 })
 

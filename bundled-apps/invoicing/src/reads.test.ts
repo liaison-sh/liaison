@@ -773,6 +773,40 @@ describe("pendingApprovalsList (E5)", () => {
     expect(row!.requested_by_user_id).toBe("u-42")
     expect(row!.summary).toBe("Issue invoice F-2026-0042")
   })
+
+  test("a row names the document its request acts on, or none for typed lines", async () => {
+    const at = new Date().toISOString()
+    const { ctx } = makeCtx({
+      approvals: [
+        {
+          id: "a-1",
+          toolName: "invoicing:invoice_issue",
+          summary: { title: "x" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { draft_id: "d-1" },
+        },
+        {
+          id: "a-2",
+          toolName: "invoicing:credit_note_create_and_issue",
+          summary: { title: "y" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { original_document_id: "inv-1", items: [] },
+        },
+        {
+          id: "a-3",
+          toolName: "invoicing:quote_create_and_issue",
+          summary: { title: "z" },
+          createdAt: at,
+          requestedBy: { id: "u" },
+          currentPayload: { items: [] },
+        },
+      ],
+    })
+    const rows = await pendingApprovalsList(ctx, { limit: 10 })
+    expect(rows.map((r) => r.document_id)).toEqual(["d-1", "inv-1", null])
+  })
 })
 
 describe("vatValidate (VIES)", () => {

@@ -174,6 +174,9 @@ export interface PendingApproval {
   summary: string
   created_at: Date | string
   requested_by_user_id: string
+  /** The document the request acts on (its draft, or the invoice a credit note reverses), so a
+   *  list row opens it; null when the request makes a new document from typed lines. */
+  document_id: string | null
 }
 
 export interface DocumentsSearchInput {
@@ -1047,6 +1050,19 @@ function requesterIdOf(requestedBy: unknown): string {
   return ""
 }
 
+const DOCUMENT_KEYS = ["draft_id", "document_id", "original_document_id"] as const
+
+/** The document a request's payload names, by the keys the invoicing tools take. */
+function documentIdOf(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null
+  const p = payload as Record<string, unknown>
+  for (const key of DOCUMENT_KEYS) {
+    const v = p[key]
+    if (typeof v === "string" && v !== "") return v
+  }
+  return null
+}
+
 export async function pendingApprovalsList(
   ctx: ReadsCtx,
   input: { limit?: number } = {},
@@ -1065,6 +1081,7 @@ export async function pendingApprovalsList(
       summary: typeof title === "string" ? title : "",
       created_at: (r.createdAt as Date | string) ?? new Date(0).toISOString(),
       requested_by_user_id: requesterIdOf(r.requestedBy),
+      document_id: documentIdOf(r.currentPayload),
     }
   })
 }

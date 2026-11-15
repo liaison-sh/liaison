@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.28.0",
+  "version": "0.29.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -7792,6 +7792,15 @@
         "label": "Customer identity",
         "singleton": false,
         "urlPattern": "/invoicing/identity/:contactId",
+        "referenceable": false
+      },
+      "pending": {
+        "component": "InvoicingPendingApprovals",
+        "sidebar": "InvoicingSidebar",
+        "icon": "InvoicingAppIcon",
+        "label": "Pending Approval",
+        "singleton": true,
+        "urlPattern": "/invoicing/pending-approval",
         "referenceable": false
       },
       "received": {

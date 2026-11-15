@@ -876,4 +876,6 @@ export const FR: Record<string, string> = {
     "Les heures non utilisées passent au mois suivant seulement",
   "Prepaid: each month's fee is invoiced ahead as an advance, and the month-end invoice deducts it and adds any overage, so it can total zero; check this way of billing with your accountant.":
     "Prépayé : le forfait de chaque mois est facturé d'avance comme un acompte, et la facture de fin de mois le déduit et ajoute les heures au-delà, elle peut donc être à zéro ; vérifiez ce mode de facturation avec votre expert-comptable.",
+  Open: "Ouvrir",
+  "Asked on {{day}}": "Demandé le {{day}}",
 }

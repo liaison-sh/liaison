@@ -439,4 +439,102 @@ describe("EditableTableBlock", () => {
     // The same input, not a new one: the row and its cells were not rendered again.
     expect(screen.getByTestId("table-block-editor-r1-units")).toBe(input)
   })
+
+  it("keeps the typed text when a reload changes the row being edited, and saves on its version", async () => {
+    // The row as its writer got it back ("You"), then as everyone reads it (the writer's name):
+    // the same row with a different content, which renders a new row object.
+    let label = "You"
+    const writes: Array<Record<string, unknown>> = []
+    const { get } = mount({
+      table: () => structuredClone(TABLE),
+      rows: () => ({
+        rows: [
+          row("r1", { batch: "B4", units: 12 }, { updatedBy: { type: "user", id: "u1", label } }),
+        ],
+        nextCursor: null,
+      }),
+      write: (body) => {
+        writes.push(...body.ops)
+        return { rows: [row("r1", { batch: "B4", units: 15 }, { version: 2 })] }
+      },
+    })
+    fireEvent.click(await screen.findByTestId("table-block-edit-r1-units"))
+    const input = screen.getByTestId("table-block-editor-r1-units") as HTMLInputElement
+    input.value = "15"
+    fireEvent.input(input)
+    const rowReads = () => get.mock.calls.filter((c) => String(c[0]).includes("/rows?")).length
+    const before = rowReads()
+    label = "Elodie Vasseur"
+    void handleTableEvent({ get } as unknown as ApiClient, "table", "updated", { tableId: "t1" })
+    await waitFor(() => expect(rowReads()).toBe(before + 1))
+    await new Promise((r) => setTimeout(r, 0))
+    const still = screen.getByTestId("table-block-editor-r1-units") as HTMLInputElement
+    expect(still).toBe(input)
+    expect(still.value).toBe("15")
+    fireEvent.keyDown(still, { key: "Enter" })
+    await waitFor(() =>
+      expect(screen.getByTestId("table-block-cell-r1-units").textContent).toBe("15"),
+    )
+    expect(writes).toEqual([{ op: "update", id: "r1", ifVersion: 1, cells: { units: 15 } }])
+  })
+
+  it("a read already on its way when the editor opens lands without closing it, and shows after", async () => {
+    let units = 12
+    const gate: { release?: () => void } = {}
+    let hold = false
+    const { get } = mount({
+      table: () => structuredClone(TABLE),
+      rows: () => ({ rows: [row("r1", { batch: "B4", units })], nextCursor: null }),
+    })
+    await screen.findByTestId("table-block-row-r1")
+    // The next table read waits until released: the live reload starts before the click.
+    const plain = get.getMockImplementation()
+    get.mockImplementation(async (path: string) => {
+      if (hold && path === "/dashboards/tables/t1") {
+        await new Promise<void>((r) => {
+          gate.release = r
+        })
+      }
+      return plain?.(path)
+    })
+    hold = true
+    void handleTableEvent({ get } as unknown as ApiClient, "rows", "created", { tableId: "t1" })
+    await waitFor(() => expect(gate.release).toBeDefined())
+    hold = false
+    fireEvent.click(screen.getByTestId("table-block-edit-r1-batch"))
+    const input = screen.getByTestId("table-block-editor-r1-batch") as HTMLInputElement
+    input.value = "B4a"
+    fireEvent.input(input)
+    units = 20
+    gate.release?.()
+    await waitFor(() =>
+      expect(get.mock.calls.filter((c) => String(c[0]).includes("/rows?")).length).toBeGreaterThan(
+        1,
+      ),
+    )
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.getByTestId("table-block-editor-r1-batch")).toBe(input)
+    expect(input.value).toBe("B4a")
+    // Escape closes it; the change that landed meanwhile then shows.
+    fireEvent.keyDown(input, { key: "Escape" })
+    await waitFor(() =>
+      expect(screen.getByTestId("table-block-cell-r1-units").textContent).toBe("20"),
+    )
+  })
+
+  it("keeps the add form's inputs when a reload that changes nothing lands", async () => {
+    const { get } = mount({
+      table: () => structuredClone(TABLE),
+      rows: () => ({ rows: structuredClone(ROWS), nextCursor: null }),
+    })
+    fireEvent.click(await screen.findByTestId("table-block-add"))
+    const input = screen.getByTestId("table-block-add-units") as HTMLInputElement
+    const rowReads = () => get.mock.calls.filter((c) => String(c[0]).includes("/rows?")).length
+    const before = rowReads()
+    void handleTableEvent({ get } as unknown as ApiClient, "table", "updated", { tableId: "t1" })
+    await waitFor(() => expect(rowReads()).toBe(before + 1))
+    await new Promise((r) => setTimeout(r, 0))
+    // The same input: what is typed into it next still reaches the form.
+    expect(screen.getByTestId("table-block-add-units")).toBe(input)
+  })
 })

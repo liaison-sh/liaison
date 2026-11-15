@@ -74,6 +74,26 @@ import { loadPeople, personName } from "./table-people"
  * keys its rows and cells by reference, so a reload that changes nothing keeps their DOM: an
  * open cell editor survives a live reload instead of being torn down (its blur would close it).
  */
+/**
+ * `next`, with the element of `prev` whose id is `openId` in place of its new copy: the open
+ * cell's row (or column) is not rendered again while it is being edited. Returns `next` itself
+ * when nothing is kept.
+ */
+function keepOpen<T>(
+  next: T[],
+  prev: readonly T[],
+  openId: string | undefined,
+  id: (x: T) => string,
+): T[] {
+  if (openId === undefined) return next
+  const old = prev.find((x) => id(x) === openId)
+  const i = next.findIndex((x) => id(x) === openId)
+  if (old === undefined || i < 0 || next[i] === old) return next
+  const out = next.slice()
+  out[i] = old
+  return out
+}
+
 function keepUnchanged<T>(prev: readonly T[], next: T[], id: (x: T) => string): T[] {
   const byId = new Map(prev.map((x) => [id(x), x]))
   return next.map((x) => {
@@ -129,6 +149,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   const [historyRow, setHistoryRow] = createSignal<TableRow | null>(null)
   const [historyKey, setHistoryKey] = createSignal(0)
   const [clock, setClock] = createSignal(Date.now())
+  // A background change not shown yet because a cell was open or being saved.
+  const [missed, setMissed] = createSignal(false)
   let seq = 0
 
   onMount(() => {
@@ -145,7 +167,12 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   }
   const columns = createMemo<TableColumn[]>(
     (prev) =>
-      keepUnchanged(prev, shownColumns(table()?.columns ?? [], props.columns), (c) => c.key),
+      keepOpen(
+        keepUnchanged(prev, shownColumns(table()?.columns ?? [], props.columns), (c) => c.key),
+        prev,
+        editing()?.key,
+        (c) => c.key,
+      ),
     [],
   )
   const backing = () => table()?.backing
@@ -154,12 +181,13 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   const parentName = () =>
     backingName(api, backing()) ?? i18n.t("kernel.dashboards.tables.theProject")
   /** The add form: a backed table adds a task (its title) with the table's own columns. */
-  const addColumns = (): TableColumn[] => {
+  // Kept by content like `columns`: a reload while someone types in the form keeps its inputs.
+  const addColumns = createMemo<TableColumn[]>((prev) => {
     const all = table()?.columns ?? []
     const b = backing()
-    if (!b) return all
-    return all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title")
-  }
+    const own = b ? all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title") : all
+    return keepUnchanged(prev, own, (c) => c.key)
+  }, [])
   const textOpts = () => ({ locale: i18n.locale(), personName, t: i18n.t })
   const cursor = () => cursors()[cursors().length - 1] ?? null
 
@@ -173,6 +201,22 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     return page.rows
   }
 
+  /**
+   * A page read, applied over the rows shown. The row whose cell is open keeps its object (the
+   * grid renders rows by reference): a read that lands while someone types, even one that
+   * started before the editor opened, never tears the editor down (its blur would save the
+   * half-typed value and close it). The save then still sends the version the edit began on,
+   * and the change is shown once the editor closes (`missed`).
+   */
+  function freshRows(prev: TableRow[], page: TableRow[]): TableRow[] {
+    const next = keepUnchanged(prev, page, (r) => r.id)
+    const open = editing()
+    if (!open) return next
+    const kept = keepOpen(next, prev, open.rowId, (r) => r.id)
+    if (kept !== next) setMissed(true)
+    return kept
+  }
+
   /** Reads the table and the current page; a failed read says so, with a retry. */
   async function load(): Promise<void> {
     const mine = ++seq
@@ -184,7 +228,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       props.onTable?.(info)
       const page = await readRows(cursor())
       if (mine !== seq) return
-      setRows((prev) => keepUnchanged(prev, page, (r) => r.id))
+      setRows(freshRows(rows(), page))
       setStatus("ready")
     } catch (err) {
       if (mine !== seq) return
@@ -197,7 +241,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   async function reloadRows(): Promise<TableRow[]> {
     const mine = ++seq
     const page = await readRows(cursor())
-    if (mine === seq) setRows((prev) => keepUnchanged(prev, page, (r) => r.id))
+    if (mine === seq) setRows(freshRows(rows(), page))
     return page
   }
 
@@ -221,12 +265,22 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     on(
       () => tableRevision(props.tableId, "rows"),
       () => {
-        if (status() !== "ready" || editing() || saving()) return
+        if (status() !== "ready") return
+        if (editing() || saving()) {
+          setMissed(true)
+          return
+        }
         void load()
       },
       { defer: true },
     ),
   )
+  // The editor closed and its save is done: show what changed meanwhile.
+  createEffect(() => {
+    if (!missed() || editing() || saving()) return
+    setMissed(false)
+    void load()
+  })
 
   function goTo(which: "next" | "previous"): void {
     if (which === "next") {

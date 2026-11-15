@@ -28,7 +28,8 @@ export const STUDIO_EMAIL_DOMAIN = "haldenstudio.example"
 export const STUDIO_COMPANY: DemoCompany = {
   name: "Halden Studio",
   legalName: "Halden Studio SAS",
-  vat: "FR00000000000",
+  // A valid key on an all-zero SIREN, so the number reads as a VAT number and names no one.
+  vat: "FR12000000000",
   about:
     "Halden Studio builds and runs software for its clients: partner portals, data pipelines, " +
     "dashboards and the upkeep that follows. Billed by the day, on a monthly retainer or at a " +
@@ -253,9 +254,16 @@ export interface StudioClient {
   name: string
   /** Its reserved `.example` domain. */
   domain: string
-  /** Customer keys of its contacts. */
+  /** Customer keys of its contacts; the first one is invoiced and holds the billing address. */
   contactKeys: string[]
+  /** Its billing address (a street of the story, not a real one). */
+  street: string
+  postcode: string
+  city: string
 }
+
+/** Every client's SIREN: all zero, like the declared VAT numbers here (a valid checksum). */
+export const STUDIO_CLIENT_SIREN = "000000000"
 
 export const STUDIO_CLIENTS: StudioClient[] = [
   {
@@ -263,36 +271,54 @@ export const STUDIO_CLIENTS: StudioClient[] = [
     name: "Groupe Marlin",
     domain: "groupe-marlin.example",
     contactKeys: ["pauline-gros", "remi-castel"],
+    street: "8 rue des Mariniers",
+    postcode: "69002",
+    city: "Lyon",
   },
   {
     key: "sorel",
     name: "Éditions Sorel",
     domain: "editions-sorel.example",
     contactKeys: ["thomas-blanc"],
+    street: "21 rue Sainte-Hélène",
+    postcode: "69002",
+    city: "Lyon",
   },
   {
     key: "alpine",
     name: "Coopérative Alpine",
     domain: "cooperative-alpine.example",
     contactKeys: ["ines-royer"],
+    street: "3 chemin des Alpages",
+    postcode: "38000",
+    city: "Grenoble",
   },
   {
     key: "tessier",
     name: "Tessier Logistique",
     domain: "tessier-logistique.example",
     contactKeys: ["jean-tessier"],
+    street: "40 avenue des Entrepôts",
+    postcode: "69007",
+    city: "Lyon",
   },
   {
     key: "verdier",
     name: "Verdier Transports",
     domain: "verdier-transports.example",
     contactKeys: ["marc-verdier"],
+    street: "12 route du Port",
+    postcode: "69200",
+    city: "Vénissieux",
   },
   {
     key: "rhone",
     name: "Rhône Mutuelle",
     domain: "rhone-mutuelle.example",
     contactKeys: ["helene-faure"],
+    street: "5 place des Mutuelles",
+    postcode: "69003",
+    city: "Lyon",
   },
 ]
 

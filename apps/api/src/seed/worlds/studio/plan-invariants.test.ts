@@ -432,7 +432,7 @@ describe("services world money plan", () => {
       ["Advance, 20%", "paid"],
       ["Discovery", "paid"],
       ["Design", "paid"],
-      ["Beta", "drafted"],
+      ["Beta", "planned"],
       ["Launch", "planned"],
     ])
   })
@@ -479,8 +479,6 @@ describe("services world money plan", () => {
         if (inv.paidOn !== null) expect(inv.paidOn < m.today).toBe(true)
         last = inv.issuedOn
       }
-      // The draft waiting at the anchor takes no number.
-      expect(m.invoices.some((i) => i.key === m.draft.key)).toBe(false)
     }
   })
 

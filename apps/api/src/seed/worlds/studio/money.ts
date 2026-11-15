@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The `studio` world's money, as a pure function of the anchor: the issuer, the year's invoices in
-// the one order they were issued, the fixed-price project's billing plan with its quote, the
-// milestone draft waiting at the anchor, and the two monthly schedules. No database, no wall
+// the one order they were issued, the fixed-price project's billing plan with its quote, and
+// the two monthly schedules. No database, no wall
 // clock: the layer writes exactly this, and `plan-invariants.test.ts` holds it to the world's
 // figures without seeding anything.
 //
@@ -107,17 +107,6 @@ export interface StudioMoneyPlan {
     lines: StudioInvoiceLine[]
   }
   steps: StudioBillingStep[]
-  /** The milestone invoice drafted and waiting for its issue at the anchor. */
-  draft: {
-    key: string
-    stepKey: string
-    client: string
-    contactKey: string
-    projectKey: string
-    createdOn: string
-    latestIssueOn: string
-    lines: StudioInvoiceLine[]
-  }
   retainers: StudioRetainerPlan[]
   /** Last month on the publishing retainer, as its card billed it. */
   retainerLastMonth: {
@@ -341,8 +330,8 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
       label: "Beta",
       amountMinor: 1_600_000,
       taskKey: "MARLIN-19",
-      state: "drafted",
-      invoiceKey: "marlin-beta-draft",
+      // Its task is still in progress, so nothing is drafted for it yet.
+      state: "planned",
     },
     {
       key: "launch",
@@ -375,16 +364,6 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
       ],
     },
     steps,
-    draft: {
-      key: "marlin-beta-draft",
-      stepKey: "beta",
-      client: "marlin",
-      contactKey: "pauline-gros",
-      projectKey: "MARLIN",
-      createdOn: today,
-      latestIssueOn: thisMonth.end,
-      lines: [{ description: "Beta", quantity: 1, unitPriceMinor: 1_600_000 }],
-    },
     retainers: [
       {
         key: "sorel",

@@ -506,8 +506,8 @@ describe("the services world's money at the board date", () => {
         true,
       ])
     }
-    // The milestone draft waiting at the board date holds no number yet.
-    expect(rows.filter((r) => r.status === "draft").map((r) => r.number)).toEqual([null])
+    // No draft waits at the board date: the Beta milestone's task is still in progress.
+    expect(rows.filter((r) => r.status === "draft")).toEqual([])
     const seq = await withPrivilegedDb(orgId, "studio-figures:sequence", async (tx) =>
       rowsOf<{ value: number }>(
         await tx.execute(
@@ -559,7 +559,7 @@ describe("the services world's money at the board date", () => {
     ])
   })
 
-  it("Home at the board date asks the biller to issue the milestone draft, and nothing else of money", async () => {
+  it("Home at the board date asks the biller nothing of money", async () => {
     const a = await actor("anais")
     const items = await withRlsContext(a, async (tx) => [
       ...(await computeApprovalAttentionItems(tx, orgId, a.userId, [], BOARD_DATE)),
@@ -577,11 +577,9 @@ describe("the services world's money at the board date", () => {
           ? `month line ${String(i.metadata?.period ?? "").slice(0, 7)} ${i.summary}`
           : `issue approval ${i.metadata?.toolName}`,
       )
-    // The month lines come on each month's line day (home-money.studio covers them), so at the
-    // board date the one money item is the milestone draft's issue, due by the month's end.
-    expect(money).toEqual(["issue approval invoicing:invoice_issue"])
-    const approval = items.find((i) => i.kind === "approval_pending")
-    expect(approval?.metadata?.latestOn).toBe("2026-11-30")
+    // The month lines come on each month's line day (home-money.studio covers them), and the
+    // Beta milestone is not drafted while its task is in progress: no money item at the board date.
+    expect(money).toEqual([])
   })
 
   it("planned vs done for the day-rate project last month prices 6,510.00, 1,302.00 of VAT and 7,812.00", async () => {

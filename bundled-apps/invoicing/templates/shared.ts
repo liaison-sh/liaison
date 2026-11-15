@@ -59,6 +59,8 @@ export interface DocumentData {
   original_invoice_date?: string | null
   /** The operation type in words ("Livraison de biens"), printed in the header meta block. */
   operation_label?: string | null
+  /** goods, services or mixed: a document of services alone prints no Incoterm. */
+  operation_category?: string | null
   /** The seller opted to pay VAT on debits: the literal French option mention prints under the legal mention. */
   vat_on_debits?: boolean | null
   /** The store order this document bills ("#1149") — the HUMAN Shopify order
@@ -943,7 +945,10 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
 
   const metaLines: Array<[string, string]> = [["Issued", formatDateLike(input.document.issued_at)]]
   if (input.document.due_at) metaLines.push(["Due", formatDateLike(input.document.due_at)])
-  metaLines.push(["Incoterm", input.document.incoterm])
+  // An Incoterm says who carries goods: a document of services alone has none.
+  if (input.document.operation_category !== "services") {
+    metaLines.push(["Incoterm", input.document.incoterm])
+  }
   // Store order reference — sits in the meta block next to the document number so
   // a reader can go from invoice to order (and back) without opening the admin.
   const operation = input.document.operation_label?.trim()

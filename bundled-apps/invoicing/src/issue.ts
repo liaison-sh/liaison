@@ -1801,6 +1801,7 @@ export function buildTemplateData(params: {
       // The stored e-invoicing snapshot: at issue time it rides on `document.einvoice`, on a
       // re-render it is the persisted columns. Never recomputed from current data.
       operation_label: operationLabel(snapshot.operation_category, issuer.default_language),
+      operation_category: snapshot.operation_category ?? null,
       vat_on_debits: snapshot.vat_on_debits === true,
       // The human Shopify order reference, rendered as an "Order" line in the
       // header meta so the order can be read straight off the invoice PDF. The

@@ -1023,6 +1023,16 @@ describe("exempt documents print no tax column", () => {
     expect(t).toContain("Tax (20.00%)")
   })
 
+  test("an invoice of services alone prints no Incoterm, an invoice of goods does", () => {
+    const services = texts(
+      invoiceTemplate(
+        shortInput({ document: { ...shortInput().document, operation_category: "services" } }),
+      ),
+    )
+    expect(services).not.toContain("Incoterm:")
+    expect(texts(invoiceTemplate(shortInput()))).toContain("Incoterm:")
+  })
+
   test("a taxed invoice prints each line excluding VAT under a column that says so", () => {
     const t = texts(invoiceTemplate(exportInput(725, 725n)))
     expect(t).toContain("Amount excl. VAT")

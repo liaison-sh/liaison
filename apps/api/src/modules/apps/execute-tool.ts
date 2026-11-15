@@ -2646,6 +2646,8 @@ export interface HandlerApprovalInput {
     subtitle?: string
     lines?: string[]
     links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+    /** The last day it can be decided in time (`YYYY-MM-DD`); Home sorts it up from 4 days before. */
+    latest_on?: string
   }
   current_payload: unknown
   editable_fields?: string[]
@@ -2815,6 +2817,9 @@ export async function createHandlerApprovalRequest(args: {
     subtitle: input.summary_detail?.subtitle ?? "Pending approval",
     lines: (input.summary_detail?.lines ?? []).slice(0, 8).map((l) => String(l).slice(0, 200)),
     ...(input.summary_detail?.links ? { links: input.summary_detail.links.slice(0, 10) } : {}),
+    ...(typeof input.summary_detail?.latest_on === "string"
+      ? { latestOn: input.summary_detail.latest_on }
+      : {}),
   }
   // Same validation discipline as registered summarizers: malformed detail
   // (handler bug, sandbox-bridge mangling) degrades to the plain-string form

@@ -202,6 +202,7 @@ describe("the month-close line", () => {
       state: "drafted",
       month: "2027-07",
       idleDays: 0,
+      documentRef: "reconcile:month-close-test:1",
     })
     const items = (
       await feed(biller, noon("2027-07-30"), [...MEMBER_SCOPES, "projects:reconcile:read"])
@@ -244,6 +245,7 @@ describe("the month-close line across people", () => {
       month: "2027-10",
       idleDays: 0,
       basis: "hourly",
+      documentRef: "reconcile:colleague-test:1",
     })
     // The biller cannot read the colleague's draft...
     const visible = await withRlsContext(actorOf(biller, MEMBER_SCOPES), async (tx) =>

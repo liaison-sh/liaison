@@ -1738,6 +1738,8 @@ describe("invoicing manifest", () => {
     // 0.27.1: an advance outside a billing plan is refused on a project billed by the day or
     //   the hour.
     // 0.27.2: documents_get returns a draft's source key, approver and invoice role for its page.
+    // 0.28.0: retainer, milestone and advance drafts' issue approvals name their latest issue day
+    //   (late on the org's day) and carry it, so Home brings them up from four days before.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

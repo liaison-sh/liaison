@@ -66,6 +66,7 @@ interface PendingApprovalRow {
     impact?: "external" | "internal"
     ref?: string
     links?: unknown
+    latestOn?: string
   } | null
   tool_name: string
   status: string
@@ -494,10 +495,50 @@ export function canSeeApprovalInFeed(
   return canSeeInFeed(authorityFacts(row), apiViewer(callerUserId, callerScopes))
 }
 
+/** Days before a request's last day (`summary.latestOn`) from which it sorts to the top. */
+export const LATEST_DAY_LEAD_DAYS = 4
+/** Where such a request sorts: above an ordinary request (60) and a done-with-no-invoice line. */
+const LATEST_DAY_URGENCY = 90
+
+/** The org's calendar day now: its own zone, UTC without one. */
+async function orgToday(tx: RlsClient, orgId: string, now: Date): Promise<string> {
+  const zone =
+    extractRows<{ tz: string | null }>(
+      await tx.execute(
+        drizzleSql`SELECT timezone AS tz FROM ${K}.organizations WHERE id = ${orgId}::uuid LIMIT 1`,
+      ),
+    )[0]?.tz || "UTC"
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now)
+  } catch {
+    return now.toISOString().slice(0, 10)
+  }
+}
+
+/** True from `LATEST_DAY_LEAD_DAYS` before the last day on, the day past included. */
+export function nearLatestDay(latestOn: string, today: string): boolean {
+  const dayNumber = (d: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d)
+    return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000 : Number.NaN
+  }
+  const last = dayNumber(latestOn)
+  const day = dayNumber(today)
+  if (Number.isNaN(last) || Number.isNaN(day)) return false
+  return day >= last - LATEST_DAY_LEAD_DAYS
+}
+
 export async function computeApprovalAttentionItems(
   tx: RlsClient,
   orgId: string,
   callerUserId: string,
+  _forUserIds: readonly string[] = [],
+  /** Test seam for the org's day; the feed passes nothing. */
+  now: Date = new Date(),
 ): Promise<AttentionItem[]> {
   const callerScopes = await readCurrentScopes(tx)
   // WEDGED EXECUTIONS BELONG IN THE FEED. A row stuck at `approving` past the
@@ -663,6 +704,7 @@ export async function computeApprovalAttentionItems(
   const routeNames = await readRouteNames(tx, orgId, callerUserId, rows, routes)
 
   const items: AttentionItem[] = []
+  let today: string | undefined
   for (const r of rows) {
     const { appName, toolShortName } = splitToolName(r.tool_name)
     // In the feed as THEIR decision (a two-approver request they already
@@ -701,6 +743,13 @@ export async function computeApprovalAttentionItems(
     let urgency = 60
     if (wedged) urgency = 95
     else if (expiresMs <= 60 * 60 * 1000) urgency = Math.min(90, urgency + 20)
+    // A request with a last day (an invoice draft's latest issue day) comes back to the top four
+    // days before it, and stays there once late, whatever else holds it. Order only.
+    const latestOn = typeof r.summary?.latestOn === "string" ? r.summary.latestOn : null
+    if (!wedged && latestOn) {
+      today ??= await orgToday(tx, orgId, now)
+      if (nearLatestDay(latestOn, today)) urgency = Math.max(urgency, LATEST_DAY_URGENCY)
+    }
 
     items.push({
       id: `kernel:approval_pending:${r.id}`,
@@ -722,6 +771,7 @@ export async function computeApprovalAttentionItems(
       },
       metadata: {
         toolName: r.tool_name,
+        ...(latestOn ? { latestOn } : {}),
         // The tool the row is NAMED after, when that is not the gated tool
         // itself: a bundle head's outcome step. The chip and the title read it;
         // everything that acts on the request keeps using `toolName`.

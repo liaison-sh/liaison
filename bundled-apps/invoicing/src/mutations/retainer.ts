@@ -463,10 +463,13 @@ export async function retainerDraftFromReconcile(
       : []),
     ...deductions.map((d) => `${d.description} deducted`),
   ]
-  const approvalId = await raiseIssueApproval(ctx, draftId, title, [
-    ...said,
-    `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
-  ])
+  const approvalId = await raiseIssueApproval(
+    ctx,
+    draftId,
+    title,
+    [...said, `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`],
+    monthEnd(read.period.to),
+  )
   const who = canIssue ? "approved" : "waiting for someone who can issue invoices"
   const next =
     approvalId === null

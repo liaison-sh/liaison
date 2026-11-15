@@ -97,6 +97,13 @@ export const approvalSummarySchema = z
     // The id of the record acted on (`ticket-B2B-123`), shown first on the card
     // as a monospace chip so a reviewer knows WHICH record before reading more.
     ref: z.string().max(40).optional(),
+    // The last day the request can be decided in time (`YYYY-MM-DD`, the org's calendar), when the
+    // thing it brings about has one: an invoice draft's latest issue day. From four days before it,
+    // and once it is past, the request sorts to the top of Home. Order only, no colour or count.
+    latestOn: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional(),
   })
   .refine((s) => s.lines.length <= approvalSummaryLinesMax(s.kind), {
     path: ["lines"],
@@ -117,6 +124,7 @@ export function truncateApprovalSummary(s: ApprovalSummary): ApprovalSummary {
     subtitle: s.subtitle !== undefined ? s.subtitle.slice(0, 200) : undefined,
     impact: s.impact,
     ref: s.ref !== undefined ? s.ref.slice(0, 40) : undefined,
+    latestOn: s.latestOn,
     // A line past the cap ends on "…" so a reviewer can tell it was cut (the
     // full value stays in the card's exact payload).
     lines: s.lines.slice(0, approvalSummaryLinesMax(s.kind)).map((line) => {

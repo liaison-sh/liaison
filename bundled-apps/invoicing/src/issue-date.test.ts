@@ -20,6 +20,7 @@ import {
 } from "./issue-date"
 import { invoiceIssue } from "./mutations"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
+import { draftIssuePreview } from "./mutations/quote-proforma-po"
 import type { MutationsCtx } from "./mutations/shared"
 import { draftOrderDateRefusal } from "./mutations/stated-issue-date"
 import { settingsIssuerProfileList } from "./reads"
@@ -422,5 +423,32 @@ describe("the latest issue day of a draft from planned vs done", () => {
     ])
     expect(latestIssueLine(null, "2026-12-01")).toBeNull()
     expect(issueLateness("2026-11-30", "2026-11-29")).toBe("on_time")
+  })
+
+  test("the issue approval of a draft from planned vs done carries its latest day, for Home", async () => {
+    const h = harness()
+    onDay(2026, 11, 26)
+    h.read.value = linesRead({ from: "2026-11-01", to: "2026-11-30" }, REC_NOV)
+    await draftFromCard(h, REC_NOV)
+    const detail = h.approvals.at(-1)?.summary_detail as { latest_on?: string } | undefined
+    expect(detail?.latest_on).toBe("2026-11-30")
+  })
+
+  test("a card's late line reads the org's day, not the sandbox's UTC day", async () => {
+    // 00:30 on 1 December in Paris is still 30 November in UTC.
+    setSystemTime(new Date(Date.UTC(2026, 10, 30, 23, 30)))
+    const h = harness()
+    h.read.value = linesRead({ from: "2026-11-01", to: "2026-11-30" }, REC_NOV)
+    const id = await draftFromCard(h, REC_NOV)
+    const ctx = { ...h.ctx, time: testTime("Europe/Paris") } as unknown as Parameters<
+      typeof draftIssuePreview
+    >[0]
+    const preview = (await draftIssuePreview(ctx, { draft_id: id })) as Row
+    expect(preview.today).toBe("2026-12-01")
+    const card = await summarizeInvoiceIssue({ draft_id: id }, undefined, { context: preview })
+    expect(card.lines).toContain(
+      "Late: the latest issue date was 2026-11-30; it issues with the date of the day it is issued",
+    )
+    expect(card.latestOn).toBe("2026-11-30")
   })
 })

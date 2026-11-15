@@ -136,6 +136,21 @@ export async function resolveParkAttention(
     await resolveIdentityAttention(ctx, { parkId: row.id, contact_id: contact })
     return
   }
+  // An unmatched card payment's line (or its money-first question) goes with its park: the
+  // payment was invoiced, linked, or drafted as the advance. The kind is stripe-payment-unmatched's.
+  if (
+    blocked.kind === "stripe_unmatched_payment" &&
+    ctx.emit &&
+    typeof blocked.charge_id === "string"
+  ) {
+    await ctx.emit({
+      entity: "stripe_payment",
+      action: typeof blocked.step_id === "string" ? "advance_received" : "unmatched",
+      entityId: blocked.charge_id,
+      data: { charge_id: blocked.charge_id, resolved: true },
+    })
+    return
+  }
   if (blocked.kind === AUTO_CREDIT_NOTE_PARK_KIND && ctx.emit) {
     await ctx.emit({
       entity: "deferred",

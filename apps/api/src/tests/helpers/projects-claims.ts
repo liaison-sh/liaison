@@ -83,7 +83,7 @@ export function asPerson<T>(
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 
 /** The invoicing app registered for the org from source, so its documents table exists. */
-async function registerInvoicing(orgId: string): Promise<void> {
+export async function registerInvoicing(orgId: string): Promise<void> {
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
   const manifest = JSON.parse(
     readFileSync(join(REPO_ROOT, "bundled-apps", "invoicing", "app.manifest.json"), "utf8"),

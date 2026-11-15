@@ -60,3 +60,4 @@ src/seed/worlds/studio/world-figures.studio.integration.test.ts
 # The projects factory on the database: board numbers, timeboxes through
 # the task plan writer, time in one write, re-runs that adopt.
 src/seed/factories/projects/projects.integration.test.ts
+src/seed/worlds/studio/home-money.studio.integration.test.ts

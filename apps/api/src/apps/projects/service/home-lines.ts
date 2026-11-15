@@ -89,7 +89,8 @@ async function companyDaysOff(tx: SqlClient, orgId: string, from: string, to: st
 }
 
 /**
- * Which of these projects already have the month reconciled past proposed, whoever drafted it.
+ * Which of these projects already have the month reconciled past proposed, whoever drafted it. A
+ * release (a discarded draft) takes the month back: the line returns on its day.
  * Read privileged, since a biller without reconcile read cannot see a colleague's draft under
  * RLS; it returns project ids only, nothing of the reconcile itself, and the line it suppresses
  * names only the project the biller already reads.
@@ -110,6 +111,9 @@ async function monthsReconciled(
           SELECT DISTINCT r.project_id::text AS project_id
             FROM ${projectsRel("reconciliations")} r
            WHERE r.org_id = ${orgId}::uuid AND r.state <> 'proposed'
+             -- Released and set aside for a newer card (no key, no draft): it bills nothing, so
+             -- the month's line is back, as it is for a release back to proposed.
+             AND NOT (r.state = 'drafted' AND r.document_ref IS NULL AND r.document_id IS NULL)
              AND r.project_id IN (${drizzleSql.join(
                projectIds.map((id) => drizzleSql`${id}::uuid`),
                drizzleSql`, `,
@@ -119,6 +123,39 @@ async function monthsReconciled(
         ).map((r) => r.project_id),
       ),
   )
+}
+
+/**
+ * The thread of each project's latest card the caller asked for this month and left proposed. A
+ * proposed card is its creator's alone, so only the caller's own cards are read (privileged, as
+ * ids alone: a biller may lack reconcile read).
+ */
+async function ownProposedCards(
+  orgId: string,
+  callerUserId: string,
+  projectIds: readonly string[],
+  monthStart: string,
+  monthEnd: string,
+): Promise<Map<string, string>> {
+  if (projectIds.length === 0) return new Map()
+  return withPrivilegedDb(orgId, "projects-month-close-own-card", async (ptx) => {
+    const rows = extractRows<{ project_id: string; thread_id: string }>(
+      await ptx.execute(drizzleSql`
+        SELECT DISTINCT ON (r.project_id) r.project_id::text AS project_id,
+               r.thread_id::text AS thread_id
+          FROM ${projectsRel("reconciliations")} r
+         WHERE r.org_id = ${orgId}::uuid AND r.state = 'proposed'
+           AND r.created_by = ${callerUserId}::uuid AND r.thread_id IS NOT NULL
+           AND r.project_id IN (${drizzleSql.join(
+             projectIds.map((id) => drizzleSql`${id}::uuid`),
+             drizzleSql`, `,
+           )})
+           AND r.period_start <= ${monthEnd}::date
+           AND COALESCE(r.period_end, r.period_start) >= ${monthStart}::date
+         ORDER BY r.project_id, r.updated_at DESC`),
+    )
+    return new Map(rows.map((r) => [r.project_id, r.thread_id]))
+  })
 }
 
 /** The month's first and last day, and its name, for a date in it. */
@@ -246,9 +283,19 @@ async function monthCloseRows(
     m.start,
     m.end,
   )
-  return rows
-    .filter((r) => !done.has(r.id))
-    .map((r) => ({
+  const open = rows.filter((r) => !done.has(r.id))
+  // The biller's own proposed card for the month, when they asked for one: the line opens it in
+  // its thread. Another biller's line (marked for them) opens the project.
+  const cards = await ownProposedCards(
+    orgId,
+    callerUserId,
+    open.filter((r) => r.biller === callerUserId).map((r) => r.id),
+    m.start,
+    m.end,
+  )
+  return open.map((r) => {
+    const thread = r.biller === callerUserId ? cards.get(r.id) : undefined
+    return {
       id: `projects:month_close:${r.id}:${m.period}`,
       app: "projects",
       entity: "project",
@@ -258,14 +305,18 @@ async function monthCloseRows(
       summary: `${r.name}: ${m.name} ${verb}. Reconcile it when you are ready.`,
       urgency: CALM_URGENCY,
       occurredAt: now.toISOString(),
-      action: { type: "open_entity", tabType: "projects:project", entityId: r.id },
+      action: thread
+        ? { type: "open_entity", tabType: "thread", entityId: thread }
+        : { type: "open_entity", tabType: "projects:project", entityId: r.id },
       metadata: {
         projectId: r.id,
         projectName: r.name,
         period: m.period,
+        ...(thread ? { link: { tabType: "thread", entityId: thread } } : {}),
         ...(r.biller !== callerUserId ? { forUserId: r.biller } : {}),
       },
-    }))
+    } satisfies AttentionItem
+  })
 }
 
 /** Orgs with at least one work project using time and budgets, leaving moving orgs out. */

@@ -600,6 +600,7 @@ describe("documentsGet (E5)", () => {
   test("a draft with no stored totals shows what its lines would charge", async () => {
     const draft = {
       ...sampleDocs[0],
+      id: "00000000-0000-4000-8000-000000000001",
       number: null,
       status: "draft",
       issued_at: null,
@@ -626,7 +627,7 @@ describe("documentsGet (E5)", () => {
       document_lines: [line("l1", 1, "93000", "3"), line("l2", 2, "93000", "4")],
       issuer_profiles: [{ id: "issuer-1", country: "FR", is_default: true }],
     })
-    const result = await documentsGet(ctx, { id: draft.id as string })
+    const result = await documentsGet(ctx, { id: draft.id })
     expect(String(result?.subtotal_minor)).toBe("651000")
     expect(String(result?.tax_total_minor)).toBe("130200")
     expect(String(result?.grand_total_minor)).toBe("781200")

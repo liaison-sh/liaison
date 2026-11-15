@@ -1786,9 +1786,13 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
     typeof totals.incl === "number" && totals.currency
       ? moneyText(totals.incl, totals.currency)
       : null
-  const summary = approved
-    ? `Created and approved${incl ? `, ${incl} incl. VAT` : ""}`
-    : "Created, waiting for finance"
+  // A retainer month made without its overage says so on the card, for that month only.
+  const waived = prep.basis === "retainer" && p.waiveOverage === true
+  const summary = `${
+    approved
+      ? `Created and approved${incl ? `, ${incl} incl. VAT` : ""}`
+      : "Created, waiting for finance"
+  }${waived ? ". Waived by you this month" : ""}`
   const title = String(d.draftTitle ?? finished.title ?? "")
   const pending =
     approvalId === null

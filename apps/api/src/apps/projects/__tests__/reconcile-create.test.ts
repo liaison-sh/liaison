@@ -119,6 +119,31 @@ describe("Create invoice's handler", () => {
     expect(bodies["invoicing:draft_from_reconcile"]?.contactId).toBe(BILLING_CONTACT)
   })
 
+  it("a retainer month created without its overage says Waived by you this month", async () => {
+    const draft = {
+      status: "completed",
+      draftId: "44444444-4444-4444-8444-444444444444",
+      approvalId: "66666666-6666-4666-8666-666666666666",
+      approved: true,
+      created: true,
+      totals: { excl: 450000, vat: 90000, incl: 540000, currency: "EUR" },
+    }
+    const waived = ctxWith(draft, { basis: "retainer" })
+    const out = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1, waiveOverage: true },
+      waived.ctx as never,
+    )) as Record<string, unknown>
+    expect(out.error).toBeUndefined()
+    expect(waived.bodies["invoicing:retainer_draft_from_reconcile"]?.waiveOverage).toBe(true)
+    expect(out.summary).toBe("Created and approved, €5,400.00 incl. VAT. Waived by you this month")
+    const billed = ctxWith(draft, { basis: "retainer" })
+    const plain = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1 },
+      billed.ctx as never,
+    )) as Record<string, unknown>
+    expect(String(plain.summary)).not.toContain("Waived")
+  })
+
   it("a company with no billing contact refuses Create before anything is reserved and says to set one", async () => {
     const { ctx, steps, calls } = ctxWith({ status: "completed" }, { contactId: null })
     const out = (await reconcileCreateInvoice(

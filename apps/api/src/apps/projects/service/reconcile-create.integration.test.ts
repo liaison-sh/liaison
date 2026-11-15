@@ -486,6 +486,14 @@ describe("Create invoice on a reconcile card", () => {
       external_ref: `reconcile:${october1.card.reconciliationId}:${october1.card.revision}`,
       approved_by: owner.userId,
     })
+    // The draft stores its totals from the moment it is made, as the card shows them.
+    const [totals] = extractRows<{ excl: string; vat: string; incl: string }>(
+      await db.execute(drizzleSql`
+        SELECT subtotal_minor::text AS excl, tax_total_minor::text AS vat,
+               grand_total_minor::text AS incl
+          FROM app_invoicing.documents WHERE id = ${created.documentId}::uuid`),
+    )
+    expect(totals).toEqual({ excl: "651000", vat: "130200", incl: "781200" })
     const items = extractRows<{ quantity: string; unit_price_minor: string }>(
       await db.execute(drizzleSql`
         SELECT quantity::text AS quantity, unit_price_minor::text AS unit_price_minor

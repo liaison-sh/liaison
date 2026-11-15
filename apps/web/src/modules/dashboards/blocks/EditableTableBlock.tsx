@@ -144,7 +144,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     return role === "editor" || role === "owner"
   }
   const columns = createMemo<TableColumn[]>(
-    (prev) => keepUnchanged(prev, shownColumns(table()?.columns ?? [], props.columns), (c) => c.key),
+    (prev) =>
+      keepUnchanged(prev, shownColumns(table()?.columns ?? [], props.columns), (c) => c.key),
     [],
   )
   const backing = () => table()?.backing

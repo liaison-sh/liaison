@@ -42,7 +42,13 @@ describe("bakeIntoTestCatalog", () => {
     const inherited = tarball("lane-app", "1.0.0")
     spawnSync("cp", [inherited, join(shared, "lane-app-1.0.0.liaisonapp")])
     const index = `${JSON.stringify([
-      { name: "lane-app", version: "1.0.0", file: "lane-app-1.0.0.liaisonapp", scopes: [], connections: [] },
+      {
+        name: "lane-app",
+        version: "1.0.0",
+        file: "lane-app-1.0.0.liaisonapp",
+        scopes: [],
+        connections: [],
+      },
     ])}\n`
     writeFileSync(join(shared, "catalog.json"), index)
     process.env.LIAISON_APP_CATALOG_DIR = shared
@@ -53,10 +59,18 @@ describe("bakeIntoTestCatalog", () => {
     expect(readFileSync(join(shared, "catalog.json"), "utf8")).toBe(index)
     expect(process.env.LIAISON_APP_CATALOG_DIR).not.toBe(shared)
     expect(path.startsWith(process.env.LIAISON_APP_CATALOG_DIR ?? "")).toBe(true)
-    expect(listCatalog().map((e) => e.name).sort()).toEqual(["baked-app", "lane-app"])
+    expect(
+      listCatalog()
+        .map((e) => e.name)
+        .sort(),
+    ).toEqual(["baked-app", "lane-app"])
 
     // A second bake goes to the same owned copy and keeps the first.
     bakeIntoTestCatalog(tarball("other-app", "0.2.0"))
-    expect(listCatalog().map((e) => e.name).sort()).toEqual(["baked-app", "lane-app", "other-app"])
+    expect(
+      listCatalog()
+        .map((e) => e.name)
+        .sort(),
+    ).toEqual(["baked-app", "lane-app", "other-app"])
   })
 })

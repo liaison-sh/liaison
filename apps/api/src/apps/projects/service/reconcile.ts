@@ -1211,6 +1211,8 @@ function cardData(args: {
     // The card's money state. Create invoice is added by the handler once invoicing has priced
     // the lines and found nothing missing; every key is present, null when it does not apply.
     createInvoice: null as "yes" | null,
+    /** A retainer month above its hours: the card also offers Create without the overage. */
+    waiveOverage: null as true | null,
     summary: state === "drafted" ? `On draft: ${draftTitle(c)}.` : null,
     undo: state === "drafted" ? ("yes" as const) : null,
     locked: state === "invoiced" ? ("yes" as const) : null,
@@ -1524,6 +1526,7 @@ export async function reconcileGet(args: {
       cardNotes: [],
       foot: null,
       createInvoice: null,
+      waiveOverage: null,
       summary: null,
       undo: null,
       locked: head.state === "invoiced" ? "yes" : null,

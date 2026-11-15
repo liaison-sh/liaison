@@ -891,4 +891,5 @@ export const FR: Record<string, string> = {
   Milestone: "Jalon",
   "This project has no billing plan.": "Ce projet n'a pas d'échéancier.",
   "See the billing plan": "Voir l'échéancier",
+  "{{amount}} excl. VAT": "{{amount}} HT",
 }

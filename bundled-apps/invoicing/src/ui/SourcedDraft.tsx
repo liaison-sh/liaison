@@ -78,6 +78,17 @@ export function isApproved(doc: Pick<SourcedDocument, "approved_by">): boolean {
   return typeof doc.approved_by === "string" && doc.approved_by !== ""
 }
 
+/**
+ * The amount a button names: the document's total once it has one; a draft's total is worked out
+ * when it issues, so until then its lines' sum, said excluding VAT.
+ */
+export function shownAmount(doc: SourcedDocument, lines: SourcedLine[]): string {
+  const total = BigInt(String(doc.grand_total_minor ?? "0"))
+  if (total !== 0n || lines.length === 0) return money(total, doc.currency)
+  const excl = lines.reduce((a, l) => a + BigInt(String(l.subtotal_minor ?? "0")), 0n)
+  return tr("{{amount}} excl. VAT", { amount: money(excl, doc.currency) })
+}
+
 /** How many documents go out with this invoice: itself, its activity report, a filed timesheet. */
 export function documentsGoingOut(doc: Pick<SourcedDocument, "annexes">): number {
   const kinds = new Set((doc.annexes ?? []).map((a) => a.kind))
@@ -89,8 +100,8 @@ export function documentsGoingOut(doc: Pick<SourcedDocument, "annexes">): number
  * month's invoice goes with its activity report, and with its timesheet when one is filed: its
  * button says all three only then, both with the report alone.
  */
-export function issueButtonLabel(doc: SourcedDocument): string {
-  const amount = money(BigInt(String(doc.grand_total_minor ?? "0")), doc.currency)
+export function issueButtonLabel(doc: SourcedDocument, lines: SourcedLine[] = []): string {
+  const amount = shownAmount(doc, lines)
   const approved = isApproved(doc)
   const going = draftSource(doc) === "retainer" ? documentsGoingOut(doc) : 1
   if (going === 3)
@@ -295,7 +306,7 @@ export const SourcedDraftPanel: Component<{
                 disabled={busy()}
                 onClick={() => void issue()}
               >
-                {issueButtonLabel(props.doc)}
+                {issueButtonLabel(props.doc, props.lines)}
               </Button>
             </Show>
             <aside

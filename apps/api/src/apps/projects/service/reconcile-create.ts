@@ -339,6 +339,7 @@ export async function reconcileUndoStep(args: StepArgs & { step: UndoStep }) {
           editable: null,
           foot: null,
           createInvoice: null,
+          waiveOverage: null,
           summary: null,
           undo: null,
           locked: null,

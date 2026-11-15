@@ -1782,6 +1782,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
     summary: approvalId === null ? `${summary}; issue it from the pending list` : summary,
     undo: "yes",
     createInvoice: null,
+    waiveOverage: null,
     documentId,
     approved,
     approvalId,

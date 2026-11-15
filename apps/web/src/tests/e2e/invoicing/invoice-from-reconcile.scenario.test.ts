@@ -5,11 +5,11 @@
 // the model is scripted, the tool runs for real); the person presses Create invoice on it, which
 // makes a draft with no number; the draft's request waits in Invoicing's Pending Approval tab, the
 // sidebar's link; the person opens it there and issues it from its page, which takes the number.
+import { api } from "@liaison/test-helpers"
 import { openAgentConversation, sendInConversation } from "../agent-bootstrap"
 import { agentDmThreadId, scriptAgentTurn, waitForTurnEnd } from "../agent-turn"
 import { loginAs } from "../fixtures/test"
 import { seedModelPricingAndCredits } from "../helpers/agent-seed"
-import { grantProjectScopes } from "../helpers/projects-seed"
 import { seedFactory } from "../helpers/seed"
 import { expect, test } from "./_invoicing-fixtures"
 import { installInvoicingApp } from "./helpers/install-invoicing-app"
@@ -34,7 +34,13 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     world,
     qa,
   }) => {
-    await grantProjectScopes(env, world.org.id, qa.admin.id)
+    // The person runs the project's time and rates and issues invoices.
+    await seedFactory(env, world.org.id, "roles.grantScopes", {
+      userId: qa.admin.id,
+      scopes: ["projects:*", "invoicing:*"],
+      name: "e2e-billing",
+      onlyMissing: true,
+    })
     await installInvoicingApp({
       serverUrl: env.serverUrl,
       token: qa.admin.token,
@@ -47,6 +53,7 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
       world.org.id,
       "projects.billableMonth",
       {
+        ownerId: qa.admin.id,
         key: "LUNE",
         name: "Maison Lune platform",
         company: "Maison Lune",
@@ -66,7 +73,11 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     await scriptAgentTurn(env, {
       threadId,
       steps: [
-        { toolCalls: [{ name: "kernel__tool_search", args: { query: "planned vs done card" } }] },
+        {
+          toolCalls: [
+            { name: "kernel__tool_search", args: { query: "select:projects__reconcile_propose" } },
+          ],
+        },
         {
           toolCalls: [
             {
@@ -108,6 +119,24 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     expect(before[0]).toMatchObject({ status: "draft", number: null })
     const draftId = String(before[0]?.id)
 
+    // The card names no contact, so the draft goes to the company alone: the person completes the
+    // recipient on the draft (the editor's save) before it can issue.
+    const completed = await api(env.serverUrl, "/api/apps/invoicing/tools/drafts_update", {
+      method: "POST",
+      token,
+      body: {
+        params: {
+          draft_id: draftId,
+          patch: {
+            counterparty_address: "12 Harbor Lane, Portland, OR 97209, United States",
+            counterparty_email: "claire@lune.example",
+            counterparty_country: "US",
+          },
+        },
+      },
+    })
+    expect(completed.status, JSON.stringify(completed.body)).toBe(200)
+
     // The sidebar's Pending Approval link opens a tab that lists the draft's request.
     const base = `http://localhost:${env.ports[1]}`
     await page.goto(`${base}/invoicing/pending-approval`)
@@ -124,7 +153,7 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     await expect(panel.getByTestId("sourced-draft-badge")).toHaveText("From planned vs done")
     await expect(panel.getByTestId("sourced-draft-no-number")).toBeVisible()
     const issue = panel.getByTestId("sourced-draft-issue")
-    await expect(issue).toHaveText(/^Issue, /)
+    await expect(issue).toHaveText(/^Issue, .*6.510\.00 EUR excl\. VAT$/)
     await issue.click()
 
     await expect

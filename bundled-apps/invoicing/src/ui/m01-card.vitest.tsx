@@ -159,6 +159,15 @@ describe("milestone and retainer drafts", () => {
     )
   })
 
+  it("a draft whose total is worked out at issue names its lines' sum excluding VAT", () => {
+    render(() => (
+      <SourcedDraftPanel doc={draft({ grand_total_minor: "0" })} lines={lines} today="2026-10-20" />
+    ))
+    expect(screen.getByTestId("sourced-draft-issue").textContent).toMatch(
+      /^Issue, .*6.510\.00 EUR excl\. VAT$/,
+    )
+  })
+
   it("a retainer month's button issues all three together once its timesheet is filed", () => {
     const annexes = [
       { kind: "activity_report", filename: null, partial: false, origin: "card" },

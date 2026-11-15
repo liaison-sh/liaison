@@ -125,7 +125,7 @@ describe("Create invoice's handler", () => {
         cardCtx(minutes) as never,
       )) as Record<string, unknown>
       expect(under.createInvoice).toBe("yes")
-      expect(under.waiveOverage).toBeUndefined()
+      expect(under.waiveOverage ?? null).toBeNull()
     }
   })
 })

@@ -6,7 +6,7 @@
 // seed engine's factories and the projects writers, as the demo worlds seed theirs.
 
 import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
-import { setBillingTerms } from "~/apps/projects/service/time-plan"
+import { setBillingTerms, setTaskTime, setTimePlan } from "~/apps/projects/service/time-plan"
 import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
 import type { SeedContext } from "~/seed/context"
@@ -14,12 +14,13 @@ import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { seedProject } from "~/seed/factories/projects/projects"
-import { seedTaskTime, seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
-import { orgAdmin } from "~/seed/tiers/minimal"
+import { seedTimeSettings } from "~/seed/factories/projects/time"
 
 const HOURS_PER_DAY = 420
 
 export interface BillableProjectArgs {
+  /** Who owns and bills the project: holds projects:* (time, rates). */
+  ownerId: string
   key: string
   name: string
   company: string
@@ -46,7 +47,7 @@ export async function seedBillableProject(
   ctx: SeedContext,
   args: BillableProjectArgs,
 ): Promise<BillableProject> {
-  const owner = await actorFor(ctx, (await orgAdmin(ctx.orgId)).id)
+  const owner = await actorFor(ctx, args.ownerId)
   const [person] = await resolveContacts(ctx, owner, [
     { key: "billed", email: args.contactEmail, name: args.contactName },
   ])
@@ -63,9 +64,11 @@ export async function seedBillableProject(
   await seedTimeSettings(ctx, owner, { hoursPerDayMinutes: HOURS_PER_DAY })
 
   const spec = { key: args.key, name: args.name, description: "", icon: "folder", owner: "owner" }
-  const ref = (taskKey: string) => `e2e-billable:${args.key}:${taskKey}`
+  // One run's own tasks: a re-run in the same org never adopts another run's.
+  const run = crypto.randomUUID()
+  const ref = (taskKey: string) => `e2e-billable:${args.key}:${run}:${taskKey}`
   const { projectId } = await seedProject(ctx, owner, {
-    people: {},
+    people: { owner: { userId: owner.userId } },
     spec: { ...spec, tasks: [] },
     externalRefOf: ref,
   })
@@ -80,13 +83,15 @@ export async function seedBillableProject(
     }),
   )
   await awaitTimeFeatureSync(ctx.orgId)
-  await seedTimePlan(ctx, owner, {
-    projectId,
-    basis: "daily",
-    datedHours: false,
-    sourceRepos: [],
-    periods: [],
-  })
+  await asUser(owner, (tx) =>
+    setTimePlan({
+      tx: tx as never,
+      orgId: ctx.orgId,
+      actorId: owner.userId,
+      scopes: owner.scopes,
+      input: { projectId, basis: "daily", billerId: owner.userId },
+    }),
+  )
   await asUser(owner, (tx) =>
     setBillingTerms({
       tx: tx as never,
@@ -97,30 +102,35 @@ export async function seedBillableProject(
   )
 
   const { taskIds } = await seedProject(ctx, owner, {
-    people: {},
+    people: { owner: { userId: owner.userId } },
     spec: {
       ...spec,
       tasks: args.tasks.map((t, i) => ({
         key: `t${i + 1}`,
         title: t.title,
         status: "done" as const,
+        // Time is entered on one's own tasks.
+        assignee: "owner",
         completedAt: ctx.now,
         timeboxMinutes: t.days * HOURS_PER_DAY,
       })),
     },
     externalRefOf: ref,
   })
-  const today = ctx.now.toISOString().slice(0, 10)
-  await seedTaskTime(
-    ctx,
-    owner,
-    taskIds.map((taskId, i) => ({
-      taskId,
-      projectId,
-      workDate: today,
-      minutes: (args.tasks[i]?.days ?? 0) * HOURS_PER_DAY,
-    })),
-  )
+  const month = ctx.now.toISOString().slice(0, 7)
+  // Time through Took, as the person enters it on their own task.
+  for (const [i, taskId] of taskIds.entries()) {
+    await asUser(owner, (tx) =>
+      setTaskTime({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        userId: owner.userId,
+        scopes: owner.scopes,
+        place: { origin: "human-ui", frame: undefined, actingAgentId: null },
+        input: { taskId, time: `${(args.tasks[i]?.days ?? 0) * HOURS_PER_DAY}m` },
+      }),
+    )
+  }
   await awaitTimeRowWrites()
-  return { projectId, key: args.key, companyId, contactId, month: today.slice(0, 7), taskIds }
+  return { projectId, key: args.key, companyId, contactId, month, taskIds }
 }

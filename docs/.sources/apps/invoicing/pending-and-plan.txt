@@ -1,0 +1,4 @@
+Pending Approval opens a tab listing the waiting invoicing requests oldest first, each opening its document -> bundled-apps/invoicing/src/ui/PendingList.tsx (InvoicingPendingApprovals) ; bundled-apps/invoicing/src/reads.ts (pendingApprovalsList) ; bundled-apps/invoicing/app.manifest.json (ui.tabTypes.pending)
+A retainer month's button says both with its report, all three once its timesheet is filed -> bundled-apps/invoicing/src/ui/SourcedDraft.tsx (issueButtonLabel) ; bundled-apps/invoicing/src/ui/SourcedDraft.tsx (documentsGoingOut)
+A milestone or advance draft links to its project's billing plan -> bundled-apps/invoicing/src/ui/SourcedDraft.tsx (SourcedDraftPanel) ; bundled-apps/invoicing/src/reads.ts (documentsGet)
+The billing plan screen shows each step's state, a milestone not done yet with nothing drafted -> bundled-apps/invoicing/src/ui/BillingPlan.tsx (shownState) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (billingPlanGet)

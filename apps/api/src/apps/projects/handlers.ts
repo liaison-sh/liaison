@@ -1324,7 +1324,9 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
       } else {
         // A project billed by the day or the hour has no total to subtract from: what is
         // invoiced stands alone.
-        out.money = { ...out.money, invoiced } as typeof out.money
+        out.money = { ...out.money, invoiced } as NonNullable<typeof out.money> & {
+          invoiced: number
+        }
         out.totals?.push({ k: "Invoiced", text: fmt(invoiced) })
       }
     } else {

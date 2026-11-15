@@ -221,7 +221,7 @@ describe("a failed sequence's note to the agent", () => {
         authorAgentId: null,
         content:
           'An approval sequence failed and was stopped: Step 2 failed. {"number":"F-1"} To finish the task, propose a corrected sequence as NEW tool calls.',
-        metadata: { type: "bundle-reinvoke", bundleId: "b-1" },
+        metadata: { type: "bundle-reinvoke" },
       }),
     )
     expect(screen.queryByText(/propose a corrected sequence/)).toBeNull()

@@ -95,6 +95,8 @@ export interface MessageMetadata {
      *  participant. Rendered as a muted centered line with no author and no
      *  avatar, in the reader's language, from the fields below. */
     | "participant-added"
+    /** A failed sequence's note to the agent, stamped with the requester's id: never drawn. */
+    | "bundle-reinvoke"
   /** `participant-added` only: who did the adding, who was added, and whether
    *  the newcomer is an agent or a person. */
   actorName?: string

@@ -13,6 +13,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { hasScope } from "~/modules/permissions/permissions"
 import { LINE_SOURCE } from "./claims"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
@@ -1058,6 +1059,7 @@ export async function reconcilePropose(args: {
     outcome,
     shape: await readStored(tx, orgId, id),
     ...(args.origin ? { origin: args.origin } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, args.threadId ?? null) } : {}),
   })
 }
 
@@ -1071,6 +1073,8 @@ function cardData(args: {
   state?: "proposed" | "drafted" | "invoiced" | "credited"
   said?: string
   origin?: string
+  /** Where a person opens the card in Liaison: told to a coding agent, which cannot press Create. */
+  link?: string | null
   /** Who reads the card and who made it: past proposed, a time-spent note is its author's alone. */
   viewerId?: string
   createdBy?: string
@@ -1204,7 +1208,7 @@ function cardData(args: {
             amountText,
             coverageText,
             notSeen: shape.notSeen,
-            link: null,
+            link: args.link ?? null,
           }),
         }
       : {}),
@@ -1260,6 +1264,8 @@ interface StoredHead {
   basis: Basis
   created_by: string
   document_id: string | null
+  /** The conversation the card lives in, when it was made in one. */
+  thread_id?: string | null
 }
 
 async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> {
@@ -1270,7 +1276,7 @@ async function readHead(tx: Tx, orgId: string, id: string): Promise<StoredHead> 
           SELECT id::text AS id, project_id::text AS project_id,
                  period_start::text AS period_start, period_end::text AS period_end,
                  revision, state, basis, created_by::text AS created_by,
-                 document_id::text AS document_id
+                 document_id::text AS document_id, thread_id::text AS thread_id
             FROM ${projectsRel("reconciliations")}
            WHERE id = ${uuid}::uuid AND org_id = ${orgId}::uuid`),
       )[0]
@@ -1467,6 +1473,7 @@ export async function reconcileGet(args: {
   scopes: readonly string[]
   input: { reconciliationId: string }
   now?: Date
+  origin?: string
 }) {
   const { tx, orgId } = args
   const head = await readHead(tx, orgId, String(args.input.reconciliationId ?? ""))
@@ -1552,7 +1559,15 @@ export async function reconcileGet(args: {
     viewerId: args.userId,
     createdBy: head.created_by,
     said: `The card as stored, revision ${head.revision}.`,
+    ...(args.origin ? { origin: args.origin } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, head.thread_id ?? null) } : {}),
   })
+}
+
+/** The card's conversation in Liaison, where a person presses Create invoice; null when none. */
+async function cardLink(orgId: string, threadId: string | null): Promise<string | null> {
+  if (!threadId) return null
+  return `Open the card in Liaison: ${await orgPublicBaseUrl(orgId)}/threads/${threadId}`
 }
 
 /**

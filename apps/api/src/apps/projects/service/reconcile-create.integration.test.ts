@@ -665,6 +665,17 @@ describe("who presses Create", () => {
     expect(await docsOf(p.projectId)).toEqual([])
     expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
+
+  it("a coding agent reading the card is given the link where a person presses Create invoice", async () => {
+    const p = await october()
+    const card = await run(
+      reconcileGet,
+      { reconciliationId: p.card.reconciliationId },
+      { origin: "mcp" },
+    )
+    expect(card.text).toContain("a person presses Create invoice")
+    expect(card.text).toContain(`/threads/${thread}`)
+  })
 })
 
 describe("one draft per card", () => {

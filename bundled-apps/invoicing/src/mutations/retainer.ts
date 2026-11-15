@@ -33,6 +33,7 @@ import {
   runDocumentRef,
 } from "../recurring/retainer"
 import {
+  advanceRemaining,
   type DeductionLine,
   draftTotals,
   pendingIssueApproval,
@@ -40,6 +41,7 @@ import {
   renderDeductionLines,
 } from "./billing-plan"
 import { draftsCreate, draftsDiscard } from "./drafts"
+import { heldText, raiseOnePerProject } from "./prepaid-hold"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -81,6 +83,20 @@ export type RetainerDraftResult =
       message: string
     }
   | { status: "error"; error: { code: string; message: string; retryable: false } }
+
+/** A document's external_refs, as stored (an object, or its JSON text). */
+function refsOf(doc: Row): Row {
+  const raw = doc.external_refs
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as unknown
+      return parsed && typeof parsed === "object" ? (parsed as Row) : {}
+    } catch {
+      return {}
+    }
+  }
+  return raw && typeof raw === "object" ? (raw as Row) : {}
+}
 
 const refuse = (code: string, message: string): RetainerDraftResult => ({
   status: "error",
@@ -143,7 +159,11 @@ function scheduleLines(
   return (Array.isArray(raw) ? raw : []) as never
 }
 
-/** The issued advances of a prepaid month not yet deducted: the month's fee paid ahead. */
+/**
+ * The issued advances of a prepaid month not yet deducted: the month's fee paid ahead. An advance
+ * belongs to the month of its service period (advance_draft_create dates it), never to the month
+ * it was issued in; a credited one is deducted for what remains of it.
+ */
 async function prepaidAdvances(
   ctx: DbCtx,
   projectId: string,
@@ -151,27 +171,48 @@ async function prepaidAdvances(
 ): Promise<Array<{ doc: Row; lines: Row[] }>> {
   const docs = (await ctx.db.findMany("documents", {
     where: { billing_project_id: projectId, invoice_role: "advance" },
-    limit: 200,
+    limit: 500,
   })) as Row[]
   const out: Array<{ doc: Row; lines: Row[] }> = []
   for (const d of docs) {
     if (!ISSUED.has(String(d.status))) continue
-    const start = typeof d.service_period_start === "string" ? d.service_period_start : null
-    const issuedOn = typeof d.issued_at === "string" ? d.issued_at.slice(0, 10) : ""
-    const forMonth = start ? start >= period.from && start <= period.to : issuedOn <= period.to
-    if (!forMonth) continue
+    const start = typeof d.service_period_start === "string" ? d.service_period_start : ""
+    if (!(start >= period.from && start <= period.to)) continue
     const taken = (await ctx.db.findMany("advance_deductions", {
       where: { advance_document_id: String(d.id) },
       limit: 20,
     })) as Row[]
     if (taken.some((t) => t.state !== "released")) continue
+    const total = absBig(d.grand_total_minor)
+    const remaining = total === 0n ? 0n : await advanceRemaining(ctx, d)
+    if (total !== 0n && remaining <= 0n) continue
     const lines = (await ctx.db.findMany("document_lines", {
       where: { document_id: String(d.id) },
       limit: 200,
     })) as Row[]
-    out.push({ doc: d, lines })
+    out.push({
+      doc: d,
+      lines:
+        total !== 0n && remaining < total
+          ? lines.map((l) => ({
+              ...l,
+              subtotal_minor: (asBig(l.subtotal_minor) * remaining) / total,
+            }))
+          : lines,
+    })
   }
   return out
+}
+
+const asBig = (v: unknown): bigint => {
+  if (typeof v === "bigint") return v
+  if (typeof v === "number" && Number.isFinite(v)) return BigInt(Math.round(v))
+  if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return BigInt(v.trim())
+  return 0n
+}
+const absBig = (v: unknown): bigint => {
+  const n = asBig(v)
+  return n < 0n ? -n : n
 }
 
 export interface RetainerPlanInput {
@@ -298,10 +339,29 @@ export async function retainerDraftFromReconcile(
     )
   const scheduleId = String(s.id)
   const month = monthOf(read.period.from)
-  const key = retainerDocumentRef(scheduleId, month)
+  // The month's key; a month whose invoice was credited in full is billed again under the next
+  // key, `<key>:<n>`, which the projects app chose for the new card.
+  const base = retainerDocumentRef(scheduleId, month)
+  const ref = typeof read.documentRef === "string" ? read.documentRef : ""
+  const key = ref.startsWith(`${base}:`) && /^\d+$/.test(ref.slice(base.length + 1)) ? ref : base
   const title = titleOf(name, month)
 
   const found = await one(ctx, "documents", { external_ref: key })
+  if (found && refsOf(found).reconciliation_id !== reconciliationId) {
+    // One draft per retainer month: another card's lines are never added to it.
+    const on =
+      found.status === "draft"
+        ? `${title} (draft ${String(found.id)}), made from another planned vs done card`
+        : `invoice ${String(found.number ?? found.id)}, made from another planned vs done card`
+    return refuse(
+      "month_on_other_card",
+      `${month} of ${name} is already on ${on}. Nothing was made, and nothing was added to it. ${
+        found.status === "draft"
+          ? "Bill these lines on that card, or discard that draft and press Create invoice here again."
+          : "Correct that invoice with a credit note; once it is credited in full, the month can be invoiced again from its card."
+      }`,
+    )
+  }
   if (found) {
     const totals = {
       excl: Number(found.subtotal_minor ?? 0),
@@ -463,18 +523,27 @@ export async function retainerDraftFromReconcile(
       : []),
     ...deductions.map((d) => `${d.description} deducted`),
   ]
-  const approvalId = await raiseIssueApproval(
-    ctx,
-    draftId,
-    title,
-    [...said, `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`],
-    monthEnd(read.period.to),
-  )
+  const approvalLines = [
+    ...said,
+    `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
+  ]
+  const latestIssueOn = monthEnd(read.period.to)
+  // A prepaid retainer's project has one issue approval waiting at a time (its next advance's or
+  // this final's), so Home holds one money item for it.
+  const raised = plan.prepaid
+    ? await raiseOnePerProject(ctx, read.projectId, draftId, title, approvalLines, latestIssueOn)
+    : {
+        approvalId: await raiseIssueApproval(ctx, draftId, title, approvalLines, latestIssueOn),
+        heldBy: null,
+      }
+  const approvalId = raised.approvalId
   const who = canIssue ? "approved" : "waiting for someone who can issue invoices"
   const next =
-    approvalId === null
-      ? "Its issue approval could not be raised: issue it from the pending list."
-      : `Issuing it is waiting on approval ${approvalId}.`
+    approvalId !== null
+      ? `Issuing it is waiting on approval ${approvalId}.`
+      : raised.heldBy
+        ? heldText(raised.heldBy)
+        : "Its issue approval could not be raised: issue it from the pending list."
   return {
     status: "completed",
     draftId,
@@ -495,10 +564,25 @@ export async function retainerDraftFromReconcile(
  * nothing else. Internal, for the projects app: it refuses any document that is not an unissued
  * draft carrying a card's key, so it can never discard another draft or an issued invoice.
  */
-export async function reconcileDraftDiscard(ctx: MutationsCtx, input: { draft_id?: string }) {
+export async function reconcileDraftDiscard(
+  ctx: MutationsCtx,
+  input: { draft_id?: string; reconciliationId?: string },
+) {
   const id = typeof input.draft_id === "string" ? input.draft_id : ""
   const row = id ? ((await ctx.db.findOne("documents", id)) as Row | null) : null
   const ref = typeof row?.external_ref === "string" ? row.external_ref : ""
+  const holder = row ? refsOf(row).reconciliation_id : undefined
+  // Undo on a card discards only the draft that card made.
+  const otherCard =
+    typeof input.reconciliationId === "string" &&
+    typeof holder === "string" &&
+    holder !== input.reconciliationId
+  if (otherCard) {
+    return refuse(
+      "not_a_card_draft",
+      `Document ${id} was made from another planned vs done card, so nothing was discarded.`,
+    )
+  }
   if (!row || !(ref.startsWith("reconcile:") || ref.startsWith("retainer:"))) {
     return refuse(
       "not_a_card_draft",

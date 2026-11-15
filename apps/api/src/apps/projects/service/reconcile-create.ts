@@ -16,12 +16,55 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { reconcileMark, releaseReconciliation, reserveClaims, SUPERSEDED } from "./claims"
 import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
-import { documentsForRef } from "./reconcile-sweep"
+import { documentsForRef, type RefDocument } from "./reconcile-sweep"
 import { retainerDocumentRef, retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
 import { datedHoursOn, hoursPerDayMinutes } from "./time-plan"
 
 type Tx = RlsClient
+
+/** A document under a key that no longer bills its month: credited in full, or cancelled. */
+function billsNothing(d: RefDocument): boolean {
+  if (d.status === "cancelled" || d.status === "voided") return true
+  const total = d.grandTotalMinor < 0n ? -d.grandTotalMinor : d.grandTotalMinor
+  return d.status !== "draft" && d.status !== "pending_approval" && total > 0n
+    ? d.creditedMinor >= total
+    : false
+}
+
+/**
+ * A retainer month's card key: the month's key, `retainer:<schedule>:<YYYY-MM>`, kept once the
+ * card holds it; when the invoice under it was credited in full, the next card bills the month
+ * again under `<key>:2`, `<key>:3` and so on.
+ */
+async function retainerCardKey(tx: Tx, orgId: string, id: string, base: string): Promise<string> {
+  const held = extractRows<{ document_ref: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT document_ref FROM ${projectsRel("reconciliations")}
+       WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`),
+  )[0]?.document_ref
+  const rebill = (k: string) => k.startsWith(`${base}:`) && /^\d+$/.test(k.slice(base.length + 1))
+  if (held && (held === base || rebill(held))) return held
+  for (let n = 1; n < 100; n++) {
+    const key = n === 1 ? base : `${base}:${n}`
+    const docs = await documentsForRef(orgId, key)
+    if (docs.length === 0 || !docs.every(billsNothing)) return key
+  }
+  return base
+}
+
+/** Another card of the org that drafted or invoiced under this key. */
+async function otherCardOnKey(tx: Tx, orgId: string, key: string, id: string): Promise<boolean> {
+  return (
+    extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT id::text AS id FROM ${projectsRel("reconciliations")}
+         WHERE org_id = ${orgId}::uuid AND document_ref = ${key} AND id <> ${id}::uuid
+           AND state IN ('drafted', 'invoiced')
+         LIMIT 1`),
+    ).length > 0
+  )
+}
 
 /** The key the card's draft carries: one draft per card revision. */
 export function reconcileDocumentRef(reconciliationId: string, revision: number): string {
@@ -102,7 +145,12 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       : null
   const key =
     retainer?.scheduleId && head.period_start
-      ? retainerDocumentRef(retainer.scheduleId, head.period_start)
+      ? await retainerCardKey(
+          tx,
+          orgId,
+          head.id,
+          retainerDocumentRef(retainer.scheduleId, head.period_start),
+        )
       : reconcileDocumentRef(head.id, revision)
   const retainerFields = retainer
     ? { periodFrom: head.period_start, timeboxMinutes: retainer.timeboxMinutes }
@@ -190,6 +238,17 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         )
       }
     }
+    // One draft per retainer month: a second card never adds its lines to another card's draft.
+    if (retainer && (await otherCardOnKey(tx, orgId, key, head.id))) {
+      throw new ProjectsServiceError(
+        409,
+        "month_on_other_card",
+        `${head.period_start?.slice(0, 7) ?? "This month"} of ${facts.name} is already on the invoice draft made from another planned vs done card. Nothing was created, and nothing was added to that draft.`,
+        {
+          next: "Bill these lines on that card, or discard that draft in Invoicing and press Create invoice here again.",
+        },
+      )
+    }
     const lines = await billedLines(tx, orgId, head.id)
     return {
       reconciliationId: head.id,
@@ -238,7 +297,9 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
   if (args.step === "release") {
     // Released only when no document carries the card's key, in any state.
     const docs = await documentsForRef(orgId, key)
-    if (docs.length > 0) return { released: 0, kept: true, state: head.state }
+    // A document under a retainer month's key that another card made is not this card's.
+    const others = retainer ? await otherCardOnKey(tx, orgId, key, head.id) : false
+    if (docs.length > 0 && !others) return { released: 0, kept: true, state: head.state }
     if (head.state === "drafted") {
       const out = await releaseReconciliation(tx, { orgId, reconciliationId: head.id })
       return { ...out, kept: false }

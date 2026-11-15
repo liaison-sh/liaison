@@ -1863,7 +1863,10 @@ export async function reconcileUndo(params: unknown, ctx: ProjectsCtx): Promise<
   const discard = await invoicingCall(() =>
     ctx.executeTool(
       "invoicing:reconcile_draft_discard",
-      JSON.stringify({ draft_id: String(prep.documentId ?? "") }),
+      JSON.stringify({
+        draft_id: String(prep.documentId ?? ""),
+        reconciliationId: String(p.reconciliationId ?? ""),
+      }),
     ),
   )
   // A conversation that read outside text holds the discard for the person's own approval;

@@ -107,6 +107,8 @@ function retainerDraftErrors(d: ScheduleDraft): string[] {
     errors.push("give the rate per hour above them, zero or more")
   if (d.issue_mode === "auto")
     errors.push("a retainer cannot issue by itself: its month is invoiced from the project's card")
+  if (d.repeats !== "month")
+    errors.push("a retainer repeats every month: each month is invoiced from the project's card")
   return errors
 }
 
@@ -456,6 +458,7 @@ function RetainerSection(p: { d: ScheduleDraft; patch: (v: Partial<ScheduleDraft
                     retainer_hours: 0,
                     retainer_overage_rate_minor: p.d.retainer_overage_rate_minor ?? 0,
                     issue_mode: "review",
+                    repeats: "month",
                   }
                 : { retainer_hours: null, retainer_project_id: null },
             )

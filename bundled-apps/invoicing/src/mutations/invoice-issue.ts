@@ -48,6 +48,7 @@ import {
   netLinesForIssuer,
   normaliseDraftLines,
 } from "./lines"
+import { raiseHeldApproval } from "./prepaid-hold"
 import { checkDraftBuyer } from "./quote-proforma-po"
 import {
   type DraftRow,
@@ -282,6 +283,10 @@ export async function invoiceIssue(
   if (!issued.ok) return issued.error
   const result = issued.result
   await withdrawIssueApprovals(ctx, draft, "issued")
+  await raiseHeldApproval(ctx, {
+    id: draft.id,
+    billing_project_id: draft.source?.billing_project_id,
+  })
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: result.document_id,
@@ -332,6 +337,10 @@ export async function issueRunDraft(
   const issued = await issueWithFxRate(ctx, issueInput)
   if (!issued.ok) return issued.error
   await withdrawIssueApprovals(ctx, draft, "issued")
+  await raiseHeldApproval(ctx, {
+    id: draft.id,
+    billing_project_id: draft.source?.billing_project_id,
+  })
   await markReconciliation(ctx, draft, {
     to: "billed",
     documentId: issued.result.document_id,

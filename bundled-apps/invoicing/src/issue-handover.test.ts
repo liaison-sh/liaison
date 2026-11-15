@@ -27,7 +27,8 @@ import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
 import { DRAFT_DEPENDENTS, handOverDraft } from "./mutations/issue-handover"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
 import { documentsSendToCustomer } from "./mutations/send-to-customer"
-import { documentsSearch } from "./reads"
+import { documentsGet, documentsSearch } from "./reads"
+import { summarizeDocumentSend } from "./summarizers"
 import { createMockDb, type MockDb } from "./test-db"
 import { testTime } from "./test-time"
 import { documentAttachmentAdd } from "./tools/document-attachment-add"
@@ -672,6 +673,43 @@ describe("an annex once the invoice was sent", () => {
     expect(refused.status === "error" && refused.error.code).toBe("document_sent")
     expect(refused.status === "error" && refused.error.message).toContain(res.number)
     expect(h.db.__all("document_attachments")).toHaveLength(1)
+  })
+})
+
+describe("the send's approval card", () => {
+  test("the send approval lists every annex the mail carries, by file name and origin", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:13`)
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    if (res.status !== "completed") throw new Error(JSON.stringify(res))
+    await h.db.insert("activity_reports", {
+      document_id: res.document_id,
+      version: 1,
+      content: {},
+    })
+    const annexCtx = {
+      db: h.db,
+      hasScope: async () => true,
+      files: {
+        attachToParent: async () => ({ id: crypto.randomUUID(), filename: "hr-export.xlsx" }),
+      },
+    }
+    const filed = await documentAttachmentAdd(annexCtx as never, {
+      documentId: res.document_id,
+      fileId: crypto.randomUUID(),
+      kind: "timesheet",
+      partial: true,
+    })
+    expect(filed.status).toBe("completed")
+    const doc = await documentsGet(h.ctx as never, { id: res.document_id })
+    const card = await summarizeDocumentSend({ document_id: res.document_id }, undefined, {
+      context: doc,
+    })
+    const lines = card.lines ?? []
+    expect(lines).toContainEqual(expect.stringContaining("hr-export.xlsx"))
+    expect(lines.find((l) => l.includes("hr-export.xlsx"))).toContain("partial")
+    expect(lines).toContainEqual(expect.stringContaining("activity report"))
+    expect(lines.join("\n")).not.toContain("The PDF is attached;")
   })
 })
 

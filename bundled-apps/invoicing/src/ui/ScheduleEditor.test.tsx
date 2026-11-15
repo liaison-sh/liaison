@@ -232,6 +232,18 @@ describe("the editor speaks in the units a person types", () => {
     expect(errors.join(" ")).not.toMatch(/minor units|basis points/)
   })
 
+  it("a retainer on a schedule that does not repeat every month cannot be saved", () => {
+    const retainer = {
+      retainer_hours: 40,
+      retainer_project_id: "project-1",
+      retainer_overage_rate_minor: 12000,
+    }
+    expect(draftErrors(filled({ ...retainer, repeats: "month" }))).toEqual([])
+    expect(draftErrors(filled({ ...retainer, repeats: "quarter" })).join(" ")).toContain(
+      "repeats every month",
+    )
+  })
+
   it("names the series read-only from the issuer, and the title names the customer", () => {
     const issuers = [{ id: "i1", legal_name: "Studio Sud", prefix_invoice: "F-{YYYY}-" }] as never
     expect(seriesOf(issuers, "i1")).toMatch(/^F-\d{4}- then the next number, from Studio Sud$/)

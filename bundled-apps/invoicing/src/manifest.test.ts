@@ -1740,8 +1740,12 @@ describe("invoicing manifest", () => {
     // 0.27.2: documents_get returns a draft's source key, approver and invoice role for its page.
     // 0.28.0: retainer, milestone and advance drafts' issue approvals name their latest issue day
     //   (late on the org's day) and carry it, so Home brings them up from four days before.
+    // 0.28.1: a prepaid retainer's advance pays for one month and only that month's final deducts
+    //   it; the send's approval lists every annex; a month on another card's draft is refused and
+    //   a month credited in full is drafted again; a retainer repeats every month.
     // 0.29.0: a Pending Approval tab lists the waiting requests and opens each one's document;
     //   a retainer card's preview says the month's hours above the retainer; a billing plan tab.
+    // 0.29.1: the 0.28.1 and 0.29.0 changes together.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

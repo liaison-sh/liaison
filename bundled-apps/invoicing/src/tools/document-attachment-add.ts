@@ -103,15 +103,18 @@ export async function documentAttachmentAdd(
     partial,
   })) as { id: string }
   let copied: string | null = null
+  let filename: string | null = null
   try {
     const res = (await ctx.files.attachToParent({
       sourceFileId: fileId,
       targetApp: "invoicing",
       targetEntityType: "document_attachment",
       targetEntityId: row.id,
-    })) as { id?: unknown } | string | null
-    const parsed = typeof res === "string" ? (JSON.parse(res) as { id?: unknown }) : res
+    })) as { id?: unknown; filename?: unknown } | string | null
+    const parsed =
+      typeof res === "string" ? (JSON.parse(res) as { id?: unknown; filename?: unknown }) : res
     copied = typeof parsed?.id === "string" ? parsed.id : null
+    filename = typeof parsed?.filename === "string" ? parsed.filename.slice(0, 200) : null
   } catch {
     copied = null
   }
@@ -122,7 +125,8 @@ export async function documentAttachmentAdd(
       `File ${fileId} is not one you can read, so nothing was filed on the invoice.`,
     )
   }
-  await ctx.db.update("document_attachments", row.id, { file_id: copied })
+  // The send's approval card lists the annex by this name, so nothing is mailed unseen.
+  await ctx.db.update("document_attachments", row.id, { file_id: copied, filename })
   const what = kind === "timesheet" ? "timesheet" : "activity report"
   return {
     status: "completed",

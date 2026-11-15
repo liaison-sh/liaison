@@ -21,6 +21,18 @@ interface Hold {
   period_end: string | null
 }
 
+/** Whether a person's scopes read invoicing's documents. */
+function readsInvoices(scopes: readonly string[]): boolean {
+  return scopes.some(
+    (s) =>
+      s === "*" ||
+      s === "invoicing:*" ||
+      s === "invoicing:documents:*" ||
+      s === "invoicing:documents:read" ||
+      s === "invoicing:documents:write",
+  )
+}
+
 /** The first live claim on any of `taskIds`, or null when none is held. */
 async function liveHold(orgId: string, taskIds: string[]): Promise<Hold | null> {
   if (taskIds.length === 0) return null
@@ -56,15 +68,25 @@ export async function refuseClaimedTasks(
   orgId: string,
   taskIds: string[],
   what: "moved to another project" | "merged",
+  scopes: readonly string[],
 ): Promise<void> {
   const hold = await liveHold(orgId, taskIds)
   if (!hold) return
+  const task = hold.task_title ? `"${hold.task_title}"` : "This task"
+  // The invoice is named only to someone who can read invoices: the read above is a system one.
+  if (!readsInvoices(scopes)) {
+    throw new ProjectsServiceError(
+      409,
+      "already_on",
+      `${task} is on an invoice of its project, or on its draft, so it was not ${what}. Nothing changed. Ask someone who handles the project's invoices to correct it first, or leave the task where it is.`,
+      { taskId: hold.task_id, documentNumber: null, draft: null },
+    )
+  }
   const on = hold.document_number
     ? `invoice ${hold.document_number}`
     : `the draft invoice for ${hold.project_name ?? "its project"}${
         hold.period_start ? `, ${hold.period_start} to ${hold.period_end}` : ""
       }`
-  const task = hold.task_title ? `"${hold.task_title}"` : "This task"
   throw new ProjectsServiceError(
     409,
     "already_on",

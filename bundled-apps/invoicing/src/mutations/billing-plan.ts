@@ -532,7 +532,7 @@ async function projectAdvances(
 }
 
 /** What remains of an advance after its issued credit notes (minor units, incl. VAT). */
-export async function advanceRemaining(ctx: MutationsCtx, doc: Row): Promise<bigint> {
+export async function advanceRemaining(ctx: Pick<MutationsCtx, "db">, doc: Row): Promise<bigint> {
   const notes = (await ctx.db.findMany("documents", {
     where: { original_document_id: String(doc.id) },
     limit: 50,

@@ -8,10 +8,12 @@
 import { resolveOpenParks } from "../deferred"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
+import { isRetainerMonth, nextMonth } from "../recurring/retainer"
 import { advanceDeductedRefusal } from "./advance-guard"
 import {
   advanceRemaining,
   draftTotals,
+  type Refusal,
   raiseIssueApproval,
   readMilestones,
   recipientOfQuote,
@@ -24,12 +26,15 @@ import { creditNoteCreateAndIssue } from "./credit-notes"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import { counterpartyFromRow } from "./lines"
+import { heldText, raiseOnePerProject } from "./prepaid-hold"
+import { retainerScheduleOf } from "./retainer"
 import type { ErrorEnvelope, MutationsCtx, PreflightResult } from "./shared"
 
 type Row = Record<string, unknown>
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/
 const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
 
 const asBig = (v: unknown): bigint => {
@@ -50,6 +55,49 @@ export interface AdvanceDraftCreateInput {
   amountMinor?: number | null
   receivedOn?: string | null
   contactId?: string | null
+  /** A prepaid retainer: the month (YYYY-MM) the advance pays for. */
+  month?: string | null
+}
+
+/** The last day of a YYYY-MM month. */
+function lastDay(month: string): string {
+  const [y, m] = month.split("-").map(Number) as [number, number]
+  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`
+}
+
+/**
+ * The month a prepaid retainer's advance pays for: the one asked, else the month after the
+ * project's last dated advance, else the current month in the issuer's zone.
+ */
+async function retainerAdvanceMonth(
+  ctx: MutationsCtx,
+  projectId: string,
+  asked: unknown,
+): Promise<string | Refusal> {
+  if (asked !== undefined && asked !== null && asked !== "") {
+    if (typeof asked === "string" && MONTH.test(asked)) return asked
+    return refuse(
+      "invalid_input",
+      `month ${String(asked)} is not a month (YYYY-MM). Nothing was drafted.`,
+    )
+  }
+  const live = (
+    (await ctx.db.findMany("documents", {
+      where: { billing_project_id: projectId, invoice_role: "advance" },
+      limit: 500,
+    })) as Row[]
+  )
+    .filter((d) => d.status !== "cancelled" && d.status !== "voided")
+    .map((d) => (typeof d.service_period_start === "string" ? d.service_period_start : ""))
+    .filter((d) => DAY.test(d))
+    .sort()
+  const last = live.at(-1)
+  if (last) return nextMonth(last.slice(0, 7))
+  const issuer = await resolveIssuerProfileOrError(ctx.db, null)
+  const zone = issuer.ok
+    ? String((issuer.issuer as { timezone?: string }).timezone ?? "UTC")
+    : "UTC"
+  return (await ctx.time.civil({ timezone: zone })).date.slice(0, 7)
 }
 
 export async function advanceDraftCreate(
@@ -102,9 +150,29 @@ export async function advanceDraftCreate(
       )
   }
 
+  // A prepaid retainer's advance pays for one month: dated to it and keyed by it, so that
+  // month's final deducts it and no other month's final does.
+  let month: string | null = null
+  let retainer: Row | null = null
+  if (!step) {
+    retainer = await retainerScheduleOf(ctx, projectId)
+    if (retainer) {
+      const m = await retainerAdvanceMonth(ctx, projectId, input.month)
+      if (typeof m !== "string") return m
+      if (!isRetainerMonth(retainer, m))
+        return refuse(
+          "period_on_run",
+          `${m} of this project is billed by its recurring schedule's month-end run, not by the retainer, so no advance was drafted. The retainer bills from ${String(retainer.retainer_from)}.`,
+        )
+      month = m
+    }
+  }
+
   const key = step
     ? `advance:${String(step.id)}`
-    : `advance:${projectId}:${receivedOn ?? "undated"}:${amount}`
+    : month
+      ? `advance:${projectId}:${month}`
+      : `advance:${projectId}:${receivedOn ?? "undated"}:${amount}`
   const existing = await one(ctx, "documents", { external_ref: key })
   if (existing)
     return refuse(
@@ -120,7 +188,13 @@ export async function advanceDraftCreate(
     where: { billing_project_id: projectId, invoice_role: "final" },
     limit: 20,
   })) as Row[]
-  const final = finals.find((d) => d.status !== "cancelled" && d.status !== "voided")
+  // A retainer's monthly final deducts its own month's advance only: it never closes the plan.
+  const final = finals.find(
+    (d) =>
+      d.status !== "cancelled" &&
+      d.status !== "voided" &&
+      !String(d.external_ref ?? "").startsWith("retainer:"),
+  )
   if (final)
     return refuse(
       "final_already_drafted",
@@ -137,6 +211,17 @@ export async function advanceDraftCreate(
     recipient = {
       counterparty_contact_id: input.contactId,
       ...(await recipientOf(ctx, { contactId: input.contactId, companyId: null })),
+    }
+  else if (
+    retainer &&
+    (typeof retainer.contact_id === "string" || typeof retainer.company_id === "string")
+  )
+    // A retainer's advance bills the retainer's customer.
+    recipient = {
+      ...(await recipientOf(ctx, {
+        contactId: typeof retainer.contact_id === "string" ? retainer.contact_id : null,
+        companyId: typeof retainer.company_id === "string" ? retainer.company_id : null,
+      })),
     }
   else
     return refuse(
@@ -156,7 +241,19 @@ export async function advanceDraftCreate(
       (issuer.issuer as { default_currency?: string }).default_currency ??
       "EUR",
   )
-  const stepRate = typeof step?.tax_rate_bp === "number" ? step.tax_rate_bp : undefined
+  // A retainer's advance takes the fee's VAT, so the month's final deducts it rate for rate.
+  const retainerFee = retainer
+    ? ((typeof retainer.lines === "string" ? JSON.parse(retainer.lines) : retainer.lines) as
+        | Array<{ vat_bp?: unknown }>
+        | undefined)
+    : undefined
+  const feeRate = Array.isArray(retainerFee) ? retainerFee[0]?.vat_bp : undefined
+  const stepRate =
+    typeof step?.tax_rate_bp === "number"
+      ? step.tax_rate_bp
+      : typeof feeRate === "number"
+        ? feeRate
+        : undefined
   const label = step
     ? String(step.label)
     : quote?.number
@@ -188,6 +285,7 @@ export async function advanceDraftCreate(
       billing_project_id: projectId,
       invoice_role: "advance",
       payment_state: "due",
+      ...(month ? { service_period_start: `${month}-01`, service_period_end: lastDay(month) } : {}),
       // Money received before the work: the advance invoice is due at receipt.
       ...(receivedOn ? { latest_issue_on: receivedOn } : {}),
       ...(quote
@@ -217,18 +315,23 @@ export async function advanceDraftCreate(
   }
 
   const totals = await draftTotals(ctx, recipient as never, items)
-  const title = `Advance invoice draft, ${label}`
+  const title = month
+    ? `Advance invoice draft, ${label}, ${month}`
+    : `Advance invoice draft, ${label}`
   await takeDownMilestoneLine(ctx, projectId)
-  const approvalId = await raiseIssueApproval(
-    ctx,
-    draftId,
-    title,
-    [
-      `${formatMoneyMinor(amount, currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
-      ...(receivedOn ? [`Received on ${shortDate(receivedOn)}`] : []),
-    ],
-    receivedOn,
-  )
+  const approvalLines = [
+    `${formatMoneyMinor(amount, currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
+    ...(receivedOn ? [`Received on ${shortDate(receivedOn)}`] : []),
+  ]
+  // A prepaid retainer's project has one issue approval waiting at a time.
+  const raised =
+    month && retainer?.covers === "period_ahead"
+      ? await raiseOnePerProject(ctx, projectId, draftId, title, approvalLines, receivedOn)
+      : {
+          approvalId: await raiseIssueApproval(ctx, draftId, title, approvalLines, receivedOn),
+          heldBy: null,
+        }
+  const approvalId = raised.approvalId
   return {
     status: "completed" as const,
     draftId,
@@ -239,7 +342,9 @@ export async function advanceDraftCreate(
       `Created ${title} (draft ${draftId}): ${formatMoneyMinor(BigInt(totals.excl), currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.vat), currency)} VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)}. It takes the normal invoice series at issue; no number was taken. The final invoice will deduct it. ` +
       (approvalId
         ? `Issuing it is waiting on approval ${approvalId}.`
-        : "Its issue approval could not be raised: issue it from the pending list."),
+        : raised.heldBy
+          ? heldText(raised.heldBy)
+          : "Its issue approval could not be raised: issue it from the pending list."),
   }
 }
 

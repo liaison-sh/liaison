@@ -34,7 +34,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { seedContext } from "~/seed/context"
-import { insertAppRow, jsonCell } from "~/seed/factories/app-tables"
+import { type AppCell, insertAppRow, jsonCell } from "~/seed/factories/app-tables"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { seedTaskTime } from "~/seed/factories/projects/time"
@@ -682,6 +682,107 @@ describe("what Create refuses", () => {
     expect(await docsOf(p.projectId)).toEqual([])
     expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
     expect(await numbersTaken()).toBe(before)
+  })
+
+  it("a second lead's card for a retainer month already drafted is refused and adds nothing to that draft", async () => {
+    const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId)
+    await retainerTimebox(p.projectId, schedule, "2026-10-01", "2026-10-31")
+    // The other lead bills a task the first card left off.
+    const c = await call<{ id: string }>("projects_createTask", {
+      projectId: p.projectId,
+      title: "Task c",
+      statusLabel: "done",
+      timebox: "1 day",
+    })
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-10-21 10:00+00'::timestamptz WHERE id = ${c.id}::uuid`,
+    )
+    await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+      { taskId: c.id, projectId: p.projectId, workDate: "2026-10-13", minutes: day(1) },
+    ])
+    const theirs = await run(
+      reconcilePropose,
+      {
+        project: p.key,
+        month: "2026-10",
+        lines: [{ name: "Site upkeep", taskIds: [c.id], proofs: [{ kind: "task", ref: c.id }] }],
+      },
+      { userId: otherLead.userId },
+    )
+    expect(theirs.error).toBeUndefined()
+    expect(theirs.reconciliationId).not.toBe(p.card.reconciliationId)
+    // The first card bills the other closed tasks: the second card leaves them off.
+    const others = theirs.lines.find((l: Record<string, any>) => l.name !== "Site upkeep")
+    const mine = await run(
+      reconcileLineUpdate,
+      {
+        reconciliationId: theirs.reconciliationId,
+        revision: theirs.revision,
+        lineId: others.lineId,
+        bill: 0,
+      },
+      { userId: otherLead.userId },
+    )
+    expect(mine.error).toBeUndefined()
+    expect((await create(p.card)).state).toBe("drafted")
+    const docsBefore = await docsOf(p.projectId)
+    const out = await create(mine, { userId: otherLead.userId })
+    expect(out.error?.code).toBe("month_on_other_card")
+    expect(await docsOf(p.projectId)).toEqual(docsBefore)
+    expect(await claimsOf(theirs.reconciliationId)).not.toContain("reserved")
+    expect((await stateOf(theirs.reconciliationId))?.state).toBe("proposed")
+  })
+
+  it("a retainer month whose invoice was credited in full is drafted again from its card under the next key", async () => {
+    const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId)
+    await retainerTimebox(p.projectId, schedule, "2026-10-01", "2026-10-31")
+    const key = `retainer:${schedule}:2026-10`
+    const first = await create(p.card)
+    expect(first.state).toBe("drafted")
+    // The month's invoice is issued, then a credit note takes it back whole (the sweep's view).
+    const [doc] = extractRows<Record<string, AppCell>>(
+      await db.execute(drizzleSql`
+        UPDATE app_invoicing.documents
+           SET status = 'issued', number = 'F-2026-9901', number_int = 9901, year_of_issue = 2026,
+               grand_total_minor = 540000
+         WHERE id = ${first.documentId}::uuid
+        RETURNING *`),
+    )
+    if (!doc) throw new Error("the month's draft is gone")
+    await insertAppRow(db as never, "invoicing", "documents", {
+      ...doc,
+      org_id: orgId,
+      id: crypto.randomUUID(),
+      type: "credit_note",
+      external_ref: null,
+      external_refs: jsonCell({}),
+      lifecycle_log: jsonCell([]),
+      number: "A-2026-9901",
+      original_document_id: String(doc.id),
+      grand_total_minor: -540000,
+    })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'credited'
+       WHERE id = ${p.card.reconciliationId}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'credited'
+       WHERE reconciliation_id = ${p.card.reconciliationId}::uuid`)
+    // A new card for the month bills it again, under the next key.
+    const again = await run(reconcilePropose, {
+      project: p.key,
+      month: "2026-10",
+      lines: [{ name: "Site upkeep again", taskIds: [], proofs: [] }],
+    })
+    expect(again.error).toBeUndefined()
+    expect(again.reconciliationId).not.toBe(p.card.reconciliationId)
+    const out = await create(again)
+    expect(out.error).toBeUndefined()
+    expect(out.state).toBe("drafted")
+    expect((await stateOf(again.reconciliationId))?.document_ref).toBe(`${key}:2`)
+    const keys = (await docsOf(p.projectId)).map((d) => d.external_ref).filter((k) => k !== null)
+    expect(keys.sort()).toEqual([key, `${key}:2`])
   })
 
   it("turning time off on a project with an active retainer is refused and names the schedule", async () => {

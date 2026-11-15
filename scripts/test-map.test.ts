@@ -76,3 +76,29 @@ describe("test map: the time and budgets screens", () => {
     expect(suitesFor("scripts/ci-scope.ts")).toContain("guards")
   })
 })
+
+describe("test map: the invoicing screens", () => {
+  it("the invoicing screens run their own screen suite, web-unit and playwright, and keep the app's bun suite", () => {
+    for (const file of [
+      "bundled-apps/invoicing/src/ui/SourcedDraft.tsx",
+      "bundled-apps/invoicing/src/ui/m04-retainer.vitest.tsx",
+      "bundled-apps/invoicing/src/ui/dashboards/Toolbar.tsx",
+      "bundled-apps/invoicing/ui.tsx",
+    ]) {
+      const suites = suitesFor(file)
+      for (const s of ["bundled-invoicing-ui", "web-unit", "playwright", "bundled-invoicing"])
+        expect(suites, `${file} -> ${s}`).toContain(s)
+    }
+  })
+
+  it("the invoicing manifest runs web-unit, which reads its attention kinds", () => {
+    expect(suitesFor("bundled-apps/invoicing/app.manifest.json")).toContain("web-unit")
+  })
+
+  it("the invoicing handlers stay off the screen suites", () => {
+    const suites = suitesFor("bundled-apps/invoicing/src/mutations/drafts.ts")
+    expect(suites).toContain("bundled-invoicing")
+    expect(suites).not.toContain("bundled-invoicing-ui")
+    expect(suites).not.toContain("playwright")
+  })
+})

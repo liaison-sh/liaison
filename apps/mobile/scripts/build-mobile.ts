@@ -111,6 +111,16 @@ function filesIn(dir: string): string[] {
  */
 const NON_EXEMPT_CRYPTO = /hash-wasm|argon2/i
 
+/**
+ * The Help tab's docs bundle (apps/web's `public/help-docs/`): its `.json` files are rendered
+ * documentation, prose a page may write the word in (the backend overview names the server's
+ * password hash), never code the app runs. Scripts and modules under it are still scanned.
+ */
+function isHelpDocsProse(dir: string, file: string): boolean {
+  const rel = path.relative(dir, file).split(path.sep)
+  return rel[0] === "help-docs" && file.endsWith(".json")
+}
+
 /** Assets under the given trees that carry Argon2id or hash-wasm code, or any WASM module. */
 export function nonExemptCryptoOffenders(dirs: readonly string[]): AbsolutePathOffender[] {
   const offenders: AbsolutePathOffender[] = []
@@ -121,6 +131,7 @@ export function nonExemptCryptoOffenders(dirs: readonly string[]): AbsolutePathO
         continue
       }
       if (!/\.(?:js|mjs|html|json|map)$/.test(file)) continue
+      if (isHelpDocsProse(dir, file)) continue
       let content: string
       try {
         content = readFileSync(file, "utf8")

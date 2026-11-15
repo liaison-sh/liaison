@@ -96,6 +96,30 @@ describe("synced Argon2id scan", () => {
     }
   })
 
+  it("reads the Help docs as prose: a page naming Argon2id passes, code beside it does not", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "mobile-crypto-"))
+    mkdirSync(path.join(root, "help-docs", "pages", "developers"), { recursive: true })
+    mkdirSync(path.join(root, "help-docs", "assets"), { recursive: true })
+    writeFileSync(path.join(root, "help-docs", "index.json"), '{"entries":[{"text":"Argon2id"}]}')
+    writeFileSync(
+      path.join(root, "help-docs", "pages", "developers", "backend-overview.json"),
+      '{"html":"<li><strong>Argon2id</strong> hashing</li>"}',
+    )
+    writeFileSync(path.join(root, "help-docs", "assets", "a.js"), 'const t="argon2id";')
+    writeFileSync(path.join(root, "help-docs", "assets", "mod.wasm"), "\0asm")
+    writeFileSync(path.join(root, "manifest.json"), '{"kdf":"argon2id"}')
+    try {
+      const found = nonExemptCryptoOffenders([root]).map((o) => path.relative(root, o.file))
+      expect(found.sort()).toEqual([
+        path.join("help-docs", "assets", "a.js"),
+        path.join("help-docs", "assets", "mod.wasm"),
+        "manifest.json",
+      ])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it("passes a tree that uses WebCrypto only", () => {
     const root = tree({ "crypto-worker-a.js": 'crypto.subtle.deriveBits({name:"PBKDF2"})' })
     try {

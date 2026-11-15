@@ -28,6 +28,8 @@ export interface ApprovalCard {
   subtitle?: string
   lines: string[]
   links?: CardLink[]
+  /** The draft's latest issue day: Home sorts the approval up from four days before it. */
+  latestOn?: string
 }
 
 /** The card holds 8 lines (kernel bound); facts first, so a long line list never pushes them off. */
@@ -222,6 +224,9 @@ export function finishCard(card: ApprovalCard): ApprovalCard {
       .slice(0, CARD_MAX_LINES)
       .map((l) => clip(l, 200)),
     ...(card.links && card.links.length > 0 ? { links: card.links.slice(0, 10) } : {}),
+    ...(card.latestOn && /^\d{4}-\d{2}-\d{2}$/.test(card.latestOn)
+      ? { latestOn: card.latestOn }
+      : {}),
   }
 }
 
@@ -476,5 +481,6 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
       : `Creates a ${type} for ${customer}, with its next ${type} number`,
     lines,
     links: f.fromDraft && f.draftId ? docLink(f.draftId, `Open the draft ${type}`) : [],
+    ...(latestLine && !issued ? { latestOn: day(f.latestIssueOn) ?? undefined } : {}),
   })
 }

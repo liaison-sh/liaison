@@ -5,6 +5,7 @@
 // refund of an advance when the project stops before its final: a credit note citing the advance,
 // capped at what remains of it, which parks exactly as credit_note_create_and_issue does.
 
+import { resolveOpenParks } from "../deferred"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
 import { advanceDeductedRefusal } from "./advance-guard"
@@ -207,19 +208,27 @@ export async function advanceDraftCreate(
       `This advance already has its draft ${String(winner.id)}; nothing new was drafted.`,
     )
   }
-  if (step)
+  if (step) {
     await ctx.db.update("billing_steps", String(step.id), {
       document_id: draftId,
       state: "drafted",
     })
+    await settleMoneyFirst(ctx, String(step.id))
+  }
 
   const totals = await draftTotals(ctx, recipient as never, items)
   const title = `Advance invoice draft, ${label}`
   await takeDownMilestoneLine(ctx, projectId)
-  const approvalId = await raiseIssueApproval(ctx, draftId, title, [
-    `${formatMoneyMinor(amount, currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
-    ...(receivedOn ? [`Received on ${shortDate(receivedOn)}`] : []),
-  ])
+  const approvalId = await raiseIssueApproval(
+    ctx,
+    draftId,
+    title,
+    [
+      `${formatMoneyMinor(amount, currency)} excl. VAT, ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
+      ...(receivedOn ? [`Received on ${shortDate(receivedOn)}`] : []),
+    ],
+    receivedOn,
+  )
   return {
     status: "completed" as const,
     draftId,
@@ -345,4 +354,20 @@ export async function advanceRefundPrepare(ctx: MutationsCtx, input: AdvanceRefu
       message: `Prepared ${what}; it is waiting on approval ${String((res as { approval_id?: unknown }).approval_id ?? "")} and is not issued until a person approves it.`,
     }
   return res
+}
+
+/**
+ * A card payment that waited as this step's money first is answered: its advance is drafted, so
+ * its park and its Home line go. Nothing is issued; the draft's issue approval is the next item.
+ */
+async function settleMoneyFirst(ctx: MutationsCtx, stepId: string): Promise<void> {
+  const parks = (await ctx.db.findMany("deferred_events", {
+    where: { reason: "stripe_payment_unmatched" },
+    limit: 200,
+  })) as Row[]
+  for (const row of parks) {
+    const blocked = (row.blocked_on ?? {}) as Row
+    if (blocked.step_id !== stepId || typeof row.event_id !== "string") continue
+    await resolveOpenParks(ctx as never, row.event_id, "advance_drafted")
+  }
 }

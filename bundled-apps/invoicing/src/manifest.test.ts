@@ -1737,6 +1737,8 @@ describe("invoicing manifest", () => {
     //   Factur-X line states the period it covers.
     // 0.27.1: an advance outside a billing plan is refused on a project billed by the day or
     //   the hour.
+    // 0.28.0: retainer, milestone and advance drafts' issue approvals name their latest issue day
+    //   (late on the org's day) and carry it, so Home brings them up from four days before.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

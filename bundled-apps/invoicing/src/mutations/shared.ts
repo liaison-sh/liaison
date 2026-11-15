@@ -286,6 +286,8 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
       subtitle?: string
       lines?: string[]
       links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+      /** The draft's latest issue day (`YYYY-MM-DD`): Home sorts the approval up from 4 days before. */
+      latest_on?: string
     }
     current_payload: unknown
     editable_fields?: string[]

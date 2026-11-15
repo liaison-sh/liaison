@@ -14,6 +14,7 @@
 //   deposit (BT-23 business process digit 4).
 // - No step's draft takes a number: issuing is a separate act, on the draft's issue approval.
 
+import { latestIssueLine } from "../approval-cards"
 import { formatMoneyMinor } from "../money"
 import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
@@ -559,18 +560,28 @@ export async function takeDownMilestoneLine(ctx: MutationsCtx, projectId: string
   }
 }
 
-/** Raise the issue approval of a billing draft; null when it cannot park (issue it from the pending list). */
+/**
+ * Raise the issue approval of a billing draft; null when it cannot park (issue it from the pending
+ * list). With the draft's latest issue day, the card says it (or that the draft is late, read on
+ * the org's day) and Home brings the approval to the top from four days before it.
+ */
 export async function raiseIssueApproval(
   ctx: MutationsCtx & { logger?: { warn?: (m: string, d?: Row) => void } },
   draftId: string,
   title: string,
   lines: string[],
+  latestIssueOn?: string | null,
 ): Promise<string | null> {
   try {
+    // `UTC` reads the org's own zone (the host's rule for an unset zone).
+    const today = latestIssueOn ? (await ctx.time.civil({ timezone: "UTC" })).date : null
+    const latest = latestIssueOn ? latestIssueLine(latestIssueOn, today) : null
     const parked = await ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
       summary: `Issue ${title}`,
-      summary_detail: { lines },
+      summary_detail: latest
+        ? { lines: [...lines.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
+        : { lines },
       current_payload: { draft_id: draftId },
       approve_scope: "invoicing:documents:write",
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
@@ -804,7 +815,7 @@ export async function milestoneDraftCreate(
     `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
   ]
   await takeDownMilestoneLine(ctx, projectId)
-  const approvalId = await raiseIssueApproval(ctx, draftId, title, lines)
+  const approvalId = await raiseIssueApproval(ctx, draftId, title, lines, monthEnd(completedOn))
   return {
     status: "completed" as const,
     draftId,

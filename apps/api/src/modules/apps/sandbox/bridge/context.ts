@@ -244,6 +244,7 @@ export type RpcBridgeOptions = {
         subtitle?: string
         lines?: string[]
         links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+        latest_on?: string
       }
       current_payload: unknown
       editable_fields?: string[]

@@ -1016,7 +1016,9 @@ export async function draftIssuePreview(
     counterparty_country: taxCountryOf(counterparty),
     has_vat_id: !!counterparty.vat_id,
   })
-  return { ...doc, issue_total_minor: grand.toString() }
+  // The org's day (`UTC` reads the org's own zone), so a card's late line never reads yesterday.
+  const today = (await ctx.time.civil({ timezone: "UTC" })).date
+  return { ...doc, issue_total_minor: grand.toString(), today }
 }
 
 /** STAGE-TIME preflight for `po_create_and_issue`: the same checks, before any approval exists. */

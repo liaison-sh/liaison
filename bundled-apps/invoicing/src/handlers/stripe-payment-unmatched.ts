@@ -54,6 +54,31 @@ async function connectedSince(ctx: StripeCtx): Promise<string | null> {
   return rows.length === 0 ? null : (times[0] ?? "")
 }
 
+/**
+ * Money first: the customer of a billing plan's quote paid while the plan's advance has no invoice
+ * yet. The payment may be that advance, so its one Home line asks which: draft the advance invoice
+ * (`advance_draft_create`), or not an advance (issue or link it as any unmatched payment). Null
+ * when no plan waits on this customer.
+ */
+async function waitingAdvance(ctx: StripeCtx, contactId: string | null): Promise<Row | null> {
+  if (!contactId) return null
+  const steps = (await ctx.db.findMany("billing_steps", {
+    where: { kind: "advance", state: "planned" },
+    limit: 200,
+  })) as Row[]
+  for (const step of steps) {
+    if (typeof step.document_id === "string" || typeof step.quote_document_id !== "string") continue
+    const quote = (
+      (await ctx.db.findMany("documents", {
+        where: { id: step.quote_document_id },
+        limit: 1,
+      })) as Row[]
+    )[0]
+    if (quote?.counterparty_contact_id === contactId) return step
+  }
+  return null
+}
+
 export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
   const p = payloadOf<StripePaymentPayload>(event)
   if (!p || typeof p.charge_id !== "string" || !p.charge_id)
@@ -70,6 +95,7 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
   if (await invoiceLinkedTo(ctx, p.charge_id)) {
     return { status: "skipped" as const, reason: "already_linked" }
   }
+  const advance = await waitingAdvance(ctx, p.contact_id ?? null)
   const def = await park(
     { db: ctx.db },
     {
@@ -81,10 +107,29 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
         kind: STRIPE_UNMATCHED_PARK,
         charge_id: p.charge_id,
         contact_id: p.contact_id ?? null,
+        ...(advance ? { step_id: String(advance.id) } : {}),
       },
     },
   )
-  if (def.created) {
+  if (def.created && advance) {
+    // One line per receipt: the advance's question replaces the unmatched line. Nothing issues.
+    await ctx.emit({
+      entity: "stripe_payment",
+      action: "advance_received",
+      entityId: p.charge_id,
+      data: {
+        deferred_id: def.id,
+        charge_id: p.charge_id,
+        amount: money(toBigInt(p.amount_minor), p.currency),
+        customer: p.customer?.name ?? p.customer?.email ?? p.customer_id ?? "unknown",
+        project_id: String(advance.billing_project_id),
+        step_id: String(advance.id),
+        step_label: String(advance.label ?? "the advance"),
+        received_on: (isoOf(p.created) ?? "").slice(0, 10) || null,
+        resolved: false,
+      },
+    })
+  } else if (def.created) {
     await ctx.emit({
       entity: "stripe_payment",
       action: "unmatched",

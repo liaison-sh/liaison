@@ -5,7 +5,7 @@
 // the included and rolled-in hours, a waiver for one month, a prepaid month settled by a final,
 // and the one predicate every drafting path asks.
 
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { harness as runHarness, schedule as runSchedule } from "./__fixtures__/recurring-draft"
 import { draftsDiscard, invoiceIssue, type MutationsCtx } from "./mutations"
 import { reconcileDraftDiscard, retainerDraftFromReconcile } from "./mutations/retainer"
@@ -645,5 +645,22 @@ describe("saving a retainer", () => {
     expect((res as { warning?: string }).warning).toContain("accountant")
     const plain = await recurringScheduleCreate(scheduleCtx().ctx, RETAINER_INPUT)
     expect((plain as { warning?: string }).warning).toBeUndefined()
+  })
+})
+
+describe("the latest issue day on a retainer month's approval", () => {
+  afterEach(() => setSystemTime())
+
+  test("a retainer month reconciled in the next month's first days is late from its creation, on one approval", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 3, 12)))
+    const h = harness()
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+    await draft(h, REC_OCT)
+    expect(h.approvals).toHaveLength(1)
+    const detail = h.approvals[0]?.summary_detail as { lines: string[]; latest_on?: string }
+    expect(detail.latest_on).toBe("2026-10-31")
+    expect(detail.lines.at(-1)).toBe(
+      "Late: the latest issue date was 2026-10-31; it issues with the date of the day it is issued",
+    )
   })
 })

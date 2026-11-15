@@ -53,17 +53,28 @@ function readPackagedManifest(tarballPath: string): PackagedManifest {
   }
 }
 
-/** A catalog dir this process owns, created on first use and removed at exit. */
+/** The catalog dir this process created, once it has baked into one. */
+let ownedDir: string | null = null
+
+/**
+ * A catalog dir this process owns, created on first use and removed at exit.
+ *
+ * A catalog dir the process inherited (`LIAISON_APP_CATALOG_DIR` set by its parent, as
+ * the Playwright global setup does for every lane's API server) is never written:
+ * several servers share it, and each one's memoized index would overwrite the
+ * entries another baked, dropping them between that bake and its install. The owned
+ * dir starts as a copy of whatever catalog the process resolved.
+ */
 function ownCatalogDir(): string {
-  const existing = process.env.LIAISON_APP_CATALOG_DIR
-  if (existing) return existing
+  if (ownedDir !== null && process.env.LIAISON_APP_CATALOG_DIR === ownedDir) return ownedDir
   const dir = mkdtempSync(join(tmpdir(), "liaison-test-catalog-"))
-  // Keep whatever catalog the process already resolved (a dev-built app-catalog/).
   const carried = listCatalog()
   const from = getCatalogDir()
   for (const entry of carried) copyFileSync(join(from, entry.file), join(dir, entry.file))
   writeFileSync(join(dir, "catalog.json"), `${JSON.stringify(carried, null, 2)}\n`)
   process.env.LIAISON_APP_CATALOG_DIR = dir
+  resetCatalogCache()
+  ownedDir = dir
   process.once("exit", () => rmSync(dir, { recursive: true, force: true }))
   return dir
 }

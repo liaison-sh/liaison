@@ -19,6 +19,7 @@ import { History, Link2, Pencil, Plus, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
+  createMemo,
   createSignal,
   For,
   Match,
@@ -67,6 +68,19 @@ import {
   shownColumns,
 } from "./table-cells"
 import { loadPeople, personName } from "./table-people"
+
+/**
+ * `next`, reusing each element of `prev` that reads the same (same id, same content). The grid
+ * keys its rows and cells by reference, so a reload that changes nothing keeps their DOM: an
+ * open cell editor survives a live reload instead of being torn down (its blur would close it).
+ */
+function keepUnchanged<T>(prev: readonly T[], next: T[], id: (x: T) => string): T[] {
+  const byId = new Map(prev.map((x) => [id(x), x]))
+  return next.map((x) => {
+    const old = byId.get(id(x))
+    return old !== undefined && JSON.stringify(old) === JSON.stringify(x) ? old : x
+  })
+}
 
 export interface EditableTableBlockProps {
   tableId: string
@@ -129,7 +143,11 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const role = table()?.myRole
     return role === "editor" || role === "owner"
   }
-  const columns = (): TableColumn[] => shownColumns(table()?.columns ?? [], props.columns)
+  const columns = createMemo<TableColumn[]>(
+    (prev) =>
+      keepUnchanged(prev, shownColumns(table()?.columns ?? [], props.columns), (c) => c.key),
+    [],
+  )
   const backing = () => table()?.backing
   const isReadThrough = (key: string) => backing()?.readThrough.includes(key) === true
   /** The backing project's name, else "the project". */
@@ -166,7 +184,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       props.onTable?.(info)
       const page = await readRows(cursor())
       if (mine !== seq) return
-      setRows(page)
+      setRows((prev) => keepUnchanged(prev, page, (r) => r.id))
       setStatus("ready")
     } catch (err) {
       if (mine !== seq) return
@@ -179,7 +197,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   async function reloadRows(): Promise<TableRow[]> {
     const mine = ++seq
     const page = await readRows(cursor())
-    if (mine === seq) setRows(page)
+    if (mine === seq) setRows((prev) => keepUnchanged(prev, page, (r) => r.id))
     return page
   }
 

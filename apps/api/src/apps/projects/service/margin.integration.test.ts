@@ -41,6 +41,7 @@ import { seedCostRates, seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { addCompanyBillingAddress } from "../../../../test-support/seed/billing-address"
 import { awaitTimeFeatureSync } from "./time-feature"
 import { awaitTimeRowWrites } from "./time-rows"
 
@@ -790,6 +791,12 @@ describe("once issued", () => {
         }),
       },
     )
+    await addCompanyBillingAddress(actorOf(owner.userId), companies.lavande!, {
+      street1: "2 rue des Lavandes",
+      postalCode: "84000",
+      city: "Avignon",
+      countryIso2: "FR",
+    })
     const made = await call<{ id: string }>("projects_createProject", {
       name: "Maison Lavande site",
       key: "ALPOCT",

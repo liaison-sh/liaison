@@ -27,6 +27,7 @@ import { seedCompanies } from "~/seed/factories/people/companies"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { addCompanyBillingAddress } from "../../../../test-support/seed/billing-address"
 import { awaitTimeFeatureSync } from "./time-feature"
 import { awaitTimeRowWrites } from "./time-rows"
 
@@ -214,6 +215,17 @@ beforeAll(async () => {
     },
   )
   delorme = companies.delorme!
+  await addCompanyBillingAddress(
+    actorOf(owner.userId, ["*"]),
+    delorme,
+    {
+      street1: "4 rue des Lilas",
+      postalCode: "69002",
+      city: "Lyon",
+      countryIso2: "FR",
+    },
+    { siren: "900000001", registryName: "MAISON DELORME" },
+  )
   const issuer = await executeTool<Record<string, unknown>>({
     toolName: "invoicing:settings_issuer_profile_create",
     orgId,

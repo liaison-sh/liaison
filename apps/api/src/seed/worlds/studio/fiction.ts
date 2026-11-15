@@ -29,7 +29,7 @@ export const STUDIO_COMPANY: DemoCompany = {
   name: "Halden Studio",
   legalName: "Halden Studio SAS",
   // A valid key on an all-zero SIREN, so the number reads as a VAT number and names no one.
-  vat: "FR12000000000",
+  vat: "FR00000000000",
   about:
     "Halden Studio builds and runs software for its clients: partner portals, data pipelines, " +
     "dashboards and the upkeep that follows. Billed by the day, on a monthly retainer or at a " +

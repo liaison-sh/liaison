@@ -171,14 +171,17 @@ const SAAS_BASELINE = {
  * issued through the invoicing writers, the fixed-price project's quote and billing plan, the
  * retainers' schedules and last month's card) and each client company names its main contact:
  * 12 884 round trips in 1 137 transactions on a Linux runner (the pin), 372 outbox events.
+ * Re-measured 2026-11-16 once every client has a billing address and a registry identity (each
+ * written by its own writer) and no milestone is drafted before its task is done: 12 946 round
+ * trips in 1 151 transactions on a Linux runner (the pin), 368 outbox events.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 372,
+  outboxEvents: 368,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 12_884,
-  transactions: 1_137,
+  statements: 12_946,
+  transactions: 1_151,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

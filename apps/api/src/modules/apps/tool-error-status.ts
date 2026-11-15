@@ -260,6 +260,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   draft_order_fetch_pending_approval: 409,
   // Settings or counterparty data must be completed first.
   no_mail_account: 422,
+  // The issuer's send-from mailbox is not one this person can send from.
+  mailbox_unavailable: 422,
   no_issuer_profile: 422,
   no_recipient: 422,
   counterparty_incomplete: 422,
@@ -335,6 +337,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   provider_failed: 502,
   // A deposit call that failed mid-flight: the platform may have it, the next tick asks first.
   einvoice_outcome_unknown: 502,
+  // An approved run threw before anything landed: nothing changed, it can be retried.
+  handler_threw_no_effect: 503,
   contracts_unavailable: 503,
   // E-invoicing regime and readiness reason codes (P1): carried in `code` fields of reasons and
   // blockers; a refusal carrying one is the caller's data to fix, never a server fault.

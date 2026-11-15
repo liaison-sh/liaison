@@ -46,7 +46,6 @@ import {
 } from "~/apps/projects/service/tasks"
 import { awaitTimeFeatureSync, scheduleTimeBudgetsSync } from "~/apps/projects/service/time-feature"
 import { getTimePlan } from "~/apps/projects/service/time-plan"
-import { attachTimesheet } from "~/apps/projects/service/timesheet"
 import { listTaskTransitions } from "~/apps/projects/service/transitions"
 import { updateProject } from "~/apps/projects/service/update-project"
 import { extractRows } from "~/db"
@@ -317,17 +316,6 @@ const requireUuidParams = createMiddleware<AppEnv>(async (c, next) => {
   await next()
 })
 
-const timesheetAttachSchema = z
-  .object({
-    documentId: z.string().regex(UUID_RE),
-    month: z
-      .string()
-      .regex(/^\d{4}-\d{2}$/)
-      .optional(),
-    acceptPartial: z.boolean().optional(),
-  })
-  .strict()
-
 export const projectsRoutes = new Hono<AppEnv>()
   .use("/:projectId", requireUuidParams)
   .use("/:projectId/*", requireUuidParams)
@@ -445,27 +433,6 @@ export const projectsRoutes = new Hono<AppEnv>()
     const result = await withRequestRls(c, (tx) => getTimePlan({ tx, orgId, scopes, projectId }))
     return success(c, result)
   })
-  // "Attach to invoice" on the timesheet tab: the month's sheet is exported for the person and
-  // that same file is filed on the invoice draft named. The body takes no file: only the sheet
-  // this call exports can be filed from here.
-  .post(
-    "/:projectId/timesheet/attach",
-    scopeProjectsRead,
-    zValidator("json", timesheetAttachSchema),
-    async (c) => {
-      const projectId = c.req.param("projectId")
-      const body = c.req.valid("json")
-      const result = await attachTimesheet({
-        viewer: extractRlsContext(c),
-        scopes: [...(c.get("scopes") ?? [])],
-        projectId,
-        ...(body.month ? { month: body.month } : {}),
-        documentId: body.documentId,
-        acceptPartial: body.acceptPartial === true,
-      })
-      return success(c, result)
-    },
-  )
   // A pipeline's board: stages with their deals, each stage's sum per currency
   // for a reader with deal access, and quiet for a reader who can read mail.
   .get("/:projectId/deals/board", scopeProjectsRead, async (c) => {

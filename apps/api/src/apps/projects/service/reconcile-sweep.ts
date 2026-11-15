@@ -245,7 +245,7 @@ type SweepTx = { execute: (q: ReturnType<typeof drizzleSql>) => Promise<unknown>
  * Partial credits: an invoiced reconciliation whose invoice credit notes took back in part gets,
  * on each line those notes name (`reconcile_line:<lineId>`), the figure it still bills: the
  * invoice line's quantity less every counting credit note's, in minutes of the card's unit. The
- * same figure invoicing hands `reconcile_mark {to: partly_credited}`; this settles it when that
+ * same figure invoicing hands projects after a partial credit; this settles it when that
  * call was lost. Compare-and-set: a line already at its figure is not written.
  */
 async function settlePartialCredits(

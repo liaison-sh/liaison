@@ -2,14 +2,13 @@
 //
 // The month's timesheet filed on an invoice draft, on the real database with the invoicing app
 // registered from source: Create invoice on a card of a project with dated hours files the sheet
-// with the draft (marked partial when it is), and "Attach to invoice" on the timesheet tab files
-// the sheet that same call exported, never a file the caller names.
+// with the draft (marked partial when it is), and the only file projects hands invoicing is the
+// sheet that same call exported for the person.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
-import { app } from "~/app"
 import { reconcileCreateInvoice, reconcilePropose } from "~/apps/projects/handlers"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
@@ -52,7 +51,11 @@ function actorOf(userId: string, scopes: string[]): UserContext {
 type Handler = (params: unknown, ctx: never) => Promise<unknown>
 
 /** A projects handler run as the owner, one short transaction per bridge call. */
-async function run<T = Record<string, any>>(handler: Handler, input: unknown): Promise<T> {
+async function run<T = Record<string, any>>(
+  handler: Handler,
+  input: unknown,
+  patch: (bridge: Record<string, any>) => Record<string, unknown> = () => ({}),
+): Promise<T> {
   const a = actorOf(owner.userId, FINANCE)
   const bridge = createSessionRpcBridge(
     "projects",
@@ -65,7 +68,8 @@ async function run<T = Record<string, any>>(handler: Handler, input: unknown): P
     undefined,
     { origin: "human-ui", threadId: thread, humanAuthorized: true } as never,
   )
-  const out = (await handler(input, bridge as never)) as T
+  const ctx = bridge as unknown as Record<string, any>
+  const out = (await handler(input, { ...ctx, ...patch(ctx) } as never)) as T
   await awaitTimeRowWrites()
   return out
 }
@@ -176,15 +180,6 @@ const purposeOf = (fileId: string | null) =>
       SELECT uploaded_by::text AS by, filename FROM kernel.files WHERE id = ${fileId}::uuid`)
     .then((r) => extractRows<{ by: string; filename: string }>(r)[0])
 
-async function rest(path: string, body: unknown) {
-  const res = await app.request(`/api/projects${path}`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${owner.bearer}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  })
-  return { status: res.status, body: (await res.json()) as { data?: any; error?: any } }
-}
-
 beforeAll(async () => {
   await acquireTestLock()
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
@@ -250,44 +245,33 @@ describe("the month's timesheet on the draft", () => {
     const source = await purposeOf(files[0]!.source)
     expect(source?.by).toBe(owner.userId)
     expect(source?.filename).toContain("dated-hours-2026-10")
-
-    // From the timesheet tab: a partial sheet asks once, then files the sheet it exports.
-    const asked = await rest(`/${p.projectId}/timesheet/attach`, {
-      documentId: created.documentId,
-      month: "2026-10",
-    })
-    expect(asked.status).toBe(200)
-    expect(asked.body.data).toMatchObject({ needsConfirm: true, filed: false })
-    expect(await attachmentsOf(created.documentId)).toHaveLength(1)
-    const filed = await rest(`/${p.projectId}/timesheet/attach`, {
-      documentId: created.documentId,
-      month: "2026-10",
-      acceptPartial: true,
-    })
-    expect(filed.status).toBe(200)
-    expect(filed.body.data).toMatchObject({ filed: true, partial: true })
-    const after = await attachmentsOf(created.documentId)
-    expect(after).toHaveLength(2)
-    expect(after[1]).toMatchObject({ kind: "timesheet", partial: true })
   })
 
-  it("only the sheet just exported can be filed from the timesheet", async () => {
+  it("only the sheet the same call exported is handed to invoicing", async () => {
     const p = await datedOctober()
-    const created = await run(reconcileCreateInvoice, {
-      reconciliationId: p.card.reconciliationId,
-      revision: p.card.revision,
-    })
+    const exported: string[] = []
+    const handed: string[] = []
+    const created = await run(
+      reconcileCreateInvoice,
+      { reconciliationId: p.card.reconciliationId, revision: p.card.revision },
+      (bridge) => ({
+        projects_timesheetExport: async (json: string) => {
+          const out = await bridge.projects_timesheetExport(json)
+          exported.push(String((JSON.parse(out) as { fileId?: string }).fileId))
+          return out
+        },
+        executeTool: async (tool: string, json: string) => {
+          if (tool === "invoicing:document_attachment_add") {
+            handed.push(String((JSON.parse(json) as { fileId?: string }).fileId))
+          }
+          return bridge.executeTool(tool, json)
+        },
+      }),
+    )
     expect(created.error).toBeUndefined()
-    const before = await attachmentsOf(created.documentId)
-    // Some other file of the org, named by the caller: the route takes no file at all.
-    const other = before[0]!.file_id
-    const refused = await rest(`/${p.projectId}/timesheet/attach`, {
-      documentId: created.documentId,
-      month: "2026-10",
-      acceptPartial: true,
-      fileId: other,
-    })
-    expect(refused.status).toBe(400)
-    expect(await attachmentsOf(created.documentId)).toHaveLength(before.length)
+    expect(exported).toHaveLength(1)
+    expect(handed).toEqual(exported)
+    const files = await attachmentsOf(created.documentId)
+    expect(files.map((f) => f.source)).toEqual(exported)
   })
 })

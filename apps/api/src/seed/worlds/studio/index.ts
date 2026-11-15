@@ -68,7 +68,10 @@ export const STUDIO_WORLD_PACK: DemoWorldPack & { plan: typeof studioPlan } = {
       key: c.key,
       name: c.name,
       domain: c.domain,
-      contactKeys: c.contactKeys,
+      // The support layer keys its customers' contacts `customer:<key>`.
+      contactKeys: c.contactKeys.map((k) => `customer:${k}`),
+      // Its first contact is its main one, whom its invoices go to (a card's Create needs one).
+      ...(c.contactKeys[0] ? { mainContactKey: `customer:${c.contactKeys[0]}` } : {}),
     })),
     // The pipeline's deals are the layer's (`layer.ts`).
     pipeline: {

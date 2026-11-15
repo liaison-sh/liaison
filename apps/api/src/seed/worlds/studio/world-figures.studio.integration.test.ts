@@ -574,7 +574,7 @@ describe("the services world's money at the board date", () => {
       )
       .map((i) =>
         (i.kind as string) === MONTH_CLOSE_KIND
-          ? `month line ${String(i.metadata?.period ?? "").slice(0, 7)} ${i.title ?? ""}`
+          ? `month line ${String(i.metadata?.period ?? "").slice(0, 7)} ${i.summary}`
           : `issue approval ${i.metadata?.toolName}`,
       )
     // The month lines come on each month's line day (home-money.studio covers them), so at the

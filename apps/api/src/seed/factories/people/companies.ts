@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The companies factory: the organisations an org's people work for, written
-// through `createCompanies` (one batch) and `linkContactsToCompany`, the services the company
+// through `createCompanies` (one batch), `linkContactsToCompany` and `updateCompany` (its main
+// contact), the services the company
 // routes and tools use, inside one RLS transaction as the actor. A company is
 // found again by its name (case-insensitive), so a re-run adopts instead of
 // adding a twin. No privileged write.
 import { sql } from "drizzle-orm"
 import type { UserContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
-import { createCompanies, linkContactsToCompany } from "~/modules/contacts/companies"
+import { createCompanies, linkContactsToCompany, updateCompany } from "~/modules/contacts/companies"
 import type { SeedContext } from "~/seed/context"
 import { asUser, rowsOf } from "./actors"
 
@@ -20,6 +21,8 @@ export interface CompanySpec {
   tags?: string[]
   /** Contact keys (as `resolveContacts` returned them) of the people who work there. */
   contactKeys?: string[]
+  /** Contact key of its main contact, the one its invoices go to: one of `contactKeys`. */
+  mainContactKey?: string
 }
 
 type ExecTx = { execute: (q: unknown) => Promise<unknown> }
@@ -37,18 +40,20 @@ export async function seedCompanies(
   opts: { onlyExisting?: boolean } = {},
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
+  const mains: Array<{ companyId: string; contactId: string }> = []
   await asUser(actor, async (tx) => {
     // The companies already there, in one read; the missing ones, in one write.
     const names = specs.map((s) => s.name.toLowerCase())
-    const found = rowsOf<{ id: string; name: string }>(
+    const found = rowsOf<{ id: string; name: string; main_contact_id: string | null }>(
       await (tx as ExecTx).execute(
-        sql`SELECT DISTINCT ON (lower(name)) id, lower(name) AS name
+        sql`SELECT DISTINCT ON (lower(name)) id, lower(name) AS name, main_contact_id::text AS main_contact_id
             FROM ${sql.raw(schemaRef("kernel"))}.companies
             WHERE org_id = ${ctx.orgId} AND lower(name) IN (SELECT jsonb_array_elements_text(${JSON.stringify(names)}::jsonb))
             ORDER BY lower(name), created_at, id`,
       ),
     )
     const existing = new Map(found.map((r) => [r.name, r.id]))
+    const mainContactOf = new Map(found.map((r) => [r.id, r.main_contact_id]))
     const missing = opts.onlyExisting
       ? []
       : specs.filter(
@@ -84,8 +89,22 @@ export async function seedCompanies(
           contactIds: people,
         })
       }
+      // Set once: a re-run, or a main contact somebody chose since, leaves it as it is.
+      const main = spec.mainContactKey ? contactIds[spec.mainContactKey] : undefined
+      if (main && !mainContactOf.get(id)) mains.push({ companyId: id, contactId: main })
     }
   })
+  // After the companies and their links commit: updateCompany may open its own transaction.
+  for (const m of mains) {
+    await asUser(actor, (tx) =>
+      updateCompany(tx as never, {
+        orgId: ctx.orgId,
+        userId: actor.userId,
+        companyId: m.companyId,
+        patch: { mainContactId: m.contactId },
+      }),
+    )
+  }
   ctx.log(`companies: ${Object.keys(out).length} seeded`)
   return out
 }

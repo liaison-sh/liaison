@@ -430,7 +430,9 @@
     "askFits": "Le reste tient-il encore ?",
     "askCheck": "Comparer le prévu et le réel",
     "askAbout": "{{project}} : {{question}}",
-    "openSheet": "Ouvrir les heures datées"
+    "openSheet": "Ouvrir les heures datées",
+    "invoiced": "Facturé",
+    "leftToInvoice": "Reste à facturer"
   },
   "capacity": {
     "tab": "Charge",

@@ -430,7 +430,9 @@
     "askFits": "Does the rest still fit?",
     "askCheck": "Check planned against real",
     "askAbout": "{{project}}: {{question}}",
-    "openSheet": "Open the dated hours"
+    "openSheet": "Open the dated hours",
+    "invoiced": "Invoiced",
+    "leftToInvoice": "Left to invoice"
   },
   "capacity": {
     "tab": "Capacity",

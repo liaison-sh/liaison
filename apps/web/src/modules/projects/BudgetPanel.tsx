@@ -29,6 +29,12 @@ const Row: Component<{ testid: string; label: string; value: string; note?: stri
   </div>
 )
 
+/** Why what is invoiced is not shown, as the budget read says it; null when it is shown. */
+export function invoicedNote(why: string | { message?: string } | undefined): string | null {
+  if (typeof why === "string") return why
+  return why?.message ?? null
+}
+
 const Figures: Component<{ data: BudgetData }> = (props) => {
   const i18n = useI18n()
   const d = () => props.data
@@ -135,6 +141,33 @@ const Figures: Component<{ data: BudgetData }> = (props) => {
                       value={i18n.fmtCurrency(out.price, out.currency ?? "EUR")}
                     />
                   )}
+                  <Show when={out.invoiced !== undefined}>
+                    <Row
+                      testid="budget-panel.invoiced"
+                      label={i18n.t("projects.time.invoiced")}
+                      value={i18n.fmtCurrency(out.invoiced as number, out.currency ?? "EUR")}
+                    />
+                  </Show>
+                  <Show when={"leftToInvoice" in out && out.leftToInvoice !== undefined}>
+                    <Row
+                      testid="budget-panel.left-to-invoice"
+                      label={i18n.t("projects.time.leftToInvoice")}
+                      value={i18n.fmtCurrency(
+                        (out as { leftToInvoice: number }).leftToInvoice,
+                        out.currency ?? "EUR",
+                      )}
+                    />
+                  </Show>
+                  <Show when={invoicedNote(out.invoicedUnavailable)}>
+                    {(note) => (
+                      <p
+                        data-testid="budget-panel.invoiced-note"
+                        class="text-[11.5px] text-text-tertiary"
+                      >
+                        {note()}
+                      </p>
+                    )}
+                  </Show>
                 </dl>
               )
             }}

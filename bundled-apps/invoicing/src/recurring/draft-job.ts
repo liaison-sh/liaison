@@ -16,6 +16,7 @@
 // issue day (unique), the item by schedule and period (unique), the card by a claim on the run.
 import { civilDateOf } from "../issue-date"
 import { lineSubtotal } from "../money"
+import { raiseHeldApprovals } from "../mutations/prepaid-hold"
 import type { ErrorEnvelope } from "../mutations/shared"
 import { recipientOf } from "../recipient"
 import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
@@ -434,6 +435,8 @@ export async function recurringDraftJob(ctx: RunCtx): Promise<DraftJobResult> {
     }
   }
   if (drafted > 0) await endHold(ctx, "recurring-draft")
+  // A prepaid retainer's held issue approval, once the one it waited on ended without an issue.
+  await raiseHeldApprovals(ctx)
   for (const runId of runs) {
     if (await approveByItself(ctx, runId)) continue
     const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null

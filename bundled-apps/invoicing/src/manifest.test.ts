@@ -1749,6 +1749,9 @@ describe("invoicing manifest", () => {
     //   lines would charge, priced as preview_totals prices a card.
     // 0.29.2: the billing plan tab names the project it opens, so a turn sent from it and the
     //   agent's open tool both resolve its id.
+    // 0.29.3: a prepaid retainer's held issue approval is raised once the one it waited on is
+    //   turned down or runs out (the hourly draft job); a milestone line is held only by a draft
+    //   whose issue approval is pending.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

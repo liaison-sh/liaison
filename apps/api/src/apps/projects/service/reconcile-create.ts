@@ -100,15 +100,13 @@ async function projectFacts(tx: Tx, orgId: string, projectId: string) {
   const row = extractRows<{
     name: string
     company_id: string | null
-    lead_name: string | null
     rate: string | number | null
     currency: string | null
   }>(
     await tx.execute(drizzleSql`
-      SELECT p.name, p.company_id::text AS company_id, u.name AS lead_name,
+      SELECT p.name, p.company_id::text AS company_id,
              bt.rate_minor AS rate, bt.currency
         FROM ${projectsRel("projects")} p
-        LEFT JOIN ${kernelRel("users")} u ON u.id = p.owner_id AND u.org_id = p.org_id
         LEFT JOIN ${projectsRel("project_billing_terms")} bt
           ON bt.project_id = p.id AND bt.org_id = p.org_id
        WHERE p.id = ${projectId}::uuid AND p.org_id = ${orgId}::uuid`),
@@ -116,7 +114,6 @@ async function projectFacts(tx: Tx, orgId: string, projectId: string) {
   return {
     name: row?.name ?? "the project",
     companyId: row?.company_id ?? null,
-    leadName: row?.lead_name ?? null,
     rateMinor: row?.rate === null || row?.rate === undefined ? null : Number(row.rate),
     currency: row?.currency ?? null,
   }
@@ -295,7 +292,6 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       rateMinor: facts.rateMinor,
       currency: facts.currency,
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
-      leadName: facts.leadName,
       // A project with dated hours files the month's timesheet on the draft.
       datedHours: await datedHoursOn(tx, orgId, head.project_id),
       month: head.period_start ? head.period_start.slice(0, 7) : null,

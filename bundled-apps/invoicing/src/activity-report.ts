@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The client activity report that goes with an invoice made from a planned vs done card: the work
-// delivered, its proof labels and the billed time, signed by the project lead. A pure builder over
-// a typed input that has NO field for real time, a time-spent note, an estimate, a member or an
-// unplanned line: what is not in the input cannot leak into the report, the invoice or a mail.
+// delivered, its proof labels and the billed time, signed by the issuing company. A pure builder
+// over a typed input that has NO field for real time, a time-spent note, an estimate, a person or
+// an unplanned line: what is not in the input cannot leak into the report, the invoice or a mail.
 
 import { type BilledUnit, lineQuantity } from "./line-amount"
 
@@ -23,8 +23,6 @@ export interface ActivityReportInput {
   period: { from: string; to: string }
   hoursPerDayMinutes: number
   lines: ActivityReportLine[]
-  /** The project lead's name, the report's signature. */
-  lead: string | null
 }
 
 export interface ActivityReportContent {
@@ -32,7 +30,6 @@ export interface ActivityReportContent {
   project: { id: string; name: string }
   period: { from: string; to: string }
   lines: Array<{ wording: string; billed: string; unit: BilledUnit; proofLabels: string[] }>
-  signedBy: string | null
 }
 
 const clean = (s: string): string => s.replace(/\s+/g, " ").trim()
@@ -49,7 +46,6 @@ export function buildActivityReport(input: ActivityReportInput): ActivityReportC
       unit: l.unit,
       proofLabels: l.proofLabels.map(clean).filter((p) => p !== ""),
     })),
-    signedBy: input.lead ? clean(input.lead) : null,
   }
 }
 
@@ -99,8 +95,7 @@ export function activityReportText(c: ActivityReportContent, lang: Lang = "fr"):
     const r = rowOf(lang, l)
     return `${r.wording}: ${r.billed}${r.proofs ? ` (${r.proofs})` : ""}`
   })
-  const sign = c.signedBy ? [lang === "fr" ? `Signé : ${c.signedBy}` : `Signed: ${c.signedBy}`] : []
-  return [head, ...rows, ...sign].join("\n")
+  return [head, ...rows].join("\n")
 }
 
 /** What the activity report's PDF template prints: strings only, built from the stored content. */
@@ -151,7 +146,12 @@ export function activityReportPdfData(
       ? { work: "Travail livré", billed: "Facturé", proofs: "Preuves" }
       : { work: "Work delivered", billed: "Billed", proofs: "Proof" },
     rows: c.lines.map((l) => rowOf(lang, l)),
-    signature: c.signedBy ? (fr ? `Signé : ${c.signedBy}` : `Signed: ${c.signedBy}`) : null,
+    // Signed by the issuing company, never a person: a stored report's older `signedBy` is ignored.
+    signature: clean(meta.issuer)
+      ? fr
+        ? `Signé : ${clean(meta.issuer)}`
+        : `Signed: ${clean(meta.issuer)}`
+      : null,
   }
 }
 

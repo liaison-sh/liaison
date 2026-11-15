@@ -32,7 +32,6 @@ export interface DraftFromReconcileInput {
   reconciliationId?: string
   revision?: number
   /** The project lead's name, signing the activity report (the projects app passes it). */
-  leadName?: string | null
   /** The contact of the project's company the invoice goes to (projects checked it is of the company). */
   contactId?: string | null
 }
@@ -317,8 +316,6 @@ export async function draftFromReconcile(
       period: read.period,
       hoursPerDayMinutes: hpd,
       lines: reportLines,
-      lead:
-        typeof input.leadName === "string" && input.leadName.trim() !== "" ? input.leadName : null,
     }),
   })
 

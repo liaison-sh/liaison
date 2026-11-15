@@ -145,7 +145,6 @@ describe("a draft from planned vs done", () => {
     const res = await draftFromReconcile(h.ctx, {
       reconciliationId: REC,
       revision: 2,
-      leadName: "Claire Martin",
     })
     if (res.status !== "completed") throw new Error(JSON.stringify(res))
     expect(res.totals).toEqual({ excl: 651_000, vat: 130_200, incl: 781_200, currency: "EUR" })

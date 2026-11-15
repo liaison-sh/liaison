@@ -158,7 +158,6 @@ async function issuedInvoice(h: Harness): Promise<Row> {
   const made = await draftFromReconcile(h.ctx, {
     reconciliationId: REC,
     revision: 2,
-    leadName: "Claire Martin",
   })
   if (made.status !== "completed") throw new Error(JSON.stringify(made))
   await h.db.update("documents", made.draftId, {

@@ -165,7 +165,6 @@ export async function draftFromCard(h: Harness, rec = REC): Promise<string> {
   const res = await draftFromReconcile(h.ctx as never, {
     reconciliationId: rec,
     revision: 1,
-    leadName: "Claire Martin",
   })
   if (res.status !== "completed") throw new Error(JSON.stringify(res))
   await h.db.update("documents", res.draftId, {

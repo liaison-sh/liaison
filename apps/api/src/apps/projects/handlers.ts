@@ -1746,7 +1746,6 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
           JSON.stringify({
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
-            leadName: prep.leadName ?? null,
             ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
           }),
         )
@@ -1755,7 +1754,6 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
           JSON.stringify({
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
-            leadName: prep.leadName ?? null,
             ...(contactId ? { contactId } : {}),
           }),
         ),

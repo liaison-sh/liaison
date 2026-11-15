@@ -2528,7 +2528,6 @@
         "properties": {
           "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
           "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
-          "leadName": { "type": ["string", "null"], "description": "The project lead's name, signing the activity report." },
           "contactId": { "type": ["string", "null"], "description": "The contact of the project's company the invoice goes to." }
         },
         "required": ["reconciliationId", "revision"],
@@ -2548,8 +2547,7 @@
         "properties": {
           "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
           "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
-          "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." },
-          "leadName": { "type": ["string", "null"], "description": "The project lead's name, signing the activity report." }
+          "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." }
         },
         "required": ["reconciliationId", "revision"],
         "additionalProperties": false

@@ -63,7 +63,6 @@ export interface RetainerDraftInput {
   revision?: number
   waiveOverage?: boolean
   /** The project lead's name, signing the activity report (the projects app passes it). */
-  leadName?: string | null
 }
 
 type Ctx = MutationsCtx & { logger?: { warn?: (m: string, d?: Row) => void } }
@@ -504,8 +503,6 @@ export async function retainerDraftFromReconcile(
         unit: "hour" as const,
         proofLabels: Array.isArray(l.proofLabels) ? l.proofLabels : [],
       })),
-      lead:
-        typeof input.leadName === "string" && input.leadName.trim() !== "" ? input.leadName : null,
     }),
   })
 

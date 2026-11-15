@@ -112,9 +112,15 @@ export interface BudgetData {
   partial: boolean
   coverage: { withEntries: number; total: number }
   /** A fixed price, or the rate of a project billed by the day or by the hour. */
-  money?:
-    | { price: number; currency: string | null }
+  money?: (
+    | { price: number; currency: string | null; leftToInvoice?: number }
     | { rate: number; per: "day" | "hour"; currency: string | null }
+  ) & {
+    /** What the project's issued invoices bill, excl. VAT and net of credit notes. */
+    invoiced?: number
+    /** Why what is invoiced is not shown: a sentence, or a refusal with its message. */
+    invoicedUnavailable?: string | { message?: string }
+  }
   state?: "hours-only"
   milestones: Array<{
     id: string

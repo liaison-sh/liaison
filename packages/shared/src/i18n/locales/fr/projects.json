@@ -430,7 +430,9 @@
     "askFits": "Le reste tient-il encore ?",
     "askCheck": "Comparer le prévu et le réel",
     "askAbout": "{{project}} : {{question}}",
-    "openSheet": "Ouvrir les heures datées"
+    "openSheet": "Ouvrir les heures datées",
+    "invoiced": "Facturé",
+    "leftToInvoice": "Reste à facturer"
   },
   "capacity": {
     "tab": "Charge",
@@ -518,7 +520,13 @@
     "hours": "Heures",
     "total": "Total",
     "whoSees": "Qui la voit : le responsable du projet et la finance. Les saisies faites avant l'activation des heures datées restent à chaque personne.",
-    "not": "Ce n'est pas un registre légal du temps de travail, et elle ne rappelle rien à personne."
+    "not": "Ce n'est pas un registre légal du temps de travail, et elle ne rappelle rien à personne.",
+    "attach": "Joindre à la facture",
+    "attachPick": "Joindre la feuille de ce mois à un brouillon de facture de ce projet :",
+    "attachNone": "Ce projet n'a pas encore de brouillon de facture. Créez-en un depuis sa carte prévu et réalisé, puis joignez la feuille.",
+    "attachDraft": "{{customer}}, {{amount}}, brouillon",
+    "attached": "La feuille est jointe au brouillon. Elle part avec la facture quand la facture est envoyée.",
+    "attachFailed": "La feuille n'a pas été jointe : {{reason}}"
   },
   "timeSettings": {
     "using": "{{count}} projets utilisent le temps et les budgets. Chaque projet l'active dans ses propres réglages.",

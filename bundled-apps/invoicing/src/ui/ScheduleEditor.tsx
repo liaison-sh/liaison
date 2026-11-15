@@ -12,9 +12,10 @@
 // subscription, Pick another customer, or Bill something else, which asks one required line
 // (what this schedule bills instead). Start stays disabled while the conflict is open and that
 // line is not said. No invoice number shows before an invoice issues.
-import { app, navigate, onEntityChange } from "@liaison/host"
+import { app, fetch as hostFetch, navigate, onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { periodLabel } from "../recurring/flags"
+import { PREPAID_WARNING } from "../recurring/retainer"
 import {
   datesFrom,
   draftOn,
@@ -54,6 +55,12 @@ export interface ScheduleDraft {
   lines: ScheduleLineDraft[]
   notes: string | null
   billsOtherThanStripe: string | null
+  /** A retainer: the hours included a month (null for a plain schedule), the project its months are
+   *  reconciled on, the rate per hour above them (minor units) and what unused hours do. */
+  retainer_hours: number | null
+  retainer_project_id: string | null
+  retainer_overage_rate_minor: number | null
+  retainer_rollover: "none" | "next"
   /** The version this draft was read at: a save says it, and a schedule saved since refuses it. */
   version: number
 }
@@ -76,8 +83,53 @@ export function defaultSchedule(): ScheduleDraft {
     lines: [{ description: "", qty: 1, unit_price_minor: 0, vat_bp: 2000 }],
     notes: null,
     billsOtherThanStripe: null,
+    retainer_hours: null,
+    retainer_project_id: null,
+    retainer_overage_rate_minor: null,
+    retainer_rollover: "none",
     version: 1,
   }
+}
+
+/** Whether the draft is a retainer (it has included hours). */
+export function isRetainerDraft(d: Pick<ScheduleDraft, "retainer_hours">): boolean {
+  return d.retainer_hours !== null
+}
+
+/** The retainer's own errors, as the server would refuse them. */
+function retainerDraftErrors(d: ScheduleDraft): string[] {
+  if (!isRetainerDraft(d)) return []
+  const errors: string[] = []
+  if (!d.retainer_project_id)
+    errors.push("choose the project the retainer's months are reconciled on")
+  if (!(Number(d.retainer_hours) > 0)) errors.push("give the hours included a month, above zero")
+  if (!(Number(d.retainer_overage_rate_minor) >= 0) || d.retainer_overage_rate_minor === null)
+    errors.push("give the rate per hour above them, zero or more")
+  if (d.issue_mode === "auto")
+    errors.push("a retainer cannot issue by itself: its month is invoiced from the project's card")
+  return errors
+}
+
+/** The retainer params of a save: set on a retainer, cleared when it stops being one. */
+function retainerParams(d: ScheduleDraft): Record<string, unknown> {
+  if (!isRetainerDraft(d))
+    return { retainer_minutes: null, retainer_project_id: null, retainer_overage_rate_minor: null }
+  return {
+    retainer_minutes: Math.round(Number(d.retainer_hours) * 60),
+    retainer_project_id: d.retainer_project_id,
+    retainer_overage_rate_minor: Math.round(Number(d.retainer_overage_rate_minor ?? 0)),
+    retainer_rollover: d.retainer_rollover,
+  }
+}
+
+/** The list's retainer line: the hours included a month, never a figure of time spent. */
+export function retainerListLine(row: Record<string, unknown>): string | null {
+  const minutes = Number(row.retainer_minutes)
+  if (row.retainer_minutes === null || row.retainer_minutes === undefined || !(minutes > 0))
+    return null
+  return tr("Retainer, {{hours}} h included a month", {
+    hours: Math.round((minutes / 60) * 100) / 100,
+  })
 }
 
 /** How the invoice number is taken: said in words, never a number before issue. */
@@ -117,6 +169,7 @@ export function draftErrors(d: ScheduleDraft): string[] {
   if (!d.issuer_profile_id) errors.unshift("choose who invoices")
   if (d.paid_by === "card_link" && !/^https:\/\/\S+$/.test(d.card_link_url ?? ""))
     errors.push("give the card link, an https address")
+  errors.push(...retainerDraftErrors(d))
   return errors
 }
 
@@ -186,6 +239,8 @@ export function scheduleParams(
     status,
   }
   if (d.paid_by === "card_link" && d.card_link_url) p.card_link_url = d.card_link_url
+  // A plain schedule sends no retainer field on create; an update clears them (changedParams).
+  if (isRetainerDraft(d) || d.id !== null) Object.assign(p, retainerParams(d))
   if (saidOther(d)) p.billsOtherThanStripe = d.billsOtherThanStripe?.trim()
   return p
 }
@@ -266,6 +321,18 @@ export function draftFromRow(id: string, row: Record<string, unknown>): Schedule
       : base.lines,
     notes: (row.notes as string | null) ?? null,
     billsOtherThanStripe: (row.bills_other_than_stripe as string | null) ?? null,
+    retainer_hours:
+      row.retainer_minutes !== null &&
+      row.retainer_minutes !== undefined &&
+      Number(row.retainer_minutes) > 0
+        ? Number(row.retainer_minutes) / 60
+        : null,
+    retainer_project_id: (row.retainer_project_id as string | null) ?? null,
+    retainer_overage_rate_minor:
+      row.retainer_overage_rate_minor === null || row.retainer_overage_rate_minor === undefined
+        ? null
+        : Number(row.retainer_overage_rate_minor),
+    retainer_rollover: row.retainer_rollover === "next" ? "next" : "none",
     version: Number(row.version ?? 1),
   }
 }
@@ -347,6 +414,123 @@ const DUE_OPTIONS = [
   { value: "days_30", label: "30 days after issue" },
   { value: "on_issue", label: "On issue" },
 ] as const
+const ROLLOVER_OPTIONS = [
+  { value: "none", label: "Unused hours are lost" },
+  { value: "next", label: "Unused hours carry to the next month only" },
+] as const
+
+interface ProjectChoice {
+  id: string
+  name: string
+}
+
+/** The projects a retainer can be reconciled on, as the person may read them. */
+async function loadProjects(): Promise<ProjectChoice[]> {
+  try {
+    const r = await hostFetch<{ items?: Array<{ id?: unknown; name?: unknown }> }>(
+      "/api/projects?limit=100",
+    )
+    return (r?.items ?? [])
+      .filter((p) => typeof p.id === "string")
+      .map((p) => ({ id: p.id as string, name: String(p.name ?? p.id) }))
+  } catch {
+    return []
+  }
+}
+
+/** The retainer terms: a section of the schedule editor, never a screen of their own. */
+function RetainerSection(p: { d: ScheduleDraft; patch: (v: Partial<ScheduleDraft>) => void }) {
+  const [projects] = createResource(() => isRetainerDraft(p.d) || undefined, loadProjects)
+  const on = () => isRetainerDraft(p.d)
+  return (
+    <Section title={tr("Retainer")} testid="schedule-retainer">
+      <label class="flex items-center gap-2">
+        <input
+          type="checkbox"
+          data-testid="schedule-retainer-on"
+          checked={on()}
+          onChange={(e) =>
+            p.patch(
+              e.currentTarget.checked
+                ? {
+                    retainer_hours: 0,
+                    retainer_overage_rate_minor: p.d.retainer_overage_rate_minor ?? 0,
+                    issue_mode: "review",
+                  }
+                : { retainer_hours: null, retainer_project_id: null },
+            )
+          }
+        />
+        <span>{tr("Hours are included each month, and hours above them are billed")}</span>
+      </label>
+      <Show when={on()}>
+        <span class="text-text-tertiary">
+          {tr(
+            "Each month is invoiced from the project's planned vs done card, once a person reconciles it.",
+          )}
+        </span>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-text-tertiary">{tr("Project")}</span>
+          <select
+            data-testid="schedule-retainer-project"
+            class={`${inputClass} ${TAP}`}
+            value={p.d.retainer_project_id ?? ""}
+            onChange={(e) => p.patch({ retainer_project_id: e.currentTarget.value || null })}
+          >
+            <option value="">{tr("Choose a project")}</option>
+            <For each={projects() ?? []}>
+              {(proj) => (
+                <option value={proj.id} selected={proj.id === p.d.retainer_project_id}>
+                  {proj.name}
+                </option>
+              )}
+            </For>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-text-tertiary">{tr("Hours included a month")}</span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            data-testid="schedule-retainer-hours"
+            class={`${inputClass} ${TAP}`}
+            value={p.d.retainer_hours ?? 0}
+            onInput={(e) => p.patch({ retainer_hours: Number(e.currentTarget.value) || 0 })}
+          />
+        </label>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-text-tertiary">{tr("Rate per hour above them")}</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            data-testid="schedule-retainer-rate"
+            class={`${inputClass} ${TAP}`}
+            value={(p.d.retainer_overage_rate_minor ?? 0) / 100}
+            onInput={(e) =>
+              p.patch({
+                retainer_overage_rate_minor: Math.round(Number(e.currentTarget.value) * 100) || 0,
+              })
+            }
+          />
+        </label>
+        <Choice
+          testid="schedule-retainer-rollover"
+          value={p.d.retainer_rollover}
+          options={ROLLOVER_OPTIONS}
+          onChange={(v) => p.patch({ retainer_rollover: v })}
+        />
+        <Show when={p.d.covers === "period_ahead"}>
+          <p data-testid="schedule-retainer-prepaid" class="text-text-secondary">
+            {tr(PREPAID_WARNING)}
+          </p>
+        </Show>
+      </Show>
+    </Section>
+  )
+}
+
 const LANG_OPTIONS = [
   { value: "fr", label: "FR" },
   { value: "en", label: "EN" },
@@ -687,10 +871,12 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
             <Choice
               testid="schedule-mode"
               value={d().issue_mode}
-              options={MODE_OPTIONS.slice(0, isNew() ? 1 : 2)}
+              options={MODE_OPTIONS.slice(0, isNew() || isRetainerDraft(d()) ? 1 : 2)}
               onChange={(v) => patch({ issue_mode: v })}
             />
           </Section>
+
+          <RetainerSection d={d()} patch={patch} />
 
           <Section title={tr("Payment")}>
             <span class="text-text-tertiary">{tr("Paid by")}</span>

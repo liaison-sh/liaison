@@ -236,6 +236,28 @@ export const FOOTER_ACTIONS = {
 // confirmation IS the approval (agents still hit the kernel gate).
 // ─────────────────────────────────────────────────────────────────────────
 
+/** Sending mails the issued document: a draft has nothing to send yet. */
+export function canSendToCustomer(doc: { status: string }): boolean {
+  return doc.status !== "draft"
+}
+
+/** A payment is recorded on an issued, unpaid document. Credit notes are never payable, and
+ *  Stripe settles an invoice it collects. */
+export function canMarkPaid(doc: {
+  type: DocumentSummary["type"]
+  status: string
+  payment_status?: string | null
+  external_refs?: unknown
+}): boolean {
+  return (
+    doc.status !== "draft" &&
+    doc.status !== "paid" &&
+    doc.payment_status !== "paid" &&
+    doc.type !== "credit_note" &&
+    !stripeCollection(doc.external_refs as Record<string, unknown> | undefined)
+  )
+}
+
 /** A quote can be converted once it is out with the customer (`sent`) or the
  *  customer said yes (`accepted`); a proforma once it is `sent`. Nothing else
  *  converts: invoices and credit notes are already terminal, and a draft or a
@@ -1327,10 +1349,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         </span>
                       </Show>
                     </Show>
-                    {/* Credit notes are never payable, and Stripe settles an invoice it collects: no mark-paid. */}
-                    <Show
-                      when={doc().type !== "credit_note" && !stripeCollection(doc().external_refs)}
-                    >
+                    <Show when={canMarkPaid(doc())}>
                       <Button
                         variant="ghost"
                         testid="document-detail-action-mark-paid"
@@ -1339,13 +1358,15 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         {tr(FOOTER_ACTIONS.mark_paid.label)}
                       </Button>
                     </Show>
-                    <Button
-                      variant="secondary"
-                      testid="document-detail-action-send-to-customer"
-                      onClick={sendToCustomer}
-                    >
-                      {tr(FOOTER_ACTIONS.send_to_customer.label)}
-                    </Button>
+                    <Show when={canSendToCustomer(doc())}>
+                      <Button
+                        variant="secondary"
+                        testid="document-detail-action-send-to-customer"
+                        onClick={sendToCustomer}
+                      >
+                        {tr(FOOTER_ACTIONS.send_to_customer.label)}
+                      </Button>
+                    </Show>
                     <Show when={canConvertToInvoice(doc())}>
                       <Button
                         variant="secondary"

@@ -19,6 +19,8 @@ import {
   ACTION_NOTE_DISMISS_MS,
   BUILT_IN_TABS,
   canConvertToInvoice,
+  canMarkPaid,
+  canSendToCustomer,
   convertConfirmBody,
   convertResultNote,
   DocumentDetail,
@@ -236,9 +238,14 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     })
     expect(stripeCollection({})).toBeNull()
     expect(stripeCollection(undefined)).toBeNull()
-    expect(source).toContain(
-      'doc().type !== "credit_note" && !stripeCollection(doc().external_refs)',
-    )
+    expect(
+      canMarkPaid({
+        type: "invoice",
+        status: "issued",
+        payment_status: "unpaid",
+        external_refs: { stripe_invoice_id: "in_1" },
+      }),
+    ).toBe(false)
     expect(source).toContain("document-detail-open-stripe")
     expect(source).toContain("document-detail-open-contact")
   })
@@ -448,6 +455,21 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   // Converting is irreversible and, for a Shopify-linked quote, reaches into
   // Shopify and creates a real order, so the click must open a dialog and the
   // tool must fire only after the human confirms.
+  describe("send and mark paid", () => {
+    it("are not offered on a draft, and mark paid is not offered once paid", () => {
+      const doc = (status: string, payment_status = "unpaid", type = "invoice") =>
+        ({ type, status, payment_status, external_refs: {} }) as never
+      expect(canSendToCustomer(doc("draft"))).toBe(false)
+      expect(canMarkPaid(doc("draft"))).toBe(false)
+      expect(canSendToCustomer(doc("issued"))).toBe(true)
+      expect(canMarkPaid(doc("issued"))).toBe(true)
+      expect(canMarkPaid(doc("paid", "paid"))).toBe(false)
+      expect(canMarkPaid(doc("issued", "unpaid", "credit_note"))).toBe(false)
+      expect(source).toContain("<Show when={canSendToCustomer(doc())}>")
+      expect(source).toContain("<Show when={canMarkPaid(doc())}>")
+    })
+  })
+
   describe("convert to invoice", () => {
     it("offers the action only for a quote in sent/accepted and a proforma in sent", () => {
       expect(canConvertToInvoice({ type: "quote", status: "sent" })).toBe(true)

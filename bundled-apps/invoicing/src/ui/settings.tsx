@@ -47,6 +47,8 @@ export interface IssuerProfileDraft {
   po_approval_threshold_minor?: string | null
   require_two_eyes?: boolean
   auto_email_enabled?: boolean
+  /** The mailbox documents are emailed from (a mail account id); null when none is chosen. */
+  mail_account_id?: string | null
   /** Typed unit prices are gross (tax included). Mirrors the Shopify shop's
    *  "include tax in prices" setting for a profile mapped to a shop. */
   prices_include_tax?: boolean
@@ -272,8 +274,26 @@ async function loadIssuers(): Promise<IssuerProfileRow[]> {
 // ─────────────────────────────────────────────────────────────────────────
 // Component.
 // ─────────────────────────────────────────────────────────────────────────
+/** A mailbox the person can see, as the mail app lists it. */
+interface MailboxOption {
+  id: string
+  emailAddress?: string | null
+  displayName?: string | null
+}
+
+/** The mailboxes the person may choose to send documents from: the ones mail lets them see. */
+async function loadMailboxes(): Promise<MailboxOption[]> {
+  try {
+    const list = await hostFetch<MailboxOption[]>("/api/mail/accounts")
+    return Array.isArray(list) ? list.filter((m) => typeof m?.id === "string") : []
+  } catch {
+    return []
+  }
+}
+
 export const InvoicingIssuerProfiles: Component = () => {
   const [issuers, { refetch: refetchIssuers }] = app.createResource(loadIssuers)
+  const [mailboxes] = createResource(loadMailboxes)
 
   const [editing, setEditing] = createSignal<IssuerProfileDraft | null>(null)
   const [logoError, setLogoError] = createSignal<string | null>(null)
@@ -495,6 +515,38 @@ export const InvoicingIssuerProfiles: Component = () => {
                       <option value="en">{tr("en")}</option>
                       <option value="fr">{tr("fr")}</option>
                       <option value="de">{tr("de")}</option>
+                    </select>
+                  </label>
+                  <label class="col-span-2 flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Send invoices from")}</span>
+                    <select
+                      data-testid="settings-issuer-profile-field-mail_account_id"
+                      value={d().mail_account_id ?? ""}
+                      onChange={(e) =>
+                        setEditing({ ...d(), mail_account_id: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    >
+                      <option value="">{tr("No mailbox chosen")}</option>
+                      <Show
+                        when={
+                          d().mail_account_id &&
+                          !(mailboxes() ?? []).some((m) => m.id === d().mail_account_id)
+                        }
+                      >
+                        <option value={d().mail_account_id ?? ""}>
+                          {tr("A mailbox you cannot see")}
+                        </option>
+                      </Show>
+                      <For each={mailboxes() ?? []}>
+                        {(m) => (
+                          <option value={m.id}>
+                            {m.displayName && m.emailAddress
+                              ? `${m.displayName} <${m.emailAddress}>`
+                              : (m.emailAddress ?? m.displayName ?? m.id)}
+                          </option>
+                        )}
+                      </For>
                     </select>
                   </label>
                 </div>

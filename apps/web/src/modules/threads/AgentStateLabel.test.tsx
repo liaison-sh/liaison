@@ -74,6 +74,27 @@ describe("agent turn state labels (P4b-T24)", () => {
     await vi.waitFor(() => expect(screen.queryByText("Stuck")).not.toBeInTheDocument())
   })
 
+  it("a quiet turn the server says it is still running reads Working again, not Stuck", async () => {
+    startTurn()
+    handleWsAgentStreamEvent("start", { threadId, turnId: "ask-2" })
+    handleWsAgentStreamEvent("delta", { threadId, turnId: "ask-2", delta: "Reading" })
+    const client = {
+      get: vi.fn(async () => ({ data: { active: true, turnId: "ask-2", agentId: null } })),
+    }
+    render(() => (
+      <ApiContext.Provider value={client as never}>
+        <AgentStateLabel threadId={threadId} />
+      </ApiContext.Provider>
+    ))
+    vi.advanceTimersByTime(AGENT_STUCK_THRESHOLD_MS + 1000)
+    await vi.waitFor(() =>
+      expect(client.get).toHaveBeenCalledWith(`/agent/stream-state/${threadId}`),
+    )
+    await vi.waitFor(() =>
+      expect(screen.getByTestId("agent-state")).toHaveAttribute("data-state", "working"),
+    )
+  })
+
   it("a stream chunk inside the threshold keeps the turn Working", () => {
     startTurn()
     handleWsAgentStreamEvent("start", { threadId })

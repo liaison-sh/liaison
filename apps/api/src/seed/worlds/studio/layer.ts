@@ -32,7 +32,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
-import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
+import { addAddress } from "~/modules/contacts/addresses"
 import { assignRole } from "~/modules/permissions/roles"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
@@ -52,7 +52,13 @@ import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
-import { STUDIO_CLIENTS, STUDIO_COMPANY, STUDIO_CONTACTS, STUDIO_PAST_CLIENTS } from "./fiction"
+import {
+  STUDIO_CLIENT_SIREN,
+  STUDIO_CLIENTS,
+  STUDIO_COMPANY,
+  STUDIO_CONTACTS,
+  STUDIO_PAST_CLIENTS,
+} from "./fiction"
 import {
   STUDIO_INVOICE_PREFIX,
   STUDIO_TERMS_DAYS,
@@ -336,8 +342,8 @@ const lineSpecs = (lines: readonly StudioInvoiceLine[]) =>
  * The money of the year, in the order it happened: the issuer; the portal's quote and billing
  * plan; every invoice of the year in one chronological loop, numbered from 0001 as the app numbers
  * them; the retainer's last month reconciled, drafted on its card's key and marked billed by the
- * projects writers at the day it was issued; the Beta milestone's draft with its issue approval;
- * the two monthly schedules. Idempotent: rows are keyed, the approval is asked once.
+ * projects writers at the day it was issued; the two monthly schedules. The Beta milestone is
+ * not drafted: its task is still in progress. Idempotent: rows are keyed, the approval is asked once.
  */
 async function seedStudioMoney(
   ctx: SeedContext,
@@ -377,6 +383,59 @@ async function seedStudioMoney(
     verdier: "marc-verdier",
   }
 
+  // Each client's invoiced contact holds its billing address, and its registry identity: the
+  // e-invoice of a French business needs both, so a card's Create can make an invoice that issues.
+  const biller0 = await actors("anais")
+  for (const c of STUDIO_CLIENTS) {
+    const contact = contactOf(billedContact[c.key] ?? c.contactKeys[0] ?? "")
+    const hasBilling = await withPrivilegedDb(
+      ctx.orgId,
+      "seed-studio:billing-address",
+      async (tx) =>
+        rowsOf<{ id: string }>(
+          await tx.execute(sql`
+          SELECT id::text AS id FROM ${sql.raw(schemaRef("kernel"))}.contact_addresses
+           WHERE org_id = ${ctx.orgId}::uuid AND contact_id = ${contact.id}::uuid
+             AND role = 'billing' AND archived_at IS NULL LIMIT 1`),
+        ),
+    )
+    if (hasBilling.length === 0) {
+      await asUser(biller0, (tx) =>
+        addAddress(tx, {
+          orgId: ctx.orgId,
+          userId: biller0.userId,
+          contactId: contact.id,
+          fields: {
+            role: "billing",
+            street1: c.street,
+            postalCode: c.postcode,
+            city: c.city,
+            countryIso2: "FR",
+          },
+        }),
+      )
+    }
+    await withSystemDb("seed-studio-client-identity", (tx) =>
+      upsertAppRow(tx, "invoicing", "counterparty_identities", {
+        id: ctx.id("counterparty_identity", `studio:${c.key}`),
+        org_id: ctx.orgId,
+        contact_id: contact.id,
+        customer_kind: "business",
+        siren: STUDIO_CLIENT_SIREN,
+        registry_name: c.name,
+        registry_line1: c.street,
+        registry_postcode: c.postcode,
+        registry_city: c.city,
+        registry_country_code: "FR",
+        registry_status: "A",
+        registry_checked_at: ctx.now.toISOString(),
+        source: "registry",
+        confirmed_via: "auto",
+        changed_at: ctx.now.toISOString(),
+      }),
+    )
+  }
+
   // Who the invoices go to: the clients of the projects, and the clients of earlier work.
   const parties = new Map<string, InvoicingParty>()
   const contactIdsByPartyKey: Record<string, string> = {}
@@ -389,7 +448,7 @@ async function seedStudioMoney(
       email: contact?.email ?? `billing@${c.domain}`,
       country: "FR",
       vatId: null,
-      address: `${c.name}, France`,
+      address: `${c.name}\n${c.street}\n${c.postcode} ${c.city}\nFR`,
     })
     if (contact) contactIdsByPartyKey[c.key] = contact.id
   }
@@ -583,28 +642,6 @@ async function seedStudioMoney(
       year: inv.year,
     })
   }
-  const draftStep = stepId(money.draft.stepKey)
-  specs.push({
-    key: docKey(money.draft.key),
-    type: "invoice",
-    status: "draft",
-    paymentStatus: "unpaid",
-    party: money.draft.client,
-    lines: lineSpecs(
-      money.draft.lines.map((l) => ({ ...l, externalId: `milestone:${draftStep}` })),
-    ),
-    issuedDaysAgo: null,
-    termsDays: STUDIO_TERMS_DAYS,
-    billingProjectId: projectId(money.draft.projectKey),
-    externalRef: `milestone:${draftStep}`,
-    externalRefs: { billing_step_id: draftStep },
-    columns: {
-      invoice_role: "standard",
-      operation_category: "services",
-      service_period_end: money.draft.createdOn,
-      latest_issue_on: money.draft.latestIssueOn,
-    },
-  })
   const documents: ComputedDocument[] = computeDocuments(ctx, {
     documents: specs,
     parties,
@@ -756,35 +793,6 @@ async function seedStudioMoney(
     }),
   )
 
-  // The Beta milestone's draft waits on its issue, asked once of whoever may issue.
-  const draftId = docId(money.draft.key)
-  const asked = await withPrivilegedDb(ctx.orgId, "seed-studio:money-approval", async (tx) =>
-    rowsOf<{ id: string }>(
-      await tx.execute(sql`
-        SELECT id::text AS id FROM ${sql.raw(schemaRef("kernel"))}.approval_requests
-         WHERE org_id = ${ctx.orgId}::uuid AND current_payload->>'draft_id' = ${draftId}
-         LIMIT 1`),
-    ),
-  )
-  if (asked.length === 0) {
-    await createHandlerApprovalRequest({
-      orgId: ctx.orgId,
-      requestedBy: biller.userId,
-      actorScopes: ["invoicing:*", "projects:*"],
-      defaultAppName: "invoicing",
-      origin: "in-app-agent",
-      input: {
-        tool_name: "invoicing:invoice_issue",
-        summary: "Issue the Beta milestone invoice of the partner portal rebuild",
-        summary_detail: {
-          lines: ["Beta, 16,000.00 excluding VAT", `Issue by ${money.draft.latestIssueOn}`],
-          latest_on: money.draft.latestIssueOn,
-        },
-        current_payload: { draft_id: draftId },
-        approve_scope: "invoicing:documents:write",
-      },
-    } as never)
-  }
   ctx.log(
     `money: ${money.invoices.length} invoices to ${money.invoices.at(-1)?.number}, plan of ${money.steps.length} steps, ${money.retainers.length} schedules`,
   )

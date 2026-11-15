@@ -6,6 +6,11 @@
 // approval.
 
 import { describe, expect, test } from "bun:test"
+import {
+  BILLING_CONTACT_IDENTITY,
+  billingContactRead,
+  CONTACT,
+} from "./__tests__/from-reconcile-harness"
 import { draftsDiscard, invoiceIssue, type MutationsCtx } from "./mutations"
 import { draftFromReconcile, monthEnd } from "./mutations/from-reconcile"
 import { createMockDb, type MockDb } from "./test-db"
@@ -37,6 +42,7 @@ function linesRead(over: Row = {}): Row {
     projectId: PROJECT,
     projectName: "Maison Alpine platform",
     companyId: COMPANY,
+    contactId: CONTACT,
     basis: "daily",
     state: "proposed",
     revision: 2,
@@ -74,7 +80,12 @@ interface Harness {
 }
 
 function harness(opts: { scopes?: string[]; issuer?: boolean } = {}): Harness {
-  const db = createMockDb({ seed: { issuer_profiles: opts.issuer === false ? [] : [ISSUER] } })
+  const db = createMockDb({
+    seed: {
+      counterparty_identities: [BILLING_CONTACT_IDENTITY],
+      issuer_profiles: opts.issuer === false ? [] : [ISSUER],
+    },
+  })
   const approvals: Harness["approvals"] = []
   const read = { value: linesRead() }
   const scopes = new Set(opts.scopes ?? ["invoicing:documents:write"])
@@ -122,7 +133,9 @@ function harness(opts: { scopes?: string[]; issuer?: boolean } = {}): Harness {
       },
     },
     decideApproval: async () => ({ status: "ok" }),
-    executeTool: async (target: string) => {
+    executeTool: async (target: string, params?: Row) => {
+      const contact = billingContactRead(target, params)
+      if (contact) return contact
       if (target === "projects:reconcile_lines_read")
         return { status: "completed" as const, result: read.value }
       if (target === "kernel:companies_read")
@@ -145,7 +158,6 @@ describe("a draft from planned vs done", () => {
     const res = await draftFromReconcile(h.ctx, {
       reconciliationId: REC,
       revision: 2,
-      leadName: "Claire Martin",
     })
     if (res.status !== "completed") throw new Error(JSON.stringify(res))
     expect(res.totals).toEqual({ excl: 651_000, vat: 130_200, incl: 781_200, currency: "EUR" })

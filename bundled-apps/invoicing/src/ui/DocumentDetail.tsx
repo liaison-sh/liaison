@@ -42,6 +42,7 @@ import {
   Suspense,
 } from "solid-js"
 import { formatMoneyMinor } from "../money"
+import { type DocumentType, transition } from "../state"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { tr } from "./i18n"
@@ -235,6 +236,29 @@ export const FOOTER_ACTIONS = {
 // confirmation dialog rather than firing the tool straight away; the human
 // confirmation IS the approval (agents still hit the kernel gate).
 // ─────────────────────────────────────────────────────────────────────────
+
+/** Sending mails the issued document: a draft has nothing to send yet. */
+export function canSendToCustomer(doc: { status: string }): boolean {
+  return doc.status !== "draft"
+}
+
+/** A payment is recorded on an issued, unpaid document. Credit notes are never payable, and
+ *  Stripe settles an invoice it collects. */
+export function canMarkPaid(doc: {
+  type: DocumentSummary["type"]
+  status: string
+  payment_status?: string | null
+  external_refs?: unknown
+}): boolean {
+  // The server's own rule (state.ts): only an issued invoice is marked paid, never a cancelled or
+  // credited one, a quote or a proforma.
+  return (
+    transition({ type: doc.type as DocumentType, status: doc.status }, "mark_paid").status ===
+      "ok" &&
+    doc.payment_status !== "paid" &&
+    !stripeCollection(doc.external_refs as Record<string, unknown> | undefined)
+  )
+}
 
 /** A quote can be converted once it is out with the customer (`sent`) or the
  *  customer said yes (`accepted`); a proforma once it is `sent`. Nothing else
@@ -791,12 +815,15 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
                   ),
                 },
                 {
+                  // Excluding VAT on every document, draft or issued: the VAT is in the totals.
                   key: "total",
-                  header: tr("Total"),
+                  header: tr("Total excl. VAT"),
                   role: "meta",
                   numeric: true,
                   align: "right",
-                  cell: (l) => <Money minor={l.total_minor} currency={p.doc.currency} codeless />,
+                  cell: (l) => (
+                    <Money minor={l.subtotal_minor} currency={p.doc.currency} codeless />
+                  ),
                 },
               ] as Array<CardTableColumn<DocumentLine>>
             }
@@ -1327,10 +1354,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         </span>
                       </Show>
                     </Show>
-                    {/* Credit notes are never payable, and Stripe settles an invoice it collects: no mark-paid. */}
-                    <Show
-                      when={doc().type !== "credit_note" && !stripeCollection(doc().external_refs)}
-                    >
+                    <Show when={canMarkPaid(doc())}>
                       <Button
                         variant="ghost"
                         testid="document-detail-action-mark-paid"
@@ -1339,13 +1363,15 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         {tr(FOOTER_ACTIONS.mark_paid.label)}
                       </Button>
                     </Show>
-                    <Button
-                      variant="secondary"
-                      testid="document-detail-action-send-to-customer"
-                      onClick={sendToCustomer}
-                    >
-                      {tr(FOOTER_ACTIONS.send_to_customer.label)}
-                    </Button>
+                    <Show when={canSendToCustomer(doc())}>
+                      <Button
+                        variant="secondary"
+                        testid="document-detail-action-send-to-customer"
+                        onClick={sendToCustomer}
+                      >
+                        {tr(FOOTER_ACTIONS.send_to_customer.label)}
+                      </Button>
+                    </Show>
                     <Show when={canConvertToInvoice(doc())}>
                       <Button
                         variant="secondary"

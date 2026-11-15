@@ -4,7 +4,7 @@
 // made from it, named before any draft exists.
 
 import { describe, expect, test } from "bun:test"
-import { activityReportText, buildActivityReport } from "./activity-report"
+import { activityReportPdfData, activityReportText, buildActivityReport } from "./activity-report"
 import { lineAmountMinor, lineQuantity } from "./line-amount"
 import { createMockDb } from "./test-db"
 import { documentAttachmentAdd } from "./tools/document-attachment-add"
@@ -55,11 +55,12 @@ const CARD = {
 }
 
 describe("the card's invoice preview", () => {
-  test("the October lines preview 6,510.00 excl. VAT, 1,302.00 VAT and 7,812.00 incl. VAT", async () => {
+  test("the October lines preview 6,510.00 excl. VAT, 1,302.00 VAT and 7,812.00 incl. VAT, and a company with no contact names what the invoice lacks", async () => {
+    // No contact: the invoice would go to the company alone, with no address and no email.
     const r = await previewTotals(ctxWith() as never, CARD)
     expect(r).toMatchObject({
-      ready: true,
-      missing: [],
+      ready: false,
+      missing: ["billing_address", "email"],
       excl: 651_000,
       vat: 130_200,
       incl: 781_200,
@@ -163,7 +164,6 @@ describe("the client activity report", () => {
         proofLabels: ["Dashboard delivered"],
       },
     ],
-    lead: "Claire Martin",
   })
 
   test("the report holds no real time, note, estimate, member name or unplanned line, in any form a French PDF prints", () => {
@@ -194,19 +194,26 @@ describe("the client activity report", () => {
       hoursPerDayMinutes: HPD,
       // @ts-expect-error a real figure has no place in the report's input
       lines: [{ wording: "x", billedMinutes: 60, unit: "hour", proofLabels: [], realMinutes: 210 }],
-      lead: null,
     })
   })
 
-  test("the report is signed by the project lead and carries the card's proof labels", () => {
-    expect(content.signedBy).toBe("Claire Martin")
+  test("the report names no person, is signed by the issuing company and carries the card's proof labels", () => {
+    expect(JSON.stringify(content)).not.toContain("signedBy")
+    const pdf = activityReportPdfData(content, { lang: "fr", issuer: "Maison Studio SAS" })
+    expect(pdf.signature).toBe("Signé : Maison Studio SAS")
+    // A report stored before carries a person's name: it is never printed.
+    const older = activityReportPdfData({ ...content, signedBy: "Claire Martin" } as never, {
+      lang: "en",
+      issuer: "Maison Studio SAS",
+    })
+    expect(older.signature).toBe("Signed: Maison Studio SAS")
+    expect(JSON.stringify(older)).not.toContain("Claire Martin")
     expect(content.lines).toEqual([
       { wording: "Data export", billed: "3", unit: "day", proofLabels: ["Export merged"] },
       { wording: "Monitoring", billed: "4", unit: "day", proofLabels: ["Dashboard delivered"] },
     ])
     const fr = activityReportText(content, "fr")
     expect(fr).toContain("Data export: 3 jours (Export merged)")
-    expect(fr).toContain("Signé : Claire Martin")
   })
 })
 

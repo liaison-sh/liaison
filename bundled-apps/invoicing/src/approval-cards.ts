@@ -477,10 +477,15 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
     kind: f.kind,
     title,
     subtitle: f.fromDraft
-      ? `Turns the saved draft into a ${type} for ${customer}, with its next ${type} number`
-      : `Creates a ${type} for ${customer}, with its next ${type} number`,
+      ? `Turns the saved draft into ${article(type)} ${type} for ${customer}, with its next ${type} number`
+      : `Creates ${article(type)} ${type} for ${customer}, with its next ${type} number`,
     lines,
     links: f.fromDraft && f.draftId ? docLink(f.draftId, `Open the draft ${type}`) : [],
     ...(latestLine && !issued ? { latestOn: day(f.latestIssueOn) ?? undefined } : {}),
   })
+}
+
+/** "a" or "an" before a document type's name. */
+function article(word: string): "a" | "an" {
+  return /^[aeiou]/i.test(word) ? "an" : "a"
 }

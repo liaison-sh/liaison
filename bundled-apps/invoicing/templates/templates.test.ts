@@ -569,8 +569,9 @@ describe("invoicing pdf templates — command shape", () => {
     expect(t).toContain("CN-2026-0001")
     expect(texts(cmds).join("\n")).toMatch(/Credit note for invoice INV-2026-0042/)
     expect(texts(cmds).join("\n")).toContain("Reason: partial return")
+    // The line excluding VAT, the total including it.
     expect(t).toContain("-100.00")
-    expect(t).toContain("-120.00")
+    expect(t.some((x) => x.includes("-120.00"))).toBe(true)
     expect(title(cmds)).toMatch(/Credit Note/i)
     // Page footer (issuer name + "Page N of M") is present like every other type.
     expect(texts(cmds).join("\n")).toMatch(/Page 1 of 1/)
@@ -1020,6 +1021,24 @@ describe("exempt documents print no tax column", () => {
     expect(t).toContain("Tax %")
     expect(t).toContain("20.00%")
     expect(t).toContain("Tax (20.00%)")
+  })
+
+  test("an invoice of services alone prints no Incoterm, an invoice of goods does", () => {
+    const services = texts(
+      invoiceTemplate(
+        shortInput({ document: { ...shortInput().document, operation_category: "services" } }),
+      ),
+    )
+    expect(services).not.toContain("Incoterm:")
+    expect(texts(invoiceTemplate(shortInput()))).toContain("Incoterm:")
+  })
+
+  test("a taxed invoice prints each line excluding VAT under a column that says so", () => {
+    const t = texts(invoiceTemplate(exportInput(725, 725n)))
+    expect(t).toContain("Amount excl. VAT")
+    expect(t).not.toContain("Amount")
+    // 100.00 excluding VAT on the line; 107.25 only once, in the totals.
+    expect(t.filter((x) => x.includes("107.25"))).toHaveLength(1)
   })
 
   test("an exempt invoice that carries tax keeps the figures its total includes", () => {

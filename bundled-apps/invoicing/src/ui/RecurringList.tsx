@@ -7,7 +7,7 @@
 // bills instead, and that text is what its Bills column shows.
 import { app, navigate } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
-import { contactLabel, loadContact } from "./ContactPicker"
+import { customerLabel, loadContact } from "./ContactPicker"
 import { tr, uiLocale } from "./i18n"
 import { Button, formatMoneyMinor } from "./kit"
 import {
@@ -154,7 +154,7 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
       await Promise.all(
         ids.map(async (id) => {
           const c = await loadContact(id)
-          if (c) out[id] = contactLabel(c)
+          if (c) out[id] = customerLabel(c)
         }),
       )
       return out

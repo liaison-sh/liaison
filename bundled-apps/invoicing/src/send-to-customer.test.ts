@@ -118,6 +118,8 @@ describe("sending an invoice from planned vs done", () => {
     // The report prints the billed figures only, in the issuer's language.
     expect(drawn).toContain("Data export")
     expect(drawn).toContain("3 jours")
-    expect(drawn).toContain("Signé : Claire Martin")
+    // Signed by the issuing company, never by a person of the team.
+    expect(drawn).toContain("Signé : Maison Studio SAS")
+    expect(drawn).not.toContain("Claire Martin")
   })
 })

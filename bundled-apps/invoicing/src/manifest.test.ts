@@ -1754,6 +1754,10 @@ describe("invoicing manifest", () => {
     //   whose issue approval is pending.
     // 0.29.4: the losing call of two issue ticks racing on one run item says it is already
     //   issued, with the number the winner took.
+    // 0.30.0: issuing, discarding and correcting a card's draft run their approved execution on a
+    //   session (ownsTransactions); a card's preview names what the customer lacks; drafts store
+    //   their totals; settings choose the send-from mailbox; lines read excluding VAT; the
+    //   activity report is signed by the issuer and takes no lead name.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

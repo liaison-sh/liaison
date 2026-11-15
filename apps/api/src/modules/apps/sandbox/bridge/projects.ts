@@ -2433,6 +2433,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             orgId,
             userId: actor.userId,
             scopes: callerScopes ?? [],
+            ...(bridgeOptions?.origin ? { origin: bridgeOptions.origin } : {}),
             input: { reconciliationId: params.reconciliationId ?? "" },
           }),
         )

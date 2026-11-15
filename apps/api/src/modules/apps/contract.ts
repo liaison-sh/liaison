@@ -129,6 +129,7 @@ const toolSchema = z.object({
   externalEffect: z.boolean().optional(),
   retryOnTransientDbError: z.boolean().optional(),
   atomic: z.boolean().optional(),
+  ownsTransactions: z.boolean().optional(),
   approvalCard: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   returns: z
     .object({
@@ -1210,6 +1211,20 @@ const FIRST_PARTY_ONLY_REASON: Record<(typeof FIRST_PARTY_ONLY_TOOL_KEYS)[number
   contentParams: "it narrows a scope-taint refusal",
   humanTurnOnly: "it is a rule of Liaison's own apps",
   dmOnly: "it is a rule of Liaison's own apps",
+}
+
+/**
+ * Whether a manifest tool's declared `ownsTransactions` holds: it takes the tool's approved run
+ * off whole-run rollback, so its handler must report what it committed through the approval
+ * protocol, a contract only an app the platform vouches for (core, or the image's own catalog
+ * artifact) is held to. Anyone else's declaration is ignored: the run keeps one transaction.
+ * Ignored rather than refused, so an app the vouching cannot read for a moment still loads.
+ */
+export function ownsTransactionsHolds(
+  tool: { ownsTransactions?: unknown; atomic?: unknown },
+  vouched: boolean,
+): boolean {
+  return vouched && tool.ownsTransactions === true && tool.atomic !== true
 }
 
 /** The registration errors for a manifest nobody vouched for that declares a key above. */

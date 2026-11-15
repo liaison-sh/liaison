@@ -4,10 +4,17 @@
 // resolution, document summaries, draft rows and lines, prior refunds, line item details).
 
 import { readEinvoiceRowColumns } from "../einvoicing/issue-gate"
-import { type DraftLine, type IssueDb, type IssuerProfile, readRefString } from "../issue"
+import {
+  type DraftLine,
+  type IssueBatchOp,
+  type IssueDb,
+  type IssuerProfile,
+  readRefString,
+  taxCountryOf,
+} from "../issue"
 import { lineSubtotal } from "../money"
 import { isUuid } from "../reads"
-import { liftMisplacedCountry } from "./lines"
+import { computeLineFinancials, counterpartyFromRow, liftMisplacedCountry } from "./lines"
 import {
   type DocumentRowSummary,
   type DocumentType,
@@ -506,7 +513,36 @@ export async function insertDraftRow(db: MutationsDb, row: DraftInsert): Promise
   })) as Record<string, unknown>
   const id = String(inserted.id)
   await insertDraftLines(db, id, row.lines)
-  return { ...row, id, created_at: (inserted.created_at as string | null) ?? null }
+  const created = { ...row, id, created_at: (inserted.created_at as string | null) ?? null }
+  await writeDraftTotals(db, created)
+  return created
+}
+
+/**
+ * A draft's stored totals, as its issue would price its lines today (the issuer's country, the
+ * recipient's tax country and VAT number). Written when the draft is made and on every update,
+ * so a list or a card that reads the row never shows 0.00 for a priced draft. A draft whose
+ * issuer or country cannot be classified keeps what it had.
+ */
+async function writeDraftTotals(db: MutationsDb, draft: DraftRow): Promise<void> {
+  const issuer = await findIssuerProfile(db, draft.issuer_profile_id)
+  if (!issuer) return
+  let totals: { subtotal: bigint; tax: bigint; grand: bigint }
+  try {
+    const counterparty = counterpartyFromRow(draft, issuer)
+    totals = computeLineFinancials(draft.lines, {
+      issuer_country: issuer.country,
+      counterparty_country: taxCountryOf(counterparty),
+      has_vat_id: !!counterparty.vat_id,
+    })
+  } catch {
+    return
+  }
+  await db.update("documents", draft.id, {
+    subtotal_minor: totals.subtotal.toString(),
+    tax_total_minor: totals.tax.toString(),
+    grand_total_minor: totals.grand.toString(),
+  })
 }
 
 export async function updateDraftRow(
@@ -553,7 +589,8 @@ export async function updateDraftRow(
   }
   const refreshed = await getDraft(db, draftId)
   if (!refreshed) throw new Error(`draft ${draftId} disappeared after update`)
-  return refreshed
+  await writeDraftTotals(db, refreshed)
+  return (await getDraft(db, draftId)) ?? refreshed
 }
 
 const DRAFT_EINVOICE_ENUMS = {
@@ -629,6 +666,18 @@ function draftEinvoiceFieldsOf(doc: Record<string, unknown>): Partial<DraftRow> 
 export async function deleteDraftRow(db: MutationsDb, draftId: string): Promise<void> {
   await deleteAllLines(db, draftId)
   await db.delete("documents", draftId)
+}
+
+/** The writes that delete a draft (its lines, then the draft), for a caller's one `batch`. */
+export async function draftDeleteOps(db: MutationsDb, draftId: string): Promise<IssueBatchOp[]> {
+  const rows = (await db.findMany("document_lines", {
+    where: { document_id: draftId },
+    limit: 1000,
+  })) as Array<Record<string, unknown>>
+  return [
+    ...rows.map((r): IssueBatchOp => ({ delete: "document_lines", id: String(r.id) })),
+    { delete: "documents", id: draftId },
+  ]
 }
 
 /** The Shopify draft order a document mirrors, from the top-level column or the external_refs

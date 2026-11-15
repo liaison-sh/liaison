@@ -1286,6 +1286,7 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
     money?:
       | { price: number; currency: string | null }
       | { rate: number; per: string; currency: string | null }
+      | { retainer: true; currency: string | null }
     totals?: Array<{ k: string; text: string }>
   }
   // The money half: a holder of the money scope also reads what is invoiced and what is left.
@@ -1323,7 +1324,9 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
       } else {
         // A project billed by the day or the hour has no total to subtract from: what is
         // invoiced stands alone.
-        out.money = { ...out.money, invoiced } as typeof out.money
+        out.money = { ...out.money, invoiced } as NonNullable<typeof out.money> & {
+          invoiced: number
+        }
         out.totals?.push({ k: "Invoiced", text: fmt(invoiced) })
       }
     } else {
@@ -1558,6 +1561,9 @@ const MISSING_SAID: Record<string, string> = {
   counterparty_mismatch: "a contact of the project's own company",
   billing_contact: "a billing contact on the project's company",
   retainer: "the project's retainer on its recurring schedule in Invoicing",
+  billing_address: "the customer's billing address",
+  email: "the customer's email address",
+  siren: "the customer's SIREN",
 }
 
 /** The refusal code Create answers for the first thing missing. */
@@ -1570,6 +1576,9 @@ const MISSING_CODE: Record<string, string> = {
   billing_contact: "billing_contact_missing",
   basis: "basis_not_billable",
   retainer: "no_retainer_schedule",
+  billing_address: "billing_address_missing",
+  email: "customer_email_missing",
+  siren: "siren_missing",
 }
 
 type CardResult = Record<string, unknown> & {
@@ -1591,9 +1600,14 @@ function missingWithContact(found: unknown, from: Record<string, unknown>): stri
     typeof from.companyId === "string" &&
     from.companyId !== "" &&
     !(typeof from.contactId === "string" && from.contactId !== "")
-  return needsContact && !missing.includes("billing_contact")
-    ? [...missing, "billing_contact"]
-    : missing
+  if (!needsContact) return missing
+  // With no contact, what the customer lacks (an address, an email) follows from it: setting the
+  // billing contact comes first, and the preview reads that contact's records once it is set.
+  const RECIPIENT_GAPS = new Set(["billing_address", "email", "siren"])
+  return [
+    "billing_contact",
+    ...missing.filter((m) => m !== "billing_contact" && !RECIPIENT_GAPS.has(m)),
+  ]
 }
 
 function money(minor: number, currency: string): { minor: number; currency: string } {
@@ -1740,8 +1754,8 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
           JSON.stringify({
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
-            leadName: prep.leadName ?? null,
             ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+            ...(contactId ? { contactId } : {}),
           }),
         )
       : ctx.executeTool(
@@ -1749,7 +1763,6 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
           JSON.stringify({
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
-            leadName: prep.leadName ?? null,
             ...(contactId ? { contactId } : {}),
           }),
         ),
@@ -1790,8 +1803,8 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   const waived = prep.basis === "retainer" && p.waiveOverage === true
   const summary = `${
     approved
-      ? `Created and approved${incl ? `, ${incl} incl. VAT` : ""}`
-      : "Created, waiting for finance"
+      ? `Draft made, not issued yet${incl ? `, ${incl} incl. VAT` : ""}`
+      : "Draft made, waiting for finance to issue it"
   }${waived ? ". Waived by you this month" : ""}`
   const title = String(d.draftTitle ?? finished.title ?? "")
   const pending =

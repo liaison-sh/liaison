@@ -328,7 +328,7 @@ export function reconcileCodingAgentText(args: {
     out.push(`Not seen: ${args.notSeen.map((n) => n.source).join(", ")}.`)
   }
   out.push(
-    "Nothing is billed from here. The card is saved in Liaison and has no accept or invoice step yet: an invoice for its lines is drafted in Invoicing, by you.",
+    "Nothing is billed from here. The card is saved in Liaison, where a person presses Create invoice on it and issues the invoice.",
   )
   if (args.link) out.push(args.link)
   return out.join("\n")

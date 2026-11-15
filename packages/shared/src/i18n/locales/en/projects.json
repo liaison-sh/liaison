@@ -400,6 +400,7 @@
     "panelMoney": "Money",
     "price": "Price",
     "noPrice": "No price is set.",
+    "retainerPrice": "Monthly retainer, from its schedule in Invoicing",
     "budgetRate": "Rate",
     "ratePerDay": "{{amount}} a day",
     "ratePerHour": "{{amount}} an hour",

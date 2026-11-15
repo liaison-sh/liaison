@@ -217,12 +217,12 @@ describe("the requester of an approval is the agent that asked, or the person", 
     expect(hidden?.requester).toEqual(AVERYS_AGENT)
   })
 
-  it("a draft an MCP client staged with no agent row is the person's agent, never the person", () => {
+  it("a draft an MCP client staged with no agent row is the person's coding agent, never the person", () => {
     const person = { id: USER, name: "Giulia Ferrari" }
     const agentNamed: ApprovalRequester = {
       kind: "agent",
       id: USER,
-      name: "Giulia Ferrari's agent",
+      name: "Giulia Ferrari's coding agent",
     }
     expect(pickApprovalRequester(person, null, USER, null, "mcp")).toEqual(agentNamed)
     // The person's own action, in the app, names the person.

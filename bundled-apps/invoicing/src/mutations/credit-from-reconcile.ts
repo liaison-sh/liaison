@@ -24,6 +24,7 @@ import { lineQuantity } from "../line-amount"
 import { formatMoneyMinor } from "../money"
 import type { ClassifyInput } from "../tax"
 import { unitOfBasis } from "../tools/preview-totals"
+import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
 import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import { prepareCreditNoteCreateAndIssue } from "./credit-notes"
 import { dateOnly, resolveIssuerProfileOrError } from "./db-helpers"
@@ -299,6 +300,18 @@ async function pendingForLine(
 }
 
 export async function creditFromReconcile(ctx: MutationsCtx, input: CreditFromReconcileInput) {
+  // Its approved run commits more than once (ownsTransactions): the credit note is recorded as
+  // soon as its number is committed, so a later failure leaves the approval executed.
+  return underApprovalProtocol(ctx, CREDIT_FROM_RECONCILE_TOOL, (landed) =>
+    creditFromReconcileRun(ctx, input, landed),
+  )
+}
+
+async function creditFromReconcileRun(
+  ctx: MutationsCtx,
+  input: CreditFromReconcileInput,
+  landed: RecordLanded,
+) {
   const a = await assess(ctx, input)
   if ("status" in a) return a
   const what = `a credit note of ${moneyLine(a)} citing ${citing(a)}, "${a.line.wording}" ${fromHundredths(a.billedH)} to ${fromHundredths(a.correctedH)} ${unitWord(a.unit, a.correctedH)}`
@@ -409,7 +422,7 @@ export async function creditFromReconcile(ctx: MutationsCtx, input: CreditFromRe
     ...prepared.credit.issueInput,
     commit_with: [...(prepared.credit.issueInput.commit_with ?? []), ...reportOps],
   }
-  const issued = await issueWithFxRate(ctx, issueInput)
+  const issued = await issueWithFxRate(ctx, issueInput, { onCommitted: landed })
   if (!issued.ok) return issued.error
   await prepared.credit.after(issued.result)
 

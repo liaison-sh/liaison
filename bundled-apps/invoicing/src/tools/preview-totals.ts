@@ -9,9 +9,10 @@
 import type { CrossAppExecuteTool } from "../cross-app"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
-import { retainerPlan, retainerScheduleOf } from "../mutations/retainer"
+import { retainerPlan, retainerRecipient, retainerScheduleOf } from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
 import { recipientOf } from "../recipient"
+import { type RecipientGap, recipientGaps } from "../recipient-gaps"
 import { netLinesTotals } from "../tax-plan"
 
 /** What can keep a card from making an invoice. */
@@ -23,6 +24,7 @@ export type PreviewMissing =
   | "counterparty_mismatch"
   | "basis"
   | "retainer"
+  | RecipientGap
 
 export interface PreviewTotalsInput {
   projectId?: string
@@ -83,6 +85,9 @@ const WHAT_TO_SET: Record<PreviewMissing, string> = {
     "a contact of the project's own company (the contact named belongs to another one)",
   basis: "nothing: this project bills by a fixed price or a billing plan, not from planned vs done",
   retainer: "the project's retainer on its recurring schedule in invoicing",
+  billing_address: "the customer's billing address",
+  email: "the customer's email address",
+  siren: "the customer's SIREN",
 }
 
 /** The unit a basis bills its lines in. */
@@ -202,6 +207,10 @@ export async function previewTotals(
     vat = Number(plan.tax_minor)
     incl = Number(plan.total_minor)
     rateBp = plan.rate_bp
+    // The customer the Create would draft to, with or without a contact named: an invoice to a
+    // company alone carries no address or email either, and its issue would refuse it.
+    if (recipient && missing.length === 0)
+      missing.push(...(await recipientGaps(ctx, issuer.issuer, contactId, recipient)))
   }
   const ready = missing.length === 0
   const message = ready
@@ -260,8 +269,9 @@ async function retainerPreview(
     })
     currency = plan.currency
     overageMinutes = plan.fig.overageMinutes
-    const recipient =
-      companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
+    // The customer the retainer's Create drafts to: the schedule's contact and company first.
+    const who = retainerRecipient(s, { contactId, companyId })
+    const recipient = who.companyId || who.contactId ? await recipientOf(ctx, who) : null
     const tax = netLinesTotals({
       issuerCountry: issuer.issuer.country,
       taxCountry: recipient?.counterparty_country ?? null,
@@ -272,6 +282,8 @@ async function retainerPreview(
     vat = Number(tax.tax_minor)
     incl = Number(tax.total_minor)
     rateBp = tax.rate_bp
+    if (recipient && missing.length === 0)
+      missing.push(...(await recipientGaps(ctx, issuer.issuer, who.contactId, recipient)))
   }
   const ready = missing.length === 0
   return {

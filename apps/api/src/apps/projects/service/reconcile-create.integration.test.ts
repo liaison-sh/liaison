@@ -25,6 +25,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { createRlsSession, withRlsContext } from "~/db/rls"
 import { clearTaintFlag } from "~/modules/agent/scopes/taint"
+import { decideApproval } from "~/modules/approvals/decide"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
@@ -65,6 +66,7 @@ let compta = ""
 let solo = ""
 let seule = ""
 let vide = ""
+let nue = ""
 
 function actorOf(userId: string, scopes: string[]): UserContext {
   return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
@@ -150,6 +152,8 @@ function invoicingDescriptor(): Record<string, unknown> {
     ...manifest,
     trusted: false,
     _format: "manifest",
+    // The image's own catalog app: what it declares for its approved runs holds.
+    _firstParty: true,
     _bundlePath: join(
       REPO_ROOT,
       "bundled-apps",
@@ -275,6 +279,24 @@ const issuerProfileId = () =>
       SELECT id::text AS id FROM app_invoicing.issuer_profiles WHERE org_id = ${orgId}::uuid LIMIT 1`)
     .then((r) => String(extractRows<{ id: string }>(r)[0]?.id))
 
+/** A buyer's registry identity (its SIREN), as a registry check records it. */
+async function registryIdentity(contactId: string, siren: string, name: string) {
+  await insertAppRow(db as never, "invoicing", "counterparty_identities", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    contact_id: contactId,
+    customer_kind: "business",
+    siren,
+    registry_name: name,
+    registry_country_code: "FR",
+    registry_status: "A",
+    registry_checked_at: "2026-10-01",
+    source: "registry",
+    confirmed_via: "auto",
+    changed_at: "2026-10-01",
+  })
+}
+
 /** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
 async function retainerSchedule(projectId: string): Promise<string> {
   const id = crypto.randomUUID()
@@ -341,6 +363,7 @@ beforeAll(async () => {
       { key: "marc", email: "marc@delorme.example", name: "Marc Delorme" },
       { key: "compta", email: "compta@delorme.example", name: "Delorme accounts" },
       { key: "solo", email: "solo@seule.example", name: "Sacha Seule" },
+      { key: "nue", email: "nadia@nue.example", name: "Nadia Nue" },
     ]),
   )
   const idOf = (key: string) => people.get(key)!.id
@@ -360,12 +383,14 @@ beforeAll(async () => {
       { key: "autre", name: "Maison Autre", domain: "autre.example", contactKeys: ["erika"] },
       { key: "seule", name: "Maison Seule", domain: "seule.example", contactKeys: ["solo"] },
       { key: "vide", name: "Maison Vide", domain: "vide.example" },
+      { key: "nue", name: "Maison Nue", domain: "nue.example", contactKeys: ["nue"] },
     ],
-    { erika, marc: idOf("marc"), compta, solo },
+    { erika, marc: idOf("marc"), compta, solo, nue: idOf("nue") },
   )
   delorme = companies.delorme!
   seule = companies.seule!
   vide = companies.vide!
+  nue = companies.nue!
   // Delorme's accounts desk has the billing address; Maison Seule's one person is its main contact.
   await asUser(actorOf(owner.userId, ["*"]), (tx) =>
     addAddress(tx as never, {
@@ -381,8 +406,26 @@ beforeAll(async () => {
       },
     }),
   )
+  // Maison Seule's one person has an address that is not marked billing.
+  await asUser(actorOf(owner.userId, ["*"]), (tx) =>
+    addAddress(tx as never, {
+      orgId,
+      userId: owner.userId,
+      contactId: solo,
+      fields: {
+        role: "other",
+        street1: "9 quai Seul",
+        postalCode: "13002",
+        city: "Marseille",
+        countryIso2: "FR",
+      },
+    }),
+  )
   await db.execute(
     drizzleSql`UPDATE kernel.companies SET main_contact_id = ${solo}::uuid WHERE id = ${seule}::uuid`,
+  )
+  await db.execute(
+    drizzleSql`UPDATE kernel.companies SET main_contact_id = ${idOf("nue")}::uuid WHERE id = ${nue}::uuid`,
   )
   const issuer = await invoicing(
     "settings_issuer_profile_create",
@@ -399,6 +442,8 @@ beforeAll(async () => {
   if (!(issuer.data as { id?: string } | undefined)?.id) {
     throw new Error(`no issuer profile: ${JSON.stringify(issuer)}`)
   }
+  await registryIdentity(compta, "900000001", "MAISON DELORME")
+  await registryIdentity(solo, "900000019", "MAISON SEULE")
 }, 300_000)
 
 afterAll(async () => {
@@ -430,7 +475,7 @@ describe("Create invoice on a reconcile card", () => {
 
   it("pressing Create on the October card makes one approved draft of 7,812.00 and a report, and the card says so with Undo", async () => {
     expect(created.error).toBeUndefined()
-    expect(created.summary).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(created.summary).toBe("Draft made, not issued yet, €7,812.00 incl. VAT")
     expect(created.undo).toBe("yes")
     expect(created.createInvoice).toBeNull()
     expect(created.state).toBe("drafted")
@@ -443,6 +488,14 @@ describe("Create invoice on a reconcile card", () => {
       external_ref: `reconcile:${october1.card.reconciliationId}:${october1.card.revision}`,
       approved_by: owner.userId,
     })
+    // The draft stores its totals from the moment it is made, as the card shows them.
+    const [totals] = extractRows<{ excl: string; vat: string; incl: string }>(
+      await db.execute(drizzleSql`
+        SELECT subtotal_minor::text AS excl, tax_total_minor::text AS vat,
+               grand_total_minor::text AS incl
+          FROM app_invoicing.documents WHERE id = ${created.documentId}::uuid`),
+    )
+    expect(totals).toEqual({ excl: "651000", vat: "130200", incl: "781200" })
     const items = extractRows<{ quantity: string; unit_price_minor: string }>(
       await db.execute(drizzleSql`
         SELECT quantity::text AS quantity, unit_price_minor::text AS unit_price_minor
@@ -546,7 +599,7 @@ describe("the card in its conversation", () => {
     expect(out.error).toBeUndefined()
     // The thread's stored call: the proposal's result, its card collapsed by the Create click.
     const collapsed = resolveToolCard(template, out)
-    expect(collapsed?.summary?.text).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(collapsed?.summary?.text).toBe("Draft made, not issued yet, €7,812.00 incl. VAT")
     await minimal.postUserMessage(orgId, thread, owner.userId, "", {
       toolCalls: [
         {
@@ -598,7 +651,7 @@ describe("who presses Create", () => {
     const p = await october()
     const out = await create(p.card, { scopes: LEAD })
     expect(out.error).toBeUndefined()
-    expect(out.summary).toBe("Created, waiting for finance")
+    expect(out.summary).toBe("Draft made, waiting for finance to issue it")
     expect(out.message).toContain("you cannot issue it")
     const docs = await docsOf(p.projectId)
     expect(docs).toHaveLength(1)
@@ -613,6 +666,17 @@ describe("who presses Create", () => {
     expect(out.error?.details?.next).toContain("press Create invoice")
     expect(await docsOf(p.projectId)).toEqual([])
     expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("a coding agent reading the card is given the link where a person presses Create invoice", async () => {
+    const p = await october()
+    const card = await run(
+      reconcileGet,
+      { reconciliationId: p.card.reconciliationId },
+      { origin: "mcp" },
+    )
+    expect(card.text).toContain("a person presses Create invoice")
+    expect(card.text).toContain(`/threads/${thread}`)
   })
 })
 
@@ -664,6 +728,17 @@ describe("what Create refuses", () => {
           FROM app_invoicing.documents WHERE id = ${out.documentId}::uuid`),
     )
     expect(doc?.contact).toBe(solo)
+  })
+
+  it("a customer with no billing address and no SIREN has no Create, and Create names both and creates nothing", async () => {
+    const p = await october({ company: nue })
+    expect(p.card.createInvoice ?? null).toBeNull()
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("billing_address_missing")
+    expect(out.error?.message).toContain("the customer's billing address")
+    expect(out.error?.message).toContain("the customer's SIREN")
+    expect(await docsOf(p.projectId)).toEqual([])
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
 
   it("a company with no billing contact has no Create, says to set one, and Create creates nothing", async () => {
@@ -985,4 +1060,45 @@ describe("after the draft", () => {
     const again = await create(p.card)
     expect(again.error?.code).toBe("already_issued")
   })
+})
+
+describe("issuing the card's draft", () => {
+  it("a person issuing the draft from its approval marks the card invoiced and bills every claim on the invoice", async () => {
+    const p = await october()
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    const pending = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+           AND status = 'pending' AND current_payload->>'draft_id' = ${out.documentId}`),
+    )
+    expect(pending).toHaveLength(1)
+    const decided = await decideApproval({
+      orgId,
+      requestId: pending[0]!.id,
+      actor: actorOf(owner.userId, FINANCE),
+      decision: "approve",
+    })
+    expect(decided.status).toBe("approved")
+    const docs = await docsOf(p.projectId)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.status).toBe("issued")
+    expect(docs[0]?.number).toBeTruthy()
+    const rec = await stateOf(p.card.reconciliationId)
+    expect(rec?.state).toBe("invoiced")
+    expect(rec?.document_id).toBe(docs[0]!.id)
+    const claims = extractRows<{ state: string; document_id: string | null; n: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT state, document_id::text AS document_id, document_number AS n
+          FROM app_projects.billing_claims
+         WHERE reconciliation_id = ${p.card.reconciliationId}::uuid`),
+    )
+    expect(claims.length).toBeGreaterThan(0)
+    for (const c of claims) {
+      expect(c).toEqual({ state: "billed", document_id: docs[0]!.id, n: docs[0]!.number })
+    }
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    expect(card.undo).toBeNull()
+  }, 120_000)
 })

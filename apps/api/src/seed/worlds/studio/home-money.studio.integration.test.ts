@@ -179,27 +179,23 @@ describe("money on Home on the services world", () => {
       Object.fromEntries(await Promise.all(DAYS.map(async (d) => [d, await moneyOn(d)] as const)))
     const before = await count()
     // Before: the month line on its day, for each project billed by time or by the month.
-    // The portal's Beta milestone is drafted in the seed and waits on its issue, due by 30 Nov.
-    const beta = { "MARLIN 2026-11": ["issue approval"] }
+    // The portal's Beta milestone is not drafted: its task is still in progress.
     expect(before).toEqual({
       "2026-11-27": {
-        ...beta,
         "ALPINE 2026-11": ["month line"],
         "RHONE 2026-11": ["month line"],
         "SOREL 2026-11": ["month line"],
       },
-      "2026-11-30": beta,
+      "2026-11-30": {},
       "2026-12-30": {
-        ...beta,
         "ALPINE 2026-12": ["month line"],
         "RHONE 2026-12": ["month line"],
         "SOREL 2026-12": ["month line"],
       },
-      "2026-12-31": beta,
+      "2026-12-31": {},
     })
 
-    // November is drafted: three months reconciled and an advance received (the milestone's draft
-    // is the seed's).
+    // November is drafted: three months reconciled and an advance received.
     for (const key of ["ALPINE", "RHONE", "SOREL"]) await drafted(key, "2026-11", "2026-11-30")
     await drafted("VERD", "2026-11", "2026-11-20", "advance:studio-verd")
     // December too, for two of them.
@@ -216,7 +212,6 @@ describe("money on Home on the services world", () => {
     // line is left only where a month is not drafted (Rhone, December).
     const nov = {
       "ALPINE 2026-11": ["issue approval"],
-      "MARLIN 2026-11": ["issue approval"],
       "RHONE 2026-11": ["issue approval"],
       "SOREL 2026-11": ["issue approval"],
       "VERD 2026-11": ["issue approval"],

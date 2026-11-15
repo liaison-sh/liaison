@@ -38,7 +38,7 @@ Unit price
  
 Tax %
  
-Amount
+Amount excl. VAT
 0
  
 2
@@ -47,7 +47,7 @@ Amount
  
 20.00%
  
-839.98
+699.98
 Contrôleur
 1
  
@@ -57,7 +57,7 @@ Contrôleur
  
 20.00%
  
-15.00
+12.50
 Câble
 Subtotal
  
@@ -113,7 +113,7 @@ Unit price
  
 Tax %
  
-Amount
+Amount excl. VAT
 0
  
 2
@@ -122,7 +122,7 @@ Amount
  
 20.00%
  
-839.98
+699.98
 Contrôleur
 1
  
@@ -132,7 +132,7 @@ Contrôleur
  
 20.00%
  
-15.00
+12.50
 Câble
 Subtotal
  

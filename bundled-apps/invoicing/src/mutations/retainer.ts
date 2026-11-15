@@ -19,6 +19,7 @@ import { buildActivityReport } from "../activity-report"
 import { lineQuantity } from "../line-amount"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
+import { RECIPIENT_GAP_REFUSAL, recipientGaps } from "../recipient-gaps"
 import {
   hoursText,
   isRetainerMonth,
@@ -40,6 +41,7 @@ import {
   raiseIssueApproval,
   renderDeductionLines,
 } from "./billing-plan"
+import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate, draftsDiscard } from "./drafts"
 import { heldText, raiseOnePerProject } from "./prepaid-hold"
 import type { MutationsCtx } from "./shared"
@@ -62,8 +64,9 @@ export interface RetainerDraftInput {
   reconciliationId?: string
   revision?: number
   waiveOverage?: boolean
-  /** The project lead's name, signing the activity report (the projects app passes it). */
-  leadName?: string | null
+  /** The contact the invoice goes to when the schedule names none (projects resolves the
+   *  company's billing contact). */
+  contactId?: string | null
 }
 
 type Ctx = MutationsCtx & { logger?: { warn?: (m: string, d?: Row) => void } }
@@ -107,6 +110,8 @@ interface LinesRead {
   projectId: string
   projectName?: string
   companyId?: string | null
+  /** The contact the invoice goes to: the one named on the card, else the company's billing one. */
+  contactId?: string | null
   basis: string
   state: string
   revision: number
@@ -124,6 +129,19 @@ async function one(ctx: DbCtx, table: string, where: Row): Promise<Row | null> {
 }
 
 /** The live retainer schedule of a project, or null. */
+/** Who a retainer's invoice goes to: the schedule's contact and company, else the card's. */
+export function retainerRecipient(
+  s: Row,
+  card: { contactId: string | null; companyId: string | null },
+): { contactId: string | null; companyId: string | null } {
+  return {
+    contactId:
+      typeof s.contact_id === "string" && s.contact_id !== "" ? s.contact_id : card.contactId,
+    companyId:
+      typeof s.company_id === "string" && s.company_id !== "" ? s.company_id : card.companyId,
+  }
+}
+
 export async function retainerScheduleOf(ctx: DbCtx, projectId: string): Promise<Row | null> {
   const rows = (await ctx.db.findMany("recurring_schedules", {
     where: { retainer_project_id: projectId },
@@ -413,10 +431,25 @@ export async function retainerDraftFromReconcile(
   })
   const { fig, refs, items, deductions, fees, overageRate, currency } = plan
 
-  const recipient = await recipientOf(ctx, {
-    contactId: typeof s.contact_id === "string" ? s.contact_id : null,
-    companyId: typeof s.company_id === "string" ? s.company_id : (read.companyId ?? null),
+  const billTo = retainerRecipient(s, {
+    contactId:
+      typeof input.contactId === "string" && UUID.test(input.contactId)
+        ? input.contactId
+        : typeof read.contactId === "string"
+          ? read.contactId
+          : null,
+    companyId: read.companyId ?? null,
   })
+  const recipient = await recipientOf(ctx, billTo)
+  // A customer missing what its invoice needs is named now, before any draft or claim.
+  const issuer = await resolveIssuerProfileOrError(ctx.db, null)
+  if (issuer.ok) {
+    const gap = (await recipientGaps(ctx, issuer.issuer, billTo.contactId, recipient))[0]
+    if (gap) {
+      const [code, why] = RECIPIENT_GAP_REFUSAL[gap]
+      return refuse(code, `For ${name}, ${why}`)
+    }
+  }
   const created = await draftsCreate(ctx, {
     type: "invoice",
     ...recipient,
@@ -504,8 +537,6 @@ export async function retainerDraftFromReconcile(
         unit: "hour" as const,
         proofLabels: Array.isArray(l.proofLabels) ? l.proofLabels : [],
       })),
-      lead:
-        typeof input.leadName === "string" && input.leadName.trim() !== "" ? input.leadName : null,
     }),
   })
 

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { firstPartyOnlyToolKeyErrors, validateAppManifest } from "~/modules/apps/contract"
+import {
+  firstPartyOnlyToolKeyErrors,
+  ownsTransactionsHolds,
+  validateAppManifest,
+} from "~/modules/apps/contract"
 
 describe("manifest schema: bulk", () => {
   it("requires perItemParam when dispatchMode=perItem", () => {
@@ -807,5 +811,21 @@ describe("manifest schema: where a call may run", () => {
     expect(errors).toHaveLength(2)
     expect(errors[0]).toContain("tools.mine.humanTurnOnly: only a first-party app may declare it")
     expect(errors[1]).toContain("tools.private_read.dmOnly: only a first-party app may declare it")
+  })
+
+  it("only a vouched app takes a tool off whole-run rollback (ownsTransactions); anyone else's is ignored", () => {
+    const manifest = withKeys()
+    for (const tool of Object.values(manifest.tools) as Array<Record<string, unknown>>) {
+      delete tool.humanTurnOnly
+      delete tool.dmOnly
+    }
+    ;(manifest.tools.mine as Record<string, unknown>).ownsTransactions = true
+    // Declarable, and never a reason to refuse the app.
+    expect(validateAppManifest(manifest).success).toBe(true)
+    expect(firstPartyOnlyToolKeyErrors(manifest)).toEqual([])
+    expect(ownsTransactionsHolds({ ownsTransactions: true }, true)).toBe(true)
+    expect(ownsTransactionsHolds({ ownsTransactions: true }, false)).toBe(false)
+    expect(ownsTransactionsHolds({ ownsTransactions: true, atomic: true }, true)).toBe(false)
+    expect(ownsTransactionsHolds({}, true)).toBe(false)
   })
 })

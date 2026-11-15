@@ -374,7 +374,7 @@
     "kernel.homeRouting.othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "kernel.homeRouting.othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "kernel.homeRouting.blocked": "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
-    "kernel.homeRouting.mineAsked": "Vous l'avez demandé",
+    "kernel.homeRouting.mineAsked": "Pour vous : suite à votre action",
     "kernel.homeRouting.mineOnItem": "Pour vous : attribué à vous",
     "kernel.homeRouting.mineManager": "Pour vous : vous gérez ce compte",
     "kernel.homeRouting.recapApproved": "{{title}} : approuvé par {{name}}",

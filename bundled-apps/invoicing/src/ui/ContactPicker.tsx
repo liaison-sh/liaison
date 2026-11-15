@@ -31,6 +31,11 @@ export function contactLabel(c: Pick<PickerContact, "name" | "email" | "company"
   return c.email?.trim() || tr("Unnamed contact")
 }
 
+/** Who a document or a schedule bills: the company the contact belongs to, else the contact. */
+export function customerLabel(c: Pick<PickerContact, "name" | "email" | "company">): string {
+  return c.company?.trim() || contactLabel(c)
+}
+
 /**
  * The draft patch for a picked contact: the link itself, plus the customer name
  * and email when the operator has not typed them yet (never overwrites a value

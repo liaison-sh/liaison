@@ -49,7 +49,9 @@ const PROJECT = "7a1d2c3e-0000-4000-8000-000000000001"
 const COMPANY = "7a1d2c3e-0000-4000-8000-0000000000c1"
 const SCHEDULE = "7a1d2c3e-0000-4000-8000-0000000000f1"
 const CONTACT = "7a1d2c3e-0000-4000-8000-0000000000e1"
+const FR_CONTACT = "7a1d2c3e-0000-4000-8000-0000000000e2"
 const REC_OCT = "7a1d2c3e-0000-4000-8000-0000000000a1"
+const REC_BARE = "7a1d2c3e-0000-4000-8000-0000000000af"
 const REC_NOV = "7a1d2c3e-0000-4000-8000-0000000000a2"
 const REC_DEC = "7a1d2c3e-0000-4000-8000-0000000000a3"
 const H = 60
@@ -84,6 +86,8 @@ function card(id: string, month: string, usedHours: number, over: Row = {}): Row
     projectId: PROJECT,
     projectName: "Maison Sorbier site",
     companyId: COMPANY,
+    // The company's billing contact the card resolves: a French one, billed French VAT.
+    contactId: FR_CONTACT,
     basis: "retainer",
     state: "proposed",
     revision: 1,
@@ -114,6 +118,15 @@ function harness(opts: { schedule?: Row; docs?: Row[]; lines?: Row[]; scopes?: s
           id: "ident-1",
           contact_id: "contact-1",
           vat_id: "DE298765432",
+          customer_kind: "business",
+        },
+        {
+          id: "ident-fr",
+          contact_id: FR_CONTACT,
+          vat_id: "FR40303265045",
+          siren: "303265045",
+          confirmed_via: "auto",
+          registry_status: "A",
           customer_kind: "business",
         },
       ],
@@ -205,13 +218,21 @@ function harness(opts: { schedule?: Row; docs?: Row[]; lines?: Row[]; scopes?: s
           status: "completed" as const,
           result: {
             addresses: [
-              {
-                role: "billing",
-                street1: "2 Hochstrasse",
-                postalCode: "10115",
-                city: "Berlin",
-                countryIso2: "DE",
-              },
+              params.contactId === FR_CONTACT
+                ? {
+                    role: "billing",
+                    street1: "2 rue Haute",
+                    postalCode: "69001",
+                    city: "Lyon",
+                    countryIso2: "FR",
+                  }
+                : {
+                    role: "billing",
+                    street1: "2 Hochstrasse",
+                    postalCode: "10115",
+                    city: "Berlin",
+                    countryIso2: "DE",
+                  },
             ],
           },
         }
@@ -697,6 +718,7 @@ describe("a retainer month's invoice", () => {
       projectId: PROJECT,
       basis: "retainer",
       companyId: COMPANY,
+      contactId: FR_CONTACT,
       currency: null,
       rateMinor: null,
       periodFrom: "2026-10-01",
@@ -715,6 +737,30 @@ describe("a retainer month's invoice", () => {
       lines: [{ billMinutes: 46 * H }],
     })
     expect(q).toMatchObject({ ready: false, missing: ["retainer"] })
+  })
+
+  test("a retainer card whose customer lacks an address and an email says so before Create, and Create drafts nothing", async () => {
+    // No contact on the schedule nor on the card: the invoice would go to the company alone.
+    const h = harness()
+    const p = await previewTotals(h.ctx as never, {
+      projectId: PROJECT,
+      basis: "retainer",
+      companyId: COMPANY,
+      periodFrom: "2026-10-01",
+      timeboxMinutes: 40 * H,
+      lines: [{ billMinutes: 46 * H }],
+    })
+    expect(p).toMatchObject({ ready: false })
+    expect((p as { missing: string[] }).missing).toEqual(
+      expect.arrayContaining(["billing_address", "email"]),
+    )
+    h.cards.set(REC_BARE, card(REC_BARE, "2026-10", 46, { contactId: null }))
+    const res = await retainerDraftFromReconcile(h.ctx as never, {
+      reconciliationId: REC_BARE,
+      revision: 1,
+    })
+    expect(res).toMatchObject({ status: "error", error: { code: "billing_address_missing" } })
+    expect(docs(h.db)).toHaveLength(0)
   })
 })
 

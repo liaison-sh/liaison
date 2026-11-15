@@ -92,6 +92,14 @@ describe("BudgetPanel", () => {
     expect(document.body.textContent).not.toContain("No price is set")
   })
 
+  it("a project billed by a monthly retainer says so, not that no price is set", () => {
+    panel(ready(data({ money: { retainer: true, currency: "EUR" } })))
+    expect(screen.getByTestId("budget-panel.retainer").textContent).toContain(
+      "Monthly retainer, from its schedule in Invoicing",
+    )
+    expect(document.body.textContent).not.toContain("No price is set")
+  })
+
   it("a partial figure always sits beside the coverage line", () => {
     panel(ready(data()))
     expect(screen.getByTestId("budget-panel.real").textContent).toContain("partial")

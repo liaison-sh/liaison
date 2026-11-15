@@ -137,6 +137,10 @@ export const FR: Record<string, string> = {
   "Its tax needs a decision before the invoice can be issued.":
     "Sa taxe demande une décision avant l'émission de la facture.",
   Language: "Langue",
+  "Send invoices from": "Envoyer les factures depuis",
+  "Total excl. VAT": "Total HT",
+  "No mailbox chosen": "Aucune boîte choisie",
+  "A mailbox you cannot see": "Une boîte que vous ne voyez pas",
   "Last action": "Dernière action",
   "Last document date": "Date du dernier document",
   "Last used": "Dernière utilisation",

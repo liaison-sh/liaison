@@ -1,0 +1,2 @@
+# An approved run on its own transactions says what it committed.
+src/approved-run-protocol.test.ts

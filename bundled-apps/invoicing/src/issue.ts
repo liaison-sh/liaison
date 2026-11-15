@@ -168,22 +168,43 @@ function blank(v: string | null | undefined): boolean {
  */
 export function counterpartyCompletenessError(
   counterparty: Pick<Counterparty, "legal_name" | "country" | "address" | "email">,
-): { code: string; message: string } | null {
+): {
+  code: string
+  message: string
+  /** For an agent: the draft parameters to set, and the field of a create-and-issue
+   *  `counterparty` each one is. The message stays in a person's words. */
+  body: { missing_params: string[]; counterparty_fields: string[]; set_with: string }
+} | null {
   const missing = REQUIRED_COUNTERPARTY_FIELDS.filter((f) => blank(counterparty[f]))
   if (missing.length === 0) return null
+  const said = missing.map((f) => `the customer's ${COUNTERPARTY_FIELD_SAID[f]}`)
+  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
   return {
     code: "counterparty_incomplete",
-    message:
-      `cannot issue a document without a complete recipient: ${missing.join(", ")} ` +
-      `${missing.length === 1 ? "is" : "are"} missing. An issued document is a legal record, ` +
-      `so the recipient name, postal address, email and country are all required. Set them on ` +
-      `the draft (drafts_update counterparty_name / counterparty_address / counterparty_email / ` +
-      `counterparty_country) or pass a complete \`counterparty\` to the create-and-issue tool, ` +
-      `e.g. counterparty: {"legal_name": "Acme SAS", "country": "FR", "address": ` +
-      `"12 rue de la Paix, 75002 Paris, France", "email": "billing@acme.example"} (country is the ` +
-      `ISO 3166 alpha-2 code). Ask the person for any of these you do not know; never make them up. ` +
-      `Nothing was issued.`,
+    message: `This document cannot be issued yet: ${list} ${missing.length === 1 ? "is" : "are"} missing. Add ${missing.length === 1 ? "it" : "them"} to the customer or the draft, then issue again. Ask the customer for any you do not know; never make them up. Nothing was issued.`,
+    body: {
+      missing_params: missing.map((f) => COUNTERPARTY_FIELD_PARAM[f]),
+      counterparty_fields: [...missing],
+      set_with:
+        "drafts_update with the missing_params on the draft, or a complete counterparty (counterparty_fields; country is the ISO 3166 alpha-2 code) on a create-and-issue tool",
+    },
   }
+}
+
+/** The draft parameter (drafts_update) that sets each required recipient field. */
+const COUNTERPARTY_FIELD_PARAM: Record<(typeof REQUIRED_COUNTERPARTY_FIELDS)[number], string> = {
+  legal_name: "counterparty_name",
+  country: "counterparty_country",
+  address: "counterparty_address",
+  email: "counterparty_email",
+}
+
+/** How a person reads each required recipient field. */
+const COUNTERPARTY_FIELD_SAID: Record<(typeof REQUIRED_COUNTERPARTY_FIELDS)[number], string> = {
+  legal_name: "name",
+  country: "country",
+  address: "postal address",
+  email: "email address",
 }
 
 /**
@@ -1086,7 +1107,15 @@ async function timezoneAskDue(ctx: IssueCtx, issuer: IssuerProfile): Promise<boo
   return rows.every((r) => NEVER_ISSUED_STATUSES.has(String(r.status ?? "draft")))
 }
 
-export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<IssueResult> {
+export async function issueDocument(
+  ctx: IssueCtx,
+  input: IssueInput,
+  opts: {
+    /** Called once the number is committed, before anything else runs (the approved run
+     *  records its effect there, approval-protocol.ts). */
+    onCommitted?: (issued: { document_id: string; number: string }) => Promise<void>
+  } = {},
+): Promise<IssueResult> {
   const prepared = await prepareIssue(ctx, input)
   // 6) Number, document, lines and the caller's own writes commit in ONE batch: a sandboxed run
   //    holds no transaction across its calls, so a run that fails or is killed after this point
@@ -1101,10 +1130,12 @@ export async function issueDocument(ctx: IssueCtx, input: IssueInput): Promise<I
   ) {
     throw new Error(`numbering failed for "${prepared.sequence.key}": ${JSON.stringify(committed)}`)
   }
+  const documentId = String(committed.rows.document?.id)
+  await opts.onCommitted?.({ document_id: documentId, number: allocated.formatted })
   return prepared.finish({
     value: allocated.value,
     formatted: allocated.formatted,
-    documentId: String(committed.rows.document?.id),
+    documentId,
   })
 }
 
@@ -1800,6 +1831,7 @@ export function buildTemplateData(params: {
       // The stored e-invoicing snapshot: at issue time it rides on `document.einvoice`, on a
       // re-render it is the persisted columns. Never recomputed from current data.
       operation_label: operationLabel(snapshot.operation_category, issuer.default_language),
+      operation_category: snapshot.operation_category ?? null,
       vat_on_debits: snapshot.vat_on_debits === true,
       // The human Shopify order reference, rendered as an "Order" line in the
       // header meta so the order can be read straight off the invoice PDF. The

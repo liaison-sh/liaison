@@ -3620,6 +3620,27 @@ describe("documents.send_to_customer", () => {
     expect(codeOnly.code).toBe("smtp_rejected")
   })
 
+  test("a send from a mailbox the person cannot reach is refused in words for that person", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "NOT_FOUND",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).toBe(
+      "This document was not sent: you cannot send from the mailbox chosen in Settings, Invoicing. Someone who can send from it can send it, or an admin can choose another one there.",
+    )
+  })
+
+  test("a not-found that is not the mailbox (an attachment, a conversation) keeps its own reason", () => {
+    const out = sendErrorFromEnvelope({
+      error: { code: "NOT_FOUND", message: "Attachment file not found" },
+    })
+    expect(out).toEqual({ code: "NOT_FOUND", message: "Attachment file not found" })
+  })
+
   // Regression — the same fallback with NO contact link at all. A document carrying only a
   // counterparty_name (no counterparty_contact_id) must still resolve a recipient via the registry.
   test("FALLBACK — resolves the recipient by counterparty_name even with no counterparty_contact_id", async () => {
@@ -9720,7 +9741,7 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     expect(r.error.message).toContain("settings_issuer_profile_list")
   })
 
-  test("incomplete counterparty: names the missing fields and shows a complete example", async () => {
+  test("incomplete counterparty: names the missing fields in words a person reads", async () => {
     const { ctx } = makeCtx()
     const r = await quoteCreateAndIssue(ctx, {
       counterparty: { ...defaultCounterparty, address: null, email: "" },
@@ -9730,8 +9751,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     })
     if (r.status !== "error") throw new Error("expected error")
     expect(r.error.code).toBe("counterparty_incomplete")
-    expect(r.error.message).toContain("address, email are missing")
-    expect(r.error.message).toContain('"legal_name": "Acme SAS"')
+    expect(r.error.message).toContain(
+      "the customer's postal address and the customer's email address are missing",
+    )
+    expect(r.error.message).not.toContain("{")
     expect(r.error.message).toContain("never make them up")
   })
 

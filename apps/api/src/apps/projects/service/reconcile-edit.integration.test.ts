@@ -315,8 +315,8 @@ describe("what a coding agent's terminal reads", () => {
     expect(text.split("\n")[0]).toBe(viaMcp.title)
     for (const l of viaMcp.lines as Card[]) expect(text).toContain(`- ${l.name}:`)
     expect(text).toContain(`To bill: ${viaMcp.totals.bill}`)
-    // No click exists yet that turns the card into an invoice: the text never promises one.
-    expect(text).toContain("has no accept or invoice step yet")
+    // The invoice is a person's Create on the card in Liaison, never the coding agent's.
+    expect(text).toContain("a person presses Create invoice on it")
     expect(text).not.toContain("a click there")
     expect(text).not.toMatch(/approved for you|issued for you|has been issued/i)
   })

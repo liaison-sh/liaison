@@ -7794,6 +7794,15 @@
         "urlPattern": "/invoicing/identity/:contactId",
         "referenceable": false
       },
+      "billing_plan": {
+        "component": "InvoicingBillingPlan",
+        "sidebar": "InvoicingSidebar",
+        "icon": "InvoicingAppIcon",
+        "label": "Billing plan",
+        "singleton": false,
+        "urlPattern": "/invoicing/billing-plan/:projectId",
+        "referenceable": false
+      },
       "pending": {
         "component": "InvoicingPendingApprovals",
         "sidebar": "InvoicingSidebar",

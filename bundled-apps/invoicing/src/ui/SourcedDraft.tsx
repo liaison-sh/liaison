@@ -29,6 +29,8 @@ export interface SourcedDocument {
   /** The files a send mails beside the invoice (its activity report, a filed timesheet), as
    *  documents_get lists them. */
   annexes?: Array<{ kind: string }>
+  /** The project the draft bills, for its billing plan. */
+  billing_project_id?: string | null
 }
 
 /** The parts of a line this panel reads. */
@@ -231,6 +233,18 @@ export const SourcedDraftPanel: Component<{
               <p data-testid="sourced-draft-milestone" class="text-[12px] text-text-secondary">
                 {tr("The amount comes from the billing plan. Hours do not move it.")}
               </p>
+            </Show>
+            <Show when={(s() === "milestone" || s() === "advance") && props.doc.billing_project_id}>
+              {(projectId) => (
+                <button
+                  type="button"
+                  data-testid="sourced-draft-plan"
+                  class="self-start text-[12px] text-text-secondary underline-offset-2 hover:text-text hover:underline"
+                  onClick={() => navigate(`/invoicing/billing-plan/${projectId()}`)}
+                >
+                  {tr("See the billing plan")}
+                </button>
+              )}
             </Show>
             <Show when={props.doc.status === "draft" && late()}>
               {(state) => (

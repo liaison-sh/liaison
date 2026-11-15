@@ -11,6 +11,7 @@ import { app } from "@liaison/host"
 import { type Component, createResource, Show } from "solid-js"
 import { tr } from "./i18n"
 
+export { InvoicingBillingPlan } from "./BillingPlan"
 export { CompanyMoneyPanel } from "./CompanyMoneyPanel"
 export { ContactDocumentsPanel } from "./ContactDocumentsPanel"
 export { InvoicingDeferred } from "./DeferredList"

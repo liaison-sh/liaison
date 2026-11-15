@@ -21,6 +21,7 @@ import { buildCii, businessProcessCode } from "./facturx/cii"
 import { invoiceIssue } from "./mutations"
 import { advanceDraftCreate } from "./mutations/advances"
 import {
+  billingPlanGet,
   billingPlanSet,
   milestoneDraftCreate,
   renderDeductionLines,
@@ -145,6 +146,33 @@ describe("a milestone's invoice", () => {
     })
     expect(docs(h.db)).toHaveLength(0)
     expect(h.approvals).toHaveLength(0)
+  })
+
+  test("the plan says which milestones are not done yet, from their task's done state only", async () => {
+    const h = harness()
+    await withPlan(h)
+    done(h, T_BETA)
+    const plan = await billingPlanGet(h.ctx, { projectId: PROJECT })
+    if (plan.status !== "completed") throw new Error("no plan")
+    expect(plan.steps.map((s) => [s.label, s.state, s.taskDone])).toEqual([
+      ["Advance 20%", "planned", null],
+      ["Alpha", "planned", false],
+      ["Beta", "planned", true],
+      ["Gamma", "planned", false],
+      ["Launch", "planned", false],
+    ])
+    // Once drafted, the step's task was done; one read for the open steps, carrying no time.
+    expect((await milestoneDraftCreate(h.ctx, { taskId: T_BETA })).status).toBe("completed")
+    h.calls.length = 0
+    const after = await billingPlanGet(h.ctx, { projectId: PROJECT })
+    if (after.status !== "completed") throw new Error("no plan")
+    expect(after.steps.find((s) => s.label === "Beta")).toMatchObject({
+      state: "drafted",
+      taskDone: true,
+    })
+    const reads = h.calls.filter((c) => c.target === "projects:milestone_status_read")
+    expect(reads).toHaveLength(1)
+    expect(JSON.stringify(after)).not.toMatch(/realMinutes|assignee/)
   })
 
   test("a second draft for one step fails", async () => {

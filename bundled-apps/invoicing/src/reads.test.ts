@@ -604,6 +604,17 @@ describe("documentsGet (E5)", () => {
     expect(result?.po_number).toBe("PO-4471")
   })
 
+  test("returns the project a document bills, for its billing plan", async () => {
+    const billed = { ...sampleDocs[0], billing_project_id: "7a000000-0000-4000-8000-00000000b1a1" }
+    const { ctx } = makeCtx({ documents: [billed] })
+    const result = await documentsGet(ctx, { id: "00000000-0000-4000-8000-000000000001" })
+    expect(result?.billing_project_id).toBe("7a000000-0000-4000-8000-00000000b1a1")
+    const bare = await documentsGet(makeCtx({ documents: sampleDocs }).ctx, {
+      id: "00000000-0000-4000-8000-000000000001",
+    })
+    expect(bare?.billing_project_id).toBeNull()
+  })
+
   // The Editor reopens a draft with its e-invoicing fields; a missing one would be saved back as
   // null by the next drafts_update, and the regime line reads the recorded regime.
   test("returns the e-invoicing columns (customer type, operation type, billing, regime)", async () => {

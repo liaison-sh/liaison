@@ -136,6 +136,8 @@ export interface DocumentLine {
 }
 
 export interface DocumentFull extends DocumentHeader {
+  /** The project this document bills (its billing plan, card or retainer); null for none. */
+  billing_project_id: string | null
   subtotal_minor: bigint
   tax_total_minor: bigint
   tax_treatment: string | null
@@ -997,6 +999,7 @@ export async function documentsGet(
   const header = toDocumentHeader(doc)
   return {
     ...header,
+    billing_project_id: textOrNull(doc.billing_project_id),
     subtotal_minor: String(doc.subtotal_minor ?? "0") as unknown as bigint,
     tax_total_minor: String(doc.tax_total_minor ?? "0") as unknown as bigint,
     tax_treatment: (doc.tax_treatment as string | null) ?? null,

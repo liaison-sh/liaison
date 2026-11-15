@@ -221,6 +221,20 @@ async function planView(ctx: MutationsCtx, projectId: string) {
   }
 }
 
+/**
+ * Whether a step's task is done: true once the step was drafted, false for an open milestone whose
+ * task is not done yet, null for an advance, a step with no task or when projects could not say.
+ */
+function taskDoneOf(
+  step: { kind: string; taskId: string | null; state: string },
+  read: MilestoneRead | null,
+): boolean | null {
+  if (step.kind === "advance" || !step.taskId || step.state === "cancelled") return null
+  if (step.state !== "planned") return true
+  const task = read?.tasks.find((t) => t.id === step.taskId)
+  return task ? task.terminal === true : null
+}
+
 export async function billingPlanGet(ctx: MutationsCtx, input: BillingPlanGetInput) {
   const projectId = typeof input.projectId === "string" ? input.projectId : ""
   if (!UUID.test(projectId))
@@ -230,9 +244,19 @@ export async function billingPlanGet(ctx: MutationsCtx, input: BillingPlanGetInp
     )
   const view = await planView(ctx, projectId)
   const open = view.steps.filter((s) => s.state === "planned").length
+  // Whether each open milestone's task is done, through projects' milestone read (done state only).
+  const waiting = view.steps.filter(
+    (s) => s.state === "planned" && s.kind !== "advance" && s.taskId,
+  )
+  const read =
+    waiting.length > 0
+      ? await readMilestones(ctx, projectId, [...new Set(waiting.map((s) => String(s.taskId)))])
+      : null
+  const steps = view.steps.map((s) => ({ ...s, taskDone: taskDoneOf(s, read) }))
   return {
     status: "completed" as const,
     ...view,
+    steps,
     message:
       view.steps.length === 0
         ? `Project ${projectId} has no billing plan. Set one from its quote with billing_plan_set.`

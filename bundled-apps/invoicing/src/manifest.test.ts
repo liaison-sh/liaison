@@ -1752,6 +1752,8 @@ describe("invoicing manifest", () => {
     // 0.29.3: a prepaid retainer's held issue approval is raised once the one it waited on is
     //   turned down or runs out (the hourly draft job); a milestone line is held only by a draft
     //   whose issue approval is pending.
+    // 0.29.4: the losing call of two issue ticks racing on one run item says it is already
+    //   issued, with the number the winner took.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

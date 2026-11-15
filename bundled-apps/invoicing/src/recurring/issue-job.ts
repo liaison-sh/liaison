@@ -178,6 +178,17 @@ export async function recurringItemIssue(
         ]
       : []),
   ]
+  // A second call for the same item that lost the race (the period key is unique, the draft is
+  // gone, so its commit fails or answers that the draft went away): the first one issued it, and
+  // this one wrote nothing. It says so, with the number the winner took.
+  const lostRace = async (): Promise<ErrorEnvelope | null> => {
+    const now = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
+    if (now?.state !== "issued") return null
+    return fail(
+      "already_issued",
+      `Item ${input.item_id} is already issued as ${String(now.issued_number ?? now.document_id)}; nothing was issued again.`,
+    )
+  }
   let issued: Awaited<ReturnType<typeof issueRunDraft>>
   try {
     issued = await issueRunDraft(ctx, {
@@ -188,17 +199,12 @@ export async function recurringItemIssue(
       commit_with: followers,
     })
   } catch (err) {
-    // A second call for the same item lost the race (the period key is unique, the draft is
-    // gone): the first one issued it, and this one wrote nothing.
-    const now = (await ctx.db.findOne("recurring_run_items", input.item_id)) as Row | null
-    if (now?.state !== "issued") throw err
-    return fail(
-      "already_issued",
-      `Item ${input.item_id} is already issued as ${String(now.issued_number ?? now.document_id)}; nothing was issued again.`,
-    )
+    const lost = await lostRace()
+    if (!lost) throw err
+    return lost
   }
   if (issued.status !== "completed") {
-    if (issued.status === "error") return issued
+    if (issued.status === "error") return (await lostRace()) ?? issued
     return fail(
       "not_issued",
       `Item ${input.item_id} was not issued: the issue asked for an approval.`,

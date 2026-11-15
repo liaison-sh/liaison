@@ -408,10 +408,10 @@ describe("the card's money states", () => {
 
   it("Create replaces the stored card by its summary line and Undo brings it back", () => {
     const created = priced(
-      { summary: "Created and approved, €7,812.00 incl. VAT", undo: "yes" },
+      { summary: "Draft made, not issued yet, €7,812.00 incl. VAT", undo: "yes" },
       { state: "drafted" },
     )
-    expect(created?.summary?.text).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(created?.summary?.text).toBe("Draft made, not issued yet, €7,812.00 incl. VAT")
     expect(created?.summary?.actions).toEqual([
       expect.objectContaining({
         kind: "tool",

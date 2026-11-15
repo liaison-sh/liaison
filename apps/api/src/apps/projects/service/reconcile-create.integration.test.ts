@@ -473,7 +473,7 @@ describe("Create invoice on a reconcile card", () => {
 
   it("pressing Create on the October card makes one approved draft of 7,812.00 and a report, and the card says so with Undo", async () => {
     expect(created.error).toBeUndefined()
-    expect(created.summary).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(created.summary).toBe("Draft made, not issued yet, €7,812.00 incl. VAT")
     expect(created.undo).toBe("yes")
     expect(created.createInvoice).toBeNull()
     expect(created.state).toBe("drafted")
@@ -597,7 +597,7 @@ describe("the card in its conversation", () => {
     expect(out.error).toBeUndefined()
     // The thread's stored call: the proposal's result, its card collapsed by the Create click.
     const collapsed = resolveToolCard(template, out)
-    expect(collapsed?.summary?.text).toBe("Created and approved, €7,812.00 incl. VAT")
+    expect(collapsed?.summary?.text).toBe("Draft made, not issued yet, €7,812.00 incl. VAT")
     await minimal.postUserMessage(orgId, thread, owner.userId, "", {
       toolCalls: [
         {
@@ -649,7 +649,7 @@ describe("who presses Create", () => {
     const p = await october()
     const out = await create(p.card, { scopes: LEAD })
     expect(out.error).toBeUndefined()
-    expect(out.summary).toBe("Created, waiting for finance")
+    expect(out.summary).toBe("Draft made, waiting for finance to issue it")
     expect(out.message).toContain("you cannot issue it")
     const docs = await docsOf(p.projectId)
     expect(docs).toHaveLength(1)

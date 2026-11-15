@@ -6789,7 +6789,7 @@
     "othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "blocked": "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
-    "mineAsked": "Vous l'avez demandé",
+    "mineAsked": "Pour vous : suite à votre action",
     "mineOnItem": "Pour vous : attribué à vous",
     "mineManager": "Pour vous : vous gérez ce compte",
     "recapApproved": "{{title}} : approuvé par {{name}}",

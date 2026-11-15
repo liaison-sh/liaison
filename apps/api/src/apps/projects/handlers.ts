@@ -1794,8 +1794,8 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   const waived = prep.basis === "retainer" && p.waiveOverage === true
   const summary = `${
     approved
-      ? `Created and approved${incl ? `, ${incl} incl. VAT` : ""}`
-      : "Created, waiting for finance"
+      ? `Draft made, not issued yet${incl ? `, ${incl} incl. VAT` : ""}`
+      : "Draft made, waiting for finance to issue it"
   }${waived ? ". Waived by you this month" : ""}`
   const title = String(d.draftTitle ?? finished.title ?? "")
   const pending =

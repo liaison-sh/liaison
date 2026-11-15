@@ -863,6 +863,7 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
   /** A project billed by the day, its company and contact, tasks closed this month with time. */
   "projects.billableMonth": factory(
     zod.object({
+      ownerId: uuid,
       key: zod.string().regex(/^[A-Z][A-Z0-9]{1,9}$/),
       name: zod.string().min(1),
       company: zod.string().min(1),

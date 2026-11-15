@@ -106,7 +106,7 @@ An agent can file an activity report or a timesheet on an invoice draft, or on a
 
 When a draft is issued from the editor or a month-end run, or discarded, the issue approval still waiting on it is withdrawn, so nobody is asked to issue it twice.
 
-Sending the invoice to the customer puts everything in one mail: the invoice, its activity report and every file filed on it. A partial timesheet is said to be partial in the mail text. An invoice made from a planned vs done card gets its activity report as a PDF the first time it is sent, in the issuer's language (French for a French-speaking issuer, English otherwise). If that PDF cannot be made, nothing is sent and the invoice stays issued: send it again to retry, and the report and the annexes go together.
+Sending the invoice to the customer puts everything in one mail: the invoice, its activity report and every file filed on it. The send's approval lists each annex the mail carries, by file name and where it came from, so nothing goes out unseen. A partial timesheet is said to be partial in the mail text. An invoice made from a planned vs done card gets its activity report as a PDF the first time it is sent, in the issuer's language (French for a French-speaking issuer, English otherwise). If that PDF cannot be made, nothing is sent and the invoice stays issued: send it again to retry, and the report and the annexes go together.
 
 The approval card of a draft names its latest issue date, the last day of the month it bills. A draft still unissued after that day is late: it issues with the date of the day it is issued, never an earlier one. On an e-invoice, the Factur-X states the month the invoice covers, on the document and on each line.
 

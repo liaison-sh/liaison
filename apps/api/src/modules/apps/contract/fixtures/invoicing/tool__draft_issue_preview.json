@@ -24,6 +24,22 @@
     {
       "method": "db_findMany",
       "args": [
+        "activity_reports",
+        "{\"where\":{\"document_id\":\"cdd7bb17-9aee-40ab-afed-0d88a59ab0b8\"},\"limit\":200}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "document_attachments",
+        "{\"where\":{\"document_id\":\"cdd7bb17-9aee-40ab-afed-0d88a59ab0b8\"},\"limit\":200}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
         "documents",
         "{\"where\":{\"id\":\"cdd7bb17-9aee-40ab-afed-0d88a59ab0b8\"},\"limit\":1}"
       ],

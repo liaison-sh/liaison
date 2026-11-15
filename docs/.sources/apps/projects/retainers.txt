@@ -3,3 +3,6 @@ A month already billed by the run is refused -> bundled-apps/invoicing/src/mutat
 Time and budgets cannot be turned off while a retainer bills the project; the refusal names the schedule -> apps/api/src/apps/projects/service/update-project.ts (updateProjectWithOutcome) ; apps/api/src/apps/projects/handlers.ts (updateProject)
 A retainer's timeboxes are written by invoicing and marked as the retainer's -> apps/api/src/modules/apps/sandbox/bridge/projects.ts (projects_periodTimeboxSet) ; apps/api/src/apps/projects/service/time-plan.ts (setPeriodTimebox)
 Undo discards only the draft the card made, at once -> apps/api/src/apps/projects/handlers.ts (reconcileUndo) ; bundled-apps/invoicing/src/mutations/retainer.ts (reconcileDraftDiscard)
+A month already on another card's draft refuses a second card's Create, and adds nothing to that draft -> apps/api/src/apps/projects/service/reconcile-create.ts (otherCardOnKey)
+A month whose invoice was credited in full is drafted again from a new card, under the next key -> apps/api/src/apps/projects/service/reconcile-create.ts (retainerCardKey)
+A move or merge refusal names the invoice only to someone who reads invoices -> apps/api/src/apps/projects/service/claim-holds.ts (refuseClaimedTasks)

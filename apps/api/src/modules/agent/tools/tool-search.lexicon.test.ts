@@ -317,8 +317,11 @@ describe("a name word another word qualifies", () => {
   // The tools that should lose come first, so a tie would not pass for a lead.
   const catalog: Row[] = [
     row("billing", "advance_refund_prepare", "Prepare the credit note that refunds an advance."),
+    row("billing", "advance_draft_create", "Draft an advance invoice on a project."),
+    row("billing", "credit_note_issue", "Issue a credit note draft."),
     row("billing", "credit_note_from_reconcile", "Correct one billed line of a reconcile card."),
     row("pay", "refunds_create", "Give a customer their payment back."),
+    row("shop", "returns_refund", "Pay back a returned order."),
     row("work", "reconcile_propose", "Save a period's card of client lines."),
     row("work", "reconcile_get", "A saved card again."),
   ]
@@ -338,5 +341,54 @@ describe("a name word another word qualifies", () => {
       "work__reconcile_propose",
     ])
     expect(listed("credit note reconcile")[0]).toBe("billing__credit_note_from_reconcile")
+  })
+})
+
+describe("a name word no other word qualifies", () => {
+  const catalog: Row[] = [
+    row("work", "templates_list", "Saved project templates."),
+    row("desk", "templates_create", "Save a reply template."),
+    row("core", "enable_routine_template", "Turn on a routine from a template."),
+    row("core", "document_template_get", "One quote or invoice layout."),
+    row("core", "document_template_create", "A new quote or invoice layout."),
+    row("core", "document_templates_list", "Every quote and invoice layout."),
+    row("core", "document_rules_list", "Which layout a document takes."),
+    row("notes", "add_to_collection", "Put a document in a collection."),
+    row("notes", "remove_from_collection", "Take a document out of a collection."),
+    row("notes", "collection_create", "A new collection."),
+    row("core", "create_role", "A new role."),
+    row("core", "remove_user_from_role", "Take a person out of a role."),
+    row("ads", "set_status", "Pause or run an ad."),
+    row("ads", "google_set_status", "Pause or run a Google ad."),
+    row("ads", "google_ads_list", "Google ads."),
+    row("billing", "drafts_create", "A new invoice draft."),
+    row("billing", "advance_draft_create", "Draft an advance invoice on a project."),
+    row("billing", "milestone_draft_create", "Draft the invoice of a finished milestone."),
+    row("books", "customer_invoices_list", "Invoices sent to customers."),
+    row("books", "supplier_invoices_list", "Invoices from suppliers."),
+    row("pay", "invoices_list", "Invoices of the payment provider."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const score = (query: string, toolName: string) =>
+    scoreDeferredTools(catalog, query, { appNames: apps }).find((s) => s.tool.toolName === toolName)
+      ?.score ?? 0
+
+  it("a template alone scores a document template like any other template tool", () => {
+    for (const tool of ["document_template_get", "document_template_create"])
+      expect(score("template", tool)).toBe(score("template", "enable_routine_template"))
+    expect(score("templates", "document_templates_list")).toBe(score("templates", "templates_list"))
+  })
+
+  it("what a tool removes a thing from is its object, scored like the opposite action", () => {
+    expect(score("collection", "remove_from_collection")).toBe(
+      score("collection", "add_to_collection"),
+    )
+    expect(score("role", "remove_user_from_role")).toBe(score("role", "create_role"))
+  })
+
+  it("a verb or a record of the same app inside a three-word name keeps its full name score", () => {
+    expect(score("set", "google_set_status")).toBe(score("set", "set_status"))
+    expect(score("draft", "advance_draft_create")).toBe(score("draft", "drafts_create"))
+    expect(score("invoices", "customer_invoices_list")).toBe(score("invoices", "invoices_list"))
   })
 })

@@ -127,7 +127,10 @@ describe("projects.manifest", () => {
     // 1.40.0: a task on a live billing claim refuses a move or a merge; the sweep records a
     //   partial credit's billed figures; a card's draft and the timesheet tab file the month's
     //   timesheet on the draft.
-    expect(projectsManifest.version).toBe("1.40.0")
+    // 1.40.1: a retainer month already drafted from another card refuses a second card's Create;
+    //   a month credited in full is billed again under the next key; Undo names its own card; a
+    //   move refusal names the invoice only to someone who reads invoices.
+    expect(projectsManifest.version).toBe("1.40.1")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

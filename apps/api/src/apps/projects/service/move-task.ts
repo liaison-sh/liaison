@@ -343,6 +343,7 @@ export async function moveTask(args: MoveTaskArgs): Promise<MoveTaskResult> {
         orgId,
         subtree.map((t) => t.id),
         "moved to another project",
+        actor.scopes,
       )
       // A deal only moves to another pipeline, and lands on the stage that
       // matches its outcome (refused into a work project, nothing written).

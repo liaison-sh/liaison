@@ -25,6 +25,7 @@
 
 import {
   type ApprovalCard,
+  CARD_MAX_LINES,
   type CardLineItem,
   capitalize,
   consumerOverrideCardLines,
@@ -47,6 +48,7 @@ import {
 
 import type { BuyerVatFacts } from "./buyer-vat"
 import { formatMoneyGrouped } from "./money"
+import type { AnnexListing } from "./mutations/send-annexes"
 import { planTax, type TaxPlanLine } from "./tax-plan"
 
 type ApprovalSummaryShape = ApprovalCard
@@ -315,18 +317,39 @@ export function summarizeDocumentSend(
   const doc = docOf(meta)
   const to = (params.to ?? "").trim() || (doc?.counterparty_email ?? "").trim()
   const label = doc ? docName(doc) : "the document"
+  const annexes = Array.isArray(doc?.annexes) ? (doc.annexes as AnnexListing[]) : []
+  const base = [
+    `Recipient: ${to || "resolved from the linked contact at send time"}`,
+    ...(doc ? docFacts(doc) : []),
+    ...(params.subject ? [`Subject: ${String(params.subject).slice(0, 120)}`] : []),
+  ]
+  // Every annex the mail carries, by name and origin, so an approver never mails a file unseen.
+  const annexLines = annexes.map((a) => `Annex: ${annexText(a)}`)
+  const room = CARD_MAX_LINES - base.length - 1
+  const listed =
+    annexLines.length <= room
+      ? annexLines
+      : [`${annexes.length} annexes: ${annexes.map(annexText).join("; ")}`]
   return done({
     kind: "document_send",
     title: `Email ${label} to ${to || "the linked contact's email on file"}`,
     ...(doc?.counterparty_name ? { subtitle: `Customer: ${text(doc.counterparty_name, 80)}` } : {}),
     lines: [
-      `Recipient: ${to || "resolved from the linked contact at send time"}`,
-      ...(doc ? docFacts(doc) : []),
-      ...(params.subject ? [`Subject: ${String(params.subject).slice(0, 120)}`] : []),
-      "The PDF is attached; the customer receives it as soon as this is approved",
+      ...base,
+      ...listed,
+      annexes.length === 0
+        ? "The PDF is attached; the customer receives it as soon as this is approved"
+        : `The PDF and ${annexes.length === 1 ? "this annex are" : `these ${annexes.length} annexes are`} attached; the customer receives them as soon as this is approved`,
     ],
     links: openLink(params.document_id, doc),
   })
+}
+
+function annexText(a: AnnexListing): string {
+  if (a.origin === "card") return "the activity report, made from the planned vs done card"
+  const what = a.kind === "timesheet" ? "timesheet" : "activity report"
+  const name = a.filename ? ` "${text(a.filename, 80)}"` : " (file name unknown)"
+  return `${what}${name}${a.partial ? ", partial" : ""}, filed on the invoice`
 }
 
 // ─────────────────────────────────────────────────────────────────────────

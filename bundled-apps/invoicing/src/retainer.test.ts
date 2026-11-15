@@ -8,6 +8,7 @@
 import { describe, expect, test } from "bun:test"
 import { harness as runHarness, schedule as runSchedule } from "./__fixtures__/recurring-draft"
 import { draftsDiscard, invoiceIssue, type MutationsCtx } from "./mutations"
+import { advanceDraftCreate } from "./mutations/advances"
 import { reconcileDraftDiscard, retainerDraftFromReconcile } from "./mutations/retainer"
 import { recurringDraftJob } from "./recurring/draft-job"
 import { importSchedules } from "./recurring/import-kind"
@@ -47,6 +48,7 @@ const ISSUER = {
 const PROJECT = "7a1d2c3e-0000-4000-8000-000000000001"
 const COMPANY = "7a1d2c3e-0000-4000-8000-0000000000c1"
 const SCHEDULE = "7a1d2c3e-0000-4000-8000-0000000000f1"
+const CONTACT = "7a1d2c3e-0000-4000-8000-0000000000e1"
 const REC_OCT = "7a1d2c3e-0000-4000-8000-0000000000a1"
 const REC_NOV = "7a1d2c3e-0000-4000-8000-0000000000a2"
 const REC_DEC = "7a1d2c3e-0000-4000-8000-0000000000a3"
@@ -381,6 +383,154 @@ describe("a retainer month's invoice", () => {
     expect((await draft(o, REC_OCT)).totals).toMatchObject({ excl: 72_000, incl: 86_400 })
   })
 
+  test("a prepaid retainer deducts each month's own advance, after its credits, three months running", async () => {
+    const h = harness({
+      schedule: retainerSchedule({ covers: "period_ahead", contact_id: "contact-1" }),
+    })
+    const advance = async (month?: string) => {
+      const res = await advanceDraftCreate(h.ctx, {
+        projectId: PROJECT,
+        amountMinor: 450_000,
+        contactId: CONTACT,
+        ...(month ? { month } : {}),
+      })
+      if (res.status !== "completed") throw new Error(JSON.stringify(res))
+      const before = new Set(docs(h.db).map((d) => d.id))
+      await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+      return docs(h.db).find(
+        (d) => d.status === "issued" && d.invoice_role === "advance" && !before.has(d.id),
+      ) as Row
+    }
+    const finalOf = async (rec: string, month: string) => {
+      h.cards.set(rec, card(rec, month, 40))
+      const res = await draft(h, rec)
+      await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+      return res
+    }
+    const deducted = (advanceId: unknown) =>
+      h.db
+        .__all("advance_deductions")
+        .filter((x) => x.advance_document_id === advanceId && x.state !== "released")
+        .map((x) => String(x.amount_minor))
+
+    // October's and November's advances are both issued before October's final.
+    const oct = await advance("2026-10")
+    const nov = await advance("2026-11")
+    expect(oct.service_period_start).toBe("2026-10-01")
+    expect(oct.service_period_end).toBe("2026-10-31")
+    expect(nov.external_ref).toBe(`advance:${PROJECT}:2026-11`)
+    const f1 = await finalOf(REC_OCT, "2026-10")
+    expect(f1.totals.incl).toBe(0)
+    expect([deducted(oct.id), deducted(nov.id)]).toEqual([["450000"], []])
+
+    // October's final does not block December's advance; November deducts only its own.
+    const dec = await advance("2026-12")
+    expect(dec.status).toBe("issued")
+    const f2 = await finalOf(REC_NOV, "2026-11")
+    expect(f2.totals.incl).toBe(0)
+    expect([deducted(nov.id), deducted(dec.id)]).toEqual([["450000"], []])
+
+    // December's advance was credited 900.00 incl. VAT: the final deducts what remains of it.
+    h.db.__seed("documents", [
+      {
+        id: crypto.randomUUID(),
+        type: "credit_note",
+        status: "issued",
+        original_document_id: dec.id,
+        grand_total_minor: -108_000n,
+        lifecycle_log: [],
+      },
+    ])
+    const f3 = await finalOf(REC_DEC, "2026-12")
+    expect(f3.totals).toMatchObject({ excl: 90_000, incl: 108_000 })
+    expect(deducted(dec.id)).toEqual(["360000"])
+
+    // The same month twice is refused; an advance with no month takes the month after the last.
+    const again = await advanceDraftCreate(h.ctx, {
+      projectId: PROJECT,
+      amountMinor: 450_000,
+      contactId: CONTACT,
+      month: "2026-11",
+    })
+    expect(again).toMatchObject({ status: "error", error: { code: "already_drafted" } })
+    expect((await advance()).service_period_start).toBe("2027-01-01")
+  })
+
+  test("a prepaid retainer waits on one issue approval per project at a time", async () => {
+    const h = harness({
+      schedule: retainerSchedule({ covers: "period_ahead", contact_id: "contact-1" }),
+    })
+    const waiting = () => h.approvals.filter((a) => a.status === "pending")
+    const oct = await advanceDraftCreate(h.ctx, {
+      projectId: PROJECT,
+      amountMinor: 450_000,
+      contactId: CONTACT,
+      month: "2026-10",
+    })
+    if (oct.status !== "completed") throw new Error(JSON.stringify(oct))
+    await invoiceIssue(h.ctx, { draft_id: oct.draftId } as never)
+    // November's advance waits on its approval when October's final is drafted.
+    const nov = await advanceDraftCreate(h.ctx, {
+      projectId: PROJECT,
+      amountMinor: 450_000,
+      contactId: CONTACT,
+      month: "2026-11",
+    })
+    if (nov.status !== "completed") throw new Error(JSON.stringify(nov))
+    expect(waiting()).toHaveLength(1)
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+    const final = await draft(h, REC_OCT)
+    expect(final.approvalId).toBeNull()
+    expect(final.message).toContain(nov.draftId)
+    expect(waiting().map((a) => (a.current_payload as Row).draft_id)).toEqual([nov.draftId])
+    // Once November's advance is issued, October's final takes its place.
+    await invoiceIssue(h.ctx, { draft_id: nov.draftId } as never)
+    expect(waiting().map((a) => (a.current_payload as Row).draft_id)).toEqual([final.draftId])
+  })
+
+  test("a second card for a month already drafted is refused, named, and never attached to that draft", async () => {
+    const h = harness()
+    const OTHER = "7a1d2c3e-0000-4000-8000-0000000000b1"
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+    h.cards.set(OTHER, card(OTHER, "2026-10", 12))
+    const first = await draft(h, REC_OCT)
+    const second = await retainerDraftFromReconcile(h.ctx, { reconciliationId: OTHER, revision: 1 })
+    expect(second).toMatchObject({ status: "error", error: { code: "month_on_other_card" } })
+    const message = second.status === "error" ? second.error.message : ""
+    expect(message).toContain(first.draftId)
+    expect(message).toContain("Nothing was made")
+    expect(docs(h.db)).toHaveLength(1)
+    // The other card's Undo cannot discard the first card's draft.
+    expect(
+      await reconcileDraftDiscard(h.ctx, { draft_id: first.draftId, reconciliationId: OTHER }),
+    ).toMatchObject({ status: "error", error: { code: "not_a_card_draft" } })
+    expect(docs(h.db).map((d) => d.id)).toEqual([first.draftId])
+  })
+
+  test("a month whose invoice was credited in full is drafted again from its new card", async () => {
+    const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1" }) })
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+    const res = await draft(h, REC_OCT)
+    await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+    const issued = docs(h.db).find((d) => d.status === "issued") as Row
+    h.db.__seed("documents", [
+      {
+        id: crypto.randomUUID(),
+        type: "credit_note",
+        status: "issued",
+        original_document_id: issued.id,
+        grand_total_minor: -BigInt(String(issued.grand_total_minor)),
+        lifecycle_log: [],
+      },
+    ])
+    const AGAIN = "7a1d2c3e-0000-4000-8000-0000000000b2"
+    const rebill = `retainer:${SCHEDULE}:2026-10:2`
+    h.cards.set(AGAIN, card(AGAIN, "2026-10", 40, { documentRef: rebill }))
+    const next = await draft(h, AGAIN)
+    expect(next.created).toBe(true)
+    expect(docs(h.db).find((d) => d.id === next.draftId)?.external_ref).toBe(rebill)
+  })
+
   test("a schedule made a retainer on 15 Nov keeps November on the run and reconciles from December", async () => {
     const s = retainerSchedule({ retainer_from: "2026-12" })
     expect(isRetainerMonth(s, "2026-11")).toBe(false)
@@ -583,6 +733,38 @@ describe("saving a retainer", () => {
     expect(
       checkScheduleInput({ ...RETAINER_INPUT, retainer_overage_rate_minor: -1 }),
     ).toMatchObject({ error: { code: "invalid_schedule" } })
+  })
+
+  test("a retainer is refused on a schedule that does not repeat every month", async () => {
+    for (const repeats of ["quarter", "year"] as const)
+      expect(checkScheduleInput({ ...RETAINER_INPUT, repeats })).toMatchObject({
+        error: { code: "invalid_schedule", message: expect.stringContaining("every month") },
+      })
+    const c = scheduleCtx({ seed: [retainerSchedule({ id: SCHEDULE, contact_id: "contact-1" })] })
+    const up = await recurringScheduleUpdate(c.ctx, { id: SCHEDULE, repeats: "year" })
+    expect(up).toMatchObject({ status: "error", error: { code: "invalid_schedule" } })
+    expect(c.db.__all("recurring_schedules")[0]?.repeats).toBe("month")
+    const imported = await importSchedules(
+      {
+        records: [
+          {
+            dedupValue: "ext-q",
+            record: {
+              externalRef: "ext-q",
+              contactId: "contact-1",
+              repeats: "quarter",
+              billingDay: "last",
+              retainerProjectId: PROJECT,
+              retainerMinutes: 2400,
+              retainerOverageRateMinor: 12_000,
+              lines: [{ description: "Retainer", unitPriceMinor: 450_000, taxRateBp: 2000 }],
+            },
+          },
+        ],
+      } as never,
+      scheduleCtx().ctx as never,
+    )
+    expect(imported[0]).toMatchObject({ status: "failed" })
   })
 
   test("an imported retainer cannot issue by itself", async () => {

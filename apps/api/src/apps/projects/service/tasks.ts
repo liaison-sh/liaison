@@ -1647,7 +1647,7 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
     throw new ProjectsServiceError(404, "not_found", "source or target task not found")
   }
   // A source on a live billing claim is billed work: it is not merged away.
-  await refuseClaimedTasks(orgId, [sourceId], "merged")
+  await refuseClaimedTasks(orgId, [sourceId], "merged", args.actor.scopes)
   // A fold past what one time row holds refuses the merge before anything is written.
   await mergeTaskTimeRows(tx, sourceId, targetId, true)
   // Two deals naming different companies are refused before anything is

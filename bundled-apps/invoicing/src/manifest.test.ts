@@ -1738,6 +1738,9 @@ describe("invoicing manifest", () => {
     // 0.27.1: an advance outside a billing plan is refused on a project billed by the day or
     //   the hour.
     // 0.27.2: documents_get returns a draft's source key, approver and invoice role for its page.
+    // 0.27.3: a prepaid retainer's advance pays for one month and only that month's final deducts
+    //   it; the send's approval lists every annex; a month on another card's draft is refused and
+    //   a month credited in full is drafted again; a retainer repeats every month.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

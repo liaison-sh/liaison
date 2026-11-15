@@ -126,7 +126,7 @@ describe("a task on a billing claim", () => {
       expect.objectContaining({ documentNumber: "F-2026-0412" }),
     )
 
-    // A member who cannot read claims is refused the same.
+    // A member who cannot read claims is refused the same, and is not told the invoice.
     const member = await minimal.session(w.orgId)
     const byMember = await move(
       "HOLD-3",
@@ -134,6 +134,9 @@ describe("a task on a billing claim", () => {
       member.userId,
     )
     expect((byMember as ProjectsServiceError).code).toBe("already_on")
+    expect((byMember as ProjectsServiceError).message).not.toContain("F-2026-0412")
+    expect((byMember as ProjectsServiceError).message).toContain("Nothing changed")
+    expect(JSON.stringify((byMember as ProjectsServiceError).details)).not.toContain("F-2026-0412")
     expect((await projectOf("HOLD-3"))?.project_id).toBe(w.projectId)
 
     const merged = await merge("HOLD-3", "HOLD-4")

@@ -247,6 +247,7 @@ function retainerErrors(s: {
   retainer_overage_rate_minor?: unknown
   retainer_rollover?: unknown
   issue_mode?: unknown
+  repeats?: unknown
 }): Fail | null {
   const any =
     (s.retainer_minutes !== undefined && s.retainer_minutes !== null) ||
@@ -260,6 +261,12 @@ function retainerErrors(s: {
     errors.push("retainer_overage_rate_minor: the overage rate in minor units, zero or more")
   if (typeof s.retainer_project_id !== "string" || s.retainer_project_id === "")
     errors.push("retainer_project_id: the project the month is reconciled on")
+  // A retainer bills one month at a time from its card: a longer period would bill its whole fee
+  // each month.
+  if (s.repeats !== undefined && s.repeats !== "month")
+    errors.push(
+      `repeats: a retainer repeats every month, since each month is invoiced from the project's planned vs done card (this schedule repeats every ${String(s.repeats)})`,
+    )
   if (errors.length > 0)
     return fail("invalid_schedule", `The retainer was not saved: ${errors.join("; ")}.`)
   if (s.issue_mode === "auto") {

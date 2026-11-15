@@ -24,6 +24,7 @@ import { needsHumanReview } from "./deferred"
 import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
 import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
+import { type AnnexListing, annexListing } from "./mutations/send-annexes"
 import { toBigInt } from "./mutations/shared"
 
 export interface DocumentHeader {
@@ -160,6 +161,8 @@ export interface DocumentFull extends DocumentHeader {
   /** The Boxtal shipment(s) created against this document, written back by the link-shipments
    *  job (empty until a parcel exists). Invoice to parcel in one hop. */
   shipments: LinkedShipment[]
+  /** The files a send to the customer mails beside the PDF (activity report, timesheet). */
+  annexes: AnnexListing[]
 }
 
 export interface HsCodeEntry {
@@ -1014,6 +1017,7 @@ export async function documentsGet(
     billing_country_code: textOrNull(doc.billing_country_code),
     regime: textOrNull(doc.regime),
     regime_reasons: Array.isArray(doc.regime_reasons) ? (doc.regime_reasons as unknown[]) : [],
+    annexes: doc.type === "invoice" ? await annexListing(ctx.db, resolvedId) : [],
   }
 }
 

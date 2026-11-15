@@ -100,6 +100,49 @@ export async function sendAnnexes(
   return { ok: true, annexes }
 }
 
+/** An annex as the send's approval card lists it: its file name and where it came from. */
+export interface AnnexListing {
+  kind: "activity_report" | "timesheet"
+  filename: string | null
+  partial: boolean
+  /** `card`: the activity report invoicing made from the planned vs done card; `filed`: a file
+   *  someone filed on the invoice (document_attachment_add). */
+  origin: "card" | "filed"
+}
+
+/**
+ * The annexes a send of this invoice mails, read without rendering anything: the same rows and
+ * the same order as `sendAnnexes`, so the approval card lists exactly what the mail carries.
+ */
+export async function annexListing(
+  db: { findMany(table: string, opts: Record<string, unknown>): Promise<unknown[]> },
+  documentId: string,
+): Promise<AnnexListing[]> {
+  const read = async (table: string) =>
+    (await db.findMany(table, { where: { document_id: documentId }, limit: 200 })) as Row[]
+  const reports = await read("activity_reports")
+  const filed = await read("document_attachments")
+  const reportFiles = new Set(
+    reports.map((r) => r.file_id).filter((f): f is string => typeof f === "string" && f !== ""),
+  )
+  const out: AnnexListing[] = []
+  if (reports.length > 0)
+    out.push({ kind: "activity_report", filename: null, partial: false, origin: "card" })
+  const seen = new Set<string>()
+  for (const a of filed) {
+    const fileId = typeof a.file_id === "string" ? a.file_id : ""
+    if (!fileId || reportFiles.has(fileId) || seen.has(fileId)) continue
+    seen.add(fileId)
+    out.push({
+      kind: a.kind === "timesheet" ? "timesheet" : "activity_report",
+      filename: typeof a.filename === "string" && a.filename !== "" ? a.filename : null,
+      partial: a.partial === true,
+      origin: "filed",
+    })
+  }
+  return out
+}
+
 /** The mail text's annex part: what is attached, and which annex is partial. */
 export function annexMailText(annexes: SendAnnex[]): string {
   if (annexes.length === 0) return ""

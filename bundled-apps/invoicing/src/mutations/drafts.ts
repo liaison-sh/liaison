@@ -49,6 +49,7 @@ import {
   withdrawIssueApprovals,
 } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
+import { raiseHeldApproval } from "./prepaid-hold"
 import {
   type DocumentType,
   type DraftInsert,
@@ -1237,6 +1238,7 @@ export async function draftsDiscard(
       { id: input.draft_id, external_ref: (row.external_ref as string | null) ?? null },
       "discarded",
     )
+    await raiseHeldApproval(ctx, { id: input.draft_id, billing_project_id: row.billing_project_id })
   }
   // A draft made from a planned vs done card gives its month back: projects moves the
   // reconciliation to proposed and frees its claims (a lost call is healed by its sweep).

@@ -28,7 +28,11 @@ export const TablePage: Component<{ entityId: string }> = (props) => {
   const [gridKey, setGridKey] = createSignal(0)
 
   const api = useApi() as unknown as TablesApi
+  // A read that started before a newer change landed (the first read, slow, answering after
+  // a column was added) is older than what the page holds: it is dropped, never shown over it.
   const seen = (t: TableInfo) => {
+    const held = table()
+    if (held && held.id === t.id && t.version < held.version) return
     setTable(t)
     rememberTable(t)
   }

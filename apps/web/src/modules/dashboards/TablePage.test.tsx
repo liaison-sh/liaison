@@ -20,10 +20,10 @@ const TABLE: TableInfo = {
   droppedKeys: [],
 }
 
-function mount() {
+function mount(tableRead: () => Promise<TableInfo> | TableInfo = () => TABLE) {
   const get = vi.fn(async (path: string) => body(path))
   async function body(path: string): Promise<unknown> {
-    if (path === "/dashboards/tables/t1") return TABLE
+    if (path === "/dashboards/tables/t1") return tableRead()
     if (path.startsWith("/dashboards/tables/t1/rows?")) {
       return {
         rows: [
@@ -94,5 +94,27 @@ describe("TablePage", () => {
     const change = await screen.findByTestId("table-page-history-change-c1")
     expect(change.textContent).toContain("Added the row: B4")
     expect(screen.queryByTestId("table-page-history-undo-c1")).toBeNull()
+  })
+
+  it("a slow first read answering after a newer table never shows over it", async () => {
+    // The page's first read (the table as just created, no column) answers last; the grid's
+    // read and a settings change saw version 3, with its column.
+    const gate: { release?: () => void } = {}
+    let calls = 0
+    mount(async () => {
+      calls += 1
+      if (calls === 1) {
+        await new Promise<void>((r) => {
+          gate.release = r
+        })
+        return { ...TABLE, columns: [], version: 1 }
+      }
+      return { ...TABLE, version: 3 }
+    })
+    await screen.findByTestId("table-page-grid-row-r1")
+    gate.release?.()
+    await new Promise((r) => setTimeout(r, 0))
+    fireEvent.click(screen.getByTestId("table-page-tab-settings"))
+    expect(await screen.findByTestId("table-settings-column-batch")).toBeTruthy()
   })
 })

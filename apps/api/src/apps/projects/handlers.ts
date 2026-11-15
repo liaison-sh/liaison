@@ -1286,6 +1286,7 @@ export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unkn
     money?:
       | { price: number; currency: string | null }
       | { rate: number; per: string; currency: string | null }
+      | { retainer: true; currency: string | null }
     totals?: Array<{ k: string; text: string }>
   }
   // The money half: a holder of the money scope also reads what is invoiced and what is left.

@@ -115,6 +115,8 @@ export interface BudgetData {
   money?: (
     | { price: number; currency: string | null; leftToInvoice?: number }
     | { rate: number; per: "day" | "hour"; currency: string | null }
+    /** Billed by a monthly retainer: its fee is on its schedule in Invoicing. */
+    | { retainer: true; currency: string | null }
   ) & {
     /** What the project's issued invoices bill, excl. VAT and net of credit notes. */
     invoiced?: number

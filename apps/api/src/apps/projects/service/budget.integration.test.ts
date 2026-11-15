@@ -287,9 +287,10 @@ describe("the line", () => {
     // Last month's hours are outside the period and not in it.
     const earlier = await newTask(retainer, "Earlier", { statusLabel: "done" })
     await enter(retainer, earlier, hours(5), `${lastMonth.toISOString().slice(0, 7)}-15`)
-    expect((await call("projects_budgetGet", { projectId: retainer })).line).toContain(
-      `${monthName} so far 18 of 40 h.`,
-    )
+    const retainerBudget = await call("projects_budgetGet", { projectId: retainer })
+    expect(retainerBudget.line).toContain(`${monthName} so far 18 of 40 h.`)
+    // Its money is its monthly retainer, never "no price".
+    expect(retainerBudget.money).toEqual({ retainer: true, currency: null })
 
     const daily = await newProject("Studio daily")
     const dTask = await newTask(daily, "Build", { statusLabel: "done" })

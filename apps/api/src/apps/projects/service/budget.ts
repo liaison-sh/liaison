@@ -69,7 +69,11 @@ export interface BudgetResult {
   partial: boolean
   coverage: Coverage
   /** A fixed price, or the rate of a project billed by the day or by the hour. */
-  money?: { price: number; currency: string | null } | BudgetRate
+  money?:
+    | { price: number; currency: string | null }
+    | BudgetRate
+    /** Billed by a monthly retainer: its fee is on its schedule in invoicing. */
+    | { retainer: true; currency: string | null }
   state?: "hours-only"
   milestones: BudgetMilestone[]
   notInNumbers: Array<{ text: string }>
@@ -337,6 +341,8 @@ export async function getBudget(args: {
       moneyOut = { rate: Number(terms.rate) / 100, per, currency: terms.currency }
     } else if (terms?.price !== null && terms?.price !== undefined) {
       moneyOut = { price: Number(terms.price) / 100, currency: terms.currency }
+    } else if (basis === "retainer") {
+      moneyOut = { retainer: true, currency: terms?.currency ?? null }
     }
   }
 
@@ -357,6 +363,8 @@ export async function getBudget(args: {
       k: "Rate",
       text: `${money(moneyOut.rate, moneyOut.currency)} a${moneyOut.per === "hour" ? "n" : ""} ${moneyOut.per}`,
     })
+  } else if (moneyOut && "retainer" in moneyOut) {
+    totalsOut.push({ k: "Price", text: "Monthly retainer, from its schedule in Invoicing" })
   } else if (moneyOut) {
     totalsOut.push({ k: "Price", text: money(moneyOut.price, moneyOut.currency) })
   }

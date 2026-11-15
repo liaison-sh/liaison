@@ -400,6 +400,7 @@
     "panelMoney": "Argent",
     "price": "Prix",
     "noPrice": "Aucun prix n'est défini.",
+    "retainerPrice": "Forfait mensuel, selon son échéancier dans Facturation",
     "budgetRate": "Taux",
     "ratePerDay": "{{amount}} par jour",
     "ratePerHour": "{{amount}} de l'heure",

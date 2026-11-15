@@ -123,7 +123,13 @@ const Figures: Component<{ data: BudgetData }> = (props) => {
               const out = m()
               return (
                 <dl>
-                  {"rate" in out ? (
+                  {"retainer" in out ? (
+                    <Row
+                      testid="budget-panel.retainer"
+                      label={i18n.t("projects.time.price")}
+                      value={i18n.t("projects.time.retainerPrice")}
+                    />
+                  ) : "rate" in out ? (
                     <Row
                       testid="budget-panel.rate"
                       label={i18n.t("projects.time.budgetRate")}

@@ -314,7 +314,10 @@ function validateSingleResult(item: unknown, schema: Record<string, string>): bo
   const obj = item as Record<string, unknown>
   for (const [field, expectedType] of Object.entries(schema)) {
     if (!(field in obj)) return false
-    if (expectedType !== "any" && typeof obj[field] !== expectedType) return false
+    // `typeof` never answers "array": an array field is checked as one.
+    if (expectedType === "array") {
+      if (!Array.isArray(obj[field])) return false
+    } else if (expectedType !== "any" && typeof obj[field] !== expectedType) return false
   }
   return true
 }

@@ -527,11 +527,15 @@ export async function retainerDraftFromReconcile(
     ...said,
     `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
   ]
+  const latestIssueOn = monthEnd(read.period.to)
   // A prepaid retainer's project has one issue approval waiting at a time (its next advance's or
   // this final's), so Home holds one money item for it.
   const raised = plan.prepaid
-    ? await raiseOnePerProject(ctx, read.projectId, draftId, title, approvalLines)
-    : { approvalId: await raiseIssueApproval(ctx, draftId, title, approvalLines), heldBy: null }
+    ? await raiseOnePerProject(ctx, read.projectId, draftId, title, approvalLines, latestIssueOn)
+    : {
+        approvalId: await raiseIssueApproval(ctx, draftId, title, approvalLines, latestIssueOn),
+        heldBy: null,
+      }
   const approvalId = raised.approvalId
   const who = canIssue ? "approved" : "waiting for someone who can issue invoices"
   const next =

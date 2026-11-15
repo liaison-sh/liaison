@@ -58,11 +58,23 @@ export async function raiseOnePerProject(
   draftId: string,
   title: string,
   lines: string[],
+  latestIssueOn?: string | null,
 ): Promise<{ approvalId: string | null; heldBy: { id: string; title: string } | null }> {
   const waiting = await waitingDraftOf(ctx, projectId, draftId)
   if (waiting)
     return { approvalId: null, heldBy: { id: String(waiting.id), title: titleOf(waiting) } }
-  return { approvalId: await raiseIssueApproval(ctx, draftId, title, lines), heldBy: null }
+  return {
+    approvalId: await raiseIssueApproval(ctx, draftId, title, lines, latestIssueOn),
+    heldBy: null,
+  }
+}
+
+/** A draft's latest issue day, as its row stores it, or null. */
+const latestIssueOf = (doc: Row): string | null => {
+  const v = doc.latest_issue_on
+  if (typeof v === "string" && v !== "") return v.slice(0, 10)
+  if (v instanceof Date) return v.toISOString().slice(0, 10)
+  return null
 }
 
 /** The result's words for a held approval. */
@@ -112,10 +124,16 @@ export async function raiseHeldApproval(
       0,
     )
     const currency = String(next.currency ?? "EUR")
-    await raiseIssueApproval(ctx, String(next.id), titleOf(next), [
-      `${formatMoneyMinor(BigInt(excl), currency)} excl. VAT`,
-      "It waited until the project's previous invoice was issued or discarded",
-    ])
+    await raiseIssueApproval(
+      ctx,
+      String(next.id),
+      titleOf(next),
+      [
+        `${formatMoneyMinor(BigInt(excl), currency)} excl. VAT`,
+        "It waited until the project's previous invoice was issued or discarded",
+      ],
+      latestIssueOf(next),
+    )
   } catch (err) {
     ctx.logger?.warn?.("raising a held issue approval failed", {
       error: err instanceof Error ? err.message : String(err),

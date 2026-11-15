@@ -325,6 +325,7 @@ export async function draftFromReconcile(
       summary_detail: {
         subtitle: `${read.lines.length} line${read.lines.length === 1 ? "" : "s"} from planned vs done`,
         lines: [latestIssueLine(monthEnd(read.period.to), today) as string],
+        latest_on: monthEnd(read.period.to),
       },
       current_payload: { draft_id: draftId },
       approve_scope: "invoicing:documents:write",

@@ -4,7 +4,7 @@
 // follows its quote; a milestone is invoiced from its task only (never from hours); the final
 // deducts every advance by itself, one line per advance and VAT rate, citing the advance.
 
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import {
   done,
   harness,
@@ -19,6 +19,7 @@ import {
 } from "./__tests__/billing-plan-fixtures"
 import { buildCii, businessProcessCode } from "./facturx/cii"
 import { invoiceIssue } from "./mutations"
+import { advanceDraftCreate } from "./mutations/advances"
 import {
   billingPlanSet,
   milestoneDraftCreate,
@@ -361,5 +362,50 @@ describe("the final invoice", () => {
       [550, 40_000],
     ])
     for (const l of lines) expect(l.description).toContain("F-2026-0210")
+  })
+})
+
+describe("the latest issue day on a billing draft's approval", () => {
+  afterEach(() => setSystemTime())
+  const detail = (h: ReturnType<typeof harness>) =>
+    h.approvals.at(-1)?.summary_detail as { lines: string[]; latest_on?: string } | undefined
+
+  test("a milestone draft's issue approval names its latest issue day, and late once it is past", async () => {
+    const seen: Array<[string | undefined, string | undefined]> = []
+    for (const today of [Date.UTC(2026, 5, 20, 12), Date.UTC(2026, 6, 2, 12)]) {
+      setSystemTime(new Date(today))
+      const h = harness()
+      await withPlan(h)
+      done(h, T_BETA, "2026-06-12")
+      expect((await milestoneDraftCreate(h.ctx, { taskId: T_BETA })).status).toBe("completed")
+      seen.push([detail(h)?.latest_on, detail(h)?.lines.at(-1)])
+    }
+    expect(seen).toEqual([
+      ["2026-06-30", "Latest issue date: 2026-06-30"],
+      [
+        "2026-06-30",
+        "Late: the latest issue date was 2026-06-30; it issues with the date of the day it is issued",
+      ],
+    ])
+  })
+
+  test("an advance drafted for money received is due the day it was received", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 5, 22, 12)))
+    const h = harness()
+    await withPlan(h)
+    const plan = (await import("./mutations/billing-plan")).billingPlanGet
+    const got = await plan(h.ctx, { projectId: PROJECT })
+    if (got.status !== "completed") throw new Error("no plan")
+    const step = got.steps.find((s) => s.kind === "advance") as { id: string }
+    const res = await advanceDraftCreate(h.ctx, {
+      projectId: PROJECT,
+      stepId: step.id,
+      receivedOn: "2026-06-20",
+    })
+    expect(res.status).toBe("completed")
+    expect(detail(h)?.latest_on).toBe("2026-06-20")
+    expect(detail(h)?.lines).toContain(
+      "Late: the latest issue date was 2026-06-20; it issues with the date of the day it is issued",
+    )
   })
 })

@@ -57,6 +57,7 @@ import {
   TypeLabel,
 } from "./kit"
 import { type EinvoiceFacts, einvoiceStatusWord } from "./RecurringStates"
+import { SourcedDraftPanel } from "./SourcedDraft"
 import { rememberDocumentLabel } from "./tab-labels"
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -95,6 +96,12 @@ export interface DocumentSummary {
   counterparty_country?: string | null
   issuer_profile_id?: string | null
   external_refs?: Record<string, unknown>
+  /** The source a draft was made from (`reconcile:`, `milestone:`, ...), null when typed by hand. */
+  external_ref?: string | null
+  /** Who approved the draft for issue; null while it waits. */
+  approved_by?: string | null
+  /** The draft's latest issue day (the end of its service month). */
+  latest_issue_on?: string | null
   /** The HUMAN store order reference ("#1149") this document bills, resolved by
    *  documents_get from the column or external_refs. Absent on manual documents. */
   shopify_order_number?: string | null
@@ -138,6 +145,8 @@ export interface DocumentLine {
   hs_code?: string | null
   country_of_origin?: string | null
   customs_description?: string | null
+  /** The line's source key (`reconcile_line:`, `advance_deduction:`, ...), when it has one. */
+  external_id?: string | null
 }
 
 export interface LifecycleEntry {
@@ -1488,6 +1497,9 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                   `assertKnownParams`) renders in the error tone instead of
                   the neutral one, so a broken call is visible instead of
                   silently doing nothing. */}
+              {/* A draft from planned vs done, a milestone, a retainer month or an advance: where
+                  it came from, what stays inside, and its one issue button, at the top. */}
+              <SourcedDraftPanel doc={doc()} lines={lines()} onDone={props.onMutate} />
               <Show when={footerActionNote()}>
                 {(note) => (
                   <div

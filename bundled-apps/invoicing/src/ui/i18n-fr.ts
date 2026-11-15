@@ -835,4 +835,45 @@ export const FR: Record<string, string> = {
   "E-invoices of this stream issued with no person will be sent at issue, with no daily card, for 90 days. A renewal card comes a week before. You can turn it off at any time.":
     "Les factures électroniques de ce flux émises sans personne partiront à l'émission, sans carte quotidienne, pendant 90 jours. Une carte de renouvellement arrive une semaine avant. Vous pouvez la désactiver à tout moment.",
   "Turning off in {{n}} seconds.": "Désactivation dans {{n}} secondes.",
+  "From planned vs done": "Issue du prévu et réalisé",
+  "Retainer month, from planned vs done": "Mois de forfait, issu du prévu et réalisé",
+  "From a milestone": "Issue d'un jalon",
+  Advance: "Acompte",
+  "Issue all three, {{amount}}": "Émettre les trois, {{amount}}",
+  "Approve all three, {{amount}}": "Approuver les trois, {{amount}}",
+  "Issue, {{amount}}": "Émettre, {{amount}}",
+  "Approve {{amount}}": "Approuver {{amount}}",
+  "Real time spent and its notes": "Le temps réellement passé et ses notes",
+  "Team members' names": "Les noms des membres de l'équipe",
+  "Internal notes": "Les notes internes",
+  "Lines left off the bill": "Les lignes laissées hors facture",
+  "Issued as {{number}}.": "Émise sous le numéro {{number}}.",
+  "Sent for approval: it issues once someone who can issue invoices approves it.":
+    "Envoyée pour approbation : elle sera émise dès qu'une personne autorisée à émettre des factures l'approuvera.",
+  "Not issued.": "Non émise.",
+  "No number yet: it is taken when the invoice issues.":
+    "Pas encore de numéro : il est attribué à l'émission de la facture.",
+  "The amount comes from the billing plan. Hours do not move it.":
+    "Le montant vient du plan de facturation. Les heures ne le changent pas.",
+  "Late: its latest issue day was {{day}}. It issues with today's date.":
+    "En retard : sa date limite d'émission était le {{day}}. Elle sera émise à la date du jour.",
+  "Latest issue day: {{day}}.": "Date limite d'émission : {{day}}.",
+  "Deducted: advance invoice {{number}} of {{date}}, {{amount}}":
+    "Déduite : facture d'acompte {{number}} du {{date}}, {{amount}}",
+  "Stays inside": "Reste en interne",
+  "Retainer, {{hours}} h included a month": "Forfait, {{hours}} h incluses par mois",
+  Retainer: "Forfait",
+  "Hours are included each month, and hours above them are billed":
+    "Des heures sont incluses chaque mois, et les heures au-delà sont facturées",
+  "Each month is invoiced from the project's planned vs done card, once a person reconciles it.":
+    "Chaque mois est facturé depuis la carte prévu et réalisé du projet, une fois qu'une personne l'a rapproché.",
+  Project: "Projet",
+  "Choose a project": "Choisir un projet",
+  "Hours included a month": "Heures incluses par mois",
+  "Rate per hour above them": "Taux horaire au-delà",
+  "Unused hours are lost": "Les heures non utilisées sont perdues",
+  "Unused hours carry to the next month only":
+    "Les heures non utilisées passent au mois suivant seulement",
+  "Prepaid: each month's fee is invoiced ahead as an advance, and the month-end invoice deducts it and adds any overage, so it can total zero; check this way of billing with your accountant.":
+    "Prépayé : le forfait de chaque mois est facturé d'avance comme un acompte, et la facture de fin de mois le déduit et ajoute les heures au-delà, elle peut donc être à zéro ; vérifiez ce mode de facturation avec votre expert-comptable.",
 }

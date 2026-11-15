@@ -518,7 +518,13 @@
     "hours": "Hours",
     "total": "Total",
     "whoSees": "Who sees it: the project's lead and finance. Entries made before dated hours were turned on stay with each person.",
-    "not": "Not a legal working-time record, and it reminds nobody of anything."
+    "not": "Not a legal working-time record, and it reminds nobody of anything.",
+    "attach": "Attach to invoice",
+    "attachPick": "Attach this month's sheet to a draft invoice of this project:",
+    "attachNone": "This project has no draft invoice yet. Create one from its planned vs done card, then attach the sheet.",
+    "attachDraft": "{{customer}}, {{amount}}, draft",
+    "attached": "The sheet is attached to the draft. It goes with the invoice when the invoice is sent.",
+    "attachFailed": "The sheet was not attached: {{reason}}"
   },
   "timeSettings": {
     "using": "{{count}} projects use time and budgets. Each project turns it on in its own settings.",

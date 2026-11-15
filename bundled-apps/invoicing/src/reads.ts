@@ -50,6 +50,13 @@ export interface DocumentHeader {
   due_at: string | null
   /** A draft's latest issue day (the end of its service month); null when it has none. */
   latest_issue_on: string | null
+  /** The source a draft was made from (`reconcile:`, `milestone:`, `retainer:`, `advance:` and the
+   *  like), carried to the invoice at issue; null for a document typed by hand. */
+  external_ref: string | null
+  /** Who approved a draft for issue (a person holding the deciding scope); null when nobody has. */
+  approved_by: string | null
+  /** `advance`, `final` or `standard` for an invoice; null when unset. */
+  invoice_role: string | null
   /** Sales channel for the documents-list "Channel" column + Shopify/Manual
    *  filter: "shopify" when the document was reconciled from a Shopify order
    *  (top-level shopify_order_id set), else "manual". */
@@ -363,6 +370,9 @@ function toDocumentHeader(row: unknown): DocumentHeader {
         : r.latest_issue_on instanceof Date
           ? r.latest_issue_on.toISOString().slice(0, 10)
           : null,
+    external_ref: textOrNull(r.external_ref),
+    approved_by: textOrNull(r.approved_by),
+    invoice_role: textOrNull(r.invoice_role),
     // A Shopify-reconciled document carries a top-level shopify_order_id; surface
     // it as the sales channel so the documents list + Shopify/Manual filter bucket
     // it correctly (was always "manual" because this field was never derived).

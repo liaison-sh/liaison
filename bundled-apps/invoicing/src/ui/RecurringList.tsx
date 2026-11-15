@@ -16,6 +16,7 @@ import {
   RecurringLoadError,
   RecurringLoading,
 } from "./RecurringStates"
+import { retainerListLine } from "./ScheduleEditor"
 
 const TAP = "min-h-11 md:min-h-8"
 
@@ -244,6 +245,16 @@ export const InvoicingRecurringList: Component<{ entityId?: string }> = () => {
                           class="min-w-0 break-words text-text-secondary"
                         >
                           {billsText(r)}
+                          <Show when={retainerListLine(r as unknown as Record<string, unknown>)}>
+                            {(line) => (
+                              <span
+                                data-testid={`schedule-retainer-${r.id}`}
+                                class="block text-[12px] text-text-tertiary"
+                              >
+                                {line()}
+                              </span>
+                            )}
+                          </Show>
                         </span>
                         <span class="text-text-secondary">{everyText(r)}</span>
                         <span class="tabular-nums text-text">

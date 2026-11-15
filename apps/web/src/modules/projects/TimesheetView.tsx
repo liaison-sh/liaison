@@ -32,6 +32,14 @@ export interface TimesheetData {
   note: string
 }
 
+/** A draft invoice of the project, as `invoicing:documents_search` lists it. */
+export interface AttachDraft {
+  id: string
+  counterparty_name: string | null
+  currency: string
+  grand_total_minor: string | number
+}
+
 interface ExportResult {
   fileId?: string
   filename?: string
@@ -80,6 +88,70 @@ export const TimesheetView: Component<{ entityId: string }> = (props) => {
   const [asking, setAsking] = createSignal<"pdf" | "csv" | null>(null)
   const [busy, setBusy] = createSignal(false)
   const [saved, setSaved] = createSignal<string | null>(null)
+
+  // Attach to invoice: pick one of this project's drafts, then the sheet is exported as a PDF and
+  // filed on it, both as the person (the attach reads the file under the person's own scopes).
+  const [drafts, setDrafts] = createSignal<AttachDraft[] | null>(null)
+  const [attachAsk, setAttachAsk] = createSignal<string | null>(null)
+  const [attachNote, setAttachNote] = createSignal<string | null>(null)
+  const openAttach = async () => {
+    const d = data()
+    if (!d || busy()) return
+    setAttachNote(null)
+    try {
+      const rows = await runTool<AttachDraft[] | { status?: string }>(
+        api,
+        "invoicing:documents_search",
+        { project_id: d.projectId, type: "invoice", status: "draft" },
+        { suppressGlobalError: true },
+      )
+      setDrafts(Array.isArray(rows) ? rows : [])
+    } catch {
+      setDrafts([])
+    }
+  }
+  const attachTo = async (documentId: string, acceptPartial = false) => {
+    const d = data()
+    if (!d || busy()) return
+    setBusy(true)
+    setAttachNote(null)
+    try {
+      const out = await runTool<ExportResult>(api, "projects:timesheet_export", {
+        projectId: d.projectId,
+        month: d.month,
+        format: "pdf",
+        ...(acceptPartial ? { acceptPartial: true } : {}),
+      })
+      if (out.needsConfirm) {
+        setAttachAsk(documentId)
+        return
+      }
+      setAttachAsk(null)
+      if (!out.fileId) return
+      const res = await runTool<{ status?: string; error?: { message?: string } }>(
+        api,
+        "invoicing:document_attachment_add",
+        { documentId, fileId: out.fileId, kind: "timesheet", partial: d.partial },
+        { suppressGlobalError: true },
+      )
+      if (res?.status === "error") {
+        setAttachNote(
+          i18n.t("projects.timesheet.attachFailed", { reason: res.error?.message ?? "" }),
+        )
+        return
+      }
+      setDrafts(null)
+      setAttachNote(i18n.t("projects.timesheet.attached"))
+    } catch (e) {
+      setAttachNote(
+        i18n.t("projects.timesheet.attachFailed", {
+          reason: e instanceof Error ? e.message : "",
+        }),
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const exportAs = async (format: "pdf" | "csv", acceptPartial = false) => {
     const d = data()
@@ -164,7 +236,85 @@ export const TimesheetView: Component<{ entityId: string }> = (props) => {
                 >
                   {i18n.t("projects.timesheet.exportCsv")}
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="timesheet-view.attach"
+                  disabled={busy()}
+                  onClick={() => void openAttach()}
+                >
+                  {i18n.t("projects.timesheet.attach")}
+                </Button>
               </div>
+              <Show when={drafts()}>
+                {(list) => (
+                  <div
+                    class="mb-4 text-[13px] text-text-secondary"
+                    data-testid="timesheet-view.attach-list"
+                  >
+                    <Show
+                      when={list().length > 0}
+                      fallback={
+                        <p data-testid="timesheet-view.attach-none">
+                          {i18n.t("projects.timesheet.attachNone")}
+                        </p>
+                      }
+                    >
+                      <p class="mb-2">{i18n.t("projects.timesheet.attachPick")}</p>
+                      <div class="flex flex-wrap gap-2">
+                        <For each={list()}>
+                          {(draft) => (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              data-testid="timesheet-view.attach-draft"
+                              data-draft-id={draft.id}
+                              disabled={busy()}
+                              onClick={() => void attachTo(draft.id)}
+                            >
+                              {i18n.t("projects.timesheet.attachDraft", {
+                                customer: draft.counterparty_name ?? "",
+                                amount: i18n.fmtCurrency(
+                                  Number(draft.grand_total_minor) / 100,
+                                  draft.currency,
+                                ),
+                              })}
+                            </Button>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                  </div>
+                )}
+              </Show>
+              <Show when={attachAsk()}>
+                {(documentId) => (
+                  <div
+                    class="mb-4 flex items-center gap-3 text-[13px] text-text-secondary"
+                    data-testid="timesheet-view.attach-confirm"
+                  >
+                    <span>{i18n.t("projects.timesheet.partialAsk")}</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      data-testid="timesheet-view.attach-anyway"
+                      onClick={() => void attachTo(documentId(), true)}
+                    >
+                      {i18n.t("projects.timesheet.exportAnyway")}
+                    </Button>
+                  </div>
+                )}
+              </Show>
+              <Show when={attachNote()}>
+                {(n) => (
+                  <p
+                    class="mb-4 text-[13px] text-text-secondary"
+                    data-testid="timesheet-view.attach-note"
+                  >
+                    {n()}
+                  </p>
+                )}
+              </Show>
               <Show when={asking()}>
                 {(format) => (
                   <div

@@ -95,6 +95,7 @@ export const GATE_LANES: Record<string, number> = {
   "bundled-calls": 1,
   "bundled-social": 1,
   // The vitest suites do not take --shard: one runner each.
+  "bundled-invoicing-ui": 1,
   "bundled-boxtal-ui": 1,
   "bundled-monitoring-ui": 1,
   "bundled-social-ui": 1,

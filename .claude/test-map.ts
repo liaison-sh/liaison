@@ -209,6 +209,17 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "bundled-apps/ads/**", suites: ["api-guards", "bundled-ads", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/boxtal/**", suites: ["api-guards", "bundled-boxtal", "bundled-boxtal-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/calls/**", suites: ["api-guards", "bundled-calls", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  // The invoicing screens: their vitest files (bundled-invoicing-ui), the web host tests that
+  // import them and read the manifest's attention kinds (web-unit), and the screens in the
+  // browser (playwright).
+  {
+    glob: "bundled-apps/invoicing/{ui.tsx,src/ui/**}",
+    suites: ["api-guards", "bundled-invoicing", "bundled-invoicing-ui", "bundled-freeze", "web-unit", "playwright", "e2e-parallel", "demo-seed"],
+  },
+  {
+    glob: "bundled-apps/invoicing/app.manifest.json",
+    suites: ["api-guards", "bundled-invoicing", "bundled-freeze", "web-unit", "e2e-parallel", "demo-seed"],
+  },
   { glob: "bundled-apps/invoicing/**", suites: ["api-guards", "bundled-invoicing", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/monitoring/**", suites: ["api-guards", "bundled-monitoring", "bundled-monitoring-ui", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/database/**", suites: ["api-guards", "bundled-database", "bundled-freeze", "e2e-parallel", "demo-seed"] },

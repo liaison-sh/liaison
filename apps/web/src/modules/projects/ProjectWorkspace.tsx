@@ -38,6 +38,7 @@ import {
   onMount,
   Show,
 } from "solid-js"
+import { ApiError } from "~/lib/api-error"
 import { formatDay } from "~/lib/relative-time"
 import { userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -222,8 +223,10 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
       await archiveProject(api, props.entityId)
       setArchiveConfirmOpen(false)
       addToast({ message: i18n.t("projects.projectArchived"), type: "info" })
-    } catch {
-      addToast({ message: i18n.t("projects.projectArchiveFailed"), type: "error" })
+    } catch (err) {
+      // A refusal with its reason (a retainer still bills the project) says it as the server wrote it.
+      const refusal = err instanceof ApiError && err.code === "retainer_live" ? err.message : null
+      addToast({ message: refusal ?? i18n.t("projects.projectArchiveFailed"), type: "error" })
     } finally {
       setArchiveBusy(false)
     }

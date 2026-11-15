@@ -6,3 +6,4 @@ Undo discards only the draft the card made, at once -> apps/api/src/apps/project
 A month already on another card's draft refuses a second card's Create, and adds nothing to that draft -> apps/api/src/apps/projects/service/reconcile-create.ts (otherCardOnKey)
 A month whose invoice was credited in full is drafted again from a new card, under the next key -> apps/api/src/apps/projects/service/reconcile-create.ts (retainerCardKey)
 A move or merge refusal names the invoice only to someone who reads invoices -> apps/api/src/apps/projects/service/claim-holds.ts (refuseClaimedTasks)
+A project cannot be archived while its retainer still has a month to bill; the refusal says through which day -> apps/api/src/apps/projects/routes.ts (projectsRoutes archive)

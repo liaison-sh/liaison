@@ -410,3 +410,59 @@ describe("a source's answer has rows a block can use", () => {
     }
   })
 })
+
+describe("the money reads", () => {
+  it("a project's billing plan is a source whose steps a block charts", () => {
+    const tool = reads.get("invoicing:billing_plan_get")
+    expect(tool).toBeDefined()
+    if (tool) expect(isSource("invoicing:billing_plan_get", tool)).toBe(true)
+    const { rows } = extractRows({
+      status: "completed",
+      projectId: "p",
+      quote: null,
+      steps: [
+        { kind: "milestone", label: "Design", amountMinor: 400_000, state: "planned" },
+        { kind: "final", label: "Delivery", amountMinor: 600_000, state: "invoiced" },
+      ],
+      currency: "EUR",
+      milestonesMinor: 0,
+      message: "two steps",
+    })
+    expect(rows?.map((r) => r.label)).toEqual(["Design", "Delivery"])
+  })
+
+  it("the reads one money app calls in the other are reviewed exclusions, never sources", () => {
+    const excluded = new Map(EXCLUDED.map((e) => [e.tool, e.reason]))
+    for (const full of [
+      "projects:reconcile_lines_read",
+      "projects:milestone_status_read",
+      "invoicing:preview_totals",
+      "invoicing:project_invoiced_get",
+    ]) {
+      const tool = reads.get(full)
+      expect({ full, read: tool !== undefined }).toEqual({ full, read: true })
+      expect({ full, reason: excluded.get(full) }).toEqual({ full, reason: "trust boundary" })
+      if (tool) expect({ full, source: isSource(full, tool) }).toEqual({ full, source: false })
+    }
+  })
+
+  it("no money write is listed as a read", () => {
+    for (const full of [
+      "invoicing:billing_plan_set",
+      "invoicing:milestone_draft_create",
+      "invoicing:advance_draft_create",
+      "invoicing:advance_refund_prepare",
+      "invoicing:credit_note_from_reconcile",
+      "invoicing:document_attachment_add",
+      "invoicing:draft_from_reconcile",
+      "invoicing:retainer_draft_from_reconcile",
+      "invoicing:invoice_issue",
+      "projects:reconcile_create_invoice",
+      "projects:reconcile_undo",
+      "projects:reconcile_mark",
+      "projects:period_timebox_set",
+    ]) {
+      expect({ full, read: reads.has(full) }).toEqual({ full, read: false })
+    }
+  })
+})

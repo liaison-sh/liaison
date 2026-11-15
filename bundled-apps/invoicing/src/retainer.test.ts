@@ -517,6 +517,8 @@ describe("a retainer month's invoice", () => {
       lines: [{ billMinutes: 46 * H }],
     })
     expect(p).toMatchObject({ ready: true, excl: 522_000, vat: 104_400, incl: 626_400 })
+    // The card offers to waive only what is above the retainer: six hours here.
+    expect(p).toMatchObject({ overageMinutes: 6 * H })
     const none = harness({ schedule: retainerSchedule({ status: "ended" }) })
     const q = await previewTotals(none.ctx as never, {
       projectId: PROJECT,

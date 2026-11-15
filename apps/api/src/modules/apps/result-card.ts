@@ -82,6 +82,11 @@ function scalarKeepingNumber(v: unknown): string | number | undefined {
   return undefined
 }
 
+/** A tool action's parameter as its tool takes it: a string, a number or a flag. */
+function paramValue(v: unknown): string | number | boolean | undefined {
+  return typeof v === "boolean" ? v : scalarKeepingNumber(v)
+}
+
 function tpl(text: string | undefined, scope: Scope): string | undefined {
   if (typeof text !== "string") return undefined
   let missing = false
@@ -209,9 +214,9 @@ function action(
         : { kind: "open", label: shown, view: target.view, ...(target.id ? { id: target.id } : {}) }
     }
     case "tool": {
-      const params: Record<string, string | number> = {}
+      const params: Record<string, string | number | boolean> = {}
       for (const [name, path] of Object.entries(a.params)) {
-        const v = scalarKeepingNumber(lookup(scope, path))
+        const v = paramValue(lookup(scope, path))
         if (v === undefined) return undefined
         params[name] = v
       }

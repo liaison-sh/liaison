@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.40.0",
+  "version": "1.41.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -2569,6 +2569,7 @@
           "editable": "any",
           "foot": "any",
           "createInvoice": "any",
+          "waiveOverage": "any",
           "summary": "any",
           "undo": "any",
           "locked": "any"
@@ -2737,6 +2738,22 @@
             "when": {
               "path": "result.createInvoice",
               "equals": "yes"
+            }
+          },
+          {
+            "kind": "tool",
+            "label": {
+              "label": "Create invoice without this month's overage"
+            },
+            "tool": "reconcile_create_invoice",
+            "params": {
+              "reconciliationId": "result.reconciliationId",
+              "revision": "result.revision",
+              "waiveOverage": "result.waiveOverage"
+            },
+            "when": {
+              "path": "result.waiveOverage",
+              "equals": "true"
             }
           }
         ],
@@ -2999,6 +3016,7 @@
           "editable": "any",
           "foot": "any",
           "createInvoice": "any",
+          "waiveOverage": "any",
           "summary": "any",
           "undo": "any",
           "locked": "any"
@@ -3167,6 +3185,22 @@
             "when": {
               "path": "result.createInvoice",
               "equals": "yes"
+            }
+          },
+          {
+            "kind": "tool",
+            "label": {
+              "label": "Create invoice without this month's overage"
+            },
+            "tool": "reconcile_create_invoice",
+            "params": {
+              "reconciliationId": "result.reconciliationId",
+              "revision": "result.revision",
+              "waiveOverage": "result.waiveOverage"
+            },
+            "when": {
+              "path": "result.waiveOverage",
+              "equals": "true"
             }
           }
         ],
@@ -3315,6 +3349,7 @@
           "editable": "any",
           "foot": "any",
           "createInvoice": "any",
+          "waiveOverage": "any",
           "summary": "any",
           "undo": "any",
           "locked": "any"
@@ -3484,6 +3519,22 @@
               "path": "result.createInvoice",
               "equals": "yes"
             }
+          },
+          {
+            "kind": "tool",
+            "label": {
+              "label": "Create invoice without this month's overage"
+            },
+            "tool": "reconcile_create_invoice",
+            "params": {
+              "reconciliationId": "result.reconciliationId",
+              "revision": "result.revision",
+              "waiveOverage": "result.waiveOverage"
+            },
+            "when": {
+              "path": "result.waiveOverage",
+              "equals": "true"
+            }
           }
         ],
         "summary": {
@@ -3608,6 +3659,7 @@
           "editable": "any",
           "foot": "any",
           "createInvoice": "any",
+          "waiveOverage": "any",
           "summary": "any",
           "undo": "any",
           "locked": "any",
@@ -3786,6 +3838,22 @@
               "path": "result.createInvoice",
               "equals": "yes"
             }
+          },
+          {
+            "kind": "tool",
+            "label": {
+              "label": "Create invoice without this month's overage"
+            },
+            "tool": "reconcile_create_invoice",
+            "params": {
+              "reconciliationId": "result.reconciliationId",
+              "revision": "result.revision",
+              "waiveOverage": "result.waiveOverage"
+            },
+            "when": {
+              "path": "result.waiveOverage",
+              "equals": "true"
+            }
           }
         ],
         "summary": {
@@ -3924,6 +3992,7 @@
           "editable": "any",
           "foot": "any",
           "createInvoice": "any",
+          "waiveOverage": "any",
           "summary": "any",
           "undo": "any",
           "locked": "any",
@@ -4098,6 +4167,22 @@
             "when": {
               "path": "result.createInvoice",
               "equals": "yes"
+            }
+          },
+          {
+            "kind": "tool",
+            "label": {
+              "label": "Create invoice without this month's overage"
+            },
+            "tool": "reconcile_create_invoice",
+            "params": {
+              "reconciliationId": "result.reconciliationId",
+              "revision": "result.revision",
+              "waiveOverage": "result.waiveOverage"
+            },
+            "when": {
+              "path": "result.waiveOverage",
+              "equals": "true"
             }
           }
         ],

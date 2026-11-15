@@ -1632,6 +1632,8 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
   const missing = (Array.isArray(p.missing) ? p.missing : []).map(String)
   if (p.ready === true && card.fit !== "nothing") {
     out.createInvoice = "yes"
+    // A retainer month above its hours: the card also offers to leave this month's overage off.
+    if (typeof p.overageMinutes === "number" && p.overageMinutes > 0) out.waiveOverage = true
     return out
   }
   const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])

@@ -5,7 +5,7 @@
 // draft gives the card's work back.
 
 import { describe, expect, it } from "bun:test"
-import { reconcileCreateInvoice } from "../handlers"
+import { reconcileCreateInvoice, reconcileGet } from "../handlers"
 
 const ID = "11111111-1111-4111-8111-111111111111"
 
@@ -93,5 +93,39 @@ describe("Create invoice's handler", () => {
     expect(steps).toEqual(["prepare", "reserve", "release"])
     // Never the issue tool: issuing is a person's act, elsewhere.
     expect(calls).not.toContain("invoicing:invoice_issue")
+  })
+
+  it("a retainer card above its hours offers to leave the overage off, one under them does not", async () => {
+    const cardCtx = (overageMinutes: number | undefined) => ({
+      projects_reconcileGet: async () =>
+        JSON.stringify({ reconciliationId: ID, revision: 1, state: "proposed", fit: "close" }),
+      projects_reconcileCreate: async () => JSON.stringify({ projectId: "p", basis: "retainer" }),
+      executeTool: async () =>
+        JSON.stringify({
+          status: "completed",
+          result: {
+            ready: true,
+            missing: [],
+            excl: 1,
+            vat: 0,
+            incl: 1,
+            currency: "EUR",
+            overageMinutes,
+          },
+        }),
+    })
+    const over = (await reconcileGet({ reconciliationId: ID }, cardCtx(360) as never)) as Record<
+      string,
+      unknown
+    >
+    expect(over).toMatchObject({ createInvoice: "yes", waiveOverage: true })
+    for (const minutes of [0, undefined]) {
+      const under = (await reconcileGet(
+        { reconciliationId: ID },
+        cardCtx(minutes) as never,
+      )) as Record<string, unknown>
+      expect(under.createInvoice).toBe("yes")
+      expect(under.waiveOverage).toBeUndefined()
+    }
   })
 })

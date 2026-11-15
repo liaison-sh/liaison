@@ -62,6 +62,9 @@ export type PreviewTotalsResult =
       currency: string | null
       /** Steps of the project's billing plan not invoiced yet. */
       openPlanSteps: number
+      /** A retainer month: the hours above the included and rolled-in hours, in minutes (what a
+       *  waiver would leave off). Absent on any other basis. */
+      overageMinutes?: number
       message: string
     }
   | { error: { code: string; message: string; retryable: false } }
@@ -242,6 +245,7 @@ async function retainerPreview(
   let incl: number | null = null
   let rateBp: number | null = null
   let currency: string | null = null
+  let overageMinutes = 0
   if (s && from && issuer.ok) {
     const used = (input.lines ?? []).reduce(
       (a, l) => a + Math.max(0, Math.round(Number(l.billMinutes) || 0)),
@@ -257,6 +261,7 @@ async function retainerPreview(
       waived: input.waiveOverage === true,
     })
     currency = plan.currency
+    overageMinutes = plan.fig.overageMinutes
     const recipient =
       companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
     const tax = planTax({
@@ -283,6 +288,7 @@ async function retainerPreview(
     rateBp,
     currency,
     openPlanSteps,
+    overageMinutes,
     message: ready
       ? `The retainer month can be invoiced: ${excl} excl. VAT, ${vat} VAT, ${incl} incl. VAT (minor units, ${currency}). Nothing was created.`
       : `No invoice can be made for this retainer month yet. Set ${missing.map((m) => WHAT_TO_SET[m]).join("; ")}. Nothing was created.`,

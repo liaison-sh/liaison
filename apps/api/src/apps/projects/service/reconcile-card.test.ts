@@ -374,6 +374,38 @@ describe("the card's money states", () => {
     expect((priced({})?.actions ?? []).some((a) => a.kind === "tool")).toBe(false)
   })
 
+  it("a retainer month above its hours also offers Create without this month's overage", () => {
+    const card = priced({ createInvoice: "yes", waiveOverage: true })
+    const offered = (card?.actions ?? []).filter((a) => a.kind === "tool")
+    expect(offered).toHaveLength(2)
+    expect(offered[1]).toMatchObject({
+      kind: "tool",
+      tool: "reconcile_create_invoice",
+      label: { label: "Create invoice without this month's overage" },
+      params: {
+        reconciliationId: "11111111-1111-4111-8111-111111111111",
+        revision: 2,
+        waiveOverage: true,
+      },
+    })
+    expect(offered[1]).not.toHaveProperty("primary")
+    // Under its hours, or not a retainer: only Create.
+    const plain = priced({ createInvoice: "yes" })
+    expect((plain?.actions ?? []).filter((a) => a.kind === "tool")).toHaveLength(1)
+    // Every card the reconcile tools draw offers it the same way.
+    for (const name of [
+      "reconcile_propose",
+      "reconcile_line_update",
+      "reconcile_get",
+      "reconcile_create_invoice",
+      "reconcile_undo",
+    ]) {
+      const t = tools[name]?.resultCard as CardTemplate
+      const acts = JSON.stringify(t.actions)
+      expect(acts).toContain('"waiveOverage":"result.waiveOverage"')
+    }
+  })
+
   it("Create replaces the stored card by its summary line and Undo brings it back", () => {
     const created = priced(
       { summary: "Created and approved, €7,812.00 incl. VAT", undo: "yes" },

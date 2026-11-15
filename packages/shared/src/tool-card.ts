@@ -174,7 +174,7 @@ export type ResolvedCardAction =
       kind: "tool"
       label: CardLabel
       tool: string
-      params: Record<string, string | number>
+      params: Record<string, string | number | boolean>
       confirm?: CardLabel
       primary?: true
     }

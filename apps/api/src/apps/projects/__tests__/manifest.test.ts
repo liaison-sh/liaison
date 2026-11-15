@@ -127,7 +127,9 @@ describe("projects.manifest", () => {
     // 1.40.0: a task on a live billing claim refuses a move or a merge; the sweep records a
     //   partial credit's billed figures; a card's draft and the timesheet tab file the month's
     //   timesheet on the draft.
-    expect(projectsManifest.version).toBe("1.40.0")
+    // 1.41.0: a retainer month's card above its hours offers Create without this month's
+    //   overage.
+    expect(projectsManifest.version).toBe("1.41.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

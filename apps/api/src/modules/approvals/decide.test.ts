@@ -259,6 +259,20 @@ describe("decideApproval lifecycle", () => {
         )
       },
     } as any)
+    // An internal tool that owns its transactions commits once per write, so a
+    // throw with no protocol row may have left a commit behind: unknown, as external.
+    toolRegistry.set([ORG, "decide_test", "internalOwnsTxThrows"], {
+      appName: "decide_test",
+      name: "internalOwnsTxThrows",
+      description: "Internal tool on its own transactions that throws",
+      requiredScopes: ["decide_test:gated:write"],
+      gated: true,
+      approvalImpact: "internal",
+      ownsTransactions: true,
+      handler: async () => {
+        throw new Error("the last of its writes failed")
+      },
+    } as any)
     // Control: same throw, but the tool reaches OUTSIDE the kernel tx. Its
     // outcome really is unknown and must stay parked for a human.
     toolRegistry.set([ORG, "decide_test", "externalThrows"], {
@@ -980,6 +994,7 @@ describe("decideApproval lifecycle", () => {
     it.each([
       ["internal", "internalThrows"],
       ["external", "externalThrows"],
+      ["owns-transactions", "internalOwnsTxThrows"],
     ])("a %s-impact tool that throws with no protocol row", async (impact, tool) => {
       await grantScopes(["decide_test:gated:write", "decide_test:approve"])
       const id = await createRequest(tool)

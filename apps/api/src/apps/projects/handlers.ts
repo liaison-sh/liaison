@@ -1600,9 +1600,14 @@ function missingWithContact(found: unknown, from: Record<string, unknown>): stri
     typeof from.companyId === "string" &&
     from.companyId !== "" &&
     !(typeof from.contactId === "string" && from.contactId !== "")
-  return needsContact && !missing.includes("billing_contact")
-    ? [...missing, "billing_contact"]
-    : missing
+  if (!needsContact) return missing
+  // With no contact, what the customer lacks (an address, an email) follows from it: setting the
+  // billing contact comes first, and the preview reads that contact's records once it is set.
+  const RECIPIENT_GAPS = new Set(["billing_address", "email", "siren"])
+  return [
+    "billing_contact",
+    ...missing.filter((m) => m !== "billing_contact" && !RECIPIENT_GAPS.has(m)),
+  ]
 }
 
 function money(minor: number, currency: string): { minor: number; currency: string } {
@@ -1750,6 +1755,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
             ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+            ...(contactId ? { contactId } : {}),
           }),
         )
       : ctx.executeTool(

@@ -6,6 +6,11 @@
 // now bills. The invoice itself is never edited.
 
 import { describe, expect, test } from "bun:test"
+import {
+  BILLING_CONTACT_IDENTITY,
+  billingContactRead,
+  CONTACT,
+} from "./__tests__/from-reconcile-harness"
 import { invoiceIssue, type MutationsCtx } from "./mutations"
 import { creditFromReconcile } from "./mutations/credit-from-reconcile"
 import { creditNoteIssue } from "./mutations/credit-notes"
@@ -52,6 +57,7 @@ function linesRead(over: Row = {}): Row {
     projectId: PROJECT,
     projectName: "Maison Alpine platform",
     companyId: COMPANY,
+    contactId: CONTACT,
     basis: "daily",
     state: "proposed",
     revision: 2,
@@ -90,7 +96,9 @@ interface Harness {
 }
 
 function harness(): Harness {
-  const db = createMockDb({ seed: { issuer_profiles: [ISSUER] } })
+  const db = createMockDb({
+    seed: { counterparty_identities: [BILLING_CONTACT_IDENTITY], issuer_profiles: [ISSUER] },
+  })
   const approvals: Harness["approvals"] = []
   const calls: Harness["calls"] = []
   const read = { value: linesRead() }
@@ -140,6 +148,8 @@ function harness(): Harness {
     decideApproval: async () => ({ status: "ok" }),
     executeTool: async (target: string, params: Row) => {
       calls.push({ target, params })
+      const contact = billingContactRead(target, params)
+      if (contact) return contact
       if (target === "projects:reconcile_lines_read")
         return { status: "completed" as const, result: read.value }
       if (target === "kernel:companies_read")

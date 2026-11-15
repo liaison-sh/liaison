@@ -182,6 +182,14 @@ describe("counterpartyCompletenessError", () => {
     expect(err?.message).toContain("address")
     expect(err?.message).toContain("email")
   })
+
+  test("names the draft parameters an agent sets, beside the plain message", () => {
+    const err = counterpartyCompletenessError({ ...complete, address: null, email: "  " })
+    expect(err?.body.missing_params).toEqual(["counterparty_address", "counterparty_email"])
+    expect(err?.body.counterparty_fields).toEqual(["address", "email"])
+    expect(err?.body.set_with).toContain("drafts_update")
+    expect(err?.message).not.toMatch(/drafts_update|counterparty_/)
+  })
 })
 
 // ── The issuance seam (backstop) ──────────────────────────────────────────

@@ -406,6 +406,7 @@ Keys on a tool:
 | `contentParams` | string list | First-party apps only: the only parameters through which a call carries what the turn read; a call with all of them blank is not held back by what the turn read. Each must be in `params.properties`. Any other app declaring it is not loaded |
 | `humanTurnOnly` | boolean | First-party apps only: the tool runs only on a person's own turn (a chat turn they typed, the app, their own MCP client). From a routine, a sub-run or a job it is refused with `human_turn_only` (409) before any approval. Any other app declaring it is not loaded |
 | `dmOnly` | boolean | First-party apps only: an agent runs the tool only in its DM with the person. In a shared thread or an approval thread it is refused with `dm_only` (409), whose next step is "Continue in a DM". A person in the app and an MCP client pass. Any other app declaring it is not loaded |
+| `ownsTransactions` | boolean | First-party apps only: the tool's approved run commits each write on its own, as its direct call does, instead of one transaction for the whole run. Its handler reports what it committed through the approval protocol (started, the effect once committed, no effect when it failed before), so a failure after a commit reads as done, never as nothing. Any other app's declaration is ignored: its approved run keeps one transaction |
 
 Keys on the app:
 

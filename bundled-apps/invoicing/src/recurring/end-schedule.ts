@@ -4,7 +4,7 @@
 // this month only (the row is left out and its draft kept, so it can be put back), or the end of the
 // schedule (its last billed month is set at once, since that only stops billing). An added row just
 // goes. Ending a schedule says what it does not stop, and writes nothing anywhere but here.
-import { deleteDraftRow } from "../mutations/db-helpers"
+import { draftDeleteOps } from "../mutations/db-helpers"
 import {
   afterRunWrite,
   type EditCtx,
@@ -90,6 +90,8 @@ export async function discardRunDraft(
   ctx: EditCtx,
   rd: RunDraft,
   input: { draft_id: string; applies?: string; ends_on?: string },
+  /** Records the first commit (the approved run's protocol, approval-protocol.ts). */
+  landed: (ref: Record<string, unknown>) => Promise<void> = async () => {},
 ): Promise<DiscardResult | DiscardParked> {
   if (rd.item.state === "issued" || rd.draft.status !== "draft") issuedRefusal(rd)
   const itemId = String(rd.item.id)
@@ -102,9 +104,14 @@ export async function discardRunDraft(
       input,
     )
     if (parked) return parked
-    // An added row never asks: the row and its draft go, and no number was taken.
-    await ctx.db.delete("recurring_run_items", itemId)
-    await deleteDraftRow(ctx.db, draftId)
+    // An added row never asks: the row and its draft go in one commit, and no number was taken.
+    await ctx.db.batch({
+      ops: [
+        { delete: "recurring_run_items", id: itemId },
+        ...(await draftDeleteOps(ctx.db, draftId)),
+      ],
+    })
+    await landed({ document_id: draftId, discarded: true })
     const run = await stageRunCardAfterRemoval(ctx, String(rd.run.id))
     return {
       ok: true,
@@ -140,6 +147,7 @@ export async function discardRunDraft(
       approved_hash: null,
       send_grant: null,
     })
+    await landed({ document_id: draftId, left_out: true })
     await logRunEdit(ctx, draftId, {
       kind: "take_out",
       fields: [{ field: "state", from: rd.item.state, to: "left_out" }],
@@ -167,6 +175,7 @@ export async function discardRunDraft(
   if (!s) refuse("no_schedule", `Draft ${draftId} has no schedule to end; nothing was changed.`)
   const before = dayOf(s.ends_on)
   await ctx.db.update("recurring_schedules", String(s.id), { ends_on: endsOn })
+  await landed({ document_id: draftId, schedule_ends_on: endsOn })
   const beforePeriod = endsOn < String(dayOf(rd.item.period_start))
   await ctx.db.update("recurring_run_items", itemId, {
     ends_on_before: before,

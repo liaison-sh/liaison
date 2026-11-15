@@ -94,6 +94,7 @@ import { registerAdapterAuthoringTools } from "~/modules/apps/connections/api/au
 import { apiConnectionOf } from "~/modules/apps/connections/api/declarations"
 import {
   firstPartyOnlyToolKeyErrors,
+  ownsTransactionsHolds,
   validateAppDescriptor,
   validateAppManifest,
 } from "~/modules/apps/contract"
@@ -3193,7 +3194,8 @@ async function registerSingleApp(
               // into pinning a pool connection for its whole sandbox run.
               atomic: tool.atomic === true && core,
               // Its approved run (and preflight) on a session too, never one long transaction.
-              ownsTransactions: tool.ownsTransactions === true && tool.atomic !== true,
+              // Vouched apps only (contract.ts ownsTransactionsHolds): anyone else's is ignored.
+              ownsTransactions: ownsTransactionsHolds(tool, core || desc._firstParty === true),
             }
             if (manifestForBridge) entry._manifest = manifestForBridge
             // Scope-taint declarations. A write target counts only inside the app's

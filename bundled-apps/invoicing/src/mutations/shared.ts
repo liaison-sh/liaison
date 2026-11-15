@@ -273,6 +273,11 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   // `AppContext.approval` contract (`@liaison/app-sdk` types.ts): the kernel
   // injects `{ approvalRequestId, approvalDeciderId, toolName }`, NOT snake_case.
   approval: { approvalRequestId: string; approvalDeciderId: string; toolName: string } | null
+  /** The kernel's handler protocol (approval-protocol.ts): no-ops outside an approval. */
+  approval_recordStarted?: (toolName: string) => Promise<void>
+  approval_recordEffectLanded?: (toolName: string, externalRefJson: string) => Promise<void>
+  approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
+  approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
   db: MutationsDb
 
   requestApproval(input: {

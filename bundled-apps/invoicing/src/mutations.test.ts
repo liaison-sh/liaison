@@ -3634,6 +3634,13 @@ describe("documents.send_to_customer", () => {
     )
   })
 
+  test("a not-found that is not the mailbox (an attachment, a conversation) keeps its own reason", () => {
+    const out = sendErrorFromEnvelope({
+      error: { code: "NOT_FOUND", message: "Attachment file not found" },
+    })
+    expect(out).toEqual({ code: "NOT_FOUND", message: "Attachment file not found" })
+  })
+
   // Regression — the same fallback with NO contact link at all. A document carrying only a
   // counterparty_name (no counterparty_contact_id) must still resolve a recipient via the registry.
   test("FALLBACK — resolves the recipient by counterparty_name even with no counterparty_contact_id", async () => {

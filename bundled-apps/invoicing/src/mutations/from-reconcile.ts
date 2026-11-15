@@ -17,6 +17,7 @@ import { type ActivityReportLine, buildActivityReport } from "../activity-report
 import { latestIssueLine } from "../approval-cards"
 import { lineQuantity } from "../line-amount"
 import { recipientOf } from "../recipient"
+import { RECIPIENT_GAP_REFUSAL } from "../recipient-gaps"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
 import { draftsCreate } from "./drafts"
 import type { MutationsCtx } from "./shared"
@@ -31,7 +32,6 @@ export const ISSUE_APPROVAL_EXPIRY_HOURS = 720
 export interface DraftFromReconcileInput {
   reconciliationId?: string
   revision?: number
-  /** The project lead's name, signing the activity report (the projects app passes it). */
   /** The contact of the project's company the invoice goes to (projects checked it is of the company). */
   contactId?: string | null
 }
@@ -59,6 +59,8 @@ interface LinesRead {
   projectId: string
   projectName?: string
   companyId?: string | null
+  /** The contact the invoice goes to: the one named on the card, else the company's billing one. */
+  contactId?: string | null
   basis: string
   state: string
   revision: number
@@ -107,18 +109,7 @@ const MISSING_REFUSAL: Record<string, [string, string]> = {
     "counterparty_mismatch",
     "the invoice's customer is not the project's company, so no draft was made.",
   ],
-  billing_address: [
-    "billing_address_missing",
-    "the customer has no billing address, so no draft was made. Add it to the customer, then press Create invoice again.",
-  ],
-  email: [
-    "customer_email_missing",
-    "the customer has no email address, so no draft was made. Add it to the customer, then press Create invoice again.",
-  ],
-  siren: [
-    "siren_missing",
-    "the customer has no SIREN, so no draft was made. Add it to the customer, then press Create invoice again.",
-  ],
+  ...RECIPIENT_GAP_REFUSAL,
   basis: [
     "basis_not_billable",
     "this project bills by a fixed price or a billing plan, not from planned vs done, so no draft was made.",
@@ -241,8 +232,10 @@ export async function draftFromReconcile(
     return refuse("nothing_billed", "The card bills no line. No draft was made.")
   }
 
-  const contactId =
-    typeof input.contactId === "string" && UUID.test(input.contactId) ? input.contactId : null
+  // The contact named, else the one the card resolved (the company's billing contact): the
+  // preview checks the customer the draft is made out to.
+  const named = typeof input.contactId === "string" ? input.contactId : read.contactId
+  const contactId = typeof named === "string" && UUID.test(named) ? named : null
   const preview = await previewTotals(ctx, {
     projectId: read.projectId,
     basis: read.basis,

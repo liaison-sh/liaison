@@ -24,6 +24,7 @@ import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
 import { runItemDraftRefusal } from "../recurring/run-card"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
+import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   findIssuerProfile,
@@ -204,12 +205,33 @@ export async function invoiceIssuePreflight(
   return toPreflightResult(await preflightInvoiceIssueParams(ctx, input, false, "preflight"))
 }
 
+type InvoiceIssueInput = {
+  draft_id: string
+  due_at?: string | null
+  billsOtherThanStripe?: string | null
+}
+type InvoiceIssueResult = MutationResult<{
+  document_id: string
+  number: string
+  einvoicing_warning?: EinvoicingWarning
+}>
+
 export async function invoiceIssue(
   ctx: MutationsCtx,
-  input: { draft_id: string; due_at?: string | null; billsOtherThanStripe?: string | null },
-): Promise<
-  MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
-> {
+  input: InvoiceIssueInput,
+): Promise<InvoiceIssueResult> {
+  // Its approved run commits more than once (ownsTransactions): the number is recorded as soon
+  // as it is committed, so a later failure leaves the approval executed, never unknown.
+  return underApprovalProtocol(ctx, "invoicing:invoice_issue", (landed) =>
+    issueDraftInvoice(ctx, input, landed),
+  )
+}
+
+async function issueDraftInvoice(
+  ctx: MutationsCtx,
+  input: InvoiceIssueInput,
+  landed: RecordLanded,
+): Promise<InvoiceIssueResult> {
   const pre = await preflightInvoiceIssueParams(ctx, input)
   if (!pre.ok) return pre.error
   let { draft } = pre
@@ -279,7 +301,7 @@ export async function invoiceIssue(
     draft,
     buildIssueInputFromDraft(draft, issuer, counterparty, when),
   )
-  const issued = await issueWithFxRate(ctx, issueInput)
+  const issued = await issueWithFxRate(ctx, issueInput, { onCommitted: landed })
   if (!issued.ok) return issued.error
   const result = issued.result
   await withdrawIssueApprovals(ctx, draft, "issued")

@@ -31,9 +31,11 @@ import {
   turnOf,
 } from "../recurring/restage"
 import { dayOf, type Row, draftLines as runDraftLines } from "../recurring/run-card"
+import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   deleteDraftRow,
+  draftDeleteOps,
   findIssuerProfile,
   getDraft,
   insertDraftRow,
@@ -1226,32 +1228,49 @@ export async function draftsDiscard(
   ctx: MutationsCtx,
   input: { draft_id: string; applies?: "this_month" | "end_schedule"; ends_on?: string },
 ): Promise<DiscardResult | DiscardParked> {
+  // Its approved run commits on a session (ownsTransactions): the discard is one commit, recorded
+  // as soon as it lands, and a failure before it records that nothing changed.
+  return underApprovalProtocol(ctx, "invoicing:drafts_discard", (landed) =>
+    discardDraft(ctx, input, landed),
+  )
+}
+
+async function discardDraft(
+  ctx: MutationsCtx,
+  input: { draft_id: string; applies?: "this_month" | "end_schedule"; ends_on?: string },
+  landed: RecordLanded,
+): Promise<DiscardResult | DiscardParked> {
   // A month-end run's draft is taken out through the run's own rules: how far, and what it leaves.
   const rd = await runDraftOf(ctx, input.draft_id)
-  if (rd) return discardRunDraft(ctx as EditCtx, rd, input)
+  if (rd) return discardRunDraft(ctx as EditCtx, rd, input, landed)
   const row = (await ctx.db.findOne("documents", input.draft_id)) as Row | null
-  if (row && String(row.status ?? "draft") === "draft") await discardDependents(ctx, row)
-  await deleteDraftRow(ctx.db, input.draft_id)
-  if (row) {
-    await withdrawIssueApprovals(
-      ctx,
-      { id: input.draft_id, external_ref: (row.external_ref as string | null) ?? null },
-      "discarded",
-    )
-    await raiseHeldApproval(ctx, { id: input.draft_id, billing_project_id: row.billing_project_id })
+  if (!row) {
+    await deleteDraftRow(ctx.db, input.draft_id)
+    return { ok: true, itemState: null, notes: [] }
   }
+  // The draft, its lines and the rows that hang off it go in ONE commit: all or nothing.
+  const ops = [
+    ...(String(row.status ?? "draft") === "draft" ? await dependentOps(ctx, row) : []),
+    ...(await draftDeleteOps(ctx.db, input.draft_id)),
+  ]
+  await ctx.db.batch({ ops })
+  await landed({ document_id: input.draft_id, discarded: true })
+  await withdrawIssueApprovals(
+    ctx,
+    { id: input.draft_id, external_ref: (row.external_ref as string | null) ?? null },
+    "discarded",
+  )
+  await raiseHeldApproval(ctx, { id: input.draft_id, billing_project_id: row.billing_project_id })
   // A draft made from a planned vs done card gives its month back: projects moves the
   // reconciliation to proposed and frees its claims (a lost call is healed by its sweep).
-  if (row) {
-    await markReconciliation(
-      ctx,
-      {
-        external_ref: (row.external_ref as string | null) ?? null,
-        external_refs: (row.external_refs as Record<string, unknown> | null) ?? null,
-      },
-      { to: "released" },
-    )
-  }
+  await markReconciliation(
+    ctx,
+    {
+      external_ref: (row.external_ref as string | null) ?? null,
+      external_refs: (row.external_refs as Record<string, unknown> | null) ?? null,
+    },
+    { to: "released" },
+  )
   return { ok: true, itemState: null, notes: [] }
 }
 
@@ -1260,7 +1279,7 @@ export async function draftsDiscard(
  * advance deduction it reserved is released, a billing step it drafted is planned again. They
  * reference the draft with `restrict`, so they move before the draft's delete.
  */
-async function discardDependents(ctx: MutationsCtx, row: Row): Promise<void> {
+async function dependentOps(ctx: MutationsCtx, row: Row): Promise<IssueBatchOp[]> {
   const id = String(row.id)
   const ops: IssueBatchOp[] = []
   for (const table of ["activity_reports", "document_attachments"]) {
@@ -1277,5 +1296,5 @@ async function discardDependents(ctx: MutationsCtx, row: Row): Promise<void> {
     where: { document_id: id },
     data: { document_id: null, state: "planned" },
   })
-  await ctx.db.batch({ ops })
+  return ops
 }

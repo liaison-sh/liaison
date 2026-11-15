@@ -355,6 +355,7 @@ export async function runApprovedToolHandler(args: RunApprovedToolHandlerArgs): 
     originalError,
     args.deciderId,
     tool.approvalImpact,
+    tool.ownsTransactions === true,
   )
   // The external effect landed and the handler was cut off (or failed) after it,
   // in its post-effect work. The row is now `succeeded` with the provider's ref as
@@ -530,6 +531,7 @@ async function throwPersistedHandlerOutcome(
   originalError: unknown,
   deciderId: string,
   approvalImpact?: "external" | "internal",
+  ownsTransactions = false,
 ): Promise<Record<string, unknown> | undefined> {
   const row = await readHandlerExecution(orgId, approvalRequestId, toolName)
 
@@ -636,7 +638,13 @@ async function throwPersistedHandlerOutcome(
   // A no-effect classification is safe AND strictly better here: decide reverts
   // the row to pending, surfaces the real cause on the card, and the operator can
   // fix the input and re-approve.
-  if (!row && approvalImpact !== "external") {
+  //
+  // A tool that owns its transactions (`ownsTransactions`) is the exception: it
+  // runs on a session, one commit per write, so a throw after its first commit
+  // left that commit behind whatever its impact. Like an external tool, it says
+  // what happened through the protocol (`started`, then `failed_no_effect` when
+  // nothing committed, or the landed effect); with no row, the outcome is unknown.
+  if (!row && approvalImpact !== "external" && !ownsTransactions) {
     // Record the outcome durably first, so the row is recoverable by the reaper
     // even if this process dies before decide reverts it. Mirrors the
     // soft-error UPSERT above (no row exists yet, so a bare UPDATE would no-op).

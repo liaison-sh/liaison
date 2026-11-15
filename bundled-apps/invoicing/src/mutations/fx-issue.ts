@@ -25,6 +25,7 @@ type IssueResult = Awaited<ReturnType<typeof issueDocument>>
 export async function issueWithFxRate(
   ctx: MutationsCtx,
   input: IssueInput,
+  opts: Parameters<typeof issueDocument>[2] = {},
 ): Promise<{ ok: true; result: IssueResult } | { ok: false; error: ErrorEnvelope }> {
   await warmFxRate(
     ctx as MutationsCtx & FxFetchCtx,
@@ -32,7 +33,7 @@ export async function issueWithFxRate(
     fxIssueDate(input.draft.issued_at),
   )
   try {
-    return { ok: true, result: await issueDocument(ctx, input) }
+    return { ok: true, result: await issueDocument(ctx, input, opts) }
   } catch (err) {
     if (err instanceof FxRateUnavailableError)
       return { ok: false, error: fxRateUnavailableEnvelope(err) }

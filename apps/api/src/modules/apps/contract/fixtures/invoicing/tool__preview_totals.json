@@ -43,6 +43,11 @@
       "method": "executeTool",
       "args": ["kernel:companies_read", "{\"companyId\":\"7c000000-0000-4000-8000-00000000c1de\"}"],
       "reply": "{\"status\":\"error\",\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"Company not found: 7c000000-0000-4000-8000-00000000c1de. Only pass an id you saw in a kernel__companies_search result.\",\"retryable\":false}}"
+    },
+    {
+      "method": "db_findMany",
+      "args": ["einvoicing_settings", "{\"limit\":1}"],
+      "reply": "[{\"gate_mode\":\"enforce\",\"gate_mode_source\":\"install_default\"}]"
     }
   ]
 }

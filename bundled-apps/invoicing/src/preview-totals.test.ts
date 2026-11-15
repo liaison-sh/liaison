@@ -55,11 +55,12 @@ const CARD = {
 }
 
 describe("the card's invoice preview", () => {
-  test("the October lines preview 6,510.00 excl. VAT, 1,302.00 VAT and 7,812.00 incl. VAT", async () => {
+  test("the October lines preview 6,510.00 excl. VAT, 1,302.00 VAT and 7,812.00 incl. VAT, and a company with no contact names what the invoice lacks", async () => {
+    // No contact: the invoice would go to the company alone, with no address and no email.
     const r = await previewTotals(ctxWith() as never, CARD)
     expect(r).toMatchObject({
-      ready: true,
-      missing: [],
+      ready: false,
+      missing: ["billing_address", "email"],
       excl: 651_000,
       vat: 130_200,
       incl: 781_200,

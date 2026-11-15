@@ -42,6 +42,7 @@ import {
   Suspense,
 } from "solid-js"
 import { formatMoneyMinor } from "../money"
+import { type DocumentType, transition } from "../state"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { tr } from "./i18n"
@@ -249,11 +250,12 @@ export function canMarkPaid(doc: {
   payment_status?: string | null
   external_refs?: unknown
 }): boolean {
+  // The server's own rule (state.ts): only an issued invoice is marked paid, never a cancelled or
+  // credited one, a quote or a proforma.
   return (
-    doc.status !== "draft" &&
-    doc.status !== "paid" &&
+    transition({ type: doc.type as DocumentType, status: doc.status }, "mark_paid").status ===
+      "ok" &&
     doc.payment_status !== "paid" &&
-    doc.type !== "credit_note" &&
     !stripeCollection(doc.external_refs as Record<string, unknown> | undefined)
   )
 }

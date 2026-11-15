@@ -7,13 +7,12 @@
 // before anyone presses Create. Nothing is written.
 
 import type { CrossAppExecuteTool } from "../cross-app"
-import { prepareEinvoiceGate } from "../einvoicing/issue-gate"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
-import { counterpartyFromRow } from "../mutations/lines"
-import { retainerPlan, retainerScheduleOf } from "../mutations/retainer"
+import { retainerPlan, retainerRecipient, retainerScheduleOf } from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
-import { type Recipient, recipientOf } from "../recipient"
+import { recipientOf } from "../recipient"
+import { type RecipientGap, recipientGaps } from "../recipient-gaps"
 import { netLinesTotals } from "../tax-plan"
 
 /** What can keep a card from making an invoice. */
@@ -25,9 +24,7 @@ export type PreviewMissing =
   | "counterparty_mismatch"
   | "basis"
   | "retainer"
-  | "billing_address"
-  | "email"
-  | "siren"
+  | RecipientGap
 
 export interface PreviewTotalsInput {
   projectId?: string
@@ -91,69 +88,6 @@ const WHAT_TO_SET: Record<PreviewMissing, string> = {
   billing_address: "the customer's billing address",
   email: "the customer's email address",
   siren: "the customer's SIREN",
-}
-
-const blank = (v: unknown) => typeof v !== "string" || v.trim() === ""
-
-/**
- * What the customer lacks for its invoice to issue, checked as the issue checks it: a postal
- * address and an email on the recipient, and what the e-invoice gate refuses without (a French
- * business's SIREN, its structured billing address). Read only.
- */
-async function recipientGaps(
-  ctx: PreviewTotalsCtx,
-  issuer: { country: string; vat_id?: string | null; vat_on_debits_default?: boolean | null },
-  contactId: string | null,
-  recipient: Recipient,
-): Promise<PreviewMissing[]> {
-  const gaps = new Set<PreviewMissing>()
-  if (blank(recipient.counterparty_address) || blank(recipient.counterparty_country))
-    gaps.add("billing_address")
-  if (blank(recipient.counterparty_email)) gaps.add("email")
-  const counterparty = counterpartyFromRow(
-    {
-      counterparty_contact_id: contactId,
-      counterparty_name: recipient.counterparty_name,
-      counterparty_address: recipient.counterparty_address,
-      counterparty_country: recipient.counterparty_country,
-      counterparty_vat_id: recipient.counterparty_vat_id,
-      counterparty_email: recipient.counterparty_email,
-    },
-    issuer,
-  )
-  const kinds = ["business", "individual", "public_entity", "non_registered_entity"] as const
-  const kind = kinds.find((k) => k === recipient.customer_kind) ?? null
-  const prepared = await prepareEinvoiceGate(
-    ctx as never,
-    {
-      type: "invoice",
-      issuer: {
-        country: issuer.country,
-        vat_id: issuer.vat_id ?? null,
-        vat_on_debits_default: issuer.vat_on_debits_default ?? null,
-      },
-      counterparty: {
-        ...counterparty,
-        customer_kind: kind,
-        billing_line1: recipient.billing_line1,
-        billing_line2: recipient.billing_line2,
-        billing_postcode: recipient.billing_postcode,
-        billing_city: recipient.billing_city,
-        billing_country_code: recipient.billing_country_code,
-      },
-      lines: [{ line_kind: "service" }],
-      operation_category: "services",
-    },
-    { materialise: false },
-  )
-  const refusal = prepared.evaluation.refusal
-  if (refusal && refusal.mode === "enforce") {
-    for (const m of refusal.missing) {
-      if (m.field.startsWith("buyer_sir")) gaps.add("siren")
-      else if (m.field.startsWith("billing_")) gaps.add("billing_address")
-    }
-  }
-  return [...gaps]
 }
 
 /** The unit a basis bills its lines in. */
@@ -273,8 +207,9 @@ export async function previewTotals(
     vat = Number(plan.tax_minor)
     incl = Number(plan.total_minor)
     rateBp = plan.rate_bp
-    // Only once the invoice has its contact: without one, setting the contact comes first.
-    if (recipient && contactId && missing.length === 0)
+    // The customer the Create would draft to, with or without a contact named: an invoice to a
+    // company alone carries no address or email either, and its issue would refuse it.
+    if (recipient && missing.length === 0)
       missing.push(...(await recipientGaps(ctx, issuer.issuer, contactId, recipient)))
   }
   const ready = missing.length === 0
@@ -334,8 +269,9 @@ async function retainerPreview(
     })
     currency = plan.currency
     overageMinutes = plan.fig.overageMinutes
-    const recipient =
-      companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
+    // The customer the retainer's Create drafts to: the schedule's contact and company first.
+    const who = retainerRecipient(s, { contactId, companyId })
+    const recipient = who.companyId || who.contactId ? await recipientOf(ctx, who) : null
     const tax = netLinesTotals({
       issuerCountry: issuer.issuer.country,
       taxCountry: recipient?.counterparty_country ?? null,
@@ -346,6 +282,8 @@ async function retainerPreview(
     vat = Number(tax.tax_minor)
     incl = Number(tax.total_minor)
     rateBp = tax.rate_bp
+    if (recipient && missing.length === 0)
+      missing.push(...(await recipientGaps(ctx, issuer.issuer, who.contactId, recipient)))
   }
   const ready = missing.length === 0
   return {

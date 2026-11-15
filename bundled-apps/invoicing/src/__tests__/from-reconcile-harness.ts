@@ -27,6 +27,42 @@ const ISSUER = {
 export const REC = "7a1d2c3e-0000-4000-8000-0000000000ab"
 const PROJECT = "7a1d2c3e-0000-4000-8000-000000000002"
 const COMPANY = "7a1d2c3e-0000-4000-8000-0000000000c2"
+/** The company's billing contact a card resolves, complete enough to issue to. */
+export const CONTACT = "7a1d2c3e-0000-4000-8000-0000000000c3"
+export const BILLING_CONTACT_IDENTITY = {
+  id: "ident-billing",
+  contact_id: CONTACT,
+  vat_id: "FR40303265045",
+  siren: "303265045",
+  confirmed_via: "auto",
+  registry_status: "A",
+  customer_kind: "business",
+}
+
+/** The kernel reads of that contact (its email, its billing address); null for any other call. */
+export function billingContactRead(target: string, args: Row | undefined) {
+  if (target === "kernel:contacts_read" && args?.contactId === CONTACT)
+    return {
+      status: "completed" as const,
+      result: { contact: { id: CONTACT, email: "billing@alpine.example" } },
+    }
+  if (target === "kernel:contacts_addresses_list" && args?.contactId === CONTACT)
+    return {
+      status: "completed" as const,
+      result: {
+        addresses: [
+          {
+            role: "billing",
+            street1: "12 rue de la Paix",
+            postalCode: "75002",
+            city: "Paris",
+            countryIso2: "FR",
+          },
+        ],
+      },
+    }
+  return null
+}
 const HPD = 420
 // What a card may hold beside its billed lines, which nothing sent may carry.
 export const MEMBER = "Tomas Novak"
@@ -40,6 +76,8 @@ export function linesRead(period = { from: "2026-10-01", to: "2026-10-31" }, rec
     projectId: PROJECT,
     projectName: "Maison Alpine platform",
     companyId: COMPANY,
+    // The company's billing contact, which the card resolves.
+    contactId: CONTACT,
     basis: "daily",
     state: "proposed",
     revision: 1,
@@ -85,7 +123,12 @@ export interface Harness {
 }
 
 export function harness(): Harness {
-  const db = createMockDb({ seed: { issuer_profiles: [ISSUER] } })
+  const db = createMockDb({
+    seed: {
+      issuer_profiles: [ISSUER],
+      counterparty_identities: [BILLING_CONTACT_IDENTITY],
+    },
+  })
   const renders: Row[] = []
   const mails: Row[] = []
   const render = { failReport: false }
@@ -132,6 +175,8 @@ export function harness(): Harness {
         }
       if (target === "kernel:companies_read")
         return { status: "completed" as const, result: { company: { name: "Maison Alpine SA" } } }
+      const contact = billingContactRead(target, args)
+      if (contact) return contact
       if (target === "mail:composeForApp") {
         mails.push(args)
         return mail.fail

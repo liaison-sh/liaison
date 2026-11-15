@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.30.0",
+  "version": "0.30.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2547,7 +2547,8 @@
         "properties": {
           "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
           "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
-          "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." }
+          "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." },
+          "contactId": { "type": ["string", "null"], "description": "The contact of the project's company the invoice goes to, when the schedule names none." }
         },
         "required": ["reconciliationId", "revision"],
         "additionalProperties": false

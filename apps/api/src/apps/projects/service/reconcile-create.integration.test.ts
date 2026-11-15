@@ -152,6 +152,8 @@ function invoicingDescriptor(): Record<string, unknown> {
     ...manifest,
     trusted: false,
     _format: "manifest",
+    // The image's own catalog app: what it declares for its approved runs holds.
+    _firstParty: true,
     _bundlePath: join(
       REPO_ROOT,
       "bundled-apps",

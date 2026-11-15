@@ -6,6 +6,7 @@
 import { readEinvoiceRowColumns } from "../einvoicing/issue-gate"
 import {
   type DraftLine,
+  type IssueBatchOp,
   type IssueDb,
   type IssuerProfile,
   readRefString,
@@ -665,6 +666,18 @@ function draftEinvoiceFieldsOf(doc: Record<string, unknown>): Partial<DraftRow> 
 export async function deleteDraftRow(db: MutationsDb, draftId: string): Promise<void> {
   await deleteAllLines(db, draftId)
   await db.delete("documents", draftId)
+}
+
+/** The writes that delete a draft (its lines, then the draft), for a caller's one `batch`. */
+export async function draftDeleteOps(db: MutationsDb, draftId: string): Promise<IssueBatchOp[]> {
+  const rows = (await db.findMany("document_lines", {
+    where: { document_id: draftId },
+    limit: 1000,
+  })) as Array<Record<string, unknown>>
+  return [
+    ...rows.map((r): IssueBatchOp => ({ delete: "document_lines", id: String(r.id) })),
+    { delete: "documents", id: draftId },
+  ]
 }
 
 /** The Shopify draft order a document mirrors, from the top-level column or the external_refs

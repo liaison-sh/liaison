@@ -421,4 +421,22 @@ describe("EditableTableBlock", () => {
     // The count follows too (it is the table's, read again with the page).
     expect(screen.getByTestId("table-block-count").textContent).toBe("2 rows")
   })
+
+  it("keeps an open cell editor when a reload that changes nothing lands", async () => {
+    // Every read answers new objects with the same content, as the wire does.
+    const { get } = mount({
+      table: () => structuredClone(TABLE),
+      rows: () => ({ rows: structuredClone(ROWS), nextCursor: null }),
+    })
+    fireEvent.click(await screen.findByTestId("table-block-edit-r1-units"))
+    const input = screen.getByTestId("table-block-editor-r1-units")
+    const rowReads = () => get.mock.calls.filter((c) => String(c[0]).includes("/rows?")).length
+    const before = rowReads()
+    // A table change reads everything again, editing or not (its own write echoed live, say).
+    void handleTableEvent({ get } as unknown as ApiClient, "table", "updated", { tableId: "t1" })
+    await waitFor(() => expect(rowReads()).toBe(before + 1))
+    await new Promise((r) => setTimeout(r, 0))
+    // The same input, not a new one: the row and its cells were not rendered again.
+    expect(screen.getByTestId("table-block-editor-r1-units")).toBe(input)
+  })
 })

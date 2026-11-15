@@ -153,6 +153,14 @@ function lastWeekday(end: string): string {
   return d
 }
 
+/** The day a schedule drafts the invoice it issues on `issueOn`, as invoicing works it out:
+ *  three days before, a weekend moved back to its Friday. */
+function draftDayOf(issueOn: string): string {
+  let d = addCalendarDays(issueOn, -3)
+  while (isoWeekdayOf(d) > 5) d = addCalendarDays(d, -1)
+  return d
+}
+
 /** A Saturday or Sunday moves back to its Friday, never before `floor`. */
 function onWorkday(civil: string, floor: string): string {
   const wd = isoWeekdayOf(civil)
@@ -377,7 +385,7 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
         covers: "period_ended",
         from: monthOf(today, 3).key,
         nextIssueOn: thisMonth.end,
-        nextDraftOn: thisMonth.end,
+        nextDraftOn: draftDayOf(thisMonth.end),
       },
       {
         // The smaller retainer is a plain monthly schedule: its project is at a fixed price.
@@ -386,13 +394,13 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
         client: "verdier",
         contactKey: "marc-verdier",
         feeMinor: 120_000,
-        feeLabel: "Route planning upkeep, 10 hours a month",
+        feeLabel: "Route planning upkeep, monthly",
         includedMinutes: null,
         overageRateMinor: null,
         covers: "period_ahead",
         from: thisMonth.key,
         nextIssueOn: nextMonth.start,
-        nextDraftOn: lastWeekday(thisMonth.end),
+        nextDraftOn: draftDayOf(nextMonth.start),
       },
     ],
     retainerLastMonth: {

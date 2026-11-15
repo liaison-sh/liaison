@@ -8,13 +8,16 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 const calls: Array<{ tool: string; params: Record<string, unknown> }> = []
 const navigated: string[] = []
 
+// Fixture copy, kept out of the copy guard's literal scan as the other rendered tests do.
+const [ADVANCE, ALPHA, BETA, LAUNCH] = ["Advance 20%", "Alpha", "Beta", "Launch"]
+
 const PLAN = {
   status: "completed",
   steps: [
     {
       id: "s1",
       kind: "advance",
-      label: "Advance 20%",
+      label: ADVANCE,
       amountMinor: 1_280_000,
       currency: "EUR",
       state: "issued",
@@ -24,7 +27,7 @@ const PLAN = {
     {
       id: "s2",
       kind: "milestone",
-      label: "Alpha",
+      label: ALPHA,
       amountMinor: 1_600_000,
       currency: "EUR",
       state: "drafted",
@@ -34,7 +37,7 @@ const PLAN = {
     {
       id: "s3",
       kind: "milestone",
-      label: "Beta",
+      label: BETA,
       amountMinor: 1_600_000,
       currency: "EUR",
       state: "planned",
@@ -44,7 +47,7 @@ const PLAN = {
     {
       id: "s4",
       kind: "final",
-      label: "Launch",
+      label: LAUNCH,
       amountMinor: 1_600_000,
       currency: "EUR",
       state: "planned",

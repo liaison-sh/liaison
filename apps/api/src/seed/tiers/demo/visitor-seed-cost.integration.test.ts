@@ -167,14 +167,18 @@ const SAAS_BASELINE = {
  * transactions locally, 11 648 in 1 128 on a Linux runner (the pin), 351
  * outbox events; 354 with the database app installed here as on a demo box
  * (+3 role events).
+ * Re-measured 2026-11-15 once the world carries its money (an issuer, a year of invoices
+ * issued through the invoicing writers, the fixed-price project's quote and billing plan, the
+ * retainers' schedules and last month's card) and each client company names its main contact:
+ * 12 884 round trips in 1 137 transactions on a Linux runner (the pin), 372 outbox events.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 354,
+  outboxEvents: 372,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 11_648,
-  transactions: 1_128,
+  statements: 12_884,
+  transactions: 1_137,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

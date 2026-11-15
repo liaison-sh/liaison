@@ -9,27 +9,31 @@
   },
   "app_invoicing.billing_steps": {
     "rows": 5,
-    "digest": "ac2784188bd9cc4b"
+    "digest": "19a8f81748e01ba6"
   },
   "app_invoicing.contact_relationships": {
     "rows": 3,
     "digest": "cfd0c487c554e7f6"
   },
+  "app_invoicing.counterparty_identities": {
+    "rows": 6,
+    "digest": "0851467772489fe7"
+  },
   "app_invoicing.document_lines": {
-    "rows": 518,
-    "digest": "ccbc76c6870de450"
+    "rows": 517,
+    "digest": "20ade2e2523f7f7e"
   },
   "app_invoicing.documents": {
-    "rows": 514,
-    "digest": "410ae2bd4c8d3c49"
+    "rows": 513,
+    "digest": "f256a9d3e0dedad2"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
-    "digest": "eda7ff4c80d998d1"
+    "digest": "fae625c0f212f53f"
   },
   "app_invoicing.recurring_schedules": {
     "rows": 2,
-    "digest": "e5d12e7565d3211d"
+    "digest": "9f5211bbe4cbe1a1"
   },
   "app_invoicing.tax_regimes": {
     "rows": 4,
@@ -115,14 +119,6 @@
     "rows": 2,
     "digest": "d8aff788326fd736"
   },
-  "kernel.approval_handle_counters": {
-    "rows": 1,
-    "digest": "b09e78db45059747"
-  },
-  "kernel.approval_requests": {
-    "rows": 1,
-    "digest": "34a50b6866a4337b"
-  },
   "kernel.apps": {
     "rows": 19,
     "digest": "a574308049107243"
@@ -139,6 +135,10 @@
     "rows": 8,
     "digest": "a1ac404aad12146f"
   },
+  "kernel.contact_addresses": {
+    "rows": 6,
+    "digest": "296190b3a03adc92"
+  },
   "kernel.contacts": {
     "rows": 7,
     "digest": "357467897b38fbf6"
@@ -151,17 +151,13 @@
     "rows": 5,
     "digest": "7ab21419f2813b9b"
   },
-  "kernel.messages": {
-    "rows": 1,
-    "digest": "70e1f8cad5b0121d"
-  },
   "kernel.org_app_features": {
     "rows": 1,
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 372,
-    "digest": "5ce186e23ed00d4a"
+    "rows": 368,
+    "digest": "213b01cd6fd67575"
   },
   "kernel.roles": {
     "rows": 32,
@@ -176,12 +172,12 @@
     "digest": "52b5dce6e8ef1bde"
   },
   "kernel.thread_participants": {
-    "rows": 242,
-    "digest": "da1923dbb82e3db2"
+    "rows": 240,
+    "digest": "f1bef0e090c2656f"
   },
   "kernel.threads": {
-    "rows": 121,
-    "digest": "d89dcd7ee379ed05"
+    "rows": 120,
+    "digest": "f6267fb37c56973f"
   },
   "kernel.user_dimension_grants": {
     "rows": 24,
@@ -192,8 +188,8 @@
     "digest": "f2fbc49b92c963a1"
   },
   "kernel.user_thread_state": {
-    "rows": 122,
-    "digest": "778fc93f7ebb5948"
+    "rows": 120,
+    "digest": "6276f11109bd61dd"
   },
   "kernel.users": {
     "rows": 24,

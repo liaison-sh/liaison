@@ -455,6 +455,12 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   // Converting is irreversible and, for a Shopify-linked quote, reaches into
   // Shopify and creates a real order, so the click must open a dialog and the
   // tool must fire only after the human confirms.
+  it("line totals read excluding VAT on drafts and issued documents alike", () => {
+    expect(source).toContain('header: tr("Total excl. VAT")')
+    expect(source).toContain("<Money minor={l.subtotal_minor}")
+    expect(source).not.toContain("<Money minor={l.total_minor}")
+  })
+
   describe("send and mark paid", () => {
     it("are not offered on a draft, and mark paid is not offered once paid", () => {
       const doc = (status: string, payment_status = "unpaid", type = "invoice") =>

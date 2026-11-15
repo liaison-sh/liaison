@@ -138,6 +138,7 @@ export const FR: Record<string, string> = {
     "Sa taxe demande une décision avant l'émission de la facture.",
   Language: "Langue",
   "Send invoices from": "Envoyer les factures depuis",
+  "Total excl. VAT": "Total HT",
   "No mailbox chosen": "Aucune boîte choisie",
   "A mailbox you cannot see": "Une boîte que vous ne voyez pas",
   "Last action": "Dernière action",

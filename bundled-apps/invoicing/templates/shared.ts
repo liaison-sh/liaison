@@ -821,7 +821,8 @@ function drawTableHeader(state: LayoutState): void {
       color: GRAY_DARK,
     })
   }
-  drawRight(ctx, "Amount", TABLE_COLS.amount.rightX, {
+  // The column holds each line excluding VAT; the VAT is in the totals below.
+  drawRight(ctx, state.showTax ? "Amount excl. VAT" : "Amount", TABLE_COLS.amount.rightX, {
     y: labelY,
     size: 8.5,
     bold: true,
@@ -1228,7 +1229,7 @@ function drawItemsTable(state: LayoutState, input: DocumentRenderInput): void {
     }
     drawRight(
       ctxIndex,
-      formatMoney(line.total_minor, input.document.currency).replace(
+      formatMoney(line.subtotal_minor, input.document.currency).replace(
         ` ${input.document.currency}`,
         "",
       ),

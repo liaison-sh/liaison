@@ -813,12 +813,15 @@ function OverviewBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.E
                   ),
                 },
                 {
+                  // Excluding VAT on every document, draft or issued: the VAT is in the totals.
                   key: "total",
-                  header: tr("Total"),
+                  header: tr("Total excl. VAT"),
                   role: "meta",
                   numeric: true,
                   align: "right",
-                  cell: (l) => <Money minor={l.total_minor} currency={p.doc.currency} codeless />,
+                  cell: (l) => (
+                    <Money minor={l.subtotal_minor} currency={p.doc.currency} codeless />
+                  ),
                 },
               ] as Array<CardTableColumn<DocumentLine>>
             }

@@ -3620,6 +3620,20 @@ describe("documents.send_to_customer", () => {
     expect(codeOnly.code).toBe("smtp_rejected")
   })
 
+  test("a send from a mailbox the person cannot reach is refused in words for that person", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "NOT_FOUND",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).toBe(
+      "This document was not sent: you cannot send from the mailbox chosen in Settings, Invoicing. Someone who can send from it can send it, or an admin can choose another one there.",
+    )
+  })
+
   // Regression — the same fallback with NO contact link at all. A document carrying only a
   // counterparty_name (no counterparty_contact_id) must still resolve a recipient via the registry.
   test("FALLBACK — resolves the recipient by counterparty_name even with no counterparty_contact_id", async () => {

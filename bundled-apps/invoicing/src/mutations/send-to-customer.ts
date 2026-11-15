@@ -67,7 +67,7 @@ async function preflightSendToCustomerParams(
           // to do about it. No dash punctuation.
           message:
             "No send-from mailbox is set on this issuer profile, so the document cannot be emailed. " +
-            "Set the send-from mailbox on the issuer profile in invoicing settings (mail_account_id), then send again.",
+            "Choose it under Send invoices from, on the issuer profile in Settings, Invoicing, then send again.",
         },
       },
     }
@@ -231,6 +231,15 @@ export async function documentsSendToCustomer(
 export function sendErrorFromEnvelope(envelope: {
   error?: { code?: string; message?: string; retryable?: boolean }
 }): { code: string; message: string } {
+  // The issuer's send-from mailbox is not one this person reaches (mail access decides): say so in
+  // their words, never the mail tool's instructions to an agent.
+  if (envelope.error?.code === "NOT_FOUND") {
+    return {
+      code: "mailbox_unavailable",
+      message:
+        "This document was not sent: you cannot send from the mailbox chosen in Settings, Invoicing. Someone who can send from it can send it, or an admin can choose another one there.",
+    }
+  }
   if (envelope.error?.code || envelope.error?.message) {
     return {
       code: envelope.error.code ?? "send_failed",

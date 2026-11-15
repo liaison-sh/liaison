@@ -19,7 +19,7 @@
 // time), and every concurrent seed must finish whole on the process's pools.
 //
 // Change a pin only on purpose, with the new measurement in the PR.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -191,6 +191,8 @@ const BASELINE = {
 /** No world's seed costs more than this many times the products world's. */
 const WORLD_COST_RATIO = 1.5
 const STATEMENT_MARGIN = 1.005
+/** The day every seed here runs on (a Sunday, as the baselines were measured). */
+const SEED_DAY = new Date(Date.UTC(2026, 10, 15, 12))
 const TRANSACTION_SLACK = 2
 /**
  * Seeds a launch box's pool refill runs at once in one process:
@@ -273,6 +275,10 @@ async function seedOnce(
 }
 
 beforeAll(() => {
+  // A visitor's world is built around today, and a working day seeds more activity than a
+  // weekend: on the wall clock the same code counted 43 more round trips on a Monday than on
+  // the Sunday before. The seed runs on one pinned day, so the counts move only with the code.
+  setSystemTime(SEED_DAY)
   if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
   if (/liaison_dev|liaison_test(?!_)/.test(DB_URL)) {
     throw new Error("refusing to seed a shared database: use liaison_hardening_test")
@@ -287,6 +293,7 @@ beforeAll(() => {
 })
 
 afterAll(() => {
+  setSystemTime()
   DemoModeTestAccess.set(null)
 })
 

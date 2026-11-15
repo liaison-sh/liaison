@@ -775,8 +775,20 @@ describe("once issued", () => {
     const companies = await seedCompanies(
       ctx,
       actorOf(owner.userId),
-      [{ key: "lavande", name: "Maison Lavande", domain: "lavande.example" }],
-      {},
+      [
+        {
+          key: "lavande",
+          name: "Maison Lavande",
+          domain: "lavande.example",
+          contactKeys: ["billing"],
+          mainContactKey: "billing",
+        },
+      ],
+      {
+        billing: await minimal.contact(orgId, "billing@lavande.example", {
+          name: "Maison Lavande billing",
+        }),
+      },
     )
     const made = await call<{ id: string }>("projects_createProject", {
       name: "Maison Lavande site",

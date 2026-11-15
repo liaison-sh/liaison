@@ -225,8 +225,20 @@ beforeAll(async () => {
   const companies = await seedCompanies(
     ctx,
     actorOf(owner.userId, ["*"]),
-    [{ key: "delorme", name: "Maison Delorme", domain: "delorme.example" }],
-    {},
+    [
+      {
+        key: "delorme",
+        name: "Maison Delorme",
+        domain: "delorme.example",
+        contactKeys: ["billing"],
+        mainContactKey: "billing",
+      },
+    ],
+    {
+      billing: await minimal.contact(orgId, "billing@delorme.example", {
+        name: "Maison Delorme billing",
+      }),
+    },
   )
   delorme = companies.delorme!
   const issuer = await executeTool<Record<string, unknown>>({

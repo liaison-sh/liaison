@@ -852,6 +852,10 @@ const MessageRow: Component<MessageRowProps> = (props) => {
       />
     </Show>
   )
+  // A failed sequence's note to the agent (what ran, what to propose next): the server posts it
+  // under the requester's id so the agent's turn can answer it, but it is not the person's words,
+  // and the conversation already says the sequence could not complete.
+  if (props.message.metadata?.type === "bundle-reinvoke") return null
   // A membership event is not a message. An agent pulled into a room by a
   // mention used to render as a post BY the person who mentioned it, avatar
   // and all; it is the same muted centered line a room gets when a person is

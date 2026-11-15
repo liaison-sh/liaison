@@ -9734,7 +9734,7 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     expect(r.error.message).toContain("settings_issuer_profile_list")
   })
 
-  test("incomplete counterparty: names the missing fields and shows a complete example", async () => {
+  test("incomplete counterparty: names the missing fields in words a person reads", async () => {
     const { ctx } = makeCtx()
     const r = await quoteCreateAndIssue(ctx, {
       counterparty: { ...defaultCounterparty, address: null, email: "" },
@@ -9744,8 +9744,10 @@ describe("quote_create_and_issue: outputs, customer_reference, discount_minor an
     })
     if (r.status !== "error") throw new Error("expected error")
     expect(r.error.code).toBe("counterparty_incomplete")
-    expect(r.error.message).toContain("address, email are missing")
-    expect(r.error.message).toContain('"legal_name": "Acme SAS"')
+    expect(r.error.message).toContain(
+      "the customer's postal address and the customer's email address are missing",
+    )
+    expect(r.error.message).not.toContain("{")
     expect(r.error.message).toContain("never make them up")
   })
 

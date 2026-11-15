@@ -171,19 +171,20 @@ export function counterpartyCompletenessError(
 ): { code: string; message: string } | null {
   const missing = REQUIRED_COUNTERPARTY_FIELDS.filter((f) => blank(counterparty[f]))
   if (missing.length === 0) return null
+  const said = missing.map((f) => `the customer's ${COUNTERPARTY_FIELD_SAID[f]}`)
+  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
   return {
     code: "counterparty_incomplete",
-    message:
-      `cannot issue a document without a complete recipient: ${missing.join(", ")} ` +
-      `${missing.length === 1 ? "is" : "are"} missing. An issued document is a legal record, ` +
-      `so the recipient name, postal address, email and country are all required. Set them on ` +
-      `the draft (drafts_update counterparty_name / counterparty_address / counterparty_email / ` +
-      `counterparty_country) or pass a complete \`counterparty\` to the create-and-issue tool, ` +
-      `e.g. counterparty: {"legal_name": "Acme SAS", "country": "FR", "address": ` +
-      `"12 rue de la Paix, 75002 Paris, France", "email": "billing@acme.example"} (country is the ` +
-      `ISO 3166 alpha-2 code). Ask the person for any of these you do not know; never make them up. ` +
-      `Nothing was issued.`,
+    message: `This document cannot be issued yet: ${list} ${missing.length === 1 ? "is" : "are"} missing. Add ${missing.length === 1 ? "it" : "them"} to the customer or the draft, then issue again. Ask the customer for any you do not know; never make them up. Nothing was issued.`,
   }
+}
+
+/** How a person reads each required recipient field. */
+const COUNTERPARTY_FIELD_SAID: Record<(typeof REQUIRED_COUNTERPARTY_FIELDS)[number], string> = {
+  legal_name: "name",
+  country: "country",
+  address: "postal address",
+  email: "email address",
 }
 
 /**

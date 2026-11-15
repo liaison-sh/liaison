@@ -150,11 +150,19 @@ describe("counterpartyCompletenessError", () => {
     expect(counterpartyCompletenessError(complete)).toBeNull()
   })
 
+  const SAID = {
+    legal_name: "name",
+    country: "country",
+    address: "postal address",
+    email: "email address",
+  } as const
   for (const field of ["legal_name", "country", "address", "email"] as const) {
     test(`refuses a recipient with no ${field}`, () => {
       const err = counterpartyCompletenessError({ ...complete, [field]: null })
       expect(err?.code).toBe("counterparty_incomplete")
-      expect(err?.message).toContain(field)
+      expect(err?.message).toContain(`the customer's ${SAID[field]}`)
+      // Said for the person reading it: no tool name, no JSON example.
+      expect(err?.message).not.toMatch(/drafts_update|counterparty_|\{"/)
     })
 
     test(`refuses a recipient whose ${field} is whitespace only`, () => {

@@ -211,3 +211,19 @@ describe("a routine's 'is running' line", () => {
     )
   })
 })
+
+describe("a failed sequence's note to the agent", () => {
+  it("is never drawn as the person's own message", () => {
+    renderRow(
+      message({
+        authorType: "user",
+        authorName: "Owner",
+        authorAgentId: null,
+        content:
+          'An approval sequence failed and was stopped: Step 2 failed. {"number":"F-1"} To finish the task, propose a corrected sequence as NEW tool calls.',
+        metadata: { type: "bundle-reinvoke", bundleId: "b-1" },
+      }),
+    )
+    expect(screen.queryByText(/propose a corrected sequence/)).toBeNull()
+  })
+})

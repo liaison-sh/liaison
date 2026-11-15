@@ -319,7 +319,10 @@ itself so its preflight pins them.
 `ctx.requestApproval` can set `expiry_hours`, a whole number from 1 to 720,
 when it knows its own deadline. It wins over the tool's `approvalExpiryHours`
 and the 168-hour default; any other value is refused (`expiry_hours_invalid`)
-and nothing is staged.
+and nothing is staged. When what it approves has a last day (an invoice draft's
+latest issue day), `summary_detail.latest_on` (`YYYY-MM-DD`, the organization's
+calendar) carries it: Home sorts the request to the top from four days before
+that day, and keeps it there once the day is past. It changes the order only.
 
 **Changing an approval through other tools.** A tool whose approval takes no
 edit, because what it carries is changed through other tools of the app, lists

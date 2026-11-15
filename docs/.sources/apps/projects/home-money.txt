@@ -1,0 +1,2 @@
+The month-close line opens the biller's own proposed card of the month in its conversation, else the project -> apps/api/src/apps/projects/service/home-lines.ts (ownProposedCards) ; apps/api/src/apps/projects/service/home-lines.ts (monthCloseRows)
+A draft discarded or set aside for a newer card brings the month line back on its day -> apps/api/src/apps/projects/service/home-lines.ts (monthsReconciled)

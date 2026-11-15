@@ -1,0 +1,1 @@
+summary_detail.latest_on carries a request's last day; Home sorts it to the top from four days before -> apps/api/src/modules/apps/execute-tool.ts (createHandlerApprovalRequest) ; packages/shared/src/types/approvals.ts (approvalSummarySchema) ; apps/api/src/modules/approvals/attention.ts (nearLatestDay)

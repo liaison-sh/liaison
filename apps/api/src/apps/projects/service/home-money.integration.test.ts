@@ -285,7 +285,7 @@ describe("the month line on Home", () => {
     )
     expect(out.state).toBe("proposed")
     const after = await moneyByProject(await homeOf(biller, day))
-    expect(after.get(project.daily!)?.map((i) => i.kind)).toEqual([MONTH_CLOSE_KIND])
+    expect(after.get(project.daily!)?.map((i) => i.kind as string)).toEqual([MONTH_CLOSE_KIND])
   })
 
   it("a draft released for a newer card of the same person brings the month line back", async () => {

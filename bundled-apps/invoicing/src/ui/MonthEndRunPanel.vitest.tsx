@@ -129,6 +129,10 @@ vi.mock("@liaison/host", () => ({
 
 const { MonthEndRunPanel } = await import("./MonthEndRunPanel")
 const { Editor } = await import("./Editor")
+// A row's editor loads its draft through the app's UI entry (`./index`), imported on first open.
+// Transformed here, once, before any test: on a busy runner its first transform alone outlasted
+// the first test's wait for the row's fields.
+await import("./index")
 
 const item = (id: string, hash: string, total: string) => ({
   item_id: id,

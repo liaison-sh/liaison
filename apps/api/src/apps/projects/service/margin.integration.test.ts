@@ -734,16 +734,16 @@ describe("once issued", () => {
     expect((out.data as { status?: string } | undefined)?.status).toBe("completed")
   }
 
-  it("Marlin reads invoiced 44,800 and 19,200 left from issued invoices", async () => {
-    const marlin = await newProject("Maison Delorme platform")
+  it("a fixed price reads invoiced 44,800 and 19,200 left from issued invoices", async () => {
+    const fixed = await newProject("Maison Delorme platform")
     await call("projects_billingTermsSet", {
-      projectId: marlin,
+      projectId: fixed,
       fixedPrice: 64000,
       currency: "EUR",
     })
     // 35,800 issued, and a 9,000 draft that is issued below through the real issue.
     await invoices(
-      marlin,
+      fixed,
       [
         doc("m-advance", "invoice", 1_280_000, 90, { status: "paid", paymentStatus: "paid" }),
         doc("m-discovery", "invoice", 2_300_000, 60),
@@ -751,16 +751,16 @@ describe("once issued", () => {
       ],
       100,
     )
-    const before = await run(budgetGet, { projectId: marlin })
+    const before = await run(budgetGet, { projectId: fixed })
     expect(before.money).toEqual(expect.objectContaining({ invoiced: 35800, leftToInvoice: 28200 }))
     const draft = extractRows<{ id: string }>(
       await db.execute(drizzleSql`
         SELECT id::text AS id FROM app_invoicing.documents
-         WHERE org_id = ${orgId}::uuid AND billing_project_id = ${marlin}::uuid
+         WHERE org_id = ${orgId}::uuid AND billing_project_id = ${fixed}::uuid
            AND status = 'draft'`),
     )[0]!
     await issue(draft.id)
-    const out = await run(budgetGet, { projectId: marlin })
+    const out = await run(budgetGet, { projectId: fixed })
     expect(out.error).toBeUndefined()
     expect(out.money).toEqual({
       price: 64000,
@@ -770,18 +770,18 @@ describe("once issued", () => {
     })
   })
 
-  it("Alpine's October reads 3,598, partial 9 of 11, once issued", async () => {
+  it("an hourly project's October reads 3,598, partial 9 of 11, once issued", async () => {
     const ctx = seedContext({ orgId, now: new Date() })
     const companies = await seedCompanies(
       ctx,
       actorOf(owner.userId),
-      [{ key: "alpine", name: "Maison Alpine", domain: "alpine.example" }],
+      [{ key: "lavande", name: "Maison Lavande", domain: "lavande.example" }],
       {},
     )
     const made = await call<{ id: string }>("projects_createProject", {
-      name: "Maison Alpine site",
+      name: "Maison Lavande site",
       key: "ALPOCT",
-      companyId: companies.alpine,
+      companyId: companies.lavande,
       timeBudgets: true,
     })
     await awaitTimeFeatureSync(orgId)

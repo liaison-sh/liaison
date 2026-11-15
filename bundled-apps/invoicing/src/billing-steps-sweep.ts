@@ -97,18 +97,18 @@ export async function billingStepsSweep(
     }
     resolved += 1
   }
-  const pending = await pendingIssueDrafts(ctx)
+  let pending: Set<string> | null = null
   for (const projectId of new Set([...byProject.keys(), ...lineUp])) {
     const list = byProject.get(projectId) ?? []
     // A draft of the project whose issue approval is pending is the project's item. One whose
     // request was turned down or ran out is on no list, so it holds nothing; a step with its own
     // draft is already off the line.
-    const waiting = (
-      (await ctx.db.findMany("documents", {
-        where: { billing_project_id: projectId, status: "draft" },
-        limit: 50,
-      })) as Row[]
-    ).some((d) => pending.has(String(d.id)))
+    const drafts = (await ctx.db.findMany("documents", {
+      where: { billing_project_id: projectId, status: "draft" },
+      limit: 50,
+    })) as Row[]
+    if (drafts.length > 0) pending ??= await pendingIssueDrafts(ctx)
+    const waiting = drafts.some((d) => pending?.has(String(d.id)))
     if (waiting || list.length === 0) {
       if (lineUp.has(projectId)) await takeDown(projectId, list)
       continue

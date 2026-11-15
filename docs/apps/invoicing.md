@@ -110,6 +110,8 @@ Sending the invoice to the customer puts everything in one mail: the invoice, it
 
 The approval card of a draft names its latest issue date, the last day of the month it bills. A draft still unissued after that day is late: it issues with the date of the day it is issued, never an earlier one. On an e-invoice, the Factur-X states the month the invoice covers, on the document and on each line.
 
+Projects files the month's timesheet on a reconcile card's draft when the project has dated hours; it hands over only the sheet it just exported for you. An advance outside a billing plan is refused on a project billed by the day or the hour, because its planned vs done invoices deduct no advance. A correction of a billed line from its card issues its credit note like any other.
+
 ## Work with an issued document
 
 Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quotes**, **Proformas**, **Purchase Orders**, **Credit notes**). The list footer counts the rows with the right noun ("1 invoice", "2 invoices"). An empty list names the dates it looked at ("No documents from 1 Oct 2026 to 31 Oct 2026."), or says "No documents yet." when no date or filter is set. The buttons at the top of a document, next to its number and status, offer:

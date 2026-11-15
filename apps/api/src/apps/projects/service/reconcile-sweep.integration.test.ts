@@ -359,4 +359,68 @@ describe("claims follow the key their draft got", () => {
     )
     expect(out.reserved).toBe(1)
   })
+
+  it("a partial credit whose call to projects was lost still records each corrected line's billed figure", async () => {
+    const ref = `reconcile:${crypto.randomUUID()}:1`
+    const r = await storedReconciliation(w, {
+      month: "2025-11",
+      state: "invoiced",
+      documentRef: ref,
+      lines: [
+        { tasks: ["SWEEP-12"], bill: 3 * 480 },
+        { tasks: [], bill: 2 * 480 },
+      ],
+    })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET create_hours_per_day_minutes = 480
+       WHERE id = ${r.id}::uuid`)
+    const claim = await heldClaim(w, "SWEEP-12", r.id, 120)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'billed' WHERE id = ${claim}::uuid`)
+    const invoice = await invoiceCarrying(w, {
+      externalRef: ref,
+      status: "issued",
+      minor: 93_000,
+      creditMinor: 31_000,
+    })
+    // The invoice bills the line 3 days; one credit note took 1 day of it back.
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.document_lines SET quantity = 3,
+             external_id = ${`reconcile_line:${r.lineIds[0]}`}
+       WHERE document_id = ${invoice.id}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.document_lines SET quantity = 1,
+             external_id = ${`reconcile_line:${r.lineIds[0]}`}
+       WHERE document_id IN (SELECT id FROM app_invoicing.documents
+                              WHERE original_document_id = ${invoice.id}::uuid)`)
+    const figures = async () =>
+      extractRows<{ id: string; after: number | null }>(
+        await db.execute(drizzleSql`
+          SELECT id::text AS id, billed_after_credit_minutes AS after
+            FROM app_projects.reconciliation_lines
+           WHERE reconciliation_id = ${r.id}::uuid ORDER BY position`),
+      ).map((l) => l.after)
+    expect(await figures()).toEqual([null, null])
+    const first = await sweepClaims()
+    expect(first.partlyCredited).toBeGreaterThanOrEqual(1)
+    // 3 days less 1 credited: 2 days of 480 minutes; the line no note names is untouched.
+    expect(await figures()).toEqual([960, null])
+    expect(await claimState(claim)).toBe("billed")
+    expect((await reconciliationRow(r.id))?.state).toBe("invoiced")
+    // A second run, or invoicing's own mark after it, writes nothing new.
+    await sweepClaims()
+    expect(await figures()).toEqual([960, null])
+    const mark = await asPerson(w, (tx) =>
+      reconcileMark({
+        tx,
+        orgId: w.orgId,
+        input: {
+          reconciliationId: r.id,
+          to: "partly_credited",
+          creditedMinutesByLine: { [r.lineIds[0]!]: 480 },
+        },
+      }),
+    )
+    expect(mark.changed).toBe(false)
+  })
 })

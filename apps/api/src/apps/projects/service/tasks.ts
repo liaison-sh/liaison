@@ -12,6 +12,7 @@ import { updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { applyCells, changedKeys } from "~/modules/dashboards/tables/columns"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
 import { checklistStatus } from "./checklist-status"
+import { refuseClaimedTasks } from "./claim-holds"
 import { explainClosingStages, mergeDealRows, syncDealOutcome } from "./deals"
 import { dueBucketSql } from "./due-status"
 import {
@@ -1645,6 +1646,8 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   if (exists.length < 2) {
     throw new ProjectsServiceError(404, "not_found", "source or target task not found")
   }
+  // A source on a live billing claim is billed work: it is not merged away.
+  await refuseClaimedTasks(orgId, [sourceId], "merged")
   // A fold past what one time row holds refuses the merge before anything is written.
   await mergeTaskTimeRows(tx, sourceId, targetId, true)
   // Two deals naming different companies are refused before anything is

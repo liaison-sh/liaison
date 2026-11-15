@@ -1751,6 +1751,12 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   })
   if (finished.error) return finished
 
+  // A project with dated hours: the month's sheet goes on the draft with the report.
+  const sheet =
+    prep.datedHours === true && typeof prep.month === "string"
+      ? await fileMonthSheet(ctx, String(prep.projectId), prep.month, documentId)
+      : null
+
   const totals = (d.totals ?? {}) as { incl?: number; currency?: string }
   const approved = d.approved === true
   const approvalId = typeof d.approvalId === "string" ? d.approvalId : null
@@ -1779,8 +1785,66 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
     approvalId,
     title,
     createdText,
-    message: `${createdText} ${pending}`,
+    message: `${createdText} ${pending}${sheet ? ` ${sheet.text}` : ""}`,
     next: "Tell the person the draft is made. Undo on the card discards it; a person issues it.",
+  }
+}
+
+/**
+ * The month's timesheet filed on a card's draft: exported for the person, then that file, the one
+ * this call just made and no other, handed to invoicing's `document_attachment_add`. A partial
+ * sheet is filed marked partial with its coverage line. Never fails Create: what did not happen
+ * is said.
+ */
+async function fileMonthSheet(
+  ctx: ProjectsCtx,
+  projectId: string,
+  month: string,
+  documentId: string,
+): Promise<{ filed: boolean; partial: boolean; text: string }> {
+  let exported: Record<string, unknown>
+  try {
+    exported = JSON.parse(
+      await ctx.projects_timesheetExport(
+        JSON.stringify({ projectId, month, format: "pdf", acceptPartial: true }),
+      ),
+    ) as Record<string, unknown>
+  } catch {
+    return {
+      filed: false,
+      partial: false,
+      text: "The month's timesheet was not filed on it: it could not be exported.",
+    }
+  }
+  const err = exported.error as { message?: string } | undefined
+  const fileId = typeof exported.fileId === "string" ? exported.fileId : ""
+  if (err || !fileId) {
+    return {
+      filed: false,
+      partial: false,
+      text: `The month's timesheet was not filed on it${err?.message ? `: ${err.message}` : "."}`,
+    }
+  }
+  const partial = exported.partial === true
+  const filed = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:document_attachment_add",
+      JSON.stringify({ documentId, fileId, kind: "timesheet", partial }),
+    ),
+  )
+  if (!filed.ok) {
+    return {
+      filed: false,
+      partial,
+      text: `The month's timesheet was exported for you but not filed on it: ${filed.message}`,
+    }
+  }
+  return {
+    filed: true,
+    partial,
+    text: partial
+      ? `The month's timesheet is filed on it, marked partial: ${String(exported.coverageLine ?? "")}`.trim()
+      : "The month's timesheet is filed on it.",
   }
 }
 

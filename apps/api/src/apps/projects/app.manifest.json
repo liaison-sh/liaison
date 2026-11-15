@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.41.1",
+  "version": "1.41.2",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -6596,7 +6596,7 @@
   "skills": {
     "reconcile": {
       "description": "Reconcile a project's period into client lines from planned time, real time and traces.",
-      "body": "1. Read `reconcile_facts`. Read traces with the ordinary tools, only for that client and period, only the source repos listed. If a repo is not listed, ask once which one.\n2. Group tasks into lines the client would recognise. Name no person. Never rank, count or compare people. Never mention who did or did not enter time.\n3. Leave out work by the client's own people, using `clientMarkers`.\n4. Unplanned lines say why: our mistake, client asked, or belongs to another client.\n5. Absence of activity is never evidence of anything. Never shorten, question or flag time from a gap.\n6. Never propose or estimate real time for a person. `traceEstimate` is for a line with no real time and only from what the proofs show.\n7. Say what you could not see.",
+      "body": "1. Read `reconcile_facts`. Read traces with the ordinary tools, only for that client and period, only the source repos listed. If a repo is not listed, ask once which one.\n2. Group tasks into lines the client would recognise. Name no person. Never rank, count or compare people. Never mention who did or did not enter time.\n3. Leave out work by the client's own people, using `clientMarkers`.\n4. Unplanned lines say why: our mistake, client asked, or belongs to another client.\n5. Absence of activity is never evidence of anything. Never shorten, question or flag time from a gap.\n6. Never propose or estimate real time for a person. `traceEstimate` is for a line with no real time and only from what the proofs show.\n7. Say what you could not see.\n8. A person creates the invoice on the card; you never issue.",
       "kind": "playbook",
       "feature": "time_budgets"
     },

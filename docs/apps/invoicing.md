@@ -116,6 +116,18 @@ A draft made from a planned vs done card, a milestone, a retainer month or an ad
 
 Projects files the month's timesheet on a reconcile card's draft when the project has dated hours; it hands over only the sheet it just exported for you. An advance outside a billing plan is refused on a project billed by the day or the hour, because its planned vs done invoices deduct no advance. A correction of a billed line from its card issues its credit note like any other.
 
+## Bill a fixed-price project in steps
+
+A fixed-price project is invoiced from its billing plan, never from planned vs done. Ask an agent to set the plan from the quote ("set the billing plan from the quote: an advance, three milestones and the final"), or to show it.
+
+- **The plan.** Advances, milestones tied to their tasks, and one final. Milestone and final amounts add up to the quote's total excl. VAT, or the plan is refused with the difference; an advance does not count toward it. A project billed by the hour, the day or a retainer bills from planned vs done, so a plan on it is refused.
+- **A milestone.** Its invoice is drafted from its task only, once the task is done and flagged a milestone ("milestone 2 is done, bill it"). The amount comes from the plan; hours never change it. A done milestone with no invoice raises one line on **Home** within the hour, and nothing is drafted by itself.
+- **An advance (acompte).** An ordinary invoice in the normal series, with its VAT, drafted from a plan step or from money received. The final's draft deducts every issued advance of the project by itself, one line per advance and VAT rate, citing the advance's number and date. An advance is deducted from one final only; one larger than the final, or not yet issued, is refused and nothing is drafted.
+- **The project stops.** Before its final, an advance is given back as a credit note citing it, within what remains of it. An advance a final deducts cannot be credited.
+- **Nothing is numbered before issue.** Each draft takes no number, and issuing it waits on its approval, decided by a person who can issue invoices.
+
+A project billed by the hour or the day is invoiced from its card instead: see [Create the invoice from the card](projects.md#create-the-invoice-from-the-card), where a billed line is also corrected. A monthly retainer is billed from the same card: see [Bill a monthly retainer](recurring.md#bill-a-monthly-retainer). A retainer invoice, whose lines are its fee and its overage, is corrected with `credit_note_create_and_issue`.
+
 ## Work with an issued document
 
 Open a document from **Documents** in the sidebar (**All**, **Invoices**, **Quotes**, **Proformas**, **Purchase Orders**, **Credit notes**). The list footer counts the rows with the right noun ("1 invoice", "2 invoices"). An empty list names the dates it looked at ("No documents from 1 Oct 2026 to 31 Oct 2026."), or says "No documents yet." when no date or filter is set. The buttons at the top of a document, next to its number and status, offer:
@@ -316,6 +328,12 @@ When **Subscriptions paid by card** is issued by **Liaison**, each Stripe invoic
 | `recurring_run_issue` | Stage a month-end run's card when it has none (a waiting card is decided by a person on it); numbers are taken on the issue day | Always, never auto-approved |
 | `recurring_run_unapprove` | Undo a run's approval before its first number | No, unless the turn read outside text |
 | `documents_retry_pdf` | Re-render a failed PDF | No |
+| `billing_plan_get` | Read a fixed-price project's billing plan: its steps, their amounts, tasks and invoices | No |
+| `billing_plan_set` | Save a fixed-price project's billing plan from its quote | No, unless the turn read outside text |
+| `milestone_draft_create`, `advance_draft_create` | Draft the invoice of a done milestone, or an advance invoice; no number until issued | Issuing waits on its approval |
+| `advance_refund_prepare` | Give an advance back with a credit note when its project stops before the final | Threshold |
+| `credit_note_from_reconcile` | Correct one billed line of an invoice made from planned vs done, with a credit note | Always for an agent |
+| `document_attachment_add` | File an activity report or a timesheet on a draft, or on an issued invoice before it is sent | No |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed lines or amounts: the credit note and the replacement invoice are issued together or not at all | Always |
 | `deferred_tax_override` | Issue a parked order with a chosen tax decision | Always |
 | `drafts_create`, `drafts_update`, `drafts_discard` | Unissued drafts; a month-end run's draft issues only through its run's card | No |

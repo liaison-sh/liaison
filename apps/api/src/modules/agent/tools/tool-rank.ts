@@ -561,7 +561,11 @@ export function scoreDeferredTools<T extends ScorableDeferredTool>(
         nameJoined === term ||
         nameJoined === plural
       )
-        score += otherKindOf(t, terms, termStems, i, tools) ? QUALIFIED_HEAD_SCORE : 10
+        score +=
+          otherKindOf(t, terms, termStems, i, tools) ||
+          qualifiedNameWord(t, termStems, termSynonyms, i, term, tools)
+            ? QUALIFIED_HEAD_SCORE
+            : 10
       // A keyword the tool declares for this org (singular or plural either way)
       else if (
         keywordSet.has(term) ||
@@ -694,6 +698,67 @@ function otherKindOf(
   if (FILLER_WORDS.has(typed) || !/^\p{L}{3,}$/u.test(typed)) return false
   if (recordsOf(tools).nouns.has(before)) return true
   return !isActionWord(typed, before, tools)
+}
+
+/** Name words that introduce what a tool works from, not what it is about. */
+const SOURCE_WORDS = new Set(["from", "for"])
+
+/**
+ * A name word the tool's name qualifies, matched by a query that names none of the words that
+ * qualify it. One after "from" or "for": `credit_note_from_reconcile` makes a credit note from a
+ * reconciliation, it is not a reconciliation tool. Or the record of `<qualifier>_<record>_<action>`
+ * when another tool is named `<record>_<action>`: `advance_refund_prepare` acts on one kind of the
+ * refunds `refunds_create` makes. Such a word matches the tool like a keyword, so "refund" alone
+ * reaches refunds before an advance's refund, and "reconcile" alone reaches the reconciliation
+ * tools before a correction made from one.
+ */
+function qualifiedNameWord(
+  t: ScorableDeferredTool,
+  termStems: readonly string[],
+  termSynonyms: readonly (readonly string[])[],
+  i: number,
+  term: string,
+  tools: readonly ScorableDeferredTool[],
+): boolean {
+  const parts = scoringWords(t).nameParts
+  const at = parts.findIndex((p) => p === term || p === `${term}s`)
+  if (at <= 0) return false
+  const named = (from: number, to: number) =>
+    parts
+      .slice(from, to)
+      .some(
+        (p, k) =>
+          from + k !== at &&
+          !SOURCE_WORDS.has(p) &&
+          termStems.some(
+            (s, j) =>
+              j !== i &&
+              (s === wordStem(p) || termSynonyms[j].some((x) => x === p || `${x}s` === p)),
+          ),
+      )
+  const source = parts.findIndex((p) => SOURCE_WORDS.has(p))
+  if (source >= 0) return at > source && !named(0, source)
+  return (
+    parts.length === 3 &&
+    at === 1 &&
+    plainRecordsOf(tools).has(wordStem(parts[1])) &&
+    !named(0, parts.length)
+  )
+}
+
+/** The stems of every record a two-word name holds before its action (`refunds_create`). */
+const plainRecordsCache = new WeakMap<readonly ScorableDeferredTool[], Set<string>>()
+function plainRecordsOf(tools: readonly ScorableDeferredTool[]): Set<string> {
+  const cached = plainRecordsCache.get(tools)
+  if (cached) return cached
+  const out = new Set(
+    tools
+      .map((t) => scoringWords(t).nameParts)
+      .filter((parts) => parts.length === 2)
+      .map((parts) => wordStem(parts[0])),
+  )
+  plainRecordsCache.set(tools, out)
+  return out
 }
 
 /** Is a query word an action: a catalog tool's action, or a lexicon word for one? */

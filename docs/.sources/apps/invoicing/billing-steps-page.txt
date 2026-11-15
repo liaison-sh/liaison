@@ -1,0 +1,7 @@
+A fixed-price project is invoiced from its billing plan, never from planned vs done -> apps/api/src/apps/projects/service/reconcile-create.ts (basis_not_billable) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (billingPlanSet)
+Each step's draft takes no number, and issuing it waits on its approval -> bundled-apps/invoicing/app.manifest.json (tools.milestone_draft_create) ; bundled-apps/invoicing/app.manifest.json (tools.advance_draft_create)
+A retainer invoice is corrected with credit_note_create_and_issue, not from the card -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (line_not_on_invoice)
+billing_plan_get reads the plan; billing_plan_set saves it, waiting for approval only when the turn read outside text -> bundled-apps/invoicing/app.manifest.json (tools.billing_plan_get) ; bundled-apps/invoicing/app.manifest.json (tools.billing_plan_set)
+advance_refund_prepare parks as credit_note_create_and_issue does -> bundled-apps/invoicing/src/mutations/advances.ts (advanceRefundPrepare)
+credit_note_from_reconcile waits for a person when an agent or a coding agent calls it -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile)
+document_attachment_add files a report or a timesheet on a draft or an unsent invoice -> bundled-apps/invoicing/app.manifest.json (tools.document_attachment_add)

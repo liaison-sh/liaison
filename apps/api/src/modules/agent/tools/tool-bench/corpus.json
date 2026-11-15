@@ -3516,5 +3516,45 @@
     "say": "the invoice was issued, but data export was 2.5 days, not 3: correct that line",
     "typed": ["correct invoiced line", "avoir correction ligne", "corriger la facture émise"],
     "any": ["invoicing__credit_note_from_reconcile"]
+  },
+  {
+    "id": "C101",
+    "set": "seed",
+    "lang": "en",
+    "say": "draft the 30% advance invoice for the project",
+    "typed": ["draft advance invoice", "deposit invoice project", "facture d'acompte du projet"],
+    "any": ["invoicing__advance_draft_create"]
+  },
+  {
+    "id": "C102",
+    "set": "seed",
+    "lang": "en",
+    "say": "the second milestone is done, draft its invoice",
+    "typed": ["milestone done invoice", "draft milestone invoice", "facturer le jalon terminé"],
+    "any": ["invoicing__milestone_draft_create"]
+  },
+  {
+    "id": "C103",
+    "set": "seed",
+    "lang": "en",
+    "say": "the project was stopped, give the client their deposit back",
+    "typed": ["refund the deposit", "give advance back", "projet arrêté acompte"],
+    "any": ["invoicing__advance_refund_prepare"]
+  },
+  {
+    "id": "C104",
+    "set": "seed",
+    "lang": "fr",
+    "say": "la ligne facturée était trop haute, fais l'avoir",
+    "typed": ["avoir ligne facturée", "credit note billed line", "corriger une ligne facturée"],
+    "any": ["invoicing__credit_note_from_reconcile"]
+  },
+  {
+    "id": "C105",
+    "set": "seed",
+    "lang": "en",
+    "say": "which milestones of the project are still to invoice",
+    "typed": ["billing plan steps", "milestones to invoice", "jalons restant à facturer"],
+    "any": ["invoicing__billing_plan_get"]
   }
 ]

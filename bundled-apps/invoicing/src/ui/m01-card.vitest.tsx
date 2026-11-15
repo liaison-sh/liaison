@@ -159,16 +159,42 @@ describe("milestone and retainer drafts", () => {
     )
   })
 
-  it("a retainer month's button issues all three together", () => {
+  it("a retainer month's button issues all three together once its timesheet is filed", () => {
+    const annexes = [
+      { kind: "activity_report", filename: null, partial: false, origin: "card" },
+      { kind: "timesheet", filename: "timesheet-2026-10.pdf", partial: false, origin: "filed" },
+    ]
     render(() => (
       <SourcedDraftPanel
-        doc={draft({ external_ref: "retainer:sched-1:2026-10", grand_total_minor: "626400" })}
+        doc={draft({
+          external_ref: "retainer:sched-1:2026-10",
+          grand_total_minor: "626400",
+          annexes,
+        })}
         lines={lines}
         today="2026-10-20"
       />
     ))
     expect(screen.getByTestId("sourced-draft-issue").textContent).toMatch(
       /^Issue all three, .*6.264\.00 EUR/,
+    )
+  })
+
+  it("a retainer month with no timesheet filed issues the invoice and its report, both", () => {
+    render(() => (
+      <SourcedDraftPanel
+        doc={draft({
+          external_ref: "retainer:sched-1:2026-10",
+          grand_total_minor: "626400",
+          approved_by: null,
+          annexes: [{ kind: "activity_report", filename: null, partial: false, origin: "card" }],
+        })}
+        lines={lines}
+        today="2026-10-20"
+      />
+    ))
+    expect(screen.getByTestId("sourced-draft-issue").textContent).toMatch(
+      /^Approve both, .*6.264\.00 EUR/,
     )
   })
 })

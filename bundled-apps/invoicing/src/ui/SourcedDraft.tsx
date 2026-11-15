@@ -26,6 +26,9 @@ export interface SourcedDocument {
   approved_by?: string | null
   latest_issue_on?: string | null
   external_refs?: Record<string, unknown>
+  /** The files a send mails beside the invoice (its activity report, a filed timesheet), as
+   *  documents_get lists them. */
+  annexes?: Array<{ kind: string }>
 }
 
 /** The parts of a line this panel reads. */
@@ -73,17 +76,29 @@ export function isApproved(doc: Pick<SourcedDocument, "approved_by">): boolean {
   return typeof doc.approved_by === "string" && doc.approved_by !== ""
 }
 
+/** How many documents go out with this invoice: itself, its activity report, a filed timesheet. */
+export function documentsGoingOut(doc: Pick<SourcedDocument, "annexes">): number {
+  const kinds = new Set((doc.annexes ?? []).map((a) => a.kind))
+  return 1 + (kinds.has("activity_report") ? 1 : 0) + (kinds.has("timesheet") ? 1 : 0)
+}
+
 /**
- * The issue button: `Issue, <amount>` when approved, `Approve <amount>` when not; a retainer
- * month's invoice goes with its report and timesheet, so its button says all three.
+ * The issue button: `Issue, <amount>` when approved, `Approve <amount>` when not. A retainer
+ * month's invoice goes with its activity report, and with its timesheet when one is filed: its
+ * button says all three only then, both with the report alone.
  */
 export function issueButtonLabel(doc: SourcedDocument): string {
   const amount = money(BigInt(String(doc.grand_total_minor ?? "0")), doc.currency)
   const approved = isApproved(doc)
-  if (draftSource(doc) === "retainer")
+  const going = draftSource(doc) === "retainer" ? documentsGoingOut(doc) : 1
+  if (going === 3)
     return approved
       ? tr("Issue all three, {{amount}}", { amount })
       : tr("Approve all three, {{amount}}", { amount })
+  if (going === 2)
+    return approved
+      ? tr("Issue both, {{amount}}", { amount })
+      : tr("Approve both, {{amount}}", { amount })
   return approved ? tr("Issue, {{amount}}", { amount }) : tr("Approve {{amount}}", { amount })
 }
 

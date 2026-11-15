@@ -878,4 +878,6 @@ export const FR: Record<string, string> = {
     "Prépayé : le forfait de chaque mois est facturé d'avance comme un acompte, et la facture de fin de mois le déduit et ajoute les heures au-delà, elle peut donc être à zéro ; vérifiez ce mode de facturation avec votre expert-comptable.",
   Open: "Ouvrir",
   "Asked on {{day}}": "Demandé le {{day}}",
+  "Issue both, {{amount}}": "Émettre les deux, {{amount}}",
+  "Approve both, {{amount}}": "Approuver les deux, {{amount}}",
 }

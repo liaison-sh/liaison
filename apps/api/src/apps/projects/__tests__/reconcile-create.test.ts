@@ -9,9 +9,12 @@ import { reconcileCreateInvoice, reconcileGet } from "../handlers"
 
 const ID = "11111111-1111-4111-8111-111111111111"
 
-function ctxWith(draft: Record<string, unknown>) {
+const BILLING_CONTACT = "55555555-5555-4555-8555-555555555555"
+
+function ctxWith(draft: Record<string, unknown>, prepared: Record<string, unknown> = {}) {
   const steps: string[] = []
   const calls: string[] = []
+  const bodies: Record<string, Record<string, unknown>> = {}
   const ctx = {
     projects_reconcileCreate: async (json: string) => {
       const input = JSON.parse(json) as { step: string }
@@ -28,6 +31,8 @@ function ctxWith(draft: Record<string, unknown>) {
           currency: "EUR",
           hoursPerDayMinutes: 420,
           lines: [{ billMinutes: 1260 }],
+          contactId: BILLING_CONTACT,
+          ...prepared,
         })
       }
       if (input.step === "finish") {
@@ -35,8 +40,9 @@ function ctxWith(draft: Record<string, unknown>) {
       }
       return JSON.stringify({ ok: true })
     },
-    executeTool: async (tool: string) => {
+    executeTool: async (tool: string, json: string) => {
       calls.push(tool)
+      bodies[tool] = JSON.parse(json) as Record<string, unknown>
       if (tool === "invoicing:preview_totals") {
         return JSON.stringify({
           status: "completed",
@@ -53,7 +59,7 @@ function ctxWith(draft: Record<string, unknown>) {
       return JSON.stringify({ status: "completed", result: draft })
     },
   }
-  return { ctx, steps, calls }
+  return { ctx, steps, calls, bodies }
 }
 
 describe("Create invoice's handler", () => {
@@ -93,6 +99,63 @@ describe("Create invoice's handler", () => {
     expect(steps).toEqual(["prepare", "reserve", "release"])
     // Never the issue tool: issuing is a person's act, elsewhere.
     expect(calls).not.toContain("invoicing:invoice_issue")
+  })
+
+  it("Create drafts the invoice to the billing contact of the project's company", async () => {
+    const { ctx, bodies } = ctxWith({
+      status: "completed",
+      draftId: "44444444-4444-4444-8444-444444444444",
+      approvalId: "66666666-6666-4666-8666-666666666666",
+      approved: true,
+      created: true,
+      totals: { excl: 279000, vat: 55800, incl: 334800, currency: "EUR" },
+    })
+    const out = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1 },
+      ctx as never,
+    )) as Record<string, unknown>
+    expect(out.error).toBeUndefined()
+    expect(bodies["invoicing:preview_totals"]?.contactId).toBe(BILLING_CONTACT)
+    expect(bodies["invoicing:draft_from_reconcile"]?.contactId).toBe(BILLING_CONTACT)
+  })
+
+  it("a company with no billing contact refuses Create before anything is reserved and says to set one", async () => {
+    const { ctx, steps, calls } = ctxWith({ status: "completed" }, { contactId: null })
+    const out = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1 },
+      ctx as never,
+    )) as { error?: { code?: string; message?: string } }
+    expect(out.error?.code).toBe("billing_contact_missing")
+    expect(out.error?.message).toContain("set a billing contact on the project's company")
+    expect(steps).toEqual(["prepare"])
+    expect(calls).not.toContain("invoicing:draft_from_reconcile")
+  })
+
+  it("a card whose company has no billing contact offers no Create and says to set one", async () => {
+    const cardCtx = (contactId: string | null) => ({
+      projects_reconcileGet: async () =>
+        JSON.stringify({ reconciliationId: ID, revision: 1, state: "proposed", fit: "close" }),
+      projects_reconcileCreate: async () =>
+        JSON.stringify({ projectId: "p", basis: "daily", companyId: "c", contactId }),
+      executeTool: async () =>
+        JSON.stringify({
+          status: "completed",
+          result: { ready: true, missing: [], excl: 1, vat: 0, incl: 1, currency: "EUR" },
+        }),
+    })
+    const none = (await reconcileGet({ reconciliationId: ID }, cardCtx(null) as never)) as Record<
+      string,
+      unknown
+    >
+    expect(none.createInvoice ?? null).toBeNull()
+    expect(JSON.stringify(none.notice)).toContain(
+      "To create the invoice from this card, set a billing contact on the project's company.",
+    )
+    const named = (await reconcileGet(
+      { reconciliationId: ID },
+      cardCtx(BILLING_CONTACT) as never,
+    )) as Record<string, unknown>
+    expect(named.createInvoice).toBe("yes")
   })
 
   it("a retainer card above its hours offers to leave the overage off, one under them does not", async () => {

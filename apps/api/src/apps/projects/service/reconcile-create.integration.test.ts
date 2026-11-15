@@ -33,8 +33,10 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { addAddress } from "~/modules/contacts/addresses"
 import { seedContext } from "~/seed/context"
 import { type AppCell, insertAppRow, jsonCell } from "~/seed/factories/app-tables"
+import { asUser } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
 import { seedTaskTime } from "~/seed/factories/projects/time"
@@ -59,6 +61,10 @@ let otherLead: minimal.Session
 let thread = ""
 let delorme = ""
 let erika = ""
+let compta = ""
+let solo = ""
+let seule = ""
+let vide = ""
 
 function actorOf(userId: string, scopes: string[]): UserContext {
   return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
@@ -329,20 +335,55 @@ beforeAll(async () => {
   await registerApps([invoicingDescriptor() as never], orgId)
   await primeOrgApps(orgId, 0)
   const ctx = seedContext({ orgId, now: new Date() })
-  const people = await resolveContacts(ctx, actorOf(owner.userId, ["*"]), [
-    { key: "erika", email: "erika@autre.example", name: "Erika Mustermann" },
-  ])
-  erika = people[0]![1].id
+  const people = new Map(
+    await resolveContacts(ctx, actorOf(owner.userId, ["*"]), [
+      { key: "erika", email: "erika@autre.example", name: "Erika Mustermann" },
+      { key: "marc", email: "marc@delorme.example", name: "Marc Delorme" },
+      { key: "compta", email: "compta@delorme.example", name: "Delorme accounts" },
+      { key: "solo", email: "solo@seule.example", name: "Sacha Seule" },
+    ]),
+  )
+  const idOf = (key: string) => people.get(key)!.id
+  erika = idOf("erika")
+  compta = idOf("compta")
+  solo = idOf("solo")
   const companies = await seedCompanies(
     ctx,
     actorOf(owner.userId, ["*"]),
     [
-      { key: "delorme", name: "Maison Delorme", domain: "delorme.example" },
+      {
+        key: "delorme",
+        name: "Maison Delorme",
+        domain: "delorme.example",
+        contactKeys: ["marc", "compta"],
+      },
       { key: "autre", name: "Maison Autre", domain: "autre.example", contactKeys: ["erika"] },
+      { key: "seule", name: "Maison Seule", domain: "seule.example", contactKeys: ["solo"] },
+      { key: "vide", name: "Maison Vide", domain: "vide.example" },
     ],
-    { erika },
+    { erika, marc: idOf("marc"), compta, solo },
   )
   delorme = companies.delorme!
+  seule = companies.seule!
+  vide = companies.vide!
+  // Delorme's accounts desk has the billing address; Maison Seule's one person is its main contact.
+  await asUser(actorOf(owner.userId, ["*"]), (tx) =>
+    addAddress(tx as never, {
+      orgId,
+      userId: owner.userId,
+      contactId: compta,
+      fields: {
+        role: "billing",
+        street1: "4 rue des Lilas",
+        postalCode: "69002",
+        city: "Lyon",
+        countryIso2: "FR",
+      },
+    }),
+  )
+  await db.execute(
+    drizzleSql`UPDATE kernel.companies SET main_contact_id = ${solo}::uuid WHERE id = ${seule}::uuid`,
+  )
   const issuer = await invoicing(
     "settings_issuer_profile_create",
     {
@@ -425,6 +466,20 @@ describe("Create invoice on a reconcile card", () => {
          WHERE reconciliation_id = ${october1.card.reconciliationId}::uuid ORDER BY position`),
     )
     expect(lines.map((l) => l.document_line_position)).toEqual([1, 2])
+  })
+
+  it("the draft goes to the billing contact of the project's company, with its billing address", async () => {
+    const [doc] = extractRows<{ contact: string | null; address: string | null; email: string }>(
+      await db.execute(drizzleSql`
+        SELECT counterparty_contact_id::text AS contact, counterparty_address AS address,
+               counterparty_email AS email
+          FROM app_invoicing.documents WHERE id = ${created.documentId}::uuid`),
+    )
+    expect(doc).toEqual({
+      contact: compta,
+      address: "4 rue des Lilas, 69002 Lyon",
+      email: "compta@delorme.example",
+    })
   })
 
   it("a clicker holding the issuing and approving scopes takes no number at Create", async () => {
@@ -595,6 +650,31 @@ describe("what Create refuses", () => {
     expect(JSON.stringify([p.card.notice, p.card.cardNotes])).toContain("the project's company")
     const out = await create(p.card)
     expect(out.error?.code).toBe("company_missing")
+    expect(await claimsOf(p.card.reconciliationId)).toEqual([])
+  })
+
+  it("a company with no billing address bills its main contact", async () => {
+    const p = await october({ company: seule })
+    expect(p.card.createInvoice).toBe("yes")
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    const [doc] = extractRows<{ contact: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT counterparty_contact_id::text AS contact
+          FROM app_invoicing.documents WHERE id = ${out.documentId}::uuid`),
+    )
+    expect(doc?.contact).toBe(solo)
+  })
+
+  it("a company with no billing contact has no Create, says to set one, and Create creates nothing", async () => {
+    const p = await october({ company: vide })
+    expect(p.card.createInvoice ?? null).toBeNull()
+    expect(JSON.stringify([p.card.notice, p.card.cardNotes])).toContain(
+      "To create the invoice from this card, set a billing contact on the project's company.",
+    )
+    const out = await create(p.card)
+    expect(out.error?.code).toBe("billing_contact_missing")
+    expect(await docsOf(p.projectId)).toEqual([])
     expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
 

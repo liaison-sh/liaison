@@ -1556,6 +1556,7 @@ const MISSING_SAID: Record<string, string> = {
   rate: "the project's rate",
   currency: "the project's currency",
   counterparty_mismatch: "a contact of the project's own company",
+  billing_contact: "a billing contact on the project's company",
   retainer: "the project's retainer on its recurring schedule in Invoicing",
 }
 
@@ -1566,6 +1567,7 @@ const MISSING_CODE: Record<string, string> = {
   rate: "rate_missing",
   currency: "currency_missing",
   counterparty_mismatch: "counterparty_mismatch",
+  billing_contact: "billing_contact_missing",
   basis: "basis_not_billable",
   retainer: "no_retainer_schedule",
 }
@@ -1575,6 +1577,23 @@ type CardResult = Record<string, unknown> & {
   state?: string
   fit?: string
   error?: unknown
+}
+
+/**
+ * What invoicing finds missing, plus the company's billing contact: a card's invoice goes to the
+ * project company's billing contact (else its main contact), so a company with neither cannot
+ * have a draft that issues. A retainer month's invoice goes to its schedule's contact instead.
+ */
+function missingWithContact(found: unknown, from: Record<string, unknown>): string[] {
+  const missing = (Array.isArray(found) ? found : []).map(String)
+  const needsContact =
+    from.basis !== "retainer" &&
+    typeof from.companyId === "string" &&
+    from.companyId !== "" &&
+    !(typeof from.contactId === "string" && from.contactId !== "")
+  return needsContact && !missing.includes("billing_contact")
+    ? [...missing, "billing_contact"]
+    : missing
 }
 
 function money(minor: number, currency: string): { minor: number; currency: string } {
@@ -1629,8 +1648,8 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
       { k: "Incl. VAT", v: money(p.incl, currency) },
     ]
   }
-  const missing = (Array.isArray(p.missing) ? p.missing : []).map(String)
-  if (p.ready === true && card.fit !== "nothing") {
+  const missing = missingWithContact(p.missing, facts)
+  if (p.ready === true && missing.length === 0 && card.fit !== "nothing") {
     out.createInvoice = "yes"
     // A retainer month above its hours: the card also offers to leave this month's overage off.
     if (typeof p.overageMinutes === "number" && p.overageMinutes > 0) out.waiveOverage = true
@@ -1660,6 +1679,8 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   })
   if (prep.error) return prep
   const name = String(prep.projectName ?? "the project")
+  // The contact named on the card, else the company's billing contact (prepare resolves it).
+  const contactId = typeof prep.contactId === "string" && prep.contactId ? prep.contactId : null
 
   // Priced and checked before anything is written.
   const preview = await invoicingCall(() =>
@@ -1669,7 +1690,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
         projectId: prep.projectId,
         basis: prep.basis,
         companyId: prep.companyId ?? null,
-        contactId: typeof p.contactId === "string" && p.contactId ? p.contactId : null,
+        contactId,
         currency: prep.currency ?? null,
         rateMinor: prep.rateMinor ?? null,
         hoursPerDayMinutes: prep.hoursPerDayMinutes ?? null,
@@ -1695,8 +1716,8 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
         )
       : refusal(preview.code, `${preview.message} Nothing was created.`)
   }
-  const missing = (Array.isArray(preview.body.missing) ? preview.body.missing : []).map(String)
-  if (preview.body.ready !== true) {
+  const missing = missingWithContact(preview.body.missing, prep)
+  if (preview.body.ready !== true || missing.length > 0) {
     const first = missing[0] ?? "basis"
     const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
     return refusal(
@@ -1712,7 +1733,6 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   if (reserved.error) return reserved
 
   // A retainer month drafts its fee and overage; any other card its billed lines.
-  const contactId = typeof p.contactId === "string" && p.contactId ? p.contactId : null
   const draft = await invoicingCall(() =>
     prep.basis === "retainer"
       ? ctx.executeTool(

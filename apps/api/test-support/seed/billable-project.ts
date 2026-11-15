@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A project billed by the day for browser tests: a company with one contact, the project linked
+// A project billed by the day for browser tests: a company with its billing contact (the one
+// contact, with a billing address, so the card's invoice can issue), the project linked
 // to it with time and budgets on, a day rate, and tasks closed this month with their time, so a
 // planned vs done card for the month prices and can make an invoice. Every row goes through the
 // seed engine's factories and the projects writers, as the demo worlds seed theirs.
@@ -9,6 +10,7 @@ import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
 import { setBillingTerms, setTaskTime, setTimePlan } from "~/apps/projects/service/time-plan"
 import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
+import { addAddress } from "~/modules/contacts/addresses"
 import type { SeedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
@@ -26,6 +28,8 @@ export interface BillableProjectArgs {
   company: string
   contactName: string
   contactEmail: string
+  /** The contact's billing address: it makes the contact the company's billing contact. */
+  billingAddress: { street1: string; postalCode: string; city: string; countryIso2: string }
   /** The day rate, in minor units. */
   rateMinor: number
   currency: string
@@ -61,6 +65,14 @@ export async function seedBillableProject(
   )
   const companyId = companies.client
   if (!companyId) throw new Error(`company ${args.company} was not seeded`)
+  await asUser(owner, (tx) =>
+    addAddress(tx as never, {
+      orgId: ctx.orgId,
+      userId: owner.userId,
+      contactId,
+      fields: { role: "billing", ...args.billingAddress },
+    }),
+  )
   await seedTimeSettings(ctx, owner, { hoursPerDayMinutes: HOURS_PER_DAY })
 
   const spec = { key: args.key, name: args.name, description: "", icon: "folder", owner: "owner" }

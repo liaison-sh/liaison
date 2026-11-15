@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // An invoice from a month's planned vs done card, on the real product: a project billed by the
-// day, with its company and contact, closes two tasks this month. The agent draws the card (only
+// day, with its company and the company's billing contact, closes two tasks this month. The agent draws the card (only
 // the model is scripted, the tool runs for real); the person presses Create invoice on it, which
 // makes a draft with no number; the draft's request waits in Invoicing's Pending Approval tab, the
 // sidebar's link; the person opens it there and issues it from its page, which takes the number.
-import { api } from "@liaison/test-helpers"
 import { openAgentConversation, sendInConversation } from "../agent-bootstrap"
 import { agentDmThreadId, scriptAgentTurn, waitForTurnEnd } from "../agent-turn"
 import { loginAs } from "../fixtures/test"
@@ -59,6 +58,12 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
         company: "Maison Lune",
         contactName: "Claire Lune",
         contactEmail: "claire@lune.example",
+        billingAddress: {
+          street1: "12 Harbor Lane",
+          postalCode: "97209",
+          city: "Portland",
+          countryIso2: "US",
+        },
         rateMinor: 93_000,
         currency: "EUR",
         tasks: [
@@ -118,24 +123,6 @@ test.describe("Invoicing: an invoice from planned vs done", () => {
     expect(before).toHaveLength(1)
     expect(before[0]).toMatchObject({ status: "draft", number: null })
     const draftId = String(before[0]?.id)
-
-    // The card names no contact, so the draft goes to the company alone: the person completes the
-    // recipient on the draft (the editor's save) before it can issue.
-    const completed = await api(env.serverUrl, "/api/apps/invoicing/tools/drafts_update", {
-      method: "POST",
-      token,
-      body: {
-        params: {
-          draft_id: draftId,
-          patch: {
-            counterparty_address: "12 Harbor Lane, Portland, OR 97209, United States",
-            counterparty_email: "claire@lune.example",
-            counterparty_country: "US",
-          },
-        },
-      },
-    })
-    expect(completed.status, JSON.stringify(completed.body)).toBe(200)
 
     // The sidebar's Pending Approval link opens a tab that lists the draft's request.
     const base = `http://localhost:${env.ports[1]}`

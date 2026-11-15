@@ -132,7 +132,8 @@ describe("projects.manifest", () => {
     //   move refusal names the invoice only to someone who reads invoices.
     // 1.41.0: a retainer month's card above its hours offers Create without this month's
     //   overage.
-    // 1.41.1: the 1.40.1 and 1.41.0 changes together.
+    // 1.41.1: the 1.40.1 and 1.41.0 changes together; Create bills the billing contact of the
+    //   project's company, and a company with none has no Create.
     expect(projectsManifest.version).toBe("1.41.1")
   })
 

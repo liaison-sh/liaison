@@ -122,6 +122,36 @@ async function projectFacts(tx: Tx, orgId: string, projectId: string) {
   }
 }
 
+/**
+ * Who a card's invoice goes to: the billing contact of the project's company (a contact of it
+ * with a billing address, its main contact first), else the company's main contact. Null when the
+ * company has neither, or when the reader cannot see them: Create then asks for one.
+ */
+async function billingContactOf(
+  tx: Tx,
+  orgId: string,
+  companyId: string | null,
+): Promise<string | null> {
+  if (!companyId) return null
+  const row = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      SELECT c.id::text AS id
+        FROM ${kernelRel("companies")} co
+        JOIN ${kernelRel("contacts")} c ON c.org_id = co.org_id AND c.company_id = co.id
+        LEFT JOIN LATERAL (
+          SELECT true AS billing FROM ${kernelRel("contact_addresses")} a
+           WHERE a.org_id = c.org_id AND a.contact_id = c.id AND a.role = 'billing'
+             AND a.archived_at IS NULL
+           LIMIT 1) b ON true
+       WHERE co.org_id = ${orgId}::uuid AND co.id = ${companyId}::uuid
+         AND (b.billing IS TRUE OR c.id = co.main_contact_id)
+       ORDER BY b.billing IS NOT TRUE, (c.id = co.main_contact_id) IS NOT TRUE,
+                c.name NULLS LAST, c.id
+       LIMIT 1`),
+  )[0]
+  return row?.id ?? null
+}
+
 async function billedLines(tx: Tx, orgId: string, id: string) {
   return extractRows<{ id: string; bill_minutes: number }>(
     await tx.execute(drizzleSql`
@@ -163,6 +193,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       projectId: head.project_id,
       basis: head.basis,
       companyId: facts.companyId,
+      contactId: await billingContactOf(tx, orgId, facts.companyId),
       currency: facts.currency,
       rateMinor: facts.rateMinor,
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
@@ -258,6 +289,8 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       projectId: head.project_id,
       projectName: facts.name,
       companyId: facts.companyId,
+      // The contact named for the invoice, else the company's billing contact.
+      contactId: contactId || (await billingContactOf(tx, orgId, facts.companyId)),
       basis: head.basis,
       rateMinor: facts.rateMinor,
       currency: facts.currency,

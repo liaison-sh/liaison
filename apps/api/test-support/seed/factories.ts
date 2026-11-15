@@ -860,7 +860,7 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
   ),
 
   /** One subscription customer of an issuer: its contact and billing address, a paid invoice and the active monthly schedule continuing it. */
-  /** A project billed by the day, its company and contact, tasks closed this month with time. */
+  /** A project billed by the day, its company and its billing contact, tasks closed this month with time. */
   "projects.billableMonth": factory(
     zod.object({
       ownerId: uuid,
@@ -869,6 +869,12 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
       company: zod.string().min(1),
       contactName: zod.string().min(1),
       contactEmail: zod.string().min(3),
+      billingAddress: zod.object({
+        street1: zod.string().min(1),
+        postalCode: zod.string().min(1),
+        city: zod.string().min(1),
+        countryIso2: zod.string().length(2),
+      }),
       rateMinor: zod.number().int().positive(),
       currency: zod.string().length(3),
       tasks: zod

@@ -2715,7 +2715,7 @@
           "amountMinor": { "type": "integer", "description": "Without a step: the advance excl. VAT, in minor units." },
           "receivedOn": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "The day the money was received, when it came first." },
           "contactId": { "type": "string", "description": "Without a plan: the customer's contact." },
-          "month": { "type": "string", "pattern": "^\\d{4}-(0[1-9]|1[0-2])$", "description": "A prepaid retainer: the month this advance pays for (default: the month after its last advance)." }
+          "month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$", "description": "A prepaid retainer: the month this advance pays for (default: the month after its last advance)." }
         },
         "required": ["projectId"],
         "additionalProperties": false

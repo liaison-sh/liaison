@@ -522,10 +522,14 @@ async function orgToday(tx: RlsClient, orgId: string, now: Date): Promise<string
 
 /** True from `LATEST_DAY_LEAD_DAYS` before the last day on, the day past included. */
 export function nearLatestDay(latestOn: string, today: string): boolean {
-  const last = Date.parse(`${latestOn.slice(0, 10)}T12:00:00Z`)
-  const day = Date.parse(`${today}T12:00:00Z`)
+  const dayNumber = (d: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d)
+    return m ? Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) / 86_400_000 : Number.NaN
+  }
+  const last = dayNumber(latestOn)
+  const day = dayNumber(today)
   if (Number.isNaN(last) || Number.isNaN(day)) return false
-  return day >= last - LATEST_DAY_LEAD_DAYS * 86_400_000
+  return day >= last - LATEST_DAY_LEAD_DAYS
 }
 
 export async function computeApprovalAttentionItems(

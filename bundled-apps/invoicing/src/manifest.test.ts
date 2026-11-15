@@ -1732,6 +1732,9 @@ describe("invoicing manifest", () => {
     //   annexes stop once the invoice is sent; the advance refund's approval card has a summary.
     // 0.26.0: a billed line of an issued planned vs done invoice is corrected by a credit note
     //   with a corrected activity report; a credit-note draft of a deducted advance is refused.
+    // 0.27.0: the send carries the activity report (a PDF template of its own) and the filed
+    //   annexes in one mail; approval cards name the latest issue date and a late draft; each
+    //   Factur-X line states the period it covers.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

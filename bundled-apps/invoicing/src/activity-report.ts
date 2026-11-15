@@ -53,33 +53,121 @@ export function buildActivityReport(input: ActivityReportInput): ActivityReportC
   }
 }
 
+type Lang = "fr" | "en"
+
+const unitWord = (lang: Lang, u: BilledUnit, q: string): string =>
+  lang === "fr"
+    ? u === "day"
+      ? q === "1"
+        ? "jour"
+        : "jours"
+      : q === "1"
+        ? "heure"
+        : "heures"
+    : u === "day"
+      ? q === "1"
+        ? "day"
+        : "days"
+      : q === "1"
+        ? "hour"
+        : "hours"
+
+const qtyOf = (lang: Lang, q: string): string => (lang === "fr" ? q.replace(".", ",") : q)
+
+/** A YYYY-MM-DD day as the report prints it: 01/10/2026 in French, the date as stored otherwise. */
+const dayOf = (lang: Lang, d: string): string => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d)
+  return lang === "fr" && m ? `${m[3]}/${m[2]}/${m[1]}` : d
+}
+
+/** One billed line as the report prints it: the quantity in its unit, then the proof labels. */
+function rowOf(lang: Lang, l: ActivityReportContent["lines"][number]) {
+  return {
+    wording: l.wording,
+    billed: `${qtyOf(lang, l.billed)} ${unitWord(lang, l.unit, l.billed)}`,
+    proofs: l.proofLabels.length > 0 ? l.proofLabels.join(", ") : null,
+  }
+}
+
 /** The report as plain text, one line per billed line, the way its PDF prints it. */
-export function activityReportText(c: ActivityReportContent, lang: "fr" | "en" = "fr"): string {
-  const unitWord = (u: BilledUnit, q: string) =>
-    lang === "fr"
-      ? u === "day"
-        ? q === "1"
-          ? "jour"
-          : "jours"
-        : q === "1"
-          ? "heure"
-          : "heures"
-      : u === "day"
-        ? q === "1"
-          ? "day"
-          : "days"
-        : q === "1"
-          ? "hour"
-          : "hours"
-  const qty = (q: string) => (lang === "fr" ? q.replace(".", ",") : q)
+export function activityReportText(c: ActivityReportContent, lang: Lang = "fr"): string {
   const head =
     lang === "fr"
       ? `Rapport d'activité, ${c.project.name}, du ${c.period.from} au ${c.period.to}`
       : `Activity report, ${c.project.name}, ${c.period.from} to ${c.period.to}`
   const rows = c.lines.map((l) => {
-    const proofs = l.proofLabels.length > 0 ? ` (${l.proofLabels.join(", ")})` : ""
-    return `${l.wording}: ${qty(l.billed)} ${unitWord(l.unit, l.billed)}${proofs}`
+    const r = rowOf(lang, l)
+    return `${r.wording}: ${r.billed}${r.proofs ? ` (${r.proofs})` : ""}`
   })
   const sign = c.signedBy ? [lang === "fr" ? `Signé : ${c.signedBy}` : `Signed: ${c.signedBy}`] : []
   return [head, ...rows, ...sign].join("\n")
+}
+
+/** What the activity report's PDF template prints: strings only, built from the stored content. */
+export interface ActivityReportPdfData {
+  kind: "activity_report"
+  title: string
+  project: string
+  period: string
+  /** The invoice the report goes with, by its number once issued. */
+  invoice: string | null
+  issuer: string
+  customer: string | null
+  columns: { work: string; billed: string; proofs: string }
+  rows: Array<{ wording: string; billed: string; proofs: string | null }>
+  signature: string | null
+}
+
+/** The PDF template's input for a stored report (`activity_reports.content`), in the issuer's
+ *  language. Only the content's own fields reach it: nothing else of the project is read. */
+export function activityReportPdfData(
+  c: ActivityReportContent,
+  meta: {
+    lang?: string | null
+    issuer: string
+    customer?: string | null
+    invoiceNumber?: string | null
+  },
+): ActivityReportPdfData {
+  // French for a French-speaking issuer, English for every other one: no issuer is put through
+  // the French wording because the report has no translation in its language.
+  const lang: Lang = meta.lang === "fr" ? "fr" : "en"
+  const fr = lang === "fr"
+  return {
+    kind: "activity_report",
+    title: fr ? "Rapport d'activité" : "Activity report",
+    project: c.project.name,
+    period: fr
+      ? `Du ${dayOf(lang, c.period.from)} au ${dayOf(lang, c.period.to)}`
+      : `${dayOf(lang, c.period.from)} to ${dayOf(lang, c.period.to)}`,
+    invoice: meta.invoiceNumber
+      ? fr
+        ? `Annexe à la facture ${meta.invoiceNumber}`
+        : `Annex to invoice ${meta.invoiceNumber}`
+      : null,
+    issuer: clean(meta.issuer),
+    customer: meta.customer ? clean(meta.customer) : null,
+    columns: fr
+      ? { work: "Travail livré", billed: "Facturé", proofs: "Preuves" }
+      : { work: "Work delivered", billed: "Billed", proofs: "Proof" },
+    rows: c.lines.map((l) => rowOf(lang, l)),
+    signature: c.signedBy ? (fr ? `Signé : ${c.signedBy}` : `Signed: ${c.signedBy}`) : null,
+  }
+}
+
+/** A stored report's content read back as the builder wrote it, or null when it is not one. */
+export function storedActivityReport(v: unknown): ActivityReportContent | null {
+  let o: unknown = v
+  if (typeof v === "string") {
+    try {
+      o = JSON.parse(v)
+    } catch {
+      return null
+    }
+  }
+  if (!o || typeof o !== "object" || (o as { kind?: unknown }).kind !== "activity_report")
+    return null
+  const c = o as ActivityReportContent
+  if (!Array.isArray(c.lines) || !c.project || !c.period) return null
+  return c
 }

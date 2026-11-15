@@ -7,6 +7,7 @@ import { deliveryFileId } from "../legal-originals/delivery"
 import { recordSent } from "../sent-record"
 import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
+import { annexMailText, sendAnnexes } from "./send-annexes"
 import {
   type DocumentRowSummary,
   type ErrorEnvelope,
@@ -29,7 +30,13 @@ async function preflightSendToCustomerParams(
   ctx: MutationsCtx,
   input: { document_id: string; to?: string },
 ): Promise<
-  | { ok: true; doc: DocumentRowSummary; mailAccountId: string; recipient: string }
+  | {
+      ok: true
+      doc: DocumentRowSummary
+      mailAccountId: string
+      recipient: string
+      issuer: Awaited<ReturnType<typeof findIssuerProfile>>
+    }
   | { ok: false; error: ErrorEnvelope }
 > {
   const doc = await findDocumentSummary(ctx.db, input.document_id)
@@ -121,7 +128,7 @@ async function preflightSendToCustomerParams(
       },
     }
   }
-  return { ok: true, doc, mailAccountId, recipient }
+  return { ok: true, doc, mailAccountId, recipient, issuer }
 }
 
 /**
@@ -151,7 +158,7 @@ export async function documentsSendToCustomer(
   // approval, so the executed send re-resolves rather than trusts.
   const pre = await preflightSendToCustomerParams(ctx, input)
   if (!pre.ok) return pre.error
-  const { doc, mailAccountId, recipient } = pre
+  const { doc, mailAccountId, recipient, issuer } = pre
 
   // Self-heal a missing PDF instead of refusing to send: an issued document whose issue-time render
   // never ran or failed (pdf_status null/pending/failed) is rendered on-demand here, then attached.
@@ -169,6 +176,12 @@ export async function documentsSendToCustomer(
     )[0] ?? {}
   const delivery = await deliveryFileId(ctx.db, { ...fresh, pdf_file_id: pdf.pdf_file_id })
   const attachment = delivery.file_id ?? pdf.pdf_file_id
+  // The invoice's activity report and the files filed on it go in the same mail: a retry sends
+  // them all again together. A report that cannot render blocks the send, never the invoice.
+  const annex = await sendAnnexes(ctx, doc, issuer)
+  if (!annex.ok) return { status: "error", error: annex.error }
+  const annexText = annexMailText(annex.annexes)
+  const baseBody = input.body ?? "Please find the attached document."
   // Use mail:composeForApp — the INTERNAL cross-app variant — NOT the agent-facing gated mail:compose.
   // documents_send_to_customer is ALREADY gated at its own surface (this handler only runs post-approval),
   // so the send must EXECUTE here, not gate again. mail:compose is gated; invoked cross-app from this
@@ -185,8 +198,8 @@ export async function documentsSendToCustomer(
     accountId: mailAccountId,
     to: [recipient],
     subject: input.subject ?? `Document ${doc.number ?? doc.id}`,
-    textBody: input.body ?? "Please find the attached document.",
-    attachments: [attachment],
+    textBody: annexText ? `${baseBody}\n\n${annexText}` : baseBody,
+    attachments: [attachment, ...annex.annexes.map((a) => a.file_id)],
     originating_approval_id: ctx.approval?.approvalRequestId ?? "",
   })
   if (composeResult.status === "completed") {

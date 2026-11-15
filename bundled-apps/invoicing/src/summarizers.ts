@@ -652,6 +652,9 @@ function draftIssueSummarizer(type: string, kind: string) {
           typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
         dueAt: params.due_at ?? draft?.due_at ?? null,
         draftId: params.draft_id ?? null,
+        latestIssueOn: typeof draft?.latest_issue_on === "string" ? draft.latest_issue_on : null,
+        // The sandbox clock is UTC: a card made in the first hours of a day may read the day before.
+        today: new Date().toISOString().slice(0, 10),
       }),
     )
   }

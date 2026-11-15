@@ -60,6 +60,8 @@ export interface FacturxLine {
   tax_rate_bp: number
   subtotal_minor: bigint
   tax_minor: bigint
+  /** The period the line covers (BT-134, BT-135), YYYY-MM-DD both ends: a month of service. */
+  period?: { start: string; end: string } | null
 }
 
 export interface FacturxInput {
@@ -91,6 +93,8 @@ export interface FacturxInput {
   preceding?: Array<{ number: string; issue_date: string }> | null
   /** Non-EUR: VAT total in EUR minor units at the stored ECB rate. */
   tax_total_eur_minor?: bigint | null
+  /** The invoicing period (BG-14: BT-73, BT-74), the service month a document bills. */
+  service_period?: { start: string; end: string } | null
   lines: FacturxLine[]
   subtotal_minor: bigint
   tax_total_minor: bigint
@@ -258,6 +262,17 @@ function date102(iso: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d))
     throw new FacturxBuildError("facturx_totals_inconsistent", `date ${iso} is not YYYY-MM-DD`)
   return d.replace(/-/g, "")
+}
+
+/** BG-14 / BG-26: the period a document or a line covers. Nothing when it has none. */
+function billingPeriod(p: { start: string; end: string } | null | undefined): string {
+  if (!p || blank(p.start) || blank(p.end)) return ""
+  return (
+    "<ram:BillingSpecifiedPeriod>" +
+    `<ram:StartDateTime><udt:DateTimeString format="102">${date102(p.start)}</udt:DateTimeString></ram:StartDateTime>` +
+    `<ram:EndDateTime><udt:DateTimeString format="102">${date102(p.end)}</udt:DateTimeString></ram:EndDateTime>` +
+    "</ram:BillingSpecifiedPeriod>"
+  )
 }
 
 function blank(v: string | null | undefined): boolean {
@@ -428,6 +443,7 @@ export function buildCii(raw: FacturxInput): string {
           input,
           false,
         ) +
+        billingPeriod(l.period) +
         (l.discount_minor > 0n
           ? "<ram:SpecifiedTradeAllowanceCharge><ram:ChargeIndicator><udt:Indicator>false</udt:Indicator></ram:ChargeIndicator>" +
             `<ram:ActualAmount>${amount(l.discount_minor, exp)}</ram:ActualAmount><ram:Reason>Remise</ram:Reason></ram:SpecifiedTradeAllowanceCharge>`
@@ -495,6 +511,7 @@ export function buildCii(raw: FacturxInput): string {
     `<ram:InvoiceCurrencyCode>${currency}</ram:InvoiceCurrencyCode>` +
     paymentMeans +
     groups.map((g) => taxGroup(g, exp, input, true)).join("") +
+    billingPeriod(input.service_period) +
     (dueDate
       ? `<ram:SpecifiedTradePaymentTerms><ram:DueDateDateTime><udt:DateTimeString format="102">${date102(dueDate)}</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>`
       : "") +

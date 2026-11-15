@@ -48,6 +48,8 @@ export interface DocumentHeader {
   grand_total_minor: bigint
   issued_at: string | null
   due_at: string | null
+  /** A draft's latest issue day (the end of its service month); null when it has none. */
+  latest_issue_on: string | null
   /** Sales channel for the documents-list "Channel" column + Shopify/Manual
    *  filter: "shopify" when the document was reconciled from a Shopify order
    *  (top-level shopify_order_id set), else "manual". */
@@ -355,6 +357,12 @@ function toDocumentHeader(row: unknown): DocumentHeader {
     grand_total_minor: String(r.grand_total_minor ?? "0") as unknown as bigint,
     issued_at: (r.issued_at as string | null) ?? null,
     due_at: (r.due_at as string | null) ?? null,
+    latest_issue_on:
+      typeof r.latest_issue_on === "string" && r.latest_issue_on !== ""
+        ? r.latest_issue_on.slice(0, 10)
+        : r.latest_issue_on instanceof Date
+          ? r.latest_issue_on.toISOString().slice(0, 10)
+          : null,
     // A Shopify-reconciled document carries a top-level shopify_order_id; surface
     // it as the sales channel so the documents list + Shopify/Manual filter bucket
     // it correctly (was always "manual" because this field was never derived).

@@ -280,3 +280,97 @@ describe("advances and finals after deposit", () => {
     expect(final.preceding).toEqual([{ number: "F-2026-0201", issue_date: "2026-04-16" }])
   })
 })
+
+describe("an invoice made from planned vs done", () => {
+  test("each line states the month it covers", async () => {
+    const { draftFromCard, harness } = await import("../__tests__/from-reconcile-harness")
+    const { invoiceIssue } = await import("../mutations")
+    const { FICTIONAL_SIRENS, FR_SELLER_IDENTITY, seedConfirmedIdentity } = await import(
+      "../einvoicing/test-fixtures"
+    )
+    const h = harness()
+    await h.db.update("issuer_profiles", "iss-1", { ...FR_SELLER_IDENTITY, vat_registered: true })
+    const id = await draftFromCard(h)
+    const { snapshot } = await seedConfirmedIdentity(h.db, {
+      contact_id: "contact-fr-1",
+      siren: FICTIONAL_SIRENS[0],
+      name: "Maison Alpine SA",
+      postcode: "69003",
+      city: "Lyon",
+    })
+    await h.db.update("documents", id, {
+      counterparty_contact_id: "contact-fr-1",
+      counterparty_country: "FR",
+      counterparty_vat_id: "FR55555555555",
+      counterparty_address: "1 rue de l'Exemple, 69003 Lyon",
+      ...snapshot,
+    })
+    // The existing e-invoicing gate and classification take the draft as any other invoice.
+    expect(await invoiceIssue(h.ctx, { draft_id: id })).toMatchObject({ status: "completed" })
+    const issued = h.db.__all("documents").find((d) => d.status === "issued") as Record<
+      string,
+      unknown
+    >
+    expect(issued).toMatchObject({ regime: "e_invoice", operation_category: "services" })
+    const att = (
+      h.renders.find((r) => r.template_kind === "invoicing:invoice_v1")?.attachments as
+        | Array<{ name: string; bytesBase64: string }>
+        | undefined
+    )?.[0]
+    expect(att?.name).toBe("factur-x.xml")
+    const xml = Buffer.from(String(att?.bytesBase64), "base64").toString("utf8")
+    expect(xml).toContain(`<ram:ID>${businessProcessCode("services", "due")}</ram:ID>`)
+    const period =
+      '<ram:BillingSpecifiedPeriod><ram:StartDateTime><udt:DateTimeString format="102">20261001</udt:DateTimeString></ram:StartDateTime>' +
+      '<ram:EndDateTime><udt:DateTimeString format="102">20261031</udt:DateTimeString></ram:EndDateTime></ram:BillingSpecifiedPeriod>'
+    const items = xml.split("<ram:IncludedSupplyChainTradeLineItem>").slice(1)
+    expect(items).toHaveLength(2)
+    for (const item of items) expect(item).toContain(period)
+    // The document states the month too (the invoicing period), once in its settlement.
+    expect(xml.split(period).length - 1).toBe(3)
+    // A document with no service month states none.
+    expect(buildCii(fxDocument())).not.toContain("BillingSpecifiedPeriod")
+  })
+
+  test("a German issuer's invoice carries no French-only field", async () => {
+    const { draftFromCard, harness } = await import("../__tests__/from-reconcile-harness")
+    const { invoiceIssue, documentsSendToCustomer } = await import("../mutations")
+    const h = harness()
+    await h.db.update("issuer_profiles", "iss-1", {
+      legal_name: "Maison Werk GmbH",
+      country: "DE",
+      vat_id: "DE811111111",
+      address: "Torstrasse 1, 10119 Berlin",
+      default_language: "de",
+      siren: null,
+      rcs_city: null,
+      vat_registered: true,
+    })
+    const id = await draftFromCard(h)
+    expect(await invoiceIssue(h.ctx, { draft_id: id })).toMatchObject({ status: "completed" })
+    const issued = h.db.__all("documents").find((d) => d.status === "issued") as Record<
+      string,
+      unknown
+    >
+    // Out of the French e-invoicing scope: no Factur-X, no French identity terms.
+    expect(issued.regime).not.toBe("e_invoice")
+    const invoiceRender = h.renders.find((r) => r.template_kind === "invoicing:invoice_v1")
+    expect(invoiceRender?.attachments).toBeUndefined()
+    expect(await documentsSendToCustomer(h.ctx, { document_id: String(issued.id) })).toMatchObject({
+      status: "completed",
+    })
+    const report = h.renders.find((r) => r.template_kind === "invoicing:activity_report_v1")
+    const printed = JSON.stringify([invoiceRender?.data, report?.data, h.mails[0]])
+    for (const french of [
+      "SIREN",
+      "RCS",
+      "Option pour le paiement",
+      "Indemnité forfaitaire",
+      "Rapport d'activité",
+      "Annexe à la facture",
+      "Signé",
+    ])
+      expect(printed).not.toContain(french)
+    expect((report?.data as { title?: string } | undefined)?.title).toBe("Activity report")
+  })
+})

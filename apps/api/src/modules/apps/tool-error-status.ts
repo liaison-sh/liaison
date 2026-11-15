@@ -411,6 +411,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   customs_fetch_failed: 502,
   thread_post_failed: 502,
   render_failed: 502,
+  // The invoice's activity report could not be made into a PDF: nothing was sent, retry the send.
+  activity_report_pdf_failed: 502,
   // The order could not be read just now: the address it would compare is unknown.
   order_unreadable: 503,
   target_app_unavailable: 503,

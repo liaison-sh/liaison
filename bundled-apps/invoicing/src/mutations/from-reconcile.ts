@@ -14,6 +14,7 @@
 // - The client activity report is stored with it, version 1.
 
 import { type ActivityReportLine, buildActivityReport } from "../activity-report"
+import { latestIssueLine } from "../approval-cards"
 import { lineQuantity } from "../line-amount"
 import { recipientOf } from "../recipient"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
@@ -323,7 +324,7 @@ export async function draftFromReconcile(
       summary: `Issue ${title}`,
       summary_detail: {
         subtitle: `${read.lines.length} line${read.lines.length === 1 ? "" : "s"} from planned vs done`,
-        lines: [`Issue by ${monthEnd(read.period.to)}`],
+        lines: [latestIssueLine(monthEnd(read.period.to), today) as string],
       },
       current_payload: { draft_id: draftId },
       approve_scope: "invoicing:documents:write",

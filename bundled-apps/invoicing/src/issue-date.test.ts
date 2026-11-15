@@ -6,19 +6,24 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
+import { draftFromCard, harness, linesRead, type Row } from "./__tests__/from-reconcile-harness"
+import { latestIssueLine } from "./approval-cards"
 import { einvoicingReadiness } from "./einvoicing/readiness"
 import { onOrAfterCutover } from "./einvoicing/transmit"
 import {
   checkIssuerTimezone,
   civilDateOf,
   issueDateParts,
+  issueLateness,
   issuerTimezoneUnset,
   normalizeIssuerTimezone,
 } from "./issue-date"
+import { invoiceIssue } from "./mutations"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
 import type { MutationsCtx } from "./mutations/shared"
 import { draftOrderDateRefusal } from "./mutations/stated-issue-date"
 import { settingsIssuerProfileList } from "./reads"
+import { summarizeInvoiceIssue } from "./summarizers"
 import { createMockDb } from "./test-db"
 import { testTime } from "./test-time"
 import { pickIssuerSaveFields } from "./ui/settings"
@@ -340,5 +345,82 @@ describe("guard: one door for the issue date", () => {
         : []
     })
     expect(readers).toEqual(["mutations/fx-issue.ts"])
+  })
+})
+
+describe("the latest issue day of a draft from planned vs done", () => {
+  const REC_NOV = "7a1d2c3e-0000-4000-8000-0000000000ad"
+  const REC_DEC = "7a1d2c3e-0000-4000-8000-0000000000ae"
+  // Noon UTC on a civil day: the same day in UTC and in Paris.
+  const onDay = (y: number, m: number, d: number) =>
+    setSystemTime(new Date(Date.UTC(y, m - 1, d, 12)))
+  const docOf = (h: ReturnType<typeof harness>, id: string) =>
+    h.db.__all("documents").find((d) => d.id === id) as Row
+  const cardLines = (h: ReturnType<typeof harness>) =>
+    (h.approvals.at(-1)?.summary_detail as { lines: string[] } | undefined)?.lines ?? []
+
+  test("a draft issued after its latest day takes today's date and shows late, and dates never go back in the series", async () => {
+    const h = harness()
+    // October reconciled on 3 November: born late, its latest day was 31 October.
+    onDay(2026, 11, 3)
+    const oct = await draftFromCard(h)
+    expect(issueLateness(String(docOf(h, oct).latest_issue_on), "2026-11-03")).toBe("late")
+    const card = await summarizeInvoiceIssue({ draft_id: oct }, undefined, {
+      context: { ...docOf(h, oct), latest_issue_on: "2026-10-31", lines: [] },
+    })
+    expect(card.lines).toContain(
+      "Late: the latest issue date was 2026-10-31; it issues with the date of the day it is issued",
+    )
+    // November reconciled on 30 November, issued first; October issued after, on 4 December.
+    onDay(2026, 11, 30)
+    h.read.byRec.set(REC_NOV, linesRead({ from: "2026-11-01", to: "2026-11-30" }, REC_NOV))
+    const nov = await draftFromCard(h, REC_NOV)
+    expect((await invoiceIssue(h.ctx, { draft_id: nov })).status).toBe("completed")
+    onDay(2026, 12, 4)
+    const issuedOct = await invoiceIssue(h.ctx, { draft_id: oct })
+    expect(issuedOct).toMatchObject({ status: "completed" })
+    const issued = h.db
+      .__all("documents")
+      .filter((d) => d.type === "invoice" && d.status === "issued")
+      .sort((a, b) => Number(a.number_int) - Number(b.number_int))
+    expect(issued.map((d) => String(d.issued_at).slice(0, 10))).toEqual([
+      "2026-11-30",
+      "2026-12-04",
+    ])
+    // The late one keeps its service month and took the day of its issue, not its latest day.
+    const lateDoc = docOf(h, String((issuedOct as { document_id?: string }).document_id))
+    expect(String(lateDoc.service_period_end).slice(0, 10)).toBe("2026-10-31")
+    const dates = issued.map((d) => String(d.issued_at).slice(0, 10))
+    expect([...dates].sort()).toEqual(dates)
+  })
+
+  test("a draft created after its latest day is late from creation", async () => {
+    const cases: Array<{ period: { from: string; to: string }; on: [number, number, number] }> = [
+      { period: { from: "2026-11-01", to: "2026-11-30" }, on: [2026, 11, 30] },
+      { period: { from: "2026-11-01", to: "2026-11-30" }, on: [2026, 12, 1] },
+      { period: { from: "2026-12-01", to: "2026-12-31" }, on: [2026, 12, 31] },
+      { period: { from: "2026-12-01", to: "2026-12-31" }, on: [2027, 1, 2] },
+    ]
+    const seen: string[] = []
+    for (const [i, c] of cases.entries()) {
+      const h = harness()
+      onDay(...c.on)
+      h.read.value = linesRead(c.period, i % 2 === 0 ? REC_NOV : REC_DEC)
+      const id = await draftFromCard(h, i % 2 === 0 ? REC_NOV : REC_DEC)
+      const latest = String(docOf(h, id).latest_issue_on).slice(0, 10)
+      expect(latest).toBe(c.period.to)
+      const today = new Date().toISOString().slice(0, 10)
+      seen.push(`${issueLateness(latest, today)} ${cardLines(h)[0]}`)
+      // One approval only: it is the draft's one money item, late or not.
+      expect(h.approvals).toHaveLength(1)
+    }
+    expect(seen).toEqual([
+      "ends_today Latest issue date: 2026-11-30",
+      "late Late: the latest issue date was 2026-11-30; it issues with the date of the day it is issued",
+      "ends_today Latest issue date: 2026-12-31",
+      "late Late: the latest issue date was 2026-12-31; it issues with the date of the day it is issued",
+    ])
+    expect(latestIssueLine(null, "2026-12-01")).toBeNull()
+    expect(issueLateness("2026-11-30", "2026-11-29")).toBe("on_time")
   })
 })

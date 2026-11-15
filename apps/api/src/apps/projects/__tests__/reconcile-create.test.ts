@@ -135,7 +135,9 @@ describe("Create invoice's handler", () => {
     )) as Record<string, unknown>
     expect(out.error).toBeUndefined()
     expect(waived.bodies["invoicing:retainer_draft_from_reconcile"]?.waiveOverage).toBe(true)
-    expect(out.summary).toBe("Draft made, not issued yet, €5,400.00 incl. VAT. Waived by you this month")
+    expect(out.summary).toBe(
+      "Draft made, not issued yet, €5,400.00 incl. VAT. Waived by you this month",
+    )
     const billed = ctxWith(draft, { basis: "retainer" })
     const plain = (await reconcileCreateInvoice(
       { reconciliationId: ID, revision: 1 },

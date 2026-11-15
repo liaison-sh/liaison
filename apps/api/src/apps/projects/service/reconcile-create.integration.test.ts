@@ -25,6 +25,7 @@ import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { createRlsSession, withRlsContext } from "~/db/rls"
 import { clearTaintFlag } from "~/modules/agent/scopes/taint"
+import { decideApproval } from "~/modules/approvals/decide"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
@@ -985,4 +986,63 @@ describe("after the draft", () => {
     const again = await create(p.card)
     expect(again.error?.code).toBe("already_issued")
   })
+})
+
+describe("issuing the card's draft", () => {
+  it("a person issuing the draft from its approval marks the card invoiced and bills every claim on the invoice", async () => {
+    // The buyer's registry identity, so the e-invoice gate lets the issue through.
+    await insertAppRow(db as never, "invoicing", "counterparty_identities", {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      contact_id: compta,
+      customer_kind: "business",
+      siren: "900000001",
+      registry_name: "MAISON DELORME",
+      registry_line1: "4 rue des Lilas",
+      registry_postcode: "69002",
+      registry_city: "Lyon",
+      registry_country_code: "FR",
+      registry_status: "A",
+      registry_checked_at: "2026-10-01",
+      source: "registry",
+      confirmed_via: "auto",
+      changed_at: "2026-10-01",
+    })
+    const p = await october()
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    const pending = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+           AND status = 'pending' AND current_payload->>'draft_id' = ${out.documentId}`),
+    )
+    expect(pending).toHaveLength(1)
+    const decided = await decideApproval({
+      orgId,
+      requestId: pending[0]!.id,
+      actor: actorOf(owner.userId, FINANCE),
+      decision: "approve",
+    })
+    expect(decided.status).toBe("approved")
+    const docs = await docsOf(p.projectId)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]?.status).toBe("issued")
+    expect(docs[0]?.number).toBeTruthy()
+    const rec = await stateOf(p.card.reconciliationId)
+    expect(rec?.state).toBe("invoiced")
+    expect(rec?.document_id).toBe(docs[0]!.id)
+    const claims = extractRows<{ state: string; document_id: string | null; n: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT state, document_id::text AS document_id, document_number AS n
+          FROM app_projects.billing_claims
+         WHERE reconciliation_id = ${p.card.reconciliationId}::uuid`),
+    )
+    expect(claims.length).toBeGreaterThan(0)
+    for (const c of claims) {
+      expect(c).toEqual({ state: "billed", document_id: docs[0]!.id, n: docs[0]!.number })
+    }
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    expect(card.undo).toBeNull()
+  }, 120_000)
 })

@@ -334,7 +334,19 @@ export async function markReconciliation(
       ...(mark.documentId ? { documentId: mark.documentId } : {}),
       ...(mark.documentNumber ? { documentNumber: mark.documentNumber } : {}),
     })
-    if (res?.status === "completed") return "marked"
+    if (res?.status === "completed") {
+      // Answered but moved nothing (projects did not see the issued invoice): say so, so a run
+      // that leaves the card on its draft is never silent. The sweep still settles it.
+      const out = (res as { result?: { changed?: unknown; state?: unknown } }).result
+      if (mark.to === "billed" && out?.changed === false && out.state !== "invoiced") {
+        ctx.logger?.warn?.("reconcile_mark moved nothing; the sweep will settle it", {
+          reconciliationId: rec.id,
+          state: out.state,
+        })
+        return "failed"
+      }
+      return "marked"
+    }
     ctx.logger?.warn?.("reconcile_mark did not complete; the sweep will settle it", {
       reconciliationId: rec.id,
       to: mark.to,

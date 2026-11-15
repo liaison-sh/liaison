@@ -699,6 +699,10 @@ const toolSchema = {
     // contract) instead of per-call bridge transactions. See runtime.ts
     // (~line 1128) and executeToolHandler in execute-tool.ts.
     atomic: { type: "boolean" },
+    // The tool's approved run gets a session (one short transaction per bridge call), as its
+    // direct call does, instead of one transaction for the whole run: what it commits is seen
+    // at once by the other apps it calls next. See app-registries.ts.
+    ownsTransactions: { type: "boolean" },
     approvalCard: { type: "object", properties: { pill: LABEL_SCHEMA } },
     // Shape only here; the deep rules for a result card arrive with the card resolver.
     resultCard: { type: "object" },

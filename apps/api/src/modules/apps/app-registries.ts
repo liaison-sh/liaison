@@ -509,12 +509,14 @@ export const toolRegistry = createTypedRegistry<
      *  no pre-commit external side-effect (an outbox `queueEvent` inside the same tx is fine —
      *  it rolls back too). Defaults off. (BL-180) */
     retryOnTransientDbError?: boolean
-    /** Host-only (kernel). The handler runs no whole-call transaction: it gets the call's
+    /** The handler runs no whole-call transaction. A host (kernel) handler gets the call's
      *  RlsSession as `ctx.rlsSession` (a short transaction per step) and `ctx.db` refuses
      *  every use, so a call that waits on long work (a build, an install's health gate)
-     *  never holds a connection idle in a transaction. Its preflight and its approved
-     *  execution get a session too. Without a session (a caller holding a live
-     *  transaction) the handler gets that transaction as usual. */
+     *  never holds a connection idle in a transaction. A manifest tool declares it so its
+     *  approved run commits each bridge call at once, as its direct call does: another app it
+     *  calls after a write (an issue, then the card it billed) sees that write. Its preflight
+     *  and its approved execution get a session too. Without a session (a caller holding a
+     *  live transaction) the handler gets that transaction as usual. */
     ownsTransactions?: boolean
     /** When true, this tool is deferred — the model sees only its name until it discovers
      *  it via the tool_search tool. App tools are deferred by default; kernel tools are not. */

@@ -129,6 +129,7 @@ const toolSchema = z.object({
   externalEffect: z.boolean().optional(),
   retryOnTransientDbError: z.boolean().optional(),
   atomic: z.boolean().optional(),
+  ownsTransactions: z.boolean().optional(),
   approvalCard: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
   returns: z
     .object({

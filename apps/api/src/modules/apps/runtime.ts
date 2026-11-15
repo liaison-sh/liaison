@@ -3192,6 +3192,8 @@ async function registerSingleApp(
               // TRUSTED apps only: a third-party .liaisonapp must not opt back
               // into pinning a pool connection for its whole sandbox run.
               atomic: tool.atomic === true && core,
+              // Its approved run (and preflight) on a session too, never one long transaction.
+              ownsTransactions: tool.ownsTransactions === true && tool.atomic !== true,
             }
             if (manifestForBridge) entry._manifest = manifestForBridge
             // Scope-taint declarations. A write target counts only inside the app's

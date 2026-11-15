@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { scanWorldPackDir } from "~/seed/worlds/prose-guard"
 import { STUDIO_DELIVERY_KEYS, STUDIO_TEAM } from "./fiction"
+import { invoiceTotals, studioMoney } from "./money"
 import {
   inNameOrder,
   parisCivil,
@@ -412,5 +413,87 @@ describe("services world plan", () => {
   it("no pack string holds a literal date, a year, a weekday or a relative day word", async () => {
     const hits = await scanWorldPackDir(import.meta.dir)
     expect(hits).toEqual([])
+  })
+})
+
+describe("services world money plan", () => {
+  const euros = (minor: number) => minor / 100
+
+  it("the portal's plan is an advance of 20%, three milestones and Launch less the advance", () => {
+    const m = studioMoney(BOARD_DATE)
+    const steps = Object.fromEntries(m.steps.map((s) => [s.label, euros(s.amountMinor)]))
+    const price = 4 * 16_000
+    expect(m.quote.lines.reduce((n, l) => n + euros(l.unitPriceMinor) * l.quantity, 0)).toBe(price)
+    expect(steps["Advance, 20%"]).toBe(0.2 * price)
+    // Launch is invoiced at 16,000 less the advance it deducts: 3,200.
+    expect((steps.Launch as number) - (steps["Advance, 20%"] as number)).toBe(3_200)
+    expect(12_800 + 16_000 * 3 + 3_200).toBe(price)
+    expect(m.steps.map((s) => [s.label, s.state])).toEqual([
+      ["Advance, 20%", "paid"],
+      ["Discovery", "paid"],
+      ["Design", "paid"],
+      ["Beta", "drafted"],
+      ["Launch", "planned"],
+    ])
+  })
+
+  it("the portal is invoiced 44,800, paid 53,760 with VAT, and the last seeded number is 0512", () => {
+    const m = studioMoney(BOARD_DATE)
+    const portal = m.invoices.filter((i) => i.projectKey === "MARLIN")
+    expect(portal.map((i) => i.number)).toEqual(["F-2026-0201", "F-2026-0263", "F-2026-0397"])
+    expect(portal.map((i) => i.issuedOn)).toEqual(["2026-04-16", "2026-05-27", "2026-06-29"])
+    expect(portal.reduce((n, i) => n + euros(invoiceTotals(i.lines).exclMinor), 0)).toBe(44_800)
+    const paid = portal.filter((i) => i.paidOn !== null)
+    expect(paid.reduce((n, i) => n + euros(invoiceTotals(i.lines).inclMinor), 0)).toBe(53_760)
+    expect(portal[0]?.paidOn).toBe(portal[0]?.issuedOn as string)
+    expect(m.invoices.at(-1)?.number).toBe("F-2026-0512")
+  })
+
+  it("last month's retainer invoice is 4,500 plus 6 h at 120, 6,264.00 with VAT", () => {
+    const m = studioMoney(BOARD_DATE)
+    const sorel = m.invoices.find((i) => i.key === m.retainerLastMonth.invoiceKey)
+    expect(sorel?.number).toBe("F-2026-0512")
+    expect(sorel?.issuedOn).toBe("2026-10-30")
+    expect(sorel?.servicePeriod).toEqual({ start: "2026-10-01", end: "2026-10-31" })
+    const t = invoiceTotals(sorel?.lines ?? [])
+    expect([euros(t.exclMinor), euros(t.inclMinor)]).toEqual([5_220, 6_264])
+    expect((m.retainerLastMonth.usedMinutes - 40 * 60) / 60).toBe(6)
+    const r = m.retainers.find((x) => x.key === "sorel")
+    expect([r?.feeMinor, r?.includedMinutes, r?.overageRateMinor]).toEqual([450_000, 2_400, 12_000])
+  })
+
+  it("at every anchor, numbers run from 0001 per year with no gap and dates never decrease", () => {
+    for (const at of anchors()) {
+      const m = studioMoney(at)
+      const tag = at.getTime()
+      expect([tag, m.invoices.length]).toEqual([tag, 512])
+      const next = new Map<number, number>()
+      let last = ""
+      for (const inv of m.invoices) {
+        const want = (next.get(inv.year) ?? 0) + 1
+        next.set(inv.year, want)
+        expect([tag, inv.key, inv.numberInt]).toEqual([tag, inv.key, want])
+        expect([tag, inv.key, inv.issuedOn >= last]).toEqual([tag, inv.key, true])
+        expect([tag, inv.key, inv.issuedOn < m.today]).toEqual([tag, inv.key, true])
+        expect(isoWeekdayOf(inv.issuedOn)).toBeLessThanOrEqual(5)
+        if (inv.paidOn !== null) expect(inv.paidOn < m.today).toBe(true)
+        last = inv.issuedOn
+      }
+      // The draft waiting at the anchor takes no number.
+      expect(m.invoices.some((i) => i.key === m.draft.key)).toBe(false)
+    }
+  })
+
+  it("the advance is issued after its quote was accepted, and each milestone after it closed", () => {
+    const plan = studioPlan(BOARD_DATE)
+    const m = studioMoney(BOARD_DATE)
+    const marlin = plan.projects.find((p) => p.key === "MARLIN")
+    const closedOn = (key: string) =>
+      parisCivil(marlin?.tasks.find((t) => t.key === key)?.completedAt as Date)
+    const issuedOn = (key: string) => m.invoices.find((i) => i.key === key)?.issuedOn as string
+    expect(m.quote.acceptedOn < issuedOn("marlin-advance")).toBe(true)
+    expect(closedOn("MARLIN-1") < issuedOn("marlin-discovery")).toBe(true)
+    expect(closedOn("MARLIN-8") < issuedOn("marlin-design")).toBe(true)
+    expect(marlin?.tasks.find((t) => t.key === "MARLIN-19")?.status).toBe("in_progress")
   })
 })

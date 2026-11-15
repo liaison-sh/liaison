@@ -62,6 +62,8 @@ export interface SeedTimePlanInput {
     periodEnd: string
     minutes: number
     source: "manual" | "retainer"
+    /** The recurring schedule a retainer's month comes from. */
+    sourceRef?: string
   }>
 }
 
@@ -98,6 +100,7 @@ export async function seedTimePlan(
           periodEnd: period.periodEnd,
           minutes: period.minutes,
           source: period.source,
+          ...(period.sourceRef ? { sourceRef: period.sourceRef } : {}),
           createdBy: editor.userId,
         })
         .onConflictDoNothing()

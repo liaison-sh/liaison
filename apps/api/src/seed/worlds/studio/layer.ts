@@ -20,26 +20,47 @@
 // are what the product's reads make of these rows. Every write is idempotent:
 // a re-run adopts what is there.
 import { and, eq, inArray, sql } from "drizzle-orm"
+import { reconcileMark } from "~/apps/projects/service/claims"
 import { setCostRate } from "~/apps/projects/service/margin"
+import { reconcilePropose } from "~/apps/projects/service/reconcile"
+import { reconcileCreateStep } from "~/apps/projects/service/reconcile-create"
 import { awaitTimeFeatureSync } from "~/apps/projects/service/time-feature"
 import { setBillingTerms, setPeriodTimebox, setTaskTime } from "~/apps/projects/service/time-plan"
 import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { createHandlerApprovalRequest } from "~/modules/apps/execute-tool"
 import { assignRole } from "~/modules/permissions/roles"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
+import { jsonCell, upsertAppRow } from "~/seed/factories/app-tables"
+import {
+  type ComputedDocument,
+  computeDocuments,
+  type InvoicingDocumentSpec,
+  type InvoicingParty,
+  seedInvoicingHistory,
+} from "~/seed/factories/commerce/invoicing"
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { seedPipeline } from "~/seed/factories/projects/deals"
 import { seedProject, type TaskSpec } from "~/seed/factories/projects/projects"
 import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
+import { STORY_TIME_ZONE } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
-import { STUDIO_CLIENTS } from "./fiction"
+import { STUDIO_CLIENTS, STUDIO_COMPANY, STUDIO_CONTACTS, STUDIO_PAST_CLIENTS } from "./fiction"
+import {
+  STUDIO_INVOICE_PREFIX,
+  STUDIO_TERMS_DAYS,
+  STUDIO_VAT_BP,
+  type StudioInvoiceLine,
+  type StudioMoneyPlan,
+  studioMoney,
+} from "./money"
 import { type StudioPlan, type StudioProjectPlan, studioPlan } from "./plan"
 
 /** Midday UTC, so a past work day keeps its civil date in any zone near UTC. */
@@ -221,8 +242,11 @@ async function seedStudioProject(
       ...(project.biller ? { billerId: userIdOf(org, project.biller) } : {}),
       datedHours: project.datedHours,
       sourceRepos: project.sourceRepos.map((repo) => ({ provider: "github", repo })),
-      // A retainer's periods are its schedule's; the others go through the period writer.
-      periods: project.periods.filter((p) => p.source === "retainer"),
+      // A retainer's periods are its schedule's, written as invoicing writes them; the others go
+      // through the period writer.
+      periods: project.periods
+        .filter((p) => p.source === "retainer")
+        .map((p) => ({ ...p, sourceRef: studioScheduleId(ctx, project.key) })),
     })
     for (const period of project.periods.filter((p) => p.source === "manual")) {
       await asUser(owner, (tx) =>
@@ -286,6 +310,485 @@ async function seedStudioProject(
     if (id) byKey[t.key] = id
   })
   return { projectId, taskIds: byKey }
+}
+
+/** The recurring schedule a retainer project's months come from, by project key. */
+function studioScheduleId(ctx: SeedContext, projectKey: string): string {
+  return ctx.id("recurring_schedule", `studio:retainer:${projectKey}`)
+}
+
+/** Midday in Paris on a civil date, near enough: 10:00 UTC. */
+function onDay(civil: string, hourUtc = 10): Date {
+  const [y, m, d] = civil.split("-").map(Number) as [number, number, number]
+  return new Date(Date.UTC(y, m - 1, d, hourUtc))
+}
+
+const lineSpecs = (lines: readonly StudioInvoiceLine[]) =>
+  lines.map((l) => ({
+    description: l.description,
+    unitPriceMinor: l.unitPriceMinor,
+    quantity: l.quantity,
+    lineKind: "service" as const,
+    ...(l.externalId ? { externalId: l.externalId } : {}),
+  }))
+
+/**
+ * The money of the year, in the order it happened: the issuer; the portal's quote and billing
+ * plan; every invoice of the year in one chronological loop, numbered from 0001 as the app numbers
+ * them; the retainer's last month reconciled, drafted on its card's key and marked billed by the
+ * projects writers at the day it was issued; the Beta milestone's draft with its issue approval;
+ * the two monthly schedules. Idempotent: rows are keyed, the approval is asked once.
+ */
+async function seedStudioMoney(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+  actors: (key: string) => Promise<UserContext>,
+  tasksOf: Record<string, { projectId: string; taskIds: Record<string, string> }>,
+  companyIds: Readonly<Record<string, string>>,
+  money: StudioMoneyPlan,
+): Promise<void> {
+  const projectId = (key: string) => {
+    const id = tasksOf[key]?.projectId
+    if (!id) throw new Error(`studio money: no project ${key}`)
+    return id
+  }
+  const taskId = (project: string, key: string) => {
+    const id = tasksOf[project]?.taskIds[key]
+    if (!id) throw new Error(`studio money: no task ${key}`)
+    return id
+  }
+  const contactRows = await withPrivilegedDb(ctx.orgId, "seed-studio:money-contacts", async (tx) =>
+    rowsOf<{ id: string; email: string }>(
+      await tx.execute(sql`
+        SELECT id::text AS id, email FROM ${sql.raw(schemaRef("kernel"))}.contacts
+         WHERE org_id = ${ctx.orgId}::uuid AND email IS NOT NULL`),
+    ),
+  )
+  const contactIdByEmail = new Map(contactRows.map((r) => [r.email.toLowerCase(), r.id]))
+  const contactOf = (customerKey: string) => {
+    const c = STUDIO_CONTACTS.find((x) => x.key === customerKey)
+    const id = c ? contactIdByEmail.get(c.email.toLowerCase()) : undefined
+    if (!c || !id) throw new Error(`studio money: no contact ${customerKey}`)
+    return { id, email: c.email }
+  }
+  const billedContact: Record<string, string> = {
+    marlin: "pauline-gros",
+    sorel: "thomas-blanc",
+    verdier: "marc-verdier",
+  }
+
+  // Who the invoices go to: the clients of the projects, and the clients of earlier work.
+  const parties = new Map<string, InvoicingParty>()
+  const contactIdsByPartyKey: Record<string, string> = {}
+  for (const c of STUDIO_CLIENTS) {
+    const contactKey = billedContact[c.key]
+    const contact = contactKey ? contactOf(contactKey) : null
+    parties.set(c.key, {
+      key: c.key,
+      name: c.name,
+      email: contact?.email ?? `billing@${c.domain}`,
+      country: "FR",
+      vatId: null,
+      address: `${c.name}, France`,
+    })
+    if (contact) contactIdsByPartyKey[c.key] = contact.id
+  }
+  for (const c of STUDIO_PAST_CLIENTS) {
+    parties.set(c.key, {
+      key: c.key,
+      name: c.name,
+      email: `billing@${c.domain}`,
+      country: "FR",
+      vatId: null,
+      address: `${c.name}, France`,
+    })
+  }
+
+  const stepId = (key: string) => ctx.id("billing_step", `studio:${key}`)
+  const docKey = (key: string) => `studio:${key}`
+  const docId = (key: string) => ctx.id("document", docKey(key))
+  const sorel = money.retainers.find((r) => r.project === "SOREL")
+  if (!sorel) throw new Error("studio money: no publishing retainer")
+  const sorelScheduleId = studioScheduleId(ctx, "SOREL")
+  const retainerKey = `retainer:${sorelScheduleId}:${money.retainerLastMonth.month}`
+
+  // The retainer's last month on its card, as the biller reconciled it on the day it was issued:
+  // the card, then Create's reservation under the month's key, through the projects writers.
+  const lastInvoice = money.invoices.find((i) => i.key === money.retainerLastMonth.invoiceKey)
+  if (!lastInvoice) throw new Error("studio money: no retainer invoice")
+  const biller = await actors("anais")
+  const reconciledAt = onDay(lastInvoice.issuedOn, 9)
+  const sorelTask = (k: string) => taskId("SOREL", k)
+  const existing = await asUser(biller, async (tx) =>
+    rowsOf<{ id: string; revision: number; state: string }>(
+      await (tx as ExecTx).execute(sql`
+        SELECT id::text AS id, revision, state FROM ${sql.raw(schemaRef("app_projects"))}.reconciliations
+         WHERE org_id = ${ctx.orgId}::uuid AND project_id = ${projectId("SOREL")}::uuid
+           AND period_start = ${`${money.retainerLastMonth.month}-01`}::date
+           AND state IN ('proposed', 'drafted', 'invoiced')
+         ORDER BY created_at LIMIT 1`),
+    ),
+  )
+  let card = existing[0] ?? null
+  if (!card) {
+    const out = (await asUser(biller, (tx) =>
+      reconcilePropose({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        userId: biller.userId,
+        scopes: biller.scopes,
+        now: reconciledAt,
+        input: {
+          project: "SOREL",
+          month: money.retainerLastMonth.month,
+          lines: [
+            { name: "Monthly review", taskIds: [sorelTask("SOREL-16")], proofs: [] },
+            { name: "Support questions", taskIds: [sorelTask("SOREL-17")], proofs: [] },
+            { name: "Catalogue import", taskIds: [sorelTask("SOREL-18")], proofs: [] },
+            {
+              name: "Rights database fixes",
+              taskIds: [sorelTask("SOREL-19"), sorelTask("SOREL-20")],
+              proofs: [],
+            },
+            { name: "Reader site upkeep", taskIds: [sorelTask("SOREL-21")], proofs: [] },
+          ],
+        } as never,
+      }),
+    )) as {
+      reconciliationId?: string
+      revision?: number
+      card?: { reconciliationId: string; revision: number }
+    }
+    const id = out.reconciliationId ?? out.card?.reconciliationId
+    const revision = out.revision ?? out.card?.revision
+    if (!id || revision === undefined)
+      throw new Error("studio money: the retainer card was not drawn")
+    card = { id, revision, state: "proposed" }
+  }
+  const step = (name: "prepare" | "reserve" | "finish", extra: Record<string, unknown> = {}) =>
+    asUser(biller, (tx) =>
+      reconcileCreateStep({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        userId: biller.userId,
+        scopes: biller.scopes,
+        origin: "human-ui",
+        now: reconciledAt,
+        step: name,
+        input: { reconciliationId: card.id, revision: card.revision, ...extra },
+      }),
+    )
+  if (card.state === "proposed") {
+    const prepared = (await step("prepare")) as { documentRef?: string }
+    if (prepared.documentRef !== retainerKey) {
+      throw new Error(`studio money: the retainer card is keyed ${prepared.documentRef}`)
+    }
+    await step("reserve")
+  }
+
+  // The year's documents in the one order they were issued.
+  const specs: InvoicingDocumentSpec[] = []
+  const when = new Map<
+    string,
+    {
+      issuedAt: Date | null
+      paidAt: Date | null
+      number: string | null
+      numberInt: number | null
+      year: number | null
+    }
+  >()
+  specs.push({
+    key: docKey(money.quote.key),
+    type: "quote",
+    status: "accepted",
+    paymentStatus: "unpaid",
+    party: money.quote.client,
+    lines: lineSpecs(money.quote.lines),
+    issuedDaysAgo: 0,
+    termsDays: null,
+    billingProjectId: projectId(money.quote.projectKey),
+  })
+  const quoteYear = Number(money.quote.issuedOn.slice(0, 4))
+  when.set(docKey(money.quote.key), {
+    issuedAt: onDay(money.quote.issuedOn),
+    paidAt: null,
+    number: `D-${quoteYear}-0001`,
+    numberInt: 1,
+    year: quoteYear,
+  })
+  for (const inv of money.invoices) {
+    const key = docKey(inv.key)
+    const retainer = inv.kind === "retainer"
+    const step = inv.stepKey ? stepId(inv.stepKey) : null
+    specs.push({
+      key,
+      type: "invoice",
+      status: inv.paidOn ? "paid" : "issued",
+      paymentStatus: inv.paidOn ? "paid" : "unpaid",
+      party: inv.client,
+      lines: lineSpecs(
+        retainer
+          ? inv.lines.map((l, i) => ({
+              ...l,
+              externalId:
+                i === 0
+                  ? `retainer_fee:${sorelScheduleId}:${money.retainerLastMonth.month}:1`
+                  : `retainer_overage:${sorelScheduleId}:${money.retainerLastMonth.month}`,
+            }))
+          : inv.kind === "milestone" && step
+            ? inv.lines.map((l) => ({ ...l, externalId: `milestone:${step}` }))
+            : inv.kind === "advance" && step
+              ? inv.lines.map((l) => ({ ...l, externalId: `advance:${step}` }))
+              : inv.lines,
+      ),
+      issuedDaysAgo: 0,
+      termsDays: STUDIO_TERMS_DAYS,
+      ...(inv.projectKey ? { billingProjectId: projectId(inv.projectKey) } : {}),
+      ...(retainer
+        ? { externalRef: retainerKey }
+        : inv.kind === "milestone" && step
+          ? { externalRef: `milestone:${step}` }
+          : inv.kind === "advance" && step
+            ? { externalRef: `advance:${step}` }
+            : {}),
+      ...(retainer
+        ? {
+            externalRefs: {
+              recurring_schedule_id: sorelScheduleId,
+              reconciliation_id: card.id,
+              reconciliation_revision: String(card.revision),
+            },
+          }
+        : step
+          ? { externalRefs: { billing_step_id: step } }
+          : {}),
+      columns: {
+        invoice_role: inv.invoiceRole,
+        operation_category: "services",
+        ...(inv.paidOn ? { payment_state: "paid" } : {}),
+        ...(inv.servicePeriod
+          ? {
+              service_period_start: inv.servicePeriod.start,
+              service_period_end: inv.servicePeriod.end,
+            }
+          : {}),
+      },
+    })
+    when.set(key, {
+      issuedAt: onDay(inv.issuedOn),
+      paidAt: inv.paidOn ? onDay(inv.paidOn, 11) : null,
+      number: inv.number,
+      numberInt: inv.numberInt,
+      year: inv.year,
+    })
+  }
+  const draftStep = stepId(money.draft.stepKey)
+  specs.push({
+    key: docKey(money.draft.key),
+    type: "invoice",
+    status: "draft",
+    paymentStatus: "unpaid",
+    party: money.draft.client,
+    lines: lineSpecs(
+      money.draft.lines.map((l) => ({ ...l, externalId: `milestone:${draftStep}` })),
+    ),
+    issuedDaysAgo: null,
+    termsDays: STUDIO_TERMS_DAYS,
+    billingProjectId: projectId(money.draft.projectKey),
+    externalRef: `milestone:${draftStep}`,
+    externalRefs: { billing_step_id: draftStep },
+    columns: {
+      invoice_role: "standard",
+      operation_category: "services",
+      service_period_end: money.draft.createdOn,
+      latest_issue_on: money.draft.latestIssueOn,
+    },
+  })
+  const documents: ComputedDocument[] = computeDocuments(ctx, {
+    documents: specs,
+    parties,
+    skus: new Map(),
+  }).map((d) => {
+    const w = when.get(d.spec.key)
+    if (!w)
+      return {
+        ...d,
+        issuedAt: null,
+        dueAt: null,
+        paidAt: null,
+        number: null,
+        numberInt: null,
+        yearOfIssue: null,
+      }
+    return {
+      ...d,
+      issuedAt: w.issuedAt,
+      dueAt:
+        w.issuedAt && d.spec.termsDays
+          ? new Date(w.issuedAt.getTime() + d.spec.termsDays * 86_400_000)
+          : null,
+      paidAt: w.paidAt,
+      number: w.number,
+      numberInt: w.numberInt,
+      yearOfIssue: w.year,
+    }
+  })
+  // computeDocuments sorts by its own day offsets; write in the plan's issue order.
+  const order = new Map(specs.map((s, i) => [s.key, i]))
+  documents.sort((a, b) => (order.get(a.spec.key) ?? 0) - (order.get(b.spec.key) ?? 0))
+
+  const { issuerProfileId } = await seedInvoicingHistory(ctx, {
+    issuer: {
+      key: "studio",
+      legalName: STUDIO_COMPANY.legalName ?? STUDIO_COMPANY.name,
+      country: STUDIO_COMPANY.country ?? "FR",
+      vatId: STUDIO_COMPANY.vat ?? null,
+      address: `${STUDIO_COMPANY.addressLine1}, ${STUDIO_COMPANY.postalCode} ${STUDIO_COMPANY.city}`,
+      iban: STUDIO_COMPANY.iban ?? "",
+      swiftBic: STUDIO_COMPANY.swiftBic ?? "",
+      bankName: STUDIO_COMPANY.bankName ?? "",
+      defaultCurrency: "EUR",
+      prefixes: {
+        invoice: STUDIO_INVOICE_PREFIX,
+        quote: "D-{YYYY}-",
+        proforma: "PRO-{YYYY}-",
+        po: "BC-{YYYY}-",
+        creditNote: "A-{YYYY}-",
+      },
+      shopifyShopId: null,
+      invoiceApprovalThresholdMinor: "0",
+      poApprovalThresholdMinor: "0",
+      timezone: STORY_TIME_ZONE,
+    },
+    hsCodes: [],
+    relationships: Object.entries(contactIdsByPartyKey).map(([key, contactId]) => ({
+      key: `studio:${key}`,
+      contactId,
+      relationship: "customer" as const,
+    })),
+    documents,
+    contactIdsByPartyKey,
+  })
+
+  // The portal's billing plan on its quote, and the two monthly schedules.
+  const nowIso = ctx.now.toISOString()
+  await withSystemDb("seed-studio-money-plan", async (tx) => {
+    for (const s of money.steps) {
+      await upsertAppRow(tx, "invoicing", "billing_steps", {
+        id: stepId(s.key),
+        org_id: ctx.orgId,
+        billing_project_id: projectId("MARLIN"),
+        position: s.position,
+        kind: s.kind,
+        label: s.label,
+        amount_minor: String(s.amountMinor),
+        currency: "EUR",
+        tax_rate_bp: STUDIO_VAT_BP,
+        task_id: s.taskKey ? taskId("MARLIN", s.taskKey) : null,
+        quote_document_id: docId(money.quote.key),
+        quote_line_position: s.kind === "advance" ? null : s.position - 1,
+        document_id: s.invoiceKey ? docId(s.invoiceKey) : null,
+        state: s.state,
+      })
+    }
+    for (const r of money.retainers) {
+      const contact = contactOf(r.contactKey)
+      const isRetainer = r.includedMinutes !== null
+      await upsertAppRow(tx, "invoicing", "recurring_schedules", {
+        id: studioScheduleId(ctx, r.project),
+        org_id: ctx.orgId,
+        issuer_profile_id: issuerProfileId,
+        company_id: companyIds[r.client] ?? null,
+        contact_id: contact.id,
+        status: "active",
+        repeats: "month",
+        billing_day: "last",
+        ends_on: null,
+        covers: r.covers,
+        issue_mode: "review",
+        paid_by: "transfer",
+        due_rule: "days_30",
+        language: "fr",
+        lines: jsonCell([
+          {
+            description: r.feeLabel,
+            qty: 1,
+            unit_price_minor: r.feeMinor,
+            vat_bp: STUDIO_VAT_BP,
+            line_kind: "service",
+          },
+        ]),
+        next_issue_on: r.nextIssueOn,
+        next_draft_on: r.nextDraftOn,
+        version: 1,
+        created_by: "seed",
+        ...(isRetainer
+          ? {
+              retainer_project_id: projectId(r.project),
+              retainer_minutes: r.includedMinutes,
+              retainer_overage_rate_minor: String(r.overageRateMinor ?? 0),
+              retainer_rollover: "none",
+              retainer_from: r.from,
+            }
+          : {}),
+        created_at: nowIso,
+        updated_at: nowIso,
+      })
+    }
+  })
+
+  // The card is on the invoice made under its key; once issued, its claims are billed, as
+  // invoicing's call after the issue marks them.
+  if (card.state === "proposed") {
+    await step("finish", { documentId: docId(lastInvoice.key) })
+  }
+  await asUser(biller, (tx) =>
+    reconcileMark({
+      tx: tx as never,
+      orgId: ctx.orgId,
+      input: {
+        reconciliationId: card.id,
+        to: "billed",
+        documentId: docId(lastInvoice.key),
+        documentNumber: lastInvoice.number,
+      },
+    }),
+  )
+
+  // The Beta milestone's draft waits on its issue, asked once of whoever may issue.
+  const draftId = docId(money.draft.key)
+  const asked = await withPrivilegedDb(ctx.orgId, "seed-studio:money-approval", async (tx) =>
+    rowsOf<{ id: string }>(
+      await tx.execute(sql`
+        SELECT id::text AS id FROM ${sql.raw(schemaRef("kernel"))}.approval_requests
+         WHERE org_id = ${ctx.orgId}::uuid AND current_payload->>'draft_id' = ${draftId}
+         LIMIT 1`),
+    ),
+  )
+  if (asked.length === 0) {
+    await createHandlerApprovalRequest({
+      orgId: ctx.orgId,
+      requestedBy: biller.userId,
+      actorScopes: ["invoicing:*", "projects:*"],
+      defaultAppName: "invoicing",
+      origin: "in-app-agent",
+      input: {
+        tool_name: "invoicing:invoice_issue",
+        summary: "Issue the Beta milestone invoice of the partner portal rebuild",
+        summary_detail: {
+          lines: ["Beta, 16,000.00 excluding VAT", `Issue by ${money.draft.latestIssueOn}`],
+          latest_on: money.draft.latestIssueOn,
+        },
+        current_payload: { draft_id: draftId },
+        approve_scope: "invoicing:documents:write",
+      },
+    } as never)
+  }
+  ctx.log(
+    `money: ${money.invoices.length} invoices to ${money.invoices.at(-1)?.number}, plan of ${money.steps.length} steps, ${money.retainers.length} schedules`,
+  )
+  void org
 }
 
 /** Who is away from the anchor, said by the owner, with who is next in line. */
@@ -392,6 +895,10 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
     )
   }
   await seedStudioAway(ctx, org, owner, plan)
+  // The money layer needs the invoicing app: a plan without it seeds no money.
+  if (input.plan.apps.includes("invoicing")) {
+    await seedStudioMoney(ctx, org, actors, tasksOf, companyIds, studioMoney(baseTime))
+  }
 
   // The product writes each task now, at the seed's run, and setting its timebox touches it
   // again; a task the plan closed weeks ago was last changed when it closed. Its row says so,

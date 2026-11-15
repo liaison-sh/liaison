@@ -201,7 +201,9 @@ export interface InvoicingLineSpec {
   description?: string
   unitPriceMinor?: number
   quantity: number
-  lineKind?: "goods" | "software" | "shipping"
+  lineKind?: "goods" | "software" | "shipping" | "service"
+  /** The source key the line carries (`retainer_overage:<schedule>:<month>` and the like). */
+  externalId?: string
 }
 
 export interface InvoicingDocumentSpec {
@@ -227,6 +229,8 @@ export interface InvoicingDocumentSpec {
   externalRef?: string
   /** A credit note: the key of the document it corrects. */
   correctsKey?: string
+  /** Further columns of the document row, as the app writes them (`invoice_role` and the like). */
+  columns?: Record<string, AppCell>
 }
 
 /** Prefix per document type: the issuer profile's own defaults. */
@@ -244,7 +248,7 @@ export interface ComputedLine {
   description: string
   quantity: number
   unitPriceMinor: bigint
-  lineKind: "goods" | "software" | "shipping"
+  lineKind: "goods" | "software" | "shipping" | "service"
   taxRateBp: number
   subtotalMinor: bigint
   taxMinor: bigint
@@ -347,7 +351,7 @@ export function computeDocuments(
         countryOfOrigin: needsCustoms ? "FR" : null,
         customsDescription: needsCustoms ? sku.customsDescription : null,
         productSource: sku ? sku.productSource : null,
-        externalId: sku ? sku.externalId : null,
+        externalId: sku ? sku.externalId : (ln.externalId ?? null),
       })
       position++
     }
@@ -583,6 +587,7 @@ export async function seedInvoicingHistory(
           : {}),
         created_at: iso(d.issuedAt ?? shiftTime(now, -1, 16)),
         updated_at: iso(d.paidAt ?? d.issuedAt ?? shiftTime(now, -1, 16)),
+        ...(d.spec.columns ?? {}),
       }
       await upsertAppRow(tx, "invoicing", "documents", row)
       for (const l of d.lines) {

@@ -11,12 +11,15 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import { marginGet } from "~/apps/projects/handlers"
+import { computeAttentionItems } from "~/apps/projects/attention"
+import { budgetGet, marginGet, reconcilePropose } from "~/apps/projects/handlers"
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
+import { MONTH_CLOSE_KIND } from "~/apps/projects/service/home-lines"
 import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { computeApprovalAttentionItems } from "~/modules/approvals/attention"
 import { isFeatureOffForTool } from "~/modules/apps/org-apps"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
@@ -433,3 +436,180 @@ function isoWeek(civil: string): string {
   const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7)
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, "0")}`
 }
+
+/** A projects handler (the tool as the agent calls it), as `who`, through the app bridge. */
+async function handler<T = Record<string, any>>(
+  who: string,
+  fn: (params: unknown, ctx: never) => Promise<unknown>,
+  params: unknown,
+): Promise<T> {
+  const a = await actor(who)
+  return withRlsContext(a, async (tx) => {
+    const bridge = createRpcBridge(
+      "projects",
+      a.userId,
+      orgId,
+      tx,
+      projectsAppManifest as never,
+      a.scopes,
+      "user",
+      undefined,
+      { origin: "human-ui", now: BOARD_DATE } as never,
+    )
+    return (await fn(params, bridge as never)) as T
+  })
+}
+
+describe("the services world's money at the board date", () => {
+  it("the fixed-price portal reads invoiced 44,800 of 64,000, 19,200 left to invoice", async () => {
+    const out = await handler("anais", budgetGet, { projectName: "Partner portal rebuild" })
+    expect([out.money?.price, out.money?.invoiced, out.money?.leftToInvoice]).toEqual([
+      64_000, 44_800, 19_200,
+    ])
+  })
+
+  it("margin reads the portal 25,106 and the retainer last month 2,687, and the day-rate project says nothing is invoiced yet", async () => {
+    const month = lastMonth(BOARD_DATE)
+    const portal = await handler("anais", marginGet, { projectName: "Partner portal rebuild" })
+    const retainer = await handler("anais", marginGet, {
+      projectName: "Publishing retainer",
+      month,
+    })
+    const daily = await handler("anais", marginGet, {
+      projectName: "Stock and supplier data",
+      month,
+    })
+    expect([portal.invoiced, portal.invoiced - portal.cost]).toEqual([44_800, 25_106])
+    expect([retainer.invoiced, retainer.invoiced - retainer.cost]).toEqual([5_220, 2_687])
+    expect(daily.invoiced).toBe(0)
+    expect(JSON.stringify(daily)).toContain("No issued invoice is linked to the project yet")
+  })
+
+  it("invoice numbers run from 0001 with no gap to the last seeded one, and dates never decrease", async () => {
+    const rows = await withPrivilegedDb(orgId, "studio-figures:numbers", async (tx) =>
+      rowsOf<{ number: string | null; n: number | null; issued: string | null; status: string }>(
+        await tx.execute(
+          sql`SELECT number, number_int AS n, issued_at::text AS issued, status
+                FROM app_invoicing.documents
+               WHERE org_id = ${orgId}::uuid AND type = 'invoice'
+               ORDER BY number_int NULLS LAST`,
+        ),
+      ),
+    )
+    const issued = rows.filter((r) => r.status !== "draft")
+    expect(issued.map((r) => r.n)).toEqual(Array.from({ length: 512 }, (_, i) => i + 1))
+    expect(issued[0]?.number).toBe("F-2026-0001")
+    expect(issued.at(-1)?.number).toBe("F-2026-0512")
+    for (let i = 1; i < issued.length; i++) {
+      expect([issued[i]?.n, (issued[i]?.issued ?? "") >= (issued[i - 1]?.issued ?? "")]).toEqual([
+        issued[i]?.n,
+        true,
+      ])
+    }
+    // The milestone draft waiting at the board date holds no number yet.
+    expect(rows.filter((r) => r.status === "draft").map((r) => r.number)).toEqual([null])
+    const seq = await withPrivilegedDb(orgId, "studio-figures:sequence", async (tx) =>
+      rowsOf<{ value: number }>(
+        await tx.execute(
+          sql`SELECT value FROM kernel.app_sequences
+               WHERE org_id = ${orgId}::uuid AND app_id = 'invoicing' AND key LIKE '%:invoice:2026'`,
+        ),
+      ),
+    )
+    expect(seq.map((r) => Number(r.value))).toEqual([512])
+  })
+
+  it("the retainer's schedule is 4,500 for 40 h, 120 an hour above, and last month's invoice is 6,264.00 with its claims billed", async () => {
+    const out = await withPrivilegedDb(orgId, "studio-figures:retainer", async (tx) => {
+      const schedule = rowsOf<Record<string, any>>(
+        await tx.execute(sql`
+          SELECT s.id::text AS id, s.lines, s.retainer_minutes, s.retainer_overage_rate_minor::int AS rate,
+                 s.retainer_rollover, s.covers
+            FROM app_invoicing.recurring_schedules s
+            JOIN app_projects.projects p ON p.id = s.retainer_project_id
+           WHERE s.org_id = ${orgId}::uuid AND p.key = 'SOREL'`),
+      )
+      const invoice = rowsOf<Record<string, any>>(
+        await tx.execute(sql`
+          SELECT number, grand_total_minor::int AS total, subtotal_minor::int AS excl, external_ref
+            FROM app_invoicing.documents
+           WHERE org_id = ${orgId}::uuid AND number = 'F-2026-0512'`),
+      )
+      const claims = rowsOf<{ state: string; period_key: string; n: number }>(
+        await tx.execute(sql`
+          SELECT c.state, c.period_key, count(*)::int AS n
+            FROM app_projects.billing_claims c
+            JOIN app_projects.reconciliations r ON r.id = c.reconciliation_id
+           WHERE c.org_id = ${orgId}::uuid AND r.document_ref = ${invoice[0]?.external_ref ?? ""}
+           GROUP BY c.state, c.period_key`),
+      )
+      return { schedule: schedule[0], invoice: invoice[0], claims }
+    })
+    expect(out.schedule?.lines?.[0]?.unit_price_minor).toBe(450_000)
+    expect([
+      out.schedule?.retainer_minutes,
+      out.schedule?.rate,
+      out.schedule?.retainer_rollover,
+      out.schedule?.covers,
+    ]).toEqual([2_400, 12_000, "none", "period_ended"])
+    expect([out.invoice?.excl, out.invoice?.total]).toEqual([522_000, 626_400])
+    expect(out.invoice?.external_ref).toBe(`retainer:${out.schedule?.id}:${lastMonth(BOARD_DATE)}`)
+    expect(out.claims.map((c) => [c.state, c.period_key])).toEqual([
+      ["billed", lastMonth(BOARD_DATE)],
+    ])
+  })
+
+  it("Home at the board date asks the biller to issue the milestone draft, and nothing else of money", async () => {
+    const a = await actor("anais")
+    const items = await withRlsContext(a, async (tx) => [
+      ...(await computeApprovalAttentionItems(tx, orgId, a.userId, [], BOARD_DATE)),
+      ...(await computeAttentionItems(tx, orgId, a.userId, [], BOARD_DATE)),
+    ])
+    const money = items
+      .filter(
+        (i) =>
+          (i.kind as string) === MONTH_CLOSE_KIND ||
+          (i.kind === "approval_pending" &&
+            String(i.metadata?.toolName ?? "").startsWith("invoicing:")),
+      )
+      .map((i) =>
+        (i.kind as string) === MONTH_CLOSE_KIND
+          ? `month line ${String(i.metadata?.period ?? "").slice(0, 7)} ${i.title ?? ""}`
+          : `issue approval ${i.metadata?.toolName}`,
+      )
+    // The month lines come on each month's line day (home-money.studio covers them), so at the
+    // board date the one money item is the milestone draft's issue, due by the month's end.
+    expect(money).toEqual(["issue approval invoicing:invoice_issue"])
+    const approval = items.find((i) => i.kind === "approval_pending")
+    expect(approval?.metadata?.latestOn).toBe("2026-11-30")
+  })
+
+  it("planned vs done for the day-rate project last month prices 6,510.00, 1,302.00 of VAT and 7,812.00", async () => {
+    const month = lastMonth(BOARD_DATE)
+    const facts = await call("anais", "projects_reconcileFacts", { project: "ALPINE", month })
+    const id = (key: string) => facts.tasks.find((t: any) => t.key === key)?.id as string
+    const card = await handler("anais", reconcilePropose, {
+      project: "ALPINE",
+      month,
+      lines: [
+        {
+          name: "Data export",
+          taskIds: ["ALPINE-11", "ALPINE-13", "ALPINE-14", "ALPINE-15"].map(id),
+          proofs: [],
+        },
+        {
+          name: "Monitoring",
+          taskIds: ["ALPINE-6", "ALPINE-7", "ALPINE-16", "ALPINE-17"].map(id),
+          proofs: [],
+        },
+      ],
+    })
+    expect(card.error).toBeUndefined()
+    expect(card.tot.map((t: any) => [t.k, t.v.minor / 100])).toEqual([
+      ["Excl. VAT", 6_510],
+      ["VAT", 1_302],
+      ["Incl. VAT", 7_812],
+    ])
+    expect(card.createInvoice).toBe("yes")
+  })
+})

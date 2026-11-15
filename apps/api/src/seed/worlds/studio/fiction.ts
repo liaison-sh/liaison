@@ -296,6 +296,19 @@ export const STUDIO_CLIENTS: StudioClient[] = [
   },
 ]
 
+/**
+ * Clients of earlier work the year's other invoices went to: names on invoices only, no contact
+ * and no project here. Their reserved `.example` domains carry the invoice address.
+ */
+export const STUDIO_PAST_CLIENTS: ReadonlyArray<{ key: string; name: string; domain: string }> = [
+  { key: "brume", name: "Brume Conseil", domain: "brume-conseil.example" },
+  { key: "osier", name: "Osier Habitat", domain: "osier-habitat.example" },
+  { key: "lanthier", name: "Maison Lanthier", domain: "maison-lanthier.example" },
+  { key: "vallon", name: "Papeterie du Vallon", domain: "papeterie-vallon.example" },
+  { key: "garance", name: "Garance Formation", domain: "garance-formation.example" },
+  { key: "corbel", name: "Corbel Ingénierie", domain: "corbel-ingenierie.example" },
+]
+
 const contact = (key: string, name: string, client: string, local: string): DemoCustomer => {
   const domain = STUDIO_CLIENTS.find((c) => c.key === client)?.domain
   if (!domain) throw new Error(`studio fiction: no client '${client}'`)

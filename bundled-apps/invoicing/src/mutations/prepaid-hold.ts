@@ -2,9 +2,11 @@
 //
 // A prepaid retainer makes two documents around each month end: the next month's advance and this
 // month's final. Home shows at most one money item per project and month, so a prepaid retainer's
-// project has one issue approval waiting at a time: a second draft holds its approval until the
-// first is issued or discarded, and is raised then. Best effort, never throws: a draft whose
-// approval could not be raised stays on the pending list, to issue from there.
+// project has one issue approval waiting at a time: a second draft holds its approval (marked
+// `issue_held` on the draft) until the first is issued or discarded, or its approval is turned
+// down or runs out, and is raised then: at once on an issue or a discard, by the hourly draft job
+// otherwise. Best effort, never throws: a draft whose approval could not be raised keeps its mark,
+// so the next hour tries again, and stays a draft to issue from its page.
 
 import { formatMoneyMinor } from "../money"
 import { isRetainerSchedule } from "../recurring/retainer"
@@ -61,12 +63,29 @@ export async function raiseOnePerProject(
   latestIssueOn?: string | null,
 ): Promise<{ approvalId: string | null; heldBy: { id: string; title: string } | null }> {
   const waiting = await waitingDraftOf(ctx, projectId, draftId)
-  if (waiting)
+  if (waiting) {
+    await markHeld(ctx, draftId, true)
     return { approvalId: null, heldBy: { id: String(waiting.id), title: titleOf(waiting) } }
+  }
   return {
     approvalId: await raiseIssueApproval(ctx, draftId, title, lines, latestIssueOn),
     heldBy: null,
   }
+}
+
+const refsOf = (doc: Row | null): Row => {
+  const refs = asJson(doc?.external_refs)
+  return refs && typeof refs === "object" && !Array.isArray(refs) ? (refs as Row) : {}
+}
+
+/** Mark a draft as holding its issue approval, or clear the mark once it is raised. */
+async function markHeld(ctx: Ctx, draftId: string, held: boolean): Promise<void> {
+  const doc = (await ctx.db.findOne("documents", draftId)) as Row | null
+  if (!doc) return
+  const { issue_held: _was, ...rest } = refsOf(doc)
+  await ctx.db.update("documents", draftId, {
+    external_refs: held ? { ...rest, issue_held: true } : rest,
+  })
 }
 
 /** A draft's latest issue day, as its row stores it, or null. */
@@ -79,12 +98,14 @@ const latestIssueOf = (doc: Row): string | null => {
 
 /** The result's words for a held approval. */
 export function heldText(heldBy: { id: string; title: string }): string {
-  return `Its issue approval waits until ${heldBy.title} (draft ${heldBy.id}) is issued or discarded, so the project has one invoice to approve at a time; it is raised then.`
+  return `Its issue approval waits until ${heldBy.title} (draft ${heldBy.id}) is issued or discarded, or its approval is turned down or runs out, so the project has one invoice to approve at a time; it is raised then.`
 }
 
 /**
- * After a draft of a prepaid retainer's project was issued or discarded: raise the issue approval
- * the project's next draft held, the earliest month first.
+ * After a draft of a prepaid retainer's project was issued or discarded, or when no draft of the
+ * project waits on an approval any more: raise the issue approval the project's next held draft
+ * held, the earliest month first. A draft whose own approval was turned down is not held, so it is
+ * never asked again by itself.
  */
 export async function raiseHeldApproval(
   ctx: Ctx,
@@ -110,6 +131,7 @@ export async function raiseHeldApproval(
     )
       .filter((d) => d.id !== gone.id)
       .filter((d) => /^(advance|retainer):/.test(String(d.external_ref ?? "")))
+      .filter((d) => refsOf(d).issue_held === true)
       .sort((a, b) =>
         String(a.service_period_start ?? "").localeCompare(String(b.service_period_start ?? "")),
       )
@@ -124,19 +146,56 @@ export async function raiseHeldApproval(
       0,
     )
     const currency = String(next.currency ?? "EUR")
-    await raiseIssueApproval(
+    const approvalId = await raiseIssueApproval(
       ctx,
       String(next.id),
       titleOf(next),
       [
         `${formatMoneyMinor(BigInt(excl), currency)} excl. VAT`,
-        "It waited until the project's previous invoice was issued or discarded",
+        "It waited until the project's previous invoice was settled",
       ],
       latestIssueOf(next),
     )
+    if (approvalId) await markHeld(ctx, String(next.id), false)
   } catch (err) {
     ctx.logger?.warn?.("raising a held issue approval failed", {
       error: err instanceof Error ? err.message : String(err),
     })
   }
+}
+
+/**
+ * The hourly pass: each prepaid retainer's project whose drafts wait on no approval (the one that
+ * did was turned down or ran out) gets its held draft's approval raised.
+ */
+export async function raiseHeldApprovals(ctx: Ctx): Promise<number> {
+  let raised = 0
+  try {
+    const schedules = (await ctx.db.findMany("recurring_schedules", {
+      where: { covers: "period_ahead" },
+      limit: 500,
+    })) as Row[]
+    const projects = new Set(
+      schedules
+        .filter((s) => s.status !== "ended" && isRetainerSchedule(s))
+        .map((s) => s.retainer_project_id)
+        .filter((p): p is string => typeof p === "string" && p !== ""),
+    )
+    for (const projectId of projects) {
+      const held = (
+        (await ctx.db.findMany("documents", {
+          where: { billing_project_id: projectId, status: "draft" },
+          limit: 50,
+        })) as Row[]
+      ).some((d) => refsOf(d).issue_held === true)
+      if (!held) continue
+      await raiseHeldApproval(ctx, { id: "", billing_project_id: projectId })
+      raised += 1
+    }
+  } catch (err) {
+    ctx.logger?.warn?.("the hourly pass over held issue approvals failed", {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return raised
 }

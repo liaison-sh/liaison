@@ -579,6 +579,16 @@ export async function takeDownMilestoneLine(ctx: MutationsCtx, projectId: string
       entityId: projectId,
       data: { project_id: projectId, resolved: true },
     })
+    // The line is down for every step on it, so a step still done with no invoice comes up again
+    // once the draft no longer holds the line.
+    const noticed = (
+      (await ctx.db.findMany("billing_steps", {
+        where: { billing_project_id: projectId },
+        limit: 200,
+      })) as Row[]
+    ).filter((s) => s.no_invoice_noticed_on)
+    for (const s of noticed)
+      await ctx.db.update("billing_steps", String(s.id), { no_invoice_noticed_on: null })
   } catch {
     // The sweep takes it down within the hour.
   }

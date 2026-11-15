@@ -488,6 +488,43 @@ describe("a retainer month's invoice", () => {
     expect(waiting().map((a) => (a.current_payload as Row).draft_id)).toEqual([final.draftId])
   })
 
+  test("a prepaid retainer raises the held approval once the waiting one is turned down or runs out", async () => {
+    for (const ended of ["rejected", "expired"]) {
+      const h = harness({
+        schedule: retainerSchedule({ covers: "period_ahead", contact_id: "contact-1" }),
+      })
+      const waiting = () => h.approvals.filter((a) => a.status === "pending")
+      const oct = await advanceDraftCreate(h.ctx, {
+        projectId: PROJECT,
+        amountMinor: 450_000,
+        contactId: CONTACT,
+        month: "2026-10",
+      })
+      if (oct.status !== "completed") throw new Error(JSON.stringify(oct))
+      await invoiceIssue(h.ctx, { draft_id: oct.draftId } as never)
+      const nov = await advanceDraftCreate(h.ctx, {
+        projectId: PROJECT,
+        amountMinor: 450_000,
+        contactId: CONTACT,
+        month: "2026-11",
+      })
+      if (nov.status !== "completed") throw new Error(JSON.stringify(nov))
+      h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+      const final = await draft(h, REC_OCT)
+      expect(final.approvalId).toBeNull()
+      // November's request ends without an issue: the hourly job raises the held final, once.
+      for (const a of waiting()) a.status = ended
+      await recurringDraftJob(h.ctx as never)
+      expect(waiting().map((a) => (a.current_payload as Row).draft_id)).toEqual([final.draftId])
+      await recurringDraftJob(h.ctx as never)
+      expect(waiting()).toHaveLength(1)
+      // The turned-down draft is not asked again by itself.
+      expect(
+        h.approvals.filter((a) => (a.current_payload as Row).draft_id === nov.draftId),
+      ).toHaveLength(1)
+    }
+  })
+
   test("a second card for a month already drafted is refused, named, and never attached to that draft", async () => {
     const h = harness()
     const OTHER = "7a1d2c3e-0000-4000-8000-0000000000b1"

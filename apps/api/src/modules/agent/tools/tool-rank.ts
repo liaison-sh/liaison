@@ -700,17 +700,23 @@ function otherKindOf(
   return !isActionWord(typed, before, tools)
 }
 
-/** Name words that introduce what a tool works from, not what it is about. */
-const SOURCE_WORDS = new Set(["from", "for"])
-
 /**
  * A name word the tool's name qualifies, matched by a query that names none of the words that
- * qualify it. One after "from" or "for": `credit_note_from_reconcile` makes a credit note from a
- * reconciliation, it is not a reconciliation tool. Or the record of `<qualifier>_<record>_<action>`
- * when another tool is named `<record>_<action>`: `advance_refund_prepare` acts on one kind of the
- * refunds `refunds_create` makes. Such a word matches the tool like a keyword, so "refund" alone
- * reaches refunds before an advance's refund, and "reconcile" alone reaches the reconciliation
- * tools before a correction made from one.
+ * qualify it. Two shapes only, both a record of the tool's own app made from or about another
+ * app's record:
+ * - `<record>_from_<word>`, the word last: `credit_note_from_reconcile` makes a credit note (a
+ *   record of its app) from a reconciliation (a record of another app). It is not a
+ *   reconciliation tool. A verb before "from" (`remove_from_collection`) names what is done to
+ *   the word, so the word is the tool's object and keeps its score.
+ * - `<qualifier>_<record>_<action>`, where the qualifier is a record of the same app that no
+ *   tool of the app acts on alone, the pair is this tool's alone, another app names the record in
+ *   the plural as its own (`refunds_create`) and some tool ends on the word as an act
+ *   (`returns_refund`): `advance_refund_prepare` acts on one kind of the refunds another app
+ *   makes. A record with a family of tools (`document_template_*`), a record of the same app
+ *   (`advance_draft_create` beside `drafts_create`) or a verb (`google_set_status`) is not one.
+ * Such a word matches the tool like a keyword, so "refund" alone reaches refunds before an
+ * advance's refund, and "reconcile" alone reaches the reconciliation tools before a correction
+ * made from one.
  */
 function qualifiedNameWord(
   t: ScorableDeferredTool,
@@ -720,44 +726,99 @@ function qualifiedNameWord(
   term: string,
   tools: readonly ScorableDeferredTool[],
 ): boolean {
+  const qualified = qualifiedWordOf(t, tools)
+  if (!qualified) return false
   const parts = scoringWords(t).nameParts
-  const at = parts.findIndex((p) => p === term || p === `${term}s`)
-  if (at <= 0) return false
-  const named = (from: number, to: number) =>
-    parts
-      .slice(from, to)
-      .some(
-        (p, k) =>
-          from + k !== at &&
-          !SOURCE_WORDS.has(p) &&
-          termStems.some(
-            (s, j) =>
-              j !== i &&
-              (s === wordStem(p) || termSynonyms[j].some((x) => x === p || `${x}s` === p)),
-          ),
-      )
-  const source = parts.findIndex((p) => SOURCE_WORDS.has(p))
-  if (source >= 0) return at > source && !named(0, source)
-  return (
-    parts.length === 3 &&
-    at === 1 &&
-    plainRecordsOf(tools).has(wordStem(parts[1])) &&
-    !named(0, parts.length)
+  const word = parts[qualified.at]
+  if (word !== term && word !== `${term}s`) return false
+  return !qualified.qualifiers.some((k) =>
+    termStems.some(
+      (s, j) =>
+        j !== i &&
+        (s === wordStem(parts[k]) ||
+          termSynonyms[j].some((x) => x === parts[k] || `${x}s` === parts[k])),
+    ),
   )
 }
 
-/** The stems of every record a two-word name holds before its action (`refunds_create`). */
-const plainRecordsCache = new WeakMap<readonly ScorableDeferredTool[], Set<string>>()
-function plainRecordsOf(tools: readonly ScorableDeferredTool[]): Set<string> {
-  const cached = plainRecordsCache.get(tools)
+/** The name word a tool's name qualifies, and the positions of the words that qualify it. */
+type QualifiedWord = { at: number; qualifiers: readonly number[] }
+const qualifiedWordCache = new WeakMap<
+  readonly ScorableDeferredTool[],
+  Map<ScorableDeferredTool, QualifiedWord | null>
+>()
+function qualifiedWordOf(
+  t: ScorableDeferredTool,
+  tools: readonly ScorableDeferredTool[],
+): QualifiedWord | null {
+  let byTool = qualifiedWordCache.get(tools)
+  if (!byTool) {
+    byTool = new Map()
+    qualifiedWordCache.set(tools, byTool)
+  }
+  const cached = byTool.get(t)
+  if (cached !== undefined) return cached
+  const found = findQualifiedWord(t, tools)
+  byTool.set(t, found)
+  return found
+}
+
+function findQualifiedWord(
+  t: ScorableDeferredTool,
+  tools: readonly ScorableDeferredTool[],
+): QualifiedWord | null {
+  const parts = scoringWords(t).nameParts
+  const stems = parts.map(wordStem)
+  const names = nameStemsOf(tools)
+  const startsWith = (n: { stems: readonly string[] }, prefix: readonly string[]) =>
+    n.stems.length > prefix.length && prefix.every((s, k) => n.stems[k] === s)
+  const source = parts.indexOf("from")
+  if (source > 0) {
+    if (source !== parts.length - 2) return null
+    const record = stems.slice(0, source)
+    const word = stems[source + 1]
+    // The words before "from" are a record of the tool's app: another of its tools acts on it.
+    if (!names.some((n) => n.tool !== t && n.app === t.appName && startsWith(n, record)))
+      return null
+    // The word after it is a record of another app.
+    if (!names.some((n) => n.app !== t.appName && startsWith(n, [word]))) return null
+    return { at: source + 1, qualifiers: record.map((_, k) => k) }
+  }
+  if (parts.length !== 3) return null
+  const [qualifier, record] = stems
+  const sameApp = names.filter((n) => n.tool !== t && n.app === t.appName)
+  // The qualifier is a record of the app, but only ever as a qualifier: a tool that acts on it
+  // alone (`orders_get` beside `orders_invoice_links`) makes it the tool's own record.
+  if (!sameApp.some((n) => n.stems[0] === qualifier && n.stems[1] !== record)) return null
+  if (sameApp.some((n) => n.parts.length === 2 && n.stems[0] === qualifier)) return null
+  // The pair is this tool's alone: a family of tools makes it a record in its own right.
+  if (names.some((n) => n.tool !== t && n.stems[0] === qualifier && n.stems[1] === record))
+    return null
+  // Another app holds the plain record, and the word also ends some tool's name as an act
+  // (`returns_refund`), so the word alone asks for the plain record or act.
+  const word = parts[1]
+  if (!names.some((n) => n.app !== t.appName && n.parts.length === 2 && n.parts[0] === `${word}s`))
+    return null
+  if (!names.some((n) => n.tool !== t && n.parts.length > 1 && n.parts.at(-1) === word)) return null
+  return { at: 1, qualifiers: [0, 2] }
+}
+
+/** Every tool's name words and their stems, with its app, worked out once per catalog. */
+type NameStems = {
+  tool: ScorableDeferredTool
+  app: string
+  parts: readonly string[]
+  stems: readonly string[]
+}
+const nameStemsCache = new WeakMap<readonly ScorableDeferredTool[], NameStems[]>()
+function nameStemsOf(tools: readonly ScorableDeferredTool[]): NameStems[] {
+  const cached = nameStemsCache.get(tools)
   if (cached) return cached
-  const out = new Set(
-    tools
-      .map((t) => scoringWords(t).nameParts)
-      .filter((parts) => parts.length === 2)
-      .map((parts) => wordStem(parts[0])),
-  )
-  plainRecordsCache.set(tools, out)
+  const out = tools.map((tool) => {
+    const parts = scoringWords(tool).nameParts
+    return { tool, app: tool.appName, parts, stems: parts.map(wordStem) }
+  })
+  nameStemsCache.set(tools, out)
   return out
 }
 

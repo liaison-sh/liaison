@@ -500,14 +500,27 @@ export const LATEST_DAY_LEAD_DAYS = 4
 /** Where such a request sorts: above an ordinary request (60) and a done-with-no-invoice line. */
 const LATEST_DAY_URGENCY = 90
 
-/** The org's calendar day now: its own zone, UTC without one. */
-async function orgToday(tx: RlsClient, orgId: string, now: Date): Promise<string> {
-  const zone =
-    extractRows<{ tz: string | null }>(
-      await tx.execute(
-        drizzleSql`SELECT timezone AS tz FROM ${K}.organizations WHERE id = ${orgId}::uuid LIMIT 1`,
-      ),
-    )[0]?.tz || "UTC"
+/**
+ * The org's calendar day now: its own zone, UTC without one. The org row is closed to the caller's
+ * RLS role, so its zone is read as a system read of that one row, as the approve-from-home
+ * settings are.
+ */
+async function orgToday(orgId: string, now: Date): Promise<string> {
+  let zone = "UTC"
+  try {
+    zone =
+      (
+        await withPrivilegedDb(orgId, "approval-attention-org-day", async (tx) =>
+          extractRows<{ tz: string | null }>(
+            await tx.execute(
+              drizzleSql`SELECT timezone AS tz FROM ${K}.organizations WHERE id = ${orgId}::uuid LIMIT 1`,
+            ),
+          ),
+        )
+      )[0]?.tz || "UTC"
+  } catch (err) {
+    log.warn({ err, orgId }, "could not read the org's time zone; using UTC")
+  }
   try {
     return new Intl.DateTimeFormat("en-CA", {
       timeZone: zone,
@@ -747,7 +760,7 @@ export async function computeApprovalAttentionItems(
     // days before it, and stays there once late, whatever else holds it. Order only.
     const latestOn = typeof r.summary?.latestOn === "string" ? r.summary.latestOn : null
     if (!wedged && latestOn) {
-      today ??= await orgToday(tx, orgId, now)
+      today ??= await orgToday(orgId, now)
       if (nearLatestDay(latestOn, today)) urgency = Math.max(urgency, LATEST_DAY_URGENCY)
     }
 

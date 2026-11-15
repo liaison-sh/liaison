@@ -22,6 +22,7 @@ function sweepCtx(h: ReturnType<typeof harness>, emitted: Row[]) {
   return {
     db: h.db,
     executeTool: h.ctx.executeTool,
+    approvals: h.ctx.approvals,
     time: h.ctx.time,
     emit: async (e: Row) => {
       emitted.push(e)
@@ -50,16 +51,17 @@ describe("billing steps sweep", () => {
     // It drafted nothing and asked nobody.
     expect(h.db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(0)
     expect(h.approvals).toHaveLength(0)
-    // The person drafts it: the line goes, once.
+    // The person drafts it: the line goes at once, once; the sweep has nothing left to take down.
+    h.ctx.emit = async (e: Row) => {
+      emitted.push(e)
+    }
     const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
     expect(d.status).toBe("completed")
-    const third = await billingStepsSweep(sweepCtx(h, emitted))
-    expect(third.resolved).toBe(1)
-    expect(emitted.at(-1)).toMatchObject({
-      action: "milestone_no_invoice",
-      data: { resolved: true },
-    })
     expect((await billingStepsSweep(sweepCtx(h, emitted))).resolved).toBe(0)
+    expect((await billingStepsSweep(sweepCtx(h, emitted))).raised).toBe(0)
+    const lineEvents = emitted.filter((e) => e.action === "milestone_no_invoice")
+    expect(lineEvents.filter((e) => (e.data as Row).resolved === true)).toHaveLength(1)
+    expect(lineEvents.at(-1)).toMatchObject({ data: { resolved: true } })
   })
 
   test("two milestones done in one month make one Home line for the project, and a waiting draft holds it", async () => {
@@ -92,5 +94,27 @@ describe("billing steps sweep", () => {
     expect(after.raised).toBe(1)
     expect(raisedLines()).toHaveLength(2)
     expect(String((raisedLines()[1]?.data as Row | undefined)?.step_label)).toBe("Gamma")
+  })
+
+  test("a draft whose issue approval was turned down or ran out no longer holds the project's line", async () => {
+    for (const ended of ["rejected", "expired"]) {
+      const h = harness()
+      await withPlan(h)
+      const emitted: Row[] = []
+      h.ctx.emit = async (e: Row) => {
+        emitted.push(e)
+      }
+      done(h, T_BETA)
+      done(h, T_GAMMA)
+      await billingStepsSweep(sweepCtx(h, emitted))
+      const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
+      if (d.status !== "completed") throw new Error(JSON.stringify(d))
+      for (const a of h.approvals) a.status = ended
+      // Beta's draft keeps its own milestone off the line; Gamma comes up, alone.
+      const after = await billingStepsSweep(sweepCtx(h, emitted))
+      expect(after.raised).toBe(1)
+      const raised = emitted.filter((e) => (e.data as Row).resolved === false)
+      expect(String((raised.at(-1)?.data as Row | undefined)?.step_label)).toBe("Gamma")
+    }
   })
 })

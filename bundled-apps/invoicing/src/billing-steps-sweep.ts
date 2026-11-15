@@ -2,8 +2,8 @@
 //
 // billing-steps-sweep (hourly): milestones whose task is done but which have no invoice yet raise
 // one Home line per project to the people who issue invoices, naming them, so a lost status event
-// or a routine turned off never loses an invoice. A draft of the project waiting to issue holds the
-// line (its issue approval is the project's one money item). It drafts nothing:
+// or a routine turned off never loses an invoice. A draft of the project whose issue approval is
+// pending holds the line (that approval is the project's one money item). It drafts nothing:
 // a person drafts it (milestone_draft_create). It reads each step's task through projects' own
 // milestone read (done or not, no assignee, time or activity), and settles the stored state of the
 // steps and advance deductions whose documents were issued since.
@@ -19,6 +19,8 @@ export interface BillingStepsSweepCtx {
     update(table: string, id: string, data: Row): Promise<unknown>
   }
   executeTool: CrossAppExecuteTool
+  /** The app's own pending approvals: a draft holds the line only while its request is pending. */
+  approvals?: { pendingFor(key: string, tools?: string[]): Promise<unknown> }
   emit(e: { entity: string; action: string; entityId: string; data: Row }): Promise<unknown>
   time: { civil(o: { timezone: string }): Promise<{ date: string }> }
 }
@@ -95,15 +97,19 @@ export async function billingStepsSweep(
     }
     resolved += 1
   }
+  let pending: Set<string> | null = null
   for (const projectId of new Set([...byProject.keys(), ...lineUp])) {
     const list = byProject.get(projectId) ?? []
-    const waiting = (
-      (await ctx.db.findMany("documents", {
-        where: { billing_project_id: projectId, status: "draft" },
-        limit: 1,
-      })) as Row[]
-    ).length
-    if (waiting > 0 || list.length === 0) {
+    // A draft of the project whose issue approval is pending is the project's item. One whose
+    // request was turned down or ran out is on no list, so it holds nothing; a step with its own
+    // draft is already off the line.
+    const drafts = (await ctx.db.findMany("documents", {
+      where: { billing_project_id: projectId, status: "draft" },
+      limit: 50,
+    })) as Row[]
+    if (drafts.length > 0) pending ??= await pendingIssueDrafts(ctx)
+    const waiting = drafts.some((d) => pending?.has(String(d.id)))
+    if (waiting || list.length === 0) {
       if (lineUp.has(projectId)) await takeDown(projectId, list)
       continue
     }
@@ -147,6 +153,15 @@ export async function billingStepsSweep(
     raised += 1
   }
   return { raised, resolved, settled }
+}
+
+/** The drafts whose issue approval is pending. */
+async function pendingIssueDrafts(ctx: BillingStepsSweepCtx): Promise<Set<string>> {
+  if (!ctx.approvals?.pendingFor) return new Set()
+  let raw: unknown = await ctx.approvals.pendingFor("draft_id", ["invoicing:invoice_issue"])
+  if (typeof raw === "string") raw = JSON.parse(raw)
+  const rows = (Array.isArray(raw) ? raw : []) as Array<{ target_id?: unknown }>
+  return new Set(rows.map((r) => r.target_id).filter((id): id is string => typeof id === "string"))
 }
 
 /** Manifest `jobs.billing-steps-sweep` handler: the kernel calls job handlers as `(payload, ctx)`. */

@@ -1768,6 +1768,10 @@
     "calendar_ended": {
       "one": "calendrier partagé de jours non travaillés à choisir de nouveau",
       "other": "calendriers partagés de jours non travaillés à choisir de nouveau"
+    },
+    "milestone_no_invoice": {
+      "one": "jalon terminé pas encore facturé",
+      "other": "jalons terminés pas encore facturés"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",

@@ -1771,6 +1771,10 @@
     "calendar_ended": {
       "one": "shared days-off calendar to choose again",
       "other": "shared days-off calendars to choose again"
+    },
+    "milestone_no_invoice": {
+      "one": "finished milestone not yet invoiced",
+      "other": "finished milestones not yet invoiced"
     }
   },
   "homeMarkAllRead": "Mark all read",

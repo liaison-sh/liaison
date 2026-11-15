@@ -3475,7 +3475,8 @@
     "lang": "fr",
     "say": "facture d'acompte de 30%",
     "typed": ["acompte", "deposit invoice", "advance invoice", "down payment"],
-    "any": ["invoicing__advance_draft_create"]
+    "any": ["invoicing__advance_draft_create"],
+    "modelRun": true
   },
   {
     "id": "C36",
@@ -3483,7 +3484,8 @@
     "lang": "fr",
     "say": "facture le jalon 2",
     "typed": ["jalon", "milestone invoice", "bill milestone"],
-    "any": ["invoicing__milestone_draft_create"]
+    "any": ["invoicing__milestone_draft_create"],
+    "modelRun": true
   },
   {
     "id": "C97",
@@ -3491,7 +3493,8 @@
     "lang": "fr",
     "say": "montre l'échéancier de facturation du projet",
     "typed": ["échéancier facturation", "billing plan", "plan de facturation"],
-    "any": ["invoicing__billing_plan_get", "invoicing__billing_plan_set"]
+    "any": ["invoicing__billing_plan_get", "invoicing__billing_plan_set"],
+    "modelRun": true
   },
   {
     "id": "C98",
@@ -3499,7 +3502,8 @@
     "lang": "en",
     "say": "set the billing plan from the quote: an advance, three milestones and the final",
     "typed": ["set billing plan", "échéancier du devis", "milestones from quote"],
-    "any": ["invoicing__billing_plan_set"]
+    "any": ["invoicing__billing_plan_set"],
+    "modelRun": true
   },
   {
     "id": "C99",
@@ -3507,7 +3511,8 @@
     "lang": "fr",
     "say": "le projet s'arrête, rembourse l'acompte",
     "typed": ["rembourser acompte", "avoir sur acompte", "refund advance"],
-    "any": ["invoicing__advance_refund_prepare"]
+    "any": ["invoicing__advance_refund_prepare"],
+    "modelRun": true
   },
   {
     "id": "C100",
@@ -3515,7 +3520,8 @@
     "lang": "en",
     "say": "the invoice was issued, but data export was 2.5 days, not 3: correct that line",
     "typed": ["correct invoiced line", "avoir correction ligne", "corriger la facture émise"],
-    "any": ["invoicing__credit_note_from_reconcile"]
+    "any": ["invoicing__credit_note_from_reconcile"],
+    "modelRun": true
   },
   {
     "id": "C101",

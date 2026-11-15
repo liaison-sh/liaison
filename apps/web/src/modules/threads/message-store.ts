@@ -2326,7 +2326,12 @@ export async function reconcileAgentStreamsWithServer(
           const runTurn = typeof run.turnId === "string" && run.turnId ? run.turnId : null
           return !stream.turnId || !runTurn || runTurn === stream.turnId
         })
-        if (running) continue
+        // The server still runs it: the turn is working (a model thinking sends nothing for a
+        // while), so it reads Working again until it is quiet for another threshold.
+        if (running) {
+          stream.lastActivityAt = askedAt
+          continue
+        }
         noteTurnEnded(threadId, agentId, stream.turnId)
         if (key.includes("#")) delete s.agentStreams[key]
         else s.agentStreams[key] = createIdleAgentStream()

@@ -331,6 +331,30 @@ describe("the month line on Home", () => {
 })
 
 describe("a draft waiting on its latest issue day", () => {
+  it("the day a draft comes back to the top is the org's own day, not the UTC one", async () => {
+    // Noon UTC on 26 March is already 27 March in Auckland: four days before the 31st there.
+    await db.execute(
+      drizzleSql`UPDATE kernel.organizations SET timezone = 'Pacific/Auckland' WHERE id = ${orgId}::uuid`,
+    )
+    try {
+      const waiting = await waitingDraft({
+        projectId: project.fixed!,
+        externalRef: "milestone:zone-test",
+        latestOn: "2028-03-31",
+      })
+      const urgency = async (day: string) =>
+        (await homeOf(biller, day)).find((i) => i.entityId === waiting.approvalId)?.urgency
+      expect(await urgency("2028-03-25")).toBe(60)
+      expect(await urgency("2028-03-26")).toBe(90)
+      await db.execute(drizzleSql`
+        UPDATE kernel.approval_requests SET status = 'cancelled' WHERE id = ${waiting.approvalId}::uuid`)
+    } finally {
+      await db.execute(
+        drizzleSql`UPDATE kernel.organizations SET timezone = 'UTC' WHERE id = ${orgId}::uuid`,
+      )
+    }
+  })
+
   it("a draft four days before its latest day comes back to the top", async () => {
     const waiting = await waitingDraft({
       projectId: project.fixed!,

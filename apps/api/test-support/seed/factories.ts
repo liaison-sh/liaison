@@ -54,6 +54,7 @@ import {
   setCreditBalance,
 } from "./agent"
 import { refreshStoredAppAttention } from "./attention"
+import { seedBillableProject } from "./billable-project"
 import { forceCalendarReauth, seedCalendarAccount } from "./calendar"
 import { expireApproval, stageGatedApproval } from "./gated-approval"
 import { injectInboundMail, injectThreadMessage } from "./inject"
@@ -859,6 +860,23 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
   ),
 
   /** One subscription customer of an issuer: its contact and billing address, a paid invoice and the active monthly schedule continuing it. */
+  /** A project billed by the day, its company and contact, tasks closed this month with time. */
+  "projects.billableMonth": factory(
+    zod.object({
+      key: zod.string().regex(/^[A-Z][A-Z0-9]{1,9}$/),
+      name: zod.string().min(1),
+      company: zod.string().min(1),
+      contactName: zod.string().min(1),
+      contactEmail: zod.string().min(3),
+      rateMinor: zod.number().int().positive(),
+      currency: zod.string().length(3),
+      tasks: zod
+        .array(zod.object({ title: zod.string().min(1), days: zod.number().positive() }))
+        .min(1)
+        .max(10),
+    }),
+    (ctx, a) => seedBillableProject(ctx, a),
+  ),
   "invoicing.monthEndClient": factory(
     zod.object({
       issuerId: uuid,

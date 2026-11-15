@@ -498,7 +498,7 @@ export interface ToolCardRequest {
   threadId?: unknown
 }
 
-function sameValue(a: unknown, b: string | number): boolean {
+function sameValue(a: unknown, b: string | number | boolean): boolean {
   return a === b
 }
 

@@ -1,0 +1,5 @@
+{
+  "reviewedOutsideRoutes": {
+    "apps/api/src/modules/dashboards/org-timezone.ts#dashboardTimezone": "reads one column (kernel.organizations.timezone) of the org it is given, pinned to that org's id; its callers pass the reader's own org (viewer.orgId from the RLS context), including a table read's computed columns (tables/computed.ts orgMonth, reached from listRows, which the tracer cannot follow past a same-named helper)"
+  }
+}

@@ -40,8 +40,6 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
-import { dashboardTimezone } from "~/modules/dashboards/org-timezone"
-import { dayIn } from "~/modules/dashboards/relative-dates"
 import { checkToolSource } from "~/modules/dashboards/sources"
 import {
   type BackedDocument,
@@ -78,7 +76,8 @@ import {
   pick,
   validateCells,
 } from "~/modules/dashboards/tables/columns"
-import { applyLookups } from "~/modules/dashboards/tables/lookup"
+import { applyComputedColumns, needsMonth, orgMonth } from "~/modules/dashboards/tables/computed"
+import { isMonthsFormula } from "~/modules/dashboards/tables/formula"
 import {
   type ContainsQuery,
   DataStoreError,
@@ -361,16 +360,21 @@ async function rowCounts(t: RlsClient, orgId: string, ids: string[]): Promise<Ma
   return new Map(rows.map((r) => [r.collection, Number(r.docs)]))
 }
 
-/** The org's current month (YYYY-MM, in its timezone) when the table has a months column. */
+/** The org's current month (YYYY-MM, in its timezone) when the table has a months column (or a
+ *  months-shaped formula). */
 async function monthOf(viewer: UserContext, loaded: LoadedTable): Promise<string | null> {
-  if (!allColumns(loaded).some(isMonthly)) return null
-  return dayIn(await dashboardTimezone(viewer.orgId), new Date()).slice(0, 7)
+  if (!needsMonth(allColumns(loaded))) return null
+  return orgMonth(viewer.orgId)
 }
 
-/** The columns as a read gives them: each months column (or rollup by month) with its window
- *  from `month`. */
+/** The columns as a read gives them: each months column (or rollup by month, or months-shaped
+ *  formula) with its window from `month`. */
 export function columnViews(columns: Column[], month: string | null): ColumnView[] {
-  return columns.map((c) => (isMonthly(c) && month ? { ...c, months: monthWindow(c, month) } : c))
+  return columns.map((c) =>
+    month && (isMonthly(c) || isMonthsFormula(c, columns))
+      ? { ...c, months: monthWindow(c, month) }
+      : c,
+  )
 }
 
 function toInfo(
@@ -712,17 +716,19 @@ function checkWhere(where: Where | undefined, columns: Column[]): void {
         column: key,
       })
     }
-    if (col.type === "lookup" || col.type === "rollup") {
+    if (col.type === "lookup" || col.type === "rollup" || col.type === "formula") {
       throw new TableError("invalid_request", computedNotQueryable(col), { column: key })
     }
   }
 }
 
-/** Why a lookup or rollup column cannot filter or sort rows: its cells are read after the rows. */
+/** Why a computed column cannot filter or sort rows: its cells are read after the rows. */
 function computedNotQueryable(col: Column): string {
   return col.type === "rollup"
     ? `'${col.key}' is a rollup column, computed from another table after the rows: it cannot filter or sort them`
-    : `'${col.key}' is a lookup column, read live after the rows: it cannot filter or sort them`
+    : col.type === "formula"
+      ? `'${col.key}' is a formula column, computed after the rows are read: it cannot filter or sort them`
+      : `'${col.key}' is a lookup column, read live after the rows: it cannot filter or sort them`
 }
 
 async function latestActors(
@@ -834,7 +840,7 @@ function orderField(sort: string | undefined, columns: Column[]): string | undef
   if (col.type === "months") {
     throw new TableError("invalid_request", `'${sort}' is a months column: it cannot sort`)
   }
-  if (col.type === "lookup" || col.type === "rollup") {
+  if (col.type === "lookup" || col.type === "rollup" || col.type === "formula") {
     throw new TableError("invalid_request", computedNotQueryable(col))
   }
   return sort
@@ -866,7 +872,7 @@ export async function listRows(
     return { columns, ...listed, rows: linked.rows, linkNotes: linked.notes }
   })
   const { columns, linkNotes, ...rest } = page
-  const looked = await applyLookups(viewer, id, columns, rest.rows)
+  const looked = await applyComputedColumns(viewer, id, columns, rest.rows)
   const notes = { ...linkNotes, ...looked.notes }
   return {
     ...rest,

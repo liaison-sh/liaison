@@ -13,7 +13,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { columnKeyFrom } from "~/modules/dashboards/blocks/table-cells"
 import {
-  TABLE_COLUMN_TYPES,
+  PROJECT_FIELD_TYPES,
   type TableColumn,
   type TableColumnType,
 } from "~/modules/dashboards/dashboards-client"
@@ -263,7 +263,7 @@ export const FieldsManager: Component<FieldsManagerProps> = (props) => {
                       })
                     }}
                   >
-                    <For each={TABLE_COLUMN_TYPES}>
+                    <For each={PROJECT_FIELD_TYPES}>
                       {(t) => <option value={t}>{typeLabel(t)}</option>}
                     </For>
                   </select>
@@ -430,7 +430,7 @@ export const FieldsManager: Component<FieldsManagerProps> = (props) => {
             value={newType()}
             onChange={(e) => setNewType(e.currentTarget.value as TableColumnType)}
           >
-            <For each={TABLE_COLUMN_TYPES}>{(t) => <option value={t}>{typeLabel(t)}</option>}</For>
+            <For each={PROJECT_FIELD_TYPES}>{(t) => <option value={t}>{typeLabel(t)}</option>}</For>
           </select>
           <Button variant="ghost" size="sm" disabled={!newLabel().trim()} onClick={addField}>
             <span data-testid="fields-manager.add">{i18n.t("projects.fields.add")}</span>

@@ -1,0 +1,8 @@
+{
+  "key": {
+    "kernel.dashboards.tables.type.formula": "Formule",
+    "kernel.dashboards.tables.formulaColumn": "Calculé : {{expr}}, non modifiable",
+    "kernel.dashboards.tables.formulaHint": "Formule, avec les clés des colonnes",
+    "kernel.dashboards.tables.formulaNeeded": "Écrivez la formule, par exemple stock - sold."
+  }
+}

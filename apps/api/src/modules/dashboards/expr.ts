@@ -9,7 +9,8 @@
 //   primary = number | name | name "(" expr ("," expr)* ")" | "(" expr ")"
 //
 // Names are values the block computed (map.values, other measures); functions are min, max,
-// abs and round(x[, decimals]). A missing value, a division by zero or a non-finite result is
+// abs and round(x[, decimals]) (a caller may allow more: a table formula's cumsum, its own
+// evaluator in tables/formula.ts). A missing value, a division by zero or a non-finite result is
 // null: the figure shows as "no value", never as a wrong number.
 
 export const MAX_EXPR_LENGTH = 300
@@ -19,14 +20,23 @@ export const EXPR_NAME = NAME
 
 export class ExprError extends Error {}
 
-type Node =
+export type ExprFunction = "min" | "max" | "abs" | "round" | "cumsum"
+
+/** A parsed expression. */
+export type ExprNode =
   | { k: "num"; v: number }
   | { k: "name"; name: string }
-  | { k: "neg"; x: Node }
-  | { k: "bin"; op: "+" | "-" | "*" | "/"; a: Node; b: Node }
-  | { k: "call"; fn: "min" | "max" | "abs" | "round"; args: Node[] }
+  | { k: "neg"; x: ExprNode }
+  | { k: "bin"; op: "+" | "-" | "*" | "/"; a: ExprNode; b: ExprNode }
+  | { k: "call"; fn: ExprFunction; args: ExprNode[] }
+type Node = ExprNode
 
-const FUNCTIONS = new Set(["min", "max", "abs", "round"])
+const FUNCTIONS: readonly ExprFunction[] = ["min", "max", "abs", "round"]
+
+/** What a parse accepts beyond the default: more functions (one argument each, as cumsum). */
+export interface ParseOptions {
+  functions?: readonly ExprFunction[]
+}
 
 type Token = { t: "num"; v: number } | { t: "name"; v: string } | { t: "op"; v: string }
 
@@ -62,7 +72,8 @@ function tokenize(src: string): Token[] {
 }
 
 /** Parses `src`; throws ExprError naming the problem. */
-export function parseExpr(src: string): Node {
+export function parseExpr(src: string, opts: ParseOptions = {}): Node {
+  const functions: readonly ExprFunction[] = [...FUNCTIONS, ...(opts.functions ?? [])]
   if (src.length > MAX_EXPR_LENGTH) {
     throw new ExprError(`an expression is at most ${MAX_EXPR_LENGTH} characters`)
   }
@@ -111,9 +122,8 @@ export function parseExpr(src: string): Node {
     if (t.t === "name") {
       pos++
       if (isOp("(")) {
-        if (!FUNCTIONS.has(t.v)) {
-          throw new ExprError(`unknown function '${t.v}': min, max, abs, round`)
-        }
+        const fn = functions.find((f) => f === t.v)
+        if (!fn) throw new ExprError(`unknown function '${t.v}': ${functions.join(", ")}`)
         pos++
         const args = [expr(depth + 1)]
         while (isOp(",")) {
@@ -121,8 +131,9 @@ export function parseExpr(src: string): Node {
           args.push(expr(depth + 1))
         }
         expect(")")
-        const fn = t.v as "min" | "max" | "abs" | "round"
-        if (fn === "abs" && args.length !== 1) throw new ExprError("abs takes one value")
+        if ((fn === "abs" || fn === "cumsum") && args.length !== 1) {
+          throw new ExprError(`${fn} takes one value`)
+        }
         if (fn === "round" && args.length > 2)
           throw new ExprError("round takes a value and decimals")
         return { k: "call", fn, args }
@@ -148,7 +159,7 @@ export function parseExpr(src: string): Node {
 }
 
 /** The names an expression reads. */
-export function exprNames(src: string): string[] {
+export function exprNames(src: string, opts: ParseOptions = {}): string[] {
   const out = new Set<string>()
   const walk = (n: Node) => {
     switch (n.k) {
@@ -169,7 +180,7 @@ export function exprNames(src: string): string[] {
         return
     }
   }
-  walk(parseExpr(src))
+  walk(parseExpr(src, opts))
   return [...out]
 }
 
@@ -228,6 +239,9 @@ function evalNode(n: Node, values: Readonly<Record<string, number | null>>): num
           const f = 10 ** d
           return Math.round(nums[0]! * f) / f
         }
+        case "cumsum":
+          // A running sum needs a series: never parsed for a block's single values.
+          return null
       }
     }
   }

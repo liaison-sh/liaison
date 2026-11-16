@@ -5,6 +5,8 @@
 // caller resolves (`personIds` -> the active members among them) and passes in.
 
 import { z } from "zod"
+import { MAX_EXPR_LENGTH } from "~/modules/dashboards/expr"
+import { formulaProblems } from "~/modules/dashboards/tables/formula"
 
 export const COLUMN_TYPES = [
   "text",
@@ -19,6 +21,7 @@ export const COLUMN_TYPES = [
   "months",
   "lookup",
   "rollup",
+  "formula",
 ] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
@@ -34,9 +37,15 @@ export const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 export const EMPHASIS = ["nonzero", "negative"] as const
 export type Emphasis = (typeof EMPHASIS)[number]
 /** Column types that may draw a cell with emphasis. */
-export const EMPHASIS_TYPES: readonly ColumnType[] = ["number", "amount", "months", "rollup"]
+export const EMPHASIS_TYPES: readonly ColumnType[] = [
+  "number",
+  "amount",
+  "months",
+  "rollup",
+  "formula",
+]
 /** Column types a dashboard table has but a project's task fields do not. */
-export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months", "lookup", "rollup"]
+export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months", "lookup", "rollup", "formula"]
 export const COLUMN_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/
 /** Keys a row read adds beside the cells: never a column key. */
 export const RESERVED_COLUMN_KEYS = ["id", "updated_at", "updated_by", "created_at"] as const
@@ -108,6 +117,14 @@ export interface Column {
   lookup?: LookupDef
   /** A rollup column's definition (read-only, computed on read: tables/rollup.ts). */
   rollup?: RollupDef
+  /** A formula column's expression over this row's other columns (read-only: tables/formula.ts). */
+  formula?: FormulaDef
+}
+
+/** A formula column: `expr` over this row's number, amount, number lookup, rollup, months and
+ *  formula columns (+ - * / and parentheses, numbers, column keys; min, max, abs, round, cumsum). */
+export interface FormulaDef {
+  expr: string
 }
 
 /** A months cell as stored and read: one number per month, `YYYY-MM` keys. */
@@ -190,6 +207,10 @@ export const lookupSchema = z
   })
   .strict()
 
+export const formulaSchema = z
+  .object({ expr: z.string().trim().min(1, "a formula has an expression").max(MAX_EXPR_LENGTH) })
+  .strict()
+
 const choiceList = z
   .array(z.string().trim().min(1).max(80))
   .min(1)
@@ -225,6 +246,7 @@ export const columnSchema = z
     emphasis: z.enum(EMPHASIS).optional(),
     lookup: lookupSchema.optional(),
     rollup: rollupSchema.optional(),
+    formula: formulaSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -268,11 +290,15 @@ export const columnSchema = z
         message: `a link to a table's rows is linkTo {app:"${ROW_LINK_APP}", entityType:"${ROW_LINK_ENTITY}", table:<table id>}`,
       })
     }
-    if (!isMonthly(c) && (c.horizon !== undefined || c.fromOffset !== undefined)) {
+    if (
+      !isMonthly(c) &&
+      c.type !== "formula" &&
+      (c.horizon !== undefined || c.fromOffset !== undefined)
+    ) {
       ctx.addIssue({
         code: "custom",
         path: [c.horizon !== undefined ? "horizon" : "fromOffset"],
-        message: "only a months column or a rollup by month has horizon and fromOffset",
+        message: "only a months column, a rollup by month or a formula has horizon and fromOffset",
       })
     }
     if (c.type === "months" && c.required) {
@@ -287,7 +313,7 @@ export const columnSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["emphasis"],
-        message: "only a number, amount, months or rollup column has emphasis",
+        message: "only a number, amount, months, rollup or formula column has emphasis",
       })
     }
     if (c.type === "lookup" && !c.lookup) {
@@ -325,6 +351,27 @@ export const columnSchema = z
         message: "a rollup column is computed on read: it cannot be required",
       })
     }
+    if (c.type === "formula" && !c.formula) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["formula"],
+        message: 'a formula column names its expression: formula {expr: "stock - sold"}',
+      })
+    }
+    if (c.type !== "formula" && c.formula) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["formula"],
+        message: "only a formula column has formula",
+      })
+    }
+    if (c.type === "formula" && c.required) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["required"],
+        message: "a formula column is computed on every read: it cannot be required",
+      })
+    }
   })
 
 export const columnsSchema = z
@@ -355,14 +402,18 @@ export const columnsSchema = z
       if (!c.lookup) return
       const on = cols.find((o) => o.key === c.lookup?.match.on)
       // A key no own column has may be a backed table's read-through one (checked with them).
-      if (on?.type === "lookup") {
+      if (on?.type === "lookup" || on?.type === "formula") {
         ctx.addIssue({
           code: "custom",
           path: [i, "lookup", "match", "on"],
-          message: "a lookup matches on a column people or the app fill, not another lookup",
+          message:
+            "a lookup matches on a column people or the app fill, not another lookup or a formula",
         })
       }
     })
+    for (const p of formulaProblems(cols as Column[])) {
+      ctx.addIssue({ code: "custom", path: [p.index, "formula", "expr"], message: p.message })
+    }
   })
 
 /** The first column of a type only a dashboard table has (never a project's task field). */
@@ -398,6 +449,10 @@ function isValidDay(v: string): boolean {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
 }
 
+/** Why a write naming a formula column is refused. */
+export const FORMULA_READ_ONLY =
+  "is a formula column, computed from the row's other columns on every read: it cannot be written (change the columns it reads)"
+
 /** Why a write naming a lookup column is refused. */
 export const LOOKUP_READ_ONLY =
   "is a lookup column, read live from an app on every read: it cannot be written (change the record in its app)"
@@ -408,7 +463,10 @@ export const ROLLUP_READ_ONLY =
 
 /** Why a write, filter or sort naming a computed column is refused, or null for a typed one. */
 export function computedRefusal(col: Pick<Column, "type">): string | null {
-  return col.type === "lookup" ? LOOKUP_READ_ONLY : col.type === "rollup" ? ROLLUP_READ_ONLY : null
+  if (col.type === "lookup") return LOOKUP_READ_ONLY
+  if (col.type === "rollup") return ROLLUP_READ_ONLY
+  if (col.type === "formula") return FORMULA_READ_ONLY
+  return null
 }
 
 /** An empty cell: null, an empty string or an empty list. */
@@ -471,6 +529,8 @@ export function normalizeCell(col: Column, value: unknown, members: ReadonlySet<
       throw new CellError(col.key, LOOKUP_READ_ONLY)
     case "rollup":
       throw new CellError(col.key, ROLLUP_READ_ONLY)
+    case "formula":
+      throw new CellError(col.key, FORMULA_READ_ONLY)
     case "link": {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw new CellError(col.key, "is a link {app, entityType, id, label}")

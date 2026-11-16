@@ -90,6 +90,11 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
     return value === true ? o.t("kernel.dashboards.tables.yes") : o.t("kernel.dashboards.tables.no")
   if (isEmptyCell(value)) return ""
   switch (column.type) {
+    case "formula":
+      if (isMonthsCell(value)) return monthsText(value, o.locale)
+      return typeof value === "number"
+        ? formatValue(value, { format: "number", locale: o.locale })
+        : String(value)
     case "lookup":
     case "number":
       return typeof value === "number"
@@ -137,14 +142,20 @@ function monthsText(value: MonthsCell, locale: string): string {
     .join(", ")
 }
 
-/** Is this column months-shaped: a months column, or a rollup by month (one grid column a month)? */
+/** Is this column months-shaped: a months column, a rollup by month, or a formula whose read
+ *  gives it months (one grid column a month)? */
 export function isMonthly(column: TableColumn): boolean {
-  return column.type === "months" || (column.type === "rollup" && !!column.rollup?.byMonth)
+  return (
+    column.type === "months" ||
+    (column.type === "rollup" && !!column.rollup?.byMonth) ||
+    (column.type === "formula" && Array.isArray(column.months))
+  )
 }
 
-/** Is this column computed on read (a lookup or a rollup): never typed, sorted or filtered? */
+/** Is this column computed on read (a lookup, a rollup or a formula): never typed, sorted or
+ *  filtered? */
 export function isComputed(column: TableColumn): boolean {
-  return column.type === "lookup" || column.type === "rollup"
+  return column.type === "lookup" || column.type === "rollup" || column.type === "formula"
 }
 
 /** Does this link column point at the rows of a dashboard table? */
@@ -163,7 +174,7 @@ export function isMonthsCell(v: unknown): v is MonthsCell {
   )
 }
 
-/** The months a months column shows (its window as read), in order. */
+/** The months a months column (or a months-shaped formula) shows, its window as read, in order. */
 export function columnMonths(column: TableColumn): string[] {
   return isMonthly(column) ? (column.months ?? []) : []
 }
@@ -247,7 +258,8 @@ export function addFormColumns(columns: TableColumn[]): TableColumn[] {
   return [...typed.filter((c) => c.required), ...typed.filter((c) => !c.required)]
 }
 
-/** A row as a write answered it, keeping the lookup cells it was read with (a write answers none). */
+/** A row as a write answered it, keeping the lookup and formula cells it was read with (a write
+ *  answers none; the grid reads the rows again for fresh formulas). */
 export function withLookupCells<R extends { cells: TableCells }>(
   columns: TableColumn[],
   before: R | undefined,

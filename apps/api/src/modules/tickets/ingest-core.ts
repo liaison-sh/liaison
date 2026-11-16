@@ -11,6 +11,7 @@ import { ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { loadOrgSettings, wouldExceedOrgQuota } from "~/modules/files/service"
 
 const SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
 
@@ -126,7 +127,9 @@ export const PORTAL_ATTACHMENT_MAX_COUNT = 8
 
 export type StageResult =
   | { fileId: string; filename: string; mimeType: string; sizeBytes: number }
-  | { error: "too_many" | "malware_quarantined" | "storage_unavailable" }
+  | {
+      error: "too_many" | "storage_quota_exceeded" | "malware_quarantined" | "storage_unavailable"
+    }
 
 /**
  * Keeps a file a portal person attaches, until their next request or reply takes
@@ -139,15 +142,22 @@ export async function stagePortalAttachment(
   file: { filename: string; mimeType: string; bytes: Uint8Array },
 ): Promise<StageResult> {
   const KS = drizzleSql.raw(schemaRef("kernel"))
-  const [waiting] = await withPrivilegedDb(orgId, "portal-attachment-count", async (tx) =>
-    extractRows<{ n: number }>(
+  const refused = await withPrivilegedDb(orgId, "portal-attachment-count", async (tx) => {
+    const [waiting] = extractRows<{ n: number }>(
       await tx.execute(drizzleSql`
         SELECT count(*)::int AS n FROM ${KS}.files
         WHERE org_id = ${orgId}::uuid AND app = 'tickets'
           AND entity_type = 'portal_staged' AND entity_id = ${userId}`),
-    ),
-  )
-  if ((waiting?.n ?? 0) >= PORTAL_ATTACHMENT_MAX_COUNT) return { error: "too_many" }
+    )
+    if ((waiting?.n ?? 0) >= PORTAL_ATTACHMENT_MAX_COUNT) return "too_many" as const
+    // A client's file counts against the org's storage like any other: a person
+    // sends it, so no exemption applies and the full org refuses it.
+    const settings = await loadOrgSettings(tx, orgId)
+    if (await wouldExceedOrgQuota(tx, orgId, settings, file.bytes.byteLength))
+      return "storage_quota_exceeded" as const
+    return null
+  })
+  if (refused) return { error: refused }
   const { putObject, sanitizeFilename } = await import("~/infra/storage/object-storage")
   const { quarantineStorageKey, scanInboundAttachment } = await import("~/lib/clamav")
   const fileId = crypto.randomUUID()

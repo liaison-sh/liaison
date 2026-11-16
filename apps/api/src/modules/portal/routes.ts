@@ -185,7 +185,7 @@ async function requesterOf(tx: PortalClient): Promise<Requester | null> {
 
 const refuse = (
   c: Context<AppEnv>,
-  status: 400 | 404 | 413 | 422 | 503,
+  status: 400 | 404 | 409 | 413 | 422 | 503,
   code: string,
   message: string,
 ) => c.json({ error: { code, message } }, status)
@@ -441,6 +441,14 @@ export const portalRoutes = new Hono<AppEnv>()
     if ("error" in staged) {
       if (staged.error === "too_many") {
         return refuse(c, 422, "too_many_attachments", "Eight files at most wait to be sent.")
+      }
+      if (staged.error === "storage_quota_exceeded") {
+        return refuse(
+          c,
+          409,
+          "storage_quota_exceeded",
+          "The organization's storage is full; the file was not kept.",
+        )
       }
       if (staged.error === "malware_quarantined") {
         return refuse(c, 422, "malware_quarantined", "The virus scanner refused this file.")

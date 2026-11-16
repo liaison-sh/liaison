@@ -632,7 +632,8 @@
       "kpi": "KPI",
       "remediation": "Remediation",
       "calls": "Calls",
-      "api-connector": "API connector"
+      "api-connector": "API connector",
+      "agreements": "Agreements"
     },
     "resources": {
       "agents": "agents",

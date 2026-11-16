@@ -3,7 +3,8 @@
 // One table cell being edited, by its column's type: a text, number, amount or date field
 // (Enter or leaving the field saves, Escape cancels), a single choice as chips, multiple
 // choices as boxes to tick, a person picked from the member directory, and a link picked from
-// the records of the column's `linkTo` app (`GET /dashboards/tables/link-search`, as the person).
+// the records of the column's `linkTo` app (`GET /dashboards/tables/link-search`, as the person),
+// or the rows of the dashboard table its `linkTo.table` names.
 // A checkbox has no editor: the grid toggles it in place. The add form uses the same editors
 // with `inline` (no autofocus, every change reported at once).
 import {
@@ -400,6 +401,7 @@ const LinkEditor: Component<CellEditorProps> = (props) => {
         searchTableLinks(api, {
           app: props.column.linkTo?.app,
           entityType: props.column.linkTo?.entityType,
+          table: props.column.linkTo?.table,
           q,
         })
       }

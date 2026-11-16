@@ -6732,10 +6732,15 @@
         "person": "Personne",
         "link": "Lien",
         "months": "Mois",
-        "lookup": "Lu en direct d'une app"
+        "lookup": "Lu en direct d'une app",
+        "rollup": "Cumul d'une autre table"
       },
       "lookupColumn": "Lu en direct depuis {{tool}}, non modifiable",
       "lookupUnavailable": "Indisponible",
+      "rollupSumColumn": "Somme de {{value}} des lignes d'une autre table qui pointent ici, non modifiable",
+      "rollupCountColumn": "Nombre de lignes d'une autre table qui pointent ici, non modifiable",
+      "rowLinkTag": "lignes d'une autre table",
+      "rowLinkMissing": "Cette ligne a été supprimée",
       "newTable": "Nouvelle table",
       "newTableName": "Nom de la table",
       "nameTaken": "Une table nommée {{name}} existe déjà.",

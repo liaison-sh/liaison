@@ -6735,10 +6735,15 @@
         "person": "Person",
         "link": "Link",
         "months": "Months",
-        "lookup": "Live from an app"
+        "lookup": "Live from an app",
+        "rollup": "Rollup of another table"
       },
       "lookupColumn": "Read live from {{tool}}, not editable",
       "lookupUnavailable": "Not available",
+      "rollupSumColumn": "Sum of {{value}} in the rows of another table that link here, not editable",
+      "rollupCountColumn": "Count of the rows of another table that link here, not editable",
+      "rowLinkTag": "rows of another table",
+      "rowLinkMissing": "This row was deleted",
       "newTable": "New table",
       "newTableName": "Table name",
       "nameTaken": "A table named {{name}} exists already.",

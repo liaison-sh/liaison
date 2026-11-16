@@ -95,6 +95,11 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
       return typeof value === "number"
         ? formatValue(value, { format: "number", locale: o.locale })
         : String(value)
+    case "rollup":
+      if (isMonthsCell(value) && column.rollup?.byMonth) return monthsText(value, o.locale)
+      return typeof value === "number"
+        ? formatValue(value, { format: "number", locale: o.locale })
+        : String(value)
     case "amount":
       return typeof value === "number"
         ? formatValue(value, { format: "currency", currency: column.currency, locale: o.locale })
@@ -108,15 +113,7 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
         ? (o.personName?.(value) ?? o.t("kernel.dashboards.tables.unknownPerson"))
         : String(value)
     case "months":
-      return isMonthsCell(value)
-        ? Object.keys(value)
-            .sort()
-            .map(
-              (m) =>
-                `${monthLabel(m, o.locale, true)}: ${formatValue(value[m]!, { format: "number", locale: o.locale })}`,
-            )
-            .join(", ")
-        : String(value)
+      return isMonthsCell(value) ? monthsText(value, o.locale) : String(value)
     case "link":
       // A label the reader may not resolve comes back empty: the record stays, unnamed.
       return isLinkCell(value)
@@ -127,6 +124,34 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
     default:
       return typeof value === "string" ? value : JSON.stringify(value)
   }
+}
+
+/** A months cell in one line: "Nov 2026: 40, Dec 2026: 12". */
+function monthsText(value: MonthsCell, locale: string): string {
+  return Object.keys(value)
+    .sort()
+    .map(
+      (m) =>
+        `${monthLabel(m, locale, true)}: ${formatValue(value[m]!, { format: "number", locale })}`,
+    )
+    .join(", ")
+}
+
+/** Is this column months-shaped: a months column, or a rollup by month (one grid column a month)? */
+export function isMonthly(column: TableColumn): boolean {
+  return column.type === "months" || (column.type === "rollup" && !!column.rollup?.byMonth)
+}
+
+/** Is this column computed on read (a lookup or a rollup): never typed, sorted or filtered? */
+export function isComputed(column: TableColumn): boolean {
+  return column.type === "lookup" || column.type === "rollup"
+}
+
+/** Does this link column point at the rows of a dashboard table? */
+export function isRowLinkColumn(column: TableColumn): boolean {
+  return (
+    column.type === "link" && column.linkTo?.entityType === "table_row" && !!column.linkTo.table
+  )
 }
 
 export function isMonthsCell(v: unknown): v is MonthsCell {
@@ -140,7 +165,7 @@ export function isMonthsCell(v: unknown): v is MonthsCell {
 
 /** The months a months column shows (its window as read), in order. */
 export function columnMonths(column: TableColumn): string[] {
-  return column.type === "months" ? (column.months ?? []) : []
+  return isMonthly(column) ? (column.months ?? []) : []
 }
 
 /** One month of a months cell: its number, or undefined when it is still to fill (0 is a value). */
@@ -218,7 +243,7 @@ export function parseCellInput(column: TableColumn, raw: unknown): ParsedCell {
 
 /** The add form's columns: required ones first, each group in the table's order. */
 export function addFormColumns(columns: TableColumn[]): TableColumn[] {
-  const typed = columns.filter((c) => c.type !== "lookup")
+  const typed = columns.filter((c) => !isComputed(c))
   return [...typed.filter((c) => c.required), ...typed.filter((c) => !c.required)]
 }
 
@@ -229,7 +254,7 @@ export function withLookupCells<R extends { cells: TableCells }>(
   after: R,
 ): R {
   if (!before) return after
-  const kept = columns.filter((c) => c.type === "lookup" && before.cells[c.key] !== undefined)
+  const kept = columns.filter((c) => isComputed(c) && before.cells[c.key] !== undefined)
   if (kept.length === 0) return after
   const cells = { ...after.cells }
   for (const c of kept) cells[c.key] = before.cells[c.key]

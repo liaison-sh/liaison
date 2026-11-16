@@ -5,13 +5,18 @@
 //    itemsPath?}` is searched by running that app's own read tool as the person (an entity of an
 //    outside service, which the search index does not hold);
 //  - any other entity is searched in the search index (the mention search, permission-filtered).
+//  - a dashboard table's rows (a link column's `linkTo.table`) are searched in that table, as
+//    the person reads it (a table they cannot read is not found), labelled by its first text
+//    column (tables/rollup.ts).
 // Nothing here is specific to one app: an app opts in through its manifest.
 
 import type { UserContext } from "~/db/rls"
 import { rootLogger } from "~/lib/logger"
 import { entityRegistry, type PickDeclaration } from "~/modules/apps/app-registries"
 import type { RestToolCall } from "~/modules/apps/rest-tool-call"
-import { assertRead, TableError } from "~/modules/dashboards/tables/service"
+import { ROW_LINK_APP, ROW_LINK_ENTITY } from "~/modules/dashboards/tables/columns"
+import { rowLabel } from "~/modules/dashboards/tables/rollup"
+import { assertRead, searchRows, TableError } from "~/modules/dashboards/tables/service"
 
 const log = rootLogger.child({ module: "dashboards/tables/link-search" })
 
@@ -142,6 +147,17 @@ async function viaIndex(
   return out
 }
 
+/** Rows of the dashboard table `table` matching `q`, as the person reads that table. */
+async function viaTable(viewer: UserContext, table: string, q: string): Promise<LinkTarget[]> {
+  const { columns, rows } = await searchRows(viewer, table, q, LINK_SEARCH_LIMIT)
+  return rows.map((r) => ({
+    id: r.id,
+    label: rowLabel(columns, r.id, r.cells),
+    app: ROW_LINK_APP,
+    entityType: ROW_LINK_ENTITY,
+  }))
+}
+
 /**
  * The records of `app` (one entity type, or all of them) matching `q`, as the person sees them.
  * Without an app (a link column with no `linkTo`), the search index across every app: an outside
@@ -149,11 +165,12 @@ async function viaIndex(
  */
 export async function searchLinkTargets(
   viewer: UserContext,
-  input: { app?: string; entityType?: string; q: string },
+  input: { app?: string; entityType?: string; table?: string; q: string },
   call: RestToolCall,
 ): Promise<LinkTarget[]> {
   // Picking a link serves a table, so it needs what reading a table needs, like every other table route.
   assertRead(viewer)
+  if (input.table) return viaTable(viewer, input.table, input.q)
   if (!input.app) return viaIndex(viewer, undefined, input.entityType, input.q)
   const app = input.app
   const { awaitOrgApps } = await import("~/modules/apps/init")

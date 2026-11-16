@@ -7,7 +7,7 @@
 // .../assets/MailConversation-LdzMX3g8.js` and a Try again button that re-ran
 // the same doomed import.
 import { describe, expect, it, vi } from "vitest"
-import { isStaleChunkError, recoverFromStaleChunk } from "~/lib/stale-chunk"
+import { isStaleChunkError, recoverFromStaleChunk, reloadWhenOnline } from "~/lib/stale-chunk"
 
 function fakeStorage(initial?: Record<string, string>) {
   const map = new Map(Object.entries(initial ?? {}))
@@ -88,5 +88,38 @@ describe("recoverFromStaleChunk", () => {
       true,
     )
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("offline: a failed chunk is the network, not a deploy", () => {
+  it("waits for the network before reloading, then reloads once", () => {
+    const reload = vi.fn()
+    const storage = fakeStorage()
+    const waiting: Array<() => void> = []
+    const env = {
+      storage,
+      reload,
+      now: () => 5000,
+      online: () => false,
+      whenOnline: (fn: () => void) => void waiting.push(fn),
+    }
+    expect(recoverFromStaleChunk(CHROME_ERR, env)).toBe(true)
+    // A second failed import while still offline queues nothing more.
+    expect(recoverFromStaleChunk(CHROME_ERR, env)).toBe(true)
+    expect(reload).not.toHaveBeenCalled()
+    expect(storage.read()).toEqual({})
+    expect(waiting).toHaveLength(1)
+
+    waiting[0]?.()
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(Object.keys(storage.read())).toHaveLength(1)
+  })
+
+  it("reloads at once while online", () => {
+    const reload = vi.fn()
+    const whenOnline = vi.fn()
+    expect(reloadWhenOnline(reload, { online: () => true, whenOnline })).toBe(false)
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(whenOnline).not.toHaveBeenCalled()
   })
 })

@@ -1600,6 +1600,7 @@
       "agreement:expiring",
       "agreement:voided",
       "agreement:signed",
+      "agreement:access_changed",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",

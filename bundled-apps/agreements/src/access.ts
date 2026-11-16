@@ -65,6 +65,34 @@ export function afterAccessChange(change: {
 }
 
 /**
+ * Tell the kernel who can see the agreement now, once the change is committed: its client
+ * actions (the agreement's versions are their targets) and its discussion follow the list
+ * (`modules/client-actions/restricted-follow.ts`). The event carries ids and the list only.
+ */
+export async function emitAccessChanged(
+  ctx: AgreementsCtx,
+  agreementId: string,
+  orgAccess: OrgAccess,
+  list: ShareEntry[],
+): Promise<void> {
+  if (!ctx.emit || !agreementId) return
+  const versions = (await ctx.db.findMany("agreement_versions", {
+    where: { agreement_id: agreementId },
+    limit: 500,
+  })) as Array<{ id: string }>
+  await ctx.emit({
+    entity: "agreement",
+    action: "access_changed",
+    entityId: agreementId,
+    data: {
+      org_access: orgAccess,
+      visible_to: orgAccess === "none" ? list.map((s) => s.user_id).sort() : null,
+      version_ids: versions.map((v) => v.id),
+    },
+  })
+}
+
+/**
  * The batch ops that bring an agreement's access to `orgAccess` with exactly `list`. Removed
  * people get `removed_at`; a person re-added gets their row back. The list is never empty.
  */

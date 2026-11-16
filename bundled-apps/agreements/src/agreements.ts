@@ -7,6 +7,7 @@ import { batchPreconditionFailure, type DbBatchOp } from "@liaison/app-sdk"
 import {
   accessOps,
   currentShares,
+  emitAccessChanged,
   mayChangeAccess,
   normaliseShares,
   type OrgAccess,
@@ -411,6 +412,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
   })
   const row = result.rows.agreement
   const number = result.sequence?.formatted ?? String(row?.number ?? "")
+  if (orgAccess === "none" && row?.id) await emitAccessChanged(ctx, String(row.id), orgAccess, list)
   return {
     status: "ok",
     agreement: {
@@ -473,6 +475,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
   })) as ShareRow[]
   const shares = allShares.filter((s) => !s.removed_at)
   let accessBatch: DbBatchOp[] = []
+  let accessNow: { orgAccess: OrgAccess; list: ShareEntry[] } | null = null
   if (accessChange) {
     const orgAccess = (p.org_access ?? row.org_access ?? "editor") as OrgAccess
     if (!mayChangeAccess(user, (row.org_access ?? "editor") as OrgAccess, shares))
@@ -528,6 +531,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     )
     if (isError(acc)) return acc
     accessBatch = acc
+    accessNow = { orgAccess, list }
   }
   const data: Record<string, unknown> = {}
   if (p.title !== undefined) data.title = p.title.trim()
@@ -578,6 +582,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
       )
     throw err
   }
+  if (accessNow) await emitAccessChanged(ctx, row.id, accessNow.orgAccess, accessNow.list)
   return {
     status: "ok",
     message: `Draft ${row.number} was saved${accessChange ? "; who can see it changed" : ""}${replaced ? `; version ${replaced.version} was replaced and its ${replaced.revoked} open link(s) withdrawn, its signatures kept` : ""}. Next: agreement_prepare to check it.`,

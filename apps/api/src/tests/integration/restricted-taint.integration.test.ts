@@ -23,6 +23,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
+import { followRestrictedAccess } from "~/modules/client-actions/restricted-follow"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
@@ -30,6 +31,7 @@ import { insertAppRow } from "~/seed/factories/app-tables"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { insertClientAction } from "~/tests/security/portal-doors/fixture"
 import agreementsManifest from "../../../../../bundled-apps/agreements/app.manifest.json"
 
 let orgId = ""
@@ -351,5 +353,49 @@ describe("what is derived from a restricted agreement follows its list", () => {
         everyone,
       ),
     ).toEqual(everyone)
+  })
+
+  it("an access change narrows the record's client actions to the list and drops an ex-reader from its discussion", async () => {
+    const versionId = crypto.randomUUID()
+    const actionId = await insertClientAction(
+      { orgId, clientA: { email: "signer@maison-roux.example", name: "Signer" } } as never,
+      { company_id: null, target_id: versionId },
+    )
+    const discussion = await minimal.thread(orgId, listedId, {
+      title: "Agreement discussion",
+      participantIds: [adminId],
+    })
+    await sql`UPDATE kernel.threads SET handle = ${`entity:agreements:agreement:${closedId}`}
+               WHERE id = ${discussion}::uuid`
+    const followed = await followRestrictedAccess({
+      app: "agreements",
+      entity: "agreement",
+      action: "access_changed",
+      orgId,
+      entityId: closedId,
+      actorId: listedId,
+      data: { org_access: "none", visible_to: [listedId], version_ids: [versionId] },
+    })
+    expect(followed).toBe(true)
+    const [action] = await sql<{ visible_to: string[] | null }[]>`
+      SELECT visible_to FROM kernel.client_actions WHERE id = ${actionId}::uuid`
+    expect(action?.visible_to).toEqual([listedId])
+    const seats = await sql<{ user_id: string }[]>`
+      SELECT user_id::text AS user_id FROM kernel.thread_participants
+       WHERE thread_id = ${discussion}::uuid AND user_id IS NOT NULL`
+    expect(seats.map((r) => r.user_id)).toEqual([listedId])
+    // Open again: the client actions are no longer narrowed.
+    await followRestrictedAccess({
+      app: "agreements",
+      entity: "agreement",
+      action: "access_changed",
+      orgId,
+      entityId: closedId,
+      actorId: listedId,
+      data: { org_access: "editor", visible_to: null, version_ids: [versionId] },
+    })
+    const [reopened] = await sql<{ visible_to: string[] | null }[]>`
+      SELECT visible_to FROM kernel.client_actions WHERE id = ${actionId}::uuid`
+    expect(reopened?.visible_to).toBeNull()
   })
 })

@@ -218,6 +218,31 @@ describe("sending for signature", () => {
     expect(ctx.calls.emitted).toEqual(["agreement:sent"])
   })
 
+  it("a restricted agreement's links are minted visible to its list only; an open one's to everyone", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    const p = {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+      order: "sequential" as const,
+    }
+    const open = ctxFor(db, { agent: AGENT, approved: true })
+    await agreementSend(open, { ...p, ...(await pinnedFor(db, p)) })
+    const openSend = (open.calls.mints[0] as { send: Record<string, unknown> }).send
+    expect(openSend.visible_to).toBeUndefined()
+
+    const db2 = memoryDb()
+    const closed = await frozen(db2)
+    const row = rowOf(db2, "agreements", closed.id)
+    row.org_access = "none"
+    const p2 = { ...p, version_id: closed.prepared.version_id, sha256: closed.prepared.sha256 }
+    const ctx = ctxFor(db2, { agent: AGENT, approved: true })
+    await agreementSend(ctx, { ...p2, ...(await pinnedFor(db2, p2)) })
+    const send = (ctx.calls.mints[0] as { send: Record<string, unknown> }).send
+    expect(send.visible_to).toEqual([PERSON])
+  })
+
   it("a change between card and approval fails and nothing is sent", async () => {
     const db = memoryDb()
     const { prepared } = await frozen(db)

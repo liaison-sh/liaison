@@ -7,6 +7,7 @@
 // Links are minted and withdrawn only through the kernel's bridge methods,
 // inside the person's decision on the gated tool; nothing here signs.
 
+import { currentShares } from "./access"
 import { UNFIT_TAGS } from "./checks"
 import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
 import { type CopyState, copyStateOf, eventsOf, type SealCtx, sealVersion } from "./seal"
@@ -340,9 +341,16 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       "LINKS_NOT_AVAILABLE",
       "This server cannot make signing links. Nothing was sent.",
     )
+  // A restricted agreement's links are seen only by its list: the client actions carry it, so
+  // the kernel lists them for those people alone and opens no automatic portal share.
+  const visibleTo =
+    ready.agreement.org_access === "none"
+      ? (await currentShares(ctx, ready.agreement.id)).map((s) => s.user_id)
+      : null
   const out = bridgeAnswer<MintAnswer>(
     await ctx.client_actions_mint({
       send: {
+        ...(visibleTo ? { visible_to: visibleTo } : {}),
         target_type: TARGET_TYPE,
         target_id: ready.version.id,
         sha256: ready.version.sha256,

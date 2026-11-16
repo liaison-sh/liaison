@@ -360,6 +360,9 @@ describe("Checklist (task detail)", () => {
         .find((o) => o.getAttribute("data-state") === "fail")!,
     )
     const note = screen.getByTestId("checklist.fail-note") as HTMLTextAreaElement
+    // The note takes focus as it opens (a microtask later); a person clicks
+    // the title only after that.
+    await waitFor(() => expect(document.activeElement).toBe(note))
     note.value = "Sustain drops"
     fireEvent.input(note)
 

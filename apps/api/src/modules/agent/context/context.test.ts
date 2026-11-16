@@ -2136,6 +2136,10 @@ describe("P4m-T13 the agent charter", () => {
       "Write memory only when the user asks you to remember something about themselves",
     )
     expect(charter).toContain("kernel__capture_business_knowledge")
+    // Owner, same day: unsure where it belongs (several skills or documents could hold it) = ask.
+    expect(charter).toContain(
+      "When it could go in more than one place, ask the user where before writing.",
+    )
     // The routing decision comes before the rule for writing memory.
     expect(charter.indexOf("never memory")).toBeLessThan(charter.indexOf("Write memory only"))
   })

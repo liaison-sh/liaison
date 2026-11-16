@@ -417,6 +417,8 @@ export function registerClientActionTools(orgId: string): void {
     approveScope: "kernel:client_actions:write",
     conditionalGate: true,
     externalEffect: true,
+    // A person's own clean turn runs it; a routine, MCP or a turn after outside text parks.
+    requiresHumanTurn: true,
     approvalImpact: "external",
     writesToTable: "kernel.client_actions",
     params: clientActionRevokeParams,

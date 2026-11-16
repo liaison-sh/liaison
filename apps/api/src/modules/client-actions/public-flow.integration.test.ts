@@ -7,6 +7,7 @@
 import { describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { putObject } from "~/infra/storage/object-storage"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import {
   actionRow,
   call,
@@ -26,9 +27,20 @@ async function storedFile(bytes: Uint8Array, mimeType: string, encVersion = 0): 
   const id = crypto.randomUUID()
   const key = `${kit.w.orgId}/client-action-tests/${id}`
   await putObject({ key, body: bytes, contentType: mimeType })
-  await sql`
-    INSERT INTO ${k("files")} (id, org_id, app, entity_type, entity_id, filename, mime_type, size_bytes, storage_key, enc_version)
-    VALUES (${id}, ${kit.w.orgId}, 'kernel', 'test', ${id}, 'document.pdf', ${mimeType}, ${bytes.byteLength}, ${key}, ${encVersion})`
+  await sql.unsafe(
+    insertSql("kernel.files", {
+      id,
+      org_id: kit.w.orgId,
+      app: "kernel",
+      entity_type: "test",
+      entity_id: id,
+      filename: "document.pdf",
+      mime_type: mimeType,
+      size_bytes: bytes.byteLength,
+      storage_key: key,
+      enc_version: encVersion,
+    }),
+  )
   return id
 }
 

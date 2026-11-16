@@ -388,7 +388,19 @@ export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
     : tr("This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.")
 }
 
-export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAffordance {
+export function pdfStatusAffordance(
+  s: PdfStatus | undefined | null,
+  opts: { issued?: boolean } = {},
+): PdfAffordance {
+  // An issued document whose PDF was never made (an imported or seeded one): made on request.
+  if ((s === null || s === undefined) && opts.issued) {
+    return {
+      showRetry: true,
+      downloadEnabled: false,
+      showA3SkippedNote: false,
+      statusLabel: "Not made yet",
+    }
+  }
   switch (s) {
     case "ready":
       return {
@@ -1211,7 +1223,9 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
 
   const tabs = createMemo(() => mergeTabs(loaded()?.externalTabs ?? []))
   const affordance = createMemo(() =>
-    pdfStatusAffordance(loaded()?.document?.pdf_status ?? undefined),
+    pdfStatusAffordance(loaded()?.document?.pdf_status ?? undefined, {
+      issued: !!loaded()?.document?.number,
+    }),
   )
   // Re-running a render is a write: offered to whoever may write documents.
   const [access] = createResource(() => loadViewerAccess())

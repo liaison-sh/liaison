@@ -1235,6 +1235,38 @@ describe("deferredList fills a missing order number from the same order's other 
   })
 })
 
+describe("deferredList names a park about one of the app's documents by its number", () => {
+  test("a render owed after an interrupted issue reads as that document, not as an order", async () => {
+    const doc = "00000000-0000-4000-8000-00000000d201"
+    const db = createBridgeMockDb(
+      {
+        seed: {
+          documents: [{ id: doc, type: "invoice", number: "F-2026-0042", status: "issued" }],
+          deferred_events: [
+            {
+              id: "00000000-0000-4000-8000-00000000d202",
+              event_id: doc,
+              event_payload_json: { document_id: doc },
+              status: "render_failed",
+              reason: "issue_interrupted",
+              blocked_on: { kind: "pdf_render", document_id: doc },
+              retry_count: 0,
+            },
+          ],
+        },
+      },
+      { bridgeWhereOperators: true },
+    )
+    const { items } = await deferredList({ db } as unknown as ReadsCtx)
+    expect(items[0]).toMatchObject({
+      order_id: null,
+      order_number: null,
+      document_number: "F-2026-0042",
+      reason: "issue_interrupted",
+    })
+  })
+})
+
 describe("viewerAccess", () => {
   test("answers each flag from the caller's scopes", async () => {
     const { ctx } = makeCtx()

@@ -31,13 +31,13 @@
 // `Math.random` and no clock read here.
 //
 // ── PDFs ──────────────────────────────────────────────────────────────────────
-// Issued documents are seeded with `pdf_status = 'pending'` and NO
-// `pdf_file_id`. That is the app's own documented "retry me" state: both
-// `documents_retry_pdf` and `documents_send_to_customer` re-render from the
-// persisted document whenever the status is null, pending or failed, so the
-// PDF a visitor asks for is rendered by the real template path on demand. A
-// seeded `pdf_status = 'ready'` would need a real stored file behind it, and a
-// fabricated file id would 404 on the first click.
+// Issued documents are seeded with no `pdf_status` and NO `pdf_file_id`: a PDF
+// never made. `documents_retry_pdf` and `documents_send_to_customer` render from
+// the persisted document whenever the status is null, pending or failed, so the
+// PDF a visitor asks for is rendered by the real template path on demand. Never
+// `pending` (an issue whose render is still owed: the app's interrupted-issue
+// sweep takes those up), and never `ready`, which would need a real stored file:
+// a fabricated file id would 404 on the first click.
 //
 // ── WHERE THE WRITES LIVE ─────────────────────────────────────────────────────
 // This file is the demo company's commerce FICTION: its parties, documents,

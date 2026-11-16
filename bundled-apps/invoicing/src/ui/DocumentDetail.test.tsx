@@ -207,6 +207,11 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     const none = pdfStatusAffordance(undefined)
     expect(none.showRetry).toBe(false)
     expect(none.downloadEnabled).toBe(false)
+
+    // An issued document whose PDF was never made: made on request.
+    const never = pdfStatusAffordance(null, { issued: true })
+    expect(never).toMatchObject({ showRetry: true, downloadEnabled: false })
+    expect(never.statusLabel).toBe("Not made yet")
   })
 
   it("an e-invoice that could not be made says so, with its reason, a retry and nothing to download", () => {

@@ -10,6 +10,14 @@ export const FR: Record<string, string> = {
   "+ Create document": "+ Créer un document",
   "+ New issuer profile": "+ Nouveau profil émetteur",
   City: "Ville",
+  "Not made yet": "Pas encore produit",
+  Document: "Document",
+  "Its PDF was not made when it was issued: it is made again":
+    "Son PDF n'a pas été produit à l'émission : il est produit à nouveau",
+  "Waiting for the day's exchange rate": "En attente du taux de change du jour",
+  "Waiting for the customs data": "En attente des données douanières",
+  "Waiting for your company's SIREN and address in Settings":
+    "En attente du SIREN et de l'adresse de votre société dans les Réglages",
   Ready: "Prêt",
   "Ready (archival metadata absent)": "Prêt (métadonnées d'archivage absentes)",
   "Render failed": "Échec de la génération",

@@ -16,6 +16,7 @@
 // and the portal part that reads it answers as unavailable.
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows } from "~/db"
+import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 
 const log = rootLogger.child({ module: "portal-views" })
@@ -173,7 +174,7 @@ async function stampIssuedDocumentsOnce(tx: PortalViewTx): Promise<void> {
   await tx.execute(drizzleSql`
     UPDATE app_invoicing.documents d
        SET company_id = c.company_id
-      FROM kernel.contacts c
+      FROM ${drizzleSql.raw(`${schemaRef("kernel")}.contacts`)} c
      WHERE c.id = d.counterparty_contact_id
        AND c.org_id = d.org_id
        AND c.company_id IS NOT NULL

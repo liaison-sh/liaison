@@ -97,6 +97,10 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   crypto_hmacSha256Base64ForConfig: "read",
   crypto_verifyHmacForConfig: "read",
   time_civil: "read",
+  // A decided client action of the calling app's own target, as recorded (bridge/client-actions.ts).
+  client_actions_record: "read",
+  // Renders a filled rich-text source to bytes in memory; stores nothing (bridge/rich-text.ts).
+  rich_text_render: "read",
   // The calling turn's agent and whether a person is behind it, from the captured frame.
   turn_get: "read",
   // A provider throttle signal (connection-limiter.ts): delays later calls, writes no data.

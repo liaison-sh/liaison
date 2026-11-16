@@ -28,6 +28,45 @@ export interface AgreementsCtx {
   }>
   /** Today's date in the org (YYYY-MM-DD); tests pass one, the host's clock otherwise. */
   today?: string
+  /** The host renders a filled source to PDF bytes, its hash and its text (read-only). */
+  rich_text_render?: (p: RichTextRenderParams) => Promise<unknown>
+  /** Stores bytes as a file of one of this app's rows. */
+  files_importAttachment?: (p: {
+    targetApp: string
+    targetEntityType: string
+    targetEntityId: string
+    filename: string
+    mimeType: string
+    bytesBase64: string
+  }) => Promise<unknown>
+  /** Client action links: mint a send's links, or the next signer's turn. */
+  client_actions_mint?: (p: unknown) => Promise<unknown>
+  /** What one decided client action recorded. */
+  client_actions_record?: (p: { id: string }) => Promise<unknown>
+  /** Withdraw every open link of one target. */
+  client_actions_revoke?: (p: {
+    target_type: string
+    target_id: string
+    reason: string
+  }) => Promise<unknown>
+  /** Emits one of the app's declared events. */
+  emit?: (e: {
+    entity: string
+    action: string
+    entityId: string
+    data?: unknown
+  }) => Promise<unknown>
+}
+
+export interface RichTextRenderParams {
+  body: unknown
+  data: Record<string, unknown>
+  title?: string
+}
+
+/** A bridge answer: JSON text or already-parsed data, depending on the executor's wrap. */
+export function bridgeAnswer<T>(raw: unknown): T {
+  return (typeof raw === "string" ? JSON.parse(raw) : raw) as T
 }
 
 export interface ErrorEnvelope {

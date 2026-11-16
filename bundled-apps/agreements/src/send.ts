@@ -1,0 +1,582 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Sending a frozen version for signature, and what follows: the person outside
+// signs or declines through the kernel's client action (never through a tool
+// here), and the app's subscriber writes the signature event, opens the next
+// signer's turn, and moves the agreement on. Void and a new link withdraw links.
+// Links are minted and withdrawn only through the kernel's bridge methods,
+// inside the person's decision on the gated tool; nothing here signs.
+
+import { UNFIT_TAGS } from "./checks"
+import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+export const EXPIRY_CHOICES = [7, 14, 30] as const
+export const TARGET_TYPE = "agreement_version"
+
+interface Agreement {
+  id: string
+  number: string
+  title: string
+  status: string
+  kind: string
+  fit_tag?: string | null
+  company_id?: string | null
+  language?: string | null
+  org_access?: string | null
+}
+
+interface Version {
+  id: string
+  agreement_id: string
+  number: number
+  status: string
+  sha256?: string | null
+  file_id?: string | null
+  page_count?: number | null
+  source?: { body?: { blocks?: unknown[] } } | null
+  source_text?: string | null
+}
+
+export interface SignerInput {
+  contact_id?: string
+  email?: string
+  name?: string
+}
+
+export interface SendParams {
+  version_id: string
+  sha256: string
+  mode?: "sign" | "accept"
+  signers: SignerInput[]
+  order?: "sequential" | "any"
+  expires_in_days?: number
+  message?: string
+  required_phrase?: string
+}
+
+interface Resolved {
+  contact_id: string | null
+  email: string
+  name: string
+}
+
+const isError = (v: unknown): v is ErrorEnvelope =>
+  !!v && typeof v === "object" && (v as { status?: unknown }).status === "error"
+
+async function loadVersion(ctx: AgreementsCtx, id: unknown): Promise<Version | ErrorEnvelope> {
+  if (typeof id !== "string" || !UUID.test(id))
+    return refusal(
+      "NOT_FOUND",
+      "No version with this id. Freeze one with agreement_prepare. Nothing was sent.",
+    )
+  const v = (await ctx.db.findOne("agreement_versions", id)) as Version | null
+  if (!v) return refusal("NOT_FOUND", `No version ${id} you can see. Nothing was sent or changed.`)
+  return v
+}
+
+async function loadAgreementOf(ctx: AgreementsCtx, v: Version): Promise<Agreement | ErrorEnvelope> {
+  const a = (await ctx.db.findOne("agreements", v.agreement_id)) as Agreement | null
+  if (!a) return refusal("NOT_FOUND", `No agreement for version ${v.id}. Nothing was changed.`)
+  return a
+}
+
+async function latestOf(ctx: AgreementsCtx, agreementId: string): Promise<Version | null> {
+  const all = (await ctx.db.findMany("agreement_versions", {
+    where: { agreement_id: agreementId },
+    limit: 500,
+  })) as Version[]
+  return all.sort((a, b) => b.number - a.number)[0] ?? null
+}
+
+/** Normalised for the "same person twice" test: trim, lower case. */
+const keyOf = (email: string) => email.trim().toLowerCase()
+
+/**
+ * The signers as the send will mint them: a contact's email read from the
+ * directory, the same contact twice kept once, two contacts on one address
+ * kept as two signers (the card says so), a contact with no email refused by name.
+ */
+export async function resolveSigners(
+  ctx: AgreementsCtx,
+  input: SignerInput[],
+): Promise<{ signers: Resolved[]; sharedAddresses: string[] } | ErrorEnvelope> {
+  if (!Array.isArray(input) || input.length === 0)
+    return refusal("SIGNERS_REQUIRED", "A send needs at least one signer. Nothing was sent.")
+  if (input.length > 40)
+    return refusal("TOO_MANY_SIGNERS", "A send has at most 40 signers. Nothing was sent.")
+  const contactIds = input
+    .map((s) => s.contact_id)
+    .filter((id): id is string => typeof id === "string" && UUID.test(id))
+  const contacts = new Map<string, Record<string, unknown>>()
+  if (contactIds.length > 0) {
+    const kernel = ctx.kernel as
+      | { findByIds?: (e: "contacts", ids: string[]) => Promise<Record<string, unknown>[]> }
+      | undefined
+    const rows = kernel?.findByIds ? await kernel.findByIds("contacts", contactIds) : []
+    for (const r of rows) contacts.set(String(r.id), r)
+  }
+  const out: Resolved[] = []
+  const seenContacts = new Set<string>()
+  const seenEmails = new Set<string>()
+  const noEmail: string[] = []
+  for (const s of input) {
+    if (s.contact_id) {
+      if (!UUID.test(s.contact_id))
+        return refusal("INVALID_SIGNER", `${s.contact_id} is not a contact id. Nothing was sent.`)
+      if (seenContacts.has(s.contact_id)) continue
+      const c = contacts.get(s.contact_id)
+      if (!c)
+        return refusal("NOT_FOUND", `No contact ${s.contact_id} you can see. Nothing was sent.`)
+      const name = String(s.name ?? c.name ?? c.email ?? "").trim()
+      const email = String(s.email ?? c.email ?? "").trim()
+      if (!email) {
+        noEmail.push(name || s.contact_id)
+        continue
+      }
+      seenContacts.add(s.contact_id)
+      out.push({ contact_id: s.contact_id, email: keyOf(email), name: name || email })
+      continue
+    }
+    const email = String(s.email ?? "").trim()
+    if (!EMAIL.test(email))
+      return refusal(
+        "INVALID_SIGNER",
+        "Each signer is a contact or an email address. Nothing was sent.",
+      )
+    if (out.some((o) => o.contact_id === null && o.email === keyOf(email))) continue
+    out.push({ contact_id: null, email: keyOf(email), name: String(s.name ?? email).trim() })
+  }
+  if (noEmail.length > 0)
+    return refusal(
+      "SIGNER_HAS_NO_EMAIL",
+      `No email address for ${noEmail.join(", ")}: add one to the contact, or leave them out. Nothing was sent.`,
+    )
+  const shared: string[] = []
+  for (const o of out) {
+    if (seenEmails.has(o.email) && !shared.includes(o.email)) shared.push(o.email)
+    seenEmails.add(o.email)
+  }
+  return { signers: out, sharedAddresses: shared }
+}
+
+interface Ready {
+  agreement: Agreement
+  version: Version
+  signers: Resolved[]
+  sharedAddresses: string[]
+  mode: "sign" | "accept"
+  order: "sequential" | "any"
+  expires: number
+}
+
+/** Every refusal a send has, before any card and again when it is approved. */
+async function readyToSend(ctx: AgreementsCtx, p: SendParams): Promise<Ready | ErrorEnvelope> {
+  const version = await loadVersion(ctx, p.version_id)
+  if (isError(version)) return version
+  const agreement = await loadAgreementOf(ctx, version)
+  if (isError(agreement)) return agreement
+  const latest = await latestOf(ctx, agreement.id)
+  if (
+    !latest ||
+    latest.id !== version.id ||
+    version.status !== "frozen" ||
+    version.sha256 !== p.sha256
+  )
+    return refusal(
+      "VERSION_CHANGED",
+      `${agreement.number} changed since this send was prepared: version ${version.number} is no longer the one to send. Read it again with agreement_get. Nothing was sent.`,
+    )
+  if (agreement.status !== "draft")
+    return refusal(
+      "ALREADY_SENT",
+      `${agreement.number} is ${agreement.status}. A new version is sent after a save and a freeze. Nothing was sent.`,
+    )
+  if ((UNFIT_TAGS as readonly string[]).includes(agreement.fit_tag ?? ""))
+    return refusal(
+      "SIGNATURE_DOES_NOT_FIT",
+      `${agreement.number} is a ${agreement.fit_tag} document: a simple electronic signature does not fit it. Nothing was sent.`,
+    )
+  const mode = p.mode ?? "sign"
+  if (mode !== "sign" && mode !== "accept")
+    return refusal("INVALID_MODE", "mode is sign or accept. Nothing was sent.")
+  const order = p.order ?? "sequential"
+  if (order !== "sequential" && order !== "any")
+    return refusal("INVALID_ORDER", "order is sequential or any. Nothing was sent.")
+  const expires = p.expires_in_days ?? 14
+  if (!(EXPIRY_CHOICES as readonly number[]).includes(expires))
+    return refusal("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
+  const r = await resolveSigners(ctx, p.signers)
+  if (isError(r)) return r
+  return {
+    agreement,
+    version,
+    signers: r.signers,
+    sharedAddresses: r.sharedAddresses,
+    mode,
+    order,
+    expires,
+  }
+}
+
+function cardLines(ready: Ready, p: SendParams): string[] {
+  const lines = [
+    `Agreement: ${ready.agreement.number} "${ready.agreement.title}", version ${ready.version.number}`,
+    `Fingerprint: ${String(ready.version.sha256)}`,
+    `Asks: ${ready.mode === "sign" ? "a simple electronic signature" : "an acceptance"}, ${ready.order === "sequential" ? "one after the other" : "in any order"}`,
+    ...ready.signers.map(
+      (s, i) => `Signer ${i + 1}: ${s.name} <${s.email}>${s.contact_id ? "" : " (not a contact)"}`,
+    ),
+    `Links last ${ready.expires} days`,
+  ]
+  for (const a of ready.sharedAddresses)
+    lines.push(`Two signers share ${a}: each signs with their own name and their own code.`)
+  if (p.required_phrase) lines.push(`Each signer types: "${p.required_phrase}"`)
+  if (p.message) lines.push(`Message: ${p.message}`)
+  return lines
+}
+
+interface MintAnswer {
+  status: string
+  error?: { code: string; message: string }
+  group_id?: string
+  actions?: Array<{
+    id: string
+    status: string
+    sign_order: number | null
+    invited_name: string
+    signer_is_staff: boolean
+    mail_queued: boolean
+  }>
+}
+
+/** Checked before the card is staged: the same refusals the send has when it is approved. */
+export async function agreementSendPreflight(
+  ctx: AgreementsCtx,
+  p: SendParams,
+): Promise<{ ok: true } | { error: { code: string; message: string } }> {
+  const ready = await readyToSend(ctx, p)
+  return isError(ready) ? { error: ready.error } : { ok: true }
+}
+
+/** `agreement_send`: an agent's call parks one card; the person's decision mints every link. */
+export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
+  const ready = await readyToSend(ctx, p)
+  if (isError(ready)) return ready
+  const agent = await actingAgentId(ctx)
+  if (agent !== null && !ctx.approval) {
+    if (!ctx.requestApproval)
+      return refusal(
+        "APPROVAL_REQUIRED",
+        `Sending ${ready.agreement.number} needs a person's decision. Nothing was sent.`,
+      )
+    const a = await ctx.requestApproval({
+      tool_name: "agreements:agreement_send",
+      summary: `Send ${ready.agreement.number} for signature`,
+      summary_detail: { subtitle: "Send for signature", lines: cardLines(ready, p) },
+      current_payload: p,
+      editable_fields: [],
+      noAutoApprove: true,
+    })
+    return {
+      status: "pending_approval",
+      approval_id: a.approval_id,
+      message: `Nothing was sent yet: ${ready.agreement.number} version ${ready.version.number} goes to ${ready.signers.length} signer(s) only when a person approves card ${a.approval_id}.`,
+    }
+  }
+  if (!ctx.client_actions_mint)
+    return refusal(
+      "LINKS_NOT_AVAILABLE",
+      "This server cannot make signing links. Nothing was sent.",
+    )
+  const out = bridgeAnswer<MintAnswer>(
+    await ctx.client_actions_mint({
+      send: {
+        target_type: TARGET_TYPE,
+        target_id: ready.version.id,
+        sha256: ready.version.sha256,
+        kind: ready.mode,
+        expires_in_days: ready.expires,
+        order: ready.order,
+        message: p.message ?? null,
+        required_phrase: p.required_phrase ?? null,
+        company_id: ready.agreement.company_id ?? null,
+        signers: ready.signers,
+      },
+    }),
+  )
+  if (out.status !== "ok")
+    return refusal(
+      out.error?.code ?? "SEND_FAILED",
+      `${ready.agreement.number} was not sent: ${out.error?.message ?? "no link was made"}`,
+    )
+  await ctx.db.update("agreements", ready.agreement.id, { status: "sent" })
+  await ctx.emit?.({
+    entity: "agreement",
+    action: "sent",
+    entityId: ready.agreement.id,
+    data: { number: ready.agreement.number, version: ready.version.number },
+  })
+  const actions = out.actions ?? []
+  const first = actions.filter((a) => a.status === "open")
+  const waiting = actions.filter((a) => a.status === "waiting_turn")
+  const staff = actions.filter((a) => a.signer_is_staff && a.status === "open")
+  return {
+    status: "ok",
+    agreement: { id: ready.agreement.id, number: ready.agreement.number, status: "sent" },
+    version: { id: ready.version.id, number: ready.version.number },
+    client_actions: actions.map((a) => ({
+      id: a.id,
+      signer: a.invited_name,
+      sign_order: a.sign_order,
+      state: a.status,
+      signs_in_session: a.signer_is_staff,
+    })),
+    message: `${ready.agreement.number} version ${ready.version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} get a link only after the signer before them` : ""}. Nothing else was sent.`,
+  }
+}
+
+interface ViewParams {
+  targetType: string
+  targetId: string
+}
+
+/**
+ * `client_action_view_get` (internal): what a person outside is shown for one
+ * version, and the hash of exactly that. Called by the kernel only.
+ */
+export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
+  if (p.targetType !== TARGET_TYPE) return refusal("NOT_FOUND", "Not an agreement version.")
+  const v = await loadVersion(ctx, p.targetId)
+  if (isError(v)) return v
+  const a = await loadAgreementOf(ctx, v)
+  if (isError(a)) return a
+  if (!v.sha256) return refusal("NOT_FROZEN", `Version ${v.number} has no file yet.`)
+  return {
+    title: `${a.number} ${a.title}`,
+    summary: [
+      { k: "Agreement", v: a.number },
+      { k: "Version", v: String(v.number) },
+      { k: "Pages", v: String(v.page_count ?? "") },
+    ],
+    source_blocks: Array.isArray(v.source?.body?.blocks) ? v.source?.body?.blocks : null,
+    text: v.source_text ?? null,
+    pdf_file_id: v.file_id ?? null,
+    sha256: v.sha256,
+    words_params: { number: a.number, version: String(v.number) },
+  }
+}
+
+interface DecidedEvent {
+  data?: {
+    id?: string
+    target?: { app?: string; type?: string; id?: string }
+    decision?: string
+  }
+}
+
+interface ActionRecord {
+  id: string
+  decision: string | null
+  decided_at: string | null
+  invited_email: string
+  invited_name: string
+  invited_by: string
+  sign_order: number | null
+  contact_id: string | null
+  signer_user_id: string | null
+  typed_name: string | null
+  capacity: string | null
+  words_shown: string | null
+  words_lang: string | null
+  required_phrase: string | null
+  typed_phrase: string | null
+  code_verified_at: string | null
+  document_shown_at: string | null
+  reached_end_at: string | null
+  ip: string | null
+  user_agent: string | null
+  target_sha256: string
+  group: Array<{ id: string; sign_order: number | null; decision: string | null; open: boolean }>
+}
+
+/**
+ * `kernel/client_action:decided`: for this app's versions only. A signature
+ * becomes one signature event (once per client action), opens the next signer's
+ * turn under "one after the other", and moves the agreement to partly signed;
+ * the last one marks the version signed (the seal follows). A decline closes the
+ * agreement as declined, with no signature.
+ */
+export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEvent) {
+  const d = event?.data
+  if (d?.target?.app !== "agreements" || d.target.type !== TARGET_TYPE || !d.id || !d.target.id)
+    return { status: "ignored" }
+  if (!ctx.client_actions_record) return { status: "ignored" }
+  const rec = bridgeAnswer<{ status: string; record?: ActionRecord }>(
+    await ctx.client_actions_record({ id: d.id }),
+  ).record
+  if (!rec) return { status: "ignored" }
+  const version = (await ctx.db.findOne("agreement_versions", d.target.id)) as Version | null
+  if (!version) return { status: "ignored" }
+  const agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
+  if (!agreement) return { status: "ignored" }
+  if (rec.decision === "declined") {
+    if (agreement.status === "sent" || agreement.status === "partly_signed") {
+      await ctx.db.update("agreements", agreement.id, { status: "declined" })
+      await ctx.emit?.({
+        entity: "agreement",
+        action: "declined",
+        entityId: agreement.id,
+        data: { number: agreement.number, version: version.number, signer: rec.invited_name },
+      })
+    }
+    return { status: "declined" }
+  }
+  if (rec.decision !== "signed" && rec.decision !== "accepted") return { status: "ignored" }
+  const existing = await ctx.db.findMany("signature_events", {
+    where: { client_action_id: rec.id },
+    limit: 1,
+  })
+  if (existing.length === 0) {
+    await ctx.db.insert("signature_events", {
+      version_id: version.id,
+      client_action_id: rec.id,
+      required_phrase: rec.required_phrase,
+      typed_phrase: rec.typed_phrase,
+      signer_order: rec.sign_order,
+      signer_contact_id: rec.contact_id,
+      signer_user_id: rec.signer_user_id,
+      invited_email: rec.invited_email,
+      invited_by: rec.invited_by,
+      typed_name: rec.typed_name ?? "",
+      capacity: rec.capacity ?? "",
+      consent_words: rec.words_shown ?? "",
+      consent_lang: rec.words_lang ?? agreement.language ?? "en",
+      level: "ses",
+      document_sha256: rec.target_sha256,
+      signed_at: rec.decided_at ?? new Date().toISOString(),
+      ip: rec.ip,
+      user_agent: rec.user_agent,
+      code_verified_at: rec.code_verified_at,
+      document_shown_at: rec.document_shown_at,
+      reached_end_at: rec.reached_end_at,
+    })
+  }
+  const positive = (x: string | null) => x === "signed" || x === "accepted"
+  const done = rec.group.filter((g) => positive(g.decision) || g.id === rec.id).length
+  const all = rec.group.length
+  if (done >= all) {
+    await ctx.db.update("agreement_versions", version.id, { status: "signed" })
+    await ctx.db.update("agreements", agreement.id, { status: "signed" })
+    return { status: "signed", signed: done, of: all }
+  }
+  await ctx.db.update("agreements", agreement.id, { status: "partly_signed" })
+  // The next signer of the approved send, when they wait for this one.
+  if (rec.sign_order !== null && ctx.client_actions_mint)
+    await ctx.client_actions_mint({ next_turn_after: rec.id })
+  return { status: "partly_signed", signed: done, of: all }
+}
+
+/** Checked before the card is staged: a reason, and a document still waiting for signatures. */
+export async function agreementVoidPreflight(
+  ctx: AgreementsCtx,
+  p: { id: string; reason: string },
+): Promise<{ ok: true } | { error: { code: string; message: string } }> {
+  if (typeof p.reason !== "string" || p.reason.trim() === "")
+    return {
+      error: { code: "REASON_REQUIRED", message: "A void needs a reason. Nothing was changed." },
+    }
+  const a =
+    typeof p.id === "string" && UUID.test(p.id)
+      ? ((await ctx.db.findOne("agreements", p.id)) as Agreement | null)
+      : null
+  if (!a)
+    return {
+      error: {
+        code: "NOT_FOUND",
+        message: `No agreement ${p.id} you can see. Nothing was changed.`,
+      },
+    }
+  if (a.status !== "sent" && a.status !== "partly_signed")
+    return {
+      error: {
+        code: "NOT_SENT",
+        message: `${a.number} is ${a.status}: only a document waiting for signatures is voided. Nothing was changed.`,
+      },
+    }
+  return { ok: true }
+}
+
+/** `agreement_void`: withdraws every open link of the sent version; signed rows stay. */
+export async function agreementVoid(ctx: AgreementsCtx, p: { id: string; reason: string }) {
+  if (typeof p.reason !== "string" || p.reason.trim() === "")
+    return refusal("REASON_REQUIRED", "A void needs a reason. Nothing was changed.")
+  const a =
+    typeof p.id === "string" && UUID.test(p.id)
+      ? ((await ctx.db.findOne("agreements", p.id)) as Agreement | null)
+      : null
+  if (!a) return refusal("NOT_FOUND", `No agreement ${p.id} you can see. Nothing was changed.`)
+  if (a.status !== "sent" && a.status !== "partly_signed")
+    return refusal(
+      "NOT_SENT",
+      `${a.number} is ${a.status}: only a document waiting for signatures is voided. Nothing was changed.`,
+    )
+  const v = await latestOf(ctx, a.id)
+  if (!v) return refusal("NOT_SENT", `${a.number} has no sent version. Nothing was changed.`)
+  const agent = await actingAgentId(ctx)
+  if (agent !== null && !ctx.approval) {
+    if (!ctx.requestApproval)
+      return refusal(
+        "APPROVAL_REQUIRED",
+        `Voiding ${a.number} needs a person. Nothing was changed.`,
+      )
+    const ap = await ctx.requestApproval({
+      tool_name: "agreements:agreement_void",
+      summary: `Void ${a.number}`,
+      summary_detail: {
+        subtitle: "Withdraw every open signing link",
+        lines: [`Agreement: ${a.number} "${a.title}", version ${v.number}`, `Reason: ${p.reason}`],
+      },
+      current_payload: p,
+      editable_fields: [],
+      noAutoApprove: true,
+    })
+    return {
+      status: "pending_approval",
+      approval_id: ap.approval_id,
+      message: `Nothing was withdrawn yet: ${a.number} is voided only when a person approves card ${ap.approval_id}.`,
+    }
+  }
+  if (!ctx.client_actions_revoke)
+    return refusal("LINKS_NOT_AVAILABLE", "This server cannot withdraw links. Nothing was changed.")
+  const out = bridgeAnswer<{
+    status: string
+    revoked_ids?: string[]
+    error?: { code: string; message: string }
+  }>(
+    await ctx.client_actions_revoke({
+      target_type: TARGET_TYPE,
+      target_id: v.id,
+      reason: "sender_voided",
+    }),
+  )
+  if (out.status !== "ok")
+    return refusal(
+      out.error?.code ?? "VOID_FAILED",
+      `${a.number} was not voided: ${out.error?.message ?? ""}`,
+    )
+  await ctx.db.update("agreements", a.id, { status: "voided", void_reason: p.reason.trim() })
+  await ctx.emit?.({
+    entity: "agreement",
+    action: "voided",
+    entityId: a.id,
+    data: { number: a.number, version: v.number },
+  })
+  const n = out.revoked_ids?.length ?? 0
+  return {
+    status: "ok",
+    agreement: { id: a.id, number: a.number, status: "voided" },
+    message: `${a.number} is voided: ${n} open link(s) withdrawn; signatures already given stay on version ${v.number}. Nothing was mailed.`,
+  }
+}

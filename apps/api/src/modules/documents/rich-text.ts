@@ -843,6 +843,8 @@ function formatNumber(value: number, fixed: number | undefined): string {
 class Layout {
   readonly commands: DrawCommand[] = []
   readonly blanks: RichTextBlank[] = []
+  /** The text each laid-out block meant to print, before wrapping: what a freeze compares. */
+  readonly intended: string[] = []
   private readonly blankKeys = new Set<string>()
   private page = -1
   private y = 0
@@ -1036,6 +1038,7 @@ class Layout {
 
   /** Lay out runs as wrapped lines, each hard line break starting a new line. */
   text(runs: TextRun[], size: number, lineHeight: number): void {
+    this.intended.push(runs.map((r) => r.text).join(""))
     for (const hard of splitHardLines(runs)) {
       for (const line of wrapRuns(hard, this.contentWidth, size)) this.line(line, size, lineHeight)
     }
@@ -1126,6 +1129,8 @@ class Layout {
       }
       this.y = top - height
     }
+    for (const cells of header ? [header, ...rows] : rows)
+      for (const runs of cells) this.intended.push(runs.map((r) => r.text).join(""))
     if (header) drawRow(header, true)
     for (const cells of rows) drawRow(cells, false)
   }
@@ -1221,7 +1226,12 @@ export function layoutRichText(
   labelOf: (path: string) => string,
   images: ReadonlyMap<string, ImageInfo> = new Map(),
   title?: string,
-): { commands: DrawCommand[]; blanks: RichTextBlank[]; pageCount: number } {
+): {
+  commands: DrawCommand[]
+  blanks: RichTextBlank[]
+  pageCount: number
+  intended: string[]
+} {
   // Every top-level list is checked before any layout work.
   for (const block of body.blocks) {
     if ((block.type === "list" || block.type === "repeat") && block.from)
@@ -1315,7 +1325,12 @@ export function layoutRichText(
       }
     } else leaf(block, null)
   }
-  return { commands: layout.commands, blanks: layout.blanks, pageCount: layout.pageCount }
+  return {
+    commands: layout.commands,
+    blanks: layout.blanks,
+    pageCount: layout.pageCount,
+    intended: layout.intended,
+  }
 }
 
 /**
@@ -1368,4 +1383,68 @@ export async function renderRichText(input: RichTextRenderInput): Promise<RichTe
     resolveImage: async (fileId) => images.get(fileId)?.image ?? null,
   })
   return { bytes, blanks, pageCount }
+}
+
+// ---------------------------------------------------------------------------
+// Freeze
+// ---------------------------------------------------------------------------
+
+/** What a freeze stores and checks: the bytes, their hash, and the two texts it compares. */
+export interface RichTextFrozen {
+  bytes: Uint8Array
+  /** Hex SHA-256 of `bytes`. */
+  sha256: string
+  pageCount: number
+  blanks: RichTextBlank[]
+  /** The filled source's text, block by block, before any layout. */
+  sourceText: string
+  /** The text the layout drew, run by run, in drawing order. */
+  layoutText: string
+}
+
+/** Whitespace is layout's business (wrapping, cell padding): the compare ignores it. */
+function withoutWhitespace(text: string): string {
+  return text.replace(/\s+/g, "")
+}
+
+/** True when the drawn text equals the source's text, whitespace aside. */
+export function freezeTextMatches(sourceText: string, layoutText: string): boolean {
+  return withoutWhitespace(sourceText) === withoutWhitespace(layoutText)
+}
+
+/** The text runs a list of draw commands prints, in order. */
+export function drawnText(commands: readonly DrawCommand[]): string {
+  return commands.flatMap((c) => (c.op === "drawText" ? [c.text] : [])).join(" ")
+}
+
+/**
+ * Render a filled source for a freeze: no image (a frozen document holds only its
+ * text), the PDF bytes with their hash, and the source's own text beside the text
+ * the layout drew, so the caller refuses a freeze where they differ.
+ */
+export async function renderRichTextForFreeze(input: {
+  body: unknown
+  record: Record<string, unknown>
+  labelOf?: (path: string) => string
+  title?: string
+}): Promise<RichTextFrozen> {
+  const body = parseRichTextBody(input.body)
+  const labelOf = input.labelOf ?? ((path: string) => path)
+  const { commands, blanks, pageCount, intended } = layoutRichText(
+    body,
+    input.record,
+    labelOf,
+    new Map(),
+    input.title,
+  )
+  const bytes = await replayDrawCommands(commands, { resolveImage: async () => null })
+  const sha256 = new Bun.CryptoHasher("sha256").update(bytes).digest("hex")
+  return {
+    bytes,
+    sha256,
+    pageCount,
+    blanks,
+    sourceText: intended.join("\n"),
+    layoutText: drawnText(commands),
+  }
 }

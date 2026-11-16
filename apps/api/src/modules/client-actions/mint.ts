@@ -612,3 +612,300 @@ export async function revokeClientAction(input: {
     return { id: input.id, revoked: true, state: "revoked" }
   })
 }
+
+export interface OpenTurnResult {
+  /** The action whose turn opened, or null when no signer waits for this one. */
+  openedId: string | null
+  signerIsStaff: boolean
+}
+
+/**
+ * After a signature in a group signed "one after the other": opens the turn of
+ * the next signer, the one the approved send made waiting (no token, no mail).
+ * Nothing opens unless the decided action is this app's, signed or accepted,
+ * every signer before the next one has signed, nobody declined, and the next
+ * one waits on the same document at the same hash. A second call for the same
+ * decision opens nothing more.
+ */
+export async function openNextSignerTurn(input: {
+  orgId: string
+  targetApp: string
+  afterActionId: string
+}): Promise<OpenTurnResult> {
+  const next = await withPrivilegedDb(input.orgId, "client-action-next-turn", async (tx) => {
+    const [after] = extractRows<{
+      group_id: string
+      target_id: string
+      target_sha256: string
+      decision: string | null
+      target_app: string
+    }>(
+      await tx.execute(sql`
+        SELECT group_id, target_id, target_sha256, decision, target_app
+          FROM ${K()}.client_actions
+         WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
+      `),
+    )
+    if (!after || after.target_app !== input.targetApp) {
+      throw new ClientActionError("NOT_FOUND", "No decided action of this app with this id", 404)
+    }
+    if (after.decision !== "signed" && after.decision !== "accepted") return null
+    const group = extractRows<{
+      id: string
+      sign_order: number | null
+      decision: string | null
+      revoked_at: Date | null
+      token_hash: string | null
+      expires_at: Date
+      target_id: string
+      target_sha256: string
+      signer_user_id: string | null
+    }>(
+      await tx.execute(sql`
+        SELECT id, sign_order, decision, revoked_at, token_hash, expires_at, target_id,
+               target_sha256, signer_user_id
+          FROM ${K()}.client_actions
+         WHERE org_id = ${input.orgId} AND group_id = ${after.group_id}
+         ORDER BY sign_order NULLS LAST, created_at
+         FOR UPDATE
+      `),
+    )
+    if (group.some((g) => g.decision === "declined")) return null
+    const waiting = group.find(
+      (g) =>
+        g.sign_order !== null &&
+        g.decision === null &&
+        g.revoked_at === null &&
+        g.token_hash === null &&
+        new Date(g.expires_at).getTime() > Date.now(),
+    )
+    if (!waiting || waiting.sign_order === null) return null
+    const order = waiting.sign_order
+    const earlierAllSigned = group
+      .filter((g) => g.sign_order !== null && g.sign_order < order)
+      .every((g) => g.decision === "signed" || g.decision === "accepted")
+    if (!earlierAllSigned) return null
+    if (waiting.target_id !== after.target_id || waiting.target_sha256 !== after.target_sha256)
+      return null
+    return { id: waiting.id, staff: waiting.signer_user_id }
+  })
+  if (!next) return { openedId: null, signerIsStaff: false }
+  if (!next.staff) {
+    const sent = await remailClientAction(input.orgId, next.id)
+    return { openedId: sent ? next.id : null, signerIsStaff: false }
+  }
+  // A staff signer: a fresh token behind their session, a Home row and a mail with no link.
+  const staff = await withPrivilegedDb(input.orgId, "client-action-staff-turn", async (tx) => {
+    const token = await rotateClientActionToken(tx, input.orgId, next.id)
+    if (!token) return null
+    const [a] = extractRows<{
+      kind: ClientActionKind
+      target_app: string
+      target_type: string
+      target_id: string
+      invited_email: string
+      created_by_user_id: string | null
+    }>(
+      await tx.execute(sql`
+        SELECT kind, target_app, target_type, target_id, invited_email, created_by_user_id
+          FROM ${K()}.client_actions WHERE id = ${next.id} AND org_id = ${input.orgId}
+      `),
+    )
+    if (!a) return null
+    const sender = await readSender(tx, input.orgId, a.created_by_user_id)
+    return { a, sender }
+  })
+  if (!staff) return { openedId: null, signerIsStaff: true }
+  const view = await viewTarget({
+    orgId: input.orgId,
+    targetApp: staff.a.target_app,
+    targetType: staff.a.target_type,
+    targetId: staff.a.target_id,
+    actingUserId: staff.a.created_by_user_id,
+  })
+  const title = view === "down" ? staff.sender.orgName : view.title
+  await withPrivilegedDb(input.orgId, "client-action-staff-turn-row", (tx) =>
+    tx.queueEvent({
+      app: "kernel",
+      entity: "client_action",
+      action: "staff_turn",
+      entityId: next.id,
+      data: { id: next.id, kind: staff.a.kind, title, signerUserIds: [next.staff] },
+      actorId: SYSTEM_ACTOR_ID,
+      actorType: "system",
+      orgId: input.orgId,
+    }),
+  )
+  void sendStaffTurnMail({
+    orgId: input.orgId,
+    to: staff.a.invited_email,
+    mailId: newActionMailId(),
+    title,
+    kind: staff.a.kind,
+    orgName: staff.sender.orgName,
+    senderName: staff.sender.senderName,
+    locale: staff.sender.senderLocale,
+  }).catch((err) =>
+    log.error({ err, orgId: input.orgId, actionId: next.id }, "staff signer notice failed"),
+  )
+  return { openedId: next.id, signerIsStaff: true }
+}
+
+/**
+ * Withdraws every open action of one target at once, in one transaction: a void,
+ * a version replaced by a newer one. Decided actions keep their decision.
+ */
+export async function revokeTargetClientActions(input: {
+  orgId: string
+  targetApp: string
+  targetType: string
+  targetId: string
+  reason: ClientActionRevokeReason
+  byUserId: string | null
+  byAgent?: boolean
+}): Promise<string[]> {
+  return withPrivilegedDb(input.orgId, "client-action-revoke-target", async (tx) => {
+    const rows = extractRows<{ id: string }>(
+      await tx.execute(sql`
+        UPDATE ${K()}.client_actions
+           SET revoked_at = now(), revoked_by = ${input.byUserId}, revoke_reason = ${input.reason}
+         WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
+           AND target_type = ${input.targetType} AND target_id = ${input.targetId}
+           AND decided_at IS NULL AND revoked_at IS NULL
+         RETURNING id
+      `),
+    )
+    for (const r of rows) {
+      await writeClientActionEvent(tx, {
+        orgId: input.orgId,
+        actionId: r.id,
+        event: "revoked",
+        actorKind: input.byAgent ? "agent" : input.byUserId ? "staff" : "system",
+        actorUserId: input.byUserId,
+        meta: { reason: input.reason },
+      })
+    }
+    return rows.map((r) => r.id)
+  })
+}
+
+/** What a decided action recorded, for the app that owns its target to keep as evidence. */
+export interface ClientActionRecord {
+  id: string
+  groupId: string
+  kind: ClientActionKind
+  targetType: string
+  targetId: string
+  targetSha256: string
+  decision: string | null
+  decidedAt: Date | null
+  decidedVia: string | null
+  contactId: string | null
+  signerUserId: string | null
+  invitedEmail: string
+  invitedName: string
+  invitedBy: string
+  signOrder: number | null
+  typedName: string | null
+  capacity: string | null
+  wordsShown: string | null
+  wordsKey: string | null
+  wordsLang: string | null
+  requiredPhrase: string | null
+  typedPhrase: string | null
+  codeVerifiedAt: Date | null
+  documentShownAt: Date | null
+  reachedEndAt: Date | null
+  declineReason: string | null
+  ip: string | null
+  userAgent: string | null
+  /** Every action of the same send, in signing order: who signed, who declined, who waits. */
+  group: Array<{ id: string; signOrder: number | null; decision: string | null; open: boolean }>
+}
+
+/** One action of the calling app's targets, as decided; null when it is not that app's. */
+export async function readClientActionRecord(
+  orgId: string,
+  targetApp: string,
+  id: string,
+): Promise<ClientActionRecord | null> {
+  return withPrivilegedDb(orgId, "client-action-record", async (tx) => {
+    const [r] = extractRows<Record<string, unknown>>(
+      await tx.execute(sql`
+        SELECT a.id, a.group_id, a.kind, a.target_type, a.target_id, a.target_sha256, a.decision,
+               a.decided_at, a.decided_via, a.contact_id, a.signer_user_id, a.invited_email,
+               a.invited_name, a.sign_order, a.typed_name, a.capacity, a.words_shown, a.words_key,
+               a.words_lang, a.required_phrase, a.typed_phrase, a.code_verified_at,
+               a.document_shown_at, a.decline_reason,
+               coalesce(u.name, u.email, o.name) AS invited_by,
+               (SELECT (e.meta->>'reached_end_at') FROM ${K()}.client_action_events e
+                 WHERE e.action_id = a.id AND e.event = 'document_shown'
+                 ORDER BY e.at DESC LIMIT 1) AS reached_end_at,
+               d.ip, d.user_agent
+          FROM ${K()}.client_actions a
+          JOIN ${K()}.organizations o ON o.id = a.org_id
+          LEFT JOIN ${K()}.users u ON u.id = a.created_by_user_id AND u.org_id = a.org_id
+          LEFT JOIN LATERAL (
+            SELECT dv.ip, dv.user_agent FROM ${K()}.client_action_events e
+              JOIN ${K()}.client_action_devices dv ON dv.event_id = e.id
+             WHERE e.action_id = a.id AND e.event IN ('decided', 'declined')
+             ORDER BY e.at DESC LIMIT 1
+          ) d ON true
+         WHERE a.id = ${id} AND a.org_id = ${orgId} AND a.target_app = ${targetApp}
+      `),
+    )
+    if (!r) return null
+    const group = extractRows<{
+      id: string
+      sign_order: number | null
+      decision: string | null
+      open: boolean
+    }>(
+      await tx.execute(sql`
+        SELECT id, sign_order, decision,
+               (decided_at IS NULL AND revoked_at IS NULL AND expires_at > now()) AS open
+          FROM ${K()}.client_actions
+         WHERE org_id = ${orgId} AND group_id = ${r.group_id}
+         ORDER BY sign_order NULLS LAST, created_at
+      `),
+    )
+    const date = (v: unknown) => (v ? new Date(v as string) : null)
+    const str = (v: unknown) => (typeof v === "string" ? v : null)
+    return {
+      id: String(r.id),
+      groupId: String(r.group_id),
+      kind: r.kind as ClientActionKind,
+      targetType: String(r.target_type),
+      targetId: String(r.target_id),
+      targetSha256: String(r.target_sha256),
+      decision: str(r.decision),
+      decidedAt: date(r.decided_at),
+      decidedVia: str(r.decided_via),
+      contactId: str(r.contact_id),
+      signerUserId: str(r.signer_user_id),
+      invitedEmail: String(r.invited_email),
+      invitedName: String(r.invited_name),
+      invitedBy: String(r.invited_by ?? ""),
+      signOrder: typeof r.sign_order === "number" ? r.sign_order : null,
+      typedName: str(r.typed_name),
+      capacity: str(r.capacity),
+      wordsShown: str(r.words_shown),
+      wordsKey: str(r.words_key),
+      wordsLang: str(r.words_lang),
+      requiredPhrase: str(r.required_phrase),
+      typedPhrase: str(r.typed_phrase),
+      codeVerifiedAt: date(r.code_verified_at),
+      documentShownAt: date(r.document_shown_at),
+      reachedEndAt: date(r.reached_end_at),
+      declineReason: str(r.decline_reason),
+      ip: str(r.ip),
+      userAgent: str(r.user_agent),
+      group: group.map((g) => ({
+        id: g.id,
+        signOrder: g.sign_order,
+        decision: g.decision,
+        open: g.open === true,
+      })),
+    }
+  })
+}

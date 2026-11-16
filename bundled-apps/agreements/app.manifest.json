@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1171,6 +1171,183 @@
           "entityId"
         ]
       }
+    },
+    "agreement_send": {
+      "description": "Send a frozen agreement version for signature or acceptance to its signers, in order or all at once. Parks for a person's approval; nothing is sent if the version changed since agreement_prepare.",
+      "searchKeywords": [
+        "signer",
+        "signature",
+        "électronique",
+        "envoyer",
+        "contrat"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementSendHandler",
+      "summarizer": "summarizeAgreementSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Send version {{params.version_id}} for signature"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "description": "The version_id agreement_prepare returned."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The fingerprint agreement_prepare returned for that version."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "sign",
+              "accept"
+            ]
+          },
+          "signers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contact_id": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 40
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "sequential",
+              "any"
+            ]
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              14,
+              30
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "required_phrase": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "version_id",
+          "sha256",
+          "signers"
+        ]
+      },
+      "preflight": "agreementSendPreflightHandler"
+    },
+    "agreement_void": {
+      "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. Parks for a person's approval.",
+      "searchKeywords": [
+        "annuler",
+        "void",
+        "withdraw",
+        "retirer",
+        "contrat",
+        "contract"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementVoidHandler",
+      "summarizer": "summarizeAgreementVoid",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Void agreement {{params.id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ]
+      },
+      "preflight": "agreementVoidPreflightHandler"
+    },
+    "client_action_view_get": {
+      "description": "What a person outside is shown for one agreement version, with its fingerprint (internal: the kernel's client action page).",
+      "requiredScopes": [
+        "agreements:internal"
+      ],
+      "handler": "clientActionViewGetHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId"
+        ]
+      }
     }
+  },
+  "clientActionTargets": [
+    {
+      "type": "agreement_version",
+      "kinds": [
+        "sign",
+        "accept"
+      ],
+      "viewTool": "client_action_view_get"
+    }
+  ],
+  "events": {
+    "subscribes": {
+      "kernel/client_action:decided": "onClientActionDecidedHandler"
+    },
+    "emits": [
+      "agreement:sent",
+      "agreement:declined",
+      "agreement:voided"
+    ]
   }
 }

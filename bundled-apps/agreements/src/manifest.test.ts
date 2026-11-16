@@ -5,8 +5,8 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.1.0", () => {
-    expect(manifest.version).toBe("0.1.0")
+  it("is at version 0.2.0", () => {
+    expect(manifest.version).toBe("0.2.0")
   })
 
   it("parses as a package manifest", () => {
@@ -23,8 +23,8 @@ describe("agreements manifest", () => {
     }
   })
 
-  it("no tool signs, sends or decides: those are separate gated tools", () => {
-    expect(Object.keys(manifest.tools).filter((t) => /sign|send|decide|accept/.test(t))).toEqual([])
+  it("no tool signs, decides or accepts: a person does, through their own link", () => {
+    expect(Object.keys(manifest.tools).filter((t) => /sign|decide|accept/.test(t))).toEqual([])
   })
 
   it("the corporate templates feature is declared, so later work needs no manifest edit", () => {

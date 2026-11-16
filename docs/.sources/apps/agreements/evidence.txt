@@ -1,6 +1,6 @@
 Seal on the last signature; signed PDF with signature pages, own numbering, document language, level, fingerprint -> bundled-apps/agreements/src/seal.ts (sealVersion) ; apps/api/src/modules/agreement-evidence/signature-pages.ts (renderSignaturePages, appendSignaturePages)
 Seal over the fingerprints and the signature record -> bundled-apps/agreements/src/seal.ts (buildTrail, sealVersion)
-Evidence zip contents, certificate, check page -> apps/api/src/modules/agreement-evidence/package-files.ts (buildPackageFiles, renderCertificate, checkPage)
+Evidence zip contents, certificate, check page -> apps/api/src/modules/agreement-evidence/package-files.ts (buildPackageFiles, renderCertificate)
 Timestamp pending, ten-minute retry, stamped file mailed, one notice after 24 hours -> bundled-apps/agreements/src/seal.ts (timestampRetry, TIMESTAMP_OVERDUE_MS) ; bundled-apps/agreements/app.manifest.json (timestamp-retry, evidence:timestamp_overdue)
 Each signer's copy by email with fingerprint and seal; own device only; colleague copy no device -> apps/api/src/modules/agreement-evidence/copy-mail.ts (sendSignedCopyMail) ; apps/api/src/modules/agreement-evidence/package-files.ts (buildPackageFiles)
 Copy retried, three failures one notice -> bundled-apps/agreements/src/seal.ts (copiesRetry, COPY_MAX_ATTEMPTS) ; bundled-apps/agreements/app.manifest.json (evidence:copy_failed)

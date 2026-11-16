@@ -182,6 +182,12 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // test stand-in (unit, integration) import it.
   { glob: "packages/app-loader/**", suites: ["workspace-packages", "unit", "integration"] },
   { glob: "packages/db-core/**", suites: ["workspace-packages", "unit", "integration"] },
+  // The offline checker page: its own tests, the evidence zips that embed it
+  // (unit), the door test of what it shows (security) and the offline scenario.
+  {
+    glob: "packages/evidence-check/**",
+    suites: ["workspace-packages", "unit", "security", "playwright"],
+  },
   // The self-hosted sandbox service (workerd). Its probes, the executor parity
   // suite on workerd (unit) and the wake-up contract on workerd (api-guards);
   // its package.json pins workerd, so a bump re-runs all three.

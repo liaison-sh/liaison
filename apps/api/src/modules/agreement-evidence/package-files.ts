@@ -11,9 +11,11 @@
 // The zip itself is written by the signing module (modules/signing/evidence-zip.ts),
 // which refuses a file that is not the one the manifest names.
 
+import { buildCheckPage } from "@liaison/evidence-check"
 import { PDFDocument, type PDFFont, rgb } from "pdf-lib"
 import { serverT } from "~/modules/i18n/server-i18n"
-import { buildEvidenceZip } from "~/modules/signing/evidence-zip"
+import { canonicalJsonBytes } from "~/modules/signing/canonical-json"
+import { buildEvidenceZip, type EvidenceZipInput } from "~/modules/signing/evidence-zip"
 import { plainText, type SignatureLang } from "./signature-pages"
 
 /** The device fields an event of the trail may carry. */
@@ -112,33 +114,6 @@ export async function renderCertificate(input: CertificateInput): Promise<Uint8A
   return doc.save({ useObjectStreams: false })
 }
 
-/**
- * The offline checker page placed in every zip. The full checker (hashing the
- * dropped file, recomputing the seal and reading the timestamp) is its own
- * package; until it is wired in, this page states the fingerprints and how to
- * check them by hand, and claims no check.
- */
-export function checkPage(input: {
-  documentSha256: string
-  signedPdfSha256: string
-  seal: string
-}): Uint8Array {
-  const html = [
-    "<!doctype html>",
-    '<html lang="en"><meta charset="utf-8"><title>Check this document</title>',
-    "<body>",
-    "<h1>Check this document</h1>",
-    "<p>Compute the SHA-256 of signed.pdf and of document.pdf and compare them with these values.",
-    " manifest.json holds them; the seal is the SHA-256 of manifest.json's exact bytes.</p>",
-    `<p>document.pdf: <code>${input.documentSha256}</code></p>`,
-    `<p>signed.pdf: <code>${input.signedPdfSha256}</code></p>`,
-    `<p>Seal: <code>${input.seal}</code></p>`,
-    "<p>When timestamp.tsr is present: openssl ts -verify -data seal.bin -in timestamp.tsr -CAfile tsa-chain.pem</p>",
-    "</body></html>",
-  ].join("")
-  return new TextEncoder().encode(html)
-}
-
 export interface PackageFilesInput {
   signedPdf: Uint8Array
   frozenPdf: Uint8Array
@@ -147,8 +122,11 @@ export interface PackageFilesInput {
   seal: string
   timestampReply?: Uint8Array
   certificatePdf: Uint8Array
-  checkHtml: Uint8Array
   sealedAt: Date
+  /** The organization that keeps the full event list (named on a copy's checker page). */
+  orgName: string
+  /** The checker page's language. */
+  lang: SignatureLang
   /** Signers' client action ids, one copy each. */
   signerActionIds: string[]
 }
@@ -157,6 +135,27 @@ export interface PackageFiles {
   evidence: Uint8Array
   signerCopies: Record<string, Uint8Array>
   colleagueCopy: Uint8Array
+}
+
+/**
+ * One zip of the package. Its checker page (check.html) carries this zip's own
+ * event list, so a signer's copy holds nobody else's device there either.
+ */
+function zipWithCheckPage(
+  common: Omit<EvidenceZipInput, "trail" | "trailKind" | "checkHtml">,
+  input: PackageFilesInput,
+  trail: unknown,
+  trailKind: EvidenceZipInput["trailKind"],
+): Uint8Array {
+  const checkHtml = buildCheckPage({
+    manifestBytes: input.manifestBytes,
+    trailBytes: canonicalJsonBytes(trail),
+    trailKind,
+    ...(input.timestampReply ? { timestampReply: input.timestampReply } : {}),
+    orgName: input.orgName,
+    lang: input.lang,
+  })
+  return buildEvidenceZip({ ...common, trail, trailKind, checkHtml })
 }
 
 /** Build the staff file, each signer's copy and the colleague's copy. */
@@ -168,22 +167,23 @@ export function buildPackageFiles(input: PackageFilesInput): PackageFiles {
     seal: input.seal,
     ...(input.timestampReply ? { timestampReply: input.timestampReply } : {}),
     certificatePdf: input.certificatePdf,
-    checkHtml: input.checkHtml,
     sealedAt: input.sealedAt,
   }
-  const evidence = buildEvidenceZip({ ...common, trail: input.trail, trailKind: "full" })
+  const evidence = zipWithCheckPage(common, input, input.trail, "full")
   const signerCopies: Record<string, Uint8Array> = {}
   for (const id of input.signerActionIds) {
-    signerCopies[id] = buildEvidenceZip({
-      ...common,
-      trail: signerCopyTrail(input.trail, { clientActionId: id }),
-      trailKind: "signer_copy",
-    })
+    signerCopies[id] = zipWithCheckPage(
+      common,
+      input,
+      signerCopyTrail(input.trail, { clientActionId: id }),
+      "signer_copy",
+    )
   }
-  const colleagueCopy = buildEvidenceZip({
-    ...common,
-    trail: signerCopyTrail(input.trail, { colleague: true }),
-    trailKind: "signer_copy",
-  })
+  const colleagueCopy = zipWithCheckPage(
+    common,
+    input,
+    signerCopyTrail(input.trail, { colleague: true }),
+    "signer_copy",
+  )
   return { evidence, signerCopies, colleagueCopy }
 }

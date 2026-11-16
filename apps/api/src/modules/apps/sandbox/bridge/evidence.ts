@@ -238,7 +238,7 @@ export function createEvidenceMethods(
         /** Names the stamped set (built again when the stamp arrives). */
         stamped?: boolean
       }
-      const { buildPackageFiles, checkPage, renderCertificate } = await import(
+      const { buildPackageFiles, renderCertificate } = await import(
         "~/modules/agreement-evidence/package-files"
       )
       const version: Parent = { entityType: "agreement_version", entityId: p.versionId }
@@ -272,12 +272,9 @@ export function createEvidenceMethods(
           seal: p.seal,
           ...(tsr ? { timestampReply: tsr } : {}),
           certificatePdf,
-          checkHtml: checkPage({
-            documentSha256: sha256Hex(frozenPdf),
-            signedPdfSha256: sha256Hex(signedPdf),
-            seal: p.seal,
-          }),
           sealedAt: new Date(p.sealedAt),
+          orgName,
+          lang: p.lang === "fr" ? "fr" : "en",
           signerActionIds: p.signerActionIds,
         })
         const suffix = p.stamped ? "-stamped" : ""

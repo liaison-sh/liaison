@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { unzipSync } from "fflate"
 import { EVIDENCE_ZIP_ENTRIES } from "~/modules/signing/constants"
 import { computeSeal, sha256Hex, trailSha256 } from "~/modules/signing/seal"
-import { buildPackageFiles, checkPage, signerCopyTrail, type Trail } from "./package-files"
+import { buildPackageFiles, signerCopyTrail, type Trail } from "./package-files"
 
 const enc = (s: string) => new TextEncoder().encode(s)
 const frozenPdf = enc("%PDF-1.7 frozen")
@@ -49,11 +49,8 @@ function build() {
     seal: sealed.seal,
     timestampReply: new Uint8Array([0x30, 0x00]),
     certificatePdf: enc("%PDF certificate"),
-    checkHtml: checkPage({
-      documentSha256: sealed.manifest.document_sha256,
-      signedPdfSha256: sealed.manifest.signed_pdf_sha256,
-      seal: sealed.seal,
-    }),
+    orgName: "Maison Example",
+    lang: "en",
     sealedAt: new Date(Date.UTC(2026, 10, 10)),
     signerActionIds: [A, B],
   })

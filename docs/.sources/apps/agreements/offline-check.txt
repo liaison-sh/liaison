@@ -1,0 +1,5 @@
+Unzip, open check.html, choose or drop the PDF; "This is the document they signed" with the fingerprint, otherwise both fingerprints -> packages/evidence-check/src/page/main.ts (renderPackage) ; packages/evidence-check/src/page/strings.ts (STRINGS) ; packages/evidence-check/src/check.ts (checkFile)
+The page carries its own zip's manifest, event list and timestamp, works with no network -> packages/evidence-check/src/index.ts (buildCheckPage, CHECK_PAGE_CSP) ; apps/api/src/modules/agreement-evidence/package-files.ts (buildPackageFiles)
+Seal shown, timestamp names this seal, staff record checked, a signer's copy not checked -> packages/evidence-check/src/check.ts (checkPackage, readTimestampReply)
+The page does not check the authority's signature and shows the openssl line -> packages/evidence-check/src/check.ts (OPENSSL_VERIFY_LINE) ; packages/evidence-check/src/page/strings.ts (STRINGS)
+verify-with-openssl.sh checks every file and the timestamp with the authority's chain, not carried in the zip -> packages/evidence-check/verify-with-openssl.sh

@@ -35,6 +35,7 @@
     "@liaison/app-loader": "workspace:*",
     "@liaison/control-plane-contract": "workspace:*",
     "@liaison/db-core": "workspace:*",
+    "@liaison/evidence-check": "workspace:*",
     "@liaison/host": "workspace:*",
     "@liaison/mailbox-crypto": "workspace:*",
     "@liaison/shared": "workspace:*",

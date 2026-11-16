@@ -44,6 +44,7 @@
         "@liaison/app-loader": "workspace:*",
         "@liaison/control-plane-contract": "workspace:*",
         "@liaison/db-core": "workspace:*",
+        "@liaison/evidence-check": "workspace:*",
         "@liaison/host": "workspace:*",
         "@liaison/mailbox-crypto": "workspace:*",
         "@liaison/shared": "workspace:*",
@@ -306,6 +307,16 @@
       "name": "@liaison/db-core",
       "dependencies": {
         "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@types/bun": "^1",
+        "typescript": "^6",
+      },
+    },
+    "packages/evidence-check": {
+      "name": "@liaison/evidence-check",
+      "dependencies": {
+        "asn1js": "3.0.10",
       },
       "devDependencies": {
         "@types/bun": "^1",
@@ -808,6 +819,8 @@
     "@liaison/desktop": ["@liaison/desktop@workspace:apps/desktop"],
 
     "@liaison/desktop-sidecar": ["@liaison/desktop-sidecar@workspace:apps/desktop/sidecar"],
+
+    "@liaison/evidence-check": ["@liaison/evidence-check@workspace:packages/evidence-check"],
 
     "@liaison/host": ["@liaison/host@workspace:packages/host-sdk"],
 
@@ -2315,6 +2328,8 @@
 
     "@liaison/desktop-sidecar/@types/bun": ["@types/bun@1.4.3", "", { "dependencies": { "bun-types": "1.4.3" } }, "sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw=="],
 
+    "@liaison/evidence-check/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
+
     "@liaison/host/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
 
     "@liaison/mailbox-crypto/@types/bun": ["@types/bun@1.4.4", "", { "dependencies": { "bun-types": "1.4.4" } }, "sha512-9wkRDXUXK124pEnAutE6n/l18j+i9GC5IAHK8TmX/2nlySETmky0OU6yL5U8pW1AoKh++AN9auDCr647BfurjQ=="],
@@ -2506,6 +2521,8 @@
     "@liaison/desktop-sidecar/@types/bun/bun-types": ["bun-types@1.4.3", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg=="],
 
     "@liaison/desktop/@types/bun/bun-types": ["bun-types@1.4.3", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg=="],
+
+    "@liaison/evidence-check/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 
     "@liaison/host/@types/bun/bun-types": ["bun-types@1.4.4", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-yjrJh5oGX7mMPKGd19YXyIjmEuj4G4zNC30bs7PM9Az7NQ3ndF3j6hbeRdvJTRQEhJ/FYQwW0a2moweEi2hMxQ=="],
 

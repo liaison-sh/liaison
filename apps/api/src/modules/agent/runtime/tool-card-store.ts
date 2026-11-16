@@ -746,17 +746,14 @@ function messageStampCovers(
  * now the effect has happened, so refusing would report a write as not saved. A message deleted
  * since is not written.
  */
-export async function replaceToolCard(
-  ref: ToolCardRef,
-  params: {
-    orgId: string
-    actorId: string
-    appName: string
-    toolName: string
-    result: unknown
-  },
-): Promise<ReplacedToolCard> {
-  const { orgId, actorId, appName, toolName } = params
+/** The card a tool's result draws, resolved as a stored card is, or null (no template, failed). */
+async function freshCardOf(params: {
+  orgId: string
+  appName: string
+  toolName: string
+  result: unknown
+}) {
+  const { orgId, appName, toolName } = params
   const tool = (() => {
     try {
       return toolRegistry.get([orgId, appName, toolName])
@@ -769,6 +766,34 @@ export async function replaceToolCard(
   const redacted = await redactMailToolResult(orgId, sdkName, params.result)
   const failed = isFailedResult(redacted)
   const fresh = template && !failed ? resolvedOrNull(template, redacted, sdkName) : null
+  return { tool, template, failed, fresh }
+}
+
+/**
+ * The card of a tool call that lives in no conversation (a card page opened from a link): drawn
+ * from the call's own result for its caller, never stored.
+ */
+export async function unstoredToolCard(params: {
+  orgId: string
+  appName: string
+  toolName: string
+  result: unknown
+}): Promise<ResolvedCard | null> {
+  return (await freshCardOf(params)).fresh
+}
+
+export async function replaceToolCard(
+  ref: ToolCardRef,
+  params: {
+    orgId: string
+    actorId: string
+    appName: string
+    toolName: string
+    result: unknown
+  },
+): Promise<ReplacedToolCard> {
+  const { orgId, actorId, appName } = params
+  const { tool, template, failed, fresh } = await freshCardOf(params)
 
   return withPrivilegedDb(orgId, "tool-card-replace", async (tx) => {
     const [row] = await tx

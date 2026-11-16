@@ -207,7 +207,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         "create_on_card",
         `The invoice of ${facts.name} is created from its card in Liaison, not from here. Nothing was created.`,
         {
-          next: "Open the card in Liaison (reconcile_get shows it) and press Create invoice there.",
+          next: "Give the person the card's link (reconcile_get gives it): a person presses Create invoice on the card's page in Liaison.",
         },
       )
     }

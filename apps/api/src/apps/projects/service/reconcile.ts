@@ -1059,7 +1059,7 @@ export async function reconcilePropose(args: {
     outcome,
     shape: await readStored(tx, orgId, id),
     ...(args.origin ? { origin: args.origin } : {}),
-    ...(args.origin === "mcp" ? { link: await cardLink(orgId, args.threadId ?? null) } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, id) } : {}),
   })
 }
 
@@ -1221,7 +1221,12 @@ function cardData(args: {
     undo: state === "drafted" ? ("yes" as const) : null,
     locked: state === "invoiced" ? ("yes" as const) : null,
     message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} ${STATE_SAID[state]}`,
-    next: state === "proposed" ? CARD_NEXT : STATE_NEXT[state],
+    next:
+      state !== "proposed"
+        ? STATE_NEXT[state]
+        : args.origin === "mcp"
+          ? CODING_AGENT_CARD_NEXT
+          : CARD_NEXT,
   }
 }
 
@@ -1251,6 +1256,10 @@ const STATE_NEXT: Record<"drafted" | "invoiced" | "credited", string> = {
  */
 export const CARD_NEXT =
   "Show the person the card here: it lives in this conversation, and reconcile_get opens it again. They change a line by telling you or on the card. The card's Create invoice drafts the invoice; a person issues it."
+
+/** A coding agent cannot show the card: it gives the person the card's page link. */
+const CODING_AGENT_CARD_NEXT =
+  "Give the person the card's link from the text: the card lives on its own page in Liaison, where a person presses Create invoice."
 
 // ── reconcile_line_update and reconcile_get ─────────────────────────────────
 
@@ -1560,14 +1569,13 @@ export async function reconcileGet(args: {
     createdBy: head.created_by,
     said: `The card as stored, revision ${head.revision}.`,
     ...(args.origin ? { origin: args.origin } : {}),
-    ...(args.origin === "mcp" ? { link: await cardLink(orgId, head.thread_id ?? null) } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, head.id) } : {}),
   })
 }
 
-/** The card's conversation in Liaison, where a person presses Create invoice; null when none. */
-async function cardLink(orgId: string, threadId: string | null): Promise<string | null> {
-  if (!threadId) return null
-  return `Open the card in Liaison: ${await orgPublicBaseUrl(orgId)}/threads/${threadId}`
+/** The card's own page in Liaison, where a person presses Create invoice. */
+async function cardLink(orgId: string, reconciliationId: string): Promise<string> {
+  return `Open the card in Liaison: ${await orgPublicBaseUrl(orgId)}/projects/reconcile/${reconciliationId}`
 }
 
 /**

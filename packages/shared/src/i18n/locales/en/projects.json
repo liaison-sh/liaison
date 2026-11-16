@@ -501,6 +501,10 @@
     "byRoutine": "a routine",
     "bySystem": "Liaison"
   },
+  "reconcileCard": {
+    "tab": "Planned vs done",
+    "none": "This card cannot be opened: it no longer exists, or its project is not open to you."
+  },
   "timesheet": {
     "tab": "Dated hours",
     "loading": "Loading the dated sheet",

@@ -331,6 +331,9 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
         toolCallId: props.toolCall.toolCallId,
         revision: revision(),
       }
+    } else if (withRef) {
+      // A card in no conversation (its own page): the answer carries the card to draw.
+      body.withCard = true
     }
     const res = await api.rawPost(
       `/apps/${encodeURIComponent(app)}/tools/${encodeURIComponent(tool)}`,

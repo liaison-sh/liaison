@@ -905,6 +905,14 @@ describe("replacing a stored card", () => {
     expect((await storedCall(seeded.messageId, seeded.toolCallId))?.cardRevision).toBe(2)
   })
 
+  it("a call in no conversation asking for its card gets the card its result draws, stored nowhere", async () => {
+    const res = await post("cardy/tools/update", { params: { id: "item-1" }, withCard: true })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: unknown; meta: { card?: { title?: string } } }
+    expect(body.data).toEqual({ id: "item-1", title: "After the click" })
+    expect(body.meta.card?.title).toBe("After the click")
+  })
+
   it("a call with no cardRef answers as it always did and touches no card", async () => {
     const res = await post("cardy/tools/update", { id: "item-1" })
     expect(res.status).toBe(200)

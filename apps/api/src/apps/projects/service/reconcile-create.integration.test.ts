@@ -668,7 +668,7 @@ describe("who presses Create", () => {
     const p = await october()
     const out = await create(p.card, { origin: "mcp" })
     expect(out.error?.code).toBe("create_on_card")
-    expect(out.error?.details?.next).toContain("press Create invoice")
+    expect(out.error?.details?.next).toContain("presses Create invoice on the card's page")
     expect(await docsOf(p.projectId)).toEqual([])
     expect(await claimsOf(p.card.reconciliationId)).toEqual([])
   })
@@ -681,7 +681,9 @@ describe("who presses Create", () => {
       { origin: "mcp" },
     )
     expect(card.text).toContain("a person presses Create invoice")
-    expect(card.text).toContain(`/threads/${thread}`)
+    expect(card.text).toContain(`/projects/reconcile/${p.card.reconciliationId}`)
+    expect(card.next).toContain("own page in Liaison")
+    expect(card.next).not.toContain("this conversation")
   })
 })
 

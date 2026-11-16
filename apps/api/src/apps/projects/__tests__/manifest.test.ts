@@ -135,7 +135,8 @@ describe("projects.manifest", () => {
     // 1.41.1: the 1.40.1 and 1.41.0 changes together; Create bills the billing contact of the
     //   project's company, and a company with none has no Create.
     // 1.41.2: the reconcile skill says a person creates the invoice on the card.
-    expect(projectsManifest.version).toBe("1.41.2")
+    // 1.42.0: a planned vs done card has its own page, the link a coding agent hands a person.
+    expect(projectsManifest.version).toBe("1.42.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

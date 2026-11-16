@@ -501,6 +501,10 @@
     "byRoutine": "une routine",
     "bySystem": "Liaison"
   },
+  "reconcileCard": {
+    "tab": "Prévu et réalisé",
+    "none": "Cette carte ne peut pas s’ouvrir : elle n’existe plus, ou son projet ne vous est pas ouvert."
+  },
   "timesheet": {
     "tab": "Heures datées",
     "loading": "Chargement de la feuille datée",

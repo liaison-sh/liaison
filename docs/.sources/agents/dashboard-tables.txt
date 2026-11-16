@@ -70,7 +70,7 @@ Emphasis nonzero/negative on number, amount, months -> apps/api/src/modules/dash
 A months column is never required -> apps/api/src/modules/dashboards/tables/columns.ts:162
 setOptions changes horizon, fromOffset, emphasis -> apps/api/src/modules/dashboards/tables/columns.ts:192
 Window from the org's month (org timezone) -> apps/api/src/modules/dashboards/tables/columns.ts:336
-A write merges months, null clears one -> apps/api/src/modules/dashboards/tables/columns.ts:351
+A write merges months, null clears one -> apps/api/src/modules/dashboards/tables/columns.ts:453
 tables_get gives each months column its months -> apps/api/src/modules/dashboards/tables/service.ts:368
 A months column cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:706
 A block reads a months cell as its map -> apps/api/src/modules/dashboards/execute.ts:248
@@ -84,12 +84,26 @@ Lookup cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.t
 Join by link id or text, case-insensitive; sum or distinct texts -> apps/api/src/modules/dashboards/tables/lookup.ts:51
 Runs as the reader, cached 60 s, failure 30 s, budget, taint -> apps/api/src/modules/dashboards/tables/lookup.ts:154
 Grid header Not available, hover for why -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:789
-Formula column type, its expr, horizon and emphasis -> apps/api/src/modules/dashboards/tables/columns.ts:95
+Formula column type, its expr, horizon and emphasis -> apps/api/src/modules/dashboards/tables/columns.ts:126
 Operands: number, amount, number lookup, months, formula; functions incl. cumsum; typographic operators -> apps/api/src/modules/dashboards/tables/formula.ts:29
 Months-shaped when it reads months or calls cumsum; empty and zero rules -> apps/api/src/modules/dashboards/tables/formula.ts:1
-Save refuses syntax, unknown key, non-number column, cycles -> apps/api/src/modules/dashboards/tables/formula.ts:131
-A write naming a formula is refused -> apps/api/src/modules/dashboards/tables/columns.ts:351
-A formula cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:719
-Computed after the lookups in the grid, tables_query and a block source -> apps/api/src/modules/dashboards/tables/computed.ts:30 ; apps/api/src/modules/dashboards/execute.ts:285
-Settings: type Formula with its formula field -> apps/web/src/modules/dashboards/TableSettings.tsx:413
-Grid: months-shaped formula one column per month, read-only -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:518
+Save refuses syntax, unknown key, non-number column, cycles -> apps/api/src/modules/dashboards/tables/formula.ts:133
+A write naming a formula is refused -> apps/api/src/modules/dashboards/tables/columns.ts:453
+A formula cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:726
+Computed after the lookups in the grid, tables_query and a block source -> apps/api/src/modules/dashboards/tables/computed.ts:32 ; apps/api/src/modules/dashboards/execute.ts:294
+Settings: type Formula with its formula field -> apps/web/src/modules/dashboards/TableSettings.tsx:424
+Grid: months-shaped formula one column per month, read-only -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:521
+Link to a table's rows: linkTo {app kernel, entityType table_row, table} -> apps/api/src/modules/dashboards/tables/columns.ts:52 ; apps/api/src/modules/dashboards/tables/columns.ts:56
+Row link saved only with the table readable -> apps/api/src/modules/dashboards/tables/rollup.ts:283
+Picker searches that table as the person, first text column label -> apps/api/src/modules/dashboards/tables/link-search.ts:151 ; apps/api/src/modules/dashboards/tables/service.ts:879 ; apps/web/src/modules/dashboards/blocks/CellEditor.tsx:404
+Row link read with the row's label now, missing when deleted, Linked record when unreadable -> apps/api/src/modules/dashboards/tables/rollup.ts:204 ; apps/api/src/modules/dashboards/tables/rollup.ts:233
+Grid: a deleted row's link struck through, This row was deleted -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:703
+Rollup definition: table, link, value, agg, where, byMonth -> apps/api/src/modules/dashboards/tables/columns.ts:142
+At most 5 rollups; never required; writes refused -> apps/api/src/modules/dashboards/tables/columns.ts:138 ; apps/api/src/modules/dashboards/tables/columns.ts:325 ; apps/api/src/modules/dashboards/tables/columns.ts:406
+Rollup checked at save: table readable, link here, number value, date, where; added with alter -> apps/api/src/modules/dashboards/tables/rollup.ts:283
+Sum or count per linked row, 0 without rows, by month as a map -> apps/api/src/modules/dashboards/tables/rollup.ts:58 ; apps/api/src/modules/dashboards/tables/rollup.ts:95
+Computed on read as the reader; unreadable table empty with a note; 10,000 rows -> apps/api/src/modules/dashboards/tables/rollup.ts:173 ; apps/api/src/modules/dashboards/tables/rollup.ts:40
+Rollup cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:722
+Rollup by month gets the months window -> apps/api/src/modules/dashboards/tables/service.ts:373
+Grid: rollup read-only, by month one column per month, empty month empty, Not available -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:518 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:672 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:1053
+A block reads a rollup as its number or month map -> apps/api/src/modules/dashboards/execute.ts:266

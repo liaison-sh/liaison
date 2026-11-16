@@ -30,6 +30,8 @@ import {
   columnSchema,
   DEFAULT_MONTHS_HORIZON,
   type Emphasis,
+  isMonthly,
+  type RollupDef,
 } from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
@@ -282,6 +284,7 @@ const COLUMN_TYPE_WORDS: Record<string, string> = {
   link: "link to a record",
   months: "a number per month",
   lookup: "lookup",
+  rollup: "rollup",
   formula: "formula",
 }
 
@@ -292,8 +295,11 @@ function appWords(app: string): string {
 }
 
 /** A link column in words: "link to a Shopify product", "link to an Invoicing record". */
-export function linkWords(linkTo: { app: string; entityType?: string } | undefined): string {
+export function linkWords(
+  linkTo: { app: string; entityType?: string; table?: string } | undefined,
+): string {
   if (!linkTo) return "link to a record"
+  if (linkTo.table) return `link to a row of the table ${linkTo.table}`
   const what = `${appWords(linkTo.app)} ${linkTo.entityType ? linkTo.entityType.replace(/[-_]+/g, " ") : "record"}`
   return `link to ${/^[aeiou]/i.test(what) ? "an" : "a"} ${what}`
 }
@@ -304,20 +310,30 @@ function columnWords(c: Partial<Column>): string {
       ? linkWords(c.linkTo)
       : c.type === "lookup" && c.lookup
         ? `${c.lookup.valueType} read live from ${c.lookup.source.tool} (its ${c.lookup.value}, matched on ${c.lookup.match.on})`
-        : c.type === "formula" && c.formula
-          ? `formula ${c.formula.expr}`
-          : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
+        : c.type === "rollup" && c.rollup
+          ? rollupWords(c.rollup)
+          : c.type === "formula" && c.formula
+            ? `formula ${c.formula.expr}`
+            : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
   const extra =
     c.type === "amount" && c.currency
       ? ` in ${c.currency}`
       : (c.type === "choice" || c.type === "choices") && c.choices
         ? ` (${c.choices.join(", ")})`
-        : c.type === "months" ||
+        : isMonthly({ type: c.type ?? "text", ...(c.rollup ? { rollup: c.rollup } : {}) }) ||
             (c.type === "formula" && (c.horizon !== undefined || c.fromOffset !== undefined))
           ? `, ${c.horizon ?? DEFAULT_MONTHS_HORIZON} months from ${c.fromOffset === 1 ? "next" : "this"} month`
           : ""
   const emphasis = c.emphasis ? `, ${emphasisWords(c.emphasis)}` : ""
   return `"${String(c.label ?? c.key)}" (${String(c.key)}): ${type}${extra}${emphasis}${c.required ? ", required" : ""}`
+}
+
+/** A rollup in words: "the sum of qty of the rows of table <id> linking here by product". */
+function rollupWords(r: RollupDef): string {
+  const what = r.agg === "count" ? "the count" : `the sum of ${r.value}`
+  const where = r.where && Object.keys(r.where).length ? ` where ${JSON.stringify(r.where)}` : ""
+  const month = r.byMonth ? `, by month of ${r.byMonth}` : ""
+  return `${what} of the rows of the table ${r.table} linking here by ${r.link}${where}${month}`
 }
 
 function emphasisWords(e: Emphasis): string {
@@ -573,7 +589,7 @@ interface EditParams {
 }
 
 const TABLES_EDIT_DESCRIPTION =
-  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?, formula?, horizon?, fromOffset?, emphasis?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], setOptions?: [{key, horizon?, fromOffset?, emphasis? (null removes it)}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup, months, formula. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A months column holds one number per month, typed by people (planned deliveries per month, a monthly budget): horizon 1-12 months shown (default 3), fromOffset 0 starts at the current month (default), 1 at the next, in the organisation timezone; its cell is {"YYYY-MM": number}, and tables_get gives each months column its current months. A formula column is read-only, computed on every read from the other columns of its row: {key, label, type:"formula", formula:{expr:"stock - sold + cumsum(expected)"}, horizon?, fromOffset?, emphasis?}; expr uses + - * / and parentheses, numbers, and the keys of the number, amount, number lookup, months and formula columns of the table; functions min, max, abs, round(x, decimals), cumsum(x) (running sum across the months shown). A formula that reads a months column or calls cumsum is months-shaped: its cell is {"YYYY-MM": number} over its own horizon/fromOffset (default 3 months from this month), computed month by month, single numbers applied to every month. An empty number operand empties the result; a month without a value in a months column counts as 0; a division by zero empties that value. Unknown keys, text or date columns, and formulas reading each other in a circle are refused; a formula cannot be written, required, filtered or sorted on. emphasis on a number, amount, months or formula column draws a value bold in the accent colour: "nonzero" (any value but 0) or "negative" (below 0). A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?, rollup?, formula?, horizon?, fromOffset?, emphasis?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], setOptions?: [{key, horizon?, fromOffset?, emphasis? (null removes it)}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup, months, rollup, formula. A link column linking the rows of another dashboard table has linkTo {app:"kernel", entityType:"table_row", table:<table id>} (you must be able to read that table); its cell is {app:"kernel", entityType:"table_row", id:<row id>, label:<the row\'s first text column>}, and a link to a row deleted since reads with missing:true. A rollup column is read-only, computed on every read from the rows of another table that link to each row of this one, as each reader (empty with a note in columnNotes for a reader who cannot read that table): {key, label, type:"rollup", rollup:{table:<other table id>, link:<its link column whose linkTo.table is this table>, value:<its number or amount column>|null, agg:"sum"|"count" (count: value null), where?:<a tables_query where on that table>, byMonth?:<its date column>}}, optional emphasis; without byMonth the cell is a number (0 when no row links), with byMonth it is {"YYYY-MM": number} like a months column, shown over horizon and fromOffset (setOptions changes them). Add a rollup with alter once the other table has its link column; it cannot be written, required, filtered or sorted on. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A months column holds one number per month, typed by people (planned deliveries per month, a monthly budget): horizon 1-12 months shown (default 3), fromOffset 0 starts at the current month (default), 1 at the next, in the organisation timezone; its cell is {"YYYY-MM": number}, and tables_get gives each months column its current months. A formula column is read-only, computed on every read from the other columns of its row: {key, label, type:"formula", formula:{expr:"stock - sold + cumsum(expected)"}, horizon?, fromOffset?, emphasis?}; expr uses + - * / and parentheses, numbers, and the keys of the number, amount, number lookup, rollup, months and formula columns of the table; functions min, max, abs, round(x, decimals), cumsum(x) (running sum across the months shown). A formula that reads a months column, a rollup by month or calls cumsum is months-shaped: its cell is {"YYYY-MM": number} over its own horizon/fromOffset (default 3 months from this month), computed month by month, single numbers applied to every month. An empty number operand empties the result; a month without a value in a months operand counts as 0; a division by zero empties that value. Unknown keys, text or date columns, and formulas reading each other in a circle are refused; a formula cannot be written, required, filtered or sorted on. emphasis on a number, amount, months, rollup or formula column draws a value bold in the accent colour: "nonzero" (any value but 0) or "negative" (below 0). A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
 
 /**
  * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
@@ -620,7 +636,7 @@ export function registerTableTools(orgId: string): void {
     readOnly: true,
     deferLoading: true,
     description:
-      "Read one dashboard table: its columns (key, label, type, choices, required; a months column, and a formula column that is months-shaped, also its months, the YYYY-MM it shows now), version, row count, your access and who it is shared with.",
+      "Read one dashboard table: its columns (key, label, type, choices, required; a months column, a rollup by month or a months-shaped formula also its months, the YYYY-MM it shows now), version, row count, your access and who it is shared with.",
     searchKeywords: ["table", "tableau", "columns", "colonnes"],
     requiredScopes: [READ_SCOPE],
     params: z.object({ tableId: z.string().uuid() }),
@@ -655,7 +671,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells (a months cell as {"YYYY-MM": number} with every month kept; the months shown are those of its column in kernel__tables_get, and a shown month without a value is still to fill) and who changed it last. A formula column\'s cells are computed on read (a number, or {"YYYY-MM": number} over its months when months-shaped; empty when a number it reads is empty). A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells (a months cell as {"YYYY-MM": number} with every month kept; the months shown are those of its column in kernel__tables_get, and a shown month without a value is still to fill) and who changed it last. A formula column\'s cells are computed on read (a number, or {"YYYY-MM": number} over its months when months-shaped; empty when a number it reads is empty). A lookup column\'s cells are read live from its app, a rollup column\'s computed from another table\'s rows (a number, or {"YYYY-MM": number} by month); columnNotes says why one is empty (its read failed, you may not run its tool or read that table). A link to a row of another table carries that row\'s label now, or missing:true when the row is gone. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({

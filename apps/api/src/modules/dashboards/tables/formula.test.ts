@@ -204,9 +204,39 @@ describe("formula column: evaluation", () => {
     expect(out.a).toBe(2)
   })
 
-  it("reads any computed value that is a number or a months map (a later computed kind)", () => {
-    // The operands come from the row's computed cells: a months map under a formula's key works
-    // whatever filled it.
+  it("reads rollup values: a number, or by month a months map (an empty one counts 0)", () => {
+    const rollup = (key: string, byMonth?: string): Column => ({
+      key,
+      label: key,
+      type: "rollup",
+      rollup: {
+        table: "00000000-0000-4000-8000-000000000001",
+        link: "part",
+        value: "qty",
+        agg: "sum",
+        ...(byMonth ? { byMonth } : {}),
+      },
+    })
+    const cols = [
+      ...base,
+      rollup("ordered"),
+      rollup("arriving", "eta"),
+      formula("open", "stock + ordered"),
+      formula("projected", "stock + cumsum(arriving)"),
+    ]
+    expect(formulaProblems(cols)).toEqual([])
+    expect(isMonthsFormula(cols[9]!, cols)).toBe(true)
+    const out = run(cols, { stock: 2, ordered: 5, arriving: { "2026-12": 3 } })
+    expect(out.open).toBe(7)
+    expect(out.projected).toEqual({ "2026-11": 2, "2026-12": 5, "2027-01": 5 })
+    expect(run(cols, { stock: 2, ordered: 0 }).projected).toEqual({
+      "2026-11": 2,
+      "2026-12": 2,
+      "2027-01": 2,
+    })
+  })
+
+  it("reads any computed value that is a number or a months map", () => {
     const cols = [...base, formula("a", "stock + 1"), formula("b", "a * 2")]
     expect(run(cols, { stock: 1 }).b).toBe(4)
   })

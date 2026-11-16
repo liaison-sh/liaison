@@ -12,7 +12,7 @@ import { useApi } from "~/modules/shell/ApiContext"
 import { Button } from "~/ui/Button"
 import { Switch as Toggle } from "~/ui/Switch"
 import { TableConfirmDialog } from "./blocks/TableConfirmDialog"
-import { choicesFrom, columnKeyFrom } from "./blocks/table-cells"
+import { choicesFrom, columnKeyFrom, isMonthly } from "./blocks/table-cells"
 import { DashboardShareDialog } from "./DashboardShareDialog"
 import {
   getTable,
@@ -64,7 +64,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
   const readThrough = (key: string) => props.table.backing?.readThrough.includes(key) === true
   const typeLabel = (t: TableColumnType) => i18n.t(`kernel.dashboards.tables.type.${t}`)
   const hasEmphasis = (t: TableColumnType) =>
-    t === "number" || t === "amount" || t === "months" || t === "formula"
+    t === "number" || t === "amount" || t === "months" || t === "rollup" || t === "formula"
   /** A months column, or a formula (its months apply once it reads months or calls cumsum). */
   const hasWindow = (t: TableColumnType) => t === "months" || t === "formula"
   const emphasisLabel = (e: TableEmphasis | "") =>
@@ -80,10 +80,21 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
     if (c.type === "amount" && c.currency) parts.push(c.currency)
     if ((c.type === "choice" || c.type === "choices") && c.choices?.length)
       parts.push(c.choices.join(", "))
-    if (c.type === "link" && c.linkTo)
+    if (c.type === "link" && c.linkTo?.table)
+      parts.push(i18n.t("kernel.dashboards.tables.rowLinkTag"))
+    else if (c.type === "link" && c.linkTo)
       parts.push(c.linkTo.entityType ? `${c.linkTo.app} ${c.linkTo.entityType}` : c.linkTo.app)
     if (c.type === "formula" && c.formula) parts.push(c.formula.expr)
-    if (c.type === "months" || (c.type === "formula" && c.months)) {
+    if (c.type === "rollup" && c.rollup)
+      parts.push(
+        i18n.t(
+          c.rollup.agg === "count"
+            ? "kernel.dashboards.tables.rollupCountColumn"
+            : "kernel.dashboards.tables.rollupSumColumn",
+          { value: c.rollup.value ?? "" },
+        ),
+      )
+    if (isMonthly(c)) {
       parts.push(i18n.t("kernel.dashboards.tables.monthsTag", { count: c.horizon ?? 3 }))
       if (c.fromOffset === 1) parts.push(i18n.t("kernel.dashboards.tables.monthsFromNext"))
     }
@@ -281,7 +292,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                           setOptions: [
                             {
                               key: c.key,
-                              ...(hasWindow(c.type)
+                              ...(isMonthly(c) || c.type === "formula"
                                 ? {
                                     horizon: clampHorizon(Number(f.get("horizon"))),
                                     fromOffset: f.get("fromOffset") === "1" ? 1 : 0,
@@ -295,7 +306,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                       }).then((ok) => ok && setOptioning(null))
                     }}
                   >
-                    <Show when={hasWindow(c.type)}>
+                    <Show when={isMonthly(c) || c.type === "formula"}>
                       <MonthsFields
                         testid={`table-settings-options-${c.key}`}
                         horizon={c.horizon ?? 3}

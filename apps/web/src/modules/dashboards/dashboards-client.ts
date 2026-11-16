@@ -1304,6 +1304,8 @@ export type TableColumnType =
   | "lookup"
   /** Read-only, computed on every read from the row's other columns. */
   | "formula"
+  /** Read-only, computed from the rows of another table linking here (set by an agent). */
+  | "rollup"
 
 /** The types a person adds in Settings (a lookup column is defined by an agent). */
 export const TABLE_COLUMN_TYPES: TableColumnType[] = [
@@ -1342,8 +1344,9 @@ export interface TableColumn {
   deadline?: boolean
   /** An amount column's currency (ISO 4217). */
   currency?: string
-  /** A link column may point only at this app (and entity type). */
-  linkTo?: { app: string; entityType?: string }
+  /** A link column may point only at this app (and entity type), or at the rows of a dashboard
+   *  table (`app: "kernel"`, `entityType: "table_row"`, `table`: its id). */
+  linkTo?: { app: string; entityType?: string; table?: string }
   /** A months (or months-shaped formula) column: how many months it shows (1-12, default 3). */
   horizon?: number
   /** A months (or months-shaped formula) column: 0 starts at the current month (default), 1 at
@@ -1356,8 +1359,20 @@ export interface TableColumn {
   months?: string[]
   /** A lookup column's read: the app tool it reads, matched on another column. */
   lookup?: TableLookup
+  /** A rollup column: the rows of another table linking here, added up or counted. */
+  rollup?: TableRollup
   /** A formula column's expression over the row's other columns (`stock - sold`). */
   formula?: { expr: string }
+}
+
+export interface TableRollup {
+  table: string
+  link: string
+  value: string | null
+  agg: "sum" | "count"
+  where?: Record<string, unknown>
+  /** A date column of that table: the result by month, as a months column shows it. */
+  byMonth?: string
 }
 
 export interface TableLookup {
@@ -1376,6 +1391,8 @@ export interface LinkCell {
   entityType: string
   id: string
   label: string
+  /** A link to a dashboard table's row deleted since (as read, never written). */
+  missing?: true
 }
 
 /** Who made a change, as it reads: "Nico", "@support", "Routine Inbound follow-up". */
@@ -1725,11 +1742,12 @@ export interface LinkPickItem {
  */
 export async function searchTableLinks(
   api: Pick<TablesApi, "get">,
-  opts: { app?: string; entityType?: string; q: string },
+  opts: { app?: string; entityType?: string; table?: string; q: string },
 ): Promise<LinkPickItem[]> {
   const q = new URLSearchParams({ q: opts.q })
   if (opts.app) q.set("app", opts.app)
   if (opts.entityType) q.set("entityType", opts.entityType)
+  if (opts.table) q.set("table", opts.table)
   const body = await api.get<unknown>(`${tablesPath()}/link-search?${q}`, QUIET)
   const items = isRecord(body) && Array.isArray(body.items) ? body.items : []
   return items.filter(

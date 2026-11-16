@@ -68,6 +68,7 @@ import {
   columnSchema,
   columnsSchema,
   type Emphasis,
+  isMonthly,
   type LinkCell,
   MAX_COLUMNS,
   monthWindow,
@@ -366,11 +367,11 @@ async function monthOf(viewer: UserContext, loaded: LoadedTable): Promise<string
   return orgMonth(viewer.orgId)
 }
 
-/** The columns as a read gives them: each months column (and months-shaped formula) with its
- *  window from `month`. */
+/** The columns as a read gives them: each months column (or rollup by month, or months-shaped
+ *  formula) with its window from `month`. */
 export function columnViews(columns: Column[], month: string | null): ColumnView[] {
   return columns.map((c) =>
-    month && (c.type === "months" || isMonthsFormula(c, columns))
+    month && (isMonthly(c) || isMonthsFormula(c, columns))
       ? { ...c, months: monthWindow(c, month) }
       : c,
   )
@@ -689,7 +690,10 @@ function visibleChangeCells(
  */
 function searchFor(viewer: UserContext, columns: Column[], text: string): ContainsQuery {
   // A months cell is numbers by month: nothing a text search reads.
-  const plain = columns.filter((c) => c.type !== "link" && c.type !== "months").map((c) => c.key)
+  // A lookup or rollup is computed on read: the stored rows hold nothing of it.
+  const plain = columns
+    .filter((c) => !["link", "months", "lookup", "rollup"].includes(c.type))
+    .map((c) => c.key)
   const linkFields = columns.filter((c) => c.type === "link").map((c) => c.key)
   const apps = viewer.scopes.includes("*")
     ? ("all" as const)
@@ -712,23 +716,19 @@ function checkWhere(where: Where | undefined, columns: Column[]): void {
         column: key,
       })
     }
-    if (col.type === "lookup") {
-      throw new TableError("invalid_request", lookupNotQueryable(key), { column: key })
-    }
-    if (col.type === "formula") {
-      throw new TableError("invalid_request", formulaNotQueryable(key), { column: key })
+    if (col.type === "lookup" || col.type === "rollup" || col.type === "formula") {
+      throw new TableError("invalid_request", computedNotQueryable(col), { column: key })
     }
   }
 }
 
-/** Why a formula column cannot filter or sort rows: its cells are computed after the rows. */
-function formulaNotQueryable(key: string): string {
-  return `'${key}' is a formula column, computed after the rows are read: it cannot filter or sort them`
-}
-
-/** Why a lookup column cannot filter or sort rows: its cells are read after the rows. */
-function lookupNotQueryable(key: string): string {
-  return `'${key}' is a lookup column, read live after the rows: it cannot filter or sort them`
+/** Why a computed column cannot filter or sort rows: its cells are read after the rows. */
+function computedNotQueryable(col: Column): string {
+  return col.type === "rollup"
+    ? `'${col.key}' is a rollup column, computed from another table after the rows: it cannot filter or sort them`
+    : col.type === "formula"
+      ? `'${col.key}' is a formula column, computed after the rows are read: it cannot filter or sort them`
+      : `'${col.key}' is a lookup column, read live after the rows: it cannot filter or sort them`
 }
 
 async function latestActors(
@@ -840,8 +840,9 @@ function orderField(sort: string | undefined, columns: Column[]): string | undef
   if (col.type === "months") {
     throw new TableError("invalid_request", `'${sort}' is a months column: it cannot sort`)
   }
-  if (col.type === "lookup") throw new TableError("invalid_request", lookupNotQueryable(sort))
-  if (col.type === "formula") throw new TableError("invalid_request", formulaNotQueryable(sort))
+  if (col.type === "lookup" || col.type === "rollup" || col.type === "formula") {
+    throw new TableError("invalid_request", computedNotQueryable(col))
+  }
   return sort
 }
 
@@ -855,23 +856,47 @@ export async function listRows(
   rows: Row[]
   nextCursor: string | null
   truncated?: boolean
-  /** Why a lookup column's cells are empty on this read (its read failed), by column key. */
+  /** Why a lookup or rollup column's cells are empty on this read (its read failed), by key. */
   columnNotes?: Record<string, string>
 }> {
   assertRead(viewer)
-  // The lookup columns are read after the rows, outside the table's transaction when this call
-  // owns it: a lookup runs an app's tool, which takes its own.
+  // Row links and rollups read other tables in the same transaction, as the reader. The lookup
+  // columns are read after the rows, outside the table's transaction when this call owns it: a
+  // lookup runs an app's tool, which takes its own.
   const page = await inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
-    return { columns: allColumns(loaded), ...(await listRowsIn(t, viewer, loaded, id, opts)) }
+    const columns = allColumns(loaded)
+    const listed = await listRowsIn(t, viewer, loaded, id, opts)
+    const { applyTableLinks } = await import("~/modules/dashboards/tables/rollup")
+    const linked = await applyTableLinks(t, viewer, id, columns, listed.rows)
+    return { columns, ...listed, rows: linked.rows, linkNotes: linked.notes }
   })
-  const { columns, ...rest } = page
+  const { columns, linkNotes, ...rest } = page
   const looked = await applyComputedColumns(viewer, id, columns, rest.rows)
+  const notes = { ...linkNotes, ...looked.notes }
   return {
     ...rest,
     rows: looked.rows,
-    ...(Object.keys(looked.notes).length ? { columnNotes: looked.notes } : {}),
+    ...(Object.keys(notes).length ? { columnNotes: notes } : {}),
   }
+}
+
+/** Rows of a table matching `q` (the link picker for a link to its rows), as the reader sees it. */
+export async function searchRows(
+  viewer: UserContext,
+  id: string,
+  q: string,
+  limit: number,
+): Promise<{ columns: Column[]; rows: Row[] }> {
+  assertRead(viewer)
+  return withRlsContext(viewer, async (t) => {
+    const loaded = await loadTable(t, viewer, id)
+    const page = await listRowsIn(t, viewer, loaded, id, {
+      limit,
+      ...(q.trim() ? { q } : {}),
+    })
+    return { columns: allColumns(loaded), rows: page.rows }
+  })
 }
 
 async function listRowsIn(
@@ -1940,6 +1965,8 @@ async function prepareCreate(
 ) {
   if (backing) await checkBacking(t, viewer, backing, columns)
   await checkLookups(viewer, columns, [], backing?.fields ?? [])
+  const { checkTableLinks } = await import("~/modules/dashboards/tables/rollup")
+  await checkTableLinks(t, viewer, null, columns, [])
   let orgAccess: OrgAccess = input.orgAccess ?? "none"
   let grants: {
     users: { userId: string; role: ShareRole }[]
@@ -2217,7 +2244,11 @@ async function prepareUpdate(
     const clash = overlayCollision(backing, ownColumns)
     if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
   }
-  if (input.columns) await checkLookups(viewer, ownColumns, loaded.columns, backing?.fields ?? [])
+  if (input.columns) {
+    await checkLookups(viewer, ownColumns, loaded.columns, backing?.fields ?? [])
+    const { checkTableLinks } = await import("~/modules/dashboards/tables/rollup")
+    await checkTableLinks(t, viewer, id, ownColumns, loaded.columns)
+  }
   return { loaded, set, backing }
 }
 

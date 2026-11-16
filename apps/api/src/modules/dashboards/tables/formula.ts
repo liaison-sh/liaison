@@ -93,6 +93,8 @@ export function operandShape(
       return col.lookup?.valueType === "number" ? "number" : null
     case "months":
       return "months"
+    case "rollup":
+      return col.rollup?.byMonth ? "months" : "number"
     case "formula":
       return formulaShape(col, byKey, seen)
     default:
@@ -155,7 +157,7 @@ export function formulaProblems(columns: readonly Column[]): { index: number; me
       } else if (operandShape(o, byKey) === null) {
         out.push({
           index,
-          message: `formula of '${c.key}': '${name}' is a ${o.type} column, not a number (a formula reads number, amount, number lookup, months and formula columns)`,
+          message: `formula of '${c.key}': '${name}' is a ${o.type} column, not a number (a formula reads number, amount, number lookup, rollup, months and formula columns)`,
         })
       }
     }

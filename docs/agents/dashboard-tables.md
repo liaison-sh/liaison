@@ -28,6 +28,7 @@ A table has at most 40 columns. Each has a key, a label and a type:
 | `link` | A record of an app: `{ app, entityType, id, label }`. A column may accept only one app or one kind of record. |
 | `months` | One number per month, typed by people: `{ "YYYY-MM": number }`. See [Plan by month](#plan-by-month). |
 | `lookup` | A number or a text read live from an app, never typed (see [Read values live from an app](#read-values-live-from-an-app)). |
+| `rollup` | A sum or a count of the rows of another table that link to the row, never typed (see [Add up the rows of another table](#add-up-the-rows-of-another-table)). |
 | `formula` | A number, or one number per month, computed from the row's other columns, never typed (see [Compute a column with a formula](#compute-a-column-with-a-formula)). |
 
 A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_`. It never changes; the label does. `id`, `updated_at`, `updated_by` and `created_at` are reserved. A column can be required: a new row must fill it, and a change cannot empty it.
@@ -135,6 +136,34 @@ A lookup column shows a value an app knows, read when the table is read: a produ
 
 The tool runs once per table read and column, as the person reading, with their access: someone who may not run it sees every row, the column empty and **Not available** in its header (hover it for why). The same holds when the read fails or the dashboard read budget is spent. Each person's read is kept for a minute, a failed one for 30 seconds. An agent reading the table through `tables_query` gets the reasons in `columnNotes`, and its turn counts as having called the tool. The grid, `tables_query` and a table block source all read it.
 
+## Add up the rows of another table
+
+A link column can point at the rows of another dashboard table: `linkTo: { app: "kernel", entityType: "table_row", table: "<table id>" }`. A "Supplier lots" table links each lot to its part in a "Parts" table, for example. Saving such a column needs that table readable by you. Its picker searches that table's rows as you see them, each labelled by the table's first text column. A link cell reads with the row's label as it is now; a link to a row deleted since reads struck through (hover it: **This row was deleted**), and `missing: true` for an agent. A reader who cannot read the linked table sees **Linked record**.
+
+A rollup column then adds up, on the linked table, the rows of the other table that link to each row. Your agent defines it, once the other table has its link column:
+
+```json
+{
+  "key": "ordered",
+  "label": "Ordered",
+  "type": "rollup",
+  "rollup": {
+    "table": "<Supplier lots table id>",
+    "link": "part",
+    "value": "qty",
+    "agg": "sum",
+    "where": { "status": { "in": ["ordered", "in_transit"] } },
+    "byMonth": "eta"
+  },
+  "horizon": 4
+}
+```
+
+- `link` is the other table's link column that points at this table's rows; `value` is its number or amount column to add up (`agg: "sum"`), or `null` to count the rows (`agg: "count"`). `where` keeps only the rows that match, in the same form as a `tables_query` filter.
+- Without `byMonth`, a cell is a number: 0 when no row links to it. With `byMonth`, a date column of the other table, a cell is `{ "YYYY-MM": number }`, one number for each month that has rows, and the grid shows it as a months column does, with `horizon` and `fromOffset`. A month without rows reads empty.
+- Saving checks that you can read the other table, that its link column points here, that the value is a number or amount column, the date a date column and the filter valid. A table has at most 5 rollup columns. A rollup cannot be required, written, filtered or sorted on. `emphasis` applies to it.
+- It is computed every time the table is read, as the person reading: someone who cannot read the other table sees the column empty and **Not available** in its header, and an agent gets the reason in `columnNotes`. It counts at most 10,000 rows of the other table and says so past that. The grid, `tables_query` and a table block source all read it.
+
 ## Compute a column with a formula
 
 A formula column computes its value from the other columns of its row on every read, for example what is free to sell (`stock - sold`) or the projected stock month by month (`stock - sold + cumsum(expected)`). Add it in **Settings** (type **Formula**, then the formula with the column keys), or have your agent add it:
@@ -150,15 +179,15 @@ A formula column computes its value from the other columns of its row on every r
 }
 ```
 
-- A formula reads the keys of the table's own number, amount, number lookup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)` and `cumsum(x)`, the running total across the months shown.
-- A formula that reads a months column, or calls `cumsum`, gives one number per month, over its own months (`horizon` 1-12, default 3, and `fromOffset`, as a months column). It is computed month by month; a single number counts the same in every month. The grid shows it as one column per month. Any other formula gives one number.
+- A formula reads the keys of the table's own number, amount, number lookup, rollup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)` and `cumsum(x)`, the running total across the months shown.
+- A formula that reads a months column or a rollup by month, or calls `cumsum`, gives one number per month, over its own months (`horizon` 1-12, default 3, and `fromOffset`, as a months column). It is computed month by month; a single number counts the same in every month. The grid shows it as one column per month. Any other formula gives one number.
 - An empty number it reads (a stock nobody typed, a lookup with no match) leaves the result empty, so a missing figure never reads as a wrong one. A month without a value in a months column counts as 0. A division by zero leaves that value empty, and `cumsum` leaves every later month empty after one.
 - Saving refuses a formula that does not parse, names a key that is not a column of the table, reads a text, date, choice or link column, or that formulas read each other in a circle. A column a formula reads cannot be removed while it does.
-- A formula cannot be required, written, filtered or sorted on. It is computed after the lookup columns, in the grid, in `tables_query` and in a table block source. To change one, remove it and add another key.
+- A formula cannot be required, written, filtered or sorted on. It is computed after the lookup and rollup columns, in the grid, in `tables_query` and in a table block source. To change one, remove it and add another key.
 
 ## Show a table on a dashboard
 
-A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A months cell reads as its map: a block maps one month as `<key>.<YYYY-MM>`, such as `expected.2026-12`. A block reads at most 2,000 rows and says when there were more.
+A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A months cell reads as its map: a block maps one month as `<key>.<YYYY-MM>`, such as `expected.2026-12`. A rollup reads as its number, or by month as that map. A block reads at most 2,000 rows and says when there were more.
 
 A table block with `map.editable: true` lets people edit the rows in place. `map.staleAfterDays` marks rows not changed for that many days. A block never shows rows older than the last change: its kept figures are read again after any row, column or sharing change.
 
@@ -183,11 +212,11 @@ Signed-in requests, with your own access, under `/api/dashboards/tables`:
 | `GET /:id` | One table: `columns`, `droppedKeys`, `agentWritesNeedApproval`, `orgAccess`, `myRole` (`viewer`, `editor`, `owner`), `rowCount`, `version`. |
 | `PATCH /:id` | Change it: `{ ifVersion, name?, description?, agentWritesNeedApproval?, columns?: { add?, rename?, setChoices?, drop? } }`. |
 | `DELETE /:id` | Delete it and its rows. |
-| `GET /:id/rows` | A page of rows: `?limit=` (50), `?cursor=`, `?sort=<column key or updated_at>`, `?dir=asc\|desc`, `?q=` (text in a cell). `columnNotes` says why a lookup column is empty. |
+| `GET /:id/rows` | A page of rows: `?limit=` (50), `?cursor=`, `?sort=<column key or updated_at>`, `?dir=asc\|desc`, `?q=` (text in a cell). `columnNotes` says why a lookup or rollup column is empty. |
 | `POST /:id/rows` | `{ ops: [{ op: "add", cells } \| { op: "update", id, ifVersion, cells } \| { op: "delete", id, ifVersion }] }`, up to 50, all or none. |
 | `GET /:id/changes` | The history, newest first: `?rowId=`, `?limit=`, `?cursor=`. Each change says whether it can be undone. |
 | `POST /:id/changes/:changeId/undo` | Undo one change. |
 | `GET /:id/sharing`, `PUT /:id/sharing` | Who sees it, as for a dashboard. |
-| `GET /link-search` | Records to link: `?app=&entityType=&q=`, answers `{ items: [{ id, label, app, entityType }] }`. |
+| `GET /link-search` | Records to link: `?app=&entityType=&q=`, or the rows of a table with `?table=<id>`, answers `{ items: [{ id, label, app, entityType }] }`. |
 
 A refusal answers `{ error: { code, message, details? } }` with `code` one of `invalid_cell` (422, `details.column`), `version_conflict` (409, `details.current` is the row now), `not_found` (404), `forbidden` (403), `limit` (422), `invalid_request` (400) or `conflict` (409, a table of that name exists). A table holds at most 100,000 rows of at most 256 KB each.

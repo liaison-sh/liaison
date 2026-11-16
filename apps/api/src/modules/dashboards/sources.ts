@@ -24,7 +24,7 @@
 // (execute.ts): its bridge refuses every write, whatever the tool declared.
 
 import { APP_DISABLED_CODE } from "@liaison/shared"
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { dashboardTables } from "~/db/schema/kernel"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
@@ -35,6 +35,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { isAppActiveForOrgAsync } from "~/modules/apps/org-apps"
 import type { BlockSource } from "~/modules/dashboards/spec"
 import { backingProvider, parseBacking } from "~/modules/dashboards/tables/backing"
+import { type Column, isRowLink } from "~/modules/dashboards/tables/columns"
 import { type DeclaredCollection, getDeclaredCollection } from "~/modules/data-store/declared"
 import { AGENT_STORE_APP } from "~/modules/data-store/service"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -379,7 +380,7 @@ export async function checkTableSource(
 export async function tableStamp(
   viewer: UserContext,
   tableId: string,
-): Promise<{ generation: number; version: number; tasks?: string } | null> {
+): Promise<{ generation: number; version: number; tasks?: string; linked?: string } | null> {
   if (!/^[0-9a-f-]{36}$/i.test(tableId)) return null
   return withRlsContext(viewer, async (tx) => {
     const [row] = await tx
@@ -387,12 +388,38 @@ export async function tableStamp(
         generation: dashboardTables.rowsGeneration,
         version: dashboardTables.version,
         backing: dashboardTables.backing,
+        columns: dashboardTables.columns,
       })
       .from(dashboardTables)
       .where(and(eq(dashboardTables.id, tableId), eq(dashboardTables.orgId, viewer.orgId)))
       .limit(1)
     if (!row) return null
-    const stamp = { generation: Number(row.generation), version: row.version }
+    const others = tablesRead(row.columns).filter((id) => id !== tableId)
+    // A rollup or a row link reads another table: its rows move the read too (unreadable: "-").
+    const linked = others.length
+      ? await tx
+          .select({
+            id: dashboardTables.id,
+            generation: dashboardTables.rowsGeneration,
+            version: dashboardTables.version,
+          })
+          .from(dashboardTables)
+          .where(and(inArray(dashboardTables.id, others), eq(dashboardTables.orgId, viewer.orgId)))
+      : []
+    const stamp = {
+      generation: Number(row.generation),
+      version: row.version,
+      ...(others.length
+        ? {
+            linked: others
+              .map((id) => {
+                const l = linked.find((x) => x.id === id)
+                return l ? `${id}:${Number(l.generation)}:${l.version}` : `${id}:-`
+              })
+              .join(","),
+          }
+        : {}),
+    }
     // A backed table's rows move with its parent's records too (tables/backing.ts).
     const backing = parseBacking(row.backing)
     const provider = backing ? await backingProvider(viewer.orgId, backing) : null
@@ -400,6 +427,17 @@ export async function tableStamp(
       ? { ...stamp, tasks: await provider.stamp(tx, viewer.orgId, backing.parentId) }
       : stamp
   })
+}
+
+/** The other tables a table's rollup columns and row links read, sorted. */
+function tablesRead(columns: unknown): string[] {
+  if (!Array.isArray(columns)) return []
+  const ids = new Set<string>()
+  for (const c of columns as Column[]) {
+    if (c.type === "rollup" && c.rollup?.table) ids.add(c.rollup.table)
+    if (isRowLink(c) && c.linkTo?.table) ids.add(c.linkTo.table)
+  }
+  return [...ids].filter((id) => /^[0-9a-f-]{36}$/i.test(id)).sort()
 }
 
 /** Any source's eligibility for `viewer`: a tool, a store collection or a dashboard table. */

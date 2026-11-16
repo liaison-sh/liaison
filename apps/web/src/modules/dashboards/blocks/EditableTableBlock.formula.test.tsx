@@ -89,13 +89,12 @@ describe("a formula column", () => {
     expect(screen.getByTestId("table-block-formula-free").title).toContain("stock - 10")
   })
 
-  it("shows a months-shaped formula month by month, read-only, an empty month left blank", async () => {
+  it("shows a months-shaped formula month by month, read-only, an empty month with no to-fill marker", async () => {
     mount([[row({ item: "Widget", stock: 4, projected: { "2026-11": 14, "2027-01": 18 } })]])
     expect((await screen.findByTestId("table-block-month-r1-projected-2026-11")).textContent).toBe(
       "14",
     )
     expect(screen.getByTestId("table-block-month-r1-projected-2027-01").textContent).toBe("18")
-    expect(screen.getByTestId("table-block-month-empty-r1-projected-2026-12")).toBeTruthy()
     expect(screen.queryByTestId("table-block-tofill-r1-projected-2026-12")).toBeNull()
     expect(screen.queryByTestId("table-block-edit-r1-projected-2026-11")).toBeNull()
     expect(screen.getByTestId("table-block-months-head-projected").textContent).toContain(

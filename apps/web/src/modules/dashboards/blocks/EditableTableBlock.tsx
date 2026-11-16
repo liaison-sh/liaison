@@ -15,7 +15,7 @@
 // project's tasks: a column read from the project carries a small link mark naming it, a change
 // to it changes the task (a refusal says so in plain words), Add creates a task, and a row is
 // never deleted here (archive the task in Projects).
-import { History, Link2, Pencil, Plus, Radio, Sigma, Trash2 } from "lucide-solid"
+import { History, Link2, Pencil, Plus, Radio, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -61,10 +61,12 @@ import {
   columnBands,
   columnMonths,
   deadlineState,
-  hasMonthWindow,
+  isComputed,
   isEmphasized,
   isEmptyCell,
   isLinkCell,
+  isMonthly,
+  isRowLinkColumn,
   isStale,
   monthColumn,
   monthLabel,
@@ -510,21 +512,19 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     editing()?.rowId === row.id && editing()?.key === c.key && editing()?.month === month
 
   /** How many grid columns a column takes: a months column one per month it shows. */
-  const width = (c: TableColumn) => (hasMonthWindow(c) ? Math.max(1, columnMonths(c).length) : 1)
-  const hasMonths = () => columns().some(hasMonthWindow)
+  const width = (c: TableColumn) => (isMonthly(c) ? Math.max(1, columnMonths(c).length) : 1)
+  const hasMonths = () => columns().some(isMonthly)
   const gridWidth = () => columns().reduce((n, c) => n + width(c), 0)
 
-  /** One month of a months cell: its number (with the column's emphasis), else a quiet "to fill". */
+  /** One month of a months cell: its number (with the column's emphasis), else a quiet "to fill"
+   *  (a rollup's month without rows reads empty: nothing is to fill there). */
   const MonthView: Component<{ row: TableRow; column: TableColumn; month: string }> = (p) => {
     const value = () => monthValue(p.row.cells[p.column.key], p.month)
     return (
       <Show
         when={value() !== undefined}
         fallback={
-          // A formula is computed: an empty month is no figure to type.
-          p.column.type === "formula" ? (
-            <span data-testid={`${tid()}-month-empty-${p.row.id}-${p.column.key}-${p.month}`} />
-          ) : (
+          <Show when={p.column.type === "months"}>
             <span
               data-testid={`${tid()}-tofill-${p.row.id}-${p.column.key}-${p.month}`}
               title={i18n.t("kernel.dashboards.tables.toFillHint", {
@@ -534,7 +534,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
             >
               {i18n.t("kernel.dashboards.tables.toFill")}
             </span>
-          )
+          </Show>
         }
       >
         <span
@@ -547,20 +547,6 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       </Show>
     )
   }
-
-  /** A formula column's head: its label, quiet, with the expression as its hint (never sorts). */
-  const FormulaHead: Component<{ column: TableColumn }> = (p) => (
-    <span
-      data-testid={`${tid()}-formula-${p.column.key}`}
-      title={i18n.t("kernel.dashboards.tables.formulaColumn", {
-        expr: p.column.formula?.expr ?? "",
-      })}
-      class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
-    >
-      <Sigma size={11} aria-hidden="true" class="shrink-0 opacity-70" />
-      {p.column.label}
-    </span>
-  )
 
   /** Where a backed table's own columns begin after its read-through ones: a divider. */
   const bandEdge = (c: TableColumn) => {
@@ -674,9 +660,39 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     )
   }
 
+  /** A computed column's header hint: where its cells come from. */
+  const computedTitle = (c: TableColumn) =>
+    c.type === "formula"
+      ? i18n.t("kernel.dashboards.tables.formulaColumn", { expr: c.formula?.expr ?? "" })
+      : c.type === "rollup"
+        ? i18n.t(
+            c.rollup?.agg === "count"
+              ? "kernel.dashboards.tables.rollupCountColumn"
+              : "kernel.dashboards.tables.rollupSumColumn",
+            { value: c.rollup?.value ?? "" },
+          )
+        : i18n.t("kernel.dashboards.tables.lookupColumn", { tool: c.lookup?.source.tool ?? "" })
+
+  /** Why a computed column is empty on this read (hover for why), under its header. */
+  const ColumnNote: Component<{ column: TableColumn }> = (p) => (
+    <Show when={columnNotes()[p.column.key]}>
+      {(note) => (
+        <span
+          data-testid={`${tid()}-note-${p.column.key}`}
+          role="note"
+          title={note()}
+          class="block text-[11px] font-normal text-text-tertiary"
+        >
+          {i18n.t("kernel.dashboards.tables.lookupUnavailable")}
+        </span>
+      )}
+    </Show>
+  )
+
   const numeric = (c: TableColumn) =>
     c.type === "number" ||
     c.type === "amount" ||
+    c.type === "rollup" ||
     c.type === "formula" ||
     c.lookup?.valueType === "number"
 
@@ -684,6 +700,24 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   const LinkOpen: Component<{ row: TableRow; column: TableColumn }> = (p) => {
     const cell = () => p.row.cells[p.column.key]
     const text = () => cellText(p.column, cell(), textOpts())
+    const missing = () => {
+      const v = cell()
+      return isLinkCell(v) && v.missing === true
+    }
+    // A link to another table's row reads as that row's label (the grid shows the row there);
+    // one whose row was deleted reads quietly, struck through, never as an error.
+    if (isRowLinkColumn(p.column)) {
+      return (
+        <span
+          data-testid={`${tid()}-rowlink-${p.row.id}-${p.column.key}`}
+          data-missing={missing() ? "true" : undefined}
+          title={missing() ? i18n.t("kernel.dashboards.tables.rowLinkMissing") : undefined}
+          class={cn("min-w-0 truncate", missing() && "text-text-tertiary line-through")}
+        >
+          {text()}
+        </span>
+      )
+    }
     return (
       <button
         type="button"
@@ -873,20 +907,24 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                   <For each={columns()}>
                     {(c) => (
                       <Show
-                        when={!hasMonthWindow(c)}
+                        when={!isMonthly(c)}
                         fallback={
                           <th
                             scope="colgroup"
                             colSpan={width(c)}
                             data-testid={`${tid()}-months-head-${c.key}`}
+                            title={
+                              c.type === "rollup" || c.type === "formula"
+                                ? computedTitle(c)
+                                : undefined
+                            }
                             class={cn(
                               "px-1.5 pt-1.5 text-center text-[11.5px] font-normal text-text-tertiary",
                               bandEdge(c) && "border-l border-border",
                             )}
                           >
-                            <Show when={c.type === "formula"} fallback={c.label}>
-                              <FormulaHead column={c} />
-                            </Show>
+                            {c.label}
+                            <ColumnNote column={c} />
                           </th>
                         }
                       >
@@ -906,34 +944,18 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                             bandEdge(c) && "border-l border-border",
                           )}
                         >
-                          <Show when={c.type === "lookup"}>
+                          <Show when={isComputed(c)}>
                             <span
-                              data-testid={`${tid()}-lookup-${c.key}`}
-                              title={i18n.t("kernel.dashboards.tables.lookupColumn", {
-                                tool: c.lookup?.source.tool ?? "",
-                              })}
+                              data-testid={`${tid()}-${c.type}-${c.key}`}
+                              title={computedTitle(c)}
                               class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
                             >
                               <Radio size={11} aria-hidden="true" class="shrink-0 opacity-70" />
                               {c.label}
                             </span>
-                            <Show when={columnNotes()[c.key]}>
-                              {(note) => (
-                                <span
-                                  data-testid={`${tid()}-note-${c.key}`}
-                                  role="note"
-                                  title={note()}
-                                  class="block text-[11px] font-normal text-text-tertiary"
-                                >
-                                  {i18n.t("kernel.dashboards.tables.lookupUnavailable")}
-                                </span>
-                              )}
-                            </Show>
+                            <ColumnNote column={c} />
                           </Show>
-                          <Show when={c.type === "formula"}>
-                            <FormulaHead column={c} />
-                          </Show>
-                          <Show when={c.type !== "lookup" && c.type !== "formula"}>
+                          <Show when={!isComputed(c)}>
                             <button
                               type="button"
                               data-testid={`${tid()}-sort-${c.key}`}
@@ -985,7 +1007,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                 </tr>
                 <Show when={hasMonths()}>
                   <tr class="border-b border-border-subtle">
-                    <For each={columns().filter(hasMonthWindow)}>
+                    <For each={columns().filter(isMonthly)}>
                       {(c) => (
                         <For each={columnMonths(c)}>
                           {(m, i) => (
@@ -1017,7 +1039,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                         <For each={columns()}>
                           {(c) => (
                             <Show
-                              when={!hasMonthWindow(c)}
+                              when={!isMonthly(c)}
                               fallback={
                                 <For each={columnMonths(c)}>
                                   {(m, i) => (
@@ -1091,17 +1113,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                                       }
                                     />
                                   </Match>
-                                  <Match when={c.type === "formula"}>
+                                  <Match when={isComputed(c)}>
                                     <span
-                                      data-testid={`${tid()}-formula-cell-${row.id}-${c.key}`}
-                                      class="flex min-h-6 items-center justify-end px-1"
-                                    >
-                                      <CellView row={row} column={c} />
-                                    </span>
-                                  </Match>
-                                  <Match when={c.type === "lookup"}>
-                                    <span
-                                      data-testid={`${tid()}-lookup-cell-${row.id}-${c.key}`}
+                                      data-testid={`${tid()}-${c.type}-cell-${row.id}-${c.key}`}
                                       class={cn(
                                         "flex min-h-6 items-center px-1",
                                         numeric(c) ? "justify-end" : "justify-start",

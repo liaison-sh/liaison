@@ -36,9 +36,24 @@ export interface Sandbox {
   stop(): Promise<void>
 }
 
+/**
+ * Waits until `cond` holds (polled every 5 ms), so a test synchronises on the
+ * pool's state rather than on a sleep long enough on a fast machine.
+ */
+export async function until(cond: () => boolean, what: string, ms = 15_000): Promise<void> {
+  const end = Date.now() + ms
+  while (!cond()) {
+    if (Date.now() > end) throw new Error(`timed out after ${ms} ms waiting until ${what}`)
+    await Bun.sleep(5)
+  }
+}
+
 export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promise<Sandbox> {
   const tokens = new Map<string, { orgId: string; depth: number }>()
   const calls: Sandbox["calls"] = []
+  // Runs not answered yet: stop() settles them, so a test that fails with runs
+  // still in flight does not fail the next one with their dropped connections.
+  const inflight = new Set<Promise<unknown>>()
   let sandbox: Sandbox
   const bridge: Server<undefined> = Bun.serve({
     hostname: "127.0.0.1",
@@ -92,48 +107,62 @@ export async function startSandbox(over: Partial<SupervisorConfig> = {}): Promis
     sup,
     bridgeOrigin,
     calls,
-    async run(exportName, params = null, o = {}) {
-      const runId = `test:${randomBytes(8).toString("hex")}`
-      const runToken = o.token ?? randomBytes(32).toString("base64url")
-      const orgId = o.orgId ?? "org-a"
-      if (!o.token) tokens.set(`${runId} ${runToken}`, { orgId, depth: o.depth ?? 0 })
-      const res = await fetch(`${url}/run`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(o.depth ? { [RUN_DEPTH_HEADER]: String(o.depth) } : {}),
-        },
-        body: JSON.stringify({
-          runId,
-          orgId,
-          app: "probe",
-          version: "1.0.0",
-          sha256: PROBE_SHA,
-          exportName,
-          params,
-          extraArgs: [],
-          approval: null,
-          bridgeMethods: ["ping", "nest"],
-          bridgeUrl: `${bridgeOrigin}/api/app-bridge/${encodeURIComponent(runId)}`,
-          runToken,
-          deadlineMs: o.deadlineMs ?? 10_000,
-          ...(o.cpuMs ? { limits: { cpuMs: o.cpuMs } } : {}),
-          ...(o.lane ? { lane: o.lane } : {}),
-          ...(o.queueMs !== undefined ? { queueMs: o.queueMs } : {}),
-        }),
-      })
-      tokens.delete(`${runId} ${runToken}`)
-      return {
-        status: res.status,
-        body: (await res.json()) as Record<string, any>,
-        headers: res.headers,
-      }
+    run(exportName, params, o) {
+      const p = runOnce(exportName, params, o)
+      inflight.add(p)
+      void p.then(
+        () => inflight.delete(p),
+        () => inflight.delete(p),
+      )
+      return p
     },
     async stop() {
       server.stop(true)
       bridge.stop(true)
+      await Promise.allSettled([...inflight])
       await sup.stop()
     },
+  }
+  async function runOnce(
+    exportName: string,
+    params: unknown = null,
+    o: Parameters<Sandbox["run"]>[2] = {},
+  ): ReturnType<Sandbox["run"]> {
+    const runId = `test:${randomBytes(8).toString("hex")}`
+    const runToken = o.token ?? randomBytes(32).toString("base64url")
+    const orgId = o.orgId ?? "org-a"
+    if (!o.token) tokens.set(`${runId} ${runToken}`, { orgId, depth: o.depth ?? 0 })
+    const res = await fetch(`${url}/run`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(o.depth ? { [RUN_DEPTH_HEADER]: String(o.depth) } : {}),
+      },
+      body: JSON.stringify({
+        runId,
+        orgId,
+        app: "probe",
+        version: "1.0.0",
+        sha256: PROBE_SHA,
+        exportName,
+        params,
+        extraArgs: [],
+        approval: null,
+        bridgeMethods: ["ping", "nest"],
+        bridgeUrl: `${bridgeOrigin}/api/app-bridge/${encodeURIComponent(runId)}`,
+        runToken,
+        deadlineMs: o.deadlineMs ?? 10_000,
+        ...(o.cpuMs ? { limits: { cpuMs: o.cpuMs } } : {}),
+        ...(o.lane ? { lane: o.lane } : {}),
+        ...(o.queueMs !== undefined ? { queueMs: o.queueMs } : {}),
+      }),
+    })
+    tokens.delete(`${runId} ${runToken}`)
+    return {
+      status: res.status,
+      body: (await res.json()) as Record<string, any>,
+      headers: res.headers,
+    }
   }
   return sandbox
 }

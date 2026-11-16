@@ -267,4 +267,4 @@ The automation editor names a missing status until one is picked -> apps/web/src
 A task opened from a dashboard drill is named by its title -> apps/web/src/modules/projects/exports.ts:43 ; apps/web/src/modules/shell/entity-opener.ts:135
 A project's task table names who last changed each task -> apps/api/src/apps/projects/service/table-backing.ts:138
 A project refuses a months field -> apps/api/src/apps/projects/service/create-project.ts:505
-A project refuses lookup and formula fields too; the fields editor offers neither, nor months -> apps/api/src/modules/dashboards/tables/columns.ts:41 ; apps/web/src/modules/dashboards/dashboards-client.ts:1324
+A project refuses lookup and formula fields too; the fields editor offers neither, nor months -> apps/api/src/modules/dashboards/tables/columns.ts:48 ; apps/web/src/modules/dashboards/dashboards-client.ts:1326

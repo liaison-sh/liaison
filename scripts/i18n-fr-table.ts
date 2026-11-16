@@ -5063,6 +5063,10 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dock.unreadMany": "{{count}} non lus",
   "kernel.eGGoogle": "par ex. Google",
   "kernel.homeKind.admin_action.other": "actions admin",
+  "kernel.homeKind.issuer_incomplete.one":
+    "facture en attente du SIREN ou de l'adresse de votre société",
+  "kernel.homeKind.issuer_incomplete.other":
+    "factures en attente du SIREN ou de l'adresse de votre société",
   "kernel.homeKind.milestone_no_invoice.one": "jalon terminé pas encore facturé",
   "kernel.homeKind.milestone_no_invoice.other": "jalons terminés pas encore facturés",
   "kernel.homeKind.cancelled.other": "annulées",

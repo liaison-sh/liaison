@@ -1769,6 +1769,10 @@
       "one": "calendrier partagé de jours non travaillés à choisir de nouveau",
       "other": "calendriers partagés de jours non travaillés à choisir de nouveau"
     },
+    "issuer_incomplete": {
+      "one": "facture en attente du SIREN ou de l'adresse de votre société",
+      "other": "factures en attente du SIREN ou de l'adresse de votre société"
+    },
     "milestone_no_invoice": {
       "one": "jalon terminé pas encore facturé",
       "other": "jalons terminés pas encore facturés"

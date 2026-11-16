@@ -1772,6 +1772,10 @@
       "one": "shared days-off calendar to choose again",
       "other": "shared days-off calendars to choose again"
     },
+    "issuer_incomplete": {
+      "one": "invoice waiting for your company's SIREN or address",
+      "other": "invoices waiting for your company's SIREN or address"
+    },
     "milestone_no_invoice": {
       "one": "finished milestone not yet invoiced",
       "other": "finished milestones not yet invoiced"

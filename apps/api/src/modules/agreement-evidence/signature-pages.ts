@@ -12,6 +12,7 @@
 
 import fontkit from "@pdf-lib/fontkit"
 import { PDFDocument, type PDFFont, rgb } from "pdf-lib"
+import { serverT } from "~/modules/i18n/server-i18n"
 import {
   embedUnicodeFace,
   faceBytes,
@@ -59,40 +60,20 @@ export const SIGNERS_PER_PAGE = 6
 const A4: [number, number] = [595.28, 841.89]
 const MARGIN = 56
 
-const WORDS: Record<
-  SignatureLang,
-  {
-    page: (n: number, of: number) => string
-    heading: string
-    capacity: string
-    typed: string
-    at: string
-    level: (l: string) => string
-    fingerprint: string
-    document: (agreement: string, version: number) => string
+/** The page words, from the `agreement-evidence` locale files, in the document's language. */
+function wordsFor(lang: SignatureLang) {
+  const t = (key: string, params?: Record<string, string | number>) =>
+    serverT(lang, `agreement-evidence.pages.${key}`, params)
+  return {
+    page: (n: number, of: number) => t("page", { n, of }),
+    heading: t("heading"),
+    capacity: t("capacity"),
+    typed: t("typed"),
+    at: t("at"),
+    level: (l: string) => (l === "demo" ? t("level_demo") : t("level_ses")),
+    fingerprint: t("fingerprint"),
+    document: (agreement: string, version: number) => t("document", { agreement, version }),
   }
-> = {
-  en: {
-    page: (n, of) => `Signature page ${n} of ${of}`,
-    heading: "Signatures",
-    capacity: "Capacity",
-    typed: "Words typed",
-    at: "Signed on",
-    level: (l) => (l === "demo" ? "Demonstration, not a signature" : "Simple electronic signature"),
-    fingerprint: "Fingerprint of the signed document (SHA-256)",
-    document: (a, v) => `${a}, version ${v}`,
-  },
-  fr: {
-    page: (n, of) => `Page de signature ${n} sur ${of}`,
-    heading: "Signatures",
-    capacity: "Qualité",
-    typed: "Mention saisie",
-    at: "Signé le",
-    level: (l) =>
-      l === "demo" ? "Démonstration, pas une signature" : "Signature électronique simple",
-    fingerprint: "Empreinte du document signé (SHA-256)",
-    document: (a, v) => `${a}, version ${v}`,
-  },
 }
 
 /** Removes control characters (C0, DEL, C1) and bidirectional overrides; collapses spaces. */
@@ -156,7 +137,7 @@ export async function renderSignaturePages(input: SignaturePagesInput): Promise<
         "A signer's name has characters no embedded font can draw; it must be typed in Latin letters.",
       )
   }
-  const w = WORDS[input.lang]
+  const w = wordsFor(input.lang)
   const doc = await PDFDocument.create()
   const cache = new Map<UnicodeFace, PDFFont>()
   const regular = await embedUnicodeFace(doc, "regular", cache)

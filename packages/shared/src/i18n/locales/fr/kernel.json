@@ -1471,6 +1471,22 @@
       "one": "factures Stripe à émettre après le choix",
       "other": "factures Stripe à émettre après le choix"
     },
+    "timestamp_overdue": {
+      "one": "contrat signé en attente de son horodatage",
+      "other": "contrats signés en attente de leur horodatage"
+    },
+    "copy_failed": {
+      "one": "exemplaire signé non envoyé",
+      "other": "exemplaires signés non envoyés"
+    },
+    "seal_overdue": {
+      "one": "contrat signé pas encore scellé",
+      "other": "contrats signés pas encore scellés"
+    },
+    "mismatch": {
+      "one": "preuve de contrat qui ne correspond pas",
+      "other": "preuve de contrat qui ne correspond pas"
+    },
     "needs_person": {
       "one": "facture Stripe à traiter par une personne",
       "other": "factures Stripe à traiter par une personne"

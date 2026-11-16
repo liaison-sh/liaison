@@ -1474,6 +1474,22 @@
       "one": "Stripe invoices to issue after the decision",
       "other": "Stripe invoices to issue after the decision"
     },
+    "timestamp_overdue": {
+      "one": "signed agreement waiting for its timestamp",
+      "other": "signed agreements waiting for their timestamp"
+    },
+    "copy_failed": {
+      "one": "signed copy not mailed",
+      "other": "signed copies not mailed"
+    },
+    "seal_overdue": {
+      "one": "signed agreement not sealed yet",
+      "other": "signed agreements not sealed yet"
+    },
+    "mismatch": {
+      "one": "agreement evidence that does not match",
+      "other": "agreement evidence that does not match"
+    },
     "needs_person": {
       "one": "Stripe invoice needing a person",
       "other": "Stripe invoices needing a person"

@@ -1,0 +1,30 @@
+{
+  "copy": {
+    "subject": "Votre exemplaire signé : {{agreement}}, version {{version}}",
+    "body": "Tout le monde a signé « {{title}} » avec {{org}}. Votre exemplaire du document signé et de son fichier de preuve sont joints. Gardez-les : ils permettent de vérifier le document sans {{org}}.",
+    "fingerprint": "Empreinte du document signé (SHA-256) : {{fingerprint}}",
+    "seal": "Sceau : {{seal}}",
+    "pending": "L'horodatage extérieur n'est pas encore arrivé ; un fichier de preuve horodaté suivra par mail.",
+    "footer": "Ce mail vous est envoyé pour le garder. Il ne contient aucun lien."
+  },
+  "pages": {
+    "page": "Page de signature {{n}} sur {{of}}",
+    "heading": "Signatures",
+    "capacity": "Qualité",
+    "typed": "Mention saisie",
+    "at": "Signé le",
+    "level_ses": "Signature électronique simple",
+    "level_demo": "Démonstration, pas une signature",
+    "fingerprint": "Empreinte du document signé (SHA-256)",
+    "document": "{{agreement}}, version {{version}}"
+  },
+  "certificate": {
+    "title": "Certificat de signature",
+    "document_fingerprint": "Empreinte du document (SHA-256)",
+    "signed_fingerprint": "Empreinte du PDF signé (SHA-256)",
+    "seal": "Sceau (SHA-256 du manifeste)",
+    "stamped": "Horodatage : reçu d'une autorité extérieure.",
+    "pending": "Horodatage : en attente, pas encore reçu.",
+    "signers": "Signataires"
+  }
+}

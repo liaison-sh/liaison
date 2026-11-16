@@ -132,6 +132,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/shopify/**", pages: ["apps/store"] },
   { glob: "bundled-apps/pennylane/**", pages: ["apps/pennylane"] },
   { glob: "bundled-apps/agreements/**", pages: ["apps/agreements"] },
+  { glob: "apps/api/src/modules/agreement-evidence/**", pages: ["apps/agreements"] },
   { glob: "bundled-apps/social/**", pages: ["apps/social"] },
   { glob: "bundled-apps/ads/**", pages: ["apps/ads"] },
   { glob: "bundled-apps/calls/**", pages: ["apps/calls", "sales/sales-data"] },

@@ -8,6 +8,7 @@
 
 import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { plainText, type SignatureLang } from "./signature-pages"
 
@@ -27,31 +28,23 @@ export interface CopyMailInput {
   copyZip: { filename: string; bytes: Uint8Array }
 }
 
-const WORDS = {
-  en: {
-    subject: (a: string, v: number) => `Your signed copy: ${a}, version ${v}`,
-    body: (org: string, title: string) =>
-      `Everyone has signed "${title}" with ${org}. Your copy of the signed document and of its evidence file are attached. Keep them: they let you check the document without ${org}.`,
-    fingerprint: (fp: string) => `Fingerprint of the signed document (SHA-256): ${fp}`,
-    seal: (s: string) => `Seal: ${s}`,
-    pending: "The outside timestamp has not arrived yet; a stamped evidence file follows by mail.",
-    footer: "This mail was sent for you to keep. It holds no link.",
-  },
-  fr: {
-    subject: (a: string, v: number) => `Votre exemplaire signé : ${a}, version ${v}`,
-    body: (org: string, title: string) =>
-      `Tout le monde a signé « ${title} » avec ${org}. Votre exemplaire du document signé et de son fichier de preuve sont joints. Gardez-les : ils permettent de vérifier le document sans ${org}.`,
-    fingerprint: (fp: string) => `Empreinte du document signé (SHA-256) : ${fp}`,
-    seal: (s: string) => `Sceau : ${s}`,
-    pending:
-      "L'horodatage extérieur n'est pas encore arrivé ; un fichier de preuve horodaté suivra par mail.",
-    footer: "Ce mail vous est envoyé pour le garder. Il ne contient aucun lien.",
-  },
-} as const
+/** The mail words, from the `agreement-evidence` locale files, in the document's language. */
+function wordsFor(lang: SignatureLang) {
+  const t = (key: string, params?: Record<string, string | number>) =>
+    serverT(lang, `agreement-evidence.copy.${key}`, params)
+  return {
+    subject: (agreement: string, version: number) => t("subject", { agreement, version }),
+    body: (org: string, title: string) => t("body", { org, title }),
+    fingerprint: (fingerprint: string) => t("fingerprint", { fingerprint }),
+    seal: (seal: string) => t("seal", { seal }),
+    pending: t("pending"),
+    footer: t("footer"),
+  }
+}
 
 /** Sends one signer's copy. Throws when the provider refuses, so the caller can count a failure. */
 export async function sendSignedCopyMail(input: CopyMailInput): Promise<void> {
-  const w = WORDS[input.lang]
+  const w = wordsFor(input.lang)
   const title = plainText(input.title)
   const subject = w.subject(plainText(input.agreement), input.version)
   const paragraphs: string[] = [

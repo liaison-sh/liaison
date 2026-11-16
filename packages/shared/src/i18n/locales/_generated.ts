@@ -3,6 +3,7 @@
 // Adding a locale is FILE-ONLY: drop locales/<x>/*.json and this regenerates.
 import type { LocaleDict } from "../dictionaries"
 
+import en_Agreement_evidence from "./en/agreement-evidence.json"
 import en_Api_connector from "./en/api-connector.json"
 import en_App_frame from "./en/app-frame.json"
 import en_Calendar from "./en/calendar.json"
@@ -23,6 +24,7 @@ import en_Secret_request from "./en/secret-request.json"
 import en_Setup_guides from "./en/setup-guides.json"
 import en_Tickets from "./en/tickets.json"
 import en_Tours from "./en/tours.json"
+import fr_Agreement_evidence from "./fr/agreement-evidence.json"
 import fr_Api_connector from "./fr/api-connector.json"
 import fr_App_frame from "./fr/app-frame.json"
 import fr_Calendar from "./fr/calendar.json"
@@ -51,6 +53,7 @@ export const GENERATED_DICTIONARIES: Record<
   Record<string, LocaleDict>
 > = {
   en: {
+    "agreement-evidence": en_Agreement_evidence as LocaleDict,
     "api-connector": en_Api_connector as LocaleDict,
     "app-frame": en_App_frame as LocaleDict,
     calendar: en_Calendar as LocaleDict,
@@ -73,6 +76,7 @@ export const GENERATED_DICTIONARIES: Record<
     tours: en_Tours as LocaleDict,
   },
   fr: {
+    "agreement-evidence": fr_Agreement_evidence as LocaleDict,
     "api-connector": fr_Api_connector as LocaleDict,
     "app-frame": fr_App_frame as LocaleDict,
     calendar: fr_Calendar as LocaleDict,

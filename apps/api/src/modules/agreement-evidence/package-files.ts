@@ -12,6 +12,7 @@
 // which refuses a file that is not the one the manifest names.
 
 import { PDFDocument, type PDFFont, rgb } from "pdf-lib"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { buildEvidenceZip } from "~/modules/signing/evidence-zip"
 import { plainText, type SignatureLang } from "./signature-pages"
 
@@ -87,28 +88,26 @@ export async function renderCertificate(input: CertificateInput): Promise<Uint8A
     })
     y -= size + 6
   }
-  const fr = input.lang === "fr"
-  line(fr ? "Certificat de signature" : "Signature certificate", 16, bold)
+  const t = (key: string, params?: Record<string, string | number>) =>
+    serverT(input.lang, `agreement-evidence.certificate.${key}`, params)
+  line(t("title"), 16, bold)
   line(`${input.orgName}: ${input.title}`)
-  line(`${input.agreement}, version ${input.version}`)
-  y -= 8
-  line(fr ? "Empreinte du document (SHA-256)" : "Document fingerprint (SHA-256)", 10, bold)
-  line(input.documentSha256, 8)
-  line(fr ? "Empreinte du PDF signé (SHA-256)" : "Signed PDF fingerprint (SHA-256)", 10, bold)
-  line(input.signedPdfSha256, 8)
-  line(fr ? "Sceau (SHA-256 du manifeste)" : "Seal (SHA-256 of the manifest)", 10, bold)
-  line(input.seal, 8)
   line(
-    fr
-      ? input.timestamped
-        ? "Horodatage : reçu d'une autorité extérieure."
-        : "Horodatage : en attente, pas encore reçu."
-      : input.timestamped
-        ? "Timestamp: received from an outside authority."
-        : "Timestamp: pending, not received yet.",
+    serverT(input.lang, "agreement-evidence.pages.document", {
+      agreement: input.agreement,
+      version: input.version,
+    }),
   )
   y -= 8
-  line(fr ? "Signataires" : "Signers", 10, bold)
+  line(t("document_fingerprint"), 10, bold)
+  line(input.documentSha256, 8)
+  line(t("signed_fingerprint"), 10, bold)
+  line(input.signedPdfSha256, 8)
+  line(t("seal"), 10, bold)
+  line(input.seal, 8)
+  line(input.timestamped ? t("stamped") : t("pending"))
+  y -= 8
+  line(t("signers"), 10, bold)
   for (const s of input.signers) line(`${s.name}, ${s.capacity}`)
   return doc.save({ useObjectStreams: false })
 }

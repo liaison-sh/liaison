@@ -48,6 +48,28 @@ An agent's reminder, new link or void waits for a person's approval. **Agreement
 
 Every day, a signed agreement that enters its notice period before its renewal or end date raises one notice, and a send whose every link expired with nobody signed becomes **expired**. Every ten minutes, a signature the app missed is recorded.
 
+## Keep the proof of a signature
+
+When the last signer signs, the app seals the version:
+
+- the **signed PDF** is the frozen document with signature pages added at the end: each signer, the capacity they stated, the words they typed when the sender asked for them, the date and time, the level (simple electronic signature) and the document's fingerprint. The pages are numbered on their own ("Signature page 1 of 2"), in the document's language, so the document's own page numbers stay true;
+- the **seal** is a fingerprint over the document's and the signed PDF's fingerprints and the record of every signature;
+- the **evidence file** is a zip of the signed PDF, the frozen document, the signature record, the seal, a signature certificate and a check page;
+- the **outside timestamp** comes from the timestamp authority. When the authority does not answer, the seal stands without it, the app asks again every ten minutes and mails each signer the stamped evidence file when it arrives. After 24 hours without it, one notice goes to the people who can read evidence.
+
+Each signer gets a copy by email: the signed PDF and their own copy of the evidence file, with the fingerprint and the seal written in the mail. A signer's copy lists only their own device; a copy for a colleague lists no device at all. A copy that fails to send is tried again, and after three failures one notice names the signer.
+
+A seal that fails is tried again every ten minutes; the version stays signed meanwhile, and one notice goes out after an hour. A stored document that no longer matches its fingerprint is never sealed: the app raises a mismatch notice instead.
+
+Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, and a set field never changes.
+
+## Check a signed agreement
+
+Ask an agent, with `agreements:evidence:read`:
+
+- for an agreement's **evidence** (`agreement_evidence_get`): the fingerprints, the seal, the timestamp, each signature and whether each signer's copy was sent. Signers' IP addresses and browsers need `agreements:evidence:devices`.
+- to **verify** it (`agreement_verify`): the app hashes the stored files again and recomputes the seal. A mismatch is recorded, shown and reported as an incident, and nothing is repaired: the signers' copies are the reference. The app also checks every sealed agreement once a week.
+
 ## Scopes
 
 | Scope | Lets you |

@@ -53,7 +53,7 @@ export interface LegalFill {
   /** Text with its placeholders resolved: record values, and blanks as grey runs. */
   runs(text: string, bold: boolean): TextRun[]
   /** Whether a block's `when` holds against the record. */
-  holds(when: unknown): boolean
+  blockPrints(when: unknown): boolean
   /** Throw the rich-text error with this code. */
   refuse(code: LegalRefusal, message: string): never
   readonly blanks: RichTextBlank[]
@@ -536,7 +536,7 @@ class Builder {
   /** The defined terms: a party's `defined_as` and a definitions block's terms, as printed. */
   collectDefinitions(blocks: readonly AnyLegal[]): void {
     for (const b of blocks) {
-      if (!this.fill.holds((b as When).when)) continue
+      if (!this.fill.blockPrints((b as When).when)) continue
       if (b.type === "parties") {
         for (const g of b.groups)
           for (const item of g.items) {
@@ -566,14 +566,14 @@ class Builder {
         after: 18,
       })
     }
-    const explicitToc = blocks.some((b) => b.type === "toc" && this.fill.holds(b.when))
+    const explicitToc = blocks.some((b) => b.type === "toc" && this.fill.blockPrints(b.when))
     // Without a toc block, contents go after the recitals, else after the parties, else first.
     const autoAfter = withToc && !explicitToc ? autoTocIndex(blocks, this.fill) : -2
     if (autoAfter === -1) this.toc()
     let scope = new Counters()
     let annexes = 0
     blocks.forEach((block, i) => {
-      if (!this.fill.holds(block.when)) return
+      if (!this.fill.blockPrints(block.when)) return
       switch (block.type) {
         case "toc":
           if (withToc) this.toc()
@@ -805,7 +805,7 @@ class Builder {
     })
     let scope = new Counters()
     for (const inner of block.blocks) {
-      if (!this.fill.holds((inner as When).when)) continue
+      if (!this.fill.blockPrints((inner as When).when)) continue
       scope = this.leaf(inner, scope, n)
     }
   }
@@ -861,7 +861,7 @@ function defKey(term: string): string {
 function autoTocIndex(blocks: RichTextBody["blocks"], fill: LegalFill): number {
   let at = -1
   blocks.forEach((b, i) => {
-    if (!fill.holds(b.when)) return
+    if (!fill.blockPrints(b.when)) return
     if (b.type === "recitals") at = i
     else if (b.type === "parties" && !blocks.slice(0, i).some((x) => x.type === "recitals"))
       at = Math.max(at, i)
@@ -887,7 +887,7 @@ function numberClauses(body: RichTextBody, fill: LegalFill, lang: Lang): Numbere
   const top = new Counters()
   let annexes = 0
   for (const b of body.blocks) {
-    if (!fill.holds(b.when)) continue
+    if (!fill.blockPrints(b.when)) continue
     if (b.type === "article") {
       const { label } = top.next(b.level, b.id ? `The clause "${b.id}"` : "A clause", fill)
       if (b.id) refs.set(b.id, `${w.articleRef} ${label}`)
@@ -896,7 +896,7 @@ function numberClauses(body: RichTextBody, fill: LegalFill, lang: Lang): Numbere
       if (b.id) refs.set(b.id, `${w.annexRef} ${annexes}`)
       const scope = new Counters()
       for (const inner of b.blocks) {
-        if (!fill.holds((inner as When).when) || inner.type !== "article") continue
+        if (!fill.blockPrints((inner as When).when) || inner.type !== "article") continue
         const { label } = scope.next(
           inner.level,
           inner.id ? `The clause "${inner.id}"` : "A clause",
@@ -916,7 +916,7 @@ function visibleTexts(
 ): Array<{ where: string; text: string; block: AnyLegal }> {
   const out: Array<{ where: string; text: string; block: AnyLegal }> = []
   const visit = (b: AnyLegal, where: string) => {
-    if (!fill.holds((b as When).when)) return
+    if (!fill.blockPrints((b as When).when)) return
     const add = (text: string | undefined, suffix = "") => {
       if (text) out.push({ where: `${where}${suffix}`, text, block: b })
     }
@@ -1302,7 +1302,7 @@ export function layoutLegal(
   builder.collectDefinitions(body.blocks)
   checkClauses(body, fill, numbered, builder)
 
-  const explicitToc = body.blocks.some((b) => b.type === "toc" && fill.holds(b.when))
+  const explicitToc = body.blocks.some((b) => b.type === "toc" && fill.blockPrints(b.when))
   // The fill records blanks as it resolves text: a second build must not count them twice.
   const blanksBefore = fill.blanks.length
   builder.build(false)

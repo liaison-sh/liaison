@@ -1098,7 +1098,7 @@ class Fill implements LegalFill {
     protected readonly labelOf: (path: string) => string,
   ) {}
 
-  holds(conditions: unknown): boolean {
+  blockPrints(conditions: unknown): boolean {
     return conditionsHold(this.record, null, conditions as Conditions | undefined)
   }
 

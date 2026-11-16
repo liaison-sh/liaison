@@ -1,0 +1,3 @@
+legal layout: page.layout legal and lang, A4 justified serif, parties, preamble, numbered articles, annexes, contents from 10 pages, Page X sur Y, signature page -> apps/api/src/modules/documents/legal-layout.ts (layoutLegal, WORDS, TOC_FROM_PAGES) ; apps/api/src/modules/documents/rich-text.ts (pageSchema, articleBlock)
+legal blocks parties, recitals, article, definitions, annex, toc, signature_block; {{ref:id}} and {{def:Term}} -> apps/api/src/modules/documents/rich-text.ts (blockSchema, legalText) ; apps/api/src/modules/documents/legal-layout.ts (LEGAL_INLINE_RE)
+refused: clause starting with a number, typed article number, missing or hidden reference, character no font draws -> apps/api/src/modules/documents/legal-layout.ts (checkClauses, checkDrawable)

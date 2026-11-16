@@ -370,6 +370,10 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "apps/api/src/modules/cloud/**", reason: "signed operator API of the managed edition, no user-facing setting (its handoff page is documented under admin/users via apps/web auth)" },
   { glob: "apps/api/src/modules/{admin,attention,audit,billing-admin,billing-state,bug-reports,i18n,loadtest,maintenance,monitor,pdf,provisioning,push,saved-views,search,security,sequences,slots}/**", reason: "internal modules with no user-facing setting" },
   {
+    glob: "apps/api/assets/fonts/**",
+    reason: "font files the PDF renderer embeds (SIL OFL, licence beside them); what they print is documented with the templates that use them",
+  },
+  {
     glob: "apps/api/src/modules/documents/pdf-form*.ts",
     reason: "host PDF form fill library (like modules/pdf); the document templates settings that use it map their own page",
   },

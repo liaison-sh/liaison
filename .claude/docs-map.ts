@@ -354,6 +354,11 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "apps/api/src/lib/[!e]*.ts", reason: "internal helpers" },
   { glob: "apps/api/src/lib/{edition,env-boolean,error-tracker,external-content}.ts", reason: "internal helpers" },
   { glob: "apps/api/src/*.ts", reason: "server entry points" },
+  {
+    glob: "apps/api/src/modules/signing/**",
+    reason:
+      "agreement seal and timestamp crypto, reached only by the bundled agreements app; its timestamp authority settings are in the env reference and the agreements page",
+  },
   { glob: "apps/api/src/modules/cloud/**", reason: "signed operator API of the managed edition, no user-facing setting (its handoff page is documented under admin/users via apps/web auth)" },
   { glob: "apps/api/src/modules/{admin,attention,audit,billing-admin,billing-state,bug-reports,i18n,loadtest,maintenance,monitor,pdf,provisioning,push,saved-views,search,security,sequences,slots}/**", reason: "internal modules with no user-facing setting" },
   {

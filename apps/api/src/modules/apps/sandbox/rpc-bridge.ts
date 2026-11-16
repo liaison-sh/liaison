@@ -51,6 +51,7 @@ import {
   bridgeTestHostMethods,
   withPgCause,
 } from "~/modules/apps/sandbox/bridge/shared"
+import { createSigningMethods } from "~/modules/apps/sandbox/bridge/signing"
 import { createSqlMethods } from "~/modules/apps/sandbox/bridge/sql"
 import { createStepsMethods } from "~/modules/apps/sandbox/bridge/steps"
 import { createStoreMethods } from "~/modules/apps/sandbox/bridge/store"
@@ -127,6 +128,7 @@ export function createRpcBridge(
     createApiConnectionMethods(ctx),
     createAccountsMethods(ctx),
     createAppSourceMethods(ctx),
+    createSigningMethods(ctx),
   )
 
   // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
@@ -247,6 +249,10 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "approvals_withdraw",
   "sequences_allocate",
   "pdf_render",
+  // The agreements app's seal and timestamp (bridge/signing.ts): part of a send's seal step,
+  // and the timestamp is an outside call.
+  "signing_seal",
+  "signing_timestamp",
   "nextHandle",
   "invalidateIdempotency",
   "effects_claim",
@@ -437,6 +443,9 @@ const SESSION_TXLESS_METHOD_PREFIXES = [
   "limiter_",
   "sql_",
   "api_",
+  // `signing_*` (bridge/signing.ts) hash in memory and call the timestamp authority
+  // (up to 10 s): no database at all.
+  "signing_",
 ]
 // Exact-name tx-less methods. `fetch` is the workhorse external-HTTP surface
 // (domain-allowlist + pinned-host fetch, zero txDb use) — wrapping it would

@@ -312,6 +312,17 @@ export const envSchema = z
     // The secret the edge signs `x-liaison-host` / `x-liaison-client-ip` with
     // (LIAISON_EDGE_MODE=signed). At least 32 characters.
     LIAISON_EDGE_SECRET: z.preprocess(unsetIfEmpty, z.string().min(32).optional()),
+    // RFC 3161 timestamp authority for signed agreements (modules/signing/timestamp.ts).
+    // Unset: a send that needs a stamp refuses TIMESTAMP_NOT_CONFIGURED. Instance-level;
+    // an org cannot change it.
+    LIAISON_TSA_URL: z.preprocess(unsetIfEmpty, z.string().url().optional()),
+    // The authority's certificate chain, the only trust anchors of a timestamp: a PEM
+    // file path (preferred) or the PEM bundle inline. Never the certificates a token carries.
+    LIAISON_TSA_CHAIN_FILE: z.preprocess(unsetIfEmpty, z.string().optional()),
+    LIAISON_TSA_CHAIN_PEM: z.preprocess(unsetIfEmpty, z.string().optional()),
+    // Reach a timestamp authority on a private or loopback address (a fixture authority
+    // on a labelled walk or year box only). Off by default.
+    LIAISON_TSA_ALLOW_PRIVATE: envBoolean(false),
     DEVICE_FLOW_CLIENTS: z
       .string()
       .default("")

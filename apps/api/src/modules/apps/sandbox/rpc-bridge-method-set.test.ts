@@ -274,6 +274,8 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["requestApproval", "async"],
   ["resolveContact", "async"],
   ["sequences_allocate", "async"],
+  ["signing_seal", "async"],
+  ["signing_timestamp", "async"],
   ["smtp_send", "async"],
   ["sql_probe", "async"],
   ["sql_query", "async"],

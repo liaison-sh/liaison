@@ -238,8 +238,16 @@ export function createFixtureAuthority(
   const notBefore = opts.notBefore ?? new Date(Date.now() - year)
   const notAfter = opts.notAfter ?? new Date(Date.now() + year)
   const base = mkdtempSync(path.join(opts.root ?? tmpdir(), "liaison-tsa-fixture-"))
-  const ca = makeCa(path.join(base, mkdir(base, "main")), "Fixture Root", notBefore, notAfter)
-  const tsa = ca.issueTsa("tsa")
+  let ca: FixtureCa
+  let tsa: IssuedCert
+  try {
+    ca = makeCa(path.join(base, mkdir(base, "main")), "Fixture Root", notBefore, notAfter)
+    tsa = ca.issueTsa("tsa")
+  } catch (err) {
+    // No key material left behind when openssl fails half way.
+    rmSync(base, { recursive: true, force: true })
+    throw err
+  }
   let foreign: { ca: FixtureCa; tsa: IssuedCert } | null = null
 
   const reply = (query: Uint8Array, r: { signer?: IssuedCert; chainFile?: string } = {}) => {

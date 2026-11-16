@@ -51,4 +51,16 @@ describe("timestamp retry", () => {
     await timestampRetry(w.ctx)
     expect(w.ctx.calls.mails).toHaveLength(2)
   })
+
+  it("an authority call that fails outright leaves the stamp pending, and the evidence and copies still go out", async () => {
+    const w = await signedWorld({ authorityUp: false })
+    w.ctx.signing_timestamp = async () => {
+      throw new Error("the timestamp authority is not configured on this host")
+    }
+    const out = await sealVersion(w.ctx, w.versionId)
+    expect(out).toMatchObject({ status: "sealed", timestamp: "pending" })
+    const pkg = (await packageOf(w.ctx, w.versionId)) as EvidencePackage
+    expect(pkg.evidence_file_id).toBeTruthy()
+    expect(w.ctx.calls.mails).toHaveLength(2)
+  })
 })

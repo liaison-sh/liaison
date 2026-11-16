@@ -305,7 +305,10 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         const UUID_USER_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         // A file downloaded from a provider (`files_importFromUrl`) came from
         // outside the org, whoever's run fetched it (modules/files/origin.ts).
-        const uploaderId = p.fromNetwork !== true && UUID_USER_RE.test(userId) ? userId : null
+        // The nil id is the system actor (a client's decision handled by the app), never a user.
+        const NIL_ID = "00000000-0000-0000-0000-000000000000"
+        const uploaderId =
+          p.fromNetwork !== true && UUID_USER_RE.test(userId) && userId !== NIL_ID ? userId : null
         // kernel.files is FORCE RLS with NO liaison_rls INSERT policy ("INSERT/
         // DELETE are kernel-only; liaison_admin BYPASSRLS handles them"). When
         // this bridge runs under a SYSTEM/privileged tx (inbound mail/ticket

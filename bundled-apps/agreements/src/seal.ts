@@ -389,12 +389,20 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
 /** Ask the authority once; on a verified stamp store the reply and fill the write-once columns. */
 async function stampPackage(ctx: SealCtx, pkg: EvidencePackage): Promise<"stamped" | "pending"> {
   if (!ctx.signing_timestamp || !pkg.manifest) return "pending"
+  let answer: unknown
+  try {
+    answer = await ctx.signing_timestamp({ manifest: pkg.manifest })
+  } catch {
+    // An authority that cannot be asked at all is down for the seal: the stamp stays
+    // pending for `timestamp-retry`, and the evidence and copies go out unstamped.
+    return "pending"
+  }
   const out = bridgeAnswer<{
     status: string
     replyBase64?: string
     genTime?: string
     policy?: string
-  }>(await ctx.signing_timestamp({ manifest: pkg.manifest }))
+  }>(answer)
   if (out.status !== "stamped" || !out.replyBase64 || !ctx.files_importAttachment) return "pending"
   const stored = bridgeAnswer<{ id: string }>(
     await ctx.files_importAttachment({

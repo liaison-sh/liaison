@@ -15,18 +15,78 @@
  *  - `evidence_mail_copy`: one signer's copy by system mail, the signed PDF and
  *    the copy attached, the fingerprint and the seal in the body.
  *
+ * The frozen file is read through `readFrozenVersionFile`, on the run's own
+ * row-level-secured transaction: it answers only the file recorded on the
+ * version being sealed, in that version's organization, and only when the bytes
+ * hash to the version's stored fingerprint. No other file id is ever read from
+ * storage. Every other file goes through the files bridge's own doors.
+ *
  * No hash here feeds the seal except the signed PDF's, which the app hands to
  * `signing_seal` (bridge/signing.ts) unchanged. Every method refuses any
  * caller but the agreements app, and reads and writes only that app's own
  * files through the files bridge's own doors (parent checks, quota, scan).
  * Expected outcomes answer data, never a throw.
  */
-import { sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { getObjectBytes } from "~/lib/storage/get-object-bytes"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { sha256Hex } from "~/modules/signing/seal"
 
 const APP = "agreements"
+const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+const FROZEN_MAX_BYTES = 25 * 1024 * 1024
+
+/** The storage read of a frozen file, replaceable in tests (to prove a refused id is never read). */
+export const frozenFileStorage = {
+  read: async (key: string, maxBytes: number): Promise<Uint8Array> =>
+    new Uint8Array((await getObjectBytes(key, { maxBytes })).bytes),
+}
+
+export type FrozenRead =
+  | { status: "ok"; bytes: Uint8Array; sha256: string }
+  | { status: "refused"; code: "NOT_THIS_VERSION_FILE" | "DOCUMENT_CHANGED" }
+
+/**
+ * The frozen file of one agreement version, for its seal. Answers bytes only for
+ * the file id recorded on that version, in that version's organization, stored as
+ * the app's own file on that version, not sealed for an owner, and only when the
+ * bytes hash to the version's stored SHA-256. Anything else is refused before
+ * storage is touched; a hash mismatch is refused after the read.
+ */
+export async function readFrozenVersionFile(
+  db: { execute: (query: SQL) => Promise<unknown> },
+  ask: { orgId: string; versionId: string; fileId: string },
+): Promise<FrozenRead> {
+  const notThis = { status: "refused", code: "NOT_THIS_VERSION_FILE" } as const
+  if (!UUID.test(ask.orgId) || !UUID.test(ask.versionId) || !UUID.test(ask.fileId)) return notThis
+  const A = drizzleSql.raw(schemaRef("app_agreements"))
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [row] = extractRows<{
+    sha256: string
+    storage_key: string
+    enc_version: number | string | null
+  }>(
+    (await db.execute(drizzleSql`
+        SELECT v.sha256, f.storage_key, f.enc_version
+          FROM ${A}.agreement_versions v
+          JOIN ${K}.files f
+            ON f.id = v.file_id AND f.org_id = v.org_id
+         WHERE v.id = ${ask.versionId}::uuid
+           AND v.org_id = ${ask.orgId}::uuid
+           AND v.file_id = ${ask.fileId}::uuid
+           AND f.app = ${APP}
+           AND f.entity_type = 'agreement_version'
+           AND f.entity_id = ${ask.versionId}
+         LIMIT 1`)) as never,
+  )
+  if (!row?.sha256 || Number(row.enc_version ?? 0) !== 0) return notThis
+  const bytes = await frozenFileStorage.read(row.storage_key, FROZEN_MAX_BYTES)
+  const sha256 = sha256Hex(bytes)
+  if (sha256 !== row.sha256) return { status: "refused", code: "DOCUMENT_CHANGED" }
+  return { status: "ok", bytes, sha256 }
+}
 
 function refuse(code: string, message: string): string {
   return JSON.stringify({ status: "error", error: { code, message } })
@@ -52,6 +112,30 @@ export function createEvidenceMethods(
     const out = JSON.parse(String(raw)) as { bytesBase64: string; encVersion?: number }
     if (out.encVersion && out.encVersion > 0) throw new Error("sealed_file")
     return new Uint8Array(Buffer.from(out.bytesBase64, "base64"))
+  }
+
+  /** The version's own frozen file, through the one narrow privileged read. */
+  const readFrozen = async (
+    versionId: string,
+    fileId: string,
+  ): Promise<
+    { status: "ok"; bytes: Uint8Array; sha256: string } | { status: "refused"; refusal: string }
+  > => {
+    const out = await readFrozenVersionFile(txDb, { orgId, versionId, fileId })
+    if (out.status === "ok") return out
+    return {
+      status: "refused",
+      refusal:
+        out.code === "DOCUMENT_CHANGED"
+          ? refuse(
+              "DOCUMENT_CHANGED",
+              "The stored frozen file is not the fingerprinted one. Nothing was signed or sealed.",
+            )
+          : refuse(
+              "NOT_THIS_VERSION_FILE",
+              "That file is not the frozen file of this version. Nothing was read or sealed.",
+            ),
+    }
   }
 
   const store = async (
@@ -94,13 +178,14 @@ export function createEvidenceMethods(
           level: string
         }>
       }
-      const { sha256Hex } = await import("~/modules/signing/seal")
       const { appendSignaturePages, renderSignaturePages, SignaturePageError } = await import(
         "~/modules/agreement-evidence/signature-pages"
       )
       const version: Parent = { entityType: "agreement_version", entityId: p.versionId }
-      const frozen = await readBytes(p.frozenFileId, version)
-      if (sha256Hex(frozen) !== p.documentSha256)
+      const read = await readFrozen(p.versionId, p.frozenFileId)
+      if (read.status !== "ok") return read.refusal
+      const frozen = read.bytes
+      if (read.sha256 !== p.documentSha256)
         return refuse(
           "DOCUMENT_CHANGED",
           "The stored frozen file is not the fingerprinted one. Nothing was signed or sealed.",
@@ -156,11 +241,12 @@ export function createEvidenceMethods(
       const { buildPackageFiles, checkPage, renderCertificate } = await import(
         "~/modules/agreement-evidence/package-files"
       )
-      const { sha256Hex } = await import("~/modules/signing/seal")
       const version: Parent = { entityType: "agreement_version", entityId: p.versionId }
       const pkg: Parent = { entityType: "evidence_package", entityId: p.packageId }
       const signedPdf = await readBytes(p.signedFileId, version)
-      const frozenPdf = await readBytes(p.frozenFileId, version)
+      const frozenRead = await readFrozen(p.versionId, p.frozenFileId)
+      if (frozenRead.status !== "ok") return frozenRead.refusal
+      const frozenPdf = frozenRead.bytes
       const tsr = p.tsrFileId ? await readBytes(p.tsrFileId, pkg) : undefined
       const manifestBytes = new TextEncoder().encode(p.manifestJson)
       const orgName = await orgNameOf()
@@ -234,7 +320,6 @@ export function createEvidenceMethods(
       const p = JSON.parse(paramsJson || "{}") as {
         files: Array<{ fileId: string; parent: Parent }>
       }
-      const { sha256Hex } = await import("~/modules/signing/seal")
       const hashes: Record<string, string | null> = {}
       for (const f of p.files ?? []) {
         try {

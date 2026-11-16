@@ -11,17 +11,21 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql } from "~/db"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
+import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { env } from "~/lib/env"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
+import { frozenFileStorage, readFrozenVersionFile } from "~/modules/apps/sandbox/bridge/evidence"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { registerTranslatorConsumer } from "~/modules/attention/translator"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -39,6 +43,8 @@ const kernel = (table: string) => sql(`${schemaRef("kernel")}.${table}`)
 const app = (table: string) => sql(`${schemaRef("app_agreements")}.${table}`)
 
 let w: DoorWorld
+/** The first test's signed version, for the frozen-file read checks. */
+let sealed: { versionId: string; fileId: string; sha256: string } | undefined
 const capture = new CaptureProvider()
 let previousMail: EmailProvider
 let prevTsa: string | undefined
@@ -81,6 +87,18 @@ async function asPerson(userId: string, tool: string, params: unknown): Promise<
   } as never)) as Out
 }
 
+/** The frozen-file read on the admin's own row-secured transaction. */
+function readFrozen(ask: { orgId: string; versionId: string; fileId: string }) {
+  const actor: UserContext = {
+    actorType: "user",
+    userId: w.admin.userId,
+    orgId: w.orgId,
+    scopes: SCOPES,
+    dimensionGrants: {},
+  }
+  return withRlsContext(actor, (tx) => readFrozenVersionFile(tx, ask))
+}
+
 async function mailTo(email: string, template: string, after: number) {
   for (let i = 0; i < 250; i++) {
     const m = capture.sent.find((x, n) => n >= after && x.to === email && x.template === template)
@@ -106,9 +124,14 @@ beforeAll(async () => {
   const { failedApps } = await registerApps([descriptor() as never], w.orgId)
   expect(failedApps).toEqual([])
   await primeOrgApps(w.orgId, 0)
+  registerTranslatorConsumer()
+  // Production builds the files row policy from the installed catalog; this app is
+  // registered from its manifest, so the policy is built from the registry's parents.
+  await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
 }, 300_000)
 
 afterAll(async () => {
+  await rebuildFilesSelectPolicy()
   forgetOrgApps(w.orgId)
   await shutdownWorkerPool()
   await shutdownSandboxPool()
@@ -201,6 +224,145 @@ describe("a client's signature through the agreements app", () => {
       status: string
     }>
     expect(version?.status).toBe("signed")
+
+    // The system run seals it: the signed PDF, the seal and the evidence file exist,
+    // and the signer's copy went out by system mail.
+    const [pkg] = (await sql`
+      SELECT document_sha256, signed_pdf_file_id, seal, evidence_file_id, signer_copy_file_ids
+        FROM ${app("evidence_packages")} WHERE org_id = ${w.orgId} AND version_id = ${versionId}`) as unknown as Array<{
+      document_sha256: string
+      signed_pdf_file_id: string | null
+      seal: string | null
+      evidence_file_id: string | null
+      signer_copy_file_ids: Record<string, string> | null
+    }>
+    expect(pkg?.document_sha256).toBe(sha256)
+    expect(pkg?.signed_pdf_file_id).toBeTruthy()
+    expect(pkg?.seal).toBeTruthy()
+    expect(pkg?.evidence_file_id).toBeTruthy()
+    expect(Object.keys(pkg?.signer_copy_file_ids ?? {})).toContain(actionId)
+    await mailTo(w.clientA.email, "agreements.signed-copy", before)
+    const [frozen] = (await sql`
+      SELECT file_id FROM ${app("agreement_versions")} WHERE id = ${versionId}`) as unknown as Array<{
+      file_id: string
+    }>
+    sealed = { versionId, fileId: frozen?.file_id as string, sha256 }
+  }, 120_000)
+
+  it("the seal reads only the frozen file of the version it seals, and never reads storage for another file id", async () => {
+    if (!sealed) throw new Error("the first test did not seal a version")
+    const own = await readFrozen({
+      orgId: w.orgId,
+      versionId: sealed.versionId,
+      fileId: sealed.fileId,
+    })
+    expect(own.status).toBe("ok")
+
+    // Another version's frozen file, the version under another organization, a random id.
+    const other = await asPerson(w.admin.userId, "agreement_create", {
+      kind: "nda",
+      title: "Another",
+      company_id: w.companyA,
+      source: { body: { blocks: [{ type: "paragraph", text: "Another text." }] } },
+    })
+    const otherPrepared = await asPerson(w.admin.userId, "agreement_prepare", {
+      id: other.data?.agreement?.id as string,
+    })
+    const [otherVersion] = (await sql`
+      SELECT file_id FROM ${app("agreement_versions")}
+       WHERE id = ${otherPrepared.data?.version_id as string}`) as unknown as Array<{
+      file_id: string
+    }>
+    expect(otherVersion?.file_id).toBeTruthy()
+
+    const reads: string[] = []
+    const realRead = frozenFileStorage.read
+    frozenFileStorage.read = async (key, max) => {
+      reads.push(key)
+      return realRead(key, max)
+    }
+    try {
+      for (const ask of [
+        { orgId: w.orgId, versionId: sealed.versionId, fileId: otherVersion?.file_id as string },
+        { orgId: w.otherOrgId, versionId: sealed.versionId, fileId: sealed.fileId },
+        { orgId: w.orgId, versionId: sealed.versionId, fileId: crypto.randomUUID() },
+        { orgId: w.orgId, versionId: crypto.randomUUID(), fileId: sealed.fileId },
+        { orgId: w.orgId, versionId: sealed.versionId, fileId: "not-an-id" },
+      ]) {
+        const out = await readFrozen(ask)
+        expect(out.status).toBe("refused")
+        expect(out.status === "refused" && out.code).toBe("NOT_THIS_VERSION_FILE")
+      }
+      expect(reads).toEqual([])
+    } finally {
+      frozenFileStorage.read = realRead
+    }
+  }, 120_000)
+
+  it("bytes in storage that are not the fingerprinted ones are refused at the seal and open the mismatch item", async () => {
+    if (!sealed) throw new Error("the first test did not seal a version")
+    const realRead = frozenFileStorage.read
+    frozenFileStorage.read = async (key, max) => {
+      const bytes = await realRead(key, max)
+      const swapped = new Uint8Array(bytes)
+      swapped[swapped.length - 2] = (swapped[swapped.length - 2] ?? 0) ^ 0xff
+      return swapped
+    }
+    try {
+      const direct = await readFrozen({
+        orgId: w.orgId,
+        versionId: sealed.versionId,
+        fileId: sealed.fileId,
+      })
+      expect(direct.status === "refused" && direct.code).toBe("DOCUMENT_CHANGED")
+
+      // A full signing over swapped bytes: no evidence package, one mismatch item.
+      const created = await asPerson(w.admin.userId, "agreement_create", {
+        kind: "nda",
+        title: "Swapped",
+        company_id: w.companyA,
+        source: { body: { blocks: [{ type: "paragraph", text: "Swapped text." }] } },
+      })
+      const prepared = await asPerson(w.admin.userId, "agreement_prepare", {
+        id: created.data?.agreement?.id as string,
+      })
+      const versionId = prepared.data?.version_id as string
+      const before = capture.sent.length
+      const sent = await asPerson(w.admin.userId, "agreement_send", {
+        version_id: versionId,
+        sha256: prepared.data?.sha256 as string,
+        order: "any",
+        expires_in_days: 7,
+        signers: [{ contact_id: w.clientA.contactId }],
+      })
+      expect(sent.data?.status).toBe("ok")
+      const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+      const h = { "x-bun-socket-ip": "198.51.100.79" }
+      await call("open", { t: token }, h)
+      await call("document", { t: token, format: "blocks" }, h)
+      await clearRedisPatterns(["ca:code:gap:*"])
+      const codeAt = capture.sent.length
+      await call("code", { t: token }, h)
+      const code = codeOf(await mailTo(w.clientA.email, "client-action.code", codeAt))
+      const verified = await call("verify", { t: token, code, name: w.clientA.name }, h)
+      const { proof } = (await verified.json()) as { proof: string }
+      expect(
+        (await call("decide", { t: token, proof, decision: "sign", typed_name: w.clientA.name }, h))
+          .status,
+      ).toBe(200)
+      await drainOutbox()
+
+      const pkgs = await sql`
+        SELECT 1 FROM ${app("evidence_packages")} WHERE version_id = ${versionId}`
+      expect(pkgs).toHaveLength(0)
+      const items = await sql`
+        SELECT 1 FROM ${kernel("attention_events")}
+         WHERE org_id = ${w.orgId} AND kind = 'agreements:evidence.mismatch'
+           AND user_id = ${w.admin.userId}`
+      expect(items).toHaveLength(1)
+    } finally {
+      frozenFileStorage.read = realRead
+    }
   }, 120_000)
 
   it("with one signer past the code and one not, sign refuses for the unverified one and the agreement never reaches signed", async () => {

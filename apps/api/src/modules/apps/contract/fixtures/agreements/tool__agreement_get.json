@@ -1,38 +1,38 @@
 {
   "entry": "tool:agreement_get",
   "params": {
-    "id": "5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3"
+    "id": "fc2c0640-fc62-410d-a9e1-d2613f6b0b93"
   },
   "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["agreements", "5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3"],
-      "reply": "{\"id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 17:46:58.134547+00\",\"updated_at\":\"2026-11-16 17:46:58.309713+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"550adc21-bd6d-4f79-899d-ae3608ad9e9b\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null}"
+      "args": ["agreements", "fc2c0640-fc62-410d-a9e1-d2613f6b0b93"],
+      "reply": "{\"id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.552232+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"f766d71a-72d3-49fe-aa95-1dfcc74254da\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
     },
     {
       "method": "db_findMany",
       "args": [
         "agreement_versions",
-        "{\"where\":{\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\"},\"orderBy\":{\"number\":\"asc\"},\"limit\":200}"
+        "{\"where\":{\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\"},\"orderBy\":{\"number\":\"asc\"},\"limit\":200}"
       ],
-      "reply": "[{\"id\":\"899ab455-14da-41b3-8242-2e449243a17a\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 17:46:58.543699+00\",\"updated_at\":\"2026-11-16 17:46:58.716814+00\",\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\",\"number\":1,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"data\":{}},\"source_text\":\"Mutual non-disclosure agreement\\nEach party keeps the other's information confidential.\",\"file_id\":\"3677b6f3-a314-43a9-a676-fe636d7fe267\",\"sha256\":\"2056094c92a2de5e68c615db0068c13710a2a46dd181fcd3869af2801018bc94\",\"byte_size\":14373,\"page_count\":1,\"frozen_at\":\"2026-01-01 00:00:00+00\",\"frozen_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"source_kind\":\"generated\",\"source_text_origin\":\"rendered\",\"pages\":null,\"pages_sha256\":null,\"file_report\":null,\"status\":\"frozen\",\"change_note\":null,\"knowledge_document_id\":null,\"scan_state\":\"not_run\"}]"
+      "reply": "[{\"id\":\"1aa33e7c-6294-4104-a7fd-244c0d745576\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.73016+00\",\"updated_at\":\"2026-11-16 23:57:56.839016+00\",\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"number\":1,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"data\":{}},\"source_text\":\"Mutual non-disclosure agreement\\nEach party keeps the other's information confidential.\",\"file_id\":\"38fd6cd5-b0a3-4ad9-a324-0613226b2012\",\"sha256\":\"ba6634070efa7df7848072eb9ed893751bf65b155fddef1ecf64988b3e8ad90a\",\"byte_size\":14373,\"page_count\":1,\"frozen_at\":\"2026-01-01 00:00:00+00\",\"frozen_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"source_kind\":\"generated\",\"source_text_origin\":\"rendered\",\"pages\":null,\"pages_sha256\":null,\"file_report\":null,\"status\":\"frozen\",\"change_note\":null,\"knowledge_document_id\":null,\"scan_state\":\"not_run\"}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "agreement_drafts",
-        "{\"where\":{\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\"},\"limit\":1}"
+        "{\"where\":{\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\"},\"limit\":1}"
       ],
-      "reply": "[{\"id\":\"e98d6123-680a-4111-8902-0f27ee0cc17c\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 17:46:58.134547+00\",\"updated_at\":\"2026-11-16 17:46:58.730172+00\",\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\",\"next_number\":2,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"data\":{}},\"lock_version\":1,\"updated_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"updated_by_agent_id\":null,\"upload_file_id\":null}]"
+      "reply": "[{\"id\":\"8eb7bbbe-e657-418e-b0a9-0c721e914e76\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.853359+00\",\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"next_number\":2,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"data\":{}},\"lock_version\":1,\"updated_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"updated_by_agent_id\":null,\"upload_file_id\":null,\"upload_state\":null}]"
     },
     {
       "method": "db_findMany",
       "args": [
         "agreement_shares",
-        "{\"where\":{\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\"},\"limit\":500}"
+        "{\"where\":{\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\"},\"limit\":500}"
       ],
-      "reply": "[{\"id\":\"54ab6083-08a7-4ad5-b773-074b09de31a6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 17:46:58.134547+00\",\"updated_at\":\"2026-11-16 17:46:58.134547+00\",\"agreement_id\":\"5665e2ce-8ac5-4d0d-aa5c-6d65fd1658c3\",\"user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"role\":\"editor\",\"created_by\":\"00000000-0000-4000-8000-00000000c0df\",\"removed_at\":null}]"
+      "reply": "[{\"id\":\"85e76601-ce9e-4838-8f9e-4b40771fcb5e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.383066+00\",\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"role\":\"editor\",\"created_by\":\"00000000-0000-4000-8000-00000000c0df\",\"removed_at\":null}]"
     }
   ]
 }

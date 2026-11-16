@@ -125,8 +125,8 @@ afterAll(async () => {
   await releaseTestLock()
 })
 
-describe("a client's signature on an agreement closed to the organization", () => {
-  it("is recorded as a signature event and moves the agreement to signed", async () => {
+describe("a client's signature through the agreements app", () => {
+  it("on an agreement closed to the organization, is recorded and moves the agreement to signed", async () => {
     const created = await asPerson(w.admin.userId, "agreement_create", {
       kind: "nda",
       title: "Closed NDA",
@@ -201,5 +201,80 @@ describe("a client's signature on an agreement closed to the organization", () =
       status: string
     }>
     expect(version?.status).toBe("signed")
+  }, 120_000)
+
+  it("with one signer past the code and one not, sign refuses for the unverified one and the agreement never reaches signed", async () => {
+    const created = await asPerson(w.admin.userId, "agreement_create", {
+      kind: "nda",
+      title: "Two signers",
+      company_id: w.companyA,
+      source: { body: { blocks: [{ type: "paragraph", text: "Both parties agree." }] } },
+    })
+    const agreementId = created.data?.agreement?.id as string
+    const prepared = await asPerson(w.admin.userId, "agreement_prepare", { id: agreementId })
+    const versionId = prepared.data?.version_id as string
+    const before = capture.sent.length
+    const sent = await asPerson(w.admin.userId, "agreement_send", {
+      version_id: versionId,
+      sha256: prepared.data?.sha256 as string,
+      order: "any",
+      expires_in_days: 7,
+      signers: [{ contact_id: w.clientA.contactId }, { contact_id: w.clientA2.contactId }],
+    })
+    expect(sent.data?.status).toBe("ok")
+    const tokenA = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+    const tokenB = tokenOf(await mailTo(w.clientA2.email, "client-action.link", before))
+    const h = { "x-bun-socket-ip": "198.51.100.78" }
+
+    // Signer A proves the code and signs.
+    await call("open", { t: tokenA }, h)
+    await call("document", { t: tokenA, format: "blocks" }, h)
+    await clearRedisPatterns(["ca:code:gap:*"])
+    const codeAt = capture.sent.length
+    await call("code", { t: tokenA }, h)
+    const code = codeOf(await mailTo(w.clientA.email, "client-action.code", codeAt))
+    const verified = await call("verify", { t: tokenA, code, name: w.clientA.name }, h)
+    const { proof } = (await verified.json()) as { proof: string }
+    expect(
+      (await call("decide", { t: tokenA, proof, decision: "sign", typed_name: w.clientA.name }, h))
+        .status,
+    ).toBe(200)
+
+    // Signer B's link reads, but signs neither with no proof, nor a guessed one, nor A's.
+    expect((await call("open", { t: tokenB }, h)).status).toBe(200)
+    expect((await call("document", { t: tokenB, format: "blocks" }, h)).status).toBe(200)
+    for (const p of [undefined, "guessed-proof", proof]) {
+      const r = await call(
+        "decide",
+        { t: tokenB, ...(p ? { proof: p } : {}), decision: "sign", typed_name: w.clientA2.name },
+        h,
+      )
+      expect(r.status).toBeGreaterThanOrEqual(400)
+    }
+    await drainOutbox()
+    const [mid] = (await sql`
+      SELECT status FROM ${app("agreements")} WHERE id = ${agreementId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(mid?.status).toBe("partly_signed")
+
+    // The same link may decline: the agreement closes as declined, never signed.
+    expect(
+      (await call("decide", { t: tokenB, decision: "decline", reason: "Not me" }, h)).status,
+    ).toBe(200)
+    await drainOutbox()
+    const [row] = (await sql`
+      SELECT status FROM ${app("agreements")} WHERE id = ${agreementId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(row?.status).toBe("declined")
+    const events = await sql`
+      SELECT 1 FROM ${app("signature_events")} WHERE version_id = ${versionId}`
+    expect(events).toHaveLength(1)
+    const [version] = (await sql`
+      SELECT status FROM ${app("agreement_versions")} WHERE id = ${versionId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(version?.status).not.toBe("signed")
   }, 120_000)
 })

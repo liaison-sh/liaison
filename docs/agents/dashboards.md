@@ -285,6 +285,8 @@ A table holds rows that people and agents write, such as incoming batches or rep
 - The bin at the end of a row deletes it, after a confirm. The history keeps the row, and **Undo** brings it back.
 - **Last change** says who changed the row and when ("@logistics · 4 min ago"). Click it to open the row's history: each change, who made it, and **Undo** on a change that can still be undone.
 - If someone changed the row since you opened it, your change is not saved: the row reloads and says "Changed by Nico just now".
+- A months column shows one sub-column per month, labelled by the month's name. Click a month to type its number; empty it to clear that month. A month with no value shows **to fill** ([Plan by month](dashboard-tables.md#plan-by-month)).
+- A column with a **Highlight** draws the values it picks (other than 0, or below 0) in bold, in the accent colour.
 - A block may mark rows not changed for some days as **To confirm**.
 - A record your access does not let you read shows as **Linked record**.
 - Rows come 50 a page, with **Previous** and **Next**. Click a column's name to sort by it, again to reverse.

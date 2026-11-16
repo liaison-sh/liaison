@@ -788,4 +788,22 @@ describe("RichEditor: autofocus", () => {
     editor.commands.insertContent("Modified")
     expect(field.textContent).toBe("Modified")
   })
+
+  // tiptap's focus command also focuses the view again a frame later
+  // (requestAnimationFrame), and that focus writes the editor's caret, the
+  // end, over the page's selection. A selection the browser has not reported
+  // yet (Playwright's fill selects the contents, then types) was collapsed, and
+  // the typing landed after the old text (CI, messages-send-receive Flow D/E).
+  it("is focused as it mounts, and no later frame moves the page's selection", async () => {
+    const { field, editor } = mount({ value: "Original text", autofocus: true, preset: "minimal" })
+    expect(editor.view.hasFocus()).toBe(true)
+    const range = document.createRange()
+    range.selectNodeContents(field)
+    const selection = window.getSelection()!
+    selection.removeAllRanges()
+    selection.addRange(range)
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+    expect(selection.isCollapsed).toBe(false)
+    expect(selection.toString()).toBe("Original text")
+  })
 })

@@ -7131,6 +7131,7 @@
         "checkbox": "Case à cocher",
         "person": "Personne",
         "link": "Lien",
+        "months": "Mois",
         "lookup": "Lu en direct d'une app"
       },
       "lookupColumn": "Lu en direct depuis {{tool}}, non modifiable",
@@ -7168,7 +7169,21 @@
       "openLink": "Ouvrir {{label}}",
       "addTask": "Ajouter une tâche",
       "recordChanged": "Cette tâche a changé entre-temps. Rechargez et réessayez.",
-      "recordLastChange": "Tâche modifiée {{when}}"
+      "recordLastChange": "Tâche modifiée {{when}}",
+      "toFill": "à remplir",
+      "toFillHint": "Pas encore de valeur pour {{month}}",
+      "horizon": "Mois affichés",
+      "startMonth": "Commence",
+      "startThis": "Ce mois-ci",
+      "startNext": "Le mois prochain",
+      "emphasis": "Mettre en avant",
+      "emphasisNone": "Rien",
+      "emphasisNonzero": "Valeurs autres que 0",
+      "emphasisNegative": "Valeurs négatives",
+      "options": "Options",
+      "monthsTag": "{{count}} mois",
+      "monthsFromNext": "à partir du mois prochain",
+      "editMonth": "Modifier {{column}}, {{month}}"
     }
   },
   "appBuilder": {

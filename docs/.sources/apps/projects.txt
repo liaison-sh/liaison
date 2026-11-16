@@ -279,3 +279,4 @@ A line's amount is its quantity rounded to hundredths, then priced -> apps/api/s
 A retainer card's time lines carry no amount; its note names fee, included hours, rate, used -> apps/api/src/apps/projects/service/reconcile-card.ts:96 ; apps/api/src/apps/projects/handlers.ts:1666
 A month the schedule's run bills has no Create and says so -> apps/api/src/apps/projects/handlers.ts:1674
 A month's margin counts an invoice in the month of its service period, a credit note with its invoice -> bundled-apps/invoicing/src/tools/project-invoiced-get.ts:150
+A project refuses a months field -> apps/api/src/apps/projects/service/create-project.ts:505

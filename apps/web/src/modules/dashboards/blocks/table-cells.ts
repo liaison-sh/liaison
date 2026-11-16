@@ -6,6 +6,7 @@
 // Pure: the grid, the add form and the history panel all read them.
 import {
   type LinkCell,
+  type MonthsCell,
   RESERVED_COLUMN_KEYS,
   type TableCells,
   type TableChange,
@@ -56,13 +57,15 @@ export function deadlineState(value: unknown, today: string): DeadlineState | nu
 export function columnBands(
   columns: TableColumn[],
   readThrough: (key: string) => boolean,
+  /** Grid columns a column takes (a months column one per month); 1 by default. */
+  width: (c: TableColumn) => number = () => 1,
 ): Array<{ own: boolean; span: number }> {
   const out: Array<{ own: boolean; span: number }> = []
   for (const c of columns) {
     const own = !readThrough(c.key)
     const last = out[out.length - 1]
-    if (last && last.own === own) last.span++
-    else out.push({ own, span: 1 })
+    if (last && last.own === own) last.span += width(c)
+    else out.push({ own, span: width(c) })
   }
   return out
 }
@@ -104,6 +107,16 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
       return typeof value === "string"
         ? (o.personName?.(value) ?? o.t("kernel.dashboards.tables.unknownPerson"))
         : String(value)
+    case "months":
+      return isMonthsCell(value)
+        ? Object.keys(value)
+            .sort()
+            .map(
+              (m) =>
+                `${monthLabel(m, o.locale, true)}: ${formatValue(value[m]!, { format: "number", locale: o.locale })}`,
+            )
+            .join(", ")
+        : String(value)
     case "link":
       // A label the reader may not resolve comes back empty: the record stays, unnamed.
       return isLinkCell(value)
@@ -114,6 +127,51 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
     default:
       return typeof value === "string" ? value : JSON.stringify(value)
   }
+}
+
+export function isMonthsCell(v: unknown): v is MonthsCell {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    Object.values(v).every((n) => typeof n === "number")
+  )
+}
+
+/** The months a months column shows (its window as read), in order. */
+export function columnMonths(column: TableColumn): string[] {
+  return column.type === "months" ? (column.months ?? []) : []
+}
+
+/** One month of a months cell: its number, or undefined when it is still to fill (0 is a value). */
+export function monthValue(cell: unknown, month: string): number | undefined {
+  return isMonthsCell(cell) ? cell[month] : undefined
+}
+
+/** "2026-11" as the month's short name ("Nov"), with its year when `withYear` ("Nov 2026"). */
+export function monthLabel(month: string, locale: string, withYear = false): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(month)
+  if (!m) return month
+  return new Intl.DateTimeFormat(locale, {
+    month: "short",
+    ...(withYear ? { year: "numeric" } : {}),
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1)))
+}
+
+/** One month of a months column, edited as a number column of its own. */
+export function monthColumn(column: TableColumn, month: string, locale: string): TableColumn {
+  return {
+    key: column.key,
+    label: `${column.label} · ${monthLabel(month, locale, true)}`,
+    type: "number",
+  }
+}
+
+/** Does this value stand out under the column's emphasis (bold, accent colour)? */
+export function isEmphasized(column: TableColumn, value: unknown): boolean {
+  if (!column.emphasis || typeof value !== "number" || !Number.isFinite(value)) return false
+  return column.emphasis === "nonzero" ? value !== 0 : value < 0
 }
 
 /** "2026-11-18" as the viewer's short date ("Nov 18, 2026"); anything else as it is. */

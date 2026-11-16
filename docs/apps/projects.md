@@ -116,7 +116,7 @@ The filter matches the value a task shows, including a value inherited from its 
 
 ## Add fields to a project's tasks
 
-A project can declare up to 40 task fields: typed attributes every task of the project can carry, such as a "Problem type" choice, a serial number or an amount. A field has a key, a label and a type: text, number, amount (with its currency), date, choice, choices, checkbox, person or link. A field can be required.
+A project can declare up to 40 task fields: typed attributes every task of the project can carry, such as a "Problem type" choice, a serial number or an amount. A field has a key, a label and a type: text, number, amount (with its currency), date, choice, choices, checkbox, person or link. A field can be required. A dashboard table's `months` column has no task field counterpart: a project refuses it.
 
 To set them yourself, open the project and click **Fields** in its toolbar (on a phone, in the project menu). In **Task fields**, add a field with its label and type, tick **Required**, reorder fields with the arrows, edit a choice field's **Options** or remove a field, then click **Save fields**. Renaming an option renames it in every task that holds it. When the tasks' values stop a change, the dialog says which field and options are in the way.
 

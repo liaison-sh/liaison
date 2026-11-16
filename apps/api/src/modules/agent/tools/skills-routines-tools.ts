@@ -5985,7 +5985,7 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. Gated: it lands as a pending approval, never as an active skill. Read the catalog with kernel__list_skills first, since a skill that already covers the task is refused and must be updated instead.",
-    searchKeywords: ["compétence", "procédure", "playbook", "créer"],
+    searchKeywords: ["compétence", "procédure", "playbook", "créer", "retenir", "remember", "méthode"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,
@@ -6043,7 +6043,8 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Update a skill's name, description, body, requiredScopes, domain or autoAttach. `id` is the skill UUID from kernel__list_skills or kernel__skill_read. Gated: the edit lands as a pending approval, so report it as pending, never as already applied.",
-    searchKeywords: ["compétence", "modifier"],
+    // "Remember how we ship" is a change to the skill covering shipping, never a memory.
+    searchKeywords: ["compétence", "modifier", "retenir", "remember", "méthode", "procédure"],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,

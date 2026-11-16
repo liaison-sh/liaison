@@ -93,6 +93,8 @@ Click a row to open its detail. Each detail has **Open in Shopify ↗** to jump 
 
 To change anything in the store (a refund, a fulfillment, a stock count, a discount), ask an agent. Its change waits for your approval, see below.
 
+A fulfillment is checked against Shopify again when it is approved. If the parcel was already fulfilled in the meantime with the same tracking number (by Boxtal, by another approval or by hand in Shopify), the approval completes without sending anything a second time, and the customer gets no second email. If the order changed in another way, the approval fails with the reason, for example a fulfillment order that is now closed, and nothing is sent. An agent cannot stage a fulfillment the order already has.
+
 ## Map Liaison users to Shopify staff
 
 **Settings › Shopify › Diagnostics and mappings** (needs `shopify:admin:identity-map`) shows **Sync diagnostics** and **Identity mappings**.

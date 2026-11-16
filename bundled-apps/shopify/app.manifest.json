@@ -1329,11 +1329,12 @@
           "id": {
             "type": "string",
             "description": "The order: its gid (gid://shopify/Order/<id>), its numeric id, or its order number or name (1097, #1097). A number that is not an order id is read as the order number."
+          },
+          "fulfillmentOrderId": {
+            "type": "string",
+            "description": "Instead of `id`: a fulfillment order gid (gid://shopify/FulfillmentOrder/<id>); the order it belongs to is read."
           }
-        },
-        "required": [
-          "id"
-        ]
+        }
       },
       "readOnly": true
     },
@@ -2418,7 +2419,8 @@
       "summarizerContext": {
         "tool": "orders_get",
         "params": {
-          "id": "orderId"
+          "id": "orderId",
+          "fulfillmentOrderId": "fulfillment.lineItemsByFulfillmentOrder.0.fulfillmentOrderId"
         }
       },
       "gated": true,

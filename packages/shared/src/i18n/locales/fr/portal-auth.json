@@ -15,5 +15,13 @@
     "totpPrompt": "Saisissez le code de votre application d'authentification.",
     "totpInvalid": "Ce code n'a pas fonctionné. Réessayez.",
     "unavailable": "L'espace client n'est pas disponible pour le moment."
+  },
+  "reply": {
+    "subject": "Une réponse à votre demande : {{subject}}",
+    "eyebrow": "Espace client",
+    "heading": "Vous avez une réponse",
+    "body": "Vous avez une réponse à {{subject}}. Connectez-vous pour la lire.",
+    "cta": "Ouvrir votre espace client",
+    "footer": "Vous recevez cet e-mail parce que vous avez envoyé cette demande depuis l'espace client de {{org}}."
   }
 }

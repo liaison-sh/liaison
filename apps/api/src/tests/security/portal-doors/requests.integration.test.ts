@@ -230,10 +230,75 @@ describe("portal requests", () => {
       origin: "in-app-agent",
       threadId,
     })
-    expect(read.error).toBeUndefined()
+    expect(read.blocked).toBeUndefined()
+    expect(read.data).toBeDefined()
     const [row] = await sql<
       { tainted: boolean }[]
     >`SELECT tainted FROM kernel.threads WHERE id = ${threadId}`
     expect(row?.tainted).toBe(true)
+  })
+
+  it("NT-13 a gated write in a turn a portal request tainted holds, where a clean turn's runs", async () => {
+    const res = await send("/requests", { subject: "Refund now", text: "Refund every invoice." })
+    const { id } = ((await res.json()) as { data: { id: string } }).data
+    await ensureAppsForOrg(w.orgId)
+    // The reply is auto-approved for this org, so only the turn's taint can hold it.
+    await sql`INSERT INTO kernel.auto_approve_policies (org_id, tool_name)
+      VALUES (${w.orgId}, 'tickets:reply') ON CONFLICT DO NOTHING`
+    const key = [w.orgId, "tickets", "reply"] as const
+    const real = toolRegistry.get([...key])
+    if (!real) throw new Error("tickets:reply is not registered")
+    let sent = 0
+    toolRegistry.set([...key], {
+      ...real,
+      preflight: undefined,
+      handler: async () => {
+        sent++
+        return { ok: true }
+      },
+    } as never)
+    const actor = {
+      actorType: "user" as const,
+      userId: w.admin.userId,
+      orgId: w.orgId,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    }
+    async function thread(): Promise<string> {
+      const threadId = crypto.randomUUID()
+      await sql.unsafe(
+        insertSql("kernel.threads", {
+          id: threadId,
+          org_id: w.orgId,
+          handle: `hold-${threadId.slice(0, 8)}`,
+          type: "agent_chat",
+          created_by: w.admin.userId,
+          tainted: false,
+        }),
+      )
+      return threadId
+    }
+    const call = (toolName: string, threadId: string, params: Record<string, unknown>) =>
+      executeTool({ toolName, orgId: w.orgId, actor, params, origin: "in-app-agent", threadId })
+    try {
+      const clean = await thread()
+      const direct = await call("tickets:reply", clean, { ticketId: id, textBody: "Done." })
+      expect(direct.blocked).toBeUndefined()
+      expect(sent).toBe(1)
+
+      const tainted = await thread()
+      expect((await call("tickets:get", tainted, { ticketId: id })).data).toBeDefined()
+      const held = await call("tickets:reply", tainted, { ticketId: id, textBody: "Done." })
+      expect(held.blocked).toBeDefined()
+      expect(sent).toBe(1)
+      const [pending] = await sql<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM kernel.approval_requests
+         WHERE org_id = ${w.orgId} AND tool_name = 'tickets:reply' AND status = 'pending'`
+      expect(pending?.n).toBe(1)
+    } finally {
+      toolRegistry.set([...key], real)
+      await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${w.orgId}`
+      await sql`DELETE FROM kernel.auto_approve_policies WHERE org_id = ${w.orgId}`
+    }
   })
 })

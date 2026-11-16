@@ -175,6 +175,54 @@ export async function requestPortalSignIn(orgSlug: string, email: string): Promi
   log.info({ userId: person.id, orgId: org.id }, "Portal sign-in link issued")
 }
 
+/**
+ * Tells a client a reply waits on their portal request: one system mail naming the
+ * request's subject and nothing of the reply, with a link to the portal. The reply
+ * itself is read only after sign-in. Nothing is sent when the address is not an
+ * open portal person of the org (the company closed, the access ended), or while
+ * the mail provider is refusing.
+ */
+export async function sendPortalReplyNotice(input: {
+  orgId: string
+  requesterEmail: string
+  subject: string
+}): Promise<void> {
+  const person = await openPortalPerson(input.orgId, { email: input.requesterEmail })
+  if (!person) return
+  if (await emailOutageHoldsBackSend()) return
+  const [org] = await withSystemDb("portal-reply-notice-org", (db) =>
+    db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, input.orgId))
+      .limit(1),
+  )
+  if (!org) return
+  const base = await orgAppBaseUrl(input.orgId)
+  const locale = toShippedLocale(person.locale) ?? "en"
+  const t = (key: string) =>
+    serverT(locale, `portal-auth.reply.${key}`, { org: org.name, subject: input.subject })
+  const subject = t("subject")
+  const { html, text } = renderBrandedEmail({
+    subject,
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
+    paragraphs: [t("body")],
+    cta: { label: t("cta"), href: `${base}/portal` },
+    footer: [t("footer")],
+  })
+  const emailConfig = await getOrgEmailConfig(input.orgId)
+  await sendSystemEmailObserved({
+    to: person.email,
+    from: emailConfig.from,
+    replyTo: emailConfig.replyTo,
+    subject,
+    html,
+    text,
+    template: "portal.request-reply",
+  })
+}
+
 export type PortalSignInResult =
   | TokenPair
   | { totpRequired: true; challengeToken: string }

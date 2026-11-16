@@ -433,7 +433,8 @@ describe("portal doors: sign-in and token classes", () => {
     const before = await createPortalSession(w.clientA.userId, w.orgId)
     await sql`UPDATE kernel.companies SET portal_require_totp = true WHERE id = ${w.companyA}`
     try {
-      // A person with no second factor of their own gets no token from the link.
+      // A person with no second factor of their own gets no session from the link,
+      // only the enrolment token that opens the second-factor setup.
       await clearSends()
       capture.sent = []
       await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientA.email })
@@ -442,7 +443,7 @@ describe("portal doors: sign-in and token classes", () => {
       expect(cookieOf(plain)).toBeNull()
       const plainBody = await plain.text()
       expect(plainBody).not.toContain("accessToken")
-      expect(plainBody).toContain('"totpRequired":true')
+      expect(plainBody).toContain('"enrolmentRequired":true')
       expect(await createPortalSession(w.clientA.userId, w.orgId).catch((e) => e)).toBeInstanceOf(
         Error,
       )

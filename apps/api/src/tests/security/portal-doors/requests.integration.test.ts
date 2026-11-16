@@ -273,8 +273,13 @@ describe("portal requests", () => {
     const { id } = ((await res.json()) as { data: { id: string } }).data
     await ensureAppsForOrg(w.orgId)
     // The reply is auto-approved for this org, so only the turn's taint can hold it.
-    await sql`INSERT INTO kernel.auto_approve_policies (org_id, tool_name)
-      VALUES (${w.orgId}, 'tickets:reply') ON CONFLICT DO NOTHING`
+    await sql.unsafe(
+      insertSql(
+        "kernel.auto_approve_policies",
+        { org_id: w.orgId, tool_name: "tickets:reply" },
+        { onConflictDoNothing: true },
+      ),
+    )
     const key = [w.orgId, "tickets", "reply"] as const
     const real = toolRegistry.get([...key])
     if (!real) throw new Error("tickets:reply is not registered")

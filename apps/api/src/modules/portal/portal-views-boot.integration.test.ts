@@ -8,6 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { ensureInstalledAppPortalViews } from "~/infra/boot-phase10"
 import { registerApps, teardownAppRegistrations } from "~/modules/apps/runtime"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import invoicingManifest from "../../../../../bundled-apps/invoicing/app.manifest.json"
 
@@ -35,8 +36,7 @@ async function viewdef(name: string): Promise<string | null> {
 beforeAll(async () => {
   await acquireTestLock()
   for (const id of orgs) {
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${id}, 'Maison Vues', ${`portal-views-${id.slice(0, 8)}`})`
+    await seedOrgRow({ id, name: "Maison Vues", slug: `portal-views-${id.slice(0, 8)}` })
   }
   const { failedApps } = await registerApps([invoicing()], orgs[0] as string, { skipOrgRows: true })
   expect(failedApps).toEqual([])

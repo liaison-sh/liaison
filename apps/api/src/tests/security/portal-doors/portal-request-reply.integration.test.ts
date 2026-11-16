@@ -11,6 +11,11 @@ import { sql } from "~/db"
 import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { createPortalSession } from "~/modules/auth/auth"
+import { seedContext } from "~/seed/context"
+import {
+  ensureTicketMailboxAccount,
+  ensureTicketMailboxInbox,
+} from "~/seed/factories/support/inboxes"
 import { asOrgMember } from "~/tests/helpers/org-caller"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -62,18 +67,22 @@ beforeAll(async () => {
     WHERE id = ${w.orgId}`
   await insertShare(w, { company_id: w.companyA, kind: "requests" })
   // The org has a mailbox inbox for new tickets, so the request's ticket points at it.
-  const [acct] = await sql<{ id: string }[]>`
-    INSERT INTO kernel.connected_accounts
-      (id, org_id, app_name, connection_name, owner_type, owner_id, provider_type, identifier, status, created_by, access_token_encrypted)
-    VALUES (gen_random_uuid(), ${w.orgId}, 'tickets', 'gmail', 'org', null, 'oauth2', 'support@maison-portal.test', 'active', ${w.admin.userId}, 'enc')
-    RETURNING id`
-  accountId = acct!.id
-  const [inbox] = await sql<{ id: string }[]>`
-    INSERT INTO app_tickets.inboxes
-      (id, org_id, kind, connected_account_id, name, email_address, from_display_name, is_default_for_create, created_at, updated_at)
-    VALUES (gen_random_uuid(), ${w.orgId}, 'mailbox', ${accountId}, 'Support', 'support@maison-portal.test', 'Support', true, now(), now())
-    RETURNING id`
-  inboxId = inbox!.id
+  const seed = seedContext({ orgId: w.orgId, now: new Date() })
+  accountId = await ensureTicketMailboxAccount(seed, {
+    key: "portal-reply",
+    emailAddress: "support@maison-portal.test",
+    createdBy: w.admin.userId,
+  })
+  inboxId = (
+    await ensureTicketMailboxInbox(seed, {
+      key: "portal-reply",
+      name: "Support",
+      emailAddress: "support@maison-portal.test",
+      fromDisplayName: "Support",
+      connectedAccountId: accountId,
+      isDefault: { adminUserId: w.admin.userId },
+    })
+  ).id
   previous = getSystemEmailProvider()
   setSystemEmailProvider(capture)
 }, 180_000)

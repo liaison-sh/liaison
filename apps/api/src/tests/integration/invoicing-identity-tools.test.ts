@@ -219,8 +219,10 @@ describe("invoicing identity tools (real Postgres, CEO scopes)", () => {
 
     issuerId = randomUUID()
     await sql`INSERT INTO app_invoicing.issuer_profiles
-      (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, shopify_shop_id)
-      VALUES (${issuerId}, ${ORG}, 'Identity Issuer SAS', 'FR', 'FR68900000001', '1 rue Test, 75001 Paris', 'EUR', 'fr', ${SHOP})`
+      (id, org_id, legal_name, country, vat_id, address, default_currency, default_language, shopify_shop_id,
+       siren, address_line1, postcode, city, country_code)
+      VALUES (${issuerId}, ${ORG}, 'Identity Issuer SAS', 'FR', 'FR68900000001', '1 rue Test, 75001 Paris', 'EUR', 'fr', ${SHOP},
+       '900000001', '1 rue Test', '75001', 'Paris', 'FR')`
     await sql`INSERT INTO app_invoicing.einvoicing_settings (org_id, gate_mode, gate_mode_source)
       VALUES (${ORG}, 'enforce', 'config')`
     // The S4b counterparty was invoiced before under its own name.

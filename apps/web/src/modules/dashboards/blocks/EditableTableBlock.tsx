@@ -51,6 +51,7 @@ import {
 import { backingName, isUnknownActor } from "../table-backing"
 import { tableRevision } from "../tables-store"
 import { CellEditor } from "./CellEditor"
+import { formatValue } from "./format"
 import { RowHistoryPanel } from "./RowHistoryPanel"
 import { TableConfirmDialog } from "./TableConfirmDialog"
 import {
@@ -58,10 +59,15 @@ import {
   cellText,
   choiceColor,
   columnBands,
+  columnMonths,
   deadlineState,
+  isEmphasized,
   isEmptyCell,
   isLinkCell,
   isStale,
+  monthColumn,
+  monthLabel,
+  monthValue,
   parseCellInput,
   relativeTime,
   rowLabel,
@@ -124,6 +130,8 @@ type Status = "loading" | "ready" | "error"
 interface Editing {
   rowId: string
   key: string
+  /** A months column: the month being edited. */
+  month?: string
 }
 
 export const EditableTableBlock: Component<EditableTableBlockProps> = (props) => {
@@ -189,7 +197,12 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const all = table()?.columns ?? []
     const b = backing()
     const own = b ? all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title") : all
-    return keepUnchanged(prev, own, (c) => c.key)
+    // A months column is typed month by month in the grid, once the row exists.
+    return keepUnchanged(
+      prev,
+      own.filter((c) => c.type !== "months"),
+      (c) => c.key,
+    )
   }, [])
   const textOpts = () => ({ locale: i18n.locale(), personName, t: i18n.t })
   const cursor = () => cursors()[cursors().length - 1] ?? null
@@ -397,6 +410,44 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     }
   }
 
+  /** Saves one month of a months cell: only that month changes (an empty input clears it). */
+  async function saveMonth(
+    row: TableRow,
+    column: TableColumn,
+    month: string,
+    raw: unknown,
+  ): Promise<void> {
+    setEditing(null)
+    const parsed = parseCellInput(monthColumn(column, month, i18n.locale()), raw)
+    if (!parsed.ok) {
+      setRowNotice({
+        rowId: row.id,
+        text: i18n.t("kernel.dashboards.tables.notANumber", { column: column.label }),
+      })
+      return
+    }
+    const next = parsed.value as number | null
+    if ((monthValue(row.cells[column.key], month) ?? null) === next) return
+    setSaving(true)
+    setRowNotice(null)
+    try {
+      const [out] = await writeTableRows(api, props.tableId, [
+        {
+          op: "update",
+          id: row.id,
+          ifVersion: row.version,
+          cells: { [column.key]: { [month]: next } },
+          ...(row.recordVersion !== undefined ? { ifRecordVersion: row.recordVersion } : {}),
+        },
+      ])
+      if (out && !isDeletedRow(out)) replaceRow(out)
+    } catch (err) {
+      await refused(row.id, err, row)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function openAdd(): void {
     setDraft({})
     setAddError(null)
@@ -451,8 +502,42 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     }
   }
 
-  const isEditing = (row: TableRow, c: TableColumn) =>
-    editing()?.rowId === row.id && editing()?.key === c.key
+  const isEditing = (row: TableRow, c: TableColumn, month?: string) =>
+    editing()?.rowId === row.id && editing()?.key === c.key && editing()?.month === month
+
+  /** How many grid columns a column takes: a months column one per month it shows. */
+  const width = (c: TableColumn) => (c.type === "months" ? Math.max(1, columnMonths(c).length) : 1)
+  const hasMonths = () => columns().some((c) => c.type === "months")
+  const gridWidth = () => columns().reduce((n, c) => n + width(c), 0)
+
+  /** One month of a months cell: its number (with the column's emphasis), else a quiet "to fill". */
+  const MonthView: Component<{ row: TableRow; column: TableColumn; month: string }> = (p) => {
+    const value = () => monthValue(p.row.cells[p.column.key], p.month)
+    return (
+      <Show
+        when={value() !== undefined}
+        fallback={
+          <span
+            data-testid={`${tid()}-tofill-${p.row.id}-${p.column.key}-${p.month}`}
+            title={i18n.t("kernel.dashboards.tables.toFillHint", {
+              month: monthLabel(p.month, i18n.locale(), true),
+            })}
+            class="text-[11.5px] text-text-tertiary"
+          >
+            {i18n.t("kernel.dashboards.tables.toFill")}
+          </span>
+        }
+      >
+        <span
+          data-testid={`${tid()}-month-${p.row.id}-${p.column.key}-${p.month}`}
+          data-emphasis={isEmphasized(p.column, value()) ? "on" : undefined}
+          class={cn("truncate", isEmphasized(p.column, value()) && "font-semibold text-accent")}
+        >
+          {formatValue(value() ?? 0, { format: "number", locale: i18n.locale() })}
+        </span>
+      </Show>
+    )
+  }
 
   /** Where a backed table's own columns begin after its read-through ones: a divider. */
   const bandEdge = (c: TableColumn) => {
@@ -478,7 +563,16 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const deadline = () =>
       p.column.deadline && !p.row.terminal ? deadlineState(value(), today()) : null
     return (
-      <Switch fallback={<span class="truncate">{text()}</span>}>
+      <Switch
+        fallback={
+          <span
+            data-emphasis={isEmphasized(p.column, value()) ? "on" : undefined}
+            class={cn("truncate", isEmphasized(p.column, value()) && "font-semibold text-accent")}
+          >
+            {text()}
+          </span>
+        }
+      >
         <Match when={p.column.type === "choice" && !isEmptyCell(value()) && color()}>
           {(c) => (
             <span
@@ -724,7 +818,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
               <thead>
                 <Show when={backing()}>
                   <tr data-testid={`${tid()}-bands`}>
-                    <For each={columnBands(columns(), isReadThrough)}>
+                    <For each={columnBands(columns(), isReadThrough, width)}>
                       {(band, i) => (
                         <th
                           scope="colgroup"
@@ -749,96 +843,137 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                     <th colSpan={2} />
                   </tr>
                 </Show>
-                <tr class="border-b border-border-subtle">
+                <tr class={cn(!hasMonths() && "border-b border-border-subtle")}>
                   <For each={columns()}>
                     {(c) => (
-                      <th
-                        scope="col"
-                        aria-sort={
-                          sort()?.key === c.key
-                            ? sort()?.dir === "asc"
-                              ? "ascending"
-                              : "descending"
-                            : undefined
-                        }
-                        class={cn(
-                          "px-1.5 py-1.5 font-normal",
-                          numeric(c) ? "text-right" : "text-left",
-                          bandEdge(c) && "border-l border-border",
-                        )}
-                      >
-                        <Show when={c.type === "lookup"}>
-                          <span
-                            data-testid={`${tid()}-lookup-${c.key}`}
-                            title={i18n.t("kernel.dashboards.tables.lookupColumn", {
-                              tool: c.lookup?.source.tool ?? "",
-                            })}
-                            class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
-                          >
-                            <Radio size={11} aria-hidden="true" class="shrink-0 opacity-70" />
-                            {c.label}
-                          </span>
-                          <Show when={columnNotes()[c.key]}>
-                            {(note) => (
-                              <span
-                                data-testid={`${tid()}-note-${c.key}`}
-                                role="note"
-                                title={note()}
-                                class="block text-[11px] font-normal text-text-tertiary"
-                              >
-                                {i18n.t("kernel.dashboards.tables.lookupUnavailable")}
-                              </span>
+                      <Show
+                        when={c.type !== "months"}
+                        fallback={
+                          <th
+                            scope="colgroup"
+                            colSpan={width(c)}
+                            data-testid={`${tid()}-months-head-${c.key}`}
+                            class={cn(
+                              "px-1.5 pt-1.5 text-center text-[11.5px] font-normal text-text-tertiary",
+                              bandEdge(c) && "border-l border-border",
                             )}
-                          </Show>
-                        </Show>
-                        <Show when={c.type !== "lookup"}>
-                          <button
-                            type="button"
-                            data-testid={`${tid()}-sort-${c.key}`}
-                            data-source={
-                              backing() ? (isReadThrough(c.key) ? "record" : "own") : undefined
-                            }
-                            title={
-                              backing()
-                                ? isReadThrough(c.key)
-                                  ? i18n.t("kernel.dashboards.tables.fromProjectColumn", {
-                                      name: parentName(),
-                                    })
-                                  : i18n.t("kernel.dashboards.tables.ownColumn")
-                                : undefined
-                            }
-                            onClick={() => sortBy(c.key)}
-                            class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary hover:text-text-secondary"
                           >
-                            <Show when={isReadThrough(c.key)}>
-                              <Link2
-                                size={11}
-                                data-testid={`${tid()}-from-record-${c.key}`}
-                                aria-label={i18n.t("kernel.dashboards.tables.fromProjectColumn", {
-                                  name: parentName(),
-                                })}
-                                class="shrink-0 opacity-70"
-                              />
-                            </Show>
                             {c.label}
-                            <Show when={sort()?.key === c.key}>
-                              {sort()?.dir === "asc" ? " ↑" : " ↓"}
+                          </th>
+                        }
+                      >
+                        <th
+                          scope="col"
+                          rowSpan={hasMonths() ? 2 : undefined}
+                          aria-sort={
+                            sort()?.key === c.key
+                              ? sort()?.dir === "asc"
+                                ? "ascending"
+                                : "descending"
+                              : undefined
+                          }
+                          class={cn(
+                            "px-1.5 py-1.5 font-normal",
+                            numeric(c) ? "text-right" : "text-left",
+                            bandEdge(c) && "border-l border-border",
+                          )}
+                        >
+                          <Show when={c.type === "lookup"}>
+                            <span
+                              data-testid={`${tid()}-lookup-${c.key}`}
+                              title={i18n.t("kernel.dashboards.tables.lookupColumn", {
+                                tool: c.lookup?.source.tool ?? "",
+                              })}
+                              class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
+                            >
+                              <Radio size={11} aria-hidden="true" class="shrink-0 opacity-70" />
+                              {c.label}
+                            </span>
+                            <Show when={columnNotes()[c.key]}>
+                              {(note) => (
+                                <span
+                                  data-testid={`${tid()}-note-${c.key}`}
+                                  role="note"
+                                  title={note()}
+                                  class="block text-[11px] font-normal text-text-tertiary"
+                                >
+                                  {i18n.t("kernel.dashboards.tables.lookupUnavailable")}
+                                </span>
+                              )}
                             </Show>
-                          </button>
-                        </Show>
-                      </th>
+                          </Show>
+                          <Show when={c.type !== "lookup"}>
+                            <button
+                              type="button"
+                              data-testid={`${tid()}-sort-${c.key}`}
+                              data-source={
+                                backing() ? (isReadThrough(c.key) ? "record" : "own") : undefined
+                              }
+                              title={
+                                backing()
+                                  ? isReadThrough(c.key)
+                                    ? i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                        name: parentName(),
+                                      })
+                                    : i18n.t("kernel.dashboards.tables.ownColumn")
+                                  : undefined
+                              }
+                              onClick={() => sortBy(c.key)}
+                              class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary hover:text-text-secondary"
+                            >
+                              <Show when={isReadThrough(c.key)}>
+                                <Link2
+                                  size={11}
+                                  data-testid={`${tid()}-from-record-${c.key}`}
+                                  aria-label={i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                    name: parentName(),
+                                  })}
+                                  class="shrink-0 opacity-70"
+                                />
+                              </Show>
+                              {c.label}
+                              <Show when={sort()?.key === c.key}>
+                                {sort()?.dir === "asc" ? " ↑" : " ↓"}
+                              </Show>
+                            </button>
+                          </Show>
+                        </th>
+                      </Show>
                     )}
                   </For>
                   <th
                     scope="col"
+                    rowSpan={hasMonths() ? 2 : undefined}
                     class="px-1.5 py-1.5 text-left text-[11.5px] font-normal text-text-tertiary"
                   >
                     {i18n.t("kernel.dashboards.tables.lastChange")}
                   </th>
-                  <th scope="col" class="w-8">
+                  <th scope="col" rowSpan={hasMonths() ? 2 : undefined} class="w-8">
                     <span class="sr-only">{i18n.t("kernel.dashboards.tables.rowActions")}</span>
                   </th>
                 </tr>
+                <Show when={hasMonths()}>
+                  <tr class="border-b border-border-subtle">
+                    <For each={columns().filter((c) => c.type === "months")}>
+                      {(c) => (
+                        <For each={columnMonths(c)}>
+                          {(m, i) => (
+                            <th
+                              scope="col"
+                              data-testid={`${tid()}-month-head-${c.key}-${m}`}
+                              class={cn(
+                                "px-1.5 pb-1.5 text-right text-[11.5px] font-normal text-text-tertiary",
+                                i() === 0 && bandEdge(c) && "border-l border-border",
+                              )}
+                            >
+                              {monthLabel(m, i18n.locale())}
+                            </th>
+                          )}
+                        </For>
+                      )}
+                    </For>
+                  </tr>
+                </Show>
               </thead>
               <tbody>
                 <For each={rows()}>
@@ -850,97 +985,154 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                       >
                         <For each={columns()}>
                           {(c) => (
-                            <td
-                              data-testid={`${tid()}-cell-${row.id}-${c.key}`}
-                              class={cn(
-                                "max-w-[16rem] px-1.5 py-1.5",
-                                numeric(c) && "text-right tabular-nums",
-                                bandEdge(c) && "border-l border-border",
-                              )}
+                            <Show
+                              when={c.type !== "months"}
+                              fallback={
+                                <For each={columnMonths(c)}>
+                                  {(m, i) => (
+                                    <td
+                                      data-testid={`${tid()}-cell-${row.id}-${c.key}-${m}`}
+                                      class={cn(
+                                        "px-1.5 py-1.5 text-right tabular-nums",
+                                        i() === 0 && bandEdge(c) && "border-l border-border",
+                                      )}
+                                    >
+                                      <Switch>
+                                        <Match when={isEditing(row, c, m)}>
+                                          <CellEditor
+                                            column={monthColumn(c, m, i18n.locale())}
+                                            value={monthValue(row.cells[c.key], m)}
+                                            testid={`${tid()}-editor-${row.id}-${c.key}-${m}`}
+                                            onCommit={(v) => void saveMonth(row, c, m, v)}
+                                            onCancel={() => setEditing(null)}
+                                          />
+                                        </Match>
+                                        <Match when={canEdit()}>
+                                          <button
+                                            type="button"
+                                            data-testid={`${tid()}-edit-${row.id}-${c.key}-${m}`}
+                                            aria-label={i18n.t(
+                                              "kernel.dashboards.tables.editMonth",
+                                              {
+                                                column: c.label,
+                                                month: monthLabel(m, i18n.locale(), true),
+                                              },
+                                            )}
+                                            disabled={saving()}
+                                            onClick={() => {
+                                              setRowNotice(null)
+                                              setEditing({ rowId: row.id, key: c.key, month: m })
+                                            }}
+                                            class="flex min-h-6 w-full min-w-[2.5rem] items-center justify-end rounded px-1 hover:bg-surface-hover"
+                                          >
+                                            <MonthView row={row} column={c} month={m} />
+                                          </button>
+                                        </Match>
+                                        <Match when={true}>
+                                          <span class="flex min-h-6 items-center justify-end px-1">
+                                            <MonthView row={row} column={c} month={m} />
+                                          </span>
+                                        </Match>
+                                      </Switch>
+                                    </td>
+                                  )}
+                                </For>
+                              }
                             >
-                              <Switch>
-                                <Match when={c.type === "checkbox"}>
-                                  <input
-                                    type="checkbox"
-                                    data-testid={`${tid()}-check-${row.id}-${c.key}`}
-                                    aria-label={c.label}
-                                    checked={row.cells[c.key] === true}
-                                    disabled={!canEdit() || saving()}
-                                    onChange={(e) => void saveCell(row, c, e.currentTarget.checked)}
-                                  />
-                                </Match>
-                                <Match when={c.type === "lookup"}>
-                                  <span
-                                    data-testid={`${tid()}-lookup-cell-${row.id}-${c.key}`}
-                                    class={cn(
-                                      "flex min-h-6 items-center px-1",
-                                      numeric(c) ? "justify-end" : "justify-start",
-                                    )}
-                                  >
-                                    <CellView row={row} column={c} />
-                                  </span>
-                                </Match>
-                                <Match when={isEditing(row, c)}>
-                                  <CellEditor
-                                    column={c}
-                                    value={row.cells[c.key]}
-                                    testid={`${tid()}-editor-${row.id}-${c.key}`}
-                                    onCommit={(v) => void saveCell(row, c, v)}
-                                    onCancel={() => setEditing(null)}
-                                  />
-                                </Match>
-                                <Match when={isLinkCell(row.cells[c.key])}>
-                                  <span class="flex min-h-6 items-center gap-1 px-1">
-                                    <LinkOpen row={row} column={c} />
-                                    <Show when={canEdit()}>
-                                      <button
-                                        type="button"
-                                        data-testid={`${tid()}-edit-${row.id}-${c.key}`}
-                                        aria-label={i18n.t("kernel.dashboards.tables.editCell", {
-                                          column: c.label,
-                                        })}
-                                        title={i18n.t("kernel.dashboards.tables.editCell", {
-                                          column: c.label,
-                                        })}
-                                        disabled={saving()}
-                                        onClick={() => {
-                                          setRowNotice(null)
-                                          setEditing({ rowId: row.id, key: c.key })
-                                        }}
-                                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
-                                      >
-                                        <Pencil size={11} />
-                                      </button>
-                                    </Show>
-                                  </span>
-                                </Match>
-                                <Match when={canEdit()}>
-                                  <button
-                                    type="button"
-                                    data-testid={`${tid()}-edit-${row.id}-${c.key}`}
-                                    aria-label={i18n.t("kernel.dashboards.tables.editCell", {
-                                      column: c.label,
-                                    })}
-                                    disabled={saving()}
-                                    onClick={() => {
-                                      setRowNotice(null)
-                                      setEditing({ rowId: row.id, key: c.key })
-                                    }}
-                                    class={cn(
-                                      "flex min-h-6 w-full min-w-[2rem] items-center rounded px-1 hover:bg-surface-hover",
-                                      numeric(c) ? "justify-end" : "justify-start",
-                                    )}
-                                  >
-                                    <CellView row={row} column={c} />
-                                  </button>
-                                </Match>
-                                <Match when={true}>
-                                  <span class="flex min-h-6 items-center px-1">
-                                    <CellView row={row} column={c} />
-                                  </span>
-                                </Match>
-                              </Switch>
-                            </td>
+                              <td
+                                data-testid={`${tid()}-cell-${row.id}-${c.key}`}
+                                class={cn(
+                                  "max-w-[16rem] px-1.5 py-1.5",
+                                  numeric(c) && "text-right tabular-nums",
+                                  bandEdge(c) && "border-l border-border",
+                                )}
+                              >
+                                <Switch>
+                                  <Match when={c.type === "checkbox"}>
+                                    <input
+                                      type="checkbox"
+                                      data-testid={`${tid()}-check-${row.id}-${c.key}`}
+                                      aria-label={c.label}
+                                      checked={row.cells[c.key] === true}
+                                      disabled={!canEdit() || saving()}
+                                      onChange={(e) =>
+                                        void saveCell(row, c, e.currentTarget.checked)
+                                      }
+                                    />
+                                  </Match>
+                                  <Match when={c.type === "lookup"}>
+                                    <span
+                                      data-testid={`${tid()}-lookup-cell-${row.id}-${c.key}`}
+                                      class={cn(
+                                        "flex min-h-6 items-center px-1",
+                                        numeric(c) ? "justify-end" : "justify-start",
+                                      )}
+                                    >
+                                      <CellView row={row} column={c} />
+                                    </span>
+                                  </Match>
+                                  <Match when={isEditing(row, c)}>
+                                    <CellEditor
+                                      column={c}
+                                      value={row.cells[c.key]}
+                                      testid={`${tid()}-editor-${row.id}-${c.key}`}
+                                      onCommit={(v) => void saveCell(row, c, v)}
+                                      onCancel={() => setEditing(null)}
+                                    />
+                                  </Match>
+                                  <Match when={isLinkCell(row.cells[c.key])}>
+                                    <span class="flex min-h-6 items-center gap-1 px-1">
+                                      <LinkOpen row={row} column={c} />
+                                      <Show when={canEdit()}>
+                                        <button
+                                          type="button"
+                                          data-testid={`${tid()}-edit-${row.id}-${c.key}`}
+                                          aria-label={i18n.t("kernel.dashboards.tables.editCell", {
+                                            column: c.label,
+                                          })}
+                                          title={i18n.t("kernel.dashboards.tables.editCell", {
+                                            column: c.label,
+                                          })}
+                                          disabled={saving()}
+                                          onClick={() => {
+                                            setRowNotice(null)
+                                            setEditing({ rowId: row.id, key: c.key })
+                                          }}
+                                          class="flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
+                                        >
+                                          <Pencil size={11} />
+                                        </button>
+                                      </Show>
+                                    </span>
+                                  </Match>
+                                  <Match when={canEdit()}>
+                                    <button
+                                      type="button"
+                                      data-testid={`${tid()}-edit-${row.id}-${c.key}`}
+                                      aria-label={i18n.t("kernel.dashboards.tables.editCell", {
+                                        column: c.label,
+                                      })}
+                                      disabled={saving()}
+                                      onClick={() => {
+                                        setRowNotice(null)
+                                        setEditing({ rowId: row.id, key: c.key })
+                                      }}
+                                      class={cn(
+                                        "flex min-h-6 w-full min-w-[2rem] items-center rounded px-1 hover:bg-surface-hover",
+                                        numeric(c) ? "justify-end" : "justify-start",
+                                      )}
+                                    >
+                                      <CellView row={row} column={c} />
+                                    </button>
+                                  </Match>
+                                  <Match when={true}>
+                                    <span class="flex min-h-6 items-center px-1">
+                                      <CellView row={row} column={c} />
+                                    </span>
+                                  </Match>
+                                </Switch>
+                              </td>
+                            </Show>
                           )}
                         </For>
                         <td class="px-1.5 py-1.5">
@@ -1009,7 +1201,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                       <Show when={rowNotice()?.rowId === row.id}>
                         <tr data-testid={`${tid()}-notice-${row.id}`}>
                           <td
-                            colSpan={columns().length + 2}
+                            colSpan={gridWidth() + 2}
                             class="px-1.5 pb-1.5 text-[12px] text-text-tertiary"
                           >
                             {rowNotice()?.text}

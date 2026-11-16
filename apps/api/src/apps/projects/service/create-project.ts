@@ -6,7 +6,7 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { describeDbError } from "~/lib/transient-db-error"
-import { type Column, columnsSchema } from "~/modules/dashboards/tables/columns"
+import { type Column, columnsSchema, tableOnlyColumn } from "~/modules/dashboards/tables/columns"
 import { parseStoredLevels, type ValidationLevel } from "./checklist-status"
 import { activeFields, parseStoredFields } from "./fields"
 import { ProjectsServiceError } from "./statuses"
@@ -500,6 +500,14 @@ export function normalizeFieldDefs(raw: unknown): Column[] {
       422,
       "invalid_fields",
       `${issue?.message ?? "invalid field list"}${path}`,
+    )
+  }
+  const tableOnly = tableOnlyColumn(parsed.data)
+  if (tableOnly) {
+    throw new ProjectsServiceError(
+      422,
+      "invalid_fields",
+      `a ${tableOnly.type} field is a dashboard table's only (${tableOnly.key})`,
     )
   }
   return parsed.data

@@ -26,13 +26,29 @@ A table has at most 40 columns. Each has a key, a label and a type:
 | `checkbox` | `true` or `false`. |
 | `person` | A member of the organisation (their user id). |
 | `link` | A record of an app: `{ app, entityType, id, label }`. A column may accept only one app or one kind of record. |
+| `months` | One number per month, typed by people: `{ "YYYY-MM": number }`. See [Plan by month](#plan-by-month). |
 | `lookup` | A number or a text read live from an app, never typed (see [Read values live from an app](#read-values-live-from-an-app)). |
 
 A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_`. It never changes; the label does. `id`, `updated_at`, `updated_by` and `created_at` are reserved. A column can be required: a new row must fill it, and a change cannot empty it.
 
 Every write, by a person or an agent, is checked against the columns. A refused write names the column and the reason, and nothing of it is saved.
 
+A number, amount or months column can make some values stand out: its **Highlight** option draws **Values other than 0** or **Values below 0** in bold, in the accent colour. Change it from the column's **Options** in **Settings**, or with `setOptions` (below).
+
 Removing a column hides its values everywhere (rows, history, search, filters) but keeps them stored for retention, and its key cannot be used again.
+
+## Plan by month
+
+A `months` column holds one number per month, such as deliveries expected or a monthly budget. People type each month by hand. Its options:
+
+- `horizon`: how many months it shows, 1 to 12 (default 3).
+- `fromOffset`: `0` starts at the current month (the default), `1` at the next one. Months follow the organisation's timezone.
+
+The grid shows the column as one sub-column per month, labelled by the month's name, each edited on its own. A month with no value shows a quiet **to fill**; `0` is a value. Older months stay in the cell, so the history and undo keep them.
+
+A write names only the months it changes: `{ "expected": { "2026-11": 40, "2026-12": null } }` sets November and clears December, and leaves every other month as it was. `null` for the whole cell empties it. A cell keeps at most 120 months. A months column is never required, and cannot sort or filter rows.
+
+A read gives the cell as `{ "2026-11": 40, "2027-01": 25 }`. `tables_get` gives each months column its `months`, the months it shows now (`["2026-11", "2026-12", "2027-01"]`). Change a column's options with `columns: { setOptions: [{ key, horizon?, fromOffset?, emphasis? }] }` (`emphasis: null` removes it).
 
 ## Who sees a table
 
@@ -120,7 +136,7 @@ The tool runs once per table read and column, as the person reading, with their 
 
 ## Show a table on a dashboard
 
-A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A block reads at most 2,000 rows and says when there were more.
+A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A months cell reads as its map: a block maps one month as `<key>.<YYYY-MM>`, such as `expected.2026-12`. A block reads at most 2,000 rows and says when there were more.
 
 A table block with `map.editable: true` lets people edit the rows in place. `map.staleAfterDays` marks rows not changed for that many days. A block never shows rows older than the last change: its kept figures are read again after any row, column or sharing change.
 

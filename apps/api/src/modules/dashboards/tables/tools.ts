@@ -24,10 +24,17 @@ import {
 } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import { backingProvider, backingSchema, parseBacking } from "~/modules/dashboards/tables/backing"
-import { type Column, columnSchema } from "~/modules/dashboards/tables/columns"
+import {
+  type Column,
+  columnOptionsOpSchema,
+  columnSchema,
+  DEFAULT_MONTHS_HORIZON,
+  type Emphasis,
+} from "~/modules/dashboards/tables/columns"
 import { OWNERLESS_MESSAGE } from "~/modules/dashboards/tables/ownerless"
 import {
   ADMIN_SCOPE,
+  type ColumnOptionsOp,
   type CreateTableInput,
   checkCreateTable,
   checkUpdateTable,
@@ -273,6 +280,7 @@ const COLUMN_TYPE_WORDS: Record<string, string> = {
   checkbox: "checkbox",
   person: "person",
   link: "link to a record",
+  months: "a number per month",
   lookup: "lookup",
 }
 
@@ -301,8 +309,27 @@ function columnWords(c: Partial<Column>): string {
       ? ` in ${c.currency}`
       : (c.type === "choice" || c.type === "choices") && c.choices
         ? ` (${c.choices.join(", ")})`
-        : ""
-  return `"${String(c.label ?? c.key)}" (${String(c.key)}): ${type}${extra}${c.required ? ", required" : ""}`
+        : c.type === "months"
+          ? `, ${c.horizon ?? DEFAULT_MONTHS_HORIZON} months from ${c.fromOffset === 1 ? "next" : "this"} month`
+          : ""
+  const emphasis = c.emphasis ? `, ${emphasisWords(c.emphasis)}` : ""
+  return `"${String(c.label ?? c.key)}" (${String(c.key)}): ${type}${extra}${emphasis}${c.required ? ", required" : ""}`
+}
+
+function emphasisWords(e: Emphasis): string {
+  return e === "nonzero" ? "values other than 0 stand out" : "values below 0 stand out"
+}
+
+/** One setOptions change as a card line names it. */
+function optionsWords(o: ColumnOptionsOp, label: string): string {
+  const parts = [
+    ...(o.horizon !== undefined ? [`${o.horizon} months shown`] : []),
+    ...(o.fromOffset !== undefined
+      ? [o.fromOffset === 1 ? "from next month" : "from this month"]
+      : []),
+    ...(o.emphasis === null ? ["no emphasis"] : o.emphasis ? [emphasisWords(o.emphasis)] : []),
+  ]
+  return `Column "${label}": ${parts.join(", ") || "no change"}`
 }
 
 const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
@@ -346,6 +373,7 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
     add?: Partial<Column>[]
     rename?: { key: string; label: string }[]
     setChoices?: { key: string; choices: string[] }[]
+    setOptions?: ColumnOptionsOp[]
     drop?: string[]
   }
   const lines = [
@@ -365,6 +393,7 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
     ...(cols.setChoices ?? []).map(
       (c) => `Choices of "${labels.get(c.key) ?? c.key}": ${c.choices.join(", ")}`,
     ),
+    ...(cols.setOptions ?? []).map((o) => optionsWords(o, labels.get(o.key) ?? o.key)),
     ...(cols.drop ?? []).map(
       (k) => `Drop the column "${labels.get(k) ?? k}" (its values stay in the history)`,
     ),
@@ -382,7 +411,7 @@ const summarizeEdit: ApprovalSummarizer = async (raw, ctx) => {
 const cells = z
   .record(z.string(), z.unknown())
   .describe(
-    "{columnKey: value}: text and dates (YYYY-MM-DD) as strings, numbers and amounts as numbers, a choice as one of its choices, choices as a list, a checkbox as true/false, a person as a user id (kernel__users_search), a link as {app, entityType, id, label}. null empties a cell.",
+    '{columnKey: value}: text and dates (YYYY-MM-DD) as strings, numbers and amounts as numbers, a choice as one of its choices, choices as a list, a checkbox as true/false, a person as a user id (kernel__users_search), a link as {app, entityType, id, label}, a months cell as {"YYYY-MM": number or null} naming only the months to change (null clears that month, the others stay). null empties a cell.',
   )
 const rowOp = z.discriminatedUnion("op", [
   z.object({ op: z.literal("add"), cells }).strict(),
@@ -427,6 +456,7 @@ const columnOps = z
       )
       .max(40)
       .optional(),
+    setOptions: z.array(columnOptionsOpSchema).max(40).optional(),
     drop: z.array(z.string()).max(40).optional(),
   })
   .strict()
@@ -505,7 +535,7 @@ const editParams = z
     columns: z
       .union([z.array(columnSchema).max(40), columnOps])
       .optional()
-      .describe("create: the columns; alter: {add?, rename?, setChoices?, drop?}"),
+      .describe("create: the columns; alter: {add?, rename?, setChoices?, setOptions?, drop?}"),
     agentWritesNeedApproval: z.boolean().optional(),
     fromDashboardId: z
       .string()
@@ -539,7 +569,7 @@ interface EditParams {
 }
 
 const TABLES_EDIT_DESCRIPTION =
-  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?, horizon?, fromOffset?, emphasis?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], setOptions?: [{key, horizon?, fromOffset?, emphasis? (null removes it)}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup, months. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A months column holds one number per month, typed by people (planned deliveries per month, a monthly budget): horizon 1-12 months shown (default 3), fromOffset 0 starts at the current month (default), 1 at the next, in the organisation timezone; its cell is {"YYYY-MM": number}, and tables_get gives each months column its current months. emphasis on a number, amount or months column draws a value bold in the accent colour: "nonzero" (any value but 0) or "negative" (below 0). A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
 
 /**
  * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
@@ -586,7 +616,7 @@ export function registerTableTools(orgId: string): void {
     readOnly: true,
     deferLoading: true,
     description:
-      "Read one dashboard table: its columns (key, label, type, choices, required), version, row count, your access and who it is shared with.",
+      "Read one dashboard table: its columns (key, label, type, choices, required; a months column also its months, the YYYY-MM it shows now), version, row count, your access and who it is shared with.",
     searchKeywords: ["table", "tableau", "columns", "colonnes"],
     requiredScopes: [READ_SCOPE],
     params: z.object({ tableId: z.string().uuid() }),
@@ -621,7 +651,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells (a months cell as {"YYYY-MM": number} with every month kept; the months shown are those of its column in kernel__tables_get, and a shown month without a value is still to fill) and who changed it last. A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({
@@ -671,7 +701,7 @@ export function registerTableTools(orgId: string): void {
     appName: "kernel",
     name: "tables_rows_write",
     deferLoading: true,
-    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry. In a table backed by an app's records, changing a read-through cell also takes ifRecordVersion, the row's recordVersion; a row cannot be deleted there.`,
+    description: `Add, change or delete rows of a dashboard table, up to ${MAX_OPS_PER_WRITE} operations applied together (all or none): {op:"add", cells}, {op:"update", id, ifVersion, cells} (only the cells given change; in a months cell only the months given change, as {"2026-11": 40, "2026-12": null}), {op:"delete", id, ifVersion}. Read the columns with kernel__tables_get and the rows' ids and versions with kernel__tables_query first. Applies at once and is recorded (people can undo it), unless the table asks for approval of agents' row changes. A row changed since your read is refused naming it: read it again and retry. In a table backed by an app's records, changing a read-through cell also takes ifRecordVersion, the row's recordVersion; a row cannot be deleted there.`,
     searchKeywords: ["table", "row", "ligne", "add", "ajouter", "update", "modifier", "statut"],
     requiredScopes: [WRITE_SCOPE],
     params: z.object({

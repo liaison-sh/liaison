@@ -1299,6 +1299,7 @@ export type TableColumnType =
   | "checkbox"
   | "person"
   | "link"
+  | "months"
   /** Read-only, read live from an app's read tool on every read (set by an agent). */
   | "lookup"
 
@@ -1313,7 +1314,11 @@ export const TABLE_COLUMN_TYPES: TableColumnType[] = [
   "checkbox",
   "person",
   "link",
+  "months",
 ]
+
+/** A number, amount or months column's emphasis: such values read bold in the accent colour. */
+export type TableEmphasis = "nonzero" | "negative"
 
 export interface TableColumn {
   /** Immutable once the column exists; `^[a-z][a-z0-9_]{0,39}$`. */
@@ -1331,6 +1336,14 @@ export interface TableColumn {
   currency?: string
   /** A link column may point only at this app (and entity type). */
   linkTo?: { app: string; entityType?: string }
+  /** A months column: how many months it shows (1-12, default 3). */
+  horizon?: number
+  /** A months column: 0 starts at the current month (default), 1 at the next one. */
+  fromOffset?: 0 | 1
+  /** A number, amount or months column: values that stand out (bold, accent colour). */
+  emphasis?: TableEmphasis
+  /** A months column as read: the months it shows now (`YYYY-MM`, the org's timezone). */
+  months?: string[]
   /** A lookup column's read: the app tool it reads, matched on another column. */
   lookup?: TableLookup
 }
@@ -1341,6 +1354,10 @@ export interface TableLookup {
   value: string
   valueType: "number" | "text"
 }
+
+/** A months cell: one number per month, `YYYY-MM` keys. A write names only the months it
+ *  changes, a null month clearing one. */
+export type MonthsCell = Record<string, number>
 
 export interface LinkCell {
   app: string
@@ -1444,6 +1461,13 @@ export interface TableColumnOps {
   add?: TableColumn[]
   rename?: Array<{ key: string; label: string }>
   setChoices?: Array<{ key: string; choices: string[] }>
+  /** Display options: a months column's horizon and start, an emphasis (null removes it). */
+  setOptions?: Array<{
+    key: string
+    horizon?: number
+    fromOffset?: 0 | 1
+    emphasis?: TableEmphasis | null
+  }>
   drop?: string[]
 }
 

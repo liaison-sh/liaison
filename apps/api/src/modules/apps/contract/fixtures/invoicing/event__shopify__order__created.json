@@ -65,7 +65,7 @@
       "shopDomain": "contract-shop.myshopify.com"
     }
   },
-  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts; the invoice's external_ref added by hand to its issuing batch",
+  "recordedFrom": "a contract org with the Shopify development store, scripts/contract/record-invoicing.ts; the invoice's external_ref added by hand to its issuing batch; the issue's kernel:contacts_identity read (company stamp) added by hand from the recorded contact, which has no company",
   "calls": [
     {
       "method": "resolveContact",
@@ -213,6 +213,14 @@
         "{\"where\":{\"issuer_profile_id\":\"2db28a22-5cc2-4088-84a1-9ab09b313ab1\"},\"select\":[\"id\",\"status\"],\"limit\":200}"
       ],
       "reply": "[{\"id\":\"49c442a5-59c4-4cd8-9c46-4de9c9bcbbb8\",\"status\":\"invoiced\"},{\"id\":\"722395b9-1186-474a-b517-9d047f498680\",\"status\":\"issued\"},{\"id\":\"70405a43-d674-4fed-b057-322b964bc3bb\",\"status\":\"issued\"},{\"id\":\"b44e2380-d9f3-412f-9a8a-b9ae23ae7e19\",\"status\":\"paid\"},{\"id\":\"13c59be9-a254-49df-8bb4-46e2d5b28b60\",\"status\":\"draft\"},{\"id\":\"c641fd9e-e689-4023-905d-e3dadf4e04d5\",\"status\":\"draft\"},{\"id\":\"e8c448c5-50a1-4a7a-8678-37a797900c0b\",\"status\":\"draft\"},{\"id\":\"7370aaee-432f-4f46-abbd-82e322d219a8\",\"status\":\"draft\"}]"
+    },
+    {
+      "method": "executeTool",
+      "args": [
+        "kernel:contacts_identity",
+        "{\"contactId\":\"0596bb82-9d96-4e91-b950-7f2c6689efad\"}"
+      ],
+      "reply": "{\"status\":\"completed\",\"result\":{\"contact\":{\"id\":\"0596bb82-9d96-4e91-b950-7f2c6689efad\",\"email\":\"marie@example.com\",\"companyId\":null}}}"
     },
     {
       "method": "db_batch",

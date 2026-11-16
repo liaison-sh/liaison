@@ -470,6 +470,16 @@ const REVIEWED: Record<string, Record<string, string>> = {
       "number from the gate's own options (DEFAULT_STATEMENT_TIMEOUT_MS or operator config)",
     cappedText: BY_DESIGN_SQL,
   },
+  "apps/api/src/modules/portal/views.ts#viewIsCurrent": {
+    name: "a portal view name from the module's literal view list, checked against /^[a-z_][a-z0-9_]*$/ by ident()",
+    "def.select":
+      "the view's SELECT text from the module's literal view list; no value from a request or a row",
+  },
+  "apps/api/src/modules/portal/views.ts#writeView": {
+    name: "a portal view name from the module's literal view list, checked against /^[a-z_][a-z0-9_]*$/ by ident()",
+    create:
+      "CREATE OR REPLACE VIEW built from that checked name and the view's literal SELECT text in the module",
+  },
 }
 
 const keyOf = (loc: string, enclosing: unknown) => `${loc.replace(/:\d+$/, "")}#${enclosing}`

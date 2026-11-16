@@ -171,7 +171,8 @@ describe("the portal role", () => {
     )
     expect(rows.map((r) => r.id)).toEqual([EXTERNAL_ID])
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual(
-      ["company_id", "email", "id", "locale", "name", "timezone"].sort(),
+      // contact_name: the name of the company's account manager, and nothing else about them.
+      ["company_id", "contact_name", "email", "id", "locale", "name", "timezone"].sort(),
     )
   })
 

@@ -382,6 +382,9 @@ describe("writesToTable annotations on kernel tools", () => {
       // so each is still refused on a turn whose taint is relevant.
       approval_update_payload: "kernel.approval_requests",
       approval_withdraw: "kernel.approval_requests",
+      // A client action to sign, accept or approve, made or withdrawn (client-actions tools).
+      client_action_create: "kernel.client_actions",
+      client_action_revoke: "kernel.client_actions",
       // S24: turning an app On/Off and setting who may use it write kernel.apps.
       apps_set_access: "kernel.apps",
       ai_models_set: "kernel.organizations",
@@ -523,6 +526,8 @@ describe("writesToTable annotations on kernel tools", () => {
         // The entry a deferred tool is called through (call-tool.ts, #499): marked readOnly
         // as it runs nothing itself; the tool it reaches carries its own annotation.
         "call_tool",
+        // The client actions of a record, with their state: one select.
+        "client_actions_list",
         // Listing the sessions importable from the person's computer: its only write is
         // the owner-bound, expiring import offer per row (bookkeeping, none of the turn's data).
         "computer_session_import_list",

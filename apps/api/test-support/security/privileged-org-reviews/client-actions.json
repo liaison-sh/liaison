@@ -1,0 +1,7 @@
+{
+  "reviewedOrigins": {
+    "apps/api/src/modules/client-actions/targets.ts#viewTarget": "the org of the client action row the caller read (by its token hash, or by id inside the caller's own org); the app's read tool runs as that action's sender",
+    "apps/api/src/modules/client-actions/public-routes.ts#inClientActionOrg": "the org of the one client action whose token hash the holder posted; every statement names that action's id",
+    "apps/api/src/modules/client-actions/decide.ts#decideClientAction": "the org of the client action found by the posted token's hash, or the portal session's own org for the portal path"
+  }
+}

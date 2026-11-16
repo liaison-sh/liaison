@@ -1,4 +1,5 @@
 {
   "id": "NT-12",
-  "owner": "public client action routes and portal reads"
+  "owner": "portal reads",
+  "part": "the portal read handlers' half: a portal route given another org's or company's id in the body reads nothing of it"
 }

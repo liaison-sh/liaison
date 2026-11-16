@@ -95,6 +95,11 @@ import { billingManagedRoutes, managedBillingOnly } from "~/modules/billing-mana
 import { billingStateRoutes } from "~/modules/billing-state"
 import { brandingRoutes } from "~/modules/branding/routes"
 import { bugReports } from "~/modules/bug-reports/routes"
+import {
+  CLIENT_ACTIONS_PUBLIC_PREFIX,
+  clientActionPublicRoutes,
+} from "~/modules/client-actions/public-routes"
+import { clientActionRoutes } from "~/modules/client-actions/routes"
 import { CLIENT_HEADER, clientPolicyRoutes, logClientHeader } from "~/modules/client-policy/routes"
 import { cellHeaderMiddleware } from "~/modules/cloud/cell-header"
 import { mailSenderRoutes, managedMailSenderOnly } from "~/modules/cloud/mail-sender-routes"
@@ -370,7 +375,7 @@ app.use(
   }),
 )
 // The portal API never leaves a referrer, is never indexed, cached or framed.
-app.use("*", securityHeaders({ publicPrefixes: [PORTAL_PREFIX] }))
+app.use("*", securityHeaders({ publicPrefixes: [PORTAL_PREFIX, CLIENT_ACTIONS_PUBLIC_PREFIX] }))
 // Managed edition: every response names the instance that served it (an org's
 // move between two instances is measured with it).
 app.use("*", cellHeaderMiddleware)
@@ -753,6 +758,11 @@ app.use("/api/auth/totp", authPlusLimit) // DELETE /totp
 app.use("/api/auth/password/change", authPlusLimit)
 app.use("/api/auth/account/*", authPlusLimit)
 
+// The client action token page's protocol (modules/client-actions): public, before
+// any auth. The token is in the POST body only; each route takes its own budgets,
+// keyed on the token's hash, and fails closed when Redis is down.
+app.route(CLIENT_ACTIONS_PUBLIC_PREFIX, clientActionPublicRoutes)
+
 app.route("/api/auth", auth)
 app.route("/api/auth/oauth", oauth)
 
@@ -795,6 +805,10 @@ const authAndDemoMw: MiddlewareHandler<AppEnv> = env.LIAISON_DEMO_MODE
   ? every(baseAuthMw, (await import("~/modules/demo/demo-expiry")).demoExpiryMiddleware())
   : baseAuthMw
 const authMw: MiddlewareHandler<AppEnv> = every(authAndDemoMw, perUserLimiter)
+
+// A staff signer's own "Read and sign" (REST only, no tool).
+app.use("/api/client-actions/*", authMw, orgLimiter)
+app.route("/api/client-actions", clientActionRoutes)
 
 app.use("/api/users", authMw, orgLimiter)
 app.use("/api/users/*", authMw, orgLimiter)

@@ -3562,5 +3562,29 @@
     "say": "which milestones of the project are still to invoice",
     "typed": ["billing plan steps", "milestones to invoice", "jalons restant à facturer"],
     "any": ["invoicing__billing_plan_get"]
+  },
+  {
+    "id": "C106",
+    "set": "seed",
+    "lang": "fr",
+    "say": "envoie le contrat à Paul pour qu'il le signe",
+    "typed": ["faire signer le contrat", "send it to the client to sign"],
+    "any": ["kernel__client_action_create"]
+  },
+  {
+    "id": "C107",
+    "set": "seed",
+    "lang": "en",
+    "say": "withdraw the link I sent Anne, the quote changed",
+    "typed": ["withdraw the link", "retirer le lien envoyé"],
+    "any": ["kernel__client_action_revoke"]
+  },
+  {
+    "id": "C108",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui n'a pas encore signé ?",
+    "typed": ["requests waiting for the client", "demandes en attente de signature"],
+    "any": ["kernel__client_actions_list"]
   }
 ]

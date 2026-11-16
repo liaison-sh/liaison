@@ -229,6 +229,7 @@ All optional. Compose passes each of them to the app from `deploy/.env`.
 | `OBJECT_STORAGE_BROWSER_DIRECT`, `OBJECT_STORAGE_PUBLIC_URL` | Browsers upload to and download from that store directly |
 | `RATE_LIMIT_DEFAULT`, `RATE_LIMIT_PER_USER` | Requests per minute per IP, and per signed-in person |
 | `NOTIFICATIONS_DEFAULT_QUIET_HOURS` | `on` (default): people who never set work hours get quiet hours from 20:00 to 08:00 on weekdays and all weekend. `off`: they are notified at any time. See [Notifications](../notifications.md) |
+| `LIAISON_MANAGED_SIGNING_ENABLED` | `1` lets a hosted (managed) server offer agreement signatures; off by default there. A self-hosted server ignores it. See [Prepare agreements](../apps/agreements.md) |
 | `LIAISON_TEAM_ENDPOINT` | Where this server shares what an admin opts into with the Liaison team. Unset: the team's endpoint; empty: sharing is not available. See [Share with the Liaison team](liaison-team.md) |
 | `CONTROL_PLANE_URL`, `CONTROL_PLANE_API_KEY` | Both or neither. They do not make the server managed: set without `LIAISON_EDITION`, the server runs self-hosted and logs a warning saying what to set |
 | `LIAISON_REQUIRE_APP_SIGNATURE`, `LIAISON_TRUSTED_APP_PUBLISHERS` | Runtime app installs: signatures are required by default, and the trusted publisher is one cosign certificate-identity regex matched against the whole identity. The image ships cosign; verifying needs outbound HTTPS to Sigstore (`tuf-repo-cdn.sigstore.dev`) |

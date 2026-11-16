@@ -323,6 +323,9 @@ export const envSchema = z
     // Reach a timestamp authority on a private or loopback address (a fixture authority
     // on a labelled walk or year box only). Off by default.
     LIAISON_TSA_ALLOW_PRIVATE: envBoolean(false),
+    // The hosted edition asks for agreement signatures only when its operator sets this
+    // to 1; a self-hosted server ignores it (bundled agreements, `agreement_send`).
+    LIAISON_MANAGED_SIGNING_ENABLED: envBoolean(false),
     DEVICE_FLOW_CLIENTS: z
       .string()
       .default("")

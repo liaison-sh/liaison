@@ -17,11 +17,13 @@ import { type AgreementSource, type Check, markAgentBlocks, prepareChecks } from
 import {
   type AgreementsCtx,
   actingAgentId,
+  bridgeAnswer,
   callerUserId,
   type ErrorEnvelope,
   refusal,
   todayOf,
 } from "./ctx"
+import { linksOf } from "./send"
 
 export interface AgreementRow {
   id: string
@@ -58,6 +60,7 @@ interface DraftRow {
   agreement_id: string
   source?: AgreementSource | null
   lock_version: number
+  next_number?: number
 }
 
 const KINDS = [
@@ -72,6 +75,7 @@ const KINDS = [
   "other",
 ] as const
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const SENT = ["sent", "partly_signed"]
 const CLOSED = ["ended", "declined", "expired", "voided", "withdrawn", "imported"]
 
 /** The series prefix of a kind: PR for proposals, DOC for any PDF, AG for the rest. */
@@ -223,6 +227,9 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
   }>
   const draft = await loadDraft(ctx, row.id)
   const shares = await currentShares(ctx, row.id)
+  // The links of the version that went out: the latest one, once the agreement left draft.
+  const latest = versions[versions.length - 1]
+  const links = latest && row.status !== "draft" ? await linksOf(ctx, latest.id) : []
   return {
     status: "ok",
     agreement: {
@@ -243,6 +250,14 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       frozen_at: v.frozen_at ?? null,
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
+    signing_links: links.map((l) => ({
+      client_action_id: l.id,
+      signer: l.invited_name,
+      email: l.invited_email,
+      sign_order: l.sign_order,
+      state: l.state,
+      expires_at: l.expires_at,
+    })),
     message:
       `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`.trim(),
   }
@@ -427,17 +442,27 @@ export interface UpdateParams {
 }
 
 export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
-  const row = await loadAgreement(ctx, p.id)
-  if (isError(row)) return row
-  if (row.status !== "draft")
-    return refusal(
-      "NOT_A_DRAFT",
-      `Agreement ${row.number} is ${row.status}: only a draft changes here. Nothing was changed.`,
-    )
+  const loaded = await loadAgreement(ctx, p.id)
+  if (isError(loaded)) return loaded
+  let row = loaded
   if ("price_minor" in (p as unknown as Record<string, unknown>))
     return refusal(
       "PRICE_NEEDS_A_PERSON",
       `The price of ${row.number} is set by a person on its page, never here. Nothing was changed.`,
+    )
+  let replaced: { version: number; revoked: number } | null = null
+  if (SENT.includes(row.status) && p.source !== undefined) {
+    // Saving over a sent version: its open links die (`replaced`), its signatures stay on it,
+    // and the next freeze makes a new version.
+    const r = await replaceSentVersion(ctx, row)
+    if (isError(r)) return r
+    replaced = r
+    row = { ...row, status: "draft" }
+  }
+  if (row.status !== "draft")
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} is ${row.status}: only a draft changes here. Nothing was changed.`,
     )
   const agent = await actingAgentId(ctx)
   const user = await callerUserId(ctx)
@@ -555,8 +580,70 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
   }
   return {
     status: "ok",
-    message: `Draft ${row.number} was saved${accessChange ? "; who can see it changed" : ""}. Next: agreement_prepare to check it.`,
+    message: `Draft ${row.number} was saved${accessChange ? "; who can see it changed" : ""}${replaced ? `; version ${replaced.version} was replaced and its ${replaced.revoked} open link(s) withdrawn, its signatures kept` : ""}. Next: agreement_prepare to check it.`,
   }
+}
+
+/** The latest frozen version of an agreement, or null. */
+export async function latestVersion(
+  ctx: AgreementsCtx,
+  agreementId: string,
+): Promise<VersionRow | null> {
+  const versions = (await ctx.db.findMany("agreement_versions", {
+    where: { agreement_id: agreementId },
+    limit: 500,
+  })) as VersionRow[]
+  return versions.sort((a, b) => b.number - a.number)[0] ?? null
+}
+
+export interface VersionRow {
+  id: string
+  agreement_id: string
+  number: number
+  status: string
+  sha256?: string | null
+  file_id?: string | null
+  page_count?: number | null
+  source?: AgreementSource | null
+  source_text?: string | null
+  frozen_at?: string | null
+}
+
+/** Withdraws the open links of the sent version (reason `replaced`) and reopens the draft. */
+async function replaceSentVersion(
+  ctx: AgreementsCtx,
+  row: AgreementRow,
+): Promise<{ version: number; revoked: number } | ErrorEnvelope> {
+  const v = await latestVersion(ctx, row.id)
+  if (!v)
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} has no sent version. Nothing was changed.`,
+    )
+  if (!ctx.client_actions_revoke)
+    return refusal(
+      "LINKS_NOT_AVAILABLE",
+      `The links of ${row.number} cannot be withdrawn on this server. Nothing was changed.`,
+    )
+  const out = bridgeAnswer<{
+    status: string
+    revoked_ids?: string[]
+    error?: { code: string; message: string }
+  }>(
+    await ctx.client_actions_revoke({
+      target_type: "agreement_version",
+      target_id: v.id,
+      reason: "replaced",
+    }),
+  )
+  if (out.status !== "ok")
+    return refusal(
+      out.error?.code ?? "REVOKE_FAILED",
+      `The links of ${row.number} version ${v.number} were not withdrawn: ${out.error?.message ?? ""} Nothing was changed.`,
+    )
+  await ctx.db.update("agreement_versions", v.id, { status: "superseded" })
+  await ctx.db.update("agreements", row.id, { status: "draft" })
+  return { version: v.number, revoked: out.revoked_ids?.length ?? 0 }
 }
 
 /** Set the price: a person's own call only (the tool is hidden from agents and MCP). */
@@ -621,13 +708,116 @@ export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
       checks,
     }
   }
+  return freezeDraft(ctx, row, draft, checks)
+}
+
+interface RenderAnswer {
+  status: string
+  error?: { code: string; message: string }
+  bytesBase64?: string
+  sha256?: string
+  byteSize?: number
+  pageCount?: number
+  blanks?: Array<{ path: string; label: string }>
+  sourceText?: string
+  textMatches?: boolean
+}
+
+/** Every record a filled source reads: its own data plus the agreement's number and title. */
+function freezeRecord(row: AgreementRow, source: AgreementSource): Record<string, unknown> {
+  const data = (source.data ?? {}) as Record<string, unknown>
+  return { ...data, agreement: { number: row.number, title: row.title } }
+}
+
+/**
+ * Freeze the draft as the next version: the host renders the filled source, the
+ * freeze refuses a blank field and a drawn text that differs from the source's,
+ * and the bytes are stored as the version's file with their hash.
+ */
+async function freezeDraft(
+  ctx: AgreementsCtx,
+  row: AgreementRow,
+  draft: DraftRow | null,
+  checks: Check[],
+) {
+  if (!draft?.source)
+    return {
+      status: "checked",
+      version_id: null,
+      sha256: null,
+      page_count: null,
+      checks,
+      message: `${row.number} passes every check. No version was frozen: it has no written text yet (an uploaded file is frozen when its pages are read). Write it with agreement_update.`,
+    }
+  if (!ctx.rich_text_render || !ctx.files_importAttachment)
+    return refusal(
+      "FREEZE_NOT_AVAILABLE",
+      `This server cannot render ${row.number} for a freeze. Nothing was frozen.`,
+    )
+  const out = bridgeAnswer<RenderAnswer>(
+    await ctx.rich_text_render({
+      body: draft.source.body,
+      data: freezeRecord(row, draft.source),
+      title: row.title,
+    }),
+  )
+  if (out.status !== "ok" || !out.bytesBase64 || !out.sha256)
+    return refusal(
+      out.error?.code ?? "RENDER_FAILED",
+      `${row.number} could not be rendered: ${out.error?.message ?? "no file"}. Nothing was frozen.`,
+    )
+  const blanks = out.blanks ?? []
+  if (blanks.length > 0)
+    return {
+      status: "error",
+      error: {
+        code: "BLANK_FIELD",
+        message: `${row.number} still has blank fields: ${blanks.map((b) => b.label).join(", ")}. Fill them with agreement_update. Nothing was frozen.`,
+      },
+      blanks: blanks.map((b) => b.label),
+      checks,
+    }
+  if (out.textMatches !== true)
+    return refusal(
+      "FREEZE_TEXT_MISMATCH",
+      `The laid-out text of ${row.number} differs from its source, so it was not frozen. Nothing was frozen; report this document.`,
+    )
+  const user = await callerUserId(ctx)
+  const number = Math.max(1, Number((draft as { next_number?: number }).next_number ?? 1))
+  const version = (await ctx.db.insert("agreement_versions", {
+    agreement_id: row.id,
+    number,
+    source: draft.source,
+    source_text: out.sourceText ?? "",
+    sha256: out.sha256,
+    byte_size: out.byteSize ?? null,
+    page_count: out.pageCount ?? null,
+    frozen_at: new Date().toISOString(),
+    frozen_by_user_id: user,
+    source_kind: "generated",
+    source_text_origin: "rendered",
+    status: "frozen",
+  })) as { id: string }
+  const file = bridgeAnswer<{ id?: string }>(
+    await ctx.files_importAttachment({
+      targetApp: "agreements",
+      targetEntityType: "agreement_version",
+      targetEntityId: version.id,
+      filename: `${row.number}-v${number}.pdf`,
+      mimeType: "application/pdf",
+      bytesBase64: out.bytesBase64,
+    }),
+  )
+  if (file?.id) await ctx.db.update("agreement_versions", version.id, { file_id: file.id })
+  await ctx.db.update("agreement_drafts", draft.id, { next_number: number + 1 })
   return {
-    status: "checked",
-    version_id: null,
-    sha256: null,
-    page_count: null,
+    status: "ok",
+    version_id: version.id,
+    version: number,
+    sha256: out.sha256,
+    page_count: out.pageCount ?? null,
     checks,
-    message: `${row.number} passes every check. No version was frozen: this build cannot freeze a document yet.`,
+    message: `${row.number} version ${number} is frozen (${out.pageCount ?? "?"} page(s), fingerprint ${out.sha256.slice(0, 12)}). Nothing was sent. Next: agreement_send with this version_id and sha256.`,
   }
 }
 

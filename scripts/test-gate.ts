@@ -90,6 +90,7 @@ export const GATE_LANES: Record<string, number> = {
   "bundled-gitlab": 1,
   "bundled-github": 1,
   "bundled-api-connector": 1,
+  "bundled-agreements": 1,
   "bundled-pennylane": 1,
   "bundled-agreements": 1,
   "bundled-stripe": 1,

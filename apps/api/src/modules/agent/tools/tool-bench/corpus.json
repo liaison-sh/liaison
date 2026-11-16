@@ -3569,7 +3569,7 @@
     "lang": "fr",
     "say": "envoie le contrat à Paul pour qu'il le signe",
     "typed": ["faire signer le contrat", "send it to the client to sign"],
-    "any": ["kernel__client_action_create"]
+    "any": ["kernel__client_action_create", "agreements__agreement_send"]
   },
   {
     "id": "C107",
@@ -3658,5 +3658,29 @@
     "say": "enregistre ce modèle de contrat",
     "typed": ["enregistrer modèle", "save template"],
     "any": ["agreements__template_save"]
+  },
+  {
+    "id": "C119",
+    "set": "seed",
+    "lang": "fr",
+    "say": "annule la signature envoyée à Thomas",
+    "typed": ["annuler signature", "void agreement", "withdraw contract"],
+    "any": ["agreements__agreement_void"]
+  },
+  {
+    "id": "C120",
+    "set": "seed",
+    "lang": "en",
+    "say": "send a reminder to the signers still open on the shareholders agreement",
+    "typed": ["remind signers", "signature reminder"],
+    "any": ["agreements__agreement_reminder_send"]
+  },
+  {
+    "id": "C121",
+    "set": "seed",
+    "lang": "en",
+    "say": "the signer's address had a typo: send a new link to the corrected address",
+    "typed": ["send a new link", "new signing link"],
+    "any": ["agreements__agreement_new_link"]
   }
 ]

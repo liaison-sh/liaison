@@ -1,0 +1,4 @@
+Client action bridge methods, their modes and the person's decision they need -> apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (createClientActionsMethods, personDecided, remind, newLink, guardStops)
+Declared targets only -> apps/api/src/modules/client-actions/targets.ts (declaredTarget)
+Links listed with no token, code or device field -> apps/api/src/modules/client-actions/mint.ts (listTargetClientActions)
+Rich text rendered by the host, read-only -> apps/api/src/modules/apps/sandbox/bridge/rich-text.ts (createRichTextMethods)

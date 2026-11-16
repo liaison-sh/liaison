@@ -20,6 +20,7 @@ import { createAppSourceMethods } from "~/modules/apps/sandbox/bridge/app-source
 import { createApprovalsMethods } from "~/modules/apps/sandbox/bridge/approvals"
 import { createBatchMethods } from "~/modules/apps/sandbox/bridge/batch"
 import { createCalendarMethods } from "~/modules/apps/sandbox/bridge/calendar"
+import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
 import {
   type ActorType,
   createBridgeContext,
@@ -39,6 +40,7 @@ import { createMailMethods } from "~/modules/apps/sandbox/bridge/mail"
 import { createPagesMethods } from "~/modules/apps/sandbox/bridge/pages"
 import { createPlatformMethods } from "~/modules/apps/sandbox/bridge/platform"
 import { createProjectsMethods } from "~/modules/apps/sandbox/bridge/projects"
+import { createRichTextMethods } from "~/modules/apps/sandbox/bridge/rich-text"
 import {
   forWorkersRun,
   markSecretConfigKeys,
@@ -129,6 +131,8 @@ export function createRpcBridge(
     createAccountsMethods(ctx),
     createAppSourceMethods(ctx),
     createSigningMethods(ctx),
+    createClientActionsMethods(ctx),
+    createRichTextMethods(ctx),
   )
 
   // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
@@ -253,6 +257,9 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // and the timestamp is an outside call.
   "signing_seal",
   "signing_timestamp",
+  // Client action links (bridge/client-actions.ts): a send mints and mails, a void withdraws.
+  "client_actions_mint",
+  "client_actions_revoke",
   "nextHandle",
   "invalidateIdempotency",
   "effects_claim",

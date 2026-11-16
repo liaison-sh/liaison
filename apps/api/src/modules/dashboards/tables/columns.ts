@@ -305,7 +305,8 @@ export const columnsSchema = z
         ctx.addIssue({
           code: "custom",
           path: [i, "lookup", "match", "on"],
-          message: "a lookup matches on a column people or the app fill, not another lookup or a formula",
+          message:
+            "a lookup matches on a column people or the app fill, not another lookup or a formula",
         })
       }
     })

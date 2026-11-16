@@ -62,5 +62,199 @@
       "invite_asked": "someone else should receive it",
       "question": "a question"
     }
+  },
+  "page": {
+    "language": "Language",
+    "secureLink": "Secure link",
+    "ask": {
+      "sign": "{{sender}} at {{org}} asks you to sign this document.",
+      "accept": "{{sender}} at {{org}} asks you to accept this document.",
+      "approve": "{{sender}} at {{org}} asks you to approve this document."
+    },
+    "ref": "Reference {{ref}}",
+    "validUntil": "This link is valid until {{date}}",
+    "closed": "This link is closed",
+    "levelLead": "Simple electronic signature:",
+    "levelBody": "you read the document, confirm with a code sent by email, and type your name. You get a copy and the proof.",
+    "stepsLabel": "Steps",
+    "steps": {
+      "read": "1. Read",
+      "review": "1. Review",
+      "identity": "2. Who you are",
+      "sign": "3. Sign",
+      "accept": "3. Accept",
+      "approve": "3. Approve"
+    },
+    "read": {
+      "heading": "Read the document",
+      "reviewHeading": "Your decision",
+      "body": "Take your time. A short summary, which is not part of the document:",
+      "continue": "Continue to sign",
+      "continueOther": "Continue",
+      "wait": "Scroll to the end of the document to continue.",
+      "download": "Download the PDF",
+      "noPdf": "There is no PDF file for this document.",
+      "decline": "Decline",
+      "question": "A question first? Reply to {{sender}}'s mail. This link stays valid until {{date}}."
+    },
+    "doc": {
+      "loading": "Loading the document…",
+      "failed": "The document could not be loaded. Please try again in a few minutes.",
+      "retry": "Try again",
+      "asText": "Read as text",
+      "asPages": "Read the pages",
+      "textLabel": "Text taken from the file, to read more easily. What you sign is the pages.",
+      "textEnd": "To continue, scroll the pages to the end.",
+      "page": "Page {{n}}",
+      "picture": "[Picture]",
+      "end": "End of the document"
+    },
+    "identity": {
+      "heading": "Confirm who you are",
+      "sending": "Sending a code to {{email}}…",
+      "sent": "We sent a 6-digit code to {{email}}. It shows this link reached the right person.",
+      "code": "Code from the email",
+      "resend": "Send a new code",
+      "resendAt": "You can ask for a new code at {{time}}.",
+      "name": "Your full name",
+      "capacity": "Your role or capacity, as you sign",
+      "continue": "Continue",
+      "back": "Back to the document",
+      "notMe": "This is not for me",
+      "wrongCode": "That code is not right. Tries left with this code: {{left}}.",
+      "codeEnded": "This code has ended. Send a new code.",
+      "sendFailed": "We could not send the code. Please try again in a minute.",
+      "invalidText": "Your name or role holds characters we cannot keep. Please type them again.",
+      "notShown": "Open the document first, then ask for a code."
+    },
+    "sign": {
+      "heading": "Sign",
+      "typePhrase": "Type these words: {{phrase}}",
+      "phraseHint": "{{sender}} asked for these words. They are kept exactly as you type them.",
+      "typeName": "Type your full name to sign",
+      "nameHint": "Your typed name is your signature on this exact version of the document.",
+      "confirm": "Sign",
+      "decline": "Decline",
+      "onlyYou": "Only you can sign this. Nobody, and no software, signs in your place.",
+      "capacityNote": "By signing you state your role yourself. Nobody checks it, so please be sure.",
+      "recorded": "This is a simple electronic signature. We record the time, your email, your name and role, your IP address and browser. They go into a proof of signature file you also receive.",
+      "nameMismatch": "Type your name exactly as you gave it in the step before.",
+      "phraseMismatch": "Type the words exactly as asked.",
+      "proofEnded": "Your confirmation has ended. Enter a new code to continue.",
+      "versionChanged": "The document changed since you opened this page. Nothing was signed."
+    },
+    "accept": {
+      "heading": "Accept",
+      "typeName": "Type your full name to accept",
+      "confirm": "Accept",
+      "onlyYou": "Only you can decide this. Nobody, and no software, decides in your place. This is a recorded acceptance, not a signature.",
+      "recorded": "We record the time, your email and name, your IP address and browser, and send you a copy."
+    },
+    "approve": {
+      "heading": "Approve",
+      "typeName": "Type your full name to approve",
+      "confirm": "Approve",
+      "onlyYou": "Only you can decide this. Nobody, and no software, decides in your place. This is a recorded approval, not a signature.",
+      "recorded": "We record the time, your email and name, your IP address and browser, and send you a copy."
+    },
+    "decline": {
+      "heading": "Decline",
+      "bodySign": "Nothing will be signed. {{sender}} will be told you declined, and this link will close.",
+      "bodyOther": "Nothing changes. {{sender}} will be told you declined, and this link will close.",
+      "reason": "Tell {{sender}} why, if you wish (optional)",
+      "back": "Go back",
+      "confirm": "Decline"
+    },
+    "done": {
+      "sign": "You have signed",
+      "accept": "You accepted",
+      "approve": "You approved",
+      "signCopy": "When everyone has signed, the signed PDF and its proof of signature go to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
+      "otherCopy": "A copy of what you decided goes to {{email}}.",
+      "told": "{{sender}} has been told. This link is now closed."
+    },
+    "declined": {
+      "heading": "You declined",
+      "bodySign": "Nothing was signed. {{sender}} has been told, and this link is now closed.",
+      "bodyOther": "Nothing changes. {{sender}} has been told, and this link is now closed.",
+      "again": "If you change your mind, or want to talk about it, reply to {{sender}}'s mail. A new link can be sent."
+    },
+    "foot": "No account needed. No trackers. Sent with Liaison, the software {{org}} uses.",
+    "frame": {
+      "expired": {
+        "title": "This link has ended",
+        "why": "It has passed its end date, so nothing can be signed here now. Nothing was signed with it.",
+        "action": "Ask {{org}} for a new link",
+        "done": "Asked. {{sender}} has your request and will send a new link to the address it went to."
+      },
+      "used": {
+        "title": "This link has been used",
+        "why": "A link like this works once. If that was not you, please tell us straight away.",
+        "action": "Email my copy to the invited address",
+        "notMe": "That was not me",
+        "done": "Sent to the address this link was for. Check your inbox."
+      },
+      "revoked": {
+        "title": "{{org}} withdrew this link",
+        "why": "The document may have changed, or may no longer be needed. Nothing was signed with it.",
+        "action": "Ask {{sender}} about it",
+        "done": "Sent. {{sender}} will reply by mail."
+      },
+      "wrong": {
+        "title": "This link is for someone else",
+        "why": "It was sent to {{email}}, and the code goes only there. If you are the right person, ask to be invited. Your request does not sign anything.",
+        "email": "Your work email",
+        "action": "Ask to be invited",
+        "done": "Asked. If {{org}} agrees, you will get a link of your own."
+      },
+      "declined": {
+        "title": "You declined this",
+        "why": "Nothing was signed, and {{sender}} has been told. If you change your mind, a new link can be sent.",
+        "action": "Ask for a new link",
+        "done": "Asked. {{sender}} will get back to you by mail."
+      },
+      "signed": {
+        "title": "You have already signed",
+        "why": "There is nothing more to do here. The signed PDF and its proof of signature go to the invited address once everyone has signed.",
+        "action": "Email my copy again",
+        "done": "Sent again to the address that signed, if the copy is ready."
+      },
+      "attempts": {
+        "title": "Too many wrong codes: wait 15 minutes",
+        "why": "For safety, this link is paused for 15 minutes. You can try again at {{time}}. Nothing has changed, and the link stays valid.",
+        "action": "Try again",
+        "done": "Still paused. Please try again at {{time}}."
+      },
+      "locked": {
+        "title": "Too many wrong codes: this link has stopped",
+        "why": "For safety, this link has stopped working. Nothing was signed with it. Only a new link from {{org}} can replace it.",
+        "action": "Ask {{org}} for a new link",
+        "done": "Asked. {{sender}} has your request and will send a new link to the address it went to."
+      },
+      "replaced": {
+        "title": "A newer version replaced this one",
+        "why": "{{org}} changed the document, so this link no longer works. Your new link went to the same address.",
+        "action": "Send me the new link again",
+        "done": "Sent to the same address."
+      },
+      "ended": {
+        "title": "Access has ended",
+        "why": "{{org}} has ended this access, so this link no longer opens. Copies you already received stay yours.",
+        "action": "Contact {{org}}",
+        "done": "Sent. {{org}} will reply by mail."
+      },
+      "notfound": {
+        "title": "This link does not open anything",
+        "why": "Some of it may be missing. Open it again from the original mail, without changing it. If it still does not work, reply to that mail.",
+        "action": "Try again",
+        "done": "It still does not open. Please reply to the original mail."
+      },
+      "down": {
+        "title": "This cannot open right now",
+        "why": "It is on our side, not yours, and your link is still good. Nothing was lost. Please try again in a few minutes.",
+        "action": "Try again",
+        "done": "Still not ready. Please try again in a few minutes."
+      }
+    }
   }
 }

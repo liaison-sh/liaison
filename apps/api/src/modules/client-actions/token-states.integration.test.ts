@@ -34,6 +34,7 @@ const ALLOWED: Record<string, string[]> = {
   open: [
     "invited_email_masked",
     "kind",
+    "phrase",
     "ref",
     "sender",
     "sender.name",

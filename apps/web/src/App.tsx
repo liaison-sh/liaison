@@ -4,6 +4,7 @@ import { Route, Router, useLocation, useNavigate } from "@solidjs/router"
 import { type Component, createEffect, ErrorBoundary, lazy, on, Suspense } from "solid-js"
 import { setPagePath, setRouterNavigate } from "~/framework/spa-navigate"
 import { ProtectedRoute } from "~/modules/auth/ProtectedRoute"
+import ClientActionRoute from "~/modules/client-action/ClientActionRoute"
 import DesktopUpdateCard from "~/modules/desktop/DesktopUpdateCard"
 import { I18nProvider, useI18n } from "~/modules/i18n/i18n-context"
 import ClientVersionNotice from "~/modules/shell/ClientVersionNotice"
@@ -145,6 +146,10 @@ const App: Component = () => {
             <Route path="/demo/unsubscribe" component={DemoUnsubscribe} />
             {/* The code mail's link: shows a Confirm button, never verifies on open. */}
             <Route path="/demo/verify" component={DemoVerifyRoute} />
+
+            {/* The token page a client opens from a mail (`/a#t=...`): its own lazy chunk,
+                no shell, no session. */}
+            <Route path="/a" component={ClientActionRoute} />
 
             {/* Protected routes — shell layout with tab system */}
             <Route path="/*" component={ProtectedShell} />

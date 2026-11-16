@@ -1,4 +1,5 @@
 {
   "id": "NT-55",
-  "owner": "token page, seal, offline checker and portal web"
+  "owner": "seal, offline checker and portal web",
+  "part": "the evidence PDF and signature page, check.html, the portal screens and the staff preview"
 }

@@ -1064,8 +1064,8 @@ export async function readClientActionRecord(
                a.document_shown_at, a.decline_reason,
                coalesce(u.name, u.email, o.name) AS invited_by,
                (SELECT (e.meta->>'reached_end_at') FROM ${K()}.client_action_events e
-                 WHERE e.action_id = a.id AND e.event = 'document_shown'
-                 ORDER BY e.at DESC LIMIT 1) AS reached_end_at,
+                 WHERE e.action_id = a.id AND e.event = 'reached_end'
+                 ORDER BY e.at ASC LIMIT 1) AS reached_end_at,
                d.ip, d.user_agent
           FROM ${K()}.client_actions a
           JOIN ${K()}.organizations o ON o.id = a.org_id

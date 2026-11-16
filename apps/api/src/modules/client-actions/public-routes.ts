@@ -248,8 +248,11 @@ function queueClientActionEvent(
   })
 }
 
-function wordsFor(row: ActionRow, title: string) {
-  const lang = toShippedLocale(row.sender_locale ?? undefined) ?? "en"
+function wordsFor(row: ActionRow, title: string, pageLang?: string) {
+  const lang =
+    toShippedLocale(pageLang ?? undefined) ??
+    toShippedLocale(row.sender_locale ?? undefined) ??
+    "en"
   const words_key = `client-action.words.${row.kind}`
   return { words: serverT(lang, words_key, { title }), words_key, lang }
 }
@@ -301,14 +304,55 @@ clientActionPublicRoutes.post(
   }),
 )
 
+/** The distinct page pictures served to one action: the server's own count for `reached_end`. */
+const pagesServedKey = (actionId: string) => `ca:pages:${actionId}`
+const PAGES_SERVED_TTL_SECONDS = 60 * 24 * 3600
+
+const seenSchema = z.object({ reached_end: z.boolean().optional() })
+
 // A person's gesture on the page: only this marks the link opened. A scanner's
-// POST to `open` changes nothing.
+// POST to `open` changes nothing. With `reached_end`, the page says the last part
+// of the document is in view: recorded once, after the document was shown, with
+// the number of page pictures the server itself served to this action.
 clientActionPublicRoutes.post(
   "/seen",
   clientActionRouteHandler(async (ctx) => {
     const { row } = ctx.match
     const dead = deadAnswer(ctx)
     if (dead) return dead.res
+    const reachedEnd = seenSchema.safeParse(ctx.body).data?.reached_end === true
+    if (reachedEnd && row.document_shown_at) {
+      let pagesServed: number | null = null
+      try {
+        pagesServed = await redis.scard(pagesServedKey(row.id))
+      } catch (err) {
+        log.warn({ err, actionId: row.id }, "pages served count unavailable")
+      }
+      await inClientActionOrg(row, "client-action-reached-end", async (tx) => {
+        // One per action: the advisory lock keeps two tabs from writing it twice.
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ca-end:${row.id}`}))`)
+        const [had] = extractRows<{ n: number }>(
+          await tx.execute(sql`
+            SELECT count(*)::int AS n FROM ${K()}.client_action_events
+             WHERE action_id = ${row.id} AND event = 'reached_end'
+          `),
+        )
+        if ((had?.n ?? 0) > 0) return
+        const [at] = extractRows<{ now: string }>(await tx.execute(sql`SELECT now()::text AS now`))
+        await writeClientActionEvent(tx, {
+          orgId: row.org_id,
+          actionId: row.id,
+          event: "reached_end",
+          actorKind: "holder",
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          meta: {
+            reached_end_at: at ? new Date(at.now).toISOString() : null,
+            pages_served: pagesServed,
+          },
+        })
+      })
+    }
     if (!row.first_opened_at) {
       await inClientActionOrg(row, "client-action-seen", async (tx) => {
         const first = extractRows<{ id: string }>(
@@ -360,6 +404,14 @@ clientActionPublicRoutes.post(
         const file = await readTargetFile(row.org_id, row.id, fileId)
         // A picture made at freeze that is gone now is never rebuilt for an open action.
         if (!file) return caJson(503, { state: "down" })
+        if (format === "page" && parsed.data.n !== undefined) {
+          try {
+            await redis.sadd(pagesServedKey(row.id), String(parsed.data.n))
+            await redis.expire(pagesServedKey(row.id), PAGES_SERVED_TTL_SECONDS)
+          } catch (err) {
+            log.warn({ err, actionId: row.id }, "pages served count not kept")
+          }
+        }
         if (format === "pdf") {
           await recordHolderEvent(row, "document_downloaded", ctx, { meta: { format } })
         }
@@ -464,6 +516,8 @@ const verifySchema = z.object({
   code: z.string().max(12),
   name: z.string().max(400),
   capacity: z.string().max(400).optional(),
+  /** The language the page is shown in: the consent words are given and stored in it. */
+  lang: z.string().max(16).optional(),
 })
 
 clientActionPublicRoutes.post(
@@ -524,7 +578,7 @@ clientActionPublicRoutes.post(
     }
     const view = await viewOf(row)
     if (view === "down") return caJson(503, { state: "down" })
-    const words = wordsFor(row, view.title)
+    const words = wordsFor(row, view.title, parsed.data.lang)
     await inClientActionOrg(row, "client-action-code-ok", async (tx) => {
       await tx.execute(sql`
         UPDATE ${K()}.client_actions

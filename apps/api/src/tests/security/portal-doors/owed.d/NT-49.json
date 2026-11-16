@@ -1,5 +1,5 @@
 {
   "id": "NT-49",
-  "owner": "token page and portal web",
-  "part": "the headers on the /a and /portal pages and on /api/portal"
+  "owner": "portal web",
+  "part": "the headers on the /portal page"
 }

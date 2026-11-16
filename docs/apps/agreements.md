@@ -63,6 +63,17 @@ A signer's last page, and their signing link opened again afterwards, says where
 
 A seal that fails is tried again every ten minutes; the version stays signed meanwhile, and one notice goes out after an hour. A stored document that no longer matches its fingerprint is never sealed: the app raises a mismatch notice instead.
 
+### Check a document without Liaison
+
+Anyone holding an evidence file (the staff file or a signer's copy) can check a PDF with no network and no Liaison account:
+
+1. Unzip the evidence file and open `check.html` in a browser.
+2. Choose or drop the PDF to check. The page says "This is the document they signed" when the file is the frozen document or the signed PDF, with its fingerprint, and "This is not the document they signed" otherwise, with both fingerprints.
+
+The page also shows the seal (compare it with the one in the signer's mail), says whether the timestamp names this seal, and on the staff file whether the signature record is the sealed one. A signer's copy leaves other people's devices out, so its record is not checked. The page does not check the timestamp authority's signature: it shows the `openssl ts -verify` line for that.
+
+`packages/evidence-check/verify-with-openssl.sh <evidence.zip> <tsa-chain.pem>` runs every check with openssl alone, the timestamp's signature included. `tsa-chain.pem` is the timestamp authority's published certificate chain (the one set as `LIAISON_TSA_CHAIN_FILE`); the zip does not carry it, so that the file cannot vouch for itself.
+
 Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, and a set field never changes.
 
 ## Check a signed agreement

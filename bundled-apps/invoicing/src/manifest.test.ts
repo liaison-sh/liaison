@@ -1758,6 +1758,8 @@ describe("invoicing manifest", () => {
     //   session (ownsTransactions); a card's preview names what the customer lacks; drafts store
     //   their totals; settings choose the send-from mailbox; lines read excluding VAT; the
     //   activity report is signed by the issuer and takes no lead name.
+    // 0.31.0: an e-invoice whose issuer profile lacks its SIREN or address is refused before a
+    //   number is taken; Settings > Invoicing takes the issuer's SIREN and structured address.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

@@ -16,7 +16,11 @@ import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-co
 import { taintApprovalAudienceGapDetail } from "~/modules/agent/scopes/taint-approval-audience"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
-import { executeToolCore, restrictedStampOf } from "~/modules/apps/execute-tool"
+import {
+  createApprovalRequestInBundle,
+  executeToolCore,
+  restrictedStampOf,
+} from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
@@ -397,5 +401,41 @@ describe("what is derived from a restricted agreement follows its list", () => {
     const [reopened] = await sql<{ visible_to: string[] | null }[]>`
       SELECT visible_to FROM kernel.client_actions WHERE id = ${actionId}::uuid`
     expect(reopened?.visible_to).toBeNull()
+  })
+
+  it("closing the record withdraws a pending card of someone off the list, and makes the list member's card theirs alone", async () => {
+    const park = async (requestedBy: string, title: string) =>
+      createApprovalRequestInBundle({
+        orgId,
+        threadId: await minimal.agentDm(orgId, requestedBy),
+        toolName: "agreements:agreement_update",
+        toolParams: { id: openId, title },
+        requestedBy,
+        summary: { kind: "agreements:agreement_update", title, lines: [] } as never,
+        appName: "agreements",
+        toolShortName: "agreement_update",
+        requesterCanApprove: true,
+        stepBundleId: null,
+      })
+    const offId = await park(adminId, "Renamed by someone off the list")
+    const onId = await park(listedId, "Renamed by someone on the list")
+    expect(typeof offId).toBe("string")
+    expect(typeof onId).toBe("string")
+    await followRestrictedAccess({
+      app: "agreements",
+      entity: "agreement",
+      action: "access_changed",
+      orgId,
+      entityId: openId,
+      actorId: listedId,
+      data: { org_access: "none", visible_to: [listedId], version_ids: [] },
+    })
+    const rows = await sql<{ id: string; status: string; resource_owner_id: string | null }[]>`
+      SELECT id::text AS id, status, resource_owner_id::text AS resource_owner_id
+        FROM kernel.approval_requests WHERE id IN (${offId as string}::uuid, ${onId as string}::uuid)`
+    const byId = new Map(rows.map((r) => [r.id, r]))
+    expect(byId.get(offId as string)?.status).toBe("cancelled")
+    expect(byId.get(onId as string)?.status).toBe("pending")
+    expect(byId.get(onId as string)?.resource_owner_id).toBe(listedId)
   })
 })

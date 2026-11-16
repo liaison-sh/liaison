@@ -1920,6 +1920,30 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/pennylane"),
   },
+  // Agreements bundled-app oracles: manifest, checks, the one access writer, templates, the
+  // no-delete guard. Mock-driven (in-memory db double), no Postgres. Further files go in
+  // scripts/test-suites.d/bundled-agreements/.
+  "bundled-agreements": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/manifest.test.ts", "src/agreements.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/agreements"),
+  },
+  // Agreements UI tests (none yet: the app ships no UI in this version).
+  "bundled-agreements-ui": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/manifest.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/agreements"),
+  },
   // Stripe connector oracles: manifest, schema allow-list and the HTTP door.
   // Mock-driven, no Postgres or credentials.
   "bundled-stripe": {
@@ -2330,6 +2354,7 @@ if (suite === "full") {
     "bundled-github",
     "bundled-api-connector",
     "bundled-pennylane",
+    "bundled-agreements",
     "bundled-stripe",
     "bundled-calls",
     "bundled-social",

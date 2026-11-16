@@ -430,4 +430,30 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // The order could not be read just now: the address it would compare is unknown.
   order_unreadable: 503,
   target_app_unavailable: 503,
+  // ── agreements ────────────────────────────────────────────────────────────
+  // Bad or incomplete input.
+  INVALID_KIND: 400,
+  INVALID_PRICE: 400,
+  INVALID_CURRENCY: 400,
+  INVALID_SHARES: 400,
+  INVALID_FILE: 400,
+  TITLE_REQUIRED: 400,
+  TEMPLATE_INVALID: 400,
+  USE_CHANGE_REQUEST: 400,
+  // Who may do it: only a person sets a price or says a document is not a guarantee; only an
+  // editor on the list changes who can see it; an agent's change waits for a person.
+  PRICE_NEEDS_A_PERSON: 403,
+  NEEDS_A_PERSON: 403,
+  NOT_AN_EDITOR: 403,
+  APPROVAL_REQUIRED: 403,
+  TEMPLATE_NOT_FOUND: 404,
+  // The agreement's state stops it: not a draft, a stale draft, an empty list, a check failed.
+  NOT_A_DRAFT: 409,
+  VERSION_CONFLICT: 409,
+  ACCESS_LIST_EMPTY: 409,
+  PRICE_NOT_SET: 409,
+  SIGNATURE_DOES_NOT_FIT: 409,
+  PERSONAL_GUARANTEE: 409,
+  WHAT_IT_IS_REQUIRED: 409,
+  AGENT_TEXT_UNREAD: 409,
 }

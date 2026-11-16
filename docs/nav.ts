@@ -75,6 +75,7 @@ export const NAV: NavSection[] = [
       { id: "apps/projects", url: "apps/projects" },
       { id: "apps/files", url: "apps/files" },
       { id: "apps/invoicing", url: "apps/invoicing" },
+      { id: "apps/agreements", url: "apps/agreements" },
       { id: "apps/recurring", url: "apps/recurring" },
       { id: "apps/boxtal", url: "apps/boxtal" },
       { id: "apps/store", url: "apps/store" },

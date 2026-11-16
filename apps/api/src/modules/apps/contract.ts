@@ -645,7 +645,12 @@ function parentMadeOnPrintErrors(
   if (!parent || parent.schemaRef !== `app_${appName}` || !table) {
     return fail("the fileParent must be a table of this app's own schema")
   }
-  if (table.dimensions || table.personalScope || table.rlsGovernedByMigration === true) {
+  if (
+    table.dimensions ||
+    table.personalScope ||
+    table.sharedRows ||
+    table.rlsGovernedByMigration === true
+  ) {
     return fail(
       `table "${tableName}" restricts rows beyond its scope (dimensions, personal or migration policies)`,
     )

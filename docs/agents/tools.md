@@ -26,6 +26,8 @@ A conversation keeps the same tool list from its first turn to its last, so the 
 
 At the start of a turn the agent also loads, on its own guess, the other tools of the apps the last turns worked with and of the page you are on. Those are listed by name and purpose only. A tool's description and parameters arrive once the agent asks for it: a `tool_search` naming it, or a first call. A first call with fitting arguments runs; one whose arguments do not fit does not run, and its answer shows the parameters.
 
+Two apps may name a tool the same way, such as `templates_list` in Projects and in Agreements: the app prefix tells them apart, and each description says what its templates make.
+
 When the org has an API connection to its CRM or ERP, the agent's prompt names each connected system with its read and write operations on every page, and a search such as "add a note to a company in the CRM" finds the connector's write tool, which asks for approval. See [API connector](../api-connector.md).
 
 The full generated list, app tools included, is the [agent tools reference](../reference/agent-tools.md).

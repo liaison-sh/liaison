@@ -1,0 +1,1170 @@
+{
+  "name": "agreements",
+  "version": "0.1.0",
+  "iconName": "file-text",
+  "kind": "app",
+  "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Operations",
+    "icon": "file-text",
+    "summary": "Agreements: drafts, versions, templates and simple electronic signatures.",
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/agreements"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "capabilities": [
+    "sequences.allocate"
+  ],
+  "scopes": [
+    "agreements:agreements:read",
+    "agreements:agreements:write",
+    "agreements:evidence:read",
+    "agreements:evidence:devices",
+    "agreements:templates:write",
+    "agreements:internal"
+  ],
+  "features": {
+    "corporateTemplates": {
+      "adminScope": "agreements:templates:write",
+      "labelKey": "agreements.features.corporateTemplates"
+    }
+  },
+  "entities": {
+    "agreement": {
+      "labelField": "title",
+      "searchable": false,
+      "tableName": "agreements",
+      "readScope": "agreements:agreements:read"
+    },
+    "agreement_version": {
+      "labelField": "number",
+      "tableName": "agreement_versions",
+      "fileParent": {
+        "tableName": "agreement_versions",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:agreements:read",
+        "writeScope": "agreements:agreements:write"
+      }
+    },
+    "evidence_package": {
+      "labelField": "seal_version",
+      "tableName": "evidence_packages",
+      "fileParent": {
+        "tableName": "evidence_packages",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:evidence:read",
+        "writeScope": "agreements:internal"
+      }
+    }
+  },
+  "schema": {
+    "agreements": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "list": {
+          "table": "agreement_shares",
+          "column": "agreement_id"
+        }
+      },
+      "fields": {
+        "number": "text",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "sow",
+            "msa",
+            "nda",
+            "retainer",
+            "tm",
+            "dpa",
+            "change_request",
+            "other"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "sent",
+            "partly_signed",
+            "signed",
+            "ended",
+            "declined",
+            "expired",
+            "voided",
+            "withdrawn",
+            "imported"
+          ],
+          "default": "draft"
+        },
+        "title": "text",
+        "company_id": "uuid?",
+        "contact_id": "uuid?",
+        "deal_task_id": "uuid?",
+        "project_id": "uuid?",
+        "quote_document_id": "uuid?",
+        "parent_agreement_id": "uuid?",
+        "became_agreement_id": "uuid?",
+        "template_id": "uuid?",
+        "template_version": {
+          "type": "integer",
+          "required": false
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "fr"
+          ],
+          "default": "en"
+        },
+        "fit_tag": {
+          "type": "string",
+          "enum": [
+            "commercial",
+            "guarantee",
+            "real_estate",
+            "family",
+            "employment"
+          ],
+          "default": "commercial"
+        },
+        "pricing_mode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "retainer",
+            "tm"
+          ],
+          "required": false
+        },
+        "price_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "currency": "text?",
+        "priced_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "amended_total_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "hours_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "rate_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "starts_on": "day?",
+        "ends_on": "day?",
+        "renews_on": "day?",
+        "notice_days": {
+          "type": "integer",
+          "required": false
+        },
+        "signed_at": "date?",
+        "retention_until": "day?",
+        "void_reason": "text?",
+        "what_it_is": "text?",
+        "what_it_is_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "not_a_guarantee_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "org_access": {
+          "type": "string",
+          "enum": [
+            "none",
+            "viewer",
+            "editor"
+          ],
+          "default": "editor"
+        },
+        "acl_user_ids": {
+          "type": "json",
+          "default": []
+        },
+        "created_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "created_by_agent_id": "uuid?"
+      }
+    },
+    "agreement_shares": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "user_id": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "editor"
+          ]
+        },
+        "created_by": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "removed_at": "date?"
+      }
+    },
+    "agreement_drafts": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "next_number": {
+          "type": "integer",
+          "default": 1
+        },
+        "source": {
+          "type": "json",
+          "required": false
+        },
+        "lock_version": {
+          "type": "integer",
+          "default": 1
+        },
+        "updated_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "updated_by_agent_id": "uuid?",
+        "upload_file_id": "uuid?"
+      }
+    },
+    "agreement_versions": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "frozen_at",
+        "writeOnceColumns": [
+          "agreement_id",
+          "number",
+          "source",
+          "source_text",
+          "file_id",
+          "sha256",
+          "byte_size",
+          "page_count",
+          "frozen_at",
+          "frozen_by_user_id",
+          "source_kind",
+          "source_text_origin",
+          "pages",
+          "pages_sha256",
+          "file_report"
+        ]
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "number": "integer",
+        "source": {
+          "type": "json",
+          "required": false
+        },
+        "source_text": "text?",
+        "file_id": "uuid?",
+        "sha256": "text?",
+        "byte_size": {
+          "type": "integer",
+          "required": false
+        },
+        "page_count": {
+          "type": "integer",
+          "required": false
+        },
+        "frozen_at": "date",
+        "frozen_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "generated",
+            "uploaded"
+          ],
+          "default": "generated"
+        },
+        "source_text_origin": {
+          "type": "string",
+          "enum": [
+            "rendered",
+            "pdf_extract"
+          ],
+          "required": false
+        },
+        "pages": {
+          "type": "json",
+          "required": false
+        },
+        "pages_sha256": "text?",
+        "file_report": {
+          "type": "json",
+          "required": false
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "frozen",
+            "superseded",
+            "signed"
+          ],
+          "default": "frozen"
+        },
+        "change_note": "text?",
+        "knowledge_document_id": "uuid?",
+        "scan_state": {
+          "type": "string",
+          "enum": [
+            "not_run",
+            "clean",
+            "infected"
+          ],
+          "default": "not_run"
+        }
+      }
+    },
+    "signature_events": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "agreement_versions",
+          "localColumn": "version_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "signed_at"
+      },
+      "fields": {
+        "version_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreement_versions",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "client_action_id": "uuid",
+        "required_phrase": "text?",
+        "typed_phrase": "text?",
+        "signer_order": {
+          "type": "integer",
+          "required": false
+        },
+        "signer_contact_id": "uuid?",
+        "signer_user_id": "uuid?",
+        "invited_email": "text",
+        "invited_by": "text",
+        "typed_name": "text",
+        "capacity": "text",
+        "consent_words": "text",
+        "consent_lang": "text",
+        "level": {
+          "type": "string",
+          "enum": [
+            "ses",
+            "recorded_approval",
+            "aes",
+            "qes",
+            "demo"
+          ]
+        },
+        "document_sha256": "text",
+        "signed_at": "date",
+        "ip": "text?",
+        "user_agent": "text?",
+        "code_verified_at": "date?",
+        "document_shown_at": "date?",
+        "reached_end_at": "date?"
+      }
+    },
+    "evidence_packages": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "agreement_versions",
+          "localColumn": "version_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "sealed_at",
+        "writeOnceColumns": [
+          "version_id",
+          "level",
+          "hash_alg",
+          "seal_version",
+          "document_sha256",
+          "signed_pdf_file_id",
+          "signed_pdf_sha256",
+          "trail_sha256",
+          "trail",
+          "manifest",
+          "seal",
+          "sealed_at",
+          "evidence_file_id",
+          "signer_copy_file_ids",
+          "tsr_file_id",
+          "tsa_url",
+          "tsa_policy_oid",
+          "timestamped_at",
+          "stamped_evidence_file_id",
+          "stamped_signer_copy_file_ids"
+        ]
+      },
+      "fields": {
+        "version_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreement_versions",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "ses",
+            "recorded_approval",
+            "aes",
+            "qes",
+            "demo"
+          ]
+        },
+        "hash_alg": "text",
+        "seal_version": "integer",
+        "document_sha256": "text",
+        "signed_pdf_file_id": "uuid?",
+        "signed_pdf_sha256": "text?",
+        "trail_sha256": "text?",
+        "trail": {
+          "type": "json",
+          "required": false
+        },
+        "manifest": {
+          "type": "json",
+          "required": false
+        },
+        "seal": "text?",
+        "sealed_at": "date",
+        "evidence_file_id": "uuid?",
+        "signer_copy_file_ids": {
+          "type": "json",
+          "required": false
+        },
+        "tsr_file_id": "uuid?",
+        "tsa_url": "text?",
+        "tsa_policy_oid": "text?",
+        "timestamped_at": "date?",
+        "stamped_evidence_file_id": "uuid?",
+        "stamped_signer_copy_file_ids": {
+          "type": "json",
+          "required": false
+        },
+        "timestamp_status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "stamped"
+          ],
+          "default": "pending"
+        },
+        "last_verified_at": "date?",
+        "last_verify_ok": {
+          "type": "boolean",
+          "required": false
+        }
+      }
+    },
+    "agreement_template_meta": {
+      "rlsScope": "agreements",
+      "internalWriteScope": "agreements:templates:write",
+      "fields": {
+        "template_id": "uuid?",
+        "name": "text",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "sow",
+            "msa",
+            "nda",
+            "retainer",
+            "tm",
+            "dpa",
+            "change_request",
+            "other"
+          ]
+        },
+        "fit_tag": {
+          "type": "string",
+          "enum": [
+            "commercial",
+            "guarantee",
+            "real_estate",
+            "family",
+            "employment"
+          ],
+          "default": "commercial"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "fr"
+          ],
+          "default": "en"
+        },
+        "version": {
+          "type": "integer",
+          "default": 1
+        },
+        "archived": {
+          "type": "boolean",
+          "default": false
+        },
+        "corporate": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "agreement_template_versions": {
+      "rlsScope": "agreements",
+      "internalWriteScope": "agreements:templates:write",
+      "fields": {
+        "template_id": "uuid",
+        "version": "integer",
+        "body": "json",
+        "saved_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "saved_at": "date"
+      }
+    },
+    "agreements_settings": {
+      "rlsScope": "agreements",
+      "fields": {
+        "retention_years_after_end": {
+          "type": "integer",
+          "default": 5
+        },
+        "sow_reader_role_id": "uuid?",
+        "default_link_days": {
+          "type": "integer",
+          "default": 14
+        }
+      }
+    }
+  },
+  "approvalRoute": {
+    "agreements:agreement": "approval_route_read"
+  },
+  "tools": {
+    "home_load": {
+      "description": "Load the agreements list for the app's home page, in the order of what needs someone first.",
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "homeLoadHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "useInstead": "agreements_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        }
+      }
+    },
+    "agreements_search": {
+      "description": "Find agreements by status, company, kind or renewal date, ordered by what needs someone first.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "agreement",
+        "avenant",
+        "proposition",
+        "proposal",
+        "renouvellement",
+        "renewal",
+        "nda",
+        "sow"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "agreementsSearchHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "sent",
+              "partly_signed",
+              "signed",
+              "ended",
+              "declined",
+              "expired",
+              "voided",
+              "withdrawn",
+              "imported"
+            ]
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "renews_before": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "agreement_get": {
+      "description": "Read one agreement: its parties, status, price, dates, versions and who can see it.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "agreement",
+        "détail",
+        "voir",
+        "open"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "agreementGetHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_create": {
+      "description": "Create an agreement draft from a template or a brief, or from an uploaded PDF (kind other). Never sets a price.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "rédiger",
+        "draft",
+        "proposition",
+        "proposal",
+        "créer",
+        "create"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementCreateHandler",
+      "writesToTable": "app_agreements.agreements",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "contact_id": {
+            "type": "string"
+          },
+          "template_id": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "fit_tag": {
+            "type": "string",
+            "enum": [
+              "commercial",
+              "guarantee",
+              "real_estate",
+              "family",
+              "employment"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "what_it_is": {
+            "type": "string"
+          },
+          "org_access": {
+            "type": "string",
+            "enum": [
+              "none",
+              "viewer",
+              "editor"
+            ]
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "viewer",
+                    "editor"
+                  ]
+                }
+              },
+              "required": [
+                "user_id",
+                "role"
+              ]
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ]
+      }
+    },
+    "agreement_update": {
+      "description": "Change an agreement draft: its text, dates or who can see it. An agent's change to who can see it waits for a person.",
+      "searchKeywords": [
+        "modifier",
+        "edit",
+        "contrat",
+        "contract",
+        "partage",
+        "share"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementUpdateHandler",
+      "writesToTable": "app_agreements.agreements",
+      "conditionalGate": true,
+      "approvalImpact": "internal",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "lock_version": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "starts_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "ends_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "renews_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "notice_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650
+          },
+          "what_it_is": {
+            "type": "string"
+          },
+          "not_a_guarantee": {
+            "type": "boolean"
+          },
+          "org_access": {
+            "type": "string",
+            "enum": [
+              "none",
+              "viewer",
+              "editor"
+            ]
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "viewer",
+                    "editor"
+                  ]
+                }
+              },
+              "required": [
+                "user_id",
+                "role"
+              ]
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_prepare": {
+      "description": "Check an agreement draft before sending: blanks, price, fit for this kind of signature, clauses an agent wrote.",
+      "searchKeywords": [
+        "préparer",
+        "prepare",
+        "vérifier",
+        "check",
+        "signature",
+        "envoyer"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementPrepareHandler",
+      "writesToTable": "app_agreements.agreement_versions",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_price_set": {
+      "description": "Set the price of an agreement. A person's own action only.",
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementPriceSetHandler",
+      "writesToTable": "app_agreements.agreements",
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "price_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,18}$"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          }
+        },
+        "required": [
+          "id",
+          "price_minor",
+          "currency"
+        ]
+      }
+    },
+    "templates_list": {
+      "description": "List the agreement templates with their kind, language and current version.",
+      "searchKeywords": [
+        "modèle",
+        "template",
+        "contrat",
+        "contract"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "templatesListHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "include_archived": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "template_get": {
+      "description": "Read one agreement template at its current or a given version.",
+      "searchKeywords": [
+        "modèle",
+        "template"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "templateGetHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "template_id"
+        ]
+      }
+    },
+    "template_save": {
+      "description": "Save an agreement template as a new version; agreements made from earlier versions keep their text.",
+      "searchKeywords": [
+        "modèle",
+        "template",
+        "enregistrer",
+        "save"
+      ],
+      "requiredScopes": [
+        "agreements:templates:write"
+      ],
+      "handler": "templateSaveHandler",
+      "writesToTable": "app_agreements.agreement_template_meta",
+      "conditionalGate": true,
+      "approvalImpact": "internal",
+      "params": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "fit_tag": {
+            "type": "string",
+            "enum": [
+              "commercial",
+              "guarantee",
+              "real_estate",
+              "family",
+              "employment"
+            ]
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "body"
+        ]
+      }
+    },
+    "approval_route_read": {
+      "description": "Who an agreement concerns, for routing its approvals.",
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "approvalRouteReadHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityType",
+          "entityId"
+        ]
+      }
+    }
+  }
+}

@@ -183,6 +183,7 @@ import {
   generateRlsPolicySql,
   migrationGovernedTables,
   rlsScopeEntityForTable,
+  type SharedRowsDecl,
   tablesUnreachableByGrantableScopes,
 } from "~/modules/permissions/rls-generator"
 import { invalidateScopeCatalog } from "~/modules/permissions/scope-catalog"
@@ -2957,6 +2958,8 @@ async function registerSingleApp(
                       entityDef.fields ?? {},
                       internalWriteScope,
                       personalScope,
+                      undefined,
+                      (entityDef as { sharedRows?: SharedRowsDecl }).sharedRows,
                     )
                     for (const stmt of policySql.split(";").filter((s: string) => s.trim())) {
                       try {

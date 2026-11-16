@@ -1140,6 +1140,41 @@ export const appManifestJsonSchema = {
             },
             additionalProperties: false,
           },
+          // Who-can-see RLS restriction for documents a person can close to the org. Every
+          // generated policy gains an AND-condition: the row's root record has
+          // `org_access <> 'none'`, or the reading user is on the root's list. No grant
+          // satisfies it, `*` included; system contexts (no user) keep their access. Self
+          // form: { list: { table, column } } (the table holds `org_access`; `list.table` holds
+          // one row per named person, `user_id`, pointing back by `list.column`; a row whose
+          // `removed_at` is set no longer counts). Via form:
+          // { via: { table, localColumn } }, one hop to another sharedRows table, which may
+          // itself be a via table. The checks run in SECURITY DEFINER helpers, so the policy
+          // never joins back through a table's own RLS (no recursion, no fail-open).
+          sharedRows: {
+            type: "object",
+            properties: {
+              via: {
+                type: "object",
+                properties: {
+                  table: { type: "string", minLength: 1 },
+                  localColumn: { type: "string", minLength: 1 },
+                },
+                required: ["table", "localColumn"],
+                additionalProperties: false,
+              },
+              list: {
+                type: "object",
+                properties: {
+                  table: { type: "string", minLength: 1 },
+                  column: { type: "string", minLength: 1 },
+                },
+                required: ["table", "column"],
+                additionalProperties: false,
+              },
+            },
+            oneOf: [{ required: ["via"] }, { required: ["list"] }],
+            additionalProperties: false,
+          },
           dimensions: { type: "object", additionalProperties: dimensionDefSchema },
           triggers: triggerDefSchema,
           // Legal records: rows are write-once and neither they nor their files can be deleted

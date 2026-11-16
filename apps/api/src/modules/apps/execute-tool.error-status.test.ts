@@ -76,6 +76,21 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     }
   }
 
+  it("agreements: every refusal and blocking check code is a 4xx", () => {
+    const codes = new Set<string>()
+    for (const file of sourceFiles(join(REPO, "bundled-apps", "agreements", "src"))) {
+      const text = readFileSync(file, "utf8")
+      for (const m of text.matchAll(/\b(?:refusal\(|code:)\s*"([A-Z][A-Z_]+)"/g)) codes.add(m[1]!)
+    }
+    codes.delete("CHECK_WITH_LAWYER") // a note on a passing check, never an error
+    expect(codes.size).toBeGreaterThan(15)
+    const fives = [...codes].filter((c) => {
+      const s = statusForToolError(c)
+      return s < 400 || s >= 500
+    })
+    expect(fives).toEqual([])
+  })
+
   it("the buyer-VAT guard's refusals are 4xx, found by the positional refuse() scan", () => {
     const codes = declaredCodes(join(REPO, "bundled-apps", "invoicing", "src"))
     for (const code of ["vat_id_invalid", "buyer_vat_id_required", "buyer_is_consumer_refused"]) {

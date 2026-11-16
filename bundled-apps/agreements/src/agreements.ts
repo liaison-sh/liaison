@@ -1,0 +1,645 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Agreements: search in the order of what needs someone first, read, create, update, price,
+// prepare. Writes go through `ctx.db.batch` so a numbered row and its list land together.
+
+import { batchPreconditionFailure, type DbBatchOp } from "@liaison/app-sdk"
+import {
+  accessOps,
+  currentShares,
+  mayChangeAccess,
+  normaliseShares,
+  type OrgAccess,
+  type ShareEntry,
+  type ShareRow,
+} from "./access"
+import { type AgreementSource, type Check, markAgentBlocks, prepareChecks } from "./checks"
+import {
+  type AgreementsCtx,
+  actingAgentId,
+  callerUserId,
+  type ErrorEnvelope,
+  refusal,
+  todayOf,
+} from "./ctx"
+
+export interface AgreementRow {
+  id: string
+  number: string
+  kind: string
+  status: string
+  title: string
+  company_id?: string | null
+  contact_id?: string | null
+  template_id?: string | null
+  template_version?: number | null
+  language?: string | null
+  fit_tag?: string | null
+  price_minor?: string | number | null
+  currency?: string | null
+  priced_by_user_id?: string | null
+  renews_on?: string | null
+  notice_days?: number | null
+  signed_at?: string | null
+  starts_on?: string | null
+  ends_on?: string | null
+  what_it_is?: string | null
+  what_it_is_by_user_id?: string | null
+  not_a_guarantee_by_user_id?: string | null
+  org_access?: OrgAccess | null
+  created_by_user_id?: string | null
+  created_by_agent_id?: string | null
+  updated_at?: string | null
+  created_at?: string | null
+}
+
+interface DraftRow {
+  id: string
+  agreement_id: string
+  source?: AgreementSource | null
+  lock_version: number
+}
+
+const KINDS = [
+  "proposal",
+  "sow",
+  "msa",
+  "nda",
+  "retainer",
+  "tm",
+  "dpa",
+  "change_request",
+  "other",
+] as const
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CLOSED = ["ended", "declined", "expired", "voided", "withdrawn", "imported"]
+
+/** The series prefix of a kind: PR for proposals, DOC for any PDF, AG for the rest. */
+export function seriesOf(kind: string): string {
+  if (kind === "proposal") return "PR"
+  if (kind === "other") return "DOC"
+  return "AG"
+}
+
+function addDays(date: string, days: number): string {
+  const [y, m, day] = date.split("-").map(Number)
+  const d = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (day ?? 1) + days))
+  return d.toISOString().slice(0, 10)
+}
+
+/** Inside its notice period: a signed agreement whose renewal is due within `notice_days`. */
+export function insideNotice(row: AgreementRow, today: string): boolean {
+  if (row.status !== "signed" || !row.renews_on) return false
+  const notice = row.notice_days ?? 0
+  return addDays(today, notice) >= row.renews_on && row.renews_on >= today
+}
+
+/**
+ * What needs someone first: a draft (someone is writing or approving it), then a document
+ * waiting for signatures, then a renewal inside its notice, then signed, then closed.
+ */
+export function needRank(row: AgreementRow, today: string): number {
+  if (row.status === "draft") return 0
+  if (row.status === "sent" || row.status === "partly_signed") return 1
+  if (insideNotice(row, today)) return 2
+  if (row.status === "signed") return 3
+  if (CLOSED.includes(row.status)) return 4
+  return 5
+}
+
+export function orderByNeed(rows: AgreementRow[], today: string): AgreementRow[] {
+  return [...rows].sort((a, b) => {
+    const r = needRank(a, today) - needRank(b, today)
+    if (r !== 0) return r
+    const ta = a.updated_at ?? a.created_at ?? ""
+    const tb = b.updated_at ?? b.created_at ?? ""
+    return ta < tb ? 1 : ta > tb ? -1 : a.number.localeCompare(b.number)
+  })
+}
+
+const NEED_WORDS = [
+  "being drafted",
+  "waiting for signatures",
+  "renewal inside its notice",
+  "signed",
+  "closed",
+  "other",
+]
+
+function brief(row: AgreementRow, today: string) {
+  return {
+    id: row.id,
+    number: row.number,
+    title: row.title,
+    kind: row.kind,
+    status: row.status,
+    needs: NEED_WORDS[needRank(row, today)],
+    company_id: row.company_id ?? null,
+    renews_on: row.renews_on ?? null,
+    price_minor:
+      row.price_minor === null || row.price_minor === undefined ? null : String(row.price_minor),
+    currency: row.currency ?? null,
+    org_access: row.org_access ?? "editor",
+  }
+}
+
+export interface SearchParams {
+  status?: string
+  company_id?: string
+  kind?: string
+  renews_before?: string
+  query?: string
+  limit?: number
+}
+
+export async function agreementsSearch(ctx: AgreementsCtx, p: SearchParams) {
+  const where: Record<string, unknown> = {}
+  if (p.status) where.status = p.status
+  if (p.company_id) where.company_id = p.company_id
+  if (p.kind) where.kind = p.kind
+  let rows = (await ctx.db.findMany("agreements", { where, limit: 1000 })) as AgreementRow[]
+  if (p.renews_before) {
+    const before = p.renews_before
+    rows = rows.filter((r) => !!r.renews_on && r.renews_on < before)
+  }
+  if (p.query) {
+    const q = p.query.toLowerCase()
+    rows = rows.filter(
+      (r) => r.title.toLowerCase().includes(q) || r.number.toLowerCase().includes(q),
+    )
+  }
+  const today = todayOf(ctx)
+  const limit = Math.min(Math.max(p.limit ?? 25, 1), 200)
+  const ordered = orderByNeed(rows, today)
+  const items = ordered.slice(0, limit).map((r) => brief(r, today))
+  return {
+    status: "ok",
+    items,
+    total: ordered.length,
+    message:
+      items.length === 0
+        ? "No agreement matches. Create one with agreement_create."
+        : `${ordered.length} agreement(s), what needs someone first${ordered.length > items.length ? `; the first ${items.length} shown` : ""}. Open one with agreement_get.`,
+  }
+}
+
+async function loadAgreement(
+  ctx: AgreementsCtx,
+  id: unknown,
+): Promise<AgreementRow | ErrorEnvelope> {
+  if (typeof id !== "string" || !UUID.test(id))
+    return refusal("NOT_FOUND", "No agreement with this id. Find it with agreements_search.")
+  const row = (await ctx.db.findOne("agreements", id)) as AgreementRow | null
+  if (!row)
+    return refusal("NOT_FOUND", `No agreement ${id} you can see. Find it with agreements_search.`)
+  return row
+}
+
+async function loadDraft(ctx: AgreementsCtx, agreementId: string): Promise<DraftRow | null> {
+  const rows = (await ctx.db.findMany("agreement_drafts", {
+    where: { agreement_id: agreementId },
+    limit: 1,
+  })) as DraftRow[]
+  return rows[0] ?? null
+}
+
+const isError = (v: unknown): v is ErrorEnvelope =>
+  !!v && typeof v === "object" && (v as { status?: unknown }).status === "error"
+
+export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
+  const row = await loadAgreement(ctx, p.id)
+  if (isError(row)) return row
+  const versions = (await ctx.db.findMany("agreement_versions", {
+    where: { agreement_id: row.id },
+    orderBy: { number: "asc" },
+    limit: 200,
+  })) as Array<{
+    id: string
+    number: number
+    status: string
+    sha256?: string | null
+    page_count?: number | null
+    frozen_at?: string
+  }>
+  const draft = await loadDraft(ctx, row.id)
+  const shares = await currentShares(ctx, row.id)
+  return {
+    status: "ok",
+    agreement: {
+      ...brief(row, todayOf(ctx)),
+      what_it_is: row.what_it_is ?? null,
+      starts_on: row.starts_on ?? null,
+      ends_on: row.ends_on ?? null,
+      template_id: row.template_id ?? null,
+      template_version: row.template_version ?? null,
+    },
+    draft: draft ? { lock_version: draft.lock_version, source: draft.source ?? null } : null,
+    versions: versions.map((v) => ({
+      id: v.id,
+      number: v.number,
+      status: v.status,
+      sha256: v.sha256 ?? null,
+      page_count: v.page_count ?? null,
+      frozen_at: v.frozen_at ?? null,
+    })),
+    shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
+    message:
+      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`.trim(),
+  }
+}
+
+export interface CreateParams {
+  kind: string
+  title: string
+  company_id?: string
+  contact_id?: string
+  template_id?: string
+  language?: "en" | "fr"
+  fit_tag?: string
+  source?: AgreementSource
+  file_id?: string
+  what_it_is?: string
+  org_access?: OrgAccess
+  shares?: ShareEntry[]
+}
+
+async function templateSource(
+  ctx: AgreementsCtx,
+  templateId: string,
+): Promise<{ version: number; body: unknown; kind: string; fit_tag: string } | ErrorEnvelope> {
+  const metas = (await ctx.db.findMany("agreement_template_meta", {
+    where: { template_id: templateId },
+    limit: 1,
+  })) as Array<{ version: number; kind: string; fit_tag: string; archived?: boolean }>
+  const meta = metas[0]
+  if (!meta || meta.archived)
+    return refusal(
+      "TEMPLATE_NOT_FOUND",
+      `No template ${templateId}. List them with templates_list.`,
+    )
+  const versions = (await ctx.db.findMany("agreement_template_versions", {
+    where: { template_id: templateId, version: meta.version },
+    limit: 1,
+  })) as Array<{ body: unknown }>
+  if (!versions[0])
+    return refusal("TEMPLATE_NOT_FOUND", `Template ${templateId} has no version ${meta.version}.`)
+  return { version: meta.version, body: versions[0].body, kind: meta.kind, fit_tag: meta.fit_tag }
+}
+
+export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
+  if (!(KINDS as readonly string[]).includes(p.kind))
+    return refusal(
+      "INVALID_KIND",
+      `Kind ${p.kind} is not one of ${KINDS.join(", ")}. Nothing was created.`,
+    )
+  if (typeof p.title !== "string" || p.title.trim() === "")
+    return refusal("TITLE_REQUIRED", "An agreement needs a title. Nothing was created.")
+  if (p.kind === "change_request")
+    return refusal(
+      "USE_CHANGE_REQUEST",
+      "A change request is made from its parent agreement, not here. Nothing was created.",
+    )
+  if ("price_minor" in (p as unknown as Record<string, unknown>))
+    return refusal(
+      "PRICE_NEEDS_A_PERSON",
+      "agreement_create never sets a price: a person sets it on the agreement's page. Nothing was created.",
+    )
+  if (p.file_id !== undefined && (typeof p.file_id !== "string" || !UUID.test(p.file_id)))
+    return refusal(
+      "INVALID_FILE",
+      "file_id is the id files_upload_confirm returned for the uploaded PDF. Nothing was created.",
+    )
+  const agent = await actingAgentId(ctx)
+  const user = await callerUserId(ctx)
+  let source: AgreementSource | null = p.source ?? null
+  let templateVersion: number | null = null
+  let fitTag = p.fit_tag ?? "commercial"
+  if (p.template_id) {
+    const t = await templateSource(ctx, p.template_id)
+    if (isError(t)) return t
+    templateVersion = t.version
+    if (!p.fit_tag) fitTag = t.fit_tag
+    // The template's text is copied: a later template version never moves it.
+    source = {
+      body: JSON.parse(JSON.stringify(t.body)) as AgreementSource["body"],
+      data: p.source?.data ?? {},
+    }
+  }
+  if (source && agent !== null) source = markAgentBlocks(null, source)
+  const orgAccess: OrgAccess = p.org_access ?? "editor"
+  const requested = normaliseShares(p.shares ?? [])
+  if (!requested)
+    return refusal(
+      "INVALID_SHARES",
+      "Each person on the list needs a user id and the role viewer or editor. Nothing was created.",
+    )
+  // The creator is on the list as editor, like anyone else.
+  const list =
+    user && !requested.some((s) => s.user_id === user)
+      ? [{ user_id: user, role: "editor" as const }, ...requested]
+      : requested.map((s) => (s.user_id === user ? { ...s, role: "editor" as const } : s))
+  const now = new Date().toISOString()
+  const year = now.slice(0, 4)
+  const series = seriesOf(p.kind)
+  const ops: DbBatchOp[] = [
+    {
+      insert: "agreements",
+      as: "agreement",
+      data: {
+        number: { $seq: "formatted" },
+        kind: p.kind,
+        status: "draft",
+        title: p.title.trim(),
+        company_id: p.company_id ?? null,
+        contact_id: p.contact_id ?? null,
+        template_id: p.template_id ?? null,
+        template_version: templateVersion,
+        language: p.language ?? "en",
+        fit_tag: fitTag,
+        what_it_is: p.what_it_is?.trim() || null,
+        what_it_is_by_user_id: p.what_it_is && agent === null ? user : null,
+        org_access: "editor",
+        created_by_user_id: user,
+        created_by_agent_id: agent,
+      },
+    },
+    {
+      insert: "agreement_drafts",
+      data: {
+        agreement_id: { $ref: "agreement" },
+        source,
+        upload_file_id: p.file_id ?? null,
+        lock_version: 1,
+        next_number: 1,
+        updated_by_user_id: user,
+        updated_by_agent_id: agent,
+      },
+    },
+  ]
+  if (list.length > 0) {
+    const acc = accessOps("", orgAccess, list, "new", user, now)
+    if (isError(acc)) return acc
+    ops.push(...acc)
+  } else if (orgAccess === "none") {
+    return refusal(
+      "ACCESS_LIST_EMPTY",
+      "An agreement closed to the organization needs at least one person on its list. Nothing was created.",
+    )
+  }
+  const result = await ctx.db.batch({
+    sequence: {
+      key: `agreements:${series}:${year}`,
+      format: { prefix: `${series}-${year}-`, pad: 3 },
+      unique: { entity: "agreements", field: "number" },
+    },
+    ops,
+  })
+  const row = result.rows.agreement
+  const number = result.sequence?.formatted ?? String(row?.number ?? "")
+  return {
+    status: "ok",
+    agreement: {
+      id: row?.id,
+      number,
+      kind: p.kind,
+      status: "draft",
+      title: p.title.trim(),
+      org_access: orgAccess,
+      file_id: p.file_id ?? null,
+    },
+    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}. Next: agreement_prepare to check it.`,
+  }
+}
+
+export interface UpdateParams {
+  id: string
+  lock_version?: number
+  title?: string
+  source?: AgreementSource
+  starts_on?: string
+  ends_on?: string
+  renews_on?: string
+  notice_days?: number
+  what_it_is?: string
+  not_a_guarantee?: boolean
+  org_access?: OrgAccess
+  shares?: ShareEntry[]
+}
+
+export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
+  const row = await loadAgreement(ctx, p.id)
+  if (isError(row)) return row
+  if (row.status !== "draft")
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} is ${row.status}: only a draft changes here. Nothing was changed.`,
+    )
+  if ("price_minor" in (p as unknown as Record<string, unknown>))
+    return refusal(
+      "PRICE_NEEDS_A_PERSON",
+      `The price of ${row.number} is set by a person on its page, never here. Nothing was changed.`,
+    )
+  const agent = await actingAgentId(ctx)
+  const user = await callerUserId(ctx)
+  const accessChange = p.org_access !== undefined || p.shares !== undefined
+  const allShares = (await ctx.db.findMany("agreement_shares", {
+    where: { agreement_id: row.id },
+    limit: 500,
+  })) as ShareRow[]
+  const shares = allShares.filter((s) => !s.removed_at)
+  let accessBatch: DbBatchOp[] = []
+  if (accessChange) {
+    const orgAccess = (p.org_access ?? row.org_access ?? "editor") as OrgAccess
+    if (!mayChangeAccess(user, (row.org_access ?? "editor") as OrgAccess, shares))
+      return refusal(
+        "NOT_AN_EDITOR",
+        `Only a person on the list of ${row.number} as editor changes who can see it. Nothing was changed.`,
+      )
+    const list =
+      p.shares !== undefined
+        ? normaliseShares(p.shares)
+        : shares.map((s) => ({ user_id: s.user_id, role: s.role }))
+    if (!list)
+      return refusal(
+        "INVALID_SHARES",
+        "Each person on the list needs a user id and the role viewer or editor. Nothing was changed.",
+      )
+    // An agent never changes who can see a document on its own: a person decides.
+    if (agent !== null && !ctx.approval) {
+      if (!ctx.requestApproval)
+        return refusal(
+          "APPROVAL_REQUIRED",
+          `Changing who can see ${row.number} needs a person's decision. Nothing was changed.`,
+        )
+      const approval = await ctx.requestApproval({
+        tool_name: "agreements:agreement_update",
+        summary: `Change who can see ${row.number}`,
+        summary_detail: {
+          subtitle: "Who can see this agreement",
+          lines: [
+            `Agreement: ${row.number} "${row.title}"`,
+            `Organization access: ${row.org_access ?? "editor"} to ${orgAccess}`,
+            `People: ${list.map((s) => `${s.user_id} (${s.role})`).join(", ") || "(none)"}`,
+          ],
+        },
+        current_payload: p,
+        editable_fields: [],
+        noAutoApprove: true,
+      })
+      return {
+        status: "pending_approval",
+        approval_id: approval.approval_id,
+        message: `Nothing was changed yet: who can see ${row.number} changes only when a person approves card ${approval.approval_id}.`,
+      }
+    }
+    const acc = accessOps(
+      row.id,
+      orgAccess,
+      list,
+      shares,
+      user,
+      new Date().toISOString(),
+      allShares,
+    )
+    if (isError(acc)) return acc
+    accessBatch = acc
+  }
+  const data: Record<string, unknown> = {}
+  if (p.title !== undefined) data.title = p.title.trim()
+  for (const k of ["starts_on", "ends_on", "renews_on", "notice_days"] as const)
+    if (p[k] !== undefined) data[k] = p[k]
+  if (p.what_it_is !== undefined) {
+    data.what_it_is = p.what_it_is.trim() || null
+    data.what_it_is_by_user_id = agent === null ? user : null
+  }
+  if (p.not_a_guarantee !== undefined) {
+    if (agent !== null)
+      return refusal(
+        "NEEDS_A_PERSON",
+        `Only a person says ${row.number} is not a personal guarantee. Nothing was changed.`,
+      )
+    data.not_a_guarantee_by_user_id = p.not_a_guarantee ? user : null
+  }
+  const ops: DbBatchOp[] = []
+  if (Object.keys(data).length > 0) ops.push({ update: "agreements", id: row.id, data })
+  if (p.source !== undefined) {
+    const draft = await loadDraft(ctx, row.id)
+    if (!draft)
+      return refusal("NOT_A_DRAFT", `Agreement ${row.number} has no draft. Nothing was changed.`)
+    const expected = p.lock_version ?? draft.lock_version
+    const source = agent !== null ? markAgentBlocks(draft.source ?? null, p.source) : p.source
+    ops.push({
+      updateMany: "agreement_drafts",
+      where: { id: draft.id, lock_version: expected },
+      data: {
+        source,
+        lock_version: expected + 1,
+        updated_by_user_id: user,
+        updated_by_agent_id: agent,
+      },
+      expect: { minRows: 1, maxRows: 1 },
+    })
+  }
+  ops.push(...accessBatch)
+  if (ops.length === 0) return { status: "ok", message: `Nothing to change on ${row.number}.` }
+  try {
+    await ctx.db.batch({ ops })
+  } catch (err) {
+    const failed = batchPreconditionFailure(err)
+    if (failed?.entity === "agreement_drafts")
+      return refusal(
+        "VERSION_CONFLICT",
+        `The draft of ${row.number} changed since lock_version ${p.lock_version}: read it again with agreement_get, then save. Nothing was changed.`,
+      )
+    throw err
+  }
+  return {
+    status: "ok",
+    message: `Draft ${row.number} was saved${accessChange ? "; who can see it changed" : ""}. Next: agreement_prepare to check it.`,
+  }
+}
+
+/** Set the price: a person's own call only (the tool is hidden from agents and MCP). */
+export async function agreementPriceSet(
+  ctx: AgreementsCtx,
+  p: { id: string; price_minor: string; currency: string },
+) {
+  const agent = await actingAgentId(ctx)
+  const user = await callerUserId(ctx)
+  if (agent !== null || ctx.approval || !user)
+    return refusal(
+      "PRICE_NEEDS_A_PERSON",
+      "A price is set by a person on the agreement's page, never by an agent or an approval. Nothing was changed.",
+    )
+  const row = await loadAgreement(ctx, p.id)
+  if (isError(row)) return row
+  if (row.status !== "draft")
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} is ${row.status}: its price no longer changes. Nothing was changed.`,
+    )
+  if (typeof p.price_minor !== "string" || !/^[0-9]{1,18}$/.test(p.price_minor))
+    return refusal(
+      "INVALID_PRICE",
+      "The price is whole minor units, digits only. Nothing was changed.",
+    )
+  if (typeof p.currency !== "string" || !/^[A-Z]{3}$/.test(p.currency))
+    return refusal(
+      "INVALID_CURRENCY",
+      "The currency is a three-letter code such as EUR. Nothing was changed.",
+    )
+  await ctx.db.update("agreements", row.id, {
+    price_minor: p.price_minor,
+    currency: p.currency,
+    priced_by_user_id: user,
+  })
+  return {
+    status: "ok",
+    message: `The price of ${row.number} is now ${p.price_minor} minor units of ${p.currency}. Next: agreement_prepare.`,
+  }
+}
+
+export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
+  const row = await loadAgreement(ctx, p.id)
+  if (isError(row)) return row
+  if (row.status !== "draft")
+    return refusal(
+      "NOT_A_DRAFT",
+      `Agreement ${row.number} is ${row.status}: only a draft is prepared. Nothing was frozen.`,
+    )
+  const draft = await loadDraft(ctx, row.id)
+  const checks: Check[] = prepareChecks(row, draft?.source ?? null)
+  const failed = checks.filter((c) => c.blocking && !c.ok)
+  if (failed.length > 0) {
+    const first = failed[0] as Check
+    return {
+      status: "error",
+      error: {
+        code: first.code,
+        message: `${row.number} cannot be prepared: ${failed.map((c) => c.message).join(" ")} Nothing was frozen.`,
+      },
+      checks,
+    }
+  }
+  return {
+    status: "checked",
+    version_id: null,
+    sha256: null,
+    page_count: null,
+    checks,
+    message: `${row.number} passes every check. No version was frozen: this build cannot freeze a document yet.`,
+  }
+}
+
+export async function approvalRouteRead(
+  ctx: AgreementsCtx,
+  p: { entityType: string; entityId: string },
+) {
+  if (p.entityType !== "agreements:agreement") return {}
+  const row = (await ctx.db.findOne("agreements", p.entityId)) as AgreementRow | null
+  if (!row) return {}
+  return {
+    ...(row.company_id ? { companyId: row.company_id } : {}),
+    ...(row.contact_id ? { personId: row.contact_id } : {}),
+  }
+}

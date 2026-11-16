@@ -1,0 +1,25 @@
+{
+  "entry": "tool:template_get",
+  "params": {
+    "template_id": "4283304f-bea5-431b-afef-24407c6a1ef7"
+  },
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreement_template_meta",
+        "{\"where\":{\"template_id\":\"4283304f-bea5-431b-afef-24407c6a1ef7\"},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"4283304f-bea5-431b-afef-24407c6a1ef7\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 12:15:46.913176+00\",\"updated_at\":\"2026-11-16 12:15:46.913176+00\",\"template_id\":\"4283304f-bea5-431b-afef-24407c6a1ef7\",\"name\":\"Mutual NDA\",\"kind\":\"nda\",\"fit_tag\":\"commercial\",\"language\":\"en\",\"version\":1,\"archived\":false,\"corporate\":false}]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreement_template_versions",
+        "{\"where\":{\"template_id\":\"4283304f-bea5-431b-afef-24407c6a1ef7\",\"version\":1},\"limit\":1}"
+      ],
+      "reply": "[{\"id\":\"37a8144d-1757-42e0-ae4b-c0f4c0954138\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 12:15:46.913176+00\",\"updated_at\":\"2026-11-16 12:15:46.913176+00\",\"template_id\":\"4283304f-bea5-431b-afef-24407c6a1ef7\",\"version\":1,\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"saved_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"saved_at\":\"2026-01-01 00:00:00+00\"}]"
+    }
+  ]
+}

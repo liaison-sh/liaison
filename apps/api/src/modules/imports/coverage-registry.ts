@@ -15,6 +15,43 @@ export type CoverageEntry =
   | { planned: "P3b"; kind: string }
 
 export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
+  "app_agreements.agreement_drafts": {
+    exempt: "deferred",
+    reason: "agreement drafts are written in the app; an import of past agreements is its own tool",
+  },
+  "app_agreements.agreement_shares": {
+    exempt: "system",
+    reason: "who can see an agreement: set by its one access writer, never imported",
+  },
+  "app_agreements.agreement_template_meta": {
+    exempt: "config",
+    reason: "agreement templates, saved in the app as versions",
+  },
+  "app_agreements.agreement_template_versions": {
+    exempt: "config",
+    reason: "agreement template versions (immutable), saved in the app",
+  },
+  "app_agreements.agreement_versions": {
+    exempt: "derived",
+    reason: "frozen versions of an agreement (immutable 10 years), made by prepare, never imported",
+  },
+  "app_agreements.agreements": {
+    exempt: "deferred",
+    reason:
+      "agreements are drafted in the app; signed past agreements come through the app's own import tool",
+  },
+  "app_agreements.agreements_settings": {
+    exempt: "config",
+    reason: "agreements configuration",
+  },
+  "app_agreements.evidence_packages": {
+    exempt: "derived",
+    reason: "sealed evidence of a signature (immutable 10 years), never imported",
+  },
+  "app_agreements.signature_events": {
+    exempt: "derived",
+    reason: "signature records written by a signer's decision (immutable 10 years), never imported",
+  },
   "app_ads.audience_erasure_log": {
     exempt: "system",
     reason: "ads runtime state and configuration",

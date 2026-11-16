@@ -35,6 +35,8 @@ Administration scopes are meant for people: every scope that asks a person for a
 
 Scopes say what a person can do. Data dimensions say which records they see, for example one territory or one team. Agents see exactly the records the person would see, because the limit is applied by the database and the response filter, not by the agent's judgment. See [Data dimensions](../admin/dimensions.md).
 
+Some records can be closed to the organization by the people who own them, such as an agreement whose organization access is **none**. Only the people named on it read it; no role, scope or administrator grant opens it, and an agent acting for someone else sees nothing of it. See [Prepare agreements](../apps/agreements.md#decide-who-can-see-an-agreement).
+
 ### Apps people cannot use
 
 An administrator can turn an app off for everyone, or restrict it to some people. People without access do not see the app in the sidebar, and their agents cannot use its tools. A scope request for an app that is off or restricted away is refused with a message instead of reaching an administrator's queue.

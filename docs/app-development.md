@@ -176,6 +176,17 @@ handlers teaches exactly one thing.
   Messages go only into a channel an import created (this run or an earlier
   one); a CLI import may also name existing channels (`existingChannels`), and
   each such write is recorded in the audit log.
+- **Who can see a record.** A table declared `sharedRows` holds records a person
+  can close to the organization. The self form, `{ "list": { "table":
+  "agreement_shares", "column": "agreement_id" } }`, is for a table with an
+  `org_access` column (`none`, `viewer`, `editor`): with `none`, only the users on
+  the list table (`user_id`, a row whose `removed_at` is set no longer counts) read
+  or write the row. The via form, `{ "via": { "table": "agreements",
+  "localColumn": "agreement_id" } }`, closes a child table with its parent, one
+  hop at a time. The database applies it to every reader, whatever scope or grant
+  they hold, `*` included; work with no user (a job, an event handler) keeps its
+  access. Write `org_access` and the list from one place in the app, and keep
+  the list from ever being empty.
 - **Legal records.** A table declared `immutable` (`retentionYears`, optional
   `writeOnceColumns`) holds legal originals: the kernel refuses to change its
   write-once columns or delete its rows within the retention period. When the

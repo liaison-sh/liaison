@@ -347,6 +347,24 @@ describe("who can see an agreement (the one writer)", () => {
     expect(list()).toEqual([[OTHER, "editor"]])
   })
 
+  it("the agreement keeps a copy of its list while closed, and none once open again", async () => {
+    const db = memoryDb()
+    const id = okId(
+      await agreementCreate(ctxFor(db), {
+        kind: "nda",
+        title: "Copied list",
+        org_access: "none",
+        shares: [{ user_id: OTHER, role: "viewer" }],
+      }),
+    )
+    const row = () => db.tables.get("agreements")?.find((r) => r.id === id)
+    expect(row()?.acl_user_ids).toEqual([PERSON, OTHER].sort())
+    await agreementUpdate(ctxFor(db), { id, shares: [{ user_id: PERSON, role: "editor" }] })
+    expect(row()?.acl_user_ids).toEqual([PERSON])
+    await agreementUpdate(ctxFor(db), { id, org_access: "editor" })
+    expect(row()?.acl_user_ids).toEqual([])
+  })
+
   it("an agent's change parks a card no auto-approve can pass, and changes nothing", async () => {
     const db = memoryDb()
     const id = okId(await agreementCreate(ctxFor(db), { kind: "nda", title: "Open" }))

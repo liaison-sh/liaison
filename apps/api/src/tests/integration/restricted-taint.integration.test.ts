@@ -11,6 +11,7 @@ import { sql as dsql } from "drizzle-orm"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { taintApprovalAudienceGapDetail } from "~/modules/agent/scopes/taint-approval-audience"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
@@ -21,6 +22,7 @@ import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
@@ -303,5 +305,51 @@ describe("what the turn writes next stays with the list", () => {
         ),
       )
     }
+  })
+})
+
+describe("what is derived from a restricted agreement follows its list", () => {
+  const signed = () => ({
+    app: "agreements",
+    entity: "agreement",
+    action: "signed",
+    orgId,
+    entityId: closedId,
+    data: { number: "AG-2026-101" },
+  })
+
+  it("a routine owned off the list gets no tick from its events; one owned on the list does", async () => {
+    expect(await ownerCanSeeEventEntity(await held(adminId), signed())).toBe(false)
+    expect(await ownerCanSeeEventEntity(await held(listedId), signed())).toBe(true)
+    // An evidence event names the agreement beside its version id.
+    const mismatch = {
+      app: "agreements",
+      entity: "evidence",
+      action: "mismatch",
+      orgId,
+      entityId: crypto.randomUUID(),
+      data: { agreement_id: closedId },
+    }
+    expect(await ownerCanSeeEventEntity(await held(adminId), mismatch)).toBe(false)
+    expect(await ownerCanSeeEventEntity(await held(listedId), mismatch)).toBe(true)
+    // An open agreement ticks for any owner who reads agreements.
+    expect(
+      await ownerCanSeeEventEntity(await held(adminId), { ...signed(), entityId: openId }),
+    ).toBe(true)
+  })
+
+  it("its attention and notifications reach the people on its list only, whatever the recipient kind", async () => {
+    const everyone = [listedId, adminId, memberId]
+    expect(await keepRestrictedReaders(orgId, signed(), everyone)).toEqual([listedId])
+    expect(await keepRestrictedReaders(orgId, { ...signed(), entityId: openId }, everyone)).toEqual(
+      everyone,
+    )
+    expect(
+      await keepRestrictedReaders(
+        orgId,
+        { app: "projects", entity: "task", entityId: closedId },
+        everyone,
+      ),
+    ).toEqual(everyone)
   })
 })

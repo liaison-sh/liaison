@@ -47,3 +47,38 @@ export function restrictedAsReadScopes(scopes: readonly string[]): string[] {
 export function restrictedScope(app: string, entity: string, id: string): string {
   return `${RESTRICTED_SCOPE_PREFIX}${app}.${entity}:${id}`
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The event families about a record of a restricted kind, keyed `<app>:<entity>`: the record
+ * kind, and the `data` key naming the record when the entity id is something else (an
+ * agreement's evidence event names it in `agreement_id` when its entity id is a version).
+ */
+const RESTRICTED_EVENT_FAMILIES: Readonly<Record<string, { kind: string; dataKey?: string }>> = {
+  "agreements:agreement": { kind: "agreements.agreement" },
+  "agreements:evidence": { kind: "agreements.agreement", dataKey: "agreement_id" },
+  "knowledge:document": { kind: "knowledge.document" },
+}
+
+/**
+ * The restricted scope an event's record would carry, when the event is about a record of a
+ * restricted kind; null for every other event. Whether the record is restricted right now is
+ * its list function's answer (null when it is open).
+ */
+export function restrictedScopeOfEvent(event: {
+  app?: string
+  entity?: string
+  entityId?: unknown
+  data?: unknown
+}): string | null {
+  const family = RESTRICTED_EVENT_FAMILIES[`${event.app ?? ""}:${event.entity ?? ""}`]
+  if (!family) return null
+  const data =
+    event.data && typeof event.data === "object" && !Array.isArray(event.data)
+      ? (event.data as Record<string, unknown>)
+      : {}
+  const uuid = (v: unknown) => (typeof v === "string" && UUID.test(v) ? v : null)
+  const id = (family.dataKey ? uuid(data[family.dataKey]) : null) ?? uuid(event.entityId)
+  return id ? `${RESTRICTED_SCOPE_PREFIX}${family.kind}:${id}` : null
+}

@@ -6,9 +6,10 @@
 // change it, an agent's change waits for a person (the caller parks it), and a removal sets
 // `removed_at` (rows of this app are never deleted).
 //
-// Derived copies (search's `acl_user_ids`, client action readers, portal shares narrowed on a
-// tightening) are filled by the hook `afterAccessChange`, run in the same batch's commit. It is
-// a no-op here; the restricted-documents work fills it.
+// Derived copies kept on the agreement (`acl_user_ids`) are written by `afterAccessChange` in the
+// same batch. Copies held by the kernel follow the list by mechanism instead: attention and
+// routine ticks read the list itself (`kernel.restricted_readers`), messages a turn writes after
+// reading the agreement carry its restricted scope, and approvals it parks are owner-routed.
 
 import type { DbBatchOp } from "@liaison/app-sdk"
 import { type AgreementsCtx, type ErrorEnvelope, refusal } from "./ctx"
@@ -50,13 +51,17 @@ export function normaliseShares(shares: ShareEntry[]): ShareEntry[] | null {
   return [...by.values()]
 }
 
-/** Hook for the derived copies of the list (filled later, in the same commit). */
-export function afterAccessChange(_change: {
-  agreementId: string
+/**
+ * The derived copies of the list kept on the agreement itself, written with `org_access`: `acl_user_ids`
+ * holds the list while the agreement is closed to the organization, and nothing while it is open
+ * (the field a search document would carry, so a restricted row is never indexed open).
+ */
+export function afterAccessChange(change: {
   orgAccess: OrgAccess
   list: ShareEntry[]
-}): DbBatchOp[] {
-  return []
+}): Record<string, unknown> {
+  const readers = change.orgAccess === "none" ? change.list.map((s) => s.user_id).sort() : []
+  return { acl_user_ids: readers }
 }
 
 /**
@@ -101,8 +106,12 @@ export function accessOps(
     }
   }
   // Written last: closing the agreement while its list is in place keeps the writer reading it.
-  ops.push({ update: "agreements", id: ref, data: { org_access: orgAccess } })
-  ops.push(...afterAccessChange({ agreementId, orgAccess, list }))
+  // The derived copies ride on the same write, so they can never disagree with it.
+  ops.push({
+    update: "agreements",
+    id: ref,
+    data: { org_access: orgAccess, ...afterAccessChange({ orgAccess, list }) },
+  })
   return ops
 }
 

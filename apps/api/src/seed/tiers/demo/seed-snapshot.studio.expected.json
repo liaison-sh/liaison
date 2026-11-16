@@ -25,11 +25,11 @@
   },
   "app_invoicing.documents": {
     "rows": 513,
-    "digest": "f256a9d3e0dedad2"
+    "digest": "5743f47aa057ca95"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
-    "digest": "eda7ff4c80d998d1"
+    "digest": "b0330b8196d9be98"
   },
   "app_invoicing.recurring_schedules": {
     "rows": 2,

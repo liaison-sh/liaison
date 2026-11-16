@@ -1,8 +1,9 @@
 ## What's new
 
-- Claude and other apps you connect to Liaison can read your private mailbox without asking you each time, as long as it is unlocked in an open Liaison window.
-- Dashboards gain an edit mode, version history, exports, filters, a drill-down panel, a period picker with comparisons and targets, and new block types.
-- A dashboard value no row carries is flagged instead of showing a silent zero.
-- Shopify reports can show store sessions and series by day, week or month.
-- Incoming webhooks are stored before they are processed, so none is lost during a restart.
-- Approval cards keep every line their kind lists, and reminder lines read as the system's, not as a person's message.
+- Dashboards can show a table drawn from a project: each task is a row, its fields read live, and the table keeps columns of its own.
+- Dashboard tables that people and agents write, shared like documents, with history, undo and routines that react to changes.
+- Dashboards can be shared with people and roles, with colours taken from the data and new pipeline, people and timeline charts.
+- Projects gain typed task fields, time in status, status history and templates.
+- Routines can run flows of actions, with waits in working time and triggers on project tasks.
+- Help opens the documentation in a tab, searchable.
+- The table grid never loses what you are typing when the data refreshes.

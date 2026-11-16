@@ -15,15 +15,21 @@ import { schemaRef } from "~/db/schema-ref"
 import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { emailOutageHoldsBackSend } from "~/infra/email-outage"
-import { CryptoContext, decryptSecret, generateToken } from "~/lib/crypto"
-import { encryptionKey } from "~/lib/env"
+import { CryptoContext, decryptSecret, encryptSecret, generateToken } from "~/lib/crypto"
+import { encryptionKey, env } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
 import { orgAppBaseUrl, orgHostsEnabled } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { checkBruteForce, recordFailedAttempt, resetAttempts } from "~/middleware/brute-force"
 import { AuthServiceError, createPortalSession, type TokenPair } from "~/modules/auth/auth"
+import { signPortalToken } from "~/modules/auth/jwt"
 import { consumePortalChallenge, mintChallenge } from "~/modules/auth/magic-link"
-import { TOTP_PERIOD, verifyTotpCode } from "~/modules/auth/totp"
+import {
+  generateTotpSecret,
+  generateTotpUri,
+  TOTP_PERIOD,
+  verifyTotpCode,
+} from "~/modules/auth/totp"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 
@@ -169,7 +175,89 @@ export async function requestPortalSignIn(orgSlug: string, email: string): Promi
   log.info({ userId: person.id, orgId: org.id }, "Portal sign-in link issued")
 }
 
-export type PortalSignInResult = TokenPair | { totpRequired: true; challengeToken: string }
+/**
+ * Tells a client a reply waits on their portal request: one system mail naming the
+ * request's subject and nothing of the reply, with a link to the portal. The reply
+ * itself is read only after sign-in. Nothing is sent when the address is not an
+ * open portal person of the org (the company closed, the access ended), or while
+ * the mail provider is refusing.
+ */
+export async function sendPortalReplyNotice(input: {
+  orgId: string
+  requesterEmail: string
+  subject: string
+}): Promise<void> {
+  const person = await openPortalPerson(input.orgId, { email: input.requesterEmail })
+  if (!person) return
+  if (await emailOutageHoldsBackSend()) return
+  const [org] = await withSystemDb("portal-reply-notice-org", (db) =>
+    db
+      .select({ name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, input.orgId))
+      .limit(1),
+  )
+  if (!org) return
+  const base = await orgAppBaseUrl(input.orgId)
+  const locale = toShippedLocale(person.locale) ?? "en"
+  const t = (key: string) =>
+    serverT(locale, `portal-auth.reply.${key}`, { org: org.name, subject: input.subject })
+  const subject = t("subject")
+  const { html, text } = renderBrandedEmail({
+    subject,
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
+    paragraphs: [t("body")],
+    cta: { label: t("cta"), href: `${base}/portal` },
+    footer: [t("footer")],
+  })
+  const emailConfig = await getOrgEmailConfig(input.orgId)
+  await sendSystemEmailObserved({
+    to: person.email,
+    from: emailConfig.from,
+    replyTo: emailConfig.replyTo,
+    subject,
+    html,
+    text,
+    template: "portal.request-reply",
+  })
+}
+
+export type PortalSignInResult =
+  | TokenPair
+  | { totpRequired: true; challengeToken: string }
+  | { enrolmentRequired: true; enrolmentToken: string }
+
+/**
+ * The token of a person who must set up a second factor and has none yet: it opens
+ * the setup and confirm routes only, has no session behind it, and lasts as long
+ * as any portal access token (15 minutes). A new link gives a new one.
+ */
+async function mintEnrolmentToken(userId: string, orgId: string): Promise<string> {
+  const [row] = await withPrivilegedDb(orgId, "portal-enrolment-token", (tx) =>
+    tx
+      .select({
+        name: users.name,
+        authVersion: users.authVersion,
+        permissionVersion: users.permissionVersion,
+      })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.userType, "external")))
+      .limit(1),
+  )
+  if (!row) throw new AuthServiceError("Invalid or expired code", 401)
+  return signPortalToken(
+    {
+      userId,
+      orgId,
+      name: row.name,
+      authVersion: row.authVersion,
+      permissionVersion: row.permissionVersion,
+      enrol: true,
+    },
+    env.JWT_SECRET,
+  )
+}
 
 /**
  * Spends a sign-in link (one use) and signs the client in, or hands over to the
@@ -185,6 +273,9 @@ export async function verifyPortalSignIn(input: {
   const { userId, orgId } = await consumePortalChallenge(input)
   const person = await openPortalPerson(orgId, { id: userId })
   if (!person) throw new AuthServiceError("Invalid or expired code", 401)
+  if (person.secondFactorRequired && !person.totpEnabled) {
+    return { enrolmentRequired: true, enrolmentToken: await mintEnrolmentToken(userId, orgId) }
+  }
   if (person.secondFactorRequired) {
     const challengeToken = generateToken(32)
     await redis.set(
@@ -261,6 +352,91 @@ export async function verifyPortalTotp(input: {
   if ((await redis.del(key)) !== 1) return fail()
   await resetAttempts(redis, bruteKey, input.ip).catch(() => {})
   return createPortalSession(userId, orgId, undefined, true)
+}
+
+const TOTP_SETUP_TTL_SECONDS = 600
+const totpSetupKey = (userId: string) => `portal:totp-setup:${userId}`
+
+/**
+ * Starts (or resumes) a second-factor setup for a signed-in or enrolling client.
+ * A pending setup returns the same secret, so a code already scanned stays good.
+ * Refused for a person who already has one.
+ */
+export async function beginPortalTotpSetup(
+  userId: string,
+  orgId: string,
+): Promise<{ secret: string; otpauthUri: string }> {
+  const person = await openPortalPerson(orgId, { id: userId })
+  if (!person) throw new AuthServiceError("Unauthorized", 401)
+  if (person.totpEnabled) throw new AuthServiceError("A second factor is already set up", 409)
+  const pending = await redis.get(totpSetupKey(userId))
+  const secret = pending
+    ? decryptSecret(pending, encryptionKey, CryptoContext.totpSetupSecret)
+    : generateTotpSecret()
+  if (!pending) {
+    await redis.set(
+      totpSetupKey(userId),
+      encryptSecret(secret, encryptionKey, CryptoContext.totpSetupSecret),
+      "EX",
+      TOTP_SETUP_TTL_SECONDS,
+    )
+  }
+  return { secret, otpauthUri: generateTotpUri(secret, person.email, "Liaison") }
+}
+
+/**
+ * Confirms the setup with a code from the app: the factor is saved, and the
+ * person gets a full session (an enrolment token becomes one here, and only here).
+ */
+export async function confirmPortalTotp(input: {
+  userId: string
+  orgId: string
+  code: string
+  ip: string
+}): Promise<TokenPair> {
+  const { userId, orgId } = input
+  const bruteKey = `portal-totp-confirm:${userId}`
+  const check = await checkBruteForce(redis, bruteKey, input.ip)
+  if (!check.allowed) throw new AuthServiceError("Too many attempts", 429)
+  const person = await openPortalPerson(orgId, { id: userId })
+  if (!person) throw new AuthServiceError("Unauthorized", 401)
+  if (person.totpEnabled) throw new AuthServiceError("A second factor is already set up", 409)
+  const pending = await redis.get(totpSetupKey(userId))
+  if (!pending) throw new AuthServiceError("No second-factor setup in progress", 400)
+  const secret = decryptSecret(pending, encryptionKey, CryptoContext.totpSetupSecret)
+  if (!verifyTotpCode(secret, input.code)) {
+    await recordFailedAttempt(redis, bruteKey, input.ip)
+    throw new AuthServiceError("Invalid code", 400)
+  }
+  await withPrivilegedDb(orgId, "portal-totp-confirm", (tx) =>
+    tx
+      .update(users)
+      .set({
+        totpSecret: encryptSecret(secret, encryptionKey, CryptoContext.totpSecret),
+        totpEnabled: true,
+        totpLastUsedAt: new Date(),
+      })
+      .where(and(eq(users.id, userId), eq(users.userType, "external"))),
+  )
+  await redis.del(totpSetupKey(userId))
+  await resetAttempts(redis, bruteKey, input.ip).catch(() => {})
+  return createPortalSession(userId, orgId, undefined, true)
+}
+
+/** Records that the client read the org's portal notice, in the version they saw. */
+export async function ackPortalNotice(
+  userId: string,
+  orgId: string,
+  version: number,
+): Promise<{ noticeAckAt: string; noticeVersion: number }> {
+  const at = new Date()
+  const K = sql.raw(schemaRef("kernel"))
+  await withPrivilegedDb(orgId, "portal-notice-ack", (tx) =>
+    tx.execute(sql`UPDATE ${K}.portal_people
+      SET notice_ack_at = ${at.toISOString()}::timestamptz, notice_version = ${version}
+      WHERE user_id = ${userId} AND org_id = ${orgId} AND removed_at IS NULL`),
+  )
+  return { noticeAckAt: at.toISOString(), noticeVersion: version }
 }
 
 /** What the portal's sign-in page shows: the org's name, logo and notice, nothing else. */

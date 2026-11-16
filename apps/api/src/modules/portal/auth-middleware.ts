@@ -13,6 +13,13 @@ import { rootLogger } from "~/lib/logger"
 import { getUserAuthState } from "~/modules/auth/auth-state"
 import { verifyPortalToken } from "~/modules/auth/jwt"
 import { isSessionRevoked } from "~/modules/auth/session-revocation"
+import { PORTAL_PREFIX } from "~/modules/portal/routes-list"
+
+/** The only routes an enrolment-only token opens. */
+const ENROLMENT_PATHS = new Set([
+  `${PORTAL_PREFIX}/me/totp/setup`,
+  `${PORTAL_PREFIX}/me/totp/confirm`,
+])
 
 function refuse(path: string, reason: string): never {
   rootLogger.warn({ path, reason }, "portal auth failure")
@@ -46,6 +53,19 @@ export function portalAuthMiddleware(secret: string) {
     })
     if (!state || state.status !== "active" || state.authVersion !== payload.authVersion) {
       refuse(c.req.path, "auth_state")
+    }
+    // An enrolment-only token opens the second-factor setup and nothing else.
+    if (payload.enrol && !ENROLMENT_PATHS.has(c.req.path)) {
+      rootLogger.warn({ path: c.req.path }, "portal enrolment token outside its routes")
+      return c.json(
+        {
+          error: {
+            message: "Set up your second factor first",
+            code: "SECOND_FACTOR_SETUP_REQUIRED",
+          },
+        },
+        403,
+      )
     }
     c.set("portal", { orgId: payload.orgId, userId: payload.userId })
     await next()

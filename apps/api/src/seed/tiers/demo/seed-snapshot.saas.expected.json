@@ -21,7 +21,7 @@
   },
   "app_invoicing.documents": {
     "rows": 418,
-    "digest": "691e62f880edde32"
+    "digest": "c48c85b8031c85b0"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -145,7 +145,7 @@
   },
   "app_tickets.tickets": {
     "rows": 6,
-    "digest": "af7b92374777ae6c"
+    "digest": "7e0ae3ddf57834b8"
   },
   "kernel.agents": {
     "rows": 18,

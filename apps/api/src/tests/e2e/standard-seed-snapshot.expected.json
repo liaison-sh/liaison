@@ -41,7 +41,7 @@
   },
   "app_tickets.tickets": {
     "rows": 12,
-    "digest": "b629af799ebf8481"
+    "digest": "0063b9e973e0f146"
   },
   "kernel.agent_memory": {
     "rows": 12,
@@ -61,7 +61,7 @@
   },
   "kernel.apps": {
     "rows": 12,
-    "digest": "ad96106ef267d8f4"
+    "digest": "c65b13c87df29684"
   },
   "kernel.attention_events": {
     "rows": 49,

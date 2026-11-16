@@ -685,6 +685,10 @@ export interface DocumentInsert {
   notes: string | null
   /** Credit notes only: the original invoice, as a real column. */
   original_document_id?: string | null
+  /** The client company the document is made out to, stamped here at issue from the
+   *  counterparty contact's company and never followed afterwards (the client portal
+   *  reads it). NULL when the contact has no company or cannot be read. */
+  company_id?: string | null
   /** Credit notes only: the original's stored regime, its reasons, and whether the credit note
    *  is an internal cancellation (original refused or rejected). */
   regime?: Regime
@@ -1113,6 +1117,28 @@ async function timezoneAskDue(ctx: IssueCtx, issuer: IssuerProfile): Promise<boo
   return rows.every((r) => NEVER_ISSUED_STATUSES.has(String(r.status ?? "draft")))
 }
 
+const CONTACT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The company of the counterparty contact as the kernel knows it now, read through its
+ * identifiers only (a read that does not mark the turn as having read outside text).
+ * Null when there is no contact, no company, or the read is refused.
+ */
+export async function companyOfContact(
+  ctx: Pick<IssueCtx, "executeTool">,
+  contactId: string | null | undefined,
+): Promise<string | null> {
+  if (!contactId || !CONTACT_ID.test(contactId) || !ctx.executeTool) return null
+  try {
+    const env = await ctx.executeTool("kernel:contacts_identity", { contactId })
+    if (env.status !== "completed") return null
+    const id = (env.result as { contact?: { companyId?: unknown } } | null)?.contact?.companyId
+    return typeof id === "string" && CONTACT_ID.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
 export async function issueDocument(
   ctx: IssueCtx,
   input: IssueInput,
@@ -1360,6 +1386,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
+  const companyId = await companyOfContact(ctx, counterparty.contact_id)
   const documentInsert: DocumentInsert = {
     type,
     scope: input.scope ?? null,
@@ -1369,6 +1396,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     year_of_issue: draft.year_of_issue,
     issuer_profile_id: issuer.id,
     counterparty_contact_id: counterparty.contact_id,
+    company_id: companyId,
     counterparty_name: counterparty.legal_name ?? null,
     counterparty_address: counterparty.address ?? null,
     counterparty_shipping_address: counterparty.shipping_address ?? null,

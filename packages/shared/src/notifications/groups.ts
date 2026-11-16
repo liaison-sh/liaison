@@ -35,6 +35,7 @@ export type NotificationGroupId = (typeof NOTIFICATION_GROUP_IDS)[number]
  */
 export type NotificationKind =
   | "tickets:ticket.created"
+  | "tickets:portal_request"
   | AttentionKind
   | "knowledge_review"
   | "new_email"
@@ -103,6 +104,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
       "admin_action",
       "routine_mailbox_wait",
       "tickets:ticket.created",
+      "tickets:portal_request",
     ],
   },
   {

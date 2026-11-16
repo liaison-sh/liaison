@@ -15,5 +15,13 @@
     "totpPrompt": "Enter the code from your authenticator app.",
     "totpInvalid": "That code did not work. Try again.",
     "unavailable": "The client portal is not available right now."
+  },
+  "reply": {
+    "subject": "A reply on your request: {{subject}}",
+    "eyebrow": "Client portal",
+    "heading": "You have a reply",
+    "body": "You have a reply on {{subject}}. Sign in to read it.",
+    "cta": "Open your client space",
+    "footer": "You are receiving this because you sent this request from the client portal of {{org}}."
   }
 }

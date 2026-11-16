@@ -36,6 +36,7 @@ export type EmailTemplateId =
   | "client-action.code"
   | "client-action.copy"
   | "client-action.staff"
+  | "portal.request-reply"
   | "auth.step-up-code"
   | "auth.password-reset"
   | "users.invitation"

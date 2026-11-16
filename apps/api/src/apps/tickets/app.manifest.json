@@ -114,7 +114,7 @@
       }
     ]
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -135,6 +135,7 @@
   },
   "schema": {
     "tickets": {
+      "migrationOwnedColumns": ["companyId"],
       "fields": {
         "subject": "string",
         "status": {
@@ -165,7 +166,8 @@
             "api",
             "mail_escalation",
             "manual",
-            "social"
+            "social",
+            "portal"
           ]
         },
         "team": "string?",
@@ -3454,6 +3456,35 @@
         "when": { "op": "eq", "path": "data.notifyNewTicket", "value": true },
         "summary": "New ticket in {{data.inboxName}}: {{data.subject}} (from {{data.requester}})",
         "recipients": { "kind": "scope_holders", "scope": "tickets:inboxes:admin", "excludeActor": true }
+      },
+      {
+        "event": "ticket:create",
+        "kind": "tickets:portal_request",
+        "urgency": 50,
+        "when": {
+          "op": "exists",
+          "path": "data.accountManagerId"
+        },
+        "summary": "Client request on the portal: {{data.subject}}",
+        "recipients": {
+          "kind": "field",
+          "path": "data.accountManagerId"
+        }
+      },
+      {
+        "event": "ticket:create",
+        "kind": "tickets:portal_request",
+        "urgency": 50,
+        "when": {
+          "op": "eq",
+          "path": "data.noAccountManager",
+          "value": true
+        },
+        "summary": "Client request on the portal: {{data.subject}}",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "tickets:inboxes:admin"
+        }
       },
       {
         "event": "ticket:update",

@@ -186,6 +186,7 @@ import {
   tablesUnreachableByGrantableScopes,
 } from "~/modules/permissions/rls-generator"
 import { invalidateScopeCatalog } from "~/modules/permissions/scope-catalog"
+import { ensurePortalViews } from "~/modules/portal/views"
 import { registerAppSlots } from "~/modules/slots/registry"
 import { declareWebhookHealth, forgetWebhookHealth } from "~/modules/webhooks/ingest-health"
 import {
@@ -2367,6 +2368,9 @@ async function registerSingleApp(
                 )) {
                   registerEntityDeclarations(desc, orgId, entityName, entityDef)
                 }
+                // A schema already current may still lack a portal view (one that
+                // failed before, or one a newer release brings): make the missing ones.
+                await ensurePortalViews(tx, desc.name, "missing")
                 if (!opts.skipOrgRows) await writeOrgAppRows(tx, desc, orgId)
                 currentAppSchemaKeys.add(manifestKey)
                 return true
@@ -3026,6 +3030,9 @@ async function registerSingleApp(
                 await assertMailboxSchemaState(tx as any, schemaName)
               }
 
+              // The portal views over this app's tables, after its entities. A view
+              // that fails is logged and stays absent; the registration goes on.
+              await ensurePortalViews(tx, desc.name, "replace")
               if (!opts.skipOrgRows) await writeOrgAppRows(tx, desc, orgId)
               // Stamp the schema with what was just applied, so the next registration
               // of this app (any org, any process) can tell it is current.

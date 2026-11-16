@@ -1,0 +1,2 @@
+# The client portal: its views over catalog app tables, made by registration and at boot.
+src/modules/portal/portal-views-boot.integration.test.ts

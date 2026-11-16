@@ -124,8 +124,11 @@ describe("webhook signing secret roll", () => {
 
   it("a second roll replaces the previous secret with the one it displaced", async () => {
     const third = "whsec_thirdSigningSecret0123456789"
-    const at = Date.now()
     await store(third)
+    // A delivery comes after the roll. The verifier refuses a deadline more than
+    // 24 hours ahead of the delivery, so a delivery time taken before the roll
+    // (even a millisecond before) would see the previous secret as invalid.
+    const at = Date.now()
     expect(await deliver(NEW, at)).toMatchObject({ ok: true })
     expect(await deliver(OLD, at)).toEqual({ ok: false, reason: "signature_mismatch" })
     expect(await deliver(third, at)).toMatchObject({ ok: true })

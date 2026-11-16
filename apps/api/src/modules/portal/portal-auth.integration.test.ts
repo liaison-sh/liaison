@@ -12,22 +12,22 @@ import { generateCurrentCode } from "~/modules/auth/totp"
 import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type AuthWorld,
+  type SignInWorld,
   CaptureProvider,
   clearSends,
   cookieOf,
-  createAuthWorld,
-  dropAuthWorld,
+  createSignInWorld,
+  dropDoorWorld,
   linkOf,
   ORIGIN,
   post,
-} from "~/tests/security/portal-doors/auth-world"
+} from "~/tests/security/portal-doors/fixture"
 
-let w: AuthWorld
+let w: SignInWorld
 let previous: EmailProvider
 const capture = new CaptureProvider()
 
-async function requestLink(email: string, orgSlug = w.org.slug) {
+async function requestLink(email: string, orgSlug = w.orgSlug) {
   capture.sent = []
   const res = await post("/api/portal/auth/request", { orgSlug, email })
   expect(res.status).toBe(200)
@@ -40,12 +40,12 @@ beforeAll(async () => {
   await acquireTestLock()
   previous = getSystemEmailProvider()
   setSystemEmailProvider(capture)
-  w = await createAuthWorld("auth")
+  w = await createSignInWorld()
 })
 
 afterAll(async () => {
   setSystemEmailProvider(previous)
-  await dropAuthWorld(w)
+  await dropDoorWorld(w)
   await releaseTestLock()
 })
 
@@ -53,10 +53,10 @@ describe("portal sign-in", () => {
   it("sign-in mail goes to an active client of that organisation only", async () => {
     expect(await requestLink(w.clientA.email)).toHaveLength(1)
     // Wrong org, a member, a deactivated client, a closed company's client: no mail.
-    expect(await requestLink(w.clientA.email, w.otherOrg.slug)).toHaveLength(0)
+    expect(await requestLink(w.clientA.email, w.otherOrgSlug)).toHaveLength(0)
     expect(await requestLink(w.member.email)).toHaveLength(0)
     expect(await requestLink(w.clientGone.email)).toHaveLength(0)
-    expect(await requestLink(w.clientClosed.email)).toHaveLength(0)
+    expect(await requestLink(w.clientC.email)).toHaveLength(0)
     const [mail] = await requestLink(w.clientB.email)
     expect(mail?.template).toBe("portal.sign-in-link")
     // The secret is in the link's fragment only, never a query string.
@@ -134,7 +134,7 @@ describe("portal sign-in", () => {
   })
 
   it("a member's refresh cookie is refused on the portal refresh route", async () => {
-    const memberTokens = await createSession(w.member.id, w.org.id)
+    const memberTokens = await createSession(w.member.userId, w.orgId)
     const res = await post(
       "/api/portal/auth/refresh",
       {},

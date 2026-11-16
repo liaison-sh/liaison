@@ -11,15 +11,15 @@ import { hashPassword, hashToken } from "~/lib/crypto"
 import { AuthServiceError, createSession } from "~/modules/auth/auth"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type AuthWorld,
+  type SignInWorld,
   CaptureProvider,
   clearSends,
-  createAuthWorld,
-  dropAuthWorld,
+  createSignInWorld,
+  dropDoorWorld,
   post,
-} from "~/tests/security/portal-doors/auth-world"
+} from "~/tests/security/portal-doors/fixture"
 
-let w: AuthWorld
+let w: SignInWorld
 let previous: EmailProvider
 const capture = new CaptureProvider()
 const PASSWORD = "Correct-horse-9"
@@ -32,15 +32,15 @@ beforeAll(async () => {
   await acquireTestLock()
   previous = getSystemEmailProvider()
   setSystemEmailProvider(capture)
-  w = await createAuthWorld("doors")
+  w = await createSignInWorld()
   await clearSends()
   // A client row with a password hash: the password door must still refuse it.
-  await sql`UPDATE kernel.users SET password_hash = ${await hashPassword(PASSWORD)} WHERE id = ${w.clientA.id}`
+  await sql`UPDATE kernel.users SET password_hash = ${await hashPassword(PASSWORD)} WHERE id = ${w.clientA.userId}`
 })
 
 afterAll(async () => {
   setSystemEmailProvider(previous)
-  await dropAuthWorld(w)
+  await dropDoorWorld(w)
   await releaseTestLock()
 })
 
@@ -49,12 +49,12 @@ describe("member doors with a client's row", () => {
     const client = await post("/api/auth/login", {
       email: w.clientA.email,
       password: PASSWORD,
-      orgSlug: w.org.slug,
+      orgSlug: w.orgSlug,
     })
     const unknown = await post("/api/auth/login", {
-      email: `nobody-${w.org.slug}@example.com`,
+      email: `nobody-${w.orgSlug}@example.com`,
       password: PASSWORD,
-      orgSlug: w.org.slug,
+      orgSlug: w.orgSlug,
     })
     expect(client.status).toBe(401)
     expect(client.headers.get("set-cookie") ?? "").not.toContain("liaison_rt=")
@@ -65,7 +65,7 @@ describe("member doors with a client's row", () => {
     capture.sent = []
     const res = await post("/api/auth/magic-link/request", {
       email: w.clientB.email,
-      orgSlug: w.org.slug,
+      orgSlug: w.orgSlug,
     })
     expect(res.status).toBe(200)
     await settle()
@@ -76,7 +76,7 @@ describe("member doors with a client's row", () => {
     capture.sent = []
     const res = await post("/api/auth/password-reset/request", {
       email: w.clientB.email,
-      orgSlug: w.org.slug,
+      orgSlug: w.orgSlug,
     })
     expect(res.status).toBe(200)
     await settle()
@@ -84,17 +84,17 @@ describe("member doors with a client's row", () => {
     // A reset token for a client's row (none is ever issued; written here) sets nothing.
     const token = `reset-${crypto.randomUUID()}`
     await sql`INSERT INTO kernel.password_resets (user_id, org_id, token_hash, expires_at)
-      VALUES (${w.clientB.id}, ${w.org.id}, ${hashToken(token)}, now() + interval '1 hour')`
+      VALUES (${w.clientB.userId}, ${w.orgId}, ${hashToken(token)}, now() + interval '1 hour')`
     await post("/api/auth/password-reset/confirm", { token, newPassword: "Another-horse-77" })
     const [row] = await sql<{ password_hash: string | null }[]>`
-      SELECT password_hash FROM kernel.users WHERE id = ${w.clientB.id}`
+      SELECT password_hash FROM kernel.users WHERE id = ${w.clientB.userId}`
     expect(row?.password_hash).toBeNull()
   })
 
   it("createSession on a client's id throws and writes no session", async () => {
-    await expect(createSession(w.clientB.id, w.org.id)).rejects.toBeInstanceOf(AuthServiceError)
+    await expect(createSession(w.clientB.userId, w.orgId)).rejects.toBeInstanceOf(AuthServiceError)
     const [n] = await sql<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM kernel.sessions WHERE user_id = ${w.clientB.id}`
+      SELECT count(*)::int AS n FROM kernel.sessions WHERE user_id = ${w.clientB.userId}`
     expect(n?.n).toBe(0)
   })
 
@@ -115,7 +115,7 @@ describe("member doors with a client's row", () => {
     expect(capture.sent[0]?.template).toBe("auth.sign-in-code")
     // And the portal of the other org mails its client a portal link only.
     capture.sent = []
-    await post("/api/portal/auth/request", { orgSlug: w.otherOrg.slug, email: w.member.email })
+    await post("/api/portal/auth/request", { orgSlug: w.otherOrgSlug, email: w.member.email })
     await settle()
     expect(capture.sent.map((m) => m.template)).toEqual(["portal.sign-in-link"])
   })

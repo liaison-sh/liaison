@@ -4,13 +4,22 @@
 // and B and a closed company C, a member, an admin holding `*`, and portal
 // people of each company; in the second, a company and its portal person. Rows
 // are written on the privileged connection, then every read runs through the
-// real roles: liaison_rls for members, liaison_portal for clients.
+// real roles: liaison_rls for members, liaison_portal for clients. The sign-in
+// tests add a deactivated client, a client with a second factor and a client of
+// the second org whose address is the member's (createSignInWorld).
 
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
+import { app } from "~/app"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
+import type { EmailMessage, EmailProvider } from "~/infra/email"
+import { CryptoContext, encryptSecret } from "~/lib/crypto"
+import { encryptionKey } from "~/lib/env"
+import { generateTotpSecret } from "~/modules/auth/totp"
+import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
+import { clearRedisPatterns } from "~/tests/route-test-setup"
 
 export interface DoorPerson {
   userId: string
@@ -21,7 +30,10 @@ export interface DoorPerson {
 
 export interface DoorWorld {
   orgId: string
+  orgSlug: string
+  orgName: string
   otherOrgId: string
+  otherOrgSlug: string
   companyA: string
   companyB: string
   /** Closed: its people read nothing. */
@@ -55,7 +67,10 @@ export async function createDoorWorld(): Promise<DoorWorld> {
   const tag = crypto.randomUUID().slice(0, 8)
   const w: DoorWorld = {
     orgId: crypto.randomUUID(),
+    orgSlug: `doors-${tag}`,
+    orgName: "Maison Portes",
     otherOrgId: crypto.randomUUID(),
+    otherOrgSlug: `doors-other-${tag}`,
     companyA: crypto.randomUUID(),
     companyB: crypto.randomUUID(),
     companyC: crypto.randomUUID(),
@@ -73,8 +88,8 @@ export async function createDoorWorld(): Promise<DoorWorld> {
 
   await sql.unsafe(
     insertSql("kernel.organizations", [
-      { id: w.orgId, name: "Maison Portes", slug: `doors-${tag}` },
-      { id: w.otherOrgId, name: "Maison Autre", slug: `doors-other-${tag}` },
+      { id: w.orgId, name: w.orgName, slug: w.orgSlug },
+      { id: w.otherOrgId, name: "Maison Autre", slug: w.otherOrgSlug },
     ]),
   )
   await sql.unsafe(
@@ -128,37 +143,67 @@ export async function createDoorWorld(): Promise<DoorWorld> {
     [w.clientC, w.orgId, w.companyC],
     [w.otherClient, w.otherOrgId, w.otherCompany],
   ]
-  for (const [c, orgId, companyId] of clients) {
-    await sql.unsafe(
-      insertSql("kernel.contacts", {
-        id: c.contactId,
-        org_id: orgId,
-        handle: `contact-${c.contactId.slice(0, 8)}`,
-        name: c.name,
-        email: c.email,
-      }),
-    )
-    await sql.unsafe(
-      insertSql("kernel.users", {
-        id: c.userId,
-        org_id: orgId,
-        email: c.email,
-        name: c.name,
-        user_type: "external",
-        company_id: companyId,
-      }),
-    )
-    await sql.unsafe(
-      insertSql("kernel.portal_people", {
-        user_id: c.userId,
-        org_id: orgId,
-        company_id: companyId,
-        contact_id: c.contactId,
-        title: "Client",
-      }),
-    )
-  }
+  for (const [c, orgId, companyId] of clients) await insertClient(c, orgId, companyId)
   return w
+}
+
+/** A portal person: their contact, their external user row and their portal row. */
+async function insertClient(c: DoorPerson, orgId: string, companyId: string): Promise<void> {
+  await sql.unsafe(
+    insertSql("kernel.contacts", {
+      id: c.contactId,
+      org_id: orgId,
+      handle: `contact-${c.contactId.slice(0, 8)}`,
+      name: c.name,
+      email: c.email,
+    }),
+  )
+  await sql.unsafe(
+    insertSql("kernel.users", {
+      id: c.userId,
+      org_id: orgId,
+      email: c.email,
+      name: c.name,
+      user_type: "external",
+      company_id: companyId,
+    }),
+  )
+  await sql.unsafe(
+    insertSql("kernel.portal_people", {
+      user_id: c.userId,
+      org_id: orgId,
+      company_id: companyId,
+      contact_id: c.contactId,
+      title: "Client",
+    }),
+  )
+}
+
+export interface SignInWorld extends DoorWorld {
+  /** A deactivated client of company A. */
+  clientGone: DoorPerson
+  /** A client of company A with a second factor set up, and its secret. */
+  clientTotp: DoorPerson & { secret: string }
+  /** A client of the second org whose address is `member.email`. */
+  twoOrgClient: DoorPerson
+}
+
+/** The door world plus the people the sign-in doors need; `dropDoorWorld` removes it. */
+export async function createSignInWorld(): Promise<SignInWorld> {
+  const w = await createDoorWorld()
+  const tag = w.orgSlug.slice("doors-".length)
+  const clientGone = person("clientgone", tag)
+  const clientTotp = { ...person("clienttotp", tag), secret: generateTotpSecret() }
+  const twoOrgClient = { ...person("twoorg", tag), email: w.member.email }
+  await insertClient(clientGone, w.orgId, w.companyA)
+  await insertClient(clientTotp, w.orgId, w.companyA)
+  await insertClient(twoOrgClient, w.otherOrgId, w.otherCompany)
+  const k = (table: string) => sql(`${schemaRef("kernel")}.${table}`)
+  await sql`UPDATE ${k("users")} SET status = 'deactivated' WHERE id = ${clientGone.userId}`
+  await sql`UPDATE ${k("users")} SET totp_enabled = true,
+    totp_secret = ${encryptSecret(clientTotp.secret, encryptionKey, CryptoContext.totpSecret)}
+    WHERE id = ${clientTotp.userId}`
+  return { ...w, clientGone, clientTotp, twoOrgClient }
 }
 
 /**
@@ -169,6 +214,8 @@ export async function createDoorWorld(): Promise<DoorWorld> {
 export async function dropDoorWorld(w: DoorWorld): Promise<void> {
   const k = (table: string) => `"${schemaRef("kernel")}".${table}`
   const byOrg = [
+    "sessions",
+    "password_resets",
     "client_actions",
     "portal_shares",
     "portal_people",
@@ -326,4 +373,56 @@ export async function insertShare(
     }),
   )
   return id
+}
+
+/** A system mail provider that keeps what it was given, optionally after a delay. */
+export class CaptureProvider implements EmailProvider {
+  sent: EmailMessage[] = []
+  constructor(private delayMs = 0) {}
+  async send(message: EmailMessage): Promise<void> {
+    if (this.delayMs > 0) await new Promise((r) => setTimeout(r, this.delayMs))
+    this.sent.push(message)
+  }
+  async verify(): Promise<boolean> {
+    return true
+  }
+}
+
+/** An allowed Origin for the portal's refresh route. */
+export const ORIGIN = "http://localhost:5173"
+
+export function post(path: string, body: unknown, headers: Record<string, string> = {}) {
+  return app.request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  })
+}
+
+/** The challenge id and token of a captured portal sign-in mail (its link's fragment). */
+export function linkOf(mail: EmailMessage | undefined): { challengeId: string; token: string } {
+  const m = (mail?.text ?? mail?.html ?? "").match(
+    /#c=([A-Za-z0-9_-]+)&(?:amp;)?t=([A-Za-z0-9_-]+)/,
+  )
+  if (!m?.[1] || !m[2]) throw new Error("no portal sign-in link in the mail")
+  return { challengeId: m[1], token: m[2] }
+}
+
+/** The portal refresh cookie a response set, or null. */
+export function cookieOf(res: Response): string | null {
+  const set = res.headers.get("set-cookie") ?? ""
+  const m = set.match(new RegExp(`${PORTAL_REFRESH_COOKIE}=([^;]*)`))
+  return m?.[1] ? m[1] : null
+}
+
+/** Forgets the sign-in send budgets (portal and member), so one run may ask for several links. */
+export async function clearSends(): Promise<void> {
+  await clearRedisPatterns([
+    "portal:signin:*",
+    "magic-rate:*",
+    "magic:cooldown:*",
+    "magic:email-hour:*",
+    "magic:email-day:*",
+    "reset-rate:*",
+  ])
 }

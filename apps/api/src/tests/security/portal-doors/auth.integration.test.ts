@@ -20,18 +20,18 @@ import { createInvitation } from "~/modules/users/invites"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type AuthWorld,
+  type SignInWorld,
   CaptureProvider,
   clearSends,
   cookieOf,
-  createAuthWorld,
-  dropAuthWorld,
+  createSignInWorld,
+  dropDoorWorld,
   linkOf,
   ORIGIN,
   post,
-} from "./auth-world"
+} from "./fixture"
 
-let w: AuthWorld
+let w: SignInWorld
 let previous: EmailProvider
 const capture = new CaptureProvider()
 let portalToken: string
@@ -71,14 +71,14 @@ beforeAll(async () => {
   await acquireTestLock()
   previous = getSystemEmailProvider()
   setSystemEmailProvider(capture)
-  w = await createAuthWorld("nt")
-  portalToken = (await createPortalSession(w.clientA.id, w.org.id)).accessToken
-  memberToken = (await createSession(w.member.id, w.org.id)).accessToken
+  w = await createSignInWorld()
+  portalToken = (await createPortalSession(w.clientA.userId, w.orgId)).accessToken
+  memberToken = (await createSession(w.member.userId, w.orgId)).accessToken
 })
 
 afterAll(async () => {
   setSystemEmailProvider(previous)
-  await dropAuthWorld(w)
+  await dropDoorWorld(w)
   await releaseTestLock()
 })
 
@@ -149,22 +149,22 @@ describe("portal doors: sign-in and token classes", () => {
 
   it("NT-27: a member door never opens a session for a client's row", async () => {
     await clearSends()
-    await expect(createSession(w.clientB.id, w.org.id)).rejects.toThrow()
+    await expect(createSession(w.clientB.userId, w.orgId)).rejects.toThrow()
     const login = await post("/api/auth/login", {
       email: w.clientB.email,
       password: "Whatever-horse-1",
-      orgSlug: w.org.slug,
+      orgSlug: w.orgSlug,
     })
     expect(login.status).toBe(401)
     capture.sent = []
-    await post("/api/auth/magic-link/request", { email: w.clientB.email, orgSlug: w.org.slug })
-    await post("/api/auth/password-reset/request", { email: w.clientB.email, orgSlug: w.org.slug })
+    await post("/api/auth/magic-link/request", { email: w.clientB.email, orgSlug: w.orgSlug })
+    await post("/api/auth/password-reset/request", { email: w.clientB.email, orgSlug: w.orgSlug })
     await new Promise((r) => setTimeout(r, 50))
     expect(capture.sent).toHaveLength(0)
   })
 
   it("NT-28: a portal session's refresh cookie on the member route gets 401, and a closed company's person gets no token from either route", async () => {
-    const portal = await createPortalSession(w.clientB.id, w.org.id)
+    const portal = await createPortalSession(w.clientB.userId, w.orgId)
     const onMember = await post("/api/auth/refresh", { refreshToken: portal.refreshToken })
     expect(onMember.status).toBe(401)
     expect(await onMember.text()).not.toContain("accessToken")
@@ -173,7 +173,7 @@ describe("portal doors: sign-in and token classes", () => {
       (await call("GET", `${PORTAL_PREFIX}/me`, { Authorization: `Bearer ${memberToken}` })).status,
     ).toBe(401)
     // A member's refresh token on the portal's route gets 401.
-    const member = await createSession(w.member.id, w.org.id)
+    const member = await createSession(w.member.userId, w.orgId)
     const onPortal = await post(
       "/api/portal/auth/refresh",
       {},
@@ -184,9 +184,9 @@ describe("portal doors: sign-in and token classes", () => {
     )
     expect(onPortal.status).toBe(401)
     // Company B closes: neither route gives its person a token.
-    await sql`UPDATE kernel.companies SET closed_at = now() WHERE id = ${w.companies.b}`
+    await sql`UPDATE kernel.companies SET closed_at = now() WHERE id = ${w.companyB}`
     try {
-      const closed = await createPortalSession(w.clientB.id, w.org.id).catch((e) => e)
+      const closed = await createPortalSession(w.clientB.userId, w.orgId).catch((e) => e)
       expect(closed).toBeInstanceOf(Error)
       const second = await post(
         "/api/portal/auth/refresh",
@@ -201,7 +201,7 @@ describe("portal doors: sign-in and token classes", () => {
         401,
       )
     } finally {
-      await sql`UPDATE kernel.companies SET closed_at = NULL WHERE id = ${w.companies.b}`
+      await sql`UPDATE kernel.companies SET closed_at = NULL WHERE id = ${w.companyB}`
     }
   })
 
@@ -210,23 +210,23 @@ describe("portal doors: sign-in and token classes", () => {
     await sql.unsafe(
       insertSql("kernel.roles", {
         id: roleId,
-        org_id: w.org.id,
+        org_id: w.orgId,
         name: `Plain ${roleId.slice(0, 6)}`,
       }),
     )
-    const result = await withPrivilegedDb(w.org.id, "t", (tx) =>
+    const result = await withPrivilegedDb(w.orgId, "t", (tx) =>
       createInvitation(tx as never, {
-        orgId: w.org.id,
+        orgId: w.orgId,
         email: w.clientA.email.toUpperCase(),
         roleId,
-        invitedBy: w.member.id,
+        invitedBy: w.member.userId,
         actorScopes: ["*"],
         actorDimensionGrants: { "*": ["*"] },
       }),
     )
     expect(result).toEqual({ error: "EMAIL_IS_PORTAL_USER" })
     const [n] = await sql<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM kernel.invitations WHERE org_id = ${w.org.id}`
+      SELECT count(*)::int AS n FROM kernel.invitations WHERE org_id = ${w.orgId}`
     expect(n?.n).toBe(0)
   })
 
@@ -234,7 +234,7 @@ describe("portal doors: sign-in and token classes", () => {
     await clearSends()
     capture.sent = []
     await post("/api/auth/magic-link/request", { email: w.member.email })
-    await post("/api/portal/auth/request", { orgSlug: w.otherOrg.slug, email: w.member.email })
+    await post("/api/portal/auth/request", { orgSlug: w.otherOrgSlug, email: w.member.email })
     await new Promise((r) => setTimeout(r, 50))
     expect(capture.sent.map((m) => m.template).sort()).toEqual([
       "auth.sign-in-code",
@@ -252,14 +252,14 @@ describe("portal doors: sign-in and token classes", () => {
       await clearSends()
       const addresses = [
         w.clientA.email,
-        `nobody-${w.org.slug}@example.com`,
+        `nobody-${w.orgSlug}@example.com`,
         w.member.email,
         w.clientGone.email,
       ]
       const answers: { body: string; ms: number }[] = []
       for (const email of addresses) {
         const started = performance.now()
-        const res = await post("/api/portal/auth/request", { orgSlug: w.org.slug, email })
+        const res = await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email })
         answers.push({ body: `${res.status} ${await res.text()}`, ms: performance.now() - started })
       }
       expect(new Set(answers.map((a) => a.body)).size).toBe(1)
@@ -278,7 +278,7 @@ describe("portal doors: sign-in and token classes", () => {
   it("NT-36: a scanner's GET does not use the link, a second use and an old link are refused, a required second factor blocks", async () => {
     await clearSends()
     capture.sent = []
-    await post("/api/portal/auth/request", { orgSlug: w.org.slug, email: w.clientA.email })
+    await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientA.email })
     await new Promise((r) => setTimeout(r, 50))
     const link = linkOf(capture.sent[0])
     expect(
@@ -287,7 +287,7 @@ describe("portal doors: sign-in and token classes", () => {
     expect((await post("/api/portal/auth/verify", link)).status).toBe(200)
     expect((await post("/api/portal/auth/verify", link)).status).toBe(401)
     capture.sent = []
-    await post("/api/portal/auth/request", { orgSlug: w.org.slug, email: w.clientTotp.email })
+    await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientTotp.email })
     await new Promise((r) => setTimeout(r, 50))
     const totp = await post("/api/portal/auth/verify", linkOf(capture.sent[0]))
     expect(cookieOf(totp)).toBeNull()
@@ -297,7 +297,7 @@ describe("portal doors: sign-in and token classes", () => {
   it("NT-49: portal API answers carry no referrer, no index, no store and no framing", async () => {
     for (const res of [
       await call("GET", `${PORTAL_PREFIX}/me`, { Authorization: `Bearer ${portalToken}` }),
-      await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.org.slug}`),
+      await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.orgSlug}`),
       await call("GET", `${PORTAL_PREFIX}/me`),
     ]) {
       expect(res.headers.get("referrer-policy")).toBe("no-referrer")
@@ -308,28 +308,28 @@ describe("portal doors: sign-in and token classes", () => {
   })
 
   it("NT-50: the company is read from the row, not the token; an unsigned or wrong-audience token is refused", async () => {
-    const token = (await createPortalSession(w.clientB.id, w.org.id)).accessToken
+    const token = (await createPortalSession(w.clientB.userId, w.orgId)).accessToken
     const company = () =>
       withPortalContext(
-        { orgId: w.org.id, userId: w.clientB.id },
+        { orgId: w.orgId, userId: w.clientB.userId },
         async (tx) =>
           extractRows<{ c: string }>(
             await tx.execute(drizzleSql`SELECT portal.company_id() AS c`),
           )[0]?.c,
       )
-    expect(await company()).toBe(w.companies.b)
-    await sql`UPDATE kernel.users SET company_id = ${w.companies.a} WHERE id = ${w.clientB.id}`
+    expect(await company()).toBe(w.companyB)
+    await sql`UPDATE kernel.users SET company_id = ${w.companyA} WHERE id = ${w.clientB.userId}`
     try {
-      expect(await company()).toBe(w.companies.a)
+      expect(await company()).toBe(w.companyA)
       expect(
         (await call("GET", `${PORTAL_PREFIX}/me`, { Authorization: `Bearer ${token}` })).status,
       ).toBe(200)
     } finally {
-      await sql`UPDATE kernel.users SET company_id = ${w.companies.b} WHERE id = ${w.clientB.id}`
+      await sql`UPDATE kernel.users SET company_id = ${w.companyB} WHERE id = ${w.clientB.userId}`
     }
     const claims = {
-      userId: w.clientA.id,
-      orgId: w.org.id,
+      userId: w.clientA.userId,
+      orgId: w.orgId,
       name: "x",
       authVersion: 1,
       permissionVersion: 1,
@@ -344,7 +344,7 @@ describe("portal doors: sign-in and token classes", () => {
       .setIssuedAt()
       .setExpirationTime("5m")
       .sign(new TextEncoder().encode(env.JWT_SECRET))
-    const withCompany = await new jose.SignJWT({ ...claims, companyId: w.companies.b })
+    const withCompany = await new jose.SignJWT({ ...claims, companyId: w.companyB })
       .setProtectedHeader({ alg: "HS256" })
       .setAudience("portal")
       .setIssuedAt()
@@ -358,7 +358,7 @@ describe("portal doors: sign-in and token classes", () => {
   })
 
   it("NT-51: the refresh needs an allowed Origin, and the cookie alone opens no data route", async () => {
-    const s = await createPortalSession(w.clientA.id, w.org.id)
+    const s = await createPortalSession(w.clientA.userId, w.orgId)
     const cookie = `${PORTAL_REFRESH_COOKIE}=${s.refreshToken}`
     expect((await post("/api/portal/auth/refresh", {}, { Cookie: cookie })).status).toBe(401)
     expect(
@@ -378,32 +378,32 @@ describe("portal doors: sign-in and token classes", () => {
 
   it("NT-52: branding gives a known slug's name, logo and notice only, and an unknown slug the same shape", async () => {
     const known = (await (
-      await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.org.slug}`)
+      await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.orgSlug}`)
     ).json()) as {
       data: Record<string, unknown>
     }
     const unknown = (await (
-      await call("GET", `${PORTAL_PREFIX}/auth/branding/no-such-${w.org.slug}`)
+      await call("GET", `${PORTAL_PREFIX}/auth/branding/no-such-${w.orgSlug}`)
     ).json()) as {
       data: Record<string, unknown>
     }
     expect(Object.keys(known.data).sort()).toEqual(["logoUrl", "name", "notice"])
     expect(Object.keys(unknown.data).sort()).toEqual(["logoUrl", "name", "notice"])
-    expect(known.data.name).toBe(w.org.name)
+    expect(known.data.name).toBe(w.orgName)
     expect(unknown.data).toEqual({ name: null, logoUrl: null, notice: null })
   })
 
   it("a deactivated client's live token stops at the next request", async () => {
-    const token = (await createPortalSession(w.clientB.id, w.org.id)).accessToken
-    await sql`UPDATE kernel.users SET status = 'deactivated', auth_version = auth_version + 1 WHERE id = ${w.clientB.id}`
-    invalidateAuthCache(w.clientB.id)
+    const token = (await createPortalSession(w.clientB.userId, w.orgId)).accessToken
+    await sql`UPDATE kernel.users SET status = 'deactivated', auth_version = auth_version + 1 WHERE id = ${w.clientB.userId}`
+    invalidateAuthCache(w.clientB.userId)
     try {
       expect(
         (await call("GET", `${PORTAL_PREFIX}/me`, { Authorization: `Bearer ${token}` })).status,
       ).toBe(401)
     } finally {
-      await sql`UPDATE kernel.users SET status = 'active' WHERE id = ${w.clientB.id}`
-      invalidateAuthCache(w.clientB.id)
+      await sql`UPDATE kernel.users SET status = 'active' WHERE id = ${w.clientB.userId}`
+      invalidateAuthCache(w.clientB.userId)
     }
   })
 })

@@ -104,6 +104,12 @@ const STATUS = "a status label, not an OAuth state value"
 
 /** Reviewed: sensitive-looking names that are kept, with why. */
 export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
+  "app_agreements.evidence_packages.hash_alg":
+    "the name of the hash algorithm of a signature's evidence, not a key",
+  "app_agreements.evidence_packages.last_verified_at": "when the evidence was last checked",
+  "app_agreements.evidence_packages.last_verify_ok": "whether the last evidence check matched",
+  "app_agreements.signature_events.code_verified_at":
+    "when the signer proved the emailed code (the code itself is never stored)",
   "kernel.suppression_links.email_hash":
     "fingerprint of an address that opted out, not a credential (the token hash is redacted)",
   "kernel.suppressions.email_hash":

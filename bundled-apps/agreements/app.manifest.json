@@ -1282,8 +1282,6 @@
     "agreement_reminder_send": {
       "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. Parks for a person's approval.",
       "searchKeywords": [
-        "relance",
-        "relancer",
         "remind",
         "reminder",
         "rappel",

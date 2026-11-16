@@ -99,6 +99,26 @@ function renderColumnType(typeName: string, fieldDef: unknown): string {
   return base
 }
 
+/**
+ * The fields of a manifest's schema whose type the DDL generator has no column for. Registration
+ * throws on the first one when it builds the table (generateTableDdl, generateAlterTableDdl), so a
+ * manifest carrying one installs and never registers; this lists them all without building SQL.
+ */
+export function unknownFieldTypeErrors(manifest: {
+  schema?: Record<string, { fields?: Record<string, unknown> }>
+}): string[] {
+  const errors: string[] = []
+  for (const [table, spec] of Object.entries(manifest?.schema ?? {})) {
+    for (const [field, def] of Object.entries(spec?.fields ?? {})) {
+      const typeName =
+        typeof def === "string" ? def.replace("?", "") : (def as { type?: unknown })?.type
+      if (typeof typeName !== "string" || !renderColumnType(typeName, def))
+        errors.push(`schema.${table}.fields.${field}: unknown field type "${String(typeName)}"`)
+    }
+  }
+  return errors
+}
+
 function snake(s: string): string {
   return s.replace(/([A-Z])/g, "_$1").toLowerCase()
 }

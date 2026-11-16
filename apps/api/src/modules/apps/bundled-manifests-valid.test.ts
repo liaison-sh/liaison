@@ -23,7 +23,12 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join } from "node:path"
 import { runsForErrors } from "~/infra/jobs/fanout-runs-for"
-import { appIconErrors, validateAppManifest } from "~/modules/apps/contract"
+import {
+  appIconErrors,
+  firstPartyOnlyToolKeyErrors,
+  validateAppManifest,
+} from "~/modules/apps/contract"
+import { unknownFieldTypeErrors } from "~/modules/apps/ddl"
 
 const BUNDLED_DIR = join(import.meta.dir, "..", "..", "..", "..", "..", "bundled-apps")
 
@@ -70,6 +75,22 @@ function enqueuedJobArgs(app: string): Array<{ file: string; arg: string }> {
   return out
 }
 
+/**
+ * What registration refuses in a manifest, beyond its schema: a first-party-only tool key on an app
+ * nobody vouched for (runtime.ts, firstPartyOnlyToolKeyErrors: a bundled app is vouched only while
+ * its artifact matches the image's own catalog, so an uploaded copy or a version off the catalog
+ * is refused for it), and a field type the DDL generator has no column for (ddl.ts throws when it
+ * builds the table). Both leave the app installed and never registered.
+ */
+function registrationErrors(manifest: unknown): string[] {
+  const result = validateAppManifest(manifest)
+  return [
+    ...(result.success ? [] : [result.error ?? "invalid manifest"]),
+    ...firstPartyOnlyToolKeyErrors(manifest),
+    ...unknownFieldTypeErrors(manifest as Parameters<typeof unknownFieldTypeErrors>[0]),
+  ]
+}
+
 describe("bundled app manifests", () => {
   const apps = bundledApps()
 
@@ -82,13 +103,24 @@ describe("bundled app manifests", () => {
   for (const app of apps) {
     it(`${app}: validates against the runtime's own manifest schema`, () => {
       const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
-      const result = validateAppManifest(manifest)
-      // Print the actual error: "invalid" alone sends you hunting through a
+      // Print the actual errors: "invalid" alone sends you hunting through a
       // 2 600-line manifest.
-      expect(result.error ?? null).toBeNull()
-      expect(result.success).toBe(true)
+      expect(registrationErrors(manifest)).toEqual([])
     })
   }
+
+  it("refuses what registration refuses: a first-party-only tool key, an unknown field type", () => {
+    const manifest = JSON.parse(
+      readFileSync(join(BUNDLED_DIR, "invoicing", "app.manifest.json"), "utf8"),
+    )
+    const [toolName] = Object.keys(manifest.tools)
+    manifest.tools[toolName!].humanTurnOnly = true
+    const [table] = Object.keys(manifest.schema)
+    manifest.schema[table!].fields.sent_on = { type: "timestamptz", required: false }
+    const errors = registrationErrors(manifest)
+    expect(errors.some((e) => e.startsWith(`tools.${toolName}.humanTurnOnly:`))).toBe(true)
+    expect(errors).toContain(`schema.${table}.fields.sent_on: unknown field type "timestamptz"`)
+  })
 
   // A framed app (the desktop or phone shell, or a browser tab, when its UI cannot run in the
   // page) is drawn by the host from its manifest's icon data, never from its icon component

@@ -970,8 +970,8 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
-    // Members only, and for a record closed to the organization its list only (S749p2-style
-    // derived copy: recipients follow the list whatever the manifest's recipient kind).
+    // Members only, and for a record closed to the organization its list only (a derived
+    // copy: recipients follow the list whatever the manifest's recipient kind).
     keepMembers:
       deps.recipientContext?.keepMembers ??
       (async (orgId, ids) =>

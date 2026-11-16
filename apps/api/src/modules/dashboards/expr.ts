@@ -246,8 +246,6 @@ function evalNode(n: Node, values: Readonly<Record<string, number | null>>): num
         case "cumsum":
           // A running sum needs a series: never parsed for a block's single values.
           return null
-        case "ifempty":
-          return null
       }
     }
   }

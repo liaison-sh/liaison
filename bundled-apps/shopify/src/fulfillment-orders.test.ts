@@ -164,6 +164,23 @@ describe("fulfillment_orders_get — per-FO line items with remaining quantities
     await expect(fulfillment_orders_get({}, ctx)).rejects.toThrow(/orderId/)
   })
 
+  it("reads an order number (#1056) like orders_get: name lookup, then the fulfillment orders", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            orders: { edges: [{ node: { id: "gid://shopify/Order/1056", name: "#1056" } }] },
+          },
+        },
+        fixture,
+      ],
+    })
+    const result = (await fulfillment_orders_get({ orderId: "#1056" }, ctx)) as { orderId: string }
+    expect(result.orderId).toBe("gid://shopify/Order/1056")
+    const second = JSON.parse(calls[1]!.body) as { variables: { id: string } }
+    expect(second.variables.id).toBe("gid://shopify/Order/1056")
+  })
+
   it("errors NOT_FOUND when the order does not exist", async () => {
     const { ctx } = makeCtx({ fetchResponses: [{ data: { order: null } }] })
     await expect(

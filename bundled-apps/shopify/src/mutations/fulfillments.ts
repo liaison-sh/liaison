@@ -160,6 +160,149 @@ function toOrderGid(ref: string): string {
   return /^\d+$/.test(ref) ? `${ORDER_GID_PREFIX}${ref}` : ref
 }
 
+// The shipments an order already records, so a fulfillment that was already created (by another path,
+// an earlier approve, or by hand in Shopify) is recognised by its tracking number instead of being sent
+// again. Shopify refuses that second create with an opaque "Invalid fulfillment order line item quantity
+// requested", and an approval replaying it would stay stuck on that error forever.
+const ORDER_FULFILLMENTS_SELECTION =
+  "fulfillments(first: 50) { id status trackingInfo { number company url } }"
+
+interface OrderFulfillmentRecord {
+  id: string
+  status?: string | null
+  trackingInfo?: Array<{
+    number?: string | null
+    company?: string | null
+    url?: string | null
+  } | null> | null
+}
+
+interface OrderShipments {
+  id?: string | null
+  name?: string | null
+  fulfillments?: OrderFulfillmentRecord[] | null
+}
+
+/** A fulfillment in one of these states never shipped anything, so it cannot stand for this one. */
+const DEAD_FULFILLMENT_STATUSES = new Set(["CANCELLED", "ERROR", "FAILURE"])
+
+/** The order's live fulfillment carrying one of the requested tracking numbers, or null. */
+function shipmentAlreadyRecorded(
+  order: OrderShipments | null | undefined,
+  trackingInfo: unknown,
+): OrderFulfillmentRecord | null {
+  const wanted = new Set(
+    trackingNumbersOf(normalizeTrackingInfo(trackingInfo)).map((n) => n.trim().toUpperCase()),
+  )
+  if (wanted.size === 0) return null
+  for (const f of order?.fulfillments ?? []) {
+    if (!f?.id || DEAD_FULFILLMENT_STATUSES.has(String(f.status ?? "").toUpperCase())) continue
+    const numbers = (f.trackingInfo ?? []).map((t) => t?.number?.trim().toUpperCase() ?? "")
+    if (numbers.some((n) => n.length > 0 && wanted.has(n))) return f
+  }
+  return null
+}
+
+export interface AlreadyFulfilled {
+  fulfillment: OrderFulfillmentRecord
+  message: string
+}
+
+function alreadyFulfilled(
+  order: OrderShipments | null | undefined,
+  recorded: OrderFulfillmentRecord,
+): AlreadyFulfilled {
+  const label = order?.name ?? order?.id ?? "This order"
+  const number = (recorded.trackingInfo ?? []).find((t) => t?.number)?.number ?? ""
+  return {
+    fulfillment: recorded,
+    message: `${label} already has this shipment: fulfillment ${recorded.id} carries tracking ${number}. Nothing was sent to Shopify again and the customer was not emailed again.`,
+  }
+}
+
+// A prebuilt `lineItemsByFulfillmentOrder` names fulfillment orders directly. Read each one's live
+// state (and its order's shipments) before the create: between staging and the approve, the parcel
+// may have been fulfilled by another path, which closes the fulfillment order.
+const FULFILLMENT_ORDER_STATE = `
+  query FulfillmentOrderState($id: ID!) {
+    fulfillmentOrder(id: $id) {
+      id status
+      lineItems(first: 100) { nodes { id remainingQuantity } }
+      order { id name ${ORDER_B2B_SIGNALS_SELECTION} ${ORDER_FULFILLMENTS_SELECTION} }
+    }
+  }
+`
+
+interface FulfillmentOrderState {
+  id: string
+  status?: string | null
+  lineItems?: { nodes?: Array<{ id: string; remainingQuantity?: number | null }> } | null
+  order?: (OrderShipments & OrderB2bSignals) | null
+}
+
+/** Fulfillment order states a fulfillment can still be created on. */
+const FULFILLABLE_FO_STATUSES = new Set(["OPEN", "IN_PROGRESS"])
+
+/**
+ * Check a prebuilt `lineItemsByFulfillmentOrder` against Shopify's live state. Returns the order (for
+ * the notification policy) and, when the request can no longer be met because this very shipment is
+ * already on the order, that recorded fulfillment. Any other mismatch THROWS a plain reason.
+ */
+async function checkPrebuiltFulfillmentOrders(
+  ctx: AppContext,
+  entries: unknown[],
+  trackingInfo: unknown,
+): Promise<{ order: (OrderShipments & OrderB2bSignals) | null; already: AlreadyFulfilled | null }> {
+  const client = await getShopifyClient(ctx)
+  const problems: string[] = []
+  let order: (OrderShipments & OrderB2bSignals) | null = null
+  for (const entry of entries) {
+    const rec = entry && typeof entry === "object" ? (entry as Record<string, unknown>) : {}
+    const foId = rec.fulfillmentOrderId
+    if (typeof foId !== "string" || foId.length === 0) {
+      throw makeMutationError(
+        "BAD_PARAM",
+        "Each lineItemsByFulfillmentOrder entry needs a `fulfillmentOrderId`.",
+      )
+    }
+    const data = await client.query<{ fulfillmentOrder?: FulfillmentOrderState | null }>(
+      FULFILLMENT_ORDER_STATE,
+      { id: foId },
+    )
+    const fo = data.fulfillmentOrder
+    if (!fo) {
+      throw makeMutationError("NOT_FOUND", `Fulfillment order ${foId} was not found in Shopify.`)
+    }
+    order ??= fo.order ?? null
+    const status = String(fo.status ?? "").toUpperCase()
+    if (!FULFILLABLE_FO_STATUSES.has(status)) {
+      problems.push(`fulfillment order ${foId} is ${status || "not open"}`)
+      continue
+    }
+    const remaining = new Map(
+      (fo.lineItems?.nodes ?? []).map((li) => [li.id, li.remainingQuantity ?? 0] as const),
+    )
+    const lines = Array.isArray(rec.fulfillmentOrderLineItems) ? rec.fulfillmentOrderLineItems : []
+    for (const line of lines) {
+      const l = line && typeof line === "object" ? (line as Record<string, unknown>) : {}
+      const id = typeof l.id === "string" ? l.id : ""
+      const left = remaining.get(id)
+      if (left === undefined) {
+        problems.push(`line ${id || "(no id)"} is not on fulfillment order ${foId}`)
+      } else if (typeof l.quantity === "number" && l.quantity > left) {
+        problems.push(`line ${id} asks for ${l.quantity} but only ${left} remains to fulfill`)
+      }
+    }
+  }
+  if (problems.length === 0) return { order, already: null }
+  const recorded = shipmentAlreadyRecorded(order, trackingInfo)
+  if (recorded) return { order, already: alreadyFulfilled(order, recorded) }
+  throw makeMutationError(
+    "NO_FULFILLABLE_ITEMS",
+    `Nothing to fulfill as requested on ${order?.name ?? "this order"}: ${problems.join("; ")}. It was probably fulfilled or changed in Shopify since this was prepared. Call fulfillment_orders_get to see what is still open.`,
+  )
+}
+
 // `fulfillmentCreateV2` requires `lineItemsByFulfillmentOrder` (built from the order's OPEN fulfillment
 // orders), NOT an `orderId` — but an agent (and a human) naturally think "fulfill THIS ORDER" and pass an
 // orderId. Resolve the order's open fulfillment orders here so the caller doesn't need to know the
@@ -167,8 +310,9 @@ function toOrderGid(ref: string): string {
 const ORDER_FULFILLMENT_ORDERS = `
   query OrderFulfillmentOrders($id: ID!) {
     order(id: $id) {
-      id
+      id name
       ${ORDER_B2B_SIGNALS_SELECTION}
+      ${ORDER_FULFILLMENTS_SELECTION}
       fulfillmentOrders(first: 25, query: "status:open") { nodes { id status } }
     }
   }
@@ -179,8 +323,9 @@ const ORDER_FULFILLMENT_ORDERS = `
 const ORDER_FULFILLMENT_ORDERS_WITH_LINES = `
   query OrderFulfillmentOrdersWithLines($id: ID!) {
     order(id: $id) {
-      id
+      id name
       ${ORDER_B2B_SIGNALS_SELECTION}
+      ${ORDER_FULFILLMENTS_SELECTION}
       fulfillmentOrders(first: 25, query: "status:open") {
         nodes {
           id status
@@ -309,12 +454,6 @@ function buildPartialLineItemsByFulfillmentOrder(
 //  Customer shipping email: the org's policy decides (lib/b2b.ts)
 // ─────────────────────────────────────────────────────────────────────────
 
-const FULFILLMENT_ORDER_B2B_SIGNALS = `
-  query FulfillmentOrderB2bSignals($id: ID!) {
-    fulfillmentOrder(id: $id) { id order { id ${ORDER_B2B_SIGNALS_SELECTION} } }
-  }
-`
-
 const FULFILLMENT_B2B_SIGNALS = `
   query FulfillmentB2bSignals($id: ID!) {
     fulfillment(id: $id) { id trackingInfo { number } order { id ${ORDER_B2B_SIGNALS_SELECTION} } }
@@ -324,23 +463,6 @@ const FULFILLMENT_B2B_SIGNALS = `
 /** Anything but an absent or explicit false asks Shopify to email the customer. */
 function asksToNotify(value: unknown): boolean {
   return value !== undefined && value !== null && value !== false
-}
-
-async function orderOfFulfillmentOrder(
-  ctx: AppContext,
-  entry: unknown,
-): Promise<OrderB2bSignals | null> {
-  const id =
-    entry && typeof entry === "object"
-      ? (entry as { fulfillmentOrderId?: unknown }).fulfillmentOrderId
-      : undefined
-  if (typeof id !== "string" || id.length === 0) return null
-  const client = await getShopifyClient(ctx)
-  const data = await client.query<{ fulfillmentOrder?: { order?: OrderB2bSignals | null } | null }>(
-    FULFILLMENT_ORDER_B2B_SIGNALS,
-    { id },
-  )
-  return data.fulfillmentOrder?.order ?? null
 }
 
 interface FulfillmentWithOrder {
@@ -381,8 +503,10 @@ async function buildFulfillmentInput(
   ctx: AppContext,
 ): Promise<{
   fulfillment: Record<string, unknown>
-  /** The order's B2B signals when the build already read them (the orderId paths). */
+  /** The order's B2B signals when the build already read them. */
   order: OrderB2bSignals | null | undefined
+  /** Set when this exact shipment (same tracking number) is already on the order: nothing to send. */
+  already?: AlreadyFulfilled
 }> {
   const provided = (params.fulfillment ?? params ?? {}) as Record<string, unknown>
   const preBuilt = provided.lineItemsByFulfillmentOrder
@@ -399,6 +523,9 @@ async function buildFulfillmentInput(
       ...(normalizedTracking ? { trackingInfo: normalizedTracking } : {}),
     }
     if (provided.trackingInfo !== undefined && !normalizedTracking) delete fulfillment.trackingInfo
+    const checked = await checkPrebuiltFulfillmentOrders(ctx, preBuilt, provided.trackingInfo)
+    order = checked.order
+    if (checked.already) return { fulfillment, order, already: checked.already }
   } else if (Array.isArray(requestedLines) && requestedLines.length > 0) {
     // Truthful PARTIAL fulfillment: friendly `lineItems` ({sku|orderLineItemId, quantity}) resolved
     // against the order's open fulfillment orders — only the named quantities ship, the rest stays
@@ -412,11 +539,17 @@ async function buildFulfillmentInput(
     }
     const client = await getShopifyClient(ctx)
     const data = await client.query<{
-      order?: ({ fulfillmentOrders?: { nodes?: OpenFoWithLines[] } } & OrderB2bSignals) | null
+      order?:
+        | ({ fulfillmentOrders?: { nodes?: OpenFoWithLines[] } } & OrderB2bSignals & OrderShipments)
+        | null
     }>(ORDER_FULFILLMENT_ORDERS_WITH_LINES, { id: toOrderGid(orderId) })
     order = data.order
     const openFOs = (data.order?.fulfillmentOrders?.nodes ?? []).filter((n) => n?.id)
     if (openFOs.length === 0) {
+      const recorded = shipmentAlreadyRecorded(data.order, provided.trackingInfo)
+      if (recorded) {
+        return { fulfillment: {}, order, already: alreadyFulfilled(data.order, recorded) }
+      }
       throw makeMutationError(
         "NO_FULFILLABLE_ITEMS",
         "Order has no OPEN fulfillment orders to fulfill (already fulfilled, cancelled, or not found).",
@@ -447,12 +580,17 @@ async function buildFulfillmentInput(
       order?:
         | ({
             fulfillmentOrders?: { nodes?: Array<{ id: string; status?: string | null }> }
-          } & OrderB2bSignals)
+          } & OrderB2bSignals &
+            OrderShipments)
         | null
     }>(ORDER_FULFILLMENT_ORDERS, { id: toOrderGid(orderId) })
     order = data.order
     const openFulfillmentOrders = (data.order?.fulfillmentOrders?.nodes ?? []).filter((n) => n?.id)
     if (openFulfillmentOrders.length === 0) {
+      const recorded = shipmentAlreadyRecorded(data.order, provided.trackingInfo)
+      if (recorded) {
+        return { fulfillment: {}, order, already: alreadyFulfilled(data.order, recorded) }
+      }
       throw makeMutationError(
         "NO_FULFILLABLE_ITEMS",
         "Order has no OPEN fulfillment orders to fulfill (already fulfilled, cancelled, or not found).",
@@ -482,7 +620,11 @@ export async function fulfillments_create_preflight(
   ctx: AppContext,
 ): Promise<PreflightResult> {
   try {
-    await buildFulfillmentInput(params, ctx)
+    const built = await buildFulfillmentInput(params, ctx)
+    // The shipment is already on the order: staging it would only park a duplicate for a person.
+    if (built.already) {
+      return { error: { code: "ALREADY_FULFILLED", message: built.already.message } }
+    }
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -493,20 +635,20 @@ export async function fulfillments_create(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<unknown> {
-  const { fulfillment, order } = await buildFulfillmentInput(params, ctx)
+  const { fulfillment, order, already } = await buildFulfillmentInput(params, ctx)
+  // Idempotent: the same shipment is already recorded (another path fulfilled it, or an earlier
+  // approve did). Report it as done and send nothing, so an approval replay closes instead of failing.
+  if (already) {
+    return { fulfillment: already.fulfillment, alreadyFulfilled: true, message: already.message }
+  }
   // Whether Shopify emails the customer is the org's policy, decided here for every path (an
   // agent, an approval card, Boxtal's packed tick and carrier scan): the tracking rides on this
   // same create, so the email carries it.
-  const preBuilt = fulfillment.lineItemsByFulfillmentOrder
   const decision = await decideCustomerNotification({
     readConfig: (key) => ctx.config.get(key),
     callerAsksToNotify: asksToNotify(fulfillment.notifyCustomer),
-    loadOrder: async () =>
-      order !== undefined
-        ? order
-        : Array.isArray(preBuilt)
-          ? orderOfFulfillmentOrder(ctx, preBuilt[0])
-          : null,
+    // Every path read the order while checking what is left to fulfill.
+    loadOrder: async () => order ?? null,
     // The one shipping email goes out with the first tracking number: a create without one sends none.
     tracking: async () => ({
       write: "create",

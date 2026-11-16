@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { laneCaps, readSupervisorConfig } from "../src/config"
 import { QUEUE_HEADER } from "../src/supervisor"
-import { startSandbox } from "./helpers"
+import { startSandbox, until } from "./helpers"
 
 // A 2 GiB, 2 CPU service (the compose defaults), so the sizes do not follow this machine.
 const ORIGIN = {
@@ -44,15 +44,22 @@ describe("lanes", () => {
   test("background runs fill their share; an interactive run still starts at once", async () => {
     const sb = await startSandbox() // 6 processes, 2 reserved nested, 2 reserved interactive
     try {
-      const background = [1, 2, 3, 4].map((i) =>
+      // The tool run's process is up before the burst, so its wait below is the
+      // lane's alone, never a process start on a busy machine.
+      expect((await sb.run("echo", 0, { orgId: "org-tool" })).body).toMatchObject({ ok: true })
+      const bg = (i: number) =>
         // The last two outlive the first two, so they start once those are over.
         sb.run(i <= 2 ? "hang" : "echo", i, {
           orgId: `org-b${i}`,
-          deadlineMs: i <= 2 ? 2_000 : 8_000,
+          deadlineMs: i <= 2 ? 3_000 : 10_000,
           lane: "background",
-        }),
-      )
-      await Bun.sleep(400)
+        })
+      // The two long runs take the share first, then the other two queue behind them.
+      const hangs = [1, 2].map(bg)
+      await until(() => sb.sup.pool.stats().lanes.busy.background === 2, "two runs hold the share")
+      const queued = [3, 4].map(bg)
+      await until(() => sb.sup.pool.stats().lanes.waiting.background === 2, "two runs queue")
+      const background = [...hangs, ...queued]
       const mid = sb.sup.pool.stats().lanes
       expect(mid.caps).toEqual({ interactive: 4, background: 2 })
       // The converse limit: background runs never hold more than their share.
@@ -64,7 +71,8 @@ describe("lanes", () => {
       expect(tool.body).toMatchObject({ ok: true, result: 7 })
       expect(Date.now() - t0).toBeLessThan(900)
       expect(Number(tool.headers.get(QUEUE_HEADER))).toBeLessThan(500)
-      const rec = sb.sup.recent.find((r) => r.lane === "interactive")
+      const rec = sb.sup.recent.filter((r) => r.lane === "interactive").at(-1)
+      expect(rec).toMatchObject({ how: "warm" })
       expect(rec?.queueMs ?? -1).toBeLessThan(500)
 
       // A background run whose deadline passes in the queue never started.
@@ -82,7 +90,7 @@ describe("lanes", () => {
       expect(lanes.background.started).toBe(4)
       expect(lanes.background.waited).toBe(2)
       expect(lanes.background.queueTimeouts).toBe(1)
-      expect(lanes.interactive.started).toBe(1)
+      expect(lanes.interactive.started).toBe(2) // the warm-up and the tool run
       expect(lanes.interactive.waited).toBe(0)
     } finally {
       await sb.stop()
@@ -93,9 +101,9 @@ describe("lanes", () => {
     const sb = await startSandbox()
     try {
       const hangs = [1, 2, 3, 4].map((i) =>
-        sb.run("hang", null, { orgId: `org-i${i}`, deadlineMs: 2_000, lane: "interactive" }),
+        sb.run("hang", null, { orgId: `org-i${i}`, deadlineMs: 3_000, lane: "interactive" }),
       )
-      await Bun.sleep(400)
+      await until(() => sb.sup.pool.stats().lanes.busy.interactive === 4, "four runs hold the pool")
       expect(sb.sup.pool.stats().lanes.busy.interactive).toBe(4)
       // Background has no room either: the interactive runs hold the top-level share.
       const bg = await sb.run("echo", 1, { orgId: "org-b", deadlineMs: 300, lane: "background" })
@@ -113,13 +121,18 @@ describe("lanes", () => {
     try {
       // Caps: interactive 2, background 1. One background run holds its share,
       // one waits behind it; an interactive run holds the other process.
-      const b1 = sb.run("hang", null, { orgId: "org-b1", deadlineMs: 3_000, lane: "background" })
-      await Bun.sleep(200)
-      const b2 = sb.run("echo", 2, { orgId: "org-b2", deadlineMs: 6_000, lane: "background" })
-      const i1 = sb.run("hang", null, { orgId: "org-i1", deadlineMs: 800 })
-      await Bun.sleep(200)
+      const lanes = () => sb.sup.pool.stats().lanes
+      const b1 = sb.run("hang", null, { orgId: "org-b1", deadlineMs: 5_000, lane: "background" })
+      await until(() => lanes().busy.background === 1, "b1 holds the background share")
+      const b2 = sb.run("echo", 2, { orgId: "org-b2", deadlineMs: 10_000, lane: "background" })
+      const i1 = sb.run("hang", null, { orgId: "org-i1", deadlineMs: 1_500 })
+      await until(
+        () => lanes().waiting.background === 1 && lanes().busy.interactive === 1,
+        "b2 queues and i1 holds the other process",
+      )
       // A second interactive run waits for i1's process, not for b1's lane.
-      const i2 = sb.run("echo", 3, { orgId: "org-i2", deadlineMs: 6_000 })
+      const i2 = sb.run("echo", 3, { orgId: "org-i2", deadlineMs: 10_000 })
+      await until(() => lanes().waiting.interactive === 1, "i2 queues")
       await i1
       const r2 = await i2
       expect(r2.body).toMatchObject({ ok: true, result: 3 })
@@ -157,10 +170,14 @@ describe("background queue bound (RunBody.queueMs)", () => {
       expect(recs).toHaveLength(6)
       expect(recs.every((r) => r.queueLimitMs === 10_000 && r.deadlineFrom === "start")).toBe(true)
 
+      // The same orgs, so each run takes its warm process: a deadline counted
+      // from arrival never also pays for a process start on a busy machine.
       const unbounded = [1, 2, 3, 4, 5, 6].map((i) =>
-        sb.run("sleep", 800, { orgId: `org-u${i}`, deadlineMs: 1_300, lane: "background" }),
+        sb.run("sleep", 800, { orgId: `org-q${i}`, deadlineMs: 1_300, lane: "background" }),
       )
       const late = await Promise.all(unbounded)
+      const started = sb.sup.recent.slice(6).filter((r) => r.how !== "queue_timeout")
+      expect(started.map((r) => r.how)).toEqual(["warm", "warm", "warm", "warm"])
       expect(late.filter((r) => r.body.ok === true)).toHaveLength(4)
       const timedOut = late.filter((r) => r.body.ok !== true)
       for (const r of timedOut) {
@@ -176,9 +193,9 @@ describe("background queue bound (RunBody.queueMs)", () => {
     const sb = await startSandbox()
     try {
       const hangs = [1, 2].map((i) =>
-        sb.run("hang", null, { orgId: `org-h${i}`, deadlineMs: 2_000, lane: "background" }),
+        sb.run("hang", null, { orgId: `org-h${i}`, deadlineMs: 3_000, lane: "background" }),
       )
-      await Bun.sleep(300)
+      await until(() => sb.sup.pool.stats().lanes.busy.background === 2, "two runs hold the share")
       const t0 = Date.now()
       const late = await sb.run("echo", 1, {
         orgId: "org-late",
@@ -204,9 +221,9 @@ describe("background queue bound (RunBody.queueMs)", () => {
     const sb = await startSandbox({ poolSize: 3, reserved: 1, reservedInteractive: 1 })
     try {
       const hangs = [1, 2].map((i) =>
-        sb.run("hang", null, { orgId: `org-i${i}`, deadlineMs: 2_000 }),
+        sb.run("hang", null, { orgId: `org-i${i}`, deadlineMs: 3_000 }),
       )
-      await Bun.sleep(300)
+      await until(() => sb.sup.pool.stats().lanes.busy.interactive === 2, "two runs hold the pool")
       const t0 = Date.now()
       const tool = await sb.run("echo", 1, { orgId: "org-t", deadlineMs: 400, queueMs: 30_000 })
       expect(Date.now() - t0).toBeLessThan(1_500)

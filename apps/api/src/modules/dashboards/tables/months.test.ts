@@ -71,7 +71,7 @@ describe("months column options", () => {
     const cleared = applyColumnOps(columns, [], { setOptions: [{ key: "qty", emphasis: null }] })
     expect(cleared.columns.find((c) => c.key === "qty")).not.toHaveProperty("emphasis")
     expect(() => applyColumnOps(COLS, [], { setOptions: [{ key: "item", horizon: 2 }] })).toThrow(
-      "only a months column",
+      "only a months or formula column",
     )
     expect(() => applyColumnOps(COLS, [], { setOptions: [{ key: "nope", horizon: 2 }] })).toThrow(
       "no column",

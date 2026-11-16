@@ -28,7 +28,7 @@
 // targets these to assert the approval-card → mail send loop.
 
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
-import { app, fetchBlob, navigate, openFile } from "@liaison/host"
+import { app, fetchBlob, fetch as hostFetch, navigate, openFile } from "@liaison/host"
 import {
   type Component,
   createEffect,
@@ -43,6 +43,7 @@ import {
 } from "solid-js"
 import { formatMoneyMinor } from "../money"
 import { type DocumentType, transition } from "../state"
+import { loadViewerAccess } from "./access"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { tr } from "./i18n"
@@ -52,6 +53,7 @@ import {
   Button,
   ConfirmDialog,
   cx,
+  isUserId,
   Money,
   SectionLabel,
   StatusBadge,
@@ -157,7 +159,12 @@ export interface LifecycleEntry {
   note?: string
 }
 
-export type PdfStatus = "pending" | "ready" | "failed" | "pdf_a3_normalization_skipped"
+export type PdfStatus =
+  | "pending"
+  | "ready"
+  | "failed"
+  | "facturx_failed"
+  | "pdf_a3_normalization_skipped"
 
 export interface DocumentDetailTabContribution {
   id: string
@@ -376,7 +383,7 @@ export interface PdfAffordance {
 
 /** What the header's Preview and Download say when there is no PDF to open. */
 export function pdfNotReadyNote(s: PdfStatus | undefined | null): string {
-  return s === "failed"
+  return s === "failed" || s === "facturx_failed"
     ? tr("This PDF could not be rendered. Use Retry render on the PDF tab.")
     : tr("This PDF is not ready yet. If it stays that way, use Retry render on the PDF tab.")
 }
@@ -396,6 +403,14 @@ export function pdfStatusAffordance(s: PdfStatus | undefined | null): PdfAfforda
         downloadEnabled: false,
         showA3SkippedNote: false,
         statusLabel: "Render failed",
+      }
+    case "facturx_failed":
+      // An e-invoice whose legal original (its Factur-X) could not be built: the reason is shown.
+      return {
+        showRetry: true,
+        downloadEnabled: false,
+        showA3SkippedNote: false,
+        statusLabel: "The e-invoice could not be made",
       }
     case "pending":
       // Normally a moment. A render that never ran stays pending until someone asks for it again.
@@ -948,9 +963,22 @@ function hasPdfViewer(): boolean {
   return typeof navigator === "undefined" || navigator.pdfViewerEnabled !== false
 }
 
+/** Why the last render failed, as the issue recorded it: the reason a person can act on. */
+export function pdfFailureReason(doc: DocumentSummary): string | null {
+  const log = doc.lifecycle_log ?? []
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i] as LifecycleEntry & { detail?: unknown }
+    if (e.event !== "pdf_render_failed") continue
+    return typeof e.detail === "string" && e.detail.trim() ? e.detail.trim() : null
+  }
+  return null
+}
+
 function PdfBody(p: {
   doc: DocumentSummary
   affordance: PdfAffordance
+  /** The viewer may re-run the render (they may write documents). */
+  canRetry: boolean
   onRetry: () => void
   onPreview: () => void
   onDownload: () => void
@@ -992,14 +1020,22 @@ function PdfBody(p: {
             }
             class="text-text"
           >
-            {p.affordance.statusLabel}
+            {tr(p.affordance.statusLabel)}
           </div>
+          <Show when={!p.affordance.downloadEnabled && pdfFailureReason(p.doc)}>
+            {(reason) => (
+              <div data-testid="document-detail-pdf-reason" class="mt-1 text-text-secondary">
+                {reason()}
+              </div>
+            )}
+          </Show>
         </div>
         <div class="flex items-center gap-2">
           <Button
             variant="secondary"
             testid="document-detail-pdf-preview-inline"
             onClick={p.onPreview}
+            disabled={!p.affordance.downloadEnabled}
           >
             {tr("Preview")}
           </Button>
@@ -1013,12 +1049,7 @@ function PdfBody(p: {
           </Button>
         </div>
       </div>
-      <Show when={p.doc.pdf_file_id}>
-        <div class="text-text-tertiary">
-          {tr("file_id:")} <span class="font-mono">{p.doc.pdf_file_id}</span>
-        </div>
-      </Show>
-      <Show when={p.affordance.showRetry}>
+      <Show when={p.affordance.showRetry && p.canRetry}>
         <button
           type="button"
           data-testid="document-detail-action-retry-pdf"
@@ -1059,8 +1090,70 @@ function PdfBody(p: {
   )
 }
 
+/** A lifecycle event as a person reads it; an event this table does not know reads as itself. */
+const LIFECYCLE_EVENT_LABELS: Record<string, string> = {
+  issued: "Issued",
+  pdf_render_failed: "The PDF could not be made",
+  pdf_rendered: "PDF made",
+  sent: "Sent to the customer",
+  paid: "Marked paid",
+  voided: "Voided",
+  credit_note_issued: "Credit note issued",
+  po_number_changed: "PO number changed",
+}
+
+/** An entry as stored (`ts`, the acting user's id) or as older rows hold it (`at`, `actor`). */
+export function lifecycleFacts(entry: LifecycleEntry): {
+  at: string | null
+  actorId: string | null
+} {
+  const raw = entry as LifecycleEntry & { ts?: string; actor?: unknown }
+  const actor = raw.actor as string | { id?: string } | undefined
+  return {
+    at: raw.at ?? raw.ts ?? null,
+    actorId: typeof actor === "string" ? actor : (actor?.id ?? null),
+  }
+}
+
+/** The day and time of an entry, in the reader's zone: "2026-11-16 09:42". */
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "-"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+async function lifecycleNames(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  for (const id of ids) {
+    if (!isUserId(id)) continue
+    try {
+      const p = await hostFetch<{ data?: { name?: string }; name?: string }>(
+        `/api/users/${encodeURIComponent(id)}/preview`,
+      )
+      const name = p?.data?.name ?? p?.name
+      if (name) out.set(id, name)
+    } catch {
+      // A name that cannot be read is left out: the entry still shows what and when.
+    }
+  }
+  return out
+}
+
 function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
   const log = createMemo(() => p.doc.lifecycle_log ?? [])
+  const [names] = createResource(
+    () =>
+      [
+        ...new Set(
+          log()
+            .map((e) => lifecycleFacts(e).actorId)
+            .filter(isUserId),
+        ),
+      ].join(","),
+    (ids) => lifecycleNames(ids ? ids.split(",") : []),
+  )
   return (
     <div
       data-testid="document-detail-lifecycle"
@@ -1072,23 +1165,30 @@ function LifecycleBody(p: { doc: DocumentSummary }): JSX.Element {
       >
         <ul class="flex flex-col gap-1">
           <For each={log()}>
-            {(entry) => (
-              <li
-                data-testid={`document-detail-lifecycle-${entry.event}`}
-                class="flex gap-2 border-l-2 border-border-subtle pl-2"
-              >
-                <span class="font-mono text-text-tertiary">{fmtDate(entry.at)}</span>
-                <span class="font-medium text-text">{entry.event}</span>
-                <Show when={entry.actor}>
-                  <span class="text-text-secondary">
-                    {tr("by")} {entry.actor?.type}
-                  </span>
-                </Show>
-                <Show when={entry.note}>
-                  <span class="text-text-tertiary">({entry.note})</span>
-                </Show>
-              </li>
-            )}
+            {(entry) => {
+              const facts = lifecycleFacts(entry)
+              const label = LIFECYCLE_EVENT_LABELS[entry.event]
+              const who = () => (facts.actorId ? names()?.get(facts.actorId) : undefined)
+              return (
+                <li
+                  data-testid={`document-detail-lifecycle-${entry.event}`}
+                  class="flex gap-2 border-l-2 border-border-subtle pl-2"
+                >
+                  <span class="font-mono text-text-tertiary">{fmtDateTime(facts.at)}</span>
+                  <span class="font-medium text-text">{label ? tr(label) : entry.event}</span>
+                  <Show when={who()}>
+                    {(name) => (
+                      <span class="text-text-secondary">
+                        {tr("by")} {name()}
+                      </span>
+                    )}
+                  </Show>
+                  <Show when={entry.note}>
+                    <span class="text-text-tertiary">({entry.note})</span>
+                  </Show>
+                </li>
+              )
+            }}
           </For>
         </ul>
       </Show>
@@ -1113,6 +1213,8 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
   const affordance = createMemo(() =>
     pdfStatusAffordance(loaded()?.document?.pdf_status ?? undefined),
   )
+  // Re-running a render is a write: offered to whoever may write documents.
+  const [access] = createResource(() => loadViewerAccess())
   // The active external (non-built-in) tab, if any. Carries the contributing
   // `app` needed to resolve the cross-app body via the host bridge.
   const activeExternalTab = createMemo(() =>
@@ -1604,6 +1706,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     <PdfBody
                       doc={doc()}
                       affordance={affordance()}
+                      canRetry={access()?.documents_write === true}
                       onRetry={retryPdf}
                       onPreview={previewPdf}
                       onDownload={downloadPdf}

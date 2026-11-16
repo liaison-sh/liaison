@@ -28,8 +28,10 @@ import {
   FOOTER_ACTIONS,
   footerActionResultNote,
   isEditableDocumentStatus,
+  lifecycleFacts,
   mergeTabs,
   moneyChips,
+  pdfFailureReason,
   pdfNotReadyNote,
   pdfStatusAffordance,
   shopifyOrderUrl,
@@ -205,6 +207,36 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     const none = pdfStatusAffordance(undefined)
     expect(none.showRetry).toBe(false)
     expect(none.downloadEnabled).toBe(false)
+  })
+
+  it("an e-invoice that could not be made says so, with its reason, a retry and nothing to download", () => {
+    const fx = pdfStatusAffordance("facturx_failed")
+    expect(fx).toMatchObject({ showRetry: true, downloadEnabled: false })
+    expect(fx.statusLabel).toBe("The e-invoice could not be made")
+    const reason = pdfFailureReason({
+      lifecycle_log: [
+        { event: "issued", at: "2026-11-16T09:00:00.000Z" },
+        {
+          event: "pdf_render_failed",
+          at: "2026-11-16T09:00:01.000Z",
+          detail: "The seller (issuer profile) is missing: SIREN",
+        } as never,
+      ],
+    } as never)
+    expect(reason).toBe("The seller (issuer profile) is missing: SIREN")
+  })
+
+  it("a lifecycle entry as the issue writes it gives its time and who acted", () => {
+    expect(
+      lifecycleFacts({ event: "issued", ts: "2026-11-16T09:00:00.000Z", actor: "u-1" } as never),
+    ).toEqual({ at: "2026-11-16T09:00:00.000Z", actorId: "u-1" })
+    expect(
+      lifecycleFacts({
+        event: "sent",
+        at: "2026-11-17T09:00:00.000Z",
+        actor: { type: "user", id: "u-2" },
+      }),
+    ).toEqual({ at: "2026-11-17T09:00:00.000Z", actorId: "u-2" })
   })
 
   it("source emits a slot-mount call for invoicing.document_detail.tabs", () => {

@@ -7,7 +7,12 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
-import { PortalContextRefusedError, withPortalContext } from "~/db/portal-rls"
+import {
+  PortalContextRefusedError,
+  PortalUnavailableError,
+  portalAvailable,
+  withPortalContext,
+} from "~/db/portal-rls"
 import { insertSql } from "~/seed/factories/org/test-rows"
 
 const ORG_ID = crypto.randomUUID()
@@ -79,7 +84,19 @@ afterAll(async () => {
   await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
 })
 
-describe("withPortalContext", () => {
+describe.if(!portalAvailable())("withPortalContext without split logins", () => {
+  test("refuses before anything runs: there is no portal login to fall back from", async () => {
+    let ran = false
+    await expect(
+      withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async () => {
+        ran = true
+      }),
+    ).rejects.toBeInstanceOf(PortalUnavailableError)
+    expect(ran).toBe(false)
+  })
+})
+
+describe.if(portalAvailable())("withPortalContext", () => {
   test("on the portal login, withPortalContext runs as liaison_portal and reads portal.me", async () => {
     const out = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
       const [who] = extractRows<{ login: string; role: string }>(

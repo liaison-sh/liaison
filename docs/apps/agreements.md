@@ -59,6 +59,8 @@ When the last signer signs, the app seals the version:
 
 Each signer gets a copy by email: the signed PDF and their own copy of the evidence file, with the fingerprint and the seal written in the mail. A signer's copy lists only their own device; a copy for a colleague lists no device at all. A copy that fails to send is tried again, and after three failures one notice names the signer.
 
+A signer's last page, and their signing link opened again afterwards, says where their copy stands: waiting for the other signers, on its way, sent, or not sent (the sender was told). A typed name the signature pages cannot draw is refused at the code step, before the code is used, with a request to type it in Latin letters.
+
 A seal that fails is tried again every ten minutes; the version stays signed meanwhile, and one notice goes out after an hour. A stored document that no longer matches its fingerprint is never sealed: the app raises a mismatch notice instead.
 
 Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, and a set field never changes.

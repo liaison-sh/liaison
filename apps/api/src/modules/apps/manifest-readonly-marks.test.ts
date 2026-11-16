@@ -192,6 +192,8 @@ const READ_ONLY: Record<string, string[]> = {
     // 0.14.27-0.14.28 (#145, #152): same, the proforma settle and the draft cache refresh.
     "queue_counts",
     "to_prepare_list",
+    // prep_list's unscoped read folded into units per product code: the same best-effort writes.
+    "to_ship_by_product",
   ],
   calls: ["calls_segments_since", "calls_list", "webhook_info"],
   invoicing: [

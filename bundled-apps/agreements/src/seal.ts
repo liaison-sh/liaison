@@ -15,7 +15,7 @@ import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from ".
 
 /** Copies give up and raise one attention item after this many failed sends. */
 export const COPY_MAX_ATTEMPTS = 3
-/** Evidence is kept at least this long from the seal (S722). */
+/** Evidence is kept at least this long from the seal. */
 export const RETENTION_YEARS = 10
 /** One attention item when the stamp is still missing this long after the seal. */
 export const TIMESTAMP_OVERDUE_MS = 24 * 60 * 60 * 1000

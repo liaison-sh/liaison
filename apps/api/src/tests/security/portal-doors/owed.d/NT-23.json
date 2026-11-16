@@ -1,5 +1,0 @@
-{
-  "id": "NT-23",
-  "owner": "portal reads",
-  "part": "the project, ticket and invoice views: a row with a null company reads as no row"
-}

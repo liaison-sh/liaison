@@ -510,8 +510,34 @@ export function registerApprovalSummaryBackfill(): void {
  * acquire (`registerSearchDriftCheck`, `registerFilesSelectPolicyCheck`). So a process that has registered no org
  * leaves both as they are.
  */
+/**
+ * The portal views of every installed catalog app, checked once at boot: a view
+ * whose definition, barrier, owner or grant was changed in the database is put back
+ * as the code holds it, and a missing one is made. Never throws.
+ */
+export async function ensureInstalledAppPortalViews(): Promise<void> {
+  const { appsWithPortalViews, ensurePortalViews } = await import("~/modules/portal/views")
+  for (const app of appsWithPortalViews()) {
+    try {
+      await withSystemDb(`portal-views:${app}`, async (tx) => {
+        const [row] = extractRowsOf<{ installed: boolean }>(
+          await tx.execute(
+            drizzleSql`SELECT to_regnamespace(${schemaRef(`app_${app}`)}) IS NOT NULL AS installed`,
+          ),
+        )
+        if (!row?.installed) return
+        const out = await ensurePortalViews(tx, app, "compare")
+        if (out.written.length > 0) log.info({ app, views: out.written }, "Portal views restored")
+      })
+    } catch (err) {
+      log.error({ err, app }, "Portal views check at boot failed")
+    }
+  }
+}
+
 export async function runPhase10Boot(): Promise<void> {
   log.info("Phase 10 boot: start")
+  void ensureInstalledAppPortalViews()
 
   // Tickets' unified-search enrichment hook must be registered before the
   // indexer consumer below — a job processed before registration would build

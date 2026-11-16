@@ -114,7 +114,7 @@
       }
     ]
   },
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Customer-facing ticketing: local foundations (7.1)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -135,6 +135,7 @@
   },
   "schema": {
     "tickets": {
+      "migrationOwnedColumns": ["companyId"],
       "fields": {
         "subject": "string",
         "status": {
@@ -165,7 +166,8 @@
             "api",
             "mail_escalation",
             "manual",
-            "social"
+            "social",
+            "portal"
           ]
         },
         "team": "string?",

@@ -26,6 +26,23 @@ afterAll(async () => {
   await db.end()
 })
 
+/**
+ * Entries that exist once an app is registered: its portal views (modules/portal/views.ts).
+ * Listed when the app's schema exists in the database under test.
+ */
+const ALLOWED_WITH_APP: Record<string, Record<string, string>> = {
+  tickets: {
+    "table portal.ticket_messages SELECT":
+      "the mails in and out of the tickets the caller reads: no note, no HTML, no agent",
+  },
+  invoicing: {
+    "table portal.invoices SELECT":
+      "the caller's company's issued invoices and credit notes behind an open invoices share, never a draft or its notes",
+    "table portal.billing_upcoming SELECT":
+      "what is still to be invoiced on the caller's company's projects: label, amount, due date",
+  },
+}
+
 /** Every entry the role may reach, each with why. Anything else is a failure. */
 const ALLOWED: Record<string, string> = {
   "schema portal USAGE": "the one schema of objects a client is meant to read",
@@ -43,6 +60,17 @@ const ALLOWED: Record<string, string> = {
     "the caller's own contact id, only while their company is open; for the caller's own requests",
   "function portal.company_id()":
     "the caller's own company; every later view filters on it, and it reads only the caller's row",
+  "table portal.projects SELECT":
+    "the caller's company's work projects behind an open progress or reports share: name and manager's name",
+  "table portal.project_steps SELECT":
+    "the milestones of those projects behind an open progress share, with a done share from task statuses only",
+  "table portal.tickets SELECT":
+    "the caller's own portal requests or a shared ticket, internal and stamped with the caller's company, behind an open requests share",
+  "function portal.project_hours(p_project uuid)":
+    "billed or so-far hours of one project as totals, only behind an open hours share on a project using time and budgets",
+  "function portal.file_allowed(p_file uuid)":
+    "whether one file is the caller's to download, re-reading its parent; answers a boolean only",
+  "function portal.file_meta(p_file uuid)": "the name, type and size of a file file_allowed allows",
   "function rls_ctx.org_id()": "returns the transaction's own org, after checking its tag",
   "function rls_ctx.user_id()": "returns the transaction's own user, after checking its tag",
   "function rls_ctx.scopes()": "returns the transaction's own scopes: none in a portal transaction",
@@ -101,7 +129,12 @@ describe("what the portal role can reach", () => {
       ...sequences.map((s) => `sequence ${s.name}`),
       ...definers.map((d) => `function ${d.name}`),
     ].sort()
-    expect(found).toEqual(Object.keys(ALLOWED).sort())
+    const installed = await db<{ app: string }[]>`
+      SELECT substring(nspname from 5) AS app FROM pg_namespace
+       WHERE nspname = ANY(${Object.keys(ALLOWED_WITH_APP).map((app) => `app_${app}`)})`
+    const allowed = { ...ALLOWED }
+    for (const { app } of installed) Object.assign(allowed, ALLOWED_WITH_APP[app])
+    expect(found).toEqual(Object.keys(allowed).sort())
   })
 
   test("is a login (the portal pool's), with no bypass or role administration", async () => {

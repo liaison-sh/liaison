@@ -1,4 +1,5 @@
 {
   "id": "NT-20",
-  "owner": "portal reads and portal decisions"
+  "owner": "portal decisions",
+  "part": "the routes not built in portal reads: documents, actions decide, request reply and attachments, with their ids"
 }

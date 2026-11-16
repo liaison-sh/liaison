@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.31.3",
+  "version": "0.32.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1066,6 +1066,11 @@
           "tax_point_date": "date?",
           "tax_total_eur_minor": "bigint?",
           "original_document_id": "uuid?",
+          "company_id": {
+            "type": "uuid",
+            "required": false,
+            "description": "The client company the document is made out to, stamped once at issue from the counterparty contact's company and never followed afterwards: what the client portal reads."
+          },
           "legal_original_id": "uuid?",
           "internal_cancellation": {
             "type": "boolean",
@@ -1161,6 +1166,9 @@
         ],
         [
           "billing_project_id"
+        ],
+        [
+          "company_id"
         ]
       ]
     },
@@ -7368,7 +7376,7 @@
     },
     {
       "target": "kernel:contacts_identity",
-      "reason": "the issuer guard reads only a contact's id, email and company id to match it to a card processor's customer, a read that does not mark the turn as having read outside text"
+      "reason": "the issuer guard reads only a contact's id, email and company id to match it to a card processor's customer, and the issue stamps the document with the contact's company: reads that do not mark the turn as having read outside text"
     },
     {
       "target": "kernel:contacts_address_upsert",

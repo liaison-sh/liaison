@@ -2318,6 +2318,13 @@
       "when": 1900003420002,
       "tag": "0329_client_actions_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 331,
+      "version": "7",
+      "when": 1900003420003,
+      "tag": "0330_portal_project_ticket_views",
+      "breakpoints": true
     }
   ]
 }

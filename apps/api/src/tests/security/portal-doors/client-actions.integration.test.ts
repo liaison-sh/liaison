@@ -347,11 +347,13 @@ describe("portal doors: the client action page", () => {
     const logged = lines.join("")
     expect(logged.includes(token)).toBe(false)
     expect(logged.includes(code)).toBe(false)
-    const keys = await redis.keys("*")
+    // KEYS ignores the client's keyPrefix: scan this run's own keys (the job queues' prefix
+    // starts with it too), never the whole shared Redis.
+    const prefix = redis.options.keyPrefix ?? ""
+    const keys = await redis.keys(`${prefix}*`)
     expect(keys.filter((key) => key.includes(token) || key.includes(code))).toEqual([])
     // Every key's value, the job queues' hashes and lists included (a queued mail job
     // would hold its rendered body there).
-    const prefix = redis.options.keyPrefix ?? ""
     // The code mail is sent directly, never queued, so whether job-queue keys exist depends on
     // what ran before; the scan below reads every key there is, queues included when present.
     expect(keys.length).toBeGreaterThan(0)

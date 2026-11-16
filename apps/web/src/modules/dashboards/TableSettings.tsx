@@ -84,6 +84,8 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
     }
     if (c.emphasis)
       parts.push(`${i18n.t("kernel.dashboards.tables.emphasis")}: ${emphasisLabel(c.emphasis)}`)
+    if (c.type === "lookup" && c.lookup)
+      parts.push(i18n.t("kernel.dashboards.tables.lookupColumn", { tool: c.lookup.source.tool }))
     if (c.required) parts.push(i18n.t("kernel.dashboards.tables.requiredTag"))
     return parts.join(" · ")
   }

@@ -27,6 +27,7 @@ A table has at most 40 columns. Each has a key, a label and a type:
 | `person` | A member of the organisation (their user id). |
 | `link` | A record of an app: `{ app, entityType, id, label }`. A column may accept only one app or one kind of record. |
 | `months` | One number per month, typed by people: `{ "YYYY-MM": number }`. See [Plan by month](#plan-by-month). |
+| `lookup` | A number or a text read live from an app, never typed (see [Read values live from an app](#read-values-live-from-an-app)). |
 
 A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_`. It never changes; the label does. `id`, `updated_at`, `updated_by` and `created_at` are reserved. A column can be required: a new row must fill it, and a change cannot empty it.
 
@@ -108,6 +109,31 @@ A table can show the tasks of one project as its rows, live: `backing: { app: "p
 - **Add a task** asks for the task's title and the table's own columns. The delete mark of a row is greyed out; hover it for why.
 - An app declares which of its records can back a table, on the entity in its manifest: `tableBacking: { parent, provider }`, a provider in its server code.
 
+## Read values live from an app
+
+A lookup column shows a value an app knows, read when the table is read: a product's stock from a shop's product search, joined on the table's product link, or the units waiting in a shipping queue, joined on a code column. Your agent defines it:
+
+```json
+{
+  "key": "stock",
+  "label": "Stock",
+  "type": "lookup",
+  "lookup": {
+    "source": { "tool": "<app>:<tool>", "params": {}, "rowsPath": "products" },
+    "match": { "field": "id", "on": "product" },
+    "value": "inventory.on_hand",
+    "valueType": "number"
+  }
+}
+```
+
+- `source` is a read tool that can feed a dashboard, with its settings and where its rows are, exactly as a dashboard block's tool source. Saving the column checks that the tool is one and that you may run it.
+- `match.field` is the path of the key in the tool's rows; `match.on` is the table's column it matches. A link cell matches by its record's id, any other cell by its text, without regard to case or spaces around it.
+- `value` is the path of the value in the matched row, `valueType` `number` or `text`. Several matching rows add up (a number) or are listed once each (a text).
+- A table has at most 5 lookup columns. A lookup cannot be required, written, filtered or sorted on. To change one, remove it and add another key. The column it matches on cannot be removed while the lookup uses it.
+
+The tool runs once per table read and column, as the person reading, with their access: someone who may not run it sees every row, the column empty and **Not available** in its header (hover it for why). The same holds when the read fails or the dashboard read budget is spent. Each person's read is kept for a minute, a failed one for 30 seconds. An agent reading the table through `tables_query` gets the reasons in `columnNotes`, and its turn counts as having called the tool. The grid, `tables_query` and a table block source all read it.
+
 ## Show a table on a dashboard
 
 A block reads a table with the source `{ kind: "table", table: "<table id>", where? }`. Its fields are the column keys, plus `id`, `updated_at` and `updated_by`. Every block type works on it. A link reads as its label, a person as their name, several choices as one line. A months cell reads as its map: a block maps one month as `<key>.<YYYY-MM>`, such as `expected.2026-12`. A block reads at most 2,000 rows and says when there were more.
@@ -135,7 +161,7 @@ Signed-in requests, with your own access, under `/api/dashboards/tables`:
 | `GET /:id` | One table: `columns`, `droppedKeys`, `agentWritesNeedApproval`, `orgAccess`, `myRole` (`viewer`, `editor`, `owner`), `rowCount`, `version`. |
 | `PATCH /:id` | Change it: `{ ifVersion, name?, description?, agentWritesNeedApproval?, columns?: { add?, rename?, setChoices?, drop? } }`. |
 | `DELETE /:id` | Delete it and its rows. |
-| `GET /:id/rows` | A page of rows: `?limit=` (50), `?cursor=`, `?sort=<column key or updated_at>`, `?dir=asc\|desc`, `?q=` (text in a cell). |
+| `GET /:id/rows` | A page of rows: `?limit=` (50), `?cursor=`, `?sort=<column key or updated_at>`, `?dir=asc\|desc`, `?q=` (text in a cell). `columnNotes` says why a lookup column is empty. |
 | `POST /:id/rows` | `{ ops: [{ op: "add", cells } \| { op: "update", id, ifVersion, cells } \| { op: "delete", id, ifVersion }] }`, up to 50, all or none. |
 | `GET /:id/changes` | The history, newest first: `?rowId=`, `?limit=`, `?cursor=`. Each change says whether it can be undone. |
 | `POST /:id/changes/:changeId/undo` | Undo one change. |

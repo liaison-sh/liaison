@@ -17,6 +17,7 @@ export const COLUMN_TYPES = [
   "person",
   "link",
   "months",
+  "lookup",
 ] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
@@ -34,7 +35,7 @@ export type Emphasis = (typeof EMPHASIS)[number]
 /** Column types that may draw a cell with emphasis. */
 export const EMPHASIS_TYPES: readonly ColumnType[] = ["number", "amount", "months"]
 /** Column types a dashboard table has but a project's task fields do not. */
-export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months"]
+export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months", "lookup"]
 export const COLUMN_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/
 /** Keys a row read adds beside the cells: never a column key. */
 export const RESERVED_COLUMN_KEYS = ["id", "updated_at", "updated_by", "created_at"] as const
@@ -42,6 +43,17 @@ export const RESERVED_COLUMN_KEYS = ["id", "updated_at", "updated_by", "created_
 export interface LinkTo {
   app: string
   entityType?: string
+}
+
+/** Where a lookup column's cells come from: one read of an app's tool, joined to the rows. */
+export interface LookupDef {
+  /** The read, as a dashboard tool source: `<app>:<tool>`, its params, where its rows are. */
+  source: { tool: string; params?: Record<string, unknown>; rowsPath?: string }
+  /** A tool row matches a table row when its `field` equals the row's `on` cell (a link by id). */
+  match: { field: string; on: string }
+  /** The path in the matched tool row the cell shows. */
+  value: string
+  valueType: "number" | "text"
 }
 
 export interface Column {
@@ -65,6 +77,8 @@ export interface Column {
   /** A number, amount or months column: draw a value bold in the accent colour when it is not
    *  zero (`nonzero`) or below zero (`negative`). */
   emphasis?: Emphasis
+  /** A lookup column's read (read-only, live: tables/lookup.ts). */
+  lookup?: LookupDef
 }
 
 /** A months cell as stored and read: one number per month, `YYYY-MM` keys. */
@@ -79,6 +93,41 @@ export interface LinkCell {
 
 const APP_RE = /^[a-z][a-z0-9_-]{0,62}$/
 const ENTITY_RE = /^[a-z][a-zA-Z0-9_-]{0,62}$/
+
+/** A field of a tool row: a key, or a dotted path into nested objects (as dashboard sources). */
+const fieldPath = z
+  .string()
+  .max(200)
+  .regex(
+    /^[A-Za-z_$][A-Za-z0-9_$-]*(\.[A-Za-z0-9_$-]+)*$/,
+    "a path is a key or a dotted path such as inventory.on_hand",
+  )
+
+/** The most lookup columns a table has: each is one tool read per table read. */
+export const MAX_LOOKUP_COLUMNS = 5
+
+export const lookupSchema = z
+  .object({
+    source: z
+      .object({
+        tool: z
+          .string()
+          .max(200)
+          .regex(/^[a-z][a-z0-9_-]*:[A-Za-z0-9_.-]+$/, "a tool is named <app>:<tool>"),
+        params: z.record(z.string(), z.unknown()).optional(),
+        rowsPath: fieldPath.optional(),
+      })
+      .strict(),
+    match: z
+      .object({
+        field: fieldPath,
+        on: z.string().regex(COLUMN_KEY_RE, "the key of a column of this table"),
+      })
+      .strict(),
+    value: fieldPath,
+    valueType: z.enum(["number", "text"]),
+  })
+  .strict()
 
 const choiceList = z
   .array(z.string().trim().min(1).max(80))
@@ -112,6 +161,7 @@ export const columnSchema = z
     horizon: z.number().int().min(1).max(MAX_MONTHS_HORIZON).optional(),
     fromOffset: z.union([z.literal(0), z.literal(1)]).optional(),
     emphasis: z.enum(EMPHASIS).optional(),
+    lookup: lookupSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -169,6 +219,23 @@ export const columnSchema = z
         message: "only a number, amount or months column has emphasis",
       })
     }
+    if (c.type === "lookup" && !c.lookup) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lookup"],
+        message: "a lookup column names its read: lookup {source, match, value, valueType}",
+      })
+    }
+    if (c.type !== "lookup" && c.lookup) {
+      ctx.addIssue({ code: "custom", path: ["lookup"], message: "only a lookup column has lookup" })
+    }
+    if (c.type === "lookup" && c.required) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["required"],
+        message: "a lookup column is read live: it cannot be required",
+      })
+    }
   })
 
 export const columnsSchema = z
@@ -181,6 +248,25 @@ export const columnsSchema = z
         ctx.addIssue({ code: "custom", path: [i, "key"], message: `column '${c.key}' twice` })
       }
       seen.add(c.key)
+    })
+    const lookups = cols.filter((c) => c.type === "lookup")
+    if (lookups.length > MAX_LOOKUP_COLUMNS) {
+      ctx.addIssue({
+        code: "custom",
+        message: `a table has at most ${MAX_LOOKUP_COLUMNS} lookup columns`,
+      })
+    }
+    cols.forEach((c, i) => {
+      if (!c.lookup) return
+      const on = cols.find((o) => o.key === c.lookup?.match.on)
+      // A key no own column has may be a backed table's read-through one (checked with them).
+      if (on?.type === "lookup") {
+        ctx.addIssue({
+          code: "custom",
+          path: [i, "lookup", "match", "on"],
+          message: "a lookup matches on a column people or the app fill, not another lookup",
+        })
+      }
     })
   })
 
@@ -216,6 +302,10 @@ function isValidDay(v: string): boolean {
   const d = new Date(`${v}T00:00:00Z`)
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
 }
+
+/** Why a write naming a lookup column is refused. */
+export const LOOKUP_READ_ONLY =
+  "is a lookup column, read live from an app on every read: it cannot be written (change the record in its app)"
 
 /** An empty cell: null, an empty string or an empty list. */
 export function isEmptyCell(v: unknown): boolean {
@@ -273,6 +363,8 @@ export function normalizeCell(col: Column, value: unknown, members: ReadonlySet<
         throw new CellError(col.key, "is a member of this organisation (a user id)")
       }
       return value.toLowerCase()
+    case "lookup":
+      throw new CellError(col.key, LOOKUP_READ_ONLY)
     case "link": {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw new CellError(col.key, "is a link {app, entityType, id, label}")
@@ -397,6 +489,7 @@ export function validateCells(
   for (const [key, value] of Object.entries(cells as Record<string, unknown>)) {
     const col = byKey.get(key)
     if (!col) throw new CellError(key, "is not a column of this table")
+    if (col.type === "lookup") throw new CellError(key, LOOKUP_READ_ONLY)
     const v = normalizeCell(col, value, opts.members)
     if (v === null && col.required) throw new CellError(key, "is required")
     out[key] = v

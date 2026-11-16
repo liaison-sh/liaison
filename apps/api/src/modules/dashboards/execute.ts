@@ -253,7 +253,7 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
   const check = await checkTableSource(viewer.orgId, source.table, viewer)
   if (!check.ok) return { outcome: fail(check.code, check.message) }
   try {
-    return await withRlsContext(viewer, async (tx) => {
+    const read = await withRlsContext(viewer, async (tx) => {
       const loaded = await loadTable(tx, viewer, source.table)
       const where = Object.keys(source.where ?? {}).length ? (source.where as Where) : undefined
       const { docs, truncated } = await readAllRows(tx, viewer, loaded, {
@@ -278,27 +278,34 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
             ).map((u) => [u.id, u.name]),
           )
         : new Map<string, string>()
-      const flat = rows.map((r) => {
-        const out: Record<string, unknown> = {}
-        for (const col of columns) {
-          const v = r.cells[col.key]
-          if (v === undefined) continue
-          if (col.type === "link" && v && typeof v === "object") {
-            out[col.key] = (v as { label?: unknown }).label ?? null
-          } else if (col.type === "person" && typeof v === "string") {
-            out[col.key] = names.get(v) ?? v
-          } else if (col.type === "choices" && Array.isArray(v)) {
-            out[col.key] = v.join(", ")
-          } else out[col.key] = v
-        }
-        return { ...out, id: r.id, updated_at: r.updatedAt, updated_by: r.updatedBy.label }
-      })
-      return {
-        result: flat,
-        totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length,
-        fieldLabels: Object.fromEntries(columns.map((c) => [c.key, c.label])),
-      }
+      return { rows, columns, names, truncated }
     })
+    // A lookup column runs its app's tool as the viewer, after the table's own transaction.
+    const { applyLookups } = await import("~/modules/dashboards/tables/lookup")
+    const { columns, names, truncated } = read
+    const { rows } = await applyLookups(viewer, source.table, columns, read.rows, {
+      ...(ctx.signal ? { signal: ctx.signal } : {}),
+    })
+    const flat = rows.map((r) => {
+      const out: Record<string, unknown> = {}
+      for (const col of columns) {
+        const v = r.cells[col.key]
+        if (v === undefined) continue
+        if (col.type === "link" && v && typeof v === "object") {
+          out[col.key] = (v as { label?: unknown }).label ?? null
+        } else if (col.type === "person" && typeof v === "string") {
+          out[col.key] = names.get(v) ?? v
+        } else if (col.type === "choices" && Array.isArray(v)) {
+          out[col.key] = v.join(", ")
+        } else out[col.key] = v
+      }
+      return { ...out, id: r.id, updated_at: r.updatedAt, updated_by: r.updatedBy.label }
+    })
+    return {
+      result: flat,
+      totalRows: truncated ? MAX_SOURCE_ROWS + 1 : flat.length,
+      fieldLabels: Object.fromEntries(columns.map((c) => [c.key, c.label])),
+    }
   } catch (err) {
     if (err instanceof TableError) {
       return {
@@ -310,7 +317,12 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
 }
 
 /** What a source run is for, as its audit row names it. */
-export type RunTarget = { blockId: string } | { datasetId: string } | { filterId: string }
+export type RunTarget =
+  | { blockId: string }
+  | { datasetId: string }
+  | { filterId: string }
+  /** A dashboard table's lookup column (tables/lookup.ts): its read, as the reader. */
+  | { tableId: string; lookupColumn: string }
 
 function sourceLabel(source: BlockSource): string {
   if (source.kind === "tool") return source.tool
@@ -325,6 +337,7 @@ async function auditRun(
   source: BlockSource,
   outcome: { ok: true } | { ok: false; error: BlockErrorCode },
 ) {
+  const lookup = "lookupColumn" in target
   try {
     await withPrivilegedDb(ctx.viewer.orgId, "dashboard-block-audit", (tx) =>
       writeAuditLog(tx, {
@@ -332,9 +345,17 @@ async function auditRun(
         actorId: ctx.viewer.userId,
         actorType: "user",
         app: "kernel",
-        entityType: "dashboard",
-        ...(ctx.dashboardId ? { entityId: ctx.dashboardId } : {}),
-        action: ctx.dashboardId ? "dashboard.block_run" : "dashboard.block_preview",
+        ...(lookup
+          ? { entityType: "dashboard_table", entityId: target.tableId }
+          : {
+              entityType: "dashboard",
+              ...(ctx.dashboardId ? { entityId: ctx.dashboardId } : {}),
+            }),
+        action: lookup
+          ? "dashboard_table.lookup_run"
+          : ctx.dashboardId
+            ? "dashboard.block_run"
+            : "dashboard.block_preview",
         metadata: {
           dashboardId: ctx.dashboardId,
           ...target,
@@ -409,8 +430,13 @@ export async function runSource(
         ? target.blockId
         : "datasetId" in target
           ? `ds-${target.datasetId}`
-          : `filter-${target.filterId}`
-    const runId = `dashboard:${ctx.dashboardId ?? "preview"}:${name}`
+          : "filterId" in target
+            ? `filter-${target.filterId}`
+            : `lookup-${target.lookupColumn}`
+    const runId =
+      "lookupColumn" in target
+        ? `table:${target.tableId}:${name}`
+        : `dashboard:${ctx.dashboardId ?? "preview"}:${name}`
     const read =
       source.kind === "tool"
         ? await readToolSource(source, ctx, runId)

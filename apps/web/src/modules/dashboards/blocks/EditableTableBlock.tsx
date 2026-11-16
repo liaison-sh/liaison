@@ -15,7 +15,7 @@
 // project's tasks: a column read from the project carries a small link mark naming it, a change
 // to it changes the task (a refusal says so in plain words), Add creates a task, and a row is
 // never deleted here (archive the task in Projects).
-import { History, Link2, Pencil, Plus, Trash2 } from "lucide-solid"
+import { History, Link2, Pencil, Plus, Radio, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -72,6 +72,7 @@ import {
   relativeTime,
   rowLabel,
   shownColumns,
+  withLookupCells,
 } from "./table-cells"
 import { loadPeople, personName } from "./table-people"
 
@@ -145,6 +146,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   // The cursors of the pages before this one (the first is null), and the next page's.
   const [cursors, setCursors] = createSignal<Array<string | null>>([null])
   const [nextCursor, setNextCursor] = createSignal<string | null>(null)
+  // Why a lookup column is empty on the last read (its app read failed), by column key.
+  const [columnNotes, setColumnNotes] = createSignal<Record<string, string>>({})
   const [sort, setSort] = createSignal<{ key: string; dir: "asc" | "desc" } | null>(null)
   const [editing, setEditing] = createSignal<Editing | null>(null)
   const [saving, setSaving] = createSignal(false)
@@ -211,6 +214,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       ...(s ? { sort: s.key, dir: s.dir } : {}),
     })
     setNextCursor(page.nextCursor)
+    setColumnNotes(page.columnNotes)
     return page.rows
   }
 
@@ -315,7 +319,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     void load()
   }
 
-  function replaceRow(row: TableRow): void {
+  function replaceRow(answered: TableRow): void {
+    const before = rows().find((r) => r.id === answered.id)
+    const row = withLookupCells(table()?.columns ?? [], before, answered)
     setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)))
     setHistoryKey((k) => k + 1)
     if (historyRow()?.id === row.id) setHistoryRow(row)
@@ -645,7 +651,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     )
   }
 
-  const numeric = (c: TableColumn) => c.type === "number" || c.type === "amount"
+  const numeric = (c: TableColumn) =>
+    c.type === "number" || c.type === "amount" || c.lookup?.valueType === "number"
 
   /** A link cell's label, opening its record through the app's own opener (Enter works too). */
   const LinkOpen: Component<{ row: TableRow; column: TableColumn }> = (p) => {
@@ -871,39 +878,65 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                             bandEdge(c) && "border-l border-border",
                           )}
                         >
-                          <button
-                            type="button"
-                            data-testid={`${tid()}-sort-${c.key}`}
-                            data-source={
-                              backing() ? (isReadThrough(c.key) ? "record" : "own") : undefined
-                            }
-                            title={
-                              backing()
-                                ? isReadThrough(c.key)
-                                  ? i18n.t("kernel.dashboards.tables.fromProjectColumn", {
-                                      name: parentName(),
-                                    })
-                                  : i18n.t("kernel.dashboards.tables.ownColumn")
-                                : undefined
-                            }
-                            onClick={() => sortBy(c.key)}
-                            class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary hover:text-text-secondary"
-                          >
-                            <Show when={isReadThrough(c.key)}>
-                              <Link2
-                                size={11}
-                                data-testid={`${tid()}-from-record-${c.key}`}
-                                aria-label={i18n.t("kernel.dashboards.tables.fromProjectColumn", {
-                                  name: parentName(),
-                                })}
-                                class="shrink-0 opacity-70"
-                              />
+                          <Show when={c.type === "lookup"}>
+                            <span
+                              data-testid={`${tid()}-lookup-${c.key}`}
+                              title={i18n.t("kernel.dashboards.tables.lookupColumn", {
+                                tool: c.lookup?.source.tool ?? "",
+                              })}
+                              class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
+                            >
+                              <Radio size={11} aria-hidden="true" class="shrink-0 opacity-70" />
+                              {c.label}
+                            </span>
+                            <Show when={columnNotes()[c.key]}>
+                              {(note) => (
+                                <span
+                                  data-testid={`${tid()}-note-${c.key}`}
+                                  role="note"
+                                  title={note()}
+                                  class="block text-[11px] font-normal text-text-tertiary"
+                                >
+                                  {i18n.t("kernel.dashboards.tables.lookupUnavailable")}
+                                </span>
+                              )}
                             </Show>
-                            {c.label}
-                            <Show when={sort()?.key === c.key}>
-                              {sort()?.dir === "asc" ? " ↑" : " ↓"}
-                            </Show>
-                          </button>
+                          </Show>
+                          <Show when={c.type !== "lookup"}>
+                            <button
+                              type="button"
+                              data-testid={`${tid()}-sort-${c.key}`}
+                              data-source={
+                                backing() ? (isReadThrough(c.key) ? "record" : "own") : undefined
+                              }
+                              title={
+                                backing()
+                                  ? isReadThrough(c.key)
+                                    ? i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                        name: parentName(),
+                                      })
+                                    : i18n.t("kernel.dashboards.tables.ownColumn")
+                                  : undefined
+                              }
+                              onClick={() => sortBy(c.key)}
+                              class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary hover:text-text-secondary"
+                            >
+                              <Show when={isReadThrough(c.key)}>
+                                <Link2
+                                  size={11}
+                                  data-testid={`${tid()}-from-record-${c.key}`}
+                                  aria-label={i18n.t("kernel.dashboards.tables.fromProjectColumn", {
+                                    name: parentName(),
+                                  })}
+                                  class="shrink-0 opacity-70"
+                                />
+                              </Show>
+                              {c.label}
+                              <Show when={sort()?.key === c.key}>
+                                {sort()?.dir === "asc" ? " ↑" : " ↓"}
+                              </Show>
+                            </button>
+                          </Show>
                         </th>
                       </Show>
                     )}
@@ -1026,6 +1059,17 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                                         void saveCell(row, c, e.currentTarget.checked)
                                       }
                                     />
+                                  </Match>
+                                  <Match when={c.type === "lookup"}>
+                                    <span
+                                      data-testid={`${tid()}-lookup-cell-${row.id}-${c.key}`}
+                                      class={cn(
+                                        "flex min-h-6 items-center px-1",
+                                        numeric(c) ? "justify-end" : "justify-start",
+                                      )}
+                                    >
+                                      <CellView row={row} column={c} />
+                                    </span>
                                   </Match>
                                   <Match when={isEditing(row, c)}>
                                     <CellEditor

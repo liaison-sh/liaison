@@ -482,7 +482,7 @@ describe("the services world's money at the board date", () => {
     expect([portal.invoiced, portal.invoiced - portal.cost]).toEqual([44_800, 25_106])
     expect([retainer.invoiced, retainer.invoiced - retainer.cost]).toEqual([5_220, 2_687])
     expect(daily.invoiced).toBe(0)
-    expect(JSON.stringify(daily)).toContain("No issued invoice is linked to the project yet")
+    expect(JSON.stringify(daily)).toMatch(/No issued invoice bills [A-Z][a-z]+ \d{4} yet/)
   })
 
   it("invoice numbers run from 0001 with no gap to the last seeded one, and dates never decrease", async () => {

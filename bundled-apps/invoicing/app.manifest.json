@@ -2474,8 +2474,8 @@
         "type": "object",
         "properties": {
           "projectId": { "type": "string", "description": "The project's id." },
-          "from": { "type": ["string", "null"], "description": "Inclusive lower bound on the issue date, YYYY-MM-DD." },
-          "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the issue date, YYYY-MM-DD." }
+          "from": { "type": ["string", "null"], "description": "Inclusive lower bound, YYYY-MM-DD, on the start of the service period a document bills (its issue date when it bills none)." },
+          "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the same date, YYYY-MM-DD." }
         },
         "required": ["projectId"],
         "additionalProperties": false

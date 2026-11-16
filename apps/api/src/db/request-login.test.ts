@@ -13,6 +13,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { PRIVILEGED_ROLE_REACH_SQL } from "~/db/role-reach"
 import { schemaRef } from "~/db/schema-ref"
+import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const ctx = { actorType: "system" as const, orgId: randomUUID(), purpose: "job" as const }
 
@@ -34,6 +35,11 @@ async function attempt(tx: RlsClient, statement: string, resetRole = false): Pro
   }
 }
 
+/** Any database of the server: the role-catalog lock lives in its `postgres` database. */
+function serverUrl(): string {
+  return process.env.MIGRATION_DATABASE_URL ?? process.env.DATABASE_URL ?? ""
+}
+
 function inRequestTx<T>(fn: (tx: RlsClient) => Promise<T>): Promise<T> {
   return withRlsContext(ctx, fn)
 }
@@ -48,14 +54,19 @@ const ELEVATED_ROLES = [
 
 describe("the request login", () => {
   test("liaison_request's memberships are exactly liaison_rls and liaison_portal", async () => {
-    const [who] = await inRequestTx(async (tx) =>
-      extractRows<{ login: string; role: string; memberships: string[] }>(
-        await tx.execute(drizzleSql`
-          SELECT session_user::text AS login, current_user::text AS role,
-                 ARRAY(SELECT r.rolname::text FROM pg_roles r
-                        WHERE r.rolname <> session_user
-                          AND pg_has_role(session_user, r.oid, 'MEMBER')
-                        ORDER BY 1) AS memberships`),
+    // Roles are cluster wide: a test replaying migrations on a scratch database
+    // changes these memberships for every database while it holds the
+    // role-catalog lock, and gives them back before it lets go.
+    const [who] = await withRoleCatalogLock(serverUrl(), () =>
+      inRequestTx(async (tx) =>
+        extractRows<{ login: string; role: string; memberships: string[] }>(
+          await tx.execute(drizzleSql`
+            SELECT session_user::text AS login, current_user::text AS role,
+                   ARRAY(SELECT r.rolname::text FROM pg_roles r
+                          WHERE r.rolname <> session_user
+                            AND pg_has_role(session_user, r.oid, 'MEMBER')
+                          ORDER BY 1) AS memberships`),
+        ),
       ),
     )
     expect(who).toEqual({

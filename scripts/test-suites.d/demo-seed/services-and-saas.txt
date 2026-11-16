@@ -61,3 +61,6 @@ src/seed/worlds/studio/world-figures.studio.integration.test.ts
 # the task plan writer, time in one write, re-runs that adopt.
 src/seed/factories/projects/projects.integration.test.ts
 src/seed/worlds/studio/home-money.studio.integration.test.ts
+# The services world's invoices sent from its issuer's mailbox, and refused to
+# someone who cannot send from it.
+src/seed/worlds/studio/money-sends.studio.integration.test.ts

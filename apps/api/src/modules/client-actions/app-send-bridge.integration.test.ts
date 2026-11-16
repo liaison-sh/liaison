@@ -212,7 +212,7 @@ describe("an app's send through the bridge", () => {
         )
     expect((await remind(false)).error?.code).toBe("MINT_NEEDS_A_PERSON")
     const done = await remind(true)
-    expect(done.reminded?.map((r) => r.id)).toEqual([first?.id])
+    expect(done.reminded?.map((r: { id: string }) => r.id)).toEqual([first?.id])
     const [after] = (await sql`
       SELECT token_hash, prior_token_hashes FROM ${k("client_actions")}
        WHERE id = ${first?.id ?? ""}`) as unknown as Array<{

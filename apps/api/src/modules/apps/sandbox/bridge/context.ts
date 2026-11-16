@@ -218,6 +218,12 @@ export type RpcBridgeOptions = {
    */
   humanAuthorized?: boolean
   /**
+   * The person's own scopes, set by `executeToolCore` only when the handler runs as that
+   * person's direct call from the interface, reached through no cross-app hop (never an RLS
+   * actor). A person's click is decided by the tool's own scope (bridge/client-actions.ts).
+   */
+  personScopes?: readonly string[]
+  /**
    * A provider-contract op runs without the caller's data scopes; these are the caller's kernel
    * file ids (checked readable by the caller before the dispatch) it may still read, for the
    * multipart upload of a legal original. Set only by `executeToolCore` for a contract dispatch.

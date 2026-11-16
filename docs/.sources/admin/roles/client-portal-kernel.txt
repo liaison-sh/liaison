@@ -1,0 +1,1 @@
+Full Member never includes the client scopes -> apps/api/src/modules/permissions/default-roles.ts (KERNEL_MEMBER_SCOPES) ; apps/api/src/modules/apps/runtime.ts (extendFullMemberRole)

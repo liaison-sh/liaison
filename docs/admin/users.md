@@ -66,9 +66,21 @@ Whoever runs the server can limit how many people are active in the organization
 
 ## Clients with a portal account
 
-A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, it does not appear in the people list, role pickers, mentions or approver lists, and it cannot reach any of the organization's data on its own; the database refuses it.
+A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, and it cannot reach any of the organization's data on its own; the database refuses it.
 
-The scope `kernel:portal:admin` ("See and manage clients' portal accounts") is the permission to see and manage these accounts. It is an administration scope, like `kernel:users:admin`: it can be given to a person, but never to a role agent's scope ceiling.
+A portal account never appears where you pick a colleague, for an administrator too: the people list, share dialogs, mentions, assignee menus, the agent's colleague search (`users_search`), approver lists and notification targets list members only. A client holds no role, no scope and no dimension value: `assign_role`, `grant_user_scope` and `grant_dimension_value` refuse one with **USER_IS_EXTERNAL** and change nothing, and the database refuses such a grant too.
+
+These scopes cover clients:
+
+| Scope | What it allows |
+|---|---|
+| `kernel:portal:admin` | See and manage clients' portal accounts |
+| `kernel:portal:share` | Choose what a client company sees in its portal |
+| `kernel:portal:logs` | Read what clients did in the portal |
+| `kernel:client_actions:read` | See the requests sent to clients to sign, accept or approve |
+| `kernel:client_actions:write` | Send and withdraw requests to clients to sign, accept or approve |
+
+`kernel:portal:admin` is an administration scope, like `kernel:users:admin`: it can be given to a person, but never to a role agent's scope ceiling. None of these scopes is in the **member** role or in Full Member: give them by name. Without `kernel:portal:logs`, the audit log shows no portal row.
 
 ## When the managed subscription is suspended
 

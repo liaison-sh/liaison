@@ -251,6 +251,15 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
   { glob: "**/*.test.tsx", reason: "tests" },
   { glob: "**/__fixtures__/**", reason: "test fixtures" },
   {
+    glob: "apps/api/src/modules/client-actions/**",
+    reason:
+      "client actions have no route, tool or screen yet; their page comes with the public action routes",
+  },
+  {
+    glob: "apps/api/src/tests/security/portal-doors/**",
+    reason: "the portal door tests, their shared world and the list of doors still owed",
+  },
+  {
     glob: "apps/api/src/modules/setup-guides/**",
     reason: "former path of modules/connection-guides (renamed); the new path is mapped",
   },

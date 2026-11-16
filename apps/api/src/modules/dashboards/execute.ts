@@ -289,10 +289,11 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
         : new Map<string, string>()
       return { rows, columns, names, truncated }
     })
-    // A lookup column runs its app's tool as the viewer, after the table's own transaction.
-    const { applyLookups } = await import("~/modules/dashboards/tables/lookup")
+    // A lookup column runs its app's tool as the viewer, after the table's own transaction; the
+    // formula columns are computed after it.
+    const { applyComputedColumns } = await import("~/modules/dashboards/tables/computed")
     const { columns, names, truncated } = read
-    const { rows } = await applyLookups(viewer, source.table, columns, read.rows, {
+    const { rows } = await applyComputedColumns(viewer, source.table, columns, read.rows, {
       ...(ctx.signal ? { signal: ctx.signal } : {}),
     })
     const flat = rows.map((r) => {

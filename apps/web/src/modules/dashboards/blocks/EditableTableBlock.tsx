@@ -200,10 +200,11 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const all = table()?.columns ?? []
     const b = backing()
     const own = b ? all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title") : all
-    // A months column is typed month by month in the grid, once the row exists.
+    // A months column is typed month by month in the grid, once the row exists; a formula is
+    // computed.
     return keepUnchanged(
       prev,
-      own.filter((c) => c.type !== "months"),
+      own.filter((c) => c.type !== "months" && c.type !== "formula"),
       (c) => c.key,
     )
   }, [])
@@ -326,6 +327,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const before = rows().find((r) => r.id === answered.id)
     const row = withLookupCells(table()?.columns ?? [], before, answered)
     setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)))
+    // A write answers no formula: read the page again for the values it changed.
+    if (table()?.columns.some((c) => c.type === "formula")) void reloadRows().catch(() => {})
     setHistoryKey((k) => k + 1)
     if (historyRow()?.id === row.id) setHistoryRow(row)
   }
@@ -659,14 +662,16 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
 
   /** A computed column's header hint: where its cells come from. */
   const computedTitle = (c: TableColumn) =>
-    c.type === "rollup"
-      ? i18n.t(
-          c.rollup?.agg === "count"
-            ? "kernel.dashboards.tables.rollupCountColumn"
-            : "kernel.dashboards.tables.rollupSumColumn",
-          { value: c.rollup?.value ?? "" },
-        )
-      : i18n.t("kernel.dashboards.tables.lookupColumn", { tool: c.lookup?.source.tool ?? "" })
+    c.type === "formula"
+      ? i18n.t("kernel.dashboards.tables.formulaColumn", { expr: c.formula?.expr ?? "" })
+      : c.type === "rollup"
+        ? i18n.t(
+            c.rollup?.agg === "count"
+              ? "kernel.dashboards.tables.rollupCountColumn"
+              : "kernel.dashboards.tables.rollupSumColumn",
+            { value: c.rollup?.value ?? "" },
+          )
+        : i18n.t("kernel.dashboards.tables.lookupColumn", { tool: c.lookup?.source.tool ?? "" })
 
   /** Why a computed column is empty on this read (hover for why), under its header. */
   const ColumnNote: Component<{ column: TableColumn }> = (p) => (
@@ -688,6 +693,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     c.type === "number" ||
     c.type === "amount" ||
     c.type === "rollup" ||
+    c.type === "formula" ||
     c.lookup?.valueType === "number"
 
   /** A link cell's label, opening its record through the app's own opener (Enter works too). */
@@ -907,7 +913,11 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                             scope="colgroup"
                             colSpan={width(c)}
                             data-testid={`${tid()}-months-head-${c.key}`}
-                            title={c.type === "rollup" ? computedTitle(c) : undefined}
+                            title={
+                              c.type === "rollup" || c.type === "formula"
+                                ? computedTitle(c)
+                                : undefined
+                            }
                             class={cn(
                               "px-1.5 pt-1.5 text-center text-[11.5px] font-normal text-text-tertiary",
                               bandEdge(c) && "border-l border-border",

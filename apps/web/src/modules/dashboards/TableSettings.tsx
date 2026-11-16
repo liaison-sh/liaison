@@ -56,6 +56,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
   const [newHorizon, setNewHorizon] = createSignal(3)
   const [newFrom, setNewFrom] = createSignal<0 | 1>(0)
   const [newEmphasis, setNewEmphasis] = createSignal<TableEmphasis | "">("")
+  const [newExpr, setNewExpr] = createSignal("")
   const [optioning, setOptioning] = createSignal<string | null>(null)
 
   const canEdit = () => props.table.myRole === "editor" || props.table.myRole === "owner"
@@ -63,7 +64,9 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
   const readThrough = (key: string) => props.table.backing?.readThrough.includes(key) === true
   const typeLabel = (t: TableColumnType) => i18n.t(`kernel.dashboards.tables.type.${t}`)
   const hasEmphasis = (t: TableColumnType) =>
-    t === "number" || t === "amount" || t === "months" || t === "rollup"
+    t === "number" || t === "amount" || t === "months" || t === "rollup" || t === "formula"
+  /** A months column, or a formula (its months apply once it reads months or calls cumsum). */
+  const hasWindow = (t: TableColumnType) => t === "months" || t === "formula"
   const emphasisLabel = (e: TableEmphasis | "") =>
     e === "nonzero"
       ? i18n.t("kernel.dashboards.tables.emphasisNonzero")
@@ -81,6 +84,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       parts.push(i18n.t("kernel.dashboards.tables.rowLinkTag"))
     else if (c.type === "link" && c.linkTo)
       parts.push(c.linkTo.entityType ? `${c.linkTo.app} ${c.linkTo.entityType}` : c.linkTo.app)
+    if (c.type === "formula" && c.formula) parts.push(c.formula.expr)
     if (c.type === "rollup" && c.rollup)
       parts.push(
         i18n.t(
@@ -133,6 +137,10 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       setError(i18n.t("kernel.dashboards.tables.choicesNeeded"))
       return
     }
+    if (type === "formula" && !newExpr().trim()) {
+      setError(i18n.t("kernel.dashboards.tables.formulaNeeded"))
+      return
+    }
     const column: TableColumn = {
       key: columnKeyFrom(label, [
         ...props.table.columns.map((c) => c.key),
@@ -140,10 +148,11 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       ]),
       label,
       type,
-      ...(newRequired() && type !== "months" ? { required: true } : {}),
+      ...(newRequired() && !hasWindow(type) ? { required: true } : {}),
+      ...(type === "formula" ? { formula: { expr: newExpr().trim() } } : {}),
       ...(type === "choice" || type === "choices" ? { choices } : {}),
       ...(type === "amount" ? { currency: newCurrency().trim().toUpperCase() || "EUR" } : {}),
-      ...(type === "months"
+      ...(hasWindow(type)
         ? {
             horizon: clampHorizon(newHorizon()),
             ...(newFrom() === 1 ? { fromOffset: 1 as const } : {}),
@@ -156,6 +165,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       setNewChoices("")
       setNewRequired(false)
       setNewEmphasis("")
+      setNewExpr("")
     }
   }
 
@@ -282,7 +292,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                           setOptions: [
                             {
                               key: c.key,
-                              ...(isMonthly(c)
+                              ...(isMonthly(c) || c.type === "formula"
                                 ? {
                                     horizon: clampHorizon(Number(f.get("horizon"))),
                                     fromOffset: f.get("fromOffset") === "1" ? 1 : 0,
@@ -296,7 +306,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                       }).then((ok) => ok && setOptioning(null))
                     }}
                   >
-                    <Show when={isMonthly(c)}>
+                    <Show when={isMonthly(c) || c.type === "formula"}>
                       <MonthsFields
                         testid={`table-settings-options-${c.key}`}
                         horizon={c.horizon ?? 3}
@@ -407,7 +417,19 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                 />
               </label>
             </Show>
-            <Show when={newType() === "months"}>
+            <Show when={newType() === "formula"}>
+              <label class="flex flex-col gap-1 text-[11.5px] text-text-secondary">
+                {i18n.t("kernel.dashboards.tables.formulaHint")}
+                <input
+                  data-testid="table-settings-new-formula"
+                  class={`${FIELD} w-64 font-mono`}
+                  placeholder="stock - sold + cumsum(expected)"
+                  value={newExpr()}
+                  onInput={(e) => setNewExpr(e.currentTarget.value)}
+                />
+              </label>
+            </Show>
+            <Show when={hasWindow(newType())}>
               <MonthsFields
                 testid="table-settings-new"
                 horizon={newHorizon()}
@@ -423,7 +445,7 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                 onChange={setNewEmphasis}
               />
             </Show>
-            <Show when={newType() !== "months"}>
+            <Show when={!hasWindow(newType())}>
               <label class="flex h-8 items-center gap-1.5 text-[12.5px] text-text-secondary">
                 <input
                   type="checkbox"

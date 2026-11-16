@@ -7136,11 +7136,15 @@
         "link": "Link",
         "months": "Months",
         "lookup": "Live from an app",
-        "rollup": "Rollup of another table"
+        "rollup": "Rollup of another table",
+        "formula": "Formula"
       },
       "lookupColumn": "Read live from {{tool}}, not editable",
       "lookupUnavailable": "Not available",
       "rollupSumColumn": "Sum of {{value}} in the rows of another table that link here, not editable",
+      "formulaColumn": "Computed: {{expr}}, not editable",
+      "formulaHint": "Formula, with column keys",
+      "formulaNeeded": "Write the formula, for example stock - sold.",
       "rollupCountColumn": "Count of the rows of another table that link here, not editable",
       "rowLinkTag": "rows of another table",
       "rowLinkMissing": "This row was deleted",

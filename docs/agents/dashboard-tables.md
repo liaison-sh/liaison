@@ -29,12 +29,13 @@ A table has at most 40 columns. Each has a key, a label and a type:
 | `months` | One number per month, typed by people: `{ "YYYY-MM": number }`. See [Plan by month](#plan-by-month). |
 | `lookup` | A number or a text read live from an app, never typed (see [Read values live from an app](#read-values-live-from-an-app)). |
 | `rollup` | A sum or a count of the rows of another table that link to the row, never typed (see [Add up the rows of another table](#add-up-the-rows-of-another-table)). |
+| `formula` | A number, or one number per month, computed from the row's other columns, never typed (see [Compute a column with a formula](#compute-a-column-with-a-formula)). |
 
 A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_`. It never changes; the label does. `id`, `updated_at`, `updated_by` and `created_at` are reserved. A column can be required: a new row must fill it, and a change cannot empty it.
 
 Every write, by a person or an agent, is checked against the columns. A refused write names the column and the reason, and nothing of it is saved.
 
-A number, amount or months column can make some values stand out: its **Highlight** option draws **Values other than 0** or **Values below 0** in bold, in the accent colour. Change it from the column's **Options** in **Settings**, or with `setOptions` (below).
+A number, amount, months or formula column can make some values stand out: its **Highlight** option draws **Values other than 0** or **Values below 0** in bold, in the accent colour. Change it from the column's **Options** in **Settings**, or with `setOptions` (below).
 
 Removing a column hides its values everywhere (rows, history, search, filters) but keeps them stored for retention, and its key cannot be used again.
 
@@ -162,6 +163,27 @@ A rollup column then adds up, on the linked table, the rows of the other table t
 - Without `byMonth`, a cell is a number: 0 when no row links to it. With `byMonth`, a date column of the other table, a cell is `{ "YYYY-MM": number }`, one number for each month that has rows, and the grid shows it as a months column does, with `horizon` and `fromOffset`. A month without rows reads empty.
 - Saving checks that you can read the other table, that its link column points here, that the value is a number or amount column, the date a date column and the filter valid. A table has at most 5 rollup columns. A rollup cannot be required, written, filtered or sorted on. `emphasis` applies to it.
 - It is computed every time the table is read, as the person reading: someone who cannot read the other table sees the column empty and **Not available** in its header, and an agent gets the reason in `columnNotes`. It counts at most 10,000 rows of the other table and says so past that. The grid, `tables_query` and a table block source all read it.
+
+## Compute a column with a formula
+
+A formula column computes its value from the other columns of its row on every read, for example what is free to sell (`stock - sold`) or the projected stock month by month (`stock - sold + cumsum(expected)`). Add it in **Settings** (type **Formula**, then the formula with the column keys), or have your agent add it:
+
+```json
+{
+  "key": "projected",
+  "label": "Projected",
+  "type": "formula",
+  "formula": { "expr": "stock - sold + cumsum(expected)" },
+  "horizon": 6,
+  "emphasis": "negative"
+}
+```
+
+- A formula reads the keys of the table's own number, amount, number lookup, rollup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)` and `cumsum(x)`, the running total across the months shown.
+- A formula that reads a months column or a rollup by month, or calls `cumsum`, gives one number per month, over its own months (`horizon` 1-12, default 3, and `fromOffset`, as a months column). It is computed month by month; a single number counts the same in every month. The grid shows it as one column per month. Any other formula gives one number.
+- An empty number it reads (a stock nobody typed, a lookup with no match) leaves the result empty, so a missing figure never reads as a wrong one. A month without a value in a months column counts as 0. A division by zero leaves that value empty, and `cumsum` leaves every later month empty after one.
+- Saving refuses a formula that does not parse, names a key that is not a column of the table, reads a text, date, choice or link column, or that formulas read each other in a circle. A column a formula reads cannot be removed while it does.
+- A formula cannot be required, written, filtered or sorted on. It is computed after the lookup and rollup columns, in the grid, in `tables_query` and in a table block source. To change one, remove it and add another key.
 
 ## Show a table on a dashboard
 

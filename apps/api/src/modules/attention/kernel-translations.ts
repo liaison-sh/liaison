@@ -459,4 +459,68 @@ export const kernelTranslations: Translation[] = [
     recipients: { kind: "field", path: "data.decidedBy" },
     resolveWhen: { always: true },
   },
+  // Requests sent outside the organization to sign, accept or approve
+  // (modules/client-actions). Their sender hears what the person outside did;
+  // a member of the org who is a signer is told it is their turn, with no link.
+  {
+    event: "client_action:decided",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.title}}: {{payload.data.decision}} by {{payload.data.invitedName}}",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+    metadataFromData: ["decision", "companyId"],
+  },
+  {
+    event: "client_action:opened",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 20,
+    summary: "{{payload.data.invitedName}} opened your request",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:requested",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.invitedName}} asked something about your request",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+    metadataFromData: ["what"],
+  },
+  {
+    event: "client_action:code_locked",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 50,
+    summary: "The link sent to {{payload.data.invitedName}} is locked after too many wrong codes",
+    when: { op: "eq", path: "data.locked", value: true },
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:code_locked",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary:
+      "{{payload.data.invitedName}} entered a wrong code on your request three times in a row",
+    when: { op: "eq", path: "data.locked", value: false },
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:send_failed",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 50,
+    summary: "{{payload.data.title}}: the link to {{payload.data.invitedName}} did not send",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:staff_turn",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 50,
+    summary: "{{payload.data.title}}: open it in Liaison to read and sign",
+    recipients: { kind: "participants", path: "data.signerUserIds" },
+  },
 ]

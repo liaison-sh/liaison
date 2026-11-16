@@ -1,6 +1,7 @@
 {
   "privileged": {
     "modules/client-actions/decide.ts": "The token page's reads and the one decide: finds the action whose token hash the holder posted (globally unique, so before any org context), then locks and decides that one row in its own org; never lists actions or reads another target.",
+    "modules/client-actions/document-files.ts": "Reads one file row (storage key, type, name) of the action's org by the id the target app's own read tool returned for the action whose token was posted, then its bytes: the frozen PDF or a page picture. Mailbox-sealed files are refused; no key or storage key leaves it.",
     "modules/client-actions/mint.ts": "Makes, rotates and withdraws one client action in the caller's org: reads the named contact, the sender and the invited person's portal account, writes the action, its trail and the automatic share. Clients hold no scope, so these writes are the privileged path the table grants allow.",
     "modules/client-actions/public-routes.ts": "The public routes' per-action writes after the token named the row: first open, document shown, code counters, events. Each statement names the action id the token resolved, nothing else.",
     "modules/client-actions/routes.ts": "A staff signer's own Read and sign: rotates the token of the one action whose signer is the signed-in member, in that member's org.",

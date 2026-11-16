@@ -1432,7 +1432,8 @@
     "followup_due": "relances dues",
     "critical": "incidents critiques",
     "warning": "avertissements",
-    "routine_mailbox_wait": "exécutions de routine en attente de votre boîte"
+    "routine_mailbox_wait": "exécutions de routine en attente de votre boîte",
+    "client_action": "demandes aux clients"
   },
   "homeClusterHide": "Masquer",
   "homeClusterOldest": "la plus ancienne",
@@ -1784,6 +1785,10 @@
     "advance_received": {
       "one": "paiement reçu avant sa facture d'acompte",
       "other": "paiements reçus avant leur facture d'acompte"
+    },
+    "client_action": {
+      "one": "demande au client",
+      "other": "demandes aux clients"
     }
   },
   "homeMarkAllRead": "Tout marquer comme lu",
@@ -4581,7 +4586,9 @@
       "node_session_needs_you": "Une session sur l'ordinateur vous attend",
       "node_session_done": "Session sur l'ordinateur terminée",
       "node_session_failed": "Échec d'une session sur l'ordinateur",
-      "routine_mailbox_wait": "Exécutions de routine en attente de votre boîte privée"
+      "routine_mailbox_wait": "Exécutions de routine en attente de votre boîte privée",
+      "client_action": "Demandes aux clients : signées, ouvertes, questions, verrouillées",
+      "tickets_portal_request": "Demandes des clients depuis le portail"
     },
     "deviceTitle": "Cet appareil",
     "deviceChecking": "Vérification…",

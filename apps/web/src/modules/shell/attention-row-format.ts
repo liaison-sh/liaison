@@ -99,6 +99,7 @@ const KIND_ICON: Record<AttentionKind, KindIcon> = {
   scope_request: { icon: KeyRound as unknown as Component, tone: "tertiary" },
   scope_request_decided: { icon: CheckCircle2 as unknown as Component, tone: "tertiary" },
   routine_mailbox_wait: { icon: Lock as unknown as Component, tone: "tertiary" },
+  client_action: { icon: FileText as unknown as Component, tone: "tertiary" },
 }
 
 export function getKindIcon(kind: AttentionKind): KindIcon {
@@ -116,6 +117,7 @@ const KERNEL_SOURCE_LABEL: Record<string, string> = {
   routine_mailbox_wait: "Approvals",
   scope_request: "Access",
   scope_request_decided: "Access",
+  client_action: "Clients",
   system_alert: "System",
   admin_action: "System",
 }

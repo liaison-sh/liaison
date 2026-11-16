@@ -7474,6 +7474,13 @@ export const FR_BY_KEY: Record<string, string> = {
     "Votre boîte privée n'est pas encore prête dans cette fenêtre. Réessayez dans un instant.",
   "kernel.routineMailboxWait.failed": "Impossible de la lancer. Réessayez.",
   "kernel.homeCluster.routine_mailbox_wait": "exécutions de routine en attente de votre boîte",
+  "kernel.homeCluster.client_action": "demandes aux clients",
+  "kernel.notificationSettings.kinds.tickets_portal_request":
+    "Demandes des clients depuis le portail",
+  "kernel.homeKind.client_action.one": "demande au client",
+  "kernel.homeKind.client_action.other": "demandes aux clients",
+  "kernel.notificationSettings.kinds.client_action":
+    "Demandes aux clients : signées, ouvertes, questions, verrouillées",
   "kernel.homeKind.routine_mailbox_wait.one": "exécution de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.other": "exécutions de routine en attente de votre boîte",
   "kernel.notificationSettings.kinds.routine_mailbox_wait":

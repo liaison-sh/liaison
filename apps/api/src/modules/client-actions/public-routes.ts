@@ -48,6 +48,7 @@ import {
   openFrameBody,
   viewOf,
 } from "./decide"
+import { readTargetFile } from "./document-files"
 import { writeClientActionEvent } from "./events"
 import { maskEmail, newActionMailId, sendCodeMail, sendCopyMail } from "./mail"
 import { remailClientAction, SYSTEM_ACTOR_ID } from "./mint"
@@ -349,9 +350,40 @@ clientActionPublicRoutes.post(
       const view = await viewOf(row)
       if (view === "down") return caJson(503, { state: "down" })
       const format = parsed.data.format
-      const content = format === "blocks" ? view.sourceBlocks : format === "text" ? view.text : null
-      // PDF streams and page pictures come from the app's frozen file: none here yet.
+      // The frozen file itself, one tap away: a download, not a proof it was shown.
+      if (format === "pdf" || format === "page") {
+        const fileId =
+          format === "pdf"
+            ? view.pdfFileId
+            : (view.pages?.find((p) => p.n === parsed.data.n)?.pictureFileId ?? null)
+        if (!fileId) return caJson(404, { error: { code: "not_found" } })
+        const file = await readTargetFile(row.org_id, row.id, fileId)
+        // A picture made at freeze that is gone now is never rebuilt for an open action.
+        if (!file) return caJson(503, { state: "down" })
+        if (format === "pdf") {
+          await recordHolderEvent(row, "document_downloaded", ctx, { meta: { format } })
+        }
+        return new Response(new Uint8Array(file.bytes), {
+          status: 200,
+          headers: {
+            "content-type": format === "pdf" ? "application/pdf" : "image/webp",
+            "content-disposition": format === "pdf" ? "attachment" : "inline",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+          },
+        })
+      }
+      const content =
+        format === "blocks"
+          ? view.sourceBlocks
+          : format === "text"
+            ? view.text
+            : view.pages
+              ? view.pages.map((p) => ({ n: p.n, sha256: p.sha256, text: p.text }))
+              : null
       if (content === null) return caJson(404, { error: { code: "not_found" } })
+      // Only the frozen source or the page list shows the document; the text alone does not.
+      if (format === "text") return caJson(200, { format, content })
       if (!row.document_shown_at) {
         await inClientActionOrg(row, "client-action-shown", async (tx) => {
           const first = extractRows<{ id: string }>(
@@ -368,11 +400,18 @@ clientActionPublicRoutes.post(
             actorKind: "holder",
             ip: ctx.ip,
             userAgent: ctx.userAgent,
-            meta: { format },
+            meta: {
+              format,
+              ...(format === "pages" && view.pagesSha256 ? { pages_sha256: view.pagesSha256 } : {}),
+            },
           })
         })
       }
-      return caJson(200, { format, content })
+      return caJson(200, {
+        format,
+        content,
+        ...(format === "pages" && view.pagesSha256 ? { pages_sha256: view.pagesSha256 } : {}),
+      })
     },
     { page: (b) => (b as { format?: unknown })?.format === "page" },
   ),

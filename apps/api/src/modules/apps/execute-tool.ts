@@ -3743,10 +3743,20 @@ export function statusForToolError(code: string): number {
     case DM_ONLY_CODE:
     // The document changed since it was read: read it again and send that version.
     case "VERSION_CHANGED":
+    // An approved client request whose pinned send check now stops it (the person
+    // replied, the address bounced or is held), or that no longer matches its card.
+    case "SEND_GUARD_MISMATCH":
+    case "SEND_GUARD_REPLIED":
+    case "SEND_GUARD_BOUNCED":
+    case "SEND_GUARD_HELD":
+    case "SEND_GUARD_OPTED_OUT":
+    case "SEND_GUARD_REF_STOP":
       return 409
     case APP_STATE_UNAVAILABLE_CODE:
     // The target app's read tool did not answer: nothing was sent.
     case "TARGET_UNAVAILABLE":
+    // The send check could not read what it needs: it fails closed, nothing is sent.
+    case "SEND_GUARD_UNAVAILABLE":
       return 503
     case "tool_not_found":
     case "not_found":

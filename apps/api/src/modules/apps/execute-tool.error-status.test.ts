@@ -104,6 +104,10 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     }
     expect(statusForToolError("VERSION_CHANGED")).toBe(409)
     expect(statusForToolError("TARGET_UNAVAILABLE")).toBe(503)
+    for (const state of ["MISMATCH", "REPLIED", "BOUNCED", "HELD", "OPTED_OUT", "REF_STOP"]) {
+      expect(statusForToolError(`SEND_GUARD_${state}`)).toBe(409)
+    }
+    expect(statusForToolError("SEND_GUARD_UNAVAILABLE")).toBe(503)
   })
 
   it("tickets ref resolver codes are client errors", () => {

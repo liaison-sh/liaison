@@ -18,7 +18,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { rootLogger } from "~/lib/logger"
 import { writeClientActionEvent } from "./events"
-import { newActionMailId, sendLinkMail } from "./mail"
+import { newActionMailId, sendLinkMail, sendStaffTurnMail } from "./mail"
 import { type ClientActionKind, declaredTarget, viewTarget } from "./targets"
 
 const log = rootLogger.child({ module: "client-actions" })
@@ -321,6 +321,7 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
           sharedOnPortal: false,
         },
         mail: null,
+        staffMail: null,
       }
     }
     // A member of this org signs in their own session, never by a mailed link.
@@ -370,6 +371,20 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
         mailId,
       })
     }
+    // A staff signer's turn: a Home row and a mail with no link; they sign in their session.
+    const staffTurn = token !== null && signerUserId !== null
+    if (staffTurn) {
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "client_action",
+        action: "staff_turn",
+        entityId: row.id,
+        data: { id: row.id, kind: input.kind, title: view.title, signerUserIds: [signerUserId] },
+        actorId: SYSTEM_ACTOR_ID,
+        actorType: "system",
+        orgId: input.orgId,
+      })
+    }
     const shared = await openAutomaticShare(tx, input, invitee)
     return {
       result: {
@@ -385,6 +400,7 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
         sharedOnPortal: shared,
       },
       mail: mailed ? { sender, to: invitee.email } : null,
+      staffMail: staffTurn ? { sender, to: invitee.email } : null,
     }
   })
   if (out.mail && token) {
@@ -401,6 +417,21 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
       message: input.message,
       createdByUserId: input.createdByUserId,
     })
+  }
+  if (out.staffMail) {
+    const staff = out.staffMail
+    void sendStaffTurnMail({
+      orgId: input.orgId,
+      to: staff.to,
+      mailId: newActionMailId(),
+      title: view.title,
+      kind: input.kind,
+      orgName: staff.sender.orgName,
+      senderName: staff.sender.senderName,
+      locale: staff.sender.senderLocale,
+    }).catch((err) =>
+      log.error({ err, orgId: input.orgId, actionId: out.result.id }, "staff signer notice failed"),
+    )
   }
   return out.result
 }

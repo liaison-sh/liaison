@@ -15,6 +15,12 @@ import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
+import {
+  describeStop,
+  evaluateSendGuard,
+  isPinnedSendGuard,
+  plainGuardSince,
+} from "~/modules/mail/send-guard"
 import { ClientActionError, type EXPIRY_DAYS, mintClientAction, revokeClientAction } from "./mint"
 import { clientActionState } from "./state"
 
@@ -51,12 +57,98 @@ export const clientActionCreateParams = z.object({
   sign_order: z.number().int().min(1).max(20).optional(),
   group_id: z.string().uuid().optional(),
   message: z.string().max(2000).optional(),
+  sendGuard: z.unknown().optional().describe("Set by Liaison; never pass it."),
+  guardKey: z.string().max(500).optional().describe("Set by Liaison; never pass it."),
 })
+
+/** One open request per target, contact and address: the approval's and the mint's key. */
+export function clientActionGuardKey(targetId: string, contactId: string, email: string): string {
+  return `${targetId}:${contactId}:${email.trim().toLowerCase()}`
+}
+
+async function invitedAddress(
+  params: { contact_id: string; invited_email?: string },
+  ctx: ToolCtx,
+): Promise<string | null> {
+  if (params.invited_email) return params.invited_email.trim().toLowerCase()
+  const [c] = extractRows<{ email: string | null }>(
+    await ctx.db.execute(
+      sql`SELECT lower(email) AS email FROM ${sql.raw(schemaRef("kernel"))}.contacts WHERE id = ${params.contact_id}`,
+    ),
+  )
+  return c?.email ?? null
+}
+
+/**
+ * Stage time: refuses what the send would refuse, and pins the send check (a
+ * plain service mail to the invited address, checked again when it goes) and
+ * the dedupe key, so the card shows them and the approved call is held to them.
+ */
+export async function clientActionCreatePreflight(
+  params: z.infer<typeof clientActionCreateParams>,
+  ctx: ToolCtx,
+): Promise<unknown> {
+  const email = await invitedAddress(params, ctx)
+  if (!email) {
+    return {
+      error: {
+        code: "EMAIL_REQUIRED",
+        message: `Contact ${params.contact_id} has no email address you can read: nothing was staged. Next: add their address, or give invited_email.`,
+      },
+    }
+  }
+  const sendGuard = {
+    ...plainGuardSince([email], [params.contact_id], new Date()),
+    classification: "service" as const,
+  }
+  return {
+    ok: true,
+    pinnedParams: {
+      sendGuard,
+      guardKey: clientActionGuardKey(params.target_id, params.contact_id, email),
+    },
+  }
+}
 
 export async function handleClientActionCreate(
   params: z.infer<typeof clientActionCreateParams>,
   ctx: ToolCtx,
 ) {
+  // An approved agent call carries the pinned check: the link goes only if the
+  // address still takes mail and the call is the one the card showed.
+  if (params.sendGuard !== undefined || params.guardKey !== undefined) {
+    const email = await invitedAddress(params, ctx)
+    if (
+      !email ||
+      !isPinnedSendGuard(params.sendGuard) ||
+      params.guardKey !== clientActionGuardKey(params.target_id, params.contact_id, email) ||
+      !params.sendGuard.addresses.includes(email)
+    ) {
+      return {
+        error: {
+          code: "SEND_GUARD_MISMATCH",
+          message:
+            "Nothing was sent: the request no longer matches the card that was approved (another contact, address or document). Next: send a new request.",
+          status: 409,
+        },
+      }
+    }
+    const verdict = await evaluateSendGuard({
+      orgId: ctx.orgId,
+      guard: params.sendGuard,
+      recipients: [email],
+      at: "send",
+    })
+    if (verdict.state !== "clear") {
+      return {
+        error: {
+          code: `SEND_GUARD_${verdict.state.toUpperCase()}`,
+          message: `${describeStop(verdict, "approved")} No link was made for ${email}.`,
+          status: verdict.state === "unavailable" ? 503 : 409,
+        },
+      }
+    }
+  }
   try {
     const r = await mintClientAction({
       orgId: ctx.orgId,
@@ -78,7 +170,7 @@ export async function handleClientActionCreate(
     const happened = r.deduped
       ? `A request to ${r.invitedName} to ${params.kind} "${r.title}" was already open (${r.id}); nothing new was sent.`
       : r.signerIsStaff
-        ? `${r.invitedName} is a member here: they ${params.kind} "${r.title}" from their own session, so no link was mailed.`
+        ? `${r.invitedName} is a member here: they ${params.kind} "${r.title}" from their own session. They were told on their Home and by a mail with no link; no link was mailed.`
         : r.mailQueued
           ? `The link to ${params.kind} "${r.title}" is on its way to ${r.invitedName} <${r.invitedEmail}>, valid until ${until}.`
           : `Request ${r.id} for ${r.invitedName} waits for its turn; their link goes when the earlier signers are done.`
@@ -308,6 +400,8 @@ export function registerClientActionTools(orgId: string): void {
     approvalImpact: "external",
     writesToTable: "kernel.client_actions",
     params: clientActionCreateParams,
+    pinnedParams: ["sendGuard", "guardKey"],
+    preflight: clientActionCreatePreflight as (p: unknown, c: any) => Promise<unknown>,
     handler: handleClientActionCreate as (p: unknown, c: any) => Promise<unknown>,
   })
   registerApprovalSummarizer(orgId, "kernel", "client_action_create", summarizeClientActionCreate)

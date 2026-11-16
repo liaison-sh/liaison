@@ -59,7 +59,11 @@ interface Common {
 async function send(
   orgId: string,
   msg: { to: string; subject: string; html: string; text: string; mailId: string },
-  template: "client-action.link" | "client-action.code" | "client-action.copy",
+  template:
+    | "client-action.link"
+    | "client-action.code"
+    | "client-action.copy"
+    | "client-action.staff",
   replyTo: string | null,
 ): Promise<void> {
   const cfg = await getOrgEmailConfig(orgId)
@@ -186,4 +190,35 @@ export async function sendCopyMail(
     log.error({ err, orgId: input.orgId }, "client action copy mail failed")
     throw err
   })
+}
+
+/**
+ * A member of the org who is a signer gets no link by mail: this says "Open
+ * Liaison, Read and sign" and nothing else. Their link is made in their own
+ * signed-in session (`my-link`), so a forwarded or synced copy opens nothing.
+ */
+export async function sendStaffTurnMail(
+  input: Common & { orgName: string; senderName: string },
+): Promise<void> {
+  const { t } = tr(input.locale)
+  const p = {
+    org: input.orgName,
+    sender: input.senderName,
+    verb: t(`verb.${input.kind}`),
+    title: input.title,
+  }
+  const subject = t("mail.staff.subject", p)
+  const { html, text } = renderBrandedEmail({
+    subject,
+    brand: input.orgName,
+    heading: input.title,
+    paragraphs: [t("mail.staff.body", p)],
+    footer: [t("mail.staff.footer", p)],
+  })
+  await send(
+    input.orgId,
+    { to: input.to, subject, html, text, mailId: input.mailId },
+    "client-action.staff",
+    null,
+  )
 }

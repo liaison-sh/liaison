@@ -46,6 +46,8 @@ function view(): ClientActionView {
     sourceBlocks: [{ type: "paragraph", text: "Les parties conviennent." }],
     text: "Les parties conviennent.",
     pdfFileId: null,
+    pages: null,
+    pagesSha256: null,
     sha256: shaNow,
     wordsKey: null,
     wordsParams: {},
@@ -281,6 +283,7 @@ describe("portal doors: the client action page", () => {
       .sort()
     expect(listed).toEqual([
       "modules/client-actions/decide.ts",
+      "modules/client-actions/document-files.ts",
       "modules/client-actions/mint.ts",
       "modules/client-actions/public-routes.ts",
       "modules/client-actions/routes.ts",
@@ -344,9 +347,25 @@ describe("portal doors: the client action page", () => {
     expect(logged.includes(code)).toBe(false)
     const keys = await redis.keys("*")
     expect(keys.filter((key) => key.includes(token) || key.includes(code))).toEqual([])
-    for (const key of keys.filter((x) => x.includes("ca:"))) {
+    // Every key's value, the job queues' hashes and lists included (a queued mail job
+    // would hold its rendered body there).
+    const prefix = redis.options.keyPrefix ?? ""
+    expect(keys.some((x) => x.includes("bull:"))).toBe(true)
+    for (const raw of keys) {
+      const key = prefix && raw.startsWith(prefix) ? raw.slice(prefix.length) : raw
       const type = await redis.type(key)
-      const value = type === "string" ? ((await redis.get(key)) ?? "") : ""
+      const value =
+        type === "string"
+          ? ((await redis.get(key)) ?? "")
+          : type === "hash"
+            ? JSON.stringify(await redis.hgetall(key))
+            : type === "list"
+              ? JSON.stringify(await redis.lrange(key, 0, 500))
+              : type === "zset"
+                ? JSON.stringify(await redis.zrange(key, "0", "500"))
+                : type === "stream"
+                  ? JSON.stringify(await redis.xrange(key, "-", "+", "COUNT", "500"))
+                  : ""
       expect({ key, holds: value.includes(token) || value.includes(code) }).toEqual({
         key,
         holds: false,

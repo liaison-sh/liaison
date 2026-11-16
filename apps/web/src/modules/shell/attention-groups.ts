@@ -338,6 +338,7 @@ const CLUSTER_PLURAL_LABEL: Record<string, string> = {
   admin_action: "admin actions",
   awaiting_agent: "conversations awaiting a reply",
   dm_window_closing: "DM windows closing",
+  client_action: "client requests",
 }
 
 /** "12 tickets approaching SLA". Falls back to the group-summary phrasing for

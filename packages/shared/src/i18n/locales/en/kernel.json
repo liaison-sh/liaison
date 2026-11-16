@@ -1435,7 +1435,8 @@
     "followup_due": "follow-ups due",
     "critical": "critical incidents",
     "warning": "warnings",
-    "routine_mailbox_wait": "routine runs waiting for your mailbox"
+    "routine_mailbox_wait": "routine runs waiting for your mailbox",
+    "client_action": "client requests"
   },
   "homeClusterHide": "Hide",
   "homeClusterOldest": "oldest",
@@ -1787,6 +1788,10 @@
     "advance_received": {
       "one": "payment received before its advance invoice",
       "other": "payments received before their advance invoice"
+    },
+    "client_action": {
+      "one": "client request",
+      "other": "client requests"
     }
   },
   "homeMarkAllRead": "Mark all read",
@@ -4584,7 +4589,9 @@
       "node_session_needs_you": "Computer session needs you",
       "node_session_done": "Computer session done",
       "node_session_failed": "Computer session failed",
-      "routine_mailbox_wait": "Routine runs waiting for your private mailbox"
+      "routine_mailbox_wait": "Routine runs waiting for your private mailbox",
+      "client_action": "Requests to clients: signed, opened, asked, locked",
+      "tickets_portal_request": "Client requests from the portal"
     },
     "deviceTitle": "This device",
     "deviceChecking": "Checking…",

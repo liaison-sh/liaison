@@ -37,6 +37,13 @@ export interface ClientActionView {
   /** Plain text of the document, when the target has one. */
   text: string | null
   pdfFileId: string | null
+  /**
+   * The server-made picture of each page of an uploaded file, made once at freeze
+   * (never rebuilt for an open action), with its hash and its text.
+   */
+  pages: Array<{ n: number; pictureFileId: string; sha256: string; text: string | null }> | null
+  /** Hex SHA-256 over the pages' hashes in order: what the trail records as shown. */
+  pagesSha256: string | null
   /** Hex SHA-256 of exactly what is shown: checked again when the person decides. */
   sha256: string
   wordsKey: string | null
@@ -114,6 +121,25 @@ function asView(data: unknown): ClientActionView | null {
     sourceBlocks: Array.isArray(d.source_blocks) ? d.source_blocks : null,
     text: typeof d.text === "string" ? d.text : null,
     pdfFileId: typeof d.pdf_file_id === "string" ? d.pdf_file_id : null,
+    pages: Array.isArray(d.pages)
+      ? d.pages
+          .filter(
+            (p): p is { n: number; picture_file_id: string; sha256: string; text?: unknown } =>
+              !!p &&
+              Number.isInteger(p.n) &&
+              typeof p.picture_file_id === "string" &&
+              typeof p.sha256 === "string" &&
+              HEX64.test(p.sha256),
+          )
+          .map((p) => ({
+            n: p.n,
+            pictureFileId: p.picture_file_id,
+            sha256: p.sha256,
+            text: typeof p.text === "string" ? p.text : null,
+          }))
+      : null,
+    pagesSha256:
+      typeof d.pages_sha256 === "string" && HEX64.test(d.pages_sha256) ? d.pages_sha256 : null,
     sha256: sha,
     wordsKey: typeof d.words_key === "string" ? d.words_key : null,
     wordsParams:

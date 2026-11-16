@@ -162,10 +162,7 @@ async function enterClientAction(
     throw new Answer(caJson(503, { state: "down" }))
   }
   if (!found) return clientActionNotFound(ip, started)
-  const match =
-    "current" in found
-      ? { row: found.current, via: "current" as const }
-      : { row: found.prior, via: "prior" as const }
+  const match = found
   return { ip, userAgent: c.req.header("user-agent") ?? null, started, body, hash, match }
 }
 

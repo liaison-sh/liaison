@@ -82,7 +82,7 @@ function fromRows(rows: ActionRow[]): ActionRow | null {
   }
 }
 
-export type TokenMatch = { current: ActionRow } | { prior: ActionRow } | null
+export type TokenMatch = { row: ActionRow; via: "current" | "prior" } | null
 
 /**
  * The action a token names: as its live token, or as one rotated away (which
@@ -90,7 +90,7 @@ export type TokenMatch = { current: ActionRow } | { prior: ActionRow } | null
  */
 export async function findByTokenHash(hash: string): Promise<TokenMatch> {
   return withSystemDb("client-action-by-token", async (db) => {
-    const current = fromRows(
+    const live = fromRows(
       extractRows<ActionRow>(
         await db.execute(sql`
           SELECT ${ROW_COLUMNS}
@@ -103,7 +103,7 @@ export async function findByTokenHash(hash: string): Promise<TokenMatch> {
         `),
       ),
     )
-    if (current) return { current }
+    if (live) return { row: live, via: "current" }
     const prior = fromRows(
       extractRows<ActionRow>(
         await db.execute(sql`
@@ -117,7 +117,7 @@ export async function findByTokenHash(hash: string): Promise<TokenMatch> {
         `),
       ),
     )
-    return prior ? { prior } : null
+    return prior ? { row: prior, via: "prior" } : null
   })
 }
 
@@ -265,8 +265,8 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
   if (input.via === "link") {
     const m = await findByTokenHash(input.tokenHash)
     if (!m) return NOT_FOUND
-    if ("prior" in m) return { ok: false, status: 410, body: deadFrameBody(m.prior, "replaced") }
-    pre = m.current
+    if (m.via === "prior") return { ok: false, status: 410, body: deadFrameBody(m.row, "replaced") }
+    pre = m.row
   } else {
     pre = await withPrivilegedDb(input.orgId, "client-action-portal-read", async (tx) =>
       fromRows(

@@ -54,7 +54,7 @@ export function createRichTextMethods(ctx: BridgeContext): Record<string, any> {
           blanks: out.blanks,
           sourceText: out.sourceText,
           layoutText: out.layoutText,
-          textMatches: freezeTextMatches(out.sourceText, out.layoutText),
+          textMatches: freezeTextMatches(out.sourceText, out.layoutText) && out.tocMatches,
         })
       } catch (err) {
         if (err instanceof RichTextError) return refuse(err.code.toUpperCase(), err.message)

@@ -21,6 +21,7 @@ import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { rootLogger } from "~/lib/logger"
 import { manifestRegistry } from "~/modules/apps/app-registries"
 import { FEATURE_OFF_CODE, noteOrgAppsChanged } from "~/modules/apps/org-apps"
+import { seedLegalStarterTemplates } from "~/modules/documents/legal-templates/starters"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -84,6 +85,10 @@ export async function writeOrgAppFeature(
     })
     .returning({ feature: orgAppFeatures.feature })
   if (written.length === 0) return { changed: false }
+  // Switching agreements' corporate templates on offers the corporate starter templates at
+  // once, in this transaction (the other starters came with the app).
+  if (enabled && app === "agreements" && feature === "corporateTemplates")
+    await seedLegalStarterTemplates(tx, orgId, { corporateTemplates: true })
   // Durable and delivered to every process after the commit: each one tells its
   // own live MCP sessions that the tool list changed (mcp/catalog-notifier.ts).
   await tx.queueEvent({

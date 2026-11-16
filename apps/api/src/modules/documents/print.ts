@@ -78,6 +78,10 @@ export type PrintErrorCode =
   | "document_too_large"
   | "storage_quota_exceeded"
   | "merge_failed"
+  | "broken_reference"
+  | "typed_reference"
+  | "numbered_clause"
+  | "character_not_drawable"
   | PdfFormError["code"]
 
 const STATUS_OF: Record<string, number> = {
@@ -96,6 +100,11 @@ const STATUS_OF: Record<string, number> = {
   document_too_large: 422,
   storage_quota_exceeded: 409,
   merge_failed: 422,
+  // The legal layout's refusals: the template's own text (rich-text.ts, legal-layout.ts).
+  broken_reference: 422,
+  typed_reference: 422,
+  numbered_clause: 422,
+  character_not_drawable: 422,
 }
 
 export class PrintError extends Error {

@@ -47,9 +47,7 @@ const FROM_IMAGE: Record<string, string> = {
  * compose `environment:` blocks of the api and the worker are edited by one
  * change at a time, and the one that adds this line removes it from here.
  */
-const COMPOSE_PENDING: Record<string, string> = {
-  LIAISON_MANAGED_SIGNING_ENABLED: "the hosted edition's signature switch, default off",
-}
+const COMPOSE_PENDING: Record<string, string> = {}
 
 function serverEnvNames(): Set<string> {
   const src = read("apps/api/src/lib/env.ts")

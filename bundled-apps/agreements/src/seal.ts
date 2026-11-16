@@ -277,7 +277,9 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
     )
     if (signed.status !== "ok" || !signed.fileId || !signed.sha256) {
       const code = signed.error?.code ?? "MERGE_FAILED"
-      if (code === "DOCUMENT_CHANGED") {
+      // The frozen file changed, or the signed copy of an upload does not read
+      // as the frozen file did: no package, no seal, no copy, no repair.
+      if (code === "DOCUMENT_CHANGED" || code === "COPY_DIFFERS") {
         await ctx.emit?.({
           entity: "evidence",
           action: "mismatch",
@@ -286,7 +288,7 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
             agreement_id: agreement.id,
             number: agreement.number,
             version: version.number,
-            what: "frozen_file",
+            what: code === "COPY_DIFFERS" ? "signed_copy" : "frozen_file",
           },
         })
         return refusal(

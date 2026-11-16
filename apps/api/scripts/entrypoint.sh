@@ -88,6 +88,11 @@ case "${1:-serve}" in
     # reaches it directly.
     LIAISON_ONESHOT=1 exec bun src/db/reconcile-catalog-boot.ts --strict
     ;;
+  pdf-render)
+    # The render service (deploy service `pdf-render`): no database, no secret.
+    cd "$APP_DIR/apps/api"
+    exec bun src/modules/pdf-render/main.ts
+    ;;
   embedder)
     cd "$APP_DIR/apps/api"
     exec env -u MIGRATION_DATABASE_URL bun src/modules/agent/tools/embedder-main.ts

@@ -47,6 +47,13 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
 | `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md) | 2 GB |
+| `pdf-render` | the app's image | Reads uploaded PDFs for agreements: file checks, page pictures, the signed copy of an upload. No network, no secret, no data volume, read-only, its own user | 3 GB |
+
+### Run without the render service
+
+`pdf-render` has no network at all and talks to the app over one socket on a volume that holds only that socket (`LIAISON_PDF_RENDER_SOCKET`, default `/run/pdf-render/render.sock`). A crafted file that took over the PDF reader there reaches no database, no Redis and no other process. If you cannot run it, everything keeps working except uploaded PDFs: an upload is refused with `PDF_RENDER_UNAVAILABLE`. Documents Liaison writes itself never need it.
+
+To check that the running service is isolated, run `deploy/pdf-render-check.sh` with the options you give `docker compose` (for example `deploy/pdf-render-check.sh -p liaison --env-file /srv/liaison.env`). From inside `pdf-render` it tries to reach Postgres, Redis and the internet, to see or read another process, to write outside `/tmp`, and looks for a secret in its environment; from the app it sends an inflate bomb and a looped file. Every line says `PASS` or `FAIL`, and it ends with `pdf-render: isolated` only when all of them pass.
 
 All services share an internal network, and only the app publishes a port: `${APP_BIND}:${APP_PORT}`, which defaults to `127.0.0.1:3000`: it speaks plain HTTP and is meant to sit behind a TLS reverse proxy on the same host. Set `APP_BIND=0.0.0.0` only when the proxy runs on another host on a trusted network.
 

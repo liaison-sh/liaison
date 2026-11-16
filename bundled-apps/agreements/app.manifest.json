@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -40,7 +40,14 @@
       "labelField": "title",
       "searchable": false,
       "tableName": "agreements",
-      "readScope": "agreements:agreements:read"
+      "readScope": "agreements:agreements:read",
+      "fileParent": {
+        "tableName": "agreements",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:agreements:read",
+        "writeScope": "agreements:agreements:write"
+      }
     },
     "agreement_version": {
       "labelField": "number",
@@ -298,7 +305,14 @@
           "onErase": "anonymize"
         },
         "updated_by_agent_id": "uuid?",
-        "upload_file_id": "uuid?"
+        "upload_file_id": "uuid?",
+        "upload_state": {
+          "type": "string",
+          "enum": [
+            "checking"
+          ],
+          "required": false
+        }
       }
     },
     "agreement_versions": {
@@ -973,6 +987,9 @@
           "source": {
             "type": "object",
             "additionalProperties": true
+          },
+          "file_id": {
+            "type": "string"
           },
           "starts_on": {
             "type": "string",
@@ -1726,6 +1743,42 @@
       },
       "schedule": "0 3 * * 1",
       "timeoutMs": 600000
+    },
+    "upload-freeze": {
+      "handler": "uploadFreezeJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_drafts",
+          "where": {
+            "upload_state": {
+              "in": [
+                "checking"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "* * * * *",
+      "timeoutMs": 300000
+    },
+    "upload-rescan": {
+      "handler": "uploadRescanJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_versions",
+          "where": {
+            "scan_state": {
+              "in": [
+                "not_run"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/15 * * * *",
+      "timeoutMs": 300000
     }
   },
   "attention": {

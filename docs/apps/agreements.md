@@ -22,6 +22,12 @@ Clauses an agent wrote are marked as drafts. They block the checks until a perso
 - minutes of a meeting, a written consultation or a filing pass with a note: check with your lawyer first, since some of these acts need a higher signature level, which Liaison does not offer;
 - a proposal needs its price, a PDF needs a person's statement of what it is, and every agent clause needs a person's reading.
 
+### Upload your own PDF
+
+Upload the file first (from an agent's client, `kernel__files_upload_url` then `kernel__files_upload_confirm`), then pass its file id when you create the agreement or save its draft. Liaison keeps a copy of the file on the agreement, so whoever may read the agreement reads the file, and nobody else: an agreement closed to the organization hides it too.
+
+**Prepare** freezes the file exactly as you uploaded it, byte for byte, after the server's own checks: the file is read by an isolated render service (see [Run with Docker](../self-hosting/docker.md)), refused when it holds active content or reads two ways, and pictured page by page for the signing page. A long check answers that the file is still being checked, and the version appears when the check ends. When the virus scanner is down or not set up, the file is kept and marked as not checked: sending it scans it again, a later scan runs every 15 minutes until the scanner answers, and until then the approval card says "Not checked for viruses". A file the scanner later finds is not sent, and its signing page no longer offers the download.
+
 ## Keep templates with versions
 
 Saving a template makes a new version. An agreement copies the text of the version it was made from, so a later version never changes it. A template shows or hides a block on one field's equality only. An agent's template save waits for a person's approval.

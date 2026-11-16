@@ -164,6 +164,8 @@ const PLAN: RecordingStep[] = [
   { entry: "job:timestamp-retry", input: () => ({ params: {} }) },
   { entry: "job:copies-retry", input: () => ({ params: {} }) },
   { entry: "job:evidence-verify", input: () => ({ params: {} }) },
+  { entry: "job:upload-freeze", input: () => ({ params: {} }) },
+  { entry: "job:upload-rescan", input: () => ({ params: {} }) },
   {
     entry: "tool:agreement_evidence_get",
     input: (s) => refused({ id: s.values.nda }, NOT_SIGNED),

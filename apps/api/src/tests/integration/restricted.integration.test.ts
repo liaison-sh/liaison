@@ -420,7 +420,7 @@ describe("every surface honours the list", () => {
 
   for (const s of SURFACES) {
     if (!s.seen) {
-      it.todo(`${s.surface}: ${s.mechanism}`)
+      it.todo(`${s.surface}: ${s.mechanism}`, () => {})
       continue
     }
     const seen = s.seen

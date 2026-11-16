@@ -266,6 +266,28 @@ describe("portal reads", () => {
     }
   })
 
+  it("a sealed file is refused by the portal and never read from storage", async () => {
+    const ticket = await insertTicket(w, {
+      company_id: w.companyA,
+      contact_id: w.clientA.contactId,
+    })
+    const sealed = await insertFile(
+      w,
+      { app: "tickets", entity_type: "message", entity_id: ticket.inboundId },
+      { enc_version: 1 },
+    )
+    const open = spyOn(portalFileStorage, "open")
+    try {
+      const res = await get(`/files/${sealed}`)
+      const random = await get(`/files/${crypto.randomUUID()}`)
+      expect(res.status).toBe(404)
+      expect(await res.text()).toBe(await random.text())
+      expect(open).not.toHaveBeenCalled()
+    } finally {
+      open.mockRestore()
+    }
+  })
+
   it("NT-38 hourly shows billed, retainer shows so far, fixed and a project turned off show nothing, 100 h of time spent change no step's done share, no person id in any body", async () => {
     const hourly = projectA
     const retainer = await insertProject(w, {

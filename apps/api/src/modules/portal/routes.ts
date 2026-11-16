@@ -379,9 +379,9 @@ export const portalRoutes = new Hono<AppEnv>()
         "One or more attachments are not yours or were already sent.",
       )
     }
-    const inboxId = await defaultCreateInboxId(ctx.orgId)
-    if (!inboxId)
-      return refuse(c, 503, "requests_unavailable", "Requests cannot be received right now.")
+    // The org's inbox for new tickets from outside, when it has one; a request is a
+    // ticket either way.
+    const inboxId = (await defaultCreateInboxId(ctx.orgId)) ?? undefined
     // An ordinary ticket: internal, no assignee, stamped with the client's company.
     const created = await ingestTicket(
       ctx.orgId,

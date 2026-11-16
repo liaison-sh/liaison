@@ -33,7 +33,7 @@ export interface IngestTicketInput {
   sensitivity?: "internal" | "confidential" | "restricted"
   assignedTo?: string
   categoryId?: string
-  sourceInboxId: string
+  sourceInboxId?: string
   externalRef?: string
   priority?: "low" | "normal" | "high" | "urgent"
   requesterEmail: string

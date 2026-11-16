@@ -191,24 +191,42 @@ function extraErrors(s: {
 interface IssuerFacts {
   timezone?: string | null
   default_language?: string | null
+  /** The issuer the schedule names, when the caller's role cannot read it: its zone still decides. */
+  zoneOf?: string
 }
 
-/** The issuer, read under the caller's own scopes: its time zone decides every date saved here. */
-async function issuerOf(ctx: RecurringCtx, id: string): Promise<IssuerFacts | Fail> {
+/**
+ * The issuer, read under the caller's own scopes: its time zone decides every date saved here.
+ * A person whose role cannot read issuer profiles may still change a schedule their scope lets
+ * them change: its dates then follow the issuer's zone, which the host reads for them and which
+ * is all they learn of the issuer.
+ */
+async function issuerOf(ctx: RecurringCtx, id: string): Promise<IssuerFacts> {
   const issuer = (await ctx.db.findOne("issuer_profiles", id)) as IssuerFacts | null
-  if (issuer) return issuer
-  return fail(
-    "issuer_not_found",
-    `No issuer profile ${id} that you can read. List them with settings_issuer_profile_list; reading one needs the invoicing settings read scope.`,
-  )
+  return issuer ?? { zoneOf: id }
 }
-
-const isFail = (v: unknown): v is Fail => (v as Fail | null)?.status === "error"
 
 async function today(
   ctx: RecurringCtx,
-  issuer: { timezone?: string | null },
+  issuer: IssuerFacts,
 ): Promise<{ ok: true; date: string } | { ok: false; error: Fail }> {
+  if (issuer.zoneOf !== undefined) {
+    try {
+      const civil = await ctx.time.civil({
+        timezoneOf: { table: "issuer_profiles", id: issuer.zoneOf },
+      })
+      return { ok: true, date: civil.date }
+    } catch (err) {
+      if ((err as { code?: unknown } | null)?.code !== "not_found") throw err
+      return {
+        ok: false,
+        error: fail(
+          "issuer_not_found",
+          `No issuer profile ${issuer.zoneOf}: the schedule names one that does not exist. Nothing was saved.`,
+        ),
+      }
+    }
+  }
   const when = await civilDateOf(ctx, issuer)
   return when.ok ? when : { ok: false, error: when.error }
 }
@@ -392,7 +410,6 @@ export async function recurringScheduleCreate(
     (await scheduleGuard(ctx, input, input.billsOtherThanStripe, "handler"))
   if (refused) return refused
   const issuer = await issuerOf(ctx, input.issuer_profile_id)
-  if (isFail(issuer)) return issuer
   const now = await today(ctx, issuer)
   if (!now.ok) return now.error
   const status = input.status ?? "active"
@@ -567,7 +584,6 @@ export async function recurringScheduleUpdate(
   if (refused) return refused
   const current = (await load(ctx, input.id)) as ScheduleRow
   const issuer = await issuerOf(ctx, current.issuer_profile_id)
-  if (isFail(issuer)) return issuer
   const now = await today(ctx, issuer)
   if (!now.ok) return now.error
 
@@ -722,7 +738,6 @@ export async function recurringSchedulePause(
   }
   if (input.until) {
     const issuer = await issuerOf(ctx, current.issuer_profile_id)
-    if (isFail(issuer)) return issuer
     const now = await today(ctx, issuer)
     if (!now.ok) return now.error
     if (!isCivilDate(input.until) || input.until <= now.date) {
@@ -750,7 +765,7 @@ export async function recurringSchedulePause(
   // A paused retainer takes its months to come off the project; resuming writes them again.
   if (isRetainerSchedule(current) && !checkOnly) {
     const issuer = await issuerOf(ctx, current.issuer_profile_id)
-    const now = isFail(issuer) ? null : await today(ctx, issuer)
+    const now = await today(ctx, issuer)
     if (now?.ok) await writeRetainerTimeboxes(ctx, current, [nextMonth(monthOf(now.date))], null)
   }
   const leftOut = await leaveOutOpenRows(ctx, current.id)

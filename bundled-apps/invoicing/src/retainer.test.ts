@@ -290,6 +290,14 @@ describe("a retainer month's invoice", () => {
     expect(linesOf(under.db, u.draftId)).toEqual([["Monthly retainer", "1", "450000"]])
   })
 
+  test("the month's draft is made out to the client's contact", async () => {
+    const h = harness()
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 46))
+    const res = await draft(h, REC_OCT)
+    const d = docs(h.db).find((x) => x.id === res.draftId) as Row
+    expect(d.counterparty_contact_id).toBe(FR_CONTACT)
+  })
+
   test("waiving this month's overage leaves next month unaffected", async () => {
     const h = harness()
     h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 46))

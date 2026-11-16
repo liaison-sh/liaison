@@ -29,7 +29,7 @@
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
-    "digest": "b0330b8196d9be98"
+    "digest": "435f2999a0d2b229"
   },
   "app_invoicing.recurring_schedules": {
     "rows": 2,
@@ -156,8 +156,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 368,
-    "digest": "213b01cd6fd67575"
+    "rows": 369,
+    "digest": "a429826ef0bc7e7d"
   },
   "kernel.roles": {
     "rows": 32,
@@ -193,6 +193,6 @@
   },
   "kernel.users": {
     "rows": 24,
-    "digest": "4cb10a60d3acd721"
+    "digest": "169bd1963d9eb419"
   }
 }

@@ -453,6 +453,8 @@ export async function retainerDraftFromReconcile(
   }
   const created = await draftsCreate(ctx, {
     type: "invoice",
+    // The month's invoice is made out to the client's contact, as a card's and an advance's are.
+    counterparty_contact_id: billTo.contactId,
     ...recipient,
     currency,
     operation_category: "services",

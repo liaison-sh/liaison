@@ -33,6 +33,8 @@ function makeCtx(
   opts?: {
     approvalDecider?: string
     issuerZone?: string
+    /** The caller's role cannot read issuer profiles: their reads answer nothing. */
+    issuerHidden?: boolean
     extra?: Array<Record<string, unknown>>
     seed?: Record<string, Array<Record<string, unknown>>>
   },
@@ -61,13 +63,27 @@ function makeCtx(
     update: (e: string, id: string, d: Record<string, unknown>) => (
       writes.push(`update ${e}`), db.update(e, id, d)
     ),
+    ...(opts?.issuerHidden
+      ? {
+          findOne: (e: string, id: string) =>
+            e === "issuer_profiles" ? Promise.resolve(null) : db.findOne(e, id),
+        }
+      : {}),
   })
+  const zoneReads: string[] = []
   const ctx: RecurringCtx = {
     getUserId: async () => PERSON,
     db: wrapped as never,
     time: {
-      async civil({ timezone }) {
-        return civilOf(today, timezone)
+      // The host reads a row's zone whatever the caller may see of the row (`timezoneOf`).
+      async civil(params) {
+        if ("timezone" in params) return civilOf(today, params.timezone)
+        zoneReads.push(`${params.timezoneOf.table} ${params.timezoneOf.id}`)
+        const row = (await db.findOne(params.timezoneOf.table, params.timezoneOf.id)) as {
+          timezone?: string
+        } | null
+        if (!row) throw Object.assign(new Error("no such row"), { code: "not_found" })
+        return civilOf(today, row.timezone ?? "UTC")
       },
     },
     approval: opts?.approvalDecider
@@ -78,7 +94,7 @@ function makeCtx(
         }
       : null,
   }
-  return { ctx, db, writes }
+  return { ctx, db, writes, zoneReads }
 }
 
 const lines = [{ description: "Retainer {period}", qty: 1, unit_price_minor: 150000, vat_bp: 2000 }]
@@ -148,7 +164,8 @@ describe("saving a schedule", () => {
   test("an unknown issuer time zone refuses with the typed refusal and writes nothing", async () => {
     const { ctx, writes } = makeCtx("2026-11-10", { issuerZone: "Mars/Olympus" })
     ctx.time = {
-      async civil({ timezone }) {
+      async civil(params) {
+        const timezone = "timezone" in params ? params.timezone : ""
         if (timezone === "Mars/Olympus")
           throw Object.assign(new Error("unknown zone"), { code: "invalid_timezone" })
         return civilOf("2026-11-10", timezone)
@@ -285,6 +302,32 @@ describe("issue by itself", () => {
         data: { schedule_id: "sched-1", version: 2 },
       },
     ])
+  })
+
+  test("a person whose role cannot read issuer profiles changes the schedule their scope allows, its dates in the issuer's zone", async () => {
+    const { ctx, db, zoneReads } = makeCtx("2026-11-10", {
+      issuerHidden: true,
+      extra: [seeded()],
+    })
+    const res = await recurringScheduleUpdate(ctx, { id: "sched-1", billing_day: "15" })
+    expect(res).toMatchObject({ status: "completed", id: "sched-1", version: 2 })
+    expect(zoneReads).toEqual([`issuer_profiles ${ISSUER}`])
+    expect(db.__all("recurring_schedules")[0]).toMatchObject({
+      next_issue_on: "2026-11-15",
+      next_draft_on: "2026-11-12",
+    })
+    // What the caller is told names no more of the issuer than the schedule shows.
+    expect(JSON.stringify(res)).not.toContain("Maison Nord")
+  })
+
+  test("an update of a schedule whose issuer no longer exists is refused and writes nothing", async () => {
+    const { ctx, writes } = makeCtx("2026-11-10", {
+      issuerHidden: true,
+      extra: [seeded({ issuer_profile_id: "gone" })],
+    })
+    const res = await recurringScheduleUpdate(ctx, { id: "sched-1", billing_day: "15" })
+    expect(res).toMatchObject({ status: "error", error: { code: "issuer_not_found" } })
+    expect(writes).toEqual([])
   })
 
   test("an update of the billing day moves the next dates from today", async () => {

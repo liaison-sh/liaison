@@ -366,7 +366,7 @@ export function mockAppContext(opts: MockAppContextOpts): MockAppContext {
           hour: at.getUTCHours(),
           minute: at.getUTCMinutes(),
           weekday: at.getUTCDay() || 7,
-          zone: params.timezone,
+          zone: "timezone" in params ? params.timezone : "UTC",
         }
       }),
     },

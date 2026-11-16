@@ -162,6 +162,39 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
   } = ctx
   const enqueueFromApp = createAppJobEnqueuer(ctx)
 
+  /**
+   * The zone a row of this app's own table holds (`time.civil`'s `timezoneOf`): the `timezone`
+   * column only, of a table the manifest declares with that column, in this org. Privileged, so
+   * it answers a caller whose role cannot read the row; it hands back the zone and nothing else.
+   * `UTC` (the column default) answers as "not set", like a `timezone` the app passes.
+   */
+  const zoneOfRow = async (ref: unknown): Promise<string> => {
+    const r = (ref ?? {}) as { table?: unknown; id?: unknown }
+    const table = typeof r.table === "string" ? r.table : ""
+    const id = typeof r.id === "string" ? r.id : ""
+    if (!table || !manifest.schema?.[table]?.fields?.timezone) {
+      throw Object.assign(
+        new Error(`timezoneOf: ${appName} declares no table ${table || "(none)"} with a timezone`),
+        { status: 422, code: "invalid_params" },
+      )
+    }
+    const missing = Object.assign(new Error(`timezoneOf: no ${table} row ${id || "(none)"}`), {
+      status: 404,
+      code: "not_found",
+    })
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) throw missing
+    const { extractRows } = await import("~/db")
+    const { withPrivilegedDb } = await import("~/db/privileged")
+    const rows = await withPrivilegedDb(orgId, "time-civil-row-zone", (tx) =>
+      tx.execute(
+        drizzleSql`SELECT timezone FROM ${appTable(schemaName, table)} WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
+      ),
+    )
+    const found = extractRows<{ timezone: string | null }>(rows)[0]
+    if (!found) throw missing
+    return found.timezone || "UTC"
+  }
+
   /** A declared discussion entity of this app named by a bridge call, or the refusal to return. */
   const discussionRef = async (
     paramsJson: string,
@@ -444,10 +477,23 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
     // `ctx.time.civil({timezone, at?})`: the wall clock of an instant in a zone. No capability: it
     // reads nothing of the org's beyond its zone. `UTC` is the default of the issuer and org
     // columns and so means "not set": the org's own zone answers. `Etc/UTC` is UTC, exactly.
+    // `timezoneOf: { table, id }` instead of `timezone` answers in the zone a row of the app's own
+    // table holds in its `timezone` column, read whatever the caller may see of that row: a
+    // person who may change a record dated in its issuer's zone gets the dates right, and learns
+    // the zone and nothing else of the row.
     time_civil: async (paramsJson: string): Promise<string> => {
-      const params = JSON.parse(paramsJson || "{}") as { timezone?: unknown; at?: unknown }
+      const params = JSON.parse(paramsJson || "{}") as {
+        timezone?: unknown
+        timezoneOf?: unknown
+        at?: unknown
+      }
       const at = instantOf(params.at)
-      let zone = typeof params.timezone === "string" ? params.timezone : ""
+      let zone =
+        params.timezoneOf !== undefined
+          ? await zoneOfRow(params.timezoneOf)
+          : typeof params.timezone === "string"
+            ? params.timezone
+            : ""
       if (zone === "UTC") {
         // Privileged: kernel.organizations is closed to the handler's RLS role, and a denied read
         // comes back empty, which would silently mean UTC.

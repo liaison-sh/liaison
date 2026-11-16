@@ -46,6 +46,7 @@ import {
 } from "~/seed/factories/commerce/invoicing"
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
+import { grantRoleDimension } from "~/seed/factories/people/role-grants"
 import { seedPipeline } from "~/seed/factories/projects/deals"
 import { seedProject, type TaskSpec } from "~/seed/factories/projects/projects"
 import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
@@ -338,6 +339,37 @@ const lineSpecs = (lines: readonly StudioInvoiceLine[]) =>
     lineKind: "service" as const,
     ...(l.externalId ? { externalId: l.externalId } : {}),
   }))
+
+/** The kernel role of the people who send the studio's documents to its clients: finance. */
+const STUDIO_SENDER_ROLES = ["finance"] as const
+
+/**
+ * The mailbox the studio's documents are sent from: the org's shared one, which the roles that
+ * send them may use (their `mail:inbox` grant, on the role so a reset keeps it). Null when the
+ * world has no mail.
+ */
+async function seedStudioSendFrom(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+): Promise<string | null> {
+  const rows = await withPrivilegedDb(ctx.orgId, "seed-studio:send-from", (tx) =>
+    tx.execute(sql`
+      SELECT id::text AS id FROM ${sql.raw(schemaRef("app_mail"))}.accounts
+       WHERE org_id = ${ctx.orgId}::uuid AND owner_type = 'org'
+       ORDER BY created_at, id LIMIT 1`),
+  )
+  const mailbox = rowsOf<{ id: string }>(rows)[0]?.id ?? null
+  if (!mailbox) return null
+  await grantRoleDimension(
+    ctx.orgId,
+    org.adminUserId,
+    "mail:inbox",
+    STUDIO_SENDER_ROLES.map((role) => [role, [mailbox]] as const),
+    "seed-studio",
+    ctx.log,
+  )
+  return mailbox
+}
 
 /**
  * The money of the year, in the order it happened: the issuer; the portal's quote and billing
@@ -676,9 +708,11 @@ async function seedStudioMoney(
   const order = new Map(specs.map((s, i) => [s.key, i]))
   documents.sort((a, b) => (order.get(a.spec.key) ?? 0) - (order.get(b.spec.key) ?? 0))
 
+  const mailAccountId = await seedStudioSendFrom(ctx, org)
   const { issuerProfileId } = await seedInvoicingHistory(ctx, {
     issuer: {
       key: "studio",
+      mailAccountId,
       legalName: STUDIO_COMPANY.legalName ?? STUDIO_COMPANY.name,
       country: STUDIO_COMPANY.country ?? "FR",
       vatId: STUDIO_COMPANY.vat ?? null,
@@ -804,7 +838,6 @@ async function seedStudioMoney(
   ctx.log(
     `money: ${money.invoices.length} invoices to ${money.invoices.at(-1)?.number}, plan of ${money.steps.length} steps, ${money.retainers.length} schedules`,
   )
-  void org
 }
 
 /** Who is away from the anchor, said by the owner, with who is next in line. */

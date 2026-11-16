@@ -29,7 +29,11 @@ export interface CivilTime {
 /** The host's `ctx.time`; see `AppContext.time` in `@liaison/app-sdk`. */
 export interface TimeSurface {
   time: {
-    civil(params: { timezone: string; at?: string | number }): Promise<CivilTime>
+    civil(
+      params:
+        | { timezone: string; at?: string | number }
+        | { timezoneOf: { table: string; id: string }; at?: string | number },
+    ): Promise<CivilTime>
   }
 }
 

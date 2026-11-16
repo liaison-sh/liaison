@@ -978,9 +978,16 @@ export interface AppContext {
      * `timezone` is an IANA name. `UTC`, the column default of issuer and org zones, means "not
      * set": the organization's zone answers, and UTC when it has none. `Etc/UTC` is UTC, exactly.
      * `at` (ISO date-time or epoch milliseconds) defaults to now. An unknown zone rejects with
-     * `code: "invalid_timezone"`.
+     * `code: "invalid_timezone"`. `timezoneOf` instead of `timezone` answers in the zone a row of
+     * the app's own table holds in its `timezone` column (`UTC` there meaning "not set" again),
+     * whether or not the caller may read that row; it rejects with `code: "not_found"` when the
+     * row does not exist.
      */
-    civil(params: { timezone: string; at?: string | number }): Promise<CivilTime>
+    civil(
+      params:
+        | { timezone: string; at?: string | number }
+        | { timezoneOf: { table: string; id: string }; at?: string | number },
+    ): Promise<CivilTime>
   }
   /**
    * The effect ledger: an outside call claimed before it runs and stored after,

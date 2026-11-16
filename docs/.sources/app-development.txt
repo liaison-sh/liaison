@@ -147,3 +147,4 @@ A stored list older than 30 minutes is not shown; the refresh reloads the person
 A pinned param is never required: the manifest is refused -> apps/api/src/modules/apps/contract.ts:1427-1435
 A stored list too old to show lists the app as out of date on the feed -> apps/api/src/modules/apps/attention-store.ts:108
 A failed run keeps the stored list's date -> apps/api/src/modules/apps/attention-store.ts:432
+ctx.time.civil takes timezoneOf { table, id }: the zone in the timezone column of a row of the app's own table, read whatever the caller may see of it; a missing row rejects with not_found -> apps/api/src/modules/apps/sandbox/bridge/platform.ts:164-196 ; apps/api/src/modules/apps/sandbox/bridge/platform.ts:488-497 ; packages/app-sdk/src/types.ts:976-995

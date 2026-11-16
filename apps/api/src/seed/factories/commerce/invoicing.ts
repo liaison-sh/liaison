@@ -422,6 +422,8 @@ export interface IssuerProfileInput {
   timezone: string
   /** The company's SIREN and structured address, which a French e-invoice states. */
   identity?: { siren: string; line1: string; postcode: string; city: string; countryCode: string }
+  /** The mailbox its documents are sent from (Settings, Invoicing). */
+  mailAccountId?: string | null
 }
 
 export function issuerProfileId(ctx: SeedContext, key: string): string {
@@ -469,6 +471,7 @@ async function upsertIssuerProfile(
           country_code: p.identity.countryCode,
         }
       : {}),
+    ...(p.mailAccountId ? { mail_account_id: p.mailAccountId } : {}),
     email_templates: jsonCell({}),
     created_at: iso(shiftTime(ctx.now, -365)),
     updated_at: iso(shiftTime(ctx.now, -30)),

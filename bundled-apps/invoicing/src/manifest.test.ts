@@ -1765,6 +1765,9 @@ describe("invoicing manifest", () => {
     //   issuer raises einvoicing:issuer_incomplete and is never dead-lettered.
     // 0.31.2: an advance deduction (a milestone's or a prepaid retainer month's final) that fails
     //   for any reason but the deduction's unique key reports that failure, not a race.
+    // 0.31.3: a person whose role cannot read issuer profiles changes or pauses a schedule their
+    //   scope allows, its dates in the issuer's zone; a retainer month's draft is made out to the
+    //   client's contact.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

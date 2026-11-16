@@ -72,6 +72,19 @@ describe("the portal context before its own login", () => {
     expect(portalPool ? [] : callers).toEqual([])
   })
 
+  it("once the portal pool exists, only the portal module runs the portal context", () => {
+    if (!portalPool) return
+    const callers = files
+      .filter(
+        ({ file, source }) =>
+          file !== "db/portal-rls.ts" &&
+          !file.startsWith("modules/portal/") &&
+          reachesPortalContext(source),
+      )
+      .map(({ file }) => file)
+    expect(callers).toEqual([])
+  })
+
   it("once the portal pool exists, the portal context runs on it and not on the request pool", () => {
     const source = withoutComments(readFileSync(join(SRC, "db", "portal-rls.ts"), "utf8"))
     if (!portalPool) {
@@ -80,6 +93,8 @@ describe("the portal context before its own login", () => {
     }
     expect(source).toContain("__portal_pool_db__")
     expect(source).not.toContain("__request_pool_db__")
+    // Without the portal login there is no fallback to another pool: it refuses.
+    expect(source).toContain("PortalUnavailableError")
   })
 
   it("a portal token is minted at the session mint site only", () => {

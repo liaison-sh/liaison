@@ -22,7 +22,12 @@ import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { markBootComplete, ReadinessTestAccess } from "~/lib/readiness"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
-import { changePassword, createSession, refreshSession } from "~/modules/auth/auth"
+import {
+  changePassword,
+  createPortalSession,
+  createSession,
+  refreshSession,
+} from "~/modules/auth/auth"
 import { signAccessToken, signPortalToken, verifyAccessToken } from "~/modules/auth/jwt"
 import { cleanupSeededOrg, seedOrgWithUser } from "~/modules/mcp/test-helpers"
 import { createExternalUser } from "~/modules/users/external-user"
@@ -67,7 +72,7 @@ beforeAll(async () => {
   orgId = seeded.orgId
   memberId = seeded.userId
   externalId = await newExternal("walk")
-  portalToken = (await createSession(externalId, orgId)).accessToken
+  portalToken = (await createPortalSession(externalId, orgId)).accessToken
   memberToken = (await createSession(memberId, orgId)).accessToken
 })
 
@@ -106,12 +111,12 @@ describe("signing", () => {
   })
 })
 
-describe("a session mint chooses by the row's type", () => {
+describe("each door mints for its own kind of row", () => {
   it("a member's session is an access token", () => {
     expect(claims(memberToken).aud).toBe("access")
   })
 
-  it("an external row's session is a portal token", () => {
+  it("an external row's portal session is a portal token", () => {
     expectPortalClaims(portalToken)
     expect(claims(portalToken).userId).toBe(externalId)
   })
@@ -121,14 +126,21 @@ describe("a session mint chooses by the row's type", () => {
     await sql.unsafe(
       insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
     )
-    const pair = await createSession(id, orgId)
+    const pair = await createPortalSession(id, orgId)
     expectPortalClaims(pair.accessToken)
     expect(pair.admin).toBe(false)
   })
 
-  it("a device-flow ceiling on an external row's session is still a portal token", async () => {
+  it("a member session on an external row is refused, with a device-flow ceiling too", async () => {
     const id = await newExternal("device")
-    expectPortalClaims((await createSession(id, orgId, ["kernel:threads:read"])).accessToken)
+    await expect(createSession(id, orgId)).rejects.toThrow("Invalid credentials")
+    await expect(createSession(id, orgId, ["kernel:threads:read"])).rejects.toThrow(
+      "Invalid credentials",
+    )
+  })
+
+  it("a portal session on a member row is refused", async () => {
+    await expect(createPortalSession(memberId, orgId)).rejects.toThrow("Invalid credentials")
   })
 
   it("the second-factor branch of a session mint is a portal token too", async () => {
@@ -138,7 +150,7 @@ describe("a session mint chooses by the row's type", () => {
     )
     await sql`UPDATE kernel.organizations SET settings = jsonb_set(settings, '{requireAdminSecondFactor}', 'true') WHERE id = ${orgId}`
     try {
-      const token = (await createSession(id, orgId)).accessToken
+      const token = (await createPortalSession(id, orgId)).accessToken
       expectPortalClaims(token)
       expect(claims(token).secondFactorRequired).toBeUndefined()
     } finally {
@@ -146,21 +158,20 @@ describe("a session mint chooses by the row's type", () => {
     }
   })
 
-  it("a refresh of an external row's session is a portal token", async () => {
+  it("a portal refresh of an external row's session is a portal token; the member refresh refuses it", async () => {
     const id = await newExternal("refresh")
-    const first = await createSession(id, orgId)
-    expectPortalClaims((await refreshSession(first.refreshToken)).accessToken)
+    const first = await createPortalSession(id, orgId)
+    await expect(refreshSession(first.refreshToken)).rejects.toThrow()
+    expectPortalClaims((await refreshSession(first.refreshToken, { kind: "portal" })).accessToken)
   })
 
-  it("a password change on an external row mints a portal token", async () => {
+  it("a password change on an external row mints nothing", async () => {
     const id = await newExternal("password")
     await sql`UPDATE kernel.users SET password_hash = ${await hashPassword("old-pass-1234")} WHERE id = ${id}`
     await sql.unsafe(
       insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
     )
-    const pair = await changePassword(id, "old-pass-1234", "new-pass-5678")
-    expectPortalClaims(pair.accessToken)
-    expect(pair.admin).toBe(false)
+    await expect(changePassword(id, "old-pass-1234", "new-pass-5678")).rejects.toThrow()
   })
 })
 

@@ -243,6 +243,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/notifications/mail-producer.ts": ["stored-ids", "a notification's recipient"],
   "modules/notifications/on-call.ts": ["stored-ids", "the on-call ids in the org's settings"],
   "modules/notifications/router.ts": ["stored-ids", "a notification's recipient"],
+  "modules/portal/auth-service.ts": [
+    "member-filter",
+    "the client portal's sign-in: every read is of user_type external, by the address or id the request names",
+  ],
   "modules/notifications/routes.ts": ["walks-org", "the on-call picker lists active rows"],
   "modules/notifications/settings.ts": ["one-row", "the caller's own timezone"],
   "modules/org/caps.ts": ["member-filter", "seats count members only"],

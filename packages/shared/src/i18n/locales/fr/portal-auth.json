@@ -1,0 +1,19 @@
+{
+  "mail": {
+    "subject": "Votre lien de connexion pour {{org}}",
+    "eyebrow": "Espace client",
+    "heading": "Connexion à {{org}}",
+    "body": "Ouvrez le lien ci-dessous pour vous connecter à votre espace client. Il ne fonctionne qu'une fois et expire dans 15 minutes.",
+    "ignore": "Si vous n'avez pas demandé à vous connecter, ignorez cet e-mail. Personne ne peut se connecter sans ce lien.",
+    "cta": "Se connecter",
+    "footer": "Vous recevez cet e-mail parce qu'une connexion à l'espace client a été demandée pour cette adresse."
+  },
+  "page": {
+    "requested": "Si cette adresse a un accès, un lien de connexion est en route. Consultez votre boîte de réception.",
+    "continue": "Continuer vers votre espace client",
+    "linkInvalid": "Ce lien ne fonctionne plus. Demandez-en un nouveau.",
+    "totpPrompt": "Saisissez le code de votre application d'authentification.",
+    "totpInvalid": "Ce code n'a pas fonctionné. Réessayez.",
+    "unavailable": "L'espace client n'est pas disponible pour le moment."
+  }
+}

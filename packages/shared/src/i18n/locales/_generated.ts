@@ -16,6 +16,7 @@ import en_Google_drive from "./en/google-drive.json"
 import en_Kernel from "./en/kernel.json"
 import en_Knowledge from "./en/knowledge.json"
 import en_Mail from "./en/mail.json"
+import en_Portal_auth from "./en/portal-auth.json"
 import en_Projects from "./en/projects.json"
 import en_Secret_request from "./en/secret-request.json"
 import en_Setup_guides from "./en/setup-guides.json"
@@ -34,6 +35,7 @@ import fr_Google_drive from "./fr/google-drive.json"
 import fr_Kernel from "./fr/kernel.json"
 import fr_Knowledge from "./fr/knowledge.json"
 import fr_Mail from "./fr/mail.json"
+import fr_Portal_auth from "./fr/portal-auth.json"
 import fr_Projects from "./fr/projects.json"
 import fr_Secret_request from "./fr/secret-request.json"
 import fr_Setup_guides from "./fr/setup-guides.json"
@@ -60,6 +62,7 @@ export const GENERATED_DICTIONARIES: Record<
     kernel: en_Kernel as LocaleDict,
     knowledge: en_Knowledge as LocaleDict,
     mail: en_Mail as LocaleDict,
+    "portal-auth": en_Portal_auth as LocaleDict,
     projects: en_Projects as LocaleDict,
     "secret-request": en_Secret_request as LocaleDict,
     "setup-guides": en_Setup_guides as LocaleDict,
@@ -80,6 +83,7 @@ export const GENERATED_DICTIONARIES: Record<
     kernel: fr_Kernel as LocaleDict,
     knowledge: fr_Knowledge as LocaleDict,
     mail: fr_Mail as LocaleDict,
+    "portal-auth": fr_Portal_auth as LocaleDict,
     projects: fr_Projects as LocaleDict,
     "secret-request": fr_Secret_request as LocaleDict,
     "setup-guides": fr_Setup_guides as LocaleDict,

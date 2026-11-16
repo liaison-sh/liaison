@@ -53,6 +53,32 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
   "GET /.well-known/mcp": { credential: "none", reason: "static MCP discovery" },
   "GET /.well-known/oauth-authorization-server": { credential: "none", reason: "RFC 8414" },
   "GET /.well-known/oauth-protected-resource": { credential: "none", reason: "RFC 9728" },
+  // The client portal's sign-in (modules/portal/auth-routes.ts): its own doors,
+  // never a member's; every other /api/portal route needs a portal token.
+  "POST /api/portal/auth/request": {
+    credential: "none",
+    reason: "uniform padded reply for any address; a link is mailed only to an active client",
+  },
+  "POST /api/portal/auth/verify": {
+    credential: "challenge-or-credential-in-body",
+    reason: "the mailed link's one-use token, posted by the page",
+  },
+  "POST /api/portal/auth/totp": {
+    credential: "challenge-or-credential-in-body",
+    reason: "the second-factor challenge token and a code",
+  },
+  "GET /api/portal/auth/branding/:slug": {
+    credential: "none",
+    reason: "an org's name for the sign-in page; an unknown slug answers the same shape",
+  },
+  "POST /api/portal/auth/refresh": {
+    credential: "own-bearer",
+    reason: "the portal's own refresh cookie, from an allowed Origin",
+  },
+  "POST /api/portal/auth/logout": {
+    credential: "own-bearer",
+    reason: "the portal's own refresh cookie, from an allowed Origin",
+  },
   // Sign-in, recovery and registration: the request carries the credential.
   "GET /api/auth/bootstrap-state": { credential: "none", reason: "whether setup is pending" },
   "POST /api/auth/register": {

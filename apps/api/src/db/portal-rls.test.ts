@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// withPortalContext on the login requests really use (liaison_request): it
-// reaches the portal role, and it opens only for an active external user.
+// withPortalContext on the portal's own login (liaison_portal): it runs as the
+// portal role, cannot step back to any other role, and opens only for an active
+// external user.
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -67,13 +68,19 @@ beforeAll(async () => {
   )
 })
 
+/** The database's own message behind drizzle's "Failed query" wrapper. */
+function databaseMessage(err: unknown): string {
+  const e = err as { message?: string; cause?: { message?: string } }
+  return e.cause?.message ?? e.message ?? String(err)
+}
+
 afterAll(async () => {
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG_ID}`
   await sql`DELETE FROM kernel.organizations WHERE id IN (${ORG_ID}, ${OTHER_ORG_ID})`
 })
 
 describe("withPortalContext", () => {
-  test("on the request login, withPortalContext reaches liaison_portal and reads portal.me", async () => {
+  test("on the portal login, withPortalContext runs as liaison_portal and reads portal.me", async () => {
     const out = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
       const [who] = extractRows<{ login: string; role: string }>(
         await tx.execute(
@@ -88,21 +95,46 @@ describe("withPortalContext", () => {
       )
       return { who, me, scopes }
     })
-    expect(out.who).toEqual({ login: "liaison_request", role: "liaison_portal" })
+    expect(out.who).toEqual({ login: "liaison_portal", role: "liaison_portal" })
     expect(out.me).toEqual([{ id: EXTERNAL_ID, company_id: COMPANY_ID }])
     expect(out.scopes?.scopes).toBe("__none__")
   })
 
-  test("a statement inside the portal context can return to the login's roles, so portal code runs only static SQL", async () => {
-    const role = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
-      await tx.execute(drizzleSql`SET LOCAL ROLE liaison_rls`)
-      const [who] = extractRows<{ role: string }>(
-        await tx.execute(drizzleSql`SELECT current_user::text AS role`),
-      )
-      return who?.role
+  test("a portal transaction runs on the portal login and cannot step back to the request login's rights", async () => {
+    // RESET ROLE returns to the session's own role, which is the portal role itself.
+    const reset = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
+      await tx.execute(drizzleSql`RESET ROLE`)
+      return extractRows<{ login: string; role: string }>(
+        await tx.execute(
+          drizzleSql`SELECT session_user::text AS login, current_user::text AS role`,
+        ),
+      )[0]
     })
-    // No guard refuses the step back today: the role switch is not a sandbox for caller text.
-    expect(role).toBe("liaison_rls")
+    expect(reset).toEqual({ login: "liaison_portal", role: "liaison_portal" })
+    // Every other way to another role raises: the portal login is a member of no role.
+    for (const step of [
+      drizzleSql`SET LOCAL ROLE liaison_rls`,
+      drizzleSql`SET LOCAL ROLE liaison_request`,
+      drizzleSql`SET SESSION AUTHORIZATION liaison_request`,
+      drizzleSql`SELECT set_config('role', 'liaison_rls', true)`,
+      drizzleSql`SELECT set_config('role', 'liaison_app', true)`,
+    ]) {
+      const refused = await withPortalContext(
+        { orgId: ORG_ID, userId: EXTERNAL_ID },
+        async (tx) => {
+          await tx.execute(step)
+          return "stepped"
+        },
+      ).catch(databaseMessage)
+      expect(refused).toMatch(/permission denied/i)
+    }
+    // After the reset, a kernel table is still denied, not filtered to zero rows.
+    const denied = await withPortalContext({ orgId: ORG_ID, userId: EXTERNAL_ID }, async (tx) => {
+      await tx.execute(drizzleSql`RESET ROLE`)
+      await tx.execute(drizzleSql`SELECT 1 FROM kernel.users LIMIT 1`)
+      return "read"
+    }).catch(databaseMessage)
+    expect(denied).toMatch(/permission denied/i)
   })
 
   test("refuses a member and runs nothing", async () => {

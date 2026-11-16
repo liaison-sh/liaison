@@ -442,6 +442,16 @@ async function ensurePortalMembership(opts: {
           GRANT liaison_portal TO liaison_request;
         END IF;
       END $$`)
+    // A checkout whose migration step gives the portal login LOGIN (db/migrate.ts)
+    // runs its portal pool as that login, with the request login's test password.
+    const migrateSource = readFileSync(path.join(opts.root, "apps/api/src/db/migrate.ts"), "utf8")
+    if (/ALTER ROLE liaison_portal WITH LOGIN/.test(migrateSource)) {
+      await sql.unsafe(`DO $$ BEGIN
+        IF EXISTS (SELECT FROM pg_roles WHERE rolname = 'liaison_portal' AND NOT rolcanlogin) THEN
+          ALTER ROLE liaison_portal LOGIN PASSWORD '${TEST_REQUEST_LOGIN_PASSWORD}';
+        END IF;
+      END $$`)
+    }
   } finally {
     await sql.end({ timeout: 5 })
   }

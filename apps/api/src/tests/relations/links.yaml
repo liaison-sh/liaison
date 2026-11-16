@@ -1031,3 +1031,38 @@ links:
     open:
       Dl: opening and closing shares from the client access panel is not built yet, nor what a share shows once the colleague who opened it is erased
       Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: ticket-company
+    what: a ticket to the client company it is for, stamped when it is created (the portal person's company, else its contact's) and never followed afterwards
+    storedIn: app_tickets.tickets.company_id (stamped at creation)
+    columns: [app_tickets.tickets.company_id]
+    paths:
+      - apps/api/src/apps/tickets/create.ts
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/portal/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: H, Mv: b, Rs: a, Dr: e, Ex: c, Mi: M, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move tickets to the surviving company yet
+      Dl: what a ticket shows once its company is deleted is not driven in this file yet
+      Ap: switching the tickets app off is not driven in this file yet
+      Mi: open tickets are stamped once from their contact's company by the migration that added the column; that stamp is not driven in this file yet
+
+  - name: document-company
+    what: an issued invoicing document to the client company it is made out to, stamped once at issue from the counterparty's company and never followed afterwards
+    storedIn: app_invoicing.documents.company_id (stamped at issue)
+    columns: [app_invoicing.documents.company_id]
+    paths:
+      - bundled-apps/invoicing/src/issue.ts
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/portal/
+    visibleState: [unlinked]
+    whoIsTold: [admin, clerk]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: R, Dx: a, Pm: a, Ap: H, Mv: b, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move issued documents to the surviving company yet
+      Dl: deleting the company of an issued document is not driven in this file yet
+      Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet

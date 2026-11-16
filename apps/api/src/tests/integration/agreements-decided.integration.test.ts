@@ -16,6 +16,8 @@ import { schemaRef } from "~/db/schema-ref"
 import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
+import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
+import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { env } from "~/lib/env"
 import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
@@ -45,6 +47,8 @@ const app = (table: string) => sql(`${schemaRef("app_agreements")}.${table}`)
 let w: DoorWorld
 /** The first test's signed version, for the frozen-file read checks. */
 let sealed: { versionId: string; fileId: string; sha256: string } | undefined
+/** The version signed over swapped bytes, which the retry seals later. */
+let swappedVersion: string | undefined
 const capture = new CaptureProvider()
 let previousMail: EmailProvider
 let prevTsa: string | undefined
@@ -360,9 +364,31 @@ describe("a client's signature through the agreements app", () => {
          WHERE org_id = ${w.orgId} AND kind = 'agreements:evidence.mismatch'
            AND user_id = ${w.admin.userId}`
       expect(items).toHaveLength(1)
+      swappedVersion = versionId
     } finally {
       frozenFileStorage.read = realRead
     }
+  }, 120_000)
+
+  it("once storage answers the fingerprinted bytes again, the seal retry job seals the version", async () => {
+    if (!swappedVersion) throw new Error("the swapped signing did not run")
+    const handler = JobsTestAccess.getHandler("agreements", "seal-retry")
+    if (!handler) throw new Error("seal-retry is not registered")
+    await dispatchAppJobWithContext(
+      handler,
+      { orgId: w.orgId },
+      { actorType: "system", orgId: w.orgId, purpose: "job", scopes: ["agreements:*"] },
+      "session",
+    )
+    await drainOutbox()
+    const [pkg] = (await sql`
+      SELECT signed_pdf_file_id, evidence_file_id FROM ${app("evidence_packages")}
+       WHERE version_id = ${swappedVersion}`) as unknown as Array<{
+      signed_pdf_file_id: string | null
+      evidence_file_id: string | null
+    }>
+    expect(pkg?.signed_pdf_file_id).toBeTruthy()
+    expect(pkg?.evidence_file_id).toBeTruthy()
   }, 120_000)
 
   it("with one signer past the code and one not, sign refuses for the unverified one and the agreement never reaches signed", async () => {

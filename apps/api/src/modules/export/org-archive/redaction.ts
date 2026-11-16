@@ -136,6 +136,11 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "app_boxtal.prep_order_state.order_key": NOT_SECRET_KEY,
   "app_boxtal.prep_quote.input_hash": CONTENT_HASH,
   "app_calendar.calendars.sync_token": "provider sync cursor, grants no access",
+  "app_agreements.evidence_packages.hash_alg": "the name of a hash algorithm, not a hash",
+  "app_agreements.evidence_packages.last_verified_at": "a timestamp",
+  "app_agreements.evidence_packages.last_verify_ok": "whether the last seal check passed",
+  "app_agreements.signature_events.code_verified_at":
+    "a timestamp in the signing evidence, not the code",
   "app_invoicing.counterparty_identities.verified_by": "who approved the identity, not a verifier",
   "app_invoicing.advance_deductions.state": STATUS,
   "app_invoicing.billing_steps.state": STATUS,

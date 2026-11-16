@@ -536,6 +536,10 @@
       "desc": 566,
       "schema": 9
     },
+    "boxtal__to_ship_by_product": {
+      "desc": 1237,
+      "schema": 9
+    },
     "boxtal__track": {
       "desc": 1624,
       "schema": 61
@@ -1757,7 +1761,7 @@
       "schema": 11
     },
     "kernel__tables_edit": {
-      "desc": 4731,
+      "desc": 4818,
       "schema": 3
     },
     "kernel__tables_get": {

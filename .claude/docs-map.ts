@@ -260,6 +260,11 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
     reason: "the portal door tests, their shared world and the list of doors still owed",
   },
   {
+    glob: "apps/api/src/modules/portal/**",
+    reason:
+      "the client portal's API, not yet reachable by anyone: no screen and no way to create a portal account exist until the portal pages land, which bring its page; sign-in effects on members are on admin/users",
+  },
+  {
     glob: "apps/api/src/modules/setup-guides/**",
     reason: "former path of modules/connection-guides (renamed); the new path is mapped",
   },

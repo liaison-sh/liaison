@@ -104,7 +104,7 @@ describe("what the portal role can reach", () => {
     expect(found).toEqual(Object.keys(ALLOWED).sort())
   })
 
-  test("holds no attribute a login, a bypass or a role administrator would need", async () => {
+  test("is a login (the portal pool's), with no bypass or role administration", async () => {
     const [role] = await db<
       {
         rolsuper: boolean
@@ -118,9 +118,18 @@ describe("what the portal role can reach", () => {
     expect(role).toEqual({
       rolsuper: false,
       rolbypassrls: false,
-      rolcanlogin: false,
+      rolcanlogin: true,
       rolcreaterole: false,
       rolcreatedb: false,
     })
+  })
+
+  test("the portal login is a member of no other role", async () => {
+    const memberOf = await db<{ rolname: string }[]>`
+      SELECT g.rolname FROM pg_auth_members m
+        JOIN pg_roles g ON g.oid = m.roleid
+        JOIN pg_roles r ON r.oid = m.member
+       WHERE r.rolname = ${ROLE}`
+    expect(memberOf.map((r) => r.rolname)).toEqual([])
   })
 })

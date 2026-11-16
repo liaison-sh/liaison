@@ -31,6 +31,7 @@ const log = rootLogger.child({ service: "email" })
  */
 export type EmailTemplateId =
   | "auth.sign-in-code"
+  | "portal.sign-in-link"
   | "auth.step-up-code"
   | "auth.password-reset"
   | "users.invitation"

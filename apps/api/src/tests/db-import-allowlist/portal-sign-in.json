@@ -1,0 +1,8 @@
+{
+  "privileged": {
+    "modules/portal/auth-service.ts": "The client portal's sign-in, before any portal context exists: reads the org by the slug the request names, the one active client of that org with the address or id the request names and its company's state, and that client's own second-factor secret under a row lock. Never lists people, never reads a member row (user_type external in every query)."
+  },
+  "sql": {
+    "tests/security/portal-doors/auth-world.ts": "test rows for the portal sign-in door tests: two orgs, their companies and people, written as the test login and dropped after (no product path creates a client yet)"
+  }
+}

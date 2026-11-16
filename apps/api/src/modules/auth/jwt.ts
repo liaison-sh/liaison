@@ -164,3 +164,37 @@ export async function verifyAccessToken(
   }
   return parsed.data
 }
+
+// A portal token's claims: identity only. `.strict()` refuses any other claim,
+// so a token carrying a company, scopes or roles is no portal token (the
+// company is always read from the user's own row, portal.company_id()).
+const portalTokenPayloadSchema = z
+  .object({
+    userId: z.string().uuid(),
+    orgId: z.string().uuid(),
+    name: z.string(),
+    authVersion: z.number().int(),
+    permissionVersion: z.number().int(),
+    sid: z.string().uuid().optional(),
+    aud: z.literal("portal"),
+    iat: z.number(),
+    exp: z.number(),
+  })
+  .strict()
+
+/** Verifies a portal token: audience `portal`, HS256 only, identity claims only. */
+export async function verifyPortalToken(
+  token: string,
+  secret: string,
+): Promise<PortalTokenPayload> {
+  const { payload } = await jose.jwtVerify(token, new TextEncoder().encode(secret), {
+    audience: "portal",
+    algorithms: ["HS256"],
+  })
+  const parsed = portalTokenPayloadSchema.safeParse(payload)
+  if (!parsed.success) {
+    throw new Error(`Invalid portal token payload: ${parsed.error.message}`)
+  }
+  const { aud: _aud, iat: _iat, exp: _exp, ...claims } = parsed.data
+  return claims
+}

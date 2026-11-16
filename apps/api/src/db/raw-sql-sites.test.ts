@@ -166,6 +166,8 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/db/migrate.ts#runMigrations": {
     "requestLoginPasswordSql(opts.requestPassword)":
       "a SCRAM-SHA-256 verifier computed in migrate.ts, checked to be base64 and `$:` only before quoting; the password itself is never spliced",
+    "portalLoginPasswordSql(opts.requestPassword)":
+      "the same verifier rule as requestLoginPasswordSql, for the portal login; the password itself is never spliced",
   },
   "apps/api/src/db/migrate.ts#ensurePolicyRoles": {
     "policyRolesSql()":

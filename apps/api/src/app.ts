@@ -166,6 +166,10 @@ import { dimensionCatalogRoutes } from "~/modules/permissions/dimension-catalog-
 import { adminRoles } from "~/modules/permissions/roles-routes"
 import { scopeCatalogRoutes } from "~/modules/permissions/scope-catalog-routes"
 import type { Scope } from "~/modules/permissions/types"
+import { portalAuthMiddleware, portalAvailableGate } from "~/modules/portal/auth-middleware"
+import { portalAuthRoutes } from "~/modules/portal/auth-routes"
+import { portalRoutes } from "~/modules/portal/routes"
+import { PORTAL_AUTH_PREFIX, PORTAL_PREFIX } from "~/modules/portal/routes-list"
 import { pushRoutes } from "~/modules/push/routes"
 import { savedViewsRoutes } from "~/modules/saved-views/routes"
 import { scopeRequests } from "~/modules/scope-requests/routes"
@@ -229,6 +233,9 @@ export type AppEnv = {
     // (database, Redis, search, maintenance), not an outside upstream: the access
     // log keeps that 503 at error (lib/own-dependency-down.ts).
     ownDependencyDown?: boolean
+    // Set by portalAuthMiddleware on /api/portal/* only: the client a portal
+    // token names. Never set together with userId: no member route reads it.
+    portal?: { orgId: string; userId: string }
   }
 }
 
@@ -362,7 +369,8 @@ app.use(
     },
   }),
 )
-app.use("*", securityHeaders())
+// The portal API never leaves a referrer, is never indexed, cached or framed.
+app.use("*", securityHeaders({ publicPrefixes: [PORTAL_PREFIX] }))
 // Managed edition: every response names the instance that served it (an org's
 // move between two instances is measured with it).
 app.use("*", cellHeaderMiddleware)
@@ -755,6 +763,20 @@ app.use("/api/auth/device-flow/pending/*", authPlusLimit)
 app.use("/api/auth/device-flow/approve/*", authPlusLimit)
 app.use("/api/auth/device-flow/deny/*", authPlusLimit)
 app.route("/api/auth/device-flow", deviceFlow)
+
+// The client portal (modules/portal). Its sign-in (/api/portal/auth/*) is public,
+// rate limited and small-bodied; everything else under /api/portal opens to a
+// portal token only (portalAuthMiddleware), never to authMw, and is exactly
+// PORTAL_ROUTES. With the logins not split there is no portal login: every
+// portal route answers 503.
+app.use(`${PORTAL_PREFIX}/*`, portalAvailableGate)
+app.use(`${PORTAL_AUTH_PREFIX}/*`, publicSurfaceBodyLimit(), publicSurfaceRateLimit(redis))
+app.route(PORTAL_AUTH_PREFIX, portalAuthRoutes)
+const portalAuthMw = portalAuthMiddleware(env.JWT_SECRET)
+app.use(`${PORTAL_PREFIX}/*`, (c, next) =>
+  c.req.path.startsWith(`${PORTAL_AUTH_PREFIX}/`) ? next() : portalAuthMw(c, next),
+)
+app.route(PORTAL_PREFIX, portalRoutes)
 
 // WebSocket ticket: exchange access token for single-use ticket
 app.use("/api/auth/ws-ticket", authPlusLimit)

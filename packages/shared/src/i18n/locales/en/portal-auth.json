@@ -1,0 +1,19 @@
+{
+  "mail": {
+    "subject": "Your sign-in link for {{org}}",
+    "eyebrow": "Client portal",
+    "heading": "Sign in to {{org}}",
+    "body": "Open the link below to sign in to your client space. It works once and expires in 15 minutes.",
+    "ignore": "If you did not ask to sign in, you can ignore this email. Nobody can sign in without this link.",
+    "cta": "Sign in",
+    "footer": "You are receiving this because a sign-in to the client portal was asked for this address."
+  },
+  "page": {
+    "requested": "If this address has access, a sign-in link is on its way. Check your inbox.",
+    "continue": "Continue to your client space",
+    "linkInvalid": "This link no longer works. Ask for a new one.",
+    "totpPrompt": "Enter the code from your authenticator app.",
+    "totpInvalid": "That code did not work. Try again.",
+    "unavailable": "The client portal is not available right now."
+  }
+}

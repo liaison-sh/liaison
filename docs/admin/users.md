@@ -68,6 +68,8 @@ Whoever runs the server can limit how many people are active in the organization
 
 A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, and it cannot reach any of the organization's data on its own; the database refuses it.
 
+A portal account signs in only through the client portal, with a one-use link mailed to its address that works for 15 minutes. The member sign-in (password, emailed code, single sign-on, password reset) never signs it in and sends it nothing. An invitation to an address that belongs to a portal account is refused with **EMAIL_IS_PORTAL_USER**: the same person cannot be both a member and a client.
+
 A portal account never appears where you pick a colleague, for an administrator too: the people list, share dialogs, mentions, assignee menus, the agent's colleague search (`users_search`), approver lists and notification targets list members only. A client holds no role, no scope and no dimension value: `assign_role`, `grant_user_scope` and `grant_dimension_value` refuse one with **USER_IS_EXTERNAL** and change nothing, and the database refuses such a grant too.
 
 These scopes cover clients:

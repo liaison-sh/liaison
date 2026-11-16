@@ -31,6 +31,7 @@ import { type OrgConfigToolCtx, resolveActor } from "~/modules/agent/tools/org-c
 import { splitToolName } from "~/modules/approvals/event-data"
 import { listApprovals } from "~/modules/approvals/list"
 import { queryAuditLogPage } from "~/modules/audit/service"
+import { emailHeldByPortalUser } from "~/modules/auth/auth"
 import { getDimensionCatalog } from "~/modules/permissions/dimension-catalog"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
@@ -381,6 +382,10 @@ export async function handleInviteUser(
   ctx: OrgConfigToolCtx,
 ): Promise<{ inviteUrl: string } | { error: { code: string; message?: string } }> {
   const actor = await resolveActor(ctx)
+  // RLS hides a client's row from the actor: read it before the transaction.
+  if (await emailHeldByPortalUser(ctx.orgId, params.email)) {
+    return { error: { code: "EMAIL_IS_PORTAL_USER" } }
+  }
   return withRlsContext(actor, async (tx) => {
     const r = await createInvitation(tx, {
       orgId: ctx.orgId,
@@ -1147,11 +1152,13 @@ export async function inviteUserStagingRefusal(
   const normalizedEmail = params.email.toLowerCase()
   return withPrivilegedDb(ctx.orgId, "admin-preflight-invite", async (tx) => {
     const [existing] = await tx
-      .select({ id: usersTable.id })
+      .select({ id: usersTable.id, userType: usersTable.userType })
       .from(usersTable)
       .where(and(eq(usersTable.email, normalizedEmail), eq(usersTable.orgId, ctx.orgId)))
       .limit(1)
-    if (existing) return { code: "USER_EXISTS" }
+    if (existing) {
+      return { code: existing.userType === "external" ? "EMAIL_IS_PORTAL_USER" : "USER_EXISTS" }
+    }
     const [pending] = await tx
       .select({ id: invitationsTable.id })
       .from(invitationsTable)

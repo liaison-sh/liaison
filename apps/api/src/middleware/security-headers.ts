@@ -24,6 +24,19 @@ export interface SecurityHeadersOptions {
    * store exactly when the delivery decision sends the browser there.
    */
   storageOrigin?: string | null
+  /**
+   * Path prefixes of the public client surfaces (the portal API): their
+   * responses never leave a referrer, are never indexed, never stored by a
+   * cache, and are never framed, whatever the route set.
+   */
+  publicPrefixes?: readonly string[]
+}
+
+/** What every response under a public prefix carries. */
+export const PUBLIC_SURFACE_HEADERS: Readonly<Record<string, string>> = {
+  "Referrer-Policy": "no-referrer",
+  "X-Robots-Tag": "noindex, nofollow",
+  "Cache-Control": "no-store",
 }
 
 export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
@@ -152,8 +165,14 @@ export function webShellHeaders(options: {
 }
 
 export function securityHeaders(options: SecurityHeadersOptions = {}): MiddlewareHandler {
+  const { publicPrefixes = [], ...cspOptions } = options
   return async (c, next) => {
     await next()
+    if (publicPrefixes.some((p) => c.req.path.startsWith(p))) {
+      for (const [name, value] of Object.entries(PUBLIC_SURFACE_HEADERS)) c.header(name, value)
+      c.header("X-Frame-Options", BASE_SECURITY_HEADERS["X-Frame-Options"] as string)
+      c.header("Content-Security-Policy", contentSecurityPolicy(cspOptions))
+    }
     c.header("X-Content-Type-Options", BASE_SECURITY_HEADERS["X-Content-Type-Options"] as string)
     c.header(
       "Strict-Transport-Security",
@@ -178,6 +197,6 @@ export function securityHeaders(options: SecurityHeadersOptions = {}): Middlewar
       c.header("Referrer-Policy", BASE_SECURITY_HEADERS["Referrer-Policy"] as string)
     c.header("Permissions-Policy", BASE_SECURITY_HEADERS["Permissions-Policy"] as string)
     if (own.has("Content-Security-Policy")) return
-    c.header("Content-Security-Policy", contentSecurityPolicy(options))
+    c.header("Content-Security-Policy", contentSecurityPolicy(cspOptions))
   }
 }

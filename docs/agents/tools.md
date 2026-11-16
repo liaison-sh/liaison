@@ -271,7 +271,7 @@ Rules that say which document templates a record needs (a customs declaration, a
 | `users_list` | List team members and their roles. | `kernel:users:admin` | No |
 | `describe_user_access` | Read one person's resolved access: exactly the scopes their sign-in holds, each with where it comes from. | `kernel:users:admin` | No |
 | `list_scopes` | List every grantable scope. | `kernel:users:admin` | No |
-| `invite_user` | Invite a person by email with a role. | `kernel:users:admin` | Yes |
+| `invite_user` | Invite a person by email with a role. Refused with `EMAIL_IS_PORTAL_USER` for a client's portal address. | `kernel:users:admin` | Yes |
 | `assign_role` | Assign a person to a role. | `kernel:users:admin` | Yes |
 | `remove_user_from_role` | Remove a person from a role. | `kernel:users:admin` | Yes |
 | `grant_user_scope` | Grant or revoke scopes for one person. | `kernel:users:admin` | Yes |

@@ -68,6 +68,8 @@ Whoever runs the server can limit how many people are active in the organization
 
 A client can have a portal account: a separate kind of sign-in for people outside the organization. A portal account is not a member. It takes no seat, it does not appear in the people list, role pickers, mentions or approver lists, and it cannot reach any of the organization's data on its own; the database refuses it.
 
+A portal account signs in only through the client portal, with a one-use link mailed to its address that works for 15 minutes. The member sign-in (password, emailed code, single sign-on, password reset) never signs it in and sends it nothing. An invitation to an address that belongs to a portal account is refused with **EMAIL_IS_PORTAL_USER**: the same person cannot be both a member and a client.
+
 The scope `kernel:portal:admin` ("See and manage clients' portal accounts") is the permission to see and manage these accounts. It is an administration scope, like `kernel:users:admin`: it can be given to a person, but never to a role agent's scope ceiling.
 
 ## When the managed subscription is suspended

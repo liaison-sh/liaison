@@ -22,6 +22,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
+import { followRestrictedAccess } from "~/modules/client-actions/restricted-follow"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
@@ -30,6 +31,7 @@ import { seedOrgRow } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { insertClientAction } from "~/tests/security/portal-doors/fixture"
 import agreementsManifest from "../../../../../bundled-apps/agreements/app.manifest.json"
 
 const orgId = crypto.randomUUID()
@@ -178,7 +180,16 @@ describe("who can see an agreement", () => {
 // taint, and copies that follow the list. Each surface below names the mechanism that holds it
 // and probes it; a new surface that shows an agreement is added to this list.
 describe("every surface honours the list", () => {
-  const world = { orgId: "", listed: "", admin: "", member: "", closed: "", room: "" }
+  const world = {
+    orgId: "",
+    listed: "",
+    admin: "",
+    member: "",
+    closed: "",
+    room: "",
+    action: "",
+    discussion: "",
+  }
   const NUMBER = "AG-2026-301"
 
   const held = async (userId: string): Promise<UserContext> => {
@@ -303,12 +314,29 @@ describe("every surface honours the list", () => {
     },
     { surface: "activity", mechanism: "owed: the activity feed of agreement events" },
     { surface: "audit search", mechanism: "owed: audit rows of a restricted agreement" },
-    { surface: "client_actions_list", mechanism: "owed: client actions' visible_to from the list" },
+    {
+      surface: "client_actions_list",
+      mechanism: "client actions carry the list as visible_to, followed on every change",
+      seen: (u) =>
+        rlsCount(
+          u,
+          `SELECT count(*)::int AS n FROM kernel.client_actions WHERE id = '${world.action}'`,
+        ),
+    },
     {
       surface: "Knowledge",
       mechanism: "owed: the signed text's Knowledge copy shared with the list",
     },
-    { surface: "entity discussions", mechanism: "owed: discussions pruned to the list" },
+    {
+      surface: "entity discussions",
+      mechanism: "an access change drops everyone but the changer from the discussion",
+      seen: async (u) => {
+        const rows = await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM kernel.thread_participants
+           WHERE thread_id = ${world.discussion}::uuid AND user_id = ${u}::uuid`
+        return Number(rows[0]?.n ?? 0)
+      },
+    },
     { surface: "agent and user memory", mechanism: "owed: a memory write after a restricted read" },
     { surface: "MCP results", mechanism: "owed: the same stamp through the MCP gateway" },
     { surface: "monitoring", mechanism: "owed: an incident says a restricted document" },
@@ -361,6 +389,30 @@ describe("every surface honours the list", () => {
     world.room = await minimal.thread(world.orgId, world.listed, {
       title: "Surfaces",
       participantIds: [world.admin, world.member],
+    })
+    // The list changed once the agreement had a link out and a discussion.
+    const versionId = crypto.randomUUID()
+    world.action = await insertClientAction(
+      {
+        orgId: world.orgId,
+        clientA: { email: "signer@maison-roux.example", name: "Signer" },
+      } as never,
+      { company_id: null, target_id: versionId },
+    )
+    world.discussion = await minimal.thread(world.orgId, world.listed, {
+      title: "Agreement discussion",
+      participantIds: [world.admin, world.member],
+    })
+    await sql`UPDATE kernel.threads SET handle = ${`entity:agreements:agreement:${world.closed}`}
+               WHERE id = ${world.discussion}::uuid`
+    await followRestrictedAccess({
+      app: "agreements",
+      entity: "agreement",
+      action: "access_changed",
+      orgId: world.orgId,
+      entityId: world.closed,
+      actorId: world.listed,
+      data: { org_access: "none", visible_to: [world.listed], version_ids: [versionId] },
     })
     // What a turn of the person on the list leaves behind: a stamped message and a parked post.
     const scope = restrictedScope("agreements", "agreement", world.closed)

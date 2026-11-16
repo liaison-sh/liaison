@@ -170,7 +170,8 @@ describe("a member's time in their data subject export", () => {
     expect(out.daysPerWeek?.rows).toMatchObject([{ days_per_week: 4 }])
     const text = JSON.stringify(out)
     expect(text).not.toContain(leo.userId)
-    expect(text).not.toContain("999")
+    // Nobody else's 999 minutes (a timestamp may hold the digits 999).
+    expect(text).not.toMatch(/"minutes":999\b/)
     expect(text).not.toContain("2027-02-01")
   })
 

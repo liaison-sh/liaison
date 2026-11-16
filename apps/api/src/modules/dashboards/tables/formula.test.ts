@@ -247,3 +247,41 @@ describe("formula column: evaluation", () => {
     expect(run(cols, { f: 100 }).f).toBeUndefined()
   })
 })
+
+describe("formula column: ifempty", () => {
+  const shop = {
+    key: "shop",
+    label: "Shop",
+    type: "lookup",
+    lookup: {
+      source: { tool: "shop:products" },
+      match: { field: "sku", on: "item" },
+      value: "qty",
+      valueType: "number",
+    },
+  } as const satisfies Column
+
+  it("reads the fallback where the value is empty, and the value otherwise", () => {
+    const cols = [...base, shop, formula("have", "ifempty(shop, stock)")]
+    expect(formulaProblems(cols)).toEqual([])
+    expect(run(cols, { stock: 4 }).have).toBe(4)
+    expect(run(cols, { shop: 9, stock: 4 }).have).toBe(9)
+    expect(run(cols, { shop: 0, stock: 4 }).have).toBe(0)
+    expect(run(cols, {}).have ?? null).toBeNull()
+  })
+
+  it("gives a projection to an item with only a typed stock", () => {
+    const cols = [...base, shop, formula("projected", "ifempty(shop, stock) + cumsum(expected)")]
+    expect(run(cols, { stock: 10, expected: { "2026-12": 5 } }).projected).toEqual({
+      "2026-11": 10,
+      "2026-12": 15,
+      "2027-01": 15,
+    })
+  })
+
+  it("takes exactly a value and a fallback", () => {
+    expect(formulaProblems([...base, formula("f", "ifempty(stock)")])[0]?.message).toContain(
+      "ifempty takes a value and a fallback",
+    )
+  })
+})

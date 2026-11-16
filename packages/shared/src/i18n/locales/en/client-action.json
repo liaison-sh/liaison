@@ -1,0 +1,66 @@
+{
+  "mail": {
+    "link": {
+      "subject": "{{sender}} at {{org}} sent you a document to {{verb}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{title}}",
+      "body": "{{sender}} at {{org}} asks you to {{verb}} this document. Open it with the button below. The link works until {{until}}.",
+      "message": "Message from {{sender}}: {{message}}",
+      "safety": "Before you {{verb}}, we email you a code. Nobody from {{org}} will ask you for this code.",
+      "cta": "Open the document",
+      "footer": "This link is for {{email}} only. If this was not meant for you, open it and choose \"This is not for me\"."
+    },
+    "resend": {
+      "subject": "Your new link from {{org}}",
+      "body": "Someone asked for a new link to \"{{title}}\". If it was not you, use this one and ignore that.",
+      "cta": "Open the document"
+    },
+    "code": {
+      "subject": "Your code for {{org}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{code}}",
+      "body": "You are about to {{verb}} \"{{title}}\". Enter this code on the page to continue. It works for 10 minutes.",
+      "safety": "Nobody from {{org}} will ask you for this code. Do not reply to this email.",
+      "footer": "If you did not ask for a code, you can ignore this email."
+    },
+    "copy": {
+      "subject": "Your copy from {{org}}",
+      "body": "Here is the record of what you did on \"{{title}}\": {{decision}} on {{at}}.",
+      "footer": "This copy goes only to the address the document was sent to."
+    },
+    "staff": {
+      "subject": "{{sender}} asks you to {{verb}} \"{{title}}\"",
+      "body": "Open Liaison, find \"{{title}}\" on your Home and choose Read and sign. This email has no link on purpose: you {{verb}} it in your own signed-in session.",
+      "footer": "Nobody from {{org}} will send you a code or a link for this by email."
+    }
+  },
+  "verb": {
+    "sign": "sign",
+    "accept": "accept",
+    "approve": "approve"
+  },
+  "decision": {
+    "signed": "signed",
+    "accepted": "accepted",
+    "approved": "approved",
+    "declined": "declined"
+  },
+  "words": {
+    "sign": "By entering my name and the code, I sign \"{{title}}\" with a simple electronic signature.",
+    "accept": "By entering my name and the code, I accept \"{{title}}\".",
+    "approve": "By entering my name and the code, I approve \"{{title}}\"."
+  },
+  "home": {
+    "decided": "{{name}} {{decision}} \"{{title}}\"",
+    "opened": "{{name}} opened \"{{title}}\"",
+    "requested": "{{name}} asked about \"{{title}}\": {{what}}",
+    "codeLocked": "The link for \"{{title}}\" sent to {{name}} is locked after too many wrong codes",
+    "sendFailed": "The link for \"{{title}}\" did not reach {{name}}: send a new one",
+    "what": {
+      "new_link": "a new link",
+      "not_me": "this is not for them",
+      "invite_asked": "someone else should receive it",
+      "question": "a question"
+    }
+  }
+}

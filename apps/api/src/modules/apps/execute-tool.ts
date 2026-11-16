@@ -3715,6 +3715,12 @@ export function statusForToolError(code: string): number {
     // database connector: db_read naming a read the catalog does not declare
     // (the error lists the valid names).
     case "unknown_read":
+    // Client actions (modules/client-actions/mint.ts): a target or kind no app declared,
+    // a link length outside 7/14/30 days, no address to send to.
+    case "TARGET_NOT_REGISTERED":
+    case "KIND_NOT_ALLOWED":
+    case "INVALID_EXPIRY":
+    case "EMAIL_REQUIRED":
       return 400
     case "forbidden":
     // A scope the caller does not hold is an AUTHORIZATION refusal, not a
@@ -3735,8 +3741,22 @@ export function statusForToolError(code: string): number {
     // fine, where it came from is not; the answer says where to ask instead.
     case HUMAN_TURN_ONLY_CODE:
     case DM_ONLY_CODE:
+    // The document changed since it was read: read it again and send that version.
+    case "VERSION_CHANGED":
+    // An approved client request whose pinned send check now stops it (the person
+    // replied, the address bounced or is held), or that no longer matches its card.
+    case "SEND_GUARD_MISMATCH":
+    case "SEND_GUARD_REPLIED":
+    case "SEND_GUARD_BOUNCED":
+    case "SEND_GUARD_HELD":
+    case "SEND_GUARD_OPTED_OUT":
+    case "SEND_GUARD_REF_STOP":
       return 409
     case APP_STATE_UNAVAILABLE_CODE:
+    // The target app's read tool did not answer: nothing was sent.
+    case "TARGET_UNAVAILABLE":
+    // The send check could not read what it needs: it fails closed, nothing is sent.
+    case "SEND_GUARD_UNAVAILABLE":
       return 503
     case "tool_not_found":
     case "not_found":

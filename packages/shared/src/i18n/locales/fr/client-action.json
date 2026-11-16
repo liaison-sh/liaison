@@ -1,0 +1,66 @@
+{
+  "mail": {
+    "link": {
+      "subject": "{{sender}} de {{org}} vous a envoyé un document à {{verb}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{title}}",
+      "body": "{{sender}} de {{org}} vous demande de {{verb}} ce document. Ouvrez-le avec le bouton ci-dessous. Le lien fonctionne jusqu'au {{until}}.",
+      "message": "Message de {{sender}} : {{message}}",
+      "safety": "Avant de {{verb}}, nous vous envoyons un code par e-mail. Personne de {{org}} ne vous demandera ce code.",
+      "cta": "Ouvrir le document",
+      "footer": "Ce lien est réservé à {{email}}. S'il ne vous était pas destiné, ouvrez-le et choisissez « Ce n'est pas pour moi »."
+    },
+    "resend": {
+      "subject": "Votre nouveau lien de {{org}}",
+      "body": "Quelqu'un a demandé un nouveau lien pour « {{title}} ». Si ce n'était pas vous, utilisez celui-ci et ignorez l'autre.",
+      "cta": "Ouvrir le document"
+    },
+    "code": {
+      "subject": "Votre code pour {{org}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{code}}",
+      "body": "Vous êtes sur le point de {{verb}} « {{title}} ». Saisissez ce code sur la page pour continuer. Il fonctionne 10 minutes.",
+      "safety": "Personne de {{org}} ne vous demandera ce code. Ne répondez pas à cet e-mail.",
+      "footer": "Si vous n'avez pas demandé de code, ignorez cet e-mail."
+    },
+    "copy": {
+      "subject": "Votre copie de {{org}}",
+      "body": "Voici la trace de ce que vous avez fait sur « {{title}} » : {{decision}} le {{at}}.",
+      "footer": "Cette copie part uniquement à l'adresse à laquelle le document a été envoyé."
+    },
+    "staff": {
+      "subject": "{{sender}} vous demande de {{verb}} « {{title}} »",
+      "body": "Ouvrez Liaison, trouvez « {{title}} » sur votre accueil et choisissez Lire et signer. Cet e-mail ne contient volontairement aucun lien : vous le faites dans votre propre session connectée.",
+      "footer": "Personne de {{org}} ne vous enverra de code ni de lien par e-mail pour cela."
+    }
+  },
+  "verb": {
+    "sign": "signer",
+    "accept": "accepter",
+    "approve": "approuver"
+  },
+  "decision": {
+    "signed": "signé",
+    "accepted": "accepté",
+    "approved": "approuvé",
+    "declined": "refusé"
+  },
+  "words": {
+    "sign": "En saisissant mon nom et le code, je signe « {{title}} » par une signature électronique simple.",
+    "accept": "En saisissant mon nom et le code, j'accepte « {{title}} ».",
+    "approve": "En saisissant mon nom et le code, j'approuve « {{title}} »."
+  },
+  "home": {
+    "decided": "{{name}} a {{decision}} « {{title}} »",
+    "opened": "{{name}} a ouvert « {{title}} »",
+    "requested": "{{name}} a écrit au sujet de « {{title}} » : {{what}}",
+    "codeLocked": "Le lien de « {{title}} » envoyé à {{name}} est bloqué après trop de codes erronés",
+    "sendFailed": "Le lien de « {{title}} » n'a pas atteint {{name}} : envoyez-en un nouveau",
+    "what": {
+      "new_link": "un nouveau lien",
+      "not_me": "ce n'est pas pour cette personne",
+      "invite_asked": "une autre personne devrait le recevoir",
+      "question": "une question"
+    }
+  }
+}

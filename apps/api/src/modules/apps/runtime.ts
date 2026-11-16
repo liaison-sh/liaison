@@ -532,6 +532,9 @@ function buildManifestForBridge(desc: AppDescriptor, declaredCapabilities: strin
       ? { sendGuardProviders: (desc as any).sendGuardProviders }
       : {}),
     ...((desc as any).approvalRoute ? { approvalRoute: (desc as any).approvalRoute } : {}),
+    ...(Array.isArray((desc as any).clientActionTargets)
+      ? { clientActionTargets: (desc as any).clientActionTargets }
+      : {}),
     ...(Array.isArray((desc as any).contextProviders)
       ? { contextProviders: (desc as any).contextProviders }
       : {}),

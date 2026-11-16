@@ -79,6 +79,17 @@ const PUBLIC_ROUTES: Record<string, PublicRoute> = {
     credential: "own-bearer",
     reason: "the portal's own refresh cookie, from an allowed Origin",
   },
+  // The client action link page (modules/client-actions/public-routes.ts): the link's
+  // token in the POST body is the capability; an unknown one gets the one 404.
+  ...Object.fromEntries(
+    ["open", "seen", "document", "code", "verify", "decide", "request"].map((r) => [
+      `POST /api/public/client-actions/${r}`,
+      {
+        credential: "challenge-or-credential-in-body" as const,
+        reason: "the mailed link's token, posted in the body, names one action",
+      },
+    ]),
+  ),
   // Sign-in, recovery and registration: the request carries the credential.
   "GET /api/auth/bootstrap-state": { credential: "none", reason: "whether setup is pending" },
   "POST /api/auth/register": {

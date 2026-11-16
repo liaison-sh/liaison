@@ -32,6 +32,10 @@ const log = rootLogger.child({ service: "email" })
 export type EmailTemplateId =
   | "auth.sign-in-code"
   | "portal.sign-in-link"
+  | "client-action.link"
+  | "client-action.code"
+  | "client-action.copy"
+  | "client-action.staff"
   | "auth.step-up-code"
   | "auth.password-reset"
   | "users.invitation"
@@ -53,6 +57,8 @@ export interface EmailMessage {
   from?: string
   replyTo?: string
   idempotencyKey?: string
+  /** Extra headers, `X-` names only (the client action mail's random id). */
+  headers?: Record<string, string>
 }
 
 export class EmailRateLimitError extends Error {
@@ -326,6 +332,7 @@ export class SmtpEmailProvider implements EmailProvider {
       html: message.html,
       text: message.text,
       replyTo: message.replyTo,
+      ...(message.headers ? { headers: message.headers } : {}),
     })
     log.info(emailLogFields(message), "Email sent (SMTP)")
   }
@@ -370,6 +377,7 @@ export class ResendEmailProvider implements EmailProvider {
       html: message.html,
       ...(message.text ? { text: message.text } : {}),
       ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+      ...(message.headers ? { headers: message.headers } : {}),
     }
 
     let res: Response

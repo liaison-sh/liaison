@@ -111,7 +111,7 @@ export const NOTIFICATION_GROUPS: readonly NotificationGroup[] = [
     id: "decisions",
     labelKey: "notifications.groups.decisions",
     label: "Decisions on your requests",
-    kinds: ["approval_decision", "scope_request_decided"],
+    kinds: ["approval_decision", "scope_request_decided", "client_action"],
   },
   {
     id: "work",

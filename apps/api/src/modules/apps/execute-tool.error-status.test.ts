@@ -93,6 +93,23 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("EMAIL_IS_PORTAL_USER")).toBe(409)
   })
 
+  it("a client action's refusals are 4xx, its unreadable target 503", () => {
+    for (const code of [
+      "TARGET_NOT_REGISTERED",
+      "KIND_NOT_ALLOWED",
+      "INVALID_EXPIRY",
+      "EMAIL_REQUIRED",
+    ]) {
+      expect({ code, status: statusForToolError(code) }).toEqual({ code, status: 400 })
+    }
+    expect(statusForToolError("VERSION_CHANGED")).toBe(409)
+    expect(statusForToolError("TARGET_UNAVAILABLE")).toBe(503)
+    for (const state of ["MISMATCH", "REPLIED", "BOUNCED", "HELD", "OPTED_OUT", "REF_STOP"]) {
+      expect(statusForToolError(`SEND_GUARD_${state}`)).toBe(409)
+    }
+    expect(statusForToolError("SEND_GUARD_UNAVAILABLE")).toBe(503)
+  })
+
   it("tickets ref resolver codes are client errors", () => {
     expect(statusForToolError("invalid_params")).toBe(400)
     expect(statusForToolError("not_found")).toBe(404)

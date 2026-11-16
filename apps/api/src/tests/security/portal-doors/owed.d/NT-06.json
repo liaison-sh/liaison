@@ -1,5 +1,0 @@
-{
-  "id": "NT-06",
-  "owner": "public client action routes",
-  "part": "the token half: open sets no cookie and the token gets 401 on every portal route"
-}

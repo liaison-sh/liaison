@@ -983,6 +983,26 @@ export const appManifestJsonSchema = {
     },
     // Entity type to the read-only tool that says who an approval for it is for.
     approvalRoute: { type: "object", additionalProperties: { type: "string", minLength: 1 } },
+    // What a person outside the org may sign, accept or approve through a client action: the
+    // record type, the decisions it takes, and the app's internal read tool that shows it.
+    clientActionTargets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+          kinds: {
+            type: "array",
+            items: { type: "string", enum: ["sign", "accept", "approve"] },
+            minItems: 1,
+            uniqueItems: true,
+          },
+          viewTool: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        },
+        required: ["type", "kinds", "viewTool"],
+        additionalProperties: false,
+      },
+    },
     agentInstructions: {
       oneOf: [
         { type: "string" },

@@ -71,6 +71,11 @@ const REASONS: ReadonlySet<Reason> = new Set([
 
 /** Reads that stay off dashboards, each with its reviewed reason. */
 const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
+  {
+    tool: "kernel:client_actions_list",
+    reason: "trust boundary",
+    why: "returns outside text: the names and decline reasons clients typed on the link page",
+  },
   // ── App reads ──
   ...["calls", "monitoring", "projects"].map((app) => ({
     tool: `${app}:webhook_info`,

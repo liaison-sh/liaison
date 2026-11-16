@@ -4,7 +4,7 @@
 // handlers run in the sandbox, its rows read under the caller's RLS. A person drafts and
 // prices a proposal (the price comes back as a decimal string, never a bare number), an
 // agent cannot reach the price tool, and an agreement closed to the organization is absent
-// from another member's search.
+// from another member's search. A saved template takes a second version.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -22,13 +22,14 @@ import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const SCOPES = ["agreements:agreements:read", "agreements:agreements:write"]
+const TEMPLATE_SCOPES = [...SCOPES, "agreements:templates:write"]
 
 let orgId = ""
 let owner = ""
 let other = ""
 
-function person(userId: string): UserContext {
-  return { actorType: "user", userId, orgId, scopes: SCOPES, dimensionGrants: {} }
+function person(userId: string, scopes: string[] = SCOPES): UserContext {
+  return { actorType: "user", userId, orgId, scopes, dimensionGrants: {} }
 }
 
 function descriptor(): Record<string, unknown> {
@@ -51,11 +52,16 @@ function descriptor(): Record<string, unknown> {
 
 type Out = { data?: Record<string, any>; error?: { code: string; message: string } }
 
-async function call(userId: string, tool: string, params: unknown): Promise<Out> {
+async function call(
+  userId: string,
+  tool: string,
+  params: unknown,
+  scopes: string[] = SCOPES,
+): Promise<Out> {
   return (await executeToolCore({
     toolName: `agreements:${tool}`,
     orgId,
-    actor: person(userId),
+    actor: person(userId, scopes),
     params,
     origin: "human-ui",
   } as never)) as Out
@@ -135,5 +141,28 @@ describe("agreements through the sandbox", () => {
     )
     const read = await call(other, "agreement_get", { id })
     expect(JSON.stringify(read)).toContain("NOT_FOUND")
+  }, 60_000)
+
+  it("a person saves a template, then saves it again as its second version", async () => {
+    const body = (text: string) => ({ blocks: [{ type: "paragraph", text }] })
+    const first = await call(
+      owner,
+      "template_save",
+      { name: "Short NDA", kind: "nda", body: body("First wording.") },
+      TEMPLATE_SCOPES,
+    )
+    expect(first.error).toBeUndefined()
+    const templateId = first.data?.template_id as string
+    expect(first.data?.version).toBe(1)
+
+    const second = await call(
+      owner,
+      "template_save",
+      { template_id: templateId, body: body("Second wording.") },
+      TEMPLATE_SCOPES,
+    )
+    expect(second.error).toBeUndefined()
+    expect(second.data?.template_id).toBe(templateId)
+    expect(second.data?.version).toBe(2)
   }, 60_000)
 })

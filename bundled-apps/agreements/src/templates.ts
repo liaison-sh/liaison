@@ -193,9 +193,11 @@ export async function templateSave(
             saved_at: now,
           },
         },
+        // The meta row is found by its template, because the host refuses `id`
+        // in a bulk write's filter.
         {
           updateMany: "agreement_template_meta",
-          where: { id: meta.id, version: meta.version },
+          where: { template_id: meta.template_id, version: meta.version },
           data: {
             version: next,
             ...(p.name ? { name: p.name } : {}),

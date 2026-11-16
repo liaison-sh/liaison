@@ -1,0 +1,4 @@
+deploy/docker-compose.yml (pdf-render)
+apps/api/src/modules/pdf-render/client.ts (callRenderService)
+apps/api/src/modules/pdf-render/protocol.ts (PDF_RENDER_PAGE_MS)
+apps/api/src/lib/env.ts (LIAISON_PDF_RENDER_SOCKET)

@@ -233,7 +233,7 @@ describe("the virus scan", () => {
   async function clamd(reply: string): Promise<number> {
     server = createServer((socket) => {
       socket.on("data", (chunk) => {
-        if (chunk.includes(Buffer.from([0, 0, 0, 0]))) socket.end(`stream: ${reply}\0`)
+        if (Buffer.from(chunk).includes(Buffer.from([0, 0, 0, 0]))) socket.end(`stream: ${reply}\0`)
       })
     })
     await new Promise<void>((r) => server?.listen(0, "127.0.0.1", r))

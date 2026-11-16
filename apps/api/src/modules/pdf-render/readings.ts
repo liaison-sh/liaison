@@ -55,7 +55,8 @@ export async function readPages(
 ): Promise<{ pageCount: number; pages: RenderedPage[] }> {
   const doc = await getDocument({
     data: new Uint8Array(bytes),
-    isEvalSupported: false,
+    // pdf.js 6 has no eval path left (no `isEvalSupported` option, no `new Function`
+    // in its build): fonts are drawn from parsed outlines only.
     useSystemFonts: false,
     standardFontDataUrl: STANDARD_FONTS,
     stopAtErrors: true,

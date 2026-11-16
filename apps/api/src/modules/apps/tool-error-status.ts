@@ -459,6 +459,19 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // Freezing and sending for signature (agreements; client action links through the bridge).
   BLANK_FIELD: 409,
   FREEZE_TEXT_MISMATCH: 409,
+  // An uploaded PDF (the render service's file checks): the file itself is refused, or the
+  // service is missing or busy, or the signed copy of an upload did not read as the file did.
+  NOT_A_PDF: 422,
+  PDF_UNREADABLE: 422,
+  PDF_TOO_LARGE: 422,
+  PDF_ENCRYPTED: 422,
+  PDF_ACTIVE_CONTENT: 422,
+  PDF_VARIES_BY_VIEWER: 422,
+  PDF_INFECTED: 422,
+  NOT_READABLE: 404,
+  PDF_RENDER_UNAVAILABLE: 503,
+  PDF_RENDER_BUSY: 429,
+  COPY_DIFFERS: 409,
   // The legal layout refuses the text itself: a reference to nothing or to a hidden clause, a
   // typed number of one of its own articles, a clause starting with a number, a character no
   // face draws.

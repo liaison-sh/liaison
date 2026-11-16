@@ -1,0 +1,2 @@
+# An uploaded PDF frozen as is, and the seal of an upload.
+src/upload-freeze.test.ts

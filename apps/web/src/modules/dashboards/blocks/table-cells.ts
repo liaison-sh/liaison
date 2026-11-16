@@ -87,6 +87,7 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
     return value === true ? o.t("kernel.dashboards.tables.yes") : o.t("kernel.dashboards.tables.no")
   if (isEmptyCell(value)) return ""
   switch (column.type) {
+    case "lookup":
     case "number":
       return typeof value === "number"
         ? formatValue(value, { format: "number", locale: o.locale })
@@ -159,7 +160,22 @@ export function parseCellInput(column: TableColumn, raw: unknown): ParsedCell {
 
 /** The add form's columns: required ones first, each group in the table's order. */
 export function addFormColumns(columns: TableColumn[]): TableColumn[] {
-  return [...columns.filter((c) => c.required), ...columns.filter((c) => !c.required)]
+  const typed = columns.filter((c) => c.type !== "lookup")
+  return [...typed.filter((c) => c.required), ...typed.filter((c) => !c.required)]
+}
+
+/** A row as a write answered it, keeping the lookup cells it was read with (a write answers none). */
+export function withLookupCells<R extends { cells: TableCells }>(
+  columns: TableColumn[],
+  before: R | undefined,
+  after: R,
+): R {
+  if (!before) return after
+  const kept = columns.filter((c) => c.type === "lookup" && before.cells[c.key] !== undefined)
+  if (kept.length === 0) return after
+  const cells = { ...after.cells }
+  for (const c of kept) cells[c.key] = before.cells[c.key]
+  return { ...after, cells }
 }
 
 /** The columns a block shows: the map's keys in their order, else every column. */

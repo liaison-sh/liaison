@@ -273,6 +273,7 @@ const COLUMN_TYPE_WORDS: Record<string, string> = {
   checkbox: "checkbox",
   person: "person",
   link: "link to a record",
+  lookup: "lookup",
 }
 
 /** An app's name as people read it: "shopify" is "Shopify". */
@@ -290,7 +291,11 @@ export function linkWords(linkTo: { app: string; entityType?: string } | undefin
 
 function columnWords(c: Partial<Column>): string {
   const type =
-    c.type === "link" ? linkWords(c.linkTo) : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
+    c.type === "link"
+      ? linkWords(c.linkTo)
+      : c.type === "lookup" && c.lookup
+        ? `${c.lookup.valueType} read live from ${c.lookup.source.tool} (its ${c.lookup.value}, matched on ${c.lookup.match.on})`
+        : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
   const extra =
     c.type === "amount" && c.currency
       ? ` in ${c.currency}`
@@ -534,7 +539,7 @@ interface EditParams {
 }
 
 const TABLES_EDIT_DESCRIPTION =
-  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
 
 /**
  * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
@@ -616,7 +621,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells and who changed it last. A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({
@@ -657,6 +662,7 @@ export function registerTableTools(orgId: string): void {
           rows: page.rows.map(compactRow),
           nextCursor: page.nextCursor,
           ...(page.truncated ? { truncated: true } : {}),
+          ...(page.columnNotes ? { columnNotes: page.columnNotes } : {}),
         }
       })) as Handler,
   })

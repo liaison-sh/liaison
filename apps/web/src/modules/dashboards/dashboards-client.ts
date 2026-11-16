@@ -1299,7 +1299,10 @@ export type TableColumnType =
   | "checkbox"
   | "person"
   | "link"
+  /** Read-only, read live from an app's read tool on every read (set by an agent). */
+  | "lookup"
 
+/** The types a person adds in Settings (a lookup column is defined by an agent). */
 export const TABLE_COLUMN_TYPES: TableColumnType[] = [
   "text",
   "number",
@@ -1328,6 +1331,15 @@ export interface TableColumn {
   currency?: string
   /** A link column may point only at this app (and entity type). */
   linkTo?: { app: string; entityType?: string }
+  /** A lookup column's read: the app tool it reads, matched on another column. */
+  lookup?: TableLookup
+}
+
+export interface TableLookup {
+  source: { tool: string; params?: Record<string, unknown>; rowsPath?: string }
+  match: { field: string; on: string }
+  value: string
+  valueType: "number" | "text"
 }
 
 export interface LinkCell {
@@ -1576,6 +1588,8 @@ export interface TableRowsQuery {
 export interface TableRowsPage {
   rows: TableRow[]
   nextCursor: string | null
+  /** Why a lookup column's cells are empty on this read (its read failed), by column key. */
+  columnNotes: Record<string, string>
 }
 
 export function tableRowsQuery(opts: TableRowsQuery = {}): string {
@@ -1599,7 +1613,15 @@ export async function getTableRows(
   return {
     rows: rows.map(rowFrom).filter((r): r is TableRow => !!r),
     nextCursor: isRecord(body) && typeof body.nextCursor === "string" ? body.nextCursor : null,
+    columnNotes: isRecord(body) ? stringRecord(body.columnNotes) : {},
   }
+}
+
+function stringRecord(v: unknown): Record<string, string> {
+  if (!isRecord(v)) return {}
+  return Object.fromEntries(
+    Object.entries(v).filter((e): e is [string, string] => typeof e[1] === "string"),
+  )
 }
 
 /** Applies the operations all or none; answers each row as it is now (or that it is gone). */

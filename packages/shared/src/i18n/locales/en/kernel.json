@@ -7133,8 +7133,11 @@
         "choices": "Multiple choices",
         "checkbox": "Checkbox",
         "person": "Person",
-        "link": "Link"
+        "link": "Link",
+        "lookup": "Live from an app"
       },
+      "lookupColumn": "Read live from {{tool}}, not editable",
+      "lookupUnavailable": "Not available",
       "newTable": "New table",
       "newTableName": "Table name",
       "nameTaken": "A table named {{name}} exists already.",

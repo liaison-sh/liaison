@@ -351,6 +351,14 @@ export const KERNEL_RESET_RULES: Record<string, KernelResetRule> = {
   attention_events: "clear",
   // A visitor's away records and the app features they switched go with them.
   away_ranges: "clear",
+  // Requests sent to clients to sign, accept or approve, their trail (cleared through
+  // the purge setting the immutable trigger honours for a demo org) and devices, and
+  // the visitor's portal clients and what was shared with them: content of the visit.
+  client_actions: "clear",
+  client_action_events: "clear",
+  client_action_devices: "clear",
+  portal_people: "clear",
+  portal_shares: "clear",
   org_app_features: "clear",
   notification_deliveries: "clear",
   notification_receipts: "clear",

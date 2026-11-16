@@ -101,6 +101,11 @@ export const USER_FK_DISPOSITION: Record<string, ReferenceDisposition> = {
   "kernel.approval_requests.route_person_id": repoint,
   // A person's own away record is a real absence: it moves to them too.
   "kernel.away_ranges.user_id": repoint,
+  // A client's portal account is an external row: a placeholder merge is between members,
+  // so it never names one, and a portal account never moves to another person.
+  "kernel.portal_people.user_id": refuse(
+    "a client portal account belongs to that client alone and never moves to another person",
+  ),
   "kernel.away_ranges.set_by": repoint,
   "kernel.away_ranges.next_in_line_id": repoint,
   "kernel.user_preferences.next_in_line_id": repoint,

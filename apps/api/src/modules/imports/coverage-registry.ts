@@ -386,6 +386,26 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
   },
   "kernel.attention_events": { exempt: "system", reason: "per-user and per-device state" },
   "kernel.away_ranges": { exempt: "system", reason: "per-user and per-device state" },
+  "kernel.client_actions": {
+    exempt: "system",
+    reason: "requests to clients and their tokens: made by sending, never imported",
+  },
+  "kernel.client_action_events": {
+    exempt: "system",
+    reason: "a client request's append-only trail, written by the request itself",
+  },
+  "kernel.client_action_devices": {
+    exempt: "system",
+    reason: "the address and browser of a client request's events",
+  },
+  "kernel.portal_people": {
+    exempt: "system",
+    reason: "client portal accounts, made by inviting a person, never imported",
+  },
+  "kernel.portal_shares": {
+    exempt: "system",
+    reason: "what a client company sees, opened by a person's click",
+  },
   "kernel.audit_log": { exempt: "system", reason: "audit, credits, demo and search bookkeeping" },
   "kernel.auto_approve_policies": {
     exempt: "config",

@@ -382,6 +382,18 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
     kind: "handled",
     reason: "delete (per-user attention rules)",
   },
+  "client_actions.created_by_user_id": {
+    kind: "retain",
+    reason:
+      "RETAIN: who sent a client a document to sign, accept or approve is part of that " +
+      "decision's legal record (a decided signature or approval stays on erasure)",
+  },
+  "portal_people.user_id": {
+    kind: "retain",
+    reason:
+      "RETAIN: points at a client's own portal account (an external row, never a member " +
+      "erased here); it goes with that account (ON DELETE CASCADE)",
+  },
   "away_ranges.user_id": {
     kind: "handled",
     reason: "delete (when the person was away is about them)",

@@ -64,6 +64,50 @@ export interface StaleChunkEnv {
   storage?: Pick<Storage, "getItem" | "setItem">
   reload?: () => void
   now?: () => number
+  /** Whether the device has a network. Defaults to `navigator.onLine`. */
+  online?: () => boolean
+  /** Runs `fn` once the device is back online. Defaults to the window's `online` event. */
+  whenOnline?: (fn: () => void) => void
+}
+
+// OFFLINE IS NOT STALE. A chunk requested while the device has no network
+// fails with the same "Failed to fetch dynamically imported module" as a chunk
+// a deploy removed. Reloading then lands on the browser's own offline error
+// page: the app is gone, and it does not come back with the network. So while
+// offline the reload waits for the network, and happens once it is back
+// (once, however many imports failed meanwhile).
+let reloadWaitingForOnline = false
+
+function browserOnline(): boolean {
+  if (typeof navigator === "undefined") return true
+  return typeof navigator.onLine === "boolean" ? navigator.onLine : true
+}
+
+function onNextOnline(fn: () => void): void {
+  if (typeof window === "undefined") return
+  window.addEventListener("online", fn, { once: true })
+}
+
+/**
+ * Run `reload` now, or, while the device is offline, when it is back online.
+ * Returns true when the reload was deferred.
+ */
+export function reloadWhenOnline(
+  reload: () => void,
+  env: Pick<StaleChunkEnv, "online" | "whenOnline"> = {},
+): boolean {
+  const online = env.online ?? browserOnline
+  if (online()) {
+    reload()
+    return false
+  }
+  if (reloadWaitingForOnline) return true
+  reloadWaitingForOnline = true
+  ;(env.whenOnline ?? onNextOnline)(() => {
+    reloadWaitingForOnline = false
+    reload()
+  })
+  return true
 }
 
 /**
@@ -84,13 +128,15 @@ export function recoverFromStaleChunk(err: unknown, env: StaleChunkEnv = {}): bo
   if (storage) {
     const last = readSentinel(storage)
     if (last !== null && now() - last < RETRY_WINDOW_MS) return false
+  }
+  reloadWhenOnline(() => {
     try {
-      storage.setItem(RELOAD_SENTINEL, String(now()))
+      storage?.setItem(RELOAD_SENTINEL, String(now()))
     } catch {
       // Cannot remember the attempt. Reload anyway (below): a stale chunk with
       // no loop protection still beats a permanently dead tab.
     }
-  }
-  reload()
+    reload()
+  }, env)
   return true
 }

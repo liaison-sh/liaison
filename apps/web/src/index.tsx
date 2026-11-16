@@ -22,6 +22,7 @@ import App from "~/App"
 import { buildHostServices } from "~/framework/host-services"
 import { spaNavigate } from "~/framework/spa-navigate"
 import { signalNativeReady } from "~/lib/native-bridge"
+import { reloadWhenOnline } from "~/lib/stale-chunk"
 import "~/index.css"
 import type { EnsureFreshTokenOptions } from "~/lib/auth-refresh"
 import { startClientPolicy } from "~/lib/client-version"
@@ -67,8 +68,12 @@ if (typeof window !== "undefined") {
     const key = "liaison:chunk-reload-at"
     const last = Number(sessionStorage.getItem(key) ?? 0)
     if (Date.now() - last < 60_000) return
-    sessionStorage.setItem(key, String(Date.now()))
-    window.location.reload()
+    // Offline, the import failed for want of a network, and a reload now would
+    // land on the browser's offline error page: it waits for the network.
+    reloadWhenOnline(() => {
+      sessionStorage.setItem(key, String(Date.now()))
+      window.location.reload()
+    })
   })
 }
 

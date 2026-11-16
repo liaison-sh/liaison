@@ -1,0 +1,4 @@
+Home items and notifications about a closed agreement reach only its list -> apps/api/src/modules/attention/restricted-recipients.ts (keepRestrictedReaders)
+A routine whose owner is off the list does not run on its events -> apps/api/src/infra/jobs/event-routine-gate.ts (ownerCanSeeEventEntity)
+What an agent writes after reading it is read only by the list -> bundled-apps/agreements/app.manifest.json (restrictedRows) ; apps/api/src/modules/threads/message.ts (withRestrictedDisclosure)
+The agreement keeps a copy of its list while closed -> bundled-apps/agreements/src/access.ts (afterAccessChange)

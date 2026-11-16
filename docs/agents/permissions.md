@@ -37,6 +37,8 @@ Scopes say what a person can do. Data dimensions say which records they see, for
 
 Some records can be closed to the organization by the people who own them, such as an agreement whose organization access is **none**. Only the people named on it read it; no role, scope or administrator grant opens it, and an agent acting for someone else sees nothing of it. See [Prepare agreements](../apps/agreements.md#decide-who-can-see-an-agreement).
 
+What an agent reads from such a record stays with its list. A reply, post or note it writes afterwards can be read only by the people on the list. A post into a conversation with anyone else waits for the approval of the person who asked, and nobody else sees that request. The same holds for a Knowledge document with **Restricted** access.
+
 ### Apps people cannot use
 
 An administrator can turn an app off for everyone, or restrict it to some people. People without access do not see the app in the sidebar, and their agents cannot use its tools. A scope request for an app that is off or restricted away is refused with a message instead of reaching an administrator's queue.

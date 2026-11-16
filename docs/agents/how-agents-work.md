@@ -103,7 +103,7 @@ Asked to send a message to a colleague, an agent posts in a Liaison conversation
 
 ## The approval loop
 
-Agents can read freely within their access, and they can prepare actions. Sending, paying, publishing and other sensitive changes are gated. The loop is:
+Agents can read freely within their access, and they can prepare actions. Sending, paying, publishing and other sensitive changes are gated. After a read of a record closed to the organization (an agreement with organization access **none**, a restricted Knowledge document), a write others could read also waits, for the person who asked alone. The loop is:
 
 1. The agent calls a gated tool. Liaison does not run it. It creates an approval request instead.
 2. The people who may decide it see the request in the **Approvals** card on **Home** (on a phone, also on the **Approvals** screen), and get a notification. A request your agent raises in the conversation you are reading right now does not notify you: its card is on your screen.

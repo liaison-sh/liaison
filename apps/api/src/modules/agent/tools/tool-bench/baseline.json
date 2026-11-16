@@ -978,7 +978,7 @@
     },
     "invoicing__settings_issuer_profile_create": {
       "desc": 194,
-      "schema": 579
+      "schema": 700
     },
     "invoicing__settings_issuer_profile_delete": {
       "desc": 114,
@@ -990,7 +990,7 @@
     },
     "invoicing__settings_issuer_profile_update": {
       "desc": 254,
-      "schema": 590
+      "schema": 710
     },
     "invoicing__settings_shop_mapping_list": {
       "desc": 1401,

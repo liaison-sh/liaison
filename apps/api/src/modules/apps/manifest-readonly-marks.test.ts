@@ -288,6 +288,8 @@ const READ_ONLY: Record<string, string[]> = {
     "einvoicing_classify",
     "einvoicing_readiness",
     "legal_originals_verify",
+    // The milestone draft card's read: the step, its amount and its customer, written nowhere.
+    "milestone_draft_preview",
     "einvoice_transmission_get",
     // The payment reminder guard: reads one document's paid, credited or voided state.
     "document_send_state",

@@ -202,7 +202,8 @@ describe("a draft from planned vs done", () => {
       expiry_hours: 720,
     })
     // Whoever decides reads who is invoiced and how much, before the latest issue day.
-    const cardLines = (h.approvals[0]?.summary_detail as { lines: string[] }).lines
+    const cardLines =
+      (h.approvals[0]?.summary_detail as { lines: string[] } | undefined)?.lines ?? []
     expect(cardLines[0]).toMatch(/^Customer: \S/)
     expect(cardLines[1]).toMatch(/^To pay .+ incl\. VAT \(.+ excl\. VAT\)$/)
     // Never auto-approvable: an org's auto-approve policy cannot issue it.

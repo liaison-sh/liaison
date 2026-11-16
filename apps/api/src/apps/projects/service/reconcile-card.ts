@@ -91,6 +91,9 @@ function moneyOf(
   hpd: number,
 ): { minor: number; currency: string } | undefined {
   if (rateMinor === null || !currency) return undefined
+  // A retainer month bills its fee and the hours above it (priced by invoicing), never each line
+  // at the hourly rate: its time lines carry no amount.
+  if (basis === "retainer") return undefined
   const minor = amountMinor(minutes, basis, rateMinor, hpd)
   return minor === null ? undefined : { minor, currency }
 }

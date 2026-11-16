@@ -1663,6 +1663,22 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     ]
   }
   const missing = missingWithContact(p.missing, facts)
+  const retainer = retainerFacts(p.retainer)
+  if (retainer && currency) {
+    // The fee and the hours it includes, against the month's time lines.
+    const fee = moneyText(retainer.feeExclMinor, currency)
+    const rate = moneyText(retainer.overageRateMinor, currency)
+    const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used.`
+    out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
+  }
+  if (retainer?.billedBySchedule) {
+    // A month is billed once: its schedule's month-end run holds it.
+    out.notice = {
+      title: "Billed by its schedule",
+      text: "This month is billed by the retainer's schedule in Invoicing, so it has no Create invoice here.",
+    }
+    return out
+  }
   if (p.ready === true && missing.length === 0 && card.fit !== "nothing") {
     out.createInvoice = "yes"
     // A retainer month above its hours: the card also offers to leave this month's overage off.
@@ -1676,6 +1692,31 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     else out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
   }
   return out
+}
+
+/** A retainer month's facts as invoicing's preview gives them, or null on any other basis. */
+function retainerFacts(v: unknown): {
+  feeExclMinor: number
+  includedMinutes: number
+  usedMinutes: number
+  overageRateMinor: number
+  billedBySchedule: boolean
+} | null {
+  if (!v || typeof v !== "object") return null
+  const r = v as Record<string, unknown>
+  const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : 0)
+  return {
+    feeExclMinor: n(r.feeExclMinor),
+    includedMinutes: n(r.includedMinutes),
+    usedMinutes: n(r.usedMinutes),
+    overageRateMinor: n(r.overageRateMinor),
+    billedBySchedule: r.billedBySchedule === true,
+  }
+}
+
+/** "40 h", "17.5 h": minutes as hours. */
+function hoursText(minutes: number): string {
+  return `${Math.round((minutes / 60) * 100) / 100} h`
 }
 
 /** A refusal of Create, in the tool's error shape. */

@@ -9,10 +9,16 @@
 import type { CrossAppExecuteTool } from "../cross-app"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
-import { retainerPlan, retainerRecipient, retainerScheduleOf } from "../mutations/retainer"
+import {
+  monthOnRun,
+  retainerPlan,
+  retainerRecipient,
+  retainerScheduleOf,
+} from "../mutations/retainer"
 import type { MutationsDb } from "../mutations/shared"
 import { recipientOf } from "../recipient"
 import { type RecipientGap, recipientGaps } from "../recipient-gaps"
+import { isRetainerMonth } from "../recurring/retainer"
 import { netLinesTotals } from "../tax-plan"
 
 /** What can keep a card from making an invoice. */
@@ -67,6 +73,16 @@ export type PreviewTotalsResult =
       /** A retainer month: the hours above the included and rolled-in hours, in minutes (what a
        *  waiver would leave off). Absent on any other basis. */
       overageMinutes?: number
+      /** A retainer month: what its invoice is made of (the schedule's fee and the hours it
+       *  includes, the rate above them), and whether the schedule's month-end run already bills
+       *  the month (then Create is refused: a month is billed once). Absent on any other basis. */
+      retainer?: {
+        feeExclMinor: number
+        includedMinutes: number
+        usedMinutes: number
+        overageRateMinor: number
+        billedBySchedule: boolean
+      }
       message: string
     }
   | { error: { code: string; message: string; retryable: false } }
@@ -253,6 +269,7 @@ async function retainerPreview(
   let rateBp: number | null = null
   let currency: string | null = null
   let overageMinutes = 0
+  let retainer: Extract<PreviewTotalsResult, { ready: boolean }>["retainer"]
   if (s && from && issuer.ok) {
     const used = (input.lines ?? []).reduce(
       (a, l) => a + Math.max(0, Math.round(Number(l.billMinutes) || 0)),
@@ -269,6 +286,18 @@ async function retainerPreview(
     })
     currency = plan.currency
     overageMinutes = plan.fig.overageMinutes
+    const month = from.slice(0, 7)
+    const billedBySchedule =
+      !isRetainerMonth(s, month) || (await monthOnRun(ctx, String(s.id), month))
+    retainer = {
+      feeExclMinor: (plan.items as Array<Record<string, unknown>>)
+        .filter((i) => String(i.external_id ?? "").startsWith("retainer_fee:"))
+        .reduce((a, i) => a + Number(i.unit_price_minor) * Number(i.quantity), 0),
+      includedMinutes: plan.fig.includedMinutes,
+      usedMinutes: plan.fig.usedMinutes,
+      overageRateMinor: Number(s.retainer_overage_rate_minor ?? 0),
+      billedBySchedule,
+    }
     // The customer the retainer's Create drafts to: the schedule's contact and company first.
     const who = retainerRecipient(s, { contactId, companyId })
     const recipient = who.companyId || who.contactId ? await recipientOf(ctx, who) : null
@@ -297,6 +326,7 @@ async function retainerPreview(
     currency,
     openPlanSteps,
     overageMinutes,
+    ...(retainer ? { retainer } : {}),
     message: ready
       ? `The retainer month can be invoiced: ${excl} excl. VAT, ${vat} VAT, ${incl} incl. VAT (minor units, ${currency}). Nothing was created.`
       : `No invoice can be made for this retainer month yet. Set ${missing.map((m) => WHAT_TO_SET[m]).join("; ")}. Nothing was created.`,

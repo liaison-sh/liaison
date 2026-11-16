@@ -298,7 +298,7 @@ async function registryIdentity(contactId: string, siren: string, name: string) 
 }
 
 /** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
-async function retainerSchedule(projectId: string): Promise<string> {
+async function retainerSchedule(projectId: string, from = "2026-01"): Promise<string> {
   const id = crypto.randomUUID()
   await insertAppRow(db as never, "invoicing", "recurring_schedules", {
     id,
@@ -315,7 +315,7 @@ async function retainerSchedule(projectId: string): Promise<string> {
     retainer_project_id: projectId,
     retainer_minutes: 2400,
     retainer_overage_rate_minor: 12000,
-    retainer_from: "2026-01",
+    retainer_from: from,
   })
   return id
 }
@@ -844,6 +844,32 @@ describe("what Create refuses", () => {
     expect(await docsOf(p.projectId)).toEqual([])
     expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
     expect(await numbersTaken()).toBe(before)
+  })
+
+  it("a retainer card says what the fee includes and prices no time line at the hourly rate", async () => {
+    const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId)
+    await retainerTimebox(p.projectId, schedule, "2026-10-01", "2026-10-31")
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    const notes = JSON.stringify(card.cardNotes)
+    expect(notes).toContain("the monthly fee of €4,500.00 excl. VAT includes 40 h")
+    expect(notes).toContain("€120.00 an hour")
+    const rows = (card.groups as Array<{ rows: Array<Record<string, unknown>> }>).flatMap(
+      (g) => g.rows,
+    )
+    expect(rows.length).toBeGreaterThan(0)
+    expect(rows.every((r) => r.amount === undefined)).toBe(true)
+    expect(card.createInvoice).toBe("yes")
+  })
+
+  it("a retainer month its schedule bills has no Create and says the schedule bills it", async () => {
+    const p = await october({ basis: "retainer" })
+    // The retainer starts in November: October is the schedule's own month-end month.
+    await retainerSchedule(p.projectId, "2026-11")
+    const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
+    expect(card.createInvoice ?? null).toBeNull()
+    expect(card.notice?.title).toBe("Billed by its schedule")
+    expect(card.notice?.text).toContain("billed by the retainer's schedule in Invoicing")
   })
 
   it("a second lead's card for a retainer month already drafted is refused and adds nothing to that draft", async () => {

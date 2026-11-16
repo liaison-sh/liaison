@@ -1116,7 +1116,8 @@ function cardData(args: {
             ? `~${q(l.traceEstimateMinutes)}`
             : null,
     bill: q(l.billMinutes),
-    ...(money ? { amount: amount(l.billMinutes) } : {}),
+    // A retainer's time lines carry no amount: the month bills its fee and the hours above it.
+    ...(money && c.basis !== "retainer" ? { amount: amount(l.billMinutes) } : {}),
     proofs: l.proofs.map((p) => ({
       kind: p.kind,
       label: p.label,
@@ -1134,7 +1135,7 @@ function cardData(args: {
   const notes: string[] = []
   if (late) notes.push(late)
   if (shape.notSeen.length > 0 || coverage.total === 0) notes.push(NOT_EVERYTHING_SEEN)
-  const totalAmount = money ? amount(billMinutes) : null
+  const totalAmount = money && c.basis !== "retainer" ? amount(billMinutes) : null
   const said =
     args.said ??
     (outcome === "unchanged"

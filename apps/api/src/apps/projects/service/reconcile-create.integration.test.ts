@@ -298,7 +298,11 @@ async function registryIdentity(contactId: string, siren: string, name: string) 
 }
 
 /** A retainer schedule of 40 h a month at a 4,500.00 fee and 120.00 an hour above it. */
-async function retainerSchedule(projectId: string, from = "2026-01"): Promise<string> {
+async function retainerSchedule(
+  projectId: string,
+  from = "2026-01",
+  extra: Record<string, AppCell> = {},
+): Promise<string> {
   const id = crypto.randomUUID()
   await insertAppRow(db as never, "invoicing", "recurring_schedules", {
     id,
@@ -316,6 +320,53 @@ async function retainerSchedule(projectId: string, from = "2026-01"): Promise<st
     retainer_minutes: 2400,
     retainer_overage_rate_minor: 12000,
     retainer_from: from,
+    ...extra,
+  })
+  return id
+}
+
+/**
+ * An issued advance of 4,500.00 + 20% VAT on the project for October, as advance_draft_create
+ * dates it, billed to Maison Delorme's accounts desk. Answers its id.
+ */
+async function issuedAdvance(projectId: string, number: string): Promise<string> {
+  const id = crypto.randomUUID()
+  await insertAppRow(db as never, "invoicing", "documents", {
+    id,
+    org_id: orgId,
+    type: "invoice",
+    status: "issued",
+    number,
+    year_of_issue: 2026,
+    issued_at: "2026-10-01",
+    issuer_profile_id: await issuerProfileId(),
+    counterparty_contact_id: compta,
+    counterparty_name: "Maison Delorme",
+    counterparty_address: "4 rue des Lilas, 69002 Lyon",
+    counterparty_country: "FR",
+    counterparty_email: "compta@delorme.example",
+    currency: "EUR",
+    invoice_role: "advance",
+    billing_project_id: projectId,
+    service_period_start: "2026-10-01",
+    service_period_end: "2026-10-31",
+    subtotal_minor: 450000,
+    tax_total_minor: 90000,
+    grand_total_minor: 540000,
+  })
+  await insertAppRow(db as never, "invoicing", "document_lines", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    document_id: id,
+    position: 1,
+    description: "Advance on October",
+    quantity: 1,
+    unit_price_minor: 450000,
+    line_kind: "service",
+    tax_rate_bp: 2000,
+    subtotal_minor: 450000,
+    tax_minor: 90000,
+    total_minor: 540000,
   })
   return id
 }
@@ -902,6 +953,36 @@ describe("what Create refuses", () => {
     expect((await stateOf(p.card.reconciliationId))?.state).toBe("proposed")
     expect(await numbersTaken()).toBe(before)
   })
+
+  it("a prepaid retainer month deducts its issued advance from the month's final", async () => {
+    const p = await october({ basis: "retainer" })
+    const schedule = await retainerSchedule(p.projectId, "2026-01", { covers: "period_ahead" })
+    await retainerTimebox(p.projectId, schedule, "2026-10-01", "2026-10-31")
+    const advance = await issuedAdvance(p.projectId, `F-2026-9${keys}01`)
+    const out = await create(p.card)
+    expect(out.error).toBeUndefined()
+    expect(out.state).toBe("drafted")
+    const final = (await docsOf(p.projectId)).find((d) => d.id !== advance)
+    expect(final).toMatchObject({ status: "draft", external_ref: `retainer:${schedule}:2026-10` })
+    const taken = extractRows<Record<string, string>>(
+      await db.execute(drizzleSql`
+        SELECT final_document_id::text AS final, amount_minor::text AS amount, state
+          FROM app_invoicing.advance_deductions
+         WHERE advance_document_id = ${advance}::uuid`),
+    )
+    expect(taken).toEqual([{ final: final?.id as string, amount: "450000", state: "reserved" }])
+  }, 120_000)
+
+  it("refunding an advance of a stopped project prepares its credit note", async () => {
+    const p = await october({ basis: "retainer" })
+    const advance = await issuedAdvance(p.projectId, `F-2026-9${keys}02`)
+    const res = await invoicing("advance_refund_prepare", { advanceDocumentId: advance }, [
+      "invoicing:*",
+    ])
+    const data = res.data as { status?: string; message?: string }
+    expect(["completed", "pending_approval"]).toContain(data.status as string)
+    expect(data.message).toContain("citing advance")
+  }, 120_000)
 
   it("a retainer card says what the fee includes and prices no time line at the hourly rate", async () => {
     const p = await october({ basis: "retainer" })

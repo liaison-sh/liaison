@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createCtx, SHIM_RULES, type ShimRules } from "~/modules/apps/sandbox/ctx-shim"
+import { executeInSandbox } from "~/modules/apps/sandbox/executor"
+import { createSandboxPool, type SandboxPool } from "~/modules/apps/sandbox/pool"
 import { SandboxWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 
 type AnyBridge = Record<string, (...args: any[]) => unknown>
@@ -288,5 +290,94 @@ describe("ctx shim: bulk iterator on the subprocess pool", () => {
       "bulk_deleteBlob",
     ])
     expect(calls[1]!.args).toEqual(["blob-1", 2])
+  })
+})
+
+// A minor-unit amount is a bigint in app code. Before, any bigint in a bridge argument threw
+// "Do not know how to serialize a BigInt" inside the handler, on every executor.
+const BIGINT_FIXTURE = `async function amounts(params, ctx) {
+  var out = []
+  out.push(await ctx.db.batch({ ops: [{ insert: "advance_deductions", data: { amount_minor: BigInt(12345), nested: [BigInt(-7)] } }] }))
+  out.push(await ctx.db.findOne("things", BigInt(9)))
+  out.push(await ctx.emit({ type: "x", total: BigInt("900719925474099312") }))
+  return out
+}`
+
+function bigintBridge(calls: Array<{ method: string; args: unknown[] }>): AnyBridge {
+  const rec =
+    (method: string) =>
+    async (...args: unknown[]) => {
+      calls.push({ method, args })
+      return JSON.stringify({ ok: method })
+    }
+  return { db_batch: rec("db_batch"), db_findOne: rec("db_findOne"), emit: rec("emit") }
+}
+
+const BIGINT_CALLS = [
+  {
+    method: "db_batch",
+    args: [
+      '{"ops":[{"insert":"advance_deductions","data":{"amount_minor":"12345","nested":["-7"]}}]}',
+    ],
+  },
+  { method: "db_findOne", args: ["things", "9"] },
+  { method: "emit", args: ['{"type":"x","total":"900719925474099312"}'] },
+]
+
+describe("ctx shim: a bigint argument crosses as its decimal string", () => {
+  let pool: SandboxWorkerPool
+  let inProcess: SandboxPool
+
+  beforeAll(async () => {
+    pool = new SandboxWorkerPool({ size: 1, maxSize: 1 })
+    await pool.init()
+    inProcess = await createSandboxPool({ initialSize: 1, maxSize: 1 })
+  }, 60_000)
+
+  afterAll(async () => {
+    if (pool) await pool.shutdown()
+    if (inProcess) await inProcess.shutdown()
+  }, 60_000)
+
+  const expected = [{ ok: "db_batch" }, { ok: "db_findOne" }, { ok: "emit" }]
+
+  it("subprocess QuickJS", async () => {
+    const calls: RunOutput["calls"] = []
+    const result = await pool.execute({
+      bundleSource: BIGINT_FIXTURE,
+      exportName: "amounts",
+      params: {},
+      bridge: bigintBridge(calls),
+      syncContext: { approval: null },
+    })
+    expect(result).toEqual(expected)
+    expect(calls).toEqual(BIGINT_CALLS)
+  })
+
+  it("isolate createCtx", async () => {
+    const calls: RunOutput["calls"] = []
+    const bridge = bigintBridge(calls)
+    const ctx = createCtx(Object.keys(bridge), null, async (method, args) =>
+      wire(await bridge[method]!(...wire(args))),
+    )
+    const handler = new Function(`${BIGINT_FIXTURE}\nreturn amounts`)() as (
+      p: unknown,
+      c: unknown,
+    ) => Promise<unknown>
+    expect(wire(await handler({}, ctx))).toEqual(expected)
+    expect(calls).toEqual(BIGINT_CALLS)
+  })
+
+  it("in-process QuickJS", async () => {
+    const calls: RunOutput["calls"] = []
+    const result = await executeInSandbox({
+      pool: inProcess,
+      bundleSource: BIGINT_FIXTURE,
+      exportName: "amounts",
+      params: {},
+      bridge: bigintBridge(calls),
+    })
+    expect(result).toEqual(expected)
+    expect(calls).toEqual(BIGINT_CALLS)
   })
 })

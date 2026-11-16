@@ -44,6 +44,7 @@ import {
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate, draftsDiscard } from "./drafts"
 import { heldText, raiseOnePerProject } from "./prepaid-hold"
+import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -517,9 +518,12 @@ export async function retainerDraftFromReconcile(
       await ctx.db.batch({ ops } as never)
     } catch (err) {
       await ctx.db.delete("documents", draftId).catch(() => {})
+      // Only the deduction's unique key means another invoice took the advance first; any other
+      // failure is reported as itself, never as a race that did not happen.
+      if (!isUniqueViolation(err)) throw err
       return refuse(
         "advance_already_deducted",
-        `This month's advance was deducted from another invoice at the same moment, so no draft was made (${err instanceof Error ? err.message : String(err)}).`,
+        `This month's advance was deducted from another invoice at the same moment, so no draft was made.`,
       )
     }
   }

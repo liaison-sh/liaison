@@ -22,6 +22,7 @@ import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import { customerLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -886,11 +887,13 @@ export async function milestoneDraftCreate(
   try {
     await ctx.db.batch({ ops } as never)
   } catch (err) {
-    // Another final took the advance first (the deduction's unique key): drop this draft.
+    // Another final took the advance first (the deduction's unique key): drop this draft. Any
+    // other failure drops it too and is reported as itself, never as that race.
     await ctx.db.delete("documents", draftId).catch(() => {})
+    if (!isUniqueViolation(err)) throw err
     return refuse(
       "advance_already_deducted",
-      `An advance of this project was deducted from another invoice at the same moment, so nothing was drafted (${err instanceof Error ? err.message : String(err)}).`,
+      `An advance of this project was deducted from another invoice at the same moment, so nothing was drafted.`,
     )
   }
 

@@ -188,9 +188,15 @@ const CONSOLE_SHIM = `if (typeof console === "undefined") {
   })();
 }`
 
-const WRAP_HELPER = `function __wrap(fn) {
+const WRAP_HELPER = `function __bigintAsString(k, v) {
+  return typeof v === "bigint" ? v.toString() : v;
+}
+function __bigintArgs(args) {
+  return args.map(function(a) { return typeof a === "bigint" ? a.toString() : a; });
+}
+function __wrap(fn) {
   return async function() {
-    var args = Array.prototype.slice.call(arguments);
+    var args = __bigintArgs(Array.prototype.slice.call(arguments));
     var sdkShape = false;
     for (var i = 0; i < args.length; i++) {
       var a = args[i];
@@ -205,7 +211,7 @@ const WRAP_HELPER = `function __wrap(fn) {
       if (a === null || a === undefined) return a;
       var t = typeof a;
       if (t === "string" || t === "number" || t === "boolean") return a;
-      return JSON.stringify(a);
+      return JSON.stringify(a, __bigintAsString);
     });
     var result = await fn.apply(null, marshalled);
     if (typeof result === "string") {
@@ -216,12 +222,12 @@ const WRAP_HELPER = `function __wrap(fn) {
 }
 function __wrapStructured(fn) {
   return async function() {
-    var args = Array.prototype.slice.call(arguments);
+    var args = __bigintArgs(Array.prototype.slice.call(arguments));
     var marshalled = args.map(function(a) {
       if (a === null || a === undefined) return a;
       var t = typeof a;
       if (t === "string" || t === "number" || t === "boolean") return a;
-      return JSON.stringify(a);
+      return JSON.stringify(a, __bigintAsString);
     });
     var result = await fn.apply(null, marshalled);
     if (typeof result === "string") {
@@ -324,8 +330,26 @@ function isPrimitive(a: unknown): boolean {
   return t === "string" || t === "number" || t === "boolean"
 }
 
+/**
+ * JSON replacer for bridge args: a bigint (an app's minor-unit amount) crosses as its decimal
+ * string, which every bigint column and `readMinorAmount` accept. Plain JSON.stringify throws
+ * "Do not know how to serialize a BigInt" on it, so one amount anywhere in an argument failed
+ * the whole call. The QuickJS copies (`__bigintAsString` here, `bigintAsString` in
+ * executor.ts) must stay identical.
+ */
+function bigintAsString(_key: string, value: unknown): unknown {
+  return typeof value === "bigint" ? value.toString() : value
+}
+
+/** A bare bigint argument crosses as its decimal string, like a nested one. */
+function bigintArgs(args: unknown[]): unknown[] {
+  return args.map((a) => (typeof a === "bigint" ? a.toString() : a))
+}
+
 function marshal(args: unknown[]): unknown[] {
-  return args.map((a) => (a === null || a === undefined || isPrimitive(a) ? a : JSON.stringify(a)))
+  return args.map((a) =>
+    a === null || a === undefined || isPrimitive(a) ? a : JSON.stringify(a, bigintAsString),
+  )
 }
 
 function parseLoose(result: unknown): unknown {
@@ -338,7 +362,8 @@ function parseLoose(result: unknown): unknown {
 }
 
 function wrapRaw(fn: BridgeFn): BridgeFn {
-  return async (...args) => {
+  return async (...rawArgs) => {
+    const args = bigintArgs(rawArgs)
     const sdkShape = args.some((a) => a !== null && a !== undefined && !isPrimitive(a))
     if (!sdkShape) return await fn(...args)
     return parseLoose(await fn(...marshal(args)))
@@ -346,7 +371,7 @@ function wrapRaw(fn: BridgeFn): BridgeFn {
 }
 
 function wrapStructured(fn: BridgeFn): BridgeFn {
-  return async (...args) => parseLoose(await fn(...marshal(args)))
+  return async (...args) => parseLoose(await fn(...marshal(bigintArgs(args))))
 }
 
 function jsonlIterator(next: BridgeFn) {

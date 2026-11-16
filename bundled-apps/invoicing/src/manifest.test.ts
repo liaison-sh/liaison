@@ -1763,6 +1763,8 @@ describe("invoicing manifest", () => {
     // 0.31.1: that refusal follows the gate mode (warn issues a plain PDF with a warning); a
     //   French VAT number supplies a missing SIREN; an order or Stripe invoice waiting on the
     //   issuer raises einvoicing:issuer_incomplete and is never dead-lettered.
+    // 0.31.2: an advance deduction (a milestone's or a prepaid retainer month's final) that fails
+    //   for any reason but the deduction's unique key reports that failure, not a race.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

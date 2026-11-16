@@ -404,6 +404,62 @@ describe("a retainer month's invoice", () => {
     expect((await draft(o, REC_OCT)).totals).toMatchObject({ excl: 72_000, incl: 86_400 })
   })
 
+  test("a prepaid retainer's deduction that fails for another reason reports that reason, not a race", async () => {
+    const advance = {
+      id: "7a1d2c3e-0000-4000-8000-0000000000d2",
+      type: "invoice",
+      status: "issued",
+      number: "F-2026-0041",
+      issued_at: "2026-10-01",
+      invoice_role: "advance",
+      billing_project_id: PROJECT,
+      service_period_start: "2026-10-01",
+      grand_total_minor: "540000",
+      currency: "EUR",
+    }
+    const advLine = {
+      id: "adv-l2",
+      document_id: advance.id,
+      subtotal_minor: "450000",
+      tax_rate_bp: 2000,
+    }
+    const run = async (failure: Error) => {
+      const h = harness({
+        schedule: retainerSchedule({ covers: "period_ahead" }),
+        docs: [advance],
+        lines: [advLine],
+      })
+      h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+      const batch = h.db.batch.bind(h.db)
+      h.db.batch = (async (spec: { ops: Array<Record<string, unknown>> }) => {
+        if (spec.ops.some((op) => op.insert === "advance_deductions")) throw failure
+        return batch(spec as never)
+      }) as typeof h.db.batch
+      const out = await retainerDraftFromReconcile(h.ctx, {
+        reconciliationId: REC_OCT,
+        revision: 1,
+      })
+        .then((res) => ({ res, thrown: null as unknown }))
+        .catch((thrown: unknown) => ({ res: null, thrown }))
+      return { ...out, docs: docs(h.db).filter((d) => d.invoice_role === "final") }
+    }
+
+    const other = await run(new Error("connection reset by peer"))
+    expect(other.thrown).toBeInstanceOf(Error)
+    expect((other.thrown as Error).message).toBe("connection reset by peer")
+    expect(other.docs).toEqual([])
+
+    const raced = await run(
+      Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" }),
+    )
+    expect(raced.thrown).toBeNull()
+    expect(raced.res).toMatchObject({
+      status: "error",
+      error: { code: "advance_already_deducted" },
+    })
+    expect(raced.docs).toEqual([])
+  })
+
   test("a prepaid retainer deducts each month's own advance, after its credits, three months running", async () => {
     const h = harness({
       schedule: retainerSchedule({ covers: "period_ahead", contact_id: "contact-1" }),

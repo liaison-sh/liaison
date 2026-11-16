@@ -1,8 +1,9 @@
 {
   "reviewedOutsideRoutes": {
-    "apps/api/src/modules/client-actions/public-routes.ts#inClientActionOrg": "every caller is a public client action handler passing ctx.match.row, the one client action row enterClientAction found by the SHA-256 of the token the holder posted (current or prior hash); the org is that row's own org_id and every statement names that row's id",
     "apps/api/src/modules/client-actions/decide.ts#decideClientAction": "link path: the org of the row findByTokenHash found by the posted token's hash (pre.org_id); portal path: the portal session's own org (the portal route passes the session org and the action id is re-read under it); the transaction then re-reads that one action by id in that org",
-    "apps/api/src/modules/client-actions/mint.ts#remailClientAction": "called by the public request route with the org of the client action row found by the posted token's hash (row.org_id, row.id), and by the kernel's own mint path with the minted action's org; the action is re-read by id AND org_id before anything is sent"
+    "apps/api/src/modules/client-actions/document-files.ts#readTargetFile": "its one caller, the public document route, passes ctx.match.row.org_id and row.id of the action found by the posted token's hash, and the file id the target app's own read tool returned for that action; the file row is read by id AND that org_id",
+    "apps/api/src/modules/client-actions/mint.ts#remailClientAction": "called by the public request route with the org of the client action row found by the posted token's hash (row.org_id, row.id), and by the kernel's own mint path with the minted action's org; the action is re-read by id AND org_id before anything is sent",
+    "apps/api/src/modules/client-actions/public-routes.ts#inClientActionOrg": "every caller is a public client action handler passing ctx.match.row, the one client action row enterClientAction found by the SHA-256 of the token the holder posted (current or prior hash); the org is that row's own org_id and every statement names that row's id"
   },
   "reviewedOrigins": {
     "apps/api/src/modules/client-actions/targets.ts#viewTarget": "the org of the client action row the caller read (by its token hash, or by id inside the caller's own org); the app's read tool runs as that action's sender",

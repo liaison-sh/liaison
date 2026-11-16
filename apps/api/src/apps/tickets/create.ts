@@ -517,12 +517,6 @@ export async function createTicket(
     }
   }
   const channel = opts.portalRequest ? "portal" : (params.channel ?? "manual")
-  // The client company the ticket is for, stamped now and never followed: the
-  // portal person's company, else the contact's company at this moment.
-  const companyStamp = opts.portalRequest
-    ? drizzleSql`${opts.portalRequest.companyId}::uuid`
-    : drizzleSql`(SELECT c.company_id FROM ${kernelRel("contacts")} c
-        WHERE c.id = ${params.contactId ?? null}::uuid AND c.org_id = ${orgId}::uuid)`
   const priority = params.priority ?? "normal"
   let team = params.team ?? null
   let unlinkedContactEmail: string | null = null
@@ -844,6 +838,14 @@ export async function createTicket(
       actorId: userId,
     })
   }
+  // The client company the ticket is for, stamped now and never followed: the
+  // portal person's company, else the company of the contact the ticket links to
+  // at this moment. Built after every contactId check and fallback above, so it
+  // reads the contact id the row is written with, never the caller's raw value.
+  const companyStamp = opts.portalRequest
+    ? drizzleSql`${opts.portalRequest.companyId}::uuid`
+    : drizzleSql`(SELECT c.company_id FROM ${kernelRel("contacts")} c
+        WHERE c.id = ${params.contactId ?? null}::uuid AND c.org_id = ${orgId}::uuid)`
   let lastErr: unknown = null
   for (let attempt = 0; attempt < 3; attempt++) {
     const replyToken = base32Token(10)

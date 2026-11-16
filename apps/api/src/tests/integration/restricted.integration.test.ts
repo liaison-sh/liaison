@@ -8,11 +8,27 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as dsql } from "drizzle-orm"
 import { sql } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
+import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
+import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
+import { listApprovals } from "~/modules/approvals/list"
+import { executeToolCore } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
+import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
+import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { restrictedScope } from "~/modules/permissions/restricted-scope"
+import { sendMessage } from "~/modules/threads/message"
 import { type AppCell, insertAppRow } from "~/seed/factories/app-tables"
 import { seedOrgRow } from "~/seed/factories/org/rows"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import agreementsManifest from "../../../../../bundled-apps/agreements/app.manifest.json"
 
@@ -155,4 +171,263 @@ describe("who can see an agreement", () => {
     // The scope still decides for an open agreement: no read scope, no rows.
     expect((await seen(reader(member, []))).agreements).toBe(0)
   })
+})
+
+// Part 2. A person off the list finds no title, signer or count on any surface. The surfaces
+// follow from three mechanisms, not from a filter each: RLS on the rows, the turn's restricted
+// taint, and copies that follow the list. Each surface below names the mechanism that holds it
+// and probes it; a new surface that shows an agreement is added to this list.
+describe("every surface honours the list", () => {
+  const world = { orgId: "", listed: "", admin: "", member: "", closed: "", room: "" }
+  const NUMBER = "AG-2026-301"
+
+  const held = async (userId: string): Promise<UserContext> => {
+    const perms = await withSystemDb("restricted-surfaces-perms", (tx) =>
+      loadEffectivePermissions(tx as never, userId, world.orgId),
+    )
+    return {
+      actorType: "user",
+      userId,
+      orgId: world.orgId,
+      scopes: perms.scopes,
+      dimensionGrants: perms.dimensionGrants ?? {},
+      roles: perms.roles,
+    }
+  }
+  const tool = async (userId: string, toolName: string, params: unknown, threadId?: string) => {
+    const actor = await held(userId)
+    const accumulator = createTurnScopeAccumulator({ orgId: world.orgId })
+    const runId = crypto.randomUUID()
+    const ctx = {
+      runId,
+      parentRunId: null,
+      rootRunId: runId,
+      nestingDepth: 0,
+      effectiveScope: actor.scopes,
+      turnScopeAccumulator: accumulator,
+      humanTurn: true,
+    } as unknown as RunContext
+    return runContextStore.run(ctx, () =>
+      executeToolCore({
+        toolName,
+        orgId: world.orgId,
+        actor,
+        params,
+        ...(threadId ? { threadId } : {}),
+        origin: "in-app-agent",
+      } as never),
+    ) as Promise<Record<string, unknown>>
+  }
+  const rlsCount = async (userId: string, query: string) => {
+    const actor = await held(userId)
+    return withRlsContext(actor, async (tx) => {
+      const rows = (await tx.execute(dsql.raw(query))) as unknown as Array<{ n: number }>
+      return Number(rows[0]?.n ?? 0)
+    })
+  }
+
+  /** What `userId` sees of the closed agreement on each surface: a count, 0 meaning nothing. */
+  const SURFACES: Array<{
+    surface: string
+    mechanism: string
+    seen?: (u: string) => Promise<number>
+  }> = [
+    {
+      surface: "search (the agreements search tool; the entity is never indexed)",
+      mechanism: "row-level security",
+      seen: async (u) =>
+        JSON.stringify(await tool(u, "agreements:agreements_search", {})).includes(NUMBER) ? 1 : 0,
+    },
+    {
+      surface: "A-03 counts (the Home load of the app)",
+      mechanism: "row-level security",
+      seen: async (u) => {
+        const out = (await tool(u, "agreements:home_load", {})) as { data?: { total?: number } }
+        return Number(out.data?.total ?? 0)
+      },
+    },
+    {
+      surface: "Home, notifications and attention",
+      mechanism: "recipients follow the list",
+      seen: async (u) =>
+        (
+          await keepRestrictedReaders(
+            world.orgId,
+            { app: "agreements", entity: "agreement", entityId: world.closed },
+            [u],
+          )
+        ).length,
+    },
+    {
+      surface: "routine runs",
+      mechanism: "the routine owner gate reads the row under the owner's access",
+      seen: async (u) =>
+        (await ownerCanSeeEventEntity(await held(u), {
+          app: "agreements",
+          entity: "agreement",
+          action: "signed",
+          orgId: world.orgId,
+          entityId: world.closed,
+        }))
+          ? 1
+          : 0,
+    },
+    {
+      surface: "threads, thread search and mentions",
+      mechanism: "the restricted taint: a message stamped with the record is read by the list",
+      seen: (u) =>
+        rlsCount(
+          u,
+          `SELECT count(*)::int AS n FROM kernel.messages WHERE thread_id = '${world.room}' AND content LIKE '%${NUMBER}%'`,
+        ),
+    },
+    {
+      surface: "approvals list and feed",
+      mechanism: "the restricted taint parks owner-routed to the person who asked",
+      seen: async (u) => {
+        const actor = await held(u)
+        const rows = await withRlsContext(actor, (tx) =>
+          listApprovals(tx as never, { orgId: world.orgId, userId: u, scopes: actor.scopes }),
+        )
+        return rows.filter((r) => JSON.stringify(r).includes(`(${NUMBER})`)).length
+      },
+    },
+    {
+      surface: "files parented to the agreement, versions, signature events and evidence",
+      mechanism: "row-level security through the parent",
+      seen: (u) =>
+        rlsCount(
+          u,
+          `SELECT count(*)::int AS n FROM app_agreements.agreements WHERE id = '${world.closed}'`,
+        ),
+    },
+    { surface: "activity", mechanism: "owed: the activity feed of agreement events" },
+    { surface: "audit search", mechanism: "owed: audit rows of a restricted agreement" },
+    { surface: "client_actions_list", mechanism: "owed: client actions' visible_to from the list" },
+    {
+      surface: "Knowledge",
+      mechanism: "owed: the signed text's Knowledge copy shared with the list",
+    },
+    { surface: "entity discussions", mechanism: "owed: discussions pruned to the list" },
+    { surface: "agent and user memory", mechanism: "owed: a memory write after a restricted read" },
+    { surface: "MCP results", mechanism: "owed: the same stamp through the MCP gateway" },
+    { surface: "monitoring", mechanism: "owed: an incident says a restricted document" },
+    { surface: "org export", mechanism: "owed: number and status only" },
+    { surface: "data subject export", mechanism: "owed: number and status only" },
+    { surface: "portal", mechanism: "owed: no automatic share, open shares narrowed" },
+    { surface: "mail previews", mechanism: "owed: a restricted approval's mail names no title" },
+    { surface: "While you were away", mechanism: "owed: the away row from recipients on the list" },
+  ]
+
+  beforeAll(async () => {
+    process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
+    world.orgId = (await createTestOrg()).id
+    world.listed = (await minimal.adminSession(world.orgId)).userId
+    world.admin = (await minimal.session(world.orgId, { role: "admin" })).userId
+    world.member = (await minimal.session(world.orgId, { role: "member" })).userId
+    await ensureAppsForOrg(world.orgId)
+    await initSandboxPool()
+    await initWorkerPool()
+    const m = {
+      ...agreementsManifest,
+      trusted: false,
+      _format: "manifest" as const,
+      _bundlePath: new URL(
+        `../../../../../bundled-apps/agreements/${agreementsManifest.version}/bundle.js`,
+        import.meta.url,
+      ).pathname,
+    } as unknown as Parameters<typeof registerApps>[0][number]
+    const { failedApps } = await registerApps([m], world.orgId)
+    expect(failedApps).toEqual([])
+    await primeOrgApps(world.orgId, 0)
+    await registerKernelAgentTools(world.orgId)
+    world.closed = crypto.randomUUID()
+    await withPrivilegedDb(world.orgId, "test:restricted-surfaces", async (tx) => {
+      await insertAppRow(tx, "agreements", "agreements", {
+        org_id: world.orgId,
+        id: world.closed,
+        number: NUMBER,
+        kind: "nda",
+        title: "Closed surface terms",
+        org_access: "none",
+      })
+      await insertAppRow(tx, "agreements", "agreement_shares", {
+        org_id: world.orgId,
+        agreement_id: world.closed,
+        user_id: world.listed,
+        role: "editor",
+      })
+    })
+    world.room = await minimal.thread(world.orgId, world.listed, {
+      title: "Surfaces",
+      participantIds: [world.admin, world.member],
+    })
+    // What a turn of the person on the list leaves behind: a stamped message and a parked post.
+    const scope = restrictedScope("agreements", "agreement", world.closed)
+    const actor = await held(world.listed)
+    await withRlsContext(actor, (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId: world.orgId,
+          userId: world.listed,
+          threadId: world.room,
+          content: `Note on ${NUMBER}`,
+          authorType: "user",
+          requiredScopes: [scope],
+        } as never,
+      ),
+    )
+    const dm = await minimal.agentDm(world.orgId, world.listed)
+    const accumulator = createTurnScopeAccumulator({ orgId: world.orgId })
+    const runId = crypto.randomUUID()
+    await runContextStore.run(
+      {
+        runId,
+        parentRunId: null,
+        rootRunId: runId,
+        nestingDepth: 0,
+        effectiveScope: actor.scopes,
+        turnScopeAccumulator: accumulator,
+        humanTurn: true,
+      } as unknown as RunContext,
+      async () => {
+        const call = (toolName: string, params: unknown) =>
+          executeToolCore({
+            toolName,
+            orgId: world.orgId,
+            actor,
+            params,
+            threadId: dm,
+            origin: "in-app-agent",
+          } as never)
+        await call("agreements:agreements_search", {})
+        const parked = (await call("kernel:threads_reply", {
+          threadId: world.room,
+          content: `Summary (${NUMBER})`,
+        })) as Record<string, unknown>
+        expect(parked.blocked).toBeDefined()
+      },
+    )
+  }, 300_000)
+
+  afterAll(async () => {
+    forgetOrgApps(world.orgId)
+    await shutdownWorkerPool()
+    await shutdownSandboxPool()
+    await sql`DELETE FROM kernel.apps WHERE org_id = ${world.orgId}`.catch(() => {})
+  })
+
+  for (const s of SURFACES) {
+    if (!s.seen) {
+      it.todo(`${s.surface}: ${s.mechanism}`)
+      continue
+    }
+    const seen = s.seen
+    it(`${s.surface}: nothing for a member or an admin off the list, the record for the list (${s.mechanism})`, async () => {
+      expect(await seen(world.member)).toBe(0)
+      expect(await seen(world.admin)).toBe(0)
+      expect(await seen(world.listed)).toBeGreaterThan(0)
+    })
+  }
 })

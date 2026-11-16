@@ -127,7 +127,7 @@ describe("rollupIndex and joinRollup", () => {
   })
 
   it("joins: a row no other row links reads 0, by month it stays empty", () => {
-    const rows = [
+    const rows: Array<{ id: string; cells: Record<string, unknown> }> = [
       { id: "a", cells: {} },
       { id: "c", cells: {} },
     ]

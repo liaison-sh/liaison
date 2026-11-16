@@ -1,0 +1,7 @@
+# The seal, the evidence file, the signers' copies, verify, retention and their jobs.
+src/timestamp-retry.test.ts
+src/copies.test.ts
+src/signed-event-once.test.ts
+src/verify-mismatch.test.ts
+src/evidence-scope.test.ts
+src/retention.test.ts

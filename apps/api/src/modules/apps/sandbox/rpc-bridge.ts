@@ -32,6 +32,7 @@ import { createConversionMethods } from "~/modules/apps/sandbox/bridge/conversio
 import { createDbMethods } from "~/modules/apps/sandbox/bridge/db"
 import { createEffectsMethods } from "~/modules/apps/sandbox/bridge/effects"
 import { createEgressMethods } from "~/modules/apps/sandbox/bridge/egress"
+import { createEvidenceMethods } from "~/modules/apps/sandbox/bridge/evidence"
 import { createFilesMethods } from "~/modules/apps/sandbox/bridge/files"
 import { createIdentityMethods } from "~/modules/apps/sandbox/bridge/identity"
 import { createKnowledgeMethods } from "~/modules/apps/sandbox/bridge/knowledge"
@@ -102,6 +103,7 @@ export function createRpcBridge(
   const { bridgeReadOnlyRun } = ctx
   // The run's end (runApp) flushes its log lines (modules/app-builder/logs.ts).
   if (ctx.appLogSink) attachRunLogSink(rpcBridge, ctx.appLogSink)
+  const filesMethods = createFilesMethods(ctx)
   Object.assign(
     rpcBridge,
     createIdentityMethods(ctx),
@@ -120,7 +122,7 @@ export function createRpcBridge(
     createProjectsMethods(ctx),
     createKnowledgeMethods(ctx),
     createKnowledgeCurationMethods(ctx),
-    createFilesMethods(ctx),
+    filesMethods,
     createContractsMethods(ctx),
     createEffectsMethods(ctx),
     createStoreMethods(ctx),
@@ -133,6 +135,7 @@ export function createRpcBridge(
     createSigningMethods(ctx),
     createClientActionsMethods(ctx),
     createRichTextMethods(ctx),
+    createEvidenceMethods(ctx, filesMethods),
   )
 
   // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
@@ -257,6 +260,10 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // and the timestamp is an outside call.
   "signing_seal",
   "signing_timestamp",
+  // The agreements app's seal-time files and copy mail (bridge/evidence.ts).
+  "evidence_signed_pdf",
+  "evidence_package_files",
+  "evidence_mail_copy",
   // Client action links (bridge/client-actions.ts): a send mints and mails, a void withdraws.
   "client_actions_mint",
   "client_actions_revoke",

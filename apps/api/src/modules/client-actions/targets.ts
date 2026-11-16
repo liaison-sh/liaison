@@ -48,7 +48,16 @@ export interface ClientActionView {
   sha256: string
   wordsKey: string | null
   wordsParams: Record<string, string>
+  /**
+   * Where each signer's copy of a signed target stands, by client action id
+   * (`waiting_for_others`, `on_its_way`, `sent`, `not_sent`); only the holder's
+   * own entry is ever shown. Empty when the target has no copies.
+   */
+  copyStates: Record<string, CopyState>
 }
+
+export const COPY_STATES = ["waiting_for_others", "on_its_way", "sent", "not_sent"] as const
+export type CopyState = (typeof COPY_STATES)[number]
 
 export interface ViewRequest {
   orgId: string
@@ -147,6 +156,15 @@ function asView(data: unknown): ClientActionView | null {
         ? Object.fromEntries(
             Object.entries(d.words_params as Record<string, unknown>).filter(
               (e): e is [string, string] => typeof e[1] === "string",
+            ),
+          )
+        : {},
+    copyStates:
+      d.copies && typeof d.copies === "object" && !Array.isArray(d.copies)
+        ? Object.fromEntries(
+            Object.entries(d.copies as Record<string, unknown>).filter(
+              (e): e is [string, CopyState] =>
+                typeof e[1] === "string" && (COPY_STATES as readonly string[]).includes(e[1]),
             ),
           )
         : {},

@@ -2,3 +2,4 @@
 src/tests/integration/restricted.integration.test.ts
 src/tests/integration/agreements-sandbox.integration.test.ts
 src/tests/integration/agreements-decided.integration.test.ts
+src/tests/integration/agreements-immutability.integration.test.ts

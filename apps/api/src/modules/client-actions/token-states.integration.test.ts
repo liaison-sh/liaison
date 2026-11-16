@@ -50,7 +50,8 @@ const ALLOWED: Record<string, string[]> = {
   used: DEAD_KEYS,
   revoked: DEAD_KEYS,
   declined: DEAD_KEYS,
-  signed: DEAD_KEYS,
+  // A signer's last page also says where their own copy stands, and the masked address.
+  signed: [...DEAD_KEYS, "copy", "copy_to"],
   attempts: DEAD_KEYS,
   replaced: DEAD_KEYS,
   ended: DEAD_KEYS,
@@ -169,6 +170,7 @@ describe("the token page's twelve states", () => {
           }[name] ?? 200,
       })
     }
+    expect(got.signed?.body.copy).toBe("on_its_way")
     expect(got.notfound?.body).toEqual({ error: { code: "not_found" } })
     expect(got.wrong?.body).toMatchObject({ error: { code: "wrong_code", left: 4 } })
   }, 60_000)

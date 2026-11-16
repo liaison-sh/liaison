@@ -17,6 +17,15 @@ import {
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
 import {
+  agreementEvidenceGet,
+  agreementVerify,
+  copiesRetry,
+  evidenceVerify,
+  type SealCtx,
+  sealRetry,
+  timestampRetry,
+} from "./seal"
+import {
   agreementNewLink,
   agreementNewLinkPreflight,
   agreementReminderSend,
@@ -75,6 +84,16 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
 
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
 export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
+export const agreementEvidenceGetHandler = (p: { id: string }, ctx: Ctx) =>
+  agreementEvidenceGet(ctx, p)
+export const agreementVerifyHandler = (p: { id: string }, ctx: Ctx) =>
+  agreementVerify(ctx as SealCtx, p)
+export const sealRetryJobHandler = (_payload: unknown, ctx: Ctx) => sealRetry(ctx as SealCtx)
+export const timestampRetryJobHandler = (_payload: unknown, ctx: Ctx) =>
+  timestampRetry(ctx as SealCtx)
+export const copiesRetryJobHandler = (_payload: unknown, ctx: Ctx) => copiesRetry(ctx as SealCtx)
+export const evidenceVerifyJobHandler = (_payload: unknown, ctx: Ctx) =>
+  evidenceVerify(ctx as SealCtx)
 
 // --- Gated-tool approval summarizers ---
 export * from "./summarizers"

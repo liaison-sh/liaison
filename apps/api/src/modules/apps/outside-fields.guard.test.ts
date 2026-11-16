@@ -170,6 +170,16 @@ const LISTED = new Map<string, string>([
   ["invoicing:settings_hs_code_list", `the org's code library: ${NONE}`],
   ["invoicing:settings_shop_mapping_list", `org settings: ${NONE}`],
   [
+    "agreements:agreements_search",
+    `agreements and their numbers, titles and dates the org's own members write: ${NONE}`,
+  ],
+  [
+    "agreements:agreement_get",
+    `one agreement as the org's own members wrote it, and its links' states: ${NONE}`,
+  ],
+  ["agreements:templates_list", `templates the org's own members wrote: ${NONE}`],
+  ["agreements:template_get", `a template the org's own members wrote: ${NONE}`],
+  [
     "invoicing:orders_invoiceability_check",
     `the caller's own order fields checked against the shop's issuer mapping: ${NONE}`,
   ],
@@ -263,10 +273,6 @@ const LISTED_APPS = new Map<string, string>([
   ],
   ["projects", `projects, tasks, comments and labels the org's own members write: ${NONE}`],
   ["mcp-manager", `the MCP connections the org added: ${NONE}`],
-  [
-    "agreements",
-    `agreements, drafts and templates the org's own members write; a signer's words reach no read tool yet: ${NONE}`,
-  ],
 ])
 
 describe("outside text is declared by data", () => {

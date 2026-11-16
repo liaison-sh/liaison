@@ -53,6 +53,7 @@ export function baseView(): ClientActionView {
     sha256: "b".repeat(64),
     wordsKey: null,
     wordsParams: {},
+    copyStates: {},
   }
 }
 

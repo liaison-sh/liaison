@@ -3682,5 +3682,21 @@
     "say": "the signer's address had a typo: send a new link to the corrected address",
     "typed": ["send a new link", "new signing link"],
     "any": ["agreements__agreement_new_link"]
+  },
+  {
+    "id": "C122",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre la preuve de signature du contrat avec son empreinte et le sceau",
+    "typed": ["preuve contrat", "evidence agreement", "empreinte sceau"],
+    "any": ["agreements__agreement_evidence_get"]
+  },
+  {
+    "id": "C123",
+    "set": "seed",
+    "lang": "fr",
+    "say": "vérifie que le contrat signé n'a pas été modifié",
+    "typed": ["vérifier sceau", "verify seal", "intégrité preuve"],
+    "any": ["agreements__agreement_verify"]
   }
 ]

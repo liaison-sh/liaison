@@ -292,7 +292,17 @@ clientActionPublicRoutes.post(
   clientActionRouteHandler(async (ctx) => {
     const { row } = ctx.match
     const dead = deadAnswer(ctx, 200)
-    if (dead) return dead.res
+    if (dead) {
+      // A signer's last page says where their copy stands: their own entry only.
+      if (frameOf(row, ctx.match.via) !== "signed") return dead.res
+      const signedView = env.LIAISON_DEMO_MODE ? "down" : await viewOf(row)
+      return caJson(200, {
+        ...deadFrameBody(row, "signed"),
+        copy:
+          signedView === "down" ? "on_its_way" : (signedView.copyStates?.[row.id] ?? "on_its_way"),
+        copy_to: maskEmail(row.invited_email),
+      })
+    }
     if (env.LIAISON_DEMO_MODE) return caJson(503, { state: "down" })
     const view = await viewOf(row)
     if (view === "down") return caJson(503, { state: "down" })

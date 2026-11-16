@@ -51,6 +51,7 @@ function view(): ClientActionView {
     sha256: shaNow,
     wordsKey: null,
     wordsParams: {},
+    copyStates: {},
   }
 }
 

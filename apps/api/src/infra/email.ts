@@ -36,6 +36,7 @@ export type EmailTemplateId =
   | "client-action.code"
   | "client-action.copy"
   | "client-action.staff"
+  | "agreements.signed-copy"
   | "portal.request-reply"
   | "auth.step-up-code"
   | "auth.password-reset"
@@ -60,6 +61,14 @@ export interface EmailMessage {
   idempotencyKey?: string
   /** Extra headers, `X-` names only (the client action mail's random id). */
   headers?: Record<string, string>
+  /** Files sent with the mail (a signer's copy of a signed agreement). */
+  attachments?: EmailAttachment[]
+}
+
+export interface EmailAttachment {
+  filename: string
+  contentType: string
+  content: Uint8Array
 }
 
 export class EmailRateLimitError extends Error {
@@ -334,6 +343,15 @@ export class SmtpEmailProvider implements EmailProvider {
       text: message.text,
       replyTo: message.replyTo,
       ...(message.headers ? { headers: message.headers } : {}),
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((a) => ({
+              filename: a.filename,
+              contentType: a.contentType,
+              content: Buffer.from(a.content),
+            })),
+          }
+        : {}),
     })
     log.info(emailLogFields(message), "Email sent (SMTP)")
   }
@@ -379,6 +397,15 @@ export class ResendEmailProvider implements EmailProvider {
       ...(message.text ? { text: message.text } : {}),
       ...(message.replyTo ? { reply_to: message.replyTo } : {}),
       ...(message.headers ? { headers: message.headers } : {}),
+      ...(message.attachments?.length
+        ? {
+            attachments: message.attachments.map((a) => ({
+              filename: a.filename,
+              content: Buffer.from(a.content).toString("base64"),
+              content_type: a.contentType,
+            })),
+          }
+        : {}),
     }
 
     let res: Response

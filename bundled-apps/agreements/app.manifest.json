@@ -1,10 +1,13 @@
 {
   "name": "agreements",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
   "agentInstructions": "Agreements holds the organization's proposals, statements of work, contracts and NDAs, each with its own number, and the templates they are made from.",
+  "outsideTextFields": [
+    "signers"
+  ],
   "listing": {
     "publisher": "Liaison",
     "category": "Operations",
@@ -210,7 +213,8 @@
           "userRef": true,
           "onErase": "anonymize"
         },
-        "created_by_agent_id": "uuid?"
+        "created_by_agent_id": "uuid?",
+        "seal_overdue_at": "date?"
       }
     },
     "agreement_shares": {
@@ -548,7 +552,15 @@
         "last_verify_ok": {
           "type": "boolean",
           "required": false
-        }
+        },
+        "timestamp_overdue_at": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "version_id"
+          ]
+        ]
       }
     },
     "agreement_template_meta": {
@@ -632,6 +644,58 @@
           "type": "integer",
           "default": 14
         }
+      }
+    },
+    "copy_mails": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "evidence_packages",
+          "localColumn": "package_id"
+        }
+      },
+      "fields": {
+        "package_id": {
+          "type": "uuid",
+          "references": {
+            "table": "evidence_packages",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "client_action_id": "uuid",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "signer",
+            "stamped"
+          ],
+          "default": "signer"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "sent",
+            "failed"
+          ],
+          "default": "pending"
+        },
+        "attempts": {
+          "type": "integer",
+          "default": 0
+        },
+        "sent_at": "date?",
+        "alerted_at": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "package_id",
+            "client_action_id",
+            "kind"
+          ]
+        ]
       }
     }
   },
@@ -1447,6 +1511,69 @@
           "targetId"
         ]
       }
+    },
+    "agreement_evidence_get": {
+      "description": "Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent. IP and browser need agreements:evidence:devices.",
+      "searchKeywords": [
+        "preuve",
+        "evidence",
+        "sceau",
+        "seal",
+        "empreinte",
+        "fingerprint",
+        "horodatage",
+        "timestamp"
+      ],
+      "requiredScopes": [
+        "agreements:evidence:read"
+      ],
+      "handler": "agreementEvidenceGetHandler",
+      "readOnly": true,
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agreement id or the signed version id."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_verify": {
+      "description": "Check a signed agreement's evidence: re-hash the stored files and recompute the seal. A mismatch is recorded and reported, never repaired.",
+      "searchKeywords": [
+        "vérifier",
+        "verify",
+        "preuve",
+        "evidence",
+        "sceau",
+        "seal",
+        "empreinte",
+        "fingerprint",
+        "intégrité",
+        "integrity"
+      ],
+      "requiredScopes": [
+        "agreements:evidence:read"
+      ],
+      "handler": "agreementVerifyHandler",
+      "writesToTable": "app_agreements.evidence_packages",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agreement id or the signed version id."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
     }
   },
   "clientActionTargets": [
@@ -1468,7 +1595,12 @@
       "agreement:declined",
       "agreement:expired",
       "agreement:expiring",
-      "agreement:voided"
+      "agreement:voided",
+      "agreement:signed",
+      "evidence:mismatch",
+      "evidence:timestamp_overdue",
+      "evidence:copy_failed",
+      "evidence:seal_overdue"
     ]
   },
   "jobs": {
@@ -1509,6 +1641,140 @@
       },
       "schedule": "0 6 * * *",
       "timeoutMs": 120000
+    },
+    "seal-retry": {
+      "handler": "sealRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_versions",
+          "where": {
+            "status": {
+              "in": [
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "timestamp-retry": {
+      "handler": "timestampRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "evidence_packages",
+          "where": {
+            "timestamp_status": {
+              "in": [
+                "pending"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "copies-retry": {
+      "handler": "copiesRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "copy_mails",
+          "where": {
+            "status": {
+              "in": [
+                "failed",
+                "pending"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "evidence-verify": {
+      "handler": "evidenceVerifyJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "evidence_packages",
+          "where": {
+            "timestamp_status": {
+              "in": [
+                "pending",
+                "stamped"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "0 3 * * 1",
+      "timeoutMs": 600000
     }
+  },
+  "attention": {
+    "translations": [
+      {
+        "event": "evidence:timestamp_overdue",
+        "kind": "agreements:evidence.timestamp_overdue",
+        "urgency": 50,
+        "summary": "{{data.number}} version {{data.version}} was sealed more than 24 hours ago and the outside timestamp has not arrived. The signers already have their copies; the stamped file follows when the authority answers.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:copy_failed",
+        "kind": "agreements:evidence.copy_failed",
+        "urgency": 60,
+        "summary": "The signed copy of {{data.number}} version {{data.version}} could not be mailed to {{data.signer}} after {{data.attempts}} tries. Send it from the evidence file.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:seal_overdue",
+        "kind": "agreements:evidence.seal_overdue",
+        "urgency": 60,
+        "summary": "{{data.number}} version {{data.version}} is signed but not sealed after an hour. The seal is retried every 10 minutes.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:mismatch",
+        "kind": "agreements:evidence.mismatch",
+        "urgency": 80,
+        "summary": "The seal of {{data.number}} version {{data.version}} does not match ({{data.what}}). Nothing was repaired; the signers' copies are the reference.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      }
+    ]
   }
 }

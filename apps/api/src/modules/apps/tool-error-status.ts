@@ -476,12 +476,21 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   EMAIL_REQUIRED: 400,
   MINT_NEEDS_A_PERSON: 403,
   REVOKE_NEEDS_A_PERSON: 403,
+  // A signed agreement's evidence: not signed or not sealed yet, a frozen file that no longer
+  // matches its fingerprint (never sealed, never repaired), a name no font can draw.
+  NOT_SIGNED: 409,
+  NOT_SEALED: 409,
+  DOCUMENT_CHANGED: 409,
+  EVIDENCE_INCONSISTENT: 409,
+  SIGNATURE_NAME_NOT_DRAWABLE: 422,
+  MERGE_FAILED: 503,
   // What this server offers: signatures off on the hosted edition, no timestamp authority set up,
   // no renderer or link door on this build. The operator can change these, the caller cannot.
   SIGNING_NOT_AVAILABLE: 422,
   TIMESTAMP_NOT_CONFIGURED: 422,
   FREEZE_NOT_AVAILABLE: 422,
   LINKS_NOT_AVAILABLE: 422,
+  NOT_AVAILABLE: 422,
   // A send's pinned mail check, held again when the approved send goes: the card no longer
   // matches, or the address stopped taking mail since the card (a reply, a bounce, an opt-out).
   // A new link for one signer: they already answered, declined after proving the code, or

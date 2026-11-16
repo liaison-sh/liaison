@@ -9,6 +9,7 @@
 
 import { UNFIT_TAGS } from "./checks"
 import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+import { type CopyState, copyStateOf, eventsOf, type SealCtx, sealVersion } from "./seal"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -415,7 +416,19 @@ export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
     pdf_file_id: v.file_id ?? null,
     sha256: v.sha256,
     words_params: { number: a.number, version: String(v.number) },
+    copies: await copyStatesOf(ctx, v.id),
   }
+}
+
+/** Each signer's copy state of a version, by client action id (the token page's last frame). */
+async function copyStatesOf(
+  ctx: AgreementsCtx,
+  versionId: string,
+): Promise<Record<string, CopyState>> {
+  const out: Record<string, CopyState> = {}
+  for (const e of await eventsOf(ctx, versionId))
+    out[e.client_action_id] = await copyStateOf(ctx, versionId, e.client_action_id)
+  return out
 }
 
 interface DecidedEvent {
@@ -520,7 +533,9 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   if (done >= all) {
     await ctx.db.update("agreement_versions", version.id, { status: "signed" })
     await ctx.db.update("agreements", agreement.id, { status: "signed" })
-    return { status: "signed", signed: done, of: all }
+    // The seal follows at once; a failure leaves the version signed for `seal-retry`.
+    const sealed = await sealVersion(ctx as SealCtx, version.id)
+    return { status: "signed", signed: done, of: all, seal: sealed.status }
   }
   await ctx.db.update("agreements", agreement.id, { status: "partly_signed" })
   // The next signer of the approved send, when they wait for this one.

@@ -12,7 +12,7 @@
 // drafts a firm adapts, never finished contracts.
 
 import { and, eq, inArray } from "drizzle-orm"
-import type { RlsClient } from "~/db"
+import type { PrivilegedDb, RlsClient } from "~/db"
 import { documentTemplates } from "~/db/schema/kernel"
 import { contractBody, type StarterLang } from "./common"
 import { CORPORATE_STARTERS, type CorporateStarterKey } from "./corporate"
@@ -92,7 +92,7 @@ export function legalStarterTemplates(opts: {
  * Returns the names added.
  */
 export async function seedLegalStarterTemplates(
-  tx: RlsClient,
+  tx: RlsClient | PrivilegedDb,
   orgId: string,
   opts: { corporateTemplates: boolean },
 ): Promise<string[]> {

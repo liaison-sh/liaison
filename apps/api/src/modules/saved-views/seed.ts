@@ -3,6 +3,8 @@ import { sql as drizzleSql } from "drizzle-orm"
 import type { PrivilegedDb } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { manifestRegistry } from "~/modules/apps/app-registries"
+import { enabledFeaturesFor, isAppOffForOrg } from "~/modules/apps/org-apps"
+import { seedLegalStarterTemplates } from "~/modules/documents/legal-templates/starters"
 
 /**
  * Seed manifest-declared default saved views for one org. Idempotent: relies on
@@ -11,6 +13,7 @@ import { manifestRegistry } from "~/modules/apps/app-registries"
  * which preserves admin renames.
  */
 export async function seedManifestDefaults(tx: PrivilegedDb, orgId: string): Promise<void> {
+  await seedAgreementStarters(tx, orgId)
   const savedViewsTable = drizzleSql.raw(`${schemaRef("kernel")}.saved_views`)
   for (const [[regOrgId, appName], manifest] of manifestRegistry.entriesOf(orgId)) {
     if (regOrgId !== orgId) continue
@@ -30,4 +33,21 @@ export async function seedManifestDefaults(tx: PrivilegedDb, orgId: string): Pro
       }
     }
   }
+}
+
+/**
+ * An organisation using agreements gets the starter agreement templates: kernel document
+ * templates in the classic legal layout (modules/documents/legal-templates). Only the missing
+ * ones are added, so an organisation's own edits, renames and archives stay; the corporate acts
+ * only while the agreements app's corporateTemplates feature is on.
+ */
+async function seedAgreementStarters(tx: PrivilegedDb, orgId: string): Promise<void> {
+  const installed = [...manifestRegistry.entriesOf(orgId)].some(
+    ([[regOrgId, appName]]) => regOrgId === orgId && appName === "agreements",
+  )
+  if (!installed || isAppOffForOrg(orgId, "agreements")) return
+  const corporateTemplates = enabledFeaturesFor(orgId).some(
+    (f) => f.app === "agreements" && f.feature === "corporateTemplates",
+  )
+  await seedLegalStarterTemplates(tx, orgId, { corporateTemplates })
 }

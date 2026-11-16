@@ -306,6 +306,9 @@ const legalId = z
   .string()
   .regex(/^[A-Za-z0-9_-]{1,64}$/, "an id of letters, digits, - and _, such as fees")
 
+/** An agreements block an agent wrote and no person has read yet (never printed as such). */
+const agentDraft = { agent_draft: z.boolean().optional() }
+
 const articleBlock = z
   .object({
     type: z.literal("article"),
@@ -315,7 +318,7 @@ const articleBlock = z
     heading: legalText.optional(),
     text: legalText,
     /** Written by an agent and not read by a person yet (the agreements app refuses to freeze it). */
-    agent_draft: z.boolean().optional(),
+    ...agentDraft,
     /** A person marked this clause's typed article numbers as citations of another text. */
     citation: z.boolean().optional(),
     ...when,
@@ -341,6 +344,7 @@ const partyItem = z
 const partiesBlock = z
   .object({
     type: z.literal("parties"),
+    ...agentDraft,
     lead: templateText.optional(),
     groups: z
       .array(
@@ -361,6 +365,7 @@ const partiesBlock = z
 const recitalsBlock = z
   .object({
     type: z.literal("recitals"),
+    ...agentDraft,
     items: z.array(legalText).min(1).max(26),
     closing: templateText.optional(),
     ...when,
@@ -370,6 +375,7 @@ const recitalsBlock = z
 const definitionsBlock = z
   .object({
     type: z.literal("definitions"),
+    ...agentDraft,
     items: z
       .array(z.object({ term: templateText, text: legalText }).strict())
       .min(1)
@@ -383,6 +389,7 @@ const tocBlock = z.object({ type: z.literal("toc"), ...when }).strict()
 const signatureBlock = z
   .object({
     type: z.literal("signature_block"),
+    ...agentDraft,
     place: templateText,
     lines: z
       .array(z.object({ party: templateText, name: templateText, capacity: templateText }).strict())
@@ -428,6 +435,7 @@ const annexInner = z.discriminatedUnion("type", [
 const annexBlock = z
   .object({
     type: z.literal("annex"),
+    ...agentDraft,
     id: legalId.optional(),
     title: legalText,
     blocks: z.array(annexInner).min(1).max(RICH_TEXT_MAX_BLOCKS),

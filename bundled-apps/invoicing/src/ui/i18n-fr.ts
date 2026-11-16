@@ -10,6 +10,8 @@ export const FR: Record<string, string> = {
   "+ Create document": "+ Créer un document",
   "+ New issuer profile": "+ Nouveau profil émetteur",
   City: "Ville",
+  "(the newest {{n}} loaded: narrow the dates to count the rest)":
+    "(les {{n}} plus récents chargés : resserrez les dates pour compter le reste)",
   "Not made yet": "Pas encore produit",
   Document: "Document",
   "Its PDF was not made when it was issued: it is made again":

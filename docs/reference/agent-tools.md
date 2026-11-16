@@ -152,7 +152,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `list_skills` | List every skill the caller can see, without bodies; call kernel__skill_read for one. |  | `kernel:skills:read` |
 | `mail_attachment_read` | Read one attachment of an email by its file id from mail__read: a PDF, Word, Excel or PowerPoint file, an image or a video. |  | `mail:conversations:read`, `kernel:files:analyze` |
 | `mailbox_setup` | Show the card for the person's own personal mailbox: set the mailbox password a private mailbox waits for, or, with private true and only when the person asks for it, make a transparent mailbox private (zero-access). |  | `kernel:threads:read` |
-| `memory_create` | Create a memory file at &lt;type&gt;/&lt;slug&gt;.md (user, feedback, project or reference). |  | `kernel:agent:memory` |
+| `memory_create` | Create a memory file at &lt;type&gt;/&lt;slug&gt;.md about the user or how you work with them, only when they ask or correct you. |  | `kernel:agent:memory` |
 | `memory_delete` | Remove a memory file and its line in MEMORY.md. |  | `kernel:agent:memory` |
 | `memory_episode` | Read one episode of a conversation by id: a short account of a stretch that has already closed. |  | `kernel:agent:memory` |
 | `memory_insert` | Insert a line into a memory file at a one based line number, pushing the rest down: add a bullet, or a line of MEMORY.md, without rewriting the file. |  | `kernel:agent:memory` |

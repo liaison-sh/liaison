@@ -6730,8 +6730,11 @@
         "choices": "Choix multiples",
         "checkbox": "Case à cocher",
         "person": "Personne",
-        "link": "Lien"
+        "link": "Lien",
+        "lookup": "Lu en direct d'une app"
       },
+      "lookupColumn": "Lu en direct depuis {{tool}}, non modifiable",
+      "lookupUnavailable": "Indisponible",
       "newTable": "Nouvelle table",
       "newTableName": "Nom de la table",
       "nameTaken": "Une table nommée {{name}} existe déjà.",

@@ -1933,17 +1933,6 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/agreements"),
   },
-  // Agreements UI tests (none yet: the app ships no UI in this version).
-  "bundled-agreements-ui": {
-    cmd: [
-      "bun",
-      "test",
-      ...bailBun,
-      ...bunTestFlags,
-      ...(fileFilter ? fileArg : ["src/manifest.test.ts"]),
-    ],
-    cwd: path.join(ROOT, "bundled-apps/agreements"),
-  },
   // Stripe connector oracles: manifest, schema allow-list and the HTTP door.
   // Mock-driven, no Postgres or credentials.
   "bundled-stripe": {

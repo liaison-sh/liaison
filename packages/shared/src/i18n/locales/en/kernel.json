@@ -6733,7 +6733,8 @@
         "choices": "Multiple choices",
         "checkbox": "Checkbox",
         "person": "Person",
-        "link": "Link"
+        "link": "Link",
+        "months": "Months"
       },
       "newTable": "New table",
       "newTableName": "Table name",
@@ -6768,7 +6769,21 @@
       "openLink": "Open {{label}}",
       "addTask": "Add a task",
       "recordChanged": "This task changed meanwhile. Reload and try again.",
-      "recordLastChange": "Task changed {{when}}"
+      "recordLastChange": "Task changed {{when}}",
+      "toFill": "to fill",
+      "toFillHint": "No value for {{month}} yet",
+      "horizon": "Months shown",
+      "startMonth": "Starts",
+      "startThis": "This month",
+      "startNext": "Next month",
+      "emphasis": "Highlight",
+      "emphasisNone": "None",
+      "emphasisNonzero": "Values other than 0",
+      "emphasisNegative": "Values below 0",
+      "options": "Options",
+      "monthsTag": "{{count}} months",
+      "monthsFromNext": "from next month",
+      "editMonth": "Edit {{column}}, {{month}}"
     }
   },
   "appBuilder": {

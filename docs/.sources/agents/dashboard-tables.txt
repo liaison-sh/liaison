@@ -64,3 +64,15 @@ Header bands From <project> / This table only -> apps/web/src/modules/dashboards
 Status pills, avatar discs, deadline tint and track -> apps/web/src/modules/dashboards/blocks/table-cells.ts:28 ; apps/web/src/modules/dashboards/blocks/table-cells.ts:44 ; apps/api/src/apps/projects/service/table-backing.ts:56
 A done or cancelled task's due date reads plain (the row's terminal flag) -> apps/api/src/apps/projects/service/table-backing.ts:165 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:401
 A backed row's last change names the task's changer (person, <Name>'s agent, Routine <title>), else Task changed -> apps/api/src/apps/projects/service/table-backing.ts:138 ; apps/api/src/modules/dashboards/tables/service.ts:708 ; apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:851
+Months column type, horizon 1-12 default 3, fromOffset 0|1 -> apps/api/src/modules/dashboards/tables/columns.ts:28
+Months cell keys YYYY-MM, at most 120 months -> apps/api/src/modules/dashboards/tables/columns.ts:30
+Emphasis nonzero/negative on number, amount, months -> apps/api/src/modules/dashboards/tables/columns.ts:32
+A months column is never required -> apps/api/src/modules/dashboards/tables/columns.ts:162
+setOptions changes horizon, fromOffset, emphasis -> apps/api/src/modules/dashboards/tables/columns.ts:192
+Window from the org's month (org timezone) -> apps/api/src/modules/dashboards/tables/columns.ts:336
+A write merges months, null clears one -> apps/api/src/modules/dashboards/tables/columns.ts:351
+tables_get gives each months column its months -> apps/api/src/modules/dashboards/tables/service.ts:368
+A months column cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:706
+A block reads a months cell as its map -> apps/api/src/modules/dashboards/execute.ts:248
+Grid: one sub-column per month, to fill marker -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:521
+Settings: Options with Highlight -> apps/web/src/modules/dashboards/TableSettings.tsx:265

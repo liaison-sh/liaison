@@ -14,6 +14,7 @@ import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { restToolCall } from "~/modules/apps/rest-tool-call"
 import { backingSchema } from "~/modules/dashboards/tables/backing"
+import { columnOptionsOpSchema } from "~/modules/dashboards/tables/columns"
 import { searchLinkTargets } from "~/modules/dashboards/tables/link-search"
 import {
   createTable,
@@ -67,6 +68,7 @@ const updateBody = z
           .array(z.object({ key: z.string(), choices: z.array(z.string()).max(100) }).strict())
           .max(40)
           .optional(),
+        setOptions: z.array(columnOptionsOpSchema).max(40).optional(),
         drop: z.array(z.string()).max(40).optional(),
       })
       .strict()

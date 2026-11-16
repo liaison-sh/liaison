@@ -29,7 +29,7 @@ import { APP_DISABLED_CODE } from "@liaison/shared"
 import { and, eq, inArray } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
-import { organizations, users } from "~/db/schema/kernel"
+import { users } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
 import { READ_ONLY_RUN_BLOCKED_CODE } from "~/modules/agent/runtime/read-only-run"
 import {
@@ -40,6 +40,7 @@ import {
 import { DASHBOARD_NOT_ALLOWED_CODE, executeToolCore } from "~/modules/apps/execute-tool"
 import { writeAuditLog } from "~/modules/audit/service"
 import type { ResolvedWhere } from "~/modules/dashboards/filters"
+import { dashboardTimezone } from "~/modules/dashboards/org-timezone"
 import {
   DateTokenError,
   type DayWindow,
@@ -84,7 +85,6 @@ import {
   unfenceSourceResult,
 } from "~/modules/dashboards/transform"
 import { DataStoreError, queryDocuments, type Where } from "~/modules/data-store/service"
-import { isValidTimezone } from "~/modules/notifications/quiet-window"
 
 const log = rootLogger.child({ module: "dashboards-execute" })
 
@@ -245,7 +245,8 @@ async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
  * RLS, `totalRows` past the cut when more matched (the block says it is truncated). Each row is
  * its visible cells plus `id`, `updated_at` and `updated_by` (who changed it last); a link cell
  * reads as its label, a person as their name and a multi choice as its choices joined, so a chart
- * groups and shows them as people read them.
+ * groups and shows them as people read them. A months cell stays its map {"YYYY-MM": number}:
+ * a block maps one month as `<key>.<YYYY-MM>`.
  */
 async function readTableSource(source: TableSource, ctx: BlockRunContext) {
   const viewer = ctx.viewer
@@ -347,26 +348,8 @@ async function auditRun(
   }
 }
 
-/** How long an org's timezone is kept in this process: a changed zone applies within a minute. */
-const ORG_TIMEZONE_TTL_MS = 60_000
-const dashboardTimezones = new Map<string, { tz: string; until: number }>()
-
-/** The zone a block's date tokens resolve in: the org's, else UTC. */
-export async function dashboardTimezone(orgId: string): Promise<string> {
-  const now = Date.now()
-  const hit = dashboardTimezones.get(orgId)
-  if (hit && hit.until > now) return hit.tz
-  const [row] = await withPrivilegedDb(orgId, "dashboard-org-timezone", (tx) =>
-    tx
-      .select({ timezone: organizations.timezone })
-      .from(organizations)
-      .where(eq(organizations.id, orgId))
-      .limit(1),
-  )
-  const tz = isValidTimezone(row?.timezone) ? row.timezone : "UTC"
-  dashboardTimezones.set(orgId, { tz, until: now + ORG_TIMEZONE_TTL_MS })
-  return tz
-}
+/** The zone a block's date tokens resolve in (org-timezone.ts): kept exported from here. */
+export { dashboardTimezone }
 
 /**
  * `source` with its date tokens replaced by the dates of `now` in the org's timezone, its range

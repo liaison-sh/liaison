@@ -16,12 +16,25 @@ export const COLUMN_TYPES = [
   "checkbox",
   "person",
   "link",
+  "months",
 ] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
 export const MAX_COLUMNS = 40
 export const MAX_CHOICES = 100
 export const MAX_TEXT_CELL = 5_000
+/** A months column's horizon bounds and default (months shown from the first one). */
+export const MAX_MONTHS_HORIZON = 12
+export const DEFAULT_MONTHS_HORIZON = 3
+/** Months one months cell keeps (the window's and older ones, for history). */
+export const MAX_MONTHS_PER_CELL = 120
+export const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+export const EMPHASIS = ["nonzero", "negative"] as const
+export type Emphasis = (typeof EMPHASIS)[number]
+/** Column types that may draw a cell with emphasis. */
+export const EMPHASIS_TYPES: readonly ColumnType[] = ["number", "amount", "months"]
+/** Column types a dashboard table has but a project's task fields do not. */
+export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months"]
 export const COLUMN_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/
 /** Keys a row read adds beside the cells: never a column key. */
 export const RESERVED_COLUMN_KEYS = ["id", "updated_at", "updated_by", "created_at"] as const
@@ -45,7 +58,17 @@ export interface Column {
   deadline?: boolean
   currency?: string
   linkTo?: LinkTo
+  /** A months column: how many months it shows (1-12, default 3). */
+  horizon?: number
+  /** A months column: 0 starts at the current month (the default), 1 at the next one. */
+  fromOffset?: 0 | 1
+  /** A number, amount or months column: draw a value bold in the accent colour when it is not
+   *  zero (`nonzero`) or below zero (`negative`). */
+  emphasis?: Emphasis
 }
+
+/** A months cell as stored and read: one number per month, `YYYY-MM` keys. */
+export type MonthsCell = Record<string, number>
 
 export interface LinkCell {
   app: string
@@ -86,6 +109,9 @@ export const columnSchema = z
       })
       .strict()
       .optional(),
+    horizon: z.number().int().min(1).max(MAX_MONTHS_HORIZON).optional(),
+    fromOffset: z.union([z.literal(0), z.literal(1)]).optional(),
+    emphasis: z.enum(EMPHASIS).optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -121,6 +147,28 @@ export const columnSchema = z
     if (c.type !== "link" && c.linkTo) {
       ctx.addIssue({ code: "custom", path: ["linkTo"], message: "only a link column has linkTo" })
     }
+    if (c.type !== "months" && (c.horizon !== undefined || c.fromOffset !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        path: [c.horizon !== undefined ? "horizon" : "fromOffset"],
+        message: "only a months column has horizon and fromOffset",
+      })
+    }
+    if (c.type === "months" && c.required) {
+      // Filled month by month in the grid: a row is added first, its months typed after.
+      ctx.addIssue({
+        code: "custom",
+        path: ["required"],
+        message: "a months column is never required",
+      })
+    }
+    if (c.emphasis && !EMPHASIS_TYPES.includes(c.type)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["emphasis"],
+        message: "only a number, amount or months column has emphasis",
+      })
+    }
   })
 
 export const columnsSchema = z
@@ -135,6 +183,21 @@ export const columnsSchema = z
       seen.add(c.key)
     })
   })
+
+/** The first column of a type only a dashboard table has (never a project's task field). */
+export function tableOnlyColumn(columns: Column[]): Column | undefined {
+  return columns.find((c) => TABLE_ONLY_TYPES.includes(c.type))
+}
+
+/** A change to one column's display options (a table's `setOptions` column op). */
+export const columnOptionsOpSchema = z
+  .object({
+    key: z.string(),
+    horizon: z.number().int().min(1).max(MAX_MONTHS_HORIZON).optional(),
+    fromOffset: z.union([z.literal(0), z.literal(1)]).optional(),
+    emphasis: z.enum(EMPHASIS).nullable().optional(),
+  })
+  .strict()
 
 /** A refused cell: the column it names and why. */
 export class CellError extends Error {
@@ -239,7 +302,71 @@ export function normalizeCell(col: Column, value: unknown, members: ReadonlySet<
       }
       return { app: v.app, entityType: v.entityType, id: v.id, label: v.label.trim() }
     }
+    case "months":
+      return normalizeMonths(col, value)
   }
+}
+
+/**
+ * A months cell as written: `{"YYYY-MM": number | null}`, the months to change (a null month is
+ * cleared). Merged into the stored cell by `applyCells`, so a write names only its months.
+ */
+function normalizeMonths(col: Column, value: unknown): Record<string, number | null> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new CellError(col.key, 'is months {"YYYY-MM": number or null}')
+  }
+  const out: Record<string, number | null> = {}
+  const entries = Object.entries(value as Record<string, unknown>)
+  if (entries.length > MAX_MONTHS_PER_CELL) {
+    throw new CellError(col.key, `holds at most ${MAX_MONTHS_PER_CELL} months`)
+  }
+  for (const [month, n] of entries) {
+    if (!MONTH_KEY_RE.test(month)) {
+      throw new CellError(col.key, `'${month}' is not a month YYYY-MM`)
+    }
+    if (n !== null && (typeof n !== "number" || !Number.isFinite(n))) {
+      throw new CellError(col.key, `${month} is a number or null`)
+    }
+    out[month] = n
+  }
+  return out
+}
+
+/** The months a months column shows from `current` (YYYY-MM, the org's month), in order. */
+export function monthWindow(
+  col: Pick<Column, "horizon" | "fromOffset">,
+  current: string,
+): string[] {
+  const y = Number(current.slice(0, 4))
+  const m = Number(current.slice(5, 7)) - 1
+  const start = col.fromOffset ?? 0
+  const n = col.horizon ?? DEFAULT_MONTHS_HORIZON
+  return Array.from({ length: n }, (_, i) => {
+    const at = y * 12 + m + start + i
+    return `${Math.floor(at / 12)}-${String((at % 12) + 1).padStart(2, "0")}`
+  })
+}
+
+/** Merges a months write into the stored cell: a null month is cleared; null when none is left. */
+export function mergeMonths(
+  col: Column,
+  current: unknown,
+  patch: Record<string, number | null>,
+): MonthsCell | null {
+  const base =
+    typeof current === "object" && current !== null && !Array.isArray(current)
+      ? { ...(current as MonthsCell) }
+      : {}
+  for (const [month, n] of Object.entries(patch)) {
+    if (n === null) delete base[month]
+    else base[month] = n
+  }
+  const months = Object.keys(base).sort()
+  if (months.length === 0) return null
+  if (months.length > MAX_MONTHS_PER_CELL) {
+    throw new CellError(col.key, `holds at most ${MAX_MONTHS_PER_CELL} months`)
+  }
+  return Object.fromEntries(months.map((k) => [k, base[k]!]))
 }
 
 /** The person ids a set of cells writes (to resolve against the org's members). */
@@ -284,15 +411,27 @@ export function validateCells(
   return out
 }
 
-/** Applies validated cells to a row's stored data: a null cell is removed. */
+/**
+ * Applies validated cells to a row's stored data: a null cell is removed. A months cell replaces
+ * the stored one, unless `merge` names the columns: then a months cell of one of them changes
+ * only the months it names, a null month clearing one (a row write, an add included); an undo
+ * writes a whole stored cell back, so it replaces.
+ */
 export function applyCells(
   current: Record<string, unknown>,
   cells: Record<string, unknown>,
+  merge?: Column[],
 ): Record<string, unknown> {
   const next = { ...current }
+  const byKey = new Map((merge ?? []).map((c) => [c.key, c]))
   for (const [k, v] of Object.entries(cells)) {
-    if (v === null) delete next[k]
-    else next[k] = v
+    const col = byKey.get(k)
+    const value =
+      v !== null && col?.type === "months"
+        ? mergeMonths(col, current[k], v as Record<string, number | null>)
+        : v
+    if (value === null) delete next[k]
+    else next[k] = value
   }
   return next
 }

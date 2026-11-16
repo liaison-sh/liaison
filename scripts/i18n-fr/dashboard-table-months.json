@@ -1,0 +1,19 @@
+{
+  "key": {
+    "kernel.dashboards.tables.toFill": "à remplir",
+    "kernel.dashboards.tables.toFillHint": "Pas encore de valeur pour {{month}}",
+    "kernel.dashboards.tables.horizon": "Mois affichés",
+    "kernel.dashboards.tables.startMonth": "Commence",
+    "kernel.dashboards.tables.startThis": "Ce mois-ci",
+    "kernel.dashboards.tables.startNext": "Le mois prochain",
+    "kernel.dashboards.tables.emphasis": "Mettre en avant",
+    "kernel.dashboards.tables.emphasisNone": "Rien",
+    "kernel.dashboards.tables.emphasisNonzero": "Valeurs autres que 0",
+    "kernel.dashboards.tables.emphasisNegative": "Valeurs négatives",
+    "kernel.dashboards.tables.options": "Options",
+    "kernel.dashboards.tables.monthsTag": "{{count}} mois",
+    "kernel.dashboards.tables.monthsFromNext": "à partir du mois prochain",
+    "kernel.dashboards.tables.editMonth": "Modifier {{column}}, {{month}}",
+    "kernel.dashboards.tables.type.months": "Mois"
+  }
+}

@@ -40,6 +40,8 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
+import { dashboardTimezone } from "~/modules/dashboards/org-timezone"
+import { dayIn } from "~/modules/dashboards/relative-dates"
 import {
   type BackedDocument,
   type BackingToolDef,
@@ -66,8 +68,10 @@ import {
   changedKeys,
   columnSchema,
   columnsSchema,
+  type Emphasis,
   type LinkCell,
   MAX_COLUMNS,
+  monthWindow,
   personIdsIn,
   pick,
   validateCells,
@@ -147,11 +151,17 @@ export interface Actor {
   label: string
 }
 
+/** A column as a read gives it: a months column also names the months it shows now. */
+export type ColumnView = Column & {
+  /** A months column: its window, `YYYY-MM` in the org's timezone (read only, never written). */
+  months?: string[]
+}
+
 export interface TableInfo {
   id: string
   name: string
   description?: string
-  columns: Column[]
+  columns: ColumnView[]
   /** Keys of dropped columns: retired, never reused. */
   droppedKeys: string[]
   agentWritesNeedApproval: boolean
@@ -348,13 +358,31 @@ async function rowCounts(t: RlsClient, orgId: string, ids: string[]): Promise<Ma
   return new Map(rows.map((r) => [r.collection, Number(r.docs)]))
 }
 
-function toInfo(viewer: UserContext, loaded: LoadedTable, count: number): TableInfo {
+/** The org's current month (YYYY-MM, in its timezone) when the table has a months column. */
+async function monthOf(viewer: UserContext, loaded: LoadedTable): Promise<string | null> {
+  if (!allColumns(loaded).some((c) => c.type === "months")) return null
+  return dayIn(await dashboardTimezone(viewer.orgId), new Date()).slice(0, 7)
+}
+
+/** The columns as a read gives them: each months column with its window from `month`. */
+export function columnViews(columns: Column[], month: string | null): ColumnView[] {
+  return columns.map((c) =>
+    c.type === "months" && month ? { ...c, months: monthWindow(c, month) } : c,
+  )
+}
+
+function toInfo(
+  viewer: UserContext,
+  loaded: LoadedTable,
+  count: number,
+  month: string | null,
+): TableInfo {
   const r = loaded.row
   return {
     id: r.id,
     name: r.name,
     ...(r.description ? { description: r.description } : {}),
-    columns: allColumns(loaded),
+    columns: columnViews(allColumns(loaded), month),
     ...(loaded.backing
       ? {
           backing: {
@@ -408,7 +436,9 @@ export async function listTables(viewer: UserContext, tx?: RlsClient): Promise<T
         columns: f.row.columns as unknown as Column[],
       })
       const own = counts.get(tableCollection(f.row.id)) ?? 0
-      out.push(toInfo(viewer, loaded, await rowCountOf(t, loaded, own)))
+      out.push(
+        toInfo(viewer, loaded, await rowCountOf(t, loaded, own), await monthOf(viewer, loaded)),
+      )
     }
     return out
   })
@@ -423,7 +453,12 @@ export async function getTable(
   return inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
     const counts = await rowCounts(t, viewer.orgId, [id])
-    return toInfo(viewer, loaded, await rowCountOf(t, loaded, counts.get(tableCollection(id)) ?? 0))
+    return toInfo(
+      viewer,
+      loaded,
+      await rowCountOf(t, loaded, counts.get(tableCollection(id)) ?? 0),
+      await monthOf(viewer, loaded),
+    )
   })
 }
 
@@ -648,7 +683,8 @@ function visibleChangeCells(
  * column's cells and a hidden label never match, so the search is no oracle on them.
  */
 function searchFor(viewer: UserContext, columns: Column[], text: string): ContainsQuery {
-  const plain = columns.filter((c) => c.type !== "link").map((c) => c.key)
+  // A months cell is numbers by month: nothing a text search reads.
+  const plain = columns.filter((c) => c.type !== "link" && c.type !== "months").map((c) => c.key)
   const linkFields = columns.filter((c) => c.type === "link").map((c) => c.key)
   const apps = viewer.scopes.includes("*")
     ? ("all" as const)
@@ -660,8 +696,14 @@ function searchFor(viewer: UserContext, columns: Column[], text: string): Contai
 function checkWhere(where: Where | undefined, columns: Column[]): void {
   if (!where) return
   for (const key of Object.keys(where)) {
-    if (!columns.some((c) => c.key === key)) {
+    const col = columns.find((c) => c.key === key)
+    if (!col) {
       throw new TableError("invalid_request", `'${key}' is not a column of this table`, {
+        column: key,
+      })
+    }
+    if (col.type === "months") {
+      throw new TableError("invalid_request", `'${key}' is a months column: it cannot filter`, {
         column: key,
       })
     }
@@ -772,8 +814,12 @@ function storeError(err: unknown): never {
 function orderField(sort: string | undefined, columns: Column[]): string | undefined {
   if (sort === undefined || sort === "updated_at") return sort
   if (sort === "id") return "doc_id"
-  if (!columns.some((c) => c.key === sort)) {
+  const col = columns.find((c) => c.key === sort)
+  if (!col) {
     throw new TableError("invalid_request", `'${sort}' is not a column of this table`)
+  }
+  if (col.type === "months") {
+    throw new TableError("invalid_request", `'${sort}' is a months column: it cannot sort`)
   }
   return sort
 }
@@ -1107,7 +1153,7 @@ export async function writeRows(
             const cells = validateCells(loaded.columns, op.cells, { full: true, members })
             const rowId = randomUUID()
             await lockRow(t, tableId, rowId)
-            const data = applyCells({}, cells)
+            const data = applyCells({}, cells, loaded.columns)
             const doc = await setDocument(t, caller, collection, rowId, data, { ifVersion: 0 })
             const keys = Object.keys(data).sort()
             const changeId = await recordChange(t, viewer, writer, {
@@ -1139,7 +1185,7 @@ export async function writeRows(
             if (!doc)
               throw new TableError("not_found", `${at}: no row '${op.id}'`, { rowId: op.id })
             if (doc.version !== op.ifVersion) throw await conflict(t, viewer, loaded, op.id)
-            const next = applyCells(doc.data, cells)
+            const next = applyCells(doc.data, cells, loaded.columns)
             const keys = changedKeys(doc.data, next)
             if (keys.length === 0) {
               const [same] = await toRows(t, viewer, loaded, [doc])
@@ -1312,7 +1358,7 @@ async function writeBackedRows(
       if (op.op === "update" && Object.keys(taskCells).length > 0) {
         await provider.write(t, viewer, b.def.parentId, taskCells, rowId)
       }
-      const next = applyCells(doc?.data ?? {}, own)
+      const next = applyCells(doc?.data ?? {}, own, loaded.columns)
       const keys = changedKeys(doc?.data ?? {}, next)
       if (keys.length > 0) {
         const written = await setDocument(t, caller, collection, rowId, next, {
@@ -1934,7 +1980,7 @@ export async function createTable(
         await tableAudience(viewer.orgId, inserted),
       )
       const loaded = await loadTable(t, viewer, inserted.id)
-      return toInfo(viewer, loaded, 0)
+      return toInfo(viewer, loaded, 0, await monthOf(viewer, loaded))
     }),
   )
 }
@@ -1943,7 +1989,17 @@ export interface ColumnOps {
   add?: unknown[]
   rename?: { key: string; label: string }[]
   setChoices?: { key: string; choices: string[] }[]
+  /** A column's display options: a months column's horizon and fromOffset, a number, amount or
+   *  months column's emphasis (null removes it). Checked as the column is. */
+  setOptions?: ColumnOptionsOp[]
   drop?: string[]
+}
+
+export interface ColumnOptionsOp {
+  key: string
+  horizon?: number
+  fromOffset?: 0 | 1
+  emphasis?: Emphasis | null
 }
 
 export interface UpdateTableInput {
@@ -1989,6 +2045,13 @@ export function applyColumnOps(
       throw new TableError("invalid_request", `column '${s.key}' has no choices`, { column: s.key })
     }
     col.choices = s.choices
+  }
+  for (const o of ops.setOptions ?? []) {
+    const col = find(o.key)
+    if (o.horizon !== undefined) col.horizon = o.horizon
+    if (o.fromOffset !== undefined) col.fromOffset = o.fromOffset
+    if (o.emphasis === null) delete col.emphasis
+    else if (o.emphasis !== undefined) col.emphasis = o.emphasis
   }
   for (const raw of ops.add ?? []) {
     const parsed = columnSchema.safeParse(raw)
@@ -2118,7 +2181,12 @@ export async function updateTable(
       const counts = await rowCounts(t, viewer.orgId, [id])
       const reloaded = await loadTable(t, viewer, id)
       const own = counts.get(tableCollection(id)) ?? 0
-      return toInfo(viewer, reloaded, await rowCountOf(t, reloaded, own))
+      return toInfo(
+        viewer,
+        reloaded,
+        await rowCountOf(t, reloaded, own),
+        await monthOf(viewer, reloaded),
+      )
     }),
   )
 }

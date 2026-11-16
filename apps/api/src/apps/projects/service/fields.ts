@@ -26,6 +26,7 @@ import {
   type LinkCell,
   normalizeCell,
   personIdsIn,
+  tableOnlyColumn,
   validateCells,
 } from "~/modules/dashboards/tables/columns"
 import { ensureProjectMutableForTasks } from "./move-task"
@@ -284,6 +285,14 @@ export async function setFields(args: SetFieldsArgs): Promise<Column[]> {
     )
   }
   const next: Column[] = parsed.data
+  const tableOnly = tableOnlyColumn(next)
+  if (tableOnly) {
+    throw new ProjectsServiceError(
+      422,
+      "invalid_fields",
+      `a ${tableOnly.type} field is a dashboard table's only (${tableOnly.key})`,
+    )
+  }
   const renames = args.renames ?? {}
   for (const [key, map] of Object.entries(renames)) {
     const col = next.find((c) => c.key === key)

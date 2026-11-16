@@ -20,6 +20,7 @@ import {
   TABLE_COLUMN_TYPES,
   type TableColumn,
   type TableColumnType,
+  type TableEmphasis,
   type TableInfo,
   type TablePatch,
   type TablesApi,
@@ -52,11 +53,23 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
   const [newRequired, setNewRequired] = createSignal(false)
   const [newChoices, setNewChoices] = createSignal("")
   const [newCurrency, setNewCurrency] = createSignal("EUR")
+  const [newHorizon, setNewHorizon] = createSignal(3)
+  const [newFrom, setNewFrom] = createSignal<0 | 1>(0)
+  const [newEmphasis, setNewEmphasis] = createSignal<TableEmphasis | "">("")
+  const [optioning, setOptioning] = createSignal<string | null>(null)
 
   const canEdit = () => props.table.myRole === "editor" || props.table.myRole === "owner"
   /** A backed table's column read from its record: renamed and dropped in the record's app. */
   const readThrough = (key: string) => props.table.backing?.readThrough.includes(key) === true
   const typeLabel = (t: TableColumnType) => i18n.t(`kernel.dashboards.tables.type.${t}`)
+  const hasEmphasis = (t: TableColumnType) => t === "number" || t === "amount" || t === "months"
+  const emphasisLabel = (e: TableEmphasis | "") =>
+    e === "nonzero"
+      ? i18n.t("kernel.dashboards.tables.emphasisNonzero")
+      : e === "negative"
+        ? i18n.t("kernel.dashboards.tables.emphasisNegative")
+        : i18n.t("kernel.dashboards.tables.emphasisNone")
+  const clampHorizon = (n: number) => Math.min(12, Math.max(1, Math.round(n) || 3))
 
   function describe(c: TableColumn): string {
     const parts = [typeLabel(c.type)]
@@ -65,6 +78,12 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       parts.push(c.choices.join(", "))
     if (c.type === "link" && c.linkTo)
       parts.push(c.linkTo.entityType ? `${c.linkTo.app} ${c.linkTo.entityType}` : c.linkTo.app)
+    if (c.type === "months") {
+      parts.push(i18n.t("kernel.dashboards.tables.monthsTag", { count: c.horizon ?? 3 }))
+      if (c.fromOffset === 1) parts.push(i18n.t("kernel.dashboards.tables.monthsFromNext"))
+    }
+    if (c.emphasis)
+      parts.push(`${i18n.t("kernel.dashboards.tables.emphasis")}: ${emphasisLabel(c.emphasis)}`)
     if (c.required) parts.push(i18n.t("kernel.dashboards.tables.requiredTag"))
     return parts.join(" · ")
   }
@@ -107,14 +126,22 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       ]),
       label,
       type,
-      ...(newRequired() ? { required: true } : {}),
+      ...(newRequired() && type !== "months" ? { required: true } : {}),
       ...(type === "choice" || type === "choices" ? { choices } : {}),
       ...(type === "amount" ? { currency: newCurrency().trim().toUpperCase() || "EUR" } : {}),
+      ...(type === "months"
+        ? {
+            horizon: clampHorizon(newHorizon()),
+            ...(newFrom() === 1 ? { fromOffset: 1 as const } : {}),
+          }
+        : {}),
+      ...(hasEmphasis(type) && newEmphasis() ? { emphasis: newEmphasis() as TableEmphasis } : {}),
     }
     if (await apply({ columns: { add: [column] } })) {
       setNewLabel("")
       setNewChoices("")
       setNewRequired(false)
+      setNewEmphasis("")
     }
   }
 
@@ -206,6 +233,17 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                         {i18n.t("kernel.dashboards.tables.editChoices")}
                       </Button>
                     </Show>
+                    <Show when={hasEmphasis(c.type)}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid={`table-settings-options-${c.key}`}
+                        disabled={busy()}
+                        onClick={() => setOptioning(optioning() === c.key ? null : c.key)}
+                      >
+                        {i18n.t("kernel.dashboards.tables.options")}
+                      </Button>
+                    </Show>
                     <Button
                       variant="ghost"
                       size="sm"
@@ -216,6 +254,54 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                       {i18n.t("kernel.dashboards.tables.drop")}
                     </Button>
                   </div>
+                </Show>
+                <Show when={optioning() === c.key}>
+                  <form
+                    data-testid={`table-settings-options-form-${c.key}`}
+                    class="flex w-full flex-wrap items-end gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      const f = new FormData(e.currentTarget)
+                      const emphasis = f.get("emphasis")?.toString() ?? ""
+                      void apply({
+                        columns: {
+                          setOptions: [
+                            {
+                              key: c.key,
+                              ...(c.type === "months"
+                                ? {
+                                    horizon: clampHorizon(Number(f.get("horizon"))),
+                                    fromOffset: f.get("fromOffset") === "1" ? 1 : 0,
+                                  }
+                                : {}),
+                              emphasis:
+                                emphasis === "nonzero" || emphasis === "negative" ? emphasis : null,
+                            },
+                          ],
+                        },
+                      }).then((ok) => ok && setOptioning(null))
+                    }}
+                  >
+                    <Show when={c.type === "months"}>
+                      <MonthsFields
+                        testid={`table-settings-options-${c.key}`}
+                        horizon={c.horizon ?? 3}
+                        fromOffset={c.fromOffset ?? 0}
+                      />
+                    </Show>
+                    <EmphasisField
+                      testid={`table-settings-options-${c.key}`}
+                      value={c.emphasis ?? ""}
+                    />
+                    <Button
+                      type="submit"
+                      size="sm"
+                      data-testid={`table-settings-options-save-${c.key}`}
+                      disabled={busy()}
+                    >
+                      {i18n.t("kernel.dashboards.tables.save")}
+                    </Button>
+                  </form>
                 </Show>
                 <Show when={choosing() === c.key}>
                   <form
@@ -307,15 +393,33 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
                 />
               </label>
             </Show>
-            <label class="flex h-8 items-center gap-1.5 text-[12.5px] text-text-secondary">
-              <input
-                type="checkbox"
-                data-testid="table-settings-new-required"
-                checked={newRequired()}
-                onChange={(e) => setNewRequired(e.currentTarget.checked)}
+            <Show when={newType() === "months"}>
+              <MonthsFields
+                testid="table-settings-new"
+                horizon={newHorizon()}
+                fromOffset={newFrom()}
+                onHorizon={setNewHorizon}
+                onFromOffset={setNewFrom}
               />
-              {i18n.t("kernel.dashboards.tables.requiredTag")}
-            </label>
+            </Show>
+            <Show when={hasEmphasis(newType())}>
+              <EmphasisField
+                testid="table-settings-new"
+                value={newEmphasis()}
+                onChange={setNewEmphasis}
+              />
+            </Show>
+            <Show when={newType() !== "months"}>
+              <label class="flex h-8 items-center gap-1.5 text-[12.5px] text-text-secondary">
+                <input
+                  type="checkbox"
+                  data-testid="table-settings-new-required"
+                  checked={newRequired()}
+                  onChange={(e) => setNewRequired(e.currentTarget.checked)}
+                />
+                {i18n.t("kernel.dashboards.tables.requiredTag")}
+              </label>
+            </Show>
             <Button
               type="submit"
               variant="outline"
@@ -392,5 +496,74 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
         }
       />
     </div>
+  )
+}
+
+/** A months column's horizon (1-12) and first month, as form fields named for FormData. */
+const MonthsFields: Component<{
+  testid: string
+  horizon: number
+  fromOffset: 0 | 1
+  onHorizon?: (n: number) => void
+  onFromOffset?: (n: 0 | 1) => void
+}> = (props) => {
+  const i18n = useI18n()
+  return (
+    <>
+      <label class="flex flex-col gap-1 text-[11.5px] text-text-secondary">
+        {i18n.t("kernel.dashboards.tables.horizon")}
+        <input
+          name="horizon"
+          type="number"
+          min={1}
+          max={12}
+          data-testid={`${props.testid}-horizon`}
+          class={`${FIELD} w-20`}
+          value={props.horizon}
+          onInput={(e) => props.onHorizon?.(Number(e.currentTarget.value))}
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-[11.5px] text-text-secondary">
+        {i18n.t("kernel.dashboards.tables.startMonth")}
+        <select
+          name="fromOffset"
+          data-testid={`${props.testid}-from`}
+          class={FIELD}
+          value={String(props.fromOffset)}
+          onChange={(e) => props.onFromOffset?.(e.currentTarget.value === "1" ? 1 : 0)}
+        >
+          <option value="0">{i18n.t("kernel.dashboards.tables.startThis")}</option>
+          <option value="1">{i18n.t("kernel.dashboards.tables.startNext")}</option>
+        </select>
+      </label>
+    </>
+  )
+}
+
+/** A number, amount or months column's emphasis, as a form field named for FormData. */
+const EmphasisField: Component<{
+  testid: string
+  value: TableEmphasis | ""
+  onChange?: (v: TableEmphasis | "") => void
+}> = (props) => {
+  const i18n = useI18n()
+  return (
+    <label class="flex flex-col gap-1 text-[11.5px] text-text-secondary">
+      {i18n.t("kernel.dashboards.tables.emphasis")}
+      <select
+        name="emphasis"
+        data-testid={`${props.testid}-emphasis`}
+        class={FIELD}
+        value={props.value}
+        onChange={(e) => {
+          const v = e.currentTarget.value
+          props.onChange?.(v === "nonzero" || v === "negative" ? v : "")
+        }}
+      >
+        <option value="">{i18n.t("kernel.dashboards.tables.emphasisNone")}</option>
+        <option value="nonzero">{i18n.t("kernel.dashboards.tables.emphasisNonzero")}</option>
+        <option value="negative">{i18n.t("kernel.dashboards.tables.emphasisNegative")}</option>
+      </select>
+    </label>
   )
 }

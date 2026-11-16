@@ -4,6 +4,7 @@
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
+  "agentInstructions": "Agreements holds the organization's proposals, statements of work, contracts and NDAs, each with its own number, and the templates they are made from.",
   "listing": {
     "publisher": "Liaison",
     "category": "Operations",
@@ -867,7 +868,6 @@
     "agreement_update": {
       "description": "Change an agreement draft: its text, dates or who can see it. An agent's change to who can see it waits for a person.",
       "searchKeywords": [
-        "modifier",
         "edit",
         "contrat",
         "contract",
@@ -881,6 +881,9 @@
       "writesToTable": "app_agreements.agreements",
       "conditionalGate": true,
       "approvalImpact": "internal",
+      "approvalCard": {
+        "summary": "Change who can see agreement {{params.id}}"
+      },
       "params": {
         "type": "object",
         "properties": {
@@ -1092,6 +1095,9 @@
       "writesToTable": "app_agreements.agreement_template_meta",
       "conditionalGate": true,
       "approvalImpact": "internal",
+      "approvalCard": {
+        "summary": "Save agreement template {{params.name}}"
+      },
       "params": {
         "type": "object",
         "properties": {

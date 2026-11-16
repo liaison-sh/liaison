@@ -85,6 +85,13 @@ describe("signing module scope", () => {
       { cwd: REPO, encoding: "utf8" },
     )
     if (log.status !== 0) return // no history here (an archive): the import scan above still ran
+    // A shallow clone (CI checks out one commit) grafts its oldest commit as a root, and a root
+    // "touches" every file in the tree: that history cannot say what a change edited.
+    const shallow = spawnSync("git", ["rev-parse", "--is-shallow-repository"], {
+      cwd: REPO,
+      encoding: "utf8",
+    })
+    if (shallow.stdout.trim() === "true") return // the import scan above still ran
     const touched: string[] = []
     for (const sha of log.stdout.split("\n").filter(Boolean)) {
       const show = spawnSync("git", ["show", "--name-only", "--format=", sha], {

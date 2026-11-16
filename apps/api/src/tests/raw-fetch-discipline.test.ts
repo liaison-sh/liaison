@@ -168,6 +168,10 @@ describe("raw fetch discipline", () => {
     // `fetch(range, query, options)` is the ImapFlow client INTERFACE method
     // (an IMAP FETCH command over the open client), not an HTTP call.
     "modules/apps/sandbox/imap-mailbox.ts",
+    // A loopback timestamp authority for the signing tests: `async fetch(request)`
+    // is the `Bun.serve` request handler of that local server, not an outbound
+    // call. Nothing in production imports it.
+    "modules/signing/test-fixtures/tsa/authority.ts",
   ])
 
   const files = findProductionTsFiles(srcDir)

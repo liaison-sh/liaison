@@ -129,7 +129,7 @@ export async function orgTimezone(tx: Tx | PrivilegedDb, orgId: string): Promise
       SELECT timezone AS tz FROM ${kernelRel("organizations")} WHERE id = ${orgId}::uuid LIMIT 1`),
   )
   if (rows[0]?.tz) return rows[0].tz
-  const { dashboardTimezone } = await import("~/modules/dashboards/execute")
+  const { dashboardTimezone } = await import("~/modules/dashboards/org-timezone")
   return dashboardTimezone(orgId)
 }
 

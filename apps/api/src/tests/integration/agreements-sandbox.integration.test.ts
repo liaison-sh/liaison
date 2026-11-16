@@ -99,7 +99,9 @@ describe("agreements through the sandbox", () => {
     })
     expect(priced.error).toBeUndefined()
     const found = await call(owner, "agreements_search", {})
-    const row = (found.data?.items as Array<Record<string, unknown>>).find((r) => r.id === id)
+    const row = ((found.data?.items ?? []) as Array<Record<string, unknown>>).find(
+      (r) => r.id === id,
+    )
     expect(row?.price_minor).toBe("900719925474099301")
   }, 60_000)
 
@@ -125,9 +127,12 @@ describe("agreements through the sandbox", () => {
     expect(created.error).toBeUndefined()
     const id = created.data?.agreement?.id as string
     const mine = await call(owner, "agreements_search", {})
-    expect((mine.data?.items as Array<{ id: string }>).some((r) => r.id === id)).toBe(true)
+    expect(((mine.data?.items ?? []) as Array<{ id: string }>).some((r) => r.id === id)).toBe(true)
     const theirs = await call(other, "agreements_search", {})
-    expect((theirs.data?.items as Array<{ id: string }>).some((r) => r.id === id)).toBe(false)
+    expect(Array.isArray(theirs.data?.items)).toBe(true)
+    expect(((theirs.data?.items ?? []) as Array<{ id: string }>).some((r) => r.id === id)).toBe(
+      false,
+    )
     const read = await call(other, "agreement_get", { id })
     expect(JSON.stringify(read)).toContain("NOT_FOUND")
   }, 60_000)

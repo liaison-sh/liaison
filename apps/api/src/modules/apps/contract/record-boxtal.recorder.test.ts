@@ -360,6 +360,7 @@ const STEPS: RecordingStep<PlanState>[] = [
   { entry: "tool:search", input: () => params({ query: "INV-2026", limit: 5 }) },
   { entry: "search:search", input: () => params({ query: "INV-2026", limit: 5 }) },
   { entry: "tool:prep_list", input: () => params({ include_excluded: false }) },
+  { entry: "tool:to_ship_by_product", input: () => params({}) },
   { entry: "tool:prep_unlinked_list", input: () => params({ limit: 10 }) },
   { entry: "tool:prep_sync", input: () => params({ limit: 5 }) },
   // — prep rows —

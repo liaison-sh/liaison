@@ -669,6 +669,7 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.7: reads that answer figures also answer the rows a dashboard block charts.
     // 0.24.10: a shipment declares `pick` (the search tool), so a dashboard table's link cell
     // can pick one.
+    // 0.24.13: to_ship_by_product, the To prepare worklist as units still to ship per product code.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(m.packageFormat).toBe(1)
   })
@@ -789,7 +790,14 @@ describe("Boxtal app.manifest.json", () => {
     // 0.14.26/0.14.27: these five write back only Boxtal's or the invoicing app's own state (the
     // shipment snapshot, a settled proforma, the resolved-draft cache), and best effort: a
     // failed write never fails the read, so none of them is a sink for a turn's data.
-    for (const name of ["track", "get_shipment", "prep_list", "queue_counts", "to_prepare_list"]) {
+    for (const name of [
+      "track",
+      "get_shipment",
+      "prep_list",
+      "queue_counts",
+      "to_prepare_list",
+      "to_ship_by_product",
+    ]) {
       expect(m.tools[name]?.readOnly, name).toBe(true)
       // 0.14.28: and none of them declares a write target. The taint gate takes a declared
       // `writesToTable` over `readOnly`, so 0.14.27's queue_counts (prep_order_state) and

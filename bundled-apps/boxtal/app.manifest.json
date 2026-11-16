@@ -2462,6 +2462,29 @@
       },
       "timeoutMs": 60000
     },
+    "to_ship_by_product": {
+      "description": "UNITS STILL TO SHIP PER PRODUCT: how many units of each product the To prepare worklist still needs, as one row per short product code. It reads the SAME worklist as prep_list (issued goods invoices from a Shopify order with no live shipment yet, excluded rows hidden) and adds up each row's products using the org's product-code mapping (settings_product_codes_get), the same short codes the worklist's products column shows, so a retail sku and its wholesale (B2B / distribution) variant count under ONE code. A partially shipped order counts only the units it still has to ship. Output: `rows` is a list of `{ code, units, orders }` (`units` = units of that code still to ship, `orders` = how many worklist orders need it), sorted by the org's code rank; `total_units` is the sum of every row's units; `as_of` is when the worklist was read; `truncated: true` means the worklist scan was capped at the 250 most recent open orders, so counts may be low. Use it for 'how many of each product do we still have to ship', or as a dashboard source (rowsPath `rows`, match on `code`, read `units`). Read only: it never calls the Boxtal API, never re-quotes and stages nothing. These are units to ship, NOT stock on hand and NOT units shipped.",
+      "searchKeywords": [
+        "produit",
+        "unités",
+        "quantité",
+        "reste",
+        "expédier",
+        "units",
+        "product",
+        "backlog"
+      ],
+      "requiredScopes": [
+        "boxtal:shipments:read"
+      ],
+      "handler": "toShipByProductHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {}
+      },
+      "timeoutMs": 60000
+    },
     "prep_sync": {
       "description": "Refresh pass for the order-prep dashboard: for each in-scope row, fetches Shopify order name/tags when missing, and re-quotes the shipping cost when the route/parcels/category changed (a cache-invalidating edit) or the cached quote is older than 12 hours — storing the offers (cheapest first) for the row's shipping estimate + offer dropdown. WRITES local cache rows and makes EXTERNAL calls (Shopify + Boxtal) — this is the ONLY prep tool that talks to a live API; prep_list itself never does. Pass `document_refs` to scope the refresh to specific rows (e.g. immediately after editing one row's package/category, so only that row re-quotes) — omit it to refresh the whole to-prepare worklist. Bounded by `limit` (default 25); the result reports `covered_count`/`total_count` honestly, so when the worklist exceeds the cap, disclose that the remainder needs another pass rather than presenting a partial sync as complete. Never creates a shipment — quoting is estimation only; the label buy stays the separate gated create_shipment. Relay / pickup-point services are dropped by the org exclusion policy (default on) before caching, so a door-to-door row is never re-quoted at a relay's cheapest price.",
       "searchKeywords": ["synchroniser", "préparation"],

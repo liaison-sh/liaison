@@ -175,6 +175,12 @@ An import never changes a row that is already there. The run can be undone under
 
 A dashboard table's link cell can point at a Boxtal shipment: the picker searches your shipments with your access ([Keep data in tables](../agents/dashboard-tables.md)).
 
+## Count units to ship per product
+
+`to_ship_by_product` adds up the To prepare queue by product: one row per short product code, with the units still to ship (`units`) and how many orders need it (`orders`), plus `total_units` and the time it read the queue (`as_of`). It uses your short product codes (`settings_product_codes_get`), the same codes as the products column, so a wholesale variant counts under its retail code. A partially shipped order counts only what it still has to ship, and excluded rows are left out. Rows follow your code ranks. It never calls Boxtal.
+
+It works as a dashboard source. A table's lookup column reads it with the source `boxtal:to_ship_by_product` and `rowsPath: "rows"`, matching the field `code` against a column of product codes and showing `units` ([Keep data in tables](../agents/dashboard-tables.md)). A code with nothing left to ship has no row, so its cell stays empty.
+
 ## What agents can do
 
 Tools marked "Always" file an approval and nothing happens until a person approves it.
@@ -192,6 +198,7 @@ Tools marked "Always" file an approval and nothing happens until a person approv
 | `track`, `get_shipment`, `get_documents` | Tracking, live status, labels and customs documents | No |
 | `search`, `queue_counts`, `to_prepare_list`, `ready_list`, `returns_list`, `exceptions_list`, `stuck_list` | Find shipments and read the queues | No |
 | `prep_list`, `prep_sync`, `prep_unlinked_list`, `prep_order_prefill`, `prep_document_pdf` | Read and refresh the To prepare queue | No |
+| `to_ship_by_product` | Units still to ship per product code, read from the To prepare queue | No |
 | `prep_set_status`, `prep_set_category`, `prep_select_offer`, `prep_set_note`, `prep_exclude`, `prep_restore`, `prep_add_shipment` | Work queue rows. A row given by `document_ref` must name an existing invoicing document (id or number), else the call is refused as `document_not_found` | No |
 | `prep_set_address_choice` | Pick the order's address or the verified one when they differ | Always for an agent |
 | `ready_set_packed` | Tick a parcel packed, which fulfils the Shopify order | No |

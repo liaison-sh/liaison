@@ -746,6 +746,16 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   // A feature inside an app switched on or off (modules/apps/org-features.ts): the
   // catalog changed, so live MCP sessions are told (modules/mcp/catalog-notifier.ts).
   "app:feature_update",
+  // A client action decided, its mail not sent, or a staff signer's turn
+  // (modules/client-actions/decide.ts, mint.ts), and its public page opened, a
+  // change requested or the code locked (public-routes.ts queueClientActionEvent):
+  // Home rows and the sender's app.
+  "client_action:opened",
+  "client_action:requested",
+  "client_action:code_locked",
+  "client_action:decided",
+  "client_action:send_failed",
+  "client_action:staff_turn",
   "user:registered",
   "user:deactivate",
   "user:reactivate",

@@ -221,3 +221,7 @@ one row per bucket, oldest first, date = bucket start YYYY-MM-DD -> bundled-apps
 grouped by SKU a series row names the product -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:157
 sessions and conversion_rate from the sessions dataset, groupBy none only -> bundled-apps/shopify/src/lib/analytics-query-builder.ts:141
 Shopify order, customer, product, return declare pick -> bundled-apps/shopify/app.manifest.json:423
+fulfillment re-checked against Shopify at approval, fulfillment order state read first -> bundled-apps/shopify/src/mutations/fulfillments.ts:244
+same tracking already on the order: completes without sending, no second email -> bundled-apps/shopify/src/mutations/fulfillments.ts:641
+closed fulfillment order or less left than asked fails with the reason -> bundled-apps/shopify/src/mutations/fulfillments.ts:302
+agent cannot stage a fulfillment the order already has -> bundled-apps/shopify/src/mutations/fulfillments.ts:626

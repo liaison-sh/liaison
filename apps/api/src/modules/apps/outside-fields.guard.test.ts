@@ -213,7 +213,10 @@ const LISTED = new Map<string, string>([
   ["shopify:discounts_search", `codes the org created: ${NONE}`],
   ["shopify:settings_load", `connection and sync settings: ${NONE}`],
   ["boxtal:packages_list", `the org's own shipping profiles, packs and products: ${NONE}`],
-  ["boxtal:to_ship_by_product", `units still to ship per short product code, counted from the org's own worklist and code mapping: ${NONE}`],
+  [
+    "boxtal:to_ship_by_product",
+    `units still to ship per short product code, counted from the org's own worklist and code mapping: ${NONE}`,
+  ],
   ["boxtal:settings_sender_address_get", `the org's own sender address: ${NONE}`],
   ["boxtal:quote", `carrier offers and prices from the shipping catalog: ${NONE}`],
   ["boxtal:get_documents", `document kinds and links: ${NONE}`],

@@ -89,6 +89,10 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("USER_IS_EXTERNAL")).toBe(409)
   })
 
+  it("a staff invitation for a client's address is a conflict, not a fault", () => {
+    expect(statusForToolError("EMAIL_IS_PORTAL_USER")).toBe(409)
+  })
+
   it("tickets ref resolver codes are client errors", () => {
     expect(statusForToolError("invalid_params")).toBe(400)
     expect(statusForToolError("not_found")).toBe(404)

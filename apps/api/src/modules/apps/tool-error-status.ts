@@ -119,6 +119,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // A role, scope or dimension grant aimed at a client's portal account: the
   // target's kind, not a fault (admin-tools.ts EXTERNAL_USER_REFUSAL).
   USER_IS_EXTERNAL: 409,
+  // A staff invitation for an address that belongs to a client of the portal.
+  EMAIL_IS_PORTAL_USER: 409,
 
   // ── invoicing ─────────────────────────────────────────────────────────────
   invalid_input: 400,

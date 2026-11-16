@@ -37,6 +37,7 @@ import {
   revokeTargetClientActions,
 } from "~/modules/client-actions/mint"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
+import { hasScope } from "~/modules/permissions/permissions"
 
 /** The most signers one send may carry. */
 export const MAX_SIGNERS_PER_SEND = 40
@@ -123,14 +124,22 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     return t?.gated === true && t.noAutoApprove === true
   }
 
-  /** The run is a person's decision: their approval of the app's tool, or their own click on it. */
+  /**
+   * The run is a person's decision: their approval of the app's tool, or their own click on
+   * it. A click is decided by the tool's own scope, as the gate decided it: `personScopes` is
+   * set only for a person's direct call reached through no cross-app hop, and must hold the
+   * tool's required scopes. No approve scope is asked of a person.
+   */
   const personDecided = async (): Promise<boolean> => {
     if (approvalContext && (await ownHumanOnlyGated(approvalContext.toolName))) return true
-    return (
-      bridgeOptions?.humanAuthorized === true &&
-      bridgeOptions.origin === "human-ui" &&
-      (await ownHumanOnlyGated(bridgeOptions.callChain?.[bridgeOptions.callChain.length - 1]))
-    )
+    if (bridgeOptions?.origin !== "human-ui" || !bridgeOptions.personScopes) return false
+    const outer = bridgeOptions.callChain?.[bridgeOptions.callChain.length - 1]
+    if (!(await ownHumanOnlyGated(outer)) || !outer) return false
+    const { toolRegistry } = await import("~/modules/apps/app-registries")
+    const t = toolRegistry.get([orgId, appName, outer.slice(appName.length + 1)])
+    const required = (t?.requiredScopes ?? []) as string[]
+    const own = bridgeOptions.personScopes as string[]
+    return required.length > 0 && required.every((s) => hasScope(s, own))
   }
 
   const actorUserId = (): string | null => (UUID.test(userId) ? userId : null)

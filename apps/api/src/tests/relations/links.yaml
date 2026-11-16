@@ -751,3 +751,283 @@ links:
       Ap: what a refund shows of its charge while the connector is off is not defined yet
       Dr: the payments fixtures after a demo reset are not counted in this file yet
       Ex: the org export of payments refunds is not driven in this file yet
+
+  - name: client-action-target
+    what: a client action to the record the client signs, accepts or approves, and the round of signers it belongs to
+    storedIn: kernel.client_actions.target_app, target_type, target_id, target_sha256 (frozen at send), group_id
+    columns: [kernel.client_actions.target_id, kernel.client_actions.group_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/db/schema/kernel/client-actions.ts
+    visibleState: [revoked, expired, signed, accepted, approved, declined]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: C, Dx: a, Pm: H, Ap: K, Mv: a, Rs: H, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Rn: the target's hash is frozen at send and checked again at the decision; no reader of an action's target title is built yet
+      Dl: revoking an open action whose target is voided (reason sender_voided) is not built yet; a decided action stays as the legal record
+      Pm: no member read of client actions exists yet under kernel:client_actions:read
+      Ap: the token page's down frame for a target whose app is off is not built yet; the action itself stays as it was
+      Rs: the visible_to clause for a restricted target is in the schema, but nothing keeps it in step with the document's access yet
+
+  - name: client-action-company
+    what: a client action to the client company it was sent for
+    storedIn: kernel.client_actions.company_id (stamped at send)
+    columns: [kernel.client_actions.company_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [revoked]
+    whoIsTold: [sender, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: c, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move client actions to the surviving company yet
+      Dl: revoking a company's open actions when its portal access ends (reason access_ended) is not built yet; a deleted company clears the column (ON DELETE SET NULL)
+
+  - name: client-action-contact
+    what: a client action to the client person it was sent to
+    storedIn: kernel.client_actions.contact_id, invited_name and invited_email (copied at send)
+    columns: [kernel.client_actions.contact_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+      - apps/api/src/modules/export/data-subject-export-tool.ts
+    visibleState: [revoked]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Rn: the name and address an action was sent to are copied at send; no reader of them is built yet
+      Mg: a contact merge does not move client actions to the surviving contact yet
+      Dl: an erasure that revokes the person's open actions, keeps decided signatures and approvals, and anonymises the rest is not built yet; a deleted contact clears the column (ON DELETE SET NULL)
+      Mv: an action keeps the company stamped at send when its person moves to another company; no reader of it is built yet
+      Ex: the data subject export does not carry a contact's client actions yet
+
+  - name: client-action-decider
+    what: a client action to the person who signs or decides it, staff of the org or a client on the portal
+    storedIn: kernel.client_actions.signer_user_id, decided_user_id (portal path only), typed_name (the legal name)
+    columns: [kernel.client_actions.signer_user_id, kernel.client_actions.decided_user_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [revoked]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: a, Dl: K, Dx: C, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: b }
+    open:
+      Rn: a decision keeps the name typed at the decision; no reader of who decided is built yet
+      Dl: an erasure keeps a decided action and who decided it as a legal record; neither the decision path nor its reader is built yet
+      Dx: revoking a removed person's open actions (reason person_removed) is not built yet
+      Ex: the data subject export does not carry a person's decisions yet
+
+  - name: client-action-sender
+    what: a client action to the colleague or agent who sent it
+    storedIn: kernel.client_actions.created_by_user_id, created_by_agent_id
+    columns: [kernel.client_actions.created_by_user_id, kernel.client_actions.created_by_agent_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [usual]
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: K, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: W }
+    open:
+      Dl: the erasure rule keeps who sent an action as part of the decision's legal record (erase-user.ts); no reader of the sender is built yet
+      Dx: what an open action shows once its sender left is not defined; it stays open as it was
+      Ex: no data subject export exists for a person; the export takes a contact
+      Aw: the Home row a decision raises for its sender is not built yet, nor who gets it while the sender is away
+
+  - name: client-action-event-action
+    what: a client action's trail entry to its action
+    storedIn: kernel.client_action_events.action_id (append only, kept a year)
+    columns: [kernel.client_action_events.action_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: c, Ap: a, Mv: a, Rs: c, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+
+  - name: client-action-event-actor
+    what: a client action's trail entry to the person who caused it
+    storedIn: kernel.client_action_events.actor_user_id, actor_kind
+    columns: [kernel.client_action_events.actor_user_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: b, Dx: b, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Ex: the access log in a person's data subject export is not built yet
+
+  - name: client-action-event-mail
+    what: a client action's trail entry to the system mail it sent
+    storedIn: kernel.client_action_events.mail_id (text)
+    columns: [kernel.client_action_events.mail_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [sender]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+
+  - name: client-action-device-event
+    what: the address and browser of a trail entry to that entry
+    storedIn: kernel.client_action_devices.event_id
+    columns: [kernel.client_action_devices.event_id]
+    paths:
+      - apps/api/src/modules/client-actions/
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: H, Ap: a, Mv: a, Rs: a, Dr: e, Ex: c, Mi: a, Rv: a, Aw: a }
+    open:
+      Pm: no reader of devices exists yet under kernel:portal:logs; the table is closed to every other member read
+
+  - name: portal-person-account
+    what: a portal person to the client's own sign-in account
+    storedIn: kernel.portal_people.user_id (an external user row)
+    columns: [kernel.portal_people.user_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/users/merge-references.ts
+      - apps/api/src/modules/erasure/erase-user.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: R, Dl: C, Dx: C, Pm: a, Ap: a, Mv: C, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a person merge refuses a portal account (merge-references.ts); a placeholder is never a portal person, so the refusal has no world to run in
+      Dl: removing a portal person with erasure, keeping invoices and signed agreements and saying which, is not built yet; the row goes with the account (ON DELETE CASCADE)
+      Dx: removing a portal person (sessions ended, open links revoked) is not built yet; a deactivated account already reads nothing through portal.me
+      Mv: moving a person to another client company, which ends their sessions and carries nothing, is not built yet
+      Ex: the data subject export does not carry a portal person's sign-ins and decisions yet
+
+  - name: portal-person-company
+    what: a portal person to the client company whose portal they see
+    storedIn: kernel.portal_people.company_id
+    columns: [kernel.portal_people.company_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: c, Rs: a, Dr: e, Ex: c, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move portal people yet, nor limit them to what they saw before
+      Dl: ending a company's portal access in one transaction (sessions, links, shares) is not built yet; portal.company_id() already answers nothing for a closed company
+
+  - name: portal-person-contact
+    what: a portal person to the contact they are in the organisation's records
+    storedIn: kernel.portal_people.contact_id (soft)
+    columns: [kernel.portal_people.contact_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/modules/contacts/service.ts
+      - apps/api/src/modules/contacts/erasure.ts
+    visibleState: [ended]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: C, Rs: a, Dr: e, Ex: E, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a contact merge does not move a portal person to the surviving contact yet
+      Dl: a deleted contact ending its portal access is not built yet
+      Mv: a contact whose company changes ending its portal access is not built yet
+      Ex: the data subject export of a contact does not carry a portal section yet
+
+  - name: portal-person-inviter
+    what: a portal person to the colleague who invited them
+    storedIn: kernel.portal_people.invited_by_user_id
+    columns: [kernel.portal_people.invited_by_user_id]
+    paths:
+      - apps/api/src/modules/portal/
+    visibleState: [usual]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: c, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Dl: inviting a portal person is not built yet, nor what their row shows once the colleague who invited them is erased
+      Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: portal-person-merge-limit
+    what: a portal person to the shares and contacts they keep seeing after a company merge
+    storedIn: kernel.portal_people.sees_only_share_ids, sees_only_contact_ids (NULL means the whole company)
+    columns: [kernel.portal_people.sees_only_share_ids, kernel.portal_people.sees_only_contact_ids]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: []
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: the company merge that writes these lists is not built yet, nor what a merge of a listed contact does to them
+      Dl: what a listed share closed or a listed contact deleted reads as is not defined; nothing writes the lists yet
+
+  - name: portal-share-company
+    what: something shared on the portal to the client company that may see it
+    storedIn: kernel.portal_shares.company_id
+    columns: [kernel.portal_shares.company_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+      - apps/api/src/modules/contacts/companies.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: a, Mi: a, Rv: b, Aw: a }
+    open:
+      Mg: a company merge does not move shares yet, nor close one that would duplicate an open share of the surviving company
+      Dl: ending a company's portal access closes its shares in the same transaction, which is not built yet; a deleted company takes its shares with it (ON DELETE CASCADE)
+
+  - name: portal-share-object
+    what: something shared on the portal to the project, agreement, file or ticket it opens
+    storedIn: kernel.portal_shares.kind, object_id (NULL for invoices and requests)
+    columns: [kernel.portal_shares.object_id]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: C, Dl: C, Dx: a, Pm: a, Ap: C, Mv: C, Rs: H, Dr: e, Ex: a, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: no portal view reads a shared object yet; a ticket merged into another is to read as gone on the portal
+      Dl: no portal view reads a shared object yet, so what a share of a deleted object shows is not driven
+      Ap: what a share shows once its object's app is switched off is not defined
+      Mv: the file read that checks a shared file's parent again at every read is not built yet
+      Rs: the file read that refuses a shared file whose parent turned restricted is not built yet
+
+  - name: portal-share-people
+    what: something shared on the portal to the named client people who may see it
+    storedIn: kernel.portal_shares.only_user_ids (NULL means the whole company)
+    columns: [kernel.portal_shares.only_user_ids]
+    paths:
+      - apps/api/src/modules/portal/
+      - apps/api/src/db/portal-rls.ts
+    visibleState: [closed]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: c, Dx: c, Pm: a, Ap: a, Mv: c, Rs: H, Dr: e, Ex: a, Mi: a, Rv: b, Aw: a }
+    open:
+      Rs: requiring named people on a share of a restricted document, and reading it on the portal, is not built yet
+
+  - name: portal-share-author
+    what: something shared on the portal to the colleague who opened or closed it
+    storedIn: kernel.portal_shares.shared_by_user_id, closed_by_user_id
+    columns: [kernel.portal_shares.shared_by_user_id, kernel.portal_shares.closed_by_user_id]
+    paths:
+      - apps/api/src/modules/portal/
+    visibleState: [usual]
+    whoIsTold: [admin]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: c, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Dl: opening and closing shares from the client access panel is not built yet, nor what a share shows once the colleague who opened it is erased
+      Ex: no data subject export exists for a person; the export takes a contact

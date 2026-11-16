@@ -21,6 +21,7 @@ import {
   withPortalContext,
 } from "~/db/portal-rls"
 import { rootLogger } from "~/lib/logger"
+import { redis } from "~/lib/redis"
 import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
@@ -32,6 +33,7 @@ import {
   confirmPortalTotp,
 } from "~/modules/portal/auth-service"
 import { streamPortalFile } from "~/modules/portal/file-stream"
+import { portalWriteRateLimit } from "~/modules/portal/rate-limits"
 import { PORTAL_ROUTES, routerPath } from "~/modules/portal/routes-list"
 import {
   appendPortalReply,
@@ -218,6 +220,8 @@ async function ticketsWithMessages(tx: PortalClient) {
 }
 
 export const portalRoutes = new Hono<AppEnv>()
+  // Every write has its budget, counted before its body is read (rate-limits.ts).
+  .use("*", portalWriteRateLimit(redis))
   .get("/me", async (c) => {
     const me = await portalRead(c, async (tx) =>
       extractRows<Record<string, unknown>>(await tx.execute(ME)),

@@ -177,10 +177,33 @@ interface Ready {
   mode: "sign" | "accept"
   order: "sequential" | "any"
   expires: number
+  /** The uploaded file's virus scan, as it stands after the send's own scan. */
+  scanState: string | null
 }
 
-/** Every refusal a send has, before any card and again when it is approved. */
-async function readyToSend(ctx: AgreementsCtx, p: SendParams): Promise<Ready | ErrorEnvelope> {
+/** The virus scan of an uploaded version, run again while it has not run. */
+export async function rescannedState(
+  ctx: AgreementsCtx,
+  version: { id: string; source_kind?: string | null; scan_state?: string | null },
+): Promise<string | null> {
+  const before = version.scan_state ?? null
+  if (version.source_kind !== "uploaded" || before !== "not_run" || !ctx.pdf_upload_rescan)
+    return before
+  const out = bridgeAnswer<{ status: string; scanState?: string }>(
+    await ctx.pdf_upload_rescan({ versionId: version.id }),
+  )
+  return out.status === "ok" && out.scanState ? out.scanState : before
+}
+
+/**
+ * Every refusal a send has, before any card and again when it is approved.
+ * `record` (the send itself, not its check) keeps a scan that now answered.
+ */
+async function readyToSend(
+  ctx: AgreementsCtx,
+  p: SendParams,
+  opts: { record?: boolean } = {},
+): Promise<Ready | ErrorEnvelope> {
   const version = await loadVersion(ctx, p.version_id)
   if (isError(version)) return version
   const agreement = await loadAgreementOf(ctx, version)
@@ -217,6 +240,14 @@ async function readyToSend(ctx: AgreementsCtx, p: SendParams): Promise<Ready | E
     return refusal("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
   const r = await resolveSigners(ctx, p.signers)
   if (isError(r)) return r
+  const scanState = await rescannedState(ctx, version)
+  if (opts.record && scanState !== (version.scan_state ?? null))
+    await ctx.db.update("agreement_versions", version.id, { scan_state: scanState })
+  if (scanState === "infected")
+    return refusal(
+      "PDF_INFECTED",
+      `The virus scanner found something in the file of ${agreement.number} version ${version.number}: it is not sent. Upload a clean file and prepare it again. Nothing was sent.`,
+    )
   return {
     agreement,
     version,
@@ -225,6 +256,7 @@ async function readyToSend(ctx: AgreementsCtx, p: SendParams): Promise<Ready | E
     mode,
     order,
     expires,
+    scanState,
   }
 }
 
@@ -238,6 +270,7 @@ function cardLines(ready: Ready, p: SendParams): string[] {
     ),
     `Links last ${ready.expires} days`,
   ]
+  if (ready.scanState === "not_run") lines.push("Not checked for viruses.")
   for (const a of ready.sharedAddresses)
     lines.push(`Two signers share ${a}: each signs with their own name and their own code.`)
   if (p.required_phrase) lines.push(`Each signer types: "${p.required_phrase}"`)
@@ -302,7 +335,7 @@ export async function agreementSendPreflight(
 
 /** `agreement_send`: an agent's call parks one card; the person's decision mints every link. */
 export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
-  const ready = await readyToSend(ctx, p)
+  const ready = await readyToSend(ctx, p, { record: true })
   if (isError(ready)) return ready
   const agent = await actingAgentId(ctx)
   if (agent !== null && !ctx.approval) {

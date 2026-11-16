@@ -1750,6 +1750,24 @@
       },
       "schedule": "* * * * *",
       "timeoutMs": 300000
+    },
+    "upload-rescan": {
+      "handler": "uploadRescanJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_versions",
+          "where": {
+            "scan_state": {
+              "in": [
+                "not_run"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/15 * * * *",
+      "timeoutMs": 300000
     }
   },
   "attention": {

@@ -23,7 +23,7 @@ import {
   refusal,
   todayOf,
 } from "./ctx"
-import { linksOf } from "./send"
+import { linksOf, rescannedState } from "./send"
 
 export interface AgreementRow {
   id: string
@@ -1058,6 +1058,28 @@ export async function uploadFreezeJob(ctx: AgreementsCtx) {
     if ((out as { status?: string }).status === "ok") frozen++
   }
   return { status: "ok", frozen }
+}
+
+/**
+ * The `upload-rescan` job: scan again the uploaded versions whose virus scan
+ * did not run, and record each answer. While the scanner still does not
+ * answer it stops at the first version and tries again on its next run.
+ */
+export async function uploadRescanJob(ctx: AgreementsCtx) {
+  const versions = (await ctx.db.findMany("agreement_versions", {
+    where: { scan_state: "not_run", source_kind: "uploaded" },
+    limit: 20,
+  })) as Array<{ id: string; source_kind: string; scan_state: string }>
+  let scanned = 0
+  let infected = 0
+  for (const v of versions) {
+    const state = await rescannedState(ctx, v)
+    if (state === "not_run" || state === null) break
+    await ctx.db.update("agreement_versions", v.id, { scan_state: state })
+    scanned++
+    if (state === "infected") infected++
+  }
+  return { status: "ok", scanned, infected }
 }
 
 export async function approvalRouteRead(

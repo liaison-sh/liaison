@@ -13,13 +13,20 @@
  *    checks again, refuses unless the bytes and the reading are the ones
  *    checked, then stores the uploaded bytes untouched as the version's frozen
  *    file and every page picture on the version. Answers their ids.
+ *  - `pdf_upload_rescan`: for a frozen uploaded version whose virus scan did
+ *    not run, scans its frozen file again, read under the caller's row rules
+ *    and only when its bytes hash to the version's fingerprint. Answers the
+ *    scan's state; the app records it. Stores nothing.
  *
- * Both refuse any caller but the agreements app. Expected outcomes answer
+ * All refuse any caller but the agreements app. Expected outcomes answer
  * data, never a throw.
  */
+
+import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { scanBytes } from "~/lib/clamav"
 import { getObjectBytes } from "~/lib/storage/get-object-bytes"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { UPLOAD_PDF_MAX_BYTES } from "~/modules/documents/pdf-form-core"
@@ -119,7 +126,64 @@ export function createPdfUploadMethods(
     return row.id
   }
 
+  /** A frozen version's own file, read under row rules, or why it cannot be. */
+  const readFrozen = async (
+    versionId: string,
+  ): Promise<{ bytes: Uint8Array; fileId: string } | { refusal: string }> => {
+    const [row] = extractRows<{
+      file_id: string | null
+      sha256: string | null
+      storage_key: string | null
+      enc_version: number | string | null
+    }>(
+      await txDb.execute(drizzleSql`
+        SELECT v.file_id::text AS file_id, v.sha256, f.storage_key, f.enc_version
+          FROM ${drizzleSql.raw(schemaRef("app_agreements"))}.agreement_versions v
+          LEFT JOIN ${drizzleSql.raw(schemaRef("kernel"))}.files f
+            ON f.id = v.file_id AND f.org_id = v.org_id AND f.app = ${APP}
+           AND f.entity_type = 'agreement_version' AND f.entity_id = v.id::text
+         WHERE v.id = ${versionId}::uuid AND v.org_id = ${orgId}::uuid
+           AND v.source_kind = 'uploaded'
+         LIMIT 1`),
+    )
+    if (!row?.file_id || !row.storage_key || Number(row.enc_version ?? 0) !== 0)
+      return { refusal: refuse("NOT_READABLE", "That version has no frozen file to scan.") }
+    const got = await getObjectBytes(row.storage_key, { maxBytes: UPLOAD_PDF_MAX_BYTES })
+    const bytes = new Uint8Array(got.bytes)
+    if (createHash("sha256").update(bytes).digest("hex") !== row.sha256)
+      return {
+        refusal: refuse(
+          "COPY_DIFFERS",
+          "The stored file does not match the version's fingerprint. It was not scanned.",
+        ),
+      }
+    return { bytes, fileId: row.file_id }
+  }
+
   return {
+    pdf_upload_rescan: async (paramsJson: string): Promise<string> => {
+      requireApp(APP, "pdf_upload_rescan")
+      const p = JSON.parse(paramsJson || "{}") as { versionId: string }
+      if (!UUID.test(p.versionId ?? ""))
+        return refuse("NOT_FOUND", "No such agreement version. Nothing was scanned.")
+      const read = await readFrozen(p.versionId)
+      if ("refusal" in read) return read.refusal
+      const scan = await scanBytes(read.bytes)
+      if (scan.status === "infected") {
+        await quarantine(read.fileId, {
+          status: "refused",
+          code: "PDF_INFECTED",
+          message: "the virus scanner refused this file",
+          signature: scan.signature,
+        })
+        return JSON.stringify({ status: "ok", scanState: "infected" })
+      }
+      return JSON.stringify({
+        status: "ok",
+        scanState: scan.status === "clean" ? "clean" : "not_run",
+      })
+    },
+
     pdf_upload_check: async (paramsJson: string): Promise<string> => {
       requireApp(APP, "pdf_upload_check")
       const p = JSON.parse(paramsJson || "{}") as { fileId: string; deadlineMs?: number }
@@ -180,7 +244,6 @@ export function createPdfUploadMethods(
         "application/pdf",
         Buffer.from(read.bytes).toString("base64"),
       )
-      const { createHash } = await import("node:crypto")
       const pages = []
       for (const page of check.intake.pages) {
         const pictureFileId = await store(

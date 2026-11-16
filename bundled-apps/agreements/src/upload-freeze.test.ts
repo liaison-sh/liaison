@@ -6,11 +6,18 @@
 // not read as the frozen file did writes no package and no seal.
 
 import { describe, expect, it } from "bun:test"
-import { agreementCreate, agreementPrepare, agreementUpdate, uploadFreezeJob } from "./agreements"
+import {
+  agreementCreate,
+  agreementPrepare,
+  agreementUpdate,
+  uploadFreezeJob,
+  uploadRescanJob,
+} from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import { packageOf, sealVersion } from "./seal"
 import { signedWorld } from "./seal.testutil"
+import { agreementSend, agreementSendPreflight } from "./send"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const UPLOAD = "44444444-4444-4444-8444-444444444444"
@@ -18,16 +25,40 @@ const UPLOAD = "44444444-4444-4444-8444-444444444444"
 const KEPT_COPY = "55555555-5555-4555-8555-555555555555"
 const SHA = "c".repeat(64)
 const PAGES = "d".repeat(64)
+const AGENT = "33333333-3333-4333-8333-333333333333"
+const CONTACT = "aaaaaaaa-0000-4000-8000-000000000001"
 
 function world(check: () => unknown) {
   const db = memoryDb()
-  const calls = { freeze: [] as unknown[], attach: [] as unknown[] }
+  const calls = {
+    freeze: [] as unknown[],
+    attach: [] as unknown[],
+    rescans: [] as unknown[],
+    approvals: [] as Array<{ summary_detail?: { lines?: string[] } }>,
+  }
   const readable = { upload: true }
+  const scanner = { answer: "not_run" as string }
+  const acting = { agent: null as string | null }
   const ctx: AgreementsCtx = {
     orgId: "org",
     userId: PERSON,
     db,
-    turn: { get: async () => ({ agentId: null }) },
+    turn: { get: async () => ({ agentId: acting.agent }) },
+    kernel: {
+      caller: async () => ({ kind: "person", userId: PERSON, roleIds: [], holds: {} }),
+      findByIds: async (_e: string, ids: string[]) =>
+        ids.includes(CONTACT)
+          ? [{ id: CONTACT, name: "Paul Morel", email: "paul@maison-morel.example" }]
+          : [],
+    } as unknown as AgreementsCtx["kernel"],
+    requestApproval: async (req) => {
+      calls.approvals.push(req as never)
+      return { approval_id: `card-${calls.approvals.length}` }
+    },
+    pdf_upload_rescan: async (p) => {
+      calls.rescans.push(p)
+      return { status: "ok", scanState: scanner.answer }
+    },
     today: "2026-11-16",
     files_attachToParent: async (p) => {
       calls.attach.push(p)
@@ -46,7 +77,7 @@ function world(check: () => unknown) {
       }
     },
   }
-  return { db, ctx, calls, readable }
+  return { db, ctx, calls, readable, scanner, acting }
 }
 
 const KEPT = {
@@ -162,6 +193,76 @@ describe("an uploaded PDF frozen as is", () => {
     expect(out).toMatchObject({ status: "error", error: { code: "NOT_READABLE" } })
     const [d] = w.db.tables.get("agreement_drafts") as Row[]
     expect(d?.upload_file_id).toBeNull()
+  })
+})
+
+async function frozenUpload() {
+  const w = world(() => KEPT)
+  const id = await draftWithUpload(w.ctx)
+  const out = (await agreementPrepare(w.ctx, { id })) as { version_id: string }
+  return { ...w, id, versionId: out.version_id }
+}
+
+const versionRow = (w: { db: ReturnType<typeof memoryDb> }) =>
+  (w.db.tables.get("agreement_versions") as Row[])[0]
+
+const sendParams = (versionId: string) => ({
+  version_id: versionId,
+  sha256: SHA,
+  signers: [{ contact_id: CONTACT }],
+})
+
+describe("a version the virus scanner did not check", () => {
+  it("the send's check scans it again, and a clean answer is recorded when the card is staged", async () => {
+    const w = await frozenUpload()
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    w.scanner.answer = "clean"
+    expect(await agreementSendPreflight(w.ctx, sendParams(w.versionId))).toMatchObject({ ok: true })
+    expect(w.calls.rescans).toEqual([{ versionId: w.versionId }])
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "pending_approval",
+    })
+    expect(versionRow(w)?.scan_state).toBe("clean")
+    expect(w.calls.approvals[0]?.summary_detail?.lines?.join("\n")).not.toContain(
+      "Not checked for viruses",
+    )
+  })
+
+  it("while the scanner still does not answer, the card alone says it is not checked, and nothing waits", async () => {
+    const w = await frozenUpload()
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "pending_approval",
+    })
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    expect(w.calls.approvals[0]?.summary_detail?.lines).toContain("Not checked for viruses.")
+  })
+
+  it("a later hit refuses the send, and the version is recorded infected", async () => {
+    const w = await frozenUpload()
+    w.scanner.answer = "infected"
+    expect(await agreementSendPreflight(w.ctx, sendParams(w.versionId))).toMatchObject({
+      error: { code: "PDF_INFECTED" },
+    })
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "error",
+      error: { code: "PDF_INFECTED" },
+    })
+    expect(versionRow(w)?.scan_state).toBe("infected")
+    expect(w.calls.approvals).toHaveLength(0)
+  })
+
+  it("the scan job records each version's scan once the scanner answers, and stops while it is down", async () => {
+    const w = await frozenUpload()
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 0 })
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    w.scanner.answer = "clean"
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 1 })
+    expect(versionRow(w)?.scan_state).toBe("clean")
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 0 })
+    expect(w.calls.rescans).toHaveLength(2)
   })
 })
 

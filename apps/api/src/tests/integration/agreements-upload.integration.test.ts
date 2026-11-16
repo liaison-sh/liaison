@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
+import { createServer } from "node:net"
 import { join } from "node:path"
 import { sql as dsql } from "drizzle-orm"
 import { sql } from "~/db"
@@ -229,5 +230,49 @@ describe("an uploaded PDF frozen as an agreement version", () => {
     expect(await count(w.member.userId)).toBe(1)
     await sql`UPDATE ${app("agreements")} SET org_access = 'none' WHERE id = ${id}`
     expect(await count(w.member.userId)).toBe(0)
+  }, 120_000)
+
+  it("the scan job scans a version not checked for viruses once the scanner answers, reading it under row rules", async () => {
+    const saved = process.env.CLAMAV_HOST
+    delete process.env.CLAMAV_HOST
+    const { id } = await draftWithUpload(
+      "Upload scanned later",
+      plainPdf({ contents: PRICE("5600") }),
+    )
+    expect((await asPerson("agreement_prepare", { id })).data?.status).toBe("ok")
+    const [frozen] = (await sql`
+      SELECT id, scan_state FROM ${app("agreement_versions")} WHERE agreement_id = ${id}`) as unknown as Array<{
+      id: string
+      scan_state: string
+    }>
+    expect(frozen?.scan_state).toBe("not_run")
+
+    const server = createServer((socket) => {
+      socket.on("data", (chunk) => {
+        if (Buffer.from(chunk).includes(Buffer.from([0, 0, 0, 0]))) socket.end("stream: OK\0")
+      })
+    })
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r))
+    const addr = server.address()
+    process.env.CLAMAV_HOST = `127.0.0.1:${typeof addr === "object" && addr ? addr.port : 0}`
+    try {
+      const handler = JobsTestAccess.getHandler("agreements", "upload-rescan")
+      if (!handler) throw new Error("upload-rescan is not registered")
+      await dispatchAppJobWithContext(
+        handler,
+        { orgId: w.orgId },
+        { actorType: "system", orgId: w.orgId, purpose: "job", scopes: ["agreements:*"] },
+        "session",
+      )
+    } finally {
+      server.close()
+      if (saved === undefined) delete process.env.CLAMAV_HOST
+      else process.env.CLAMAV_HOST = saved
+    }
+    const [after] = (await sql`
+      SELECT scan_state FROM ${app("agreement_versions")} WHERE id = ${frozen?.id as string}`) as unknown as Array<{
+      scan_state: string
+    }>
+    expect(after?.scan_state).toBe("clean")
   }, 120_000)
 })

@@ -32,6 +32,8 @@ export interface AgreementsCtx {
   rich_text_render?: (p: RichTextRenderParams) => Promise<unknown>
   /** The host checks an uploaded PDF in the render service; stores nothing. */
   pdf_upload_check?: (p: { fileId: string; deadlineMs?: number }) => Promise<unknown>
+  /** The host scans a frozen uploaded version's file again; answers the scan's state. */
+  pdf_upload_rescan?: (p: { versionId: string }) => Promise<unknown>
   /** The host stores an uploaded PDF, untouched, and its page pictures on a version. */
   pdf_upload_freeze?: (p: {
     fileId: string

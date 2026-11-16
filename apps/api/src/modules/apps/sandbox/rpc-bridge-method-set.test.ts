@@ -206,6 +206,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["pdf_render", "async"],
   ["pdf_upload_check", "async"],
   ["pdf_upload_freeze", "async"],
+  ["pdf_upload_rescan", "async"],
   ["projects_activityRead", "async"],
   ["projects_addComment", "async"],
   ["projects_addDependency", "async"],

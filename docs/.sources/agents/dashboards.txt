@@ -306,3 +306,4 @@ Bar of 0 drawn as a hairline on the baseline -> apps/web/src/modules/dashboards/
 Pipeline bar and people rows -> apps/api/src/modules/dashboards/spec.ts:341 ; apps/web/src/modules/dashboards/blocks/BarRows.tsx:45 ; apps/web/src/modules/dashboards/blocks/BarRows.tsx:108
 A colourless series takes a palette slot by its name, one per dashboard -> apps/web/src/modules/dashboards/blocks/data-colour.ts:159 ; apps/web/src/modules/dashboards/DashboardView.tsx:986
 A data colour hard to see on the theme's surface is drawn lighter or darker -> apps/web/src/modules/dashboards/blocks/data-colour.ts:95
+A table source's lookup columns are read as the viewer and stay empty without the tool -> apps/api/src/modules/dashboards/execute.ts:285

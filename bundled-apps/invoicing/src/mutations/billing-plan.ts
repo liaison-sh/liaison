@@ -16,6 +16,7 @@
 
 import { latestIssueLine } from "../approval-cards"
 import { formatMoneyMinor } from "../money"
+import { recipientOf } from "../recipient"
 import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
@@ -683,6 +684,29 @@ export async function milestoneDraftPreview(
   }
 }
 
+/**
+ * The quote's customer, with the structured billing address an e-invoice states read from its
+ * contact when the quote holds none (a quote saved before addresses were structured, or
+ * imported): otherwise the invoice issues flagged for a billing address it prints.
+ */
+export async function recipientOfQuoteCompleted(ctx: MutationsCtx, quote: Row): Promise<Row> {
+  const out = recipientOfQuote(quote)
+  const contactId = out.counterparty_contact_id
+  if (out.billing_postcode || out.billing_city || typeof contactId !== "string" || !contactId)
+    return out
+  const current = await recipientOf(ctx, { contactId, companyId: null }).catch(() => null)
+  if (!current?.billing_postcode || !current.billing_city) return out
+  for (const k of [
+    "billing_line1",
+    "billing_line2",
+    "billing_postcode",
+    "billing_city",
+    "billing_country_code",
+  ] as const)
+    out[k] = current[k] ?? null
+  return out
+}
+
 /** The quote's customer, as a draft takes it. */
 export function recipientOfQuote(quote: Row): Row {
   const keys = [
@@ -757,7 +781,7 @@ export async function milestoneDraftCreate(
       : null
   if (!quote)
     return refuse("quote_not_found", `The plan's quote could not be read. Nothing was drafted.`)
-  const recipient = recipientOfQuote(quote)
+  const recipient = await recipientOfQuoteCompleted(ctx, quote)
   const currency = String(step.currency ?? quote.currency ?? "EUR")
   const amount = asBig(step.amount_minor)
   const isFinal = step.kind === "final"

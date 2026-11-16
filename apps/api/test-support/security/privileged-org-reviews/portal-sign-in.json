@@ -2,6 +2,7 @@
   "reviewedOrigins": {
     "apps/api/src/modules/portal/auth-service.ts#verifyPortalSignIn": "the client the verified single-use portal link was issued to, in that client's org (the challenge record written by mintChallenge)",
     "apps/api/src/modules/portal/auth-service.ts#verifyPortalTotp": "the client the single-use second-factor challenge names, its org read from that client's own row (kernel.users), never from the challenge",
-    "apps/api/src/modules/portal/auth-service.ts#requestPortalSignIn": "the org the sign-in request's slug names; the link is mailed only to that org's one active client with the typed address, whose company is open"
+    "apps/api/src/modules/portal/auth-service.ts#requestPortalSignIn": "the org the sign-in request's slug names; the link is mailed only to that org's one active client with the typed address, whose company is open",
+    "apps/api/src/modules/portal/auth-service.ts#sendPortalReplyNotice": "the org of the portal ticket a staff reply was just saved on: tickets.reply passes its own tool context's org (ctx.orgId), and the notice goes only to an open portal person of that org with the request's address"
   }
 }

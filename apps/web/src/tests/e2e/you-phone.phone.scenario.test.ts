@@ -49,9 +49,16 @@ test.describe("the You seat and the work surfaces at phone width", () => {
     await expect(notifRow).toBeVisible()
     await expect(page.locator("[data-testid^='you-toggle-notifications-']")).toHaveCount(0)
     const viewportWidth = await page.evaluate(() => window.innerWidth)
-    // The rows are rebuilt while the sections and apps load, so measure once one holds a box.
-    await expect.poll(() => notifRow.boundingBox()).not.toBeNull()
-    const box = await notifRow.boundingBox()
+    // The rows are rebuilt while the sections and apps load, so a second read can land
+    // between two renders: keep the box the poll measured instead of reading it again.
+    const measured: { box: Awaited<ReturnType<typeof notifRow.boundingBox>> } = { box: null }
+    await expect
+      .poll(async () => {
+        measured.box = await notifRow.boundingBox()
+        return measured.box
+      })
+      .not.toBeNull()
+    const box = measured.box
     expect(box).not.toBeNull()
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewportWidth)
     // 44px is the floor for anything a finger has to hit.

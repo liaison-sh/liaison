@@ -214,3 +214,6 @@ deferred-retry renders a document still pending after ten minutes and parks the 
 automatic refund/cancel credit note never issued twice per invoice -> bundled-apps/invoicing/src/einvoicing/parked-credit-note.ts:115
 A parked Stripe invoice voided or uncollectible in Stripe is dropped and never numbered -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts:362 ; bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts:180
 A payment is reported to the platform once whatever marked it paid -> bundled-apps/invoicing/src/einvoicing/collection.ts:73
+Issuer SIREN, Street address, Postcode, City, Address country fields -> bundled-apps/invoicing/src/ui/settings.tsx:474
+An e-invoice whose issuer lacks SIREN or address is refused before a number, naming the fields -> bundled-apps/invoicing/src/einvoicing/seller.ts:31 ; bundled-apps/invoicing/src/issue.ts:1239
+A sale outside e-invoicing issues without them -> bundled-apps/invoicing/src/einvoicing/seller.ts:54

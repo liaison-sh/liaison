@@ -274,3 +274,8 @@ A week nobody has planned says so, with the projects using time and how time get
 A reconcile names a source repository only to a reader of its host -> apps/api/src/apps/projects/service/reconcile.ts:445 ; apps/api/src/apps/projects/service/reconcile.ts:556
 On a day or hour rate the money half shows what is invoiced, with no left to invoice -> apps/api/src/apps/projects/handlers.ts:1252
 A past week whose planned tasks are all done is not a week nobody planned -> apps/api/src/apps/projects/service/capacity.ts:341
+A coding agent gets the card's own page link, which opens the card with Create invoice -> apps/api/src/apps/projects/service/reconcile.ts:1578 ; apps/web/src/modules/projects/ReconcileCardView.tsx:11
+A line's amount is its quantity rounded to hundredths, then priced -> apps/api/src/apps/projects/service/reconcile-lines.ts:552
+A retainer card's time lines carry no amount; its note names fee, included hours, rate, used -> apps/api/src/apps/projects/service/reconcile-card.ts:96 ; apps/api/src/apps/projects/handlers.ts:1666
+A month the schedule's run bills has no Create and says so -> apps/api/src/apps/projects/handlers.ts:1674
+A month's margin counts an invoice in the month of its service period, a credit note with its invoice -> bundled-apps/invoicing/src/tools/project-invoiced-get.ts:150

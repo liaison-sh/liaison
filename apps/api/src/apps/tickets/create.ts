@@ -46,7 +46,7 @@ export async function requireUserInOrg(
   const rows = await onPrivilegedDb(orgId, "tickets-require-user", privilegedTx, async (tx) =>
     extractRows<{ id: string }>(
       await tx.execute(
-        drizzleSql`SELECT id FROM ${kernelRel("users")} WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active' LIMIT 1`,
+        drizzleSql`SELECT id FROM ${kernelRel("users")} WHERE id = ${userId}::uuid AND org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member' LIMIT 1`,
       ),
     ),
   )

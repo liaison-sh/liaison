@@ -251,7 +251,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "every-member grants are for members only",
   ],
-  "modules/permissions/scope-holders.ts": ["walks-org", "resolves everyone holding a scope"],
+  "modules/permissions/scope-holders.ts": [
+    "member-filter",
+    "resolves the members holding a scope, and drops clients from a notification's targets",
+  ],
   "modules/provisioning/config-export.ts": ["walks-org", "exports people with their roles"],
   "modules/provisioning/ensure-user.ts": ["creates-member", "the config file's people"],
   "modules/provisioning/legal-identity-grounding.ts": ["walks-org", "reads the org's addresses"],

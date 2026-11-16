@@ -77,6 +77,23 @@ export type { AutoApprovePolicy, NewAutoApprovePolicy } from "./auto-approve-pol
 export { autoApprovePolicies } from "./auto-approve-policies"
 export type { AwayRange, NewAwayRange } from "./away-ranges"
 export { awayRanges } from "./away-ranges"
+export {
+  CLIENT_ACTION_ACTOR_KINDS,
+  CLIENT_ACTION_DECISIONS,
+  CLIENT_ACTION_EVENTS,
+  CLIENT_ACTION_KINDS,
+  CLIENT_ACTION_REVOKE_REASONS,
+  type ClientAction,
+  clientActionDevices,
+  clientActionEvents,
+  clientActions,
+  PORTAL_SHARE_KINDS,
+  type PortalPerson,
+  type PortalShare,
+  type PortalShareKind,
+  portalPeople,
+  portalShares,
+} from "./client-actions"
 export type { CloudRequestOutcomeRow } from "./cloud-request-outcomes"
 export { cloudRequestOutcomes } from "./cloud-request-outcomes"
 export { type Company, companies, type NewCompany } from "./companies"

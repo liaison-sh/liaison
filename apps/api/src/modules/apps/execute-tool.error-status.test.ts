@@ -85,6 +85,10 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("buyer_status_contradiction")).toBe(400)
   })
 
+  it("a role, scope or dimension grant aimed at a client is a conflict, not a fault", () => {
+    expect(statusForToolError("USER_IS_EXTERNAL")).toBe(409)
+  })
+
   it("tickets ref resolver codes are client errors", () => {
     expect(statusForToolError("invalid_params")).toBe(400)
     expect(statusForToolError("not_found")).toBe(404)

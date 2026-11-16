@@ -34,6 +34,13 @@ const ALLOWED: Record<string, string> = {
   "schema rls_ctx USAGE":
     "PUBLIC since the context readers were made (0184): a policy or view evaluated for any role calls them",
   "table portal.me SELECT": "the client's own row",
+  "table portal.people_me SELECT": "the client's own notice and title, nothing of anyone else",
+  "table portal.shares SELECT":
+    "the open shares of the caller's own open company, without those named for someone else",
+  "table portal.client_actions SELECT":
+    "the caller's company's actions behind an open share on their target, never a token hash",
+  "function portal.contact_id()":
+    "the caller's own contact id, only while their company is open; for the caller's own requests",
   "function portal.company_id()":
     "the caller's own company; every later view filters on it, and it reads only the caller's row",
   "function rls_ctx.org_id()": "returns the transaction's own org, after checking its tag",

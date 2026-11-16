@@ -4,6 +4,12 @@ import { entityRegistry, type SearchIndexFields } from "~/modules/apps/app-regis
 
 const log = rootLogger.child({ module: "searchable-entities" })
 
+/** Only rows whose `field` value is one of `includeValues` are indexed. */
+export interface IndexFilter {
+  field: string
+  includeValues: string[]
+}
+
 /** An attribute name the search filter can carry verbatim: a plain identifier. */
 export const SEARCH_ATTRIBUTE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/
 
@@ -27,7 +33,7 @@ const KERNEL_BUILTINS: Array<{
     aclFields?: { orgWideField: string; userIdsField: string; roleIdsField: string }
   }
   mentionable: boolean
-  indexFilter?: { field: string; includeValues: string[] }
+  indexFilter?: IndexFilter | IndexFilter[]
 }> = [
   {
     app: "kernel",
@@ -54,7 +60,11 @@ const KERNEL_BUILTINS: Array<{
     // Only active members are searchable/mentionable/assignable. Suspended and
     // deactivated accounts (incl. the Slack-import placeholder users) stay in
     // the DB for attribution but must never surface in pickers.
-    indexFilter: { field: "status", includeValues: ["active"] },
+    // A client's portal account is no colleague: never found, mentioned or assigned.
+    indexFilter: [
+      { field: "status", includeValues: ["active"] },
+      { field: "user_type", includeValues: ["member"] },
+    ],
   },
   {
     app: "kernel",
@@ -143,8 +153,9 @@ export interface SearchableEntityRegistration {
    * `includeValues` are indexed (and returned by the direct-DB mention
    * fallback). Rows failing the filter are treated as deleted by the
    * incremental indexer and skipped (then pruned) by the full reindex.
+   * Several filters must all pass.
    */
-  indexFilter?: { field: string; includeValues: string[] }
+  indexFilter?: IndexFilter | IndexFilter[]
   /**
    * Soft-delete marker column (manifest `archivedField`, e.g. `archived_at`).
    * A row with a non-null value is not index-eligible, exactly like a row that
@@ -163,9 +174,16 @@ export function rowPassesIndexFilter(
   row: Record<string, unknown>,
 ): boolean {
   if (reg.archivedField && row[reg.archivedField] != null) return false
-  const filter = reg.indexFilter
-  if (!filter) return true
-  return filter.includeValues.includes(String(row[filter.field]))
+  return indexFiltersOf(reg).every((f) => f.includeValues.includes(String(row[f.field])))
+}
+
+/** A registration's row filters as a list: none, one, or several that must all pass. */
+export function indexFiltersOf(
+  reg: Pick<SearchableEntityRegistration, "indexFilter">,
+): IndexFilter[] {
+  const f = reg.indexFilter
+  if (!f) return []
+  return Array.isArray(f) ? f : [f]
 }
 
 export interface SearchableRegistrations {

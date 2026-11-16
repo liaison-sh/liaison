@@ -409,7 +409,9 @@ export async function handleInviteUser(
 export async function handleAssignRole(
   params: { userId: string; roleId: string },
   ctx: OrgConfigToolCtx,
-): Promise<{ assigned: true } | { error: { code: string } }> {
+): Promise<{ assigned: true } | { error: { code: string; message?: string } }> {
+  const external = await externalTargetRefusal(ctx.orgId, params.userId)
+  if (external) return { error: external }
   const actor = await resolveActor(ctx)
   return withRlsContext(actor, async (tx) => {
     const r = await assignRole(tx, {
@@ -493,6 +495,8 @@ export async function handleGrantDimensionValue(
   params: { userId: string; dimension: string; values: string[] },
   ctx: OrgConfigToolCtx,
 ): Promise<{ granted: true } | { error: { code: string; message?: string } }> {
+  const external = await externalTargetRefusal(ctx.orgId, params.userId)
+  if (external) return { error: external }
   const actor = await resolveActor(ctx)
   try {
     return await withRlsContext(actor, async (tx) => {
@@ -662,6 +666,8 @@ export async function handleSetUserScope(
   // Shared with the stage-time preflight (setUserScopePreflight) so the two can never drift.
   const noOp = setUserScopeNoOpRefusal(params)
   if (noOp) return { error: noOp }
+  const external = await externalTargetRefusal(ctx.orgId, params.userId)
+  if (external) return { error: external }
   try {
     return await withRlsContext(actor, async (tx) => {
       const target = await tx
@@ -1029,15 +1035,35 @@ async function roleExistsInOrg(orgId: string, roleId: string): Promise<boolean> 
 }
 
 /** Existence-only, org-scoped user probe. See {@link roleExistsInOrg} on why it is privileged. */
-async function userExistsInOrg(orgId: string, userId: string): Promise<boolean> {
+async function userKindInOrg(orgId: string, userId: string): Promise<"member" | "external" | null> {
   return withPrivilegedDb(orgId, "admin-preflight-user", async (tx) => {
     const [u] = await tx
-      .select({ id: usersTable.id })
+      .select({ userType: usersTable.userType })
       .from(usersTable)
       .where(and(eq(usersTable.id, userId), eq(usersTable.orgId, orgId)))
       .limit(1)
-    return Boolean(u)
+    if (!u) return null
+    return u.userType === "external" ? "external" : "member"
   })
+}
+
+/**
+ * A client's portal account holds no role, no scope and no dimension grant (the
+ * database refuses each too). Said first, in a plain sentence, so nobody parks or
+ * retries a grant that can never land.
+ */
+export const EXTERNAL_USER_REFUSAL = {
+  code: "USER_IS_EXTERNAL",
+  message:
+    "This person is a client with a portal account, not a team member: a client holds no role, scope or dimension grant. Nothing was changed. What they see is set in the company's client access panel.",
+} as const
+
+/** The refusal for a target that is a client's portal account, or null for anyone else. */
+export async function externalTargetRefusal(
+  orgId: string,
+  userId: string,
+): Promise<typeof EXTERNAL_USER_REFUSAL | null> {
+  return (await userKindInOrg(orgId, userId)) === "external" ? EXTERNAL_USER_REFUSAL : null
 }
 
 /** Shared NO_OP guard for grant_user_scope: called by BOTH the preflight and
@@ -1158,9 +1184,9 @@ export async function assignRoleStagingRefusal(
   if (!(await roleExistsInOrg(ctx.orgId, params.roleId))) {
     return { code: "NOT_FOUND", message: `role id ${params.roleId} not found` }
   }
-  if (!(await userExistsInOrg(ctx.orgId, params.userId))) {
-    return { code: "NOT_FOUND", message: `user id ${params.userId} not found` }
-  }
+  const kind = await userKindInOrg(ctx.orgId, params.userId)
+  if (kind === "external") return EXTERNAL_USER_REFUSAL
+  if (!kind) return { code: "NOT_FOUND", message: `user id ${params.userId} not found` }
   return null
 }
 
@@ -1188,7 +1214,9 @@ export async function setUserScopeStagingRefusal(
 ): Promise<StagingRefusal> {
   const noOp = setUserScopeNoOpRefusal(params)
   if (noOp) return noOp
-  if (!(await userExistsInOrg(ctx.orgId, params.userId))) return { code: "USER_NOT_FOUND" }
+  const kind = await userKindInOrg(ctx.orgId, params.userId)
+  if (kind === "external") return EXTERNAL_USER_REFUSAL
+  if (!kind) return { code: "USER_NOT_FOUND" }
   return null
 }
 
@@ -1298,7 +1326,9 @@ export async function grantDimensionValueStagingRefusal(
 ): Promise<StagingRefusal> {
   const catalog = grantDimensionValueCatalogRefusal(ctx.orgId, params)
   if (catalog) return catalog
-  if (!(await userExistsInOrg(ctx.orgId, params.userId))) return { code: "USER_NOT_FOUND" }
+  const kind = await userKindInOrg(ctx.orgId, params.userId)
+  if (kind === "external") return EXTERNAL_USER_REFUSAL
+  if (!kind) return { code: "USER_NOT_FOUND" }
   return null
 }
 

@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
+import postgres from "postgres"
 import { app } from "~/app"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type PortalClient, withPortalContext } from "~/db/portal-rls"
@@ -43,6 +44,25 @@ const member: UserContext = {
   dimensionGrants: {},
 }
 const portalAdmin: UserContext = { ...member, scopes: ["kernel:portal:admin"] }
+
+/**
+ * A grant written on an external row past the triggers that now refuse one: the
+ * readers below must hold by their own filter too, whatever a row says.
+ */
+async function forceGrant(statement: string): Promise<void> {
+  const base = process.env.DB_RESET_SUPERUSER_URL ?? "postgres://postgres:postgres@localhost:5432"
+  const dbName = new URL(process.env.DATABASE_URL ?? "").pathname.replace(/^\//, "")
+  const url = process.env.MIGRATION_DATABASE_URL ?? `${base.replace(/\/$/, "")}/${dbName}`
+  const superuser = postgres(url, { max: 1, onnotice: () => {} })
+  try {
+    await superuser.begin(async (tx) => {
+      await tx.unsafe("SET LOCAL session_replication_role = replica")
+      await tx.unsafe(statement)
+    })
+  } finally {
+    await superuser.end()
+  }
+}
 
 function pgCode(err: unknown): string {
   const e = err as { code?: string; cause?: { code?: string } } | null
@@ -346,21 +366,19 @@ describe("the routes and services a member reads people through", () => {
   const ids = async (res: Response) =>
     ((await res.json()) as { data: { userId: string }[] }).data.map((m) => m.userId)
 
-  it("listUsers shows a member no external row, a holder of the portal admin scope all of them", async () => {
+  it("listUsers shows no external row, to a member or to a holder of the portal admin scope", async () => {
     const list = (ctx: UserContext) =>
       withRlsContext(ctx, (tx) => listUsers(tx, { orgId: ORG_ID, page: 1, limit: 50 }))
     expect((await list(member)).rows.map((r) => r.id)).toEqual([MEMBER_ID])
-    expect((await list(portalAdmin)).rows.map((r) => r.id).sort()).toEqual(
-      [MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort(),
-    )
+    expect((await list(portalAdmin)).rows.map((r) => r.id)).toEqual([MEMBER_ID])
   })
 
-  it("/api/sharing/members shows a member no external row, a holder of the portal admin scope all of them", async () => {
+  it("/api/sharing/members shows no external row, to a member or to a holder of the portal admin scope", async () => {
     const asMember = await get("/api/sharing/members", [])
     expect(asMember.status).toBe(200)
     expect(await ids(asMember)).toEqual([MEMBER_ID])
     const asHolder = await get("/api/sharing/members", ["kernel:portal:admin"])
-    expect((await ids(asHolder)).sort()).toEqual([MEMBER_ID, EXTERNAL_ID, OTHER_EXTERNAL_ID].sort())
+    expect(await ids(asHolder)).toEqual([MEMBER_ID])
   })
 
   it("/api/users/:id/preview of an external row is 404 for a member, found for a holder of the portal admin scope", async () => {
@@ -554,7 +572,7 @@ describe("seats, every-member grants and approvers ignore an external row", () =
   })
 
   it("eligibleApprovers finds an external row by no route: a direct grant or a scope every member holds", async () => {
-    await sql.unsafe(
+    await forceGrant(
       insertSql("kernel.user_scope_grants", [
         { user_id: EXTERNAL_ID, org_id: ORG_ID, scope: "tickets:approve" },
         { user_id: MEMBER_ID, org_id: ORG_ID, scope: "tickets:approve" },
@@ -570,7 +588,7 @@ describe("seats, every-member grants and approvers ignore an external row", () =
   })
 
   it("eligibleApproversWithDimension does not find one either", async () => {
-    await sql.unsafe(
+    await forceGrant(
       insertSql(
         "kernel.user_scope_grants",
         { user_id: OTHER_EXTERNAL_ID, org_id: ORG_ID, scope: "*" },

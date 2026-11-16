@@ -31,6 +31,12 @@ export interface RecipientContext {
    * translator builds this closure from the event's `(source, kind, axes)`.
    */
   applySubscriptionFilter?: (userId: string) => Promise<boolean>
+  /**
+   * These ids without the clients' portal accounts. Every resolved list goes
+   * through it, so an id an event names (a field, a mention, an actor) never
+   * reaches a client. Absent: no narrowing (unit callers).
+   */
+  keepMembers?: (orgId: string, ids: string[]) => Promise<string[]>
   /** The company's account manager, or null when it has none. Absent: no company carries one. */
   loadAccountManager?: (orgId: string, companyId: string) => Promise<string | null>
 }
@@ -134,6 +140,7 @@ export async function resolveRecipients(
     default:
       return []
   }
+  if (ctx.keepMembers && initial.length > 0) initial = await ctx.keepMembers(ctx.orgId, initial)
   if (!ctx.applySubscriptionFilter || initial.length === 0) return initial
   const allowed: string[] = []
   for (const id of initial) {

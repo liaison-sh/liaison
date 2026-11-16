@@ -1,0 +1,5 @@
+{
+  "sql": {
+    "tests/security/portal-doors/fixture.ts": "The portal door tests' world: writes the two orgs, their companies and people as the database holds them, then every read under test runs on the real roles. Loaded by the door tests and the client action table tests only."
+  }
+}

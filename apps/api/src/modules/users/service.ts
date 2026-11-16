@@ -58,6 +58,9 @@ export async function listUsers(db: RlsClient, params: ListUsersParams) {
     .where(
       and(
         eq(users.orgId, orgId),
+        // A client's portal account is no colleague: the portal admin scope lets an
+        // admin's session read it, and only the client access panel lists it.
+        eq(users.userType, "member"),
         kind === "imported" ? isImportPlaceholderSql : not(isImportPlaceholderSql),
       ),
     )
@@ -124,7 +127,7 @@ export async function getUserDetail(db: RlsClient, params: { orgId: string; user
       updatedAt: users.updatedAt,
     })
     .from(users)
-    .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
+    .where(and(eq(users.id, userId), eq(users.orgId, orgId), eq(users.userType, "member")))
     .limit(1)
   if (!identity) return null
 

@@ -40,6 +40,11 @@ export const companies = kernel.table(
     notSameAs: uuid("not_same_as").array().notNull().default(sql`'{}'::uuid[]`),
     /** The relationship ended. */
     closedAt: timestamp("closed_at", { withTimezone: true }),
+    /** The company's portal people must use a second factor to sign in. */
+    portalRequireTotp: boolean("portal_require_totp").notNull().default(false),
+    /** The company's portal access ended: its people read nothing more. */
+    portalEndedAt: timestamp("portal_ended_at", { withTimezone: true }),
+    portalEndedBy: uuid("portal_ended_by"),
     /** Decides the company's sharing. Soft: a person merge re-points it. */
     createdBy: uuid("created_by"),
     /** The account manager: routes approvals, grants nothing. */

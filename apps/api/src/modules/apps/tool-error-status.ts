@@ -115,6 +115,11 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   not_installed: 503,
   unsupported: 501,
 
+  // ── kernel admin tools ────────────────────────────────────────────────────
+  // A role, scope or dimension grant aimed at a client's portal account: the
+  // target's kind, not a fault (admin-tools.ts EXTERNAL_USER_REFUSAL).
+  USER_IS_EXTERNAL: 409,
+
   // ── invoicing ─────────────────────────────────────────────────────────────
   invalid_input: 400,
   invalid_type: 400,

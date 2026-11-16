@@ -1,0 +1,5 @@
+{
+  "id": "NT-49",
+  "owner": "public client action routes, token page and portal web",
+  "part": "the headers on /a, /portal and /api/public"
+}

@@ -38,7 +38,7 @@ import {
 import { isSeededWrite } from "~/modules/notifications/seeded"
 import { readNotificationChannels } from "~/modules/notifications/settings"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
-import { defaultLoadScopeHolders } from "~/modules/permissions/scope-holders"
+import { defaultLoadScopeHolders, withoutExternalUsers } from "~/modules/permissions/scope-holders"
 import {
   resolveThreadAnchorForReaders,
   type ThreadAnchorRef,
@@ -969,6 +969,7 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
+    keepMembers: deps.recipientContext?.keepMembers ?? withoutExternalUsers,
   }
 
   // null = the preferences could not be read: the router degrades (in_app

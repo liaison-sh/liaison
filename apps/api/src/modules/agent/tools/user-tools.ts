@@ -29,7 +29,12 @@ export async function handleUsersSearch(
 ) {
   const limit = Math.min(params.limit ?? 20, 50)
   const q = params.query?.trim()
-  const filters = [eq(users.orgId, ctx.orgId), eq(users.status, "active")]
+  // Members only: an admin's session also reads clients' portal accounts, which are no colleagues.
+  const filters = [
+    eq(users.orgId, ctx.orgId),
+    eq(users.status, "active"),
+    eq(users.userType, "member"),
+  ]
   if (q) {
     const like = `%${q}%`
     // name OR email substring — `or(...)` is never undefined with two args, but the non-null

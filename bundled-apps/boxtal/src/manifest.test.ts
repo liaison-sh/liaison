@@ -670,6 +670,7 @@ describe("Boxtal app.manifest.json", () => {
     // 0.24.10: a shipment declares `pick` (the search tool), so a dashboard table's link cell
     // can pick one.
     // 0.24.13: to_ship_by_product, the To prepare worklist as units still to ship per product code.
+    // 0.24.14: the tool guides this branch keeps on top of main's 0.24.13.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     expect(m.packageFormat).toBe(1)
   })

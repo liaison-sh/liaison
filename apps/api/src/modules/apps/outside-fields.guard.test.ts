@@ -218,6 +218,10 @@ const LISTED = new Map<string, string>([
   ["boxtal:get_documents", `document kinds and links: ${NONE}`],
   ["boxtal:list_content_categories", `the shipping catalog's content categories: ${NONE}`],
   ["boxtal:queue_counts", `badge counts: ${NONE}`],
+  [
+    "boxtal:to_ship_by_product",
+    `unit counts per short product code, from the org's own code mapping over its store catalog lines: ${NONE}`,
+  ],
   ["boxtal:attention_rules_list", `rules the org wrote: ${NONE}`],
   ["boxtal:settings_carrier_allowlist_get", `an org setting: ${NONE}`],
   ["boxtal:settings_label_format_get", `an org setting: ${NONE}`],

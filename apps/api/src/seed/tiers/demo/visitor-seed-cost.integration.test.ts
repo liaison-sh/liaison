@@ -175,9 +175,10 @@ const SAAS_BASELINE = {
  * written by its own writer) and no milestone is drafted before its task is done: 12 946 round
  * trips in 1 151 transactions on a Linux runner on a Sunday, 368 outbox events; 13 090 in
  * 1 175 on the Monday after (the pin, a working day; products 6 668 in 650, software 8 153 in 832).
+ * One outbox event more once the finance role is granted the org's shared mailbox: 369.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 368,
+  outboxEvents: 369,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,

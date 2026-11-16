@@ -317,18 +317,41 @@ function party(p: FacturxParty): string {
   )
 }
 
+/** The identity fields a Factur-X party lacks, in the order a person reads them. */
+export type FacturxPartyGap =
+  | "legal_name"
+  | "siren"
+  | "address_line1"
+  | "postcode"
+  | "city"
+  | "country_code"
+
+export function facturxPartyGaps(p: FacturxParty): FacturxPartyGap[] {
+  const missing: FacturxPartyGap[] = []
+  if (blank(p.legal_name)) missing.push("legal_name")
+  if (blank(p.siren) || !/^\d{9}$/.test((p.siren ?? "").trim())) missing.push("siren")
+  if (blank(p.address.line1)) missing.push("address_line1")
+  if (blank(p.address.postcode)) missing.push("postcode")
+  if (blank(p.address.city)) missing.push("city")
+  if (blank(p.address.country_code)) missing.push("country_code")
+  return missing
+}
+
+const GAP_SAID: Record<FacturxPartyGap, string> = {
+  legal_name: "legal name",
+  siren: "SIREN",
+  address_line1: "address line",
+  postcode: "postcode",
+  city: "city",
+  country_code: "country code",
+}
+
 function checkParty(
   p: FacturxParty,
   code: "facturx_seller_incomplete" | "facturx_buyer_incomplete",
   who: string,
 ): void {
-  const missing: string[] = []
-  if (blank(p.legal_name)) missing.push("legal name")
-  if (blank(p.siren) || !/^\d{9}$/.test((p.siren ?? "").trim())) missing.push("SIREN")
-  if (blank(p.address.line1)) missing.push("address line")
-  if (blank(p.address.postcode)) missing.push("postcode")
-  if (blank(p.address.city)) missing.push("city")
-  if (blank(p.address.country_code)) missing.push("country code")
+  const missing = facturxPartyGaps(p).map((g) => GAP_SAID[g])
   if (missing.length) throw new FacturxBuildError(code, `${who} is missing: ${missing.join(", ")}`)
 }
 

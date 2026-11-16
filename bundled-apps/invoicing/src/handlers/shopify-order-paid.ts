@@ -1051,6 +1051,18 @@ export async function onShopifyOrderPaid(
         billing_country: counterpartyInput.billing_country_code ?? billingCountry,
       })
     }
+    if (!check.ok && "seller" in check) {
+      // The organization's own issuer profile cannot sign the e-invoice: nothing is numbered,
+      // the order waits until Settings is completed, and the retry issues it.
+      const def = await insertDeferred(ctx.db, {
+        event_id: payload.id,
+        event_payload_json: parkPayload,
+        status: "awaiting_dependency",
+        reason: "issuer_incomplete",
+        blocked_on: { kind: "issuer", code: "issuer_incomplete" },
+      })
+      return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
+    }
     if (!check.ok) {
       const code = check.error.error.code
       const def = await park(

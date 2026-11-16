@@ -262,7 +262,7 @@ export interface StudioClient {
   city: string
 }
 
-/** Every client's SIREN: all zero, like the declared VAT numbers here (a valid checksum). */
+/** Every SIREN of the story, the studio's and its clients': all zero, like the declared VAT numbers here (a valid checksum). */
 export const STUDIO_CLIENT_SIREN = "000000000"
 
 export const STUDIO_CLIENTS: StudioClient[] = [

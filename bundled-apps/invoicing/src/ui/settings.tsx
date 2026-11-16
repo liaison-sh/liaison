@@ -32,6 +32,13 @@ export interface IssuerProfileDraft {
   vat_id?: string | null
   tax_registration_id?: string | null
   address?: string | null
+  /** The company's SIREN and structured address: a French e-invoice states them. */
+  siren?: string | null
+  address_line1?: string | null
+  address_line2?: string | null
+  postcode?: string | null
+  city?: string | null
+  country_code?: string | null
   iban?: string | null
   swift_bic?: string | null
   bank_name?: string | null
@@ -126,6 +133,12 @@ const ISSUER_SAVE_FIELDS = [
   "timezone",
   "email_templates",
   "shopify_shop_id",
+  "siren",
+  "address_line1",
+  "address_line2",
+  "postcode",
+  "city",
+  "country_code",
 ] as const
 
 export function pickIssuerSaveFields(row: Record<string, unknown>): Record<string, unknown> {
@@ -453,6 +466,69 @@ export const InvoicingIssuerProfiles: Component = () => {
                           ? "border-warning focus:border-warning"
                           : "border-border focus:border-accent-border",
                       )}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("SIREN")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-siren"
+                      value={d().siren ?? ""}
+                      placeholder={tr("9 digits")}
+                      onInput={(e) => setEditing({ ...d(), siren: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Street address")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-address_line1"
+                      value={d().address_line1 ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), address_line1: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Address line 2")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-address_line2"
+                      value={d().address_line2 ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), address_line2: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Postcode")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-postcode"
+                      value={d().postcode ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), postcode: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("City")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-city"
+                      value={d().city ?? ""}
+                      onInput={(e) => setEditing({ ...d(), city: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Address country")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-country_code"
+                      value={d().country_code ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), country_code: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
                     />
                   </label>
                   <label class="flex items-center gap-2">

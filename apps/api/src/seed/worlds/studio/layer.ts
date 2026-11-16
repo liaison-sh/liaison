@@ -697,6 +697,13 @@ async function seedStudioMoney(
       invoiceApprovalThresholdMinor: "0",
       poApprovalThresholdMinor: "0",
       timezone: STORY_TIME_ZONE,
+      identity: {
+        siren: STUDIO_CLIENT_SIREN,
+        line1: STUDIO_COMPANY.addressLine1 ?? "",
+        postcode: STUDIO_COMPANY.postalCode ?? "",
+        city: STUDIO_COMPANY.city ?? "",
+        countryCode: STUDIO_COMPANY.country ?? "FR",
+      },
     },
     hsCodes: [],
     relationships: Object.entries(contactIdsByPartyKey).map(([key, contactId]) => ({

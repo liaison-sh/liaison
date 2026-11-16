@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.30.1",
+  "version": "0.31.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -5801,6 +5801,12 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
+          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
+          "address_line2": { "type": ["string", "null"] },
+          "postcode": { "type": ["string", "null"] },
+          "city": { "type": ["string", "null"] },
+          "country_code": { "type": ["string", "null"], "description": "ISO 3166 alpha-2 code of the company's address, e.g. FR." },
           "prices_include_tax": {
             "type": "boolean",
             "description": "Typed unit prices INCLUDE tax (gross). Must match the Shopify shop's 'include tax in prices' setting when the profile is mapped to a shop: prices you type on a quote line are then tax inclusive, and the document shows the net amount plus the VAT it contains. Off: typed prices are net and tax is added on top."
@@ -5851,6 +5857,12 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
+          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
+          "address_line2": { "type": ["string", "null"] },
+          "postcode": { "type": ["string", "null"] },
+          "city": { "type": ["string", "null"] },
+          "country_code": { "type": ["string", "null"], "description": "ISO 3166 alpha-2 code of the company's address, e.g. FR." },
           "prices_include_tax": {
             "type": "boolean",
             "description": "Typed unit prices INCLUDE tax (gross). Must match the Shopify shop's 'include tax in prices' setting when the profile is mapped to a shop: prices you type on a quote line are then tax inclusive, and the document shows the net amount plus the VAT it contains. Off: typed prices are net and tax is added on top."

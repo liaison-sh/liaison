@@ -48,6 +48,7 @@ import {
   prepareEinvoiceGate,
 } from "./einvoicing/issue-gate"
 import { documentLegalMention } from "./einvoicing/mentions"
+import { SellerIncompleteRefusal, sellerGapFor } from "./einvoicing/seller"
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
@@ -1233,6 +1234,10 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   )
   const gateRefusal = gate.evaluation.refusal
   if (gateRefusal && gateRefusal.mode === "enforce") throw new EinvoiceGateRefusal(gateRefusal)
+  // 0c) The seller's half of a legal original: an e-invoice whose issuer profile cannot sign its
+  //     Factur-X is refused here, before numbering, whatever the gate mode.
+  const sellerGap = sellerGapFor(type, gate.evaluation, issuer)
+  if (sellerGap) throw new SellerIncompleteRefusal(sellerGap)
   const einvoicingWarning = gateRefusal ? gateWarning(gateRefusal) : undefined
   if (gate.derivedKind && counterparty.contact_id) {
     await ensureDerivedIdentity(ctx.db, {

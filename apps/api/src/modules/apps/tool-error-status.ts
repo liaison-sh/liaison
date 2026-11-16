@@ -357,6 +357,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   fx_rate_unavailable: 503,
   gate_warning: 422,
   internal_cancellation: 409,
+  issuer_incomplete: 422,
   issuer_out_of_scope: 422,
   not_invoice_document: 422,
   public_entity_chorus_pro: 422,

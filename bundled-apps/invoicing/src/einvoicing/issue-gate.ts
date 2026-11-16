@@ -24,6 +24,7 @@ import {
 } from "./gate"
 import { sirenFromFrVat } from "./identity"
 import { deriveKind } from "./identity-derive"
+import { type SellerIncompleteError, sellerGapFor } from "./seller"
 
 /** The stored e-invoicing columns of a document row (an original, a draft, a source quote). */
 export interface EinvoiceRowColumns extends BuyerSnapshot {
@@ -242,6 +243,13 @@ export async function prepareEinvoiceGate(
 export type EinvoiceSiteCheck =
   | { ok: true; prepared: PreparedGate; warning: EinvoicingWarning | null }
   | { ok: false; error: ReturnType<typeof gateErrorEnvelope>; derivedKind: CustomerKind | null }
+  | {
+      ok: false
+      error: { status: "error"; error: SellerIncompleteError & { status: 422 } }
+      derivedKind: CustomerKind | null
+      /** The issuer profile, not the buyer, is what blocks: a seller gap. */
+      seller: true
+    }
 
 /**
  * The issuing handler's read-only check, run before any approval request, number allocation or
@@ -256,6 +264,14 @@ export async function checkEinvoiceGate(
   const r = prepared.evaluation.refusal
   if (r && r.mode === "enforce")
     return { ok: false, error: gateErrorEnvelope(r), derivedKind: prepared.derivedKind }
+  const seller = sellerGapFor(s.type, prepared.evaluation, s.issuer)
+  if (seller)
+    return {
+      ok: false,
+      error: { status: "error", error: { ...seller, status: 422 } },
+      derivedKind: prepared.derivedKind,
+      seller: true,
+    }
   return { ok: true, prepared, warning: r ? gateWarning(r) : null }
 }
 

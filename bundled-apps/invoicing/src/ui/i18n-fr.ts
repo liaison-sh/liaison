@@ -9,6 +9,10 @@ export const FR: Record<string, string> = {
   "+ Add line": "+ Ajouter une ligne",
   "+ Create document": "+ Créer un document",
   "+ New issuer profile": "+ Nouveau profil émetteur",
+  City: "Ville",
+  "Address country": "Pays de l'adresse",
+  "Address line 2": "Complément d'adresse",
+  "Street address": "Adresse",
   "A manual override differs from the inferred relationship: review and confirm.":
     "Un réglage manuel diffère de la relation déduite : vérifiez et confirmez.",
   Accepted: "Accepté",

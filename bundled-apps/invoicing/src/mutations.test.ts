@@ -11131,3 +11131,64 @@ describe("isUniqueViolation", () => {
     expect(isUniqueViolation(new Error("connection reset"))).toBe(false)
   })
 })
+
+describe("an e-invoice whose issuer profile cannot sign its legal original", () => {
+  const noSeller = { siren: null, address_line1: null, postcode: null, city: null }
+
+  test("issuing a draft is refused before a number is taken, naming the Settings fields", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller })
+    const { draft_id } = await draftsCreate(ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    const r = await invoiceIssue(ctx, { draft_id })
+    expect(r.status).toBe("error")
+    if (r.status !== "error") throw new Error("unreachable")
+    expect(r.error.code).toBe("issuer_incomplete")
+    expect(r.error.message).toContain("SIREN, street address, postcode and city")
+    expect(r.error.message).toContain("Settings > Invoicing")
+    expect((r.error.body as { fix_tool: string }).fix_tool).toBe("settings_issuer_profile_update")
+    expect(issuedDocs(db)).toHaveLength(0)
+    expect(draftDocs(db).map((d) => d.id)).toEqual([draft_id])
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("create and issue is refused the same way and writes nothing", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("error")
+    if (r.status === "error") expect(r.error.code).toBe("issuer_incomplete")
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("a buyer outside e-invoicing still issues with the same issuer profile", async () => {
+    const { ctx } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: {
+        ...defaultCounterparty,
+        contact_id: null,
+        customer_kind: "individual",
+      },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+  })
+})

@@ -419,6 +419,8 @@ export interface IssuerProfileInput {
   invoiceApprovalThresholdMinor: string
   poApprovalThresholdMinor: string
   timezone: string
+  /** The company's SIREN and structured address, which a French e-invoice states. */
+  identity?: { siren: string; line1: string; postcode: string; city: string; countryCode: string }
 }
 
 export function issuerProfileId(ctx: SeedContext, key: string): string {
@@ -457,6 +459,15 @@ async function upsertIssuerProfile(
     auto_email_enabled: false,
     prices_include_tax: false,
     timezone: p.timezone,
+    ...(p.identity
+      ? {
+          siren: p.identity.siren,
+          address_line1: p.identity.line1,
+          postcode: p.identity.postcode,
+          city: p.identity.city,
+          country_code: p.identity.countryCode,
+        }
+      : {}),
     email_templates: jsonCell({}),
     created_at: iso(shiftTime(ctx.now, -365)),
     updated_at: iso(shiftTime(ctx.now, -30)),

@@ -520,14 +520,35 @@ export function computeLines(args: {
   return out
 }
 
+/**
+ * The billed quantity of `minutes`, in hundredths of the unit (`per` minutes): half up, in
+ * integers, as the invoice line holds it (invoicing's line-amount rule). 660 min at 420 a day is
+ * 157 (1.57 d).
+ */
+export function billedHundredths(minutes: number, per: number): number {
+  return Math.floor((Math.round(minutes) * 200 + per) / (2 * per))
+}
+
 /** A quantity in the project's unit: days on a project billed by the day, hours otherwise. */
 export function worded(minutes: number, basis: Basis, hoursPerDayMinutes: number): string {
   const per = basis === "daily" ? hoursPerDayMinutes : 60
   const unit = basis === "daily" ? "d" : "h"
-  return `${Math.round((minutes / per) * 100) / 100} ${unit}`
+  return `${billedHundredths(minutes, per) / 100} ${unit}`
 }
 
-/** What a quantity bills at the project's rate, in minor units, or null without a rate. */
+/** Hundredths of a unit times a rate, to minor units, rounded half to even as an invoice line. */
+export function hundredthsAmountMinor(hundredths: number, rateMinor: number): number {
+  const n = hundredths * rateMinor
+  const q = Math.floor(n / 100)
+  const r = n - q * 100
+  return r > 50 || (r === 50 && q % 2 !== 0) ? q + 1 : q
+}
+
+/**
+ * What a quantity bills at the project's rate, in minor units, or null without a rate: the
+ * quantity rounded as the invoice line holds it, then priced, so the card, its claims and the
+ * invoice agree to the cent.
+ */
 export function amountMinor(
   minutes: number,
   basis: Basis,
@@ -535,7 +556,9 @@ export function amountMinor(
   hoursPerDayMinutes: number,
 ): number | null {
   if (rateMinor === null) return null
-  if (basis === "daily") return Math.round((minutes / hoursPerDayMinutes) * rateMinor)
-  if (basis === "hourly" || basis === "retainer") return Math.round((minutes / 60) * rateMinor)
+  if (basis === "daily")
+    return hundredthsAmountMinor(billedHundredths(minutes, hoursPerDayMinutes), rateMinor)
+  if (basis === "hourly" || basis === "retainer")
+    return hundredthsAmountMinor(billedHundredths(minutes, 60), rateMinor)
   return null
 }

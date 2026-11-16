@@ -6,6 +6,7 @@
 import { describe, expect, it } from "bun:test"
 import type { BudgetTask } from "./coverage"
 import {
+  amountMinor,
   computeLines,
   defaultBill,
   keptProofUrl,
@@ -20,6 +21,7 @@ import {
   readProposedLines,
   repoHostsOf,
   resolvePeriod,
+  worded,
 } from "./reconcile-lines"
 import { ProjectsServiceError } from "./statuses"
 
@@ -312,5 +314,18 @@ describe("the default bill", () => {
     expect(lines).toHaveLength(RECONCILE_LINES_MAX)
     expect(lines.at(-1)?.name).toBe(OTHER_LINE_NAME)
     expect(lines.at(-1)?.taskIds).toHaveLength(45 - (RECONCILE_LINES_MAX - 1))
+  })
+})
+
+describe("a billed line's figure", () => {
+  it("rounds the quantity as the invoice line holds it, then prices it: 660 min at 930.00 a day is 1.57 d and 1,460.10", () => {
+    expect(worded(660, "daily", 420)).toBe("1.57 d")
+    expect(amountMinor(660, "daily", 93000, 420)).toBe(146010)
+  })
+
+  it("prices whole hundredths of a day or an hour exactly, and an hourly line the same way", () => {
+    expect(amountMinor(1260, "daily", 93000, 420)).toBe(279000)
+    expect(amountMinor(50, "hourly", 12000, 420)).toBe(9960)
+    expect(amountMinor(60, "daily", null, 420)).toBeNull()
   })
 })

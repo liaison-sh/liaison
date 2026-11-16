@@ -4359,13 +4359,13 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
   // path with the same tracking number, closing the fulfillment order. Each approve re-sent the
   // create and Shopify refused it ("Invalid fulfillment order line item quantity requested"), so the
   // card stayed stuck. The handler now reads the live state first.
-  const FO = "gid://shopify/FulfillmentOrder/14274153709899"
+  const FO = "gid://shopify/FulfillmentOrder/9100000000001"
   const mutationBodies = (calls: Array<{ body: string }>): string[] =>
     calls.map((c) => c.body).filter((b) => /mutation [A-Z]/.test(b))
-  const FO_LINE = "gid://shopify/FulfillmentOrderLineItem/38357210431819"
+  const FO_LINE = "gid://shopify/FulfillmentOrderLineItem/9200000000001"
   const prebuilt = {
     fulfillment: {
-      trackingInfo: { company: "UPS", number: "1ZW4941Y0497043935" },
+      trackingInfo: { company: "UPS", number: "1Z999AA10000000001" },
       notifyCustomer: true,
       lineItemsByFulfillmentOrder: [
         { fulfillmentOrderId: FO, fulfillmentOrderLineItems: [{ id: FO_LINE, quantity: 1 }] },
@@ -4373,9 +4373,9 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
     },
   }
   const shipped = {
-    id: "gid://shopify/Fulfillment/8352871055691",
+    id: "gid://shopify/Fulfillment/9400000000001",
     status: "SUCCESS",
-    trackingInfo: [{ number: "1ZW4941Y0497043935", company: "UPS", url: null }],
+    trackingInfo: [{ number: "1Z999AA10000000001", company: "UPS", url: null }],
   }
   const foState = (status: string, remaining: number, fulfillments: unknown[]) => ({
     data: {
@@ -4383,7 +4383,7 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
         id: FO,
         status,
         lineItems: { nodes: [{ id: FO_LINE, remainingQuantity: remaining }] },
-        order: { id: "gid://shopify/Order/13333251096907", name: "#3530", fulfillments },
+        order: { id: "gid://shopify/Order/9300000000001", name: "#1056", fulfillments },
       },
     },
   })
@@ -4393,7 +4393,7 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
     const res = (await fulfillments_create(prebuilt, ctx)) as Record<string, unknown>
     expect(res.alreadyFulfilled).toBe(true)
     expect(res.fulfillment).toMatchObject({ id: shipped.id })
-    expect(String(res.message)).toMatch(/#3530 already has this shipment/)
+    expect(String(res.message)).toMatch(/#1056 already has this shipment/)
     expect(mutationBodies(calls)).toHaveLength(0)
     expect(events).toHaveLength(0)
   })
@@ -4426,7 +4426,7 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
     const other = { ...shipped, trackingInfo: [{ number: "OTHER123", company: "UPS", url: null }] }
     const { ctx, calls } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [other])] })
     await expect(fulfillments_create(prebuilt, ctx)).rejects.toThrow(
-      /Nothing to fulfill as requested on #3530: fulfillment order .* is CLOSED/,
+      /Nothing to fulfill as requested on #1056: fulfillment order .* is CLOSED/,
     )
     expect(mutationBodies(calls)).toHaveLength(0)
   })
@@ -4451,8 +4451,8 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
         {
           data: {
             order: {
-              id: "gid://shopify/Order/13333251096907",
-              name: "#3530",
+              id: "gid://shopify/Order/9300000000001",
+              name: "#1056",
               fulfillments: [shipped],
               fulfillmentOrders: { nodes: [] },
             },
@@ -4462,8 +4462,8 @@ describe("fulfillments_create: a shipment already on the order is done, not sent
     })
     const res = (await fulfillments_create(
       {
-        orderId: "13333251096907",
-        fulfillment: { trackingInfo: { number: "1zw4941y0497043935" } },
+        orderId: "9300000000001",
+        fulfillment: { trackingInfo: { number: "1z999aa10000000001" } },
       },
       ctx,
     )) as Record<string, unknown>

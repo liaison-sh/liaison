@@ -214,13 +214,14 @@ export async function templateSave(
   }
   if (!p.name || !p.kind)
     return refusal("TEMPLATE_INVALID", "A new template needs a name and a kind. Nothing was saved.")
-  const templateId = crypto.randomUUID()
-  await ctx.db.batch({
+  // The template's id is its meta row's own id, set in the same commit (a replayed run makes
+  // the same calls: no id is drawn in the app).
+  const result = await ctx.db.batch({
     ops: [
       {
         insert: "agreement_template_meta",
+        as: "meta",
         data: {
-          template_id: templateId,
           name: p.name,
           kind: p.kind,
           fit_tag: p.fit_tag ?? "commercial",
@@ -230,9 +231,14 @@ export async function templateSave(
         },
       },
       {
+        update: "agreement_template_meta",
+        id: { $ref: "meta" },
+        data: { template_id: { $ref: "meta" } },
+      },
+      {
         insert: "agreement_template_versions",
         data: {
-          template_id: templateId,
+          template_id: { $ref: "meta" },
           version: 1,
           body: p.body,
           saved_by_user_id: user,
@@ -241,6 +247,7 @@ export async function templateSave(
       },
     ],
   })
+  const templateId = String(result.rows.meta?.id ?? "")
   return {
     status: "ok",
     template_id: templateId,

@@ -112,7 +112,13 @@ function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
           } else if ("update" in op) {
             const id = resolve(op.id, refs, s) as string
             const r = t(op.update).find((x) => x.id === id)
-            if (r && op.data) Object.assign(r, op.data)
+            if (r && op.data)
+              Object.assign(
+                r,
+                Object.fromEntries(
+                  Object.entries(op.data).map(([k, v]) => [k, resolve(v, refs, s)]),
+                ),
+              )
           }
         }
       } catch (err) {

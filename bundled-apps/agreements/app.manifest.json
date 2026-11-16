@@ -553,7 +553,7 @@
       "rlsScope": "agreements",
       "internalWriteScope": "agreements:templates:write",
       "fields": {
-        "template_id": "uuid",
+        "template_id": "uuid?",
         "name": "text",
         "kind": {
           "type": "string",
@@ -605,10 +605,6 @@
     "agreement_template_versions": {
       "rlsScope": "agreements",
       "internalWriteScope": "agreements:templates:write",
-      "immutable": {
-        "retentionYears": 10,
-        "anchor": "saved_at"
-      },
       "fields": {
         "template_id": "uuid",
         "version": "integer",

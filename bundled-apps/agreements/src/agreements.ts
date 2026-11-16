@@ -321,7 +321,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
     if (!p.fit_tag) fitTag = t.fit_tag
     // The template's text is copied: a later template version never moves it.
     source = {
-      body: structuredClone(t.body) as AgreementSource["body"],
+      body: JSON.parse(JSON.stringify(t.body)) as AgreementSource["body"],
       data: p.source?.data ?? {},
     }
   }

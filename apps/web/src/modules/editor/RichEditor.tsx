@@ -478,7 +478,12 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       ed,
       untrack(() => props.value),
     )
-    if (untrack(() => props.autofocus)) ed.commands.focus("end")
+    // Not tiptap's focus command: it focuses the view again a frame later,
+    // and that writes the caret over a selection made in between.
+    if (untrack(() => props.autofocus)) {
+      ed.view.dispatch(ed.state.tr.setSelection(Selection.atEnd(ed.state.doc)).scrollIntoView())
+      ed.view.focus()
+    }
     ed.on("transaction", ({ transaction }) => {
       if (transaction.docChanged) {
         for (const held of anchors) mapHeldPlace(held, transaction.mapping.maps)

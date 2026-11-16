@@ -11,10 +11,15 @@ import { agreementCreate, agreementPrepare, agreementUpdate } from "./agreements
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import {
+  agreementNewLink,
+  agreementNewLinkPreflight,
+  agreementReminderSend,
+  agreementReminderSendPreflight,
   agreementSend,
   agreementSendPreflight,
   agreementVoid,
   clientActionViewGet,
+  decidedReconcile,
   onClientActionDecided,
   resolveSigners,
 } from "./send"
@@ -94,7 +99,8 @@ function ctxFor(
       calls.revokes.push(p)
       return { status: "ok", revoked_ids: ["ca-1"] }
     },
-    client_actions_record: async ({ id }) => ({ status: "ok", record: records.get(id) }),
+    client_actions_record: async (p) =>
+      "id" in p ? { status: "ok", record: records.get(p.id) } : { status: "ok", links: [] },
     emit: async (e) => {
       calls.emitted.push(`${e.entity}:${e.action}`)
       return null
@@ -536,5 +542,144 @@ describe("after a send", () => {
     expect(view.sha256).toBe(SHA)
     expect(view.text).toBe("Scope of work")
     expect(view.title).toContain("Mutual NDA")
+  })
+})
+
+describe("reminders and new links", () => {
+  it("a reminder asks the kernel to remail the named open links, held to the card's check", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "partly_signed" })
+    const ctx = ctxFor(db, { approved: true })
+    ctx.records.set("ca-2", record({ id: "ca-2", target_id: prepared.version_id }))
+    const pin = (await agreementReminderSendPreflight(ctx, { client_action_ids: ["ca-2"] })) as {
+      pinnedParams: { sendGuard: { addresses: string[] }; guardKey: string }
+    }
+    expect(pin.pinnedParams.sendGuard.addresses).toEqual(["paul@maison-morel.example"])
+    ctx.client_actions_mint = async (p: unknown) => {
+      ctx.calls.mints.push(p)
+      return { status: "ok", reminded: [{ id: "ca-2", invited_name: "Anne Morel" }] }
+    }
+    expect(
+      (
+        (await agreementReminderSend(ctx, { client_action_ids: ["ca-2"] })) as {
+          error: { code: string }
+        }
+      ).error.code,
+    ).toBe("SEND_GUARD_MISMATCH")
+    const out = (await agreementReminderSend(ctx, {
+      client_action_ids: ["ca-2"],
+      ...pin.pinnedParams,
+    })) as { status: string; message: string }
+    expect(out.status).toBe("ok")
+    expect(ctx.calls.mints).toEqual([
+      { remind: { ids: ["ca-2"], send_guard: pin.pinnedParams.sendGuard } },
+    ])
+    expect(out.message).toContain("Anne Morel")
+    expect(out.message).toContain("stop working")
+  })
+
+  it("a reminder for a draft is refused and nothing is mailed", async () => {
+    const db = memoryDb()
+    const { prepared } = await frozen(db)
+    const ctx = ctxFor(db, { approved: true })
+    ctx.records.set("ca-1", record({ target_id: prepared.version_id }))
+    const out = (await agreementReminderSend(ctx, { client_action_ids: ["ca-1"] })) as {
+      error: { code: string }
+    }
+    expect(out.error.code).toBe("NOT_SENT")
+    expect(ctx.calls.mints).toEqual([])
+  })
+
+  it("a new link after a decline made without the code reopens the agreement for that signer", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "declined" })
+    const ctx = ctxFor(db, { approved: true })
+    ctx.records.set(
+      "ca-1",
+      record({
+        decision: "declined",
+        code_verified_at: null,
+        target_id: prepared.version_id,
+        group: [{ id: "ca-1", sign_order: null, decision: "declined", open: false }],
+      }),
+    )
+    ctx.client_actions_mint = async (p: unknown) => {
+      ctx.calls.mints.push(p)
+      return {
+        status: "ok",
+        replaced_id: "ca-1",
+        action: {
+          id: "ca-9",
+          status: "open",
+          invited_name: "Paul Morel",
+          invited_email: "p@x.example",
+        },
+      }
+    }
+    const out = (await agreementNewLink(ctx, {
+      client_action_id: "ca-1",
+      email: "p@x.example",
+    })) as { status: string; message: string }
+    expect(out.status).toBe("ok")
+    expect(ctx.calls.mints).toEqual([
+      { new_link: { after: "ca-1", email: "p@x.example", expires_in_days: 14 } },
+    ])
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+    expect(out.message).toContain("Paul Morel")
+  })
+
+  it("a new link for a signed agreement is refused and nothing is minted", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "signed" })
+    const ctx = ctxFor(db, { approved: true })
+    ctx.records.set("ca-1", record({ target_id: prepared.version_id }))
+    const out = (await agreementNewLink(ctx, { client_action_id: "ca-1" })) as {
+      error: { code: string }
+    }
+    expect(out.error.code).toBe("NOT_SENT")
+    expect(ctx.calls.mints).toEqual([])
+  })
+
+  it("a new link after a decline made with the code is refused at the card", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "declined" })
+    const ctx = ctxFor(db, { approved: true })
+    ctx.records.set("ca-1", record({ decision: "declined", target_id: prepared.version_id }))
+    const out = (await agreementNewLinkPreflight(ctx, { client_action_id: "ca-1" })) as {
+      error: { code: string }
+    }
+    expect(out.error.code).toBe("DECLINED_BY_SIGNER")
+  })
+})
+
+describe("a decision whose event was lost", () => {
+  it("the reconcile job records it once, through the same handler", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = ctxFor(db)
+    const rec = record({
+      sign_order: null,
+      group: [{ id: "ca-1", sign_order: null, decision: "signed", open: false }],
+    })
+    ctx.client_actions_record = async (p) =>
+      "target_id" in p
+        ? {
+            status: "ok",
+            links: [{ id: "ca-1", invited_name: "Paul Morel", sign_order: null, state: "decided" }],
+          }
+        : { status: "ok", record: rec }
+    const first = (await decidedReconcile(ctx)) as { handled: number }
+    expect(first.handled).toBe(1)
+    expect(db.tables.get("signature_events") ?? []).toHaveLength(1)
+    expect(rowOf(db, "agreements", id).status).toBe("signed")
+    expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("signed")
+    const again = (await decidedReconcile(ctx)) as { handled: number }
+    expect(again.handled).toBe(0)
+    expect(db.tables.get("signature_events") ?? []).toHaveLength(1)
   })
 })

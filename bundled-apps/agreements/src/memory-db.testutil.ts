@@ -14,7 +14,11 @@ export function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
     return tables.get(e) as Row[]
   }
   const matches = (r: Row, where: Record<string, unknown> = {}) =>
-    Object.entries(where).every(([k, v]) => r[k] === v)
+    Object.entries(where).every(([k, v]) =>
+      v && typeof v === "object" && Array.isArray((v as { in?: unknown[] }).in)
+        ? ((v as { in: unknown[] }).in as unknown[]).includes(r[k])
+        : r[k] === v,
+    )
   const seq = new Map<string, number>()
   const resolve = (
     v: unknown,

@@ -1278,6 +1278,112 @@
       ],
       "approvalDedupeKeyParam": "guardKey"
     },
+    "agreement_reminder_send": {
+      "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. Parks for a person's approval.",
+      "searchKeywords": [
+        "relance",
+        "relancer",
+        "remind",
+        "reminder",
+        "rappel",
+        "signer",
+        "contrat"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementReminderSendHandler",
+      "summarizer": "summarizeAgreementReminderSend",
+      "preflight": "agreementReminderSendPreflightHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Remind the signers of an agreement"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client_action_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 40,
+            "description": "The signers' links to remind, all of one agreement version (agreement_get lists them)."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "client_action_ids"
+        ],
+        "additionalProperties": false
+      },
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "guardKey"
+    },
+    "agreement_new_link": {
+      "description": "Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand. Parks for a person's approval.",
+      "searchKeywords": [
+        "lien",
+        "link",
+        "expired",
+        "expiré",
+        "adresse",
+        "signer"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementNewLinkHandler",
+      "summarizer": "summarizeAgreementNewLink",
+      "preflight": "agreementNewLinkPreflightHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "A new signing link for client action {{params.client_action_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client_action_id": {
+            "type": "string",
+            "description": "The signer's link to replace, from agreement_get or agreement_send."
+          },
+          "email": {
+            "type": "string",
+            "description": "A corrected address; leave it out to use the one on file."
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              14,
+              30
+            ]
+          }
+        },
+        "required": [
+          "client_action_id"
+        ],
+        "additionalProperties": false
+      }
+    },
     "agreement_void": {
       "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. Parks for a person's approval.",
       "searchKeywords": [
@@ -1363,5 +1469,26 @@
       "agreement:declined",
       "agreement:voided"
     ]
+  },
+  "jobs": {
+    "decided-reconcile": {
+      "handler": "decidedReconcileJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "sent",
+                "partly_signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    }
   }
 }

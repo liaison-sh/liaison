@@ -41,8 +41,10 @@ export interface AgreementsCtx {
   }) => Promise<unknown>
   /** Client action links: mint a send's links, or the next signer's turn. */
   client_actions_mint?: (p: unknown) => Promise<unknown>
-  /** What one decided client action recorded. */
-  client_actions_record?: (p: { id: string }) => Promise<unknown>
+  /** What one client action recorded, or every link of one target. */
+  client_actions_record?: (
+    p: { id: string } | { target_type: string; target_id: string },
+  ) => Promise<unknown>
   /** Withdraw every open link of one target. */
   client_actions_revoke?: (p: {
     target_type: string

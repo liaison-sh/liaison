@@ -186,6 +186,102 @@ describe("an app's send through the bridge", () => {
     expect(await rowsOf(targetId)).toHaveLength(2)
   })
 
+  it("a reminder mails each named open link with a fresh token; a waiting signer gets nothing", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await send(true, targetId, "sequential")
+    const [first] = out.actions ?? []
+    await waitUntil(() => mailsTo(kit.w.clientA.email) > 0)
+    const [before] = (await sql`
+      SELECT token_hash FROM ${k("client_actions")} WHERE id = ${first?.id ?? ""}`) as unknown as Array<{
+      token_hash: string
+    }>
+    const mailsA = mailsTo(kit.w.clientA.email)
+    const mailsA2 = mailsTo(kit.w.clientA2.email)
+    const remind = (approved: boolean) =>
+      bridge({ approved })
+        .client_actions_mint(
+          JSON.stringify({ remind: { ids: (out.actions ?? []).map((a) => a.id) } }),
+        )
+        .then(
+          (r: string) =>
+            JSON.parse(r) as {
+              status: string
+              error?: { code: string }
+              reminded?: Array<{ id: string }>
+            },
+        )
+    expect((await remind(false)).error?.code).toBe("MINT_NEEDS_A_PERSON")
+    const done = await remind(true)
+    expect(done.reminded?.map((r) => r.id)).toEqual([first?.id])
+    const [after] = (await sql`
+      SELECT token_hash, prior_token_hashes FROM ${k("client_actions")}
+       WHERE id = ${first?.id ?? ""}`) as unknown as Array<{
+      token_hash: string
+      prior_token_hashes: string[]
+    }>
+    expect(after?.token_hash).not.toBe(before?.token_hash)
+    expect(after?.prior_token_hashes).toContain(before?.token_hash)
+    await waitUntil(() => mailsTo(kit.w.clientA.email) > mailsA)
+    expect(mailsTo(kit.w.clientA.email)).toBe(mailsA + 1)
+    expect(mailsTo(kit.w.clientA2.email)).toBe(mailsA2)
+  })
+
+  it("a new link after a decline made without the code takes the signer's place; one after a proved decline is refused", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await send(true, targetId, "any")
+    const [first, second] = out.actions ?? []
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'declined'
+               WHERE id = ${first?.id ?? ""}`
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'declined',
+               code_verified_at = now() WHERE id = ${second?.id ?? ""}`
+    const newLink = (approved: boolean, after: string, email?: string) =>
+      bridge({ approved })
+        .client_actions_mint(JSON.stringify({ new_link: { after, email } }))
+        .then(
+          (r: string) =>
+            JSON.parse(r) as {
+              status: string
+              error?: { code: string }
+              replaced_id?: string
+              action?: { id: string; status: string; invited_email: string }
+            },
+        )
+    expect((await newLink(false, first?.id ?? "")).error?.code).toBe("MINT_NEEDS_A_PERSON")
+    const corrected = `fixed-${kit.w.clientA.email}`
+    const made = await newLink(true, first?.id ?? "", corrected)
+    expect(made.status).toBe("ok")
+    expect(made.replaced_id).toBe(first?.id)
+    expect(made.action?.status).toBe("open")
+    expect(made.action?.invited_email).toBe(corrected)
+    const [row] = (await sql`
+      SELECT group_id, contact_id FROM ${k("client_actions")} WHERE id = ${made.action?.id ?? ""}`) as unknown as Array<{
+      group_id: string
+      contact_id: string
+    }>
+    const [orig] = (await sql`
+      SELECT group_id FROM ${k("client_actions")} WHERE id = ${first?.id ?? ""}`) as unknown as Array<{
+      group_id: string
+    }>
+    expect(row?.group_id).toBe(orig?.group_id)
+    expect(row?.contact_id).toBe(kit.w.clientA.contactId)
+    expect((await newLink(true, second?.id ?? "")).error?.code).toBe("DECLINED_BY_SIGNER")
+  })
+
+  it("an app lists the links of its own target with each signer's turn and state", async () => {
+    const targetId = crypto.randomUUID()
+    await send(true, targetId, "sequential")
+    const listed = JSON.parse(
+      await bridge({ approved: false }).client_actions_record(
+        JSON.stringify({ target_type: kit.targetType, target_id: targetId }),
+      ),
+    ) as { links: Array<{ invited_email: string; sign_order: number; state: string }> }
+    expect(listed.links.map((l) => [l.invited_email, l.sign_order, l.state])).toEqual([
+      [kit.w.clientA.email, 1, "open"],
+      [kit.w.clientA2.email, 2, "waiting_turn"],
+    ])
+    expect(JSON.stringify(listed)).not.toContain("token")
+  })
+
   it("no link is made outside a person's decision on the app's send", async () => {
     const targetId = crypto.randomUUID()
     const out = await send(false, targetId, "any")

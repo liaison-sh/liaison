@@ -16,11 +16,16 @@ import {
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import {
+  agreementNewLink,
+  agreementNewLinkPreflight,
+  agreementReminderSend,
+  agreementReminderSendPreflight,
   agreementSend,
   agreementSendPreflight,
   agreementVoid,
   agreementVoidPreflight,
   clientActionViewGet,
+  decidedReconcile,
   onClientActionDecided,
   type SendParams,
 } from "./send"
@@ -53,10 +58,21 @@ export const agreementVoidPreflightHandler = (p: { id: string; reason: string },
   agreementVoidPreflight(ctx, p)
 export const agreementVoidHandler = (p: { id: string; reason: string }, ctx: Ctx) =>
   agreementVoid(ctx, p)
+type ReminderParams = Parameters<typeof agreementReminderSend>[1]
+export const agreementReminderSendHandler = (p: ReminderParams, ctx: Ctx) =>
+  agreementReminderSend(ctx, p)
+export const agreementReminderSendPreflightHandler = (p: ReminderParams, ctx: Ctx) =>
+  agreementReminderSendPreflight(ctx, p)
+type NewLinkParams = { client_action_id: string; email?: string; expires_in_days?: number }
+export const agreementNewLinkHandler = (p: NewLinkParams, ctx: Ctx) => agreementNewLink(ctx, p)
+export const agreementNewLinkPreflightHandler = (p: NewLinkParams, ctx: Ctx) =>
+  agreementNewLinkPreflight(ctx, p)
 export const clientActionViewGetHandler = (p: { targetType: string; targetId: string }, ctx: Ctx) =>
   clientActionViewGet(ctx, p)
 export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
   onClientActionDecided(ctx, event as Parameters<typeof onClientActionDecided>[1])
+
+export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
 
 // --- Gated-tool approval summarizers ---
 export * from "./summarizers"

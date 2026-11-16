@@ -229,9 +229,22 @@ export function cleanTyped(v: string | undefined | null, max = 200): string | nu
   return t
 }
 
-function sameName(a: string, b: string): boolean {
+/** A typed name against the proved one: trim, lower case and space collapse. */
+export function sameName(a: string, b: string): boolean {
   const n = (s: string) => s.normalize("NFC").replace(/\s+/g, " ").trim().toLowerCase()
   return n(a) === n(b)
+}
+
+/** A typed phrase against the asked one: as a name, and accents folded (a phone keyboard). */
+export function phraseMatches(typed: string, asked: string): boolean {
+  const n = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/\p{M}+/gu, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase()
+  return n(typed) !== "" && n(typed) === n(asked)
 }
 
 export type DecideInput = {
@@ -343,7 +356,7 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
       if (!typed || (provedName && !sameName(typed, provedName))) {
         return { ok: false as const, status: 422, body: { error: { code: "name_mismatch" } } }
       }
-      if (row.required_phrase && (!phrase || !sameName(phrase, row.required_phrase))) {
+      if (row.required_phrase && (!phrase || !phraseMatches(phrase, row.required_phrase))) {
         return { ok: false as const, status: 422, body: { error: { code: "phrase_mismatch" } } }
       }
     }

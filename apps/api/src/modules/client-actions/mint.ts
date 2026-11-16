@@ -808,6 +808,212 @@ export async function revokeTargetClientActions(input: {
   })
 }
 
+/**
+ * A reminder: each named link of this app that is open and was mailed gets a fresh token (the
+ * one mailed before stops working) and a new mail. A staff signer, a signer still waiting for
+ * their turn and a closed link get nothing. Returns the reminded actions with their signer.
+ */
+export async function remindClientActions(input: {
+  orgId: string
+  targetApp: string
+  ids: readonly string[]
+  /** Run over the addresses about to be mailed; a code stops the reminder before any mail. */
+  check?: (emails: string[]) => Promise<{ code: string; message: string } | null>
+}): Promise<
+  | Array<{ id: string; invitedName: string; invitedEmail: string }>
+  | { stopped: { code: string; message: string } }
+> {
+  if (input.ids.length === 0) return []
+  const wanted = sql.join(
+    input.ids.map((id) => sql`${id}`),
+    sql`, `,
+  )
+  const open = await withPrivilegedDb(input.orgId, "client-action-remind", async (tx) =>
+    extractRows<{ id: string; invited_name: string | null; invited_email: string }>(
+      await tx.execute(sql`
+        SELECT id, invited_name, invited_email FROM ${K()}.client_actions
+         WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
+           AND id::text IN (${wanted})
+           AND decided_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+           AND code_locked_at IS NULL AND token_hash IS NOT NULL AND signer_user_id IS NULL
+         ORDER BY sign_order NULLS LAST, created_at
+      `),
+    ),
+  )
+  const stop = input.check ? await input.check(open.map((r) => r.invited_email)) : null
+  if (stop) return { stopped: stop }
+  const out: Array<{ id: string; invitedName: string; invitedEmail: string }> = []
+  for (const r of open) {
+    if (await remailClientAction(input.orgId, r.id, { resend: true }))
+      out.push({
+        id: r.id,
+        invitedName: r.invited_name ?? r.invited_email,
+        invitedEmail: r.invited_email,
+      })
+  }
+  return out
+}
+
+/**
+ * A new link for one signer of a send, in the same group and turn: after their link
+ * expired or was withdrawn, after a decline made without the emailed code, or to a corrected
+ * address. Their earlier link, if still open, is withdrawn first. Signatures already given
+ * stand. A signer who signed, or who declined after proving the code, gets no new link.
+ */
+export async function newLinkAfter(input: {
+  orgId: string
+  targetApp: string
+  afterActionId: string
+  email?: string | null
+  expiresInDays?: (typeof EXPIRY_DAYS)[number]
+  createdByUserId: string | null
+  createdByAgentId?: string | null
+}): Promise<MintResult & { replacedId: string }> {
+  const [prior] = await withPrivilegedDb(input.orgId, "client-action-new-link-read", async (tx) =>
+    extractRows<{
+      id: string
+      kind: ClientActionKind
+      target_type: string
+      target_id: string
+      target_sha256: string | null
+      contact_id: string | null
+      company_id: string | null
+      invited_email: string
+      invited_name: string | null
+      sign_order: number | null
+      group_id: string | null
+      required_phrase: string | null
+      decision: string | null
+      code_verified_at: Date | null
+      revoked_at: Date | null
+      expires_at: Date
+      token_hash: string | null
+    }>(
+      await tx.execute(sql`
+        SELECT id, kind, target_type, target_id, target_sha256, contact_id, company_id,
+               invited_email, invited_name, sign_order, group_id, required_phrase, decision,
+               code_verified_at, revoked_at, expires_at, token_hash
+          FROM ${K()}.client_actions
+         WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
+           AND target_app = ${input.targetApp}
+      `),
+    ),
+  )
+  if (!prior) throw new ClientActionError("NOT_FOUND", "No such link of this app", 404)
+  if (prior.decision !== null && prior.decision !== "declined")
+    throw new ClientActionError("ALREADY_DECIDED", "This signer already gave their answer", 409)
+  if (prior.decision === "declined" && prior.code_verified_at !== null)
+    throw new ClientActionError(
+      "DECLINED_BY_SIGNER",
+      "This signer declined after proving the emailed code; a new version is sent for a new answer",
+      409,
+    )
+  if (prior.decision === null && prior.revoked_at === null && prior.token_hash === null)
+    throw new ClientActionError(
+      "NOT_THEIR_TURN",
+      "This signer waits for the signer before them; their link opens after that signature",
+      409,
+    )
+  const email = input.email?.trim().toLowerCase() || prior.invited_email
+  const stillOpen =
+    prior.decision === null && prior.revoked_at === null && new Date(prior.expires_at) > new Date()
+  if (stillOpen)
+    await revokeClientAction({
+      orgId: input.orgId,
+      id: prior.id,
+      reason: "replaced",
+      byUserId: input.createdByUserId,
+    })
+  const r = await mintClientAction({
+    orgId: input.orgId,
+    kind: prior.kind,
+    targetApp: input.targetApp,
+    targetType: prior.target_type,
+    targetId: prior.target_id,
+    ...(prior.target_sha256 ? { targetSha256: prior.target_sha256 } : {}),
+    contactId: prior.contact_id,
+    companyId: prior.company_id,
+    invitedEmail: email,
+    invitedName: prior.invited_name,
+    expiresInDays: input.expiresInDays ?? 14,
+    signOrder: prior.sign_order,
+    groupId: prior.group_id,
+    requiredPhrase: prior.required_phrase,
+    createdByUserId: input.createdByUserId,
+    createdByAgentId: input.createdByAgentId ?? null,
+  })
+  return { ...r, replacedId: prior.id }
+}
+
+/** One link of a target as its app lists it: who, which turn, and where it stands. */
+export interface TargetLink {
+  id: string
+  invitedName: string
+  invitedEmail: string
+  signOrder: number | null
+  state: "open" | "waiting_turn" | "decided" | "declined" | "revoked" | "expired" | "locked"
+  decidedAt: Date | null
+  codeVerified: boolean
+  expiresAt: Date
+}
+
+/** Every link of one target of this app, newest turn last (no token, code or device field). */
+export async function listTargetClientActions(input: {
+  orgId: string
+  targetApp: string
+  targetType: string
+  targetId: string
+}): Promise<TargetLink[]> {
+  const rows = await withPrivilegedDb(input.orgId, "client-action-list-target", async (tx) =>
+    extractRows<{
+      id: string
+      invited_name: string | null
+      invited_email: string
+      sign_order: number | null
+      decision: string | null
+      decided_at: Date | null
+      revoked_at: Date | null
+      code_locked_at: Date | null
+      code_verified_at: Date | null
+      token_hash: string | null
+      expires_at: Date
+    }>(
+      await tx.execute(sql`
+        SELECT id, invited_name, invited_email, sign_order, decision, decided_at, revoked_at,
+               code_locked_at, code_verified_at, token_hash, expires_at
+          FROM ${K()}.client_actions
+         WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
+           AND target_type = ${input.targetType} AND target_id = ${input.targetId}
+         ORDER BY sign_order NULLS LAST, created_at
+      `),
+    ),
+  )
+  const now = Date.now()
+  return rows.map((r) => ({
+    id: r.id,
+    invitedName: r.invited_name ?? r.invited_email,
+    invitedEmail: r.invited_email,
+    signOrder: r.sign_order,
+    state:
+      r.decision === "declined"
+        ? "declined"
+        : r.decision !== null
+          ? "decided"
+          : r.revoked_at
+            ? "revoked"
+            : new Date(r.expires_at).getTime() <= now
+              ? "expired"
+              : r.code_locked_at
+                ? "locked"
+                : r.token_hash
+                  ? "open"
+                  : "waiting_turn",
+    decidedAt: r.decided_at,
+    codeVerified: r.code_verified_at !== null,
+    expiresAt: new Date(r.expires_at),
+  }))
+}
+
 /** What a decided action recorded, for the app that owns its target to keep as evidence. */
 export interface ClientActionRecord {
   id: string

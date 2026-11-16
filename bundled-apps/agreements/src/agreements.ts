@@ -23,6 +23,7 @@ import {
   refusal,
   todayOf,
 } from "./ctx"
+import { linksOf } from "./send"
 
 export interface AgreementRow {
   id: string
@@ -226,6 +227,9 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
   }>
   const draft = await loadDraft(ctx, row.id)
   const shares = await currentShares(ctx, row.id)
+  // The links of the version that went out: the latest one, once the agreement left draft.
+  const latest = versions[versions.length - 1]
+  const links = latest && row.status !== "draft" ? await linksOf(ctx, latest.id) : []
   return {
     status: "ok",
     agreement: {
@@ -246,6 +250,14 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       frozen_at: v.frozen_at ?? null,
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
+    signing_links: links.map((l) => ({
+      client_action_id: l.id,
+      signer: l.invited_name,
+      email: l.invited_email,
+      sign_order: l.sign_order,
+      state: l.state,
+      expires_at: l.expires_at,
+    })),
     message:
       `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`.trim(),
   }

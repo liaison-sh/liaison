@@ -29,10 +29,13 @@ import {
   ClientActionError,
   type ClientActionRevokeReason,
   EXPIRY_DAYS,
+  listTargetClientActions,
   type MintResult,
   mintClientAction,
+  newLinkAfter,
   openNextSignerTurn,
   readClientActionRecord,
+  remindClientActions,
   revokeClientAction,
   revokeTargetClientActions,
   signerAddresses,
@@ -161,6 +164,14 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         return { code: err.code, message: `${err.message}. Nothing was sent.` }
       throw err
     }
+    return guardHolds(guard, addresses)
+  }
+
+  /** The pinned check names every address and still clears for them. */
+  async function guardHolds(
+    guard: unknown,
+    addresses: string[],
+  ): Promise<{ code: string; message: string } | null> {
     if (
       !isPinnedSendGuard(guard) ||
       !addresses.every((a) => guard.addresses.map((x) => x.toLowerCase()).includes(a))
@@ -175,6 +186,74 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     return {
       code: `SEND_GUARD_${verdict.state.toUpperCase()}`,
       message: `${describeStop(verdict, "approved")} Nothing was sent.`,
+    }
+  }
+
+  /** A reminder: each named open mailed link of this app gets a fresh token and a new mail. */
+  async function remind(p: { ids?: unknown; send_guard?: unknown }): Promise<string> {
+    const ids = Array.isArray(p.ids) ? p.ids : []
+    if (
+      ids.length === 0 ||
+      ids.length > MAX_SIGNERS_PER_SEND ||
+      !ids.every((id): id is string => typeof id === "string" && UUID.test(id))
+    )
+      return refuse("INVALID_INPUT", `remind takes 1 to ${MAX_SIGNERS_PER_SEND} client action ids.`)
+    if (!(await personDecided()))
+      return refuse(
+        "MINT_NEEDS_A_PERSON",
+        "Reminders go only inside a person's decision on this app's reminder. Nothing was sent.",
+      )
+    const guard = p.send_guard
+    const reminded = await remindClientActions({
+      orgId,
+      targetApp: appName,
+      ids,
+      ...(guard !== undefined ? { check: (emails: string[]) => guardHolds(guard, emails) } : {}),
+    })
+    if (!Array.isArray(reminded)) return refuse(reminded.stopped.code, reminded.stopped.message)
+    return JSON.stringify({
+      status: "ok",
+      reminded: reminded.map((r) => ({ id: r.id, invited_name: r.invitedName })),
+    })
+  }
+
+  /** A new link for one signer, in the same group and turn (newLinkAfter). */
+  async function newLink(p: {
+    after?: string
+    email?: string | null
+    expires_in_days?: number
+  }): Promise<string> {
+    if (typeof p.after !== "string" || !UUID.test(p.after))
+      return refuse("INVALID_INPUT", "new_link takes the client action id it replaces (after).")
+    if (p.email != null && (typeof p.email !== "string" || !p.email.includes("@")))
+      return refuse("INVALID_INPUT", "email is an email address. Nothing was sent.")
+    const days = p.expires_in_days ?? 14
+    if (!(EXPIRY_DAYS as readonly number[]).includes(days))
+      return refuse("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
+    if (!(await personDecided()))
+      return refuse(
+        "MINT_NEEDS_A_PERSON",
+        "A new link is made only inside a person's decision on this app's tool. Nothing was sent.",
+      )
+    try {
+      const r = await newLinkAfter({
+        orgId,
+        targetApp: appName,
+        afterActionId: p.after,
+        email: p.email ?? null,
+        expiresInDays: days as (typeof EXPIRY_DAYS)[number],
+        createdByUserId: actorUserId(),
+        createdByAgentId: bridgeActingAgentId ?? null,
+      })
+      return JSON.stringify({
+        status: "ok",
+        replaced_id: r.replacedId,
+        action: actionOut(r, null),
+      })
+    } catch (err) {
+      if (err instanceof ClientActionError)
+        return refuse(err.code, `${err.message}. Nothing was sent.`)
+      throw err
     }
   }
 
@@ -256,8 +335,12 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       const p = JSON.parse(paramsJson || "{}") as {
         send?: SendParams
         next_turn_after?: string
+        remind?: { ids?: unknown; send_guard?: unknown }
+        new_link?: { after?: string; email?: string | null; expires_in_days?: number }
       }
       if (p.send) return mintSend(p.send)
+      if (p.remind) return remind(p.remind)
+      if (p.new_link) return newLink(p.new_link)
       if (typeof p.next_turn_after === "string" && UUID.test(p.next_turn_after)) {
         try {
           const out = await openNextSignerTurn({
@@ -275,13 +358,51 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
           throw err
         }
       }
-      return refuse("INVALID_INPUT", "client_actions_mint takes { send } or { next_turn_after }.")
+      return refuse(
+        "INVALID_INPUT",
+        "client_actions_mint takes { send }, { next_turn_after }, { remind } or { new_link }.",
+      )
     },
 
     client_actions_record: async (paramsJson: string): Promise<string> => {
-      const p = JSON.parse(paramsJson || "{}") as { id?: string }
+      const p = JSON.parse(paramsJson || "{}") as {
+        id?: string
+        target_type?: string
+        target_id?: string
+      }
+      if (p.id === undefined && typeof p.target_type === "string") {
+        if (!declaredTarget(orgId, appName, p.target_type))
+          return refuse(
+            "TARGET_NOT_REGISTERED",
+            `${appName} declares no client action target ${p.target_type}.`,
+          )
+        if (typeof p.target_id !== "string" || !UUID.test(p.target_id))
+          return refuse("INVALID_INPUT", "client_actions_record takes a target_id.")
+        const links = await listTargetClientActions({
+          orgId,
+          targetApp: appName,
+          targetType: p.target_type,
+          targetId: p.target_id,
+        })
+        return JSON.stringify({
+          status: "ok",
+          links: links.map((l) => ({
+            id: l.id,
+            invited_name: l.invitedName,
+            invited_email: l.invitedEmail,
+            sign_order: l.signOrder,
+            state: l.state,
+            decided_at: l.decidedAt ? l.decidedAt.toISOString() : null,
+            code_verified: l.codeVerified,
+            expires_at: l.expiresAt.toISOString(),
+          })),
+        })
+      }
       if (typeof p.id !== "string" || !UUID.test(p.id))
-        return refuse("INVALID_INPUT", "client_actions_record takes { id }.")
+        return refuse(
+          "INVALID_INPUT",
+          "client_actions_record takes { id } or { target_type, target_id }.",
+        )
       const r = await readClientActionRecord(orgId, appName, p.id)
       if (!r) return refuse("NOT_FOUND", `No client action ${p.id} of ${appName}.`)
       const iso = (d: Date | null) => (d ? d.toISOString() : null)

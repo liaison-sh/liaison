@@ -428,6 +428,7 @@ interface DecidedEvent {
 
 interface ActionRecord {
   id: string
+  target_id?: string
   decision: string | null
   decided_at: string | null
   invited_email: string
@@ -629,4 +630,339 @@ export async function agreementVoid(ctx: AgreementsCtx, p: { id: string; reason:
     agreement: { id: a.id, number: a.number, status: "voided" },
     message: `${a.number} is voided: ${n} open link(s) withdrawn; signatures already given stay on version ${v.number}. Nothing was mailed.`,
   }
+}
+
+const WAITING = ["sent", "partly_signed"]
+
+/** An agent's call with no decision yet parks; null when the call may go on. */
+async function parkUnlessDecided(
+  ctx: AgreementsCtx,
+  tool: string,
+  summary: string,
+  lines: string[],
+  payload: unknown,
+): Promise<object | null> {
+  const agent = await actingAgentId(ctx)
+  if (agent === null || ctx.approval) return null
+  if (!ctx.requestApproval)
+    return refusal("APPROVAL_REQUIRED", `${summary} needs a person's decision. Nothing was sent.`)
+  const ap = await ctx.requestApproval({
+    tool_name: `agreements:${tool}`,
+    summary,
+    summary_detail: { subtitle: summary, lines },
+    current_payload: payload,
+    editable_fields: [],
+    noAutoApprove: true,
+  })
+  return {
+    status: "pending_approval",
+    approval_id: ap.approval_id,
+    message: `Nothing was sent yet: ${summary} happens only when a person approves card ${ap.approval_id}.`,
+  }
+}
+
+interface ReminderParams {
+  client_action_ids: string[]
+  sendGuard?: Record<string, unknown>
+  guardKey?: string
+}
+
+interface ReminderTarget {
+  a: Agreement
+  v: Version
+  records: ActionRecord[]
+}
+
+/** The links a reminder names: all of one agreement version that waits for signatures. */
+async function reminderTarget(
+  ctx: AgreementsCtx,
+  p: ReminderParams,
+): Promise<ReminderTarget | ErrorEnvelope> {
+  const ids = Array.isArray(p?.client_action_ids) ? p.client_action_ids : []
+  if (ids.length === 0 || ids.length > 40)
+    return refusal(
+      "SIGNERS_REQUIRED",
+      "A reminder names 1 to 40 signing links (client_action_ids). Nothing was sent.",
+    )
+  if (!ctx.client_actions_record || !ctx.client_actions_mint)
+    return refusal(
+      "LINKS_NOT_AVAILABLE",
+      "This server cannot mail signing links. Nothing was sent.",
+    )
+  const records: ActionRecord[] = []
+  for (const id of ids) {
+    const rec = bridgeAnswer<{ status: string; record?: ActionRecord }>(
+      await ctx.client_actions_record({ id: String(id) }),
+    ).record
+    if (!rec?.target_id)
+      return refusal(
+        "NOT_FOUND",
+        `No signing link ${String(id)} of an agreement. Nothing was sent.`,
+      )
+    records.push(rec)
+  }
+  const target = records[0]?.target_id as string
+  if (records.some((r) => r.target_id !== target))
+    return refusal(
+      "INVALID_SIGNERS",
+      "One reminder covers the links of one agreement version. Nothing was sent.",
+    )
+  const v = (await ctx.db.findOne("agreement_versions", target)) as Version | null
+  const a = v ? ((await ctx.db.findOne("agreements", v.agreement_id)) as Agreement | null) : null
+  if (!v || !a)
+    return refusal("NOT_FOUND", "No agreement you can see holds these links. Nothing was sent.")
+  if (!WAITING.includes(a.status))
+    return refusal(
+      "NOT_SENT",
+      `${a.number} is ${a.status}: a reminder goes only for a document waiting for signatures. Nothing was sent.`,
+    )
+  return { a, v, records }
+}
+
+function reminderKey(t: ReminderTarget): string {
+  return `remind:${t.v.id}:${t.records
+    .map((r) => r.id)
+    .sort()
+    .join(",")}`
+}
+
+/** Checked before the card is staged; pins the mail check over the reminded addresses. */
+export async function agreementReminderSendPreflight(ctx: AgreementsCtx, p: ReminderParams) {
+  const t = await reminderTarget(ctx, p)
+  if (isError(t)) return { error: t.error }
+  const at = new Date().toISOString()
+  const sendGuard = {
+    v: 1,
+    applies: true,
+    mode: "plain",
+    since: at,
+    stagedAt: at,
+    addresses: t.records.map((r) => r.invited_email),
+    contactIds: t.records.flatMap((r) => (r.contact_id ? [r.contact_id] : [])),
+    refs: [],
+    classification: "service",
+  }
+  return { ok: true, pinnedParams: { sendGuard, guardKey: reminderKey(t) } }
+}
+
+/**
+ * `agreement_reminder_send`: each named signer whose link is still open gets a fresh link by
+ * mail; the link mailed before stops working. Signers who answered, and one still waiting for
+ * the signer before them, get nothing.
+ */
+export async function agreementReminderSend(ctx: AgreementsCtx, p: ReminderParams) {
+  const t = await reminderTarget(ctx, p)
+  if (isError(t)) return t
+  const { a, v, records } = t
+  const parked = await parkUnlessDecided(
+    ctx,
+    "agreement_reminder_send",
+    `Remind the signers of ${a.number}`,
+    [
+      `Agreement: ${a.number} "${a.title}", version ${v.number}`,
+      ...records.map((r) => `Signer: ${r.invited_name} <${r.invited_email}>`),
+    ],
+    p,
+  )
+  if (parked) return parked
+  if (ctx.approval || p.sendGuard !== undefined || p.guardKey !== undefined) {
+    if (!p.sendGuard || p.guardKey !== reminderKey(t))
+      return refusal(
+        "SEND_GUARD_MISMATCH",
+        `The reminder for ${a.number} no longer matches the card that was approved. Nothing was sent.`,
+      )
+  }
+  const out = bridgeAnswer<{
+    status: string
+    reminded?: Array<{ id: string; invited_name: string }>
+    error?: { code: string; message: string }
+  }>(
+    await (ctx.client_actions_mint as (x: unknown) => Promise<unknown>)({
+      remind: {
+        ids: records.map((r) => r.id),
+        ...(p.sendGuard ? { send_guard: p.sendGuard } : {}),
+      },
+    }),
+  )
+  if (out.status !== "ok")
+    return refusal(
+      out.error?.code ?? "REMIND_FAILED",
+      `No reminder for ${a.number}: ${out.error?.message ?? "nothing was mailed"}`,
+    )
+  const names = (out.reminded ?? []).map((r) => r.invited_name)
+  return {
+    status: "ok",
+    agreement: { id: a.id, number: a.number, status: a.status },
+    reminded: out.reminded ?? [],
+    message:
+      names.length === 0
+        ? `${a.number} version ${v.number}: none of these signers has an open link to remind (each answered, waits for their turn, or signs in their own session). Nothing was mailed.`
+        : `${a.number} version ${v.number}: a fresh link went to ${names.join(", ")}; the links mailed before stop working. Nothing else was sent.`,
+  }
+}
+
+/** The link a new one replaces, its version and agreement, with every refusal of the tool. */
+async function newLinkTarget(
+  ctx: AgreementsCtx,
+  p: { client_action_id: string; email?: string; expires_in_days?: number },
+): Promise<{ rec: ActionRecord; version: Version; a: Agreement; expires: number } | ErrorEnvelope> {
+  if (!ctx.client_actions_record || !ctx.client_actions_mint)
+    return refusal(
+      "LINKS_NOT_AVAILABLE",
+      "This server cannot make signing links. Nothing was sent.",
+    )
+  const rec = bridgeAnswer<{ status: string; record?: ActionRecord }>(
+    await ctx.client_actions_record({ id: String(p?.client_action_id ?? "") }),
+  ).record
+  const version = rec?.target_id
+    ? ((await ctx.db.findOne("agreement_versions", rec.target_id)) as Version | null)
+    : null
+  const a = version
+    ? ((await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null)
+    : null
+  if (!rec || !version || !a)
+    return refusal(
+      "NOT_FOUND",
+      `No signing link ${p?.client_action_id} on an agreement you can see. Nothing was sent.`,
+    )
+  if (![...WAITING, "declined"].includes(a.status))
+    return refusal(
+      "NOT_SENT",
+      `${a.number} is ${a.status}: a new link goes only for a document waiting for signatures, or declined without the emailed code. Nothing was sent.`,
+    )
+  if (rec.decision !== null && rec.decision !== "declined")
+    return refusal(
+      "ALREADY_DECIDED",
+      `${rec.invited_name} already answered on ${a.number} (${rec.decision}). Nothing was sent.`,
+    )
+  if (rec.decision === "declined" && rec.code_verified_at)
+    return refusal(
+      "DECLINED_BY_SIGNER",
+      `${rec.invited_name} declined ${a.number} after proving the emailed code: a new version is sent for a new answer. Nothing was sent.`,
+    )
+  const expires = p.expires_in_days ?? 14
+  if (!(EXPIRY_CHOICES as readonly number[]).includes(expires))
+    return refusal("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
+  return { rec, version, a, expires }
+}
+
+/** Checked before the card is staged: the refusals the new link has when it is approved. */
+export async function agreementNewLinkPreflight(
+  ctx: AgreementsCtx,
+  p: { client_action_id: string; email?: string; expires_in_days?: number },
+) {
+  const t = await newLinkTarget(ctx, p)
+  return isError(t) ? { error: t.error } : { ok: true }
+}
+
+/**
+ * `agreement_new_link`: one signer gets a new link, at the same or a corrected address, in the
+ * same turn of the same send: after their link expired or was withdrawn, or after a decline
+ * made without the emailed code. Signatures already given stand.
+ */
+export async function agreementNewLink(
+  ctx: AgreementsCtx,
+  p: { client_action_id: string; email?: string; expires_in_days?: number },
+) {
+  const t = await newLinkTarget(ctx, p)
+  if (isError(t)) return t
+  const { rec, version, a, expires } = t
+  const parked = await parkUnlessDecided(
+    ctx,
+    "agreement_new_link",
+    `A new signing link for ${rec.invited_name} on ${a.number}`,
+    [
+      `Agreement: ${a.number} "${a.title}", version ${version.number}`,
+      `Signer: ${rec.invited_name} <${p.email ?? rec.invited_email}>`,
+    ],
+    p,
+  )
+  if (parked) return parked
+  const out = bridgeAnswer<{
+    status: string
+    replaced_id?: string
+    action?: { id: string; status: string; invited_name: string; invited_email: string }
+    error?: { code: string; message: string }
+  }>(
+    await (ctx.client_actions_mint as (x: unknown) => Promise<unknown>)({
+      new_link: { after: rec.id, email: p.email ?? null, expires_in_days: expires },
+    }),
+  )
+  if (out.status !== "ok" || !out.action)
+    return refusal(
+      out.error?.code ?? "NEW_LINK_FAILED",
+      `No new link for ${rec.invited_name} on ${a.number}: ${out.error?.message ?? "nothing was sent"}`,
+    )
+  let status = a.status
+  if (a.status === "declined") {
+    const signed = await ctx.db.findMany("signature_events", {
+      where: { version_id: version.id },
+      limit: 1,
+    })
+    status = signed.length > 0 ? "partly_signed" : "sent"
+    await ctx.db.update("agreements", a.id, { status })
+  }
+  return {
+    status: "ok",
+    agreement: { id: a.id, number: a.number, status },
+    client_action: { id: out.action.id, replaces: out.replaced_id ?? rec.id },
+    message: `${a.number} version ${version.number}: a new link went to ${out.action.invited_name} <${out.action.invited_email}>, valid ${expires} days; their earlier link no longer works and signatures already given stand. Nothing else was sent.`,
+  }
+}
+
+export interface SigningLink {
+  id: string
+  invited_name: string
+  invited_email: string
+  sign_order: number | null
+  state: string
+  decided_at: string | null
+  code_verified: boolean
+  expires_at: string
+}
+
+/** The signing links of one version, as the kernel lists them (no token, code or device). */
+export async function linksOf(ctx: AgreementsCtx, versionId: string): Promise<SigningLink[]> {
+  if (!ctx.client_actions_record) return []
+  const out = bridgeAnswer<{ status: string; links?: SigningLink[] }>(
+    await (ctx.client_actions_record as (x: unknown) => Promise<unknown>)({
+      target_type: TARGET_TYPE,
+      target_id: versionId,
+    }),
+  )
+  return out.links ?? []
+}
+
+/**
+ * Job `decided-reconcile` (every 10 minutes): a decision whose event this app never handled
+ * (a lost delivery) is handled now. For each agreement waiting for signatures, every decided
+ * link of its latest version without a signature event, and a decline the agreement does not
+ * show yet, goes through the same handler as the event, so nothing is written twice.
+ */
+export async function decidedReconcile(ctx: AgreementsCtx) {
+  const waiting = (await ctx.db.findMany("agreements", {
+    where: { status: { in: WAITING } },
+    limit: 500,
+  })) as Agreement[]
+  let handled = 0
+  for (const a of waiting) {
+    const v = await latestOf(ctx, a.id)
+    if (!v) continue
+    for (const l of await linksOf(ctx, v.id)) {
+      if (l.state !== "decided" && l.state !== "declined") continue
+      if (l.state === "decided") {
+        const seen = await ctx.db.findMany("signature_events", {
+          where: { client_action_id: l.id },
+          limit: 1,
+        })
+        if (seen.length > 0) continue
+      }
+      await onClientActionDecided(ctx, {
+        data: { id: l.id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
+      })
+      handled += 1
+      if (l.state === "declined") break
+    }
+  }
+  return { status: "ok", checked: waiting.length, handled }
 }

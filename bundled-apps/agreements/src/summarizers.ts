@@ -50,3 +50,26 @@ export function summarizeAgreementVoid(params: Record<string, unknown>): Promise
     lines: [`Reason: ${String(params.reason ?? "")}`],
   })
 }
+
+export function summarizeAgreementReminderSend(): Promise<Card> {
+  return done({
+    kind: "agreement_reminder_send",
+    title: "Remind the signers of an agreement",
+    subtitle:
+      "Each signer whose link is still open gets a fresh link; the one mailed before stops working",
+    lines: ["Signers who answered, or who wait for the signer before them, get nothing"],
+  })
+}
+
+export function summarizeAgreementNewLink(params: Record<string, unknown>): Promise<Card> {
+  const email = typeof params.email === "string" && params.email ? params.email : null
+  return done({
+    kind: "agreement_new_link",
+    title: "A new signing link for one signer",
+    subtitle: "Their earlier link stops working; signatures already given stand",
+    lines: [
+      email ? `Sent to: ${email} (corrected address)` : "Sent to: the signer's address on file",
+      `Link lasts ${String(params.expires_in_days ?? 14)} days`,
+    ],
+  })
+}

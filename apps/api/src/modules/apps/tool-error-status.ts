@@ -484,6 +484,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   LINKS_NOT_AVAILABLE: 422,
   // A send's pinned mail check, held again when the approved send goes: the card no longer
   // matches, or the address stopped taking mail since the card (a reply, a bounce, an opt-out).
+  // A new link for one signer: they already answered, declined after proving the code, or
+  // still wait for the signer before them.
+  ALREADY_DECIDED: 409,
+  DECLINED_BY_SIGNER: 409,
+  NOT_THEIR_TURN: 409,
+  REMIND_FAILED: 409,
+  NEW_LINK_FAILED: 409,
   SEND_GUARD_MISMATCH: 409,
   SEND_GUARD_REPLIED: 409,
   SEND_GUARD_BOUNCED: 409,

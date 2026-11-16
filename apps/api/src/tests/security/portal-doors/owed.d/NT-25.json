@@ -1,0 +1,5 @@
+{
+  "id": "NT-25",
+  "owner": "portal web",
+  "part": "a member's socket ticket is not accepted with a portal session, and the portal page opens no socket"
+}

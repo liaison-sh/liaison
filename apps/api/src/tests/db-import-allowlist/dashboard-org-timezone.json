@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/dashboards/org-timezone.ts": "The org's timezone (kernel.organizations.timezone), read for dashboard date tokens and dashboard tables' months windows: one column of the caller's own org row, pinned to that org, cached a minute (moved out of dashboards/execute.ts, where it was read the same way)."
+  }
+}

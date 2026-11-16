@@ -1,0 +1,18 @@
+{
+  "entry": "tool:agreement_void",
+  "params": {
+    "id": "fbbc807e-6678-47a0-aba0-380723afd75b",
+    "reason": "Terms changed"
+  },
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "expectError": {
+    "reason": "the version was never sent (no link could be minted here), so a void is refused as a document not waiting for signatures"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["agreements", "fbbc807e-6678-47a0-aba0-380723afd75b"],
+      "reply": "{\"id\":\"fbbc807e-6678-47a0-aba0-380723afd75b\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 16:03:00.354164+00\",\"updated_at\":\"2026-11-16 16:03:00.538084+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"5628607c-06da-4a11-ae84-7826c4d03287\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null}"
+    }
+  ]
+}

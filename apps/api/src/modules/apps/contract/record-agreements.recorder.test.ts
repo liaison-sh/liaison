@@ -38,6 +38,25 @@ const BODY = {
   ],
 }
 
+/** A person's own click on one of the app's gated tools, as the kernel's mint requires. */
+const click = (tool: string) => ({
+  origin: "human-ui",
+  personScopes: ["agreements:agreements:read", "agreements:agreements:write"],
+  callChain: [`agreements:${tool}`],
+})
+
+/**
+ * The contract org's recording person holds no role in it, so the kernel's read of a version
+ * (run with that person's own permissions before any link is minted) refuses, and no link
+ * exists for the later steps. These record the refusal each tool gives; the working path runs
+ * end to end in src/tests/integration/agreements-decided.integration.test.ts.
+ */
+const NO_LINK =
+  "the recording person holds no role in the contract org, so no link is minted and the tool refuses as recorded; the working path runs in agreements-decided.integration.test.ts"
+const VOID_REASON =
+  "the version was never sent (no link could be minted here), so a void is refused as a document not waiting for signatures"
+const refused = (p: Rec, reason = NO_LINK) => ({ params: p, expectError: { reason } })
+
 const PLAN: RecordingStep[] = [
   {
     entry: "tool:template_save",
@@ -72,7 +91,73 @@ const PLAN: RecordingStep[] = [
     entry: "tool:agreement_price_set",
     input: (s) => params({ id: s.values.proposal, price_minor: "1200000", currency: "EUR" }),
   },
-  { entry: "tool:agreement_prepare", input: (s) => params({ id: s.values.nda }) },
+  {
+    entry: "tool:agreement_prepare",
+    input: (s) => params({ id: s.values.nda }),
+    after: (answer, s) => {
+      const a = answer as { version_id?: string; sha256?: string }
+      s.values.version = String(a.version_id)
+      s.values.sha = String(a.sha256)
+    },
+  },
+  {
+    entry: "preflight:agreement_send",
+    input: (s) =>
+      params({
+        version_id: s.values.version,
+        sha256: s.values.sha,
+        signers: [{ email: "paul@maison-verre.example", name: "Paul Verre" }],
+      }),
+  },
+  {
+    // A person's own click on the send: the kernel reads the version before any link.
+    entry: "tool:agreement_send",
+    input: (s) =>
+      refused({
+        version_id: s.values.version,
+        sha256: s.values.sha,
+        signers: [{ email: "paul@maison-verre.example", name: "Paul Verre" }],
+      }),
+    bridgeOptions: () => click("agreement_send"),
+    after: (answer, s) => {
+      const a = answer as { client_actions?: Array<{ id: string }> }
+      s.values.link = a.client_actions?.[0]?.id ?? "00000000-0000-4000-8000-0000000000a1"
+    },
+  },
+  {
+    entry: "tool:client_action_view_get",
+    input: (s) => params({ targetType: "agreement_version", targetId: s.values.version }),
+  },
+  {
+    entry: "preflight:agreement_reminder_send",
+    input: (s) => refused({ client_action_ids: [s.values.link] }),
+  },
+  {
+    entry: "tool:agreement_reminder_send",
+    input: (s) => refused({ client_action_ids: [s.values.link] }),
+    bridgeOptions: () => click("agreement_reminder_send"),
+  },
+  {
+    entry: "preflight:agreement_new_link",
+    input: (s) => refused({ client_action_id: s.values.link }),
+  },
+  {
+    entry: "tool:agreement_new_link",
+    input: (s) =>
+      refused({ client_action_id: s.values.link, email: "paul.verre@maison-verre.example" }),
+    bridgeOptions: () => click("agreement_new_link"),
+  },
+  {
+    entry: "preflight:agreement_void",
+    input: (s) => refused({ id: s.values.nda, reason: "Terms changed" }, VOID_REASON),
+  },
+  {
+    entry: "tool:agreement_void",
+    input: (s) => refused({ id: s.values.nda, reason: "Terms changed" }, VOID_REASON),
+    bridgeOptions: () => click("agreement_void"),
+  },
+  { entry: "job:decided-reconcile", input: () => ({ params: {} }) },
+  { entry: "job:dates-daily", input: () => ({ params: {} }) },
   { entry: "tool:agreement_get", input: (s) => params({ id: s.values.nda }) },
   { entry: "tool:agreements_search", input: () => params({ kind: "nda" }) },
   { entry: "tool:home_load", input: () => params({ limit: 20 }) },
@@ -88,8 +173,8 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record agreements contract
   beforeAll(async () => {
     await acquireTestLock()
     installed = await installForRecording(APP, {})
-    // A clean contract org: a rerun records the same rows (no agreement table here is immutable
-    // until a version is frozen, and the plan freezes none).
+    // A clean contract org: a rerun records the same rows. The plan freezes one version, which
+    // is immutable: a rerun on the same database starts from a fresh contract org instead.
     for (const t of [
       "agreement_shares",
       "agreement_drafts",
@@ -123,6 +208,6 @@ describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record agreements contract
       appConfig: {},
     })
     console.log(`\n${report.join("\n")}\n`)
-    expect(report.filter((l) => !l.startsWith("ok ") && !l.startsWith("  (prereq)"))).toEqual([])
+    expect(report.filter((l) => l.startsWith("FAIL") || l.startsWith("WEAK"))).toEqual([])
   }, 600_000)
 })

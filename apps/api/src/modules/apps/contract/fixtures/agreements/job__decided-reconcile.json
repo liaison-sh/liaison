@@ -1,0 +1,15 @@
+{
+  "entry": "job:decided-reconcile",
+  "params": {},
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreements",
+        "{\"where\":{\"status\":{\"in\":[\"sent\",\"partly_signed\"]}},\"limit\":500}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

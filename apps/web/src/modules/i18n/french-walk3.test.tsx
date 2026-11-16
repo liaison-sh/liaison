@@ -159,7 +159,8 @@ const API = join(__dirname, "..", "..", "..", "..", "api", "src")
 describe("scanner: every kernel attention template has a French rendering", () => {
   const src = readFileSync(join(API, "modules", "attention", "kernel-translations.ts"), "utf8")
   const entries = [
-    ...src.matchAll(/\n {4}kind: "([a-z_]+)",[\s\S]*?\n {4}summary: "([^"]+)"/g),
+    // Never across the next entry: a multi-line summary must not lend its kind to the next one.
+    ...src.matchAll(/\n {4}kind: "([a-z_]+)",(?:(?!\n {4}kind:)[\s\S])*?\n {4}summary: "([^"]+)"/g),
   ].map((m) => ({ kind: m[1] ?? "", template: m[2] ?? "" }))
   // Pure data: the row quotes a message or an agent's own words.
   const DATA_ONLY = new Set(["{{payload.data.preview}}", "{{payload.data.summary}}"])

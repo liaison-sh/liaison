@@ -4041,6 +4041,21 @@
       "askedNoTitle": "Is this calendar event time off, {{dates}}? It counts for nothing until you say Yes.",
       "next": "Next in line: {{name}}.",
       "nobody": "Nobody is next in line, so items for you stay with the usual approvers."
+    },
+    "clientAction": {
+      "decided": {
+        "signed": "{{title}}: signed by {{name}}",
+        "accepted": "{{title}}: accepted by {{name}}",
+        "approved": "{{title}}: approved by {{name}}",
+        "declined": "{{title}}: declined by {{name}}",
+        "other": "{{title}}: {{decision}} by {{name}}"
+      },
+      "opened": "{{name}} opened your request",
+      "requested": "{{name}} asked something about your request",
+      "locked": "The link sent to {{name}} is locked after too many wrong codes",
+      "wrongCodes": "{{name}} entered a wrong code on your request three times in a row",
+      "sendFailed": "{{title}}: the link to {{name}} did not send",
+      "staffTurn": "{{title}}: open it in Liaison to read and sign"
     }
   },
   "approvalDecisionLine": {

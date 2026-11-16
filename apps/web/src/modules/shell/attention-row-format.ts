@@ -430,6 +430,31 @@ export function kernelAttentionTitle(
     case "approval_decision":
       m = /^Approval (\S+) (approved|rejected)$/.exec(s)
       return m ? t(`kernel.attentionTitle.approvalDecided.${m[2]}`, { handle: m[1] ?? "" }) : s
+    case "client_action": {
+      // Requests sent outside the org to sign, accept or approve (modules/client-actions).
+      const k = "kernel.attentionTitle.clientAction"
+      m = /^(.+): (signed|accepted|approved|declined) by (.+)$/s.exec(s)
+      if (m) return t(`${k}.decided.${m[2]}`, { title: m[1] ?? "", name: m[3] ?? "" })
+      m = /^(.+): (\S+) by (.+)$/s.exec(s)
+      if (m)
+        return t(`${k}.decided.other`, {
+          title: m[1] ?? "",
+          decision: m[2] ?? "",
+          name: m[3] ?? "",
+        })
+      m = /^(.+) opened your request$/s.exec(s)
+      if (m) return t(`${k}.opened`, { name: m[1] ?? "" })
+      m = /^(.+) asked something about your request$/s.exec(s)
+      if (m) return t(`${k}.requested`, { name: m[1] ?? "" })
+      m = /^The link sent to (.+) is locked after too many wrong codes$/s.exec(s)
+      if (m) return t(`${k}.locked`, { name: m[1] ?? "" })
+      m = /^(.+) entered a wrong code on your request three times in a row$/s.exec(s)
+      if (m) return t(`${k}.wrongCodes`, { name: m[1] ?? "" })
+      m = /^(.+): the link to (.+) did not send$/s.exec(s)
+      if (m) return t(`${k}.sendFailed`, { title: m[1] ?? "", name: m[2] ?? "" })
+      m = /^(.+): open it in Liaison to read and sign$/s.exec(s)
+      return m ? t(`${k}.staffTurn`, { title: m[1] ?? "" }) : s
+    }
     case "thread_reply":
     case "thread_followup":
       return localizeAgentNotice(s, t)

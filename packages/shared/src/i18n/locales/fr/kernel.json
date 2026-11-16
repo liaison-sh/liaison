@@ -4038,6 +4038,21 @@
       "askedNoTitle": "Cet événement de l’agenda est-il une absence, {{dates}} ? Rien n’est compté tant que vous n’avez pas répondu Oui.",
       "next": "Suivant : {{name}}.",
       "nobody": "Personne n’est désigné : vos éléments restent chez les approbateurs habituels."
+    },
+    "clientAction": {
+      "decided": {
+        "signed": "{{title}} : signé par {{name}}",
+        "accepted": "{{title}} : accepté par {{name}}",
+        "approved": "{{title}} : approuvé par {{name}}",
+        "declined": "{{title}} : refusé par {{name}}",
+        "other": "{{title}} : {{decision}} par {{name}}"
+      },
+      "opened": "{{name}} a ouvert votre demande",
+      "requested": "{{name}} a posé une question sur votre demande",
+      "locked": "Le lien envoyé à {{name}} est bloqué après trop de codes erronés",
+      "wrongCodes": "{{name}} a saisi trois fois de suite un code erroné pour votre demande",
+      "sendFailed": "{{title}} : le lien pour {{name}} n'a pas été envoyé",
+      "staffTurn": "{{title}} : ouvrez-le dans Liaison pour le lire et le signer"
     }
   },
   "approvalDecisionLine": {

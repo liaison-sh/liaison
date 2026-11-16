@@ -36,6 +36,11 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // (knowledge_create_validate / knowledge_update_validate) rather than a
   // manifest preflight: these tools gate from INSIDE their handler, and the
   // handler refuses before it parks. See apps/knowledge/handlers.ts.
+  // conditionalGate: an agent's change of who can see an agreement, or an agent's template
+  // save, parks from inside the handler after every check the handler can run (draft state,
+  // editor on the list, a non-empty list, the template's conditions) has passed.
+  "agreements:agreement_update": "handler checks before it parks an agent's access change",
+  "agreements:template_save": "handler validates the body before it parks an agent's save",
   "knowledge:create": "stage-time guard via knowledge_create_validate",
   "knowledge:update": "stage-time guard via knowledge_update_validate",
   // Only post-approval failure is a document deleted between staging and the

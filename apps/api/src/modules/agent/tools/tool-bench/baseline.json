@@ -3635,6 +3635,26 @@
     "Y17|failed card payments": "5t",
     "Y17|paiements échoués": "5tl",
     "Y18|chargebacks": "15tl",
-    "Y18|open disputes": "15t"
+    "Y18|open disputes": "15t",
+    "C109|agreements renew": "15tl",
+    "C109|contract renewal": "15tl",
+    "C109|contracts": "5l",
+    "C110|agreemnt": "5t",
+    "C110|agrement": "5tl",
+    "C112|draft proposal": "15tl",
+    "C112|nouveau contrat": "15tl",
+    "C112|rédiger proposition": "15tl",
+    "C113|open agreement": "15tl",
+    "C113|voir contrat": "15tl",
+    "C114|edit agreement": "15tl",
+    "C114|modifier contrat": "15tl",
+    "C115|prepare agreement": "15tl",
+    "C115|vérifier contrat avant envoi": "",
+    "C116|agreement templates": "15tl",
+    "C116|modèles de contrat": "15tl",
+    "C117|template get": "15tl",
+    "C117|voir modèle": "15tl",
+    "C118|enregistrer modèle": "15tl",
+    "C118|save template": "15tl"
   }
 }

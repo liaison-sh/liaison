@@ -14,5 +14,13 @@
   {
     "name": "companies_search",
     "reason": "The organization's own companies (accounts, account managers, deals) and a store's B2B companies (locations, catalogs, price lists) are different records; the app prefix tells them apart and each one's description names its source."
+  },
+  {
+    "name": "templates_list",
+    "reason": "Projects keeps project templates and agreements keeps agreement templates; the app prefix tells them apart and each description names what its templates make."
+  },
+  {
+    "name": "template_save",
+    "reason": "Projects saves a project as a template and agreements saves an agreement template version; the app prefix tells them apart and each description names what it saves."
   }
 ]

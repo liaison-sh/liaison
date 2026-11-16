@@ -12,6 +12,8 @@ import { PDFDocument, PDFName, PDFRawStream } from "pdf-lib"
 import { extractPdfText } from "../pdf/pdf-text"
 import { MAX_PAGES } from "../pdf/replay"
 import {
+  blankFields,
+  formatMinorUnits,
   layoutRichText,
   parseRichTextBody,
   RICH_TEXT_MAX_LIST_ROWS,
@@ -554,5 +556,121 @@ describe("computed values: arithmetic, sum and fixed", () => {
         RichTextError,
       )
     }
+  })
+})
+
+describe("table totals, blanks on a filled source, and the layout of existing templates", () => {
+  it("a table prints its total, summed exactly in minor units with the currency's decimals", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "table",
+          columns: [{ text: "{{label}}", width: 3 }, { text: "{{amount_minor}}" }],
+          from: "items",
+          total: { label: "Total", path: "amount_minor", currency: "currency" },
+        },
+      ],
+    })
+    const record = {
+      currency: "EUR",
+      items: [
+        { label: "Design", amount_minor: "900719925474099300" },
+        { label: "Build", amount_minor: 7 },
+      ],
+    }
+    const drawn = texts(layoutRichText(body, record, labelOf).commands).map((c) => c.text.trim())
+    expect(drawn).toContain("Total")
+    expect(drawn.join(" ")).toContain("EUR 9,007,199,254,740,993.07")
+    expect(formatMinorUnits(-5n, "JPY")).toBe("JPY -5")
+  })
+
+  it("a table total refuses a row that is not whole minor units", () => {
+    const body = parseRichTextBody({
+      blocks: [
+        {
+          type: "table",
+          columns: [{ text: "{{amount}}" }],
+          from: "items",
+          total: { label: "Total", path: "amount" },
+        },
+      ],
+    })
+    expect(() => layoutRichText(body, { items: [{ amount: 1.5 }] }, labelOf)).toThrow(RichTextError)
+    expect(() =>
+      parseRichTextBody({
+        blocks: [
+          {
+            type: "table",
+            columns: [{ header: "A" }],
+            rows: [["x"]],
+            total: { label: "T", path: "a" },
+          },
+        ],
+      }),
+    ).toThrow(RichTextError)
+  })
+
+  it("a blank on a filled source names the field", () => {
+    const body = {
+      blocks: [
+        { type: "paragraph", text: "Client {{name}}, tracking {{tracking_number}}" },
+        {
+          type: "table",
+          columns: [{ text: "{{sku}}" }],
+          from: "lines",
+          total: { label: "Total", path: "qty" },
+        },
+      ],
+    }
+    const blanks = blankFields(body, { name: "N", lines: [{ sku: "A" }] }, labelOf)
+    expect(blanks.map((b) => b.label)).toEqual(["Tracking number", "lines.0.qty"])
+    expect(
+      blankFields(body, { name: "N", tracking_number: "T", lines: [{ sku: "A", qty: 1 }] }),
+    ).toEqual([])
+  })
+
+  it("existing templates render as before (layout pinned against the code before totals)", () => {
+    const body = {
+      page: { size: "A4", fontSize: 11 },
+      blocks: [
+        { type: "heading", text: "Agreement {{name}}", level: 1 },
+        { type: "paragraph", text: "Between {{name}} and {{other ?? the client}}\nLine two" },
+        { type: "list", from: "lines", line: "{{sku}} x {{qty}}" },
+        {
+          type: "table",
+          columns: [
+            { header: "SKU", text: "{{sku}}", width: 2 },
+            { header: "Qty", text: "{{qty}}" },
+          ],
+          from: "lines",
+        },
+        {
+          type: "table",
+          columns: [{ header: "A" }, { header: "B" }],
+          rows: [["one", "two"], { cells: ["x", "y"], when: { path: "name", equals: "N" } }],
+        },
+        {
+          type: "repeat",
+          from: "lines",
+          blocks: [{ type: "paragraph", text: "Row {{sku}}: {{qty * 2}}" }],
+        },
+        { type: "spacer", height: 20 },
+        {
+          type: "paragraph",
+          text: "Total {{sum(lines, qty)}}",
+          when: { path: "lines.*.sku", in: ["a"] },
+        },
+      ],
+    }
+    const record = {
+      name: "N",
+      lines: [
+        { sku: "A", qty: 2 },
+        { sku: "B", qty: 3 },
+      ],
+    }
+    const out = layoutRichText(parseRichTextBody(body), record, (p) => p)
+    const hash = createHash("sha256").update(JSON.stringify(out.commands)).digest("hex")
+    expect(hash).toBe("70338e598298b0f478375f7620ece9359199a58fc59a0760f931650bb9ab05cb")
   })
 })

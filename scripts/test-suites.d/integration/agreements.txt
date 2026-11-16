@@ -1,0 +1,2 @@
+# Who can see an agreement, at the data layer (sharedRows).
+src/tests/integration/restricted.integration.test.ts

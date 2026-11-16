@@ -3586,5 +3586,77 @@
     "say": "qui n'a pas encore signé ?",
     "typed": ["requests waiting for the client", "demandes en attente de signature"],
     "any": ["kernel__client_actions_list"]
+  },
+  {
+    "id": "C109",
+    "set": "seed",
+    "lang": "en",
+    "say": "which contracts renew before March",
+    "typed": ["contract renewal", "agreements renew", "contracts"],
+    "any": ["agreements__agreements_search"]
+  },
+  {
+    "id": "C110",
+    "set": "seed",
+    "lang": "en",
+    "say": "typo: agreemnt with Maison Verre",
+    "typed": ["agreemnt", "agrement"],
+    "any": ["agreements__agreements_search"]
+  },
+  {
+    "id": "C112",
+    "set": "seed",
+    "lang": "fr",
+    "say": "rédige la proposition pour le site web",
+    "typed": ["rédiger proposition", "draft proposal", "nouveau contrat"],
+    "any": ["agreements__agreement_create"]
+  },
+  {
+    "id": "C113",
+    "set": "seed",
+    "lang": "en",
+    "say": "open the NDA with Maison Verre",
+    "typed": ["open agreement", "voir contrat"],
+    "any": ["agreements__agreement_get"]
+  },
+  {
+    "id": "C114",
+    "set": "seed",
+    "lang": "fr",
+    "say": "change la date de fin du contrat",
+    "typed": ["modifier contrat", "edit agreement"],
+    "any": ["agreements__agreement_update"]
+  },
+  {
+    "id": "C115",
+    "set": "seed",
+    "lang": "en",
+    "say": "is the proposal ready to send for signature",
+    "typed": ["prepare agreement", "vérifier contrat avant envoi"],
+    "any": ["agreements__agreement_prepare"]
+  },
+  {
+    "id": "C116",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quels modèles de contrat avons-nous",
+    "typed": ["modèles de contrat", "agreement templates"],
+    "any": ["agreements__templates_list"]
+  },
+  {
+    "id": "C117",
+    "set": "seed",
+    "lang": "en",
+    "say": "show me the NDA template",
+    "typed": ["template get", "voir modèle"],
+    "any": ["agreements__template_get", "agreements__templates_list"]
+  },
+  {
+    "id": "C118",
+    "set": "seed",
+    "lang": "fr",
+    "say": "enregistre ce modèle de contrat",
+    "typed": ["enregistrer modèle", "save template"],
+    "any": ["agreements__template_save"]
   }
 ]

@@ -341,6 +341,14 @@ const READ_ONLY: Record<string, string[]> = {
     "reconcile_candidates", // mirror rows an event may have missed, missing invoices re-read upstream; nothing stored
     "invoice_payload", // one invoice re-read upstream with the mirror's buyer, for a parked invoice's retry; nothing stored
   ],
+  agreements: [
+    "home_load",
+    "agreements_search",
+    "agreement_get",
+    "templates_list",
+    "template_get",
+    "approval_route_read",
+  ],
   pennylane: [
     "supplier_invoices_list",
     "supplier_invoice_get",

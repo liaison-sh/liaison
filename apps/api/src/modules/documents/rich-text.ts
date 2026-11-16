@@ -247,6 +247,20 @@ const tableBlock = z
       .max(200)
       .optional(),
     size: fontSize.optional(),
+    /**
+     * A last row summing one column of `from`: `path` reads each row (relative to it) and holds
+     * whole minor units (an integer, or a text of digits); `currency` is a record path to the
+     * currency code the sum prints in. The sum is exact (BigInt); a row that is not a whole
+     * number refuses the print, naming the field.
+     */
+    total: z
+      .object({
+        label: templateText,
+        path: z.string().max(500).regex(PATH_RE, "a dot path, such as amount_minor"),
+        currency: z.string().max(500).regex(PATH_RE, "a dot path, such as currency").optional(),
+      })
+      .strict()
+      .optional(),
     ...when,
   })
   .strict()
@@ -258,6 +272,7 @@ function tableProblem(t: z.infer<typeof tableBlock>): string | null {
     return "every column of a table over `from` needs its text"
   if (!(t.rows ?? []).every((r) => (Array.isArray(r) ? r : r.cells).length === t.columns.length))
     return "every fixed row has one cell per column"
+  if (t.total !== undefined && t.from === undefined) return "a table total sums the rows of `from`"
   return null
 }
 
@@ -792,6 +807,29 @@ function evaluateExpr(expr: Expr, record: Record<string, unknown>, base: string 
   }
 }
 
+/** Decimals of a currency's minor unit (ISO 4217, through Intl); 2 when unknown. */
+function currencyDecimals(currency: string): number {
+  try {
+    return (
+      new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+        .maximumFractionDigits ?? 2
+    )
+  } catch {
+    return 2
+  }
+}
+
+/** Whole minor units as text, exactly: `1234567` EUR prints `EUR 12,345.67`. */
+export function formatMinorUnits(minor: bigint, currency: string | null): string {
+  const decimals = currency ? currencyDecimals(currency) : 2
+  const negative = minor < 0n
+  const abs = negative ? -minor : minor
+  const scale = 10n ** BigInt(decimals)
+  const whole = (abs / scale).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  const frac = decimals > 0 ? `.${(abs % scale).toString().padStart(decimals, "0")}` : ""
+  return `${currency ? `${currency} ` : ""}${negative ? "-" : ""}${whole}${frac}`
+}
+
 /** A computed number as text: `fixed` decimals, else at most 6 with trailing zeros cut. */
 function formatNumber(value: number, fixed: number | undefined): string {
   const text = fixed !== undefined ? value.toFixed(fixed) : String(Number(value.toFixed(6)))
@@ -931,6 +969,58 @@ class Layout {
     if (computed.ok) return { value: formatNumber(computed.value, p.fixed), path: "" }
     // A division by zero names no operand: the blank is the computation as written.
     return { value: null, path: computed.missing ?? p.source }
+  }
+
+  /**
+   * The exact sum of `path` over `rows`, in whole minor units, printed with the currency's
+   * decimals. A missing currency or an absent value prints grey and lists the blank; a value
+   * that is not a whole number refuses the print.
+   */
+  totalRun(
+    rows: readonly string[],
+    path: string,
+    currencyPath: string | undefined,
+    base: string | null,
+  ): TextRun {
+    let sum = 0n
+    for (const row of rows) {
+      const full = `${row}.${path}`
+      const raw = readPath(this.record, full)
+      if (raw === null || raw === undefined || raw === "") {
+        const label = this.labelOf(full)
+        this.noteBlank(full, label)
+        return { text: `[${label}]`, color: "placeholder", bold: true }
+      }
+      const digits =
+        typeof raw === "number"
+          ? Number.isSafeInteger(raw)
+            ? String(raw)
+            : null
+          : typeof raw === "string" && /^-?\d+$/.test(raw.trim())
+            ? raw.trim()
+            : typeof raw === "bigint"
+              ? String(raw)
+              : null
+      if (digits === null) {
+        throw new RichTextError(
+          "body_invalid",
+          `The total needs whole minor units; ${this.labelOf(full)} holds ${String(raw).slice(0, 40)}`,
+        )
+      }
+      sum += BigInt(digits)
+    }
+    let currency: string | null = null
+    if (currencyPath !== undefined) {
+      const cpath = scopedPath(this.record, base, currencyPath)
+      const raw = printable(readPath(this.record, cpath))
+      if (raw === null || !/^[A-Za-z]{3}$/.test(raw.trim())) {
+        const label = this.labelOf(cpath)
+        this.noteBlank(cpath, label)
+        return { text: `[${label}]`, color: "placeholder", bold: true }
+      }
+      currency = raw.trim().toUpperCase()
+    }
+    return { text: formatMinorUnits(sum, currency), bold: true }
   }
 
   noteBlank(path: string, label: string): void {
@@ -1191,6 +1281,16 @@ export function layoutRichText(
             ]
           })
         }
+        if (block.from !== undefined && block.total !== undefined) {
+          const kept = keptRows(record, base, block.from, block.where) ?? []
+          const label = layout.runs(block.total.label, base, true)
+          const amount = layout.totalRun(kept, block.total.path, block.total.currency, base)
+          const cells: TextRun[][] = block.columns.map(() => [])
+          cells[0] = label
+          cells[block.columns.length - 1] =
+            block.columns.length === 1 ? [...label, { text: " ", bold: true }, amount] : [amount]
+          rows.push(cells)
+        }
         if (rows.length > 0 || header) layout.table(block.columns, header, rows, ts)
         layout.gap(size * 0.8)
         break
@@ -1216,6 +1316,18 @@ export function layoutRichText(
     } else leaf(block, null)
   }
   return { commands: layout.commands, blanks: layout.blanks, pageCount: layout.pageCount }
+}
+
+/**
+ * The fields a filled source still lacks: every placeholder that would print grey, each named
+ * once by its label. A source with any blank cannot be frozen (the preview's grey print stays).
+ */
+export function blankFields(
+  body: unknown,
+  record: Record<string, unknown>,
+  labelOf: (path: string) => string = (path) => path,
+): RichTextBlank[] {
+  return layoutRichText(parseRichTextBody(body), record, labelOf).blanks
 }
 
 /** Read an image's size the way the replayer will embed it; null when unusable. */

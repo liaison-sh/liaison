@@ -261,7 +261,7 @@ describe("portal requests", () => {
       expect(n).toBe(filesBefore + 1)
     } finally {
       await sql`DELETE FROM kernel.files WHERE id = ${usedId}`
-      await sql`UPDATE kernel.organizations SET caps = ${sql.json((before[0]?.caps ?? {}) as never)}
+      await sql`UPDATE kernel.organizations SET caps = ${JSON.stringify(before[0]?.caps ?? {})}::jsonb
         WHERE id = ${w.orgId}`
     }
   })

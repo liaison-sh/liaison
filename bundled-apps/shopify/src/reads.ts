@@ -787,6 +787,32 @@ function orderReference(raw: string): { gid: string | null; number: string | nul
   return { gid: ref, number: null }
 }
 
+// The order a fulfillment order belongs to: lets a caller that only holds a fulfillment order id
+// (a prebuilt fulfillments_create, whose approval card names the order) read the order.
+const ORDER_OF_FULFILLMENT_ORDER_QUERY = `
+  query OrderOfFulfillmentOrder($id: ID!) {
+    fulfillmentOrder(id: $id) { id order { id } }
+  }
+`
+
+/**
+ * Resolve an order reference (gid, numeric id, `#1097` or `1097`) to the order's gid, following the
+ * same reading as `orders_get`. Null when nothing matches.
+ */
+async function resolveOrderGid(
+  client: Awaited<ReturnType<typeof getShopifyClient>>,
+  raw: string,
+  probe: (gid: string) => Promise<boolean>,
+): Promise<string | null> {
+  const ref = orderReference(raw)
+  if (ref.gid && (await probe(ref.gid))) return ref.gid
+  if (ref.number) {
+    const byName = await orderIdByNumber(client, ref.number)
+    if (byName && byName !== ref.gid && (await probe(byName))) return byName
+  }
+  return null
+}
+
 /** The id of the order whose name is that number (`#1097`, or the store's own prefix), or null. */
 async function orderIdByNumber(
   client: Awaited<ReturnType<typeof getShopifyClient>>,
@@ -804,11 +830,24 @@ export async function orders_get(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<OrderDetail> {
-  const id = params.id
-  if (typeof id !== "string" || id.trim().length === 0) {
-    throw makeReadError("BAD_PARAM", "id is required")
+  let id = params.id
+  const foId = params.fulfillmentOrderId
+  const hasId = typeof id === "string" && id.trim().length > 0
+  if (!hasId && (typeof foId !== "string" || foId.length === 0)) {
+    throw makeReadError("BAD_PARAM", "id is required (or fulfillmentOrderId)")
   }
   const client = await getShopifyClient(ctx)
+  if (!hasId && typeof foId === "string") {
+    const fo = await client.query<{ fulfillmentOrder?: { order?: { id: string } | null } | null }>(
+      ORDER_OF_FULFILLMENT_ORDER_QUERY,
+      { id: foId },
+    )
+    id = fo.fulfillmentOrder?.order?.id
+    if (typeof id !== "string") {
+      throw makeReadError("NOT_FOUND", `no order found for fulfillment order ${foId}`)
+    }
+  }
+  if (typeof id !== "string") throw makeReadError("BAD_PARAM", "id is required")
   const ref = orderReference(id)
   let data: { order?: OrderDetailNode | null } = {}
   if (ref.gid)
@@ -2491,13 +2530,19 @@ export async function fulfillment_orders_get(
     throw makeReadError("BAD_PARAM", "orderId is required")
   }
   const client = await getShopifyClient(ctx)
-  const data = await client.query<{
+  type FoData = {
     order?: {
       id: string
       name?: string | null
       fulfillmentOrders?: { nodes?: FulfillmentOrderNode[] }
     } | null
-  }>(FULFILLMENT_ORDERS_GET_QUERY, { id: orderId })
+  }
+  // Read the reference like orders_get does: a gid, a numeric id, or the order number (#1097).
+  let data: FoData = {}
+  await resolveOrderGid(client, orderId, async (gid) => {
+    data = await client.query<FoData>(FULFILLMENT_ORDERS_GET_QUERY, { id: gid })
+    return Boolean(data.order)
+  })
   if (!data.order) throw makeReadError("NOT_FOUND", `order ${orderId} not found`)
   return {
     orderId: data.order.id,

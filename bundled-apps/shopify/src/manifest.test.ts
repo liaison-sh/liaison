@@ -959,6 +959,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.27: product, order, customer and return declare `pick` (their search tool), so a
     // dashboard table's link cell can pick one.
     // 0.4.28: the orders list names a line without a short code by its product title, not "?".
+    // 0.4.29: fulfillments_create treats a shipment already on the order (same tracking) as done
+    // instead of re-sending it, and refuses a closed fulfillment order in plain words.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

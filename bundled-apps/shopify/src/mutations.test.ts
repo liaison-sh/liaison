@@ -1408,8 +1408,15 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
     expect(lookup.variables.id).toBe("gid://shopify/Order/1056")
   })
 
-  it("passes an explicit lineItemsByFulfillmentOrder through unchanged (no FO lookup)", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [fulfillmentCreated] })
+  // The fulfillment order's live state, read before a prebuilt create (it may have closed since staging).
+  const openFO7 = {
+    data: {
+      fulfillmentOrder: { id: "gid://shopify/FulfillmentOrder/7", status: "OPEN", order: null },
+    },
+  }
+
+  it("passes an explicit lineItemsByFulfillmentOrder through unchanged (one state read, no order lookup)", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [openFO7, fulfillmentCreated] })
     await fulfillments_create(
       {
         fulfillment: {
@@ -1418,8 +1425,8 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
       },
       ctx,
     )
-    expect(calls.length).toBe(1) // no FO lookup needed
-    const mut = JSON.parse(calls[0]!.body) as {
+    expect(calls.length).toBe(2) // the fulfillment order's state, then the create
+    const mut = JSON.parse(calls[1]!.body) as {
       variables: {
         fulfillment: { lineItemsByFulfillmentOrder: Array<{ fulfillmentOrderId: string }> }
       }
@@ -1472,7 +1479,7 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
   })
 
   it("normalizes trackingInfo on the pre-built lineItemsByFulfillmentOrder path too", async () => {
-    const { ctx, calls } = makeCtx({ fetchResponses: [fulfillmentCreated] })
+    const { ctx, calls } = makeCtx({ fetchResponses: [openFO7, fulfillmentCreated] })
     await fulfillments_create(
       {
         fulfillment: {
@@ -1482,7 +1489,7 @@ describe("fulfillments_create — resolves orderId to the order's open fulfillme
       },
       ctx,
     )
-    const mut = JSON.parse(calls[0]!.body) as {
+    const mut = JSON.parse(calls[1]!.body) as {
       variables: { fulfillment: { trackingInfo?: Record<string, unknown> } }
     }
     expect(mut.variables.fulfillment.trackingInfo).toEqual({ company: "Colissimo", number: "CL-9" })
@@ -4309,6 +4316,15 @@ describe("fulfillments_create", () => {
       fetchResponses: [
         {
           data: {
+            fulfillmentOrder: {
+              id: "gid://shopify/FulfillmentOrder/1",
+              status: "OPEN",
+              order: null,
+            },
+          },
+        },
+        {
+          data: {
             fulfillmentCreateV2: {
               fulfillment: {
                 id: "gid://shopify/Fulfillment/1",
@@ -4329,12 +4345,130 @@ describe("fulfillments_create", () => {
       },
       ctx,
     )
-    const body = JSON.parse(calls[0]!.body) as {
+    const body = JSON.parse(calls[1]!.body) as {
       variables: { fulfillment: Record<string, unknown> }
     }
     expect(body.variables.fulfillment).toBeDefined()
     expect(events[0]!.entity).toBe("fulfillment")
     expect(events[0]!.action).toBe("created")
+  })
+})
+
+describe("fulfillments_create: a shipment already on the order is done, not sent again", () => {
+  // Prod case: an approval staged a prebuilt fulfillment; the parcel was then fulfilled by another
+  // path with the same tracking number, closing the fulfillment order. Each approve re-sent the
+  // create and Shopify refused it ("Invalid fulfillment order line item quantity requested"), so the
+  // card stayed stuck. The handler now reads the live state first.
+  const FO = "gid://shopify/FulfillmentOrder/14274153709899"
+  const mutationBodies = (calls: Array<{ body: string }>): string[] =>
+    calls.map((c) => c.body).filter((b) => /mutation [A-Z]/.test(b))
+  const FO_LINE = "gid://shopify/FulfillmentOrderLineItem/38357210431819"
+  const prebuilt = {
+    fulfillment: {
+      trackingInfo: { company: "UPS", number: "1ZW4941Y0497043935" },
+      notifyCustomer: true,
+      lineItemsByFulfillmentOrder: [
+        { fulfillmentOrderId: FO, fulfillmentOrderLineItems: [{ id: FO_LINE, quantity: 1 }] },
+      ],
+    },
+  }
+  const shipped = {
+    id: "gid://shopify/Fulfillment/8352871055691",
+    status: "SUCCESS",
+    trackingInfo: [{ number: "1ZW4941Y0497043935", company: "UPS", url: null }],
+  }
+  const foState = (status: string, remaining: number, fulfillments: unknown[]) => ({
+    data: {
+      fulfillmentOrder: {
+        id: FO,
+        status,
+        lineItems: { nodes: [{ id: FO_LINE, remainingQuantity: remaining }] },
+        order: { id: "gid://shopify/Order/13333251096907", name: "#3530", fulfillments },
+      },
+    },
+  })
+
+  it("a closed fulfillment order whose shipment carries the same tracking returns alreadyFulfilled and sends no mutation", async () => {
+    const { ctx, calls, events } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [shipped])] })
+    const res = (await fulfillments_create(prebuilt, ctx)) as Record<string, unknown>
+    expect(res.alreadyFulfilled).toBe(true)
+    expect(res.fulfillment).toMatchObject({ id: shipped.id })
+    expect(String(res.message)).toMatch(/#3530 already has this shipment/)
+    expect(mutationBodies(calls)).toHaveLength(0)
+    expect(events).toHaveLength(0)
+  })
+
+  it("under an approval replay the already-recorded shipment records success, so the card closes", async () => {
+    const { ctx } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [shipped])] })
+    const recorded = { succeeded: [] as string[], failed: [] as string[] }
+    Object.assign(ctx, {
+      approval: {
+        approvalRequestId: "r",
+        approvalDeciderId: "d",
+        toolName: "shopify:fulfillments_create",
+      },
+      approval_recordStarted: async () => undefined,
+      approval_recordSucceeded: async (t: string) => void recorded.succeeded.push(t),
+      approval_recordFailedNoEffect: async (t: string) => void recorded.failed.push(t),
+    })
+    await withApprovalProtocol(fulfillments_create)(prebuilt, ctx)
+    expect(recorded.succeeded).toEqual(["shopify:fulfillments_create"])
+    expect(recorded.failed).toEqual([])
+  })
+
+  it("the preflight refuses to stage a duplicate of a recorded shipment", async () => {
+    const { ctx } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [shipped])] })
+    const out = await fulfillments_create_preflight(prebuilt, ctx)
+    expect((out as { error: { code: string } }).error.code).toBe("ALREADY_FULFILLED")
+  })
+
+  it("a closed fulfillment order with no matching shipment is refused in plain words, before any mutation", async () => {
+    const other = { ...shipped, trackingInfo: [{ number: "OTHER123", company: "UPS", url: null }] }
+    const { ctx, calls } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [other])] })
+    await expect(fulfillments_create(prebuilt, ctx)).rejects.toThrow(
+      /Nothing to fulfill as requested on #3530: fulfillment order .* is CLOSED/,
+    )
+    expect(mutationBodies(calls)).toHaveLength(0)
+  })
+
+  it("an open line with less left than asked is refused with the remaining quantity", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [foState("OPEN", 0, [])] })
+    await expect(fulfillments_create(prebuilt, ctx)).rejects.toThrow(
+      /asks for 1 but only 0 remains/,
+    )
+    expect(mutationBodies(calls)).toHaveLength(0)
+  })
+
+  it("a cancelled fulfillment with the same tracking does not count as shipped", async () => {
+    const cancelled = { ...shipped, status: "CANCELLED" }
+    const { ctx } = makeCtx({ fetchResponses: [foState("CLOSED", 0, [cancelled])] })
+    await expect(fulfillments_create(prebuilt, ctx)).rejects.toThrow(/Nothing to fulfill/)
+  })
+
+  it("the orderId path: no open fulfillment order but the same tracking already shipped is done too", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            order: {
+              id: "gid://shopify/Order/13333251096907",
+              name: "#3530",
+              fulfillments: [shipped],
+              fulfillmentOrders: { nodes: [] },
+            },
+          },
+        },
+      ],
+    })
+    const res = (await fulfillments_create(
+      {
+        orderId: "13333251096907",
+        fulfillment: { trackingInfo: { number: "1zw4941y0497043935" } },
+      },
+      ctx,
+    )) as Record<string, unknown>
+    expect(res.alreadyFulfilled).toBe(true)
+    expect(mutationBodies(calls)).toHaveLength(0)
   })
 })
 
@@ -6725,7 +6859,9 @@ describe("customerShippingEmail policy: retail orders get Shopify's shipping ema
       },
     }
     const foOrder = (o: unknown) => ({
-      data: { fulfillmentOrder: { id: "gid://shopify/FulfillmentOrder/9001", order: o } },
+      data: {
+        fulfillmentOrder: { id: "gid://shopify/FulfillmentOrder/9001", status: "OPEN", order: o },
+      },
     })
     const retail = makeCtx({
       fetchResponses: [foOrder({ id: "gid://shopify/Order/1056", ...consumerBuyer }), created],

@@ -11,6 +11,7 @@ import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { registerApps } from "~/modules/apps/runtime"
+import { type AppCell, insertAppRow } from "~/seed/factories/app-tables"
 import { seedOrgRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import agreementsManifest from "../../../../../bundled-apps/agreements/app.manifest.json"
@@ -82,23 +83,45 @@ beforeAll(async () => {
   agreementId = crypto.randomUUID()
   const versionId = crypto.randomUUID()
   await withPrivilegedDb(orgId, "test:agreement-rows", async (tx) => {
-    const run = (q: unknown) => tx.execute(q as never)
-    await run(dsql`INSERT INTO app_agreements.agreements (id, org_id, number, kind, title, org_access)
-      VALUES (${agreementId}, ${orgId}, 'AG-2026-001', 'nda', 'Closed agreement', 'none')`)
-    await run(dsql`INSERT INTO app_agreements.agreement_shares (org_id, agreement_id, user_id, role)
-      VALUES (${orgId}, ${agreementId}, ${listed}, 'editor')`)
-    await run(dsql`INSERT INTO app_agreements.agreement_drafts (org_id, agreement_id)
-      VALUES (${orgId}, ${agreementId})`)
-    await run(dsql`INSERT INTO app_agreements.agreement_versions (id, org_id, agreement_id, number, frozen_at)
-      VALUES (${versionId}, ${orgId}, ${agreementId}, 1, now())`)
-    await run(dsql`INSERT INTO app_agreements.signature_events
-      (org_id, version_id, client_action_id, invited_email, invited_by, typed_name, capacity,
-       consent_words, consent_lang, level, document_sha256, signed_at)
-      VALUES (${orgId}, ${versionId}, ${crypto.randomUUID()}, 'a@b.example', 'x', 'A B', 'self',
-       'I sign', 'en', 'ses', 'ab', now())`)
-    await run(dsql`INSERT INTO app_agreements.evidence_packages
-      (org_id, version_id, level, hash_alg, seal_version, document_sha256, sealed_at)
-      VALUES (${orgId}, ${versionId}, 'ses', 'sha-256', 1, 'ab', now())`)
+    const now = new Date().toISOString()
+    const put = (table: string, row: Record<string, AppCell>) =>
+      insertAppRow(tx, "agreements", table, { org_id: orgId, ...row })
+    await put("agreements", {
+      id: agreementId,
+      number: "AG-2026-001",
+      kind: "nda",
+      title: "Closed agreement",
+      org_access: "none",
+    })
+    await put("agreement_shares", { agreement_id: agreementId, user_id: listed, role: "editor" })
+    await put("agreement_drafts", { agreement_id: agreementId })
+    await put("agreement_versions", {
+      id: versionId,
+      agreement_id: agreementId,
+      number: 1,
+      frozen_at: now,
+    })
+    await put("signature_events", {
+      version_id: versionId,
+      client_action_id: crypto.randomUUID(),
+      invited_email: "a@b.example",
+      invited_by: "x",
+      typed_name: "A B",
+      capacity: "self",
+      consent_words: "I sign",
+      consent_lang: "en",
+      level: "ses",
+      document_sha256: "ab",
+      signed_at: now,
+    })
+    await put("evidence_packages", {
+      version_id: versionId,
+      level: "ses",
+      hash_alg: "sha-256",
+      seal_version: 1,
+      document_sha256: "ab",
+      sealed_at: now,
+    })
   })
 }, 180_000)
 

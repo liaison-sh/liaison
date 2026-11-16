@@ -14,13 +14,13 @@ import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { env } from "~/lib/env"
 import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
+import { generateCurrentCode } from "~/modules/auth/totp"
 import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { PORTAL_PREFIX, PORTAL_ROUTES } from "~/modules/portal/routes-list"
 import { createInvitation } from "~/modules/users/invites"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type SignInWorld,
   CaptureProvider,
   clearSends,
   cookieOf,
@@ -29,6 +29,7 @@ import {
   linkOf,
   ORIGIN,
   post,
+  type SignInWorld,
 } from "./fixture"
 
 let w: SignInWorld
@@ -391,6 +392,92 @@ describe("portal doors: sign-in and token classes", () => {
     expect(Object.keys(unknown.data).sort()).toEqual(["logoUrl", "name", "notice"])
     expect(known.data.name).toBe(w.orgName)
     expect(unknown.data).toEqual({ name: null, logoUrl: null, notice: null })
+  })
+
+  it("a company whose portal access ended gives its person no link, no session and no refresh", async () => {
+    await clearSends()
+    capture.sent = []
+    const before = await createPortalSession(w.clientB.userId, w.orgId)
+    await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientB.email })
+    await new Promise((r) => setTimeout(r, 50))
+    const link = linkOf(capture.sent[0])
+    await sql`UPDATE kernel.companies SET portal_ended_at = now() WHERE id = ${w.companyB}`
+    try {
+      // A link mailed before the end is no longer good.
+      const verify = await post("/api/portal/auth/verify", link)
+      expect(verify.status).toBe(401)
+      expect(cookieOf(verify)).toBeNull()
+      // No new link is mailed.
+      await clearSends()
+      capture.sent = []
+      await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientB.email })
+      await new Promise((r) => setTimeout(r, 50))
+      expect(capture.sent).toHaveLength(0)
+      // No session is minted, and the session from before does not refresh.
+      expect(await createPortalSession(w.clientB.userId, w.orgId).catch((e) => e)).toBeInstanceOf(
+        Error,
+      )
+      const refresh = await post(
+        "/api/portal/auth/refresh",
+        {},
+        { Origin: ORIGIN, Cookie: `${PORTAL_REFRESH_COOKIE}=${before.refreshToken}` },
+      )
+      expect(refresh.status).toBe(401)
+      expect(await refresh.text()).not.toContain("accessToken")
+    } finally {
+      await sql`UPDATE kernel.companies SET portal_ended_at = NULL WHERE id = ${w.companyB}`
+    }
+  })
+
+  it("a company that requires a second factor gives no token without the code, and its sessions from before stop refreshing", async () => {
+    const before = await createPortalSession(w.clientA.userId, w.orgId)
+    await sql`UPDATE kernel.companies SET portal_require_totp = true WHERE id = ${w.companyA}`
+    try {
+      // A person with no second factor of their own gets no token from the link.
+      await clearSends()
+      capture.sent = []
+      await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientA.email })
+      await new Promise((r) => setTimeout(r, 50))
+      const plain = await post("/api/portal/auth/verify", linkOf(capture.sent[0]))
+      expect(cookieOf(plain)).toBeNull()
+      const plainBody = await plain.text()
+      expect(plainBody).not.toContain("accessToken")
+      expect(plainBody).toContain('"totpRequired":true')
+      expect(await createPortalSession(w.clientA.userId, w.orgId).catch((e) => e)).toBeInstanceOf(
+        Error,
+      )
+      const refresh = await post(
+        "/api/portal/auth/refresh",
+        {},
+        { Origin: ORIGIN, Cookie: `${PORTAL_REFRESH_COOKIE}=${before.refreshToken}` },
+      )
+      expect(refresh.status).toBe(401)
+      // A person with a second factor signs in with the code, and that session refreshes.
+      capture.sent = []
+      await post("/api/portal/auth/request", { orgSlug: w.orgSlug, email: w.clientTotp.email })
+      await new Promise((r) => setTimeout(r, 50))
+      const step = (await (
+        await post("/api/portal/auth/verify", linkOf(capture.sent[0]))
+      ).json()) as { data: { challengeToken: string } }
+      const signedIn = await post("/api/portal/auth/totp", {
+        challengeToken: step.data.challengeToken,
+        code: generateCurrentCode(w.clientTotp.secret),
+      })
+      expect(signedIn.status).toBe(200)
+      const cookie = cookieOf(signedIn)
+      expect(cookie).not.toBeNull()
+      expect(
+        (
+          await post(
+            "/api/portal/auth/refresh",
+            {},
+            { Origin: ORIGIN, Cookie: `${PORTAL_REFRESH_COOKIE}=${cookie}` },
+          )
+        ).status,
+      ).toBe(200)
+    } finally {
+      await sql`UPDATE kernel.companies SET portal_require_totp = false WHERE id = ${w.companyA}`
+    }
   })
 
   it("a deactivated client's live token stops at the next request", async () => {

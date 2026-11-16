@@ -43,9 +43,14 @@ interface PortalPerson {
   name: string
   locale: string | null
   totpEnabled: boolean
+  /** A second factor is needed: the person set one up or the company requires one. */
+  secondFactorRequired: boolean
 }
 
-/** The active client of `orgId` with this id or address, whose company is open; else null. */
+/**
+ * The active client of `orgId` with this id or address, whose company is open
+ * and whose portal access has not ended; else null.
+ */
 async function openPortalPerson(
   orgId: string,
   where: { id: string } | { email: string },
@@ -61,6 +66,8 @@ async function openPortalPerson(
         totpEnabled: users.totpEnabled,
         status: users.status,
         closedAt: companies.closedAt,
+        portalEndedAt: companies.portalEndedAt,
+        portalRequireTotp: companies.portalRequireTotp,
       })
       .from(users)
       .innerJoin(companies, and(eq(companies.id, users.companyId), eq(companies.orgId, orgId)))
@@ -73,7 +80,9 @@ async function openPortalPerson(
       )
       .limit(1),
   )
-  if (!row || row.status !== "active" || row.closedAt !== null) return null
+  if (!row || row.status !== "active" || row.closedAt !== null || row.portalEndedAt !== null) {
+    return null
+  }
   return {
     id: row.id,
     orgId: row.orgId,
@@ -81,6 +90,7 @@ async function openPortalPerson(
     name: row.name,
     locale: row.locale,
     totpEnabled: row.totpEnabled,
+    secondFactorRequired: row.totpEnabled || row.portalRequireTotp,
   }
 }
 
@@ -163,7 +173,8 @@ export type PortalSignInResult = TokenPair | { totpRequired: true; challengeToke
 
 /**
  * Spends a sign-in link (one use) and signs the client in, or hands over to the
- * second factor when they set one up. Refused with the one 401 when the link is
+ * second factor when they set one up or their company requires one (a person
+ * with none set up gets no token from the link). Refused with the one 401 when the link is
  * unknown, used, past 15 minutes, or its person or company is no longer open.
  */
 export async function verifyPortalSignIn(input: {
@@ -174,7 +185,7 @@ export async function verifyPortalSignIn(input: {
   const { userId, orgId } = await consumePortalChallenge(input)
   const person = await openPortalPerson(orgId, { id: userId })
   if (!person) throw new AuthServiceError("Invalid or expired code", 401)
-  if (person.totpEnabled) {
+  if (person.secondFactorRequired) {
     const challengeToken = generateToken(32)
     await redis.set(
       `${TOTP_CHALLENGE_PREFIX}:${challengeToken}`,
@@ -249,7 +260,7 @@ export async function verifyPortalTotp(input: {
   // One use: only the caller whose delete removed the challenge signs in.
   if ((await redis.del(key)) !== 1) return fail()
   await resetAttempts(redis, bruteKey, input.ip).catch(() => {})
-  return createPortalSession(userId, orgId)
+  return createPortalSession(userId, orgId, undefined, true)
 }
 
 /** What the portal's sign-in page shows: the org's name, logo and notice, nothing else. */

@@ -440,6 +440,36 @@ export const PORTAL_SESSION_ABSOLUTE_MS = 30 * 24 * 60 * 60_000
 interface PortalSessionInfo {
   kind: "portal"
   absoluteExpiresAt: string
+  /** The sign-in passed a second factor (carried along the rotations). */
+  secondFactor?: boolean
+}
+
+interface PortalCompanyState {
+  closedAt: Date | null
+  portalEndedAt: Date | null
+  portalRequireTotp: boolean
+}
+
+/**
+ * Whether a client may hold a portal session: their company is open, its portal
+ * access has not ended, and the sign-in passed a second factor when the company
+ * requires one or the person set one up. Every portal session, fresh or rotated,
+ * is decided here.
+ */
+function portalAccessAdmits(
+  company: PortalCompanyState | undefined,
+  person: { totpEnabled: boolean },
+  secondFactor: boolean,
+): boolean {
+  if (!company || company.closedAt !== null || company.portalEndedAt !== null) return false
+  if ((company.portalRequireTotp || person.totpEnabled) && !secondFactor) return false
+  return true
+}
+
+const portalCompanyColumns = {
+  closedAt: companies.closedAt,
+  portalEndedAt: companies.portalEndedAt,
+  portalRequireTotp: companies.portalRequireTotp,
 }
 
 function portalSessionInfo(value: unknown): PortalSessionInfo | null {
@@ -451,15 +481,27 @@ function portalSessionInfo(value: unknown): PortalSessionInfo | null {
 
 /**
  * A session for an external user (the client portal): a portal token and a
- * refresh token for the portal's own cookie. Refused for a member row, and for a
- * client whose company is closed. createSession refuses an external row.
+ * refresh token for the portal's own cookie. Refused for a member row, for a
+ * client whose company is closed or whose portal access ended, and without
+ * `secondFactor` when the company or the person requires one (a rotation carries
+ * its sign-in's). createSession refuses an external row.
  */
 export async function createPortalSession(
   userId: string,
   orgId: string,
   rotation?: SessionRotation,
+  secondFactor = false,
 ): Promise<TokenPair> {
-  return withOrgWrite(orgId, () => createSessionUnder(userId, orgId, undefined, rotation, "portal"))
+  return withOrgWrite(orgId, () =>
+    createSessionUnder(
+      userId,
+      orgId,
+      undefined,
+      rotation,
+      "portal",
+      rotation ? rotation.portalSecondFactor === true : secondFactor,
+    ),
+  )
 }
 
 async function createSessionUnder(
@@ -468,6 +510,7 @@ async function createSessionUnder(
   scopeCeiling: string[] | undefined,
   rotation: SessionRotation | undefined,
   kind: SessionKind,
+  secondFactor = false,
 ): Promise<TokenPair> {
   // The one door every login, token refresh, OAuth sign-in and magic link goes
   // through: an expired demo workspace mints no new credential (403).
@@ -508,6 +551,7 @@ async function createSessionUnder(
           permissionVersion: users.permissionVersion,
           userType: users.userType,
           companyId: users.companyId,
+          totpEnabled: users.totpEnabled,
         })
         .from(users)
         .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
@@ -523,12 +567,12 @@ async function createSessionUnder(
           throw new AuthServiceError("Invalid credentials", 401)
         const [company] = u.companyId
           ? await tx
-              .select({ closedAt: companies.closedAt })
+              .select(portalCompanyColumns)
               .from(companies)
               .where(and(eq(companies.id, u.companyId), eq(companies.orgId, orgId)))
               .limit(1)
           : []
-        if (!company || company.closedAt !== null) {
+        if (!portalAccessAdmits(company, u, secondFactor)) {
           throw new AuthServiceError("Invalid credentials", 401)
         }
       }
@@ -601,6 +645,7 @@ async function createSessionUnder(
               deviceInfo: {
                 kind: "portal",
                 absoluteExpiresAt: portalAbsolute.toISOString(),
+                ...(secondFactor ? { secondFactor: true } : {}),
               } satisfies PortalSessionInfo,
             }
           : {}),
@@ -721,6 +766,8 @@ export interface SessionRotation {
   replaceSuccessorId: string | null
   /** A portal session's 30-day deadline, carried from its sign-in. */
   portalAbsoluteExpiresAt?: Date
+  /** A portal session's sign-in passed a second factor. */
+  portalSecondFactor?: boolean
 }
 
 /**
@@ -871,7 +918,7 @@ async function refreshSessionUnder(
     // so whichever comes second waits instead.
     const [lockedUser] = gated
       ? await tx.execute(
-          sql`SELECT id, status, user_type, company_id FROM ${K}.users WHERE id = ${gated.userId} FOR UPDATE`,
+          sql`SELECT id, status, user_type, company_id, totp_enabled FROM ${K}.users WHERE id = ${gated.userId} FOR UPDATE`,
         )
       : []
     const [session] = await tx
@@ -895,7 +942,9 @@ async function refreshSessionUnder(
     // The door: a session of the other kind of row is refused here and left as
     // it is (its own route may still rotate it).
     const door = client.kind ?? "member"
-    const lockedRow = lockedUser as { user_type?: string; company_id?: string | null } | undefined
+    const lockedRow = lockedUser as
+      | { user_type?: string; company_id?: string | null; totp_enabled?: boolean }
+      | undefined
     if ((lockedRow?.user_type === "external") !== (door === "portal")) {
       return { kind: "invalid", reason: "another door's session" }
     }
@@ -903,18 +952,26 @@ async function refreshSessionUnder(
     if (door === "portal") {
       const [company] = lockedRow?.company_id
         ? await tx
-            .select({ closedAt: companies.closedAt })
+            .select(portalCompanyColumns)
             .from(companies)
             .where(eq(companies.id, lockedRow.company_id))
             .limit(1)
         : []
-      if (!portalInfo || !company || company.closedAt !== null) {
+      if (
+        !portalInfo ||
+        !portalAccessAdmits(
+          company,
+          { totpEnabled: lockedRow?.totp_enabled === true },
+          portalInfo.secondFactor === true,
+        )
+      ) {
         await tx.delete(sessions).where(eq(sessions.id, session.id))
         endedIds.push(session.id)
         return { kind: "invalid", reason: "portal access closed" }
       }
     }
     const portalAbsoluteExpiresAt = portalInfo ? new Date(portalInfo.absoluteExpiresAt) : undefined
+    const portalSecondFactor = portalInfo?.secondFactor === true ? { portalSecondFactor: true } : {}
     const familyId = session.familyId ?? session.id
 
     // Read under the user row's lock taken above, so a concurrent
@@ -978,6 +1035,7 @@ async function refreshSessionUnder(
           stamp: now,
           replaceSuccessorId: null,
           ...(portalAbsoluteExpiresAt ? { portalAbsoluteExpiresAt } : {}),
+          ...portalSecondFactor,
         },
       }
     }
@@ -1054,6 +1112,7 @@ async function refreshSessionUnder(
         stamp: now,
         replaceSuccessorId: successor.id,
         ...(portalAbsoluteExpiresAt ? { portalAbsoluteExpiresAt } : {}),
+        ...portalSecondFactor,
       },
     }
   })

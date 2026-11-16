@@ -287,6 +287,7 @@ describe("portal doors: the client action page", () => {
       "modules/client-actions/document-files.ts",
       "modules/client-actions/mint.ts",
       "modules/client-actions/public-routes.ts",
+      "modules/client-actions/restricted-follow.ts",
       "modules/client-actions/routes.ts",
       "modules/client-actions/synced-mail.ts",
       "modules/client-actions/targets.ts",

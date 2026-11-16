@@ -437,6 +437,13 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
 }
 
 /**
+ * The portal share kinds a client action's target opens by itself: a target whose
+ * declared type is one of these per-document kinds (kernel.portal_shares) is
+ * shared under that kind. Read from the target's type, never from the app's name.
+ */
+const AUTOMATIC_SHARE_KINDS = new Set(["agreement", "change_request"])
+
+/**
  * Sending an agreement or a change request to a portal client of that company
  * opens it on their portal too, shared by the person who approved the send.
  * Never for a restricted document: there the link is the only path until a
@@ -447,9 +454,10 @@ async function openAutomaticShare(
   input: MintInput,
   invitee: Invitee,
 ): Promise<boolean> {
-  if (input.targetApp !== "agreements" || !invitee.companyId || !input.createdByUserId) return false
+  if (!AUTOMATIC_SHARE_KINDS.has(input.targetType) || !invitee.companyId || !input.createdByUserId)
+    return false
   if (input.visibleTo && input.visibleTo.length > 0) return false
-  const kind = input.targetType === "change_request" ? "change_request" : "agreement"
+  const kind = input.targetType
   const [portalPerson] = extractRows<{ id: string }>(
     await tx.execute(sql`
       SELECT u.id FROM ${K()}.users u

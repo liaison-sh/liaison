@@ -86,14 +86,20 @@ const TICKETS_VIEWS: PortalViewDef[] = [
   },
 ]
 
-const VIEWS_BY_APP: Record<string, PortalViewDef[]> = {
-  invoicing: INVOICING_VIEWS,
-  tickets: TICKETS_VIEWS,
+/** An app's portal views, and the one-time step its views need first, if any. */
+interface PortalAppViews {
+  views: PortalViewDef[]
+  before?: (tx: PortalViewTx) => Promise<void>
+}
+
+const VIEWS_BY_APP: Record<string, PortalAppViews> = {
+  invoicing: { views: INVOICING_VIEWS, before: (tx) => stampIssuedDocumentsOnce(tx) },
+  tickets: { views: TICKETS_VIEWS },
 }
 
 /** The portal views an app brings; none for an app without any. */
 export function portalViewsFor(app: string): readonly PortalViewDef[] {
-  return VIEWS_BY_APP[app] ?? []
+  return VIEWS_BY_APP[app]?.views ?? []
 }
 
 /** Every app that brings portal views. */
@@ -205,13 +211,15 @@ export async function ensurePortalViews(
   mode: "missing" | "replace" | "compare",
 ): Promise<EnsureResult> {
   const result: EnsureResult = { written: [], failed: [] }
-  const defs = portalViewsFor(app)
+  const entry = VIEWS_BY_APP[app]
+  const defs = entry?.views ?? []
   if (defs.length === 0) return result
-  if (app === "invoicing") {
+  const before = entry?.before
+  if (before) {
     try {
-      await tx.transaction((sp) => stampIssuedDocumentsOnce(sp))
+      await tx.transaction((sp) => before(sp))
     } catch (err) {
-      log.error({ err, app }, "Portal company stamp of issued documents failed")
+      log.error({ err, app }, "Portal views' first step failed")
     }
   }
   for (const def of defs) {

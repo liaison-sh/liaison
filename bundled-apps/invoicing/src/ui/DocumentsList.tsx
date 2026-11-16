@@ -30,7 +30,12 @@ import {
 } from "./dashboards/columns"
 import { DataTable } from "./dashboards/DataTable"
 import { groupByCountry, groupByCustomer, perCurrencyRollup } from "./dashboards/groupings"
-import { orderGid, searchDocuments, searchParamsFromFilter } from "./dashboards/loader"
+import {
+  LIST_PAGE_LIMIT,
+  orderGid,
+  searchDocuments,
+  searchParamsFromFilter,
+} from "./dashboards/loader"
 import { downloadPair } from "./dashboards/pair-download"
 import {
   creditedIndicatorOf,
@@ -111,6 +116,14 @@ const PO_NUMBER_COLUMN: DashboardColumn = {
 }
 // Exported so pair-split.test.ts can render the real DataTable with exactly
 // the columns this list passes it, no re-derivation.
+
+/** The list's footer: what was loaded, and, when a full page came back, that it is not all. */
+export function listFooter(sum: string, capped: boolean): string {
+  return sum && capped
+    ? `${sum} ${tr("(the newest {{n}} loaded: narrow the dates to count the rest)", { n: String(LIST_PAGE_LIMIT) })}`
+    : sum
+}
+
 export const LIST_COLUMNS: DashboardColumn[] = [
   ...ALL_SALES_COLUMNS,
   PAYMENT_COLUMN,
@@ -189,6 +202,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
     if (next.query !== documentSearch()) setDocumentSearch(next.query)
   }
 
+  const [capped, setCapped] = createSignal(false)
   const [data, { refetch }] = createResource(
     () => ({ f: filter(), type: TYPE_FOR_FILTER[typeKey()] }),
     async ({ f, type }): Promise<DocumentRow[]> => {
@@ -197,6 +211,8 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
       // single-value equality server-side, so "not draft" cannot be expressed
       // there). Legacy draft rows stay reachable by direct link only.
       const rows = await searchDocuments({ ...searchParamsFromFilter(f), type })
+      // A full page means more documents may exist than were loaded: the footer says so.
+      setCapped(rows.length >= LIST_PAGE_LIMIT)
       return filterRowsForTab(applyFilter(rows, f), false)
     },
   )
@@ -336,7 +352,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
         rowData={(r): Record<string, string> =>
           r.shopify_order_id ? { "data-shopify-order-id": orderGid(r.shopify_order_id) } : {}
         }
-        footer={() => perCurrencyRollup(data() ?? [], nounForms())}
+        footer={() => listFooter(perCurrencyRollup(data() ?? [], nounForms()), capped())}
         pairing={group() === "flat" ? pairingOf : undefined}
         pairLabel={group() === "flat" ? pairLabel : undefined}
         pairAction={(key) => {

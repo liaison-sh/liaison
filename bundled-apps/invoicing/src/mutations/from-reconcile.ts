@@ -16,6 +16,7 @@
 import { type ActivityReportLine, buildActivityReport } from "../activity-report"
 import { latestIssueLine } from "../approval-cards"
 import { lineQuantity } from "../line-amount"
+import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL } from "../recipient-gaps"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
@@ -27,6 +28,17 @@ type Row = Record<string, unknown>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 /** An issue approval waits up to 30 days. */
+
+/** The card line naming a draft's customer, or none when the draft names nobody. */
+export async function customerLine(ctx: MutationsCtx, draftId: string): Promise<string[]> {
+  const draft = (await ctx.db.findOne("documents", draftId).catch(() => null)) as Record<
+    string,
+    unknown
+  > | null
+  const name = typeof draft?.counterparty_name === "string" ? draft.counterparty_name.trim() : ""
+  return name ? [`Customer: ${name}`] : []
+}
+
 export const ISSUE_APPROVAL_EXPIRY_HOURS = 720
 
 export interface DraftFromReconcileInput {
@@ -326,7 +338,11 @@ export async function draftFromReconcile(
       summary: `Issue ${title}`,
       summary_detail: {
         subtitle: `${read.lines.length} line${read.lines.length === 1 ? "" : "s"} from planned vs done`,
-        lines: [latestIssueLine(monthEnd(read.period.to), today) as string],
+        lines: [
+          ...(await customerLine(ctx, draftId)),
+          `To pay ${formatMoneyMinor(BigInt(totals.incl), totals.currency)} incl. VAT (${formatMoneyMinor(BigInt(totals.excl), totals.currency)} excl. VAT)`,
+          latestIssueLine(monthEnd(read.period.to), today) as string,
+        ],
         latest_on: monthEnd(read.period.to),
       },
       current_payload: { draft_id: draftId },

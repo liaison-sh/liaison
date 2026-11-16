@@ -3634,6 +3634,18 @@ describe("documents.send_to_customer", () => {
     )
   })
 
+  test("the mail app's thrown mailbox miss, whatever its code, reads in the person's words", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "handler_error",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).not.toContain("listAccounts")
+  })
+
   test("a not-found that is not the mailbox (an attachment, a conversation) keeps its own reason", () => {
     const out = sendErrorFromEnvelope({
       error: { code: "NOT_FOUND", message: "Attachment file not found" },
@@ -11081,6 +11093,28 @@ describe("the other minor-unit fields read as issuing reads them", () => {
     }
   })
 
+  test("a SIREN whose check digit does not match is refused in Settings, a valid one passes", async () => {
+    const m = makeCtx({ scopes: ["*"] })
+    const typo = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "904 000 008",
+    })
+    if (!typo || !("error" in typo)) throw new Error("a SIREN typo passed")
+    expect(typo.error.code).toBe("invalid_params")
+    expect(typo.error.message).toContain("check digit")
+    const short = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "90400000",
+    })
+    if (!short || !("error" in short)) throw new Error("an 8-digit SIREN passed")
+    expect(short.error.message).toContain("9-digit number")
+    const ok = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
+      id: "iss-1",
+      siren: "904 000 007",
+    })
+    expect(ok && "error" in ok ? ok.error : null).toBeNull()
+  })
+
   test("an approval threshold with a decimal point is refused", async () => {
     const m = makeCtx({ scopes: ["*"] })
     const res = await settingsIssuerProfileWritePreflight(m.ctx, "update", {
@@ -11129,5 +11163,137 @@ describe("isUniqueViolation", () => {
     expect(isUniqueViolation(text)).toBe(true)
     expect(isUniqueViolation("connection reset")).toBe(false)
     expect(isUniqueViolation(new Error("connection reset"))).toBe(false)
+  })
+})
+
+describe("an e-invoice whose issuer profile cannot sign its legal original", () => {
+  const noSeller = { siren: null, address_line1: null, postcode: null, city: null }
+
+  test("issuing a draft is refused before a number is taken, naming the Settings fields", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller })
+    const { draft_id } = await draftsCreate(ctx, {
+      type: "invoice",
+      ...BUYER_DRAFT_EINVOICE,
+      counterparty_contact_id: "contact-1",
+      counterparty_name: "Buyer SARL",
+      counterparty_address: "1 rue Buyer, 75002 Paris",
+      counterparty_email: "ap@buyersarl.example",
+      counterparty_country: "FR",
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    const r = await invoiceIssue(ctx, { draft_id })
+    expect(r.status).toBe("error")
+    if (r.status !== "error") throw new Error("unreachable")
+    expect(r.error.code).toBe("issuer_incomplete")
+    expect(r.error.message).toContain("SIREN, street address, postcode and city")
+    expect(r.error.message).toContain("Settings > Invoicing")
+    expect((r.error.body as { fix_tool: string }).fix_tool).toBe("settings_issuer_profile_update")
+    expect(issuedDocs(db)).toHaveLength(0)
+    expect(draftDocs(db).map((d) => d.id)).toEqual([draft_id])
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("create and issue is refused the same way and writes nothing", async () => {
+    const { ctx, db } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("error")
+    if (r.status === "error") expect(r.error.code).toBe("issuer_incomplete")
+    expect(db.__all("documents")).toHaveLength(0)
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  // A fictional company: SIREN 904000007, its French VAT number FR22904000007.
+  const vatOnly = { siren: null, vat_id: "FR22904000007" }
+
+  test("a French VAT number supplies the SIREN that is not on file, and the e-invoice is made", async () => {
+    const { ctx, db } = makeCtx({ issuer: vatOnly, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    if (r.status !== "completed") throw new Error("unreachable")
+    expect(r.einvoicing_warning).toBeUndefined()
+    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
+    expect(doc.pdf_status).toBe("ready")
+    expect(db.__all("legal_originals").map((l) => l.kind)).toEqual(["facturx"])
+  })
+
+  test("warn mode: an issuer with only a VAT number and a one-line address issues with a plain PDF and says what is missing", async () => {
+    const { ctx, db } = makeCtx({
+      issuer: { ...noSeller, ...vatOnly },
+      issuerThresholdMinor: null,
+      seed: { einvoicing_settings: [{ gate_mode: "warn", gate_mode_source: "upgrade_default" }] },
+    })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
+    if (r.status !== "completed") throw new Error("unreachable")
+    // The SIREN comes from the VAT number: only the structured address is missing.
+    expect(r.einvoicing_warning?.code).toBe("issuer_incomplete")
+    expect(r.einvoicing_warning?.message).toContain("street address, postcode and city are missing")
+    expect(r.einvoicing_warning?.message).not.toContain("SIREN")
+    const doc = db.__all("documents").find((d) => d.id === r.document_id)!
+    expect(doc.number).toBeTruthy()
+    // A plain PDF as the legal original, never a failed e-invoice file blocking the PDF.
+    expect(doc.pdf_status).toBe("ready")
+    expect(db.__all("legal_originals").map((l) => l.kind)).toEqual(["issued_pdf"])
+    expect(
+      (doc.lifecycle_log as Array<{ event: string; code?: string }>).some(
+        (e) => e.event === "einvoice_gate_warning" && e.code === "issuer_incomplete",
+      ),
+    ).toBe(true)
+  })
+
+  test("enforce mode: the same issuer is refused before a number, naming only the address fields", async () => {
+    const { ctx, db } = makeCtx({ issuer: { ...noSeller, ...vatOnly }, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: defaultCounterparty,
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("error")
+    if (r.status !== "error") throw new Error("unreachable")
+    expect(r.error.code).toBe("issuer_incomplete")
+    expect((r.error.body as { missing_fields: string[] }).missing_fields).toEqual([
+      "address_line1",
+      "postcode",
+      "city",
+    ])
+    expect(db.__sequences.size).toBe(0)
+  })
+
+  test("a buyer outside e-invoicing still issues with the same issuer profile", async () => {
+    const { ctx } = makeCtx({ issuer: noSeller, issuerThresholdMinor: null })
+    const r = await invoiceCreateAndIssue(ctx, {
+      operation_category: "goods",
+      counterparty: {
+        ...defaultCounterparty,
+        contact_id: null,
+        customer_kind: "individual",
+      },
+      issuer_profile_id: "iss-1",
+      currency: "EUR",
+      items: sampleDraftItems,
+    })
+    expect(r.status).toBe("completed")
   })
 })

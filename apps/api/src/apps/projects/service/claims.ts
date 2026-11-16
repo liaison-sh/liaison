@@ -16,7 +16,7 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
-import { worded } from "./reconcile-lines"
+import { billedHundredths, worded } from "./reconcile-lines"
 import { documentsForRef, ISSUED_STATES, type RefDocument } from "./reconcile-sweep"
 import { retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
@@ -652,7 +652,7 @@ export async function reconcileLinesRead(args: {
       position: l.position,
       wording: l.wording ?? "",
       billMinutes: l.bill_minutes,
-      bill: Math.round((l.bill_minutes / per) * 100) / 100,
+      bill: billedHundredths(l.bill_minutes, per) / 100,
       billText: worded(l.bill_minutes, basis, hpd),
       unit,
       billedAfterCreditMinutes: l.billed_after_credit_minutes,

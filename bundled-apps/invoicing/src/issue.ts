@@ -48,6 +48,12 @@ import {
   prepareEinvoiceGate,
 } from "./einvoicing/issue-gate"
 import { documentLegalMention } from "./einvoicing/mentions"
+import {
+  mergeEinvoicingWarnings,
+  SellerIncompleteRefusal,
+  sellerGapFor,
+  sellerWarning,
+} from "./einvoicing/seller"
 import { type EinvCtx, stageSendAfterIssue } from "./einvoicing/transmit"
 import { FacturxBuildError, type FacturxInput } from "./facturx/cii"
 import { facturxEligible, facturxInputFrom } from "./facturx/input"
@@ -1233,7 +1239,16 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   )
   const gateRefusal = gate.evaluation.refusal
   if (gateRefusal && gateRefusal.mode === "enforce") throw new EinvoiceGateRefusal(gateRefusal)
-  const einvoicingWarning = gateRefusal ? gateWarning(gateRefusal) : undefined
+  // 0c) The seller's half of a legal original: an e-invoice whose issuer profile cannot sign its
+  //     Factur-X is refused here, before numbering, in enforce mode. In warn mode it is issued
+  //     with a plain PDF (no Factur-X is attempted) and the warning names the issuer fields.
+  const sellerGap = sellerGapFor(type, gate.evaluation, issuer)
+  if (sellerGap && gate.mode === "enforce") throw new SellerIncompleteRefusal(sellerGap)
+  const einvoicingWarning =
+    mergeEinvoicingWarnings(
+      gateRefusal ? gateWarning(gateRefusal) : null,
+      sellerGap ? sellerWarning(sellerGap) : null,
+    ) ?? undefined
   if (gate.derivedKind && counterparty.contact_id) {
     await ensureDerivedIdentity(ctx.db, {
       contact_id: counterparty.contact_id,
@@ -1420,6 +1435,17 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
             },
           ]
         : []),
+      ...(sellerGap
+        ? [
+            {
+              event: "einvoice_gate_warning",
+              actor: userId,
+              ts: nowIso,
+              code: sellerGap.code,
+              missing: sellerGap.body.missing_fields.map((f) => `issuer.${f}`),
+            },
+          ]
+        : []),
       // A born-settled issuance records the settlement inline (same shape the manual/reconcile
       // mark-paid paths append), so a Shopify paid order still shows a "marked_paid" audit entry.
       ...(input.settlement
@@ -1577,7 +1603,8 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
       >
       let facturx: FacturxInput | null = null
       let buildError: FacturxBuildError | null = null
-      if (facturxEligible(type, docForFacturx)) {
+      // Warn mode with an incomplete issuer: a plain PDF, never a failed e-invoice file.
+      if (facturxEligible(type, docForFacturx) && !sellerGap) {
         try {
           facturx = facturxInputFrom({
             type: type as "invoice" | "credit_note",

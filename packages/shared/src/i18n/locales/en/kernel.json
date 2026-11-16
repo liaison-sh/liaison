@@ -1721,8 +1721,8 @@
       "other": "e-invoicing connections changed"
     },
     "facturx_failed": {
-      "one": "Factur-X generation failed",
-      "other": "Factur-X generations failed"
+      "one": "e-invoice that could not be made",
+      "other": "e-invoices that could not be made"
     },
     "routine_mailbox_wait": {
       "one": "routine run waiting for your mailbox",
@@ -6792,7 +6792,7 @@
     "othersOnItem": "For {{name}}, who it is assigned to. You can approve it too: you hold the approval right.",
     "othersManager": "For {{name}}, who manages this account. You can approve it too: you hold the approval right.",
     "blocked": "For you: {{blocked}} cannot approve this while {{name}} is away",
-    "mineAsked": "For you: from your own action",
+    "mineAsked": "For you: you or your agent asked for it",
     "mineOnItem": "For you: assigned to you",
     "mineManager": "For you: you manage this account",
     "recapApproved": "Approved by {{name}}, for {{forName}}: {{title}}",

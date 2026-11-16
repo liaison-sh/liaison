@@ -980,7 +980,7 @@ describe("home decisions", () => {
       // Six of the viewer's own rows fold to three: unfold to read them all.
       fireEvent.click(screen.getByTestId("home-approvals-fold"))
       expect(why(rows[0]!)).toBe("For you: assigned to you")
-      expect(why(rows[1]!)).toBe("For you: from your own action")
+      expect(why(rows[1]!)).toBe("For you: you or your agent asked for it")
       expect(why(rows[2]!)).toMatch(
         /^For Élodie Renard, away until (20 Dec|Dec 20)\. You are next in line\.$/,
       )

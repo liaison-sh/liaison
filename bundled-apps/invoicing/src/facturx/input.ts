@@ -5,10 +5,12 @@
 // state, FX) are the only source. Nothing is recomputed from current contact or issuer data
 // except the issuer profile, which is the seller's identity at issue time.
 
+import { sirenFromFrVat } from "../einvoicing/identity"
 import {
   FacturxBuildError,
   type FacturxInput,
   type FacturxLine,
+  type FacturxParty,
   type OperationCategory,
   type PaymentState,
 } from "./cii"
@@ -85,6 +87,26 @@ export interface FacturxSource {
   legalMention?: string | null
 }
 
+/** The seller of a Factur-X: the issuer profile as it stands at issue time. With no SIREN on
+ *  file, a French VAT number carries it (FR, a 2-digit key, the 9-digit SIREN). */
+export function facturxSellerFrom(i: Row): FacturxParty {
+  return {
+    legal_name: String(i.legal_name ?? ""),
+    siren:
+      str(i.siren) ??
+      sirenFromFrVat(str(i.vat_id), { billingCountry: str(i.country_code) ?? str(i.country) }),
+    routing_address: str(i.routing_address),
+    vat_id: str(i.vat_id),
+    address: {
+      line1: str(i.address_line1),
+      line2: str(i.address_line2),
+      postcode: str(i.postcode),
+      city: str(i.city),
+      country_code: str(i.country_code) ?? str(i.country),
+    },
+  }
+}
+
 export function facturxInputFrom(src: FacturxSource): FacturxInput {
   const d = flatDocument(src.doc)
   const i = src.issuer
@@ -140,19 +162,7 @@ export function facturxInputFrom(src: FacturxSource): FacturxInput {
     vat_on_debits: d.vat_on_debits === true,
     tax_treatment: str(d.tax_treatment),
     exemption_reason: src.legalMention ?? null,
-    seller: {
-      legal_name: String(i.legal_name ?? ""),
-      siren: str(i.siren),
-      routing_address: str(i.routing_address),
-      vat_id: str(i.vat_id),
-      address: {
-        line1: str(i.address_line1),
-        line2: str(i.address_line2),
-        postcode: str(i.postcode),
-        city: str(i.city),
-        country_code: str(i.country_code) ?? str(i.country),
-      },
-    },
+    seller: facturxSellerFrom(i),
     buyer: {
       legal_name: str(d.buyer_legal_name) ?? String(d.counterparty_name ?? ""),
       siren: str(d.buyer_siren),

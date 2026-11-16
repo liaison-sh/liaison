@@ -29,6 +29,7 @@ import {
   LINE_NAME_MAX,
   type LineKind,
   lateNote,
+  linesAmountMinor,
   NOT_EVERYTHING_SEEN,
   namedMember,
   type Period,
@@ -1059,7 +1060,7 @@ export async function reconcilePropose(args: {
     outcome,
     shape: await readStored(tx, orgId, id),
     ...(args.origin ? { origin: args.origin } : {}),
-    ...(args.origin === "mcp" ? { link: await cardLink(orgId, args.threadId ?? null) } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, id) } : {}),
   })
 }
 
@@ -1116,7 +1117,8 @@ function cardData(args: {
             ? `~${q(l.traceEstimateMinutes)}`
             : null,
     bill: q(l.billMinutes),
-    ...(money ? { amount: amount(l.billMinutes) } : {}),
+    // A retainer's time lines carry no amount: the month bills its fee and the hours above it.
+    ...(money && c.basis !== "retainer" ? { amount: amount(l.billMinutes) } : {}),
     proofs: l.proofs.map((p) => ({
       kind: p.kind,
       label: p.label,
@@ -1134,7 +1136,17 @@ function cardData(args: {
   const notes: string[] = []
   if (late) notes.push(late)
   if (shape.notSeen.length > 0 || coverage.total === 0) notes.push(NOT_EVERYTHING_SEEN)
-  const totalAmount = money ? amount(billMinutes) : null
+  // The sum of the lines as priced one by one, as the invoice adds them up.
+  const linesMinor =
+    money && c.basis !== "retainer"
+      ? linesAmountMinor(
+          shape.lines.map((l) => l.billMinutes),
+          c.basis,
+          c.rateMinor,
+          c.hpd,
+        )
+      : null
+  const totalAmount = linesMinor === null ? null : linesMinor / 100
   const said =
     args.said ??
     (outcome === "unchanged"
@@ -1221,7 +1233,12 @@ function cardData(args: {
     undo: state === "drafted" ? ("yes" as const) : null,
     locked: state === "invoiced" ? ("yes" as const) : null,
     message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} ${STATE_SAID[state]}`,
-    next: state === "proposed" ? CARD_NEXT : STATE_NEXT[state],
+    next:
+      state !== "proposed"
+        ? STATE_NEXT[state]
+        : args.origin === "mcp"
+          ? CODING_AGENT_CARD_NEXT
+          : CARD_NEXT,
   }
 }
 
@@ -1251,6 +1268,10 @@ const STATE_NEXT: Record<"drafted" | "invoiced" | "credited", string> = {
  */
 export const CARD_NEXT =
   "Show the person the card here: it lives in this conversation, and reconcile_get opens it again. They change a line by telling you or on the card. The card's Create invoice drafts the invoice; a person issues it."
+
+/** A coding agent cannot show the card: it gives the person the card's page link. */
+const CODING_AGENT_CARD_NEXT =
+  "Give the person the card's link from the text: the card lives on its own page in Liaison, where a person presses Create invoice."
 
 // ── reconcile_line_update and reconcile_get ─────────────────────────────────
 
@@ -1560,14 +1581,13 @@ export async function reconcileGet(args: {
     createdBy: head.created_by,
     said: `The card as stored, revision ${head.revision}.`,
     ...(args.origin ? { origin: args.origin } : {}),
-    ...(args.origin === "mcp" ? { link: await cardLink(orgId, head.thread_id ?? null) } : {}),
+    ...(args.origin === "mcp" ? { link: await cardLink(orgId, head.id) } : {}),
   })
 }
 
-/** The card's conversation in Liaison, where a person presses Create invoice; null when none. */
-async function cardLink(orgId: string, threadId: string | null): Promise<string | null> {
-  if (!threadId) return null
-  return `Open the card in Liaison: ${await orgPublicBaseUrl(orgId)}/threads/${threadId}`
+/** The card's own page in Liaison, where a person presses Create invoice. */
+async function cardLink(orgId: string, reconciliationId: string): Promise<string> {
+  return `Open the card in Liaison: ${await orgPublicBaseUrl(orgId)}/projects/reconcile/${reconciliationId}`
 }
 
 /**

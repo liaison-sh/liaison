@@ -151,6 +151,28 @@ function identityChangedAtLoader(ctx: DeferredDispatchCtx) {
 }
 
 /**
+ * `updated_at` of the issuer profiles the sweep's waiting issuer parks are blocked on, so an
+ * order or Stripe invoice waiting on the SIREN or address is issued on the sweep after the
+ * profile was completed rather than after its backoff.
+ */
+function issuerChangedAtLoader(ctx: DeferredDispatchCtx) {
+  return async (issuerIds: string[]): Promise<Map<string, Date>> => {
+    const out = new Map<string, Date>()
+    for (const id of issuerIds) {
+      const rows = (await ctx.db.findMany("issuer_profiles", {
+        where: { id },
+        limit: 1,
+      })) as Array<Record<string, unknown>>
+      const changed = rows[0]?.updated_at
+      if (changed == null || changed === "") continue
+      const at = changed instanceof Date ? changed : new Date(String(changed))
+      if (!Number.isNaN(at.getTime())) out.set(id, at)
+    }
+    return out
+  }
+}
+
+/**
  * Manifest `jobs.deferred-retry` handler (kernel `(payload, ctx)` shape). The
  * scheduled payload is unused — the job drains the whole org's deferred queue.
  */
@@ -232,5 +254,6 @@ export async function deferredRetryJobHandler(
   return deferredRetryJob(ctx, dispatch, {
     ...opts,
     identityChangedAt: identityChangedAtLoader(ctx),
+    issuerChangedAt: issuerChangedAtLoader(ctx),
   })
 }

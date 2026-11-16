@@ -1459,3 +1459,34 @@ export function summarizePaymentLinkToInvoice(
     lines: [`Invoice ${String(params.documentId ?? "")}`],
   })
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Drafting a milestone's invoice: context = milestone_draft_preview (step, amount, customer).
+// ─────────────────────────────────────────────────────────────────────────
+
+export function summarizeMilestoneDraftCreate(
+  _params: { taskId?: string },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const c = (meta?.context ?? null) as {
+    label?: string
+    amountMinor?: string
+    currency?: string
+    customer?: string | null
+  } | null
+  const label = text(c?.label, 80)
+  const customer = text(c?.customer, 80)
+  const amountText = money(c?.amountMinor, c?.currency ?? "EUR")
+  return done({
+    kind: "milestone_draft_create",
+    title: label
+      ? `Draft the invoice of milestone ${label}${customer ? ` for ${customer}` : ""}`
+      : "Draft the invoice of a finished milestone",
+    subtitle: "A draft only: no number is taken, and a person issues it",
+    lines: [
+      ...(customer ? [`Customer: ${customer}`] : []),
+      ...(amountText ? [`Amount: ${amountText} excl. VAT`] : []),
+    ],
+  })
+}

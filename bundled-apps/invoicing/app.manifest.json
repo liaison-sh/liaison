@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.30.1",
+  "version": "0.31.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -2474,8 +2474,8 @@
         "type": "object",
         "properties": {
           "projectId": { "type": "string", "description": "The project's id." },
-          "from": { "type": ["string", "null"], "description": "Inclusive lower bound on the issue date, YYYY-MM-DD." },
-          "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the issue date, YYYY-MM-DD." }
+          "from": { "type": ["string", "null"], "description": "Inclusive lower bound, YYYY-MM-DD, on the start of the service period a document bills (its issue date when it bills none)." },
+          "to": { "type": ["string", "null"], "description": "Inclusive upper bound on the same date, YYYY-MM-DD." }
         },
         "required": ["projectId"],
         "additionalProperties": false
@@ -2687,6 +2687,8 @@
       "description": "Draft the invoice of a done milestone, from its task only: the amount comes from the billing plan, never from hours. Refused unless the task is done and flagged a milestone. The final deducts the project's advances by itself. Takes no number; issuing waits on its approval.",
       "searchKeywords": ["jalon", "solde", "milestone"],
       "requiredScopes": ["invoicing:documents:write"],
+      "summarizer": "summarizeMilestoneDraftCreate",
+      "summarizerContext": { "tool": "milestone_draft_preview", "params": { "taskId": "taskId" } },
       "handler": "milestoneDraftCreateHandler",
       "writesToTable": "app_invoicing.documents",
       "timeoutMs": 30000,
@@ -2695,6 +2697,20 @@
         "properties": {
           "taskId": { "type": "string", "description": "The milestone task." }
         },
+        "required": ["taskId"],
+        "additionalProperties": false
+      }
+    },
+    "milestone_draft_preview": {
+      "description": "What drafting a milestone's invoice would make (step, amount excluding VAT, customer), for its approval card. Called by the approval card only.",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "milestoneDraftPreviewHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "taskId": { "type": "string", "description": "The milestone task's id." } },
         "required": ["taskId"],
         "additionalProperties": false
       }
@@ -5801,6 +5817,12 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
+          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
+          "address_line2": { "type": ["string", "null"] },
+          "postcode": { "type": ["string", "null"] },
+          "city": { "type": ["string", "null"] },
+          "country_code": { "type": ["string", "null"], "description": "ISO 3166 alpha-2 code of the company's address, e.g. FR." },
           "prices_include_tax": {
             "type": "boolean",
             "description": "Typed unit prices INCLUDE tax (gross). Must match the Shopify shop's 'include tax in prices' setting when the profile is mapped to a shop: prices you type on a quote line are then tax inclusive, and the document shows the net amount plus the VAT it contains. Off: typed prices are net and tax is added on top."
@@ -5851,6 +5873,12 @@
           "timezone": { "type": "string", "description": "IANA time zone of this issuer's issue dates and number years, e.g. Europe/Paris. An unknown name is refused (issuer_timezone_invalid). UTC chosen on purpose is stored as Etc/UTC. Left unset, dates follow the organization's time zone, then UTC." },
           "email_templates": { "type": ["object", "null"], "additionalProperties": true },
           "shopify_shop_id": { "type": ["string", "null"] },
+          "siren": { "type": ["string", "null"], "description": "The company's 9-digit SIREN. A French e-invoice cannot be issued without it." },
+          "address_line1": { "type": ["string", "null"], "description": "Street address of the company, as a French e-invoice states it." },
+          "address_line2": { "type": ["string", "null"] },
+          "postcode": { "type": ["string", "null"] },
+          "city": { "type": ["string", "null"] },
+          "country_code": { "type": ["string", "null"], "description": "ISO 3166 alpha-2 code of the company's address, e.g. FR." },
           "prices_include_tax": {
             "type": "boolean",
             "description": "Typed unit prices INCLUDE tax (gross). Must match the Shopify shop's 'include tax in prices' setting when the profile is mapped to a shop: prices you type on a quote line are then tax inclusive, and the document shows the net amount plus the VAT it contains. Off: typed prices are net and tax is added on top."
@@ -6775,6 +6803,7 @@
       "deferred:tax_review",
       "deferred:credit_note_refused",
       "einvoicing:identity_missing",
+      "einvoicing:issuer_incomplete",
       "einvoicing:facturx_failed",
       "stripe_stream:switched",
       "stripe_invoice:issuer_undecided",
@@ -6997,7 +7026,7 @@
         "event": "einvoicing:facturx_failed",
         "kind": "invoicing:einvoicing.facturx_failed",
         "urgency": 60,
-        "summary": "The Factur-X of {{data.number}} could not be produced ({{data.code}}): {{data.reason}} Fix the data, then retry the PDF.",
+        "summary": "The e-invoice of {{data.number}} could not be made: {{data.reason}} Complete it, then use Retry render on its PDF tab.",
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"
@@ -7084,6 +7113,13 @@
         "resolveWhen": { "always": true }
       },
       {
+        "event": "einvoicing:issuer_incomplete",
+        "kind": "invoicing:einvoicing.issuer_incomplete",
+        "urgency": 60,
+        "summary": "{{data.text}}",
+        "recipients": { "kind": "scope_holders", "scope": "invoicing:settings:write" },
+        "resolveWhen": { "field": "resolved", "equals": true }
+      },      {
         "event": "einvoicing:identity_missing",
         "kind": "invoicing:einvoicing.identity_missing",
         "urgency": 50,

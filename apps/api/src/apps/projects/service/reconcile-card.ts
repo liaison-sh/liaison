@@ -5,7 +5,15 @@
 // reload and on a phone. Every figure was computed by the server before it reaches here; this
 // only words it. No person is named anywhere on the card.
 import { TOOL_CARD_GROUPS_MAX_ROWS } from "@liaison/shared"
-import { cutText, NOT_EVERYTHING_SEEN, OTHER_LINE_NAME, worded } from "./reconcile-lines"
+import {
+  amountMinor,
+  billedHundredths,
+  cutText,
+  linesAmountMinor,
+  NOT_EVERYTHING_SEEN,
+  OTHER_LINE_NAME,
+  worded,
+} from "./reconcile-lines"
 import type { Basis } from "./time-plan"
 
 /** A stored line, as the card reads it. */
@@ -73,7 +81,7 @@ function unitOf(basis: Basis): "d" | "h" {
 /** A quantity in the line's unit, as the inline field shows it: 3.5 for 3.5 days. */
 export function inUnit(minutes: number, basis: Basis, hpd: number): number {
   const per = basis === "daily" ? hpd : 60
-  return Math.round((minutes / per) * 100) / 100
+  return billedHundredths(minutes, per) / 100
 }
 
 function moneyOf(
@@ -84,11 +92,28 @@ function moneyOf(
   hpd: number,
 ): { minor: number; currency: string } | undefined {
   if (rateMinor === null || !currency) return undefined
-  if (basis === "daily") return { minor: Math.round((minutes / hpd) * rateMinor), currency }
-  if (basis === "hourly" || basis === "retainer") {
-    return { minor: Math.round((minutes / 60) * rateMinor), currency }
-  }
-  return undefined
+  // A retainer month bills its fee and the hours above it (priced by invoicing), never each line
+  // at the hourly rate: its time lines carry no amount.
+  if (basis === "retainer") return undefined
+  const minor = amountMinor(minutes, basis, rateMinor, hpd)
+  return minor === null ? undefined : { minor, currency }
+}
+
+function linesMoneyOf(
+  lines: readonly CardLine[],
+  basis: Basis,
+  rateMinor: number | null,
+  currency: string | null,
+  hpd: number,
+): { minor: number; currency: string } | undefined {
+  if (rateMinor === null || !currency || basis === "retainer") return undefined
+  const minor = linesAmountMinor(
+    lines.map((l) => l.billMinutes),
+    basis,
+    rateMinor,
+    hpd,
+  )
+  return minor === null ? undefined : { minor, currency }
 }
 
 /** The period's plan: the planned time of every line on the card, however they are grouped. */
@@ -229,9 +254,10 @@ export function reconcileCardFields(input: CardInput) {
   const billMinutes = input.lines.reduce((s, l) => s + l.billMinutes, 0)
   const realMinutes = input.lines.reduce((s, l) => s + l.realMinutes, 0)
   const plannedMinutes = periodPlanOf(input.lines)
+  // The lines as priced one by one, added up as the invoice does.
   const total = fixed
     ? undefined
-    : moneyOf(billMinutes, basis, input.rateMinor, input.currency, hpd)
+    : linesMoneyOf(input.lines, basis, input.rateMinor, input.currency, hpd)
   const offBill = rest.filter((l) => l.billMinutes === 0).length
 
   const sub =

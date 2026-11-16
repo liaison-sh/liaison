@@ -107,6 +107,21 @@ describe("the reconcile card", () => {
     expect(fits.latestKey).toBe("reconcile:11111111-1111-4111-8111-111111111111")
     expect(fits.supersededLabel?.label).toBe("First version")
 
+    // Several lines whose rounding differs: the total is the lines as priced, as the invoice adds them.
+    const thirds = draw({
+      basis: "hourly",
+      rateMinor: 9_000,
+      lines: ["a", "b", "c"].map((id) =>
+        line(id, { plannedMinutes: 20, realMinutes: 20, billMinutes: 20 }),
+      ),
+    })
+    expect(rows(thirds).map((r) => r.cells.amount)).toEqual(
+      Array(3).fill({ t: "money", minor: 2_970, currency: "EUR" }),
+    )
+    expect(thirds.tot).toEqual([
+      { k: "Excl. VAT", v: { t: "money", minor: 8_910, currency: "EUR" } },
+    ])
+
     // Over: time spent above the plan never raises the bill.
     const over = draw({ lines: [line("export", { realMinutes: d(3.5) })] })
     expect(over.status?.label.label).toBe("Over the plan")

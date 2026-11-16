@@ -23,7 +23,7 @@
 // internal state.
 
 import { describe, expect, test } from "bun:test"
-import { FICTIONAL_SIRENS } from "./einvoicing/test-fixtures"
+import { FICTIONAL_SIRENS, FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import type { Counterparty, IssuerProfile } from "./issue"
 import { draftsCreate, draftsUpdate, invoiceIssue, type MutationsCtx } from "./mutations"
 import { documentsGet, type ReadsCtx } from "./reads"
@@ -53,6 +53,7 @@ const inclusiveIssuer: IssuerProfile = {
   prefix_proforma: "PRO-{YYYY}-",
   prefix_po: "PO-{YYYY}-",
   prefix_credit_note: "CN-{YYYY}-",
+  ...FR_SELLER_IDENTITY,
 }
 
 const defaultCounterparty: Counterparty = {
@@ -88,6 +89,7 @@ function makeCtx(): { ctx: MutationsCtx; readsCtx: ReadsCtx; db: MockDb } {
           require_two_eyes: false,
           mail_account_id: "acct-mail-1",
           prices_include_tax: true,
+          ...FR_SELLER_IDENTITY,
         },
       ],
       // E-invoicing gate in enforce mode.

@@ -151,7 +151,7 @@ export async function retainerScheduleOf(ctx: DbCtx, projectId: string): Promise
 }
 
 /** A month the month-end run holds: its draft or issued invoice, or its row in a run. */
-async function monthOnRun(ctx: DbCtx, scheduleId: string, month: string): Promise<boolean> {
+export async function monthOnRun(ctx: DbCtx, scheduleId: string, month: string): Promise<boolean> {
   const doc = await one(ctx, "documents", { external_ref: runDocumentRef(scheduleId, month) })
   if (doc && !GONE.has(String(doc.status))) return true
   const item = await one(ctx, "recurring_run_items", { schedule_id: scheduleId, period_key: month })

@@ -298,8 +298,16 @@ export function composeMargin(cost: MarginCost, invoiced: InvoicedRead): MarginR
     ? ` Partial: ${cover.charAt(0).toLowerCase()}${cover.slice(1)}`
     : ""
   const how = `Invoices linked to the project, excluding VAT and net of credit notes, minus each hour taken at the cost rate on that day.${
-    cost.period ? ` Only the invoices issued and the hours worked in ${cost.period.label}.` : ""
-  }${invoiced.documents === 0 ? " No issued invoice is linked to the project yet." : ""}`
+    cost.period
+      ? ` Only the invoices for the work of ${cost.period.label} (an invoice counts in the month it bills, not the month it was issued) and the hours worked in it.`
+      : ""
+  }${
+    invoiced.documents === 0
+      ? cost.period
+        ? ` No issued invoice bills ${cost.period.label} yet.`
+        : " No issued invoice is linked to the project yet."
+      : ""
+  }`
   const ratesMissing =
     cost.minutesWithoutRate > 0
       ? {

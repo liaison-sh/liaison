@@ -11,6 +11,7 @@ import {
   billingContactRead,
   CONTACT,
 } from "./__tests__/from-reconcile-harness"
+import { FR_SELLER_IDENTITY } from "./einvoicing/test-fixtures"
 import { draftsDiscard, invoiceIssue, type MutationsCtx } from "./mutations"
 import { draftFromReconcile, monthEnd } from "./mutations/from-reconcile"
 import { createMockDb, type MockDb } from "./test-db"
@@ -24,6 +25,7 @@ const ISSUER = {
   country: "FR",
   vat_id: "FR12345678901",
   address: "1 rue Test, 75001 Paris",
+  ...FR_SELLER_IDENTITY,
   default_currency: "EUR",
   default_language: "fr",
   prefix_invoice: "F-{YYYY}-",
@@ -199,6 +201,11 @@ describe("a draft from planned vs done", () => {
       approve_scope: "invoicing:documents:write",
       expiry_hours: 720,
     })
+    // Whoever decides reads who is invoiced and how much, before the latest issue day.
+    const cardLines =
+      (h.approvals[0]?.summary_detail as { lines: string[] } | undefined)?.lines ?? []
+    expect(cardLines[0]).toMatch(/^Customer: \S/)
+    expect(cardLines[1]).toMatch(/^To pay .+ incl\. VAT \(.+ excl\. VAT\)$/)
     // Never auto-approvable: an org's auto-approve policy cannot issue it.
     expect(h.approvals[0]?.auto_approvable).toBeUndefined()
     expect(res.approvalId).toBe(h.approvals[0]?.id as string)

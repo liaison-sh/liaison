@@ -718,7 +718,9 @@ export function taintSurfaceLabel(
   for (const target of targetTables) {
     if (!target) continue
     const bare = target.includes(".") ? target.slice(target.lastIndexOf(".") + 1) : target
-    const entity = entities.find((e) => e.tableName === bare)
+    const onTable = entities.filter((e) => e.tableName === bare)
+    // Several entities over one table (a document and its PDF): the one named for the table.
+    const entity = onTable.find((e) => e.name === bare || `${e.name}s` === bare) ?? onTable[0]
     if (entity) return `this ${entity.name.replace(/_/g, " ")}`
   }
   return targetTables.find((t): t is string => !!t) ?? "where it is written"

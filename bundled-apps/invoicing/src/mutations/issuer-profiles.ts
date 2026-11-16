@@ -3,6 +3,7 @@
 // Invoicing mutations: Settings issuer-profile CRUD.
 
 import { readMinorAmount } from "@liaison/app-sdk"
+import { isValidSiren } from "../einvoicing/identity"
 import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
 import {
   type ErrorEnvelope,
@@ -44,6 +45,12 @@ const ISSUER_WRITE_COLUMNS = [
   "timezone",
   "email_templates",
   "shopify_shop_id",
+  "siren",
+  "address_line1",
+  "address_line2",
+  "postcode",
+  "city",
+  "country_code",
 ] as const
 
 /** Whitelist the writable issuer columns from a UI/agent payload (drops id,
@@ -53,6 +60,9 @@ function pickIssuerWrite(input: Record<string, unknown>): Record<string, unknown
   for (const c of ISSUER_WRITE_COLUMNS) {
     if (input[c] !== undefined) out[c] = input[c]
   }
+  // A SIREN is stored as its 9 digits; a country code upper case.
+  if (typeof out.siren === "string") out.siren = out.siren.replace(/\s+/g, "")
+  if (typeof out.country_code === "string") out.country_code = out.country_code.trim().toUpperCase()
   // `UTC` in a write is someone's choice; the column default is what no write ever touched.
   if (typeof out.timezone === "string") out.timezone = normalizeIssuerTimezone(out.timezone)
   return out
@@ -68,6 +78,18 @@ async function checkWrittenFields(
     const value = input[field]
     if (value !== undefined && value !== null && readMinorAmount(value) === null) {
       return { status: "error", error: invalidAmountError(field, value) }
+    }
+  }
+  const siren = typeof input.siren === "string" ? input.siren.replace(/\s+/g, "") : ""
+  if (siren !== "" && !isValidSiren(siren)) {
+    return {
+      status: "error",
+      error: {
+        code: "invalid_params",
+        message: /^\d{9}$/.test(siren)
+          ? `${siren} is not a valid SIREN: its check digit does not match. Check the company's 9-digit number on its registration certificate.`
+          : "A SIREN is the company's 9-digit number (for example 123 456 789).",
+      },
     }
   }
   return typeof input.timezone === "string" ? checkIssuerTimezone(ctx, input.timezone) : null

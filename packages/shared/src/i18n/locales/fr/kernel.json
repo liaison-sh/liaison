@@ -1718,8 +1718,8 @@
       "other": "connexions de facturation électronique modifiées"
     },
     "facturx_failed": {
-      "one": "génération Factur-X échouée",
-      "other": "générations Factur-X échouées"
+      "one": "facture électronique non produite",
+      "other": "factures électroniques non produites"
     },
     "routine_mailbox_wait": {
       "one": "exécution de routine en attente de votre boîte",
@@ -6789,7 +6789,7 @@
     "othersOnItem": "Pour {{name}}, à qui c'est attribué. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "othersManager": "Pour {{name}}, qui gère ce compte. Vous pouvez aussi l'approuver : vous avez le droit d'approuver.",
     "blocked": "Pour vous : {{blocked}} ne peut pas approuver ceci pendant l'absence de {{name}}",
-    "mineAsked": "Pour vous : suite à votre action",
+    "mineAsked": "Pour vous : demandé par vous ou votre agent",
     "mineOnItem": "Pour vous : attribué à vous",
     "mineManager": "Pour vous : vous gérez ce compte",
     "recapApproved": "{{title}} : approuvé par {{name}}",

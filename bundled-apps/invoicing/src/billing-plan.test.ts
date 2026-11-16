@@ -437,3 +437,43 @@ describe("the latest issue day on a billing draft's approval", () => {
     )
   })
 })
+
+describe("a milestone drafted from a quote with no structured billing address", () => {
+  test("takes the billing address from the quote's contact, so it issues with nothing to complete", async () => {
+    const h = harness()
+    await withPlan(h)
+    await h.db.update("documents", QUOTE, {
+      counterparty_contact_id: "contact-q",
+      billing_line1: null,
+      billing_postcode: null,
+      billing_city: null,
+      billing_country_code: null,
+    })
+    const inner = h.ctx.executeTool.bind(h.ctx)
+    ;(h.ctx as unknown as { executeTool: typeof inner }).executeTool = async (target, args) =>
+      target === "kernel:contacts_addresses_list"
+        ? {
+            status: "completed" as const,
+            result: {
+              addresses: [
+                {
+                  role: "billing",
+                  street1: "4 quai Test",
+                  postalCode: "69002",
+                  city: "Lyon",
+                  countryIso2: "FR",
+                },
+              ],
+            },
+          }
+        : inner(target, args)
+    done(h, T_BETA)
+    expect((await milestoneDraftCreate(h.ctx, { taskId: T_BETA })).status).toBe("completed")
+    expect(docs(h.db)[0]).toMatchObject({
+      billing_line1: "4 quai Test",
+      billing_postcode: "69002",
+      billing_city: "Lyon",
+      billing_country_code: "FR",
+    })
+  })
+})

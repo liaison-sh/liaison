@@ -23,6 +23,7 @@ import {
   releaseToolCard,
   replaceToolCard,
   type ToolCardRef,
+  unstoredToolCard,
 } from "~/modules/agent/runtime/tool-card-store"
 import {
   checkAppConfigWriteForOrg,
@@ -182,7 +183,16 @@ appRoutes.post("/:appName/tools/:toolName", async (c) => {
   const actor = extractRlsContext(c)
   if (!cardRef) {
     const params = toolBody.params ?? toolBody
-    return runAppTool(c, { appName, toolName, params, threadId: toolBody.threadId })
+    // A card page (a card opened from a link, in no conversation) asks, beside the nested params,
+    // for the card its call draws.
+    const withCard = toolBody.params !== undefined && toolBody.withCard === true
+    return runAppTool(c, {
+      appName,
+      toolName,
+      params,
+      threadId: toolBody.threadId,
+      ...(withCard ? { withCard: true } : {}),
+    })
   }
   // What the card is asked to do: the flat form carries the thread beside the params. The tool
   // gets exactly the params the card check matched, and runs in the card's own thread: a thread
@@ -226,6 +236,8 @@ async function runAppTool(
     params: unknown
     threadId: unknown
     cardRef?: ToolCardRef
+    /** No stored card: answer with the card the result draws, for the caller only. */
+    withCard?: boolean
   },
 ) {
   const { appName, toolName, cardRef } = args
@@ -255,7 +267,11 @@ async function runAppTool(
   if (result.blocked) {
     return success(c, { blocked: result.blocked })
   }
-  if (!cardRef) return success(c, result.data)
+  if (!cardRef) {
+    if (!args.withCard) return success(c, result.data)
+    const card = await unstoredToolCard({ orgId, appName, toolName, result: result.data })
+    return success(c, result.data, { card })
+  }
   const { card, cardRevision, stored, why } = await replaceToolCard(cardRef, {
     orgId,
     actorId: c.get("userId"),

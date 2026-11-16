@@ -9,7 +9,12 @@ import { describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 
-import { FULL_LIST_MIN_VIEWPORT, LIST_COLUMNS, listColumnsForWidth } from "./DocumentsList"
+import {
+  FULL_LIST_MIN_VIEWPORT,
+  LIST_COLUMNS,
+  listColumnsForWidth,
+  listFooter,
+} from "./DocumentsList"
 import { searchPlaceholder } from "./dashboards/Toolbar"
 
 const source = readFileSync(join(import.meta.dir, "DocumentsList.tsx"), "utf-8")
@@ -127,5 +132,15 @@ describe("Toolbar search placeholder", () => {
     const toolbar = readFileSync(join(import.meta.dir, "dashboards/Toolbar.tsx"), "utf-8")
     expect(toolbar).toContain("placeholder={searchPlaceholder(isPhone())}")
     expect(toolbar).not.toContain('placeholder="Search number or customer"')
+  })
+})
+
+describe("the list footer", () => {
+  it("says it counts the loaded documents when a full page came back", () => {
+    expect(listFooter("100 documents: 661 692.00 EUR", true)).toBe(
+      "100 documents: 661 692.00 EUR (the newest 100 loaded: narrow the dates to count the rest)",
+    )
+    expect(listFooter("12 invoices: 9 000.00 EUR", false)).toBe("12 invoices: 9 000.00 EUR")
+    expect(listFooter("", true)).toBe("")
   })
 })

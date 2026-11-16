@@ -234,9 +234,11 @@ export function sendErrorFromEnvelope(envelope: {
   // The issuer's send-from mailbox is not one this person reaches (mail access decides): say so in
   // their words, never the mail tool's instructions to an agent. Only a miss that names the
   // mailbox: a missing attachment or conversation is its own error, passed on as is.
+  // The mail app throws that miss (any code reaches here), so the words decide, not the code.
+  const message = envelope.error?.message ?? ""
   if (
-    envelope.error?.code === "NOT_FOUND" &&
-    /mailbox|accountid|account not found/i.test(envelope.error.message ?? "")
+    /no mailbox matches|accountid/i.test(message) ||
+    (envelope.error?.code === "NOT_FOUND" && /mailbox|account not found/i.test(message))
   ) {
     return {
       code: "mailbox_unavailable",

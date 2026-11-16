@@ -86,7 +86,12 @@ import {
   advanceRefundPreflight,
   advanceRefundPrepare,
 } from "./mutations/advances"
-import { billingPlanGet, billingPlanSet, milestoneDraftCreate } from "./mutations/billing-plan"
+import {
+  billingPlanGet,
+  billingPlanSet,
+  milestoneDraftCreate,
+  milestoneDraftPreview,
+} from "./mutations/billing-plan"
 import {
   creditFromReconcile,
   creditFromReconcilePreflight,
@@ -277,6 +282,10 @@ export const milestoneDraftCreateHandler = (
   params: Parameters<typeof milestoneDraftCreate>[1],
   ctx: Parameters<typeof milestoneDraftCreate>[0],
 ) => milestoneDraftCreate(ctx, params)
+export const milestoneDraftPreviewHandler = (
+  params: Parameters<typeof milestoneDraftPreview>[1],
+  ctx: Parameters<typeof milestoneDraftPreview>[0],
+) => milestoneDraftPreview(ctx, params)
 export const advanceDraftCreateHandler = (
   params: Parameters<typeof advanceDraftCreate>[1],
   ctx: Parameters<typeof advanceDraftCreate>[0],

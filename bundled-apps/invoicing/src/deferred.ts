@@ -15,6 +15,7 @@
 // client-side filter on a few hundred rows is fine.
 
 import { resolveIdentityAttention } from "./einvoicing/gate"
+import { ISSUER_PARK_KIND, resolveIssuerAttention } from "./einvoicing/seller"
 
 export type DeferredStatus =
   | "awaiting_config"
@@ -111,6 +112,23 @@ export function isIdentityWait(blocked_on: Record<string, unknown> | null | unde
   return IDENTITY_WAIT_KINDS.has(String(blocked_on?.kind ?? ""))
 }
 
+/**
+ * Parks that wait on the organization's own issuer profile: an e-invoice its issuer cannot sign
+ * (no SIREN or no structured address) in an org that enforces e-invoicing. Only a person filling
+ * Settings clears them, so like identity waits they are exempt from the retry cap and never
+ * dead-letter, and they are due as soon as that issuer profile changed after their last try.
+ */
+export const ISSUER_WAIT_KIND = ISSUER_PARK_KIND
+
+export function isIssuerWait(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  return String(blocked_on?.kind ?? "") === ISSUER_WAIT_KIND
+}
+
+/** A wait only a person can clear: never capped, never dead-lettered. */
+function waitsOnPerson(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  return isIdentityWait(blocked_on) || isIssuerWait(blocked_on)
+}
+
 /** An automatic credit note refused for a reason other than the buyer's identity (an incomplete
  *  recipient, an over-credit…): parked with its own arguments and an attention item. */
 export const AUTO_CREDIT_NOTE_PARK_KIND = "auto_credit_note"
@@ -134,6 +152,14 @@ export async function resolveParkAttention(
     const contact =
       typeof blocked.contact_id === "string" && blocked.contact_id ? blocked.contact_id : null
     await resolveIdentityAttention(ctx, { parkId: row.id, contact_id: contact })
+    return
+  }
+  if (isIssuerWait(blocked)) {
+    const issuer =
+      typeof blocked.issuer_profile_id === "string" && blocked.issuer_profile_id
+        ? blocked.issuer_profile_id
+        : null
+    await resolveIssuerAttention(ctx, { parkId: row.id, issuer_profile_id: issuer })
     return
   }
   // An unmatched card payment's line (or its money-first question) goes with its park: the
@@ -187,7 +213,7 @@ function toDate(v: unknown): Date {
   return new Date(0)
 }
 
-function toDeferredRow(row: unknown): DeferredRow {
+export function toDeferredRow(row: unknown): DeferredRow {
   const r = row as Record<string, unknown>
   return {
     id: String(r.id),
@@ -401,6 +427,9 @@ export type IdentityChangedAt =
   | ReadonlyMap<string, Date>
   | ((contactIds: string[]) => Promise<ReadonlyMap<string, Date>>)
 
+/** `updated_at` of the issuer profiles the sweep's waiting issuer parks are blocked on, by id. */
+export type IssuerChangedAt = (issuerProfileIds: string[]) => Promise<ReadonlyMap<string, Date>>
+
 export async function retryEligible(
   ctx: DeferredCtx,
   opts?: {
@@ -411,6 +440,9 @@ export async function retryEligible(
      *  map, or a loader asked only for the contacts of identity parks whose backoff has not
      *  elapsed (so a sweep reads those identities alone, filtered by contact). */
     identityChangedAt?: IdentityChangedAt
+    /** Loader of the issuer profiles' `updated_at`, asked only for the issuer parks whose
+     *  backoff has not elapsed. */
+    issuerChangedAt?: IssuerChangedAt
   },
 ): Promise<DeferredRow[]> {
   const now = opts?.now ?? new Date()
@@ -420,7 +452,7 @@ export async function retryEligible(
   const candidates = rows
     .filter((r) => !isBulkDeadLettered(r.reason))
     .filter((r) => !needsHumanReview(r.blocked_on))
-    .filter((r) => isIdentityWait(r.blocked_on) || r.retry_count < cap)
+    .filter((r) => waitsOnPerson(r.blocked_on) || r.retry_count < cap)
   const lastTry = (r: DeferredRow) => r.retried_at ?? r.created_at
   const backoffElapsed = (r: DeferredRow) =>
     now.getTime() - lastTry(r).getTime() >= defaultBackoffMs(r.retry_count)
@@ -430,6 +462,15 @@ export async function retryEligible(
     const contactId = String(r.blocked_on.contact_id ?? "")
     if (isIdentityWait(r.blocked_on) && contactId && !backoffElapsed(r)) waiting.add(contactId)
   }
+  const issuersWaiting = new Set<string>()
+  for (const r of candidates) {
+    const issuerId = String(r.blocked_on.issuer_profile_id ?? "")
+    if (isIssuerWait(r.blocked_on) && issuerId && !backoffElapsed(r)) issuersWaiting.add(issuerId)
+  }
+  const issuerChanged: ReadonlyMap<string, Date> =
+    opts?.issuerChangedAt && issuersWaiting.size > 0
+      ? await opts.issuerChangedAt([...issuersWaiting])
+      : new Map()
   const source = opts?.identityChangedAt
   const changed: ReadonlyMap<string, Date> =
     typeof source === "function"
@@ -439,6 +480,11 @@ export async function retryEligible(
       : (source ?? new Map())
   const eligible = candidates.filter((r) => {
     if (backoffElapsed(r)) return true
+    if (isIssuerWait(r.blocked_on)) {
+      // Due as soon as the issuer profile it waits on was edited after its last try.
+      const at = issuerChanged.get(String(r.blocked_on.issuer_profile_id ?? ""))
+      return !!at && at.getTime() > lastTry(r).getTime()
+    }
     if (!isIdentityWait(r.blocked_on)) return false
     const contactId = String(r.blocked_on.contact_id ?? "")
     const changedAt = contactId ? changed.get(contactId) : undefined
@@ -512,7 +558,7 @@ export async function markPermanentFailure(
   const minAgeMs = opts?.minAgeMs ?? DEAD_LETTER_MIN_AGE_MS
   const cap = opts?.cap ?? DEAD_LETTER_CAP
   const ageMs = now.getTime() - row.created_at.getTime()
-  if (isIdentityWait(row.blocked_on)) return row
+  if (waitsOnPerson(row.blocked_on)) return row
   if (row.retry_count < cap || ageMs < minAgeMs) return row
   await ctx.db.update("deferred_events", row.id, { status: "permanent_failure" })
   return { ...row, status: "permanent_failure" }

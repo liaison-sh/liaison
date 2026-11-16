@@ -11,9 +11,10 @@
 // the kernel's `app_sequences` and are advanced through Drizzle in the same
 // transaction.
 //
-// Issued documents carry `pdf_status = 'pending'` and no file: the app's own
-// "render me on demand" state, so the PDF a person asks for is rendered by the
-// real template path.
+// Issued documents carry no `pdf_status` and no file: a PDF never made, which
+// the app makes on request (Retry render, a send) by the real template path.
+// Never `pending`: that is an issue whose render is still owed, which the app's
+// interrupted-issue sweep would take up.
 import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { appSequences } from "~/db/schema/kernel/app-sequences"
@@ -419,6 +420,8 @@ export interface IssuerProfileInput {
   invoiceApprovalThresholdMinor: string
   poApprovalThresholdMinor: string
   timezone: string
+  /** The company's SIREN and structured address, which a French e-invoice states. */
+  identity?: { siren: string; line1: string; postcode: string; city: string; countryCode: string }
 }
 
 export function issuerProfileId(ctx: SeedContext, key: string): string {
@@ -457,6 +460,15 @@ async function upsertIssuerProfile(
     auto_email_enabled: false,
     prices_include_tax: false,
     timezone: p.timezone,
+    ...(p.identity
+      ? {
+          siren: p.identity.siren,
+          address_line1: p.identity.line1,
+          postcode: p.identity.postcode,
+          city: p.identity.city,
+          country_code: p.identity.countryCode,
+        }
+      : {}),
     email_templates: jsonCell({}),
     created_at: iso(shiftTime(ctx.now, -365)),
     updated_at: iso(shiftTime(ctx.now, -30)),
@@ -545,7 +557,6 @@ export async function seedInvoicingHistory(
     }
 
     for (const d of input.documents) {
-      const issued = d.issuedAt !== null
       const row: Record<string, AppCell> & { id: string; org_id: string } = {
         id: d.id,
         org_id: orgId,
@@ -574,8 +585,8 @@ export async function seedInvoicingHistory(
         paid_at: d.paidAt === null ? null : iso(d.paidAt),
         voided_at: null,
         pdf_file_id: null,
-        // The app's own "render me on demand" state: see the header note.
-        pdf_status: issued ? "pending" : null,
+        // No PDF made yet, made on request: see the header note.
+        pdf_status: null,
         external_refs: jsonCell(d.spec.externalRefs ?? {}),
         po_number: d.spec.poNumber ?? null,
         notes: d.spec.notes ?? null,

@@ -16,11 +16,12 @@
 
 import { latestIssueLine } from "../approval-cards"
 import { formatMoneyMinor } from "../money"
+import { recipientOf } from "../recipient"
 import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import { ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import { customerLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -610,12 +611,14 @@ export async function raiseIssueApproval(
     // `UTC` reads the org's own zone (the host's rule for an unset zone).
     const today = latestIssueOn ? (await ctx.time.civil({ timezone: "UTC" })).date : null
     const latest = latestIssueOn ? latestIssueLine(latestIssueOn, today) : null
+    // Whoever decides reads who is invoiced first: the draft's customer.
+    const shown = [...(await customerLine(ctx, draftId)), ...lines]
     const parked = await ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
       summary: `Issue ${title}`,
       summary_detail: latest
-        ? { lines: [...lines.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
-        : { lines },
+        ? { lines: [...shown.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
+        : { lines: shown },
       current_payload: { draft_id: draftId },
       approve_scope: "invoicing:documents:write",
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
@@ -650,6 +653,58 @@ export async function draftTotals(
     vat: Number(plan.tax_minor),
     incl: Number(plan.total_minor),
   }
+}
+
+/**
+ * What drafting a milestone's invoice would make, for its approval card: the step, its amount
+ * excluding VAT and the customer of the plan's quote. Internal read, nothing is written.
+ */
+export async function milestoneDraftPreview(
+  ctx: MutationsCtx,
+  input: { taskId?: string },
+): Promise<
+  | { label: string; amountMinor: string; currency: string; customer: string | null }
+  | { error: { code: string; message: string } }
+> {
+  const taskId = typeof input?.taskId === "string" ? input.taskId : ""
+  if (!UUID.test(taskId)) return { error: { code: "invalid_task", message: "Not a task id." } }
+  const step = await one(ctx, "billing_steps", { task_id: taskId })
+  if (!step)
+    return { error: { code: "no_billing_step", message: "The task invoices no billing step." } }
+  const quote =
+    typeof step.quote_document_id === "string"
+      ? await one(ctx, "documents", { id: step.quote_document_id })
+      : null
+  const name = typeof quote?.counterparty_name === "string" ? quote.counterparty_name.trim() : ""
+  return {
+    label: String(step.label ?? ""),
+    amountMinor: String(step.amount_minor ?? "0"),
+    currency: String(step.currency ?? quote?.currency ?? "EUR"),
+    customer: name || null,
+  }
+}
+
+/**
+ * The quote's customer, with the structured billing address an e-invoice states read from its
+ * contact when the quote holds none (a quote saved before addresses were structured, or
+ * imported): otherwise the invoice issues flagged for a billing address it prints.
+ */
+export async function recipientOfQuoteCompleted(ctx: MutationsCtx, quote: Row): Promise<Row> {
+  const out = recipientOfQuote(quote)
+  const contactId = out.counterparty_contact_id
+  if (out.billing_postcode || out.billing_city || typeof contactId !== "string" || !contactId)
+    return out
+  const current = await recipientOf(ctx, { contactId, companyId: null }).catch(() => null)
+  if (!current?.billing_postcode || !current.billing_city) return out
+  for (const k of [
+    "billing_line1",
+    "billing_line2",
+    "billing_postcode",
+    "billing_city",
+    "billing_country_code",
+  ] as const)
+    out[k] = current[k] ?? null
+  return out
 }
 
 /** The quote's customer, as a draft takes it. */
@@ -726,7 +781,7 @@ export async function milestoneDraftCreate(
       : null
   if (!quote)
     return refuse("quote_not_found", `The plan's quote could not be read. Nothing was drafted.`)
-  const recipient = recipientOfQuote(quote)
+  const recipient = await recipientOfQuoteCompleted(ctx, quote)
   const currency = String(step.currency ?? quote.currency ?? "EUR")
   const amount = asBig(step.amount_minor)
   const isFinal = step.kind === "final"

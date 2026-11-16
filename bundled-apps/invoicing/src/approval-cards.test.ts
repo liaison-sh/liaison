@@ -755,3 +755,23 @@ describe("credit note and purchase order cards", () => {
     expect(fromDraft.lines.join("\n")).toContain("Enclosures")
   })
 })
+
+describe("drafting a milestone's invoice", () => {
+  it("names the milestone, the customer and the amount, never the task id", async () => {
+    const card = await summarizers.summarizeMilestoneDraftCreate(
+      { taskId: "7a000000-0000-4000-8000-000000000019" },
+      undefined,
+      {
+        context: {
+          label: "Beta",
+          amountMinor: "1600000",
+          currency: "EUR",
+          customer: "Maison Exemple SA",
+        },
+      },
+    )
+    expect(card.title).toBe("Draft the invoice of milestone Beta for Maison Exemple SA")
+    expect(card.lines).toEqual(["Customer: Maison Exemple SA", "Amount: 16000.00 EUR excl. VAT"])
+    expect(JSON.stringify(card)).not.toContain("7a000000")
+  })
+})

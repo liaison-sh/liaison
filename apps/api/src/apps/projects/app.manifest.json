@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.41.2",
+  "version": "1.42.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -6368,6 +6368,7 @@
         "referenceable": false,
         "feature": "time_budgets"
       },
+      "reconcile": {"component": "ReconcileCardView", "sidebar": "ProjectsSidebar", "label": "Planned vs done", "labelKey": "projects.reconcileCard.tab", "icon": "ProjectsIcon", "urlPattern": "/projects/reconcile/:entityId", "referenceable": false, "feature": "time_budgets"},
       "timesheet": {
         "component": "TimesheetView",
         "sidebar": "ProjectsSidebar",

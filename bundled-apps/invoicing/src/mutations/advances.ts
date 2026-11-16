@@ -16,7 +16,7 @@ import {
   type Refusal,
   raiseIssueApproval,
   readMilestones,
-  recipientOfQuote,
+  recipientOfQuoteCompleted,
   refuse,
   shortDate,
   stepsOf,
@@ -206,7 +206,7 @@ export async function advanceDraftCreate(
     ?.quote_document_id
   const quote = typeof quoteId === "string" ? await one(ctx, "documents", { id: quoteId }) : null
   let recipient: Row
-  if (quote) recipient = recipientOfQuote(quote)
+  if (quote) recipient = await recipientOfQuoteCompleted(ctx, quote)
   else if (typeof input.contactId === "string" && UUID.test(input.contactId))
     recipient = {
       counterparty_contact_id: input.contactId,

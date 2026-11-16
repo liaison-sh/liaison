@@ -5,6 +5,7 @@
 // money paths (one document under replay and concurrency, the legal date) are in the api
 // integration suite.
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
+import { seedConfirmedIdentity } from "../einvoicing/test-fixtures"
 import { deferredRetryJobHandler } from "./deferred-dispatch"
 import { reconcileStripePayments } from "./reconcile-stripe-payments"
 import { onStripeInvoiceFinalized } from "./stripe-invoice-finalized"
@@ -13,7 +14,7 @@ import {
   onStripeInvoicePaid,
   onStripeInvoicePaymentFailed,
 } from "./stripe-invoice-paid"
-import { finalized, invoices, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
+import { CONTACT, finalized, invoices, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
 import { onStripePaymentUnmatched } from "./stripe-payment-unmatched"
 import { onStripeRefundCreated } from "./stripe-refund-created"
 
@@ -41,6 +42,53 @@ describe("Stripe invoices handled by invoicing", () => {
     expect(Number(line.tax_rate_bp)).toBe(2000)
     // The Stripe invoice is told which document it became.
     expect(ctx.calls.some((c) => c.tool === "stripe:invoice_document_link")).toBe(true)
+  })
+
+  test("an e-invoice its issuer cannot sign waits on the issuer, never on the buyer, and raises one item for the people who edit the issuer", async () => {
+    // The issuer profile has a one-line address and no SIREN; the e-invoicing gate enforces.
+    const db = stripeDb()
+    await seedConfirmedIdentity(db, {
+      contact_id: CONTACT,
+      siren: "900000001",
+      name: "Lumen Studio SAS",
+      postcode: "69001",
+      city: "Lyon",
+    })
+    const ctx = stripeCtx(db)
+    const business = (id: string) =>
+      finalized({
+        stripe_invoice_id: id,
+        customer: {
+          name: "Lumen Studio SAS",
+          email: "billing@lumen.example",
+          country: "FR",
+          address: "3 rue Neuve, 69001 Lyon",
+          vat_id: "FR68900000001",
+        },
+      })
+    const r = await onStripeInvoiceFinalized({ data: business("in_1") }, ctx)
+    expect(r).toMatchObject({ status: "deferred", reason: "awaiting_dependency" })
+    expect(invoices(db)).toHaveLength(0)
+    expect(parks(db)[0]).toMatchObject({
+      status: "awaiting_dependency",
+      reason: "issuer_incomplete",
+      blocked_on: { kind: "issuer_incomplete", issuer_profile_id: "iss-1" },
+    })
+    expect(parks(db)[0]?.contact_id ?? null).toBeNull()
+    expect(ctx.emitted.filter((e) => e.action === "identity_missing")).toHaveLength(0)
+    const items = ctx.emitted.filter(
+      (e) => e.entity === "einvoicing" && e.action === "issuer_incomplete",
+    )
+    expect(items).toHaveLength(1)
+    expect(String((items[0]?.data as { text?: string } | undefined)?.text)).toContain(
+      "Stripe invoice ST-0001 cannot be issued as an e-invoice: your company's SIREN, street address, postcode and city are missing.",
+    )
+    // A second invoice waits on the same issuer: no second item.
+    await onStripeInvoiceFinalized({ data: business("in_2") }, ctx)
+    expect(parks(db)).toHaveLength(2)
+    expect(
+      ctx.emitted.filter((e) => e.entity === "einvoicing" && e.action === "issuer_incomplete"),
+    ).toHaveLength(1)
   })
 
   test("an invoice parked for a missing address issues once the address is in Stripe: the retry reads the invoice again", async () => {

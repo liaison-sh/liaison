@@ -308,8 +308,8 @@ export async function sendFacts(
     ? (((await db.findMany("legal_originals", { where: { id: legalId }, limit: 1 })) as Row[])[0] ??
       null)
     : null
-  if (!lo || lo.kind !== "facturx" || !str(lo.file_id) || !str(lo.sha256))
-    reasons.push("it has no Factur-X legal original")
+  const noOriginal = !lo || lo.kind !== "facturx" || !str(lo.file_id) || !str(lo.sha256)
+  if (noOriginal) reasons.push("its e-invoice file (Factur-X) was never made: retry its PDF first")
   else if (str(doc.legal_original_sha256) && lo.sha256 !== doc.legal_original_sha256)
     reasons.push("its legal original fingerprint does not match the document")
   const fx = (
@@ -319,11 +319,11 @@ export async function sendFacts(
       limit: 1,
     })) as Row[]
   )[0]
-  if (!fx || !str(fx.file_id)) reasons.push("its Factur-X XML is missing")
+  if (!noOriginal && (!fx || !str(fx.file_id))) reasons.push("its Factur-X XML is missing")
   if (reasons.length > 0) {
     return fail(
       "einvoice_not_eligible",
-      `Document ${String(doc.number ?? documentId)} cannot be sent through the PA: ${reasons.join("; ")}.`,
+      `Document ${String(doc.number ?? documentId)} cannot be sent through the e-invoicing platform: ${reasons.join("; ")}.`,
       { reasons },
     )
   }

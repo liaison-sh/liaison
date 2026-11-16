@@ -11,6 +11,7 @@ import {
   fxRateUnavailableEnvelope,
   warmFxRate,
 } from "../einvoicing/fx"
+import { SellerIncompleteRefusal } from "../einvoicing/seller"
 import { issueDocument, issueTogether } from "../issue"
 import type { ErrorEnvelope, MutationsCtx } from "./shared"
 
@@ -37,6 +38,8 @@ export async function issueWithFxRate(
   } catch (err) {
     if (err instanceof FxRateUnavailableError)
       return { ok: false, error: fxRateUnavailableEnvelope(err) }
+    if (err instanceof SellerIncompleteRefusal)
+      return { ok: false, error: { status: "error", error: err.error } }
     const gone = draftGoneEnvelope(err, input)
     if (gone) return { ok: false, error: gone }
     throw err
@@ -85,6 +88,8 @@ export async function issueTogetherWithFxRate<N extends string>(
   } catch (err) {
     if (err instanceof FxRateUnavailableError)
       return { ok: false, error: fxRateUnavailableEnvelope(err) }
+    if (err instanceof SellerIncompleteRefusal)
+      return { ok: false, error: { status: "error", error: err.error } }
     throw err
   }
 }

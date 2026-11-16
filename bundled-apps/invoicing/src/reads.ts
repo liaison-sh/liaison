@@ -1380,6 +1380,9 @@ export interface DeferredRow {
    *  park such as customer_email_missing says WHICH order is waiting and on what. */
   order_id: string | null
   order_number: string | null
+  /** A park about one of the app's own documents (a PDF to make again), not an order: its
+   *  number, so the row names the document. */
+  document_number?: string | null
   blocked_on: Record<string, unknown> | null
   created_at: string | null
   /** Set on an OPEN tax review park only: the tax sources an operator can issue it with through
@@ -1408,9 +1411,44 @@ export async function deferredList(
     const n = payloadOrderNumber(r)
     if (n && r.event_id != null) numberByOrder.set(String(r.event_id), n)
   }
+  // A park whose event IS one of the app's documents (a render owed after an interrupted issue)
+  // is about that document, not an order: read the numbers to name them.
+  const ownDocument = (r: Record<string, unknown>): string | null => {
+    const docId = (r.blocked_on as Record<string, unknown> | null)?.document_id
+    return typeof docId === "string" && docId !== "" && String(r.event_id ?? "") === docId
+      ? docId
+      : null
+  }
+  const docIds = [
+    ...new Set(rows.map((row) => ownDocument(row as Record<string, unknown>)).filter(Boolean)),
+  ] as string[]
+  const numberByDocument = new Map<string, string | null>()
+  if (docIds.length > 0) {
+    const docs = (await ctx.db.findMany("documents", {
+      where: { id: { in: docIds } },
+      limit: docIds.length,
+    })) as Array<Record<string, unknown>>
+    for (const d of docs) {
+      numberByDocument.set(String(d.id), typeof d.number === "string" ? d.number : null)
+    }
+  }
   return {
     items: rows.map((row) => {
       const r = row as Record<string, unknown>
+      const docId = ownDocument(r)
+      if (docId) {
+        return {
+          id: String(r.id ?? r.event_id ?? ""),
+          status: String(r.status ?? ""),
+          reason: (r.reason as string | null) ?? null,
+          retry_count: Number(r.retry_count ?? 0),
+          order_id: null,
+          order_number: null,
+          document_number: numberByDocument.get(docId) ?? null,
+          blocked_on: (r.blocked_on as Record<string, unknown> | null) ?? null,
+          created_at: r.created_at != null ? String(r.created_at) : null,
+        }
+      }
       const orderNumber =
         payloadOrderNumber(r) ?? (r.event_id != null ? numberByOrder.get(String(r.event_id)) : null)
       return {

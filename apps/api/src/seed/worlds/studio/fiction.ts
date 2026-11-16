@@ -262,8 +262,12 @@ export interface StudioClient {
   city: string
 }
 
-/** Every client's SIREN: all zero, like the declared VAT numbers here (a valid checksum). */
-export const STUDIO_CLIENT_SIREN = "000000000"
+/** The studio's own SIREN: all zero, like the declared VAT numbers here (a valid checksum). */
+export const STUDIO_SIREN = "000000000"
+
+/** Its clients' SIREN: zeros and a valid check digit, never the studio's own, so no e-invoice of
+ *  the story names the same company as seller and buyer. No registered company has it. */
+export const STUDIO_CLIENT_SIREN = "000000018"
 
 export const STUDIO_CLIENTS: StudioClient[] = [
   {

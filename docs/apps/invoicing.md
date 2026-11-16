@@ -15,7 +15,10 @@ An issuer profile is the legal entity your documents are issued from. Nothing ca
 2. Click **+ New issuer profile**.
 3. Fill in **Legal name**, **Country** and **Default currency** (required), and optionally **VAT ID**, **IBAN** and **Default language** (`en`, `fr` or `de`).
 4. Turn **Prices include tax** on if the prices you type include tax. Match your Shopify tax setting when the profile is mapped to a shop.
-5. Click **Save**. To add a logo, save the profile first, then upload the logo.
+5. For a French company, fill in **SIREN** (9 digits), **Street address**, **Postcode**, **City** and **Address country**. A French e-invoice states them.
+6. Click **Save**. To add a logo, save the profile first, then upload the logo.
+
+An invoice or credit note to a French business buyer is an e-invoice, and its legal original names your company by its SIREN and address. If the issuer profile lacks any of them, the issue is refused before a number is taken: the refusal names the missing fields, and nothing is issued. Fill them in on the profile and issue again. A sale outside e-invoicing (a consumer, a buyer abroad) issues without them.
 
 Reading profiles needs `invoicing:settings:read` and editing their ordinary fields needs `invoicing:settings:write`. Changing a bank or control field (`iban`, `swift_bic`, `bank_name`, the approval thresholds, `require_two_eyes`, `auto_email_enabled`, `mail_account_id`) or deleting a profile also needs `invoicing:issuer:admin`. Only the admin role holds that scope by default. A profile still referenced by documents cannot be deleted.
 

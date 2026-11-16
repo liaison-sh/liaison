@@ -88,6 +88,33 @@ describe("project_invoiced_get", () => {
     expect(out.invoicedExcl).toBe(1_200_000)
   })
 
+  test("a document billing a service period counts in the month of the work, not its issue month", async () => {
+    // October's work, issued on 3 November, and its credit note issued on 20 November.
+    const october = doc("8", {
+      number: "F-8",
+      subtotal_minor: 744_000,
+      issued_at: "2026-11-03",
+      service_period_start: "2026-10-01",
+      service_period_end: "2026-10-31",
+    })
+    const correction = doc("9", {
+      type: "credit_note",
+      number: "A-9",
+      subtotal_minor: -93_000,
+      billing_project_id: null,
+      original_document_id: october.id,
+      issued_at: "2026-11-20",
+    })
+    const read = (from: string, to: string) =>
+      projectInvoicedGet(ctxWith([october, correction]), { projectId: PROJECT, from, to })
+    const oct = await read("2026-10-01", "2026-10-31")
+    const nov = await read("2026-11-01", "2026-11-30")
+    if ("error" in oct || "error" in nov) throw new Error("refused")
+    expect(oct.invoicedExcl).toBe(651_000)
+    expect(nov.invoicedExcl).toBe(0)
+    expect(nov.message).toBe("No issued invoice is linked to this project.")
+  })
+
   test("a project with nothing issued reads zero and says so", async () => {
     const out = await projectInvoicedGet(ctxWith([draft]), { projectId: PROJECT })
     if ("error" in out) throw new Error(out.error.message)

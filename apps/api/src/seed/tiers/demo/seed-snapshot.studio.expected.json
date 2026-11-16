@@ -17,7 +17,7 @@
   },
   "app_invoicing.counterparty_identities": {
     "rows": 6,
-    "digest": "0851467772489fe7"
+    "digest": "1ca15ac3b01fa2a2"
   },
   "app_invoicing.document_lines": {
     "rows": 517,
@@ -25,11 +25,11 @@
   },
   "app_invoicing.documents": {
     "rows": 513,
-    "digest": "f256a9d3e0dedad2"
+    "digest": "5743f47aa057ca95"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
-    "digest": "eda7ff4c80d998d1"
+    "digest": "b0330b8196d9be98"
   },
   "app_invoicing.recurring_schedules": {
     "rows": 2,

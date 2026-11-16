@@ -13,9 +13,10 @@ import type { ReadsDb } from "../reads"
 
 export interface ProjectInvoicedInput {
   projectId?: string
-  /** Inclusive lower bound on the issue date, YYYY-MM-DD. */
+  /** Inclusive lower bound, YYYY-MM-DD, on the day a document is counted on: the start of the
+   *  service period it bills (the month of the work), else its issue date. */
   from?: string | null
-  /** Inclusive upper bound on the issue date, YYYY-MM-DD. */
+  /** Inclusive upper bound on the same day. */
   to?: string | null
 }
 
@@ -138,6 +139,19 @@ export async function projectInvoicedGet(
     )
   }
 
+  // A document is counted on the month of the work it bills: its service period's start, or for
+  // a credit note without one, its original invoice's. A document billing no period is counted
+  // on its issue date.
+  const periodOf = new Map<string, string>()
+  for (const r of own) {
+    const start = day(r.service_period_start)
+    if (start) periodOf.set(String(r.id), start)
+  }
+  const countedOn = (r: Row): string | null =>
+    day(r.service_period_start) ??
+    (r.original_document_id != null ? periodOf.get(String(r.original_document_id)) : undefined) ??
+    day(r.issued_at)
+
   const seen = new Set<string>()
   const documents: ProjectInvoicedDocument[] = []
   for (const r of [...own, ...corrections]) {
@@ -147,8 +161,9 @@ export async function projectInvoicedGet(
     const status = String(r.status ?? "")
     if (!COUNTED.has(status)) continue
     const issuedAt = day(r.issued_at)
-    if (from !== null && (issuedAt === null || issuedAt < from)) continue
-    if (to !== null && (issuedAt === null || issuedAt > to)) continue
+    const on = countedOn(r)
+    if (from !== null && (on === null || on < from)) continue
+    if (to !== null && (on === null || on > to)) continue
     const type = r.type === "credit_note" ? "credit_note" : "invoice"
     const net = Math.abs(minor(r.subtotal_minor))
     documents.push({

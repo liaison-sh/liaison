@@ -229,7 +229,7 @@ function isActive(pathname: string, href: string): boolean {
 // Pulls badge counts from the app's own tools. The Pending-Approval count
 // MUST go through `invoicing:pending_approvals.list` (the same tool the
 // agent calls) — see file-level docstring. The Deferred count goes through
-// `invoicing:deferred.list`, filtered to status != 'permanent_failure'.
+// `invoicing:deferred.list`, open parks only (not resolved, not permanent_failure).
 // ─────────────────────────────────────────────────────────────────────────
 type PendingApprovalRow = { id: string; tool_name?: string }
 type DeferredRow = { id: string; status: string }
@@ -243,8 +243,9 @@ async function loadCounts(): Promise<{ pendingApproval: number; deferred: number
         .catch(() => ({ items: [] as DeferredRow[] })),
     ])
     const pendingCount = pending?.items?.length ?? 0
+    // The rows the Deferred tab lists: open parks only (a resolved one waits for nothing).
     const deferredCount = (deferred?.items ?? []).filter(
-      (r) => r.status !== "permanent_failure",
+      (r) => r.status !== "permanent_failure" && r.status !== "resolved",
     ).length
     return { pendingApproval: pendingCount, deferred: deferredCount }
   } catch {

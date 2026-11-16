@@ -92,7 +92,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `contacts_write` | Create or update a person in Liaison's contacts; omit contactId to create, and search with kernel__contacts_search first so you update instead of making a duplicate. | yes | `kernel:contacts:write` |
 | `create_pinned_thread` | Create an org-wide pinned thread visible in every member's sidebar (e.g. |  | `kernel:threads:admin` |
 | `create_role` | Create an org role with scope grants. | yes | `kernel:roles:admin` |
-| `create_routine` | Author a routine: an agent task that runs unattended on one of three triggers, recurring (cron), scheduled (a one-off runAt) or event (an in-tree app:entity:action event). | yes | `kernel:routines:write` |
+| `create_routine` | Author a routine: an agent task that runs unattended on a trigger, recurring (cron), scheduled (one runAt) or event (an app:entity:action event); each parameter says how to fill it. | yes | `kernel:routines:write` |
 | `create_skill` | Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. | yes | `kernel:skills:write` |
 | `dashboards_create` | Save a new dashboard. |  | `kernel:dashboards:write` |
 | `dashboards_delete` | Delete a dashboard. |  | `kernel:dashboards:write` |
@@ -163,7 +163,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `list_skills` | List every skill the caller can see, without bodies; call kernel__skill_read for one. |  | `kernel:skills:read` |
 | `mail_attachment_read` | Read one attachment of an email by its file id from mail__read: a PDF, Word, Excel or PowerPoint file, an image or a video. |  | `mail:conversations:read`, `kernel:files:analyze` |
 | `mailbox_setup` | Show the card for the person's own personal mailbox: set the mailbox password a private mailbox waits for, or, with private true and only when the person asks for it, make a transparent mailbox private (zero-access). |  | `kernel:threads:read` |
-| `memory_create` | Create a memory file at &lt;type&gt;/&lt;slug&gt;.md (user, feedback, project or reference). |  | `kernel:agent:memory` |
+| `memory_create` | Create a memory file at &lt;type&gt;/&lt;slug&gt;.md about the user or how you work with them, only when they ask or correct you. |  | `kernel:agent:memory` |
 | `memory_delete` | Remove a memory file and its line in MEMORY.md. |  | `kernel:agent:memory` |
 | `memory_episode` | Read one episode of a conversation by id: a short account of a stretch that has already closed. |  | `kernel:agent:memory` |
 | `memory_insert` | Insert a line into a memory file at a one based line number, pushing the rest down: add a bullet, or a line of MEMORY.md, without rewriting the file. |  | `kernel:agent:memory` |
@@ -438,19 +438,20 @@ Read repositories, commits, pull requests and issues on GitHub, read-only.
 
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
-| `github_get_commit` | Get a single GitHub commit by SHA, optionally with diff. |  | `github:repo:read` |
-| `github_get_pull_request` | Get a single GitHub pull request by number, optionally with its changed files. |  | `github:repo:read` |
-| `github_list_commits` | List commits in a GitHub repository. |  | `github:repo:read` |
+| `github_get_commit` | Get one GitHub commit by SHA, its diff with withDiff. |  | `github:repo:read` |
+| `github_get_pull_request` | Get one GitHub pull request by number; withFiles adds its changed files and diffs. |  | `github:repo:read` |
+| `github_list` | List a GitHub repository's issues (pull requests left out), pull requests, milestones, labels, releases, tags, commits, or tree (files and folders at a path). |  | `github:repo:read` |
+| `github_list_commits` | List a GitHub repository's commits, by ref, file path, author or dates. |  | `github:repo:read` |
 | `github_list_issues` | List issues in a GitHub repository (pull requests left out). |  | `github:repo:read` |
 | `github_list_labels` | List labels in a GitHub repository. |  | `github:repo:read` |
 | `github_list_milestones` | List milestones in a GitHub repository, open and closed, with their issue counts. |  | `github:repo:read` |
 | `github_list_pull_requests` | List pull requests in a GitHub repository. |  | `github:repo:read` |
 | `github_list_releases` | List releases in a GitHub repository. |  | `github:repo:read` |
-| `github_list_repos` | List the repositories of the connected GitHub owner. |  | `github:repo:read` |
+| `github_list_repos` | List the connected GitHub owner's repositories. |  | `github:repo:read` |
 | `github_list_tags` | List git tags in a GitHub repository. |  | `github:repo:read` |
 | `github_list_tree` | List files and directories at a path of a GitHub repository. |  | `github:repo:read` |
-| `github_read_file` | Read a file from a GitHub repository. |  | `github:repo:read` |
-| `github_search` | Search the connected owner's GitHub repositories. |  | `github:repo:read` |
+| `github_read_file` | Read a file of a GitHub repository, secret-redacted. |  | `github:repo:read` |
+| `github_search` | Search the connected owner's GitHub code, commits, issues or pull requests. |  | `github:repo:read` |
 
 ## gitlab
 
@@ -496,7 +497,11 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | Tool | Description | Approval-gated | Required scopes |
 | --- | --- | --- | --- |
 | `activity_read` | A company's or a contact's documents issued, paid and credited, and the recurring schedules that bill them, newest first, for their timeline. |  | `invoicing:documents:read` |
+| `advance_draft_create` | Draft an advance invoice (acompte) for a project: an ordinary invoice in the normal series, with VAT, from a plan step or an amount received. |  | `invoicing:documents:write` |
+| `advance_refund_prepare` | Give an advance invoice back when its project stops before the final: a credit note citing the advance, capped at what remains of it. |  | `invoicing:documents:write` |
 | `approval_route_read` | Who a month-end run's card is for: its account manager when every row has the same one. |  | `invoicing:documents:read` |
+| `billing_plan_get` | A project's billing plan: the steps its quote is invoiced in (advances, milestones, the final), each with its amount, its task and the invoice it made. |  | `invoicing:documents:read` |
+| `billing_plan_set` | Save a fixed-price project's billing plan from its quote: advances, milestones (each tied to its task) and the final. |  | `invoicing:documents:write` |
 | `card_stream_issuer` | Who issues the invoices of card payments on Stripe for the org. |  | `invoicing:internal` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
 | `contact_relationships_set` | Set a contact's relationship classification (customer/vendor/both/other). |  | `invoicing:contacts:write` |
@@ -505,10 +510,12 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `counterparty_identity_set` | Record a counterparty's e-invoicing identity: customer_kind (business, individual, public_entity, non_registered_entity), SIREN / SIRET, with its provenance (source registry when picked from counterparty_identity_lookup, vat_derived when read off a French VAT id, agent_web with source_url when found on the web, manual when typed by a person). |  | `invoicing:contacts:write` |
 | `counterparty_territory_set` | Administrator decision for a buyer whose territory is not decided automatically (Monaco, overseas departments and collectivities): treat it as French (as_fr) or foreign (as_foreign), with the reason. | yes | `invoicing:contacts:write` |
 | `credit_note_create_and_issue` | Create a credit note, a legal document, and issue it in one call. |  | `invoicing:documents:write` |
+| `credit_note_from_reconcile` | Correct one billed line of an invoice made from planned vs done, after it was issued: a credit note citing the invoice for what the line billed too much (billed minus corrected, at the line's rate), with a corrected activity report. |  | `invoicing:documents:write` |
 | `credit_note_issue` | Issue a credit note from a draft (drafts_create with type='credit_note'). |  | `invoicing:documents:write` |
 | `customer_history` | A customer's past sales with each line's unit price, the latest sale of a product (last_sale), the recurring schedules that bill them and their Shopify orders. |  | `invoicing:documents:read` |
 | `deferred_list` | List parked/deferred auto-flow events for the org: Shopify orders whose invoice did not issue automatically. |  | `invoicing:documents:read` |
 | `deferred_tax_override` | Resolve a TAX REVIEW park (deferred_list items whose reason is shopify_tax_mismatch, tax_on_exempt_treatment, tax_rate_placeholder or buyer_vat_missing; they carry resolution_options) by issuing the order with an explicit tax decision. | yes | `invoicing:documents:write` |
+| `document_attachment_add` | File an activity report or a timesheet on an invoice draft, or on an issued invoice before it is sent, so it goes out with it. |  | `invoicing:documents:write` |
 | `document_send_state` | Whether a payment reminder about an invoice issued by Liaison may still go out, read from the document at send time: stops on paid, credited or voided. |  | `invoicing:documents:read` |
 | `documents_convert_local` | Convert a quote or proforma with no Shopify draft order into an invoice, in one commit. |  | `invoicing:documents:write` |
 | `documents_convert_to_invoice` | Convert a quote or proforma into an invoice. | yes | `invoicing:documents:write` |
@@ -524,6 +531,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `documents_send_to_customer` | Email a document PDF to the counterparty. | yes | `invoicing:documents:write` |
 | `documents_update` | Edit an issued document. | yes | `invoicing:documents:write` |
 | `documents_update_preview` | The document plus the VAT status a documents_update would give its buyer (evidence when the agent declares a private consumer). |  | `invoicing:documents:read` |
+| `draft_from_reconcile` | Make the invoice draft of a planned vs done card, with its activity report, and raise its issue approval. |  | `invoicing:documents:write` |
 | `draft_issue_preview` | What an approval card reads for a saved draft: the document and the total issuing it would write. |  | `invoicing:documents:read` |
 | `drafts_create` | Create an unissued draft. |  | `invoicing:documents:write` |
 | `drafts_discard` | Discard an unissued draft; no number is used. |  | `invoicing:documents:write` |
@@ -555,14 +563,18 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `issuer_stream_get` | Who issues what for each issuer profile: card subscriptions on Stripe (Liaison, Stripe or undecided), recurring by transfer and one-off invoices (always Liaison), and whether a person confirmed Stripe's own customer emails are off. |  | `invoicing:settings:read` |
 | `issuer_stream_set` | Choose who issues the legal invoice of card subscriptions on Stripe: liaison or stripe. | yes | `invoicing:settings:write` |
 | `legal_originals_verify` | Check that the stored legal originals (the exact file of each issued invoice and credit note's first render, the Factur-X for an e-invoice, and imported legacy originals) are intact: recomputes each file's fingerprint and compares it with the one recorded when it was fixed. |  | `invoicing:documents:read` |
+| `milestone_draft_create` | Draft the invoice of a done milestone, from its task only: the amount comes from the billing plan, never from hours. |  | `invoicing:documents:write` |
+| `milestone_draft_preview` | What drafting a milestone's invoice would make (step, amount excluding VAT, customer), for its approval card. |  | `invoicing:documents:read` |
 | `order_reissue_apply` | Reissue an invoice after a Shopify order edit changed the LINE SET or the AMOUNTS (an order edit that only touches address, notes, tags, or fulfilment does NOT call this). | yes | `invoicing:documents:write` |
 | `orders_invoiceability_check` | Would the order-created auto-flow invoice this Shopify order, or park it (no invoice)? |  | `invoicing:documents:read` |
 | `payment_link_to_invoice` | Link a Stripe payment no invoice explains to an invoice already issued, once. | yes | `invoicing:documents:write` |
 | `pending_approvals_list` | List the caller's pending approvals originating from invoicing-app tools (credit notes, refunds, dealer invoices), each with its summary, requester, and amount. |  | `invoicing:documents:read` |
 | `po_create_and_issue` | Create a draft purchase order and issue it in one call. |  | `invoicing:documents:write` |
 | `po_issue` | Issue a purchase order from a draft. |  | `invoicing:documents:write` |
+| `preview_totals` | What a planned vs done card's billed lines would invoice (excl. |  | `invoicing:documents:read` |
 | `proforma_create_and_issue` | Create a proforma and issue it in one call (always gated). | yes | `invoicing:documents:write` |
 | `proforma_issue` | Issue a proforma from a draft (always gated). | yes | `invoicing:documents:write` |
+| `project_invoiced_get` | What one project has been invoiced, excluding VAT and net of credit notes, and the paid part, in minor units. |  | `invoicing:documents:read` |
 | `quote_create_and_issue` | Create a quote and issue it in one call. |  | `invoicing:documents:write` |
 | `quote_issue` | Issue a quote from a legacy unnumbered draft row (gated). | yes | `invoicing:documents:write` |
 | `received_einvoice_action_request` | Ask for the approval to refuse, dispute, or withdraw the dispute on ONE received supplier e-invoice. |  | `invoicing:received:write` |
@@ -570,6 +582,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
 | `received_einvoices_list` | List the supplier e-invoices delivered by the e-invoicing platform (the invoicing app's Received tab): supplier, number, issue and due dates, total with currency, status (received, approved, in_dispute, refused, rejected, partially_collected, collected), received date, newest first. |  | `invoicing:received:read` |
 | `received_einvoices_refresh` | Re-read received supplier e-invoices from the e-invoicing platform now: with received_id, that one; without, everything new since the last check plus the statuses of open ones. |  | `invoicing:received:write` |
+| `reconcile_draft_discard` | Discard the unissued invoice draft a planned vs done card made, for Undo on the card. |  | `invoicing:documents:write` |
 | `recurring_draft_write` | Write one month-end run draft and its lines in one commit. |  | `invoicing:documents:write` |
 | `recurring_item_issue` | Issue one approved row of a month-end run. |  | `invoicing:documents:write` |
 | `recurring_list` | List recurring schedules with their next issue day and draft day. |  | `invoicing:documents:read` |
@@ -579,6 +592,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_schedule_create` | Save a recurring invoice schedule for one customer: cadence, billing day and lines. | yes | `invoicing:documents:write` |
 | `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused, and its row in a run not yet issued is left out. |  | `invoicing:documents:write` |
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
+| `retainer_draft_from_reconcile` | Make the invoice draft of one retainer month from its planned vs done card: the fee, any hours above the retainer, the activity report, and its issue approval. |  | `invoicing:documents:write` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |
@@ -709,6 +723,10 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `add_dependency` | Add a dependency between two tasks. |  | `projects:tasks:write` |
 | `approval_route_read` | Who a pending approval about a task is for: its assignee, as personId (null when nobody holds it). |  | `projects:tasks:read` |
 | `attentionItems` | YOUR own work that needs attention right now — the calling user's OVERDUE, DUE-THIS-WEEK, and BLOCKED non-terminal tasks across ALL projects, each carrying its project name + due date. |  | `projects:tasks:read` |
+| `billing_terms_set` | Set how a project is billed: rate (per hour or day, per its basis) or fixedPrice, never both; amounts in major units, currency ISO code. |  | `projects:money:write` |
+| `budget_get` | A project's planned time against its real time, in one line, with how many tasks have real time entered. |  | `projects:projects:read` |
+| `capacity_get` | Planned time against available time per person for one ISO week, in name order, on projects that use time and budgets. |  | `projects:capacity:read` |
+| `capacity_move` | The capacity board's Move to button: gives a task to another person and tells the person who had it and the person who has it now. |  | `projects:tasks:write`, `projects:capacity:read` |
 | `checklist_add_items` | Append items to a task's checklist, in the order given (batch, up to 50 per call, 200 per task). |  | `projects:tasks:write` |
 | `checklist_get` | Read a task's checklist: the project's validation `levels` in order (id, name), the `items` (id, title, details, per-level `validations` keyed by level id, `checked` for a project without levels) and the `status` (per-level counts and the blocking items, the ones not yet complete). |  | `projects:tasks:read` |
 | `checklist_remove_item` | Remove one checklist item and its validation states. | yes | `projects:tasks:write` |
@@ -718,8 +736,13 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `comments` | Read a task's discussion — the comments on its own thread, newest last. |  | `projects:tasks:read` |
 | `company_context` | The open deals of the company in view, by stage, with amounts only under deal access, for the agent's context. |  | `projects:projects:read` |
 | `company_work` | A company's work projects and their open tasks (deals left out), for the Work section of its page. |  | `projects:projects:read` |
+| `cost_rate_set` | Set a person's cost per hour from a date on; hours before that date keep their old cost. |  | `projects:cost_rates:write`, `projects:margin:read` |
+| `cost_rates_list` | The org's cost rates: each person's cost per hour and the day it applies from. |  | `projects:margin:read` |
 | `create` | Create a TASK inside an existing project (NOT a project — use `createProject` for that). |  | `projects:tasks:write` |
 | `createProject` | Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. |  | `projects:projects:write` |
+| `days_off_list` | The company days off, each with its dates, label, yearly and fromCalendar (a day read from the shared calendar, shown without its title). |  | `projects:projects:read` |
+| `days_off_remove` | Remove company days off by id, or every typed row covering a day (on). |  | `projects:settings:admin` |
+| `days_off_set` | Record a company day off for everyone: one day (on), a range (from, to) or an ISO week, with an optional label and yearly. |  | `projects:settings:admin` |
 | `deal_send_state` | Whether a mail about a deal may still be sent: stops a closed or deleted deal. |  | `projects:projects:read` |
 | `deals_followup_candidates` | Open deals quiet for at least quietDays, each with skip: null means a follow-up may be drafted, otherwise the reason not to. |  | `projects:projects:read` |
 | `deals_pipeline_create` | Create a sales pipeline: a board whose tasks are deals, with stages Lead, Qualified, Demo, Proposal, then Won and Lost. |  | `projects:projects:write` |
@@ -736,18 +759,37 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `labels.reorder` | Save the whole label tree from the settings page in one transaction: order, names, new groups and values (tempId, values may name parentTempId) and archives. |  | `projects:labels:admin` |
 | `labels.tree` | The label tree for the settings page: live groups and their live values (each with updatedAt) and the tree's version, which labels.reorder takes as its base. |  | `projects:projects:read` |
 | `labels.update` | Rename or reorder a label group or value. |  | `projects:labels:admin` |
+| `margin_get` | One project's margin: what is invoiced (excl. |  | `projects:margin:read` |
 | `merge` | Merge one task into another: the source task's subtasks and dependencies move to the target, then the source is archived. | yes | `projects:tasks:write` |
+| `milestone_status_read` | Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and, per task, its done state, milestone mark and completion day. |  | `projects:tasks:read` |
 | `move` | Move a task: reposition / re-parent / restatus WITHIN its project, OR relocate it to ANOTHER project by passing the destination `projectId`. |  | `projects:tasks:write` |
+| `period_timebox_set` | Set a project's timebox for one month (YYYY-MM) or a from-to period, e.g. |  | `projects:projects:write` |
 | `portfolio_rollup` | Cross-project PORTFOLIO ROLLUP for a board/leadership one-screen view: in ONE call it returns, per ACTIVE project, the authoritative {totalTasks, doneTasks, remainingTasks, overdueTasks, percentDone (0-100), and the single biggestAtRisk task}. |  | `projects:tasks:read` |
+| `reconcile_create_invoice` | Create invoice on a planned vs done card: one draft of its billed lines, with no number, and its issue approval for a person who can issue invoices. |  | `projects:reconcile:write` |
+| `reconcile_facts` | Start a reconcile of one project and period (month YYYY-MM, or from and to): the tasks closed in it with planned and real time, the client's markers and what is already billed. |  | `projects:reconcile:read` |
+| `reconcile_get` | Read a stored reconcile card by its reconciliationId, as it stands. |  | `projects:reconcile:read` |
+| `reconcile_line_update` | Change one line of your own proposed reconcile card: what it bills (bill, in the card's unit), its wording, or a time-spent note only you see (realNote). |  | `projects:reconcile:read` |
+| `reconcile_lines_read` | What one reconciliation bills, for the invoice made from it: each billed line's wording, quantity in the project's unit, proof labels and the rate frozen at Create, plus its state, revision, key and whether its claims are reserved. |  | `projects:reconcile:read` |
+| `reconcile_mark` | Move a reconciliation's claims after its invoice moved: billed once the invoice carrying its key is issued, released when no document carries the key, credited when credit notes took the invoice back whole, or the billed-after-credit figure per line after a partial credit. |  | `projects:reconcile:write` |
+| `reconcile_propose` | Save the reconcile card for a project and period from reconcile_facts and the traces you read: lines group tasks, with wording and proofs only. |  | `projects:reconcile:read` |
+| `reconcile_undo` | Undo Create invoice on a planned vs done card before the draft is issued: the draft is discarded, no number is used, the card's work is free again and the card comes back. |  | `projects:reconcile:write` |
 | `search` | Search projects and tasks by text. |  | `projects:projects:read` |
 | `status_add` | Add a new STATUS COLUMN to a project's board (e.g. |  | `projects:projects:write` |
 | `status_delete` | Delete an EMPTY status column from a project's board. | yes | `projects:projects:write` |
 | `status_update` | Rename or reconfigure an existing STATUS COLUMN on a project's board: change its label, color, or whether it is terminal (counts as done). |  | `projects:projects:write` |
+| `task_time_correct` | Change one Took entry of another person on a project with dated hours: only its lead or finance. |  | `projects:tasks:write`, `projects:dated_sheet:read` |
+| `task_time_get` | Your own Took entries on a task (date, minutes, how entered) and the task's total. |  | `projects:projects:read` |
+| `task_time_set` | Record the CALLER's own real time on a task (Took), exactly as they said it: time "2 h", "1h30", "half a day" or "2 days"; null clears it. |  | `projects:tasks:write` |
 | `tasks_aggregate` | Group and count (or sum) the tasks of one project (`projectId`) or up to 50 (`projectIds`) on the server, for a manager's view or a dashboard chart: open tasks per status, per handler (assignee), per priority, per due bucket, per age in their current status, per SLA state, or per value of a choice / choices / person / checkbox / date field. |  | `projects:tasks:read` |
 | `tasks_byAssignee` | List one person's tasks across ALL projects (not scoped to a single project), each carrying its project name AND its status label + whether that status is terminal/done (`statusTerminal`). |  | `projects:tasks:read` |
 | `tasks_byProject` | List the tasks IN a single project (by project id), each with its status label + whether that status is terminal/done (`statusTerminal`) + the assignee's display name (`assigneeName`, null when unassigned). |  | `projects:tasks:read` |
 | `template_save` | Create or replace a PROJECT TEMPLATE: the status columns, task fields and task tree a new project starts with (`instantiate_template` builds a project from it). |  | `projects:projects:write` |
 | `templates_list` | List the organisation's project templates: id, name and how many statuses, fields and tasks each carries. |  | `projects:projects:read` |
+| `time_plan_set` | Set a project's plan: basis (none, hourly, daily, fixed, retainer), whole-project timebox ("40 days"; null clears), biller, source repositories, and datedHours (on: its lead and finance see dated entries made from now on). |  | `projects:projects:write` |
+| `time_settings_get` | Hours in a day, the shared days-off calendar and how many projects use time and budgets; with userId, that person's days per week. |  | `projects:projects:read` |
+| `time_settings_set` | Set hours in a day or the shared days-off calendar (settings admin), or a person's days per week, a whole number from 1 to 5 (their own, or with user admin or capacity write). |  | `projects:projects:read` |
+| `timesheet_export` | The dated sheet of one project and month as a PDF or CSV file for you. |  | `projects:dated_sheet:read` |
+| `timesheet_get` | A project's dated sheet for one month: each day's time by person and task, and the total. |  | `projects:dated_sheet:read` |
 | `update` | Update a task. |  | `projects:tasks:write` |
 | `update_project` | Edit an existing PROJECT (the board itself, not a task): its name, description, icon, colour, group or key. |  | `projects:projects:write` |
 | `webhook_info` | Operator setup read: reports whether the CI webhook signing secret has been minted (a 'ci-source' connection was established) and returns it so the CI system (TeamCity notifier / GitLab pipeline-hook relay) can be configured to sign deliveries. |  | `projects:settings:admin` |
@@ -883,6 +925,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `disputes_list` | Stripe disputes from the mirror by customer or status, with reason and evidence due date. |  | `stripe:payments:read` |
 | `home_load` | The Stripe page's load: the connection and its state, the import's progress per resource, rows per table and the counts that need a person. |  | `stripe:customers:read` |
 | `invoice_document_link` | Record the Liaison document a Stripe invoice became, or that Stripe's own invoice stands. |  | `stripe:internal` |
+| `invoice_payload` | One Stripe invoice read again in the invoice:finalized shape, with the buyer the mirror holds now, for invoicing's retry of a parked invoice. |  | `stripe:internal` |
 | `invoice_send_state` | Whether a payment reminder about a Stripe invoice may still go out, read from Stripe at send time: stops on paid, void or uncollectible; waits when Stripe cannot be asked. |  | `stripe:invoices:read` |
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
 | `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |

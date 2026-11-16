@@ -5985,7 +5985,15 @@ function registerAuthoringTools(orgId: string): void {
     deferLoading: true,
     description:
       "Create a personal or org shared SKILL: a reusable named playbook (reply macro, decision rule, tone guide) the agent later loads by name with kernel__skill_read and follows. Gated: it lands as a pending approval, never as an active skill. Read the catalog with kernel__list_skills first, since a skill that already covers the task is refused and must be updated instead.",
-    searchKeywords: ["compétence", "procédure", "playbook", "créer", "retenir", "remember", "méthode"],
+    searchKeywords: [
+      "compétence",
+      "procédure",
+      "playbook",
+      "créer",
+      "retenir",
+      "remember",
+      "méthode",
+    ],
     requiredScopes: ["kernel:skills:write"],
     trustBoundary: "user",
     gated: true,

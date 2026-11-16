@@ -322,6 +322,20 @@ Section `labels`, scope `org`, edited with `projects:labels:admin`.
 | --- | --- | --- |
 |  | labels.tree | tree |
 
+### Time and budgets
+
+Section `time`, scope `org`, edited with `projects:settings:admin`.
+
+| Key | Label | Type |
+| --- | --- | --- |
+| `hoursPerDay` | Hours in a day | number |
+| `daysOffCalendarId` | Read a shared calendar | select |
+|  | days_off_list | list |
+| `from` | From | list create field: date |
+| `to` | To | list create field: date |
+| `label` | Label | list create field: text |
+| `yearly` | Every year | list create field: toggle |
+
 ## shopify
 
 Shopify orders, customers, products, refunds, fulfilments and returns.

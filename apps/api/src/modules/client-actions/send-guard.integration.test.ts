@@ -61,12 +61,19 @@ describe("the send check a client request carries", () => {
   it("an approved call whose key no longer matches its card sends nothing", async () => {
     const p = params()
     const pin = await pinned(p)
-    const moved = { ...p, invited_email: "someone-else@example.com", ...pin }
-    const r = (await asAdmin((ctx) => handleClientActionCreate(moved, ctx))) as {
-      error?: { code: string; message: string }
+    // Another document under the same check, then another address.
+    const otherTarget = { ...p, ...pin, target_id: crypto.randomUUID() }
+    const otherAddress = { ...p, ...pin, invited_email: "someone-else@example.com" }
+    for (const moved of [otherTarget, otherAddress]) {
+      const r = (await asAdmin((ctx) => handleClientActionCreate(moved, ctx))) as {
+        error?: { code: string; message: string }
+      }
+      expect(r.error?.code).toBe("SEND_GUARD_MISMATCH")
+      expect(r.error?.message).toContain("Nothing was sent")
     }
-    expect(r.error?.code).toBe("SEND_GUARD_MISMATCH")
-    expect(r.error?.message).toContain("Nothing was sent")
+    const elsewhere =
+      await sql`SELECT id FROM ${k("client_actions")} WHERE target_id = ${otherTarget.target_id}`
+    expect(elsewhere).toHaveLength(0)
     const rows = await sql`SELECT id FROM ${k("client_actions")} WHERE target_id = ${p.target_id}`
     expect(rows).toHaveLength(0)
   })

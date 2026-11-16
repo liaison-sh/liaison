@@ -24,6 +24,7 @@ import {
   spendProof,
   takeCodeSend,
   WRONG_PER_CODE,
+  WRONG_TOTAL_LOCK,
 } from "./codes"
 
 const ids: string[] = []
@@ -57,6 +58,28 @@ afterEach(clearAll)
 afterAll(clearAll)
 
 describe("client action code budgets", () => {
+  it("the budgets are the protocol's: 10 and 20 minutes, a minute, 5 and 10 sends, 5 wrong, 15 minutes, 20 in all", () => {
+    expect({
+      CODE_TTL_SECONDS,
+      PROOF_TTL_SECONDS,
+      SEND_GAP_SECONDS,
+      SENDS_PER_HOUR,
+      SENDS_PER_DAY,
+      WRONG_PER_CODE,
+      PAUSE_SECONDS,
+      WRONG_TOTAL_LOCK,
+    }).toEqual({
+      CODE_TTL_SECONDS: 600,
+      PROOF_TTL_SECONDS: 1200,
+      SEND_GAP_SECONDS: 60,
+      SENDS_PER_HOUR: 5,
+      SENDS_PER_DAY: 10,
+      WRONG_PER_CODE: 5,
+      PAUSE_SECONDS: 900,
+      WRONG_TOTAL_LOCK: 20,
+    })
+  })
+
   it("the first send goes on demand and the next one waits a minute", async () => {
     const id = action()
     expect(await takeCodeSend(id)).toEqual({ ok: true })

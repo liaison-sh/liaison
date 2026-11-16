@@ -38,6 +38,9 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `audit_search` | Search the org audit log by action + optional date window (since/until ISO dates). |  | `kernel:audit:read` |
 | `call_tool` | Call a loaded tool that is not in your tool list (one a "tools just loaded" note describes). |  | `kernel:threads:read` |
 | `capture_business_knowledge` | Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. | yes | `knowledge:documents:create` |
+| `client_action_create` | Send a person outside the organization a link to sign, accept or approve one document an app offers for it, with the target's own hash. | yes | `kernel:client_actions:write` |
+| `client_action_revoke` | Withdraw an open request to sign, accept or approve: its link and codes stop working at once. |  | `kernel:client_actions:write` |
+| `client_actions_list` | List requests sent outside the organization to sign, accept or approve, with their state (open, signed, declined, expired, withdrawn). |  | `kernel:client_actions:read` |
 | `clone_repo_on_my_computer` | Clone a git repository onto the person's own computer, into its Liaison folder (&lt;node root&gt;/repos/&lt;name&gt;), and share it with Liaison so kernel__run_on_my_computer can work in it later. | yes | `kernel:threads:write` |
 | `companies_find_duplicates` | Find pairs of companies that look like one (same domain, same name, or both), skipping pairs marked not the same. |  | `kernel:companies:read` |
 | `companies_link_batch` | Create several companies and link their people in one approval, from kernel__companies_propose_from_contacts groups. | yes | `kernel:companies:write` |

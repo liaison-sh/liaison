@@ -90,6 +90,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/web/src/modules/mail/**", pages: ["apps/mail"] },
   { glob: "apps/web/src/modules/mailbox/**", pages: ["apps/mail"] },
   { glob: "apps/api/src/apps/tickets/**", pages: ["apps/tickets"] },
+  { glob: "apps/api/src/modules/tickets/**", pages: ["apps/tickets"] },
   { glob: "apps/web/src/modules/tickets/**", pages: ["apps/tickets"] },
   { glob: "apps/api/src/modules/threads/**", pages: ["apps/chat"] },
   { glob: "apps/api/src/modules/messages/**", pages: ["apps/chat"] },

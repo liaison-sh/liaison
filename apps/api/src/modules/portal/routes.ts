@@ -11,6 +11,7 @@
 import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import type { Context } from "hono"
 import { Hono } from "hono"
+import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { extractRows } from "~/db"
 import {
@@ -20,9 +21,28 @@ import {
   withPortalContext,
 } from "~/db/portal-rls"
 import { rootLogger } from "~/lib/logger"
+import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
+import { zValidator } from "~/lib/validate"
+import { AuthServiceError } from "~/modules/auth/auth"
+import { portalSignedIn } from "~/modules/portal/auth-routes"
+import {
+  ackPortalNotice,
+  beginPortalTotpSetup,
+  confirmPortalTotp,
+} from "~/modules/portal/auth-service"
 import { streamPortalFile } from "~/modules/portal/file-stream"
 import { PORTAL_ROUTES, routerPath } from "~/modules/portal/routes-list"
+import {
+  appendPortalReply,
+  defaultCreateInboxId,
+  ingestTicket,
+  PORTAL_ATTACHMENT_MAX_BYTES,
+  PORTAL_ATTACHMENT_MAX_COUNT,
+  portalStagedFilesOk,
+  reparentStagedFiles,
+  stagePortalAttachment,
+} from "~/modules/tickets/ingest-core"
 
 const log = rootLogger.child({ module: "portal-routes" })
 
@@ -107,14 +127,66 @@ const TICKETS = drizzleSql`SELECT id, subject, status, channel, created_at, last
 /** The routes this file serves; the rest of PORTAL_ROUTES answer 404 until built. */
 const BUILT = new Set([
   "GET /me",
+  "POST /me/notice-ack",
+  "POST /me/totp/setup",
+  "POST /me/totp/confirm",
   "GET /home",
   "GET /projects",
   "GET /projects/:id",
   "GET /invoices",
   "GET /invoices/:id/pdf",
   "GET /requests",
+  "POST /requests",
+  "POST /requests/:id/reply",
+  "POST /requests/attachments",
   "GET /files/:id",
 ])
+
+const requestSchema = z.object({
+  subject: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(20_000),
+  attachmentFileIds: z.array(z.string().uuid()).max(PORTAL_ATTACHMENT_MAX_COUNT).optional(),
+})
+const noticeAckSchema = z.object({ version: z.number().int().min(1).max(1_000_000) })
+const totpConfirmSchema = z.object({ code: z.string().regex(/^\d{6}$/) })
+
+/** An auth service refusal as the portal answers it. */
+function authRefusal(c: Context<AppEnv>, err: unknown): Response | null {
+  if (!(err instanceof AuthServiceError)) return null
+  const status = err.status === 409 || err.status === 400 || err.status === 429 ? err.status : 401
+  return c.json({ error: { message: err.message } }, status)
+}
+
+const replySchema = z.object({
+  text: z.string().trim().min(1).max(20_000),
+  attachmentFileIds: z.array(z.string().uuid()).max(PORTAL_ATTACHMENT_MAX_COUNT).optional(),
+})
+
+interface Requester {
+  email: string
+  name: string
+  company_id: string
+  contact_id: string | null
+  open: boolean
+}
+
+/** Who writes, and whether their company's requests are open: read as the portal role. */
+async function requesterOf(tx: PortalClient): Promise<Requester | null> {
+  const [row] = extractRows<Requester>(
+    await tx.execute(drizzleSql`SELECT m.email, m.name, m.company_id,
+      (SELECT portal.contact_id()) AS contact_id,
+      EXISTS (SELECT 1 FROM portal.shares s WHERE s.kind = 'requests' AND s.object_id IS NULL) AS open
+      FROM portal.me m`),
+  )
+  return row ?? null
+}
+
+const refuse = (
+  c: Context<AppEnv>,
+  status: 400 | 404 | 413 | 422 | 503,
+  code: string,
+  message: string,
+) => c.json({ error: { code, message } }, status)
 
 async function ticketsWithMessages(tx: PortalClient) {
   const tickets = await part<Record<string, unknown>>(tx, "requests", TICKETS)
@@ -259,6 +331,151 @@ export const portalRoutes = new Hono<AppEnv>()
     if (list instanceof Response) return list
     if (list === null) return c.json({ error: { message: "This part is not available" } }, 503)
     return success(c, list)
+  })
+  .post("/me/notice-ack", zValidator("json", noticeAckSchema), async (c) => {
+    const ctx = portalOf(c)
+    const me = await portalRead(c, async (tx) => extractRows(await tx.execute(ME)))
+    if (me instanceof Response) return me
+    return success(c, await ackPortalNotice(ctx.userId, ctx.orgId, c.req.valid("json").version))
+  })
+  .post("/me/totp/setup", async (c) => {
+    const ctx = portalOf(c)
+    try {
+      return success(c, await beginPortalTotpSetup(ctx.userId, ctx.orgId))
+    } catch (err) {
+      const refused = authRefusal(c, err)
+      if (refused) return refused
+      throw err
+    }
+  })
+  .post("/me/totp/confirm", zValidator("json", totpConfirmSchema), async (c) => {
+    const ctx = portalOf(c)
+    try {
+      const tokens = await confirmPortalTotp({
+        userId: ctx.userId,
+        orgId: ctx.orgId,
+        code: c.req.valid("json").code,
+        ip: getClientIp(c),
+      })
+      return portalSignedIn(c, tokens)
+    } catch (err) {
+      const refused = authRefusal(c, err)
+      if (refused) return refused
+      throw err
+    }
+  })
+  .post("/requests", zValidator("json", requestSchema), async (c) => {
+    const body = c.req.valid("json")
+    const ctx = portalOf(c)
+    const who = await portalRead(c, requesterOf)
+    if (who instanceof Response) return who
+    if (!who?.open || !who.contact_id) return notFound(c)
+    const files = body.attachmentFileIds ?? []
+    if (!(await portalStagedFilesOk(ctx.orgId, ctx.userId, files))) {
+      return refuse(
+        c,
+        422,
+        "unknown_attachment",
+        "One or more attachments are not yours or were already sent.",
+      )
+    }
+    const inboxId = await defaultCreateInboxId(ctx.orgId)
+    if (!inboxId)
+      return refuse(c, 503, "requests_unavailable", "Requests cannot be received right now.")
+    // An ordinary ticket: internal, no assignee, stamped with the client's company.
+    const created = await ingestTicket(
+      ctx.orgId,
+      {
+        subject: body.subject,
+        channel: "web_form",
+        sensitivity: "internal",
+        sourceInboxId: inboxId,
+        requesterEmail: who.email,
+        relatedTicketId: null,
+        message: { fromEmail: who.email, fromName: who.name, htmlBody: null, textBody: body.text },
+        portalRequest: { companyId: who.company_id },
+      },
+      async () => who.contact_id,
+      "portal-request-create",
+    )
+    if ("error" in created) {
+      log.error({ err: created.error, orgId: ctx.orgId }, "Portal request was not created")
+      return refuse(c, 422, created.error.code, "Your request was not sent.")
+    }
+    if (created.initialMessageId) {
+      await reparentStagedFiles(ctx.orgId, created.initialMessageId, files, "portal-request-files")
+    }
+    return success(c, { id: created.ticketId, subject: body.subject, attachments: files.length })
+  })
+  .post("/requests/attachments", async (c) => {
+    const ctx = portalOf(c)
+    const who = await portalRead(c, requesterOf)
+    if (who instanceof Response) return who
+    if (!who?.open) return notFound(c)
+    const declared = Number(c.req.header("content-length") ?? "0")
+    if (declared > PORTAL_ATTACHMENT_MAX_BYTES + 64 * 1024) {
+      return refuse(c, 413, "payload_too_large", "A file may be 10 MB at most.")
+    }
+    let form: FormData
+    try {
+      form = await c.req.formData()
+    } catch {
+      return refuse(c, 400, "invalid_multipart", "Send the file as multipart field 'file'.")
+    }
+    const part = form.get("file")
+    if (!(part instanceof Blob))
+      return refuse(c, 400, "missing_file", "Send the file as multipart field 'file'.")
+    if (part.size > PORTAL_ATTACHMENT_MAX_BYTES) {
+      return refuse(c, 413, "payload_too_large", "A file may be 10 MB at most.")
+    }
+    const name = (part as Blob & { name?: string }).name
+    const staged = await stagePortalAttachment(ctx.orgId, ctx.userId, {
+      filename: typeof name === "string" ? name : "attachment",
+      mimeType: part.type || "application/octet-stream",
+      bytes: new Uint8Array(await part.arrayBuffer()),
+    })
+    if ("error" in staged) {
+      if (staged.error === "too_many") {
+        return refuse(c, 422, "too_many_attachments", "Eight files at most wait to be sent.")
+      }
+      if (staged.error === "malware_quarantined") {
+        return refuse(c, 422, "malware_quarantined", "The virus scanner refused this file.")
+      }
+      return refuse(c, 503, "storage_unavailable", "The file could not be kept; try again.")
+    }
+    return success(c, staged)
+  })
+  .post("/requests/:id/reply", zValidator("json", replySchema), async (c) => {
+    const id = c.req.param("id")
+    if (!UUID.test(id)) return notFound(c)
+    const body = c.req.valid("json")
+    const ctx = portalOf(c)
+    const found = await portalRead(c, async (tx) => {
+      const who = await requesterOf(tx)
+      const [ticket] = extractRows<{ id: string }>(
+        await tx.execute(drizzleSql`SELECT id FROM portal.tickets WHERE id = ${id}::uuid`),
+      )
+      return who && ticket ? who : null
+    })
+    if (found instanceof Response) return found
+    if (!found) return notFound(c)
+    const files = body.attachmentFileIds ?? []
+    if (!(await portalStagedFilesOk(ctx.orgId, ctx.userId, files))) {
+      return refuse(
+        c,
+        422,
+        "unknown_attachment",
+        "One or more attachments are not yours or were already sent.",
+      )
+    }
+    const messageId = await appendPortalReply(ctx.orgId, {
+      ticketId: id,
+      fromEmail: found.email,
+      fromName: found.name,
+      textBody: body.text,
+    })
+    await reparentStagedFiles(ctx.orgId, messageId, files, "portal-reply-files")
+    return success(c, { id: messageId, requestId: id, attachments: files.length })
   })
   .get("/files/:id", async (c) => {
     const id = c.req.param("id")

@@ -51,6 +51,12 @@ export interface PortalTokenPayload {
   authVersion: number
   permissionVersion: number
   sid?: string
+  /**
+   * An enrolment-only token: the person must set up a second factor and has none
+   * yet. It opens the second-factor setup and confirm routes and nothing else,
+   * has no session behind it and cannot be refreshed.
+   */
+  enrol?: true
 }
 
 const ACCESS_TOKEN_EXPIRY = "15m"
@@ -134,6 +140,7 @@ export async function signPortalToken(
     authVersion: payload.authVersion,
     permissionVersion: payload.permissionVersion,
     ...(payload.sid && { sid: payload.sid }),
+    ...(payload.enrol && { enrol: true }),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -176,6 +183,7 @@ const portalTokenPayloadSchema = z
     authVersion: z.number().int(),
     permissionVersion: z.number().int(),
     sid: z.string().uuid().optional(),
+    enrol: z.literal(true).optional(),
     aud: z.literal("portal"),
     iat: z.number(),
     exp: z.number(),

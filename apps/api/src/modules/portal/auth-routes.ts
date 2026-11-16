@@ -52,6 +52,10 @@ function clearPortalCookie(c: Context): void {
 }
 
 /** The answer of a sign-in that minted: the portal token, the refresh token in the cookie only. */
+export function portalSignedIn(c: Context, tokens: TokenPair) {
+  return signedIn(c, tokens)
+}
+
 function signedIn(c: Context, tokens: TokenPair) {
   setPortalCookie(c, tokens.refreshToken)
   return success(c, { accessToken: tokens.accessToken })
@@ -116,7 +120,8 @@ export const portalAuthRoutes = new Hono<AppEnv>()
         ...c.req.valid("json"),
         host: effectiveRequest(c).host ?? undefined,
       })
-      if ("totpRequired" in result) return success(c, result)
+      // A second factor to give, or one to set up first: no session cookie yet.
+      if ("totpRequired" in result || "enrolmentRequired" in result) return success(c, result)
       return signedIn(c, result)
     } catch (err) {
       if (err instanceof AuthServiceError) return refused(c)

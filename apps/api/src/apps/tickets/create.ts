@@ -269,6 +269,12 @@ interface ActorRef {
 
 export type CreateTicketOptions = PrivilegedReadOptions & {
   /**
+   * A client's request from the portal: the channel is `portal` and the ticket is
+   * stamped with the client's company. An option rather than a param, so no tool
+   * input can set it.
+   */
+  portalRequest?: { companyId: string }
+  /**
    * The ticket records something from the past (an import, a mailbox backfill),
    * or our own mail: it is not news, so a "Notify on new ticket" inbox says
    * nothing. An option rather than a param, so no tool input can set it.
@@ -309,6 +315,26 @@ async function nextTicketHandle(
   )
   const top = row?.top === null || row?.top === undefined ? 0 : Number(row.top)
   return top >= drawnNumber ? `ticket-${top + 1}` : drawn
+}
+
+/**
+ * Who a client's portal request goes to on Home: the company's account manager
+ * while they are an active member; with none, the inbox admins (`noAccountManager`).
+ * The ticket has no assignee yet, so nobody is on it before the manager.
+ */
+async function portalRequestRecipient(
+  tx: { execute: RlsClient["execute"] },
+  orgId: string,
+  companyId: string,
+): Promise<{ accountManagerId: string } | { noAccountManager: true }> {
+  const [row] = extractRows<{ id: string }>(
+    await tx.execute(drizzleSql`
+      SELECT u.id FROM ${kernelRel("companies")} c
+        JOIN ${kernelRel("users")} u ON u.id = c.owner_user_id AND u.org_id = c.org_id
+       WHERE c.id = ${companyId}::uuid AND c.org_id = ${orgId}::uuid
+         AND u.status = 'active' AND u.user_type <> 'external'`),
+  )
+  return row ? { accountManagerId: row.id } : { noAccountManager: true }
 }
 
 /** What a new-ticket notice calls the person who asked: name and address, whichever exist. */
@@ -490,7 +516,13 @@ export async function createTicket(
       }
     }
   }
-  const channel = params.channel ?? "manual"
+  const channel = opts.portalRequest ? "portal" : (params.channel ?? "manual")
+  // The client company the ticket is for, stamped now and never followed: the
+  // portal person's company, else the contact's company at this moment.
+  const companyStamp = opts.portalRequest
+    ? drizzleSql`${opts.portalRequest.companyId}::uuid`
+    : drizzleSql`(SELECT c.company_id FROM ${kernelRel("contacts")} c
+        WHERE c.id = ${params.contactId ?? null}::uuid AND c.org_id = ${orgId}::uuid)`
   const priority = params.priority ?? "normal"
   let team = params.team ?? null
   let unlinkedContactEmail: string | null = null
@@ -827,7 +859,7 @@ export async function createTicket(
             category_id, contact_id, assigned_to, reply_token, source_inbox_id, source_account_id, external_ref,
             closed_reason, first_response_at, requester_email, related_ticket_id,
             sla_target_seconds, sla_deadline, sla_active_started_at, sla_elapsed_seconds,
-            message_count, created_at, updated_at
+            message_count, created_at, updated_at, company_id
           ) VALUES (
             gen_random_uuid(), ${orgId}::uuid, ${handle}, ${maskPaymentSecrets(params.subject).text}, ${status}, ${priority}, ${channel},
             ${team}, ${audience}, ${params.language ?? null}, ${sensitivity},
@@ -836,7 +868,7 @@ export async function createTicket(
             ${closedReason}, ${firstResponseTs ? firstResponseTs.toISOString() : null}::timestamptz,
             ${requesterEmail}, ${params.relatedTicketId ?? null}::uuid,
             ${slaTargetSeconds}, ${slaDeadlineValue}::timestamptz, ${slaActiveStartedValue}::timestamptz, 0,
-            0, ${createdTs.toISOString()}::timestamptz, now()
+            0, ${createdTs.toISOString()}::timestamptz, now(), ${companyStamp}
           )
           RETURNING id
         `)
@@ -970,6 +1002,13 @@ export async function createTicket(
             "tickets:team": team,
             "tickets:sensitivity": sensitivity,
             ...newTicketNotice,
+            // A client's portal request: its company and who its Home row goes to.
+            ...(opts.portalRequest
+              ? {
+                  companyId: opts.portalRequest.companyId,
+                  ...(await portalRequestRecipient(sp, orgId, opts.portalRequest.companyId)),
+                }
+              : {}),
           },
           actorId: actor.userId,
           actorType: actor.auditActorType ?? actor.actorType,

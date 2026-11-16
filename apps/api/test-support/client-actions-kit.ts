@@ -4,8 +4,11 @@
 // companies, a captured system mail channel, a test target whose read tool
 // answers what the test sets, and the page's calls through the real app.
 import { afterAll, afterEach, beforeAll, expect } from "bun:test"
+import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { __privileged_db__ as privilegedDb } from "~/db/connection"
+import { setPrivilegedContext } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import type { EmailMessage, EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
@@ -15,6 +18,8 @@ import {
   ClientActionTargetsTestAccess,
   type ClientActionView,
 } from "~/modules/client-actions/targets"
+import { writeMailPage } from "~/modules/mail/page-write"
+import { seedContext } from "~/seed/context"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
   CaptureProvider,
@@ -23,6 +28,7 @@ import {
   type DoorWorld,
   dropDoorWorld,
 } from "~/tests/security/portal-doors/fixture"
+import { ensureMailAccount } from "./seed/mail"
 
 export const BASE = "/api/public/client-actions"
 export const k = (table: string) => sql(`${schemaRef("kernel")}.${table}`)
@@ -96,6 +102,27 @@ export function useClientActionWorld(targetApp: string, targetType = "contract")
     if (kit.w) {
       await sql`DELETE FROM ${k("attention_events")} WHERE org_id = ${kit.w.orgId}`
       await sql`DELETE FROM ${k("files")} WHERE org_id = ${kit.w.orgId}`
+      // A mailbox a test synced into: its messages, conversations, account and connection.
+      for (const table of ["messages", "conversations", "accounts"]) {
+        await sql`DELETE FROM ${sql(`${schemaRef("app_mail")}.${table}`)} WHERE org_id = ${kit.w.orgId}`
+      }
+      await sql`DELETE FROM ${k("connected_accounts")} WHERE org_id = ${kit.w.orgId}`
+      // Tickets a test made (from mail or a portal request), and their inboxes.
+      await sql`DELETE FROM kernel.pending_events WHERE org_id = ${kit.w.orgId}`
+      await sql.begin(async (tx) => {
+        await tx.unsafe("SET LOCAL ROLE liaison_admin")
+        await tx.unsafe("SELECT set_config('liaison.demo_purge_org', $1, true)", [kit.w.orgId])
+        for (const table of ["messages", "tickets", "inboxes"]) {
+          await tx.unsafe(`DELETE FROM "${schemaRef("app_tickets")}".${table} WHERE org_id = $1`, [
+            kit.w.orgId,
+          ])
+        }
+        await tx.unsafe(`DELETE FROM "${schemaRef("kernel")}".threads WHERE org_id = $1`, [
+          kit.w.orgId,
+        ])
+      })
+      // Senders the sync made contacts of are owned by the mailbox's person.
+      await sql`UPDATE ${k("contacts")} SET owner_user_id = NULL WHERE org_id = ${kit.w.orgId}`
       await dropDoorWorld(kit.w)
     }
     await releaseTestLock()
@@ -216,4 +243,82 @@ export async function eventsOf(id: string): Promise<Array<{ event: string; meta:
   return (await sql`
     SELECT event, meta FROM ${k("client_action_events")} WHERE action_id = ${id} ORDER BY at, id
   `) as unknown as Array<{ event: string; meta: unknown }>
+}
+
+/** A mailbox of `userId` in the kit's org, as a synced Gmail account. */
+export async function mailboxOf(kit: Kit, userId: string, email: string) {
+  return ensureMailAccount(seedContext({ orgId: kit.w.orgId, now: new Date() }), {
+    ownerType: "user",
+    userId,
+    email,
+    provider: "gmail",
+  })
+}
+
+let syncSeq = 0
+/** A captured mail as the Gmail sync hands it to the page writer (lowercased headers). */
+export function syncedCopyOf(
+  m: EmailMessage,
+  over: Record<string, unknown> = {},
+): Record<string, unknown> {
+  syncSeq += 1
+  const id = `<synced-${syncSeq}-${crypto.randomUUID().slice(0, 8)}@mail.example>`
+  const headers: Record<string, string> = { "message-id": id }
+  for (const [k, v] of Object.entries(m.headers ?? {})) headers[k.toLowerCase()] = v
+  return {
+    externalMessageId: id,
+    externalProviderId: id,
+    externalThreadId: id,
+    from: { email: m.from ?? "notifications@mail.example" },
+    to: [m.to],
+    cc: [],
+    bcc: [],
+    subject: m.subject,
+    textBody: m.text ?? "",
+    htmlBody: m.html,
+    snippet: (m.text ?? "").slice(0, 200),
+    isRead: false,
+    isStarred: false,
+    labels: ["INBOX"],
+    direction: "inbound",
+    sentAt: new Date().toISOString(),
+    headers,
+    ...over,
+  }
+}
+
+/** Writes one synced page into a mailbox through the real page writer; returns the events it queued. */
+export async function syncPage(
+  kit: Kit,
+  accountId: string,
+  actorId: string,
+  messages: Array<Record<string, unknown>>,
+  origin = "incremental",
+): Promise<Array<{ entity: string; data: Record<string, unknown> }>> {
+  const events: Array<{ entity: string; data: Record<string, unknown> }> = []
+  await privilegedDb.transaction(async (tx) => {
+    await tx.execute(drizzleSql`SET LOCAL ROLE liaison_admin`)
+    await setPrivilegedContext(tx as never, kit.w.orgId)
+    await writeMailPage(
+      {
+        tx: tx as never,
+        schemaName: schemaRef("app_mail"),
+        orgId: kit.w.orgId,
+        actorId,
+        queueEvents: async (evs) => {
+          events.push(...evs)
+        },
+      },
+      { accountId, origin, messages },
+    )
+  })
+  return events
+}
+
+/** The stored rows of a mailbox, text columns only. */
+export async function mailboxRows(accountId: string) {
+  return (await sql`
+    SELECT external_message_id, subject, text_body, html_body, snippet
+      FROM ${sql(`${schemaRef("app_mail")}.messages`)} WHERE account_id = ${accountId}
+  `) as unknown as Array<Record<string, string | null>>
 }

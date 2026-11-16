@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/client-actions/synced-mail.ts": "The mail page writer's drop of this org's own signing mail: answers which of a synced page's action mail ids exist in this org's client action trail (one indexed column, nothing else read). The syncing actor holds no client action scope, and a restricted action is hidden even from one who does."
+  }
+}

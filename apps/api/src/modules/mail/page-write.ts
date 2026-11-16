@@ -6,6 +6,8 @@
 // IMAP batch). The sandboxed mail bundle fetches and normalizes the page and
 // hands it here through `mail_writePage`; this writes it whole:
 //
+//   0. this org's own signing mail is dropped (client-actions/synced-mail.ts):
+//      no row, no index, no event; a quoted signing link is cut from the rest
 //   1. one lookup of the page's external ids   -> skip what is already stored
 //   2. one lookup of the page's threads         -> which conversations exist
 //   3. the senders -> contact ids, under the mailbox's policy (sender-contacts.ts)
@@ -51,6 +53,8 @@ import { sanitizeCustomerHtml } from "~/lib/email/sanitize"
 import { evaluateAuthenticationResults, trustedAuthservIdsFor } from "~/lib/email/sender-auth"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
+import { cutSigningLinks } from "~/modules/client-actions/quoted-link"
+import { withoutActionMail } from "~/modules/client-actions/synced-mail"
 import { type OptOutCandidate, optOutPhraseIn, proposeOptOuts } from "~/modules/mail/optout-wording"
 import { resolveSenderContacts } from "~/modules/mail/sender-contacts"
 import {
@@ -188,6 +192,14 @@ function maskPageMessage(m: PageMessage): void {
   if (m.textBody) m.textBody = maskWithNote(m.textBody).text
   if (m.htmlBody) m.htmlBody = maskHtmlWithNote(m.htmlBody).text
   if (m.snippet) m.snippet = maskPaymentSecrets(m.snippet).text
+}
+
+/** A message's subject, bodies and snippet with every signing link cut out. */
+function cutPageMessageLinks(m: PageMessage): void {
+  if (m.subject) m.subject = cutSigningLinks(m.subject)
+  if (m.textBody) m.textBody = cutSigningLinks(m.textBody)
+  if (m.htmlBody) m.htmlBody = cutSigningLinks(m.htmlBody)
+  if (m.snippet) m.snippet = cutSigningLinks(m.snippet)
 }
 
 function sentAtMs(message: PageMessage): number {
@@ -531,9 +543,20 @@ export async function writeMailPage(
   const recipient = sealing ? resolveSealRecipient(account, actorId) : null
   const accountId = account.id
 
+  // 0. A link or code mail of this org, synced back from a mailbox, is never
+  // stored: it holds a live link or code. Matched on the stored mail id only,
+  // so a forged header is ordinary mail.
+  const { kept, dropped } = await withoutActionMail(orgId, page)
+  if (dropped > 0) {
+    log.info(
+      { orgId, accountId: input.accountId, origin, dropped },
+      "mail page write: signing mail synced back from the mailbox was not stored",
+    )
+  }
+
   // 1. What is new, and what an earlier run stored without finishing.
   const seen = new Set<string>()
-  const candidates = page.filter(
+  const candidates = kept.filter(
     (m) => !seen.has(m.externalMessageId) && seen.add(m.externalMessageId),
   )
   if (candidates.length === 0) return { entries: [] }
@@ -568,6 +591,8 @@ export async function writeMailPage(
   // sealed mailbox is the documented exception: the server never stores its
   // plaintext, and its text is masked where the agent reads it instead
   // (agent/mailbox-plaintext).
+  // A quoted signing link is cut from every stored text, sealed mailbox or not.
+  for (const m of fresh) cutPageMessageLinks(m)
   if (!sealing) for (const m of fresh) maskPageMessage(m)
 
   // 2. The page's threads.

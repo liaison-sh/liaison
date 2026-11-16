@@ -288,6 +288,7 @@ describe("portal doors: the client action page", () => {
       "modules/client-actions/mint.ts",
       "modules/client-actions/public-routes.ts",
       "modules/client-actions/routes.ts",
+      "modules/client-actions/synced-mail.ts",
       "modules/client-actions/targets.ts",
     ])
     const { id, token } = await mint()

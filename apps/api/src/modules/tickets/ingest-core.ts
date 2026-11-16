@@ -5,12 +5,14 @@
 // here. It runs as the system actor on the privileged connection, because the
 // sender holds no scope or grant; what the caller may set is decided by the route
 // before this runs. The ticket lands in the org's default inbox unless the route
-// names one, and files the sender staged move onto its first message.
+// names one, and files the sender staged move onto its first message. A quoted
+// signing link is cut from every text before it is stored (client-actions/quoted-link.ts).
 import { sql as drizzleSql } from "drizzle-orm"
 import { ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { cutSigningLinks } from "~/modules/client-actions/quoted-link"
 import { loadOrgSettings, wouldExceedOrgQuota } from "~/modules/files/service"
 
 const SYSTEM_ACTOR = "00000000-0000-0000-0000-000000000000"
@@ -71,7 +73,7 @@ export async function ingestTicket(
       tx,
       orgId,
       {
-        subject: input.subject,
+        subject: cutSigningLinks(input.subject),
         channel: input.channel,
         team: input.team,
         sensitivity: input.sensitivity,
@@ -87,9 +89,9 @@ export async function ingestTicket(
           kind: "inbound",
           fromEmail: input.message.fromEmail,
           fromName: input.message.fromName,
-          subject: input.subject,
-          htmlBody: input.message.htmlBody,
-          textBody: input.message.textBody,
+          subject: cutSigningLinks(input.subject),
+          htmlBody: cutSigningLinks(input.message.htmlBody),
+          textBody: cutSigningLinks(input.message.textBody),
         },
       },
       { actorType: "system", userId: SYSTEM_ACTOR } as never,
@@ -228,6 +230,7 @@ export async function appendPortalReply(
   input: { ticketId: string; fromEmail: string; fromName: string; textBody: string },
 ): Promise<string> {
   const { recordInboundOnTicket } = await import("~/apps/tickets/inbound-record")
+  const textBody = cutSigningLinks(input.textBody)
   return withPrivilegedDb(orgId, "portal-request-reply", async (tx) => {
     const sentAt = new Date().toISOString()
     const r = await tx.execute(drizzleSql`
@@ -236,8 +239,8 @@ export async function appendPortalReply(
         subject, html_body, text_body, snippet, sent_at, header_references, created_at, updated_at
       ) VALUES (
         gen_random_uuid(), ${orgId}, ${input.ticketId}, 'inbound', ${input.fromEmail},
-        ${input.fromName}, '[]'::jsonb, '[]'::jsonb, NULL, NULL, ${input.textBody},
-        ${input.textBody.slice(0, 200)}, ${sentAt}::timestamptz, '[]'::jsonb, now(), now()
+        ${input.fromName}, '[]'::jsonb, '[]'::jsonb, NULL, NULL, ${textBody},
+        ${textBody.slice(0, 200)}, ${sentAt}::timestamptz, '[]'::jsonb, now(), now()
       )
       RETURNING id`)
     const messageId = extractRows<{ id: string }>(r)[0]!.id
@@ -257,7 +260,7 @@ export async function appendPortalReply(
         id: messageId,
         ticketId: input.ticketId,
         kind: "inbound",
-        textBody: input.textBody,
+        textBody,
         fromEmail: input.fromEmail,
         fromName: input.fromName,
         sentAt,

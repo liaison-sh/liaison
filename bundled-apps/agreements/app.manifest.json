@@ -40,7 +40,14 @@
       "labelField": "title",
       "searchable": false,
       "tableName": "agreements",
-      "readScope": "agreements:agreements:read"
+      "readScope": "agreements:agreements:read",
+      "fileParent": {
+        "tableName": "agreements",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:agreements:read",
+        "writeScope": "agreements:agreements:write"
+      }
     },
     "agreement_version": {
       "labelField": "number",

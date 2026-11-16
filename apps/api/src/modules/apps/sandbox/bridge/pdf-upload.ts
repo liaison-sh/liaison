@@ -3,8 +3,9 @@
  * The agreements app's uploaded documents, done by the host because a bundled
  * app cannot parse a PDF (and nothing parses one outside the render service):
  *
- *  - `pdf_upload_check`: reads the uploaded file the caller can see, runs the
- *    file checks, the two readers' compare and the virus scan, and answers the
+ *  - `pdf_upload_check`: reads the uploaded file kept on an agreement the caller
+ *    can see, runs the file checks, the two readers' compare and the virus
+ *    scan, and answers the
  *    verdict, the fingerprints and the report. Stores nothing. A tool call
  *    passes `deadlineMs`: past it the answer is `{status: "checking"}` and the
  *    app finishes the work in its `upload-freeze` job.
@@ -39,7 +40,11 @@ export function createPdfUploadMethods(
 ): Record<string, (json: string) => Promise<string>> {
   const { requireApp, orgId, txDb } = ctx
 
-  /** The uploaded file's bytes, read under the caller's own row rules; null when not readable. */
+  /**
+   * The uploaded file's bytes: only the copy kept on an agreement (the person's
+   * update put it there), read under the caller's own row rules, so the system
+   * run of the `upload-freeze` job reads it as any reader of the agreement does.
+   */
   const readUpload = async (
     fileId: string,
   ): Promise<{ bytes: Uint8Array } | { refusal: string }> => {
@@ -54,6 +59,7 @@ export function createPdfUploadMethods(
         SELECT storage_key, size_bytes, enc_version
           FROM ${drizzleSql.raw(schemaRef("kernel"))}.files
          WHERE id = ${fileId}::uuid AND org_id = ${orgId}::uuid
+           AND app = ${APP} AND entity_type = 'agreement'
          LIMIT 1`),
     )
     if (!row || Number(row.enc_version ?? 0) !== 0)

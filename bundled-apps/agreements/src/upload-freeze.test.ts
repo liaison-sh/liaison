@@ -14,18 +14,26 @@ import { signedWorld } from "./seal.testutil"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const UPLOAD = "44444444-4444-4444-8444-444444444444"
+/** The copy the host keeps on the agreement. */
+const KEPT_COPY = "55555555-5555-4555-8555-555555555555"
 const SHA = "c".repeat(64)
 const PAGES = "d".repeat(64)
 
 function world(check: () => unknown) {
   const db = memoryDb()
-  const calls = { freeze: [] as unknown[] }
+  const calls = { freeze: [] as unknown[], attach: [] as unknown[] }
+  const readable = { upload: true }
   const ctx: AgreementsCtx = {
     orgId: "org",
     userId: PERSON,
     db,
     turn: { get: async () => ({ agentId: null }) },
     today: "2026-11-16",
+    files_attachToParent: async (p) => {
+      calls.attach.push(p)
+      if (!readable.upload) throw new Error("source file not found or not readable")
+      return { id: KEPT_COPY, filename: "upload.pdf", mimeType: "application/pdf", sizeBytes: 1200 }
+    },
     pdf_upload_check: async () => check(),
     pdf_upload_freeze: async (p) => {
       calls.freeze.push(p)
@@ -38,7 +46,7 @@ function world(check: () => unknown) {
       }
     },
   }
-  return { db, ctx, calls }
+  return { db, ctx, calls, readable }
 }
 
 const KEPT = {
@@ -86,7 +94,7 @@ describe("an uploaded PDF frozen as is", () => {
       scan_state: "not_run",
       status: "frozen",
     })
-    expect(w.calls.freeze[0]).toMatchObject({ fileId: UPLOAD, sha256: SHA, pagesSha256: PAGES })
+    expect(w.calls.freeze[0]).toMatchObject({ fileId: KEPT_COPY, sha256: SHA, pagesSha256: PAGES })
   })
 
   it("a refused file leaves no version and says why", async () => {
@@ -129,7 +137,31 @@ describe("an uploaded PDF frozen as is", () => {
     expect(d?.upload_file_id).toBeNull()
     expect(await agreementUpdate(w.ctx, { id, file_id: UPLOAD })).toMatchObject({ status: "ok" })
     const [d2] = w.db.tables.get("agreement_drafts") as Row[]
-    expect(d2?.upload_file_id).toBe(UPLOAD)
+    expect(d2?.upload_file_id).toBe(KEPT_COPY)
+  })
+
+  it("the upload is kept as a copy on the agreement, so whoever reads the agreement reads it", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    expect(w.calls.attach[0]).toEqual({
+      sourceFileId: UPLOAD,
+      targetApp: "agreements",
+      targetEntityType: "agreement",
+      targetEntityId: id,
+    })
+    const [d] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d?.upload_file_id).toBe(KEPT_COPY)
+  })
+
+  it("an upload the person cannot read changes nothing on the draft", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    await agreementPrepare(w.ctx, { id })
+    w.readable.upload = false
+    const out = await agreementUpdate(w.ctx, { id, file_id: UPLOAD })
+    expect(out).toMatchObject({ status: "error", error: { code: "NOT_READABLE" } })
+    const [d] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d?.upload_file_id).toBeNull()
   })
 })
 

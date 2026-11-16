@@ -40,6 +40,13 @@ export interface AgreementsCtx {
     pagesSha256: string
     filename: string
   }) => Promise<unknown>
+  /** Copies a file the caller can read onto one of this app's rows; answers the copy. */
+  files_attachToParent?: (p: {
+    sourceFileId: string
+    targetApp: string
+    targetEntityType: string
+    targetEntityId: string
+  }) => Promise<unknown>
   /** Stores bytes as a file of one of this app's rows. */
   files_importAttachment?: (p: {
     targetApp: string

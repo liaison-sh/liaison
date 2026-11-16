@@ -388,7 +388,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       data: {
         agreement_id: { $ref: "agreement" },
         source,
-        upload_file_id: p.file_id ?? null,
+        upload_file_id: null,
         lock_version: 1,
         next_number: 1,
         updated_by_user_id: user,
@@ -416,6 +416,21 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
   })
   const row = result.rows.agreement
   const number = result.sequence?.formatted ?? String(row?.number ?? "")
+  // The upload is kept on the new agreement (see keepUploadOnAgreement).
+  let keptFileId: string | null = null
+  let notKept = ""
+  if (p.file_id !== undefined && row?.id) {
+    const kept = await keepUploadOnAgreement(ctx, { ...row, number } as AgreementRow, p.file_id)
+    if (isError(kept))
+      notKept = `; the uploaded file ${p.file_id} could not be read by you, so it is not on the draft (agreement_update with a new file_id adds one)`
+    else {
+      keptFileId = kept
+      await ctx.db.updateMany("agreement_drafts", {
+        where: { agreement_id: row.id },
+        data: { upload_file_id: kept },
+      })
+    }
+  }
   return {
     status: "ok",
     agreement: {
@@ -425,9 +440,9 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       status: "draft",
       title: p.title.trim(),
       org_access: orgAccess,
-      file_id: p.file_id ?? null,
+      file_id: keptFileId,
     },
-    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}. Next: agreement_prepare to check it.`,
+    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}${notKept}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}. Next: agreement_prepare to check it.`,
   }
 }
 
@@ -564,6 +579,12 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     if (!draft)
       return refusal("NOT_A_DRAFT", `Agreement ${row.number} has no draft. Nothing was changed.`)
     const expected = p.lock_version ?? draft.lock_version
+    let uploadFileId: string | null = null
+    if (p.file_id !== undefined && p.source === undefined) {
+      const kept = await keepUploadOnAgreement(ctx, row, p.file_id)
+      if (isError(kept)) return kept
+      uploadFileId = kept
+    }
     // A file makes the next version an upload; a source (a restart from the
     // template's text) makes it generated again. The template link stays.
     const body: Record<string, unknown> =
@@ -573,10 +594,12 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
             upload_file_id: null,
             upload_state: null,
           }
-        : { upload_file_id: p.file_id, upload_state: null }
+        : { upload_file_id: uploadFileId, upload_state: null }
+    // An agreement has one draft: it is found by its agreement, because the
+    // host refuses `id` in a bulk write's filter.
     ops.push({
       updateMany: "agreement_drafts",
-      where: { id: draft.id, lock_version: expected },
+      where: { agreement_id: row.id, lock_version: expected },
       data: {
         ...body,
         lock_version: expected + 1,
@@ -840,6 +863,37 @@ async function freezeDraft(
     page_count: out.pageCount ?? null,
     checks,
     message: `${row.number} version ${number} is frozen (${out.pageCount ?? "?"} page(s), fingerprint ${out.sha256.slice(0, 12)}). Nothing was sent. Next: agreement_send with this version_id and sha256.`,
+  }
+}
+
+/**
+ * Keep a person's upload on the agreement itself: the host copies the file
+ * the caller can read onto the agreement, so whoever may see the agreement
+ * (the system run finishing a long check included) reads it under the same
+ * row rules, and a restricted agreement hides it. Answers the copy's id.
+ */
+async function keepUploadOnAgreement(
+  ctx: AgreementsCtx,
+  row: AgreementRow,
+  fileId: string,
+): Promise<string | ErrorEnvelope> {
+  const notKept = refusal(
+    "NOT_READABLE",
+    `The uploaded file ${fileId} cannot be read by you here, so ${row.number} was not changed. Upload it again with files_upload_url, then pass the new file_id.`,
+  )
+  if (!ctx.files_attachToParent) return notKept
+  try {
+    const copy = bridgeAnswer<{ id?: string }>(
+      await ctx.files_attachToParent({
+        sourceFileId: fileId,
+        targetApp: "agreements",
+        targetEntityType: "agreement",
+        targetEntityId: row.id,
+      }),
+    )
+    return copy?.id ? copy.id : notKept
+  } catch {
+    return notKept
   }
 }
 

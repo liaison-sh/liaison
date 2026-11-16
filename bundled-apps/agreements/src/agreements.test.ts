@@ -41,6 +41,8 @@ function ctxFor(
       return { approval_id: `card-${approvals.length}` }
     },
     today: "2026-11-16",
+    // The host keeps an upload as a copy on the agreement.
+    files_attachToParent: async (p) => ({ id: `kept-${p.sourceFileId}` }),
     approvals,
   }
   return ctx
@@ -201,7 +203,7 @@ describe("documents this signature does not fit", () => {
     )
   })
 
-  it("any PDF makes a normal draft holding its file, with no project, invoice or knowledge document", async () => {
+  it("any PDF makes a normal draft holding a copy of its file, with no project, invoice or knowledge document", async () => {
     const db = memoryDb()
     const file = "44444444-4444-4444-8444-444444444444"
     const out = await agreementCreate(ctxFor(db), {
@@ -218,7 +220,7 @@ describe("documents this signature does not fit", () => {
     })
     expect(
       db.tables.get("agreement_drafts")?.find((r) => r.agreement_id === id)?.upload_file_id,
-    ).toBe(file)
+    ).toBe(`kept-${file}`)
     expect([...db.tables.keys()].sort()).toEqual([
       "agreement_drafts",
       "agreement_shares",

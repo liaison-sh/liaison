@@ -25,7 +25,7 @@ import { redis } from "~/lib/redis"
 import { effectiveRequestFromRaw } from "~/lib/request-context"
 import { msSinceShutdownBegan, registerShutdownPhase, shutdownBudgets } from "~/lib/shutdown"
 import { AFTER_DRAIN_DEADLINE_MS, SHUTDOWN_ORDER } from "~/lib/shutdown-budget"
-import { webShellHeaders } from "~/middleware/security-headers"
+import { isPublicPagePath, webShellHeaders } from "~/middleware/security-headers"
 import { holdOrgRuntime } from "~/modules/apps/app-registries"
 import { isOrgEndedAsync, onOrgEnded } from "~/modules/apps/org-apps"
 import { watchSession } from "~/modules/auth/session-revocation"
@@ -364,13 +364,18 @@ export async function serveStaticAsset(
 export async function serveSpaFallback(
   publicDir: string,
   requestHeaders?: Headers,
+  pathname?: string,
 ): Promise<Response | undefined> {
   const index = loadIndex(publicDir)
   if (!index) return undefined
   const headers = {
     "cache-control": INDEX_CACHE_CONTROL,
     etag: index.etag,
-    ...webShellHeaders({ html: index.body }),
+    // A client's public page (the token page): no referrer, no index, never framed.
+    ...webShellHeaders({
+      html: index.body,
+      publicPage: pathname !== undefined && isPublicPagePath(pathname),
+    }),
   }
   if (ifNoneMatchHits(requestHeaders?.get("if-none-match"), index.etag)) {
     return new Response(null, { status: 304, headers })
@@ -621,7 +626,7 @@ async function createApiServer(app: FetchApp, options: ApiServerOptions) {
     ) {
       const asset = await serveStaticAsset(publicDir, url.pathname, req.headers)
       if (asset) return asset
-      const fallback = await serveSpaFallback(publicDir, req.headers)
+      const fallback = await serveSpaFallback(publicDir, req.headers, url.pathname)
       if (fallback) return fallback
     }
 

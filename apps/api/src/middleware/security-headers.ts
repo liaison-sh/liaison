@@ -58,6 +58,22 @@ export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
    * LIAISON_PAY_FRAME_ORIGIN in the managed edition (read per call), else none.
    */
   payFrameOrigin?: string | null
+  /**
+   * A public page a client opens (the token page `/a`): nothing may frame it, not
+   * even this origin.
+   */
+  publicPage?: boolean
+}
+
+/**
+ * The web pages a client outside the organization opens: the token page. They
+ * are served by the SPA fallback like any route, with the public surface's
+ * headers on top (no referrer, no index, never framed).
+ */
+export const PUBLIC_PAGE_PATHS: readonly string[] = ["/a"]
+
+export function isPublicPagePath(pathname: string): boolean {
+  return PUBLIC_PAGE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 }
 
 function payFrameOrigin(explicit: string | null | undefined): string | null {
@@ -111,7 +127,7 @@ export function contentSecurityPolicy(options: ContentSecurityPolicyOptions = {}
     // itself: under 'none' the frame stayed empty there. So the web shell says 'self': another
     // origin still cannot frame it, an app's frame is a sandbox with an opaque origin, and the
     // file routes never serve HTML inline. Everything else keeps 'none'.
-    `frame-ancestors ${shell ? "'self'" : "'none'"}`,
+    `frame-ancestors ${shell && !options.publicPage ? "'self'" : "'none'"}`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -153,13 +169,20 @@ export function inlineScriptHashes(html: string | Uint8Array): string[] {
 export function webShellHeaders(options: {
   html: string | Uint8Array | null
   storageOrigin?: string | null
+  /** The document answers a public page's path (`isPublicPagePath`). */
+  publicPage?: boolean
 }): Record<string, string> {
   const headers: Record<string, string> = { ...BASE_SECURITY_HEADERS }
   if (options.html !== null) {
     headers["Content-Security-Policy"] = contentSecurityPolicy({
       storageOrigin: options.storageOrigin,
       scriptHashes: inlineScriptHashes(options.html),
+      publicPage: options.publicPage,
     })
+  }
+  if (options.publicPage) {
+    headers["Referrer-Policy"] = PUBLIC_SURFACE_HEADERS["Referrer-Policy"] as string
+    headers["X-Robots-Tag"] = PUBLIC_SURFACE_HEADERS["X-Robots-Tag"] as string
   }
   return headers
 }

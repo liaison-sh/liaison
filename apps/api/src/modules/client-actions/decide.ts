@@ -198,6 +198,8 @@ export function openFrameBody(row: ActionRow, view: ClientActionView) {
     valid_until: row.expires_at.toISOString(),
     summary: view.summary,
     invited_email_masked: maskEmail(row.invited_email),
+    // The words the sender asked the signer to type, shown above the field: null when none.
+    phrase: row.required_phrase,
     steps: stepsOf(row.kind),
   }
 }

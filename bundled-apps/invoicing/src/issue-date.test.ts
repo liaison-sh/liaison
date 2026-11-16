@@ -411,7 +411,7 @@ describe("the latest issue day of a draft from planned vs done", () => {
       const latest = String(docOf(h, id).latest_issue_on).slice(0, 10)
       expect(latest).toBe(c.period.to)
       const today = new Date().toISOString().slice(0, 10)
-      seen.push(`${issueLateness(latest, today)} ${cardLines(h)[0]}`)
+      seen.push(`${issueLateness(latest, today)} ${cardLines(h).at(-1)}`)
       // One approval only: it is the draft's one money item, late or not.
       expect(h.approvals).toHaveLength(1)
     }

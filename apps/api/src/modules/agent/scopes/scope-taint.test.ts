@@ -684,6 +684,16 @@ describe("rule 8: the card line and the no-decider refusal of a parked tainted w
       taintSurfaceLabel(["app_boxtal.app_config"], [{ name: "shipment", tableName: "shipments" }]),
     ).toBe("app_boxtal.app_config")
     expect(taintSurfaceLabel([undefined], [])).toBe("where it is written")
+    // Two entities over one table: the one named for the table, whatever the manifest order.
+    expect(
+      taintSurfaceLabel(
+        ["app_invoicing.documents"],
+        [
+          { name: "pdf", tableName: "documents" },
+          { name: "document", tableName: "documents" },
+        ],
+      ),
+    ).toBe("this document")
     const many = Array.from({ length: 40 }, (_, i) => `app${i}:things:read`)
     expect(taintDisclosureLine(many, "this ticket").length).toBeLessThanOrEqual(200)
   })

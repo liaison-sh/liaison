@@ -20,7 +20,7 @@ import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import { ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import { customerLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -610,12 +610,14 @@ export async function raiseIssueApproval(
     // `UTC` reads the org's own zone (the host's rule for an unset zone).
     const today = latestIssueOn ? (await ctx.time.civil({ timezone: "UTC" })).date : null
     const latest = latestIssueOn ? latestIssueLine(latestIssueOn, today) : null
+    // Whoever decides reads who is invoiced first: the draft's customer.
+    const shown = [...(await customerLine(ctx, draftId)), ...lines]
     const parked = await ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
       summary: `Issue ${title}`,
       summary_detail: latest
-        ? { lines: [...lines.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
-        : { lines },
+        ? { lines: [...shown.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
+        : { lines: shown },
       current_payload: { draft_id: draftId },
       approve_scope: "invoicing:documents:write",
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
@@ -649,6 +651,35 @@ export async function draftTotals(
     excl: Number(plan.subtotal_minor),
     vat: Number(plan.tax_minor),
     incl: Number(plan.total_minor),
+  }
+}
+
+/**
+ * What drafting a milestone's invoice would make, for its approval card: the step, its amount
+ * excluding VAT and the customer of the plan's quote. Internal read, nothing is written.
+ */
+export async function milestoneDraftPreview(
+  ctx: MutationsCtx,
+  input: { taskId?: string },
+): Promise<
+  | { label: string; amountMinor: string; currency: string; customer: string | null }
+  | { error: { code: string; message: string } }
+> {
+  const taskId = typeof input?.taskId === "string" ? input.taskId : ""
+  if (!UUID.test(taskId)) return { error: { code: "invalid_task", message: "Not a task id." } }
+  const step = await one(ctx, "billing_steps", { task_id: taskId })
+  if (!step)
+    return { error: { code: "no_billing_step", message: "The task invoices no billing step." } }
+  const quote =
+    typeof step.quote_document_id === "string"
+      ? await one(ctx, "documents", { id: step.quote_document_id })
+      : null
+  const name = typeof quote?.counterparty_name === "string" ? quote.counterparty_name.trim() : ""
+  return {
+    label: String(step.label ?? ""),
+    amountMinor: String(step.amount_minor ?? "0"),
+    currency: String(step.currency ?? quote?.currency ?? "EUR"),
+    customer: name || null,
   }
 }
 

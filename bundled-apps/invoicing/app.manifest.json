@@ -2687,6 +2687,8 @@
       "description": "Draft the invoice of a done milestone, from its task only: the amount comes from the billing plan, never from hours. Refused unless the task is done and flagged a milestone. The final deducts the project's advances by itself. Takes no number; issuing waits on its approval.",
       "searchKeywords": ["jalon", "solde", "milestone"],
       "requiredScopes": ["invoicing:documents:write"],
+      "summarizer": "summarizeMilestoneDraftCreate",
+      "summarizerContext": { "tool": "milestone_draft_preview", "params": { "taskId": "taskId" } },
       "handler": "milestoneDraftCreateHandler",
       "writesToTable": "app_invoicing.documents",
       "timeoutMs": 30000,
@@ -2695,6 +2697,20 @@
         "properties": {
           "taskId": { "type": "string", "description": "The milestone task." }
         },
+        "required": ["taskId"],
+        "additionalProperties": false
+      }
+    },
+    "milestone_draft_preview": {
+      "description": "What drafting a milestone's invoice would make (step, amount excluding VAT, customer), for its approval card. Called by the approval card only.",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "milestoneDraftPreviewHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": { "taskId": { "type": "string", "description": "The milestone task's id." } },
         "required": ["taskId"],
         "additionalProperties": false
       }

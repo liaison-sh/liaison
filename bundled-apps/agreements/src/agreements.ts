@@ -50,6 +50,8 @@ export interface AgreementRow {
   what_it_is_by_user_id?: string | null
   not_a_guarantee_by_user_id?: string | null
   org_access?: OrgAccess | null
+  claimed_by_user_id?: string | null
+  claimed_at?: string | null
   created_by_user_id?: string | null
   created_by_agent_id?: string | null
   updated_at?: string | null
@@ -251,6 +253,10 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       frozen_at: v.frozen_at ?? null,
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
+    // An admin's claim, once every person on the list had left, stays shown to whoever reads it.
+    claimed: row.claimed_by_user_id
+      ? { by_user_id: row.claimed_by_user_id, at: row.claimed_at ?? null }
+      : null,
     signing_links: links.map((l) => ({
       client_action_id: l.id,
       signer: l.invited_name,
@@ -260,7 +266,9 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       expires_at: l.expires_at,
     })),
     message:
-      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`.trim(),
+      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`
+        .replace(/\s+/g, " ")
+        .trim(),
   }
 }
 

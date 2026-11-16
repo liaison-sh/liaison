@@ -2710,6 +2710,7 @@
     "tpl": {
       "editRole": "Edit role \"{{name}}\" ({{changes}})",
       "deleteRole": "Delete role \"{{name}}\"",
+      "restrictedDecision": "A restricted document needs your decision",
       "inviteAs": "Invite {{email}} as {{role}}",
       "assignTo": "Assign {{email}} to {{role}}",
       "removeFrom": "Remove {{email}} from {{role}}",
@@ -4044,6 +4045,7 @@
     },
     "mentionedYou": "{{name}} mentioned you",
     "fileShared": "{{name}} added a file to {{label}}",
+    "restrictedRequestsWithdrawn": "Requests about a restricted document were withdrawn: the people who asked are not on its list",
     "requestedAccess": "{{name}} requested access: {{title}}",
     "approvalDecided": {
       "approved": "Approval {{handle}} approved",

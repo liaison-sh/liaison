@@ -73,6 +73,7 @@ import { connectionRoutes } from "~/modules/apps/connections/routes"
 import { installRoutes } from "~/modules/apps/install-routes"
 import { manifestsAxesRoutes } from "~/modules/apps/manifests-axes-route"
 import { initOrgAppsInvalidation, UUID_RE } from "~/modules/apps/org-apps"
+import { restrictedClaimRoutes } from "~/modules/apps/restricted-claim"
 import { appRoutes, hostApiRoutes } from "~/modules/apps/routes"
 import { registerKernelAttentionProvider } from "~/modules/apps/runtime"
 import { appSettingsRoutes } from "~/modules/apps/settings-routes"
@@ -1131,6 +1132,8 @@ app.route("/api/apps/mcp-manager", mcpManagerAuditRoutes)
 app.route("/api/apps", appSettingsRoutes)
 // POST /api/apps/:app/pages/:page/link: a one-time link to an app page (app-pages.ts).
 app.route("/api/apps", appPageLinkRoutes)
+// POST /api/apps/agreements/agreements/:id/claim: an admin's one way in to a restricted agreement whose people are all gone (restricted-claim.ts).
+app.route("/api/apps", restrictedClaimRoutes)
 app.route("/api/apps", appRoutes)
 
 // Aggregated attention feed (authenticated — providers self-authorize per-row)

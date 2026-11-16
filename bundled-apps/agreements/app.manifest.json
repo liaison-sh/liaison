@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -214,7 +214,14 @@
           "onErase": "anonymize"
         },
         "created_by_agent_id": "uuid?",
-        "seal_overdue_at": "date?"
+        "seal_overdue_at": "date?",
+        "claimed_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "claimed_at": "date?"
       }
     },
     "agreement_shares": {

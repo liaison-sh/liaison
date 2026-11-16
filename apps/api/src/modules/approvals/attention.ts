@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import {
   APPROVING_WEDGE_GRACE_MS,
   type ApprovalRoute,
@@ -30,6 +31,7 @@ import { withServedSummaries } from "~/modules/approvals/served-summary"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { sendGuardProviderPill } from "~/modules/mail/send-guard"
 import { isSeededWrite } from "~/modules/notifications/seeded"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 
 const K = drizzleSql.raw(schemaRef("kernel"))
 
@@ -93,7 +95,16 @@ interface PendingApprovalRow {
   originating_thread_id: string | null
   /** The person on the item, read only to route the row (route-world.ts). */
   route_person_id: string | null
+  /** The proposing turn's taint: a `restricted:` entry means the request is about a restricted record. */
+  proposing_turn_scopes?: string[] | null
 }
+
+/**
+ * The only title a request about a restricted record carries on Home, in its push and in its
+ * notification mail: nothing of the record (S749q). The card in the conversation shows it to the
+ * person deciding, who is on the record's list.
+ */
+export const RESTRICTED_DECISION_TITLE = "A restricted document needs your decision"
 
 /** One step of a bundle, as the row names it. */
 interface BundleStepRow {
@@ -571,7 +582,8 @@ export async function computeApprovalAttentionItems(
   const result = await tx.execute(drizzleSql`
     SELECT ar.id, ar.handle, ar.summary, ar.tool_name, ar.status, ar.metadata, ar.created_at, ar.expires_at,
            ar.notify_user_ids, ar.bundle_id, ar.approve_scope, ar.resource_owner_id, ar.requested_by,
-           ar.current_payload, ar.originating_thread_id, ar.route_person_id
+           ar.current_payload, ar.originating_thread_id, ar.route_person_id,
+           ar.proposing_turn_scopes
     FROM ${K}.approval_requests ar
     WHERE ar.org_id = ${orgId}
       AND (
@@ -750,7 +762,10 @@ export async function computeApprovalAttentionItems(
     const outcome = r.bundle_id === r.id ? bundleOutcomes.get(r.id) : undefined
     const isSequence = Boolean(outcome && outcome.cnt > 1 && outcome.sequenced)
     const shown = isSequence && outcome ? outcome : r
-    const { titleDetail, titleKind, title: rowTitle } = approvalRowName(shown, skillNamesById)
+    const named = (r.proposing_turn_scopes ?? []).some(isRestrictedScope)
+      ? { titleDetail: null, titleKind: "summary" as const, title: RESTRICTED_DECISION_TITLE }
+      : approvalRowName(shown, skillNamesById)
+    const { titleDetail, titleKind, title: rowTitle } = named
 
     const expiresMs = new Date(r.expires_at).getTime() - Date.now()
     let urgency = 60

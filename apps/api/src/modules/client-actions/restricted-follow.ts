@@ -9,7 +9,7 @@
 //   - the record's discussion drops everyone but the person who changed the list: each one who
 //     can still read the record is enrolled again when they next open it;
 //   - once closed, its pending approvals become the asker's alone (owner-routed) when the asker
-//     is on the list, and are withdrawn when not.
+//     is on the list, and are withdrawn when not, with one Home line to the list.
 // Only record kinds with a list function are followed (`restrictedScopeOfEvent`).
 
 import { sql } from "drizzle-orm"
@@ -81,6 +81,20 @@ export async function followRestrictedAccess(event: AppEvent): Promise<boolean> 
           actorId: typeof event.actorId === "string" ? event.actorId : null,
           actorType: "system",
           data: await loadApprovalSummary(tx as never, event.orgId, id),
+        })
+      }
+      // The list hears that requests about the record went away, on Home: one line, naming
+      // nothing of the record, whoever asked.
+      if (withdrawn.length > 0 && list.length > 0) {
+        await tx.queueEvent({
+          app: "kernel",
+          entity: "restricted_record",
+          action: "requests_withdrawn",
+          entityId: recordId,
+          orgId: event.orgId,
+          actorId: typeof event.actorId === "string" ? event.actorId : null,
+          actorType: "system",
+          data: { targetUserIds: list, count: withdrawn.length },
         })
       }
     }

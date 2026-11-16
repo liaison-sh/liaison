@@ -26,5 +26,11 @@
     "stamped": "Timestamp: received from an outside authority.",
     "pending": "Timestamp: pending, not received yet.",
     "signers": "Signers"
+  },
+  "claim": {
+    "subject": "Restricted agreement {{number}} was claimed",
+    "body": "{{name}} added themselves to the list of people who can see agreement {{number}} on {{on}}.",
+    "why": "An admin may do this only after every person on the list has been deactivated for 7 days. The claim is shown on the agreement to anyone who can see it.",
+    "footer": "You get this mail because you were on the agreement's list. It holds no link."
   }
 }

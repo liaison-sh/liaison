@@ -26,6 +26,10 @@ import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import {
+  kernelTranslations,
+  RESTRICTED_REQUESTS_WITHDRAWN,
+} from "~/modules/attention/kernel-translations"
 import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
 import { followRestrictedAccess } from "~/modules/client-actions/restricted-follow"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -437,5 +441,16 @@ describe("what is derived from a restricted agreement follows its list", () => {
     expect(byId.get(offId as string)?.status).toBe("cancelled")
     expect(byId.get(onId as string)?.status).toBe("pending")
     expect(byId.get(onId as string)?.resource_owner_id).toBe(listedId)
+    // The list gets one Home line that the requests went away, naming nothing of the record.
+    const lines = await sql<{ payload: { action: string; data: Record<string, unknown> } }[]>`
+      SELECT payload FROM kernel.pending_events
+       WHERE org_id = ${orgId}::uuid AND payload->>'entity' = 'restricted_record'
+         AND payload->>'entityId' = ${openId}`
+    expect(lines.map((l) => [l.payload.action, l.payload.data])).toEqual([
+      ["requests_withdrawn", { targetUserIds: [listedId], count: 1 }],
+    ])
+    const home = kernelTranslations.find((t) => t.event === "restricted_record:requests_withdrawn")
+    expect(home?.summary).toBe(RESTRICTED_REQUESTS_WITHDRAWN)
+    expect(home?.recipients).toEqual({ kind: "participants", path: "data.targetUserIds" })
   })
 })

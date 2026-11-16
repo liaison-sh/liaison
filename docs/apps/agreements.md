@@ -32,6 +32,10 @@ Each agreement has an organization access (none, viewer, editor) and a list of n
 
 What comes from a closed agreement follows its list: Home items and notifications about it reach only the people on the list, a routine whose owner is not on the list does not run on its events, and what an agent writes after reading it can be read only by the people on the list.
 
+An approval about a closed agreement goes only to the person who asked, and its Home line and notification say "A restricted document needs your decision" without the title. When an agreement is closed while requests about it wait for people who are not on its list, those requests are withdrawn and the people on the list get one Home line saying so. A colleague who signs a closed agreement but is not on its list signs with their own link and reads it only there; the send card says so before anyone approves.
+
+Administrators see nothing of a closed agreement while anyone on its list is active. Once every person on the list has been deactivated for 7 days, an administrator with the user administration permission can add themselves with `POST /api/apps/agreements/agreements/:id/claim`. The claim is recorded in the audit log, everyone who was ever on the list gets a mail, and the agreement shows who claimed it and when. This is an access rule, not encryption: whoever runs the server can reach the data.
+
 ## Send for signature
 
 **Send** takes the version **Prepare** froze, with its fingerprint, and the signers: contacts or email addresses, in order (one after the other) or all at once, with links that last 7, 14 or 30 days. An agent's send waits for a person's approval; nothing goes out if the version changed since **Prepare**, and the approved send goes only to the addresses its card showed. Under "one after the other", the next signer gets a link only once the signer before them signed. A colleague who signs gets a line on their Home and signs in their own session, with no mailed link.

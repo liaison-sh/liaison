@@ -7,13 +7,19 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as dsql } from "drizzle-orm"
+import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { type EmailMessage, setSystemEmailProvider } from "~/infra/email"
 import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
+import {
+  computeApprovalAttentionItems,
+  RESTRICTED_DECISION_TITLE,
+} from "~/modules/approvals/attention"
 import { listApprovals } from "~/modules/approvals/list"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -27,7 +33,7 @@ import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
 import { type AppCell, insertAppRow } from "~/seed/factories/app-tables"
-import { seedOrgRow } from "~/seed/factories/org/rows"
+import { seedAuditEntry, seedOrgRow } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -482,4 +488,131 @@ describe("every surface honours the list", () => {
       expect(await seen(world.listed)).toBeGreaterThan(0)
     })
   }
+
+  it("a parked request about the restricted agreement reaches the person who asked under a title that names nothing of it", async () => {
+    const actor = await held(world.listed)
+    const items = await withRlsContext(actor, (tx) =>
+      computeApprovalAttentionItems(tx as never, world.orgId, world.listed),
+    )
+    const mine = items.filter((i) => i.metadata?.toolName === "kernel:threads_reply")
+    expect(mine.length).toBe(1)
+    // The summary is what the push and the notification mail carry.
+    expect(mine.map((i) => i.summary)).toEqual([RESTRICTED_DECISION_TITLE])
+    expect(JSON.stringify(mine.map((i) => [i.summary, i.metadata?.baseTitle]))).not.toContain(
+      NUMBER,
+    )
+    // Nobody else is asked.
+    for (const other of [world.admin, world.member]) {
+      const theirs = await withRlsContext(await held(other), (tx) =>
+        computeApprovalAttentionItems(tx as never, world.orgId, other),
+      )
+      expect(theirs.filter((i) => i.metadata?.toolName === "kernel:threads_reply")).toEqual([])
+    }
+  })
+
+  // An admin's one way in: only once every person on the list has been deactivated for 7 days.
+  describe("claiming a restricted agreement", () => {
+    const claimable = crypto.randomUUID()
+    let gone = ""
+    let boss = { bearer: "", userId: "" }
+    let plain = { bearer: "", userId: "" }
+    const sent: EmailMessage[] = []
+    const claim = (bearer: string) =>
+      app.request(`/api/apps/agreements/agreements/${claimable}/claim`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
+      })
+    const goneSince = async (interval: string) => {
+      await sql`DELETE FROM kernel.audit_log WHERE org_id = ${world.orgId}::uuid
+                 AND action = 'user.deactivate' AND entity_id = ${gone}`
+      // The instant comes from the database's own clock.
+      const [at] = await sql<{ at: Date }[]>`SELECT now() - ${interval}::interval AS at`
+      await seedAuditEntry({
+        orgId: world.orgId,
+        actorType: "user",
+        action: "user.deactivate",
+        entityType: "user",
+        entityId: gone,
+        timestamp: at?.at as Date,
+      })
+    }
+    const bossSees = () =>
+      rlsCount(
+        boss.userId,
+        `SELECT count(*)::int AS n FROM app_agreements.agreements WHERE id = '${claimable}'`,
+      )
+
+    beforeAll(async () => {
+      gone = (await minimal.session(world.orgId, { role: "member" })).userId
+      boss = await minimal.session(world.orgId, { role: "admin" })
+      plain = await minimal.session(world.orgId, { role: "member" })
+      await withPrivilegedDb(world.orgId, "test:restricted-claim", async (tx) => {
+        await insertAppRow(tx, "agreements", "agreements", {
+          org_id: world.orgId,
+          id: claimable,
+          number: "AG-2026-302",
+          kind: "nda",
+          title: "Terms of a team that left",
+          org_access: "none",
+        })
+        await insertAppRow(tx, "agreements", "agreement_shares", {
+          org_id: world.orgId,
+          agreement_id: claimable,
+          user_id: gone,
+          role: "editor",
+        })
+      })
+      setSystemEmailProvider({
+        send: async (m) => {
+          sent.push(m)
+        },
+        verify: async () => true,
+      })
+    })
+    afterAll(() => setSystemEmailProvider(null))
+
+    it("is refused, like an unknown id, while a person on the list is active", async () => {
+      await goneSince("30 days")
+      const res = await claim(boss.bearer)
+      expect(res.status).toBe(404)
+      expect(await bossSees()).toBe(0)
+    })
+
+    it("is refused at 6 days 23 hours after the last person on the list was deactivated, and allowed at 7 days", async () => {
+      await sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${gone}::uuid`
+      await goneSince("6 days 23 hours")
+      const early = await claim(boss.bearer)
+      expect(early.status).toBe(404)
+      expect(await bossSees()).toBe(0)
+      await goneSince("7 days")
+      const res = await claim(boss.bearer)
+      expect(res.status).toBe(200)
+      expect(await bossSees()).toBe(1)
+      const [row] = await sql<{ by: string | null; at: Date | null; acl: string[] }[]>`
+        SELECT claimed_by_user_id::text AS by, claimed_at AS at, acl_user_ids AS acl
+          FROM app_agreements.agreements WHERE id = ${claimable}::uuid`
+      expect(row?.by).toBe(boss.userId)
+      expect(row?.at).not.toBeNull()
+      expect([...(row?.acl ?? [])].sort()).toEqual([boss.userId, gone].sort())
+      // Everyone ever on the list is told, and nobody else.
+      const [goneUser] = await sql<{ email: string }[]>`
+        SELECT email FROM kernel.users WHERE id = ${gone}::uuid`
+      const notices = sent.filter((m) => m.template === "agreements.claimed")
+      expect(notices.map((m) => m.to)).toEqual([goneUser?.email as string])
+    })
+
+    it("is refused for a member without the admin scope, whatever the dates", async () => {
+      const res = await claim(plain.bearer)
+      expect(res.status).toBe(403)
+      // The database refuses it too, under that member's own context.
+      const actor = await held(plain.userId)
+      const out = await withRlsContext(actor, async (tx) => {
+        const rows = (await tx.execute(
+          dsql`SELECT kernel.restricted_claim(${claimable}::uuid) AS r`,
+        )) as unknown as Array<{ r: { state: string } }>
+        return rows[0]?.r.state
+      })
+      expect(out).toBe("not_allowed")
+    })
+  })
 })

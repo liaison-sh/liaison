@@ -237,6 +237,12 @@ function cardLines(ready: Ready, p: SendParams): string[] {
   ]
   for (const a of ready.sharedAddresses)
     lines.push(`Two signers share ${a}: each signs with their own name and their own code.`)
+  // A signer is not a reader: on a restricted agreement a colleague off its list signs by their
+  // own link and reads the document only there, and the card says so before anyone approves.
+  if (ready.agreement.org_access === "none")
+    lines.push(
+      "Restricted document: a signer who works here but is not on its list signs by their own link and reads it only there.",
+    )
   if (p.required_phrase) lines.push(`Each signer types: "${p.required_phrase}"`)
   if (p.message) lines.push(`Message: ${p.message}`)
   return lines

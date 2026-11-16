@@ -459,6 +459,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // Freezing and sending for signature (agreements; client action links through the bridge).
   BLANK_FIELD: 409,
   FREEZE_TEXT_MISMATCH: 409,
+  // The legal layout refuses the text itself: a reference to nothing or to a hidden clause, a
+  // typed number of one of its own articles, a clause starting with a number, a character no
+  // face draws.
+  BROKEN_REFERENCE: 409,
+  TYPED_REFERENCE: 409,
+  NUMBERED_CLAUSE: 409,
+  CHARACTER_NOT_DRAWABLE: 422,
   ALREADY_SENT: 409,
   NOT_FROZEN: 409,
   NOT_SENT: 409,

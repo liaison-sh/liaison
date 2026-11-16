@@ -877,35 +877,38 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
       <Match when={retried() === "running"}>
         <Loading />
       </Match>
-      <Match when={superseded() && props.toolCall.card}>
+      {/* Keyed: the card is handed down as a value. A card that turns superseded mid-turn (a
+          newer card with its key arrives) swaps these branches; an accessor read by the old
+          branch's components on the way out threw "Stale read from <Match>". */}
+      <Match when={superseded() && props.toolCall.card} keyed>
         {(c) => (
           <div
             class="mt-1 flex items-center gap-1.5 rounded-md border border-border-subtle px-3 py-1.5 text-xs text-text-tertiary"
             data-testid="card-superseded"
           >
-            <span class={PILL}>{cardLabel(c().pill, i18n.t)}</span>
+            <span class={PILL}>{cardLabel(c.pill, i18n.t)}</span>
             <span>
-              {c().supersededLabel
-                ? cardLabel(c().supersededLabel, i18n.t)
+              {c.supersededLabel
+                ? cardLabel(c.supersededLabel, i18n.t)
                 : t("kernel.toolCard.superseded")}
             </span>
           </div>
         )}
       </Match>
-      <Match when={card()}>
+      <Match when={card()} keyed>
         {(c) => (
           <Switch>
-            <Match when={c().kind === "entity"}>
-              <Entity c={c()} />
+            <Match when={c.kind === "entity"}>
+              <Entity c={c} />
             </Match>
-            <Match when={c().kind === "list"}>
-              <List c={c()} />
+            <Match when={c.kind === "list"}>
+              <List c={c} />
             </Match>
-            <Match when={c().kind === "number"}>
-              <NumberCard c={c()} />
+            <Match when={c.kind === "number"}>
+              <NumberCard c={c} />
             </Match>
-            <Match when={c().kind === "groups"}>
-              <Groups c={c()} />
+            <Match when={c.kind === "groups"}>
+              <Groups c={c} />
             </Match>
           </Switch>
         )}

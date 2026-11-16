@@ -8,6 +8,7 @@ import {
   TOOL_CARD_GROUPS_MAX_BYTES,
 } from "@liaison/shared"
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
+import { createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const apiMocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), rawPost: vi.fn() }))
@@ -469,6 +470,27 @@ describe("ToolCard", () => {
     expect(screen.queryByTestId("card-action")).toBeNull()
     expect(screen.queryByTestId("card-edit-toggle")).toBeNull()
     expect(screen.queryByTestId("card-edit-field")).toBeNull()
+  })
+
+  it("a card that turns superseded while it is drawn collapses without a stale read", async () => {
+    const [tc, setTc] = createSignal(call({ card: groups([groupRow(1), groupRow(2)]) }))
+    render(() => <ToolCard toolCall={tc()} />)
+    expect(screen.getAllByText(/Item \d/)).toHaveLength(2)
+    // A newer card with its key arrived in the thread, mid-turn.
+    setTc(call({ card: groups([groupRow(1), groupRow(2)]), cardSuperseded: true }))
+    await waitFor(() => expect(screen.getByTestId("card-superseded")).toBeTruthy())
+    expect(screen.queryByText(/Item \d/)).toBeNull()
+  })
+
+  it("a card that goes away or is replaced while drawn redraws without a stale read", async () => {
+    const [tc, setTc] = createSignal(call({ card: groups([groupRow(1)]) }))
+    render(() => <ToolCard toolCall={tc()} />)
+    setTc(call({ card: undefined, status: "running" }))
+    await waitFor(() => expect(screen.queryByText("Item 1")).toBeNull())
+    setTc(call({ card: entity() }))
+    await waitFor(() => expect(screen.getByText("Maison Arlon")).toBeTruthy())
+    setTc(call({ card: groups([groupRow(3)]) }))
+    await waitFor(() => expect(screen.getByText("Item 3")).toBeTruthy())
   })
 
   describe("inline edit", () => {

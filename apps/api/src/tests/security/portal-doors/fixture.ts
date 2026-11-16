@@ -6,7 +6,7 @@
 // are written on the privileged connection, then every read runs through the
 // real roles: liaison_rls for members, liaison_portal for clients.
 
-import { type SQL, sql as drizzleSql } from "drizzle-orm"
+import { sql as drizzleSql, type SQL } from "drizzle-orm"
 import { extractRows, type RlsClient, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"

@@ -6,10 +6,12 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
+import type { AppEvent } from "~/infra/events/event-bus"
 import * as clamav from "~/lib/clamav"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { processTranslationEvent } from "~/modules/attention/translator"
 import { createPortalSession } from "~/modules/auth/auth"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -75,6 +77,7 @@ beforeAll(async () => {
 afterAll(async () => {
   if (w) {
     await sql`DELETE FROM kernel.pending_events WHERE org_id = ${w.orgId}`.catch(() => {})
+    await sql`DELETE FROM kernel.attention_events WHERE org_id = ${w.orgId}`.catch(() => {})
     await dropReadsWorld(w)
     await dropDoorWorld(w)
   }
@@ -127,6 +130,33 @@ describe("portal requests", () => {
        WHERE org_id = ${w.orgId} AND payload->>'entityId' = ${idB} AND payload->>'entity' = 'ticket'`
     expect(eventB?.payload.data.noAccountManager).toBe(true)
     expect(eventB?.payload.data.accountManagerId).toBeUndefined()
+  })
+
+  it("a portal request's Home row reaches the account manager and never the client; with no manager it reaches the inbox admins", async () => {
+    async function homeRows(subject: string, userId: string) {
+      const res = await send("/requests", { subject, text: "Please look." }, userId)
+      const { id } = ((await res.json()) as { data: { id: string } }).data
+      const [event] = await sql<{ payload: AppEvent }[]>`
+        SELECT payload FROM kernel.pending_events
+         WHERE org_id = ${w.orgId} AND payload->>'entityId' = ${id}
+           AND payload->>'action' = 'create' AND payload->>'entity' = 'ticket'`
+      if (!event) throw new Error("no ticket create event")
+      await processTranslationEvent(event.payload)
+      return sql<{ user_id: string; summary: string }[]>`
+        SELECT user_id::text AS user_id, summary FROM kernel.attention_events
+         WHERE org_id = ${w.orgId} AND app = 'tickets' AND entity_id = ${id}
+           AND kind = 'tickets:portal_request'`
+    }
+    // The tickets app's Home translations are registered for the org when its apps load.
+    await ensureAppsForOrg(w.orgId, {})
+    const managed = await homeRows("Invoice question", w.clientA.userId)
+    expect(managed.map((r) => r.user_id)).toEqual([w.member.userId])
+    expect(managed[0]?.summary).toContain("Invoice question")
+    const unmanaged = await homeRows("Nobody owns us", w.clientB.userId)
+    const users = unmanaged.map((r) => r.user_id)
+    expect(users).toContain(w.admin.userId)
+    expect(users).not.toContain(w.clientB.userId)
+    expect(users).not.toContain(w.member.userId)
   })
 
   it("a reply lands on the person's own request only; another company's request is the same 404 as a random id", async () => {

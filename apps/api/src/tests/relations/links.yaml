@@ -1066,3 +1066,187 @@ links:
       Mg: a company merge does not move issued documents to the surviving company yet
       Dl: deleting the company of an issued document is not driven in this file yet
       Ap: with invoicing off its tools and views are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+
+  - name: agreement-party
+    what: an agreement to the client company and the person it is made with
+    storedIn: app_agreements.agreements.company_id, contact_id (soft)
+    columns: [app_agreements.agreements.company_id, app_agreements.agreements.contact_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/contacts/companies.ts
+      - apps/api/src/modules/contacts/service.ts
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: R, Dx: a, Pm: H, Ap: H, Mv: K, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: an agreement copies no party name yet, so what a renamed company or person reads as on a sent agreement is not driven
+      Mg: a company or contact merge does not move agreements to the surviving record yet
+      Dl: refusing to delete the company or person of a sent or signed agreement is not built yet
+      Pm: an agreement is read through its own access rows (agreement-access); a reader who loses agreements access is not driven in this file yet
+      Ap: with agreements off its tools are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Mv: what a person moving to another company leaves on their agreements is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Ex: the data subject export of a contact does not carry an agreements section yet
+      Rv: no agreement world is built in this file yet
+
+  - name: agreement-parent
+    what: an agreement to the deal, project and quote it came from, and to the agreement it changes or became
+    storedIn: app_agreements.agreements.deal_task_id, project_id, quote_document_id, parent_agreement_id, became_agreement_id (soft)
+    columns: [app_agreements.agreements.deal_task_id, app_agreements.agreements.project_id, app_agreements.agreements.quote_document_id, app_agreements.agreements.parent_agreement_id, app_agreements.agreements.became_agreement_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/apps/projects/
+      - bundled-apps/invoicing/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: a, Pm: H, Ap: H, Mv: C, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a deal or project merge does not move agreements yet
+      Dl: what an agreement shows once its deal, project or quote is deleted is not driven in this file yet
+      Pm: a reader of the agreement who cannot read its deal or project is not driven in this file yet
+      Ap: what an agreement shows once projects or invoicing is switched off is not defined
+      Mv: a deal moved to another project is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Ex: the org export does not carry agreements yet
+      Rv: no agreement world is built in this file yet
+
+  - name: agreement-template
+    what: an agreement to the template it was written from, and a template's settings and saved versions to the template
+    storedIn: app_agreements.agreements.template_id with template_version, agreement_template_meta.template_id, agreement_template_versions.template_id
+    columns: [app_agreements.agreements.template_id, app_agreements.agreement_template_meta.template_id, app_agreements.agreement_template_versions.template_id]
+    paths:
+      - bundled-apps/agreements/src/templates.ts
+      - apps/api/src/modules/documents/
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: a, Pm: a, Ap: c, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: an agreement keeps the text of the template version it was written from (agreements.test.ts); archiving or deleting the template is not driven in this file yet
+      Ex: the org export does not carry agreement templates yet
+
+  - name: agreement-version-file
+    what: an agreement to its drafts and frozen versions, and a version to its file, its statement of work document and its evidence package
+    storedIn: app_agreements.agreement_drafts.agreement_id, upload_file_id, agreement_versions.agreement_id, file_id, evidence_packages.version_id and its file columns (write once)
+    columns: [app_agreements.agreement_drafts.agreement_id, app_agreements.agreement_drafts.upload_file_id, app_agreements.agreement_versions.agreement_id, app_agreements.agreement_versions.file_id, app_agreements.evidence_packages.version_id, app_agreements.evidence_packages.signed_pdf_file_id, app_agreements.evidence_packages.evidence_file_id, app_agreements.evidence_packages.signer_copy_file_ids, app_agreements.evidence_packages.tsr_file_id, app_agreements.evidence_packages.stamped_evidence_file_id, app_agreements.evidence_packages.stamped_signer_copy_file_ids]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/signing/
+      - apps/api/src/modules/files/
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: b, Dx: a, Pm: H, Ap: b, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Pm: a reader who loses agreements access reading a version's file is not driven in this file yet
+      Rs: no agreement world is built in this file yet
+      Dr: object store bytes of versions and evidence after a demo reset are not counted in this file yet
+      Ex: no frozen version is built in this file yet
+      Rv: no frozen version is built in this file yet
+
+  - name: statement-of-work-agreement
+    what: a frozen agreement version to the knowledge document that carries its statement of work, and the role allowed to read it
+    storedIn: app_agreements.agreement_versions.knowledge_document_id, agreements_settings.sow_reader_role_id
+    columns: [app_agreements.agreement_versions.knowledge_document_id, app_agreements.agreements_settings.sow_reader_role_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/knowledge/
+    visibleState: [unlinked]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: K, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: H, Dr: e, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Rn: writing the statement of work document at freeze is not built yet
+      Dl: writing the statement of work document at freeze is not built yet
+      Pm: writing the statement of work document at freeze is not built yet
+      Ap: writing the statement of work document at freeze is not built yet
+      Rs: writing the statement of work document at freeze is not built yet
+      Ex: writing the statement of work document at freeze is not built yet
+      Rv: writing the statement of work document at freeze is not built yet
+
+  - name: signature-version
+    what: a signature to the agreement version it signs and the client action that asked for it
+    storedIn: app_agreements.signature_events.version_id, client_action_id (write once)
+    columns: [app_agreements.signature_events.version_id, app_agreements.signature_events.client_action_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/signing/
+    visibleState: [revoked, expired, signed]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: a, Dl: C, Dx: a, Pm: H, Ap: C, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Dl: sending an agreement for signature is not built yet, nor what a voided version's open link reads as
+      Pm: sending an agreement for signature is not built yet
+      Ap: sending an agreement for signature is not built yet, nor what its open links read as once agreements is switched off
+      Rs: sending an agreement for signature is not built yet
+      Dr: sending an agreement for signature is not built yet
+      Ex: sending an agreement for signature is not built yet
+      Rv: sending an agreement for signature is not built yet
+
+  - name: signature-signer
+    what: a signature to the person who signed, a client contact or a colleague
+    storedIn: app_agreements.signature_events.signer_contact_id, signer_user_id, invited_email (write once, kept on erasure)
+    columns: [app_agreements.signature_events.signer_contact_id, app_agreements.signature_events.signer_user_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/client-actions/
+      - apps/api/src/modules/erasure/
+    visibleState: [signed]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: S, Mg: P, Dl: C, Dx: C, Pm: a, Ap: c, Mv: R, Rs: a, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: W }
+    open:
+      Rn: signing is not built yet; the typed name is the signer's copy at signing
+      Mg: signing is not built yet; a merged contact's signature resolves through the merge on read
+      Dl: signing is not built yet
+      Dx: signing is not built yet
+      Mv: signing is not built yet
+      Dr: signing is not built yet
+      Ex: signing is not built yet
+      Rv: signing is not built yet
+      Aw: signing is not built yet
+
+  - name: agreement-access
+    what: an agreement to the colleagues on its list, who may read it while its access is restricted
+    storedIn: app_agreements.agreements.acl_user_ids, agreement_shares.agreement_id, user_id, created_by (the sharedRows list)
+    columns: [app_agreements.agreements.acl_user_ids, app_agreements.agreement_shares.agreement_id, app_agreements.agreement_shares.user_id, app_agreements.agreement_shares.created_by]
+    paths:
+      - bundled-apps/agreements/src/access.ts
+      - apps/api/src/modules/permissions/rls-generator.ts
+      - apps/api/src/modules/users/merge-references.ts
+    visibleState: []
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: a, Mg: P, Dl: C, Dx: C, Pm: K, Ap: H, Mv: a, Rs: H, Dr: Z, Ex: E, Mi: a, Rv: V, Aw: a }
+    open:
+      Mg: a person merge does not move agreement list rows yet
+      Dl: the list rows of an erased person are anonymized by the app's user columns; what the agreement shows is not driven in this file yet
+      Dx: a deactivated colleague on an agreement's list is not driven in this file yet
+      Pm: the list is read at the data layer (restricted.integration.test.ts); a listed colleague who loses agreements access is not driven in this file yet
+      Ap: with agreements off its tools are gone, but its tables still answer a reader's row security; on which read path an off app's rows must be hidden is not defined yet
+      Rs: no agreement world is built in this file yet
+      Dr: list rows after a demo reset are not counted in this file yet
+      Ex: no data subject export exists for a person; the export takes a contact
+      Rv: a colleague put back on the list is not driven in this file yet
+
+  - name: agreement-author
+    what: an agreement, its drafts, versions and templates to the colleagues and agents who wrote, priced, froze or saved them
+    storedIn: app_agreements.agreements.created_by_user_id, created_by_agent_id, priced_by_user_id, what_it_is_by_user_id, not_a_guarantee_by_user_id, agreement_drafts.updated_by_user_id, updated_by_agent_id, agreement_versions.frozen_by_user_id, agreement_template_versions.saved_by_user_id
+    columns: [app_agreements.agreements.created_by_user_id, app_agreements.agreements.created_by_agent_id, app_agreements.agreements.priced_by_user_id, app_agreements.agreements.what_it_is_by_user_id, app_agreements.agreements.not_a_guarantee_by_user_id, app_agreements.agreement_drafts.updated_by_user_id, app_agreements.agreement_drafts.updated_by_agent_id, app_agreements.agreement_versions.frozen_by_user_id, app_agreements.agreement_template_versions.saved_by_user_id]
+    paths:
+      - bundled-apps/agreements/
+      - apps/api/src/modules/erasure/
+      - apps/api/src/modules/users/merge-references.ts
+    visibleState: [usual]
+    whoIsTold: [admin, seller]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: C, Dx: K, Pm: c, Ap: a, Mv: a, Rs: a, Dr: e, Ex: E, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: a person merge does not move agreement author columns yet
+      Dl: erasure anonymizes the app's user columns (onErase anonymize); what an agreement shows once its author is erased is not driven in this file yet
+      Dx: what an agreement shows once its author is deactivated is not driven in this file yet
+      Ex: no data subject export exists for a person; the export takes a contact

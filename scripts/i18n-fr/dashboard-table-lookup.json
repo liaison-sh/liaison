@@ -1,0 +1,7 @@
+{
+  "key": {
+    "kernel.dashboards.tables.type.lookup": "Lu en direct d'une app",
+    "kernel.dashboards.tables.lookupColumn": "Lu en direct depuis {{tool}}, non modifiable",
+    "kernel.dashboards.tables.lookupUnavailable": "Indisponible"
+  }
+}

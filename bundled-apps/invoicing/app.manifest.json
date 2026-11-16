@@ -7025,7 +7025,7 @@
         "event": "einvoicing:facturx_failed",
         "kind": "invoicing:einvoicing.facturx_failed",
         "urgency": 60,
-        "summary": "The Factur-X of {{data.number}} could not be produced ({{data.code}}): {{data.reason}} Fix the data, then retry the PDF.",
+        "summary": "The e-invoice of {{data.number}} could not be made: {{data.reason}} Complete it, then use Retry render on its PDF tab.",
         "recipients": {
           "kind": "scope_holders",
           "scope": "invoicing:documents:write"

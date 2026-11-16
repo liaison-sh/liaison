@@ -3634,6 +3634,18 @@ describe("documents.send_to_customer", () => {
     )
   })
 
+  test("the mail app's thrown mailbox miss, whatever its code, reads in the person's words", () => {
+    const out = sendErrorFromEnvelope({
+      error: {
+        code: "handler_error",
+        message:
+          "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one.",
+      },
+    })
+    expect(out.code).toBe("mailbox_unavailable")
+    expect(out.message).not.toContain("listAccounts")
+  })
+
   test("a not-found that is not the mailbox (an attachment, a conversation) keeps its own reason", () => {
     const out = sendErrorFromEnvelope({
       error: { code: "NOT_FOUND", message: "Attachment file not found" },

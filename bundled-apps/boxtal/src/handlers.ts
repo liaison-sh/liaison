@@ -123,6 +123,7 @@ import {
   shipmentDraftSetPackagePersist,
 } from "./shipment"
 import { type PrepSetNoteInput, prepSetNote } from "./staff-note"
+import { toShipByProduct } from "./to-ship-by-product"
 import { unlinkedOrdersList } from "./unlinked"
 
 type Ctx = BoxtalToolCtx
@@ -307,6 +308,9 @@ export const claimOpenPreflightHandler = (params: { shipment_id: string }, ctx: 
 
 // — order-prep dashboard (prep_list free read; prep_sync gated write + external calls) —
 export const prepListHandler = (params: PrepListInput, ctx: Ctx) => prepList(ctx, params)
+// Read only: the same worklist as units still to ship per product code (a dashboard source).
+export const toShipByProductHandler = (_params: Record<string, never>, ctx: Ctx) =>
+  toShipByProduct(ctx)
 export const prepSyncHandler = (params: PrepSyncInput, ctx: Ctx) => prepSync(ctx, params)
 export const prepSetCategoryHandler = (params: PrepSetCategoryInput, ctx: Ctx) =>
   prepSetCategory(ctx, params)

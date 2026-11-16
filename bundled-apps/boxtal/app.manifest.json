@@ -194,7 +194,7 @@
       }
     ]
   },
-  "version": "0.24.12",
+  "version": "0.24.13",
   "iconName": "box",
   "description": "Boxtal shipping integration: carrier quotes, tracking, shipments, customs documents",
   "listing": {
@@ -2417,6 +2417,29 @@
             "description": "Only rows with this status."
           }
         }
+      },
+      "timeoutMs": 60000
+    },
+    "to_ship_by_product": {
+      "description": "UNITS STILL TO SHIP PER PRODUCT: how many units of each product the To prepare worklist still needs, as one row per short product code. It reads the SAME worklist as prep_list (issued goods invoices from a Shopify order with no live shipment yet, excluded rows hidden) and adds up each row's products using the org's product-code mapping (settings_product_codes_get), the same short codes the worklist's products column shows, so a retail sku and its wholesale (B2B / distribution) variant count under ONE code. A partially shipped order counts only the units it still has to ship. Output: `rows` is a list of `{ code, units, orders }` (`units` = units of that code still to ship, `orders` = how many worklist orders need it), sorted by the org's code rank; `total_units` is the sum of every row's units; `as_of` is when the worklist was read; `truncated: true` means the worklist scan was capped at the 250 most recent open orders, so counts may be low. Use it for 'how many of each product do we still have to ship', or as a dashboard source (rowsPath `rows`, match on `code`, read `units`). Read only: it never calls the Boxtal API, never re-quotes and stages nothing. These are units to ship, NOT stock on hand and NOT units shipped.",
+      "searchKeywords": [
+        "produit",
+        "unités",
+        "quantité",
+        "reste",
+        "expédier",
+        "units",
+        "product",
+        "backlog"
+      ],
+      "requiredScopes": [
+        "boxtal:shipments:read"
+      ],
+      "handler": "toShipByProductHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {}
       },
       "timeoutMs": 60000
     },

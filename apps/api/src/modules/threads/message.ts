@@ -2126,7 +2126,7 @@ async function markArtefactsStaleForDeletedMessage(params: {
  * given when there is one. A record no longer restricted asks nothing. No restricted scope, the
  * stamp unchanged.
  */
-async function withRestrictedDisclosure(
+export async function withRestrictedDisclosure(
   orgId: string,
   visibility: { requiredScopes: string[]; disclosureList: string[] | null },
 ): Promise<{ requiredScopes: string[]; disclosureList: string[] | null }> {

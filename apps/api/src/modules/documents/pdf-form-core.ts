@@ -1645,7 +1645,7 @@ function readXrefChain(
   const seen = new Set<number>()
   let next: number | null = Number(m[1])
   let sections = 0
-  const apply = (sec: XrefSection) => {
+  const mergeSection = (sec: XrefSection) => {
     for (const [num, e] of sec.entries) if (!merged.has(num)) merged.set(num, e)
     if (sec.streamObject !== null) xrefStreams.add(sec.streamObject)
   }
@@ -1654,11 +1654,11 @@ function readXrefChain(
       throw varies("the cross-reference chain loops")
     seen.add(next)
     const sec = sectionAt(text, bytes, next)
-    apply(sec)
+    mergeSection(sec)
     if (sec.xrefStm !== null) {
       if (seen.has(sec.xrefStm)) throw varies("the cross-reference chain loops")
       seen.add(sec.xrefStm)
-      apply(sectionAt(text, bytes, sec.xrefStm))
+      mergeSection(sectionAt(text, bytes, sec.xrefStm))
     }
     next = sec.prev
   }

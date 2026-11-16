@@ -101,6 +101,10 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   client_actions_record: "read",
   // Renders a filled rich-text source to bytes in memory; stores nothing (bridge/rich-text.ts).
   rich_text_render: "read",
+  // An uploaded PDF checked, or a frozen one scanned again, in the render service and the
+  // virus scanner; stores nothing, and a hit only raises the security event (bridge/pdf-upload.ts).
+  pdf_upload_check: "read; a virus hit raises a security event only",
+  pdf_upload_rescan: "read; a virus hit raises a security event only",
   // The calling turn's agent and whether a person is behind it, from the captured frame.
   turn_get: "read",
   // A provider throttle signal (connection-limiter.ts): delays later calls, writes no data.

@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import {
   attempt,
   createDoorWorld,
@@ -79,7 +80,12 @@ describe("kernel.portal_shares", () => {
     const write = await withRlsContext(memberContext(w, ["*"]), (tx) =>
       attempt(
         tx,
-        `INSERT INTO kernel.portal_shares (org_id, company_id, kind, shared_by_user_id) VALUES ('${w.orgId}', '${w.companyA}', 'requests', '${w.member.userId}')`,
+        insertSql("kernel.portal_shares", {
+          org_id: w.orgId,
+          company_id: w.companyA,
+          kind: "requests",
+          shared_by_user_id: w.member.userId,
+        }),
       ),
     )
     expect(write).toMatchObject({ code: "42501" })

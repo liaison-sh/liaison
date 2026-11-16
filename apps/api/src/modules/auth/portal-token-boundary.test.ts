@@ -54,6 +54,17 @@ async function newExternal(label: string): Promise<string> {
   return result.userId
 }
 
+/**
+ * A wildcard grant on an external row: the database refuses it (a client holds
+ * no grant, at any login), so the mint below runs on a row with none.
+ */
+async function expectWildcardGrantRefused(userId: string): Promise<void> {
+  const row = insertSql("kernel.user_scope_grants", { user_id: userId, org_id: orgId, scope: "*" })
+  await expect(sql.unsafe(row)).rejects.toThrow(
+    "an external user holds no scope or dimension grant",
+  )
+}
+
 function claims(token: string) {
   return jose.decodeJwt(token) as jose.JWTPayload & Record<string, unknown>
 }
@@ -123,9 +134,7 @@ describe("each door mints for its own kind of row", () => {
 
   it("a direct wildcard grant on an external row adds nothing: portal token, not an admin", async () => {
     const id = await newExternal("wildcard")
-    await sql.unsafe(
-      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
-    )
+    await expectWildcardGrantRefused(id)
     const pair = await createPortalSession(id, orgId)
     expectPortalClaims(pair.accessToken)
     expect(pair.admin).toBe(false)
@@ -145,9 +154,7 @@ describe("each door mints for its own kind of row", () => {
 
   it("the second-factor branch of a session mint is a portal token too", async () => {
     const id = await newExternal("second-factor")
-    await sql.unsafe(
-      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
-    )
+    await expectWildcardGrantRefused(id)
     await sql`UPDATE kernel.organizations SET settings = jsonb_set(settings, '{requireAdminSecondFactor}', 'true') WHERE id = ${orgId}`
     try {
       const token = (await createPortalSession(id, orgId)).accessToken
@@ -168,9 +175,7 @@ describe("each door mints for its own kind of row", () => {
   it("a password change on an external row mints nothing", async () => {
     const id = await newExternal("password")
     await sql`UPDATE kernel.users SET password_hash = ${await hashPassword("old-pass-1234")} WHERE id = ${id}`
-    await sql.unsafe(
-      insertSql("kernel.user_scope_grants", { user_id: id, org_id: orgId, scope: "*" }),
-    )
+    await expectWildcardGrantRefused(id)
     await expect(changePassword(id, "old-pass-1234", "new-pass-5678")).rejects.toThrow()
   })
 })

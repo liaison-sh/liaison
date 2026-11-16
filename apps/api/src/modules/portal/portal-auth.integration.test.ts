@@ -12,7 +12,6 @@ import { generateCurrentCode } from "~/modules/auth/totp"
 import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type SignInWorld,
   CaptureProvider,
   clearSends,
   cookieOf,
@@ -21,6 +20,7 @@ import {
   linkOf,
   ORIGIN,
   post,
+  type SignInWorld,
 } from "~/tests/security/portal-doors/fixture"
 
 let w: SignInWorld

@@ -9,14 +9,15 @@ import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { hashPassword, hashToken } from "~/lib/crypto"
 import { AuthServiceError, createSession } from "~/modules/auth/auth"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
-  type SignInWorld,
   CaptureProvider,
   clearSends,
   createSignInWorld,
   dropDoorWorld,
   post,
+  type SignInWorld,
 } from "~/tests/security/portal-doors/fixture"
 
 let w: SignInWorld
@@ -83,8 +84,14 @@ describe("member doors with a client's row", () => {
     expect(capture.sent).toHaveLength(0)
     // A reset token for a client's row (none is ever issued; written here) sets nothing.
     const token = `reset-${crypto.randomUUID()}`
-    await sql`INSERT INTO kernel.password_resets (user_id, org_id, token_hash, expires_at)
-      VALUES (${w.clientB.userId}, ${w.orgId}, ${hashToken(token)}, now() + interval '1 hour')`
+    await sql.unsafe(
+      insertSql("kernel.password_resets", {
+        user_id: w.clientB.userId,
+        org_id: w.orgId,
+        token_hash: hashToken(token),
+        expires_at: { raw: "now() + interval '1 hour'" },
+      }),
+    )
     await post("/api/auth/password-reset/confirm", { token, newPassword: "Another-horse-77" })
     const [row] = await sql<{ password_hash: string | null }[]>`
       SELECT password_hash FROM kernel.users WHERE id = ${w.clientB.userId}`

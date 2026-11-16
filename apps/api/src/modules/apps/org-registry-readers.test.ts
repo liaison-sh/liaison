@@ -95,6 +95,8 @@ const READERS: Record<string, string> = {
   "modules/apps/routes.ts": REQUEST,
   "modules/apps/run-approved-handler.ts": JOB,
   "modules/apps/runtime.ts": SETUP,
+  // An app handler minting or revoking a link: reads the calling tool and its outer call.
+  "modules/apps/sandbox/bridge/client-actions.ts": AGENT,
   "modules/apps/sandbox/bridge/contracts.ts": AGENT,
   "modules/apps/sandbox/bridge/platform.ts": AGENT,
   "modules/audit/timeline-routes.ts": REQUEST,

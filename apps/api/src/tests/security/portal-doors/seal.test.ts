@@ -21,7 +21,7 @@ describe("the signature page", () => {
         {
           name: "Claire Morel",
           capacity: "Gérante",
-          typedPhrase: "Lu\u0000 et\u001b[2J approuvé‮ <a href=\"https://x.example\">ici</a>",
+          typedPhrase: 'Lu\u0000 et\u001b[2J approuvé‮ <a href="https://x.example">ici</a>',
           signedAt: new Date(Date.UTC(2026, 10, 12, 14, 0, 0)),
           level: "ses",
         },

@@ -3376,6 +3376,11 @@ async function registerSingleApp(
             if (tool.resultTaintWhen !== null && typeof tool.resultTaintWhen === "object") {
               entry.resultTaintWhen = tool.resultTaintWhen
             }
+            // A read that may return a restricted row: the kernel stamps the turn after it returns.
+            if (tool.restrictedRows !== null && typeof tool.restrictedRows === "object") {
+              const decl = tool.restrictedRows as { entity: string; idPath: string }
+              entry.restrictedRows = { kind: `${desc.name}.${decl.entity}`, idPath: decl.idPath }
+            }
             // What a tool writes is read only by the person writing it: it narrows a scope-taint
             // refusal, so it counts for a first-party app alone (registration refuses any other).
             if (core || desc._firstParty === true) {

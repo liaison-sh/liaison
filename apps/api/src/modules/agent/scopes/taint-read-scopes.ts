@@ -37,6 +37,7 @@
 
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 import { rlsScopeEntityForTable } from "~/modules/permissions/rls-generator"
 import { getScopeCatalog } from "~/modules/permissions/scope-catalog"
 import { knownScopeUniverse } from "~/modules/permissions/scope-registry"
@@ -147,7 +148,7 @@ export function projectTaintScopes(
   const out = new Set<string>()
   for (const scope of scopes) {
     if (typeof scope !== "string" || scope === "") continue
-    if (UNKNOWN_TURN_TAINT.includes(scope)) {
+    if (UNKNOWN_TURN_TAINT.includes(scope) || isRestrictedScope(scope)) {
       out.add(scope)
       continue
     }

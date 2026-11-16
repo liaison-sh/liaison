@@ -32,6 +32,7 @@ import {
   holdsEveryScope,
   loadOrgMemberGrants,
   peopleTaintGap,
+  restrictedListsFor,
   threadPeopleIds,
 } from "~/modules/agent/scopes/taint-approval-audience"
 import { expandWildcardStamp } from "~/modules/agent/scopes/taint-read-scopes"
@@ -622,13 +623,16 @@ async function participantTaintRefusal(
   if (!turnTaint.some((s) => UNKNOWN_TURN_TAINT.includes(s))) {
     try {
       const members = await loadOrgMemberGrants(ctx.orgId, { userIds: audienceIds })
+      const lists = await restrictedListsFor(ctx.orgId, turnTaint)
       held =
         members.length === audienceIds.length &&
-        members.every((m) => holdsEveryScope(m.scopes, turnTaint))
+        members.every((m) => holdsEveryScope(m.scopes, turnTaint, { userId: m.id, lists }))
       const missing = new Set<string>()
       let lacking = audienceIds.length - members.length
       for (const m of members) {
-        const lacks = turnTaint.filter((scope) => !holdsEveryScope(m.scopes, [scope]))
+        const lacks = turnTaint.filter(
+          (scope) => !holdsEveryScope(m.scopes, [scope], { userId: m.id, lists }),
+        )
         if (lacks.length === 0) continue
         lacking += 1
         for (const scope of lacks) missing.add(scope)

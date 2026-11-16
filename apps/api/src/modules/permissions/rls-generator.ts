@@ -302,6 +302,8 @@ export interface RequiredScopesVisibility {
  * split with `regexp_split_to_array`, because `string_to_array('', ':')` is an
  * empty array where JavaScript's `''.split(':')` is `['']`. The `__none__`
  * sentinel `withRlsContext` writes for an empty grant list is no grant at all.
+ * A `restricted:` entry (a restricted record's scope) is covered by no grant: such a row is
+ * read only through the disclosure list, by people who also hold the rest of its stamp.
  * The disclosure match compares as text, like the JS `includes`, and yields
  * false (not NULL) for a NULL list or an empty user GUC. No semicolons: callers
  * split generated SQL on ';'.
@@ -316,6 +318,7 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
           SELECT 1 FROM unnest(${required}) AS req(scope)
           WHERE (
             req.scope <> ''
+            AND left(req.scope, 11) <> 'restricted:'
             AND EXISTS (
               SELECT 1
               FROM unnest(string_to_array(
@@ -338,7 +341,42 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
           ) IS NOT TRUE
         )
       )
-      OR COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+      OR (
+        COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(${required}) AS rreq(scope)
+          WHERE left(rreq.scope, 11) = 'restricted:'
+        )
+      )
+      OR (
+        COALESCE(NULLIF(rls_ctx.user_id(), '') = ANY(${disclosure}::text[]), false)
+        AND NOT EXISTS (
+          SELECT 1 FROM unnest(${required}) AS req(scope)
+          WHERE left(req.scope, 11) <> 'restricted:'
+            AND (
+              req.scope <> ''
+              AND EXISTS (
+                SELECT 1
+                FROM unnest(string_to_array(
+                  NULLIF(NULLIF(rls_ctx.scopes(), ''), '__none__'), ','
+                )) AS grant_row(scope)
+                CROSS JOIN LATERAL (SELECT
+                  regexp_split_to_array(grant_row.scope, ':') AS gp,
+                  regexp_split_to_array(req.scope, ':') AS rp
+                ) AS parts
+                WHERE grant_row.scope = '*'
+                  OR (
+                    cardinality(parts.gp) <= cardinality(parts.rp)
+                    AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
+                      WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                    )
+                  )
+              )
+            ) IS NOT TRUE
+        )
+      )
     )`
 }
 

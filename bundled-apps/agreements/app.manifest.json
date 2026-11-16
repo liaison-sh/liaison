@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -724,6 +724,7 @@
       }
     },
     "agreements_search": {
+      "restrictedRows": { "entity": "agreement", "idPath": "items[].id" },
       "description": "Find agreements by status, company, kind or renewal date, ordered by what needs someone first.",
       "searchKeywords": [
         "contrat",
@@ -793,6 +794,7 @@
       }
     },
     "agreement_get": {
+      "restrictedRows": { "entity": "agreement", "idPath": "agreement.id" },
       "description": "Read one agreement: its parties, status, price, dates, versions and who can see it.",
       "searchKeywords": [
         "contrat",
@@ -1513,6 +1515,7 @@
       }
     },
     "agreement_evidence_get": {
+      "restrictedRows": { "entity": "agreement", "idPath": "agreement.id" },
       "description": "Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent. IP and browser need agreements:evidence:devices.",
       "searchKeywords": [
         "preuve",

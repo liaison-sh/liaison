@@ -35,6 +35,7 @@ import {
   pdfNotReadyNote,
   pdfStatusAffordance,
   shopifyOrderUrl,
+  showsPaymentChip,
   stripeCollection,
   toLoadedDocument,
 } from "./DocumentDetail"
@@ -664,9 +665,13 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   describe("payment-status badge", () => {
     it("source renders document-detail-payment-chip gated on payment_status, excluding credit notes", () => {
       expect(source).toContain("document-detail-payment-chip")
-      expect(source).toMatch(
-        /Show when=\{doc\(\)\.type !== "credit_note" && doc\(\)\.payment_status\}/,
-      )
+      expect(source).toMatch(/Show when=\{showsPaymentChip\(doc\(\)\) && doc\(\)\.payment_status\}/)
+      const at = (type: string, status: string, payment_status: string | null) =>
+        showsPaymentChip({ type, status, payment_status } as never)
+      expect(at("invoice", "issued", "unpaid")).toBe(true)
+      expect(at("credit_note", "issued", "unpaid")).toBe(false)
+      expect(at("invoice", "draft", "unpaid")).toBe(false)
+      expect(at("invoice", "paid", "paid")).toBe(false)
     })
 
     it("PAYMENT_LABEL / PAYMENT_TONE cover paid, partial, refunded, unpaid", () => {

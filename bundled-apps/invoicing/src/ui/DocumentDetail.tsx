@@ -687,6 +687,17 @@ const PAYMENT_LABEL: Record<string, string> = {
   unpaid: "Unpaid",
 }
 
+/** Whether the header shows the payment chip: never on a credit note (never payable), a draft
+ *  (nothing is owed yet), or beside a status that already says it ("Paid Paid"). */
+export function showsPaymentChip(d: Pick<DocumentSummary, "type" | "status" | "payment_status">) {
+  return (
+    d.type !== "credit_note" &&
+    d.status !== "draft" &&
+    !!d.payment_status &&
+    d.status !== d.payment_status
+  )
+}
+
 function PaymentBadge(p: { paymentStatus: string }): JSX.Element {
   return (
     <Badge tone={PAYMENT_TONE[p.paymentStatus] ?? "neutral"} testid="document-detail-payment-chip">
@@ -1412,7 +1423,7 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                         Shopify-sourced invoice can be "issued" (boxtal still ships
                         it) yet already paid underneath. Credit notes are never
                         payable, so they never carry a meaningful payment_status. */}
-                    <Show when={doc().type !== "credit_note" && doc().payment_status}>
+                    <Show when={showsPaymentChip(doc()) && doc().payment_status}>
                       {(paymentStatus) => <PaymentBadge paymentStatus={paymentStatus()} />}
                     </Show>
                     {/* Its own boundary: a secondary read can only hold back these chips. */}
@@ -1504,14 +1515,18 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     >
                       {tr(FOOTER_ACTIONS.preview_pdf.label)}
                     </Button>
-                    <Button
-                      variant="primary"
-                      testid="document-detail-action-download-pdf"
-                      onClick={downloadPdf}
-                      disabled={!affordance().downloadEnabled}
-                    >
-                      {FOOTER_ACTIONS.download_pdf.label}
-                    </Button>
+                    {/* A draft has no PDF of its own to keep: it is previewed, and downloaded
+                        once it is issued. */}
+                    <Show when={doc().status !== "draft"}>
+                      <Button
+                        variant="primary"
+                        testid="document-detail-action-download-pdf"
+                        onClick={downloadPdf}
+                        disabled={!affordance().downloadEnabled}
+                      >
+                        {tr(FOOTER_ACTIONS.download_pdf.label)}
+                      </Button>
+                    </Show>
                   </div>
                 </div>
                 <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-text-tertiary">

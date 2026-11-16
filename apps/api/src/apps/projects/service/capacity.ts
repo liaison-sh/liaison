@@ -331,8 +331,8 @@ export async function getCapacity(args: {
       over === 0
         ? null
         : over === 1
-          ? "1 person has more than fits"
-          : `${over} people have more than fits`,
+          ? "1 person has over 3 h more than fits"
+          : `${over} people have over 3 h more than fits`,
     covers:
       "Planned time from timeboxes on projects that use time and budgets; available time from hours in a day, days per week, company days off and away days. Nothing here comes from time entered or from activity.",
   }

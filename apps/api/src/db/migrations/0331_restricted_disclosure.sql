@@ -86,6 +86,7 @@ $fn$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION kernel.restricted_readers(uuid, text) FROM PUBLIC;
 --> statement-breakpoint
+-- reviewed-dynamic: a privilege grant on the function above, no dynamic SQL
 GRANT EXECUTE ON FUNCTION kernel.restricted_readers(uuid, text) TO liaison_admin;
 --> statement-breakpoint
 -- Which of these ids name a restricted row (`org_access = 'none'`) of one kind, in one org:
@@ -129,6 +130,7 @@ $fn$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION kernel.restricted_among(uuid, text, text[]) FROM PUBLIC;
 --> statement-breakpoint
+-- reviewed-dynamic: a privilege grant on the function above, no dynamic SQL
 GRANT EXECUTE ON FUNCTION kernel.restricted_among(uuid, text, text[]) TO liaison_admin;
 --> statement-breakpoint
 -- expand-safe: covers exactly what 0249's version covers, minus `restricted:` entries, which no stamp held before this release.

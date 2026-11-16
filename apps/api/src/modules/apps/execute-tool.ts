@@ -19,6 +19,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { logFailure } from "~/lib/failure-severity"
 import { nextApprovalHandle } from "~/lib/handle"
 import { appsLogger as log } from "~/lib/logger"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   callerSafeDbError,
   describeDbError,
@@ -6817,7 +6818,7 @@ export async function restrictedStampOf(
   const rows = await withPrivilegedDb(orgId, "restricted-rows-stamp", async (db) =>
     extractRows<{ ids: string[] | null }>(
       await db.execute(
-        drizzleSql`SELECT kernel.restricted_among(${orgId}::uuid, ${decl.kind}, ARRAY[${drizzleSql.join(
+        drizzleSql`SELECT ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.restricted_among(${orgId}::uuid, ${decl.kind}, ARRAY[${drizzleSql.join(
           ids.map((id) => drizzleSql`${id}`),
           drizzleSql`, `,
         )}]::text[]) AS ids`,

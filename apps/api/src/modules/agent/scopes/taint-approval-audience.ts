@@ -62,7 +62,7 @@ export async function restrictedListsFor(
     for (const scope of wanted) {
       const rows = extractRows<{ readers: string[] | null }>(
         await db.execute(
-          sql`SELECT kernel.restricted_readers(${orgId}::uuid, ${scope}) AS readers`,
+          sql`SELECT ${sql.raw(quoteIdent(schemaRef("kernel")))}.restricted_readers(${orgId}::uuid, ${scope}) AS readers`,
         ),
       )
       const readers = rows[0]?.readers

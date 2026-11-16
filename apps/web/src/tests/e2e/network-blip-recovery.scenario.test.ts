@@ -80,14 +80,19 @@ async function routeSockets(page: Page) {
  *  page's own "connected" (the stack serves a production build, which keeps
  *  no test attribute on the document). Read in ONE step: the indicator goes
  *  away the moment the socket reconnects, so a count followed by a separate
- *  attribute read can find it, then wait 10 s for an element that is gone. */
+ *  attribute read can find it, then wait 10 s for an element that is gone.
+ *  No activity bar at all is NOT "connected": a page that reloaded (or landed
+ *  on the browser's offline error page) shows no shell, and says nothing
+ *  about the socket. */
 async function wsStatus(page: Page): Promise<string> {
   return page
-    .getByTestId("activity-bar")
-    .getByTestId("ws-status-indicator")
-    .evaluateAll((els) =>
-      els.length === 0 ? "connected" : (els[0]?.getAttribute("data-ws-status") ?? "unknown"),
-    )
+    .evaluate(() => {
+      const bar = document.querySelector('[data-testid="activity-bar"]')
+      if (!bar) return "no-shell"
+      const indicator = bar.querySelector('[data-testid="ws-status-indicator"]')
+      return indicator ? (indicator.getAttribute("data-ws-status") ?? "unknown") : "connected"
+    })
+    .catch(() => "navigating")
 }
 
 function tq(env: { schemaPrefix?: string }) {

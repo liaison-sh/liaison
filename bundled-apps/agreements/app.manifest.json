@@ -284,7 +284,8 @@
           "userRef": true,
           "onErase": "anonymize"
         },
-        "updated_by_agent_id": "uuid?"
+        "updated_by_agent_id": "uuid?",
+        "upload_file_id": "uuid?"
       }
     },
     "agreement_versions": {
@@ -995,7 +996,6 @@
       "handler": "agreementPriceSetHandler",
       "writesToTable": "app_agreements.agreements",
       "agentVisible": false,
-      "humanTurnOnly": true,
       "params": {
         "type": "object",
         "properties": {
@@ -1004,7 +1004,7 @@
           },
           "price_minor": {
             "type": "string",
-            "pattern": "^[0-9]{1,15}$"
+            "pattern": "^[0-9]{1,18}$"
           },
           "currency": {
             "type": "string",

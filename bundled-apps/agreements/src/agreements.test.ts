@@ -288,6 +288,33 @@ describe("documents this signature does not fit", () => {
     )
   })
 
+  it("any PDF makes a normal draft holding its file, with no project, invoice or knowledge document", async () => {
+    const db = memoryDb()
+    const file = "44444444-4444-4444-8444-444444444444"
+    const out = await agreementCreate(ctxFor(db), {
+      kind: "other",
+      title: "Shareholders' pact",
+      what_it_is: "A shareholders' agreement",
+      file_id: file,
+    })
+    const id = okId(out)
+    expect(db.tables.get("agreements")?.find((r) => r.id === id)).toMatchObject({
+      kind: "other",
+      status: "draft",
+      number: expect.stringMatching(/^DOC-\d{4}-001$/),
+    })
+    expect(
+      db.tables.get("agreement_drafts")?.find((r) => r.agreement_id === id)?.upload_file_id,
+    ).toBe(file)
+    expect([...db.tables.keys()].sort()).toEqual([
+      "agreement_drafts",
+      "agreement_shares",
+      "agreements",
+    ])
+    const bad = await agreementCreate(ctxFor(db), { kind: "other", title: "x", file_id: "nope" })
+    expect((bad as { error: { code: string } }).error.code).toBe("INVALID_FILE")
+  })
+
   it("a document of kind other needs a person to say what it is", async () => {
     const db = memoryDb()
     const id = okId(await agreementCreate(ctxFor(db), { kind: "other", title: "Scan" }))

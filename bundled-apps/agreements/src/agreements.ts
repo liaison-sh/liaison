@@ -304,6 +304,11 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       "PRICE_NEEDS_A_PERSON",
       "agreement_create never sets a price: a person sets it on the agreement's page. Nothing was created.",
     )
+  if (p.file_id !== undefined && (typeof p.file_id !== "string" || !UUID.test(p.file_id)))
+    return refusal(
+      "INVALID_FILE",
+      "file_id is the id files_upload_confirm returned for the uploaded PDF. Nothing was created.",
+    )
   const agent = await actingAgentId(ctx)
   const user = await callerUserId(ctx)
   let source: AgreementSource | null = p.source ?? null
@@ -363,6 +368,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       data: {
         agreement_id: { $ref: "agreement" },
         source,
+        upload_file_id: p.file_id ?? null,
         lock_version: 1,
         next_number: 1,
         updated_by_user_id: user,
@@ -572,7 +578,7 @@ export async function agreementPriceSet(
       "NOT_A_DRAFT",
       `Agreement ${row.number} is ${row.status}: its price no longer changes. Nothing was changed.`,
     )
-  if (typeof p.price_minor !== "string" || !/^[0-9]{1,15}$/.test(p.price_minor))
+  if (typeof p.price_minor !== "string" || !/^[0-9]{1,18}$/.test(p.price_minor))
     return refusal(
       "INVALID_PRICE",
       "The price is whole minor units, digits only. Nothing was changed.",

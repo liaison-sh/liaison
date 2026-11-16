@@ -6,7 +6,7 @@
     {
       "method": "time_civil",
       "args": ["{\"timezone\":\"UTC\"}"],
-      "reply": "{\"date\":\"2026-11-14\",\"year\":2026,\"month\":11,\"day\":14,\"hour\":22,\"minute\":15,\"weekday\":6,\"zone\":\"UTC\"}"
+      "reply": "{\"date\":\"2026-11-16\",\"year\":2026,\"month\":11,\"day\":16,\"hour\":0,\"minute\":31,\"weekday\":1,\"zone\":\"UTC\"}"
     },
     {
       "method": "db_findMany",

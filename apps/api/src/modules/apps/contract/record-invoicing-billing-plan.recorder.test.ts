@@ -2,7 +2,7 @@
 //
 // Records the invoicing app's contract fixtures for the billing plan tools and the sweep of done
 // milestones (fixtures/invoicing/tool__billing_plan_get.json, tool__billing_plan_set.json,
-// tool__milestone_draft_create.json, tool__advance_draft_create.json,
+// tool__milestone_draft_create.json, tool__milestone_draft_preview.json, tool__advance_draft_create.json,
 // tool__advance_refund_prepare.json, job__billing-steps-sweep.json; the refund preflight is
 // recorded by record-invoicing-retainer.recorder.test.ts): an empty plan read, a plan
 // whose project cannot be read (no projects app in the contract org), a task with no plan step, an
@@ -84,6 +84,16 @@ const PLAN: RecordingStep[] = [
       expectError: {
         reason:
           "the task invoices no plan step, so nothing is drafted: pins that refusal; the drafting path is proven by billing-plan.test.ts",
+      },
+    }),
+  },
+  {
+    entry: "tool:milestone_draft_preview",
+    input: () => ({
+      params: { taskId: TASK },
+      expectError: {
+        reason:
+          "the task invoices no plan step, so the card has nothing to name: pins that answer; the named card is proven by approval-cards.test.ts",
       },
     }),
   },

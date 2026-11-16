@@ -258,6 +258,11 @@ export const DOCS_EXEMPT: { glob: string; reason: string }[] = [
       "client actions have no route, tool or screen yet; their page comes with the public action routes",
   },
   {
+    glob: "apps/web/src/modules/client-action/**",
+    reason:
+      "the page a client outside the organization opens from a signing mail; members never see it, and how a sender sends one is documented with the agreements page",
+  },
+  {
     glob: "apps/api/src/tests/security/portal-doors/**",
     reason: "the portal door tests, their shared world and the list of doors still owed",
   },

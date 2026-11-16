@@ -1668,7 +1668,7 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     // The fee and the hours it includes, against the month's time lines.
     const fee = moneyText(retainer.feeExclMinor, currency)
     const rate = moneyText(retainer.overageRateMinor, currency)
-    const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used.`
+    const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used. The month is billed once, from this card or by its schedule in Invoicing.`
     out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
   }
   if (retainer?.billedBySchedule) {

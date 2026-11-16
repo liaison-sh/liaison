@@ -955,6 +955,7 @@ import { appManifestJsonSchema } from "~/modules/apps/manifest-schema"
 import { defaultFillerCompileError } from "~/modules/apps/param-validator"
 import { fieldDefaultErrors } from "~/modules/apps/settings-schema-from-manifest"
 import { importDeclarationErrors } from "~/modules/imports/kind-schema"
+import { RESTRICTED_ENTITY_KINDS } from "~/modules/permissions/restricted-scope"
 import { KERNEL_SCOPES } from "~/modules/permissions/scope-catalog"
 
 const KERNEL_SCOPE_SET = new Set(KERNEL_SCOPES.map((e) => e.scope))
@@ -1279,6 +1280,26 @@ function contextProviderErrors(manifest: any): string[] {
   return errors
 }
 
+/** A `restrictedRows` names a record kind the kernel has a list function for, on a read. */
+export function restrictedRowsErrors(manifest: any): string[] {
+  const errors: string[] = []
+  const app = typeof manifest?.name === "string" ? manifest.name : ""
+  for (const [toolName, tool] of Object.entries((manifest?.tools ?? {}) as Record<string, any>)) {
+    const decl = tool?.restrictedRows
+    if (decl === undefined) continue
+    const kind = `${app}.${String(decl?.entity ?? "")}`
+    if (!RESTRICTED_ENTITY_KINDS.includes(kind)) {
+      errors.push(
+        `tools.${toolName}.restrictedRows.entity: '${kind}' has no list function; known: ${RESTRICTED_ENTITY_KINDS.join(", ")}`,
+      )
+    }
+    if (tool?.readOnly !== true) {
+      errors.push(`tools.${toolName}.restrictedRows: only a readOnly tool declares it`)
+    }
+  }
+  return errors
+}
+
 /**
  * A `resultTaintWhen` names read scopes of the app's own (`<app>:<resource>:read`): it classifies
  * part of what the tool returns, so it can only be a read scope of this app.
@@ -1384,6 +1405,7 @@ export function validateAppManifest(manifest: any): ValidationResult {
   errors.push(...resultCardErrors(manifest))
   errors.push(...contextProviderErrors(manifest))
   errors.push(...resultTaintWhenErrors(manifest))
+  errors.push(...restrictedRowsErrors(manifest))
   errors.push(...activitySourceErrors(manifest))
   errors.push(
     ...importDeclarationErrors(

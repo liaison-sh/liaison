@@ -21,6 +21,9 @@ describe("ticket approval subtitles in the reader's language", () => {
     expect(localizeApprovalText("Reply to Jean Dupont", fr)).toBe("Réponse à Jean Dupont")
     expect(localizeApprovalText("Nudge Jean Dupont", fr)).toBe("Relance à Jean Dupont")
     expect(localizeApprovalText("Close", fr)).toBe("Clôture")
+    expect(localizeApprovalText("A restricted document needs your decision", fr)).toBe(
+      "Un document à accès restreint attend votre décision",
+    )
     expect(localizeApprovalText("Add internal note", fr)).toBe("Ajout d'une note interne")
     expect(localizeApprovalText("Edit internal note", fr)).toBe("Modification d'une note interne")
     expect(localizeApprovalText("Delete internal note", fr)).toBe("Suppression d'une note interne")

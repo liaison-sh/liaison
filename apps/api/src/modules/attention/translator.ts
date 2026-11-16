@@ -19,6 +19,7 @@ import {
   type AttentionTranslation as ManifestTranslation,
   manifestAttentionRegistry,
 } from "~/modules/apps/app-registries"
+import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
 import {
   type AttentionLiveItem,
   attentionTextRedacted,
@@ -969,7 +970,12 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
-    keepMembers: deps.recipientContext?.keepMembers ?? withoutExternalUsers,
+    // Members only, and for a record closed to the organization its list only (a derived
+    // copy: recipients follow the list whatever the manifest's recipient kind).
+    keepMembers:
+      deps.recipientContext?.keepMembers ??
+      (async (orgId, ids) =>
+        keepRestrictedReaders(orgId, event, await withoutExternalUsers(orgId, ids))),
   }
 
   // null = the preferences could not be read: the router degrades (in_app

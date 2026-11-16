@@ -26,5 +26,11 @@
     "stamped": "Horodatage : reçu d'une autorité extérieure.",
     "pending": "Horodatage : en attente, pas encore reçu.",
     "signers": "Signataires"
+  },
+  "claim": {
+    "subject": "Le contrat à accès restreint {{number}} a été repris",
+    "body": "{{name}} s'est ajouté à la liste des personnes qui voient le contrat {{number}} le {{on}}.",
+    "why": "Un administrateur ne peut le faire qu'après que chaque personne de la liste a été désactivée depuis 7 jours. La reprise est affichée sur le contrat pour toute personne qui le voit.",
+    "footer": "Vous recevez ce mail car vous figuriez sur la liste de ce contrat. Il ne contient aucun lien."
   }
 }

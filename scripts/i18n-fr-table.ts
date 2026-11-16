@@ -2186,6 +2186,8 @@ export const FR: Record<string, string> = {
   "Stalled: {{title}}": "Bloquée : {{title}}",
   'Edit role "{{name}}" ({{changes}})': "Modifier le rôle « {{name}} » ({{changes}})",
   'Delete role "{{name}}"': "Supprimer le rôle « {{name}} »",
+  "A restricted document needs your decision":
+    "Un document à accès restreint attend votre décision",
   "Invite {{email}} as {{role}}": "Inviter {{email}} en tant que {{role}}",
   "Assign {{email}} to {{role}}": "Attribuer {{role}} à {{email}}",
   "Remove {{email}} from {{role}}": "Retirer {{email}} du rôle {{role}}",
@@ -3044,6 +3046,8 @@ export const FR: Record<string, string> = {
   "Access request denied": "Demande d'accès refusée",
   "{{name}} mentioned you": "{{name}} vous a mentionné",
   "{{name}} added a file to {{label}}": "{{name}} a ajouté un fichier dans {{label}}",
+  "Requests about a restricted document were withdrawn: the people who asked are not on its list":
+    "Des demandes sur un document à accès restreint ont été retirées : les personnes qui les ont faites ne sont pas sur sa liste",
   "{{name}} requested access: {{title}}": "{{name}} demande un accès : {{title}}",
   "Approval {{handle}} approved": "Demande {{handle}} approuvée",
   "Approval {{handle}} rejected": "Demande {{handle}} refusée",

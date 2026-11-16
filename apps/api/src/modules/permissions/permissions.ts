@@ -13,9 +13,12 @@ import {
   users,
 } from "~/db/schema/kernel"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
+import { RESTRICTED_SCOPE_PREFIX } from "~/modules/permissions/restricted-scope"
 
 export function hasScope(required: string, granted: string[]): boolean {
   if (!required) return false
+  // A restricted record's scope is held by its list, never by a grant.
+  if (required.startsWith(RESTRICTED_SCOPE_PREFIX)) return false
   const requiredParts = required.split(":")
   return granted.some((g) => {
     // Full wildcard grants everything.

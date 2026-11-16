@@ -7,6 +7,7 @@ import { batchPreconditionFailure, type DbBatchOp } from "@liaison/app-sdk"
 import {
   accessOps,
   currentShares,
+  emitAccessChanged,
   mayChangeAccess,
   normaliseShares,
   type OrgAccess,
@@ -49,6 +50,8 @@ export interface AgreementRow {
   what_it_is_by_user_id?: string | null
   not_a_guarantee_by_user_id?: string | null
   org_access?: OrgAccess | null
+  claimed_by_user_id?: string | null
+  claimed_at?: string | null
   created_by_user_id?: string | null
   created_by_agent_id?: string | null
   updated_at?: string | null
@@ -250,6 +253,10 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       frozen_at: v.frozen_at ?? null,
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
+    // An admin's claim, once every person on the list had left, stays shown to whoever reads it.
+    claimed: row.claimed_by_user_id
+      ? { by_user_id: row.claimed_by_user_id, at: row.claimed_at ?? null }
+      : null,
     signing_links: links.map((l) => ({
       client_action_id: l.id,
       signer: l.invited_name,
@@ -259,7 +266,9 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       expires_at: l.expires_at,
     })),
     message:
-      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`.trim(),
+      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`
+        .replace(/\s+/g, " ")
+        .trim(),
   }
 }
 
@@ -411,6 +420,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
   })
   const row = result.rows.agreement
   const number = result.sequence?.formatted ?? String(row?.number ?? "")
+  if (orgAccess === "none" && row?.id) await emitAccessChanged(ctx, String(row.id), orgAccess, list)
   return {
     status: "ok",
     agreement: {
@@ -473,6 +483,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
   })) as ShareRow[]
   const shares = allShares.filter((s) => !s.removed_at)
   let accessBatch: DbBatchOp[] = []
+  let accessNow: { orgAccess: OrgAccess; list: ShareEntry[] } | null = null
   if (accessChange) {
     const orgAccess = (p.org_access ?? row.org_access ?? "editor") as OrgAccess
     if (!mayChangeAccess(user, (row.org_access ?? "editor") as OrgAccess, shares))
@@ -528,6 +539,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     )
     if (isError(acc)) return acc
     accessBatch = acc
+    accessNow = { orgAccess, list }
   }
   const data: Record<string, unknown> = {}
   if (p.title !== undefined) data.title = p.title.trim()
@@ -578,6 +590,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
       )
     throw err
   }
+  if (accessNow) await emitAccessChanged(ctx, row.id, accessNow.orgAccess, accessNow.list)
   return {
     status: "ok",
     message: `Draft ${row.number} was saved${accessChange ? "; who can see it changed" : ""}${replaced ? `; version ${replaced.version} was replaced and its ${replaced.revoked} open link(s) withdrawn, its signatures kept` : ""}. Next: agreement_prepare to check it.`,

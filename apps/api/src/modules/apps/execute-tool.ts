@@ -19,6 +19,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { logFailure } from "~/lib/failure-severity"
 import { nextApprovalHandle } from "~/lib/handle"
 import { appsLogger as log } from "~/lib/logger"
+import { quoteIdent } from "~/lib/sql-utils"
 import {
   callerSafeDbError,
   describeDbError,
@@ -290,6 +291,11 @@ import {
 } from "~/modules/permissions/eligible-approvers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { filterResponse, returnsDimensionDefs } from "~/modules/permissions/response-filter"
+import {
+  isRestrictedScope,
+  restrictedAsReadScopes,
+  restrictedScope,
+} from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
 import { insertThreadWithParticipants } from "~/modules/threads/thread"
 import {
@@ -5422,11 +5428,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // decided by that resource's own deciders (the tool's approval authority and owner routing),
   // never by a holder of an app's read scope: who may widen what a table's readers see is the
   // table's question. Rule 15 (the requester alone decides) keeps the taint authority.
+  // A turn that read a restricted record (`restricted:` scope) parks owner-routed to the person
+  // who asked, who is on its list (judged above): the card is decided by them alone and hidden
+  // from every other feed and list. The record's own read scope stands for the restricted one
+  // wherever a deciding or audience scope is needed, since no grant holds the restricted one.
+  if ((taintForcedApprovalScopes ?? judgedTurnTaint ?? []).some(isRestrictedScope)) {
+    resourceReadRoutesToRequester = true
+  }
   const disclosureAuthority =
     taintDisclosureOnly &&
     taintForcedApprovalScopes !== null &&
     (!tool.sinkReadersResource || resourceReadRoutesToRequester)
-      ? taintDisclosureAuthority(taintForcedApprovalScopes)
+      ? taintDisclosureAuthority(restrictedAsReadScopes(taintForcedApprovalScopes))
       : null
 
   // Dimension-constrained approvals: a gated tool may declare a CUSTOM decision
@@ -5485,7 +5498,10 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // creates a thread or a row.
   // Every approval this call parks is narrowed to holders of what its turn read (rule 13): the
   // taint-forced audience when the taint parked it, else the judged turn's whole taint.
-  const parkTaint: string[] | null = taintForcedApprovalScopes ?? judgedTurnTaint
+  // No grant holds a restricted record's scope, so as an audience demand it stands for its
+  // record's read scope; the list itself is honoured by the owner routing above.
+  const parkTaintRead: string[] | null = taintForcedApprovalScopes ?? judgedTurnTaint
+  const parkTaint: string[] | null = parkTaintRead ? restrictedAsReadScopes(parkTaintRead) : null
   const noTaintDeciderRefusal = async (mustHold: string[]): Promise<ExecuteToolEnvelope | null> => {
     const resourceOwnerId = await resolveApprovalOwnerRouting({
       orgId: opts.orgId,
@@ -5528,7 +5544,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
   if (taintForcedApprovalScopes !== null && findRefTokens(validatedParams).length === 0) {
-    const refusal = await noTaintDeciderRefusal(taintForcedApprovalScopes)
+    const refusal = await noTaintDeciderRefusal(restrictedAsReadScopes(taintForcedApprovalScopes))
     if (refusal) return refusal
   }
   // A dashboard block never parks: held for outside content, it is refused instead.
@@ -6698,6 +6714,29 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
 
+  // A read that returned a restricted row stamps the turn with that row's restricted scope,
+  // from the kernel's own lookup of each returned id, so what the turn writes next stays with
+  // the row's list (scope-taint.ts rules 8b, 8h, 11, 13 do the rest). Fails closed: a result
+  // whose rows could not be looked up is withheld.
+  if ("data" in envelope && tool.restrictedRows && taintOriginStore) {
+    try {
+      const scopes = await restrictedStampOf(opts.orgId, tool.restrictedRows, envelope.data)
+      if (scopes.length > 0) taintOriginStore.recordResultScopes(scopes)
+    } catch (err) {
+      log.error(
+        { err, toolName: opts.toolName, orgId: opts.orgId },
+        "Failed to look up restricted rows of a read: result withheld",
+      )
+      envelope = {
+        error: {
+          code: "restricted_stamp_failed",
+          message: `${opts.toolName}: the result was withheld because the kernel could not check whether it holds a record closed to the organization (${err instanceof Error ? err.message : String(err)}). Nothing was shown. Retry the same call.`,
+          retryable: true,
+        },
+      }
+    }
+  }
+
   if (idemKey) {
     if ("error" in envelope) {
       await invalidateIdempotency(opts.orgId, opts.toolName, idemKey)
@@ -6742,6 +6781,51 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   }
 
   return envelope
+}
+
+/** The values at a `restrictedRows` id path (`items[].id`, `agreement.id`) in a result. */
+export function idsAtPath(data: unknown, path: string): string[] {
+  let level: unknown[] = [data]
+  for (const raw of path.split(".")) {
+    const many = raw.endsWith("[]")
+    const key = many ? raw.slice(0, -2) : raw
+    const next: unknown[] = []
+    for (const node of level) {
+      if (node === null || typeof node !== "object" || Array.isArray(node)) continue
+      const value = (node as Record<string, unknown>)[key]
+      if (many) {
+        if (Array.isArray(value)) next.push(...value)
+      } else if (value !== undefined) next.push(value)
+    }
+    level = next
+  }
+  return [...new Set(level.filter((v): v is string => typeof v === "string" && v !== ""))]
+}
+
+/**
+ * The restricted scopes a read's result carries: one `restricted:<kind>:<id>` for every id at
+ * the tool's `idPath` whose row is closed to the organization, by the kernel's lookup
+ * (`kernel.restricted_among`, 0331), never by the handler or the model.
+ */
+export async function restrictedStampOf(
+  orgId: string,
+  decl: { kind: string; idPath: string },
+  data: unknown,
+): Promise<string[]> {
+  const ids = idsAtPath(data, decl.idPath)
+  if (ids.length === 0) return []
+  const [app, entity] = decl.kind.split(".") as [string, string]
+  const rows = await withPrivilegedDb(orgId, "restricted-rows-stamp", async (db) =>
+    extractRows<{ ids: string[] | null }>(
+      await db.execute(
+        drizzleSql`SELECT ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.restricted_among(${orgId}::uuid, ${decl.kind}, ARRAY[${drizzleSql.join(
+          ids.map((id) => drizzleSql`${id}`),
+          drizzleSql`, `,
+        )}]::text[]) AS ids`,
+      ),
+    ),
+  )
+  return (rows[0]?.ids ?? []).map((id) => restrictedScope(app, entity, String(id))).sort()
 }
 
 /**

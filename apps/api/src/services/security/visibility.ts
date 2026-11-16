@@ -13,6 +13,7 @@ import {
 import { resolveAuditAgentId } from "~/modules/audit/resolve-agent"
 import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 
 export interface VisibilityMessage {
   requiredScopes: string[]
@@ -43,8 +44,14 @@ export function isMessageVisible(message: VisibilityMessage, viewer: VisibilityV
     Array.isArray(requiredScopes) &&
     requiredScopes.every((s) => typeof s === "string" && hasScope(s, viewer.grants))
   if (scopesHeld) return true
-  return (
+  const disclosed =
     viewer.userId !== "" && Array.isArray(disclosureList) && disclosureList.includes(viewer.userId)
+  if (!disclosed || !Array.isArray(requiredScopes)) return disclosed
+  // A stamp holding a restricted record's scope is read only through its disclosure list (the
+  // record's list, filled by the stamping writer), by people who also hold the rest of it.
+  if (!requiredScopes.some(isRestrictedScope)) return true
+  return requiredScopes.every(
+    (s) => typeof s === "string" && (isRestrictedScope(s) || hasScope(s, viewer.grants)),
   )
 }
 

@@ -181,6 +181,8 @@ const TEMPLATES: Template[] = [
   // files/attach.ts: a file an earlier step of a sequence makes, pending until it runs.
   T(/^📎 (.+) \(attached once that step has run\)$/, "attachedAfterStep", "file"),
   T(/^Delete role "(.+)"$/, "deleteRole", "name"),
+  // approvals/attention.ts RESTRICTED_DECISION_TITLE: a request about a restricted record.
+  T(/^A restricted document needs your decision$/, "restrictedDecision"),
   T(/^Invite (\S+) as (.+)$/, "inviteAs", "email", "role"),
   T(/^Assign (\S+) to (.+)$/, "assignTo", "email", "role"),
   T(/^Remove (\S+) from (.+)$/, "removeFrom", "email", "role"),

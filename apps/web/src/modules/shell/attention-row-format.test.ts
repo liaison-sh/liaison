@@ -224,6 +224,19 @@ describe("attention row format — a routed request waiting a day", () => {
     metadata: { routedReminder: { approvalId: "a1", hours: 24 } },
   }
 
+  test("the line about withdrawn requests on a restricted document reads in French from the catalog", () => {
+    const line = {
+      app: "kernel",
+      kind: "system_alert",
+      summary:
+        "Requests about a restricted document were withdrawn: the people who asked are not on its list",
+    }
+    expect(kernelAttentionTitle(line, flat("en"))).toBe(line.summary)
+    expect(kernelAttentionTitle(line, flat("fr"))).toBe(
+      "Des demandes sur un document à accès restreint ont été retirées : les personnes qui les ont faites ne sont pas sur sa liste",
+    )
+  })
+
   test("reads in English as written and in French from the catalog", () => {
     expect(kernelAttentionTitle(reminder, flat("en"))).toBe(reminder.summary)
     expect(kernelAttentionTitle(reminder, flat("fr"))).toBe(

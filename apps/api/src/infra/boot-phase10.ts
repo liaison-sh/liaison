@@ -28,6 +28,7 @@ import { registerRevokeOnDisconnectConsumer } from "~/modules/apps/connections/r
 import { registerDigestScheduledJobs } from "~/modules/attention/digest-jobs"
 import { registerStateMaterializerScheduledJob } from "~/modules/attention/state-materializer"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { wireRestrictedAccessFollow } from "~/modules/client-actions/restricted-follow"
 import { demoSpendBootCheck, registerDemoPriceCheckSingleton } from "~/modules/demo/demo-alerts"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { registerReplayResumeSingleton } from "~/modules/demo/replay/resume"
@@ -609,6 +610,8 @@ export async function runPhase10Boot(): Promise<void> {
   await registerStateMaterializerScheduledJob()
   // An app's stored attention list is recomputed after the app was woken.
   wireAttentionRefreshWakes()
+  // A restricted record's client actions and discussion follow its list.
+  wireRestrictedAccessFollow()
   log.info("Phase 10 boot: state materializer registered")
   await registerDigestScheduledJobs()
   log.info("Phase 10 boot: digest jobs registered")

@@ -756,6 +756,23 @@ const toolSchema = {
       required: ["fields", "scopes"],
       additionalProperties: false,
     },
+    // A read that may return a row closed to the organization (`org_access = 'none'`): after a
+    // successful call the kernel looks up the org access of every id at `idPath` (dot path,
+    // `[]` for each element of an array: `items[].id`) and stamps the turn with
+    // `restricted:<app>.<entity>:<id>` for each restricted one (execute-tool.ts). Neither the
+    // handler nor the model decides.
+    restrictedRows: {
+      type: "object",
+      properties: {
+        entity: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        idPath: {
+          type: "string",
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
+        },
+      },
+      required: ["entity", "idPath"],
+      additionalProperties: false,
+    },
     // On a tool with `agentVisible: false`: the visible tool of the same app to use instead.
     useInstead: { type: "string", minLength: 1 },
     approvalExpiryHours: { type: "integer", minimum: 1, maximum: 720 },

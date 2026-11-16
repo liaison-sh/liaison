@@ -91,6 +91,10 @@ export interface Translation {
   resolveWhen?: AttentionResolveWhen
 }
 
+/** The Home line of `restricted_record:requests_withdrawn`, read back by the web's title. */
+export const RESTRICTED_REQUESTS_WITHDRAWN =
+  "Requests about a restricted document were withdrawn: the people who asked are not on its list"
+
 /**
  * An agent row that is news to the person it works for: a post nobody in the
  * conversation asked for (a routine's run, `SendMessageParams.unprompted`), or
@@ -273,6 +277,17 @@ export const kernelTranslations: Translation[] = [
     when: { op: "exists", path: "data.routineMailboxWait" },
     recipients: { kind: "participants", path: "data.targetUserIds" },
     metadataFromData: ["link", "routineMailboxWait"],
+  },
+  {
+    // A restricted record closed while requests about it waited for people off its list: they
+    // were withdrawn (client-actions/restricted-follow.ts), and the list is told, naming nothing.
+    event: "restricted_record:requests_withdrawn",
+    app: "kernel",
+    kind: "system_alert",
+    urgency: 40,
+    isUrgent: false,
+    summary: RESTRICTED_REQUESTS_WITHDRAWN,
+    recipients: { kind: "participants", path: "data.targetUserIds" },
   },
   {
     // S17: an agent tool changed the user's own notification settings. The

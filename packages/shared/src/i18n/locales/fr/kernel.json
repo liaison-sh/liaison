@@ -2707,6 +2707,7 @@
     "tpl": {
       "editRole": "Modifier le rôle « {{name}} » ({{changes}})",
       "deleteRole": "Supprimer le rôle « {{name}} »",
+      "restrictedDecision": "Un document à accès restreint attend votre décision",
       "inviteAs": "Inviter {{email}} en tant que {{role}}",
       "assignTo": "Attribuer {{role}} à {{email}}",
       "removeFrom": "Retirer {{email}} du rôle {{role}}",
@@ -4041,6 +4042,7 @@
     },
     "mentionedYou": "{{name}} vous a mentionné",
     "fileShared": "{{name}} a ajouté un fichier dans {{label}}",
+    "restrictedRequestsWithdrawn": "Des demandes sur un document à accès restreint ont été retirées : les personnes qui les ont faites ne sont pas sur sa liste",
     "requestedAccess": "{{name}} demande un accès : {{title}}",
     "approvalDecided": {
       "approved": "Demande {{handle}} approuvée",

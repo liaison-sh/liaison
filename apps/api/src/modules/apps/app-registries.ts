@@ -445,6 +445,9 @@ export const toolRegistry = createTypedRegistry<
     /** The manifest's `resultTaintWhen`: a successful result holding one of `fields` adds
      *  `scopes` to the turn's scope taint (execute-tool.ts). */
     resultTaintWhen?: { fields: readonly string[]; scopes: readonly string[] }
+    /** The manifest's `restrictedRows`: the record kind (`<app>.<entity>`) and where its ids sit
+     *  in a result, for the kernel's restricted stamp (execute-tool.ts). */
+    restrictedRows?: { kind: string; idPath: string }
     /** Manifest `approvalCard`: the summary template and the `pill` shown on the card. */
     approvalCard?: { summary?: string; pill?: { label: string; labelKey?: string } }
     /** Manifest `resultCard`: how the tool's result is drawn as a card. */

@@ -11,6 +11,7 @@ import type { DbClient } from "@liaison/app-sdk"
 import manifest from "../app.manifest.json"
 import {
   agreementCreate,
+  agreementGet,
   agreementPrepare,
   agreementPriceSet,
   agreementsSearch,
@@ -345,6 +346,40 @@ describe("who can see an agreement (the one writer)", () => {
     // The creator can leave once another named editor exists.
     await agreementUpdate(ctxFor(db), { id, shares: [{ user_id: OTHER, role: "editor" }] })
     expect(list()).toEqual([[OTHER, "editor"]])
+  })
+
+  it("the agreement keeps a copy of its list while closed, and none once open again", async () => {
+    const db = memoryDb()
+    const id = okId(
+      await agreementCreate(ctxFor(db), {
+        kind: "nda",
+        title: "Copied list",
+        org_access: "none",
+        shares: [{ user_id: OTHER, role: "viewer" }],
+      }),
+    )
+    const row = () => db.tables.get("agreements")?.find((r) => r.id === id)
+    expect(row()?.acl_user_ids).toEqual([PERSON, OTHER].sort())
+    await agreementUpdate(ctxFor(db), { id, shares: [{ user_id: PERSON, role: "editor" }] })
+    expect(row()?.acl_user_ids).toEqual([PERSON])
+    await agreementUpdate(ctxFor(db), { id, org_access: "editor" })
+    expect(row()?.acl_user_ids).toEqual([])
+  })
+
+  it("an admin's claim stays shown on the agreement to whoever reads it", async () => {
+    const db = memoryDb()
+    const id = okId(await agreementCreate(ctxFor(db), { kind: "nda", title: "Claimed" }))
+    const row = db.tables.get("agreements")?.find((r) => r.id === id) as Record<string, unknown>
+    const before = (await agreementGet(ctxFor(db), { id })) as { claimed: unknown }
+    expect(before.claimed).toBeNull()
+    row.claimed_by_user_id = OTHER
+    row.claimed_at = "2026-05-03"
+    const after = (await agreementGet(ctxFor(db), { id })) as {
+      claimed: unknown
+      message: string
+    }
+    expect(after.claimed).toEqual({ by_user_id: OTHER, at: "2026-05-03" })
+    expect(after.message).toContain("An admin added themselves to its list on 2026-05-03")
   })
 
   it("an agent's change parks a card no auto-approve can pass, and changes nothing", async () => {

@@ -7,6 +7,7 @@
 // Links are minted and withdrawn only through the kernel's bridge methods,
 // inside the person's decision on the gated tool; nothing here signs.
 
+import { currentShares } from "./access"
 import { UNFIT_TAGS } from "./checks"
 import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
 import { type CopyState, copyStateOf, eventsOf, type SealCtx, sealVersion } from "./seal"
@@ -236,6 +237,12 @@ function cardLines(ready: Ready, p: SendParams): string[] {
   ]
   for (const a of ready.sharedAddresses)
     lines.push(`Two signers share ${a}: each signs with their own name and their own code.`)
+  // A signer is not a reader: on a restricted agreement a colleague off its list signs by their
+  // own link and reads the document only there, and the card says so before anyone approves.
+  if (ready.agreement.org_access === "none")
+    lines.push(
+      "Restricted document: a signer who works here but is not on its list signs by their own link and reads it only there.",
+    )
   if (p.required_phrase) lines.push(`Each signer types: "${p.required_phrase}"`)
   if (p.message) lines.push(`Message: ${p.message}`)
   return lines
@@ -340,9 +347,16 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       "LINKS_NOT_AVAILABLE",
       "This server cannot make signing links. Nothing was sent.",
     )
+  // A restricted agreement's links are seen only by its list: the client actions carry it, so
+  // the kernel lists them for those people alone and opens no automatic portal share.
+  const visibleTo =
+    ready.agreement.org_access === "none"
+      ? (await currentShares(ctx, ready.agreement.id)).map((s) => s.user_id)
+      : null
   const out = bridgeAnswer<MintAnswer>(
     await ctx.client_actions_mint({
       send: {
+        ...(visibleTo ? { visible_to: visibleTo } : {}),
         target_type: TARGET_TYPE,
         target_id: ready.version.id,
         sha256: ready.version.sha256,

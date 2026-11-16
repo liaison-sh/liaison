@@ -455,6 +455,12 @@ export function kernelAttentionTitle(
       m = /^(.+): open it in Liaison to read and sign$/s.exec(s)
       return m ? t(`${k}.staffTurn`, { title: m[1] ?? "" }) : s
     }
+    case "system_alert":
+      // attention/kernel-translations.ts RESTRICTED_REQUESTS_WITHDRAWN.
+      return s ===
+        "Requests about a restricted document were withdrawn: the people who asked are not on its list"
+        ? t("kernel.attentionTitle.restrictedRequestsWithdrawn")
+        : s
     case "thread_reply":
     case "thread_followup":
       return localizeAgentNotice(s, t)

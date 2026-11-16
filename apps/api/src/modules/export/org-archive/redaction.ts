@@ -32,6 +32,8 @@ export const REDACTED_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.connected_accounts.credentials_encrypted": "connection credentials",
   "kernel.oauth_providers.client_secret_encrypted": "sign-in provider client secret",
   "kernel.users.password_hash": "password hash",
+  "kernel.client_actions.token_hash": "client request link token hash",
+  "kernel.client_actions.prior_token_hashes": "client request earlier link token hashes",
   "kernel.users.recovery_codes": "two-step recovery codes",
   "kernel.users.totp_secret": "TOTP secret",
   "kernel.invitations.token_hash": "invitation token hash",
@@ -238,6 +240,9 @@ export const KEPT_COLUMNS: Readonly<Record<string, string>> = {
   "kernel.user_mailbox_identities.keyring_attestation": "a public attestation",
   "kernel.users.avatar_key": "object storage path of the avatar",
   "kernel.users.totp_enabled": "whether two-step verification is on",
+  "kernel.client_actions.code_verified_at": "when the client passed the emailed code (a time)",
+  "kernel.client_actions.words_key": "the translation key of the consent words shown",
+  "kernel.companies.portal_require_totp": "whether the company's portal requires a second factor",
   "kernel.users.totp_last_used_at": "a timestamp",
 }
 

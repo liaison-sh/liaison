@@ -31,6 +31,7 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/health": "public route, see route-auth-invariant.test.ts",
   "GET /api/health/ready": "public route, see route-auth-invariant.test.ts",
   "GET /api/settings/branding": "public route, see route-auth-invariant.test.ts",
+  "GET /api/portal/auth/branding/:slug": "public route, see route-auth-invariant.test.ts",
   "GET /healthz": "public route, see route-auth-invariant.test.ts",
   "GET /api/client-policy":
     "public route: the minimum desktop and mobile client versions, read before sign-in",

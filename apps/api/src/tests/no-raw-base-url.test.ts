@@ -40,6 +40,11 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
     reason:
       "boot check of the app frame origin: refuses a frame domain that shares BASE_URL's host or registrable domain, builds no link",
   },
+  "modules/portal/auth-routes.ts": {
+    reads: 1,
+    reason:
+      "the portal refresh route's Origin check against the instance's web origins, builds no link",
+  },
   "app.ts": {
     reads: 3,
     reason:

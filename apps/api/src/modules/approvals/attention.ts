@@ -101,7 +101,7 @@ interface PendingApprovalRow {
 
 /**
  * The only title a request about a restricted record carries on Home, in its push and in its
- * notification mail: nothing of the record (S749q). The card in the conversation shows it to the
+ * notification mail: nothing of the record. The card in the conversation shows it to the
  * person deciding, who is on the record's list.
  */
 export const RESTRICTED_DECISION_TITLE = "A restricted document needs your decision"

@@ -7,3 +7,5 @@ Requests withdrawn on closing give the list one Home line -> apps/api/src/module
 The send card of a closed agreement says a colleague off the list signs by link -> bundled-apps/agreements/src/send.ts (cardLines)
 The claim route, its 7 days and its admin permission -> apps/api/src/modules/apps/restricted-claim.ts (restrictedClaimRoutes) ; apps/api/src/db/migrations/0331_restricted_disclosure.sql (restricted_claim)
 The claim is audited, mailed to everyone ever on the list and shown on the agreement -> apps/api/src/modules/apps/restricted-claim.ts (mailTheList) ; bundled-apps/agreements/src/agreements.ts (agreementGet)
+The audit log shows a closed agreement's rows to its list only -> apps/api/src/db/migrations/0331_restricted_disclosure.sql (audit_log_restricted_records)
+The whole-organization export names a closed agreement by number and status only -> apps/api/src/modules/export/org-archive/withheld.ts (PARTIAL_ROWS, WITHHELD_ROWS)

@@ -47,7 +47,7 @@ import {
   redactJsonPaths,
   scrubsCiphertext,
 } from "~/modules/export/org-archive/redaction"
-import { WITHHELD_ROWS } from "~/modules/export/org-archive/withheld"
+import { PARTIAL_ROWS, WITHHELD_ROWS } from "~/modules/export/org-archive/withheld"
 import {
   ExportTooLargeError,
   fileEntryName,
@@ -102,23 +102,30 @@ export interface BuildOrgArchiveOptions {
 }
 
 /** The SQL expression one column is written as. */
-function columnExpr(col: ExportColumn, redacted: boolean): string {
-  const ref = `t.${quoteIdent(col.name)}`
+function columnExpr(col: ExportColumn, redacted: boolean, hiddenWhen?: string): string {
   if (redacted) return `NULL AS ${quoteIdent(col.name)}`
+  const expr = columnValue(col)
+  return hiddenWhen
+    ? `CASE WHEN ${hiddenWhen} THEN NULL ELSE ${expr} END AS ${quoteIdent(col.name)}`
+    : `${expr} AS ${quoteIdent(col.name)}`
+}
+
+function columnValue(col: ExportColumn): string {
+  const ref = `t.${quoteIdent(col.name)}`
   switch (col.type) {
     case "bytea":
-      return `encode(${ref}, 'base64') AS ${quoteIdent(col.name)}`
+      return `encode(${ref}, 'base64')`
     case "bigint":
     case "bigint[]":
     case "money":
-      return `${ref}::text${col.type.endsWith("[]") ? "[]" : ""} AS ${quoteIdent(col.name)}`
+      return `${ref}::text${col.type.endsWith("[]") ? "[]" : ""}`
     case "timestamp with time zone":
-      return `to_char(${ref} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${quoteIdent(col.name)}`
+      return `to_char(${ref} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
     case "timestamp without time zone":
-      return `to_char(${ref}, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS ${quoteIdent(col.name)}`
+      return `to_char(${ref}, 'YYYY-MM-DD"T"HH24:MI:SS.US')`
     default:
-      if (col.type.startsWith("numeric")) return `${ref}::text AS ${quoteIdent(col.name)}`
-      return `${ref} AS ${quoteIdent(col.name)}`
+      if (col.type.startsWith("numeric")) return `${ref}::text`
+      return ref
   }
 }
 
@@ -159,11 +166,13 @@ interface TablePlan {
 function planTable(t: ExportTable, redactedOut: Map<string, string>): TablePlan {
   const exprs: string[] = []
   const sealed: string[] = []
+  const partial = PARTIAL_ROWS[`${t.logicalSchema}.${t.table}`]
   for (const col of t.columns) {
     const key = columnKey(t, col.name)
     const d = decideColumn(key)
     if (d.action === "redact") redactedOut.set(key, d.why)
-    exprs.push(columnExpr(col, d.action === "redact"))
+    const hiddenWhen = partial && !partial.keep.includes(col.name) ? partial.when() : undefined
+    exprs.push(columnExpr(col, d.action === "redact", hiddenWhen))
     if (d.action === "keep" && isSealedColumn(key))
       sealed.push(`t.${quoteIdent(col.name)} IS NOT NULL`)
   }
@@ -511,7 +520,7 @@ export async function buildOrgArchive(
       kept: Object.entries(KEPT_COLUMNS)
         .map(([column, why]) => ({ column, why }))
         .sort(byColumn),
-      withheld: Object.entries(WITHHELD_ROWS)
+      withheld: [...Object.entries(WITHHELD_ROWS), ...Object.entries(PARTIAL_ROWS)]
         .map(([table, w]) => ({ table, why: w.why }))
         .sort((a, b) => a.table.localeCompare(b.table)),
     }

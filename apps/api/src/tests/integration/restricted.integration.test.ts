@@ -7,12 +7,14 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as dsql } from "drizzle-orm"
+import { unzipSync } from "fflate"
 import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { type EmailMessage, setSystemEmailProvider } from "~/infra/email"
 import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
+import { deleteObject, getObjectBuffer } from "~/infra/storage/object-storage"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
@@ -29,6 +31,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { keepRestrictedReaders } from "~/modules/attention/restricted-recipients"
 import { followRestrictedAccess } from "~/modules/client-actions/restricted-follow"
+import { buildOrgArchive } from "~/modules/export/org-archive/writer"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
@@ -318,8 +321,17 @@ describe("every surface honours the list", () => {
           `SELECT count(*)::int AS n FROM app_agreements.agreements WHERE id = '${world.closed}'`,
         ),
     },
-    { surface: "activity", mechanism: "owed: the activity feed of agreement events" },
-    { surface: "audit search", mechanism: "owed: audit rows of a restricted agreement" },
+    { surface: "activity", mechanism: "owed to the change-request task (the activity read)" },
+    {
+      surface: "audit search",
+      mechanism:
+        "a restrictive policy: what the audit log records about the record is read by its list",
+      seen: (u) =>
+        rlsCount(
+          u,
+          `SELECT count(*)::int AS n FROM kernel.audit_log WHERE entity_id = '${world.closed}'`,
+        ),
+    },
     {
       surface: "client_actions_list",
       mechanism: "client actions carry the list as visible_to, followed on every change",
@@ -331,7 +343,8 @@ describe("every surface honours the list", () => {
     },
     {
       surface: "Knowledge",
-      mechanism: "owed: the signed text's Knowledge copy shared with the list",
+      mechanism:
+        "owed to the change-request task (the signed text's Knowledge copy, shared with the list)",
     },
     {
       surface: "entity discussions",
@@ -344,13 +357,63 @@ describe("every surface honours the list", () => {
       },
     },
     { surface: "agent and user memory", mechanism: "owed: a memory write after a restricted read" },
-    { surface: "MCP results", mechanism: "owed: the same stamp through the MCP gateway" },
-    { surface: "monitoring", mechanism: "owed: an incident says a restricted document" },
-    { surface: "org export", mechanism: "owed: number and status only" },
-    { surface: "data subject export", mechanism: "owed: number and status only" },
-    { surface: "portal", mechanism: "owed: no automatic share, open shares narrowed" },
-    { surface: "mail previews", mechanism: "owed: a restricted approval's mail names no title" },
-    { surface: "While you were away", mechanism: "owed: the away row from recipients on the list" },
+    {
+      surface: "MCP results",
+      mechanism: "row-level security: an MCP call runs the same tool as the person",
+      seen: async (u) => {
+        const out = await executeToolCore({
+          toolName: "agreements:agreements_search",
+          orgId: world.orgId,
+          actor: await held(u),
+          params: {},
+          origin: "mcp",
+        } as never)
+        return JSON.stringify(out).includes(NUMBER) ? 1 : 0
+      },
+    },
+    {
+      surface: "monitoring",
+      mechanism: "owed to the evidence task: no incident is opened for a seal mismatch yet",
+    },
+    {
+      surface: "org export",
+      mechanism: "number and status only (its own test below: the archive is an admin's)",
+    },
+    {
+      surface: "data subject export",
+      mechanism:
+        "owed: no section reads the agreements app yet; one that does names number and status only",
+    },
+    {
+      surface: "portal",
+      mechanism:
+        "owed to the portal share and portal web tasks: no automatic share, open shares narrowed",
+    },
+    {
+      surface: "mail previews",
+      mechanism: "a request about the record carries a title naming nothing, to the asker only",
+      seen: async (u) => {
+        const items = await withRlsContext(await held(u), (tx) =>
+          computeApprovalAttentionItems(tx as never, world.orgId, u),
+        )
+        return items.filter(
+          (i) =>
+            i.metadata?.toolName === "kernel:threads_reply" &&
+            i.summary === RESTRICTED_DECISION_TITLE,
+        ).length
+      },
+    },
+    {
+      surface: "While you were away",
+      mechanism: "the request is owner-routed to the asker, so it passes on to nobody's away row",
+      seen: async (u) => {
+        const rows = await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM kernel.approval_requests
+           WHERE org_id = ${world.orgId}::uuid AND tool_name = 'kernel:threads_reply'
+             AND status = 'pending' AND resource_owner_id = ${u}::uuid`
+        return Number(rows[0]?.n ?? 0)
+      },
+    },
   ]
 
   beforeAll(async () => {
@@ -419,6 +482,17 @@ describe("every surface honours the list", () => {
       entityId: world.closed,
       actorId: world.listed,
       data: { org_access: "none", visible_to: [world.listed], version_ids: [versionId] },
+    })
+    // What the audit log recorded about it.
+    await seedAuditEntry({
+      orgId: world.orgId,
+      actorId: world.listed,
+      actorType: "user",
+      app: "agreements",
+      entityType: "agreement",
+      entityId: world.closed,
+      action: "agreement.update",
+      changes: { number: NUMBER, title: "Closed surface terms" },
     })
     // What a turn of the person on the list leaves behind: a stamped message and a parked post.
     const scope = restrictedScope("agreements", "agreement", world.closed)
@@ -510,6 +584,38 @@ describe("every surface honours the list", () => {
     }
   })
 
+  it("the org archive names the restricted agreement by number and status only, and holds none of its versions or list", async () => {
+    const versionId = crypto.randomUUID()
+    await withPrivilegedDb(world.orgId, "test:restricted-export", async (tx) => {
+      await insertAppRow(tx, "agreements", "agreement_versions", {
+        org_id: world.orgId,
+        id: versionId,
+        agreement_id: world.closed,
+        number: 1,
+        frozen_at: new Date().toISOString(),
+      })
+    })
+    const res = await buildOrgArchive({ orgId: world.orgId, exportId: crypto.randomUUID() })
+    try {
+      const files = unzipSync(new Uint8Array(await getObjectBuffer(res.objectKey)))
+      const rows = (name: string) =>
+        new TextDecoder()
+          .decode(files[`data/app_agreements.${name}.ndjson`] ?? new Uint8Array())
+          .split("\n")
+          .filter(Boolean)
+          .map((l) => JSON.parse(l) as Record<string, unknown>)
+      const [closed] = rows("agreements").filter((r) => r.id === world.closed)
+      expect(closed?.number).toBe(NUMBER)
+      expect(closed?.status).toBeDefined()
+      expect(closed?.title).toBeNull()
+      expect(closed?.acl_user_ids).toBeNull()
+      expect(rows("agreement_versions").filter((r) => r.agreement_id === world.closed)).toEqual([])
+      expect(rows("agreement_shares").filter((r) => r.agreement_id === world.closed)).toEqual([])
+    } finally {
+      await deleteObject(res.objectKey).catch(() => undefined)
+    }
+  })
+
   // An admin's one way in: only once every person on the list has been deactivated for 7 days.
   describe("claiming a restricted agreement", () => {
     const claimable = crypto.randomUUID()
@@ -526,14 +632,15 @@ describe("every surface honours the list", () => {
       await sql`DELETE FROM kernel.audit_log WHERE org_id = ${world.orgId}::uuid
                  AND action = 'user.deactivate' AND entity_id = ${gone}`
       // The instant comes from the database's own clock.
-      const [at] = await sql<{ at: Date }[]>`SELECT now() - ${interval}::interval AS at`
+      const [at] = await sql<{ ms: string }[]>`
+        SELECT (extract(epoch FROM now() - ${interval}::interval) * 1000)::bigint::text AS ms`
       await seedAuditEntry({
         orgId: world.orgId,
         actorType: "user",
         action: "user.deactivate",
         entityType: "user",
         entityId: gone,
-        timestamp: at?.at as Date,
+        timestamp: new Date(Number(at?.ms)),
       })
     }
     const bossSees = () =>

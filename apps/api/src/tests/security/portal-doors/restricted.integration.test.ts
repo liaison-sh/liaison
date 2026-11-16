@@ -7,9 +7,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
+import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
@@ -19,6 +22,7 @@ import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worke
 import { buildSearchDocument, SearchAclMissingError } from "~/modules/search/doc-builder"
 import type { SearchableEntityRegistration } from "~/modules/search/searchable-entities"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -66,7 +70,7 @@ beforeAll(async () => {
   await acquireTestLock()
   process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
   orgId = (await createTestOrg()).id
-  listedId = (await minimal.session(orgId, { role: "member" })).userId
+  listedId = (await minimal.session(orgId, { role: "admin" })).userId
   memberId = (await minimal.session(orgId, { role: "member" })).userId
   adminId = (await minimal.session(orgId, { role: "admin" })).userId
   await ensureAppsForOrg(orgId)
@@ -95,6 +99,7 @@ beforeAll(async () => {
 }, 300_000)
 
 afterAll(async () => {
+  await rebuildFilesSelectPolicy()
   forgetOrgApps(orgId)
   await shutdownWorkerPool()
   await shutdownSandboxPool()
@@ -118,6 +123,50 @@ describe("a restricted agreement, by id or by copy", () => {
     // The person on the list reads it.
     const own = await get(listedId, read, closedId)
     expect(JSON.stringify(own.data)).toContain("AG-2026-201")
+  })
+
+  it("NT-67 a file parented to a restricted agreement's version answers a member and an admin on the files routes exactly as a random id does", async () => {
+    const versionId = crypto.randomUUID()
+    await withPrivilegedDb(orgId, "test:restricted-door-file", async (tx) => {
+      await insertAppRow(tx, "agreements", "agreement_versions", {
+        org_id: orgId,
+        id: versionId,
+        agreement_id: closedId,
+        number: 1,
+        frozen_at: new Date().toISOString(),
+      })
+    })
+    const fileId = await seedFileRow({
+      orgId,
+      app: "agreements",
+      entityType: "agreement_version",
+      entityId: versionId,
+      filename: "closed-terms.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 10,
+      storageKey: `test/restricted-door/${crypto.randomUUID()}`,
+    })
+    // Production builds the files row policy from the installed catalog; this app is
+    // registered from its manifest, so the policy is built from the registry's parents.
+    await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
+    const random = crypto.randomUUID()
+    const bearers = {
+      listed: (await minimal.sessionOf({ id: listedId, orgId })).bearer,
+      member: (await minimal.sessionOf({ id: memberId, orgId })).bearer,
+      admin: (await minimal.sessionOf({ id: adminId, orgId })).bearer,
+    }
+    const meta = async (bearer: string, id: string) => {
+      const res = await app.request(`/api/files/${id}/metadata`, {
+        headers: { Authorization: `Bearer ${bearer}` },
+      })
+      return { status: res.status, body: (await res.text()).replaceAll(id, "<id>") }
+    }
+    const forRandom = await meta(bearers.member, random)
+    expect(forRandom.status).toBe(404)
+    expect(await meta(bearers.member, fileId)).toEqual(forRandom)
+    expect(await meta(bearers.admin, fileId)).toEqual(forRandom)
+    // The person on the list (an admin too, so only the list differs) reaches it.
+    expect((await meta(bearers.listed, fileId)).status).toBe(200)
   })
 
   it("NT-67 the search indexer refuses a row whose access columns were dropped instead of indexing it open", async () => {

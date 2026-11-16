@@ -115,6 +115,8 @@ Each request has one deciding scope.
 
 When a request is about a company (a company or one of its contacts, or a deal of that company), Home puts it with the company's account manager, after the person who asked it, when they can approve their own (a routine or an app's scheduled job never counts as that person, even though its request is filed under a member), and the person the item is with, such as a ticket's assignee or a deal's owner. The manager is read each time Home loads, so giving a company to someone else moves its waiting requests at once. A manager who cannot approve that kind of request is skipped and the request goes to the usual approvers, without naming them. A request about several companies goes to the usual approvers.
 
+A request about a record restricted to named people (an agreement or a Knowledge document closed to the organization) goes only to the person who asked. On **Home**, in its push and in its notification mail it reads **A restricted document needs your decision**, without the record's title.
+
 A scope counts here the way it counts everywhere: granted to the person, through a role, or one every member of the organization holds, unless the app is restricted and the person is not on its list.
 
 An organization's administrators hold every scope, so every request has someone who can decide it. The `kernel:approvals:read` scope lets a person read approval requests, and the `approvals_list` tool lists what is waiting on you.

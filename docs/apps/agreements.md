@@ -36,6 +36,8 @@ An approval about a closed agreement goes only to the person who asked, and its 
 
 Administrators see nothing of a closed agreement while anyone on its list is active. Once every person on the list has been deactivated for 7 days, an administrator with the user administration permission can add themselves with `POST /api/apps/agreements/agreements/:id/claim`. The claim is recorded in the audit log, everyone who was ever on the list gets a mail, and the agreement shows who claimed it and when. This is an access rule, not encryption: whoever runs the server can reach the data.
 
+The audit log shows what it recorded about a closed agreement to the people on its list only. The whole-organization export names a closed agreement by its number and status and leaves out its title, versions, signatures, evidence and list.
+
 ## Send for signature
 
 **Send** takes the version **Prepare** froze, with its fingerprint, and the signers: contacts or email addresses, in order (one after the other) or all at once, with links that last 7, 14 or 30 days. An agent's send waits for a person's approval; nothing goes out if the version changed since **Prepare**, and the approved send goes only to the addresses its card showed. Under "one after the other", the next signer gets a link only once the signer before them signed. A colleague who signs gets a line on their Home and signs in their own session, with no mailed link.

@@ -19,6 +19,17 @@ export interface WithheldRows {
 }
 
 const P = () => schemaRef("app_projects")
+const AG = () => schemaRef("app_agreements")
+
+/** The row's agreement is open to the organization (not restricted to its list). */
+const agreementOpen = (agreementRef: string) => `EXISTS (
+  SELECT 1 FROM ${AG()}.agreements a
+   WHERE a.id = ${agreementRef} AND a.org_id = t.org_id AND a.org_access <> 'none')`
+const versionOpen = (versionRef: string) => `EXISTS (
+  SELECT 1 FROM ${AG()}.agreement_versions v
+   WHERE v.id = ${versionRef} AND v.org_id = t.org_id AND ${agreementOpen("v.agreement_id")})`
+const RESTRICTED_WHY =
+  "an agreement restricted to its list: the archive names it by number and status only"
 
 /** A time row on its project's dated sheet (the row policy's own clause, for any reader). */
 const onDatedSheet = () => `t.entered_dated AND EXISTS (
@@ -49,10 +60,49 @@ export const WITHHELD_ROWS: Readonly<Record<string, WithheldRows>> = {
     why: "the lines of a proposed reconciliation",
     keep: () => notProposed("t.reconciliation_id"),
   },
+  "app_agreements.agreement_shares": {
+    why: RESTRICTED_WHY,
+    keep: () => agreementOpen("t.agreement_id"),
+  },
+  "app_agreements.agreement_drafts": {
+    why: RESTRICTED_WHY,
+    keep: () => agreementOpen("t.agreement_id"),
+  },
+  "app_agreements.agreement_versions": {
+    why: RESTRICTED_WHY,
+    keep: () => agreementOpen("t.agreement_id"),
+  },
+  "app_agreements.signature_events": {
+    why: RESTRICTED_WHY,
+    keep: () => versionOpen("t.version_id"),
+  },
+  "app_agreements.evidence_packages": {
+    why: RESTRICTED_WHY,
+    keep: () => versionOpen("t.version_id"),
+  },
   "app_projects.reconciliation_proofs": {
     why: "the proofs of a proposed reconciliation's lines",
     keep: () => `EXISTS (
       SELECT 1 FROM ${P()}.reconciliation_lines l
        WHERE l.id = t.line_id AND l.org_id = t.org_id AND ${notProposed("l.reconciliation_id")})`,
+  },
+}
+
+/**
+ * Rows the archive holds with only some columns: when `when` holds for a row (alias `t`), every
+ * column but `keep` is exported as null. A restricted agreement is named by its number and
+ * status, as its list would want an admin to see it, and nothing else.
+ */
+export interface PartialRows {
+  why: string
+  when: () => string
+  keep: readonly string[]
+}
+
+export const PARTIAL_ROWS: Readonly<Record<string, PartialRows>> = {
+  "app_agreements.agreements": {
+    why: RESTRICTED_WHY,
+    when: () => "t.org_access = 'none'",
+    keep: ["id", "org_id", "number", "status", "org_access", "created_at", "updated_at"],
   },
 }

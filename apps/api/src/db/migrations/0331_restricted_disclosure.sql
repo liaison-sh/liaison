@@ -207,7 +207,7 @@ ALTER POLICY messages_select ON kernel.messages USING (
   )
 );
 --> statement-breakpoint
--- The one way in to a restricted agreement for an admin (S749s). While anyone on its list is
+-- The one way in to a restricted agreement for an admin. While anyone on its list is
 -- active, nothing. Once every person on it has been deactivated for 7 days, a caller holding
 -- `kernel:users:admin` is added to the list as editor, and the claim stays on the agreement
 -- (`claimed_by_user_id`, `claimed_at`) for anyone reactivated to see. Org and caller come from
@@ -296,3 +296,47 @@ REVOKE ALL ON FUNCTION kernel.restricted_claim(uuid) FROM PUBLIC;
 --> statement-breakpoint
 -- reviewed-dynamic: a privilege grant on the function above, no dynamic SQL
 GRANT EXECUTE ON FUNCTION kernel.restricted_claim(uuid) TO liaison_rls;
+--> statement-breakpoint
+-- May the request's person see what is recorded about this record? Yes unless the record is
+-- restricted (`org_access = 'none'`) and they are not on its list. An unknown record, or one
+-- of an app that is not installed, hides nothing: restricted rows are never deleted.
+CREATE OR REPLACE FUNCTION kernel.restricted_record_visible(p_org uuid, p_kind text, p_id text)
+RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = '' AS $fn$
+DECLARE
+  v_user text := NULLIF((SELECT rls_ctx.user_id()), '');
+  readers uuid[];
+BEGIN
+  IF p_kind OPERATOR(pg_catalog.<>) ALL (ARRAY['agreements.agreement', 'knowledge.document']) OR p_id IS NULL THEN
+    RETURN true;
+  END IF;
+  IF pg_catalog.cardinality(kernel.restricted_among(p_org, p_kind, ARRAY[p_id])) OPERATOR(pg_catalog.=) 0 THEN
+    RETURN true;
+  END IF;
+  readers := kernel.restricted_readers(p_org, 'restricted:' OPERATOR(pg_catalog.||) p_kind OPERATOR(pg_catalog.||) ':' OPERATOR(pg_catalog.||) p_id);
+  RETURN readers IS NULL OR (v_user IS NOT NULL AND v_user::uuid OPERATOR(pg_catalog.=) ANY (readers));
+END
+$fn$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION kernel.restricted_record_visible(uuid, text, text) FROM PUBLIC;
+--> statement-breakpoint
+-- reviewed-dynamic: a privilege grant on the function above, no dynamic SQL
+GRANT EXECUTE ON FUNCTION kernel.restricted_record_visible(uuid, text, text) TO liaison_rls;
+--> statement-breakpoint
+-- What the audit log records about a restricted record is read by its list only, whatever
+-- scope the reader holds (`*` and the audit scope included).
+-- reviewed-dynamic: creates the policy once, so the file stays re-runnable; no dynamic SQL
+-- expand-safe: a restrictive read policy only; the previous release reads audit rows the same way, minus rows about restricted records, which it never named
+DO $do$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_policies
+                  WHERE schemaname = 'kernel' AND tablename = 'audit_log'
+                    AND policyname = 'audit_log_restricted_records') THEN
+    CREATE POLICY audit_log_restricted_records ON kernel.audit_log AS RESTRICTIVE FOR SELECT TO liaison_rls
+      USING (
+        NOT ((app = 'agreements' AND entity_type = 'agreement') OR (app = 'knowledge' AND entity_type = 'document'))
+        OR kernel.restricted_record_visible(org_id, app || '.' || entity_type, entity_id)
+      );
+  END IF;
+END
+$do$;

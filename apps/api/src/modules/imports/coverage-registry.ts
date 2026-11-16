@@ -44,6 +44,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "config",
     reason: "agreements configuration",
   },
+  "app_agreements.copy_mails": {
+    exempt: "system",
+    reason: "the seal's queue of signers' copies by mail, written by the seal, never imported",
+  },
   "app_agreements.evidence_packages": {
     exempt: "derived",
     reason: "sealed evidence of a signature (immutable 10 years), never imported",

@@ -481,8 +481,11 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   NOT_SIGNED: 409,
   NOT_SEALED: 409,
   DOCUMENT_CHANGED: 409,
+  NOT_THIS_VERSION_FILE: 409,
   EVIDENCE_INCONSISTENT: 409,
   SIGNATURE_NAME_NOT_DRAWABLE: 422,
+  // A verify asked with neither an agreement id nor a version id.
+  INVALID_PARAMS: 400,
   MERGE_FAILED: 503,
   // What this server offers: signatures off on the hosted edition, no timestamp authority set up,
   // no renderer or link door on this build. The operator can change these, the caller cannot.

@@ -55,6 +55,8 @@ const NO_LINK =
   "the recording person holds no role in the contract org, so no link is minted and the tool refuses as recorded; the working path runs in agreements-decided.integration.test.ts"
 const VOID_REASON =
   "the version was never sent (no link could be minted here), so a void is refused as a document not waiting for signatures"
+const NOT_SIGNED =
+  "the agreement was never signed here (no link could be minted), so it has no evidence to read or check"
 const refused = (p: Rec, reason = NO_LINK) => ({ params: p, expectError: { reason } })
 
 const PLAN: RecordingStep[] = [
@@ -158,6 +160,18 @@ const PLAN: RecordingStep[] = [
   },
   { entry: "job:decided-reconcile", input: () => ({ params: {} }) },
   { entry: "job:dates-daily", input: () => ({ params: {} }) },
+  { entry: "job:seal-retry", input: () => ({ params: {} }) },
+  { entry: "job:timestamp-retry", input: () => ({ params: {} }) },
+  { entry: "job:copies-retry", input: () => ({ params: {} }) },
+  { entry: "job:evidence-verify", input: () => ({ params: {} }) },
+  {
+    entry: "tool:agreement_evidence_get",
+    input: (s) => refused({ id: s.values.nda }, NOT_SIGNED),
+  },
+  {
+    entry: "tool:agreement_verify",
+    input: (s) => refused({ id: s.values.nda }, NOT_SIGNED),
+  },
   { entry: "tool:agreement_get", input: (s) => params({ id: s.values.nda }) },
   { entry: "tool:agreements_search", input: () => params({ kind: "nda" }) },
   { entry: "tool:home_load", input: () => params({ limit: 20 }) },

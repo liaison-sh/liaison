@@ -201,6 +201,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   tickets_listSyncableAccounts: "read",
   tickets_search: "read",
   imap_fetch: "read of the connected mailbox (no flag or move op)",
+  evidence_rehash: "read: SHA-256 of the agreements app's own stored evidence files, never bytes",
   fetch: "KNOWN BOUND (rpc-bridge.ts:155-157): outbound HTTP stays callable on a read-only run",
 }
 

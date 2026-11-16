@@ -19,6 +19,8 @@ import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { upsertAppRow } from "~/seed/factories/app-tables"
+import { seedOrgRow, seedUserRows } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -59,19 +61,64 @@ async function seed(): Promise<Seeded> {
   const versionId = randomUUID()
   const eventId = randomUUID()
   const packageId = randomUUID()
-  await sql`INSERT INTO app_agreements.agreements (id, org_id, number, kind, status, title, language, org_access)
-    VALUES (${agreementId}, ${ORG}, ${`AG-2026-${agreementId.slice(0, 6)}`}, 'nda', 'signed', 'Maison Morel NDA', 'en', 'editor')`
-  await sql`INSERT INTO app_agreements.agreement_versions (id, org_id, agreement_id, number, sha256, frozen_at, status)
-    VALUES (${versionId}, ${ORG}, ${agreementId}, 1, ${"e".repeat(64)}, now(), 'signed')`
-  await sql`INSERT INTO app_agreements.signature_events (id, org_id, version_id, client_action_id, invited_email, invited_by,
-      typed_name, capacity, consent_words, consent_lang, level, document_sha256, signed_at, ip, user_agent)
-    VALUES (${eventId}, ${ORG}, ${versionId}, ${randomUUID()}, 'paul@maison-morel.example', 'lea@studio.example',
-      'Paul Morel', 'Gérant', 'words', 'en', 'ses', ${"e".repeat(64)}, now(), '198.51.100.7', 'UA')`
-  await sql`INSERT INTO app_agreements.evidence_packages (id, org_id, version_id, level, hash_alg, seal_version,
-      document_sha256, signed_pdf_sha256, trail_sha256, seal, sealed_at, timestamp_status)
-    VALUES (${packageId}, ${ORG}, ${versionId}, 'ses', 'sha256', 1, ${"e".repeat(64)}, ${"f".repeat(64)},
-      ${"a".repeat(64)}, ${"b".repeat(64)}, now(), 'pending')`
+  const now = new Date().toISOString()
+  await withPrivilegedDb(ORG, "test:agreements-immutability-seed", async (tx) => {
+    await upsertAppRow(tx, "agreements", "agreements", {
+      id: agreementId,
+      org_id: ORG,
+      number: `AG-2026-${agreementId.slice(0, 6)}`,
+      kind: "nda",
+      status: "signed",
+      title: "Maison Morel NDA",
+      language: "en",
+      org_access: "editor",
+    })
+    await upsertAppRow(tx, "agreements", "agreement_versions", {
+      id: versionId,
+      org_id: ORG,
+      agreement_id: agreementId,
+      number: 1,
+      sha256: "e".repeat(64),
+      frozen_at: now,
+      status: "signed",
+    })
+    await upsertAppRow(tx, "agreements", "signature_events", {
+      id: eventId,
+      org_id: ORG,
+      version_id: versionId,
+      client_action_id: randomUUID(),
+      invited_email: "paul@maison-morel.example",
+      invited_by: "lea@studio.example",
+      typed_name: "Paul Morel",
+      capacity: "Gérant",
+      consent_words: "words",
+      consent_lang: "en",
+      level: "ses",
+      document_sha256: "e".repeat(64),
+      signed_at: now,
+      ip: "198.51.100.7",
+      user_agent: "UA",
+    })
+    await upsertAppRow(tx, "agreements", "evidence_packages", packageRow(packageId, versionId, now))
+  })
   return { versionId, eventId, packageId }
+}
+
+function packageRow(id: string, versionId: string, sealedAt: string) {
+  return {
+    id,
+    org_id: ORG,
+    version_id: versionId,
+    level: "ses",
+    hash_alg: "sha256",
+    seal_version: 1,
+    document_sha256: "e".repeat(64),
+    signed_pdf_sha256: "f".repeat(64),
+    trail_sha256: "a".repeat(64),
+    seal: "b".repeat(64),
+    sealed_at: sealedAt,
+    timestamp_status: "pending",
+  }
 }
 
 /**
@@ -106,12 +153,23 @@ describe("agreements evidence is immutable", () => {
   beforeAll(async () => {
     await acquireTestLock()
     process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
-    await sql`INSERT INTO kernel.organizations (id, name, slug)
-      VALUES (${ORG}, 'Evidence Immutability Org', 'evidence-immutability-org')
-      ON CONFLICT (id) DO NOTHING`
-    await sql`INSERT INTO kernel.users (id, org_id, email, password_hash, name, status)
-      VALUES (${USER}, ${ORG}, 'immutability@test.com', 'hash', 'Immutability Tester', 'active')
-      ON CONFLICT (id) DO NOTHING`
+    await seedOrgRow(
+      { id: ORG, name: "Evidence Immutability Org", slug: "evidence-immutability-org" },
+      { onConflict: "skip" },
+    )
+    await seedUserRows(
+      [
+        {
+          id: USER,
+          orgId: ORG,
+          email: "immutability@test.com",
+          passwordHash: "hash",
+          name: "Immutability Tester",
+          status: "active",
+        },
+      ],
+      { onConflict: "skip" },
+    )
     await initSandboxPool()
     await initWorkerPool()
     await registerApps([descriptor() as never], ORG)
@@ -186,10 +244,17 @@ describe("agreements evidence is immutable", () => {
 
   it("one package per version", async () => {
     const s = await seed()
-    await expect(
-      run(sql`INSERT INTO app_agreements.evidence_packages (id, org_id, version_id, level, hash_alg, seal_version,
-          document_sha256, sealed_at, timestamp_status)
-        VALUES (${randomUUID()}, ${ORG}, ${s.versionId}, 'ses', 'sha256', 1, ${"e".repeat(64)}, now(), 'pending')`),
-    ).rejects.toThrow(/unique|duplicate/)
+    const second = await withPrivilegedDb(ORG, "test:agreements-immutability-seed", (tx) =>
+      upsertAppRow(
+        tx,
+        "agreements",
+        "evidence_packages",
+        packageRow(randomUUID(), s.versionId, new Date().toISOString()),
+      ),
+    ).then(
+      () => "no error",
+      (e: Error & { cause?: unknown }) => `${e.message} ${String(e.cause)}`,
+    )
+    expect(second).toMatch(/unique|duplicate/)
   })
 })

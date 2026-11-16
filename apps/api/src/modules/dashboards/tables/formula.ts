@@ -14,13 +14,14 @@
 //   nobody planned anything for adds nothing.
 // - A division by zero, or a non-finite result, empties that value (that month of a months
 //   result); cumsum carries an empty month forward (every later month is empty too).
+//   `ifempty(x, fallback)` reads the fallback where x is empty (a shop stock, else a typed one).
 // - Refused at save (formulaProblems): a syntax error, a key that is not a column of this table,
 //   a column that is not a number, cycles among formulas.
 import type { ExprFunction, ExprNode } from "~/modules/dashboards/expr"
 import { ExprError, parseExpr } from "~/modules/dashboards/expr"
 import type { Column, MonthsCell } from "~/modules/dashboards/tables/columns"
 
-const FORMULA_FUNCTIONS: readonly ExprFunction[] = ["cumsum"]
+const FORMULA_FUNCTIONS: readonly ExprFunction[] = ["cumsum", "ifempty"]
 
 /** The shape of a computed value a formula reads: one number, or one number per month. */
 export type ValueShape = "number" | "months"
@@ -301,6 +302,13 @@ function evalNode(
               return sum
             }),
           }
+        }
+        case "ifempty": {
+          // The first value, or the fallback where it is empty (a part with no shop stock).
+          const [a, b] = [args[0]!, args[1]!]
+          const at = (v: Val, i: number) => ("s" in v ? v.s : (v.m[i] ?? null))
+          if ("s" in a && "s" in b) return { s: a.s ?? b.s }
+          return { m: months.map((_, i) => at(a, i) ?? at(b, i)) }
         }
         case "abs":
           return map1(args[0]!, Math.abs)

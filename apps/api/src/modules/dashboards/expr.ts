@@ -20,7 +20,7 @@ export const EXPR_NAME = NAME
 
 export class ExprError extends Error {}
 
-export type ExprFunction = "min" | "max" | "abs" | "round" | "cumsum"
+export type ExprFunction = "min" | "max" | "abs" | "round" | "cumsum" | "ifempty"
 
 /** A parsed expression. */
 export type ExprNode =
@@ -134,6 +134,9 @@ export function parseExpr(src: string, opts: ParseOptions = {}): Node {
         if ((fn === "abs" || fn === "cumsum") && args.length !== 1) {
           throw new ExprError(`${fn} takes one value`)
         }
+        if (fn === "ifempty" && args.length !== 2) {
+          throw new ExprError("ifempty takes a value and a fallback")
+        }
         if (fn === "round" && args.length > 2)
           throw new ExprError("round takes a value and decimals")
         return { k: "call", fn, args }
@@ -225,6 +228,7 @@ function evalNode(n: Node, values: Readonly<Record<string, number | null>>): num
     }
     case "call": {
       const args = n.args.map((a) => evalNode(a, values))
+      if (n.fn === "ifempty") return args[0] ?? args[1] ?? null
       if (args.some((a) => a === null)) return null
       const nums = args as number[]
       switch (n.fn) {

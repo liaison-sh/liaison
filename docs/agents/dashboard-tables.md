@@ -179,9 +179,9 @@ A formula column computes its value from the other columns of its row on every r
 }
 ```
 
-- A formula reads the keys of the table's own number, amount, number lookup, rollup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)` and `cumsum(x)`, the running total across the months shown.
+- A formula reads the keys of the table's own number, amount, number lookup, rollup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)`, `cumsum(x)`, the running total across the months shown, and `ifempty(x, fallback)`, which reads the fallback where `x` is empty (`ifempty(shop_stock, stock)`: the shop's stock, or the one typed for an item the shop does not sell).
 - A formula that reads a months column or a rollup by month, or calls `cumsum`, gives one number per month, over its own months (`horizon` 1-12, default 3, and `fromOffset`, as a months column). It is computed month by month; a single number counts the same in every month. The grid shows it as one column per month. Any other formula gives one number.
-- An empty number it reads (a stock nobody typed, a lookup with no match) leaves the result empty, so a missing figure never reads as a wrong one. A month without a value in a months column counts as 0. A division by zero leaves that value empty, and `cumsum` leaves every later month empty after one.
+- An empty number it reads (a stock nobody typed, a lookup with no match) leaves the result empty, unless it is inside `ifempty`, so a missing figure never reads as a wrong one. A month without a value in a months column counts as 0. A division by zero leaves that value empty, and `cumsum` leaves every later month empty after one.
 - Saving refuses a formula that does not parse, names a key that is not a column of the table, reads a text, date, choice or link column, or that formulas read each other in a circle. A column a formula reads cannot be removed while it does.
 - A formula cannot be required, written, filtered or sorted on. It is computed after the lookup and rollup columns, in the grid, in `tables_query` and in a table block source. To change one, remove it and add another key.
 

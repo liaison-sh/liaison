@@ -122,7 +122,7 @@ export interface Column {
 }
 
 /** A formula column: `expr` over this row's number, amount, number lookup, rollup, months and
- *  formula columns (+ - * / and parentheses, numbers, column keys; min, max, abs, round, cumsum). */
+ *  formula columns (+ - * / and parentheses, numbers, column keys; min, max, abs, round, cumsum, ifempty). */
 export interface FormulaDef {
   expr: string
 }

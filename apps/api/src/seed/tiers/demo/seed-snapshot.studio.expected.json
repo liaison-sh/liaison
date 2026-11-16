@@ -129,7 +129,7 @@
   },
   "kernel.companies": {
     "rows": 6,
-    "digest": "a01f4ebaa697f33d"
+    "digest": "1a707d4f3d8344f7"
   },
   "kernel.config_applied_fields": {
     "rows": 8,
@@ -157,7 +157,7 @@
   },
   "kernel.pending_events": {
     "rows": 369,
-    "digest": "a429826ef0bc7e7d"
+    "digest": "ee792de829fc1405"
   },
   "kernel.roles": {
     "rows": 32,

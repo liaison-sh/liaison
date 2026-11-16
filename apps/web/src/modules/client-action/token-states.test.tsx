@@ -39,6 +39,10 @@ const ANSWERS: Record<Exclude<FrameId, "wrong">, PublicAnswer> = {
   down: { status: 503, body: { state: "down" } },
 }
 
+const RETRY_TIME = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(
+  new Date("2030-01-01"),
+)
+
 function facts(id: FrameId): FrameFacts {
   if (id === "wrong") return { frame: "wrong", sender: SENDER }
   const f = frameOfAnswer(ANSWERS[id], SENDER)
@@ -72,7 +76,9 @@ describe("the twelve token states", () => {
       ))
       const frame = screen.getByTestId(`token-frame-${id}`)
       const text = frame.textContent ?? ""
-      texts[id] = text
+      // The pause ends at the reader's own local time: the snapshot holds a
+      // marker for it, so it reads the same in every time zone.
+      texts[id] = text.replace(RETRY_TIME, "<retry time>")
       expect({ id, title: screen.getByTestId("token-frame-title").textContent }).not.toEqual({
         id,
         title: "",

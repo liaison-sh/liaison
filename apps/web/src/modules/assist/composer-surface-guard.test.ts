@@ -38,6 +38,11 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "projects/ProjectEditForm.tsx": { fields: 1, reason: "project description, not listed" },
   "dashboards/DashboardView.tsx": { fields: 1, reason: "dashboard description, not listed" },
   "contacts/ContactAddresses.tsx": { fields: 1, reason: "a postal address's note (contact data)" },
+  "client-action/ClientActionPage.tsx": {
+    fields: 1,
+    reason:
+      "a person outside declines on the public link page: no member session, no agent, so no member writing helpers",
+  },
   "settings/documents/RichTextEditor.tsx": {
     fields: 1,
     reason: "document template text with {{field}} placeholders (configuration)",

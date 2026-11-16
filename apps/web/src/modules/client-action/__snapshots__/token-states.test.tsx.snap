@@ -2,7 +2,7 @@
 
 exports[`the twelve token states > each frame says what happened, offers a next step, and names the sender only when known 1`] = `
 {
-  "attempts": "Maison AlphaToo many wrong codes: wait 15 minutesFor safety, this link is paused for 15 minutes. You can try again at 01:00 AM. Nothing has changed, and the link stays valid.Try again",
+  "attempts": "Maison AlphaToo many wrong codes: wait 15 minutesFor safety, this link is paused for 15 minutes. You can try again at <retry time>. Nothing has changed, and the link stays valid.Try again",
   "declined": "Maison AlphaYou declined thisNothing was signed, and Léa Roux has been told. If you change your mind, a new link can be sent.Ask for a new link",
   "down": "Secure linkThis cannot open right nowIt is on our side, not yours, and your link is still good. Nothing was lost. Please try again in a few minutes.Try again",
   "ended": "Maison AlphaAccess has endedMaison Alpha has ended this access, so this link no longer opens. Copies you already received stay yours.Contact Maison Alpha",

@@ -596,7 +596,31 @@ describe("portal doors: the client action page", () => {
     expect(
       names.filter((n) => /client_action/.test(n) && /sign|decide|accept|approve/.test(n)),
     ).toEqual([])
-    expect(names.filter((n) => /client_action/.test(n)).sort()).toEqual([
+    // An app's tool on this list is only the `viewTool` its manifest names for a
+    // client action target: the kernel's page loads with it what the person
+    // outside is shown. It is read only and hidden from agents, and decides nothing.
+    const bundled = join(import.meta.dir, "../../../../../../bundled-apps")
+    const viewTools = new Set<string>()
+    for (const appName of readdirSync(bundled)) {
+      let manifest: {
+        clientActionTargets?: Array<{ viewTool?: string }>
+        tools?: Record<string, { readOnly?: boolean; agentVisible?: boolean }>
+      }
+      try {
+        manifest = JSON.parse(readFileSync(join(bundled, appName, "app.manifest.json"), "utf8"))
+      } catch {
+        continue
+      }
+      for (const target of manifest.clientActionTargets ?? []) {
+        const tool = target.viewTool ? manifest.tools?.[target.viewTool] : undefined
+        expect({ appName, viewTool: target.viewTool, tool }).toMatchObject({
+          tool: { readOnly: true, agentVisible: false },
+        })
+        viewTools.add(`${appName}:${target.viewTool}`)
+      }
+    }
+    const touching = names.filter((n) => /client_action/.test(n))
+    expect(touching.filter((n) => !viewTools.has(n)).sort()).toEqual([
       "kernel:client_action_create",
       "kernel:client_action_revoke",
       "kernel:client_actions_list",

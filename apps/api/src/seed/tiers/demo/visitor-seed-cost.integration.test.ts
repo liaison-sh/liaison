@@ -19,7 +19,7 @@
 // time), and every concurrent seed must finish whole on the process's pools.
 //
 // Change a pin only on purpose, with the new measurement in the PR.
-import { afterAll, beforeAll, describe, expect, it, setSystemTime } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -117,8 +117,8 @@ const PRODUCTS_BASELINE = {
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_615,
-  transactions: 644,
+  statements: 6_668,
+  transactions: 650,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
@@ -147,8 +147,8 @@ const SAAS_BASELINE = {
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_102,
-  transactions: 828,
+  statements: 8_153,
+  transactions: 832,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
@@ -173,15 +173,16 @@ const SAAS_BASELINE = {
  * 12 884 round trips in 1 137 transactions on a Linux runner (the pin), 372 outbox events.
  * Re-measured 2026-11-16 once every client has a billing address and a registry identity (each
  * written by its own writer) and no milestone is drafted before its task is done: 12 946 round
- * trips in 1 151 transactions on a Linux runner (the pin), 368 outbox events.
+ * trips in 1 151 transactions on a Linux runner on a Sunday, 368 outbox events; 13 090 in
+ * 1 175 on the Monday after (the pin, a working day; products 6 668 in 650, software 8 153 in 832).
  */
 const STUDIO_BASELINE = {
   outboxEvents: 368,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 12_946,
-  transactions: 1_151,
+  statements: 13_090,
+  transactions: 1_175,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,
@@ -190,10 +191,16 @@ const BASELINE = {
 } as const
 /** No world's seed costs more than this many times the products world's. */
 const WORLD_COST_RATIO = 1.5
-const STATEMENT_MARGIN = 1.005
-/** The day every seed here runs on (a Sunday, as the baselines were measured). */
-const SEED_DAY = new Date(Date.UTC(2026, 10, 15, 12))
-const TRANSACTION_SLACK = 2
+/**
+ * A visitor's world is built around today, and a working day seeds more activity than a weekend:
+ * the same code counted 6 620 round trips in 642 transactions for the products world on a Sunday
+ * and 6 663 in 649 on the Monday after (the services world 12 941 in 1 150, then 13 085 in 1 174).
+ * The baselines are working-day counts and the margins cover the day-to-day swing; a seed that
+ * re-reads per row still shows. The clock is not faked: the object store refuses a request signed
+ * with a moved clock, and its client keeps the correction for the rest of the process.
+ */
+const STATEMENT_MARGIN = 1.01
+const TRANSACTION_MARGIN = 1.01
 /**
  * Seeds a launch box's pool refill runs at once in one process:
  * `demoPoolRefillParallelism()` with LIAISON_DEMO_SEED_CONCURRENCY=6.
@@ -275,10 +282,6 @@ async function seedOnce(
 }
 
 beforeAll(() => {
-  // A visitor's world is built around today, and a working day seeds more activity than a
-  // weekend: on the wall clock the same code counted 43 more round trips on a Monday than on
-  // the Sunday before. The seed runs on one pinned day, so the counts move only with the code.
-  setSystemTime(SEED_DAY)
   if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
   if (/liaison_dev|liaison_test(?!_)/.test(DB_URL)) {
     throw new Error("refusing to seed a shared database: use liaison_hardening_test")
@@ -293,7 +296,6 @@ beforeAll(() => {
 })
 
 afterAll(() => {
-  setSystemTime()
   DemoModeTestAccess.set(null)
 })
 
@@ -336,14 +338,14 @@ describe("the visitor seed's cost", () => {
   it("makes no more database round trips than the baseline, alone or beside other seeds", () => {
     expect(warm.statements).toBeLessThanOrEqual(PRODUCTS_BASELINE.statements * STATEMENT_MARGIN)
     expect(warm.transactions).toBeLessThanOrEqual(
-      PRODUCTS_BASELINE.transactions + TRANSACTION_SLACK,
+      PRODUCTS_BASELINE.transactions * TRANSACTION_MARGIN,
     )
     expect(concurrent.ok).toBe(POOL_PARALLELISM)
     expect(concurrent.statementsPerSeed).toBeLessThanOrEqual(
       PRODUCTS_BASELINE.statements * STATEMENT_MARGIN,
     )
     expect(concurrent.transactionsPerSeed).toBeLessThanOrEqual(
-      PRODUCTS_BASELINE.transactions + TRANSACTION_SLACK,
+      PRODUCTS_BASELINE.transactions * TRANSACTION_MARGIN,
     )
   })
 
@@ -372,7 +374,7 @@ describe("the software world's visitor seed cost", () => {
 
   it("makes no more round trips than its baseline, and queues no job, attention row or delivery", () => {
     expect(saas.statements).toBeLessThanOrEqual(SAAS_BASELINE.statements * STATEMENT_MARGIN)
-    expect(saas.transactions).toBeLessThanOrEqual(SAAS_BASELINE.transactions + TRANSACTION_SLACK)
+    expect(saas.transactions).toBeLessThanOrEqual(SAAS_BASELINE.transactions * TRANSACTION_MARGIN)
     expect(saas.outboxEvents).toBeLessThanOrEqual(SAAS_BASELINE.outboxEvents)
     expect([saas.queuedJobs, saas.attentionEvents, saas.notificationDeliveries]).toEqual([0, 0, 0])
   })
@@ -397,7 +399,7 @@ describe("the services world's visitor seed cost", () => {
   it("makes no more round trips than its baseline, and queues no job, attention row or delivery", () => {
     expect(studio.statements).toBeLessThanOrEqual(STUDIO_BASELINE.statements * STATEMENT_MARGIN)
     expect(studio.transactions).toBeLessThanOrEqual(
-      STUDIO_BASELINE.transactions + TRANSACTION_SLACK,
+      STUDIO_BASELINE.transactions * TRANSACTION_MARGIN,
     )
     expect(studio.outboxEvents).toBeLessThanOrEqual(STUDIO_BASELINE.outboxEvents)
     expect([studio.queuedJobs, studio.attentionEvents, studio.notificationDeliveries]).toEqual([

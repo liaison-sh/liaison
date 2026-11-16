@@ -13,6 +13,7 @@ import {
   LINE_NAME_MAX,
   LINE_WHY_MAX,
   lateNote,
+  linesAmountMinor,
   NO_PLAN_TAG,
   namedMember,
   OTHER_LINE_NAME,
@@ -327,5 +328,13 @@ describe("a billed line's figure", () => {
     expect(amountMinor(1260, "daily", 93000, 420)).toBe(279000)
     expect(amountMinor(50, "hourly", 12000, 420)).toBe(9960)
     expect(amountMinor(60, "daily", null, 420)).toBeNull()
+  })
+
+  it("adds up lines as each one is rounded and priced: three 20-min lines at 90.00 an hour bill 89.10, not 90.00", () => {
+    expect(amountMinor(20, "hourly", 9000, 420)).toBe(2970)
+    expect(linesAmountMinor([20, 20, 20], "hourly", 9000, 420)).toBe(8910)
+    expect(amountMinor(60, "hourly", 9000, 420)).toBe(9000)
+    expect(linesAmountMinor([20, 20], "hourly", null, 420)).toBeNull()
+    expect(linesAmountMinor([], "hourly", 9000, 420)).toBe(0)
   })
 })

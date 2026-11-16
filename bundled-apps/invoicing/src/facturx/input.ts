@@ -5,6 +5,7 @@
 // state, FX) are the only source. Nothing is recomputed from current contact or issuer data
 // except the issuer profile, which is the seller's identity at issue time.
 
+import { sirenFromFrVat } from "../einvoicing/identity"
 import {
   FacturxBuildError,
   type FacturxInput,
@@ -86,11 +87,14 @@ export interface FacturxSource {
   legalMention?: string | null
 }
 
-/** The seller of a Factur-X: the issuer profile as it stands at issue time. */
+/** The seller of a Factur-X: the issuer profile as it stands at issue time. With no SIREN on
+ *  file, a French VAT number carries it (FR, a 2-digit key, the 9-digit SIREN). */
 export function facturxSellerFrom(i: Row): FacturxParty {
   return {
     legal_name: String(i.legal_name ?? ""),
-    siren: str(i.siren),
+    siren:
+      str(i.siren) ??
+      sirenFromFrVat(str(i.vat_id), { billingCountry: str(i.country_code) ?? str(i.country) }),
     routing_address: str(i.routing_address),
     vat_id: str(i.vat_id),
     address: {

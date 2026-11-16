@@ -29,6 +29,7 @@ import {
   LINE_NAME_MAX,
   type LineKind,
   lateNote,
+  linesAmountMinor,
   NOT_EVERYTHING_SEEN,
   namedMember,
   type Period,
@@ -1135,7 +1136,17 @@ function cardData(args: {
   const notes: string[] = []
   if (late) notes.push(late)
   if (shape.notSeen.length > 0 || coverage.total === 0) notes.push(NOT_EVERYTHING_SEEN)
-  const totalAmount = money && c.basis !== "retainer" ? amount(billMinutes) : null
+  // The sum of the lines as priced one by one, as the invoice adds them up.
+  const linesMinor =
+    money && c.basis !== "retainer"
+      ? linesAmountMinor(
+          shape.lines.map((l) => l.billMinutes),
+          c.basis,
+          c.rateMinor,
+          c.hpd,
+        )
+      : null
+  const totalAmount = linesMinor === null ? null : linesMinor / 100
   const said =
     args.said ??
     (outcome === "unchanged"

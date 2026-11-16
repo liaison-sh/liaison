@@ -26,6 +26,7 @@ import {
   raiseIdentityAttention,
 } from "../einvoicing/gate"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
+import { issuerParkBlockedOn, raiseIssuerAttention } from "../einvoicing/seller"
 import type { Counterparty, DraftLine } from "../issue"
 import { civilDateOf, issueDateParts } from "../issue-date"
 import { lineAmounts, lineTax } from "../money"
@@ -544,6 +545,28 @@ export async function onStripeInvoiceFinalized(
   }
   // 7. The e-invoicing gate, before any number.
   const gate = await checkEinvoiceGate(ctx, { type: "invoice", issuer, counterparty, lines })
+  if (!gate.ok && "seller" in gate) {
+    // Enforce mode: the organization's own issuer profile cannot sign the e-invoice. The invoice
+    // waits on the issuer (never on the buyer's identity), the people who may edit the issuer get
+    // one attention item, and it is issued once Settings is completed.
+    const gap = gate.error.error
+    const def = await park(
+      { db: ctx.db },
+      {
+        event_id: stripeRef(p.stripe_invoice_id),
+        event_payload_json: parkPayload(p),
+        status: "awaiting_dependency",
+        reason: "issuer_incomplete",
+        blocked_on: { ...issuerParkBlockedOn(gap), stripe_invoice_id: p.stripe_invoice_id },
+      },
+    )
+    await raiseIssuerAttention(ctx, {
+      park: def,
+      gap,
+      waiting: `Stripe invoice ${p.number ?? p.stripe_invoice_id}`,
+    })
+    return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
+  }
   if (!gate.ok) {
     const code = String(gate.error.error.code ?? "einvoice_gate")
     const def = await parkInvoice(ctx, p, "awaiting_data", code, EINVOICE_IDENTITY_PARK_KIND, {

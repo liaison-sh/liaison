@@ -34,6 +34,7 @@ import { type FxFetchCtx, FxRateUnavailableError, fxIssueDate, warmFxRate } from
 import { EINVOICE_IDENTITY_PARK_KIND, raiseIdentityAttention } from "../einvoicing/gate"
 import { ensureDerivedIdentity } from "../einvoicing/identity-derive"
 import { checkEinvoiceGate } from "../einvoicing/issue-gate"
+import { issuerParkBlockedOn, raiseIssuerAttention } from "../einvoicing/seller"
 import {
   CustomsFetchError,
   counterpartyCompletenessError,
@@ -1052,14 +1053,24 @@ export async function onShopifyOrderPaid(
       })
     }
     if (!check.ok && "seller" in check) {
-      // The organization's own issuer profile cannot sign the e-invoice: nothing is numbered,
-      // the order waits until Settings is completed, and the retry issues it.
-      const def = await insertDeferred(ctx.db, {
-        event_id: payload.id,
-        event_payload_json: parkPayload,
-        status: "awaiting_dependency",
-        reason: "issuer_incomplete",
-        blocked_on: { kind: "issuer", code: "issuer_incomplete" },
+      // Enforce mode: the organization's own issuer profile cannot sign the e-invoice. Nothing is
+      // numbered; the order waits (never dead-lettered) until Settings is completed, the people
+      // who may edit the issuer get one attention item, and the retry issues it.
+      const gap = check.error.error
+      const def = await park(
+        { db: ctx.db },
+        {
+          event_id: payload.id,
+          event_payload_json: parkPayload,
+          status: "awaiting_dependency",
+          reason: "issuer_incomplete",
+          blocked_on: issuerParkBlockedOn(gap),
+        },
+      )
+      await raiseIssuerAttention(ctx, {
+        park: def,
+        gap,
+        waiting: `Shopify order ${orderNumber ? `${String(orderNumber).startsWith("#") ? "" : "#"}${orderNumber}` : payload.id}`,
       })
       return { status: "deferred", deferred_id: def.id, reason: "awaiting_dependency" }
     }

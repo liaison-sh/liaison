@@ -9,6 +9,7 @@ import {
   amountMinor,
   billedHundredths,
   cutText,
+  linesAmountMinor,
   NOT_EVERYTHING_SEEN,
   OTHER_LINE_NAME,
   worded,
@@ -95,6 +96,23 @@ function moneyOf(
   // at the hourly rate: its time lines carry no amount.
   if (basis === "retainer") return undefined
   const minor = amountMinor(minutes, basis, rateMinor, hpd)
+  return minor === null ? undefined : { minor, currency }
+}
+
+function linesMoneyOf(
+  lines: readonly CardLine[],
+  basis: Basis,
+  rateMinor: number | null,
+  currency: string | null,
+  hpd: number,
+): { minor: number; currency: string } | undefined {
+  if (rateMinor === null || !currency || basis === "retainer") return undefined
+  const minor = linesAmountMinor(
+    lines.map((l) => l.billMinutes),
+    basis,
+    rateMinor,
+    hpd,
+  )
   return minor === null ? undefined : { minor, currency }
 }
 
@@ -236,9 +254,10 @@ export function reconcileCardFields(input: CardInput) {
   const billMinutes = input.lines.reduce((s, l) => s + l.billMinutes, 0)
   const realMinutes = input.lines.reduce((s, l) => s + l.realMinutes, 0)
   const plannedMinutes = periodPlanOf(input.lines)
+  // The lines as priced one by one, added up as the invoice does.
   const total = fixed
     ? undefined
-    : moneyOf(billMinutes, basis, input.rateMinor, input.currency, hpd)
+    : linesMoneyOf(input.lines, basis, input.rateMinor, input.currency, hpd)
   const offBill = rest.filter((l) => l.billMinutes === 0).length
 
   const sub =

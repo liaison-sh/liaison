@@ -594,6 +594,63 @@ describe("Create invoice on a reconcile card", () => {
   })
 })
 
+describe("a card of lines whose rounding differs", () => {
+  it("three 20-min lines at 90.00 an hour: the card, its total, the agent's words and the draft all say 89.10", async () => {
+    keys++
+    const key = `INV${keys}`
+    const made = await call<{ id: string }>("projects_createProject", {
+      name: `Maison Delorme ${key}`,
+      key,
+      companyId: delorme,
+      timeBudgets: true,
+    })
+    await awaitTimeFeatureSync(orgId)
+    await call("projects_timePlanSet", { projectId: made.id, basis: "hourly" })
+    await call("projects_billingTermsSet", { projectId: made.id, rate: 90, currency: "EUR" })
+    const ids: string[] = []
+    for (const k of ["a", "b", "c"]) {
+      const task = await call<{ id: string }>("projects_createTask", {
+        projectId: made.id,
+        title: `Task ${k}`,
+        statusLabel: "done",
+        timebox: "1 days",
+      })
+      ids.push(task.id)
+      // Each task is planned at 20 min, done in October.
+      await db.execute(
+        drizzleSql`UPDATE app_projects.tasks SET timebox_minutes = 20, completed_at = '2026-10-20 10:00+00'::timestamptz WHERE id = ${task.id}::uuid`,
+      )
+      await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+        { taskId: task.id, projectId: made.id, workDate: "2026-10-12", minutes: 20 },
+      ])
+    }
+    const card = await run(reconcilePropose, {
+      project: key,
+      month: "2026-10",
+      lines: ids.map((id, i) => ({ name: `Line ${i + 1}`, taskIds: [id], proofs: [] })),
+    })
+    expect(card.error).toBeUndefined()
+    expect(card.lines.map((l: Record<string, unknown>) => [l.billMinutes, l.amount])).toEqual([
+      [20, 29.7],
+      [20, 29.7],
+      [20, 29.7],
+    ])
+    expect(card.totals.amountExclVat).toBe(89.1)
+    expect(card.message).toContain("(89.10 EUR excluding VAT)")
+    expect(card.tot[0]).toEqual({ k: "Excl. VAT", v: { minor: 8910, currency: "EUR" } })
+    const drafted = await create(card)
+    expect(drafted.error).toBeUndefined()
+    const [doc] = extractRows<{ excl: string }>(
+      await db.execute(drizzleSql`
+        SELECT subtotal_minor::text AS excl FROM app_invoicing.documents
+         WHERE id = ${drafted.documentId}::uuid`),
+    )
+    expect(doc?.excl).toBe("8910")
+    // The drafted card keeps the same total, without invoicing's preview.
+    expect(drafted.totals.amountExclVat).toBe(89.1)
+  }, 120_000)
+})
+
 describe("the card in its conversation", () => {
   it("Create replaces the stored card by its summary line and Undo brings it back", async () => {
     const p = await october()

@@ -562,3 +562,23 @@ export function amountMinor(
     return hundredthsAmountMinor(billedHundredths(minutes, 60), rateMinor)
   return null
 }
+
+/**
+ * What several lines bill together, in minor units, or null without a rate: each line rounded and
+ * priced on its own, then added up, as the invoice totals its lines. Never the summed time priced
+ * once, which can differ from the invoice by a hundredth of a unit per line.
+ */
+export function linesAmountMinor(
+  lineMinutes: readonly number[],
+  basis: Basis,
+  rateMinor: number | null,
+  hoursPerDayMinutes: number,
+): number | null {
+  let total = 0
+  for (const m of lineMinutes) {
+    const a = amountMinor(m, basis, rateMinor, hoursPerDayMinutes)
+    if (a === null) return null
+    total += a
+  }
+  return rateMinor === null ? null : total
+}

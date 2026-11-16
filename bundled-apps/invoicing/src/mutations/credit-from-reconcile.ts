@@ -26,7 +26,7 @@ import type { ClassifyInput } from "../tax"
 import { unitOfBasis } from "../tools/preview-totals"
 import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
 import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
-import { prepareCreditNoteCreateAndIssue } from "./credit-notes"
+import { creditNoteCreateAndIssuePreflight, prepareCreditNoteCreateAndIssue } from "./credit-notes"
 import { dateOnly, resolveIssuerProfileOrError } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
 import { computeLineFinancials, counterpartyFromRow, normaliseDraftLines } from "./lines"
@@ -276,7 +276,22 @@ export async function creditFromReconcilePreflight(
 ): Promise<PreflightResult> {
   const a = await assess(ctx, input)
   if ("status" in a) return { error: a.error }
-  return { ok: true }
+  // The credit note's own refusals (an over-credit, the e-invoicing gate, an issuer that cannot
+  // sign the e-invoice in enforce mode), read-only, so no approval is spent on a run that refuses.
+  return creditNoteCreateAndIssuePreflight(ctx, creditNoteArgs(a))
+}
+
+/** The credit note the run issues, as `credit_note_create_and_issue` takes it. */
+function creditNoteArgs(a: Assessed) {
+  return {
+    issuer_profile_id: a.issuerId,
+    counterparty: a.counterparty,
+    currency: a.currency,
+    items: a.items,
+    original_document_id: String(a.invoice.id),
+    reason: a.reason,
+    operation_category: "services" as const,
+  }
 }
 
 /** A correction of the same line already waiting on a person: answered instead of a second one. */
@@ -370,19 +385,9 @@ async function creditFromReconcileRun(
       }
   }
 
-  const prepared = await prepareCreditNoteCreateAndIssue(
-    ctx,
-    {
-      issuer_profile_id: a.issuerId,
-      counterparty: a.counterparty,
-      currency: a.currency,
-      items: a.items,
-      original_document_id: String(a.invoice.id),
-      reason: a.reason,
-      operation_category: "services",
-    },
-    { external_ref: a.key },
-  )
+  const prepared = await prepareCreditNoteCreateAndIssue(ctx, creditNoteArgs(a), {
+    external_ref: a.key,
+  })
   if (!prepared.ok) return prepared.result
 
   // The corrected activity report, linked to the credit note, in the commit that issues it.

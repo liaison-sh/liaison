@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The seller half of an e-invoice: a French e-invoice's legal original (its Factur-X) names the
 // issuing company by its SIREN and structured address. When the issuer profile lacks them, the
-// legal original cannot be built, so the document is refused before a number is taken, with the
-// Settings fields a person fills in and the tool an agent would use.
+// legal original cannot be built. In enforce mode the document is refused before a number is
+// taken, with the Settings fields a person fills in and the tool an agent would use; in warn mode
+// it is issued with a plain PDF and a warning naming the same fields.
 import { type FacturxPartyGap, facturxPartyGaps } from "../facturx/cii"
 import { facturxSellerFrom } from "../facturx/input"
+import type { MissingItem } from "./gate"
 
 /** How Settings > Invoicing labels each issuer field a person fills in. */
 const FIELD_SAID: Record<FacturxPartyGap, string> = {
@@ -34,8 +36,7 @@ export function sellerIncompleteError(
 ): SellerIncompleteError | null {
   const missing = facturxPartyGaps(facturxSellerFrom(issuer))
   if (missing.length === 0) return null
-  const said = missing.map((f) => FIELD_SAID[f])
-  const list = said.length === 1 ? said[0] : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
+  const list = fieldList(missing)
   const what = docType === "credit_note" ? "credit note" : "invoice"
   return {
     code: "issuer_incomplete",
@@ -69,4 +70,134 @@ export class SellerIncompleteRefusal extends Error {
     this.name = "SellerIncompleteRefusal"
     this.error = error
   }
+}
+
+/** The listed fields, as a person reads them: "SIREN, street address and city". */
+function fieldList(missing: readonly FacturxPartyGap[]): string {
+  const said = missing.map((f) => FIELD_SAID[f])
+  return said.length === 1 ? (said[0] ?? "") : `${said.slice(0, -1).join(", ")} and ${said.at(-1)}`
+}
+
+/**
+ * Warn mode: the seller gap does not block. The document is issued with a plain PDF instead of
+ * its e-invoice file, and this warning travels with the result, naming the Settings fields.
+ */
+export function sellerWarning(gap: SellerIncompleteError): {
+  code: "issuer_incomplete"
+  message: string
+  missing: MissingItem[]
+} {
+  const n = gap.body.missing_fields.length
+  const list = fieldList(gap.body.missing_fields)
+  return {
+    code: "issuer_incomplete",
+    message: `Issued with a plain PDF, without its e-invoice file (Factur-X): your company's ${list} ${n === 1 ? "is" : "are"} missing. Add ${n === 1 ? "it" : "them"} in Settings > Invoicing, Issuer profiles before e-invoicing is enforced.`,
+    missing: gap.body.missing_fields.map((f) => ({
+      field: `issuer.${f}`,
+      why: `Your company's ${FIELD_SAID[f]} is printed on every e-invoice.`,
+      fix_tool: "settings_issuer_profile_update",
+      fix_hint: `Settings > Invoicing, Issuer profiles: ${FIELD_SAID[f]}.`,
+    })),
+  }
+}
+
+/** One warning from the buyer gate's and the seller's, when both apply. */
+export function mergeEinvoicingWarnings<
+  W extends { code: string; message: string; missing: MissingItem[] },
+>(
+  gate: W | null,
+  seller: ReturnType<typeof sellerWarning> | null,
+): W | ReturnType<typeof sellerWarning> | null {
+  if (!gate) return seller
+  if (!seller) return gate
+  return {
+    ...gate,
+    message: `${gate.message} ${seller.message}`,
+    missing: [...gate.missing, ...seller.missing],
+  }
+}
+
+interface IssuerAttentionCtx {
+  db: { findMany(entity: string, q: Record<string, unknown>): Promise<unknown[]> }
+  emit?(event: { entity: string; action: string; entityId?: string; data?: unknown }): Promise<void>
+}
+
+/** The park kind of a document waiting on its issuer profile. */
+export const ISSUER_PARK_KIND = "issuer_incomplete"
+
+/** True when an open issuer park other than `parkId` waits on the same issuer profile. */
+async function otherOpenIssuerPark(
+  db: IssuerAttentionCtx["db"],
+  issuerId: string,
+  parkId: string,
+): Promise<boolean> {
+  const open = (await db.findMany("deferred_events", {
+    where: { status: "awaiting_dependency" },
+    limit: 500,
+  })) as Array<Record<string, unknown>>
+  return open.some((r) => {
+    const b = (r.blocked_on ?? {}) as Record<string, unknown>
+    return (
+      String(r.id) !== parkId && b.kind === ISSUER_PARK_KIND && b.issuer_profile_id === issuerId
+    )
+  })
+}
+
+/** The `blocked_on` of a park waiting on the issuer profile. */
+export function issuerParkBlockedOn(gap: SellerIncompleteError): Record<string, unknown> {
+  return {
+    kind: ISSUER_PARK_KIND,
+    code: gap.code,
+    issuer_profile_id: gap.body.issuer_profile_id,
+    missing_fields: gap.body.missing_fields,
+  }
+}
+
+/**
+ * Raise the `einvoicing:issuer_incomplete` attention item for the people who may edit the issuer
+ * profile: once per issuer (only for a park just created, and when no other park already waits
+ * on the same profile), naming the Settings fields to fill in and the first document waiting.
+ */
+export async function raiseIssuerAttention(
+  ctx: IssuerAttentionCtx,
+  input: { park: { id: string; created: boolean }; gap: SellerIncompleteError; waiting: string },
+): Promise<boolean> {
+  if (!input.park.created || !ctx.emit) return false
+  const issuerId = input.gap.body.issuer_profile_id
+  if (issuerId && (await otherOpenIssuerPark(ctx.db, issuerId, input.park.id))) return false
+  const n = input.gap.body.missing_fields.length
+  const list = fieldList(input.gap.body.missing_fields)
+  await ctx.emit({
+    entity: "einvoicing",
+    action: "issuer_incomplete",
+    entityId: issuerId ?? input.park.id,
+    data: {
+      issuer_profile_id: issuerId,
+      deferred_id: input.park.id,
+      missing_fields: input.gap.body.missing_fields,
+      text: `${input.waiting} cannot be issued as an e-invoice: your company's ${list} ${n === 1 ? "is" : "are"} missing. Add ${n === 1 ? "it" : "them"} in Settings > Invoicing, Issuer profiles, and the waiting invoices are issued.`,
+      resolved: false,
+    },
+  })
+  return true
+}
+
+/** Close the issuer item once no open park waits on that issuer profile any more. */
+export async function resolveIssuerAttention(
+  ctx: IssuerAttentionCtx,
+  input: { parkId: string; issuer_profile_id: string | null },
+): Promise<boolean> {
+  if (!ctx.emit) return false
+  if (
+    input.issuer_profile_id &&
+    (await otherOpenIssuerPark(ctx.db, input.issuer_profile_id, input.parkId))
+  )
+    return false
+  await ctx.emit({
+    entity: "einvoicing",
+    action: "issuer_incomplete",
+    entityId: input.issuer_profile_id ?? input.parkId,
+    data: { issuer_profile_id: input.issuer_profile_id, deferred_id: input.parkId, resolved: true },
+  })
+  return true
 }

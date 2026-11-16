@@ -69,7 +69,7 @@ export const TABS_WHOSE_ID_IS_NOT_A_RECORD: ReadonlySet<string> = new Set([
   "invoicing:documents", // a list's filter
   "monitoring:source", // a configured monitoring source, not a row of the app
   "monitoring:status", // a list's filter
-  "projects:reconcile", // a planned vs done card's page, opened from the link reconcile_get gives
+  "projects:reconcile", // a planned vs done card's page, opened from the link its read gives
 ])
 
 /**

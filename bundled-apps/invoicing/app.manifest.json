@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.31.0",
+  "version": "0.31.1",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6803,6 +6803,7 @@
       "deferred:tax_review",
       "deferred:credit_note_refused",
       "einvoicing:identity_missing",
+      "einvoicing:issuer_incomplete",
       "einvoicing:facturx_failed",
       "stripe_stream:switched",
       "stripe_invoice:issuer_undecided",
@@ -7112,6 +7113,13 @@
         "resolveWhen": { "always": true }
       },
       {
+        "event": "einvoicing:issuer_incomplete",
+        "kind": "invoicing:einvoicing.issuer_incomplete",
+        "urgency": 60,
+        "summary": "{{data.text}}",
+        "recipients": { "kind": "scope_holders", "scope": "invoicing:settings:write" },
+        "resolveWhen": { "field": "resolved", "equals": true }
+      },      {
         "event": "einvoicing:identity_missing",
         "kind": "invoicing:einvoicing.identity_missing",
         "urgency": 50,

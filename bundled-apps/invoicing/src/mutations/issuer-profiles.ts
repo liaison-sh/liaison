@@ -3,6 +3,7 @@
 // Invoicing mutations: Settings issuer-profile CRUD.
 
 import { readMinorAmount } from "@liaison/app-sdk"
+import { isValidSiren } from "../einvoicing/identity"
 import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
 import {
   type ErrorEnvelope,
@@ -80,12 +81,14 @@ async function checkWrittenFields(
     }
   }
   const siren = typeof input.siren === "string" ? input.siren.replace(/\s+/g, "") : ""
-  if (siren !== "" && !/^\d{9}$/.test(siren)) {
+  if (siren !== "" && !isValidSiren(siren)) {
     return {
       status: "error",
       error: {
         code: "invalid_params",
-        message: "A SIREN is the company's 9-digit number (for example 123 456 789).",
+        message: /^\d{9}$/.test(siren)
+          ? `${siren} is not a valid SIREN: its check digit does not match. Check the company's 9-digit number on its registration certificate.`
+          : "A SIREN is the company's 9-digit number (for example 123 456 789).",
       },
     }
   }

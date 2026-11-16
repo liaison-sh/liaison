@@ -1760,6 +1760,9 @@ describe("invoicing manifest", () => {
     //   activity report is signed by the issuer and takes no lead name.
     // 0.31.0: an e-invoice whose issuer profile lacks its SIREN or address is refused before a
     //   number is taken; Settings > Invoicing takes the issuer's SIREN and structured address.
+    // 0.31.1: that refusal follows the gate mode (warn issues a plain PDF with a warning); a
+    //   French VAT number supplies a missing SIREN; an order or Stripe invoice waiting on the
+    //   issuer raises einvoicing:issuer_incomplete and is never dead-lettered.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

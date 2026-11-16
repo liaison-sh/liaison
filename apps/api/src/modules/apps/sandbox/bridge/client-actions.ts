@@ -35,8 +35,10 @@ import {
   readClientActionRecord,
   revokeClientAction,
   revokeTargetClientActions,
+  signerAddresses,
 } from "~/modules/client-actions/mint"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
+import { describeStop, evaluateSendGuard, isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { hasScope } from "~/modules/permissions/permissions"
 
 /** The most signers one send may carry. */
@@ -96,6 +98,8 @@ interface SendParams {
   company_id?: string | null
   visible_to?: string[] | null
   signers: SendSigner[]
+  /** The service-mail check the card pinned; held again here, before any link. */
+  send_guard?: unknown
 }
 
 function actionOut(r: MintResult, signOrder: number | null) {
@@ -144,6 +148,36 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
 
   const actorUserId = (): string | null => (UUID.test(userId) ? userId : null)
 
+  /** A pinned check must name every signer's address and still clear, or no link is made. */
+  async function guardStops(
+    guard: unknown,
+    signers: SendSigner[],
+  ): Promise<{ code: string; message: string } | null> {
+    let addresses: string[]
+    try {
+      addresses = await signerAddresses(orgId, signers)
+    } catch (err) {
+      if (err instanceof ClientActionError)
+        return { code: err.code, message: `${err.message}. Nothing was sent.` }
+      throw err
+    }
+    if (
+      !isPinnedSendGuard(guard) ||
+      !addresses.every((a) => guard.addresses.map((x) => x.toLowerCase()).includes(a))
+    )
+      return {
+        code: "SEND_GUARD_MISMATCH",
+        message:
+          "The send no longer matches the check its card pinned (another signer or address). Nothing was sent.",
+      }
+    const verdict = await evaluateSendGuard({ orgId, guard, recipients: addresses, at: "send" })
+    if (verdict.state === "clear") return null
+    return {
+      code: `SEND_GUARD_${verdict.state.toUpperCase()}`,
+      message: `${describeStop(verdict, "approved")} Nothing was sent.`,
+    }
+  }
+
   async function mintSend(p: SendParams): Promise<string> {
     const target = declaredTarget(orgId, appName, p.target_type)
     if (!target)
@@ -171,6 +205,10 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         "INVALID_SIGNERS",
         `A send has 1 to ${MAX_SIGNERS_PER_SEND} signers. Nothing was sent.`,
       )
+    if (p.send_guard !== undefined) {
+      const stop = await guardStops(p.send_guard, signers)
+      if (stop) return refuse(stop.code, stop.message)
+    }
     const sequential = p.order === "sequential"
     const groupId = crypto.randomUUID()
     const made: Array<ReturnType<typeof actionOut>> = []

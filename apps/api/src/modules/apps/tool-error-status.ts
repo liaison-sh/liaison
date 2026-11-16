@@ -482,4 +482,13 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   TIMESTAMP_NOT_CONFIGURED: 422,
   FREEZE_NOT_AVAILABLE: 422,
   LINKS_NOT_AVAILABLE: 422,
+  // A send's pinned mail check, held again when the approved send goes: the card no longer
+  // matches, or the address stopped taking mail since the card (a reply, a bounce, an opt-out).
+  SEND_GUARD_MISMATCH: 409,
+  SEND_GUARD_REPLIED: 409,
+  SEND_GUARD_BOUNCED: 409,
+  SEND_GUARD_OPTED_OUT: 409,
+  SEND_GUARD_HELD: 409,
+  SEND_GUARD_REF_STOP: 409,
+  SEND_GUARD_UNAVAILABLE: 503,
 }

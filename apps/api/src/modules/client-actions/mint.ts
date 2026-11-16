@@ -126,6 +126,25 @@ async function resolveInvitee(tx: PrivilegedDb, input: MintInput): Promise<Invit
   }
 }
 
+/** The address each signer of one send would be mailed at, in order (a pinned check covers them). */
+export async function signerAddresses(
+  orgId: string,
+  signers: ReadonlyArray<{ contact_id?: string | null; email?: string | null }>,
+): Promise<string[]> {
+  return withPrivilegedDb(orgId, "client-action-signer-addresses", async (tx) => {
+    const out: string[] = []
+    for (const s of signers) {
+      const who = await resolveInvitee(tx, {
+        orgId,
+        contactId: s.contact_id ?? null,
+        invitedEmail: s.email ?? null,
+      } as MintInput)
+      out.push(who.email)
+    }
+    return out
+  })
+}
+
 interface Sender {
   orgName: string
   senderName: string

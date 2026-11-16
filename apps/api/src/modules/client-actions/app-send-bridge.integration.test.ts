@@ -56,7 +56,12 @@ function bridge(opts: { approved: boolean }) {
   } as unknown as BridgeContext)
 }
 
-async function send(approved: boolean, targetId: string, order: "sequential" | "any") {
+async function send(
+  approved: boolean,
+  targetId: string,
+  order: "sequential" | "any",
+  extra: Record<string, unknown> = {},
+) {
   const raw = await bridge({ approved }).client_actions_mint(
     JSON.stringify({
       send: {
@@ -71,6 +76,7 @@ async function send(approved: boolean, targetId: string, order: "sequential" | "
           { contact_id: kit.w.clientA.contactId },
           { contact_id: kit.w.clientA2.contactId },
         ],
+        ...extra,
       },
     }),
   )
@@ -150,6 +156,34 @@ describe("an app's send through the bridge", () => {
       ),
     ) as { opened_id: string | null }
     expect(again.opened_id).toBeNull()
+  })
+
+  it("a pinned send check that does not cover every signer's address makes no link", async () => {
+    const targetId = crypto.randomUUID()
+    const at = new Date().toISOString()
+    const guard = {
+      v: 1,
+      applies: true,
+      mode: "plain",
+      since: at,
+      stagedAt: at,
+      addresses: [kit.w.clientA.email],
+      contactIds: [kit.w.clientA.contactId],
+      refs: [],
+      classification: "service",
+    }
+    const out = await send(true, targetId, "any", { send_guard: guard })
+    expect(out.error?.code).toBe("SEND_GUARD_MISMATCH")
+    expect(await rowsOf(targetId)).toEqual([])
+    const both = await send(true, targetId, "any", {
+      send_guard: {
+        ...guard,
+        addresses: [kit.w.clientA.email, kit.w.clientA2.email],
+        contactIds: [kit.w.clientA.contactId, kit.w.clientA2.contactId],
+      },
+    })
+    expect(both.status).toBe("ok")
+    expect(await rowsOf(targetId)).toHaveLength(2)
   })
 
   it("no link is made outside a person's decision on the app's send", async () => {

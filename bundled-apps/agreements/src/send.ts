@@ -54,6 +54,9 @@ export interface SendParams {
   expires_in_days?: number
   message?: string
   required_phrase?: string
+  /** Pinned by the card's preflight; the approved call carries them unchanged. */
+  sendGuard?: Record<string, unknown>
+  guardKey?: string
 }
 
 interface Resolved {
@@ -251,13 +254,45 @@ interface MintAnswer {
   }>
 }
 
-/** Checked before the card is staged: the same refusals the send has when it is approved. */
+/** One send's key: the version, its fingerprint and every signer's address. */
+export function sendGuardKey(ready: Pick<Ready, "version" | "signers">): string {
+  const emails = [...new Set(ready.signers.map((x) => x.email))].sort()
+  return `${ready.version.id}:${String(ready.version.sha256)}:${emails.join(",")}`
+}
+
+/** The service-mail check the card pins: every signer's address, checked again when it goes. */
+function sendGuardOf(ready: Ready): Record<string, unknown> {
+  const at = new Date().toISOString()
+  return {
+    v: 1,
+    applies: true,
+    mode: "plain",
+    since: at,
+    stagedAt: at,
+    addresses: ready.signers.map((x) => x.email),
+    contactIds: ready.signers.flatMap((x) => (x.contact_id ? [x.contact_id] : [])),
+    refs: [],
+    classification: "service",
+  }
+}
+
+/**
+ * Checked before the card is staged: the same refusals the send has when it is approved.
+ * Pins the send check and the send's key, so the approved call is held to the card.
+ */
 export async function agreementSendPreflight(
   ctx: AgreementsCtx,
   p: SendParams,
-): Promise<{ ok: true } | { error: { code: string; message: string } }> {
+): Promise<
+  | { ok: true; pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string } }
+  | { error: { code: string; message: string } }
+> {
   const ready = await readyToSend(ctx, p)
-  return isError(ready) ? { error: ready.error } : { ok: true }
+  if (isError(ready)) return { error: ready.error }
+  return {
+    ok: true,
+    pinnedParams: { sendGuard: sendGuardOf(ready), guardKey: sendGuardKey(ready) },
+  }
 }
 
 /** `agreement_send`: an agent's call parks one card; the person's decision mints every link. */
@@ -285,6 +320,20 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       message: `Nothing was sent yet: ${ready.agreement.number} version ${ready.version.number} goes to ${ready.signers.length} signer(s) only when a person approves card ${a.approval_id}.`,
     }
   }
+  // An approved call is the one its card showed: the pinned check and key must still match.
+  if (ctx.approval || p.sendGuard !== undefined || p.guardKey !== undefined) {
+    const guard = p.sendGuard
+    const addresses = Array.isArray(guard?.addresses) ? (guard.addresses as unknown[]) : []
+    if (
+      !guard ||
+      p.guardKey !== sendGuardKey(ready) ||
+      !ready.signers.every((x) => addresses.includes(x.email))
+    )
+      return refusal(
+        "SEND_GUARD_MISMATCH",
+        `${ready.agreement.number} version ${ready.version.number} no longer matches the card that was approved (another signer, address or version). Nothing was sent. Next: send it again for a new decision.`,
+      )
+  }
   if (!ctx.client_actions_mint)
     return refusal(
       "LINKS_NOT_AVAILABLE",
@@ -303,6 +352,7 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
         required_phrase: p.required_phrase ?? null,
         company_id: ready.agreement.company_id ?? null,
         signers: ready.signers,
+        ...(p.sendGuard ? { send_guard: p.sendGuard } : {}),
       },
     }),
   )

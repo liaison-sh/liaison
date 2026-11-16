@@ -12,6 +12,7 @@ import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import {
   agreementSend,
+  agreementSendPreflight,
   agreementVoid,
   clientActionViewGet,
   onClientActionDecided,
@@ -189,13 +190,17 @@ describe("sending for signature", () => {
   it("one approval of a two-signer send mints every link it should, and no second card appears", async () => {
     const db = memoryDb()
     const { id, prepared } = await frozen(db)
-    const ctx = ctxFor(db, { agent: AGENT, approved: true })
-    const out = (await agreementSend(ctx, {
+    const p = {
       version_id: prepared.version_id,
       sha256: prepared.sha256,
       signers: [{ contact_id: C1 }, { email: "lea@maison-roux.example", name: "Léa Roux" }],
-      order: "sequential",
-    })) as { status: string; client_actions: Array<{ state: string }> }
+      order: "sequential" as const,
+    }
+    const ctx = ctxFor(db, { agent: AGENT, approved: true })
+    const out = (await agreementSend(ctx, { ...p, ...(await pinnedFor(db, p)) })) as {
+      status: string
+      client_actions: Array<{ state: string }>
+    }
     expect(out.status).toBe("ok")
     expect(ctx.calls.approvals).toEqual([])
     expect(ctx.calls.mints).toHaveLength(1)
@@ -243,13 +248,98 @@ describe("sending for signature", () => {
       status: "error",
       error: { code: "TIMESTAMP_NOT_CONFIGURED", message: "No timestamp authority" },
     })
+    const p = {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    }
+    const out = (await agreementSend(ctx, { ...p, ...(await pinnedFor(db, p)) })) as {
+      error: { code: string }
+    }
+    expect(out.error.code).toBe("TIMESTAMP_NOT_CONFIGURED")
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+  })
+})
+
+/** What the card's preflight pinned for a send, as the approved call carries it. */
+async function pinnedFor(db: Db, p: Parameters<typeof agreementSend>[1]) {
+  const out = (await agreementSendPreflight(ctxFor(db), p)) as {
+    ok: true
+    pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string }
+  }
+  return out.pinnedParams
+}
+
+describe("the send check an approved send carries", () => {
+  it("the card pins a service-mail check to every signer's address and the send's key", async () => {
+    const db = memoryDb()
+    const { prepared } = await frozen(db)
+    const pin = await pinnedFor(db, {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }, { email: "Lea@Maison-Roux.example", name: "Léa Roux" }],
+    })
+    expect(pin.sendGuard).toMatchObject({
+      v: 1,
+      applies: true,
+      mode: "plain",
+      classification: "service",
+      addresses: ["paul@maison-morel.example", "lea@maison-roux.example"],
+      contactIds: [C1],
+      refs: [],
+    })
+    expect(pin.guardKey).toBe(
+      `${prepared.version_id}:${SHA}:lea@maison-roux.example,paul@maison-morel.example`,
+    )
+  })
+
+  it("an approved send passes the pinned check on to the kernel's mint", async () => {
+    const db = memoryDb()
+    const { prepared } = await frozen(db)
+    const p = {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    }
+    const pin = await pinnedFor(db, p)
+    const ctx = ctxFor(db, { agent: AGENT, approved: true })
+    const out = (await agreementSend(ctx, { ...p, ...pin })) as { status: string }
+    expect(out.status).toBe("ok")
+    const send = (ctx.calls.mints[0] as { send: { send_guard: unknown } }).send
+    expect(send.send_guard).toEqual(pin.sendGuard)
+  })
+
+  it("an approved send whose signers differ from the card's key mints nothing", async () => {
+    const db = memoryDb()
+    const { prepared } = await frozen(db)
+    const p = {
+      version_id: prepared.version_id,
+      sha256: prepared.sha256,
+      signers: [{ contact_id: C1 }],
+    }
+    const pin = await pinnedFor(db, p)
+    const ctx = ctxFor(db, { agent: AGENT, approved: true })
+    const out = (await agreementSend(ctx, {
+      ...p,
+      ...pin,
+      signers: [{ email: "someone@else.example" }],
+    })) as { error: { code: string; message: string } }
+    expect(out.error.code).toBe("SEND_GUARD_MISMATCH")
+    expect(out.error.message).toContain("Nothing was sent")
+    expect(ctx.calls.mints).toEqual([])
+  })
+
+  it("an approved send with no pinned check mints nothing", async () => {
+    const db = memoryDb()
+    const { prepared } = await frozen(db)
+    const ctx = ctxFor(db, { agent: AGENT, approved: true })
     const out = (await agreementSend(ctx, {
       version_id: prepared.version_id,
       sha256: prepared.sha256,
       signers: [{ contact_id: C1 }],
     })) as { error: { code: string } }
-    expect(out.error.code).toBe("TIMESTAMP_NOT_CONFIGURED")
-    expect(rowOf(db, "agreements", id).status).toBe("draft")
+    expect(out.error.code).toBe("SEND_GUARD_MISMATCH")
+    expect(ctx.calls.mints).toEqual([])
   })
 })
 

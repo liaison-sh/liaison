@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1254,6 +1254,15 @@
           "required_phrase": {
             "type": "string",
             "maxLength": 200
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
           }
         },
         "required": [
@@ -1262,7 +1271,12 @@
           "signers"
         ]
       },
-      "preflight": "agreementSendPreflightHandler"
+      "preflight": "agreementSendPreflightHandler",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "guardKey"
     },
     "agreement_void": {
       "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. Parks for a person's approval.",

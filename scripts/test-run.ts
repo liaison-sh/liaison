@@ -1696,6 +1696,9 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // it read `1xET2`. Pins the wrapper strip, the retail-code aliases, the duplicate
             // MERGE, and that an unknown sku degrades readably instead of vanishing.
             "src/product-codes.test.ts",
+            // to_ship_by_product: the worklist as units per product code (codes merge, sums,
+            // orders count, fully covered partial rows, rank order, empty worklist).
+            "src/to-ship-by-product.test.ts",
             // Profile short codes copied onto the kernel's product attributes, read back first.
             "src/product-attributes.test.ts",
             // STANDING ORACLE: a refunded or cancelled Shopify order must never

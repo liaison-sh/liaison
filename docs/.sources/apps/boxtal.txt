@@ -204,3 +204,10 @@ boxtal:order papers generated at To prepare, after the buy, in the pack -> bundl
 order_print_record_get tool -> bundled-apps/boxtal/app.manifest.json:2602
 Boxtal shipment declares pick -> bundled-apps/boxtal/app.manifest.json:225
 Keys added host-side (fetch auth basic/exchange) -> bundled-apps/boxtal/src/lib/get-client.ts
+to_ship_by_product: one row per short code, units, orders, total_units, as_of -> bundled-apps/boxtal/src/to-ship-by-product.ts:25 ; bundled-apps/boxtal/src/to-ship-by-product.ts:34
+reads the same worklist as prep_list's unscoped read (excluded rows hidden), never calls Boxtal -> bundled-apps/boxtal/src/to-ship-by-product.ts:87 ; bundled-apps/boxtal/src/prep.ts:615
+codes through the org's product-code mapping, wholesale variant folds into retail code -> bundled-apps/boxtal/src/to-ship-by-product.ts:62 ; bundled-apps/boxtal/src/product-codes.ts:88
+partially shipped order counts only remaining lines -> bundled-apps/boxtal/src/draft-cache.ts:349 ; bundled-apps/boxtal/src/to-ship-by-product.ts:61
+rows in the org's code rank order -> bundled-apps/boxtal/src/to-ship-by-product.ts:73
+to_ship_by_product read only, boxtal:shipments:read -> bundled-apps/boxtal/app.manifest.json:2423
+lookup column source / rowsPath / match field / value -> apps/api/src/modules/dashboards/tables/columns.ts:85

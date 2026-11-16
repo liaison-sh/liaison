@@ -65,6 +65,8 @@ export const TableSettings: Component<TableSettingsProps> = (props) => {
       parts.push(c.choices.join(", "))
     if (c.type === "link" && c.linkTo)
       parts.push(c.linkTo.entityType ? `${c.linkTo.app} ${c.linkTo.entityType}` : c.linkTo.app)
+    if (c.type === "lookup" && c.lookup)
+      parts.push(i18n.t("kernel.dashboards.tables.lookupColumn", { tool: c.lookup.source.tool }))
     if (c.required) parts.push(i18n.t("kernel.dashboards.tables.requiredTag"))
     return parts.join(" · ")
   }

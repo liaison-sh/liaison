@@ -40,6 +40,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
+import { checkToolSource } from "~/modules/dashboards/sources"
 import {
   type BackedDocument,
   type BackingToolDef,
@@ -72,6 +73,7 @@ import {
   pick,
   validateCells,
 } from "~/modules/dashboards/tables/columns"
+import { applyLookups } from "~/modules/dashboards/tables/lookup"
 import {
   type ContainsQuery,
   DataStoreError,
@@ -660,12 +662,21 @@ function searchFor(viewer: UserContext, columns: Column[], text: string): Contai
 function checkWhere(where: Where | undefined, columns: Column[]): void {
   if (!where) return
   for (const key of Object.keys(where)) {
-    if (!columns.some((c) => c.key === key)) {
+    const col = columns.find((c) => c.key === key)
+    if (!col) {
       throw new TableError("invalid_request", `'${key}' is not a column of this table`, {
         column: key,
       })
     }
+    if (col.type === "lookup") {
+      throw new TableError("invalid_request", lookupNotQueryable(key), { column: key })
+    }
   }
+}
+
+/** Why a lookup column cannot filter or sort rows: its cells are read after the rows. */
+function lookupNotQueryable(key: string): string {
+  return `'${key}' is a lookup column, read live after the rows: it cannot filter or sort them`
 }
 
 async function latestActors(
@@ -772,9 +783,9 @@ function storeError(err: unknown): never {
 function orderField(sort: string | undefined, columns: Column[]): string | undefined {
   if (sort === undefined || sort === "updated_at") return sort
   if (sort === "id") return "doc_id"
-  if (!columns.some((c) => c.key === sort)) {
-    throw new TableError("invalid_request", `'${sort}' is not a column of this table`)
-  }
+  const col = columns.find((c) => c.key === sort)
+  if (!col) throw new TableError("invalid_request", `'${sort}' is not a column of this table`)
+  if (col.type === "lookup") throw new TableError("invalid_request", lookupNotQueryable(sort))
   return sort
 }
 
@@ -784,49 +795,74 @@ export async function listRows(
   id: string,
   opts: ListRowsOptions = {},
   tx?: RlsClient,
-): Promise<{ rows: Row[]; nextCursor: string | null; truncated?: boolean }> {
+): Promise<{
+  rows: Row[]
+  nextCursor: string | null
+  truncated?: boolean
+  /** Why a lookup column's cells are empty on this read (its read failed), by column key. */
+  columnNotes?: Record<string, string>
+}> {
   assertRead(viewer)
-  return inTx(viewer, tx, async (t) => {
+  // The lookup columns are read after the rows, outside the table's transaction when this call
+  // owns it: a lookup runs an app's tool, which takes its own.
+  const page = await inTx(viewer, tx, async (t) => {
     const loaded = await loadTable(t, viewer, id)
-    const field = orderField(opts.sort, allColumns(loaded))
-    checkWhere(opts.where, allColumns(loaded))
-    const limit = Math.min(Math.max(opts.limit ?? DEFAULT_ROWS_PAGE, 1), MAX_QUERY_LIMIT)
-    if (loaded.backing) {
-      const offset = opts.cursor ? Number(opts.cursor) : 0
-      if (!Number.isInteger(offset) || offset < 0) {
-        throw new TableError("invalid_request", "invalid cursor")
-      }
-      const backed = await backedDocs(t, viewer, loaded)
-      let docs = backed.docs
-      const columns = allColumns(loaded)
-      if (opts.where) docs = docs.filter((d) => matchesWhere(d.data, opts.where))
-      if (opts.q?.trim()) {
-        const q = opts.q
-        docs = docs.filter((d) => matchesText(visibleCells(viewer, columns, d.data), q))
-      }
-      docs = sortDocs(docs, field, opts.dir ?? "asc")
-      const page = docs.slice(offset, offset + limit)
-      return {
-        rows: await toRows(t, viewer, loaded, page),
-        nextCursor: offset + limit < docs.length ? String(offset + limit) : null,
-        // Past the cap of records (backedRowCap) the table reads the first ones only, and says so.
-        ...(backed.truncated ? { truncated: true } : {}),
-      }
-    }
-    const page = await queryDocuments(
-      t,
-      storeCaller(viewer),
-      tableCollection(id),
-      {
-        ...(opts.where ? { where: opts.where } : {}),
-        ...(field ? { orderBy: { field, dir: opts.dir ?? "asc" } } : {}),
-        limit,
-        ...(opts.cursor ? { cursor: opts.cursor } : {}),
-      },
-      opts.q?.trim() ? { contains: searchFor(viewer, loaded.columns, opts.q) } : {},
-    ).catch(storeError)
-    return { rows: await toRows(t, viewer, loaded, page.items), nextCursor: page.nextCursor }
+    return { columns: allColumns(loaded), ...(await listRowsIn(t, viewer, loaded, id, opts)) }
   })
+  const { columns, ...rest } = page
+  const looked = await applyLookups(viewer, id, columns, rest.rows)
+  return {
+    ...rest,
+    rows: looked.rows,
+    ...(Object.keys(looked.notes).length ? { columnNotes: looked.notes } : {}),
+  }
+}
+
+async function listRowsIn(
+  t: RlsClient,
+  viewer: UserContext,
+  loaded: LoadedTable,
+  id: string,
+  opts: ListRowsOptions,
+): Promise<{ rows: Row[]; nextCursor: string | null; truncated?: boolean }> {
+  const field = orderField(opts.sort, allColumns(loaded))
+  checkWhere(opts.where, allColumns(loaded))
+  const limit = Math.min(Math.max(opts.limit ?? DEFAULT_ROWS_PAGE, 1), MAX_QUERY_LIMIT)
+  if (loaded.backing) {
+    const offset = opts.cursor ? Number(opts.cursor) : 0
+    if (!Number.isInteger(offset) || offset < 0) {
+      throw new TableError("invalid_request", "invalid cursor")
+    }
+    const backed = await backedDocs(t, viewer, loaded)
+    let docs = backed.docs
+    const columns = allColumns(loaded)
+    if (opts.where) docs = docs.filter((d) => matchesWhere(d.data, opts.where))
+    if (opts.q?.trim()) {
+      const q = opts.q
+      docs = docs.filter((d) => matchesText(visibleCells(viewer, columns, d.data), q))
+    }
+    docs = sortDocs(docs, field, opts.dir ?? "asc")
+    const page = docs.slice(offset, offset + limit)
+    return {
+      rows: await toRows(t, viewer, loaded, page),
+      nextCursor: offset + limit < docs.length ? String(offset + limit) : null,
+      // Past the cap of records (backedRowCap) the table reads the first ones only, and says so.
+      ...(backed.truncated ? { truncated: true } : {}),
+    }
+  }
+  const page = await queryDocuments(
+    t,
+    storeCaller(viewer),
+    tableCollection(id),
+    {
+      ...(opts.where ? { where: opts.where } : {}),
+      ...(field ? { orderBy: { field, dir: opts.dir ?? "asc" } } : {}),
+      limit,
+      ...(opts.cursor ? { cursor: opts.cursor } : {}),
+    },
+    opts.q?.trim() ? { contains: searchFor(viewer, loaded.columns, opts.q) } : {},
+  ).catch(storeError)
+  return { rows: await toRows(t, viewer, loaded, page.items), nextCursor: page.nextCursor }
 }
 
 /** Reads up to `max` rows (a block source, an agent query): `truncated` when more matched. */
@@ -1767,6 +1803,39 @@ async function checkBacking(
   if (problem) throw new TableError("invalid_request", `backing: ${problem}`)
 }
 
+/**
+ * Refuses a lookup column the saver could not read: its tool must be a dashboard source they may
+ * call (sources.ts), and it must match on a column of the table (an own one or a read-through
+ * one). Only the lookups `before` does not hold as they are: a column kept as it was is not
+ * judged again by whoever changes another one.
+ */
+async function checkLookups(
+  viewer: UserContext,
+  columns: Column[],
+  before: Column[],
+  readThrough: readonly string[],
+): Promise<void> {
+  for (const c of columns) {
+    if (c.type !== "lookup" || !c.lookup) continue
+    const was = before.find((b) => b.key === c.key)
+    if (was && JSON.stringify(was.lookup) === JSON.stringify(c.lookup)) continue
+    const on = c.lookup.match.on
+    if (!columns.some((o) => o.key === on && o.type !== "lookup") && !readThrough.includes(on)) {
+      throw new TableError(
+        "invalid_request",
+        `column '${c.key}': lookup.match.on '${on}' is not a column of this table`,
+        { column: c.key },
+      )
+    }
+    const check = await checkToolSource(viewer.orgId, c.lookup.source.tool, viewer)
+    if (!check.ok) {
+      throw new TableError("invalid_request", `column '${c.key}': ${check.message}`, {
+        column: c.key,
+      })
+    }
+  }
+}
+
 function parseColumns(raw: unknown): Column[] {
   const parsed = columnsSchema.safeParse(raw)
   if (!parsed.success) {
@@ -1814,6 +1883,7 @@ async function prepareCreate(
   backing: TableBacking | null,
 ) {
   if (backing) await checkBacking(t, viewer, backing, columns)
+  await checkLookups(viewer, columns, [], backing?.fields ?? [])
   let orgAccess: OrgAccess = input.orgAccess ?? "none"
   let grants: {
     users: { userId: string; role: ShareRole }[]
@@ -1974,6 +2044,15 @@ export function applyColumnOps(
     columns = columns.filter((c) => c.key !== key)
     droppedNow.push(col)
   }
+  for (const c of columns) {
+    if (c.lookup && droppedNow.some((d) => d.key === c.lookup?.match.on)) {
+      throw new TableError(
+        "invalid_request",
+        `the lookup column '${c.key}' matches on '${c.lookup.match.on}': drop or change it first`,
+        { column: c.lookup.match.on },
+      )
+    }
+  }
   for (const r of ops.rename ?? []) {
     const label = typeof r.label === "string" ? r.label.trim() : ""
     if (!label || label.length > 80) {
@@ -2065,6 +2144,7 @@ async function prepareUpdate(
     const clash = overlayCollision(backing, ownColumns)
     if (clash) throw new TableError("invalid_request", `backing: ${clash}`)
   }
+  if (input.columns) await checkLookups(viewer, ownColumns, loaded.columns, backing?.fields ?? [])
   return { loaded, set, backing }
 }
 

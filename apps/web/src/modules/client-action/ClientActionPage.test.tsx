@@ -5,7 +5,7 @@
 // nothing moves forward before the document was shown and read to its end.
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import ClientActionPage from "~/modules/client-action/ClientActionPage"
+import ClientActionPage, { COPY_REFRESH_MS } from "~/modules/client-action/ClientActionPage"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 
 const TOKEN = "tok_".padEnd(43, "x")
@@ -229,6 +229,24 @@ describe("the token page", () => {
     expect(screen.getByTestId("step-identity-panel")).toBeTruthy()
   })
 
+  it("identity: a name the signature page cannot draw asks for Latin letters and stays on the step", async () => {
+    serve({ verify: () => ({ status: 400, body: { error: { code: "name_not_drawable" } } }) })
+    renderAt(`#t=${TOKEN}`)
+    await readToEnd()
+    fireEvent.click(screen.getByTestId("read-continue"))
+    await screen.findByTestId("step-identity-panel")
+    fireEvent.input(screen.getByTestId("code-input"), { target: { value: "123456" } })
+    fireEvent.input(screen.getByTestId("identity-name"), { target: { value: "\u{1F600}" } })
+    fireEvent.input(screen.getByTestId("identity-capacity"), { target: { value: "Director" } })
+    fireEvent.click(screen.getByTestId("identity-continue"))
+    await waitFor(() =>
+      expect(screen.getByTestId("client-action-note").textContent).toBe(
+        "Your name holds characters the signature page cannot show. Please type it in Latin letters.",
+      ),
+    )
+    expect(screen.getByTestId("step-identity-panel")).toBeTruthy()
+  })
+
   it("identity: a pause after wrong codes shows the attempts frame", async () => {
     serve({
       verify: () => ({ status: 423, body: { error: { code: "paused", retry_at: "2030-01-01" } } }),
@@ -267,6 +285,95 @@ describe("the token page", () => {
       typed_name: "jean  TESSIER",
     })
     expect(screen.getByTestId("done-copy").textContent).toContain("j•••@client.example")
+  })
+
+  /** The first open shows the document; once signed, the link answers its signed frame. */
+  function signedAfter(copies: string[]) {
+    let n = 0
+    return () => {
+      n += 1
+      if (n === 1) return { status: 200, body: OPEN }
+      const copy = copies[Math.min(n - 2, copies.length - 1)]
+      return {
+        status: 200,
+        body: {
+          state: "signed",
+          sender: OPEN.sender,
+          next: "copy",
+          copy,
+          copy_to: "j•••@client.example",
+        },
+      }
+    }
+  }
+
+  async function signIt() {
+    await toConfirm()
+    fireEvent.input(screen.getByTestId("sign-name"), { target: { value: "Jean Tessier" } })
+    fireEvent.click(screen.getByTestId("sign-confirm"))
+    await screen.findByTestId("step-done-panel")
+  }
+
+  it("sign: the done page says where the copy stands, from the signed link's own answer", async () => {
+    serve({ open: signedAfter(["sent"]) })
+    renderAt(`#t=${TOKEN}`)
+    await signIt()
+    await waitFor(() =>
+      expect(screen.getByTestId("done-copy").textContent).toBe(
+        "The signed PDF and its proof of signature were sent to j•••@client.example. Keep that email: it is your own proof, separate from Maison Alpha's systems.",
+      ),
+    )
+    expect(of("open").map((c) => c.body)).toEqual([{ t: TOKEN }, { t: TOKEN }])
+  })
+
+  it("sign: while other signers are awaited the done page says so, and asks again until the copy settles", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ["setTimeout", "clearTimeout"] })
+    try {
+      serve({ open: signedAfter(["waiting_for_others", "on_its_way", "not_sent"]) })
+      renderAt(`#t=${TOKEN}`)
+      await signIt()
+      await waitFor(() =>
+        expect(screen.getByTestId("done-copy").textContent).toMatch(
+          /^Your copy waits for the other signers\./,
+        ),
+      )
+      await vi.advanceTimersByTimeAsync(COPY_REFRESH_MS)
+      await waitFor(() =>
+        expect(screen.getByTestId("done-copy").textContent).toMatch(/^Everyone has signed\./),
+      )
+      await vi.advanceTimersByTimeAsync(COPY_REFRESH_MS)
+      await waitFor(() =>
+        expect(screen.getByTestId("done-copy").textContent).toBe(
+          "Your copy could not be sent to j•••@client.example. Maison Alpha has been told.",
+        ),
+      )
+      await vi.advanceTimersByTimeAsync(COPY_REFRESH_MS * 3)
+      expect(of("open")).toHaveLength(4)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("sign: the done page says where the copy stands in French too", async () => {
+    serve({ open: signedAfter(["on_its_way"]) })
+    renderAt(`#t=${TOKEN}`)
+    await readToEnd()
+    fireEvent.click(screen.getByTestId("client-action-lang-fr"))
+    fireEvent.click(screen.getByTestId("read-continue"))
+    await screen.findByTestId("step-identity-panel")
+    fireEvent.input(screen.getByTestId("code-input"), { target: { value: "123456" } })
+    fireEvent.input(screen.getByTestId("identity-name"), { target: { value: "Jean Tessier" } })
+    fireEvent.input(screen.getByTestId("identity-capacity"), { target: { value: "Directeur" } })
+    fireEvent.click(screen.getByTestId("identity-continue"))
+    await screen.findByTestId("step-confirm-panel")
+    fireEvent.input(screen.getByTestId("sign-name"), { target: { value: "Jean Tessier" } })
+    fireEvent.click(screen.getByTestId("sign-confirm"))
+    await screen.findByTestId("step-done-panel")
+    await waitFor(() =>
+      expect(screen.getByTestId("done-copy").textContent).toBe(
+        "Tout le monde a signé. Le PDF signé et sa preuve de signature sont en route vers j•••@client.example. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de Maison Alpha.",
+      ),
+    )
   })
 
   it("sign: asks for the sender's words when the open answer names them", async () => {

@@ -72,6 +72,31 @@ describe("the token page's server half", () => {
     expect(row?.words_shown).toBe(body.words)
   })
 
+  it("a typed name the signature page cannot draw is refused at the name step, before the code is spent", async () => {
+    const { id, token } = await mintTo(kit)
+    const ip = nextIp()
+    const code = await codeFor(kit, token, ip, kit.w.clientA.email)
+    const refused = await call(
+      "verify",
+      { t: token, code, name: "\u{1F600}\u{1F600}" },
+      { "x-bun-socket-ip": ip },
+    )
+    expect(refused.status).toBe(400)
+    expect(await refused.json()).toEqual({ error: { code: "name_not_drawable" } })
+    const [row] = await sql`
+      SELECT code_wrong_total, code_verified_at FROM ${k("client_actions")} WHERE id = ${id}`
+    expect(row?.code_wrong_total).toBe(0)
+    expect(row?.code_verified_at).toBeNull()
+    expect((await eventsOf(id)).map((e) => e.event)).not.toContain("code_ok")
+    // The same code still works once the name is typed in Latin letters.
+    const ok = await call(
+      "verify",
+      { t: token, code, name: "Jean Tessier" },
+      { "x-bun-socket-ip": ip },
+    )
+    expect(ok.status).toBe(200)
+  })
+
   it("the open answer names the words the sender asked for, and null when none", async () => {
     const plain = await mintTo(kit)
     const open1 = await call("open", { t: plain.token }, { "x-bun-socket-ip": nextIp() })

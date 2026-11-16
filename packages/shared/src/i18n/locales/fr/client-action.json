@@ -125,6 +125,7 @@
       "codeEnded": "Ce code a expiré. Envoyez un nouveau code.",
       "sendFailed": "Nous n'avons pas pu envoyer le code. Réessayez dans une minute.",
       "invalidText": "Votre nom ou votre fonction contient des caractères que nous ne pouvons pas garder. Tapez-les à nouveau.",
+      "nameNotDrawable": "Votre nom contient des caractères que la page de signature ne peut pas afficher. Tapez-le en lettres latines.",
       "notShown": "Ouvrez d'abord le document, puis demandez un code."
     },
     "sign": {
@@ -255,6 +256,12 @@
         "action": "Réessayer",
         "done": "Toujours pas prêt. Réessayez dans quelques minutes."
       }
+    },
+    "copy": {
+      "waiting_for_others": "Votre copie attend les autres signataires. Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à {{email}}.",
+      "on_its_way": "Tout le monde a signé. Le PDF signé et sa preuve de signature sont en route vers {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
+      "sent": "Le PDF signé et sa preuve de signature ont été envoyés à {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
+      "not_sent": "Votre copie n'a pas pu être envoyée à {{email}}. {{org}} a été informé."
     }
   }
 }

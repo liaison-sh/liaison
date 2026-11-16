@@ -7,7 +7,14 @@
 import { cleanup, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
-import { FRAME_ACTIONS, FRAMES, type FrameFacts, type FrameId, frameOfAnswer } from "./frames"
+import {
+  COPY_STATES,
+  FRAME_ACTIONS,
+  FRAMES,
+  type FrameFacts,
+  type FrameId,
+  frameOfAnswer,
+} from "./frames"
 import type { PublicAnswer } from "./public-api"
 import { TokenFrame } from "./TokenFrame"
 
@@ -86,6 +93,65 @@ describe("the twelve token states", () => {
       cleanup()
     }
     expect(texts).toMatchSnapshot()
+  })
+
+  it("the signed frame says where the holder's own copy stands, in English and French", () => {
+    const expected: Record<string, Record<string, string>> = {
+      en: {
+        waiting_for_others:
+          "Your copy waits for the other signers. When everyone has signed, the signed PDF and its proof of signature go to j•••@client.example.",
+        on_its_way:
+          "Everyone has signed. The signed PDF and its proof of signature are on their way to j•••@client.example. Keep that email: it is your own proof, separate from Maison Alpha's systems.",
+        sent: "The signed PDF and its proof of signature were sent to j•••@client.example. Keep that email: it is your own proof, separate from Maison Alpha's systems.",
+        not_sent: "Your copy could not be sent to j•••@client.example. Maison Alpha has been told.",
+      },
+      fr: {
+        waiting_for_others:
+          "Votre copie attend les autres signataires. Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à j•••@client.example.",
+        on_its_way:
+          "Tout le monde a signé. Le PDF signé et sa preuve de signature sont en route vers j•••@client.example. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de Maison Alpha.",
+        sent: "Le PDF signé et sa preuve de signature ont été envoyés à j•••@client.example. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de Maison Alpha.",
+        not_sent:
+          "Votre copie n'a pas pu être envoyée à j•••@client.example. Maison Alpha a été informé.",
+      },
+    }
+    for (const lang of ["en", "fr"] as const) {
+      for (const copy of COPY_STATES) {
+        const f = frameOfAnswer({
+          status: 200,
+          body: {
+            state: "signed",
+            sender: SENDER,
+            next: "copy",
+            copy,
+            copy_to: "j•••@client.example",
+          },
+        })
+        expect(f).toEqual({
+          frame: "signed",
+          sender: SENDER,
+          copy,
+          copyTo: "j•••@client.example",
+        })
+        render(() => (
+          <I18nProvider initialLocale={lang}>
+            <TokenFrame facts={f as FrameFacts} onAction={async () => {}} />
+          </I18nProvider>
+        ))
+        expect({ lang, copy, why: screen.getByTestId("token-frame-why").textContent }).toEqual({
+          lang,
+          copy,
+          why: expected[lang]?.[copy],
+        })
+        // No download: the next step stays a request for the copy by mail.
+        expect(screen.getAllByRole("button")).toHaveLength(1)
+        cleanup()
+      }
+    }
+    // A copy state the page does not know falls back to the frame's own words.
+    expect(
+      frameOfAnswer({ status: 200, body: { state: "signed", sender: SENDER, copy: "lost" } })?.copy,
+    ).toBeNull()
   })
 
   it("the French pages exist for every frame", () => {

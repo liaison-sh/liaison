@@ -26,6 +26,7 @@ import { RequestBodyTooLargeError, readRequestTextWithLimit } from "~/lib/reques
 import { getClientIp } from "~/lib/request-context"
 import { padToResponseFloor } from "~/lib/response-timing"
 import { checkRateLimit } from "~/middleware/rate-limiter"
+import { canDrawText } from "~/modules/agreement-evidence/signature-pages"
 import { verifyAccessToken } from "~/modules/auth/jwt"
 import { serverT } from "~/modules/i18n/server-i18n"
 import {
@@ -545,6 +546,12 @@ clientActionPublicRoutes.post(
     const capacity = cleanTyped(parsed.data.capacity)
     if (!name || name === "invalid" || capacity === "invalid") {
       return caJson(400, { error: { code: "invalid_text" } })
+    }
+    // A signer's name goes on the signature pages: one no embedded face can draw is
+    // refused here, before the code is checked or spent, so it is typed again in
+    // Latin letters and recorded as typed.
+    if (row.kind === "sign" && !canDrawText(name)) {
+      return caJson(400, { error: { code: "name_not_drawable" } })
     }
     const check = await checkCode(row.id, parsed.data.code.trim())
     if (!check.ok) {

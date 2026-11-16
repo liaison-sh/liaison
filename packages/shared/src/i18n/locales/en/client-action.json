@@ -125,6 +125,7 @@
       "codeEnded": "This code has ended. Send a new code.",
       "sendFailed": "We could not send the code. Please try again in a minute.",
       "invalidText": "Your name or role holds characters we cannot keep. Please type them again.",
+      "nameNotDrawable": "Your name holds characters the signature page cannot show. Please type it in Latin letters.",
       "notShown": "Open the document first, then ask for a code."
     },
     "sign": {
@@ -255,6 +256,12 @@
         "action": "Try again",
         "done": "Still not ready. Please try again in a few minutes."
       }
+    },
+    "copy": {
+      "waiting_for_others": "Your copy waits for the other signers. When everyone has signed, the signed PDF and its proof of signature go to {{email}}.",
+      "on_its_way": "Everyone has signed. The signed PDF and its proof of signature are on their way to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
+      "sent": "The signed PDF and its proof of signature were sent to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
+      "not_sent": "Your copy could not be sent to {{email}}. {{org}} has been told."
     }
   }
 }

@@ -12,11 +12,27 @@
 // into view (after a gesture) is recorded once. Continue stays off until then.
 // The consent words are the server's, in the page's language, shown as given.
 
-import { type Component, createSignal, For, Match, onMount, Show, Switch } from "solid-js"
+import {
+  type Component,
+  createSignal,
+  For,
+  Match,
+  onCleanup,
+  onMount,
+  Show,
+  Switch,
+} from "solid-js"
 import { createStore } from "solid-js/store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { type DocumentContent, DocumentView, type PageEntry } from "./DocumentView"
-import { type FrameAction, type FrameFacts, frameOfAnswer } from "./frames"
+import {
+  type CopyState,
+  copySettled,
+  copyStateOf,
+  type FrameAction,
+  type FrameFacts,
+  frameOfAnswer,
+} from "./frames"
 import { takeLinkToken } from "./link-token"
 import { type PublicAnswer, postPublic, postPublicFile } from "./public-api"
 import { TokenFrame } from "./TokenFrame"
@@ -59,8 +75,14 @@ interface PageState {
   note: string | null
   busy: boolean
   copyTo: string | null
+  /** After a signature: where the holder's copy stands, as the server last said. */
+  copy: CopyState | null
   pdfMissing: boolean
 }
+
+/** How often, and how many times, the done page asks again where an unsettled copy stands. */
+export const COPY_REFRESH_MS = 4000
+export const COPY_REFRESH_TIMES = 4
 
 const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ")
 const fold = (t: string) => norm(t).normalize("NFD").replace(/[̀-ͯ]/g, "")
@@ -97,6 +119,7 @@ const ClientActionPage: Component = () => {
     note: null,
     busy: false,
     copyTo: null,
+    copy: null,
     pdfMissing: false,
   })
   const [token, setToken] = createSignal<string | null>(null)
@@ -109,6 +132,26 @@ const ClientActionPage: Component = () => {
   const org = () => s.open?.sender.org ?? ""
   const until = () =>
     s.open ? i18n.fmtDate(new Date(s.open.valid_until), { dateStyle: "long" }) : ""
+
+  let copyTimer: ReturnType<typeof setTimeout> | undefined
+  onCleanup(() => clearTimeout(copyTimer))
+
+  /**
+   * The signed link's own answer says where the holder's copy stands: read it
+   * once the signature is in, and again a few times while the copy still moves
+   * (the seal and the mail run after the decision). Reading changes nothing.
+   */
+  async function readCopy(t: string, left: number) {
+    const a = await postPublic("open", { t })
+    if (a.status === 200 && a.body?.state === "signed") {
+      const copy = copyStateOf(a.body)
+      if (copy) set("copy", copy)
+      if (typeof a.body.copy_to === "string") set("copyTo", a.body.copy_to)
+    }
+    if (left > 0 && !copySettled(s.copy)) {
+      copyTimer = setTimeout(() => void readCopy(t, left - 1), COPY_REFRESH_MS)
+    }
+  }
 
   function showFrame(facts: FrameFacts) {
     set({ phase: "frame", facts, busy: false })
@@ -256,6 +299,10 @@ const ClientActionPage: Component = () => {
       set("note", i18n.t("client-action.page.identity.invalidText"))
       return
     }
+    if (code === "name_not_drawable") {
+      set("note", i18n.t("client-action.page.identity.nameNotDrawable"))
+      return
+    }
     if (!frameIfDead(a)) set("note", i18n.t("client-action.page.identity.codeEnded"))
   }
 
@@ -273,6 +320,7 @@ const ClientActionPage: Component = () => {
     set("busy", false)
     if (a.status === 200) {
       set({ step: "done", copyTo: typeof a.body?.copy_to === "string" ? a.body.copy_to : null })
+      if (kind() === "sign") void readCopy(t, COPY_REFRESH_TIMES)
       return
     }
     const code = errCode(a)
@@ -870,14 +918,19 @@ const ClientActionPage: Component = () => {
                           {i18n.t(`client-action.page.done.${kind()}`)}
                         </h2>
                         <p data-testid="done-copy" class="text-[13.5px]">
-                          {kind() === "sign"
-                            ? i18n.t("client-action.page.done.signCopy", {
+                          {kind() === "sign" && s.copy
+                            ? i18n.t(`client-action.page.copy.${s.copy}`, {
                                 email: s.copyTo ?? open().invited_email_masked,
                                 org: org(),
                               })
-                            : i18n.t("client-action.page.done.otherCopy", {
-                                email: s.copyTo ?? open().invited_email_masked,
-                              })}
+                            : kind() === "sign"
+                              ? i18n.t("client-action.page.done.signCopy", {
+                                  email: s.copyTo ?? open().invited_email_masked,
+                                  org: org(),
+                                })
+                              : i18n.t("client-action.page.done.otherCopy", {
+                                  email: s.copyTo ?? open().invited_email_masked,
+                                })}
                         </p>
                         <p class="text-[13px] text-text-secondary">
                           {i18n.t("client-action.page.done.told", { sender: senderName() })}

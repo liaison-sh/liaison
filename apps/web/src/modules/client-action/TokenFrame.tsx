@@ -26,7 +26,7 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
   const params = () => ({
     org: sender()?.org ?? "",
     sender: sender()?.name ?? sender()?.org ?? "",
-    email: props.invitedEmail ?? "",
+    email: props.facts.copyTo ?? props.invitedEmail ?? "",
     time: props.facts.retryAt
       ? i18n.fmtDate(new Date(props.facts.retryAt), { hour: "2-digit", minute: "2-digit" })
       : "",
@@ -73,7 +73,9 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
           {i18n.t(`client-action.page.frame.${frame()}.title`, params())}
         </h1>
         <p data-testid="token-frame-why" class="text-[13.5px] leading-5 text-text-secondary">
-          {i18n.t(`client-action.page.frame.${frame()}.why`, params())}
+          {frame() === "signed" && props.facts.copy
+            ? i18n.t(`client-action.page.copy.${props.facts.copy}`, params())
+            : i18n.t(`client-action.page.frame.${frame()}.why`, params())}
         </p>
         <Show when={frame() === "wrong" && !done()}>
           <label class="flex flex-col gap-1 text-[13px] text-text">

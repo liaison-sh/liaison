@@ -37,7 +37,26 @@ export interface FrameFacts {
   sender: { name: string; org: string } | null
   /** `attempts`: when the pause ends. */
   retryAt?: string | null
+  /** `signed`: where the holder's own copy stands, as the server said. */
+  copy?: CopyState | null
+  /** `signed`: the masked address the copy goes to. */
+  copyTo?: string | null
 }
+
+/** Where a signer's copy of a signed document stands (the server's `copy`). */
+export const COPY_STATES = ["waiting_for_others", "on_its_way", "sent", "not_sent"] as const
+export type CopyState = (typeof COPY_STATES)[number]
+
+/** The server's `copy`, or null when it named none (or one this page does not know). */
+export function copyStateOf(body: Record<string, unknown> | null): CopyState | null {
+  const c = body?.copy
+  return typeof c === "string" && (COPY_STATES as readonly string[]).includes(c)
+    ? (c as CopyState)
+    : null
+}
+
+/** A copy that will not move any more without a person: no point asking again. */
+export const copySettled = (c: CopyState | null) => c === "sent" || c === "not_sent"
 
 export const FRAME_ACTIONS: Record<FrameId, FrameAction[]> = {
   expired: [{ kind: "request", type: "new_link" }],
@@ -106,7 +125,13 @@ export function frameOfAnswer(
   if (code === "VERSION_CHANGED") return { frame: "replaced", sender: known ?? null }
   const state = typeof body?.state === "string" ? body.state : null
   if (state && state !== "open" && SERVER_DEAD[state]) {
-    return { frame: SERVER_DEAD[state] as FrameId, sender: senderOf(body) ?? known ?? null }
+    const frame = SERVER_DEAD[state] as FrameId
+    const facts: FrameFacts = { frame, sender: senderOf(body) ?? known ?? null }
+    if (frame === "signed") {
+      facts.copy = copyStateOf(body)
+      facts.copyTo = typeof body?.copy_to === "string" ? body.copy_to : null
+    }
+    return facts
   }
   return null
 }

@@ -71,10 +71,6 @@ const ALLOWLIST: Record<string, { reads: number; reason: string }> = {
     reads: 1,
     reason: "the server's own Meta callback: one subscription URL for the shared Meta app",
   },
-  "modules/apps/sandbox/bridge/shared.ts": {
-    reads: 2,
-    reason: "origin binding: the server's own hosts an app fetch must not reach, builds no link",
-  },
   "modules/apps/workers/config.ts": {
     reads: 2,
     reason:

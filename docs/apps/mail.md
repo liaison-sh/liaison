@@ -106,6 +106,8 @@ On a self-hosted Liaison, `MAILBOX_ENCRYPTION_DEFAULT` (`managed` or `private`) 
 4. Switch between **All**, **Primary** and **Other** when the category switch is shown.
 
 A card number in an email is hidden before the email is stored: it shows as `•••• •••• •••• 4242`, a security code next to it as `•••`, and the email ends with "[A card number was hidden.]". Order and invoice numbers, tracking numbers, SIRET and SIREN numbers, VAT numbers, IMEIs, IBANs and phone numbers stay as written: a number counts as a card only when its first digits and its length match a card network, and a number right after a label such as SIRET, IMEI, order or invoice is never taken for one. In a private mailbox with end-to-end encryption the server never holds the text, so it is hidden where an agent reads the email instead.
+
+A signing mail Liaison sent for you (the link or the code a client uses to read and sign a document) is never stored when a synced mailbox brings it back, from your inbox, your Sent folder or a delivery failure quoting it, so no agent finds the link or the code in Mail. A mail that only claims to be one is stored as usual. A signing link quoted in a reply is replaced with "[signing link removed]" before the reply is stored.
 5. Hover a row to **Claim** it (assign it to yourself), **Mark read** or **Mark unread**, **Archive** it, or **Star** it.
 
 An open conversation catches up after a connection drop: mail that arrived while you were offline shows once the app reconnects.

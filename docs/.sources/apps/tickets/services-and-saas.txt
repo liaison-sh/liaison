@@ -3,3 +3,4 @@ Only Luhn-valid numbers with a card network's prefix and length are hidden; a nu
 A nearby security code is hidden -> packages/shared/src/pan-scan.ts (cardSpans)
 Notes are masked the same way -> apps/api/src/apps/tickets/admin.ts (addNote)
 An encrypted mailbox is masked where the agent reads it -> apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts (renderContextBlock)
+A quoted signing link in a mail, web form ticket, portal request or reply is replaced before storage -> apps/api/src/apps/tickets/inbound.ts (processInboundMessage) ; apps/api/src/modules/tickets/ingest-core.ts (ingestTicket) ; apps/api/src/modules/tickets/ingest-core.ts (appendPortalReply) ; apps/api/src/modules/client-actions/quoted-link.ts (cutSigningLinks)

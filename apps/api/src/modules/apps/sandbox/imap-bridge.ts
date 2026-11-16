@@ -169,11 +169,14 @@ export function imapProviderId(uid: number | string, folder: ImapFolderRole): st
  * the auto-reply markers an ordinary mailbox keeps. A sealed mailbox's write seals
  * anything not on the allowlist, as for every provider.
  */
-const IMAP_INGEST_HEADERS = [
+export const IMAP_INGEST_HEADERS = [
   ...MAIL_HEADER_ALLOWLIST,
   "x-autoreply",
   "x-autorespond",
   "x-auto-response-suppress",
+  // A client action's link or code mail: the page writer drops this org's own
+  // (client-actions/synced-mail.ts), so it must reach it on IMAP as on Gmail.
+  "x-liaison-action-mail",
 ] as const
 
 /**

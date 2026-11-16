@@ -40,6 +40,7 @@ import { redis } from "~/lib/redis"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { TRANSFER_HOST_WHITELIST } from "~/modules/agent/media/media-analysis-constants"
 import { loadAllowedMailDomains } from "~/modules/apps/connections/mail-domains"
+import { cutSigningLinks } from "~/modules/client-actions/quoted-link"
 import { resolveContact } from "~/modules/contacts/service"
 import { senderAuthForRules } from "~/modules/contacts/trusted-senders"
 import { emitSecurityEvent } from "~/modules/security/security-events"
@@ -1012,10 +1013,18 @@ function noteInboundDrop(reason: string, ctx: TicketsServiceCtx, raw: ParsedEmai
 }
 
 export async function processInboundMessage(
-  raw: ParsedEmail,
+  received: ParsedEmail,
   inbox: InboxRow,
   ctx: TicketsServiceCtx,
 ): Promise<MatcherResult> {
+  // A quoted signing link is cut before anything reads or stores the mail, so an
+  // outside signer's reply never leaves a live link on a ticket.
+  const raw: ParsedEmail = {
+    ...received,
+    subject: cutSigningLinks(received.subject),
+    textBody: cutSigningLinks(received.textBody),
+    htmlBody: cutSigningLinks(received.htmlBody),
+  }
   const headersFlat = (raw.headers ?? {}) as Record<string, string | string[]>
   const headersForGate: Record<string, string[]> = {}
   for (const [k, v] of Object.entries(headersFlat)) {

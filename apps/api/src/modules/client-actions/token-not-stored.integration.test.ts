@@ -3,15 +3,19 @@
 // A link's token exists only in the mail and in the mint call's memory. After a
 // send, a code, a resend by rotation and a decision, no text or json column of
 // any table in any schema holds the raw token, its code or its proof, and no
-// Redis key or value does (job queues included).
+// Redis key or value does (job queues included). Nor after the link mail comes
+// back through a synced mailbox and a reply quotes the link.
 import { describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { redis } from "~/lib/redis"
 import {
   call,
   codeFor,
+  mailboxOf,
   mintTo,
   nextIp,
+  syncedCopyOf,
+  syncPage,
   useClientActionWorld,
 } from "../../../test-support/client-actions-kit"
 
@@ -90,5 +94,29 @@ describe("a client action's token is never stored", () => {
     const needles = [first.token, code, proof, second.token]
     expect(await columnsHolding(needles)).toEqual([])
     expect(await redisHolding(needles)).toEqual([])
+  }, 120_000)
+
+  it("after a synced inbound mail quoting the link no text or json column holds the token", async () => {
+    const sent = await mintTo(kit)
+    const link = (sent.mail.text ?? "").match(/https?:\/\/\S*\/a#t=[A-Za-z0-9_-]+/)?.[0]
+    expect(link).toBeDefined()
+    const box = await mailboxOf(kit, kit.w.admin.userId, kit.w.admin.email)
+    await syncPage(kit, box.accountId, kit.w.admin.userId, [
+      // The link mail itself, synced back from the inbox it reached.
+      syncedCopyOf(sent.mail),
+      // The client's reply, quoting it in text and HTML.
+      syncedCopyOf(
+        {
+          to: kit.w.admin.email,
+          from: kit.w.clientA.email,
+          subject: `Re: ${sent.mail.subject}`,
+          text: `Done.\n> ${link}`,
+          html: `<blockquote><a href="${link}">${link}</a></blockquote>`,
+        },
+        { headers: {} },
+      ),
+    ])
+    expect(await columnsHolding([sent.token])).toEqual([])
+    expect(await redisHolding([sent.token])).toEqual([])
   }, 120_000)
 })

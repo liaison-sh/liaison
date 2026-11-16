@@ -1,0 +1,9 @@
+{
+  "key": {
+    "kernel.dashboards.tables.type.rollup": "Cumul d'une autre table",
+    "kernel.dashboards.tables.rollupSumColumn": "Somme de {{value}} des lignes d'une autre table qui pointent ici, non modifiable",
+    "kernel.dashboards.tables.rollupCountColumn": "Nombre de lignes d'une autre table qui pointent ici, non modifiable",
+    "kernel.dashboards.tables.rowLinkTag": "lignes d'une autre table",
+    "kernel.dashboards.tables.rowLinkMissing": "Cette ligne a été supprimée"
+  }
+}

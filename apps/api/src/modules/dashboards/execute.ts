@@ -246,7 +246,8 @@ async function readStoreSource(source: StoreSource, ctx: BlockRunContext) {
  * its visible cells plus `id`, `updated_at` and `updated_by` (who changed it last); a link cell
  * reads as its label, a person as their name and a multi choice as its choices joined, so a chart
  * groups and shows them as people read them. A months cell stays its map {"YYYY-MM": number}:
- * a block maps one month as `<key>.<YYYY-MM>`.
+ * a block maps one month as `<key>.<YYYY-MM>`; a rollup is its number, or that map by month. A
+ * rollup and a link to another table's rows read that table as the viewer (tables/rollup.ts).
  */
 async function readTableSource(source: TableSource, ctx: BlockRunContext) {
   const viewer = ctx.viewer
@@ -260,8 +261,16 @@ async function readTableSource(source: TableSource, ctx: BlockRunContext) {
         ...(where ? { where } : {}),
         max: MAX_SOURCE_ROWS,
       })
-      const rows = await rowsOf(tx, viewer, loaded, docs)
       const columns = allColumns(loaded)
+      // Row links and rollup columns read their other table in this transaction, as the viewer.
+      const { applyTableLinks } = await import("~/modules/dashboards/tables/rollup")
+      const { rows } = await applyTableLinks(
+        tx,
+        viewer,
+        source.table,
+        columns,
+        await rowsOf(tx, viewer, loaded, docs),
+      )
       const people = new Set<string>()
       for (const col of columns) {
         if (col.type !== "person") continue

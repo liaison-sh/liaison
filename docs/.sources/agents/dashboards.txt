@@ -309,3 +309,4 @@ A data colour hard to see on the theme's surface is drawn lighter or darker -> a
 Months column: one sub-column per month, to fill marker -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:521
 Highlight (emphasis) draws values bold in the accent colour -> apps/web/src/modules/dashboards/blocks/table-cells.ts:171
 A table source's lookup columns are read as the viewer and stay empty without the tool -> apps/api/src/modules/dashboards/execute.ts:285
+A table source's rollups and row links read the other table as the viewer -> apps/api/src/modules/dashboards/execute.ts:266 ; apps/api/src/modules/dashboards/sources.ts:433

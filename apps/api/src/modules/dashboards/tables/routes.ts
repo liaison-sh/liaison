@@ -123,6 +123,8 @@ const linkQuery = z.object({
     .regex(/^[a-z][a-z0-9_-]{0,62}$/)
     .optional(),
   entityType: z.string().max(63).optional(),
+  // A link to the rows of a dashboard table: that table's id.
+  table: z.string().uuid().optional(),
   q: z.string().max(100).default(""),
 })
 
@@ -183,7 +185,7 @@ tablesRoutes
       return {
         items: await searchLinkTargets(
           extractRlsContext(c),
-          { app: q.app, entityType: q.entityType, q: q.q },
+          { app: q.app, entityType: q.entityType, table: q.table, q: q.q },
           await restToolCall(c),
         ),
       }

@@ -45,7 +45,7 @@ export const frozenFileStorage = {
 }
 
 export type FrozenRead =
-  | { status: "ok"; bytes: Uint8Array; sha256: string }
+  | { status: "ok"; bytes: Uint8Array; sha256: string; uploaded: boolean }
   | { status: "refused"; code: "NOT_THIS_VERSION_FILE" | "DOCUMENT_CHANGED" }
 
 /**
@@ -67,9 +67,10 @@ export async function readFrozenVersionFile(
     sha256: string
     storage_key: string
     enc_version: number | string | null
+    source_kind: string | null
   }>(
     (await db.execute(drizzleSql`
-        SELECT v.sha256, f.storage_key, f.enc_version
+        SELECT v.sha256, f.storage_key, f.enc_version, v.source_kind
           FROM ${A}.agreement_versions v
           JOIN ${K}.files f
             ON f.id = v.file_id AND f.org_id = v.org_id
@@ -85,7 +86,50 @@ export async function readFrozenVersionFile(
   const bytes = await frozenFileStorage.read(row.storage_key, FROZEN_MAX_BYTES)
   const sha256 = sha256Hex(bytes)
   if (sha256 !== row.sha256) return { status: "refused", code: "DOCUMENT_CHANGED" }
-  return { status: "ok", bytes, sha256 }
+  return { status: "ok", bytes, sha256, uploaded: row.source_kind === "uploaded" }
+}
+
+/**
+ * The signed copy of an uploaded version, from the render service: the merge,
+ * then the frozen file and the merge's first pages rendered and compared.
+ */
+async function mergeInRenderService(
+  orgId: string,
+  frozen: Uint8Array,
+  signaturePages: Uint8Array,
+): Promise<
+  { bytes: Uint8Array; pageCount: number; signaturePageCount: number } | { refusal: string }
+> {
+  const { callRenderService } = await import("~/modules/pdf-render/client")
+  const out = await callRenderService<{
+    merged: string
+    pageCount: number
+    signaturePageCount: number
+  }>({
+    op: "seal_merge",
+    orgId,
+    frozen: Buffer.from(frozen).toString("base64"),
+    signaturePages: Buffer.from(signaturePages).toString("base64"),
+  })
+  if (out.ok)
+    return {
+      bytes: new Uint8Array(Buffer.from(out.result.merged, "base64")),
+      pageCount: out.result.pageCount,
+      signaturePageCount: out.result.signaturePageCount,
+    }
+  if (out.code === "COPY_DIFFERS")
+    return {
+      refusal: refuse(
+        "COPY_DIFFERS",
+        "The signed copy did not match what was read. Nothing was sealed. Send it again.",
+      ),
+    }
+  return {
+    refusal: refuse(
+      "MERGE_FAILED",
+      `The signed PDF could not be built (${out.code}: ${out.message}). The version stays signed; the seal is retried.`,
+    ),
+  }
 }
 
 function refuse(code: string, message: string): string {
@@ -119,7 +163,8 @@ export function createEvidenceMethods(
     versionId: string,
     fileId: string,
   ): Promise<
-    { status: "ok"; bytes: Uint8Array; sha256: string } | { status: "refused"; refusal: string }
+    | { status: "ok"; bytes: Uint8Array; sha256: string; uploaded: boolean }
+    | { status: "refused"; refusal: string }
   > => {
     const out = await readFrozenVersionFile(txDb, { orgId, versionId, fileId })
     if (out.status === "ok") return out
@@ -198,7 +243,14 @@ export function createEvidenceMethods(
           version: p.version,
           signers: p.signers.map((s) => ({ ...s, signedAt: new Date(s.signedAt) })),
         })
-        const out = await appendSignaturePages(frozen, pages)
+        // An uploaded file is parsed only in the render service: the signed copy
+        // is built there by the same merge function, and refused unless it
+        // reads as the frozen file did (no seal, no repair).
+        // Decided from the stored version, never from the caller.
+        const out = read.uploaded
+          ? await mergeInRenderService(orgId, frozen, pages)
+          : await appendSignaturePages(frozen, pages)
+        if ("refusal" in out) return out.refusal
         const fileId = await store(version, p.filename, "application/pdf", out.bytes)
         return JSON.stringify({
           status: "ok",

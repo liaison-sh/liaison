@@ -61,6 +61,11 @@ interface DraftRow {
   source?: AgreementSource | null
   lock_version: number
   next_number?: number
+  /** An uploaded PDF waiting to be frozen as the next version. */
+  upload_file_id?: string | null
+  /** `checking` while a long upload is read by the `upload-freeze` job. */
+  upload_state?: string | null
+  updated_by_user_id?: string | null
 }
 
 const KINDS = [
@@ -427,6 +432,8 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
 }
 
 export interface UpdateParams {
+  /** A new version from an uploaded PDF (files_upload_confirm's id). */
+  file_id?: string
   id: string
   lock_version?: number
   title?: string
@@ -451,7 +458,12 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
       `The price of ${row.number} is set by a person on its page, never here. Nothing was changed.`,
     )
   let replaced: { version: number; revoked: number } | null = null
-  if (SENT.includes(row.status) && p.source !== undefined) {
+  if (p.file_id !== undefined && (typeof p.file_id !== "string" || !UUID.test(p.file_id)))
+    return refusal(
+      "INVALID_FILE",
+      "file_id is the id files_upload_confirm returned for the uploaded PDF. Nothing was changed.",
+    )
+  if (SENT.includes(row.status) && (p.source !== undefined || p.file_id !== undefined)) {
     // Saving over a sent version: its open links die (`replaced`), its signatures stay on it,
     // and the next freeze makes a new version.
     const r = await replaceSentVersion(ctx, row)
@@ -547,17 +559,26 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
   }
   const ops: DbBatchOp[] = []
   if (Object.keys(data).length > 0) ops.push({ update: "agreements", id: row.id, data })
-  if (p.source !== undefined) {
+  if (p.source !== undefined || p.file_id !== undefined) {
     const draft = await loadDraft(ctx, row.id)
     if (!draft)
       return refusal("NOT_A_DRAFT", `Agreement ${row.number} has no draft. Nothing was changed.`)
     const expected = p.lock_version ?? draft.lock_version
-    const source = agent !== null ? markAgentBlocks(draft.source ?? null, p.source) : p.source
+    // A file makes the next version an upload; a source (a restart from the
+    // template's text) makes it generated again. The template link stays.
+    const body: Record<string, unknown> =
+      p.source !== undefined
+        ? {
+            source: agent !== null ? markAgentBlocks(draft.source ?? null, p.source) : p.source,
+            upload_file_id: null,
+            upload_state: null,
+          }
+        : { upload_file_id: p.file_id, upload_state: null }
     ops.push({
       updateMany: "agreement_drafts",
       where: { id: draft.id, lock_version: expected },
       data: {
-        source,
+        ...body,
         lock_version: expected + 1,
         updated_by_user_id: user,
         updated_by_agent_id: agent,
@@ -740,6 +761,7 @@ async function freezeDraft(
   draft: DraftRow | null,
   checks: Check[],
 ) {
+  if (draft?.upload_file_id) return freezeUpload(ctx, row, draft, checks, { inJob: false })
   if (!draft?.source)
     return {
       status: "checked",
@@ -819,6 +841,169 @@ async function freezeDraft(
     checks,
     message: `${row.number} version ${number} is frozen (${out.pageCount ?? "?"} page(s), fingerprint ${out.sha256.slice(0, 12)}). Nothing was sent. Next: agreement_send with this version_id and sha256.`,
   }
+}
+
+/** A tool call waits this long for an upload's checks; past it the job finishes them. */
+export const UPLOAD_CHECK_DEADLINE_MS = 20_000
+
+interface UploadCheckAnswer {
+  status: string
+  error?: { code: string; message: string }
+  sha256?: string
+  byteSize?: number
+  pageCount?: number
+  pagesSha256?: string
+  scanState?: "clean" | "not_run"
+  scanned?: boolean
+  report?: {
+    revisions: number
+    signed: boolean
+    emptyFields: number
+    comments: number
+    fontsNotEmbedded: number
+    openGoTo: boolean
+  }
+}
+
+/** What the person is told of a kept file, in short plain facts (16.2's "kept" rows). */
+function keptLines(out: UploadCheckAnswer): string[] {
+  const r = out.report
+  const lines: string[] = []
+  if (r?.signed)
+    lines.push(
+      "It already holds a digital signature: it stays valid in the original file, not in the signed copy.",
+    )
+  if (out.scanned) lines.push("It has no text (a scan): it is read as pictures only.")
+  if (r && r.emptyFields > 0)
+    lines.push(`${r.emptyFields} empty field(s) in this file will stay empty.`)
+  if (r && r.comments > 0) lines.push(`It holds ${r.comments} comment(s).`)
+  if (r && r.revisions > 0) lines.push(`It holds ${r.revisions} earlier revision(s).`)
+  return lines
+}
+
+/**
+ * Freeze an uploaded PDF as the next version, as is: the host checks it in the
+ * render service (one reading, or refused), then the version row is written
+ * and the host stores the uploaded bytes untouched with every page picture. A
+ * refused file leaves no version. A tool call over 20 s answers `checking`
+ * and the `upload-freeze` job finishes the same work.
+ */
+async function freezeUpload(
+  ctx: AgreementsCtx,
+  row: AgreementRow,
+  draft: DraftRow,
+  checks: Check[],
+  opts: { inJob: boolean },
+) {
+  const fileId = draft.upload_file_id as string
+  if (!ctx.pdf_upload_check || !ctx.pdf_upload_freeze)
+    return refusal(
+      "FREEZE_NOT_AVAILABLE",
+      `This server cannot read an uploaded file for ${row.number}. Nothing was frozen.`,
+    )
+  const out = bridgeAnswer<UploadCheckAnswer>(
+    await ctx.pdf_upload_check({
+      fileId,
+      ...(opts.inJob ? {} : { deadlineMs: UPLOAD_CHECK_DEADLINE_MS }),
+    }),
+  )
+  if (out.status === "checking") {
+    await ctx.db.update("agreement_drafts", draft.id, { upload_state: "checking" })
+    return {
+      status: "checking",
+      version_id: null,
+      checks,
+      message: `The file of ${row.number} is still being checked. Nothing was frozen yet: the result arrives here when the check ends.`,
+    }
+  }
+  if (out.status !== "ok" || !out.sha256 || !out.pagesSha256) {
+    if (opts.inJob) await ctx.db.update("agreement_drafts", draft.id, { upload_state: null })
+    return refusal(
+      out.error?.code ?? "PDF_UNREADABLE",
+      `The file of ${row.number} was not frozen: ${out.error?.message ?? "it could not be read."}`,
+    )
+  }
+  const number = Math.max(1, Number(draft.next_number ?? 1))
+  const user = opts.inJob ? (draft.updated_by_user_id ?? null) : await callerUserId(ctx)
+  const version = (await ctx.db.insert("agreement_versions", {
+    agreement_id: row.id,
+    number,
+    source: null,
+    source_text: null,
+    sha256: out.sha256,
+    byte_size: out.byteSize ?? null,
+    page_count: out.pageCount ?? null,
+    frozen_at: new Date().toISOString(),
+    frozen_by_user_id: user,
+    source_kind: "uploaded",
+    source_text_origin: out.scanned ? null : "pdf_extract",
+    pages_sha256: out.pagesSha256,
+    file_report: out.report ?? null,
+    scan_state: out.scanState ?? "not_run",
+    status: "frozen",
+  })) as { id: string }
+  const stored = bridgeAnswer<{
+    status: string
+    error?: { code: string; message: string }
+    fileId?: string
+    pages?: Array<{ n: number; text: string }>
+  }>(
+    await ctx.pdf_upload_freeze({
+      fileId,
+      versionId: version.id,
+      sha256: out.sha256,
+      pagesSha256: out.pagesSha256,
+      filename: `${row.number}-v${number}.pdf`,
+    }),
+  )
+  if (stored.status !== "ok" || !stored.fileId || !stored.pages) {
+    // The row cannot be deleted; it is set aside so it is never sent or signed.
+    await ctx.db.update("agreement_versions", version.id, { status: "superseded" })
+    return refusal(
+      stored.error?.code ?? "PDF_UNREADABLE",
+      `The file of ${row.number} was not frozen: ${stored.error?.message ?? "it was not stored."}`,
+    )
+  }
+  await ctx.db.update("agreement_versions", version.id, {
+    file_id: stored.fileId,
+    pages: stored.pages,
+    source_text: out.scanned ? null : stored.pages.map((p) => p.text).join("\n"),
+  })
+  await ctx.db.update("agreement_drafts", draft.id, {
+    next_number: number + 1,
+    upload_file_id: null,
+    upload_state: null,
+  })
+  const kept = keptLines(out)
+  return {
+    status: "ok",
+    version_id: version.id,
+    version: number,
+    sha256: out.sha256,
+    page_count: out.pageCount ?? null,
+    checks,
+    message: `${row.number} version ${number} is frozen from the uploaded file, as is (${out.pageCount ?? "?"} page(s), fingerprint ${out.sha256.slice(0, 12)}).${kept.length ? ` ${kept.join(" ")}` : ""} Nothing was sent. Next: agreement_send with this version_id and sha256.`,
+  }
+}
+
+/** The `upload-freeze` job: finish the uploads a tool call left `checking`. */
+export async function uploadFreezeJob(ctx: AgreementsCtx) {
+  const drafts = (await ctx.db.findMany("agreement_drafts", {
+    where: { upload_state: "checking" },
+    limit: 20,
+  })) as DraftRow[]
+  let frozen = 0
+  for (const draft of drafts) {
+    if (!draft.upload_file_id) continue
+    const row = (await ctx.db.findOne("agreements", draft.agreement_id)) as AgreementRow | null
+    if (!row || row.status !== "draft") {
+      await ctx.db.update("agreement_drafts", draft.id, { upload_state: null })
+      continue
+    }
+    const out = await freezeUpload(ctx, row, draft, [], { inJob: true })
+    if ((out as { status?: string }).status === "ok") frozen++
+  }
+  return { status: "ok", frozen }
 }
 
 export async function approvalRouteRead(

@@ -38,6 +38,10 @@ interface Version {
   page_count?: number | null
   source?: { body?: { blocks?: unknown[] } } | null
   source_text?: string | null
+  source_kind?: string | null
+  pages?: Array<{ n: number; picture_file_id: string; sha256: string; text: string }> | null
+  pages_sha256?: string | null
+  scan_state?: string | null
 }
 
 export interface SignerInput {
@@ -413,7 +417,19 @@ export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
     ],
     source_blocks: Array.isArray(v.source?.body?.blocks) ? v.source?.body?.blocks : null,
     text: v.source_text ?? null,
-    pdf_file_id: v.file_id ?? null,
+    // A file a later scan found infected is never handed out; its pictures stay.
+    pdf_file_id: v.scan_state === "infected" ? null : (v.file_id ?? null),
+    ...(v.source_kind === "uploaded" && Array.isArray(v.pages)
+      ? {
+          pages: v.pages.map((pg) => ({
+            n: pg.n,
+            picture_file_id: pg.picture_file_id,
+            sha256: pg.sha256,
+            text: pg.text,
+          })),
+          pages_sha256: v.pages_sha256 ?? null,
+        }
+      : {}),
     sha256: v.sha256,
     words_params: { number: a.number, version: String(v.number) },
     copies: await copyStatesOf(ctx, v.id),

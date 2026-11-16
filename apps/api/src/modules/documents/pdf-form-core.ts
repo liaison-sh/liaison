@@ -1396,3 +1396,660 @@ export async function runPdfFormRequest(req: PdfFormRequest): Promise<PdfFormRes
     structureWalk = true
   }
 }
+
+// ---------------------------------------------------------------------------
+// Uploaded documents: detect only, never clean (the file is frozen as is)
+// ---------------------------------------------------------------------------
+
+/** Why an uploaded PDF is refused; each code has its own screen. */
+export type UploadPdfCode =
+  | "NOT_A_PDF"
+  | "PDF_UNREADABLE"
+  | "PDF_TOO_LARGE"
+  | "PDF_ENCRYPTED"
+  | "PDF_ACTIVE_CONTENT"
+  | "PDF_VARIES_BY_VIEWER"
+
+export class UploadPdfError extends Error {
+  readonly code: UploadPdfCode
+  constructor(code: UploadPdfCode, message: string) {
+    super(message)
+    this.code = code
+    this.name = "UploadPdfError"
+  }
+}
+
+/** An uploaded document is at most this large and this long (copies go by mail). */
+export const UPLOAD_PDF_MAX_BYTES = 8 * 1024 * 1024
+export const UPLOAD_PDF_MAX_PAGES = 200
+/** Cross-reference sections followed before the chain counts as a loop. */
+const XREF_CHAIN_MAX = 1_000
+
+function varies(message: string): UploadPdfError {
+  return new UploadPdfError("PDF_VARIES_BY_VIEWER", message)
+}
+
+function latin1(bytes: Uint8Array): string {
+  return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString("latin1")
+}
+
+function skipWhitespace(text: string, at: number): number {
+  let i = at
+  while (i < text.length && isPdfWhitespace(text.charCodeAt(i))) i++
+  return i
+}
+
+/** One indirect object header at exactly `at` (after whitespace): its number and generation. */
+function headerAt(text: string, at: number): { num: number; gen: number } | null {
+  const re = new RegExp(`(\\d+)${GAP}+(\\d+)${GAP}*obj`, "y")
+  re.lastIndex = skipWhitespace(text, at)
+  const m = re.exec(text)
+  if (!m) return null
+  return { num: Number(m[1]), gen: Number(m[2]) }
+}
+
+/** Flate data, bounded, with the PNG predictors cross-reference streams use. */
+function inflateWithPredictor(data: Uint8Array, dict: string, maxBytes: number): Uint8Array {
+  let out: Uint8Array
+  try {
+    out = inflateSync(data, { maxOutputLength: maxBytes, finishFlush: zlibConstants.Z_SYNC_FLUSH })
+  } catch {
+    throw varies("a cross-reference stream cannot be decoded")
+  }
+  const predictor = Number(/\/Predictor\s+(\d+)/.exec(dict)?.[1] ?? 1)
+  if (predictor < 10) return out
+  const columns = Number(/\/Columns\s+(\d+)/.exec(dict)?.[1] ?? 1)
+  const rowLen = columns + 1
+  if (columns < 1 || out.byteLength % rowLen !== 0)
+    throw varies("a cross-reference stream is malformed")
+  const rows = out.byteLength / rowLen
+  const result = new Uint8Array(rows * columns)
+  for (let r = 0; r < rows; r++) {
+    const filter = out[r * rowLen] ?? 0
+    for (let c = 0; c < columns; c++) {
+      const raw = out[r * rowLen + 1 + c] ?? 0
+      const up = r > 0 ? (result[(r - 1) * columns + c] ?? 0) : 0
+      const left = c > 0 ? (result[r * columns + c - 1] ?? 0) : 0
+      let v = raw
+      if (filter === 1) v = raw + left
+      else if (filter === 2) v = raw + up
+      else if (filter === 3) v = raw + ((left + up) >> 1)
+      else if (filter === 4) {
+        const ul = r > 0 && c > 0 ? (result[(r - 1) * columns + c - 1] ?? 0) : 0
+        const p = left + up - ul
+        const pa = Math.abs(p - left)
+        const pb = Math.abs(p - up)
+        const pc = Math.abs(p - ul)
+        v = raw + (pa <= pb && pa <= pc ? left : pb <= pc ? up : ul)
+      } else if (filter !== 0) throw varies("a cross-reference stream is malformed")
+      result[r * columns + c] = v & 0xff
+    }
+  }
+  return result
+}
+
+/** A stream's data bounds as pdf-lib finds them, from its `stream` keyword. */
+function streamData(text: string, dict: string, streamAt: number): { start: number; end: number } {
+  let start = streamAt + 6
+  if (text.startsWith(" \r\n", start)) start += 3
+  else if (text.startsWith("\r\n", start)) start += 2
+  else if (text[start] === "\r" || text[start] === "\n") start++
+  const declared = declaredStreamEnd(text, dict, start)
+  const endstream = text.indexOf("endstream", declared ?? start)
+  return { start, end: declared ?? (endstream < 0 ? text.length : endstream) }
+}
+
+type XrefEntry =
+  | { type: 0 }
+  | { type: 1; offset: number; gen: number }
+  | { type: 2; stream: number; index: number }
+
+interface XrefSection {
+  entries: Map<number, XrefEntry>
+  prev: number | null
+  xrefStm: number | null
+  /** The object holding this section when it is a cross-reference stream. */
+  streamObject: number | null
+}
+
+function dictNumber(dict: string, key: string): number | null {
+  const m = keyPattern(key, "\\s*(\\d+)(?![\\d.])").exec(dict)
+  return m ? Number(m[1]) : null
+}
+
+function parseXrefTable(text: string, at: number): XrefSection {
+  const entries = new Map<number, XrefEntry>()
+  let i = skipWhitespace(text, at + 4)
+  const sub = /(\d+)[ \t]+(\d+)[ \t]*[\r\n]+/y
+  const row = /(\d{10})[ \t](\d{5})[ \t]([nf])[ \t\r\n]{1,2}/y
+  for (;;) {
+    sub.lastIndex = i
+    const head = sub.exec(text)
+    if (!head) break
+    const first = Number(head[1])
+    const count = Number(head[2])
+    i = sub.lastIndex
+    for (let k = 0; k < count; k++) {
+      row.lastIndex = i
+      const r = row.exec(text)
+      if (!r) throw varies("a cross-reference table is malformed")
+      i = row.lastIndex
+      const num = first + k
+      entries.set(
+        num,
+        r[3] === "n" ? { type: 1, offset: Number(r[1]), gen: Number(r[2]) } : { type: 0 },
+      )
+    }
+    i = skipWhitespace(text, i)
+  }
+  if (!text.startsWith("trailer", i)) throw varies("a cross-reference table has no trailer")
+  const trailer = scanObjectBody(text, i + 7)
+  const end = text.indexOf("startxref", i)
+  const dict = trailer.dict.slice(0, end < 0 ? undefined : Math.max(0, end - i))
+  return {
+    entries,
+    prev: dictNumber(dict, "Prev"),
+    xrefStm: dictNumber(dict, "XRefStm"),
+    streamObject: null,
+  }
+}
+
+function parseXrefStream(text: string, bytes: Uint8Array, at: number): XrefSection {
+  const head = headerAt(text, at)
+  if (!head) throw varies("a cross-reference offset lands on nothing")
+  const re = new RegExp(`(\\d+)${GAP}+(\\d+)${GAP}*obj`, "y")
+  re.lastIndex = skipWhitespace(text, at)
+  re.exec(text)
+  const body = scanObjectBody(text, re.lastIndex)
+  if (body.stream < 0 || !keyPattern("Type", "\\s*/XRef(?![^\\s()<>[\\]{}/%])").test(body.dict))
+    throw varies("a cross-reference offset lands on an object that is not a cross-reference")
+  const { start, end } = streamData(text, body.dict, body.stream)
+  const filters = streamFilters(body.dict)
+  const raw = bytes.subarray(start, end)
+  const data =
+    filters.length === 0
+      ? raw
+      : filters.every(isFlate)
+        ? inflateWithPredictor(raw, body.dict, PDF_FORM_MAX_INFLATED_BYTES)
+        : (() => {
+            throw varies("a cross-reference stream uses an unsupported filter")
+          })()
+  const w = /\/W\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]/.exec(body.dict)
+  if (!w) throw varies("a cross-reference stream has no field widths")
+  const widths = [Number(w[1]), Number(w[2]), Number(w[3])]
+  const size = dictNumber(body.dict, "Size") ?? 0
+  const indexMatch = /\/Index\s*\[([\d\s]*)\]/.exec(body.dict)
+  const index = indexMatch ? (indexMatch[1] ?? "").trim().split(/\s+/).map(Number) : [0, size]
+  const rowLen = widths.reduce((a, b) => a + b, 0)
+  if (rowLen === 0 || index.length % 2 !== 0) throw varies("a cross-reference stream is malformed")
+  const entries = new Map<number, XrefEntry>()
+  const field = (off: number, len: number, dflt: number) => {
+    if (len === 0) return dflt
+    let v = 0
+    for (let k = 0; k < len; k++) v = v * 256 + (data[off + k] ?? 0)
+    return v
+  }
+  let pos = 0
+  for (let s = 0; s < index.length; s += 2) {
+    const first = index[s] ?? 0
+    const count = index[s + 1] ?? 0
+    for (let k = 0; k < count; k++) {
+      if (pos + rowLen > data.byteLength) throw varies("a cross-reference stream is truncated")
+      const t = field(pos, widths[0] ?? 0, 1)
+      const a = field(pos + (widths[0] ?? 0), widths[1] ?? 0, 0)
+      const b = field(pos + (widths[0] ?? 0) + (widths[1] ?? 0), widths[2] ?? 0, 0)
+      pos += rowLen
+      entries.set(
+        first + k,
+        t === 1
+          ? { type: 1, offset: a, gen: b }
+          : t === 2
+            ? { type: 2, stream: a, index: b }
+            : { type: 0 },
+      )
+    }
+  }
+  return {
+    entries,
+    prev: dictNumber(body.dict, "Prev"),
+    xrefStm: null,
+    streamObject: head.num,
+  }
+}
+
+function sectionAt(text: string, bytes: Uint8Array, offset: number): XrefSection {
+  if (offset <= 0 || offset >= text.length)
+    throw varies("a cross-reference offset is out of the file")
+  const at = skipWhitespace(text, offset)
+  if (text.startsWith("xref", at)) return parseXrefTable(text, at)
+  return parseXrefStream(text, bytes, offset)
+}
+
+type Definition = { kind: "direct"; at: number } | { kind: "packed"; stream: number }
+
+/** The newest cross-reference, merged newest first, and how many sections the chain holds. */
+function readXrefChain(
+  text: string,
+  bytes: Uint8Array,
+): { entries: Map<number, XrefEntry>; sections: number; xrefStreams: Set<number> } {
+  const eof = text.lastIndexOf("%%EOF")
+  if (eof < 0) throw new UploadPdfError("PDF_UNREADABLE", "the file has no end-of-file marker")
+  for (let i = eof + 5; i < text.length; i++) {
+    if (!isPdfWhitespace(text.charCodeAt(i))) throw varies("data follows the last end of file")
+  }
+  const sx = text.lastIndexOf("startxref", eof)
+  const m = sx < 0 ? null : /startxref\s+(\d+)/y.exec(text.slice(sx, eof))
+  if (!m) throw varies("the file does not say where its cross-reference starts")
+  const merged = new Map<number, XrefEntry>()
+  const xrefStreams = new Set<number>()
+  const seen = new Set<number>()
+  let next: number | null = Number(m[1])
+  let sections = 0
+  const apply = (sec: XrefSection) => {
+    for (const [num, e] of sec.entries) if (!merged.has(num)) merged.set(num, e)
+    if (sec.streamObject !== null) xrefStreams.add(sec.streamObject)
+  }
+  while (next !== null) {
+    if (seen.has(next) || ++sections > XREF_CHAIN_MAX)
+      throw varies("the cross-reference chain loops")
+    seen.add(next)
+    const sec = sectionAt(text, bytes, next)
+    apply(sec)
+    if (sec.xrefStm !== null) {
+      if (seen.has(sec.xrefStm)) throw varies("the cross-reference chain loops")
+      seen.add(sec.xrefStm)
+      apply(sectionAt(text, bytes, sec.xrefStm))
+    }
+    next = sec.prev
+  }
+  return { entries: merged, sections, xrefStreams }
+}
+
+/**
+ * Every definition in file order, object streams expanded where they sit
+ * (pdf-lib's rule: a later definition of a number and generation replaces an
+ * earlier one), plus the raw names of every body and decompressed object stream.
+ */
+function walkDefinitions(
+  text: string,
+  bytes: Uint8Array,
+  visitNames: ((source: string) => void) | null,
+): Map<string, Definition & { num: number; gen: number; xref: boolean }> {
+  const last = new Map<string, Definition & { num: number; gen: number; xref: boolean }>()
+  let pos = 0
+  let outside = 0
+  for (;;) {
+    OBJ_HEADER.lastIndex = pos
+    const header = OBJ_HEADER.exec(text)
+    if (!header) break
+    visitNames?.(text.slice(outside, header.index))
+    const num = Number(header[1])
+    const gen = Number(header[2])
+    const bodyStart = header.index + header[0].length
+    const body = scanObjectBody(text, bodyStart)
+    const isXref =
+      body.stream >= 0 && keyPattern("Type", "\\s*/XRef(?![^\\s()<>[\\]{}/%])").test(body.dict)
+    last.set(`${num} ${gen}`, { kind: "direct", at: header.index, num, gen, xref: isXref })
+    if (body.stream < 0) {
+      visitNames?.(text.slice(bodyStart, body.end))
+      pos = body.end
+      outside = pos
+      continue
+    }
+    visitNames?.(text.slice(bodyStart, body.stream))
+    const { start, end } = streamData(text, body.dict, body.stream)
+    const endstream = text.indexOf("endstream", end)
+    pos = endstream < 0 ? text.length : endstream + 9
+    outside = pos
+    if (!keyPattern("Type", "\\s*/ObjStm(?![^\\s()<>[\\]{}/%])").test(body.dict)) continue
+    const filters = streamFilters(body.dict)
+    let data: string
+    try {
+      const raw = bytes.subarray(start, end)
+      data = latin1(
+        filters.length === 0
+          ? raw
+          : inflateSync(raw, {
+              maxOutputLength: PDF_FORM_MAX_INFLATED_BYTES,
+              finishFlush: zlibConstants.Z_SYNC_FLUSH,
+            }),
+      )
+    } catch {
+      throw new UploadPdfError("PDF_UNREADABLE", "an object stream cannot be decoded")
+    }
+    const n = dictNumber(body.dict, "N") ?? 0
+    const first = dictNumber(body.dict, "First") ?? 0
+    const pairs = data.slice(0, first).trim().split(/\s+/).map(Number)
+    for (let k = 0; k < n; k++) {
+      const packed = pairs[2 * k]
+      if (packed === undefined || !Number.isFinite(packed)) break
+      last.set(`${packed} 0`, { kind: "packed", stream: num, num: packed, gen: 0, xref: false })
+    }
+    visitNames?.(data)
+  }
+  visitNames?.(text.slice(outside))
+  return last
+}
+
+/**
+ * One reading, on raw bytes, before any PDF library: `%PDF-` at byte 0, only
+ * whitespace after the last `%%EOF`, a valid cross-reference chain without a
+ * loop, each in-use entry on its own object, and for every object number and
+ * generation the last definition in file order is the one the newest entry
+ * names. A well-formed chain of incremental saves passes; a definition the
+ * cross-reference does not name is refused (`PDF_VARIES_BY_VIEWER`).
+ * Answers how many sections the chain holds (one per saved revision).
+ */
+export function checkPdfStructure(bytes: Uint8Array): { sections: number } {
+  const text = latin1(bytes)
+  if (!text.startsWith(PDF_MAGIC)) throw new UploadPdfError("NOT_A_PDF", "the file is not a PDF")
+  const chain = readXrefChain(text, bytes)
+  for (const [num, e] of chain.entries) {
+    if (e.type !== 1 || e.offset === 0) continue
+    const head = headerAt(text, e.offset)
+    if (!head || head.num !== num || head.gen !== e.gen)
+      throw varies(`the cross-reference entry of object ${num} lands on another object`)
+  }
+  const defs = walkDefinitions(text, bytes, null)
+  for (const def of defs.values()) {
+    if (def.xref || chain.xrefStreams.has(def.num)) continue
+    const e = chain.entries.get(def.num)
+    if (!e) throw varies(`object ${def.num} is defined but no cross-reference names it`)
+    if (e.type === 0 || (e.type === 1 && e.offset === 0)) continue
+    if (e.type === 1) {
+      if (e.gen !== def.gen || def.kind !== "direct" || def.at !== skipWhitespace(text, e.offset))
+        throw varies(`object ${def.num} is read differently by different readers`)
+    } else if (def.gen !== 0 || def.kind !== "packed" || def.stream !== e.stream) {
+      throw varies(`object ${def.num} is read differently by different readers`)
+    }
+  }
+  for (const [num, e] of chain.entries) {
+    if (e.type === 2 && !defs.has(`${num} 0`))
+      throw varies(`object ${num} is named in an object stream that does not hold it`)
+  }
+  return { sections: chain.sections }
+}
+
+/** Names that run something in some viewer, in any spelling. */
+const RAW_ACTIVE_NAMES = new Set([
+  "JavaScript",
+  "JS",
+  "AA",
+  "Launch",
+  "GoToR",
+  "GoToE",
+  "GoTo3DView",
+  "SubmitForm",
+  "ImportData",
+  "ResetForm",
+  "Hide",
+  "EmbeddedFile",
+  "EmbeddedFiles",
+  "EF",
+  "RichMedia",
+  "RichMediaExecute",
+  "Rendition",
+  "Movie",
+  "Sound",
+])
+/** Names whose content a viewer may show or hide on its own terms. */
+const RAW_VARIES_NAMES = new Set(["XFA", "OCMD", "SetOCGState", "Usage"])
+
+/** A name decoded as a lenient viewer decodes it: `#xx` in either case. */
+function decodeNameAnyCase(name: string): string {
+  return name.replace(/#([\da-fA-F]{2})/g, (_, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  )
+}
+
+/** Every name token of a stretch of PDF syntax; strings and comments skipped. */
+function rawNameTokens(source: string, found: (raw: string) => void): void {
+  let i = 0
+  while (i < source.length) {
+    const c = source.charCodeAt(i)
+    if (c === 40) {
+      let depth = 0
+      let j = i
+      for (; j < source.length; j++) {
+        const s = source.charCodeAt(j)
+        if (s === 92) {
+          j++
+          continue
+        }
+        if (s === 40) depth++
+        else if (s === 41 && --depth === 0) break
+      }
+      i = j + 1
+    } else if (c === 60 && source.charCodeAt(i + 1) === 60) {
+      i += 2
+    } else if (c === 60) {
+      const close = source.indexOf(">", i + 1)
+      i = close < 0 ? source.length : close + 1
+    } else if (c === 37) {
+      while (i < source.length && source[i] !== "\n" && source[i] !== "\r") i++
+    } else if (c === 47) {
+      let j = i + 1
+      while (j < source.length) {
+        const n = source.charCodeAt(j)
+        if (isPdfWhitespace(n) || isPdfDelimiter(n)) break
+        j++
+      }
+      found(source.slice(i + 1, j))
+      i = j
+    } else {
+      i++
+    }
+  }
+}
+
+/**
+ * The raw token scan, independent of pdf-lib: the body of every object
+ * definition (superseded ones included), the text between objects and every
+ * decompressed object stream, names decoded in either case. Answers what runs
+ * something and what varies by viewer, as readable offences.
+ */
+export function scanPdfRawNames(bytes: Uint8Array): { active: string[]; varies: string[] } {
+  const text = latin1(bytes)
+  const active = new Set<string>()
+  const vary = new Set<string>()
+  walkDefinitions(text, bytes, (source) =>
+    rawNameTokens(source, (raw) => {
+      const name = decodeNameAnyCase(raw)
+      if (RAW_ACTIVE_NAMES.has(name)) active.add(`/${name}`)
+      else if (RAW_VARIES_NAMES.has(name)) vary.add(`/${name}`)
+      else if (name === "OpenAction" && raw !== name) active.add("/OpenAction spelled to hide it")
+    }),
+  )
+  return { active: [...active], varies: [...vary] }
+}
+
+/** What a kept upload holds, counted for its report (16.2's "kept" rows). */
+export interface UploadPdfReport {
+  pageCount: number
+  /** Saved revisions after the first (a well-formed chain of incremental saves). */
+  revisions: number
+  signed: boolean
+  emptyFields: number
+  comments: number
+  fontsNotEmbedded: number
+  /** A go-to-a-page open action, kept: it runs nothing. */
+  openGoTo: boolean
+}
+
+const COMMENT_SUBTYPES = new Set([
+  "Text",
+  "FreeText",
+  "Highlight",
+  "Underline",
+  "StrikeOut",
+  "Squiggly",
+  "Square",
+  "Circle",
+  "Line",
+  "Polygon",
+  "PolyLine",
+  "Ink",
+  "Stamp",
+  "Caret",
+])
+const ANNOT_HIDDEN = 2
+const ANNOT_PRINT = 4
+const ANNOT_NO_VIEW = 32
+
+function nameOf(doc: PDFDocumentType, obj: PDFObject | undefined): string | undefined {
+  const v = resolve(doc, obj)
+  return v instanceof PDFName ? v.decodeText() : undefined
+}
+
+function numberOf(doc: PDFDocumentType, obj: PDFObject | undefined): number {
+  const v = resolve(doc, obj) as { asNumber?: () => number } | undefined
+  return typeof v?.asNumber === "function" ? v.asNumber() : 0
+}
+
+/** A go-to-a-page open action: a destination array, or a GoTo action dict. */
+function isGoToOpenAction(doc: PDFDocumentType, obj: PDFObject | undefined): boolean {
+  const v = resolve(doc, obj)
+  if (v instanceof PDFArray) return true
+  if (!(v instanceof PDFDict)) return false
+  return nameOf(doc, v.get(KEY_S)) === "GoTo" && !v.has(KEY_NEXT)
+}
+
+function uploadCode(err: PdfFormError): UploadPdfError {
+  switch (err.code) {
+    case "encrypted":
+      return new UploadPdfError("PDF_ENCRYPTED", "the file is encrypted or has a password")
+    case "xfa":
+      return varies("the file holds an XFA form")
+    case "not_a_pdf":
+      return new UploadPdfError("NOT_A_PDF", "the file is not a PDF")
+    case "input_too_large":
+    case "too_many_pages":
+      return new UploadPdfError("PDF_TOO_LARGE", err.message)
+    default:
+      return new UploadPdfError("PDF_UNREADABLE", err.message)
+  }
+}
+
+/**
+ * The file checks of an uploaded PDF, detect only: size and magic, the
+ * structure rule, the raw token scan, then pdf-lib's graph (the allowlist of
+ * actions, layers, print-only annotations, XFA, encryption with an empty user
+ * password included). Throws `UploadPdfError`; answers the counts of what is kept.
+ */
+export async function inspectUploadedPdf(
+  bytes: Uint8Array,
+  checks: { structure: (bytes: Uint8Array) => { sections: number } } = {
+    structure: checkPdfStructure,
+  },
+): Promise<UploadPdfReport> {
+  if (latin1(bytes.subarray(0, PDF_MAGIC.length)) !== PDF_MAGIC)
+    throw new UploadPdfError("NOT_A_PDF", "the file is not a PDF")
+  if (bytes.byteLength > UPLOAD_PDF_MAX_BYTES)
+    throw new UploadPdfError(
+      "PDF_TOO_LARGE",
+      `the file is larger than ${UPLOAD_PDF_MAX_BYTES} bytes`,
+    )
+  try {
+    prescanPdf(bytes)
+  } catch (err) {
+    if (err instanceof PdfFormError) throw uploadCode(err)
+    throw new UploadPdfError("PDF_UNREADABLE", String(err))
+  }
+  let structure: { sections: number }
+  try {
+    structure = checks.structure(bytes)
+  } catch (err) {
+    if (err instanceof UploadPdfError) throw err
+    throw varies(err instanceof Error ? err.message : String(err))
+  }
+  const raw = scanPdfRawNames(bytes)
+  if (raw.active.length > 0)
+    throw new UploadPdfError(
+      "PDF_ACTIVE_CONTENT",
+      `the file holds ${raw.active.slice(0, 5).join(", ")}`,
+    )
+  if (raw.varies.length > 0) throw varies(`the file holds ${raw.varies.slice(0, 5).join(", ")}`)
+  let doc: PDFDocumentType
+  try {
+    doc = await loadBounded(bytes)
+  } catch (err) {
+    if (err instanceof PdfFormError) throw uploadCode(err)
+    throw new UploadPdfError("PDF_UNREADABLE", String(err))
+  }
+  const pageCount = doc.getPageCount()
+  if (pageCount > UPLOAD_PDF_MAX_PAGES)
+    throw new UploadPdfError(
+      "PDF_TOO_LARGE",
+      `the file has more than ${UPLOAD_PDF_MAX_PAGES} pages`,
+    )
+  const openAction = doc.catalog.get(OPEN_ACTION)
+  const openGoTo = openAction !== undefined && isGoToOpenAction(doc, openAction)
+  if (openAction !== undefined && !openGoTo)
+    throw new UploadPdfError("PDF_ACTIVE_CONTENT", "the file runs an action when it opens")
+  const offences = findActiveContent(doc).filter((o) => o !== "/OpenAction")
+  if (offences.length > 0)
+    throw new UploadPdfError(
+      "PDF_ACTIVE_CONTENT",
+      `the file holds ${offences.slice(0, 5).join(", ")}`,
+    )
+
+  const oc = resolve(doc, doc.catalog.get(PDFName.of("OCProperties")))
+  if (oc instanceof PDFDict) {
+    const configs: PDFDict[] = []
+    const d = resolve(doc, oc.get(PDFName.of("D")))
+    if (d instanceof PDFDict) configs.push(d)
+    const more = resolve(doc, oc.get(PDFName.of("Configs")))
+    if (more instanceof PDFArray)
+      for (const c of more.asArray()) {
+        const cd = resolve(doc, c)
+        if (cd instanceof PDFDict) configs.push(cd)
+      }
+    for (const c of configs) {
+      const off = resolve(doc, c.get(PDFName.of("OFF")))
+      if (off instanceof PDFArray && off.size() > 0) throw varies("a layer is hidden by default")
+      if (nameOf(doc, c.get(PDFName.of("BaseState"))) === "OFF")
+        throw varies("a layer is hidden by default")
+      if (c.has(PDFName.of("AS"))) throw varies("a layer changes with the viewer's use")
+    }
+  }
+
+  let comments = 0
+  let signed = false
+  for (const page of doc.getPages()) {
+    const annots = resolve(doc, page.node.get(KEY_ANNOTS))
+    if (!(annots instanceof PDFArray)) continue
+    for (const a of annots.asArray()) {
+      const annot = resolve(doc, a)
+      if (!(annot instanceof PDFDict)) continue
+      const flags = numberOf(doc, annot.get(PDFName.of("F")))
+      if (flags & ANNOT_PRINT && flags & (ANNOT_HIDDEN | ANNOT_NO_VIEW))
+        throw varies("an annotation prints but does not show")
+      const subtype = nameOf(doc, annot.get(PDFName.of("Subtype")))
+      if (subtype && COMMENT_SUBTYPES.has(subtype)) comments++
+    }
+  }
+  let emptyFields = 0
+  for (const field of formFields(doc)) {
+    if (field instanceof PDFSignature) {
+      if (field.acroField.dict.has(PDFName.of("V"))) signed = true
+      continue
+    }
+    if (field instanceof PDFTextField && !(field.getText() ?? "").trim()) emptyFields++
+  }
+  let fontsNotEmbedded = 0
+  for (const [, obj] of doc.context.enumerateIndirectObjects()) {
+    if (!(obj instanceof PDFDict)) continue
+    if (nameOf(doc, obj.get(KEY_TYPE)) !== "FontDescriptor") continue
+    if (!["FontFile", "FontFile2", "FontFile3"].some((k) => obj.has(PDFName.of(k))))
+      fontsNotEmbedded++
+  }
+  return {
+    pageCount,
+    revisions: Math.max(0, structure.sections - 1),
+    signed,
+    emptyFields,
+    comments,
+    fontsNotEmbedded,
+    openGoTo,
+  }
+}

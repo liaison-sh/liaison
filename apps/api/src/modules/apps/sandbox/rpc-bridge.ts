@@ -39,6 +39,7 @@ import { createKnowledgeMethods } from "~/modules/apps/sandbox/bridge/knowledge"
 import { createKnowledgeCurationMethods } from "~/modules/apps/sandbox/bridge/knowledge-curation"
 import { createMailMethods } from "~/modules/apps/sandbox/bridge/mail"
 import { createPagesMethods } from "~/modules/apps/sandbox/bridge/pages"
+import { createPdfUploadMethods } from "~/modules/apps/sandbox/bridge/pdf-upload"
 import { createPlatformMethods } from "~/modules/apps/sandbox/bridge/platform"
 import { createProjectsMethods } from "~/modules/apps/sandbox/bridge/projects"
 import { createRichTextMethods } from "~/modules/apps/sandbox/bridge/rich-text"
@@ -136,6 +137,7 @@ export function createRpcBridge(
     createClientActionsMethods(ctx),
     createRichTextMethods(ctx),
     createEvidenceMethods(ctx, filesMethods),
+    createPdfUploadMethods(ctx, filesMethods),
   )
 
   // A test's own host methods (SandboxBridgeTestAccess.setHostMethods); none in
@@ -264,6 +266,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "evidence_signed_pdf",
   "evidence_package_files",
   "evidence_mail_copy",
+  // An uploaded document stores its frozen file and page pictures (bridge/pdf-upload.ts).
+  "pdf_upload_freeze",
   // Client action links (bridge/client-actions.ts): a send mints and mails, a void withdraws.
   "client_actions_mint",
   "client_actions_revoke",

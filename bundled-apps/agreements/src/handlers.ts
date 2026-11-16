@@ -13,6 +13,7 @@ import {
   type CreateParams,
   type SearchParams,
   type UpdateParams,
+  uploadFreezeJob,
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
@@ -84,6 +85,7 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
 
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
 export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
+export const uploadFreezeJobHandler = (_payload: unknown, ctx: Ctx) => uploadFreezeJob(ctx)
 export const agreementEvidenceGetHandler = (p: { id: string }, ctx: Ctx) =>
   agreementEvidenceGet(ctx, p)
 export const agreementVerifyHandler = (p: { id: string }, ctx: Ctx) =>

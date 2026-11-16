@@ -315,9 +315,12 @@ services:
         max-size: "10m"
         max-file: "3"
     # NOTE: 1000:1000 is the `bun` user baked into the app image (apps/api/Dockerfile).
-    command: ["sh", "-c", "mkdir -p /data/apps && chown -R 1000:1000 /data"]
+    # 10731 is the render service's own UID (service `pdf-render`): its socket
+    # volume is its alone to write; the app connects to the socket it leaves there.
+    command: ["sh", "-c", "mkdir -p /data/apps && chown -R 1000:1000 /data && chown 10731:10731 /pdf-render && chmod 0755 /pdf-render"]
     volumes:
       - ./data:/data
+      - pdf-render-socket:/pdf-render
 
   app: &liaison-app
     # Default tag is rewritten to the released semver by the release pipeline
@@ -701,6 +704,17 @@ services:
       LIAISON_OAUTH_REDIRECT_BASE: ${LIAISON_OAUTH_REDIRECT_BASE:-}
       LIAISON_EDGE_MODE: ${LIAISON_EDGE_MODE:-}
       LIAISON_EDGE_SECRET: ${LIAISON_EDGE_SECRET:-}
+      # Signed agreements' timestamp authority (docs/self-hosting/docker.md). Unset: a
+      # send that needs a stamp refuses TIMESTAMP_NOT_CONFIGURED.
+      LIAISON_TSA_URL: ${LIAISON_TSA_URL:-}
+      LIAISON_TSA_CHAIN_FILE: ${LIAISON_TSA_CHAIN_FILE:-}
+      LIAISON_TSA_CHAIN_PEM: ${LIAISON_TSA_CHAIN_PEM:-}
+      # A fixture authority on a private address: labelled walk and year boxes only.
+      LIAISON_TSA_ALLOW_PRIVATE: ${LIAISON_TSA_ALLOW_PRIVATE:-}
+      LIAISON_MANAGED_SIGNING_ENABLED: ${LIAISON_MANAGED_SIGNING_ENABLED:-}
+      # The render service's socket (service `pdf-render` below), on a volume that
+      # holds only it. Uploaded PDFs are read there, never in this process.
+      LIAISON_PDF_RENDER_SOCKET: ${LIAISON_PDF_RENDER_SOCKET:-/run/pdf-render/render.sock}
       # Managed edition only: the https origin of the Billing page's payment frame.
       LIAISON_PAY_FRAME_ORIGIN: ${LIAISON_PAY_FRAME_ORIGIN:-}
       # Managed edition only: the shared Meta app's secret, which verifies the
@@ -778,6 +792,8 @@ services:
       # Never put secrets in it: the config names them as ${VAR} and the values
       # reach the CLI per command (`exec -e VAR`), from deploy/.setup-secrets.env.
       - ./setup:/setup:ro
+      # The render service's socket, and nothing else (service `pdf-render`).
+      - pdf-render-socket:/run/pdf-render
     ports:
       # Bind to loopback only. The app speaks plain HTTP and is meant to sit
       # behind a TLS-terminating reverse proxy on the same host; publishing on
@@ -842,6 +858,55 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # The render service: parses uploaded PDFs, nothing else (file checks, page
+  # pictures, the compare of the two readers, the merge of an upload at seal).
+  # Same image, its own command. No network at all, no secret and no env file,
+  # no data volume, read-only, its own UID and PID namespace: a crafted file
+  # that took over the parser could reach no database, no Redis, no network and
+  # no other process's environment. It speaks over one Unix socket on a volume
+  # holding only that socket, and spawns one child per request, killed on a
+  # page deadline (10 s), a file deadline (120 s) or its memory ceiling.
+  # Without it a server keeps everything but uploads, which are refused with
+  # PDF_RENDER_UNAVAILABLE (docs/self-hosting/docker.md).
+  pdf-render:
+    image: *liaison-image
+    command: ["pdf-render"]
+    depends_on:
+      data-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    init: true
+    network_mode: none
+    user: "10731:10731"
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    environment:
+      LIAISON_PDF_RENDER_SOCKET: /run/pdf-render/render.sock
+      NODE_ENV: production
+    volumes:
+      - pdf-render-socket:/run/pdf-render
+    mem_limit: ${LIAISON_PDF_RENDER_MEM_LIMIT:-3g}
+    cpus: ${LIAISON_PDF_RENDER_CPUS:-2.0}
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test:
+        - CMD
+        - bun
+        - --eval
+        - "fetch('http://pdf-render/healthz', { unix: '/run/pdf-render/render.sock' }).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   # ---------------------------------------------------------------------------
   # Tool search's embedding process (profile `meaning`): one per host, whatever
@@ -1128,6 +1193,8 @@ networks:
 
 volumes:
   postgres_data:
+  # Holds only the render service's socket (service `pdf-render`).
+  pdf-render-socket:
   redis_data:
   meili_data:
   objectstore_data:

@@ -326,6 +326,11 @@ export const envSchema = z
     // The hosted edition asks for agreement signatures only when its operator sets this
     // to 1; a self-hosted server ignores it (bundled agreements, `agreement_send`).
     LIAISON_MANAGED_SIGNING_ENABLED: envBoolean(false),
+    // The render service's Unix socket (deploy service `pdf-render`): uploaded PDFs are
+    // checked and pictured there, with no network and no secret. Unset in production:
+    // uploads are refused PDF_RENDER_UNAVAILABLE; outside production a local child
+    // process stands in, logged as not isolated.
+    LIAISON_PDF_RENDER_SOCKET: z.preprocess(unsetIfEmpty, z.string().optional()),
     DEVICE_FLOW_CLIENTS: z
       .string()
       .default("")

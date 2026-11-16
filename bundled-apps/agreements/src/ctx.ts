@@ -30,6 +30,16 @@ export interface AgreementsCtx {
   today?: string
   /** The host renders a filled source to PDF bytes, its hash and its text (read-only). */
   rich_text_render?: (p: RichTextRenderParams) => Promise<unknown>
+  /** The host checks an uploaded PDF in the render service; stores nothing. */
+  pdf_upload_check?: (p: { fileId: string; deadlineMs?: number }) => Promise<unknown>
+  /** The host stores an uploaded PDF, untouched, and its page pictures on a version. */
+  pdf_upload_freeze?: (p: {
+    fileId: string
+    versionId: string
+    sha256: string
+    pagesSha256: string
+    filename: string
+  }) => Promise<unknown>
   /** Stores bytes as a file of one of this app's rows. */
   files_importAttachment?: (p: {
     targetApp: string

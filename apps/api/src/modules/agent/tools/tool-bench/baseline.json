@@ -1757,11 +1757,11 @@
       "schema": 11
     },
     "kernel__tables_edit": {
-      "desc": 3713,
+      "desc": 4731,
       "schema": 3
     },
     "kernel__tables_get": {
-      "desc": 215,
+      "desc": 240,
       "schema": 10
     },
     "kernel__tables_list": {
@@ -1769,7 +1769,7 @@
       "schema": 3
     },
     "kernel__tables_query": {
-      "desc": 927,
+      "desc": 1083,
       "schema": 98
     },
     "kernel__tables_rows_write": {

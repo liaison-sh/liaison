@@ -5,34 +5,22 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "prep_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"],
       "reply": "[{\"id\":\"2f12e4e0-2c8c-472d-915a-4d1bf3a2e06f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 18:48:15.580365+00\",\"updated_at\":\"2026-11-16 18:48:15.580365+00\",\"key\":\"product_code_aliases\",\"value\":{\"aliases\":{\"HARDCOVER\":\"HC\"},\"strip_prefixes\":[\"RAL-\"],\"strip_suffixes\":[\"-B2B\"]}}]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_meta",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_meta", "{\"limit\":1000}"],
       "reply": "[{\"id\":\"6c869ea1-a32a-4856-ada3-24ae316a6db6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-16 22:00:00+00\",\"updated_at\":\"2026-09-16 22:00:00+00\",\"document_ref\":\"29cfee25-b134-401e-9880-18725fd51d40\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0016\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-29 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Waiting on the dealer to confirm the delivery window.\",\"fetched_at\":\"2026-09-16 22:00:00+00\",\"ship_to\":null},{\"id\":\"1c5f6905-7b47-4eae-99b0-9b42e5b2ece8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-14 22:00:00+00\",\"updated_at\":\"2026-09-14 22:00:00+00\",\"document_ref\":\"16b7e5de-e9d0-4175-bda3-67ab454ef125\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0022\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-13 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-14 22:00:00+00\",\"ship_to\":null},{\"id\":\"37bd2c38-68a4-4634-9c8f-fe29d1bbdcf3\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-12 22:00:00+00\",\"updated_at\":\"2026-09-12 22:00:00+00\",\"document_ref\":\"628dfcbf-922b-44da-99ee-a999059b73d5\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0021\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-11 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-12 22:00:00+00\",\"ship_to\":null},{\"id\":\"0fff795f-a695-4c78-8532-b71f4ec5dddb\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-10 22:00:00+00\",\"updated_at\":\"2026-09-10 22:00:00+00\",\"document_ref\":\"24bd4394-519a-40b9-9900-7b89441ed871\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0019\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-08 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-10 22:00:00+00\",\"ship_to\":null},{\"id\":\"792be466-edab-4803-9d2c-a2e5d7f100b6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-23 22:00:00+00\",\"updated_at\":\"2026-08-23 22:00:00+00\",\"document_ref\":\"f7c723cf-70a3-4cea-8421-5f5e4c124bff\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0012\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-20 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-23 22:00:00+00\",\"ship_to\":null},{\"id\":\"51f453e3-6239-41d2-9e96-a9ca3dca9341\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-25 22:00:00+00\",\"updated_at\":\"2026-08-25 22:00:00+00\",\"document_ref\":\"0b2beec2-cb70-4e9e-92fb-514a91c8265e\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0014\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-24 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-25 22:00:00+00\",\"ship_to\":null},{\"id\":\"ad14096e-4a71-4763-bf71-3e45b8cdb7cd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-01 22:00:00+00\",\"updated_at\":\"2026-09-01 22:00:00+00\",\"document_ref\":\"507ff6b8-cee8-4d0f-8cb2-727d53bf8e3c\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0017\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-31 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-01 22:00:00+00\",\"ship_to\":null},{\"id\":\"8521a622-cf78-46b5-bdfe-0adf5e679b88\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-29 22:00:00+00\",\"updated_at\":\"2026-08-29 22:00:00+00\",\"document_ref\":\"7cdb72a1-c350-4572-bdb6-3dc25e646f02\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0015\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-28 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-29 22:00:00+00\",\"ship_to\":null},{\"id\":\"2e960e7a-1a52-40db-913b-c06c3077e730\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-01 22:00:00+00\",\"updated_at\":\"2026-08-01 22:00:00+00\",\"document_ref\":\"28d588e9-93c0-4758-b6ea-6f48bcb77a3e\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0006\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-31 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Held at customs, missing a commercial invoice copy.\",\"fetched_at\":\"2026-08-01 22:00:00+00\",\"ship_to\":null},{\"id\":\"25e6d514-4f65-45c3-8d32-52a62179e4ab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-22 22:00:00+00\",\"updated_at\":\"2026-08-22 22:00:00+00\",\"document_ref\":\"0d91f566-393d-4f19-b76f-1acce788754d\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0013\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-21 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Nobody at the address twice, customer asked for a pickup point.\",\"fetched_at\":\"2026-08-22 22:00:00+00\",\"ship_to\":null},{\"id\":\"c3daff91-7fdb-43e4-894c-c1ec486b0697\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-24 22:00:00+00\",\"updated_at\":\"2026-07-24 22:00:00+00\",\"document_ref\":\"950f000d-b4ac-482c-a48e-91094e5425a0\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0005\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-25 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":\"Bought against the wrong address, cancelled and rebought.\",\"fetched_at\":\"2026-07-24 22:00:00+00\",\"ship_to\":null},{\"id\":\"dbc239f3-07bb-4503-9f1d-e0a745ca456d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-03 22:00:00+00\",\"updated_at\":\"2026-09-03 22:00:00+00\",\"document_ref\":\"435e248f-ba12-42b3-8642-bc005babc22b\",\"shopify_order_id\":null,\"order_name\":\"CN-2026-0002\",\"order_tags\":[\"return\"],\"order_created_at\":\"2026-09-02 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-03 22:00:00+00\",\"ship_to\":null},{\"id\":\"24c3c748-bf1e-4708-b6ed-92fd7b8bf6f8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-19 22:00:00+00\",\"updated_at\":\"2026-07-19 22:00:00+00\",\"document_ref\":\"22bc6f52-fe0a-4890-a5eb-9fd87ccb6d8f\",\"shopify_order_id\":null,\"order_name\":\"CN-2026-0001\",\"order_tags\":[\"return\"],\"order_created_at\":\"2026-07-18 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-07-19 22:00:00+00\",\"ship_to\":null},{\"id\":\"fc9914cd-087e-4d92-9ec4-8dbe164e7f4e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-16 22:00:00+00\",\"updated_at\":\"2026-07-16 22:00:00+00\",\"document_ref\":\"72a98ff8-eb29-46b6-a531-6eeeb132b232\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0004\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-14 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Refused at the border, came back to the workshop.\",\"fetched_at\":\"2026-07-16 22:00:00+00\",\"ship_to\":null}]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_order_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_order_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
@@ -45,74 +33,47 @@
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_draft_cache",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_draft_cache", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"product_code_aliases\"},\"limit\":1}"],
       "reply": "[{\"id\":\"2f12e4e0-2c8c-472d-915a-4d1bf3a2e06f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 18:48:15.580365+00\",\"updated_at\":\"2026-11-16 18:48:15.580365+00\",\"key\":\"product_code_aliases\",\"value\":{\"aliases\":{\"HARDCOVER\":\"HC\"},\"strip_prefixes\":[\"RAL-\"],\"strip_suffixes\":[\"-B2B\"]}}]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_order_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_order_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "app_config",
-        "{\"where\":{\"key\":\"prep_last_sync_at\"},\"limit\":1}"
-      ],
+      "args": ["app_config", "{\"where\":{\"key\":\"prep_last_sync_at\"},\"limit\":1}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_state",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_state", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_quote",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_quote", "{\"limit\":1000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "prep_meta",
-        "{\"limit\":1000}"
-      ],
+      "args": ["prep_meta", "{\"limit\":1000}"],
       "reply": "[{\"id\":\"6c869ea1-a32a-4856-ada3-24ae316a6db6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-16 22:00:00+00\",\"updated_at\":\"2026-09-16 22:00:00+00\",\"document_ref\":\"29cfee25-b134-401e-9880-18725fd51d40\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0016\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-29 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Waiting on the dealer to confirm the delivery window.\",\"fetched_at\":\"2026-09-16 22:00:00+00\",\"ship_to\":null},{\"id\":\"1c5f6905-7b47-4eae-99b0-9b42e5b2ece8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-14 22:00:00+00\",\"updated_at\":\"2026-09-14 22:00:00+00\",\"document_ref\":\"16b7e5de-e9d0-4175-bda3-67ab454ef125\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0022\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-13 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-14 22:00:00+00\",\"ship_to\":null},{\"id\":\"37bd2c38-68a4-4634-9c8f-fe29d1bbdcf3\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-12 22:00:00+00\",\"updated_at\":\"2026-09-12 22:00:00+00\",\"document_ref\":\"628dfcbf-922b-44da-99ee-a999059b73d5\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0021\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-11 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-12 22:00:00+00\",\"ship_to\":null},{\"id\":\"0fff795f-a695-4c78-8532-b71f4ec5dddb\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-10 22:00:00+00\",\"updated_at\":\"2026-09-10 22:00:00+00\",\"document_ref\":\"24bd4394-519a-40b9-9900-7b89441ed871\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0019\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-09-08 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-10 22:00:00+00\",\"ship_to\":null},{\"id\":\"792be466-edab-4803-9d2c-a2e5d7f100b6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-23 22:00:00+00\",\"updated_at\":\"2026-08-23 22:00:00+00\",\"document_ref\":\"f7c723cf-70a3-4cea-8421-5f5e4c124bff\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0012\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-20 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-23 22:00:00+00\",\"ship_to\":null},{\"id\":\"51f453e3-6239-41d2-9e96-a9ca3dca9341\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-25 22:00:00+00\",\"updated_at\":\"2026-08-25 22:00:00+00\",\"document_ref\":\"0b2beec2-cb70-4e9e-92fb-514a91c8265e\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0014\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-24 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-25 22:00:00+00\",\"ship_to\":null},{\"id\":\"ad14096e-4a71-4763-bf71-3e45b8cdb7cd\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-01 22:00:00+00\",\"updated_at\":\"2026-09-01 22:00:00+00\",\"document_ref\":\"507ff6b8-cee8-4d0f-8cb2-727d53bf8e3c\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0017\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-31 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-01 22:00:00+00\",\"ship_to\":null},{\"id\":\"8521a622-cf78-46b5-bdfe-0adf5e679b88\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-29 22:00:00+00\",\"updated_at\":\"2026-08-29 22:00:00+00\",\"document_ref\":\"7cdb72a1-c350-4572-bdb6-3dc25e646f02\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0015\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-28 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-08-29 22:00:00+00\",\"ship_to\":null},{\"id\":\"2e960e7a-1a52-40db-913b-c06c3077e730\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-01 22:00:00+00\",\"updated_at\":\"2026-08-01 22:00:00+00\",\"document_ref\":\"28d588e9-93c0-4758-b6ea-6f48bcb77a3e\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0006\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-31 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Held at customs, missing a commercial invoice copy.\",\"fetched_at\":\"2026-08-01 22:00:00+00\",\"ship_to\":null},{\"id\":\"25e6d514-4f65-45c3-8d32-52a62179e4ab\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-08-22 22:00:00+00\",\"updated_at\":\"2026-08-22 22:00:00+00\",\"document_ref\":\"0d91f566-393d-4f19-b76f-1acce788754d\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0013\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-08-21 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Nobody at the address twice, customer asked for a pickup point.\",\"fetched_at\":\"2026-08-22 22:00:00+00\",\"ship_to\":null},{\"id\":\"c3daff91-7fdb-43e4-894c-c1ec486b0697\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-24 22:00:00+00\",\"updated_at\":\"2026-07-24 22:00:00+00\",\"document_ref\":\"950f000d-b4ac-482c-a48e-91094e5425a0\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0005\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-25 21:00:00+00\",\"financial_status\":\"paid\",\"cancelled_at\":null,\"staff_note\":\"Bought against the wrong address, cancelled and rebought.\",\"fetched_at\":\"2026-07-24 22:00:00+00\",\"ship_to\":null},{\"id\":\"dbc239f3-07bb-4503-9f1d-e0a745ca456d\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-09-03 22:00:00+00\",\"updated_at\":\"2026-09-03 22:00:00+00\",\"document_ref\":\"435e248f-ba12-42b3-8642-bc005babc22b\",\"shopify_order_id\":null,\"order_name\":\"CN-2026-0002\",\"order_tags\":[\"return\"],\"order_created_at\":\"2026-09-02 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-09-03 22:00:00+00\",\"ship_to\":null},{\"id\":\"24c3c748-bf1e-4708-b6ed-92fd7b8bf6f8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-19 22:00:00+00\",\"updated_at\":\"2026-07-19 22:00:00+00\",\"document_ref\":\"22bc6f52-fe0a-4890-a5eb-9fd87ccb6d8f\",\"shopify_order_id\":null,\"order_name\":\"CN-2026-0001\",\"order_tags\":[\"return\"],\"order_created_at\":\"2026-07-18 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":null,\"fetched_at\":\"2026-07-19 22:00:00+00\",\"ship_to\":null},{\"id\":\"fc9914cd-087e-4d92-9ec4-8dbe164e7f4e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-07-16 22:00:00+00\",\"updated_at\":\"2026-07-16 22:00:00+00\",\"document_ref\":\"72a98ff8-eb29-46b6-a531-6eeeb132b232\",\"shopify_order_id\":null,\"order_name\":\"INV-2026-0004\",\"order_tags\":[\"sale\"],\"order_created_at\":\"2026-07-14 21:00:00+00\",\"financial_status\":\"pending\",\"cancelled_at\":null,\"staff_note\":\"Refused at the border, came back to the workshop.\",\"fetched_at\":\"2026-07-16 22:00:00+00\",\"ship_to\":null}]"
     },
     {

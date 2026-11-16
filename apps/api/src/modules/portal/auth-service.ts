@@ -16,13 +16,17 @@ import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { emailOutageHoldsBackSend } from "~/infra/email-outage"
 import { CryptoContext, decryptSecret, encryptSecret, generateToken } from "~/lib/crypto"
-import { encryptionKey, env } from "~/lib/env"
+import { encryptionKey } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
 import { orgAppBaseUrl, orgHostsEnabled } from "~/lib/org-public-url"
 import { redis } from "~/lib/redis"
 import { checkBruteForce, recordFailedAttempt, resetAttempts } from "~/middleware/brute-force"
-import { AuthServiceError, createPortalSession, type TokenPair } from "~/modules/auth/auth"
-import { signPortalToken } from "~/modules/auth/jwt"
+import {
+  AuthServiceError,
+  createPortalSession,
+  signPortalEnrolmentToken,
+  type TokenPair,
+} from "~/modules/auth/auth"
 import { consumePortalChallenge, mintChallenge } from "~/modules/auth/magic-link"
 import {
   generateTotpSecret,
@@ -246,17 +250,7 @@ async function mintEnrolmentToken(userId: string, orgId: string): Promise<string
       .limit(1),
   )
   if (!row) throw new AuthServiceError("Invalid or expired code", 401)
-  return signPortalToken(
-    {
-      userId,
-      orgId,
-      name: row.name,
-      authVersion: row.authVersion,
-      permissionVersion: row.permissionVersion,
-      enrol: true,
-    },
-    env.JWT_SECRET,
-  )
+  return signPortalEnrolmentToken({ userId, orgId }, row)
 }
 
 /**

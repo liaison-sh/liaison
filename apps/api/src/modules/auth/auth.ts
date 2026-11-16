@@ -731,7 +731,7 @@ async function createSessionUnder(
  * grants whatever the row holds. Each mint site below goes through here.
  */
 function signSessionToken(
-  session: { userId: string; orgId: string; sid: string },
+  session: { userId: string; orgId: string; sid?: string },
   user:
     | { name: string; authVersion: number; permissionVersion: number; userType: string }
     | undefined,
@@ -742,6 +742,7 @@ function signSessionToken(
     restricted?: boolean
     secondFactorRequired?: boolean
   },
+  opts: { enrol?: boolean } = {},
 ): Promise<string> {
   const identity = {
     ...session,
@@ -749,8 +750,27 @@ function signSessionToken(
     authVersion: user?.authVersion ?? 1,
     permissionVersion: user?.permissionVersion ?? 1,
   }
-  if (user?.userType === "external") return signPortalToken(identity, env.JWT_SECRET)
+  if (user?.userType === "external")
+    return signPortalToken({ ...identity, ...(opts.enrol && { enrol: true }) }, env.JWT_SECRET)
+  if (opts.enrol || !session.sid)
+    throw new Error("only a portal person gets a token without a session")
   return signAccessToken({ ...identity, ...grants, userType: user?.userType }, env.JWT_SECRET)
+}
+
+/**
+ * The enrolment-only token of a portal person who must set up a second factor and
+ * has none yet: no session behind it, minted here like every other session token.
+ */
+export function signPortalEnrolmentToken(
+  person: { userId: string; orgId: string },
+  user: { name: string; authVersion: number; permissionVersion: number },
+): Promise<string> {
+  return signSessionToken(
+    person,
+    { ...user, userType: "external" },
+    { roles: [], scopes: [], dimensionGrants: {} },
+    { enrol: true },
+  )
 }
 
 /**

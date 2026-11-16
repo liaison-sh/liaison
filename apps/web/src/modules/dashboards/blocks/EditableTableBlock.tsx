@@ -15,7 +15,7 @@
 // project's tasks: a column read from the project carries a small link mark naming it, a change
 // to it changes the task (a refusal says so in plain words), Add creates a task, and a row is
 // never deleted here (archive the task in Projects).
-import { History, Link2, Pencil, Plus, Radio, Trash2 } from "lucide-solid"
+import { History, Link2, Pencil, Plus, Radio, Sigma, Trash2 } from "lucide-solid"
 import {
   type Component,
   createEffect,
@@ -61,6 +61,7 @@ import {
   columnBands,
   columnMonths,
   deadlineState,
+  hasMonthWindow,
   isEmphasized,
   isEmptyCell,
   isLinkCell,
@@ -197,10 +198,11 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const all = table()?.columns ?? []
     const b = backing()
     const own = b ? all.filter((c) => !b.readThrough.includes(c.key) || c.key === "title") : all
-    // A months column is typed month by month in the grid, once the row exists.
+    // A months column is typed month by month in the grid, once the row exists; a formula is
+    // computed.
     return keepUnchanged(
       prev,
-      own.filter((c) => c.type !== "months"),
+      own.filter((c) => c.type !== "months" && c.type !== "formula"),
       (c) => c.key,
     )
   }, [])
@@ -323,6 +325,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     const before = rows().find((r) => r.id === answered.id)
     const row = withLookupCells(table()?.columns ?? [], before, answered)
     setRows((prev) => prev.map((r) => (r.id === row.id ? row : r)))
+    // A write answers no formula: read the page again for the values it changed.
+    if (table()?.columns.some((c) => c.type === "formula")) void reloadRows().catch(() => {})
     setHistoryKey((k) => k + 1)
     if (historyRow()?.id === row.id) setHistoryRow(row)
   }
@@ -506,8 +510,8 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
     editing()?.rowId === row.id && editing()?.key === c.key && editing()?.month === month
 
   /** How many grid columns a column takes: a months column one per month it shows. */
-  const width = (c: TableColumn) => (c.type === "months" ? Math.max(1, columnMonths(c).length) : 1)
-  const hasMonths = () => columns().some((c) => c.type === "months")
+  const width = (c: TableColumn) => (hasMonthWindow(c) ? Math.max(1, columnMonths(c).length) : 1)
+  const hasMonths = () => columns().some(hasMonthWindow)
   const gridWidth = () => columns().reduce((n, c) => n + width(c), 0)
 
   /** One month of a months cell: its number (with the column's emphasis), else a quiet "to fill". */
@@ -517,15 +521,20 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       <Show
         when={value() !== undefined}
         fallback={
-          <span
-            data-testid={`${tid()}-tofill-${p.row.id}-${p.column.key}-${p.month}`}
-            title={i18n.t("kernel.dashboards.tables.toFillHint", {
-              month: monthLabel(p.month, i18n.locale(), true),
-            })}
-            class="text-[11.5px] text-text-tertiary"
-          >
-            {i18n.t("kernel.dashboards.tables.toFill")}
-          </span>
+          // A formula is computed: an empty month is no figure to type.
+          p.column.type === "formula" ? (
+            <span data-testid={`${tid()}-month-empty-${p.row.id}-${p.column.key}-${p.month}`} />
+          ) : (
+            <span
+              data-testid={`${tid()}-tofill-${p.row.id}-${p.column.key}-${p.month}`}
+              title={i18n.t("kernel.dashboards.tables.toFillHint", {
+                month: monthLabel(p.month, i18n.locale(), true),
+              })}
+              class="text-[11.5px] text-text-tertiary"
+            >
+              {i18n.t("kernel.dashboards.tables.toFill")}
+            </span>
+          )
         }
       >
         <span
@@ -538,6 +547,20 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
       </Show>
     )
   }
+
+  /** A formula column's head: its label, quiet, with the expression as its hint (never sorts). */
+  const FormulaHead: Component<{ column: TableColumn }> = (p) => (
+    <span
+      data-testid={`${tid()}-formula-${p.column.key}`}
+      title={i18n.t("kernel.dashboards.tables.formulaColumn", {
+        expr: p.column.formula?.expr ?? "",
+      })}
+      class="inline-flex items-center gap-1 text-[11.5px] text-text-tertiary"
+    >
+      <Sigma size={11} aria-hidden="true" class="shrink-0 opacity-70" />
+      {p.column.label}
+    </span>
+  )
 
   /** Where a backed table's own columns begin after its read-through ones: a divider. */
   const bandEdge = (c: TableColumn) => {
@@ -652,7 +675,10 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
   }
 
   const numeric = (c: TableColumn) =>
-    c.type === "number" || c.type === "amount" || c.lookup?.valueType === "number"
+    c.type === "number" ||
+    c.type === "amount" ||
+    c.type === "formula" ||
+    c.lookup?.valueType === "number"
 
   /** A link cell's label, opening its record through the app's own opener (Enter works too). */
   const LinkOpen: Component<{ row: TableRow; column: TableColumn }> = (p) => {
@@ -847,7 +873,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                   <For each={columns()}>
                     {(c) => (
                       <Show
-                        when={c.type !== "months"}
+                        when={!hasMonthWindow(c)}
                         fallback={
                           <th
                             scope="colgroup"
@@ -858,7 +884,9 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                               bandEdge(c) && "border-l border-border",
                             )}
                           >
-                            {c.label}
+                            <Show when={c.type === "formula"} fallback={c.label}>
+                              <FormulaHead column={c} />
+                            </Show>
                           </th>
                         }
                       >
@@ -902,7 +930,10 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                               )}
                             </Show>
                           </Show>
-                          <Show when={c.type !== "lookup"}>
+                          <Show when={c.type === "formula"}>
+                            <FormulaHead column={c} />
+                          </Show>
+                          <Show when={c.type !== "lookup" && c.type !== "formula"}>
                             <button
                               type="button"
                               data-testid={`${tid()}-sort-${c.key}`}
@@ -954,7 +985,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                 </tr>
                 <Show when={hasMonths()}>
                   <tr class="border-b border-border-subtle">
-                    <For each={columns().filter((c) => c.type === "months")}>
+                    <For each={columns().filter(hasMonthWindow)}>
                       {(c) => (
                         <For each={columnMonths(c)}>
                           {(m, i) => (
@@ -986,7 +1017,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                         <For each={columns()}>
                           {(c) => (
                             <Show
-                              when={c.type !== "months"}
+                              when={!hasMonthWindow(c)}
                               fallback={
                                 <For each={columnMonths(c)}>
                                   {(m, i) => (
@@ -1007,7 +1038,7 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                                             onCancel={() => setEditing(null)}
                                           />
                                         </Match>
-                                        <Match when={canEdit()}>
+                                        <Match when={canEdit() && c.type === "months"}>
                                           <button
                                             type="button"
                                             data-testid={`${tid()}-edit-${row.id}-${c.key}-${m}`}
@@ -1059,6 +1090,14 @@ export const EditableTableBlock: Component<EditableTableBlockProps> = (props) =>
                                         void saveCell(row, c, e.currentTarget.checked)
                                       }
                                     />
+                                  </Match>
+                                  <Match when={c.type === "formula"}>
+                                    <span
+                                      data-testid={`${tid()}-formula-cell-${row.id}-${c.key}`}
+                                      class="flex min-h-6 items-center justify-end px-1"
+                                    >
+                                      <CellView row={row} column={c} />
+                                    </span>
                                   </Match>
                                   <Match when={c.type === "lookup"}>
                                     <span

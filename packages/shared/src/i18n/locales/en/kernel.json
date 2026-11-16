@@ -6735,10 +6735,14 @@
         "person": "Person",
         "link": "Link",
         "months": "Months",
-        "lookup": "Live from an app"
+        "lookup": "Live from an app",
+        "formula": "Formula"
       },
       "lookupColumn": "Read live from {{tool}}, not editable",
       "lookupUnavailable": "Not available",
+      "formulaColumn": "Computed: {{expr}}, not editable",
+      "formulaHint": "Formula, with column keys",
+      "formulaNeeded": "Write the formula, for example stock - sold.",
       "newTable": "New table",
       "newTableName": "Table name",
       "nameTaken": "A table named {{name}} exists already.",

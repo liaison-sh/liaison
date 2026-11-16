@@ -5,6 +5,8 @@
 // caller resolves (`personIds` -> the active members among them) and passes in.
 
 import { z } from "zod"
+import { MAX_EXPR_LENGTH } from "~/modules/dashboards/expr"
+import { formulaProblems } from "~/modules/dashboards/tables/formula"
 
 export const COLUMN_TYPES = [
   "text",
@@ -18,6 +20,7 @@ export const COLUMN_TYPES = [
   "link",
   "months",
   "lookup",
+  "formula",
 ] as const
 export type ColumnType = (typeof COLUMN_TYPES)[number]
 
@@ -33,9 +36,13 @@ export const MONTH_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])$/
 export const EMPHASIS = ["nonzero", "negative"] as const
 export type Emphasis = (typeof EMPHASIS)[number]
 /** Column types that may draw a cell with emphasis. */
-export const EMPHASIS_TYPES: readonly ColumnType[] = ["number", "amount", "months"]
+export const EMPHASIS_TYPES: readonly ColumnType[] = ["number", "amount", "months", "formula"]
 /** Column types a dashboard table has but a project's task fields do not. */
-export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months", "lookup"]
+export const TABLE_ONLY_TYPES: readonly ColumnType[] = ["months", "lookup", "formula"]
+/** Column types computed on every read, never stored, written, filtered or sorted on. */
+export const COMPUTED_TYPES: readonly ColumnType[] = ["lookup", "formula"]
+/** Column types with a months window (horizon, fromOffset): a formula's when months-shaped. */
+export const WINDOW_TYPES: readonly ColumnType[] = ["months", "formula"]
 export const COLUMN_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/
 /** Keys a row read adds beside the cells: never a column key. */
 export const RESERVED_COLUMN_KEYS = ["id", "updated_at", "updated_by", "created_at"] as const
@@ -79,6 +86,14 @@ export interface Column {
   emphasis?: Emphasis
   /** A lookup column's read (read-only, live: tables/lookup.ts). */
   lookup?: LookupDef
+  /** A formula column's expression over this row's other columns (read-only: tables/formula.ts). */
+  formula?: FormulaDef
+}
+
+/** A formula column: `expr` over this row's number, amount, number lookup, months and formula
+ *  columns (+ - * / and parentheses, numbers, column keys; min, max, abs, round, cumsum). */
+export interface FormulaDef {
+  expr: string
 }
 
 /** A months cell as stored and read: one number per month, `YYYY-MM` keys. */
@@ -129,6 +144,10 @@ export const lookupSchema = z
   })
   .strict()
 
+export const formulaSchema = z
+  .object({ expr: z.string().trim().min(1, "a formula has an expression").max(MAX_EXPR_LENGTH) })
+  .strict()
+
 const choiceList = z
   .array(z.string().trim().min(1).max(80))
   .min(1)
@@ -162,6 +181,7 @@ export const columnSchema = z
     fromOffset: z.union([z.literal(0), z.literal(1)]).optional(),
     emphasis: z.enum(EMPHASIS).optional(),
     lookup: lookupSchema.optional(),
+    formula: formulaSchema.optional(),
   })
   .strict()
   .superRefine((c, ctx) => {
@@ -197,11 +217,11 @@ export const columnSchema = z
     if (c.type !== "link" && c.linkTo) {
       ctx.addIssue({ code: "custom", path: ["linkTo"], message: "only a link column has linkTo" })
     }
-    if (c.type !== "months" && (c.horizon !== undefined || c.fromOffset !== undefined)) {
+    if (!WINDOW_TYPES.includes(c.type) && (c.horizon !== undefined || c.fromOffset !== undefined)) {
       ctx.addIssue({
         code: "custom",
         path: [c.horizon !== undefined ? "horizon" : "fromOffset"],
-        message: "only a months column has horizon and fromOffset",
+        message: "only a months or formula column has horizon and fromOffset",
       })
     }
     if (c.type === "months" && c.required) {
@@ -216,7 +236,7 @@ export const columnSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["emphasis"],
-        message: "only a number, amount or months column has emphasis",
+        message: "only a number, amount, months or formula column has emphasis",
       })
     }
     if (c.type === "lookup" && !c.lookup) {
@@ -234,6 +254,27 @@ export const columnSchema = z
         code: "custom",
         path: ["required"],
         message: "a lookup column is read live: it cannot be required",
+      })
+    }
+    if (c.type === "formula" && !c.formula) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["formula"],
+        message: 'a formula column names its expression: formula {expr: "stock - sold"}',
+      })
+    }
+    if (c.type !== "formula" && c.formula) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["formula"],
+        message: "only a formula column has formula",
+      })
+    }
+    if (c.type === "formula" && c.required) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["required"],
+        message: "a formula column is computed on every read: it cannot be required",
       })
     }
   })
@@ -260,14 +301,17 @@ export const columnsSchema = z
       if (!c.lookup) return
       const on = cols.find((o) => o.key === c.lookup?.match.on)
       // A key no own column has may be a backed table's read-through one (checked with them).
-      if (on?.type === "lookup") {
+      if (on && COMPUTED_TYPES.includes(on.type)) {
         ctx.addIssue({
           code: "custom",
           path: [i, "lookup", "match", "on"],
-          message: "a lookup matches on a column people or the app fill, not another lookup",
+          message: "a lookup matches on a column people or the app fill, not another lookup or a formula",
         })
       }
     })
+    for (const p of formulaProblems(cols as Column[])) {
+      ctx.addIssue({ code: "custom", path: [p.index, "formula", "expr"], message: p.message })
+    }
   })
 
 /** The first column of a type only a dashboard table has (never a project's task field). */
@@ -302,6 +346,10 @@ function isValidDay(v: string): boolean {
   const d = new Date(`${v}T00:00:00Z`)
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
 }
+
+/** Why a write naming a formula column is refused. */
+export const FORMULA_READ_ONLY =
+  "is a formula column, computed from the row's other columns on every read: it cannot be written (change the columns it reads)"
 
 /** Why a write naming a lookup column is refused. */
 export const LOOKUP_READ_ONLY =
@@ -365,6 +413,8 @@ export function normalizeCell(col: Column, value: unknown, members: ReadonlySet<
       return value.toLowerCase()
     case "lookup":
       throw new CellError(col.key, LOOKUP_READ_ONLY)
+    case "formula":
+      throw new CellError(col.key, FORMULA_READ_ONLY)
     case "link": {
       if (typeof value !== "object" || value === null || Array.isArray(value)) {
         throw new CellError(col.key, "is a link {app, entityType, id, label}")
@@ -490,6 +540,7 @@ export function validateCells(
     const col = byKey.get(key)
     if (!col) throw new CellError(key, "is not a column of this table")
     if (col.type === "lookup") throw new CellError(key, LOOKUP_READ_ONLY)
+    if (col.type === "formula") throw new CellError(key, FORMULA_READ_ONLY)
     const v = normalizeCell(col, value, opts.members)
     if (v === null && col.required) throw new CellError(key, "is required")
     out[key] = v

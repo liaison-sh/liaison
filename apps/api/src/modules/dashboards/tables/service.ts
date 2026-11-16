@@ -40,8 +40,6 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { routineDisplayName } from "~/modules/agent/routines/routine-label"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
-import { dashboardTimezone } from "~/modules/dashboards/org-timezone"
-import { dayIn } from "~/modules/dashboards/relative-dates"
 import { checkToolSource } from "~/modules/dashboards/sources"
 import {
   type BackedDocument,
@@ -77,7 +75,8 @@ import {
   pick,
   validateCells,
 } from "~/modules/dashboards/tables/columns"
-import { applyLookups } from "~/modules/dashboards/tables/lookup"
+import { applyComputedColumns, needsMonth, orgMonth } from "~/modules/dashboards/tables/computed"
+import { isMonthsFormula } from "~/modules/dashboards/tables/formula"
 import {
   type ContainsQuery,
   DataStoreError,
@@ -360,16 +359,20 @@ async function rowCounts(t: RlsClient, orgId: string, ids: string[]): Promise<Ma
   return new Map(rows.map((r) => [r.collection, Number(r.docs)]))
 }
 
-/** The org's current month (YYYY-MM, in its timezone) when the table has a months column. */
+/** The org's current month (YYYY-MM, in its timezone) when the table has a months column (or a
+ *  months-shaped formula). */
 async function monthOf(viewer: UserContext, loaded: LoadedTable): Promise<string | null> {
-  if (!allColumns(loaded).some((c) => c.type === "months")) return null
-  return dayIn(await dashboardTimezone(viewer.orgId), new Date()).slice(0, 7)
+  if (!needsMonth(allColumns(loaded))) return null
+  return orgMonth(viewer.orgId)
 }
 
-/** The columns as a read gives them: each months column with its window from `month`. */
+/** The columns as a read gives them: each months column (and months-shaped formula) with its
+ *  window from `month`. */
 export function columnViews(columns: Column[], month: string | null): ColumnView[] {
   return columns.map((c) =>
-    c.type === "months" && month ? { ...c, months: monthWindow(c, month) } : c,
+    month && (c.type === "months" || isMonthsFormula(c, columns))
+      ? { ...c, months: monthWindow(c, month) }
+      : c,
   )
 }
 
@@ -712,7 +715,15 @@ function checkWhere(where: Where | undefined, columns: Column[]): void {
     if (col.type === "lookup") {
       throw new TableError("invalid_request", lookupNotQueryable(key), { column: key })
     }
+    if (col.type === "formula") {
+      throw new TableError("invalid_request", formulaNotQueryable(key), { column: key })
+    }
   }
+}
+
+/** Why a formula column cannot filter or sort rows: its cells are computed after the rows. */
+function formulaNotQueryable(key: string): string {
+  return `'${key}' is a formula column, computed after the rows are read: it cannot filter or sort them`
 }
 
 /** Why a lookup column cannot filter or sort rows: its cells are read after the rows. */
@@ -830,6 +841,7 @@ function orderField(sort: string | undefined, columns: Column[]): string | undef
     throw new TableError("invalid_request", `'${sort}' is a months column: it cannot sort`)
   }
   if (col.type === "lookup") throw new TableError("invalid_request", lookupNotQueryable(sort))
+  if (col.type === "formula") throw new TableError("invalid_request", formulaNotQueryable(sort))
   return sort
 }
 
@@ -854,7 +866,7 @@ export async function listRows(
     return { columns: allColumns(loaded), ...(await listRowsIn(t, viewer, loaded, id, opts)) }
   })
   const { columns, ...rest } = page
-  const looked = await applyLookups(viewer, id, columns, rest.rows)
+  const looked = await applyComputedColumns(viewer, id, columns, rest.rows)
   return {
     ...rest,
     rows: looked.rows,

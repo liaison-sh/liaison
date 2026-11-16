@@ -282,6 +282,7 @@ const COLUMN_TYPE_WORDS: Record<string, string> = {
   link: "link to a record",
   months: "a number per month",
   lookup: "lookup",
+  formula: "formula",
 }
 
 /** An app's name as people read it: "shopify" is "Shopify". */
@@ -303,13 +304,16 @@ function columnWords(c: Partial<Column>): string {
       ? linkWords(c.linkTo)
       : c.type === "lookup" && c.lookup
         ? `${c.lookup.valueType} read live from ${c.lookup.source.tool} (its ${c.lookup.value}, matched on ${c.lookup.match.on})`
-        : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
+        : c.type === "formula" && c.formula
+          ? `formula ${c.formula.expr}`
+          : (COLUMN_TYPE_WORDS[String(c.type)] ?? String(c.type))
   const extra =
     c.type === "amount" && c.currency
       ? ` in ${c.currency}`
       : (c.type === "choice" || c.type === "choices") && c.choices
         ? ` (${c.choices.join(", ")})`
-        : c.type === "months"
+        : c.type === "months" ||
+            (c.type === "formula" && (c.horizon !== undefined || c.fromOffset !== undefined))
           ? `, ${c.horizon ?? DEFAULT_MONTHS_HORIZON} months from ${c.fromOffset === 1 ? "next" : "this"} month`
           : ""
   const emphasis = c.emphasis ? `, ${emphasisWords(c.emphasis)}` : ""
@@ -569,7 +573,7 @@ interface EditParams {
 }
 
 const TABLES_EDIT_DESCRIPTION =
-  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?, horizon?, fromOffset?, emphasis?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], setOptions?: [{key, horizon?, fromOffset?, emphasis? (null removes it)}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup, months. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A months column holds one number per month, typed by people (planned deliveries per month, a monthly budget): horizon 1-12 months shown (default 3), fromOffset 0 starts at the current month (default), 1 at the next, in the organisation timezone; its cell is {"YYYY-MM": number}, and tables_get gives each months column its current months. emphasis on a number, amount or months column draws a value bold in the accent colour: "nonzero" (any value but 0) or "negative" (below 0). A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
+  'Create a dashboard table, change it, or delete it; always waits for a person\'s approval. {action:"create", name, columns:[{key, label, type, required?, choices?, currency?, linkTo?, lookup?, formula?, horizon?, fromOffset?, emphasis?}], fromDashboardId? (shared like that dashboard), agentWritesNeedApproval?}; {action:"alter", tableId, ifVersion, name?, description?, agentWritesNeedApproval?, columns?: {add?, rename?: [{key,label}], setChoices?: [{key,choices}], setOptions?: [{key, horizon?, fromOffset?, emphasis? (null removes it)}], drop?: [keys]}}; {action:"delete", tableId}. backing (create, alter) {app, entity, parentId, fields:[...]} makes the rows the records of one parent record of an app: fields names the record values read through (the app\'s instructions list them), edits to them change the record in its app (pass the row\'s recordVersion as ifRecordVersion), and columns are only the table\'s own, kept per record: never repeat a key that is in backing.fields (give an own column another key). Column types: text, number, amount (+currency), date, choice, choices, checkbox, person, link, lookup, months, formula. A lookup column is read-only, read live from an app\'s read tool as each reader (their access; empty with a note for a reader who may not run it): {key, label, type:"lookup", lookup:{source:{tool:"<app>:<tool>", params?, rowsPath?}, match:{field:<path in the tool\'s rows>, on:<this table\'s column key>}, value:<path in the matched row>, valueType:"number"|"text"}}; the tool must be a dashboard source (kernel__dashboards_sources) you may call, read once per table read; a link column matches by its record id, another by its text (case-insensitive); several matching tool rows add up (number) or join (text); a lookup cannot be written, required, filtered or sorted on, and to change one drop it and add another key. A months column holds one number per month, typed by people (planned deliveries per month, a monthly budget): horizon 1-12 months shown (default 3), fromOffset 0 starts at the current month (default), 1 at the next, in the organisation timezone; its cell is {"YYYY-MM": number}, and tables_get gives each months column its current months. A formula column is read-only, computed on every read from the other columns of its row: {key, label, type:"formula", formula:{expr:"stock - sold + cumsum(expected)"}, horizon?, fromOffset?, emphasis?}; expr uses + - * / and parentheses, numbers, and the keys of the number, amount, number lookup, months and formula columns of the table; functions min, max, abs, round(x, decimals), cumsum(x) (running sum across the months shown). A formula that reads a months column or calls cumsum is months-shaped: its cell is {"YYYY-MM": number} over its own horizon/fromOffset (default 3 months from this month), computed month by month, single numbers applied to every month. An empty number operand empties the result; a month without a value in a months column counts as 0; a division by zero empties that value. Unknown keys, text or date columns, and formulas reading each other in a circle are refused; a formula cannot be written, required, filtered or sorted on. emphasis on a number, amount, months or formula column draws a value bold in the accent colour: "nonzero" (any value but 0) or "negative" (below 0). A key is lowercase a-z, 0-9, _ and never changes. To show a table on a dashboard, add a block with source {kind:"table", table:<id>} (map.editable true for a table people edit) with kernel__dashboards_edit in the same turn: both wait on one card.'
 
 /**
  * The table backings the org's apps declare (`entities.<e>.tableBacking`), as tables_edit names
@@ -616,7 +620,7 @@ export function registerTableTools(orgId: string): void {
     readOnly: true,
     deferLoading: true,
     description:
-      "Read one dashboard table: its columns (key, label, type, choices, required; a months column also its months, the YYYY-MM it shows now), version, row count, your access and who it is shared with.",
+      "Read one dashboard table: its columns (key, label, type, choices, required; a months column, and a formula column that is months-shaped, also its months, the YYYY-MM it shows now), version, row count, your access and who it is shared with.",
     searchKeywords: ["table", "tableau", "columns", "colonnes"],
     requiredScopes: [READ_SCOPE],
     params: z.object({ tableId: z.string().uuid() }),
@@ -651,7 +655,7 @@ export function registerTableTools(orgId: string): void {
     resultRowPath: "tableId",
     deferLoading: true,
     description:
-      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells (a months cell as {"YYYY-MM": number} with every month kept; the months shown are those of its column in kernel__tables_get, and a shown month without a value is still to fill) and who changed it last. A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
+      'Read rows of a dashboard table: each with its id, version (pass it as ifVersion to change the row), recordVersion in a backed table (pass it as ifRecordVersion to change a read-through cell), cells (a months cell as {"YYYY-MM": number} with every month kept; the months shown are those of its column in kernel__tables_get, and a shown month without a value is still to fill) and who changed it last. A formula column\'s cells are computed on read (a number, or {"YYYY-MM": number} over its months when months-shaped; empty when a number it reads is empty). A lookup column\'s cells are read live from its app; columnNotes says why one is empty (its read failed or you may not run its tool). Filter with where on column keys ({status: "arrived"}, {qty: {gte: 5}}, {status: {in: ["a","b"]}}), sort by a column key or updated_at, page with cursor. Also a dashboard source.',
     searchKeywords: ["table", "rows", "lignes", "query", "lire"],
     requiredScopes: [READ_SCOPE],
     params: z.object({

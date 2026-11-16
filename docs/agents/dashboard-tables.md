@@ -28,12 +28,13 @@ A table has at most 40 columns. Each has a key, a label and a type:
 | `link` | A record of an app: `{ app, entityType, id, label }`. A column may accept only one app or one kind of record. |
 | `months` | One number per month, typed by people: `{ "YYYY-MM": number }`. See [Plan by month](#plan-by-month). |
 | `lookup` | A number or a text read live from an app, never typed (see [Read values live from an app](#read-values-live-from-an-app)). |
+| `formula` | A number, or one number per month, computed from the row's other columns, never typed (see [Compute a column with a formula](#compute-a-column-with-a-formula)). |
 
 A key is a lowercase letter followed by up to 39 lowercase letters, digits or `_`. It never changes; the label does. `id`, `updated_at`, `updated_by` and `created_at` are reserved. A column can be required: a new row must fill it, and a change cannot empty it.
 
 Every write, by a person or an agent, is checked against the columns. A refused write names the column and the reason, and nothing of it is saved.
 
-A number, amount or months column can make some values stand out: its **Highlight** option draws **Values other than 0** or **Values below 0** in bold, in the accent colour. Change it from the column's **Options** in **Settings**, or with `setOptions` (below).
+A number, amount, months or formula column can make some values stand out: its **Highlight** option draws **Values other than 0** or **Values below 0** in bold, in the accent colour. Change it from the column's **Options** in **Settings**, or with `setOptions` (below).
 
 Removing a column hides its values everywhere (rows, history, search, filters) but keeps them stored for retention, and its key cannot be used again.
 
@@ -133,6 +134,27 @@ A lookup column shows a value an app knows, read when the table is read: a produ
 - A table has at most 5 lookup columns. A lookup cannot be required, written, filtered or sorted on. To change one, remove it and add another key. The column it matches on cannot be removed while the lookup uses it.
 
 The tool runs once per table read and column, as the person reading, with their access: someone who may not run it sees every row, the column empty and **Not available** in its header (hover it for why). The same holds when the read fails or the dashboard read budget is spent. Each person's read is kept for a minute, a failed one for 30 seconds. An agent reading the table through `tables_query` gets the reasons in `columnNotes`, and its turn counts as having called the tool. The grid, `tables_query` and a table block source all read it.
+
+## Compute a column with a formula
+
+A formula column computes its value from the other columns of its row on every read, for example what is free to sell (`stock - sold`) or the projected stock month by month (`stock - sold + cumsum(expected)`). Add it in **Settings** (type **Formula**, then the formula with the column keys), or have your agent add it:
+
+```json
+{
+  "key": "projected",
+  "label": "Projected",
+  "type": "formula",
+  "formula": { "expr": "stock - sold + cumsum(expected)" },
+  "horizon": 6,
+  "emphasis": "negative"
+}
+```
+
+- A formula reads the keys of the table's own number, amount, number lookup, months and formula columns, numbers, `+ - * /` (`×`, `÷` and `−` work too) and parentheses, and the functions `min`, `max`, `abs`, `round(x, decimals)` and `cumsum(x)`, the running total across the months shown.
+- A formula that reads a months column, or calls `cumsum`, gives one number per month, over its own months (`horizon` 1-12, default 3, and `fromOffset`, as a months column). It is computed month by month; a single number counts the same in every month. The grid shows it as one column per month. Any other formula gives one number.
+- An empty number it reads (a stock nobody typed, a lookup with no match) leaves the result empty, so a missing figure never reads as a wrong one. A month without a value in a months column counts as 0. A division by zero leaves that value empty, and `cumsum` leaves every later month empty after one.
+- Saving refuses a formula that does not parse, names a key that is not a column of the table, reads a text, date, choice or link column, or that formulas read each other in a circle. A column a formula reads cannot be removed while it does.
+- A formula cannot be required, written, filtered or sorted on. It is computed after the lookup columns, in the grid, in `tables_query` and in a table block source. To change one, remove it and add another key.
 
 ## Show a table on a dashboard
 

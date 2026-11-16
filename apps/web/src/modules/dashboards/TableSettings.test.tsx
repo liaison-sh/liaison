@@ -92,6 +92,38 @@ describe("TableSettings", () => {
     })
   })
 
+  it("a formula column needs its formula, and is sent with its months", async () => {
+    const { patch } = mount()
+    fireEvent.input(screen.getByTestId("table-settings-new-label"), {
+      target: { value: "Projected" },
+    })
+    fireEvent.change(screen.getByTestId("table-settings-new-type"), {
+      target: { value: "formula" },
+    })
+    expect(screen.queryByTestId("table-settings-new-required")).toBeNull()
+    fireEvent.click(screen.getByTestId("table-settings-add-column-save"))
+    expect(screen.getByTestId("table-settings-error").textContent).toBe(
+      "Write the formula, for example stock - sold.",
+    )
+    fireEvent.input(screen.getByTestId("table-settings-new-formula"), {
+      target: { value: " stock + cumsum(expected) " },
+    })
+    fireEvent.click(screen.getByTestId("table-settings-add-column-save"))
+    await waitFor(() => expect(patch).toHaveBeenCalled())
+    expect(patch.mock.calls[0]?.[1]).toMatchObject({
+      columns: {
+        add: [
+          {
+            key: "projected",
+            type: "formula",
+            formula: { expr: "stock + cumsum(expected)" },
+            horizon: 3,
+          },
+        ],
+      },
+    })
+  })
+
   it("renames a column's label and edits its choices", async () => {
     const { patch } = mount()
     fireEvent.click(screen.getByTestId("table-settings-rename-batch"))

@@ -90,6 +90,11 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
     return value === true ? o.t("kernel.dashboards.tables.yes") : o.t("kernel.dashboards.tables.no")
   if (isEmptyCell(value)) return ""
   switch (column.type) {
+    case "formula":
+      if (isMonthsCell(value)) return monthsText(value, o.locale)
+      return typeof value === "number"
+        ? formatValue(value, { format: "number", locale: o.locale })
+        : String(value)
     case "lookup":
     case "number":
       return typeof value === "number"
@@ -108,15 +113,7 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
         ? (o.personName?.(value) ?? o.t("kernel.dashboards.tables.unknownPerson"))
         : String(value)
     case "months":
-      return isMonthsCell(value)
-        ? Object.keys(value)
-            .sort()
-            .map(
-              (m) =>
-                `${monthLabel(m, o.locale, true)}: ${formatValue(value[m]!, { format: "number", locale: o.locale })}`,
-            )
-            .join(", ")
-        : String(value)
+      return isMonthsCell(value) ? monthsText(value, o.locale) : String(value)
     case "link":
       // A label the reader may not resolve comes back empty: the record stays, unnamed.
       return isLinkCell(value)
@@ -129,6 +126,16 @@ export function cellText(column: TableColumn, value: unknown, o: CellTextOptions
   }
 }
 
+function monthsText(value: MonthsCell, locale: string): string {
+  return Object.keys(value)
+    .sort()
+    .map(
+      (m) =>
+        `${monthLabel(m, locale, true)}: ${formatValue(value[m]!, { format: "number", locale })}`,
+    )
+    .join(", ")
+}
+
 export function isMonthsCell(v: unknown): v is MonthsCell {
   return (
     typeof v === "object" &&
@@ -138,9 +145,15 @@ export function isMonthsCell(v: unknown): v is MonthsCell {
   )
 }
 
-/** The months a months column shows (its window as read), in order. */
+/** Is the column drawn one sub-column per month: a months column, or a formula that is
+ *  months-shaped (its read gives it months)? */
+export function hasMonthWindow(column: TableColumn): boolean {
+  return column.type === "months" || (column.type === "formula" && Array.isArray(column.months))
+}
+
+/** The months a months column (or a months-shaped formula) shows, its window as read, in order. */
 export function columnMonths(column: TableColumn): string[] {
-  return column.type === "months" ? (column.months ?? []) : []
+  return hasMonthWindow(column) ? (column.months ?? []) : []
 }
 
 /** One month of a months cell: its number, or undefined when it is still to fill (0 is a value). */
@@ -218,18 +231,21 @@ export function parseCellInput(column: TableColumn, raw: unknown): ParsedCell {
 
 /** The add form's columns: required ones first, each group in the table's order. */
 export function addFormColumns(columns: TableColumn[]): TableColumn[] {
-  const typed = columns.filter((c) => c.type !== "lookup")
+  const typed = columns.filter((c) => c.type !== "lookup" && c.type !== "formula")
   return [...typed.filter((c) => c.required), ...typed.filter((c) => !c.required)]
 }
 
-/** A row as a write answered it, keeping the lookup cells it was read with (a write answers none). */
+/** A row as a write answered it, keeping the lookup and formula cells it was read with (a write
+ *  answers none; the grid reads the rows again for fresh formulas). */
 export function withLookupCells<R extends { cells: TableCells }>(
   columns: TableColumn[],
   before: R | undefined,
   after: R,
 ): R {
   if (!before) return after
-  const kept = columns.filter((c) => c.type === "lookup" && before.cells[c.key] !== undefined)
+  const kept = columns.filter(
+    (c) => (c.type === "lookup" || c.type === "formula") && before.cells[c.key] !== undefined,
+  )
   if (kept.length === 0) return after
   const cells = { ...after.cells }
   for (const c of kept) cells[c.key] = before.cells[c.key]

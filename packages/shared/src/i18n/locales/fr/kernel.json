@@ -6732,10 +6732,14 @@
         "person": "Personne",
         "link": "Lien",
         "months": "Mois",
-        "lookup": "Lu en direct d'une app"
+        "lookup": "Lu en direct d'une app",
+        "formula": "Formule"
       },
       "lookupColumn": "Lu en direct depuis {{tool}}, non modifiable",
       "lookupUnavailable": "Indisponible",
+      "formulaColumn": "Calculé : {{expr}}, non modifiable",
+      "formulaHint": "Formule, avec les clés des colonnes",
+      "formulaNeeded": "Écrivez la formule, par exemple stock - sold.",
       "newTable": "Nouvelle table",
       "newTableName": "Nom de la table",
       "nameTaken": "Une table nommée {{name}} existe déjà.",

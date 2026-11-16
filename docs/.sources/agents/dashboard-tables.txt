@@ -84,3 +84,12 @@ Lookup cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.t
 Join by link id or text, case-insensitive; sum or distinct texts -> apps/api/src/modules/dashboards/tables/lookup.ts:51
 Runs as the reader, cached 60 s, failure 30 s, budget, taint -> apps/api/src/modules/dashboards/tables/lookup.ts:154
 Grid header Not available, hover for why -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:789
+Formula column type, its expr, horizon and emphasis -> apps/api/src/modules/dashboards/tables/columns.ts:95
+Operands: number, amount, number lookup, months, formula; functions incl. cumsum; typographic operators -> apps/api/src/modules/dashboards/tables/formula.ts:29
+Months-shaped when it reads months or calls cumsum; empty and zero rules -> apps/api/src/modules/dashboards/tables/formula.ts:1
+Save refuses syntax, unknown key, non-number column, cycles -> apps/api/src/modules/dashboards/tables/formula.ts:131
+A write naming a formula is refused -> apps/api/src/modules/dashboards/tables/columns.ts:351
+A formula cannot filter or sort -> apps/api/src/modules/dashboards/tables/service.ts:719
+Computed after the lookups in the grid, tables_query and a block source -> apps/api/src/modules/dashboards/tables/computed.ts:30 ; apps/api/src/modules/dashboards/execute.ts:285
+Settings: type Formula with its formula field -> apps/web/src/modules/dashboards/TableSettings.tsx:413
+Grid: months-shaped formula one column per month, read-only -> apps/web/src/modules/dashboards/blocks/EditableTableBlock.tsx:518

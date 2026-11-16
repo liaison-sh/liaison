@@ -1302,6 +1302,8 @@ export type TableColumnType =
   | "months"
   /** Read-only, read live from an app's read tool on every read (set by an agent). */
   | "lookup"
+  /** Read-only, computed on every read from the row's other columns. */
+  | "formula"
 
 /** The types a person adds in Settings (a lookup column is defined by an agent). */
 export const TABLE_COLUMN_TYPES: TableColumnType[] = [
@@ -1315,7 +1317,13 @@ export const TABLE_COLUMN_TYPES: TableColumnType[] = [
   "person",
   "link",
   "months",
+  "formula",
 ]
+
+/** The types a project's task field may have: a months or formula column is a table's only. */
+export const PROJECT_FIELD_TYPES: TableColumnType[] = TABLE_COLUMN_TYPES.filter(
+  (t) => t !== "months" && t !== "formula",
+)
 
 /** A number, amount or months column's emphasis: such values read bold in the accent colour. */
 export type TableEmphasis = "nonzero" | "negative"
@@ -1336,16 +1344,20 @@ export interface TableColumn {
   currency?: string
   /** A link column may point only at this app (and entity type). */
   linkTo?: { app: string; entityType?: string }
-  /** A months column: how many months it shows (1-12, default 3). */
+  /** A months (or months-shaped formula) column: how many months it shows (1-12, default 3). */
   horizon?: number
-  /** A months column: 0 starts at the current month (default), 1 at the next one. */
+  /** A months (or months-shaped formula) column: 0 starts at the current month (default), 1 at
+   *  the next one. */
   fromOffset?: 0 | 1
-  /** A number, amount or months column: values that stand out (bold, accent colour). */
+  /** A number, amount, months or formula column: values that stand out (bold, accent colour). */
   emphasis?: TableEmphasis
-  /** A months column as read: the months it shows now (`YYYY-MM`, the org's timezone). */
+  /** A months column, or a months-shaped formula, as read: the months it shows now (`YYYY-MM`,
+   *  the org's timezone). */
   months?: string[]
   /** A lookup column's read: the app tool it reads, matched on another column. */
   lookup?: TableLookup
+  /** A formula column's expression over the row's other columns (`stock - sold`). */
+  formula?: { expr: string }
 }
 
 export interface TableLookup {

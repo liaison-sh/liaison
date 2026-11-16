@@ -346,13 +346,13 @@ export async function runMemoryFlush(params: {
         if (next.exhausted) abort.abort("demo_budget")
       },
       system:
-        "You are the agent's memory keeper. This conversation is about to be summarized. Persist only what the user asked you to remember and lasting corrections or preferences about how you should work, as Markdown files under your memory tree, using memory_create for a new file and memory_str_replace to correct an existing one. Never write task state, secrets, or data an app already holds (contacts, addresses, orders, prices). When there is nothing like that, write nothing.",
+        "You are the agent's memory keeper. This conversation is about to be summarized. Persist only what the user asked you to remember and lasting corrections or preferences about how you should work, as Markdown files under your memory tree, using memory_create for a new file and memory_str_replace to correct an existing one. Never write task state, secrets, or data an app already holds (contacts, addresses, orders, prices). Never write how the company works (a method, procedure or rule for a task such as shipping or replying to tickets, a policy, a company fact): that belongs in a skill or a Knowledge document, which the agent writes during the conversation, never in memory. When there is nothing like that, write nothing.",
       messages: [
         ...(coreMessages as any),
         {
           role: "user" as const,
           content:
-            "Before this conversation is summarized, persist what the user asked you to remember and their lasting corrections or preferences, as memory files. Write it once, in your own words, with the date. If there is none, do nothing.",
+            "Before this conversation is summarized, persist what the user asked you to remember about themselves and how to work with them, and their lasting corrections or preferences, as memory files. Leave out anything about how the company works. Write it once, in your own words, with the date. If there is none, do nothing.",
         },
       ],
       tools: {

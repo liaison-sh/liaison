@@ -2123,6 +2123,23 @@ describe("P4m-T13 the agent charter", () => {
     expect(second).toBe(first)
   })
 
+  // Owner ruling 2026-11-16: "remember how we ship" kept landing in an agent's private memory,
+  // which no other agent reads when it answers tickets. Company knowledge goes to the skill that
+  // covers the task or to a Knowledge document; memory is about the person and how to work with them.
+  it("the charter routes company knowledge to skills and Knowledge, never to memory", async () => {
+    const charter = await charterOf()
+    expect(charter).toContain("How the company works is company knowledge, never memory")
+    expect(charter).toContain("kernel__update_skill")
+    expect(charter).toContain("kernel__create_skill")
+    expect(charter).toContain("knowledge__update")
+    expect(charter).toContain(
+      "Write memory only when the user asks you to remember something about themselves",
+    )
+    expect(charter).toContain("kernel__capture_business_knowledge")
+    // The routing decision comes before the rule for writing memory.
+    expect(charter.indexOf("never memory")).toBeLessThan(charter.indexOf("Write memory only"))
+  })
+
   it("the charter carries no per turn field", async () => {
     const charter = await charterOf()
     expect(charter).not.toContain("<runtime-context>")

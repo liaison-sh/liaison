@@ -85,7 +85,7 @@ async function loadAgreementOf(ctx: AgreementsCtx, v: Version): Promise<Agreemen
   return a
 }
 
-async function latestOf(ctx: AgreementsCtx, agreementId: string): Promise<Version | null> {
+export async function latestOf(ctx: AgreementsCtx, agreementId: string): Promise<Version | null> {
   const all = (await ctx.db.findMany("agreement_versions", {
     where: { agreement_id: agreementId },
     limit: 500,

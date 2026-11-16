@@ -175,6 +175,7 @@
           "required": false
         },
         "signed_at": "date?",
+        "expiring_notified_on": "day?",
         "retention_until": "day?",
         "void_reason": "text?",
         "what_it_is": "text?",
@@ -1467,6 +1468,8 @@
     "emits": [
       "agreement:sent",
       "agreement:declined",
+      "agreement:expired",
+      "agreement:expiring",
       "agreement:voided"
     ]
   },
@@ -1488,6 +1491,25 @@
         }
       },
       "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    },
+    "dates-daily": {
+      "handler": "datesDailyJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "sent",
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "0 6 * * *",
       "timeoutMs": 120000
     }
   }

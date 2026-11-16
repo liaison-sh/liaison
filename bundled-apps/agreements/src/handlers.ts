@@ -15,6 +15,7 @@ import {
   type UpdateParams,
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
+import { datesDaily } from "./dates"
 import {
   agreementNewLink,
   agreementNewLinkPreflight,
@@ -73,6 +74,7 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
   onClientActionDecided(ctx, event as Parameters<typeof onClientActionDecided>[1])
 
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
+export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
 
 // --- Gated-tool approval summarizers ---
 export * from "./summarizers"

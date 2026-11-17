@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.42.0",
+  "version": "1.43.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -159,7 +159,8 @@
       "migrationOwnedColumns": [
         "nextTaskNumber",
         "kind",
-        "companyId"
+        "companyId",
+        "externalRef"
       ],
       "fields": {
         "name": "string",
@@ -883,6 +884,11 @@
           "timeBudgets": {
             "type": "boolean",
             "description": "Time and budgets on or off for this project (work projects only)."
+          },
+          "externalRef": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Set by another app's step that makes the project: a second call with it returns that project."
           },
           "companyId": {
             "type": [

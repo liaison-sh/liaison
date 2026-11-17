@@ -136,7 +136,9 @@ describe("projects.manifest", () => {
     //   project's company, and a company with none has no Create.
     // 1.41.2: the reconcile skill says a person creates the invoice on the card.
     // 1.42.0: a planned vs done card has its own page, the link a coding agent hands a person.
-    expect(projectsManifest.version).toBe("1.42.0")
+    // 1.43.0: createProject takes another app's step as externalRef and returns the project it
+    //   already made; the reconcile card offers a line as a change request when agreements is on.
+    expect(projectsManifest.version).toBe("1.43.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

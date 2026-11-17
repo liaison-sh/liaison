@@ -10,11 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AgreementDetailView } from "./ui/Detail"
 import { AgreementEditor } from "./ui/Editor"
 import { AgreementsList } from "./ui/List"
+import { AgreementNew } from "./ui/New"
 import { AgreementSend } from "./ui/Send"
 
 const navigateMock = vi.fn<(path: string) => void>()
 const calls: Array<{ tool: string; args: Record<string, unknown> }> = []
 let answers: Record<string, (args: Record<string, unknown>) => unknown> = {}
+let fetched: (url: string) => unknown = () => []
 
 vi.mock("@liaison/host", () => ({
   app: {
@@ -26,7 +28,7 @@ vi.mock("@liaison/host", () => ({
     },
     createResource: (fetcher: () => unknown) => createResource(fetcher),
   },
-  fetch: async () => [],
+  fetch: async (url: string) => fetched(url),
   fetchBlob: async () => new Blob(),
   openFile: async () => true,
   navigate: (path: string) => navigateMock(path),
@@ -374,6 +376,32 @@ describe("prepare and send", () => {
       signers: [{ name: "Jean Tessier", email: "jean@client.example" }],
       order: "sequential",
       expires_in_days: 14,
+    })
+  })
+})
+
+describe("a new agreement", () => {
+  afterEach(() => {
+    fetched = () => []
+  })
+
+  it("is made for a client company the person picks, so it reaches that client", async () => {
+    fetched = (url) =>
+      url.startsWith("/api/contacts/companies")
+        ? [{ id: "c0000000-0000-4000-8000-000000000001", name: "Maison Brun" }]
+        : []
+    answers.templates_list = () => ({ status: "ok", items: [] })
+    answers.agreement_create = () => ({ status: "ok", agreement: { id: ID } })
+    render(() => <AgreementNew />)
+    const company = (await screen.findByTestId("agreement-new-company")) as HTMLSelectElement
+    await waitFor(() => expect(company.options.length).toBe(2))
+    fireEvent.change(company, { target: { value: "c0000000-0000-4000-8000-000000000001" } })
+    fireEvent.input(screen.getByTestId("agreement-new-title"), { target: { value: "Website" } })
+    fireEvent.click(screen.getByTestId("agreement-new-create"))
+    await waitFor(() => expect(calls.some((c) => c.tool === "agreement_create")).toBe(true))
+    expect(calls.find((c) => c.tool === "agreement_create")?.args).toMatchObject({
+      title: "Website",
+      company_id: "c0000000-0000-4000-8000-000000000001",
     })
   })
 })

@@ -171,6 +171,8 @@ export const FR: Record<string, string> = {
   Proposals: "Propositions",
   "Read and approved": "Read and approved",
   "Read and sign": "Lire et signer",
+  "Client company": "Société cliente",
+  "No company": "Aucune société",
   Recitals: "Préambule",
   "Remind signers": "Relancer les signataires",
   Remove: "Retirer",

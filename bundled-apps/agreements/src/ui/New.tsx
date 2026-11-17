@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A new agreement, in a tab: its kind, its title, a template to start from (or none), and
-// its language. The draft opens in the editor; no price is set here, a person sets it there.
+// A new agreement, in a tab: its kind, its title, the client company it is for, a template to
+// start from (or none), and its language. The company stamps it, so it reaches that client's
+// portal and its signers count as that company's. The draft opens in the editor; no price is set here, a person sets it there.
 import { Button } from "@liaison/app-ui/kit"
 import { type Component, createResource, createSignal, For } from "solid-js"
-import { call, go, paths } from "./host"
+import { call, go, loadCompanyNames, paths } from "./host"
 import { tr } from "./i18n"
 import { KIND_GROUPS } from "./model"
 
@@ -22,6 +23,12 @@ export const AgreementNew: Component = () => {
   const [kind, setKind] = createSignal("sow")
   const [title, setTitle] = createSignal("")
   const [templateId, setTemplateId] = createSignal("")
+  const [companyId, setCompanyId] = createSignal("")
+  const [companies] = createResource(async () =>
+    [...(await loadCompanyNames()).entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  )
   const [language, setLanguage] = createSignal<"en" | "fr">("en")
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
@@ -39,6 +46,7 @@ export const AgreementNew: Component = () => {
       kind: kind(),
       title: title().trim(),
       language: language(),
+      ...(companyId() ? { company_id: companyId() } : {}),
       ...(templateId() ? { template_id: templateId() } : {}),
     })
     setBusy(false)
@@ -87,6 +95,18 @@ export const AgreementNew: Component = () => {
               value={title()}
               onInput={(e) => setTitle(e.currentTarget.value)}
             />
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="text-[12px] font-medium text-text">{tr("Client company")}</span>
+            <select
+              class={INPUT}
+              data-testid="agreement-new-company"
+              value={companyId()}
+              onChange={(e) => setCompanyId(e.currentTarget.value)}
+            >
+              <option value="">{tr("No company")}</option>
+              <For each={companies() ?? []}>{(c) => <option value={c.id}>{c.name}</option>}</For>
+            </select>
           </label>
           <label class="flex flex-col gap-1">
             <span class="text-[12px] font-medium text-text">{tr("Start from")}</span>

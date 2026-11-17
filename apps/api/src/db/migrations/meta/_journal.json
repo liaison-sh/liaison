@@ -2346,6 +2346,13 @@
       "when": 1900003420006,
       "tag": "0333_restricted_follow_knowledge_copy",
       "breakpoints": true
+    },
+    {
+      "idx": 335,
+      "version": "7",
+      "when": 1900003420007,
+      "tag": "0334_knowledge_copy_authorship",
+      "breakpoints": true
     }
   ]
 }

@@ -13,7 +13,9 @@ import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import { sql as dsql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { roleDimensionGrants } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import type { EmailProvider } from "~/infra/email"
@@ -27,6 +29,8 @@ import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { insertAppRow } from "~/seed/factories/app-tables"
+import { grantScopesThroughRole } from "~/seed/factories/people/scoped-role"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -193,25 +197,34 @@ beforeAll(async () => {
   previousMail = getSystemEmailProvider()
   setSystemEmailProvider(capture)
   w = await createDoorWorld()
-  // The admin holds every value of every dimension, as an owner does (Knowledge checks the
-  // writer's sensitivity grant). The member holds the agreements app and nothing of Knowledge.
-  await sql`
-    INSERT INTO ${kernel("role_dimension_grants")} (role_id, dimension_key, dimension_values)
-    SELECT ur.role_id, '*', '["*"]'::jsonb FROM ${kernel("user_roles")} ur
-     WHERE ur.user_id = ${w.admin.userId} AND ur.org_id = ${w.orgId}`
-  const agreementsRole = crypto.randomUUID()
-  await sql`INSERT INTO ${kernel("roles")} (id, org_id, name)
-            VALUES (${agreementsRole}, ${w.orgId}, ${`agreements-only-${agreementsRole.slice(0, 8)}`})`
-  await sql`INSERT INTO ${kernel("role_scope_grants")} (role_id, scope)
-            VALUES (${agreementsRole}, 'agreements:*')`
-  await sql`INSERT INTO ${kernel("user_roles")} (user_id, role_id, org_id)
-            VALUES (${w.member.userId}, ${agreementsRole}, ${w.orgId})`
   await ensureAppsForOrg(w.orgId)
   await initSandboxPool()
   await initWorkerPool()
   const { failedApps } = await registerApps([descriptor() as never], w.orgId)
   expect(failedApps).toEqual([])
   await primeOrgApps(w.orgId, 0)
+  // The admin holds every value of every dimension, as an owner does (Knowledge checks the
+  // writer's sensitivity grant; the role API refuses a wildcard, so the grant row is written
+  // directly). The member holds the agreements app and nothing of Knowledge.
+  const { roleId: everyValue } = await grantScopesThroughRole(w.orgId, {
+    adminUserId: w.admin.userId,
+    userId: w.admin.userId,
+    name: `every-dimension-${w.orgId.slice(0, 8)}`,
+    scopes: [],
+    dimensions: {},
+  })
+  await withPrivilegedDb(w.orgId, "test:owner-dimensions", async (tx) => {
+    await tx
+      .insert(roleDimensionGrants)
+      .values({ roleId: everyValue, dimensionKey: "*", dimensionValues: ["*"] })
+  })
+  await grantScopesThroughRole(w.orgId, {
+    adminUserId: w.admin.userId,
+    userId: w.member.userId,
+    name: `agreements-only-${w.orgId.slice(0, 8)}`,
+    scopes: ["agreements:*"],
+    dimensions: {},
+  })
   await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
   onEvent(
     async (e) => {
@@ -295,5 +308,46 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
     } finally {
       await sql`UPDATE ${kernel("users")} SET status = 'active' WHERE id = ${w.admin.userId}`
     }
+  }, 120_000)
+
+  it("on a closed agreement, the sender reads the copy through the list only: taken off it, they read nothing of it", async () => {
+    const { agreementId, versionId } = await sendAndSign(
+      w.admin.userId,
+      "Closed to the list",
+      async () => {
+        await sql`UPDATE ${app("agreements")} SET org_access = 'none'
+                   WHERE org_id = ${w.orgId} AND title = 'Closed to the list'`
+        const [a] = (await sql`SELECT id FROM ${app("agreements")}
+                   WHERE org_id = ${w.orgId} AND title = 'Closed to the list'`) as unknown as Array<{
+          id: string
+        }>
+        await withPrivilegedDb(w.orgId, "test:sow-copy-list", async (tx) => {
+          await insertAppRow(tx, "agreements", "agreement_shares", {
+            org_id: w.orgId,
+            agreement_id: a?.id ?? "",
+            user_id: w.admin.userId,
+            role: "editor",
+          })
+        })
+      },
+    )
+    const documentId = (await versionRow(versionId))?.knowledge_document_id ?? ""
+    expect(documentId).toMatch(/^[0-9a-f-]{36}$/)
+    const [doc] = (await sql`
+      SELECT created_by, author_reads FROM ${knowledge("documents")} WHERE id = ${documentId}`) as unknown as Array<{
+      created_by: string
+      author_reads: boolean
+    }>
+    expect(doc?.created_by).toBe(w.admin.userId)
+    expect(doc?.author_reads).toBe(false)
+    expect(await reads(w.admin.userId, ["knowledge:*"], documentId)).toBe(1)
+    await sql`UPDATE ${app("agreement_shares")} SET removed_at = now()
+               WHERE agreement_id = ${agreementId} AND user_id = ${w.admin.userId}`
+    await withPrivilegedDb(w.orgId, "test:sow-copy-follow", async (tx) => {
+      await tx.execute(
+        dsql`SELECT kernel.restricted_access_follow(${w.orgId}::uuid, 'agreements.agreement', ${agreementId}::uuid)`,
+      )
+    })
+    expect(await reads(w.admin.userId, ["*"], documentId)).toBe(0)
   }, 120_000)
 })

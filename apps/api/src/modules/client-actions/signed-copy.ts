@@ -170,6 +170,20 @@ export async function writeSignedCopyAsSender(args: {
       message: "The copy was written but its sender cannot read it back. No copy is recorded.",
     }
 
+  // A closed record's copy is read by its list alone: its author (the sender) reads it only
+  // while on that list, never as its author. The list follow keeps this in step afterwards.
+  if (args.readersOnly) {
+    await withPrivilegedDb(args.orgId, "signed-copy:closed-authorship", async (tx) => {
+      await tx.execute(
+        sql`UPDATE ${sql.raw(`"${schemaRef("app_knowledge")}"`)}.documents SET author_reads = false
+             WHERE id = ${documentId}::uuid AND org_id = ${args.orgId}::uuid`,
+      )
+      await tx.execute(
+        sql`SELECT ${K()}.recompute_search_acl('knowledge.document', ${documentId}::uuid, ${args.orgId}::uuid)`,
+      )
+    })
+  }
+
   const archived: string[] = []
   if (paths.includes(ARCHIVE_TOOL) && hasScope(ARCHIVE_SCOPE, actor.scopes)) {
     for (const id of args.archiveIds ?? []) {

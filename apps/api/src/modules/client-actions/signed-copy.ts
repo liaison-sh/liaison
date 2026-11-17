@@ -96,6 +96,9 @@ export async function writeSignedCopyAsSender(args: {
   /** A restricted record: its list. The writer reads its own document, so a sender off the
    *  list gets no copy written (the copy's readers are exactly the list). */
   readersOnly?: string[]
+  /** The app's own routine templates whose routines' owners read the copy too (an open
+   *  record only): the people who enabled them in this org. */
+  routineOwnersOf?: string[]
 }): Promise<SignedCopyOutcome> {
   const paths = CROSS_APP_INGESTIONS[args.appName] ?? []
   if (!paths.includes(CREATE_TOOL))
@@ -139,6 +142,34 @@ export async function writeSignedCopyAsSender(args: {
         "The person who sent it for signature can no longer write Knowledge documents, so the Knowledge copy was not made. It is tried again on the next signed version or the seal retry.",
     }
 
+  // An open record's copy is also read by the owners of the app's named routines (for
+  // example the routine that checks a client's mail against the signed text).
+  const create = { ...args.create }
+  const templates = (args.routineOwnersOf ?? []).filter((k) => /^[a-z][a-z0-9_-]{0,63}$/.test(k))
+  if (!args.readersOnly && templates.length > 0) {
+    const owners = await withPrivilegedDb(args.orgId, "signed-copy-routine-owners", async (tx) =>
+      extractRows<{ owner_user_id: string }>(
+        await tx.execute(sql`
+          SELECT DISTINCT r.owner_user_id::text AS owner_user_id FROM ${K()}.routines r
+           WHERE r.org_id = ${args.orgId}::uuid AND r.app_name = ${args.appName}
+             AND r.template_key IN (${sql.join(
+               templates.map((k) => sql`${k}`),
+               sql`, `,
+             )})
+             AND r.enabled = true AND r.owner_user_id IS NOT NULL`),
+      ),
+    )
+    const given = Array.isArray(create.shareWithUsers)
+      ? (create.shareWithUsers as Array<{ userId: string; role: string }>)
+      : []
+    const have = new Set(given.map((u) => u.userId))
+    const more = owners
+      .map((o) => o.owner_user_id)
+      .filter((id) => !have.has(id) && id !== sender)
+      .map((userId) => ({ userId, role: "viewer" }))
+    if (more.length > 0) create.shareWithUsers = [...given, ...more]
+  }
+
   const { executeToolCore } = await import("~/modules/apps/execute-tool")
   const idempotencyKey =
     typeof args.create.idempotencyKey === "string" ? args.create.idempotencyKey : undefined
@@ -146,7 +177,7 @@ export async function writeSignedCopyAsSender(args: {
     toolName: CREATE_TOOL,
     orgId: args.orgId,
     actor,
-    params: { ...args.create },
+    params: create,
     origin: "system",
     internalCall: { callerApp: args.appName, idempotencyKey },
   } as never)) as Envelope

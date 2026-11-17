@@ -22,6 +22,7 @@ import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { onEvent } from "~/infra/events/event-bus"
 import { env } from "~/lib/env"
+import { handleEnableRoutineTemplate } from "~/modules/agent/tools/skills-routines-tools"
 import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -252,6 +253,14 @@ afterAll(async () => {
   if (w) {
     await sql`DELETE FROM ${kernel("resource_grants")} WHERE org_id = ${w.orgId}`
     await sql`DELETE FROM ${knowledge("documents")} WHERE org_id = ${w.orgId}`
+    for (const t of [
+      "routines",
+      "contact_group_members",
+      "contact_segments",
+      "thread_participants",
+      "threads",
+    ])
+      await sql`DELETE FROM ${kernel(t)} WHERE org_id = ${w.orgId}`
     await sql`DELETE FROM ${kernel("attention_events")} WHERE org_id = ${w.orgId}`
     await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
     await dropDoorWorld(w)
@@ -349,5 +358,39 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
       )
     })
     expect(await reads(w.admin.userId, ["*"], documentId)).toBe(0)
+  }, 120_000)
+  it("on an open agreement, whoever enabled the Scope check routine also reads the copy", async () => {
+    const enabled = (await handleEnableRoutineTemplate(
+      { appName: "agreements", templateKey: "scope-check" },
+      {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        actorType: "user",
+        scopes: ["*"],
+        approverUserId: w.admin.userId,
+      } as never,
+    )) as { routine?: { id: string }; error?: unknown }
+    expect(enabled.error).toBeUndefined()
+    // Owned by a colleague who did not send the agreement.
+    await sql`UPDATE ${kernel("routines")} SET owner_user_id = ${w.member.userId}
+               WHERE id = ${enabled.routine?.id ?? ""}`
+    const { versionId } = await sendAndSign(
+      w.admin.userId,
+      "Read by the routine owner",
+      async () => {
+        await sql`UPDATE ${app("agreements")} SET org_access = 'viewer'
+                 WHERE org_id = ${w.orgId} AND title = 'Read by the routine owner'`
+      },
+    )
+    const documentId = (await versionRow(versionId))?.knowledge_document_id ?? ""
+    expect(documentId).toMatch(/^[0-9a-f-]{36}$/)
+    const grants = (await sql`
+      SELECT grantee::text AS grantee FROM ${kernel("resource_grants")}
+       WHERE org_id = ${w.orgId} AND resource_type = 'knowledge.document'
+         AND resource_id = ${documentId}::uuid AND grantee_kind = 'user'`) as unknown as Array<{
+      grantee: string
+    }>
+    expect(grants.map((g) => g.grantee)).toContain(w.member.userId)
+    await sql`DELETE FROM ${kernel("routines")} WHERE id = ${enabled.routine?.id ?? ""}`
   }, 120_000)
 })

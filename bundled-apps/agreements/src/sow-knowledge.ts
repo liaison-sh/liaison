@@ -7,7 +7,8 @@
 //
 // Who reads the copy: the people agreements itself knows. The agreement's list, the person who
 // created it, the staff who signed this version, and the reader role the settings name; the
-// person who sent it for signature writes the copy and reads it as its author. On a restricted
+// person who sent it for signature writes the copy and reads it as its author, and the kernel
+// adds whoever enabled the Scope check routine (`routine_owners_of`). On a restricted
 // agreement exactly its list, nobody else, whatever the settings say.
 //
 // The one caller of the ingestion (`knowledge:create`, CROSS_APP_INGESTIONS, written by the
@@ -18,6 +19,9 @@
 
 import { currentShares } from "./access"
 import { type AgreementsCtx, bridgeAnswer } from "./ctx"
+
+/** The routine template whose routines' owners read an open agreement's copy (spec 6.5). */
+const SCOPE_CHECK_TEMPLATE = "scope-check"
 
 /** The client action target a signed version is (send.ts `TARGET_TYPE`; not imported: send imports the seal). */
 const TARGET_TYPE = "agreement_version"
@@ -154,7 +158,9 @@ export async function onAgreementSigned(
           idempotencyKey: `agreements:sow:${version.id}`,
         },
         archive_ids: archiveIds,
-        ...(shares.restricted ? { readers_only: shares.users.map((u) => u.userId) } : {}),
+        ...(shares.restricted
+          ? { readers_only: shares.users.map((u) => u.userId) }
+          : { routine_owners_of: [SCOPE_CHECK_TEMPLATE] }),
       }),
     )
     if (answer.status !== "ok" || typeof answer.document_id !== "string") {

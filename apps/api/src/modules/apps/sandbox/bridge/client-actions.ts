@@ -498,6 +498,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         create?: unknown
         archive_ids?: unknown
         readers_only?: unknown
+        routine_owners_of?: unknown
       }
       try {
         p = JSON.parse(paramsJson || "{}")
@@ -524,6 +525,13 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         targetId: p.target_id,
         create: p.create as Record<string, unknown>,
         archiveIds,
+        ...(Array.isArray(p.routine_owners_of)
+          ? {
+              routineOwnersOf: p.routine_owners_of.filter(
+                (x): x is string => typeof x === "string",
+              ),
+            }
+          : {}),
         ...(Array.isArray(p.readers_only)
           ? {
               readersOnly: p.readers_only.filter(

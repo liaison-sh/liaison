@@ -16,6 +16,7 @@ type Call = {
   target: { type: string; id: string }
   archive: string[]
   readersOnly?: string[]
+  routineOwnersOf?: string[]
 }
 
 async function world(opts: { restricted?: boolean; knowledgeDown?: boolean } = {}) {
@@ -32,6 +33,7 @@ async function world(opts: { restricted?: boolean; knowledgeDown?: boolean } = {
       target: { type: p.target_type, id: p.target_id },
       archive: p.archive_ids ?? [],
       ...(p.readers_only ? { readersOnly: p.readers_only } : {}),
+      ...(p.routine_owners_of ? { routineOwnersOf: p.routine_owners_of } : {}),
     })
     if (down.on)
       return {
@@ -93,6 +95,8 @@ describe("signed text as Knowledge", () => {
     )
     expect(p.shareWithRoles).toEqual([{ roleId: ROLE, access: "viewer" }])
     expect(w.calls[0]?.readersOnly).toBeUndefined()
+    // The kernel adds whoever enabled the Scope check routine.
+    expect(w.calls[0]?.routineOwnersOf).toEqual(["scope-check"])
   })
 
   it("an open agreement's copy is also shared with the staff who signed that version", async () => {
@@ -116,8 +120,9 @@ describe("signed text as Knowledge", () => {
       [LEAD, READER].sort().map((userId) => ({ userId, role: "viewer" })),
     )
     expect(p.shareWithRoles).toBeUndefined()
-    // The kernel writes it only when the sender is on that list.
+    // The kernel writes it only when the sender is on that list, and adds nobody.
     expect(w.calls[0]?.readersOnly).toEqual([LEAD, READER].sort())
+    expect(w.calls[0]?.routineOwnersOf).toBeUndefined()
   })
 
   it("a copy that could not be made leaves the seal done, says why in the activity, and is written by the seal retry once", async () => {

@@ -77,6 +77,7 @@ export interface AgreementsCtx {
     create: Record<string, unknown>
     archive_ids?: string[]
     readers_only?: string[]
+    routine_owners_of?: string[]
   }) => Promise<unknown>
   /** One declared cross-app call run as the person who sent the target (kernel-found). */
   client_actions_call_as_sender?: (p: {

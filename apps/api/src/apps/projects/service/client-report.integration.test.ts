@@ -269,7 +269,7 @@ describe("a client report waits for a person", () => {
     expect(stale.error?.code).toBe("SEND_GUARD_MISMATCH")
     expect(
       mail.sent.filter(
-        (m) => m.template === "projects.client-report" && m.text.includes("Rewritten"),
+        (m) => m.template === "projects.client-report" && (m.text ?? "").includes("Rewritten"),
       ),
     ).toHaveLength(0)
     // The text they read now goes out with its own key.

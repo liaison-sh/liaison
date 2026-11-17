@@ -123,6 +123,7 @@
     "typedName": "Your full name",
     "codeSent": "We emailed a code to {{to}}.",
     "codeNotSent": "The code could not be sent. Try again in a moment.",
+    "codeNotSentUntil": "The code could not be sent yet. You can ask again at {{time}}.",
     "waitsOn": "Waiting on {{name}}",
     "until": "Open until {{date}}",
     "nameMismatch": "The name does not match. Type your full name as written.",

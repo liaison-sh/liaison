@@ -123,6 +123,7 @@
     "typedName": "Votre nom complet",
     "codeSent": "Nous avons envoyé un code à {{to}}.",
     "codeNotSent": "Le code n'a pas pu être envoyé. Réessayez dans un instant.",
+    "codeNotSentUntil": "Le code n'a pas encore pu être envoyé. Vous pourrez le redemander à {{time}}.",
     "waitsOn": "En attente de {{name}}",
     "until": "Ouvert jusqu'au {{date}}",
     "nameMismatch": "Le nom ne correspond pas. Saisissez votre nom complet tel qu'il est écrit.",

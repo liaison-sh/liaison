@@ -28,7 +28,10 @@ function blocksOf(source: unknown): unknown[] {
 
 type Step = "choose" | "code" | "decline" | "busy" | "done"
 
-const Decide: Component<{ action: PortalAction; onDecided: () => void }> = (props) => {
+const Decide: Component<{
+  action: PortalAction
+  onDecided: (outcome: "decided" | "declined") => void
+}> = (props) => {
   const i18n = useI18n()
   const needsCode = () => props.action.kind !== "approve"
   const [step, setStep] = createSignal<Step>("choose")
@@ -48,7 +51,15 @@ const Decide: Component<{ action: PortalAction; onDecided: () => void }> = (prop
       setStep("code")
       return
     }
-    setNote(i18n.t("portal.approve.codeNotSent"))
+    // Asked too soon or paused: say when a code can be asked again.
+    const retryAt = (out.body?.error as { retry_at?: unknown } | undefined)?.retry_at
+    setNote(
+      typeof retryAt === "string" && !Number.isNaN(Date.parse(retryAt))
+        ? i18n.t("portal.approve.codeNotSentUntil", {
+            time: i18n.fmtDate(new Date(retryAt), { hour: "2-digit", minute: "2-digit" }),
+          })
+        : i18n.t("portal.approve.codeNotSent"),
+    )
   }
 
   const decide = async (decision: "sign" | "accept" | "approve" | "decline") => {
@@ -63,9 +74,10 @@ const Decide: Component<{ action: PortalAction; onDecided: () => void }> = (prop
       ...(decision === "decline" && reason().trim() ? { reason: reason().trim() } : {}),
     })
     if (out.status === 200) {
-      setOutcome(out.data?.state ?? decision)
+      const state = out.data?.state ?? decision
+      setOutcome(state)
       setStep("done")
-      props.onDecided()
+      props.onDecided(state === "declined" ? "declined" : "decided")
       return
     }
     const err = (out.body?.error ?? {}) as { code?: string }
@@ -228,6 +240,14 @@ export const DocumentPage: Component<{ id: string }> = (props) => {
     async (id) => portalGet<PortalDocumentDetail>(`/documents/${id}?lang=${i18n.locale()}`),
   )
   const open = (a: PortalAction) => !a.decidedAt && !a.revokedAt
+  // What this person just decided stays said after the action leaves the page, and the
+  // document is read again a moment later: its signed state lands once the decision is recorded.
+  const [decided, setDecided] = createSignal<"decided" | "declined" | null>(null)
+  const onDecided = (outcome: "decided" | "declined") => {
+    setDecided(outcome)
+    void refetch()
+    setTimeout(() => void refetch(), 2000)
+  }
   return (
     <Show when={doc()} fallback={<Loading />}>
       {(answer) => (
@@ -241,11 +261,18 @@ export const DocumentPage: Component<{ id: string }> = (props) => {
                 <h1 class="text-[20px] font-semibold text-text">
                   {d().number} {d().title}
                 </h1>
-                <p class="text-[13.5px] text-text-secondary">
+                <p data-testid="portal-document-status" class="text-[13.5px] text-text-secondary">
                   {i18n.t(`portal.documents.status.${documentState(d().status)}`)}
                   {d().signedAt ? ` · ${day(d().signedAt, i18n.locale())}` : ""}
                 </p>
               </div>
+              <Show when={decided()}>
+                {(o) => (
+                  <p data-testid="portal-decided-note" role="status" class="text-[14px] text-text">
+                    {i18n.t(`portal.approve.done.${o()}`)}
+                  </p>
+                )}
+              </Show>
               <Show when={d().actions} fallback={<PartFailed part="actions" />}>
                 {(actions) => (
                   <For each={actions().filter(open)}>
@@ -265,7 +292,7 @@ export const DocumentPage: Component<{ id: string }> = (props) => {
                             </p>
                           }
                         >
-                          <Decide action={a} onDecided={() => void refetch()} />
+                          <Decide action={a} onDecided={onDecided} />
                         </Show>
                         <Show when={a.expiresAt}>
                           <p class="mt-2 text-[12.5px] text-text-tertiary">

@@ -32,6 +32,9 @@ export async function sendPortalActionCode(input: {
   const until = await pausedUntil(row.id)
   if (until)
     return { status: 423, body: { error: { code: "paused", retry_at: until.toISOString() } } }
+  // The document is read before a send is counted: a page that is down uses no code send.
+  const view = await viewOf(row)
+  if (view === "down") return { status: 503, body: { state: "down" } }
   const budget = await takeCodeSend(row.id)
   if (!budget.ok) {
     return {
@@ -39,8 +42,6 @@ export async function sendPortalActionCode(input: {
       body: { error: { code: "rate_limited", retry_at: budget.retryAt.toISOString() } },
     }
   }
-  const view = await viewOf(row)
-  if (view === "down") return { status: 503, body: { state: "down" } }
   const code = await issueCode(row.id)
   const mailId = newActionMailId()
   try {

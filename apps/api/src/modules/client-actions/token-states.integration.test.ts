@@ -186,3 +186,18 @@ describe("the token page's twelve states", () => {
     expect(got.wrong?.body).toMatchObject({ error: { code: "wrong_code", left: 4 } })
   }, 60_000)
 })
+
+describe("a code asked while the document cannot be read", () => {
+  it("uses none of the code sends: the next ask, once it reads again, mails the code", async () => {
+    const a = await mintTo(kit)
+    const ip = nextIp()
+    await call("open", { t: a.token }, { "x-bun-socket-ip": ip })
+    await call("document", { t: a.token, format: "blocks" }, { "x-bun-socket-ip": ip })
+    kit.viewAnswers = false
+    const down = await call("code", { t: a.token }, { "x-bun-socket-ip": ip })
+    kit.viewAnswers = true
+    expect(down.status).toBe(503)
+    const again = await call("code", { t: a.token }, { "x-bun-socket-ip": ip })
+    expect(again.status).toBe(202)
+  })
+})

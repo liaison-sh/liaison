@@ -454,14 +454,15 @@ clientActionPublicRoutes.post(
     if (env.LIAISON_DEMO_MODE) return caJson(403, { error: { code: "NO_MAIL_ON_DEMO" } })
     const until = await pausedUntil(row.id)
     if (until) return caJson(423, { error: { code: "paused", retry_at: until.toISOString() } })
+    // The document is read before a send is counted: a page that is down uses no code send.
+    const view = await viewOf(row)
+    if (view === "down") return caJson(503, { state: "down" })
     const budget = await takeCodeSend(row.id)
     if (!budget.ok) {
       return caJson(429, {
         error: { code: "rate_limited", retry_at: budget.retryAt.toISOString() },
       })
     }
-    const view = await viewOf(row)
-    if (view === "down") return caJson(503, { state: "down" })
     const code = await issueCode(row.id)
     const mailId = newActionMailId()
     try {

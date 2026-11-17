@@ -498,6 +498,74 @@ describe("approve", () => {
     })
   })
 
+  it("after signing, says it was done and shows the document signed, without a reload", async () => {
+    setPortalAccessToken("acc")
+    const action = {
+      id: "x1",
+      kind: "sign",
+      invitedName: "Paul",
+      mine: true,
+      decidedAt: null as string | null,
+      revokedAt: null,
+      expiresAt: null,
+    }
+    let reads = 0
+    serve({
+      "GET /documents/a1": () => {
+        reads++
+        const out = DOC([action])
+        // The signed state lands a moment after the decision (the app records it).
+        if (reads >= 3) (out.body.data as { status: string }).status = "signed"
+        return out
+      },
+      "POST /actions/x1/code": () => ({ status: 202, body: { sent_to: "p•••@client.example" } }),
+      "POST /actions/x1/decide": () => {
+        action.decidedAt = "2026-11-17"
+        return { status: 200, body: { data: { state: "signed" } } }
+      },
+    })
+    const r = wrap(() => <DocumentPage id="a1" />)
+    fireEvent.click(await r.findByTestId("portal-decide-yes"))
+    await r.findByTestId("portal-decide-code")
+    fireEvent.input(r.getByTestId("portal-decide-code"), { target: { value: "123456" } })
+    fireEvent.input(r.getByTestId("portal-decide-name"), { target: { value: "Paul Garnier" } })
+    fireEvent.click(r.getByTestId("portal-decide-confirm"))
+    expect(await r.findByTestId("portal-decided-note")).toBeTruthy()
+    await waitFor(
+      () => expect(r.getByTestId("portal-document-status").textContent).toContain("Signed"),
+      { timeout: 4000 },
+    )
+    expect(r.getByTestId("portal-decided-note")).toBeTruthy()
+  })
+
+  it("a code asked too soon says when it can be asked again", async () => {
+    setPortalAccessToken("acc")
+    serve({
+      "GET /documents/a1": () =>
+        DOC([
+          {
+            id: "x1",
+            kind: "sign",
+            invitedName: "Paul",
+            mine: true,
+            decidedAt: null,
+            revokedAt: null,
+            expiresAt: null,
+          },
+        ]),
+      "POST /actions/x1/code": () => ({
+        status: 429,
+        body: { error: { code: "rate_limited", retry_at: "2030-01-01T10:30:00.000Z" } },
+      }),
+    })
+    const r = wrap(() => <DocumentPage id="a1" />)
+    fireEvent.click(await r.findByTestId("portal-decide-yes"))
+    const time = new Intl.DateTimeFormat("en", { hour: "2-digit", minute: "2-digit" }).format(
+      new Date("2030-01-01T10:30:00.000Z"),
+    )
+    await waitFor(() => expect(r.getByTestId("portal-decide-note").textContent).toContain(time))
+  })
+
   it("an approval in an old session asks the code when the server says so", async () => {
     setPortalAccessToken("acc")
     let decides = 0

@@ -6956,7 +6956,12 @@ export async function executeTool<TData = unknown>(
         } as TData,
       }
     }
-    const status = envelope.error.status ?? statusForToolError(envelope.error.code)
+    // A write or a send refused for a missing connection is the person's to fix, never a fault.
+    const status =
+      envelope.error.status ??
+      (isNotConnectedToolErrorCode(envelope.error.code)
+        ? 422
+        : statusForToolError(envelope.error.code))
     const err = new Error(envelope.error.message) as Error & {
       status: number
       code: string

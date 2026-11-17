@@ -22,7 +22,7 @@ In a demo organization, seeded signatures are stand-ins: the agreement says "In 
 
 | Who | Does |
 |---|---|
-| A person with `agreements:agreements:write` | Drafts, sets the price, prepares and sends. |
+| A person with `agreements:agreements:write` | Drafts, sets the price, prepares and sends. The app role `agreements.lead` gives it, with the templates and the evidence; every member (`agreements.member`, part of **Full Member**) reads agreements. |
 | An agent | Drafts, prepares, reads and quotes. Its sends, reminders, new links, voids and template saves wait for a person's approval. It never sets a price and never signs, accepts or decides anything. |
 | A signer outside the organization | Reads, proves the code, signs or declines on their own link (or on the client portal). |
 | A colleague who signs | Signs in their own session, from their Home. |
@@ -141,6 +141,10 @@ Ask an agent, with `agreements:evidence:read`:
 ## After signing
 
 A signed proposal, statement of work, retainer or time and materials agreement starts its project once, for the agreement's company, and the agreement names it. A second delivery of the signature, or the nightly retry, finds the same project. The project is made as the person who sent the agreement for signature. When the proposal has a timebox, Liaison asks Projects for time and budgets and that timebox; Projects turns time and budgets on only from a person's own turn, so today the project starts with them off and a person turns them on. The agreement records whether its project uses time and budgets, which a later change request follows. When the Scope check routine is on, signing also adds the client to its group. When the project's billing plan has an advance step, Invoicing drafts that advance for a person to issue; nothing is issued or sent.
+
+### Renew a retainer
+
+A retainer drafted for a company that already has a signed retainer renews it: the draft names that retainer's project, and the create answer says so (name another project with `project_id`). Give it the included hours a month (`hours_minutes`), and with its price the person also sets the hourly rate above them (`rate_minor`). Once it is signed it starts no new project: its hours, monthly price and rate apply to that project's retainer from the month of its start date, at the earliest the next month; the months before keep the old terms, so no month is billed twice. The first renewed month's timebox on the project takes the new hours.
 
 ## Import a contract signed before Liaison
 

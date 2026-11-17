@@ -5,3 +5,6 @@ Signing adds the client to the Scope check group when the routine is on -> bundl
 A planned advance step is drafted, nothing issued or sent -> bundled-apps/invoicing/src/agreement-signed.ts (onAgreementSignedAdvance)
 Import: imported, signed outside Liaison, no version, signature, evidence or level; text unverified; dates set afterwards -> bundled-apps/agreements/src/import.ts (agreementImport, IMPORTED_LABEL) ; bundled-apps/agreements/src/agreements.ts (agreementGet)
 An imported agreement's text is quoted by its id, marked unverified, and taints the conversation -> bundled-apps/agreements/src/passage.ts (agreementPassageGet, importedPassage) ; bundled-apps/agreements/app.manifest.json (agreement_passage_get taintSourceWhen, outsideTextFields)
+A retainer for a company with a signed retainer names that retainer's project; hours_minutes on create and update; the person's price step takes rate_minor -> bundled-apps/agreements/src/agreements.ts (agreementCreate, renewedRetainer, agreementUpdate, agreementPriceSet)
+A signed renewal starts no project and rolls its terms into the retainer from its first month, the months before on the old terms -> bundled-apps/agreements/src/signed-project.ts (renewRetainer) ; bundled-apps/invoicing/src/recurring/tools.ts (retainerTermsRenew)
+The lead and member roles -> bundled-apps/agreements/app.manifest.json (roles)

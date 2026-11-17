@@ -72,7 +72,7 @@ export async function sowShares(
   const ids = new Set(list.map((s) => s.user_id))
   if (!restricted && agreement.created_by_user_id) ids.add(agreement.created_by_user_id)
   if (!restricted && versionId) {
-    // Staff who signed this version (a member signs on their own session, S754a).
+    // Staff who signed this version (a member signs on their own session).
     const events = (await ctx.db.findMany("signature_events", {
       where: { version_id: versionId },
       limit: 200,

@@ -45,6 +45,7 @@ import { useI18n } from "~/modules/i18n/i18n-context"
 import { fetchAssignableMembers } from "~/modules/members/assignable-members"
 import { BudgetLine } from "~/modules/projects/BudgetLine"
 import { BudgetPanel } from "~/modules/projects/BudgetPanel"
+import { ClientReportsPanel } from "~/modules/projects/ClientReportsPanel"
 import { formatSums, loadDealBoard, openTotals } from "~/modules/projects/deal-api"
 import { computeDropPosition, dndState } from "~/modules/projects/dnd-state"
 import { dueBucket, dueChipColorClass } from "~/modules/projects/due-status"
@@ -853,6 +854,10 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
           entityId={props.entityId}
           class="flex shrink-0 flex-col gap-3 px-6 pb-3"
         />
+        {/* The project's weekly client reports, read and sent by a person. */}
+        <Show when={project()?.companyId && !isPipeline()}>
+          <ClientReportsPanel projectId={props.entityId} />
+        </Show>
         {/* Time and budgets: only a project using it shows the line and the panel. */}
         <Show when={timeActive() && !isArchived()}>
           <BudgetLine

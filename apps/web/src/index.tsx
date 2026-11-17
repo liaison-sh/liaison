@@ -65,8 +65,10 @@ if (typeof window !== "undefined") {
       /(error loading|failed to fetch) dynamically imported module/i.test(msg) ||
       /importing a module script failed/i.test(msg)
     if (!isChunkLoadFailure) return
-    // The token page shows its own `down` frame for a chunk that failed: no reload.
-    if (window.location.pathname === "/a") return
+    // The token page and the portal show their own down page for a chunk that
+    // failed: no reload.
+    const path = window.location.pathname
+    if (path === "/a" || path === "/portal" || path.startsWith("/portal/")) return
     const key = "liaison:chunk-reload-at"
     const last = Number(sessionStorage.getItem(key) ?? 0)
     if (Date.now() - last < 60_000) return

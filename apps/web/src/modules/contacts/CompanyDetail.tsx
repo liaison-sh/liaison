@@ -45,6 +45,7 @@ import { Button } from "~/ui/Button"
 import { Skeleton } from "~/ui/Skeleton"
 import { ActivityPanel } from "./ActivityPanel"
 import { CompanyManagerPicker } from "./CompanyManagerPicker"
+import { CompanyPortalSection } from "./CompanyPortalSection"
 import { CompanyShareDialog } from "./CompanyShareDialog"
 import { ContactAvatar } from "./ContactAvatar"
 import {
@@ -725,6 +726,10 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                         </section>
                       )}
                     </For>
+                    {/* The client portal (R-08): a section of this page, no tab, no route. */}
+                    <Show when={hasScope("kernel:portal:admin")}>
+                      <CompanyPortalSection companyId={props.entityId} />
+                    </Show>
                   </Show>
 
                   <Show when={!phone() || phoneTab() === "timeline"}>

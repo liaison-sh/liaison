@@ -49,6 +49,18 @@ A contact becomes the organization's only when it is shared.
 
 When a company is given to someone else, its previous account manager gets one row on **Home** naming who gave which companies to whom. When an account manager is deactivated, the admin who does it says who takes their companies over (see [Deactivate a user](../admin/users.md#deactivate-a-user)).
 
+## Give a client company its portal
+
+A company page has a **Client portal** section for people who hold `kernel:portal:admin`. It lists who of the company has access, shown as **Invited** until they first sign in.
+
+1. Click **Invite someone**, enter a name and an email, and click **Send the invitation**. The person gets one email with a link to the portal; they sign in each time with a link sent by email, with no password.
+2. Under **What the company sees**, open what the company should read: **Invoices**, **Requests**, and for each of the company's projects its **Progress**, **Hours** and **Reports**. Everything starts closed. Opening hours or invoices asks first and says what the client will then read. Everyone invited sees the same thing, except what names them.
+3. Click **What they see** to read the portal as one of them, through the portal's own reads.
+
+**Access log** lists sign-ins, views, downloads and decisions, for the people given the access log permission only. **Second step at sign-in** requires or relaxes an authenticator code for the company. After a company merge, a person keeps what they saw before until you click **Show the whole company**. **End access** signs everyone of the company out, cancels open links and closes every share; invoices and signed documents are kept. **Give access again** lets them sign in anew, with every share still closed.
+
+Clients use the portal at `/portal/<your organization's slug>`: a home with their projects, invoices and requests, a page per project with its steps and, when shared, its hours as a total (billed hours, or a retainer's hours used so far), their invoices (paid by bank transfer), their requests and the replies, and the documents waiting on them to sign, accept or approve. Only the person a document was sent to can decide it; signing and accepting always ask the code sent by email. The portal has no agent, chat or search.
+
 ## Merge duplicates
 
 1. Open one of the contacts and click **Merge with...**.

@@ -573,5 +573,24 @@
     "slaAhead": "SLA {{when}}",
     "whereTitle": "Où le temps est passé",
     "automationsTitle": "Automatisations sur cette tâche"
+  },
+  "clientReports": {
+    "title": "Rapports clients",
+    "waitingCount": "{{n}} en attente d'une personne",
+    "loading": "Chargement…",
+    "failed": "Cela n'a pas fonctionné.",
+    "edit": "Modifier",
+    "save": "Enregistrer le brouillon",
+    "send": "Envoyer au client",
+    "asRead": "Tel que le client le lira",
+    "staffOnly": "Pour votre équipe seulement",
+    "leftOut": "Laissé de côté exprès",
+    "sources": "Lu à partir de {{tasks}} tâches, {{prs}} pull requests et {{messages}} messages.",
+    "state": {
+      "waiting": "En attente d'une personne",
+      "approved": "Approuvée",
+      "sent": "Envoyé",
+      "rejected": "Non envoyé"
+    }
   }
 }

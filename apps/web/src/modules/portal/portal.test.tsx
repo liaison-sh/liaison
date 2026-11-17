@@ -163,7 +163,9 @@ describe("sign-in", () => {
     expect(calls.filter((c) => c.url.includes("secret-token"))).toEqual([])
     // The access token travels as a header, never in a URL.
     const homeCall = calls.find((c) => c.url.endsWith("/portal/home"))
-    expect((homeCall?.init?.headers as Record<string, string> | undefined)?.authorization).toBe("Bearer acc")
+    expect((homeCall?.init?.headers as Record<string, string> | undefined)?.authorization).toBe(
+      "Bearer acc",
+    )
     expect(calls.every((c) => !c.url.includes("acc"))).toBe(true)
   })
 

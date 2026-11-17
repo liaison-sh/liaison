@@ -76,6 +76,11 @@ const EXCLUDED: ReadonlyArray<{ tool: string; reason: Reason; why: string }> = [
     reason: "trust boundary",
     why: "returns outside text: the names and decline reasons clients typed on the link page",
   },
+  {
+    tool: "kernel:portal_access_log",
+    reason: "trust boundary",
+    why: "returns outside text (the browser a client's device reported) and a client's own activity, which never goes in a score or on a shared page",
+  },
   // ── App reads ──
   ...["calls", "monitoring", "projects"].map((app) => ({
     tool: `${app}:webhook_info`,

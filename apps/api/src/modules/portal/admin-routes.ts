@@ -28,10 +28,12 @@ import {
   readCompany,
   readPortalAccessLog,
   readPortalPerson,
+  readPortalSettings,
   removePortalPerson,
   resetPortalTotp,
   restorePortalAccess,
   setPortalRequireTotp,
+  setPortalSettings,
   setPortalShare,
 } from "./access"
 import { PORTAL_HOME_READS } from "./routes"
@@ -318,4 +320,27 @@ export const portalAdminRoutes = new Hono<AppEnv>()
       }),
     )
     return success(c, { userId: person.user_id, signedInWouldSee: parts })
+  })
+
+const settingsSchema = z
+  .object({
+    notice: z.string().max(4000).nullable().optional(),
+    logRetentionMonths: z.number().int().optional(),
+    logRetentionReason: z.string().max(500).optional(),
+  })
+  .strict()
+
+/** The org's portal settings: the notice clients read at first sign-in, the log's length. */
+export const portalSettingsRoutes = new Hono<AppEnv>()
+  .use("*", async (c, next) => {
+    c.header("Cache-Control", "no-store")
+    await next()
+  })
+  .get("/", ADMIN, async (c) => success(c, await readPortalSettings(c.get("orgId"))))
+  .put("/", ADMIN, zValidator("json", settingsSchema), async (c) => {
+    try {
+      return success(c, await setPortalSettings(c.get("orgId"), c.req.valid("json")))
+    } catch (err) {
+      return fail(c, err)
+    }
   })

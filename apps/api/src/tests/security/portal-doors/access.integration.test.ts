@@ -16,11 +16,13 @@ import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { env } from "~/lib/env"
 import { redis } from "~/lib/redis"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { handleAuditSearch } from "~/modules/agent/tools/admin-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { generateTotpSecret } from "~/modules/auth/totp"
+import { deleteContact, updateContact } from "~/modules/contacts/service"
 import {
   invitePortalPerson,
   PORTAL_INVITES_PER_HOUR,
@@ -28,7 +30,11 @@ import {
   restorePortalAccess,
   setPortalShare,
 } from "~/modules/portal/access"
-import { handlePortalAccessLog, registerPortalTools } from "~/modules/portal/tools"
+import {
+  handlePortalAccessLog,
+  handlePortalRemovePerson,
+  registerPortalTools,
+} from "~/modules/portal/tools"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -109,13 +115,15 @@ beforeEach(async () => {
   await redis.del(inviteKey())
 })
 
-const humanFrame = {
+/** A turn a person typed, with its own record of the scoped data it read (none yet). */
+const humanFrame = () => ({
   runId: "r",
   parentRunId: null,
   rootRunId: "r",
   nestingDepth: 0,
   humanTurn: true,
-}
+  turnScopeAccumulator: createTurnScopeAccumulator(),
+})
 
 function callTool(toolName: string, threadId: string, params: Record<string, unknown>) {
   return executeTool({
@@ -125,8 +133,6 @@ function callTool(toolName: string, threadId: string, params: Record<string, unk
     params,
     threadId,
     origin: "in-app-agent",
-    // The turn read no scoped data: only the outside-text rules decide here.
-    turnTaintScopes: [],
   })
 }
 
@@ -204,7 +210,7 @@ describe("inviting a client", () => {
     const tool = toolRegistry.get([w.orgId, "kernel", "portal_invite"])
     expect(tool?.gated).toBe(true)
     expect(tool?.noAutoApprove).toBe(true)
-    const res = await runContextStore.run(humanFrame, () =>
+    const res = await runContextStore.run(humanFrame(), () =>
       callTool("portal_invite", CLEAN, {
         company_id: w.companyB,
         email: `agent-${w.orgId.slice(0, 8)}@doors.example.com`,
@@ -278,7 +284,7 @@ describe("what a share may point at", () => {
     const tool = toolRegistry.get([w.orgId, "kernel", "portal_share_set"])
     expect(tool?.gated).toBe(true)
     expect(tool?.noAutoApprove).toBe(true)
-    const parked = await runContextStore.run(humanFrame, () =>
+    const parked = await runContextStore.run(humanFrame(), () =>
       callTool("portal_share_set", CLEAN, {
         company_id: w.companyA,
         kind: "file",
@@ -326,12 +332,12 @@ describe("closing tools never run from outside text", () => {
       ["portal_end_access", { company_id: w.companyB }],
       ["portal_remove_person", { user_id: w.clientB.userId, erase: true }],
     ] as const) {
-      const clean = await runContextStore.run(humanFrame, () => callTool(name, CLEAN, params))
+      const clean = await runContextStore.run(humanFrame(), () => callTool(name, CLEAN, params))
       expect(clean.blocked?.approvalRequestId).toBeDefined()
-      const tainted = await runContextStore.run(humanFrame, () => callTool(name, TAINTED, params))
+      const tainted = await runContextStore.run(humanFrame(), () => callTool(name, TAINTED, params))
       expect(tainted.blocked).toBeDefined()
       const routine = await runContextStore.run(
-        { ...humanFrame, humanTurn: undefined, routineId: "rt", background: true },
+        { ...humanFrame(), humanTurn: undefined, routineId: "rt", background: true },
         () => callTool(name, CLEAN, params),
       )
       expect(routine.blocked).toBeDefined()
@@ -339,11 +345,11 @@ describe("closing tools never run from outside text", () => {
     // Removing without erasure: a routine and a tainted turn park; a person's clean turn runs.
     const params = { user_id: w.clientB.userId, erase: false }
     const routine = await runContextStore.run(
-      { ...humanFrame, humanTurn: undefined, routineId: "rt", background: true },
+      { ...humanFrame(), humanTurn: undefined, routineId: "rt", background: true },
       () => callTool("portal_remove_person", CLEAN, params),
     )
     expect(routine.blocked).toBeDefined()
-    const tainted = await runContextStore.run(humanFrame, () =>
+    const tainted = await runContextStore.run(humanFrame(), () =>
       callTool("portal_remove_person", TAINTED, params),
     )
     expect(tainted.blocked).toBeDefined()
@@ -573,5 +579,80 @@ describe("staff's reads of the portal", () => {
     expect(capture.sent.map((m) => [m.to, m.template])).toEqual([
       [w.clientB.email, "portal.totp-reset"],
     ])
+  })
+})
+
+describe("a contact moved, deleted or erased", () => {
+  it("NT-26 a contact moved to another company or deleted ends the portal access made from it; erasure keeps the signed record and names it", async () => {
+    const moved = await asAdmin((tx) =>
+      invitePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyB,
+        email: `moved-${w.orgId.slice(0, 8)}@doors.example.com`,
+        name: "Paul Moved",
+      }),
+    )
+    const session = await createPortalSession(moved.userId, w.orgId)
+    await asAdmin((tx) =>
+      updateContact(tx, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        contactId: moved.contactId,
+        updates: { companyId: w.companyA },
+      }),
+    )
+    const state = async (userId: string) =>
+      extractRows<{ status: string; removed: boolean; sessions: number }>(
+        await sql.unsafe(
+          `SELECT u.status, p.removed_at IS NOT NULL AS removed,
+                  (SELECT count(*)::int FROM kernel.sessions s WHERE s.user_id = u.id) AS sessions
+             FROM kernel.users u JOIN kernel.portal_people p ON p.user_id = u.id WHERE u.id = $1`,
+          [userId],
+        ),
+      )[0]
+    expect(await state(moved.userId)).toEqual({ status: "deactivated", removed: true, sessions: 0 })
+    const res = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    })
+    expect(res.status).toBe(401)
+
+    await asAdmin((tx) =>
+      deleteContact(tx, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        contactId: w.clientA2.contactId,
+      }),
+    )
+    expect((await state(w.clientA2.userId))?.removed).toBe(true)
+
+    // Erasure: the account goes, what they signed stays and is named.
+    const signed = await insertClientAction(w, {
+      company_id: w.companyB,
+      invited_email: w.clientB.email,
+      invited_name: w.clientB.name,
+      decided_at: { raw: "now()" },
+      decision: "signed",
+      decided_via: "link",
+    })
+    const out = (await asAdmin((tx) =>
+      handlePortalRemovePerson(
+        { user_id: w.clientB.userId, erase: true },
+        { orgId: w.orgId, userId: w.admin.userId, db: tx },
+      ),
+    )) as { kept?: Array<{ id: string }>; error?: unknown }
+    expect(out.error).toBeUndefined()
+    expect(out.kept?.map((k) => k.id)).toEqual([signed])
+    // The account row stays as a tombstone (the audit trail points at it), with nothing of them.
+    const [left] = extractRows<{ email: string; name: string }>(
+      await sql.unsafe(`SELECT email, name FROM kernel.users WHERE id = $1`, [w.clientB.userId]),
+    )
+    expect(left?.email).not.toBe(w.clientB.email)
+    expect(left?.name).not.toBe(w.clientB.name)
+    const record = await sql.unsafe(`SELECT decision FROM kernel.client_actions WHERE id = $1`, [
+      signed,
+    ])
+    expect(record.map((r) => r.decision)).toEqual(["signed"])
   })
 })

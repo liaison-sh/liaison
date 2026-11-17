@@ -443,7 +443,16 @@ export interface PortalBranding {
 /** An unknown slug answers the same shape, all empty: the generic sign-in page. */
 export async function portalBranding(slug: string): Promise<PortalBranding> {
   const org = await orgBySlug(slug)
-  return { name: org?.name ?? null, logoUrl: null, notice: null }
+  if (!org) return { name: null, logoUrl: null, notice: null }
+  // The org's own notice (settings.portal.notice), shown with its name before sign-in.
+  const [row] = await withSystemDb("portal-branding-notice", (db) =>
+    db
+      .select({ notice: sql<string | null>`${organizations.settings} -> 'portal' ->> 'notice'` })
+      .from(organizations)
+      .where(eq(organizations.id, org.id))
+      .limit(1),
+  )
+  return { name: org.name, logoUrl: null, notice: row?.notice ?? null }
 }
 
 /** Constant-time string equality, for an Origin compared with the allowed list. */

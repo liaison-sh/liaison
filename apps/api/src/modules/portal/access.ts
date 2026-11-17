@@ -13,8 +13,9 @@
 // `portal.company_id()` answers nothing for an ended company, so every portal read
 // and decide refuses on the next statement.
 import { createHash } from "node:crypto"
+import { type PortalSettings, portalSettingsSchema } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import { extractRows, type RlsClient } from "~/db"
+import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { sendSystemEmailObserved } from "~/infra/email"
@@ -674,41 +675,102 @@ export async function removePortalPerson(input: {
   userId: string
 }): Promise<{ person: PortalPersonRow; signedOut: number; cancelledLinks: number }> {
   const person = await readPortalPerson(input.db, input.userId)
-  const out = await withPrivilegedDb(input.orgId, "portal-remove-person", async (tx) => {
-    await tx.execute(sql`
-      UPDATE ${K()}.portal_people SET removed_at = now()
-       WHERE user_id = ${input.userId} AND org_id = ${input.orgId} AND removed_at IS NULL`)
-    await tx.execute(sql`
-      UPDATE ${K()}.users SET status = 'deactivated', auth_version = auth_version + 1
-       WHERE id = ${input.userId} AND org_id = ${input.orgId} AND user_type = 'external'`)
-    const sessions = extractRows<{ id: string }>(
-      await tx.execute(
-        sql`DELETE FROM ${K()}.sessions WHERE user_id = ${input.userId} RETURNING id`,
-      ),
-    )
-    const actions = extractRows<{ id: string }>(
-      await tx.execute(sql`
-        UPDATE ${K()}.client_actions
-           SET revoked_at = now(), revoked_by = ${input.actorId}, revoke_reason = 'access_ended'
-         WHERE org_id = ${input.orgId} AND decided_at IS NULL AND revoked_at IS NULL
-           AND (signer_user_id = ${input.userId} OR invited_email = ${person.email.toLowerCase()})
-        RETURNING id`),
-    )
-    for (const a of actions) {
-      await writeClientActionEvent(tx, {
-        orgId: input.orgId,
-        actionId: a.id,
-        event: "revoked",
-        actorKind: "staff",
-        actorUserId: input.actorId,
-        meta: { reason: "access_ended" },
-      })
-    }
-    return { sessionIds: sessions.map((s) => s.id), cancelledLinks: actions.length }
-  })
-  invalidateAuthCache(input.userId)
-  revokeSessions(out.sessionIds, "portal-person-removed")
+  const out = await withPrivilegedDb(input.orgId, "portal-remove-person", (tx) =>
+    removePersonRows(tx, {
+      orgId: input.orgId,
+      actorId: input.actorId,
+      userId: input.userId,
+      email: person.email,
+      companyId: person.company_id,
+    }),
+  )
+  afterRemoval([input.userId], out.sessionIds)
   return { person, signedOut: out.sessionIds.length, cancelledLinks: out.cancelledLinks }
+}
+
+/** Ends access on every process: the auth cache now, the access tokens of the ended sessions. */
+function afterRemoval(userIds: string[], sessionIds: string[]): void {
+  for (const id of userIds) invalidateAuthCache(id)
+  revokeSessions(sessionIds, "portal-person-removed")
+}
+
+/** One person's portal rows ended in the caller's privileged transaction. */
+async function removePersonRows(
+  tx: PrivilegedDb,
+  p: { orgId: string; actorId: string | null; userId: string; email: string; companyId: string },
+): Promise<{ sessionIds: string[]; cancelledLinks: number }> {
+  await tx.execute(sql`
+    UPDATE ${K()}.portal_people SET removed_at = now()
+     WHERE user_id = ${p.userId} AND org_id = ${p.orgId} AND removed_at IS NULL`)
+  await tx.execute(sql`
+    UPDATE ${K()}.users SET status = 'deactivated', auth_version = auth_version + 1
+     WHERE id = ${p.userId} AND org_id = ${p.orgId} AND user_type = 'external'`)
+  const sessions = extractRows<{ id: string }>(
+    await tx.execute(sql`DELETE FROM ${K()}.sessions WHERE user_id = ${p.userId} RETURNING id`),
+  )
+  // Their open links for this company's documents; a link for another company still reaches them.
+  const actions = extractRows<{ id: string }>(
+    await tx.execute(sql`
+      UPDATE ${K()}.client_actions
+         SET revoked_at = now(), revoked_by = ${p.actorId}, revoke_reason = 'access_ended'
+       WHERE org_id = ${p.orgId} AND decided_at IS NULL AND revoked_at IS NULL
+         AND (signer_user_id = ${p.userId}
+              OR (invited_email = ${p.email.toLowerCase()} AND company_id = ${p.companyId}))
+      RETURNING id`),
+  )
+  for (const a of actions) {
+    await writeClientActionEvent(tx, {
+      orgId: p.orgId,
+      actionId: a.id,
+      event: "revoked",
+      actorKind: p.actorId ? "staff" : "system",
+      actorUserId: p.actorId,
+      meta: { reason: "access_ended" },
+    })
+  }
+  return { sessionIds: sessions.map((s) => s.id), cancelledLinks: actions.length }
+}
+
+/**
+ * A contact deleted, or moved to another company: the portal person made from it loses
+ * access in the same transaction, and carries nothing to the new company. Called by the
+ * contacts service on its privileged handle. Returns how many people it removed.
+ */
+export async function endPortalForContact(
+  tx: PrivilegedDb,
+  input: {
+    orgId: string
+    contactId: string
+    actorId: string | null
+    /** The contact's company now; undefined when the contact is deleted. */
+    companyId?: string | null
+  },
+): Promise<number> {
+  const people = extractRows<{ user_id: string; email: string; company_id: string }>(
+    await tx.execute(sql`
+      SELECT p.user_id, u.email, p.company_id FROM ${K()}.portal_people p
+        JOIN ${K()}.users u ON u.id = p.user_id
+       WHERE p.org_id = ${input.orgId} AND p.contact_id = ${input.contactId} AND p.removed_at IS NULL
+         AND (${input.companyId === undefined}::boolean
+              OR p.company_id IS DISTINCT FROM ${input.companyId ?? null}::uuid)`),
+  )
+  const sessionIds: string[] = []
+  for (const person of people) {
+    const out = await removePersonRows(tx, {
+      orgId: input.orgId,
+      actorId: input.actorId,
+      userId: person.user_id,
+      email: person.email,
+      companyId: person.company_id,
+    })
+    sessionIds.push(...out.sessionIds)
+  }
+  if (people.length > 0)
+    afterRemoval(
+      people.map((p) => p.user_id),
+      sessionIds,
+    )
+  return people.length
 }
 
 /** Clears a portal person's second factor; they set one up again at their next sign-in. */
@@ -818,4 +880,59 @@ export async function keptForPerson(
          ORDER BY a.decided_at`),
     ),
   )
+}
+
+// ── Org settings: the notice and the log's length ─────────────────────────
+
+/** The portal's org settings as stored, or the empty object. */
+export async function readPortalSettings(orgId: string): Promise<PortalSettings> {
+  const [row] = extractRows<{ portal: unknown }>(
+    await withPrivilegedDb(orgId, "portal-settings-read", (tx) =>
+      tx.execute(
+        sql`SELECT settings -> 'portal' AS portal FROM ${K()}.organizations WHERE id = ${orgId}`,
+      ),
+    ),
+  )
+  const parsed = portalSettingsSchema.safeParse(row?.portal ?? {})
+  return parsed.success ? parsed.data : {}
+}
+
+/**
+ * Changes the portal's org settings. A new notice text raises its version, so every
+ * portal person reads it again at their next sign-in. A log length other than 12
+ * months needs a reason, kept beside it.
+ */
+export async function setPortalSettings(
+  orgId: string,
+  patch: { notice?: string | null; logRetentionMonths?: number; logRetentionReason?: string },
+): Promise<PortalSettings> {
+  const current = await readPortalSettings(orgId)
+  const noticeChanged =
+    patch.notice !== undefined && (patch.notice || null) !== (current.notice ?? null)
+  const next = {
+    ...current,
+    ...(patch.logRetentionMonths !== undefined
+      ? {
+          logRetentionMonths: patch.logRetentionMonths,
+          logRetentionReason: patch.logRetentionReason,
+        }
+      : {}),
+    ...(patch.notice !== undefined ? { notice: patch.notice || null } : {}),
+    ...(noticeChanged ? { noticeVersion: (current.noticeVersion ?? 0) + 1 } : {}),
+  }
+  const parsed = portalSettingsSchema.safeParse(next)
+  if (!parsed.success) {
+    throw new PortalAccessError(
+      "PORTAL_SETTINGS_INVALID",
+      `Nothing changed: ${parsed.error.issues[0]?.message ?? "the settings are not valid"}.`,
+      422,
+    )
+  }
+  await withPrivilegedDb(orgId, "portal-settings-write", (tx) =>
+    tx.execute(sql`
+      UPDATE ${K()}.organizations
+         SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{portal}', ${JSON.stringify(parsed.data)}::jsonb)
+       WHERE id = ${orgId}`),
+  )
+  return parsed.data
 }

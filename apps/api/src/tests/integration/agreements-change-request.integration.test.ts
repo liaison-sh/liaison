@@ -7,7 +7,8 @@
 // the link in the same call and the change request stays a draft: nothing reaches the client.
 // Approved on its link with the code, the change request is a recorded approval sealed like a
 // signature, accepted, and its parent's amended total rises by its price; its parent's project
-// then gets one milestone task, made as the person who sent the change request.
+// then gets one milestone task, made as the person who sent the change request, and its billing
+// plan one milestone for the price (invoicing's step, added once).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -82,9 +83,9 @@ const capture = new CaptureProvider()
 let previousMail: EmailProvider
 let prevTsa: string | undefined
 
-function descriptor(): Record<string, unknown> {
+function descriptor(appName = "agreements"): Record<string, unknown> {
   const manifest = JSON.parse(
-    readFileSync(join(REPO_ROOT, "bundled-apps", "agreements", "app.manifest.json"), "utf8"),
+    readFileSync(join(REPO_ROOT, "bundled-apps", appName, "app.manifest.json"), "utf8"),
   ) as Record<string, unknown>
   return {
     ...manifest,
@@ -92,13 +93,7 @@ function descriptor(): Record<string, unknown> {
     _format: "manifest",
     // As the image installs it: its own catalog tarball, so its transaction keys hold.
     _firstParty: true,
-    _bundlePath: join(
-      REPO_ROOT,
-      "bundled-apps",
-      "agreements",
-      String(manifest.version),
-      "bundle.js",
-    ),
+    _bundlePath: join(REPO_ROOT, "bundled-apps", appName, String(manifest.version), "bundle.js"),
   }
 }
 
@@ -132,7 +127,10 @@ beforeAll(async () => {
   await ensureAppsForOrg(w.orgId)
   await initSandboxPool()
   await initWorkerPool()
-  const { failedApps } = await registerApps([descriptor() as never], w.orgId)
+  const { failedApps } = await registerApps(
+    [descriptor() as never, descriptor("invoicing") as never],
+    w.orgId,
+  )
   expect(failedApps).toEqual([])
   await primeOrgApps(w.orgId, 0)
   await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
@@ -221,6 +219,38 @@ beforeAll(async () => {
         "1. Scope\nA website in two languages.\n8.2 Extra work is billed at 100.00 EUR per hour.",
       frozen_at: new Date().toISOString(),
     })
+    // The project's billing plan, from its quote: one final step on the launch task.
+    const issuerId = crypto.randomUUID()
+    const quoteId = crypto.randomUUID()
+    await insertAppRow(tx, "invoicing", "issuer_profiles", {
+      org_id: w.orgId,
+      id: issuerId,
+      legal_name: "Maison Studio SAS",
+      country: "FR",
+      default_currency: "EUR",
+    })
+    await insertAppRow(tx, "invoicing", "documents", {
+      org_id: w.orgId,
+      id: quoteId,
+      type: "quote",
+      status: "accepted",
+      number: "Q-0040",
+      issuer_profile_id: issuerId,
+      currency: "EUR",
+      subtotal_minor: "4200000",
+    })
+    await insertAppRow(tx, "invoicing", "billing_steps", {
+      org_id: w.orgId,
+      billing_project_id: projectId,
+      position: 1,
+      kind: "final",
+      label: "Launch",
+      amount_minor: "4200000",
+      currency: "EUR",
+      task_id: crypto.randomUUID(),
+      quote_document_id: quoteId,
+      state: "planned",
+    })
   })
 }, 300_000)
 
@@ -235,6 +265,8 @@ afterAll(async () => {
   await clearRedisPatterns(["ca:*"])
   if (w) {
     await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
+    for (const t of ["billing_steps", "documents", "issuer_profiles"])
+      await sql`DELETE FROM ${sql(`${schemaRef("app_invoicing")}.${t}`)} WHERE org_id = ${w.orgId}`
     for (const t of ["tasks", "projects"])
       await sql`DELETE FROM ${sql(`${schemaRef("app_projects")}.${t}`)} WHERE org_id = ${w.orgId}`
     for (const t of [
@@ -374,6 +406,21 @@ describe("a change request sent through the sandbox", () => {
       note: string | null
     }>
     expect(effects).toMatchObject({ task: tasks[0]?.id, done: true })
+    // Its billing plan has one more milestone for the price, on that task, named by the change
+    // request, added by invoicing as the person who sent it.
+    const steps = async () =>
+      (await sql`
+        SELECT kind, amount_minor::text AS amount, task_id::text AS task, change_request_ref AS ref
+          FROM ${sql(`${schemaRef("app_invoicing")}.billing_steps`)}
+         WHERE org_id = ${w.orgId} AND change_request_ref IS NOT NULL`) as unknown as Array<{
+        kind: string
+        amount: string
+        task: string
+        ref: string
+      }>
+    expect(await steps()).toEqual([
+      { kind: "milestone", amount: "600000", task: tasks[0]?.id ?? "", ref: crId },
+    ])
   }, 120_000)
   it("staged by an agent and its hours edited on the card, the approved change request is priced from the edit, its link is minted and the reply leaves the person's mailbox", async () => {
     const actor: UserContext = {

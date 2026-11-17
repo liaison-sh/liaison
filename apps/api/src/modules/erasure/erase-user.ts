@@ -388,6 +388,12 @@ export const KERNEL_USER_COLUMN_DISPOSITION: Record<string, KernelColumnDisposit
       "RETAIN: who sent a client a document to sign, accept or approve is part of that " +
       "decision's legal record (a decided signature or approval stays on erasure)",
   },
+  "client_actions.approved_by_user_id": {
+    kind: "retain",
+    reason:
+      "RETAIN: who approved sending a client a document to sign, accept or approve is part of " +
+      "that decision's legal record, as its sender is",
+  },
   "portal_people.user_id": {
     kind: "retain",
     reason:

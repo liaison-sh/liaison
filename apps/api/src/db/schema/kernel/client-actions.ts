@@ -71,6 +71,9 @@ export const clientActions = kernel.table(
     targetId: uuid("target_id").notNull(),
     /** The target's hash when the action was made; checked again at decide. */
     targetSha256: text("target_sha256").notNull(),
+    /** Migration 0339: when the kernel fingerprinted a stored file, the hash of the blocks the
+     *  page shows (canonical JSON); checked again at decide with `targetSha256`. */
+    targetBlocksSha256: text("target_blocks_sha256"),
     companyId: uuid("company_id").references(() => companies.id, { onDelete: "set null" }),
     contactId: uuid("contact_id").references(() => contacts.id, { onDelete: "set null" }),
     /** Set when the invited person is staff of this org. */
@@ -110,6 +113,9 @@ export const clientActions = kernel.table(
     revokeReason: text("revoke_reason", { enum: CLIENT_ACTION_REVOKE_REASONS }),
     createdByUserId: uuid("created_by_user_id"),
     createdByAgentId: uuid("created_by_agent_id"),
+    /** Migration 0338: the person who approved the send (the approval's decider, or their own
+     *  click). Null: no person approved it. */
+    approvedByUserId: uuid("approved_by_user_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

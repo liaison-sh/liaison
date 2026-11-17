@@ -128,6 +128,47 @@ export async function noteOrgFeatureChanged(
   )
 }
 
+/** Derived feature rows a writer recomputes after its commit, still running, by org. */
+const pendingRecomputes = new Map<string, Set<Promise<unknown>>>()
+
+/**
+ * A writer whose feature row follows its data (it is recomputed once the data's transaction
+ * committed) names that work here while it runs, so a call refused only because the row is not
+ * written yet can wait for it instead (`settleFeatureRecomputes`).
+ */
+export function trackFeatureRecompute(orgId: string, work: Promise<unknown>): void {
+  let pending = pendingRecomputes.get(orgId)
+  if (!pending) {
+    pending = new Set()
+    pendingRecomputes.set(orgId, pending)
+  }
+  const set = pending
+  set.add(work)
+  const done = () => {
+    set.delete(work)
+    if (set.size === 0 && pendingRecomputes.get(orgId) === set) pendingRecomputes.delete(orgId)
+  }
+  work.then(done, done)
+}
+
+/**
+ * Waits, at most `budgetMs`, for the org's feature rows still being recomputed after a commit
+ * (the cache is fresh once they end). False when nothing was pending: the cached answer stands.
+ */
+export async function settleFeatureRecomputes(orgId: string, budgetMs = 5_000): Promise<boolean> {
+  const pending = pendingRecomputes.get(orgId)
+  if (!pending || pending.size === 0) return false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    Promise.allSettled([...pending]),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, budgetMs)
+    }),
+  ])
+  if (timer) clearTimeout(timer)
+  return true
+}
+
 /** Write the row in a transaction of its own, then tell everyone. */
 export async function setOrgAppFeature(write: OrgFeatureWrite): Promise<{ changed: boolean }> {
   const { orgId, app, feature, enabled } = write

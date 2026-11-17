@@ -4,13 +4,16 @@
 // (`clientActionTargets: [{ type, kinds, viewTool }]`); a target no app declared
 // is refused. The kernel never reads an app's tables: it asks the app's own
 // internal read tool, with system origin, for what the person outside is shown
-// and the hash of exactly that.
+// and the hash of exactly that. A view that names a stored file without a hash is
+// fingerprinted by the kernel: the file's bytes and the blocks the page shows.
 
+import { createHash } from "node:crypto"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { CLIENT_ACTION_KINDS } from "~/db/schema/kernel/client-actions"
 import { rootLogger } from "~/lib/logger"
 import { appBridgeManifest } from "~/modules/apps/app-registries"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { canonicalJson } from "~/modules/signing/canonical-json"
 import { storedFileSha256 } from "./document-files"
 
 export type ClientActionKind = (typeof CLIENT_ACTION_KINDS)[number]
@@ -49,6 +52,12 @@ export interface ClientActionView {
   pagesSha256: string | null
   /** Hex SHA-256 of exactly what is shown: checked again when the person decides. */
   sha256: string
+  /**
+   * When the kernel fingerprinted the stored file (`sha256` is the file's), the hex SHA-256 of
+   * the canonical JSON of the blocks the page shows, checked again at decide with `sha256`.
+   * Null or absent: the app's own hash covers what it shows.
+   */
+  blocksSha256?: string | null
   wordsKey: string | null
   wordsParams: Record<string, string>
   /**
@@ -131,6 +140,8 @@ export function declaredTarget(
 }
 
 const HEX64 = /^[0-9a-f]{64}$/
+/** The kernel's own key for the blocks' fingerprint; an app's answer never sets it. */
+const KERNEL_BLOCKS_HASH = "__kernel_blocks_sha256"
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function asView(data: unknown): ClientActionView | null {
@@ -173,6 +184,10 @@ function asView(data: unknown): ClientActionView | null {
     pagesSha256:
       typeof d.pages_sha256 === "string" && HEX64.test(d.pages_sha256) ? d.pages_sha256 : null,
     sha256: sha,
+    blocksSha256:
+      typeof d[KERNEL_BLOCKS_HASH] === "string" && HEX64.test(d[KERNEL_BLOCKS_HASH] as string)
+        ? (d[KERNEL_BLOCKS_HASH] as string)
+        : null,
     wordsKey: typeof d.words_key === "string" ? d.words_key : null,
     wordsParams:
       d.words_params && typeof d.words_params === "object"
@@ -233,11 +248,23 @@ async function viewThroughTool(
  */
 export async function withStoredFileHash(orgId: string, data: unknown): Promise<unknown> {
   if (!data || typeof data !== "object" || Array.isArray(data)) return data
-  const d = data as Record<string, unknown>
-  if (d.sha256 !== undefined && d.sha256 !== null) return data
-  if (typeof d.pdf_file_id !== "string" || !UUID.test(d.pdf_file_id)) return data
+  const { [KERNEL_BLOCKS_HASH]: _fromApp, ...d } = data as Record<string, unknown>
+  if (d.sha256 !== undefined && d.sha256 !== null) return d
+  if (typeof d.pdf_file_id !== "string" || !UUID.test(d.pdf_file_id)) return d
   const sha = await storedFileSha256(orgId, d.pdf_file_id)
-  return sha ? { ...d, sha256: sha } : data
+  if (!sha) return d
+  return {
+    ...d,
+    sha256: sha,
+    ...(Array.isArray(d.source_blocks)
+      ? { [KERNEL_BLOCKS_HASH]: blocksSha256(d.source_blocks) }
+      : {}),
+  }
+}
+
+/** Hex SHA-256 of the canonical JSON (RFC 8785) of the blocks a page shows. */
+export function blocksSha256(blocks: unknown[]): string {
+  return createHash("sha256").update(canonicalJson(blocks)).digest("hex")
 }
 
 /**

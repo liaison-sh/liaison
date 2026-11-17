@@ -20,6 +20,13 @@
 // its `cross_app_calls` (a change request's task, its time plan) runs as that same sender, with
 // their live permissions and nothing more (`callAsSender`). A decided handler never gains a
 // wider system identity for it.
+//
+// The send itself was a person's decision: their approval of it, or their own click, recorded on
+// its client actions as `approved_by_user_id`. A call chained from that approved send (made by
+// the app's handler of the decided target, with no agent, routine or approval of its own in the
+// run) to an ungated target the app declares runs as that person, on a human origin: their act,
+// so a callee that keeps something to a person's own act (projects' time and budgets) takes it.
+// A send no person approved, a gated target, or any other run stays on the system origin.
 
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -59,11 +66,21 @@ export async function senderOfSignedTarget(args: {
   targetType: string
   targetId: string
 }): Promise<string | null> {
+  return (await peopleOfSignedTarget(args))?.sender ?? null
+}
+
+/** The sender of a decided target, and the person who approved that send (null: nobody did). */
+async function peopleOfSignedTarget(args: {
+  orgId: string
+  targetApp: string
+  targetType: string
+  targetId: string
+}): Promise<{ sender: string; approver: string | null } | null> {
   if (!UUID.test(args.targetId)) return null
   const rows = await withPrivilegedDb(args.orgId, "signed-copy-sender", async (tx) =>
-    extractRows<{ created_by_user_id: string | null }>(
+    extractRows<{ created_by_user_id: string; approved_by_user_id: string | null }>(
       await tx.execute(sql`
-        SELECT a.created_by_user_id FROM ${K()}.client_actions a
+        SELECT a.created_by_user_id, a.approved_by_user_id FROM ${K()}.client_actions a
          WHERE a.org_id = ${args.orgId}::uuid AND a.target_app = ${args.targetApp}
            AND a.target_type = ${args.targetType} AND a.target_id = ${args.targetId}::uuid
            AND a.created_by_user_id IS NOT NULL
@@ -76,7 +93,18 @@ export async function senderOfSignedTarget(args: {
          LIMIT 1`),
     ),
   )
-  return rows[0]?.created_by_user_id ?? null
+  const row = rows[0]
+  return row ? { sender: row.created_by_user_id, approver: row.approved_by_user_id } : null
+}
+
+/** An app tool of this org that runs without a gate. Anything else (a gated tool, a kernel
+ *  tool, an unknown one) is never run on a person's act from here. */
+async function ungatedAppTool(orgId: string, tool: string): Promise<boolean> {
+  const i = tool.indexOf(":")
+  if (i <= 0) return false
+  const { toolRegistry } = await import("~/modules/apps/app-registries")
+  const t = toolRegistry.get([orgId, tool.slice(0, i), tool.slice(i + 1)])
+  return t !== undefined && t.gated !== true
 }
 
 type Envelope = { data?: unknown; blocked?: unknown; error?: { code: string; message: string } }
@@ -258,6 +286,9 @@ export async function callAsSender(args: {
   tool: string
   params: Record<string, unknown>
   idempotencyKey?: string
+  /** The caller's run is the consequence of the decision (the app's decided-target handler,
+   *  no agent, routine or approval of its own): an ungated call may run on the approver's act. */
+  onTheApproversAct?: boolean
 }): Promise<AsSenderOutcome> {
   if (!args.declaredCalls.includes(args.tool) || args.tool.startsWith(`${args.appName}:`))
     return {
@@ -265,19 +296,31 @@ export async function callAsSender(args: {
       code: "CALL_NOT_DECLARED",
       message: `${args.appName} declares no call to ${args.tool}. Nothing was done.`,
     }
-  const sender = await senderOfSignedTarget({
+  const people = await peopleOfSignedTarget({
     orgId: args.orgId,
     targetApp: args.appName,
     targetType: args.targetType,
     targetId: args.targetId,
   })
-  if (!sender)
+  if (!people)
     return {
       status: "error",
       code: "NOT_SIGNED",
       message: "Nobody's decision is recorded on this record yet. Nothing was done.",
     }
-  const actor = await liveActor(args.orgId, sender)
+  // The approved send was that person's own act: the call it leads to runs as them.
+  let actor: Awaited<ReturnType<typeof liveActor>> = null
+  let origin: "human-ui" | "system" = "system"
+  if (
+    args.onTheApproversAct === true &&
+    people.approver &&
+    UUID.test(people.approver) &&
+    (await ungatedAppTool(args.orgId, args.tool))
+  ) {
+    actor = await liveActor(args.orgId, people.approver)
+    if (actor) origin = "human-ui"
+  }
+  actor ??= await liveActor(args.orgId, people.sender)
   if (!actor)
     return {
       status: "error",
@@ -285,13 +328,14 @@ export async function callAsSender(args: {
       message:
         "The person who sent it is no longer an active member, so nothing was done in their name.",
     }
+  const sender = actor.userId
   const { executeToolCore } = await import("~/modules/apps/execute-tool")
   const env = (await executeToolCore({
     toolName: args.tool,
     orgId: args.orgId,
     actor,
     params: { ...args.params },
-    origin: "system",
+    origin,
     internalCall: { callerApp: args.appName, idempotencyKey: args.idempotencyKey },
   } as never)) as Envelope
   if (env.error) return { status: "error", code: env.error.code, message: env.error.message }

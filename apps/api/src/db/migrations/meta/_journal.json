@@ -2381,6 +2381,20 @@
       "when": 1900003430010,
       "tag": "0338_projects_client_reports",
       "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1900003430011,
+      "tag": "0339_client_action_approved_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 341,
+      "version": "7",
+      "when": 1900003430012,
+      "tag": "0340_client_action_blocks_fingerprint",
+      "breakpoints": true
     }
   ]
 }

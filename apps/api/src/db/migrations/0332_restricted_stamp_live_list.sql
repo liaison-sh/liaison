@@ -146,3 +146,129 @@ REVOKE ALL ON FUNCTION kernel.restricted_access_follow(uuid, text, uuid) FROM PU
 --> statement-breakpoint
 -- reviewed-dynamic: a privilege grant on the function above, no dynamic SQL
 GRANT EXECUTE ON FUNCTION kernel.restricted_access_follow(uuid, text, uuid) TO liaison_rls, liaison_admin;
+
+--> statement-breakpoint
+-- When a person was deactivated, on their row, by whatever path set the status (the member
+-- door, a bulk change, an erasure, an import merge or a hand-run statement): the claim's 7 days
+-- run from it. Set when the status becomes `deactivated`, cleared when it leaves it.
+SET LOCAL lock_timeout = '5s';
+--> statement-breakpoint
+-- expand-safe: a nullable column with no default; the previous release never reads or writes it
+ALTER TABLE kernel.users ADD COLUMN IF NOT EXISTS deactivated_at timestamptz;
+--> statement-breakpoint
+-- A person deactivated before this release: the last deactivation the audit log recorded, else
+-- now (the 7 days then start today, never earlier than they did).
+-- expand-safe: fills the new column only, on rows already deactivated
+UPDATE kernel.users u
+   SET deactivated_at = COALESCE(
+     (SELECT max(l."timestamp") FROM kernel.audit_log l
+       WHERE l.org_id = u.org_id AND l.entity_type = 'user' AND l.entity_id = u.id::text
+         AND l.action = 'user.deactivate'),
+     now())
+ WHERE u.status = 'deactivated' AND u.deactivated_at IS NULL;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION kernel.users_deactivated_at() RETURNS trigger
+  LANGUAGE plpgsql SET search_path = pg_catalog AS $fn$
+BEGIN
+  IF NEW.status::text = 'deactivated' THEN
+    IF TG_OP = 'INSERT' OR OLD.status::text IS DISTINCT FROM 'deactivated' THEN
+      NEW.deactivated_at := now();
+    END IF;
+  ELSE
+    NEW.deactivated_at := NULL;
+  END IF;
+  RETURN NEW;
+END
+$fn$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION kernel.users_deactivated_at() FROM PUBLIC;
+--> statement-breakpoint
+-- reviewed-dynamic: creates the trigger once, so the file stays re-runnable; no dynamic SQL
+-- expand-safe: the trigger only stamps the new column, which the previous release never reads
+DO $do$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger t
+                  WHERE t.tgname = 'users_deactivated_at'
+                    AND t.tgrelid = 'kernel.users'::regclass) THEN
+    CREATE TRIGGER users_deactivated_at BEFORE INSERT OR UPDATE OF status ON kernel.users
+      FOR EACH ROW EXECUTE FUNCTION kernel.users_deactivated_at();
+  END IF;
+END
+$do$;
+--> statement-breakpoint
+-- The claim reads the users' own stamp (above) instead of one kind of audit row.
+-- expand-safe: same signature and answers; the previous release calls it the same way, and the 7 days now also count for a deactivation that wrote no audit row
+CREATE OR REPLACE FUNCTION kernel.restricted_claim(p_agreement uuid)
+RETURNS jsonb
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = '' AS $fn$
+DECLARE
+  v_org uuid := NULLIF((SELECT rls_ctx.org_id()), '')::uuid;
+  v_user uuid := NULLIF((SELECT rls_ctx.user_id()), '')::uuid;
+  v_access text;
+  v_number text;
+  v_named uuid[];
+  v_last timestamptz;
+  v_ever uuid[];
+BEGIN
+  IF v_org IS NULL OR v_user IS NULL
+     OR NOT kernel.scopes_covered(ARRAY['kernel:users:admin'], kernel.scope_cover_keys((SELECT rls_ctx.scopes()))) THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'not_allowed');
+  END IF;
+  IF pg_catalog.to_regclass('app_agreements.agreements') IS NULL THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'not_found');
+  END IF;
+  SELECT a.org_access, a.number INTO v_access, v_number FROM app_agreements.agreements a
+   WHERE a.id OPERATOR(pg_catalog.=) p_agreement AND a.org_id OPERATOR(pg_catalog.=) v_org
+   FOR UPDATE;
+  -- An open agreement, or one this org does not hold, answers the same: nothing to claim.
+  IF v_access IS NULL OR v_access OPERATOR(pg_catalog.<>) 'none' THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'not_found');
+  END IF;
+  SELECT COALESCE(pg_catalog.array_agg(DISTINCT s.user_id), ARRAY[]::uuid[]) INTO v_named
+    FROM app_agreements.agreement_shares s
+   WHERE s.agreement_id OPERATOR(pg_catalog.=) p_agreement
+     AND s.org_id OPERATOR(pg_catalog.=) v_org AND s.removed_at IS NULL;
+  IF v_user OPERATOR(pg_catalog.=) ANY (v_named) THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'not_found');
+  END IF;
+  -- Someone on the list still active (or a list naming nobody known): no row, no hint.
+  IF EXISTS (
+    SELECT 1 FROM pg_catalog.unnest(v_named) AS n(id)
+     WHERE NOT EXISTS (
+       SELECT 1 FROM kernel.users u
+        WHERE u.id OPERATOR(pg_catalog.=) n.id AND u.org_id OPERATOR(pg_catalog.=) v_org
+          AND u.status OPERATOR(pg_catalog.=) 'deactivated')
+  ) THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'not_found');
+  END IF;
+  -- When the last of them was deactivated: each user row's own stamp, whatever path did it.
+  SELECT pg_catalog.max(u.deactivated_at) INTO v_last
+    FROM kernel.users u
+   WHERE u.org_id OPERATOR(pg_catalog.=) v_org AND u.id OPERATOR(pg_catalog.=) ANY (v_named);
+  IF v_last IS NULL OR v_last OPERATOR(pg_catalog.>) (pg_catalog.now() OPERATOR(pg_catalog.-) interval '7 days') THEN
+    RETURN pg_catalog.jsonb_build_object('state', 'too_soon');
+  END IF;
+  UPDATE app_agreements.agreement_shares SET removed_at = NULL, role = 'editor'
+   WHERE agreement_id OPERATOR(pg_catalog.=) p_agreement AND org_id OPERATOR(pg_catalog.=) v_org
+     AND user_id OPERATOR(pg_catalog.=) v_user;
+  IF NOT FOUND THEN
+    INSERT INTO app_agreements.agreement_shares (org_id, agreement_id, user_id, role, created_by)
+    VALUES (v_org, p_agreement, v_user, 'editor', v_user);
+  END IF;
+  v_named := v_named OPERATOR(pg_catalog.||) v_user;
+  UPDATE app_agreements.agreements
+     SET claimed_by_user_id = v_user, claimed_at = pg_catalog.now(),
+         acl_user_ids = (SELECT pg_catalog.to_jsonb(pg_catalog.array_agg(x::text ORDER BY x::text))
+                           FROM pg_catalog.unnest(v_named) AS x)
+   WHERE id OPERATOR(pg_catalog.=) p_agreement AND org_id OPERATOR(pg_catalog.=) v_org;
+  SELECT COALESCE(pg_catalog.array_agg(DISTINCT s.user_id), ARRAY[]::uuid[]) INTO v_ever
+    FROM app_agreements.agreement_shares s
+   WHERE s.agreement_id OPERATOR(pg_catalog.=) p_agreement AND s.org_id OPERATOR(pg_catalog.=) v_org
+     AND s.user_id OPERATOR(pg_catalog.<>) v_user;
+  RETURN pg_catalog.jsonb_build_object(
+    'state', 'claimed',
+    'number', v_number,
+    'visible_to', pg_catalog.to_jsonb(v_named),
+    'ever_listed', pg_catalog.to_jsonb(v_ever));
+END
+$fn$;

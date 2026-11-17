@@ -729,20 +729,11 @@ describe("every surface honours the list", () => {
         method: "POST",
         headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
       })
+    // When the person was deactivated, whatever path did it: the user row's own stamp, from the
+    // database's own clock. No audit row is written.
     const goneSince = async (interval: string) => {
-      await sql`DELETE FROM kernel.audit_log WHERE org_id = ${world.orgId}::uuid
-                 AND action = 'user.deactivate' AND entity_id = ${gone}`
-      // The instant comes from the database's own clock.
-      const [at] = await sql<{ ms: string }[]>`
-        SELECT (extract(epoch FROM now() - ${interval}::interval) * 1000)::bigint::text AS ms`
-      await seedAuditEntry({
-        orgId: world.orgId,
-        actorType: "user",
-        action: "user.deactivate",
-        entityType: "user",
-        entityId: gone,
-        timestamp: new Date(Number(at?.ms)),
-      })
+      await sql`UPDATE kernel.users SET deactivated_at = now() - ${interval}::interval
+                 WHERE id = ${gone}::uuid AND status = 'deactivated'`
     }
     const bossSees = () =>
       rlsCount(
@@ -801,7 +792,12 @@ describe("every surface honours the list", () => {
     })
 
     it("is refused at 6 days 23 hours after the last person on the list was deactivated, and allowed at 7 days", async () => {
+      // Deactivated by a path that writes no audit row: the row's stamp counts.
       await sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${gone}::uuid`
+      const [stamped] = await sql<{ fresh: boolean }[]>`
+        SELECT deactivated_at > now() - interval '1 minute' AS fresh FROM kernel.users WHERE id = ${gone}::uuid`
+      expect(stamped?.fresh).toBe(true)
+      expect((await claim(boss.bearer)).status).toBe(404)
       await goneSince("6 days 23 hours")
       const early = await claim(boss.bearer)
       expect(early.status).toBe(404)

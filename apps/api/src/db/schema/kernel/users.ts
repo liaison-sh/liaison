@@ -47,6 +47,9 @@ export const users = kernel.table(
     // The client company of an external user, set exactly when user_type is external.
     // FK users_company_fk -> kernel.companies ON DELETE RESTRICT (0293).
     companyId: uuid("company_id"),
+    // When the status last became `deactivated` (trigger users_deactivated_at, 0332); NULL
+    // while active. A restricted record's claim counts its 7 days from it.
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

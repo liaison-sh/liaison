@@ -59,18 +59,19 @@ export interface ContentSecurityPolicyOptions extends SecurityHeadersOptions {
    */
   payFrameOrigin?: string | null
   /**
-   * A public page a client opens (the token page `/a`): nothing may frame it, not
+   * A public page a client opens (the token page `/a`, the portal): nothing may frame it, not
    * even this origin.
    */
   publicPage?: boolean
 }
 
 /**
- * The web pages a client outside the organization opens: the token page. They
- * are served by the SPA fallback like any route, with the public surface's
- * headers on top (no referrer, no index, never framed).
+ * The web pages a client outside the organization opens: the token page and the
+ * client portal (its sign-in page and shell). They are served by the SPA fallback
+ * like any route, with the public surface's headers on top (no referrer, no
+ * index, never framed).
  */
-export const PUBLIC_PAGE_PATHS: readonly string[] = ["/a"]
+export const PUBLIC_PAGE_PATHS: readonly string[] = ["/a", "/portal"]
 
 export function isPublicPagePath(pathname: string): boolean {
   return PUBLIC_PAGE_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))

@@ -5037,11 +5037,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
 
-  const idemKey =
+  const rawIdemKey =
     opts.internalCall?.idempotencyKey ??
     (typeof (validatedParams as any)?.idempotencyKey === "string"
       ? ((validatedParams as any).idempotencyKey as string)
       : undefined)
+  // The stored answer is one caller's, read under their access and stamped for their turn: the
+  // key is that caller's own, so another person's call with the same key runs as theirs.
+  const idemActor = opts.actor as { actorType: string; userId?: string | null; agentId?: string }
+  const idemKey =
+    rawIdemKey === undefined
+      ? undefined
+      : `${idemActor.actorType}:${idemActor.userId ?? "-"}:${idemActor.agentId ?? "-"}:${rawIdemKey}`
   const innerChain = [...callChain, opts.toolName]
   const userId = opts.actor.actorType === "user" ? opts.actor.userId : "system"
 

@@ -12,7 +12,7 @@ import type { AppEnv } from "~/app"
 import { parseOriginAllowlist } from "~/lib/app-origins"
 import { env } from "~/lib/env"
 import { authLogger as log } from "~/lib/logger"
-import { requestHostBinding } from "~/lib/org-host"
+import { orgIdForSlug, requestHostBinding } from "~/lib/org-host"
 import { effectiveRequest, getClientIp } from "~/lib/request-context"
 import { readCookie, success } from "~/lib/response"
 import { padToResponseFloor } from "~/lib/response-timing"
@@ -149,10 +149,15 @@ export const portalAuthRoutes = new Hono<AppEnv>()
     }
     const token = readCookie(c.req.header("cookie"), PORTAL_REFRESH_COOKIE)
     if (!token) return c.json({ error: { message: "Invalid session" } }, 401)
+    // Host binding (lib/org-host.ts), as on the member route: on an org's host, a session of
+    // any other org is refused untouched.
+    const binding = requestHostBinding(c)
+    const expectedOrgId = binding.kind === "org" ? await orgIdForSlug(binding.slug) : undefined
     try {
       const tokens = await refreshSession(token, {
         userAgent: c.req.header("User-Agent"),
         kind: "portal",
+        ...(binding.kind === "org" ? { expectedOrgId } : {}),
       })
       return signedIn(c, tokens)
     } catch (err) {

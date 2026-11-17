@@ -190,6 +190,7 @@ import { slotsRoutes } from "~/modules/slots/routes"
 import { mentions } from "~/modules/threads/mentions-routes"
 import { references } from "~/modules/threads/references-routes"
 import { threads } from "~/modules/threads/routes"
+import { PORTAL_ATTACHMENT_MAX_BYTES } from "~/modules/tickets/ingest-core"
 import { tourRoutes } from "~/modules/tours/routes"
 import { invites } from "~/modules/users/invites-routes"
 import { preferencesRoutes } from "~/modules/users/preferences-routes"
@@ -464,6 +465,11 @@ export const apiBodyLimitMiddleware: MiddlewareHandler<AppEnv> = async (c, next)
   // own per-attachment/count caps, not the generic 1 MB JSON cap.
   if (c.req.path.startsWith("/api/bug-reports")) {
     return bodyLimit({ maxSize: 25 * 1024 * 1024 })(c, next)
+  }
+  // A portal person's attachment: the route refuses a file over its own 10 MB, so the
+  // body may be that much plus the multipart framing, not the generic 1 MB.
+  if (c.req.method === "POST" && c.req.path === "/api/portal/requests/attachments") {
+    return bodyLimit({ maxSize: PORTAL_ATTACHMENT_MAX_BYTES + 64 * 1024 })(c, next)
   }
   // Avatar upload carries the raw image body — bounded by the route's own 5 MB
   // ceiling (with headroom here), not the generic 1 MB JSON cap.

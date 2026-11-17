@@ -10,6 +10,7 @@ import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "~/app"
 import { portalAvailable } from "~/db/portal-rls"
 import { rootLogger } from "~/lib/logger"
+import { hostAllowsOrg } from "~/lib/org-host"
 import { getUserAuthState } from "~/modules/auth/auth-state"
 import { verifyPortalToken } from "~/modules/auth/jwt"
 import { isSessionRevoked } from "~/modules/auth/session-revocation"
@@ -45,6 +46,9 @@ export function portalAuthMiddleware(secret: string) {
       refuse(c.req.path, "invalid_token")
     }
     if (payload.sid && isSessionRevoked(payload.sid)) refuse(c.req.path, "session_revoked")
+    // Host binding (lib/org-host.ts): with org hosts, a portal token of org A works only on
+    // A's host. A no-op without LIAISON_ORG_HOST_TEMPLATE.
+    if (!(await hostAllowsOrg(c, payload.orgId))) refuse(c.req.path, "foreign_host")
     // Status and auth version, from the cached auth state (a deactivation or an
     // ended access bumps the version, so the token dies within the cache TTL at
     // most, and at once through the revocation above).

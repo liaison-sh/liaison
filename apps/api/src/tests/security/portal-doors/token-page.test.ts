@@ -47,6 +47,19 @@ describe("token page doors", () => {
     expect(member?.headers.get("content-security-policy") ?? "").toContain("frame-ancestors 'self'")
   })
 
+  it("NT-49: the /portal sign-in page and shell answer with no referrer, no index and no framing", async () => {
+    for (const path of ["/portal", "/portal/x"]) {
+      const page = await serveSpaFallback(publicDir, undefined, path)
+      expect({ path, status: page?.status }).toEqual({ path, status: 200 })
+      expect(page?.headers.get("referrer-policy")).toBe("no-referrer")
+      expect(page?.headers.get("x-robots-tag")).toContain("noindex")
+      expect(page?.headers.get("content-security-policy") ?? "").toContain("frame-ancestors 'none'")
+    }
+    // A path that only starts with the word is not the portal.
+    const member = await serveSpaFallback(publicDir, undefined, "/portals")
+    expect(member?.headers.get("x-robots-tag")).toBeNull()
+  })
+
   it("NT-55: the token page renders typed names, capacities, reasons, subjects, filenames and request texts as text, never as markup", () => {
     const files = readdirSync(WEB_MODULE, { recursive: true })
       .map(String)

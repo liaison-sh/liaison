@@ -395,7 +395,7 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
   // in the name or the phrase is refused first, so it costs no code.
   let portalCodeChecked = false
   if (input.via === "portal") {
-    // Signing and accepting record a signature, which is never sealed without a code (D48).
+    // Signing and accepting record a signature, which is never sealed without a code.
     const needsCode = pre.portal_stale === true || (wanted !== "declined" && pre.kind !== "approve")
     if (wanted !== "declined") {
       const early = typedRefusal(pre, name, null, phrase)

@@ -223,7 +223,7 @@ describe("portal doors: the portal decide", () => {
         `SELECT count(*)::int AS n FROM ${k("audit_log")} WHERE actor_id = $1 AND action = 'portal.approve' AND entity_id = $2`,
         [w.clientA.userId, id],
       )
-      logged = (n as { n: number }).n
+      logged = Number((n as unknown as { n: number } | undefined)?.n ?? 0)
       if (logged === 0) await new Promise((r) => setTimeout(r, 20))
     }
     expect(logged).toBe(1)
@@ -312,9 +312,9 @@ describe("portal doors: the portal decide", () => {
     })
     expect(restricted.sharedOnPortal).toBe(false)
     const shares = await sql.unsafe(
-      `SELECT kind, object_id, shared_by_user_id FROM ${k("portal_shares")} WHERE org_id = $1 AND object_id = ANY($2::uuid[])`,
-      [w.orgId, [restrictedTarget]],
+      `SELECT kind, object_id, shared_by_user_id FROM ${k("portal_shares")} WHERE org_id = $1 AND object_id = $2`,
+      [w.orgId, restrictedTarget],
     )
-    expect(shares).toEqual([])
+    expect(shares.length).toBe(0)
   })
 })

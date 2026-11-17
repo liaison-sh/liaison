@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// change_request_send through the real path: the agreements app registered from its manifest,
+// a person's own call in the sandbox, the change request frozen by the host renderer, its
+// approval link minted by the kernel, and the reply as the declared mail call. When the reply
+// cannot leave (here: the person has no mailbox for that conversation), the kernel withdraws
+// the link in the same call and the change request stays a draft: nothing reaches the client.
+
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import { sql } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import type { UserContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
+import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
+import type { EmailProvider } from "~/infra/email"
+import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
+import { env } from "~/lib/env"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
+import { executeToolCore } from "~/modules/apps/execute-tool"
+import { ensureAppsForOrg } from "~/modules/apps/init"
+import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
+import { registerApps } from "~/modules/apps/runtime"
+import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { insertAppRow } from "~/seed/factories/app-tables"
+import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
+import {
+  CaptureProvider,
+  createDoorWorld,
+  type DoorWorld,
+  dropDoorWorld,
+} from "~/tests/security/portal-doors/fixture"
+
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
+const SCOPES = ["agreements:agreements:read", "agreements:agreements:write", "mail:*"]
+const mutableEnv = env as { LIAISON_TSA_URL?: string }
+const kernel = (table: string) => sql(`${schemaRef("kernel")}.${table}`)
+const app = (table: string) => sql(`${schemaRef("app_agreements")}.${table}`)
+const SHA = "c".repeat(64)
+
+let w: DoorWorld
+let parentId = ""
+let versionId = ""
+const capture = new CaptureProvider()
+let previousMail: EmailProvider
+let prevTsa: string | undefined
+
+function descriptor(): Record<string, unknown> {
+  const manifest = JSON.parse(
+    readFileSync(join(REPO_ROOT, "bundled-apps", "agreements", "app.manifest.json"), "utf8"),
+  ) as Record<string, unknown>
+  return {
+    ...manifest,
+    trusted: false,
+    _format: "manifest",
+    _bundlePath: join(
+      REPO_ROOT,
+      "bundled-apps",
+      "agreements",
+      String(manifest.version),
+      "bundle.js",
+    ),
+  }
+}
+
+type Out = { data?: Record<string, any>; error?: { code: string; message: string } }
+
+async function asPerson(userId: string, tool: string, params: unknown): Promise<Out> {
+  const actor: UserContext = {
+    actorType: "user",
+    userId,
+    orgId: w.orgId,
+    scopes: SCOPES,
+    dimensionGrants: {},
+  }
+  return (await executeToolCore({
+    toolName: `agreements:${tool}`,
+    orgId: w.orgId,
+    actor,
+    params,
+    origin: "human-ui",
+  } as never)) as Out
+}
+
+beforeAll(async () => {
+  await acquireTestLock()
+  process.env.LIAISON_BUNDLED_APPS_FROM_SOURCE = "1"
+  prevTsa = mutableEnv.LIAISON_TSA_URL
+  mutableEnv.LIAISON_TSA_URL = "https://tsa.example.test/"
+  previousMail = getSystemEmailProvider()
+  setSystemEmailProvider(capture)
+  w = await createDoorWorld()
+  await ensureAppsForOrg(w.orgId)
+  await initSandboxPool()
+  await initWorkerPool()
+  const { failedApps } = await registerApps([descriptor() as never], w.orgId)
+  expect(failedApps).toEqual([])
+  await primeOrgApps(w.orgId, 0)
+  await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
+  parentId = crypto.randomUUID()
+  versionId = crypto.randomUUID()
+  await withPrivilegedDb(w.orgId, "test:change-request-parent", async (tx) => {
+    await insertAppRow(tx, "agreements", "agreements", {
+      org_id: w.orgId,
+      id: parentId,
+      number: "AG-2026-014",
+      kind: "sow",
+      status: "signed",
+      title: "Website",
+      company_id: w.companyA,
+      contact_id: w.clientA.contactId,
+      currency: "EUR",
+      price_minor: "4200000",
+      org_access: "editor",
+      created_by_user_id: w.admin.userId,
+    })
+    await insertAppRow(tx, "agreements", "agreement_versions", {
+      org_id: w.orgId,
+      id: versionId,
+      agreement_id: parentId,
+      number: 1,
+      status: "signed",
+      sha256: SHA,
+      source_text:
+        "1. Scope\nA website in two languages.\n8.2 Extra work is billed at 100.00 EUR per hour.",
+      frozen_at: new Date().toISOString(),
+    })
+  })
+}, 300_000)
+
+afterAll(async () => {
+  await rebuildFilesSelectPolicy()
+  forgetOrgApps(w.orgId)
+  await shutdownWorkerPool()
+  await shutdownSandboxPool()
+  setSystemEmailProvider(previousMail)
+  mutableEnv.LIAISON_TSA_URL = prevTsa
+  await clearRedisPatterns(["ca:*"])
+  if (w) {
+    await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
+    await dropDoorWorld(w)
+  }
+  await releaseTestLock()
+})
+
+describe("a change request sent through the sandbox", () => {
+  it("a reply that cannot leave withdraws the approval link the kernel minted, and the change request stays a draft", async () => {
+    const out = await asPerson(w.admin.userId, "change_request_send", {
+      parent_agreement_id: parentId,
+      title: "Single sign-on",
+      work: ["Sign-in with the client's identity provider"],
+      hours_minutes: 3600,
+      hours_source: "past similar work",
+      rate_minor: "10000",
+      reply: { conversation_id: crypto.randomUUID(), body: "Here is a change request." },
+      passage: { version_id: versionId, section: "8.2" },
+      mail_message_id: "mail-1",
+    })
+    // The call answers the mail's refusal, named, and says the link was withdrawn.
+    const message = String(out.error?.message ?? out.data?.error?.message ?? "")
+    expect(message).toContain("was withdrawn")
+    const crs = (await sql`
+      SELECT id, number, status, price_minor::text AS price, hours_minutes FROM ${app("agreements")}
+       WHERE org_id = ${w.orgId} AND parent_agreement_id = ${parentId}`) as unknown as Array<{
+      id: string
+      number: string
+      status: string
+      price: string
+      hours_minutes: number
+    }>
+    expect(crs).toHaveLength(1)
+    expect(crs[0]).toMatchObject({
+      number: "CR-1",
+      status: "draft",
+      price: "600000",
+      hours_minutes: 3600,
+    })
+    const [v] = (await sql`
+      SELECT id, status FROM ${app("agreement_versions")} WHERE agreement_id = ${crs[0]?.id}`) as unknown as Array<{
+      id: string
+      status: string
+    }>
+    expect(v?.status).toBe("frozen")
+    const links = (await sql`
+      SELECT kind, revoked_at IS NOT NULL AS revoked FROM ${kernel("client_actions")}
+       WHERE org_id = ${w.orgId} AND target_id = ${v?.id}::uuid`) as unknown as Array<{
+      kind: string
+      revoked: boolean
+    }>
+    expect(links.length).toBeGreaterThan(0)
+    expect(links.every((l) => l.kind === "approve" && l.revoked)).toBe(true)
+  }, 120_000)
+})

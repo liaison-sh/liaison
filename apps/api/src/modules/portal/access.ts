@@ -13,7 +13,7 @@
 // `portal.company_id()` answers nothing for an ended company, so every portal read
 // and decide refuses on the next statement.
 import { createHash } from "node:crypto"
-import { type PortalSettings, portalSettingsSchema } from "@liaison/shared"
+import { type PortalSettings, portalSettingsSchema, toShippedLocale } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -28,6 +28,7 @@ import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { revokeSessions } from "~/modules/auth/session-revocation"
 import { writeClientActionEvent } from "~/modules/client-actions/events"
 import { resolveContact } from "~/modules/contacts/service"
+import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import { createExternalUser } from "~/modules/users/external-user"
 
@@ -251,24 +252,20 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
 
 /** One system mail pointing at the portal's sign-in page; it holds no secret. */
 async function sendInviteMail(orgId: string, email: string, companyName: string): Promise<void> {
-  const [org] = extractRows<{ name: string; slug: string }>(
-    await withPrivilegedDb(orgId, "portal-invite-org", (tx) =>
-      tx.execute(sql`SELECT name, slug FROM ${K()}.organizations WHERE id = ${orgId}`),
-    ),
-  )
+  const org = await orgForMail(orgId)
   if (!org) return
   const base = await orgAppBaseUrl(orgId)
   const link = `${base}/portal/sign-in?org=${encodeURIComponent(org.slug)}`
-  const subject = `${org.name} invites you to your client portal`
+  const t = (key: string) =>
+    serverT(org.locale, `portal-auth.invite.${key}`, { org: org.name, company: companyName })
+  const subject = t("subject")
   const { html, text } = renderBrandedEmail({
     subject,
-    eyebrow: org.name,
-    heading: `Your portal for ${companyName}`,
-    paragraphs: [
-      `${org.name} opened a client portal for ${companyName}. Sign in with this address: a link comes by mail each time, no password.`,
-    ],
-    cta: { label: "Open the portal", href: link },
-    footer: ["If you did not expect this, you can ignore it."],
+    eyebrow: t("eyebrow"),
+    heading: t("heading"),
+    paragraphs: [t("body")],
+    cta: { label: t("cta"), href: link },
+    footer: [t("footer")],
   })
   const cfg = await getOrgEmailConfig(orgId)
   await sendSystemEmailObserved({
@@ -280,6 +277,21 @@ async function sendInviteMail(orgId: string, email: string, companyName: string)
     text,
     template: "portal.invite",
   })
+}
+
+/** The org's name, slug and language for a mail to one of its clients. */
+async function orgForMail(
+  orgId: string,
+): Promise<{ name: string; slug: string; locale: "en" | "fr" } | null> {
+  const [org] = extractRows<{ name: string; slug: string; default_locale: string | null }>(
+    await withPrivilegedDb(orgId, "portal-mail-org", (tx) =>
+      tx.execute(
+        sql`SELECT name, slug, default_locale FROM ${K()}.organizations WHERE id = ${orgId}`,
+      ),
+    ),
+  )
+  if (!org) return null
+  return { name: org.name, slug: org.slug, locale: toShippedLocale(org.default_locale) ?? "en" }
 }
 
 // ── Shares ────────────────────────────────────────────────────────────────
@@ -788,19 +800,30 @@ export async function resetPortalTotp(input: {
        WHERE id = ${input.userId} AND org_id = ${input.orgId} AND user_type = 'external'`),
   )
   invalidateAuthCache(input.userId)
-  void sendSystemEmailObserved({
-    to: person.email,
-    ...(await getOrgEmailConfig(input.orgId)),
-    subject: "Your portal's second step was reset",
-    ...renderBrandedEmail({
-      subject: "Your portal's second step was reset",
-      heading: "Your second step was reset",
-      paragraphs: [
-        "A member of the team reset your authenticator for the client portal. At your next sign-in you set one up again. If you did not ask for this, reply to this mail.",
-      ],
-    }),
-    template: "portal.totp-reset",
-  }).catch((err) =>
+  void (async () => {
+    const org = await orgForMail(input.orgId)
+    if (!org) return
+    const t = (key: string) =>
+      serverT(org.locale, `portal-auth.totpReset.${key}`, { org: org.name })
+    const subject = t("subject")
+    const { html, text } = renderBrandedEmail({
+      subject,
+      eyebrow: t("eyebrow"),
+      heading: t("heading"),
+      paragraphs: [t("body")],
+      footer: [t("footer")],
+    })
+    const cfg = await getOrgEmailConfig(input.orgId)
+    await sendSystemEmailObserved({
+      to: person.email,
+      from: cfg.from,
+      replyTo: cfg.replyTo,
+      subject,
+      html,
+      text,
+      template: "portal.totp-reset",
+    })
+  })().catch((err) =>
     log.error({ err, userId: input.userId }, "portal second-factor reset mail failed"),
   )
   return person

@@ -23,5 +23,20 @@
     "body": "You have a reply on {{subject}}. Sign in to read it.",
     "cta": "Open your client space",
     "footer": "You are receiving this because you sent this request from the client portal of {{org}}."
+  },
+  "invite": {
+    "subject": "{{org}} invites you to your client portal",
+    "eyebrow": "Client portal",
+    "heading": "Your portal for {{company}}",
+    "body": "{{org}} opened a client portal for {{company}}. Sign in with this address: each time, a link comes by email, with no password.",
+    "cta": "Open the portal",
+    "footer": "If you did not expect this, you can ignore it."
+  },
+  "totpReset": {
+    "subject": "Your client portal's second step was reset",
+    "eyebrow": "Client portal",
+    "heading": "Your second step was reset",
+    "body": "Someone at {{org}} reset your authenticator for the client portal. At your next sign-in you set one up again. If you did not ask for this, reply to this email.",
+    "footer": "You are receiving this because you have access to the client portal of {{org}}."
   }
 }

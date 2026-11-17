@@ -11,7 +11,7 @@
 // (the authority was down; also resends copies that failed) and
 // `evidence-verify` (weekly re-hash, never a repair).
 
-import { RECORDED_APPROVAL } from "./change-requests"
+import { CHANGE_REQUEST, RECORDED_APPROVAL } from "./change-requests"
 import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
 import { addSignedClientToScopeGroup } from "./scope-group"
 import { startProjectAfterSigning } from "./signed-project"
@@ -652,6 +652,7 @@ export async function sendCopies(ctx: SealCtx, packageId: string) {
         documentSha256: pkg.document_sha256,
         seal: pkg.seal,
         timestamped: c.kind === "stamped" || pkg.timestamp_status === "stamped",
+        approved: agreement.kind === CHANGE_REQUEST,
         senderEmail: e.invited_by.includes("@") ? e.invited_by : null,
         versionId: version.id,
         packageId: pkg.id,

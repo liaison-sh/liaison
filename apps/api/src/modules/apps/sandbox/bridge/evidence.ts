@@ -395,6 +395,7 @@ export function createEvidenceMethods(
         documentSha256: string
         seal: string
         timestamped: boolean
+        approved?: boolean
         senderEmail?: string | null
         versionId: string
         packageId: string
@@ -423,6 +424,7 @@ export function createEvidenceMethods(
           documentSha256: p.documentSha256,
           seal: p.seal,
           timestamped: p.timestamped,
+          approved: p.approved === true,
           senderEmail: p.senderEmail ?? null,
           signedPdf: { filename: `${base}-signed.pdf`, bytes: signedPdf },
           copyZip: { filename: `${base}-evidence-copy.zip`, bytes: copyZip },
@@ -438,11 +440,9 @@ export function createEvidenceMethods(
     },
   }
 
+  // `organizations` is deny-all to the app's own handle: the kernel's display name reader.
   async function orgNameOf(): Promise<string> {
-    const K = drizzleSql.raw(schemaRef("kernel"))
-    const rows = extractRows<{ name: string }>(
-      await txDb.execute(drizzleSql`SELECT name FROM ${K}.organizations WHERE id = ${orgId}`),
-    )
-    return rows[0]?.name ?? ""
+    const { getOrgDisplayName } = await import("~/modules/org/email-from")
+    return getOrgDisplayName(orgId)
   }
 }

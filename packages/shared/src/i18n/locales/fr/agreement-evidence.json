@@ -5,7 +5,9 @@
     "fingerprint": "Empreinte du document signé (SHA-256) : {{fingerprint}}",
     "seal": "Sceau : {{seal}}",
     "pending": "L'horodatage extérieur n'est pas encore arrivé ; un fichier de preuve horodaté suivra par mail.",
-    "footer": "Ce mail vous est envoyé pour le garder. Il ne contient aucun lien."
+    "footer": "Ce mail vous est envoyé pour le garder. Il ne contient aucun lien.",
+    "approved_subject": "Votre exemplaire approuvé : {{agreement}}, version {{version}}",
+    "approved_body": "Tout le monde a approuvé « {{title}} » avec {{org}} : une approbation enregistrée. Votre exemplaire du document approuvé et de son fichier de preuve sont joints. Gardez-les : ils permettent de vérifier le document sans {{org}}."
   },
   "pages": {
     "page": "Page de signature {{n}} sur {{of}}",

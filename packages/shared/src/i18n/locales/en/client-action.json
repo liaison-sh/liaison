@@ -29,7 +29,7 @@
       "footer": "This copy goes only to the address the document was sent to."
     },
     "staff": {
-      "subject": "{{sender}} asks you to {{verb}} \"{{title}}\"",
+      "subject": "Your turn to {{verb}} \"{{title}}\"",
       "body": "Open Liaison, find \"{{title}}\" on your Home and choose Read and sign. This email has no link on purpose: you {{verb}} it in your own signed-in session.",
       "footer": "Nobody from {{org}} will send you a code or a link for this by email."
     }

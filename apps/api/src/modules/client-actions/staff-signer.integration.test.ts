@@ -77,6 +77,8 @@ describe("a staff signer", () => {
     expect(staffMail).toBeDefined()
     expect(`${staffMail?.text}${staffMail?.html}`).not.toContain("#t=")
     expect(`${staffMail?.text}`).toContain("Read and sign")
+    // The signer may be the sender themselves: the subject never says someone asks them.
+    expect(staffMail?.subject).toMatch(/^Your turn to sign "/)
     expect(
       kit.capture.sent
         .slice(before)

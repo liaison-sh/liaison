@@ -29,7 +29,7 @@
       "footer": "Cette copie part uniquement à l'adresse à laquelle le document a été envoyé."
     },
     "staff": {
-      "subject": "{{sender}} vous demande de {{verb}} « {{title}} »",
+      "subject": "À vous de {{verb}} « {{title}} »",
       "body": "Ouvrez Liaison, trouvez « {{title}} » sur votre accueil et choisissez Lire et signer. Cet e-mail ne contient volontairement aucun lien : vous le faites dans votre propre session connectée.",
       "footer": "Personne de {{org}} ne vous enverra de code ni de lien par e-mail pour cela."
     }

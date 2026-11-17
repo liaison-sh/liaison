@@ -23,18 +23,24 @@ export interface CopyMailInput {
   documentSha256: string
   seal: string
   timestamped: boolean
+  /** A recorded approval (a change request), not a signature. */
+  approved?: boolean
   senderEmail: string | null
   signedPdf: { filename: string; bytes: Uint8Array }
   copyZip: { filename: string; bytes: Uint8Array }
 }
 
-/** The mail words, from the `agreement-evidence` locale files, in the document's language. */
-function wordsFor(lang: SignatureLang) {
+/**
+ * The mail words, from the `agreement-evidence` locale files, in the document's language. A
+ * change request is approved, never signed: its copy says so.
+ */
+export function copyMailWords(lang: SignatureLang, approved: boolean) {
   const t = (key: string, params?: Record<string, string | number>) =>
     serverT(lang, `agreement-evidence.copy.${key}`, params)
   return {
-    subject: (agreement: string, version: number) => t("subject", { agreement, version }),
-    body: (org: string, title: string) => t("body", { org, title }),
+    subject: (agreement: string, version: number) =>
+      t(approved ? "approved_subject" : "subject", { agreement, version }),
+    body: (org: string, title: string) => t(approved ? "approved_body" : "body", { org, title }),
     fingerprint: (fingerprint: string) => t("fingerprint", { fingerprint }),
     seal: (seal: string) => t("seal", { seal }),
     pending: t("pending"),
@@ -44,7 +50,7 @@ function wordsFor(lang: SignatureLang) {
 
 /** Sends one signer's copy. Throws when the provider refuses, so the caller can count a failure. */
 export async function sendSignedCopyMail(input: CopyMailInput): Promise<void> {
-  const w = wordsFor(input.lang)
+  const w = copyMailWords(input.lang, input.approved === true)
   const title = plainText(input.title)
   const subject = w.subject(plainText(input.agreement), input.version)
   const paragraphs: string[] = [

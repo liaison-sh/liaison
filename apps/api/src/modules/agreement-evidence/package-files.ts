@@ -71,6 +71,12 @@ export interface CertificateInput {
   signers: Array<{ name: string; capacity: string }>
 }
 
+/** One signer on the certificate: their name, and their capacity when they gave one. */
+export function certificateSignerLine(s: { name: string; capacity: string }): string {
+  const capacity = (s.capacity ?? "").trim()
+  return capacity ? `${s.name}, ${capacity}` : s.name
+}
+
 /** A one-page summary of what was signed: plain text, no claim beyond the facts. */
 export async function renderCertificate(input: CertificateInput): Promise<Uint8Array> {
   const doc = await PDFDocument.create()
@@ -110,7 +116,7 @@ export async function renderCertificate(input: CertificateInput): Promise<Uint8A
   line(input.timestamped ? t("stamped") : t("pending"))
   y -= 8
   line(t("signers"), 10, bold)
-  for (const s of input.signers) line(`${s.name}, ${s.capacity}`)
+  for (const s of input.signers) line(certificateSignerLine(s))
   return doc.save({ useObjectStreams: false })
 }
 

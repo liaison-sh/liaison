@@ -5,7 +5,9 @@
     "fingerprint": "Fingerprint of the signed document (SHA-256): {{fingerprint}}",
     "seal": "Seal: {{seal}}",
     "pending": "The outside timestamp has not arrived yet; a stamped evidence file follows by mail.",
-    "footer": "This mail was sent for you to keep. It holds no link."
+    "footer": "This mail was sent for you to keep. It holds no link.",
+    "approved_subject": "Your approved copy: {{agreement}}, version {{version}}",
+    "approved_body": "Everyone has approved \"{{title}}\" with {{org}}: a recorded approval. Your copy of the approved document and of its evidence file are attached. Keep them: they let you check the document without {{org}}."
   },
   "pages": {
     "page": "Signature page {{n}} of {{of}}",

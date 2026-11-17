@@ -577,4 +577,12 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   SHARE_OBJECT_REQUIRED: 422,
   PORTAL_SETTINGS_INVALID: 422,
   ERASE_FAILED: 500,
+  // Client reports (apps/projects/service/client-reports.ts): a section of a share that is
+  // closed, a report already sent or no longer a draft, a recipient without an address, a
+  // project with no client company.
+  SHARE_CLOSED: 409,
+  REPORT_SENT: 409,
+  REPORT_NOT_DRAFT: 409,
+  NO_RECIPIENT: 422,
+  no_client_company: 422,
 }

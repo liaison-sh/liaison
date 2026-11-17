@@ -268,6 +268,69 @@ const LISTED = new Map<string, string>([
   ["database:db_list_reads", `the read catalog the org configured: ${NONE}`],
   ["database:db_describe", `table and column names of the connected database's schema: ${NONE}`],
   ["database:db_probe", `grants and catalog drift of the connected role: ${NONE}`],
+  // Projects declares the client report's outside fields (thread text it hands back); its other
+  // reads return what the org's own members write.
+  ["projects:get", `projects, tasks, comments and labels the org's own members write: ${NONE}`],
+  [
+    "projects:tasks_byAssignee",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:attentionItems",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:tasks_byProject",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:tasks_aggregate",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:portfolio_rollup",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:deals_followup_candidates",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:templates_list",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:task_time_get",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:timesheet_export",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:cost_rates_list",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:reconcile_facts",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:comments",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:checklist_get",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:labels.list",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
+  [
+    "projects:time_settings_get",
+    `projects, tasks, comments and labels the org's own members write: ${NONE}`,
+  ],
 ])
 
 /**
@@ -279,7 +342,6 @@ const LISTED_APPS = new Map<string, string>([
     "knowledge",
     "the host marks a turn per document read: a document synced from outside, or a remote source item, taints (taint-exemptions.ts)",
   ],
-  ["projects", `projects, tasks, comments and labels the org's own members write: ${NONE}`],
   ["mcp-manager", `the MCP connections the org added: ${NONE}`],
 ])
 
@@ -383,8 +445,11 @@ describe("outside text is declared by data", () => {
   // ticket subjects (backlogHealth, slaReport, listForContact, csat.list) declared them: a turn
   // that read a subject a customer wrote parks its later outbound calls like one that read the
   // ticket itself.
+  // Projects rose from 0 to 2 when the client report's two reads (client_report_get,
+  // client_report_sources_get) declared the thread text they hand back: a turn that read a
+  // report's sources parks its later outbound calls (client-report.integration.test.ts).
   it("the kernel routine templates and the ticket job's path park no more than before", () => {
-    const FORK_COUNT: Record<string, number> = { mail: 2, projects: 0, tickets: 6 }
+    const FORK_COUNT: Record<string, number> = { mail: 2, projects: 2, tickets: 6 }
     const now: Record<string, number> = {}
     for (const m of manifests) {
       if (!(m.name in FORK_COUNT)) continue

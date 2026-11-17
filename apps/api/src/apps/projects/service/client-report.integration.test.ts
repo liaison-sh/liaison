@@ -7,13 +7,14 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, sql } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withPortalContext } from "~/db/portal-rls"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { type EmailMessage, type EmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -89,6 +90,19 @@ async function draft(periodEnd: string, sections: unknown[], extra: Record<strin
   })
 }
 
+async function share(id: string, kind: string) {
+  await sql.unsafe(
+    insertSql("kernel.portal_shares", {
+      id,
+      org_id: orgId,
+      company_id: companyId,
+      kind,
+      object_id: projectId,
+      shared_by_user_id: owner.userId,
+    }),
+  )
+}
+
 const progress = (text: string) => ({ kind: "project_progress", heading: "This week", text })
 const summary = (text: string) => ({ kind: "project_reports", heading: "Summary", text })
 
@@ -107,26 +121,32 @@ beforeAll(async () => {
   const tag = crypto.randomUUID().slice(0, 8)
   companyId = crypto.randomUUID()
   otherCompanyId = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.companies (id, org_id, handle, name) VALUES
-      (${companyId}::uuid, ${orgId}::uuid, ${`rep-${tag}`}, 'Maison Corail'),
-      (${otherCompanyId}::uuid, ${orgId}::uuid, ${`rep2-${tag}`}, 'Maison Sable')`)
+  await sql.unsafe(
+    insertSql("kernel.companies", [
+      { id: companyId, org_id: orgId, handle: `rep-${tag}`, name: "Maison Corail" },
+      { id: otherCompanyId, org_id: orgId, handle: `rep2-${tag}`, name: "Maison Sable" },
+    ]),
+  )
   clientContact = crypto.randomUUID()
   clientEmail = `claire-${tag}@corail.example.com`
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.contacts (id, org_id, handle, name, email, company_id)
-    VALUES (${clientContact}::uuid, ${orgId}::uuid, ${`claire-${tag}`}, 'Claire Fontaine',
-            ${clientEmail}, ${companyId}::uuid)`)
+  await sql.unsafe(
+    insertSql("kernel.contacts", {
+      id: clientContact,
+      org_id: orgId,
+      handle: `claire-${tag}`,
+      name: "Claire Fontaine",
+      email: clientEmail,
+      company_id: companyId,
+    }),
+  )
   const made = await call<{ id: string }>("projects_createProject", { name: "Maison Corail site" })
   projectId = made.id
   await db.execute(drizzleSql`
     UPDATE app_projects.projects SET company_id = ${companyId}::uuid WHERE id = ${projectId}::uuid`)
   reportsShare = crypto.randomUUID()
   progressShare = crypto.randomUUID()
-  await db.execute(drizzleSql`
-    INSERT INTO kernel.portal_shares (id, org_id, company_id, kind, object_id, shared_by_user_id) VALUES
-      (${reportsShare}::uuid, ${orgId}::uuid, ${companyId}::uuid, 'project_reports', ${projectId}::uuid, ${owner.userId}::uuid),
-      (${progressShare}::uuid, ${orgId}::uuid, ${companyId}::uuid, 'project_progress', ${projectId}::uuid, ${owner.userId}::uuid)`)
+  await share(reportsShare, "project_reports")
+  await share(progressShare, "project_progress")
 }, 180_000)
 
 afterAll(async () => {
@@ -189,13 +209,25 @@ describe("a client report waits for a person", () => {
     }
     // The client of the company reads the same sections, and nothing of the draft's sources.
     const portalPerson = crypto.randomUUID()
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, user_type, company_id)
-      VALUES (${portalPerson}::uuid, ${orgId}::uuid, ${`p-${portalPerson.slice(0, 8)}@corail.example.com`},
-              'Claire Portail', 'external', ${companyId}::uuid)`)
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.portal_people (user_id, org_id, company_id, contact_id, title)
-      VALUES (${portalPerson}::uuid, ${orgId}::uuid, ${companyId}::uuid, ${clientContact}::uuid, 'Client')`)
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: portalPerson,
+        org_id: orgId,
+        email: `p-${portalPerson.slice(0, 8)}@corail.example.com`,
+        name: "Claire Portail",
+        user_type: "external",
+        company_id: companyId,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.portal_people", {
+        user_id: portalPerson,
+        org_id: orgId,
+        company_id: companyId,
+        contact_id: clientContact,
+        title: "Client",
+      }),
+    )
     const seen = await withPortalContext({ orgId, userId: portalPerson } as never, async (tx) =>
       extractRows<Record<string, unknown>>(
         await tx.execute(drizzleSql`SELECT * FROM portal.client_reports`),
@@ -281,20 +313,23 @@ describe("the sources of a report", () => {
   })
 
   it("a project with time and budgets off gives no hours, even with the hours share open", async () => {
-    const share = crypto.randomUUID()
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.portal_shares (id, org_id, company_id, kind, object_id, shared_by_user_id)
-      VALUES (${share}::uuid, ${orgId}::uuid, ${companyId}::uuid, 'project_hours', ${projectId}::uuid, ${owner.userId}::uuid)`)
+    const hoursShare = crypto.randomUUID()
+    await share(hoursShare, "project_hours")
     try {
-      await db.execute(drizzleSql`
-        INSERT INTO app_projects.project_time_plan (org_id, project_id, basis)
-        VALUES (${orgId}::uuid, ${projectId}::uuid, 'retainer') ON CONFLICT DO NOTHING`)
+      // A retainer plan on file, with the project's time and budgets off.
+      await sql.unsafe(
+        insertSql("app_projects.project_time_plan", {
+          org_id: orgId,
+          project_id: projectId,
+          basis: "retainer",
+        }),
+      )
       const off = await call<Record<string, any>>("projects_clientReportSources", { projectId })
       expect(off.openKinds).toContain("project_hours")
       expect(off.hours).toBeNull()
     } finally {
       await db.execute(drizzleSql`
-        UPDATE kernel.portal_shares SET closed_at = now() WHERE id = ${share}::uuid`)
+        UPDATE kernel.portal_shares SET closed_at = now() WHERE id = ${hoursShare}::uuid`)
     }
   })
 
@@ -327,10 +362,15 @@ describe("the card warns the person approving", () => {
   })
 
   it("on a member's name, once, and never on the client's own contact", async () => {
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, user_type)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`cf-${crypto.randomUUID().slice(0, 6)}@team.example.com`},
-              'Claire Fontaine', 'member')`)
+    await sql.unsafe(
+      insertSql("kernel.users", {
+        id: crypto.randomUUID(),
+        org_id: orgId,
+        email: `cf-${crypto.randomUUID().slice(0, 6)}@team.example.com`,
+        name: "Claire Fontaine",
+        user_type: "member",
+      }),
+    )
     const w = await warningsFor(
       `${leadName} finished the page. ${leadName} also reviewed it with Claire Fontaine.`,
     )

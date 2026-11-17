@@ -642,6 +642,8 @@ describe("projects.manifest", () => {
       ["merge", "mergeTasksPreflight", "summarizeMergeTasks"],
       ["status_delete", "deleteStatusPreflight", "summarizeDeleteStatus"],
       ["checklist_remove_item", "checklistRemoveItemPreflight", "summarizeRemoveChecklistItem"],
+      // A client report goes out only on a person's decision (never auto-approved).
+      ["client_report_send", "clientReportSendPreflight", "summarizeClientReportSend"],
     ]
     for (const [name, preflight, summarizer] of stillGated) {
       expect(tools[name]!.gated, `${name}.gated`).toBe(true)
@@ -652,7 +654,13 @@ describe("projects.manifest", () => {
       .filter(([, t]) => t.gated === true)
       .map(([n]) => n)
       .sort()
-    expect(gatedNames).toEqual(["checklist_remove_item", "delete", "merge", "status_delete"])
+    expect(gatedNames).toEqual([
+      "checklist_remove_item",
+      "client_report_send",
+      "delete",
+      "merge",
+      "status_delete",
+    ])
   })
 
   it("projects.manifest.get-accepts-explicit-taskId-and-projectId (task detail regression)", () => {

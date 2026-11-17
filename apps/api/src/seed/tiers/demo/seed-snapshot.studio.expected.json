@@ -109,7 +109,7 @@
   },
   "kernel.agents": {
     "rows": 25,
-    "digest": "c8171562361f7df4"
+    "digest": "d440723889bf7d82"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -157,11 +157,11 @@
   },
   "kernel.pending_events": {
     "rows": 369,
-    "digest": "ee792de829fc1405"
+    "digest": "aeabcabfa6c37619"
   },
   "kernel.roles": {
     "rows": 32,
-    "digest": "b5d0feb3a042f17a"
+    "digest": "bfad9e6656b370dc"
   },
   "kernel.saved_views": {
     "rows": 8,

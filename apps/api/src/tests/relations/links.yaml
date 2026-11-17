@@ -1250,3 +1250,53 @@ links:
       Dl: erasure anonymizes the app's user columns (onErase anonymize); what an agreement shows once its author is erased is not driven in this file yet
       Dx: what an agreement shows once its author is deactivated is not driven in this file yet
       Ex: no data subject export exists for a person; the export takes a contact
+
+  - name: client-report-project
+    what: a client report to its project and the client company stamped on it when drafted
+    storedIn: app_projects.client_reports.project_id, company_id (stamped at the draft)
+    columns: [app_projects.client_reports.project_id, app_projects.client_reports.company_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/modules/portal/company-merge.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: P, Dl: K, Dx: a, Pm: H, Ap: a, Mv: K, Rs: a, Dr: e, Ex: a, Mi: a, Rv: c, Aw: a }
+    open:
+      Mg: a company merge re-points the report to the survivor (tested beside the portal doors); no generated cell yet
+      Dl: a project with reports cannot be deleted (ON DELETE RESTRICT); an archived project keeps its sent reports
+      Pm: a person without projects:reports:read reads no report (row security); no generated cell yet
+      Mv: a report keeps the company stamped at its draft when the project's company changes; no reader of the change is built yet
+
+  - name: client-report-recipient
+    what: a client report to the client contact it is mailed to, and the mail it went out as
+    storedIn: app_projects.client_reports.recipient_contact_id, mail_message_id
+    columns: [app_projects.client_reports.recipient_contact_id, app_projects.client_reports.mail_message_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/apps/projects/service/client-report-mail.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: K, Dl: K, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: K, Mi: a, Rv: a, Aw: a }
+    open:
+      Mg: a contact merge does not move a draft's recipient yet; the send reads the company's contact with an address
+      Dl: a sent report keeps who it went to; a draft whose contact is gone goes to another contact of the company with an address
+      Mv: a sent report keeps its recipient when the person moves to another company
+      Ex: the data subject export does not carry the reports a contact received yet
+
+  - name: client-report-people
+    what: a client report to the person who approved its send, the routine that drafted it and its thread
+    storedIn: app_projects.client_reports.approved_by_user_id, routine_id, thread_id
+    columns: [app_projects.client_reports.approved_by_user_id, app_projects.client_reports.routine_id, app_projects.client_reports.thread_id]
+    paths:
+      - apps/api/src/apps/projects/service/client-reports.ts
+      - apps/api/src/modules/apps/sandbox/bridge/projects.ts
+    visibleState: [usual]
+    whoIsTold: [usual]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: a, Dl: K, Dx: K, Pm: a, Ap: a, Mv: a, Rs: a, Dr: e, Ex: K, Mi: a, Rv: a, Aw: a }
+    open:
+      Dl: a sent report keeps who approved it, as the record of a person's act; the portal shows their name only while it is on file
+      Dx: a sent report keeps who approved it after they leave
+      Ex: the data subject export does not carry the reports a person approved yet

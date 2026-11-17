@@ -6016,6 +6016,7 @@
       }
     }
   },
+  "outsideTextFields": ["threadMessages", "sections"],
   "clientActionTargets": [
     {
       "type": "milestone",

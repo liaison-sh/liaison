@@ -32,6 +32,7 @@ import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { roles } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
+import { listCatalogWithState } from "~/modules/apps/catalog"
 import { addAddress } from "~/modules/contacts/addresses"
 import { assignRole } from "~/modules/permissions/roles"
 import { setAway } from "~/modules/users/away"
@@ -44,6 +45,7 @@ import {
   type InvoicingParty,
   seedInvoicingHistory,
 } from "~/seed/factories/commerce/invoicing"
+import { installApps } from "~/seed/factories/org/apps"
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { grantRoleDimension } from "~/seed/factories/people/role-grants"
@@ -53,6 +55,7 @@ import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
+import { seedStudioAgreements } from "./agreements"
 import {
   STUDIO_CLIENT_SIREN,
   STUDIO_CLIENTS,
@@ -947,6 +950,40 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   // The money layer needs the invoicing app: a plan without it seeds no money.
   if (input.plan.apps.includes("invoicing")) {
     await seedStudioMoney(ctx, org, actors, tasksOf, companyIds, studioMoney(baseTime))
+  }
+  // The agreements layer needs the agreements app. The world brings it (its client work signs
+  // agreements) through the app factory, when this instance's catalog holds it; without it the
+  // world seeds no agreement.
+  const agreementsOn =
+    input.plan.apps.includes("agreements") ||
+    ((await listCatalogWithState()).some((c) => c.name === "agreements") &&
+      (await installApps(org.orgId, org.adminUserId, ["agreements"], log)).some(
+        (a) => a.name === "agreements" && a.enabled && a.installed,
+      ))
+  if (agreementsOn) {
+    const dealRows = await withPrivilegedDb(ctx.orgId, "seed-studio:agreement-deals", (tx) =>
+      tx.execute(sql`
+        SELECT id::text AS id, external_ref FROM ${sql.raw(schemaRef("app_projects"))}.tasks
+         WHERE org_id = ${ctx.orgId}::uuid AND external_ref LIKE ${`${studioTaskRef("SALES-")}%`}`),
+    )
+    const dealIds = Object.fromEntries(
+      rowsOf<{ id: string; external_ref: string }>(dealRows).map((r) => [
+        r.external_ref.slice(studioTaskRef("").length),
+        r.id,
+      ]),
+    )
+    const money = studioMoney(baseTime)
+    await seedStudioAgreements({
+      ctx,
+      org,
+      owner,
+      companyIds,
+      projectIds: Object.fromEntries(Object.entries(tasksOf).map(([k, v]) => [k, v.projectId])),
+      dealIds,
+      quoteDocumentId: input.plan.apps.includes("invoicing")
+        ? ctx.id("document", `studio:${money.quote.key}`)
+        : null,
+    })
   }
 
   // The product writes each task now, at the seed's run, and setting its timebox touches it

@@ -244,8 +244,8 @@
     "digest": "9f916c3abef3049b"
   },
   "kernel.apps": {
-    "rows": 19,
-    "digest": "052d98e5fb6708ac"
+    "rows": 20,
+    "digest": "cb2ed65784f7bed4"
   },
   "kernel.audit_log": {
     "rows": 35,
@@ -274,6 +274,10 @@
   "kernel.disabled_app_skills": {
     "rows": 5,
     "digest": "7ab21419f2813b9b"
+  },
+  "kernel.document_templates": {
+    "rows": 14,
+    "digest": "567d2789b6333c48"
   },
   "kernel.messages": {
     "rows": 43,

@@ -47,6 +47,8 @@ const CATALOG_DEMO_APPS = [
   // as the demo world test installs it: an app is installed for the whole instance, so a suite run
   // after that file would otherwise see one app more than this file alone.
   "database",
+  // The services world signs its client work: its layer seeds agreements when this is installed.
+  "agreements",
 ]
 /** The software world's file, beside the products world's (which keeps its old name). */
 const SAAS_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.saas.expected.json")

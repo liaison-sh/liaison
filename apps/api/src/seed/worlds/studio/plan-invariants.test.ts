@@ -8,6 +8,7 @@
 import { describe, expect, it } from "bun:test"
 import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { scanWorldPackDir } from "~/seed/worlds/prose-guard"
+import { STUDIO_SOW_EXCLUSIONS, studioAgreements } from "./agreements"
 import { STUDIO_DELIVERY_KEYS, STUDIO_TEAM } from "./fiction"
 import { invoiceTotals, studioMoney } from "./money"
 import {
@@ -493,5 +494,43 @@ describe("services world money plan", () => {
     expect(closedOn("MARLIN-1") < issuedOn("marlin-discovery")).toBe(true)
     expect(closedOn("MARLIN-8") < issuedOn("marlin-design")).toBe(true)
     expect(marlin?.tasks.find((t) => t.key === "MARLIN-19")?.status).toBe("in_progress")
+  })
+})
+
+describe("services world agreements plan", () => {
+  it("two agreements plans at one anchor are equal", () => {
+    expect(studioAgreements(BOARD_DATE)).toEqual(studioAgreements(new Date(BOARD_DATE)))
+  })
+
+  for (const at of anchors()) {
+    it(`twelve numbered agreements, two waiting on a signer, and every signer answered before the anchor at ${at.toISOString().slice(0, 10)}`, () => {
+      const plan = studioAgreements(at)
+      expect(plan.agreements).toHaveLength(12)
+      const numbers = plan.agreements.map((a) => `${a.series}-${a.seq}`)
+      expect(new Set(numbers).size).toBe(numbers.length)
+      expect(
+        plan.agreements
+          .filter((a) => a.status === "sent" || a.status === "partly_signed")
+          .map((a) => a.key)
+          .sort(),
+      ).toEqual(["marlin-dpa", "tessier-sow"])
+      for (const a of plan.agreements) {
+        expect(a.sentAt.getTime()).toBeLessThanOrEqual(at.getTime())
+        for (const s of a.signers) if (s.at) expect(s.at.getTime()).toBeLessThan(at.getTime())
+        if (a.closedAt) expect(a.closedAt.getTime()).toBeGreaterThanOrEqual(a.sentAt.getTime())
+      }
+    })
+  }
+
+  it("the change request is 60 h at 110, 6,600, on the exclusions section of the signed portal agreement", () => {
+    const plan = studioAgreements(BOARD_DATE)
+    const cr = plan.changeRequest
+    expect((cr.hoursMinutes / 60) * (cr.rateMinor / 100)).toBe(6_600)
+    const parent = plan.agreements.find((a) => a.key === cr.parent)
+    expect(parent?.status).toBe("signed")
+    expect(parent?.text).toContain(STUDIO_SOW_EXCLUSIONS)
+    expect(STUDIO_SOW_EXCLUSIONS.startsWith(`${cr.section}. `)).toBe(true)
+    expect(cr.mailAt.getTime()).toBeLessThan(cr.stagedAt.getTime())
+    expect(cr.stagedAt.getTime()).toBeLessThan(BOARD_DATE.getTime())
   })
 })

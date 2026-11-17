@@ -164,8 +164,8 @@
     "digest": "66cbcf6ee4ae6f3e"
   },
   "kernel.apps": {
-    "rows": 19,
-    "digest": "b22608206986816c"
+    "rows": 20,
+    "digest": "68c0563131d00453"
   },
   "kernel.away_ranges": {
     "rows": 2,
@@ -198,6 +198,10 @@
   "kernel.disabled_app_skills": {
     "rows": 5,
     "digest": "7ab21419f2813b9b"
+  },
+  "kernel.document_templates": {
+    "rows": 14,
+    "digest": "567d2789b6333c48"
   },
   "kernel.messages": {
     "rows": 10,

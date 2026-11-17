@@ -8,6 +8,7 @@ const LEAD = "11111111-0000-4000-8000-000000000001"
 const READER = "22222222-0000-4000-8000-000000000002"
 const OWNER = "33333333-0000-4000-8000-000000000003"
 const ROLE = "44444444-0000-4000-8000-000000000004"
+const STAFF_SIGNER = "55555555-0000-4000-8000-000000000005"
 
 type Call = {
   name: string
@@ -94,8 +95,21 @@ describe("signed text as Knowledge", () => {
     expect(w.calls[0]?.readersOnly).toBeUndefined()
   })
 
-  it("a restricted agreement's copy is shared with exactly its list, without its creator or the reader role", async () => {
+  it("an open agreement's copy is also shared with the staff who signed that version", async () => {
+    const w = await world()
+    const [first] = (w.db.tables.get("signature_events") ?? []) as Array<Record<string, unknown>>
+    if (first) first.signer_user_id = STAFF_SIGNER
+    await sealVersion(w.ctx, w.versionId)
+    const p = w.calls[0]?.params as Record<string, unknown>
+    expect(p.shareWithUsers).toEqual(
+      [LEAD, READER, OWNER, STAFF_SIGNER].sort().map((userId) => ({ userId, role: "viewer" })),
+    )
+  })
+
+  it("a restricted agreement's copy is shared with exactly its list, without its creator, a staff signer or the reader role", async () => {
     const w = await world({ restricted: true })
+    const [first] = (w.db.tables.get("signature_events") ?? []) as Array<Record<string, unknown>>
+    if (first) first.signer_user_id = STAFF_SIGNER
     await sealVersion(w.ctx, w.versionId)
     const p = w.calls[0]?.params as Record<string, unknown>
     expect(p.shareWithUsers).toEqual(

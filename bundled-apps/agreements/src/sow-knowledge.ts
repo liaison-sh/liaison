@@ -5,9 +5,10 @@
 // name. The signed file stays the record; this copy is for finding it, and the passage a person
 // or the Scope check quotes always comes from the version's own text (agreement_passage_get).
 //
-// Who reads the copy: the agreement's list and the person who created it, and the reader role
-// the settings name. On a restricted agreement exactly its list, nobody else, whatever the
-// settings say.
+// Who reads the copy: the people agreements itself knows. The agreement's list, the person who
+// created it, the staff who signed this version, and the reader role the settings name; the
+// person who sent it for signature writes the copy and reads it as its author. On a restricted
+// agreement exactly its list, nobody else, whatever the settings say.
 //
 // The one caller of the ingestion (`knowledge:create`, CROSS_APP_INGESTIONS, written by the
 // kernel as the sender through `client_actions_signed_copy`) is `onAgreementSigned`, run by
@@ -56,6 +57,7 @@ export function sowHeaderLine(a: { number: string }, v: SignedVersion): string {
 export async function sowShares(
   ctx: AgreementsCtx,
   agreement: SignedAgreement,
+  versionId?: string,
 ): Promise<{
   restricted: boolean
   users: Array<{ userId: string; role: "viewer" }>
@@ -65,6 +67,14 @@ export async function sowShares(
   const restricted = agreement.org_access === "none"
   const ids = new Set(list.map((s) => s.user_id))
   if (!restricted && agreement.created_by_user_id) ids.add(agreement.created_by_user_id)
+  if (!restricted && versionId) {
+    // Staff who signed this version (a member signs on their own session, S754a).
+    const events = (await ctx.db.findMany("signature_events", {
+      where: { version_id: versionId },
+      limit: 200,
+    })) as Array<{ signer_user_id?: string | null }>
+    for (const e of events) if (e.signer_user_id) ids.add(e.signer_user_id)
+  }
   const roles: Array<{ roleId: string; access: "viewer" }> = []
   if (!restricted) {
     const [settings] = (await ctx.db.findMany("agreements_settings", { limit: 1 })) as Array<{
@@ -112,7 +122,7 @@ export async function onAgreementSigned(
     if (typeof ctx.client_actions_signed_copy !== "function")
       return { status: "failed", reason: "Knowledge is not reachable on this run." }
 
-    const shares = await sowShares(ctx, agreement)
+    const shares = await sowShares(ctx, agreement, version.id)
     const body = `${sowHeaderLine(agreement, version)}\n\n${version.source_text ?? ""}`
     // The versions this one supersedes: their copies are archived once it is written.
     const older = (await ctx.db.findMany("agreement_versions", {

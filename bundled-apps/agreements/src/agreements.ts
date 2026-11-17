@@ -843,7 +843,7 @@ async function freezeDraft(
       "FREEZE_NOT_AVAILABLE",
       `This server cannot render ${row.number} for a freeze. Nothing was frozen.`,
     )
-  // A priced kind freezes with the person's price in its text (S703).
+  // A priced kind freezes with the person's price in its text.
   const source = priceInSource(row, draft.source)
   const out = bridgeAnswer<RenderAnswer>(
     await ctx.rich_text_render({

@@ -161,7 +161,7 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
           {(d) => {
             const a = () => d().agreement
             const editable = () => a().status === "draft" || editReplacesSent(a().status)
-            // The document is a file (S749z): it is read and signed as that file, and a change
+            // The document is a file: it is read and signed as that file, and a change
             // to it is another upload, never text added here.
             const isUpload = () => a().upload === true
             const uploadFile = () => latestVersion(d())?.file_id ?? null

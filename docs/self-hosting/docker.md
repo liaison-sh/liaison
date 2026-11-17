@@ -51,7 +51,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 
 ### Run without the render service
 
-`pdf-render` has no network at all and talks to the app over one socket on a volume that holds only that socket (`LIAISON_PDF_RENDER_SOCKET`, default `/run/pdf-render/render.sock`). A crafted file that took over the PDF reader there reaches no database, no Redis and no other process. If you cannot run it, everything keeps working except uploaded PDFs: an upload is refused with `PDF_RENDER_UNAVAILABLE`. Documents Liaison writes itself never need it.
+`pdf-render` has no network at all and talks to the app over one socket on a volume that holds only that socket (`LIAISON_PDF_RENDER_SOCKET`, default `/run/pdf-render/render.sock`): once it listens, the service makes that folder read-only, so it can write nowhere but its own `/tmp`. A crafted file that took over the PDF reader there reaches no database, no Redis and no other process. If you cannot run it, everything keeps working except uploaded PDFs: an upload is refused with `PDF_RENDER_UNAVAILABLE`. Documents Liaison writes itself never need it.
 
 To check that the running service is isolated, run `deploy/pdf-render-check.sh` with the options you give `docker compose` (for example `deploy/pdf-render-check.sh -p liaison --env-file /srv/liaison.env`). From inside `pdf-render` it tries to reach Postgres, Redis and the internet, to see or read another process, to write outside `/tmp`, and looks for a secret in its environment; from the app it sends an inflate bomb and a looped file. Every line says `PASS` or `FAIL`, and it ends with `pdf-render: isolated` only when all of them pass.
 

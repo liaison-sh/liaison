@@ -151,7 +151,7 @@ Both must be whole numbers above zero, and at most 50,000,000.
 
 Run statuses: **Running**, **Waiting for approval**, **Waiting for your private mailbox**, **Expired: nobody ran it**, **Ran**, **Failed**, **Nothing to do**, **Skipped: missing access**, **Skipped: no credits**. Routine statuses: **Active**, **Done**, **Paused**, **Paused: missing access**, **Paused: no credits**.
 
-A run is **Failed**, not **Ran**, when it could not do its job: a tool it needed was unavailable, its answer says it is blocked, or its turn ended in an error (the AI service refused or failed the request, credits ran out, or it stopped before a final answer). The run's error quotes the failure itself, with its code when it has one.
+A run is **Failed**, not **Ran**, when it could not do its job: a tool it needed was unavailable, a tool it called broke on the server and it never got an answer from that tool afterwards (a Friday client report whose sources could not be read drafts nothing and says so), its answer says it is blocked, or its turn ended in an error (the AI service refused or failed the request, credits ran out, or it stopped before a final answer). The run's error quotes the failure itself, with its code when it has one.
 
 A routine that fails or pauses tells its owner on **Home**, under **Routines failed or paused**, as one item per routine with the latest error.
 

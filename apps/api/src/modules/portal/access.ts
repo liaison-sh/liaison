@@ -910,6 +910,43 @@ export async function setPortalRequireTotp(input: {
   return { company: company.name, required: input.required }
 }
 
+/** Whether the company's portal people need the second step (an authenticator code) to sign in. */
+export async function readPortalRequireTotp(input: {
+  db: RlsClient
+  companyId: string
+}): Promise<{ company: string; required: boolean }> {
+  const company = await readCompany(input.db, input.companyId)
+  const [row] = extractRows<{ required: boolean | null }>(
+    await input.db.execute(
+      sql`SELECT portal_require_totp AS required FROM ${K()}.companies WHERE id = ${input.companyId}`,
+    ),
+  )
+  return { company: company.name, required: row?.required === true }
+}
+
+/**
+ * Who can read a company's portal access log: the active members holding
+ * `kernel:portal:logs` (directly, through a role, or through a wider grant), by name.
+ * Names come from the caller's own read of the users, so nobody is named whom they cannot see.
+ */
+export async function readPortalLogReaders(input: {
+  orgId: string
+  db: RlsClient
+  companyId: string
+}): Promise<{ company: string; readers: Array<{ userId: string; name: string }> }> {
+  const company = await readCompany(input.db, input.companyId)
+  const { defaultLoadScopeHolders } = await import("~/modules/permissions/scope-holders")
+  const ids = await defaultLoadScopeHolders(input.orgId, "kernel:portal:logs")
+  if (ids.length === 0) return { company: company.name, readers: [] }
+  const readers = extractRows<{ userId: string; name: string }>(
+    await input.db.execute(sql`
+      SELECT id::text AS "userId", COALESCE(name, email) AS name FROM ${K()}.users
+       WHERE id = ANY(${`{${ids.join(",")}}`}::uuid[]) AND user_type = 'member' AND status = 'active'
+       ORDER BY name, id`),
+  )
+  return { company: company.name, readers }
+}
+
 // ── Access log ────────────────────────────────────────────────────────────
 
 export interface AccessLogRow {

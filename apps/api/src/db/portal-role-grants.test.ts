@@ -80,6 +80,8 @@ const ALLOWED: Record<string, string> = {
     "the caller's own portal requests or a shared ticket, internal and stamped with the caller's company, behind an open requests share",
   "function portal.project_hours(p_project uuid)":
     "billed or so-far hours of one project as totals, only behind an open hours share on a project using time and budgets",
+  "function portal.project_hours_basis(p_project uuid)":
+    "whether one project behind an open hours share bills by milestone; answers 'by_milestone' or nothing",
   "function portal.file_allowed(p_file uuid)":
     "whether one file is the caller's to download, re-reading its parent; answers a boolean only",
   "function portal.file_meta(p_file uuid)": "the name, type and size of a file file_allowed allows",

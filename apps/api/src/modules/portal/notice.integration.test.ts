@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
-import { createSession } from "~/modules/auth/auth"
+import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { readPortalSettings } from "~/modules/portal/access"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -74,5 +74,76 @@ describe("the portal notice", () => {
     const token = (await createSession(w.member.userId, w.orgId)).accessToken
     const res = await put({ notice: "changed" }, token)
     expect(res.status).toBe(403)
+  })
+
+  it("the sign-in page gives the notice's version, and the portal acknowledges only the version it showed", async () => {
+    await put({ notice: "Each download is logged." })
+    const b = (await (await app.request(`/api/portal/auth/branding/${w.orgSlug}`)).json()) as {
+      data: { notice: string; noticeVersion: number }
+    }
+    const shown = (await readPortalSettings(w.orgId)).noticeVersion
+    expect(b.data.noticeVersion).toBe(shown as number)
+    const token = (await createPortalSession(w.clientA.userId, w.orgId)).accessToken
+    const ack = (version: number) =>
+      app.request("/api/portal/me/notice-ack", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ version }),
+      })
+    // The org wrote a new text after the page was shown: the old version records nothing.
+    await put({ notice: "Each download and sign-in is logged." })
+    const stale = await ack(b.data.noticeVersion)
+    expect(stale.status).toBe(409)
+    expect(((await stale.json()) as { error: { code: string } }).error.code).toBe("NOTICE_CHANGED")
+    const [before] = await sql<{ v: number | null }[]>`
+      SELECT notice_version AS v FROM kernel.portal_people WHERE user_id = ${w.clientA.userId}`
+    expect(before?.v ?? null).not.toBe(b.data.noticeVersion)
+    const fresh = (await (await app.request(`/api/portal/auth/branding/${w.orgSlug}`)).json()) as {
+      data: { noticeVersion: number }
+    }
+    expect((await ack(fresh.data.noticeVersion)).status).toBe(200)
+    const [after] = await sql<{ v: number }[]>`
+      SELECT notice_version AS v FROM kernel.portal_people WHERE user_id = ${w.clientA.userId}`
+    expect(after?.v).toBe(fresh.data.noticeVersion)
+  })
+})
+
+describe("the client access panel's reads", () => {
+  const panel = (path: string, token = adminToken) =>
+    app.request(`/api/contacts/companies/${w.companyA}/portal${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+
+  it("reads the second step's current setting after it changes", async () => {
+    const r1 = (await (await panel("/sign-in")).json()) as { data: { required: boolean } }
+    expect(r1.data.required).toBe(false)
+    const set = await app.request(`/api/contacts/companies/${w.companyA}/portal/sign-in`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ requireTotp: true }),
+    })
+    expect(set.status).toBe(200)
+    const r2 = (await (await panel("/sign-in")).json()) as { data: { required: boolean } }
+    expect(r2.data.required).toBe(true)
+  })
+
+  it("names the people who can read the access log, and only them", async () => {
+    const res = await panel("/log/readers")
+    expect(res.status).toBe(200)
+    const out = (await res.json()) as { data: { readers: Array<{ userId: string; name: string }> } }
+    const ids = out.data.readers.map((r) => r.userId)
+    // The admin holds every scope; the plain member and the clients hold no log scope.
+    expect(ids).toContain(w.admin.userId)
+    expect(ids).not.toContain(w.member.userId)
+    expect(ids).not.toContain(w.clientA.userId)
+    expect(out.data.readers.every((r) => typeof r.name === "string" && r.name.length > 0)).toBe(
+      true,
+    )
+  })
+
+  it("a member without the portal admin scope reads neither", async () => {
+    const token = (await createSession(w.member.userId, w.orgId)).accessToken
+    expect((await panel("/sign-in", token)).status).toBe(403)
+    expect((await panel("/log/readers", token)).status).toBe(403)
   })
 })

@@ -221,9 +221,15 @@ export type SealOutcome =
       timestamp: "pending" | "stamped"
       first: boolean
     }
+  | { status: "stand_in"; package_id: string; first: boolean }
   | { status: "not_ready"; reason: string }
   | { status: "seal_pending"; reason: string }
   | ErrorEnvelope
+
+/** A version every signature event of which is a demo stand-in: no signature took place. */
+export function isStandIn(events: SignatureEvent[]): boolean {
+  return events.length > 0 && events.every((e) => e.level === "demo")
+}
 
 /**
  * Seal a version every signer signed. Idempotent: the first call that writes
@@ -251,6 +257,10 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
   const events = await eventsOf(ctx, version.id)
   if (events.length === 0)
     return { status: "not_ready", reason: "This version has no recorded signature." }
+  // Stand-ins (a demo workspace's seeded signatures) get a `demo` record and nothing else: no
+  // signed copy, no seal, no timestamp, no copies, no event. Nothing was signed, so nothing is
+  // proven or sent.
+  if (isStandIn(events)) return recordStandIn(ctx, version)
   // Every signature it holds proved the emailed code; a version with one that did not is not sealed.
   if (events.some((e) => !e.code_verified_at))
     return {
@@ -414,6 +424,29 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
     seal: String(pkg.seal),
     timestamp: pkg.timestamp_status,
     first,
+  }
+}
+
+/** The `demo` record of a stand-in version, once: the document's fingerprint and the hour, nothing more. */
+async function recordStandIn(ctx: SealCtx, version: Version): Promise<SealOutcome> {
+  const existing = await packageOf(ctx, version.id)
+  if (existing) return { status: "stand_in", package_id: existing.id, first: false }
+  try {
+    const inserted = await ctx.db.insert("evidence_packages", {
+      version_id: version.id,
+      level: "demo",
+      hash_alg: "sha256",
+      seal_version: 0,
+      document_sha256: version.sha256 ?? "",
+      sealed_at: nowOf(ctx).toISOString(),
+      timestamp_status: "pending",
+    })
+    return { status: "stand_in", package_id: (inserted as { id: string }).id, first: true }
+  } catch {
+    // Another run recorded it first (version_id is unique).
+    const pkg = await packageOf(ctx, version.id)
+    if (!pkg) return { status: "seal_pending", reason: "The record could not be written." }
+    return { status: "stand_in", package_id: pkg.id, first: false }
   }
 }
 
@@ -681,6 +714,8 @@ export async function sealRetry(ctx: SealCtx) {
   let waiting = 0
   for (const v of versions) {
     const pkg = await packageOf(ctx, v.id)
+    // A stand-in's record is complete as written: nothing to seal, start or announce.
+    if (pkg?.level === "demo") continue
     if (pkg?.evidence_file_id) {
       if (!(v as Version & { knowledge_document_id?: string | null }).knowledge_document_id)
         await onAgreementSigned(ctx, { versionId: v.id, announce: false })
@@ -688,8 +723,8 @@ export async function sealRetry(ctx: SealCtx) {
       continue
     }
     const out = await sealVersion(ctx, v.id)
-    if (out.status === "sealed") {
-      sealed += 1
+    if (out.status === "sealed" || out.status === "stand_in") {
+      if (out.status === "sealed") sealed += 1
       continue
     }
     waiting += 1
@@ -727,6 +762,8 @@ export async function timestampRetry(ctx: SealCtx) {
   })) as EvidencePackage[]
   let stamped = 0
   for (const pkg of pending) {
+    // A stand-in's record is never timestamped.
+    if (pkg.level === "demo") continue
     const got = await stampPackage(ctx, pkg)
     const fresh = (await ctx.db.findOne("evidence_packages", pkg.id)) as EvidencePackage
     if (got === "stamped") {
@@ -798,6 +835,12 @@ export async function verifyPackage(ctx: SealCtx, pkg: EvidencePackage): Promise
     : null
   if (!version || !agreement || !ctx.evidence_rehash || !ctx.signing_seal)
     return refusal("NOT_AVAILABLE", "This package cannot be checked on this run. Nothing changed.")
+  // A stand-in's record has no seal to recompute: checking it would only report a mismatch.
+  if (pkg.level === "demo")
+    return refusal(
+      "NOT_SEALED",
+      `${agreement.number} version ${version.number} holds demo stand-ins, not signatures: there is no seal to check. Nothing changed.`,
+    )
   const files: Array<{ fileId: string; parent: { entityType: string; entityId: string } }> = []
   if (version.file_id)
     files.push({

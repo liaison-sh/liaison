@@ -36,7 +36,13 @@ const fakeHash = (s: string) => {
 }
 
 export async function signedWorld(
-  opts: { holdsDevices?: boolean; endsOn?: string; authorityUp?: boolean } = {},
+  opts: {
+    holdsDevices?: boolean
+    endsOn?: string
+    authorityUp?: boolean
+    /** `demo`: the seed's stand-ins, with no proven code. */
+    level?: "ses" | "demo"
+  } = {},
 ): Promise<SealWorld> {
   const db = memoryDb()
   const clock = { now: new Date(Date.UTC(2026, 10, 10, 9, 0, 0)) }
@@ -70,13 +76,13 @@ export async function signedWorld(
       capacity: i === 0 ? "Gérant" : "Associée",
       consent_words: "words",
       consent_lang: "fr",
-      level: "ses",
+      level: opts.level ?? "ses",
       document_sha256: FROZEN,
       signed_at: `2026-11-10 08:0${i}:00+00`,
       ip: i === 0 ? "198.51.100.7" : "203.0.113.9",
       user_agent: i === 0 ? "UA-of-Paul" : "UA-of-Anne",
-      code_verified_at: "2026-11-10 07:59:00+00",
-      document_shown_at: "2026-11-10 07:58:00+00",
+      code_verified_at: opts.level === "demo" ? null : "2026-11-10 07:59:00+00",
+      document_shown_at: opts.level === "demo" ? null : "2026-11-10 07:58:00+00",
     })
   }
   const calls: SealCalls = { emitted: [], mails: [], stamps: 0, files: 0 }

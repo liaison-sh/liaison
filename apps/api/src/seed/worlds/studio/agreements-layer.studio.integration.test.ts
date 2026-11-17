@@ -11,11 +11,14 @@ import path from "node:path"
 import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
+import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
+import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
+import { registerTranslatorConsumer } from "~/modules/attention/translator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { evaluateSendGuard, type PinnedSendGuard } from "~/modules/mail/send-guard"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -23,6 +26,7 @@ import { seedContext } from "~/seed/context"
 import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import { rowsOf } from "~/seed/factories/people/actors"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { STUDIO_SOW_EXCLUSIONS, studioAgreementNumber, studioAgreements } from "./agreements"
 import { STUDIO_KNOWLEDGE_SPECS, STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
@@ -87,6 +91,7 @@ beforeAll(async () => {
     )
   }
   await initSandboxPool()
+  registerTranslatorConsumer()
   await installFromDist("invoicing", crypto.randomUUID())
   await installFromDist("agreements", crypto.randomUUID())
   const slug = `studio-agr-${crypto.randomUUID().slice(0, 8)}`
@@ -187,6 +192,56 @@ describe("the services world's agreements at the board date", () => {
       SELECT level FROM app_agreements.evidence_packages WHERE org_id = ${orgId}::uuid`)
     expect(packages.filter((p) => p.level !== "demo")).toEqual([])
   })
+
+  it("the seal retry over the stand-in signatures writes stand-in records and raises no seal-overdue line", async () => {
+    // Every seeded signature was given days before now, so an unsealed one is past its hour.
+    const handler = JobsTestAccess.getHandler("agreements", "seal-retry")
+    if (!handler) throw new Error("seal-retry is not registered")
+    for (let pass = 0; pass < 2; pass++) {
+      await dispatchAppJobWithContext(
+        handler,
+        { orgId },
+        { actorType: "system", orgId, purpose: "job", scopes: ["agreements:*"] },
+        "session",
+      )
+      await drainOutbox()
+    }
+    const signed = await rows<{ id: string }>(sql`
+      SELECT v.id::text AS id FROM app_agreements.agreement_versions v
+       WHERE v.org_id = ${orgId}::uuid AND v.status = 'signed'`)
+    expect(signed.length).toBeGreaterThan(0)
+    const packages = await rows<{
+      level: string
+      seal: string | null
+      signed_pdf_file_id: string | null
+      evidence_file_id: string | null
+      tsr_file_id: string | null
+      timestamped_at: string | null
+    }>(sql`
+      SELECT level, seal, signed_pdf_file_id::text, evidence_file_id::text, tsr_file_id::text,
+             timestamped_at::text
+        FROM app_agreements.evidence_packages WHERE org_id = ${orgId}::uuid`)
+    expect(packages).toHaveLength(signed.length)
+    for (const p of packages) {
+      expect(p).toEqual({
+        level: "demo",
+        seal: null,
+        signed_pdf_file_id: null,
+        evidence_file_id: null,
+        tsr_file_id: null,
+        timestamped_at: null,
+      })
+    }
+    const [copies] = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM app_agreements.copy_mails WHERE org_id = ${orgId}::uuid`)
+    expect(copies?.n).toBe(0)
+    const overdue = await rows<{ number: string }>(sql`
+      SELECT number FROM app_agreements.agreements
+       WHERE org_id = ${orgId}::uuid AND seal_overdue_at IS NOT NULL`)
+    expect(overdue).toEqual([])
+    const feed = await aggregateAttentionItems({ orgId, actor: await ownerActor() })
+    expect(feed.items.filter((i) => i.kind === "agreements:evidence.seal_overdue")).toEqual([])
+  }, 120_000)
 
   it("the next agreement a person makes takes the next number of its series", async () => {
     const [seq] = await rows<{ value: number }>(sql`

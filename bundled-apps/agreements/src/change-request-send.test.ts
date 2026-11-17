@@ -8,7 +8,12 @@
 // the link, and the change request stays a draft.
 
 import { describe, expect, it } from "bun:test"
-import { changeRequestSend, changeRequestSendPreflight, moneyText } from "./change-request-send"
+import {
+  changeRequestSend,
+  changeRequestSendPreflight,
+  moneyText,
+  replyWithLinkNote,
+} from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import { summarizeAgreementSend, summarizeChangeRequestSend } from "./summarizers"
@@ -150,6 +155,35 @@ describe("change_request_send", () => {
     expect(changeRequests(db)).toEqual([])
     expect(ctx.calls.mints).toEqual([])
     expect(ctx.calls.replies).toEqual([])
+  })
+
+  it("the card shows a long reply whole, and the reply sent says the approval link comes in its own mail", async () => {
+    const { db, parentId, versionId } = await world()
+    const long = `${"Thank you for the note about the partner portal. ".repeat(12)}Best regards, Léa`
+    const reply = { conversation_id: CONVERSATION, body: long }
+    const parked = ctxFor(db, { agent: true })
+    await changeRequestSend(parked, params(parentId, versionId, { reply }))
+    const lines = parked.calls.approvals[0]?.summary_detail?.lines ?? []
+    const replyLine = lines.find((l) => l.startsWith("Reply to ")) ?? ""
+    expect(replyLine).toContain("Best regards, Léa")
+    expect(replyLine).toContain("link to approve it in a separate email")
+    const card = await summarizeChangeRequestSend({ ...params(parentId, versionId, { reply }) })
+    expect(card.lines[0]).toContain("Best regards, Léa")
+    // The reply that leaves names where the link comes from; the link itself is never in it.
+    const pre = (await changeRequestSendPreflight(
+      ctxFor(db),
+      params(parentId, versionId, { reply }),
+    )) as { pinnedParams: Record<string, unknown> }
+    const approved = ctxFor(db, { approved: true })
+    await changeRequestSend(approved, {
+      ...params(parentId, versionId, { reply }),
+      ...pre.pinnedParams,
+    })
+    const sent = String(approved.calls.replies[0]?.textBody ?? "")
+    expect(sent.startsWith(long)).toBe(true)
+    expect(sent).toContain("You will receive the link to approve it in a separate email")
+    expect(replyWithLinkNote(sent, "en")).toBe(sent)
+    expect(replyWithLinkNote("Bonjour", "fr")).toContain("e-mail séparé")
   })
 
   it("the parked card reads money in the agreement's currency, with the price, never minor units", async () => {

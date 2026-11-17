@@ -3,6 +3,15 @@
 // French for this app's UI, keyed by the English source text (see i18n.ts).
 // Formal "vous", no dash punctuation (the repo's lint:copy rule).
 export const FR: Record<string, string> = {
+  "Waiting for the client's approval": "En attente de l'approbation du client",
+  "Save your changes first: then it can be prepared for signature.":
+    "Enregistrez d'abord vos modifications : le document pourra ensuite être préparé pour signature.",
+  "It can be prepared for signature once every line of Before it can be sent is ticked.":
+    "Il pourra être préparé pour signature une fois chaque ligne de Avant l'envoi cochée.",
+  "Signatures are not offered on this hosted service, so nothing can be sent for signature. You can still write and prepare documents.":
+    "Les signatures ne sont pas proposées sur ce service hébergé : rien ne peut être envoyé pour signature. Vous pouvez toujours rédiger et préparer des documents.",
+  "Signatures are off on this server: it has no timestamp service to date them, so nothing can be sent for signature. Ask whoever runs this server to turn them on. You can still write and prepare documents.":
+    "Les signatures sont désactivées sur ce serveur : il n'a pas de service d'horodatage pour les dater, donc rien ne peut être envoyé pour signature. Demandez à la personne qui gère ce serveur de les activer. Vous pouvez toujours rédiger et préparer des documents.",
   "If this was not them, send a new link":
     "Si ce n'était pas cette personne, envoyez un nouveau lien",
   "The signed copy differs": "La copie signée diffère",

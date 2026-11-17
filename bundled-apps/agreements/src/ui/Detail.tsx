@@ -8,6 +8,7 @@
 // wording says an agent signed.
 
 import { Badge, Button, Segmented } from "@liaison/app-ui/kit"
+import { onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { DocumentText } from "./DocumentText"
 import { call, go, openPdfFile, openStoredFile, paths } from "./host"
@@ -147,6 +148,13 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
     return out.data
   })
   const loaded = () => (detail.error ? undefined : detail())
+  // Changed elsewhere (the agent's text, a price set in the editor): read it again.
+  onEntityChange("agreements:agreement", (events) => {
+    const ours = events.some(
+      (e) => e.resync || (e.data as { agreement_id?: string } | null)?.agreement_id === id(),
+    )
+    if (ours) void refetch()
+  })
   const [evidence, { refetch: refetchEvidence }] = createResource(
     () => (pane() === "evidence" && loaded()?.agreement.status === "signed" ? id() : null),
     async (agreementId) => {
@@ -241,7 +249,7 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                         {a().number}
                       </span>
                       <span>{tr(KIND_LABEL[a().kind] ?? "Other document")}</span>
-                      <StatusBadge status={a().status} testid="agreement-status" />
+                      <StatusBadge status={a().status} kind={a().kind} testid="agreement-status" />
                     </div>
                     <h1
                       class="mt-1 text-[15px] font-semibold text-text"

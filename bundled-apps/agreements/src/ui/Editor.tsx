@@ -6,6 +6,7 @@
 // Prepare is offered only once no blocking check fails and everything is saved. Editing a
 // sent agreement says first that it makes a new version and withdraws the open links.
 import { Button } from "@liaison/app-ui/kit"
+import { onEntityChange } from "@liaison/host"
 import {
   type Component,
   createEffect,
@@ -40,11 +41,13 @@ import {
   layoutOf,
   type NewBlockKind,
   parsePrice,
+  prepareWhy,
   removeBlock,
   setArticleHeading,
   setBlockText,
   setLayout,
 } from "./model"
+import { SigningOff } from "./signing"
 
 const INPUT =
   "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-text outline-none focus:border-accent-border"
@@ -59,6 +62,14 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
     return out.data
   })
   const loaded = () => (detail.error ? undefined : detail())
+  // Another writer (the agent drafting the text, another tab) changed it: read it again.
+  // Unsaved writing here is kept (the effect below leaves a dirty source alone).
+  onEntityChange("agreements:agreement", (events) => {
+    const ours = events.some(
+      (e) => e.resync || (e.data as { agreement_id?: string } | null)?.agreement_id === id(),
+    )
+    if (ours) void refetch()
+  })
   const [members] = createResource(loadMembers)
   const [source, setSource] = createSignal<AgreementSource | null>(null)
   const [dirty, setDirty] = createSignal(false)
@@ -170,7 +181,7 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                 <header class="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
                   <div class="flex min-w-0 items-center gap-2">
                     <span class="font-mono text-[12px] text-text-tertiary">{a().number}</span>
-                    <StatusBadge status={a().status} />
+                    <StatusBadge status={a().status} kind={a().kind} />
                     <span class="truncate text-[13px] font-semibold text-text">{a().title}</span>
                   </div>
                   <div class="flex items-center gap-2">
@@ -203,6 +214,18 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                     </Show>
                   </div>
                 </header>
+                <SigningOff />
+                {/* Why Prepare is greyed, said on screen rather than in a hover. */}
+                <Show when={a().status === "draft" && !busy() && prepareWhy(dirty(), checks())}>
+                  {(why) => (
+                    <p
+                      data-testid="agreement-editor-prepare-why"
+                      class="border-b border-border-subtle px-5 py-1.5 text-[12px] text-text-secondary"
+                    >
+                      {tr(why())}
+                    </p>
+                  )}
+                </Show>
                 <div class="flex min-h-0 flex-1 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
                   <div class="min-h-0 flex-1 px-5 py-4 lg:overflow-y-auto pb-dock-runway">
                     <Show when={editReplacesSent(a().status)}>

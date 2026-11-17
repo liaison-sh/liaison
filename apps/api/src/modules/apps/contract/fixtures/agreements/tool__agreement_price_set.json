@@ -29,6 +29,12 @@
         "88617725-9775-45bf-bbdf-9de233e61022",
         "{\"price_minor\":\"1200000\",\"currency\":\"EUR\",\"priced_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\"}"
       ]
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"agreement\",\"action\":\"updated\",\"entityId\":\"88617725-9775-45bf-bbdf-9de233e61022\",\"data\":{\"agreement_id\":\"88617725-9775-45bf-bbdf-9de233e61022\"}}"
+      ]
     }
   ]
 }

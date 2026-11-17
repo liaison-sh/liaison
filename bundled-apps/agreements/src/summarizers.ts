@@ -11,7 +11,7 @@ interface Card {
   lines: string[]
 }
 
-import { moneyText } from "./change-request-send"
+import { moneyText, replyWithLinkNote } from "./change-request-send"
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const done = (c: Card): Promise<Card> =>
@@ -75,19 +75,26 @@ export function summarizeChangeRequestSend(params: Record<string, unknown>): Pro
   const work = Array.isArray(params.work) ? params.work.map(String) : []
   const minutes = Number(params.hours_minutes ?? 0)
   const lines = [
-    `Reply: ${String(reply.body ?? "")}`,
     `Change request: ${String(params.title ?? "")}`,
     ...work.map((w) => `Work: ${w}`),
     `Hours: ${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""} (from ${String(params.hours_source ?? "not said")})`,
     ...moneyLines(params.rate_minor, minutes, params.currency),
     "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
   ]
-  return done({
+  const card = {
     kind: "change_request_send",
     title: "Reply to the client and send a change request",
     subtitle: "Nothing is sent if the client wrote after this card",
     lines,
-  })
+  }
+  // The reply is read whole before it goes out: it is not cut like the other lines.
+  return done(card).then((c) => ({
+    ...c,
+    lines: [`Reply:\n${replyWithLinkNote(String(reply.body ?? ""), null)}`, ...c.lines].slice(
+      0,
+      16,
+    ),
+  }))
 }
 
 export function summarizeAgreementVoid(params: Record<string, unknown>): Promise<Card> {

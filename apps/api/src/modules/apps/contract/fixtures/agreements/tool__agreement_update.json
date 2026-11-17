@@ -36,6 +36,12 @@
         "{\"ops\":[{\"update\":\"agreements\",\"id\":\"acb6e39a-348f-4c9e-993e-f6efa7af6f99\",\"data\":{\"renews_on\":\"2027-06-30\"}}]}"
       ],
       "reply": "{\"rows\":{}}"
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"agreement\",\"action\":\"updated\",\"entityId\":\"acb6e39a-348f-4c9e-993e-f6efa7af6f99\",\"data\":{\"agreement_id\":\"acb6e39a-348f-4c9e-993e-f6efa7af6f99\"}}"
+      ]
     }
   ]
 }

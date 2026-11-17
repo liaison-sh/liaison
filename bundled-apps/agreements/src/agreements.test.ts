@@ -19,6 +19,7 @@ import {
   orderByNeed,
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
+import { agreementPriceSetHandler, agreementUpdateHandler } from "./handlers"
 import { memoryDb, type Row } from "./memory-db.testutil"
 import { clientActionViewGet } from "./send"
 import { templateSave } from "./templates"
@@ -884,5 +885,31 @@ describe("agreement_get hands back no text a person outside the org wrote", () =
       ["proven", undefined],
       ["open", undefined],
     ])
+  })
+})
+
+describe("an open editor hears of a change made elsewhere", () => {
+  it("a saved change or a price set announces the agreement; a refusal or a parked card announces nothing", async () => {
+    const db = memoryDb()
+    const id = okId(await agreementCreate(ctxFor(db), { kind: "sow", title: "Website" }))
+    const heard: unknown[] = []
+    const withEars = (opts: Parameters<typeof ctxFor>[1] = {}) => ({
+      ...ctxFor(db, opts),
+      emit: async (e: unknown) => {
+        heard.push(e)
+      },
+    })
+    await agreementUpdateHandler({ id, source: WRITTEN } as never, withEars())
+    expect(heard).toEqual([
+      { entity: "agreement", action: "updated", entityId: id, data: { agreement_id: id } },
+    ])
+    heard.length = 0
+    await agreementPriceSetHandler(
+      { id, price_minor: "100", currency: "EUR" },
+      withEars({ agent: AGENT }),
+    )
+    expect(heard).toEqual([])
+    await agreementPriceSetHandler({ id, price_minor: "100", currency: "EUR" }, withEars())
+    expect(heard).toHaveLength(1)
   })
 })

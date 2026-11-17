@@ -10,6 +10,7 @@ import { call, go, paths } from "./host"
 import { tr } from "./i18n"
 import { StatusBadge } from "./List"
 import { type AgreementDetail, type SignerInput, signersForSend } from "./model"
+import { loadSigningState, SigningOff, signingOffText } from "./signing"
 
 const INPUT =
   "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-text outline-none focus:border-accent-border"
@@ -35,6 +36,7 @@ export const AgreementSend: Component<{ entityId?: string }> = (props) => {
     if (!out.ok) throw new Error(out.message)
     return out.data
   })
+  const [signing] = createResource(loadSigningState)
   const [frozen, setFrozen] = createSignal<Frozen | null>(null)
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
@@ -101,7 +103,7 @@ export const AgreementSend: Component<{ entityId?: string }> = (props) => {
             <header class="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
               <div class="flex min-w-0 items-center gap-2">
                 <span class="font-mono text-[12px] text-text-tertiary">{d().agreement.number}</span>
-                <StatusBadge status={d().agreement.status} />
+                <StatusBadge status={d().agreement.status} kind={d().agreement.kind} />
                 <span class="truncate text-[13px] font-semibold text-text">
                   {d().agreement.title}
                 </span>
@@ -130,7 +132,7 @@ export const AgreementSend: Component<{ entityId?: string }> = (props) => {
                   <Button
                     variant="primary"
                     testid="agreement-send-submit"
-                    disabled={busy() || !valid()}
+                    disabled={busy() || !valid() || signingOffText(signing()) !== null}
                     onClick={() => void send()}
                   >
                     {tr("Send for signature")}
@@ -138,6 +140,7 @@ export const AgreementSend: Component<{ entityId?: string }> = (props) => {
                 </Show>
               </div>
             </header>
+            <SigningOff />
             <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 pb-dock-runway">
               <div class="flex max-w-2xl flex-col gap-5">
                 <p class="text-[12.5px] text-text-secondary">

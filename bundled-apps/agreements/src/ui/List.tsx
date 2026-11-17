@@ -17,15 +17,18 @@ import {
   formatMoney,
   KIND_LABEL,
   needsYou,
-  STATUS_LABEL,
+  statusLabel,
   statusTone,
 } from "./model"
+import { SigningOff } from "./signing"
 
 const today = () => new Date().toISOString().slice(0, 10)
 
-export const StatusBadge: Component<{ status: string; testid?: string }> = (props) => (
+export const StatusBadge: Component<{ status: string; kind?: string; testid?: string }> = (
+  props,
+) => (
   <Badge tone={statusTone(props.status)} testid={props.testid} variant={props.status}>
-    {tr(STATUS_LABEL[props.status] ?? "Draft")}
+    {tr(statusLabel(props.status, props.kind))}
   </Badge>
 )
 
@@ -84,7 +87,9 @@ export const AgreementsList: Component<{ entityId?: string }> = (props) => {
       header: tr("Status"),
       role: "meta",
       fit: true,
-      cell: (r) => <StatusBadge status={r.status} testid={`agreements-row-status-${r.id}`} />,
+      cell: (r) => (
+        <StatusBadge status={r.status} kind={r.kind} testid={`agreements-row-status-${r.id}`} />
+      ),
     },
     {
       key: "when",
@@ -113,6 +118,7 @@ export const AgreementsList: Component<{ entityId?: string }> = (props) => {
           </Button>
         }
       />
+      <SigningOff />
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <Switch>
           <Match when={rows.error}>
@@ -167,7 +173,7 @@ export const AgreementsList: Component<{ entityId?: string }> = (props) => {
                           class="flex w-full items-center gap-3 rounded-md border border-border-subtle bg-surface px-3 py-2 text-left hover:bg-surface-hover"
                           onClick={() => go(paths.agreement(r.id))}
                         >
-                          <StatusBadge status={r.status} />
+                          <StatusBadge status={r.status} kind={r.kind} />
                           <span class="min-w-0 flex-1 truncate text-[12.5px] text-text">
                             {r.number} · {r.title}
                           </span>

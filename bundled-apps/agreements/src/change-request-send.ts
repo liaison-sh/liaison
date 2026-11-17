@@ -78,6 +78,19 @@ function minorOf(v: unknown): bigint | null {
 
 export { moneyText }
 
+/**
+ * The reply as it goes out: the approval link is never in it (a link is made at send and leaves
+ * only in its own mail), so the reply ends by saying where the link comes from. A reply that
+ * already says so is left as it is.
+ */
+export function replyWithLinkNote(body: string, language: string | null | undefined): string {
+  const note = language?.startsWith("fr")
+    ? "Vous recevrez le lien pour l'approuver dans un e-mail séparé, avec un code."
+    : "You will receive the link to approve it in a separate email, with a code."
+  const text = body.trimEnd()
+  return text.endsWith(note) ? text : `${text}\n\n${note}`
+}
+
 function hoursText(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
@@ -208,8 +221,7 @@ function guardOf(ready: Ready, p: ChangeRequestSendParams): Record<string, unkno
 function cardLines(ready: Ready, p: ChangeRequestSendParams): string[] {
   const cur = ready.parent.currency ?? null
   return [
-    `Reply to ${ready.client.name} <${ready.client.email}>:`,
-    p.reply.body,
+    `Reply to ${ready.client.name} <${ready.client.email}>:\n${replyWithLinkNote(p.reply.body, ready.parent.language)}`,
     `Change request on ${ready.parent.number} "${ready.parent.title}": ${p.title.trim()}`,
     ...p.work.map((w) => `Work: ${w}`),
     `Hours: ${hoursText(p.hours_minutes)} (from ${p.hours_source.trim()})`,
@@ -448,7 +460,7 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
   // 3. The reply, from the person's mailbox, under the same check.
   const reply = await ctx.executeTool("mail:reply", {
     conversationId: p.reply.conversation_id,
-    textBody: p.reply.body,
+    textBody: replyWithLinkNote(p.reply.body, ready.parent.language),
     ...(p.sendGuard ? { sendGuard: p.sendGuard } : {}),
   })
   if (reply?.status !== "completed") {

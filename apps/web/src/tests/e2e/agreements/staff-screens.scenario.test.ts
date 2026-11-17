@@ -61,6 +61,14 @@ interface Seen {
 
 async function answerTools(page: Page, seen: Seen[]) {
   const state = { agentRead: false, priced: false, sent: false }
+  // This server can ask for a signature (the test stack has no timestamp authority of its own).
+  await page.route("**/api/client-actions/signing", (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: { available: true } }),
+    }),
+  )
   await page.route("**/api/apps/agreements/tools/*", async (route: Route) => {
     const tool = new URL(route.request().url()).pathname.split("/").pop() ?? ""
     const body = (route.request().postDataJSON() ?? {}) as { params?: Record<string, unknown> }

@@ -8,6 +8,7 @@ import { type Component, createResource, createSignal, For } from "solid-js"
 import { call, go, loadCompanyNames, paths } from "./host"
 import { tr } from "./i18n"
 import { KIND_GROUPS } from "./model"
+import { SigningOff } from "./signing"
 
 const INPUT =
   "w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[12.5px] text-text outline-none focus:border-accent-border"
@@ -68,6 +69,7 @@ export const AgreementNew: Component = () => {
           {tr("Create the draft")}
         </Button>
       </header>
+      <SigningOff />
       <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4 pb-dock-runway">
         <div class="flex max-w-lg flex-col gap-4">
           <p class="text-[12.5px] text-text-secondary">

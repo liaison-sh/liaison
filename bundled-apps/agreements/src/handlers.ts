@@ -55,12 +55,37 @@ export const agreementsSearchHandler = (p: SearchParams, ctx: Ctx) => agreements
 export const agreementGetHandler = (p: { id: string }, ctx: Ctx) => agreementGet(ctx, p)
 export const agreementCreateHandler = (p: CreateParams, ctx: Ctx) => agreementCreate(ctx, p)
 export const agreementImportHandler = (p: ImportParams, ctx: Ctx) => agreementImport(ctx, p)
-export const agreementUpdateHandler = (p: UpdateParams, ctx: Ctx) => agreementUpdate(ctx, p)
+/**
+ * After a write that changed the agreement, an `agreement:updated` event (its id only), so an
+ * open editor or record (the agent's draft text, a price set in another tab) reads it again
+ * instead of waiting for a reload. A refusal or a parked card changed nothing and emits nothing.
+ */
+async function announced<T>(ctx: Ctx, id: unknown, out: Promise<T>): Promise<T> {
+  const r = await out
+  const o = (r ?? {}) as { status?: unknown; error?: unknown }
+  if (
+    typeof id === "string" &&
+    o.error === undefined &&
+    o.status !== "error" &&
+    o.status !== "pending_approval"
+  ) {
+    await ctx.emit?.({
+      entity: "agreement",
+      action: "updated",
+      entityId: id,
+      data: { agreement_id: id },
+    })
+  }
+  return r
+}
+
+export const agreementUpdateHandler = (p: UpdateParams, ctx: Ctx) =>
+  announced(ctx, p?.id, agreementUpdate(ctx, p))
 export const agreementPrepareHandler = (p: { id: string }, ctx: Ctx) => agreementPrepare(ctx, p)
 export const agreementPriceSetHandler = (
   p: { id: string; price_minor: string; currency: string; rate_minor?: string },
   ctx: Ctx,
-) => agreementPriceSet(ctx, p)
+) => announced(ctx, p?.id, agreementPriceSet(ctx, p))
 export const templatesListHandler = (p: { kind?: string; include_archived?: boolean }, ctx: Ctx) =>
   templatesList(ctx, p ?? {})
 export const templateGetHandler = (p: { template_id: string; version?: number }, ctx: Ctx) =>

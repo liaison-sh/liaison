@@ -357,7 +357,7 @@ export function agentBlockCount(source: AgreementSource | null | undefined): num
 /** The checks Prepare runs, drawn before it is pressed (the same pure function the server runs). */
 export function editorChecks(detail: AgreementDetail, source: AgreementSource | null): Check[] {
   const a = detail.agreement
-  return prepareChecks(
+  const checks = prepareChecks(
     {
       number: a.number,
       kind: a.kind,
@@ -369,6 +369,24 @@ export function editorChecks(detail: AgreementDetail, source: AgreementSource | 
     source,
     { upload: a.upload === true },
   )
+  // A document with no text has no clause anyone read: "every clause was read" would tick on
+  // nothing, so that line waits until there is text.
+  const empty = checks.some((c) => c.code === "DOCUMENT_EMPTY" && !c.ok)
+  return empty ? checks.filter((c) => c.code !== "AGENT_TEXT_UNREAD") : checks
+}
+
+/** Why Prepare for signature is not offered yet, in the reader's words; null when it is. */
+export function prepareWhy(dirty: boolean, checks: Check[]): string | null {
+  if (dirty) return "Save your changes first: then it can be prepared for signature."
+  if (!canPrepare(checks))
+    return "It can be prepared for signature once every line of Before it can be sent is ticked."
+  return null
+}
+
+/** The badge words of an agreement: a change request is approved by the client, never signed. */
+export function statusLabel(status: string, kind?: string): string {
+  if (kind === "change_request" && status === "sent") return "Waiting for the client's approval"
+  return STATUS_LABEL[status] ?? "Draft"
 }
 
 /** Prepare is offered only when no blocking check fails. */

@@ -853,7 +853,8 @@
               "expired",
               "voided",
               "withdrawn",
-              "imported"
+              "imported",
+              "accepted"
             ]
           },
           "company_id": {

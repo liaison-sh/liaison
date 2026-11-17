@@ -26,6 +26,7 @@ import {
   Switch,
 } from "solid-js"
 import { DocumentPage } from "./Approve"
+import { NoticeToRead } from "./Notice"
 import { HomePage, InvoicesPage, Loading, NotAvailable, PartFailed, ProjectPage } from "./Pages"
 import { PortalShell } from "./PortalShell"
 import {
@@ -65,7 +66,7 @@ const PortalRoot: Component = () => {
     const s = path().slug
     return validSlug(s) ? s : rememberedOrg()
   }
-  const [branding] = createResource(orgSlug, (s) => portalBranding(s))
+  const [branding, { refetch: reloadBranding }] = createResource(orgSlug, (s) => portalBranding(s))
 
   const [session, setSession] = createSignal<"checking" | "in" | "out">("checking")
   const [ended, setEnded] = createSignal(false)
@@ -148,23 +149,30 @@ const PortalRoot: Component = () => {
           <Show when={home()} fallback={<Loading />}>
             <Show when={homeData()} fallback={<PartFailed part="home" />}>
               {(h) => (
-                <Switch fallback={<NotAvailable />}>
-                  <Match when={page().length === 0}>
-                    <HomePage home={h()} documents={documents() ?? null} go={go} />
-                  </Match>
-                  <Match when={page()[0] === "projects" && page().length === 2}>
-                    <ProjectPage id={page()[1] as string} />
-                  </Match>
-                  <Match when={page()[0] === "invoices" && page().length === 1}>
-                    <InvoicesPage home={h()} />
-                  </Match>
-                  <Match when={page()[0] === "requests" && page().length === 1}>
-                    <RequestsPage home={h()} reload={() => void reloadHome()} />
-                  </Match>
-                  <Match when={page()[0] === "documents" && page().length === 2}>
-                    <DocumentPage id={page()[1] as string} />
-                  </Match>
-                </Switch>
+                <>
+                  <NoticeToRead
+                    branding={branding() ?? null}
+                    acknowledged={h().me?.noticeVersion ?? null}
+                    onChanged={() => void reloadBranding()}
+                  />
+                  <Switch fallback={<NotAvailable />}>
+                    <Match when={page().length === 0}>
+                      <HomePage home={h()} documents={documents() ?? null} go={go} />
+                    </Match>
+                    <Match when={page()[0] === "projects" && page().length === 2}>
+                      <ProjectPage id={page()[1] as string} />
+                    </Match>
+                    <Match when={page()[0] === "invoices" && page().length === 1}>
+                      <InvoicesPage home={h()} />
+                    </Match>
+                    <Match when={page()[0] === "requests" && page().length === 1}>
+                      <RequestsPage home={h()} reload={() => void reloadHome()} />
+                    </Match>
+                    <Match when={page()[0] === "documents" && page().length === 2}>
+                      <DocumentPage id={page()[1] as string} />
+                    </Match>
+                  </Switch>
+                </>
               )}
             </Show>
           </Show>

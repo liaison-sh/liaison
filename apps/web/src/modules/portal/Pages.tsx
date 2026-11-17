@@ -317,6 +317,13 @@ export const ProjectPage: Component<{ id: string }> = (props) => {
                   </Section>
                 )}
               </Show>
+              <Show when={!p().hours && p().hoursNote === "by_milestone"}>
+                <Section title={i18n.t("portal.project.hoursTitle")} testid="portal-project-hours">
+                  <p data-testid="portal-hours-note" class="text-[14px] text-text-secondary">
+                    {i18n.t("portal.project.hours.byMilestone")}
+                  </p>
+                </Section>
+              </Show>
               <Section title={i18n.t("portal.project.steps")} testid="portal-project-steps">
                 <Show when={p().steps} fallback={<PartFailed part="steps" />}>
                   {(steps) => (

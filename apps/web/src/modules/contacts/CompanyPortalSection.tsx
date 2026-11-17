@@ -118,6 +118,25 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
     () => api.get<PortalLogRow[]>(`${base()}/log`),
   )
 
+  // Who may read the log, by name, and the second step's current setting: each a read of its
+  // own, so a failed one leaves the generic words and unmarked options, never a broken section.
+  const [logReaders] = createResource(
+    () => (canLog() ? props.companyId : null),
+    () =>
+      api
+        .get<{ readers: Array<{ userId: string; name: string }> }>(`${base()}/log/readers`)
+        .then((r) => r.readers)
+        .catch(() => null),
+  )
+  const [signIn, { refetch: reloadSignIn }] = createResource(
+    () => props.companyId,
+    () =>
+      api
+        .get<{ required: boolean }>(`${base()}/sign-in`)
+        .then((r) => r.required === true)
+        .catch(() => null),
+  )
+
   const [view, setView] = createSignal<"controls" | "preview">("controls")
   const [message, setMessage] = createSignal<string | null>(null)
   const [busy, setBusy] = createSignal(false)
@@ -190,6 +209,7 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
   const requireTotp = (requireIt: boolean) =>
     act(async () => {
       await api.post(`${base()}/sign-in`, { requireTotp: requireIt })
+      void reloadSignIn()
       return requireIt ? i18n.t("portal.staff.totpRequired") : i18n.t("portal.staff.totpOptional")
     })
 
@@ -613,7 +633,8 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
                   </span>
                   <button
                     type="button"
-                    class={btn}
+                    class={signIn() === true ? primary : btn}
+                    aria-pressed={signIn() === true}
                     data-testid="company-portal.require-totp"
                     disabled={busy()}
                     onClick={() => requireTotp(true)}
@@ -622,7 +643,8 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
                   </button>
                   <button
                     type="button"
-                    class={btn}
+                    class={signIn() === false ? primary : btn}
+                    aria-pressed={signIn() === false}
                     data-testid="company-portal.optional-totp"
                     disabled={busy()}
                     onClick={() => requireTotp(false)}
@@ -637,8 +659,15 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
                   <h3 class="mb-1 text-[12.5px] font-medium text-text-secondary">
                     {i18n.t("portal.staff.log")}
                   </h3>
-                  <p class="text-[12.5px] text-text-tertiary">
-                    {i18n.t("portal.staff.logReaders")}
+                  <p
+                    data-testid="company-portal.log-readers"
+                    class="text-[12.5px] text-text-tertiary"
+                  >
+                    {(logReaders() ?? []).length > 0
+                      ? i18n.t("portal.staff.logReadersNamed", {
+                          names: (logReaders() ?? []).map((r) => r.name).join(", "),
+                        })
+                      : i18n.t("portal.staff.logReaders")}
                   </p>
                   <Show
                     when={(log() ?? []).length > 0}

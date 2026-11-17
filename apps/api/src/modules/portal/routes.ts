@@ -119,6 +119,20 @@ function rows(p: Part<Record<string, unknown>[]>): Record<string, unknown>[] | n
 }
 
 const ME = drizzleSql`SELECT id, name, email, locale, timezone, contact_name FROM portal.me`
+/** The notice version the caller acknowledged (their own row only), or none. */
+const NOTICE_ACK = drizzleSql`SELECT notice_version FROM portal.people_me`
+
+/** The caller with the notice version they acknowledged; a failed read reads as none. */
+async function meWithNotice(
+  tx: PortalClient,
+  me: Record<string, unknown> | undefined,
+): Promise<Record<string, unknown> | null> {
+  if (!me) return null
+  const ack = await part<{ notice_version: number | null }>(tx, "people_me", NOTICE_ACK)
+  const version = ack === UNAVAILABLE ? null : (ack[0]?.notice_version ?? null)
+  return { ...camel(me), noticeVersion: version }
+}
+
 const PROJECTS = drizzleSql`SELECT id, name, owner_name FROM portal.projects ORDER BY name, id`
 const INVOICES = drizzleSql`SELECT id, type, number, status, payment_status, currency,
   subtotal_minor::text AS subtotal_minor, tax_total_minor::text AS tax_total_minor,
@@ -273,12 +287,11 @@ export const portalRoutes = new Hono<AppEnv>()
   .use("*", portalWriteRateLimit(redis))
   .get("/me", async (c) => {
     const me = await portalRead(c, async (tx) =>
-      extractRows<Record<string, unknown>>(await tx.execute(ME)),
+      meWithNotice(tx, extractRows<Record<string, unknown>>(await tx.execute(ME))[0]),
     )
     if (me instanceof Response) return me
-    const [row] = me
-    if (!row) return c.json({ error: { message: "Unauthorized" } }, 401)
-    return success(c, camel(row))
+    if (!me) return c.json({ error: { message: "Unauthorized" } }, 401)
+    return success(c, me)
   })
   .get("/home", async (c) => {
     const viewer = portalOf(c)
@@ -290,7 +303,10 @@ export const portalRoutes = new Hono<AppEnv>()
       userAgent: c.req.header("user-agent") ?? null,
     })
     const home = await portalRead(c, async (tx) => {
-      const [me] = extractRows<Record<string, unknown>>(await tx.execute(ME))
+      const me = await meWithNotice(
+        tx,
+        extractRows<Record<string, unknown>>(await tx.execute(ME))[0],
+      )
       const projects = rows(await part(tx, "projects", PROJECTS))
       const invoices = rows(await part(tx, "invoices", INVOICES))
       const upcoming = rows(await part(tx, "billing_upcoming", UPCOMING))
@@ -304,7 +320,7 @@ export const portalRoutes = new Hono<AppEnv>()
         requests === null && "requests",
       ].filter((x): x is string => typeof x === "string")
       return {
-        me: me ? camel(me) : null,
+        me,
         projects,
         invoices,
         upcoming,

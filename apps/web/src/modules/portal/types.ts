@@ -10,6 +10,8 @@ export interface PortalMe {
   locale: string | null
   timezone: string | null
   contactName: string | null
+  /** The notice version the person acknowledged, or null. */
+  noticeVersion?: number | null
 }
 
 export interface PortalProject {
@@ -86,6 +88,8 @@ export interface PortalProjectDetail extends PortalProject {
     ofMinutes: number | null
     period: string | null
   } | null
+  /** Why no hours show: the project bills by milestone. Null otherwise, a closed share included. */
+  hoursNote?: "by_milestone" | null
 }
 
 export interface PortalDocument {

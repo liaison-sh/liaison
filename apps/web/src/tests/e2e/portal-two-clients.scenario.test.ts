@@ -219,3 +219,61 @@ test("a portal page with no session is the sign-in form, with the same words for
     "If this address has access, a sign-in link is on its way. Check your inbox.",
   )
 })
+
+test("a client acknowledges the notice they read, reads a changed one again, and a milestone project says it has no billed hours", async ({
+  page,
+  env,
+}) => {
+  const origin = `http://localhost:${env.ports[1]}`
+  const me = CLIENTS[0] as Client
+  await page.setViewportSize({ width: 390, height: 844 })
+  await servePortal(page, me)
+  // The org replaces its notice after the page loaded: version 2 is shown, version 3 is current.
+  let current = { notice: "Maison Alpha keeps this log 12 months.", noticeVersion: 2 }
+  const posted: unknown[] = []
+  const json = (route: Route, status: number, payload: unknown) =>
+    route.fulfill({ status, contentType: "application/json", body: JSON.stringify(payload) })
+  await page.route("**/api/portal/auth/branding/maison-alpha", (route) =>
+    json(route, 200, { data: { name: "Maison Alpha", logoUrl: null, ...current } }),
+  )
+  await page.route("**/api/portal/me/notice-ack", (route) => {
+    const body = route.request().postDataJSON() as { version: number }
+    posted.push(body)
+    if (body.version !== 3) {
+      current = { notice: "Maison Alpha keeps this log 24 months.", noticeVersion: 3 }
+      return json(route, 409, { error: { code: "NOTICE_CHANGED", message: "Changed" } })
+    }
+    return json(route, 200, { data: { noticeVersion: 3 } })
+  })
+  await page.route(`**/api/portal/projects/${me.projectId}`, (route) =>
+    json(route, 200, {
+      data: {
+        id: me.projectId,
+        name: me.projectName,
+        ownerName: "Léa Roux",
+        steps: [],
+        hours: null,
+        hoursNote: "by_milestone",
+      },
+    }),
+  )
+
+  await page.goto(`${origin}/portal/sign-in?org=maison-alpha#c=ch-n&t=${me.token}`)
+  await page.getByTestId("portal-verify-continue").click({ timeout: 30000 })
+  const notice = page.getByTestId("portal-notice-read")
+  await expect(notice).toContainText("12 months")
+  await page.getByTestId("portal-notice-ack").click()
+  await expect(page.getByTestId("portal-notice-changed")).toBeVisible()
+  await expect(notice).toContainText("24 months")
+  await page.getByTestId("portal-notice-ack").click()
+  await expect(notice).toHaveCount(0)
+  expect(posted).toEqual([{ version: 2 }, { version: 3 }])
+  await noSidewaysScroll(page)
+
+  await page.getByTestId(`portal-project-row-${me.projectId}`).click()
+  await expect(page.getByTestId("portal-hours-note")).toHaveText(
+    "This project bills by milestone, so it has no billed hours.",
+  )
+  await expect(page.getByTestId("portal-hours-line")).toHaveCount(0)
+  await noSidewaysScroll(page)
+})

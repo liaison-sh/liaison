@@ -162,6 +162,55 @@ describe("company portal section", () => {
     expect(logAction("portal.something_new")).toBe("other")
   })
 
+  it("names the people who can read the access log", async () => {
+    mocks.scopes = ["kernel:portal:admin", "kernel:portal:logs"]
+    serve({
+      [`${BASE}/people`]: [PAUL],
+      [`${BASE}/log`]: [],
+      [`${BASE}/log/readers`]: {
+        company: "Maison Alpha",
+        readers: [
+          { userId: "m-1", name: "Léa Roux" },
+          { userId: "m-2", name: "Marc Petit" },
+        ],
+      },
+    })
+    const r = render(() => <CompanyPortalSection companyId={CO} />)
+    await waitFor(() =>
+      expect(r.getByTestId("company-portal.log-readers").textContent).toBe(
+        "Only Léa Roux, Marc Petit can read it.",
+      ),
+    )
+  })
+
+  it("marks the second step's current setting, and a change marks the new one", async () => {
+    let required = true
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === `${BASE}/people`) return [PAUL]
+      if (path === `${BASE}/sign-in`) return { company: "Maison Alpha", required }
+      throw new Error(`unexpected GET ${path}`)
+    })
+    mocks.post.mockImplementation(async (_path: string, body: { requireTotp: boolean }) => {
+      required = body.requireTotp
+      return { required }
+    })
+    const r = render(() => <CompanyPortalSection companyId={CO} />)
+    await waitFor(() =>
+      expect(r.getByTestId("company-portal.require-totp").getAttribute("aria-pressed")).toBe(
+        "true",
+      ),
+    )
+    expect(r.getByTestId("company-portal.optional-totp").getAttribute("aria-pressed")).toBe("false")
+    fireEvent.click(r.getByTestId("company-portal.optional-totp"))
+    await waitFor(() =>
+      expect(r.getByTestId("company-portal.optional-totp").getAttribute("aria-pressed")).toBe(
+        "true",
+      ),
+    )
+    expect(mocks.post).toHaveBeenCalledWith(`${BASE}/sign-in`, { requireTotp: false })
+    expect(r.getByTestId("company-portal.require-totp").getAttribute("aria-pressed")).toBe("false")
+  })
+
   it("previews what a person sees through the portal's own reads", async () => {
     serve({
       [`${BASE}/people`]: [PAUL],

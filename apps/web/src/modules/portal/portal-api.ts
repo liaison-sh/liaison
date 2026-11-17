@@ -76,6 +76,8 @@ export interface Branding {
   name: string | null
   logoUrl: string | null
   notice: string | null
+  /** The notice's version: what the page sends back when the person acknowledges it. */
+  noticeVersion?: number | null
 }
 
 export async function portalBranding(slug: string): Promise<Branding | null> {

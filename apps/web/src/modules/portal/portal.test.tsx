@@ -6,10 +6,12 @@
 // the rest, hours as a total only, and client text shown as text.
 import { Route, Router } from "@solidjs/router"
 import { cleanup, fireEvent, render, waitFor } from "@solidjs/testing-library"
+import { createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { englishT, I18nProvider } from "~/modules/i18n/i18n-context"
 import { DocumentPage, documentState } from "./Approve"
 import { hoursLine, money } from "./format"
+import { NoticeToRead } from "./Notice"
 import { HomePage, InvoicesPage, ProjectPage } from "./Pages"
 import PortalRoot, { portalPath } from "./PortalRoot"
 import { navItems } from "./PortalShell"
@@ -297,6 +299,31 @@ describe("hours", () => {
     expect(r.queryByTestId("portal-project-hours")).toBeNull()
     expect(r.getByTestId("portal-project").textContent).not.toMatch(/\bh\b|hours/i)
   })
+
+  it("a project that bills by milestone says so, and that it has no billed hours", async () => {
+    setPortalAccessToken("acc")
+    serve({
+      "GET /projects/p1": () => ({
+        status: 200,
+        body: {
+          data: {
+            id: "p1",
+            name: "Website",
+            ownerName: null,
+            steps: [],
+            hours: null,
+            hoursNote: "by_milestone",
+          },
+        },
+      }),
+    })
+    const r = wrap(() => <ProjectPage id="p1" />)
+    expect((await r.findByTestId("portal-hours-note")).textContent).toBe(
+      "This project bills by milestone, so it has no billed hours.",
+    )
+    expect(r.queryByTestId("portal-hours-line")).toBeNull()
+    expect(r.getByTestId("portal-project").textContent).not.toMatch(/\d+\s*h\b/)
+  })
 })
 
 describe("invoices", () => {
@@ -518,6 +545,69 @@ describe("client text", () => {
     const row = r.getByTestId("portal-request-t1")
     expect(row.textContent).toContain(payload)
     expect(row.querySelector("script, img")).toBeNull()
+  })
+})
+
+describe("notice", () => {
+  it("acknowledges the version it showed; when the notice changed it shows the new one to read again", async () => {
+    setPortalAccessToken("acc")
+    const posted: unknown[] = []
+    let current = 1
+    serve({
+      "POST /me/notice-ack": (init) => {
+        const body = JSON.parse(String(init?.body)) as { version: number }
+        posted.push(body)
+        return body.version === current
+          ? { status: 200, body: { data: { noticeVersion: current } } }
+          : {
+              status: 409,
+              body: { error: { code: "NOTICE_CHANGED", message: "The notice changed." } },
+            }
+      },
+    })
+    const [branding, setBranding] = createSignal({
+      name: "Maison Alpha",
+      logoUrl: null,
+      notice: "We log each sign-in.",
+      noticeVersion: 1,
+    })
+    // The org wrote a new text after the page loaded.
+    current = 2
+    const r = wrap(() => (
+      <NoticeToRead
+        branding={branding()}
+        acknowledged={null}
+        onChanged={() =>
+          setBranding({
+            ...branding(),
+            notice: "We log each sign-in and download.",
+            noticeVersion: 2,
+          })
+        }
+      />
+    ))
+    expect(r.getByTestId("portal-notice-read").textContent).toContain("We log each sign-in.")
+    fireEvent.click(r.getByTestId("portal-notice-ack"))
+    await waitFor(() =>
+      expect(r.getByTestId("portal-notice-read").textContent).toContain(
+        "We log each sign-in and download.",
+      ),
+    )
+    expect(r.getByTestId("portal-notice-changed")).toBeTruthy()
+    fireEvent.click(r.getByTestId("portal-notice-ack"))
+    await waitFor(() => expect(r.queryByTestId("portal-notice-read")).toBeNull())
+    expect(posted).toEqual([{ version: 1 }, { version: 2 }])
+  })
+
+  it("asks nothing when the person already acknowledged the notice shown", () => {
+    const r = wrap(() => (
+      <NoticeToRead
+        branding={{ name: "Maison Alpha", logoUrl: null, notice: "We log.", noticeVersion: 3 }}
+        acknowledged={3}
+        onChanged={() => {}}
+      />
+    ))
+    expect(r.queryByTestId("portal-notice-read")).toBeNull()
   })
 })
 

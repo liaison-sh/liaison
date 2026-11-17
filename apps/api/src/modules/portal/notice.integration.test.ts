@@ -106,6 +106,28 @@ describe("the portal notice", () => {
       SELECT notice_version AS v FROM kernel.portal_people WHERE user_id = ${w.clientA.userId}`
     expect(after?.v).toBe(fresh.data.noticeVersion)
   })
+
+  it("the portal's home says which notice version the person acknowledged, and nobody else's", async () => {
+    await put({ notice: "Each sign-in is logged for a year." })
+    const shown = (await readPortalSettings(w.orgId)).noticeVersion as number
+    const tokenA = (await createPortalSession(w.clientA.userId, w.orgId)).accessToken
+    const tokenB = (await createPortalSession(w.clientB.userId, w.orgId)).accessToken
+    const homeOf = async (token: string) =>
+      (
+        (await (
+          await app.request("/api/portal/home", { headers: { Authorization: `Bearer ${token}` } })
+        ).json()) as { data: { me: { noticeVersion: number | null } } }
+      ).data.me
+    expect((await homeOf(tokenA)).noticeVersion).not.toBe(shown)
+    const ack = await app.request("/api/portal/me/notice-ack", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenA}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ version: shown }),
+    })
+    expect(ack.status).toBe(200)
+    expect((await homeOf(tokenA)).noticeVersion).toBe(shown)
+    expect((await homeOf(tokenB)).noticeVersion).not.toBe(shown)
+  })
 })
 
 describe("the client access panel's reads", () => {

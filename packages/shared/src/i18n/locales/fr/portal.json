@@ -18,6 +18,11 @@
     "tooMany": "Trop de tentatives. Patientez un instant, puis réessayez.",
     "enrol": "Ce portail demande une seconde étape. Ajoutez cette clé à votre application d'authentification, puis saisissez le code qu'elle affiche."
   },
+  "notice": {
+    "ack": "Je l'ai lu",
+    "changed": "La notice a changé depuis son affichage. Lisez la nouvelle.",
+    "failed": "Cela n'a pas fonctionné. Réessayez."
+  },
   "shell": {
     "signOut": "Se déconnecter",
     "by": "Portail par Liaison",
@@ -47,7 +52,8 @@
       "soFarOf": "Heures utilisées : {{used}} sur {{of}} h à ce jour",
       "soFar": "Heures utilisées : {{used}} h à ce jour",
       "billed": "Heures facturées : {{used}} h",
-      "period": "Pour {{month}}"
+      "period": "Pour {{month}}",
+      "byMilestone": "Ce projet est facturé par jalon, il n'a donc pas d'heures facturées."
     }
   },
   "invoices": {
@@ -194,6 +200,7 @@
     "restored": "{{people}} peuvent se reconnecter. Aucun partage n'a été rouvert.",
     "log": "Journal d'accès",
     "logReaders": "Seules les personnes ayant la permission du journal d'accès peuvent le lire.",
+    "logReadersNamed": "Seuls {{names}} peuvent le lire.",
     "logEmpty": "Rien pour l'instant.",
     "logAction": {
       "sign_in": "Connexion",

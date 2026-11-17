@@ -18,6 +18,11 @@
     "tooMany": "Too many attempts. Wait a moment, then try again.",
     "enrol": "This portal asks for a second step. Add this key to your authenticator app, then enter the code it shows."
   },
+  "notice": {
+    "ack": "I have read it",
+    "changed": "The notice changed since it was shown. Please read the new one.",
+    "failed": "That did not work. Try again."
+  },
   "shell": {
     "signOut": "Sign out",
     "by": "Portal by Liaison",
@@ -47,7 +52,8 @@
       "soFarOf": "Hours used: {{used}} of {{of}} h so far",
       "soFar": "Hours used: {{used}} h so far",
       "billed": "Hours billed: {{used}} h",
-      "period": "For {{month}}"
+      "period": "For {{month}}",
+      "byMilestone": "This project bills by milestone, so it has no billed hours."
     }
   },
   "invoices": {
@@ -194,6 +200,7 @@
     "restored": "{{people}} can sign in again. No share was reopened.",
     "log": "Access log",
     "logReaders": "Only people given the access log permission can read it.",
+    "logReadersNamed": "Only {{names}} can read it.",
     "logEmpty": "Nothing yet.",
     "logAction": {
       "sign_in": "Signed in",

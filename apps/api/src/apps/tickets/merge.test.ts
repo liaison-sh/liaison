@@ -105,6 +105,41 @@ describe("mergeTickets — external_message_id on the copy (BL-218)", () => {
     // The source row STILL carries the canonical external_message_id (untouched).
     expect(src[0]!.external_message_id).toBe("ext-mail-aki-1")
   })
+
+  it("never copies a confidential ticket's messages into a ticket read more widely; the other way it merges", async () => {
+    const open = await seedTicket("mt-open")
+    const closed = await seedTicket("mt-closed")
+    await withPrivilegedDb(ORG_ID, "merge-test-seed-sensitive", async (tx) => {
+      await tx.execute(
+        drizzleSql`UPDATE app_tickets.tickets SET sensitivity = 'confidential' WHERE id = ${closed}`,
+      )
+      await tx.execute(drizzleSql`
+        INSERT INTO app_tickets.messages (org_id, ticket_id, kind, from_email, subject, text_body, sent_at)
+        VALUES (${ORG_ID}, ${closed}, 'inbound', 'a@example.com', 'Private', 'private body', now())`)
+    })
+    const run = (target: string, source: string) =>
+      withPrivilegedDb(ORG_ID, "merge-test-run", (tx) =>
+        mergeTickets(
+          tx,
+          ORG_ID,
+          { targetTicketId: target, sourceTicketIds: [source] },
+          { actorType: "user", userId: USER_ID },
+          { privilegedTx: tx },
+        ),
+      )
+    const refused = await run(open, closed)
+    expect("error" in refused && refused.error.code).toBe("merge_more_sensitive")
+    const onOpen = await withPrivilegedDb(ORG_ID, "merge-test-assert", async (tx) =>
+      extractRows<{ n: number }>(
+        await tx.execute(
+          drizzleSql`SELECT count(*)::int AS n FROM app_tickets.messages WHERE ticket_id = ${open}`,
+        ),
+      ),
+    )
+    expect(onOpen[0]?.n).toBe(0)
+    const merged = await run(closed, open)
+    expect("error" in merged).toBe(false)
+  })
 })
 
 describe("mergeTickets -- reopens a closed target whose customer wrote last", () => {

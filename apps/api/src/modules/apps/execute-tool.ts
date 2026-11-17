@@ -3511,6 +3511,8 @@ export function statusForToolError(code: string): number {
     case "merge_self_reference":
     case "ticket_already_merged":
     case "merge_target_invalid":
+    // A merge whose source is more sensitive than its target.
+    case "merge_more_sensitive":
     case "category_depth_limit":
     case "archived_category":
     case "archived_inbox":

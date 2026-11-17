@@ -239,6 +239,12 @@
         "action": "Send me the new link again",
         "done": "Sent to the same address."
       },
+      "replacedNoLink": {
+        "title": "A newer version replaced this one",
+        "why": "{{org}} changed the document, so this link no longer works. No new link has been sent yet: ask {{org}} for the new version.",
+        "action": "Ask {{org}} for the new version",
+        "done": "Asked. {{sender}} has your request."
+      },
       "ended": {
         "title": "Access has ended",
         "why": "{{org}} has ended this access, so this link no longer opens. Copies you already received stay yours.",

@@ -33,7 +33,7 @@ const ANSWERS: Record<Exclude<FrameId, "wrong">, PublicAnswer> = {
   signed: dead("signed"),
   attempts: { status: 423, body: { error: { code: "paused", retry_at: "2030-01-01" } } },
   locked: { status: 410, body: { state: "attempts", sender: SENDER, next: "ask_sender" } },
-  replaced: dead("replaced"),
+  replaced: { status: 200, body: { state: "replaced", sender: SENDER, next: "resend_link" } },
   ended: dead("ended"),
   notfound: { status: 404, body: { error: { code: "not_found" } } },
   down: { status: 503, body: { state: "down" } },
@@ -99,6 +99,34 @@ describe("the twelve token states", () => {
       cleanup()
     }
     expect(texts).toMatchSnapshot()
+  })
+
+  it("a link whose version was replaced, with no new link sent, never says one went out", async () => {
+    const asked: unknown[] = []
+    for (const answer of [
+      dead("replaced"),
+      { status: 409, body: { error: { code: "VERSION_CHANGED" } } },
+    ] as PublicAnswer[]) {
+      const f = frameOfAnswer(answer, SENDER)
+      expect(f).toMatchObject({ frame: "replaced", relinked: false })
+      render(() => (
+        <I18nProvider initialLocale="en">
+          <TokenFrame facts={f as FrameFacts} onAction={async (a) => void asked.push(a)} />
+        </I18nProvider>
+      ))
+      const text = screen.getByTestId("token-frame-replaced").textContent ?? ""
+      expect(text).not.toContain("same address")
+      expect(text).toContain("No new link has been sent")
+      screen.getByTestId("token-frame-action").click()
+      await screen.findByTestId("token-frame-done")
+      expect(screen.getByTestId("token-frame-done").textContent).not.toContain("Sent")
+      cleanup()
+    }
+    expect(asked).toEqual([
+      { kind: "request", type: "new_link" },
+      { kind: "request", type: "new_link" },
+    ])
+    expect(frameOfAnswer(ANSWERS.replaced, SENDER)).toMatchObject({ relinked: true })
   })
 
   it("the signed frame says where the holder's own copy stands, in English and French", () => {

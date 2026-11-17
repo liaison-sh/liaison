@@ -55,6 +55,7 @@ const ALLOWED: Record<string, string[]> = {
   signed: [...DEAD_KEYS, "copy", "copy_to"],
   attempts: DEAD_KEYS,
   replaced: DEAD_KEYS,
+  edited: DEAD_KEYS,
   ended: DEAD_KEYS,
   notfound: ["error", "error.code"],
   down: ["state"],
@@ -117,6 +118,11 @@ async function frames(): Promise<
      WHERE id = ${replaced.id}`
   out.replaced = await openBody(replaced.token)
 
+  // A version saved over a sent one revokes its links and mails nothing new.
+  const edited = await mintTo(kit)
+  await set(edited.id, "revoked_at = now(), revoke_reason = 'replaced'")
+  out.edited = await openBody(edited.token)
+
   const ended = await mintTo(kit)
   await set(ended.id, "revoked_at = now(), revoke_reason = 'access_ended'")
   out.ended = await openBody(ended.token)
@@ -150,7 +156,7 @@ describe("the token page's twelve states", () => {
     for (const [name, { status, body }] of Object.entries(got)) {
       const paths = keyPaths(body).sort()
       expect({ name, paths }).toEqual({ name, paths: [...(ALLOWED[name] ?? [])].sort() })
-      if (name !== "notfound" && name !== "down" && name !== "wrong") {
+      if (name !== "notfound" && name !== "down" && name !== "wrong" && name !== "edited") {
         expect({ name, state: body.state }).toEqual({ name, state: name })
       }
       if (name !== "open") {
@@ -172,6 +178,10 @@ describe("the token page's twelve states", () => {
       })
     }
     expect(got.signed?.body.copy).toBe("on_its_way")
+    // A rotated link offers the new one again; a link of a replaced version was not followed
+    // by a new link, so its page offers asking the sender, never "sent to the same address".
+    expect(got.replaced?.body.next).toBe("resend_link")
+    expect(got.edited?.body).toMatchObject({ state: "replaced", next: "ask_sender" })
     expect(got.notfound?.body).toEqual({ error: { code: "not_found" } })
     expect(got.wrong?.body).toMatchObject({ error: { code: "wrong_code", left: 4 } })
   }, 60_000)

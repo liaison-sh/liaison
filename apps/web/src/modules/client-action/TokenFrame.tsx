@@ -6,7 +6,7 @@
 
 import { type Component, createSignal, For, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { FRAME_ACTIONS, type FrameAction, type FrameFacts, NAMELESS } from "./frames"
+import { type FrameAction, type FrameFacts, frameActions, frameWords, NAMELESS } from "./frames"
 
 export interface TokenFrameProps {
   facts: FrameFacts
@@ -22,6 +22,7 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
   const [busy, setBusy] = createSignal(false)
   const [email, setEmail] = createSignal("")
   const frame = () => props.facts.frame
+  const words = () => frameWords(props.facts)
   const sender = () => props.facts.sender
   const params = () => ({
     org: sender()?.org ?? "",
@@ -34,14 +35,14 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
   const label = (a: FrameAction) =>
     a.kind === "request" && a.type === "not_me"
       ? i18n.t("client-action.page.frame.used.notMe")
-      : i18n.t(`client-action.page.frame.${frame()}.action`, params())
+      : i18n.t(`client-action.page.frame.${words()}.action`, params())
 
   async function run(a: FrameAction) {
     if (busy()) return
     setBusy(true)
     try {
       await props.onAction(a, { email: email().trim() || undefined })
-      setDone(i18n.t(`client-action.page.frame.${frame()}.done`, params()))
+      setDone(i18n.t(`client-action.page.frame.${words()}.done`, params()))
     } finally {
       setBusy(false)
     }
@@ -70,12 +71,12 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
       </div>
       <div class="flex flex-col gap-3 px-5 py-5">
         <h1 data-testid="token-frame-title" class="text-[17px] font-semibold text-text">
-          {i18n.t(`client-action.page.frame.${frame()}.title`, params())}
+          {i18n.t(`client-action.page.frame.${words()}.title`, params())}
         </h1>
         <p data-testid="token-frame-why" class="text-[13.5px] leading-5 text-text-secondary">
           {frame() === "signed" && props.facts.copy
             ? i18n.t(`client-action.page.copy.${props.facts.copy}`, params())
-            : i18n.t(`client-action.page.frame.${frame()}.why`, params())}
+            : i18n.t(`client-action.page.frame.${words()}.why`, params())}
         </p>
         <Show when={frame() === "wrong" && !done()}>
           <label class="flex flex-col gap-1 text-[13px] text-text">
@@ -94,7 +95,7 @@ export const TokenFrame: Component<TokenFrameProps> = (props) => {
           when={done()}
           fallback={
             <div class="flex flex-wrap gap-2">
-              <For each={FRAME_ACTIONS[frame()]}>
+              <For each={frameActions(props.facts)}>
                 {(a, i) => (
                   <button
                     type="button"

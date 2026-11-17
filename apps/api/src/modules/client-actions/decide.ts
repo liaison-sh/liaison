@@ -175,13 +175,16 @@ export function frameOf(row: ActionRow, via: "current" | "prior"): Frame {
 
 /**
  * A dead page: the state, who sent it and the next step, never the document, a
- * price or another name. The next step names what the page offers.
+ * price or another name. The next step names what the page offers. A replaced page
+ * offers the new link again only for a rotated link (a reminder or a resend mailed a new
+ * one); a link revoked because its version was replaced was followed by no new link,
+ * so that page offers asking the sender (the resend does nothing for a revoked link).
  */
 export function deadFrameBody(row: ActionRow, frame: Exclude<Frame, "open">) {
   const next =
     frame === "signed" || frame === "used" || frame === "declined"
       ? "email_copy"
-      : frame === "replaced"
+      : frame === "replaced" && !row.revoked_at
         ? "resend_link"
         : "ask_sender"
   return {

@@ -41,6 +41,12 @@ export interface FrameFacts {
   copy?: CopyState | null
   /** `signed`: the masked address the copy goes to. */
   copyTo?: string | null
+  /**
+   * `replaced`: true when a new link really went to the same address (the link was
+   * rotated by a reminder or a resend); false when the version was replaced and no new
+   * link has been sent, so the page offers asking the sender instead.
+   */
+  relinked?: boolean
 }
 
 /** Where a signer's copy of a signed document stands (the server's `copy`). */
@@ -74,6 +80,18 @@ export const FRAME_ACTIONS: Record<FrameId, FrameAction[]> = {
   ended: [{ kind: "request", type: "question" }],
   notfound: [{ kind: "retry" }],
   down: [{ kind: "retry" }],
+}
+
+/** What a page offers: a replaced version with no new link sent asks the sender for one. */
+export function frameActions(facts: FrameFacts): FrameAction[] {
+  if (facts.frame === "replaced" && facts.relinked === false)
+    return [{ kind: "request", type: "new_link" }]
+  return FRAME_ACTIONS[facts.frame]
+}
+
+/** The words a page reads from (`client-action.page.frame.<key>`). */
+export function frameWords(facts: FrameFacts): string {
+  return facts.frame === "replaced" && facts.relinked === false ? "replacedNoLink" : facts.frame
 }
 
 /** The frames that name nobody: whoever holds the link is not known. */
@@ -122,11 +140,13 @@ export function frameOfAnswer(
     }
   }
   if (code === "NO_MAIL_ON_DEMO") return { frame: "down", sender: null }
-  if (code === "VERSION_CHANGED") return { frame: "replaced", sender: known ?? null }
+  if (code === "VERSION_CHANGED")
+    return { frame: "replaced", sender: known ?? null, relinked: false }
   const state = typeof body?.state === "string" ? body.state : null
   if (state && state !== "open" && SERVER_DEAD[state]) {
     const frame = SERVER_DEAD[state] as FrameId
     const facts: FrameFacts = { frame, sender: senderOf(body) ?? known ?? null }
+    if (frame === "replaced") facts.relinked = body?.next === "resend_link"
     if (frame === "signed") {
       facts.copy = copyStateOf(body)
       facts.copyTo = typeof body?.copy_to === "string" ? body.copy_to : null

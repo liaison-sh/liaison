@@ -239,6 +239,12 @@
         "action": "Me renvoyer le nouveau lien",
         "done": "Envoyé à la même adresse."
       },
+      "replacedNoLink": {
+        "title": "Une version plus récente a remplacé celle-ci",
+        "why": "{{org}} a modifié le document, ce lien ne fonctionne donc plus. Aucun nouveau lien n'a encore été envoyé : demandez la nouvelle version à {{org}}.",
+        "action": "Demander la nouvelle version à {{org}}",
+        "done": "Demandé. {{sender}} a votre demande."
+      },
       "ended": {
         "title": "L'accès a pris fin",
         "why": "{{org}} a mis fin à cet accès, ce lien ne s'ouvre donc plus. Les copies déjà reçues restent les vôtres.",

@@ -8,8 +8,10 @@
 // agents are typed by the visitor.
 
 import type { ApprovalSummary } from "@liaison/shared"
+import { sql } from "drizzle-orm"
 import { z } from "zod"
-import type { RlsClient } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
+import { schemaRef } from "~/db/schema-ref"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
@@ -205,6 +207,61 @@ export async function handlePortalAccessLog(
   }
 }
 
+const SHARE_WORDS: Record<string, { one: string; named: string }> = {
+  project_progress: { one: "a project's progress", named: "the progress of project" },
+  project_reports: { one: "a project's reports", named: "the reports of project" },
+  project_hours: { one: "a project's hours", named: "the hours of project" },
+  invoices: { one: "the invoices", named: "the invoices" },
+  requests: { one: "the requests", named: "the requests" },
+  agreement: { one: "an agreement", named: "agreement" },
+  change_request: { one: "a change request", named: "change request" },
+  file: { one: "a file", named: "file" },
+  ticket: { one: "a ticket", named: "ticket" },
+}
+
+/** A share card's title in words: what, named when it could be read, on which company's portal. */
+export function shareCardTitle(input: {
+  open: boolean
+  kind: string
+  companyName: string | null
+  objectName: string | null
+}): string {
+  const words = SHARE_WORDS[input.kind] ?? { one: "a shared item", named: "item" }
+  const what =
+    input.objectName && words.named !== words.one
+      ? `${words.named} "${input.objectName}"`
+      : words.one
+  const where = input.companyName ? `${input.companyName}'s portal` : "this company's portal"
+  return `${input.open ? "Show" : "Hide"} ${what} on ${where}`
+}
+
+/** The company's and the shared thing's names, as the caller reads them; null when not. */
+async function shareNames(
+  tx: RlsClient,
+  p: { company_id?: string; kind?: string; object_id?: string },
+): Promise<{ companyName: string | null; objectName: string | null }> {
+  const one = async (query: ReturnType<typeof sql>): Promise<string | null> => {
+    try {
+      const [row] = extractRows<{ name: string | null }>(await tx.execute(query))
+      return row?.name?.trim() || null
+    } catch {
+      return null
+    }
+  }
+  const companyName = p.company_id
+    ? await one(
+        sql`SELECT name FROM ${sql.raw(schemaRef("kernel"))}.companies WHERE id = ${p.company_id}`,
+      )
+    : null
+  const objectName =
+    p.object_id && p.kind?.startsWith("project_")
+      ? await one(
+          sql`SELECT name FROM ${sql.raw(schemaRef("app_projects"))}.projects WHERE id = ${p.object_id}`,
+        )
+      : null
+  return { companyName, objectName }
+}
+
 async function summarize(kind: string, title: string, lines: string[]): Promise<ApprovalSummary> {
   return { kind, title, lines }
 }
@@ -264,11 +321,12 @@ export function registerPortalTools(orgId: string): void {
     params: portalShareSetParams,
     handler: handlePortalShareSet as (p: unknown, c: any) => Promise<unknown>,
   })
-  registerApprovalSummarizer(orgId, "kernel", "portal_share_set", (params) => {
+  registerApprovalSummarizer(orgId, "kernel", "portal_share_set", async (params, sctx) => {
     const p = params as Partial<z.infer<typeof portalShareSetParams>>
+    const names = await shareNames(sctx.tx, p)
     return summarize(
       "portal_share_set",
-      `${p.open ? "Show" : "Hide"} ${p.kind ?? "?"}${p.object_id ? ` ${p.object_id}` : ""} on company ${p.company_id ?? "?"}'s portal`,
+      shareCardTitle({ open: p.open === true, kind: p.kind ?? "", ...names }),
       [
         p.open
           ? "Everyone invited from that company sees it, except what names people."

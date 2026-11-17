@@ -11,7 +11,7 @@ import { describe, expect, it } from "bun:test"
 import { changeRequestSend, changeRequestSendPreflight, moneyText } from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
-import { summarizeChangeRequestSend } from "./summarizers"
+import { summarizeAgreementSend, summarizeChangeRequestSend } from "./summarizers"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const AGENT = "33333333-3333-4333-8333-333333333333"
@@ -328,5 +328,17 @@ describe("change_request_send", () => {
     }
     expect(noSource.error.code).toBe("HOURS_SOURCE_REQUIRED")
     expect(ctx.calls.approvals).toEqual([])
+  })
+})
+
+describe("the send card", () => {
+  it("a signer named by contact only reads as their address, never as a contact", async () => {
+    const card = await summarizeAgreementSend({
+      signers: [{ contact_id: "c-1" }],
+      sendGuard: { addresses: ["paul@client.example"] },
+      sha256: "a".repeat(64),
+    })
+    expect(card.lines).toContain("Signer 1: paul@client.example")
+    expect(card.lines.join("\n")).not.toContain("a contact")
   })
 })

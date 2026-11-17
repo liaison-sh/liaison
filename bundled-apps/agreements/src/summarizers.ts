@@ -17,10 +17,20 @@ const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` :
 const done = (c: Card): Promise<Card> =>
   Promise.resolve({ ...c, lines: c.lines.slice(0, 40).map((l) => clip(l)) })
 
-function signerLine(s: unknown, i: number): string {
+/**
+ * One signer on the card. A signer named by contact only carries no address in the call: the
+ * preflight's pinned check lists each signer's address, in the same order.
+ */
+function signerLine(s: unknown, i: number, pinned: unknown[]): string {
   const o = (s ?? {}) as { contact_id?: string; email?: string; name?: string }
-  const who = o.name ?? o.email ?? "a contact"
-  return `Signer ${i + 1}: ${who}${o.email && o.name ? ` <${o.email}>` : ""}`
+  const email = o.email ?? (typeof pinned[i] === "string" ? (pinned[i] as string) : undefined)
+  const who = o.name ?? email ?? "a contact"
+  return `Signer ${i + 1}: ${who}${email && o.name ? ` <${email}>` : ""}`
+}
+
+function pinnedAddresses(params: Record<string, unknown>): unknown[] {
+  const a = (params.sendGuard as { addresses?: unknown } | undefined)?.addresses
+  return Array.isArray(a) ? a : []
 }
 
 export function summarizeAgreementSend(params: Record<string, unknown>): Promise<Card> {
@@ -30,7 +40,7 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   const lines = [
     `Fingerprint: ${String(params.sha256 ?? "")}`,
     `Asks: ${mode}, ${order}`,
-    ...signers.map(signerLine),
+    ...signers.map((x, i) => signerLine(x, i, pinnedAddresses(params))),
     `Links last ${String(params.expires_in_days ?? 14)} days`,
   ]
   if (typeof params.required_phrase === "string" && params.required_phrase)

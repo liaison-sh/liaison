@@ -222,6 +222,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/erasure/erase-user.ts": ["one-row", "the row being erased"],
   "modules/export/data-subject-export-tool.ts": ["by-address", "the subject's own personal agent"],
   "modules/export/org-archive/store.ts": ["stored-ids", "who asked for an export"],
+  "modules/export/org-archive/writer.ts": [
+    "member-filter",
+    "counts the external rows of the org for the archive's own section of them",
+  ],
   "modules/files/media-analysis-job.ts": ["member-filter", "any one row as a fallback actor"],
   "modules/files/origin.ts": ["stored-ids", "who uploaded a file"],
   "modules/imports/authority.ts": ["by-address", "an import's named people"],

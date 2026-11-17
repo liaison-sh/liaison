@@ -111,6 +111,8 @@ What is left out: passwords and password hashes, two-step secrets and recovery c
 
 The archive holds what an admin may read of people's time, no more. A person's own time entries are left out, except those on a project's dated sheet (entered while the project used dated hours), and each entry's cost is written as `null`. People's cost rates and proposed reconciliations, with their lines and proofs, are left out too. An agreement closed to the organization is named by its number and status only: its title and other details are written as `null`, and its versions, signatures, evidence, drafts and list are left out. The manifest lists these tables under `withheld`. A full copy moves only with an instance transfer, from operator to operator.
 
+Client portal accounts have their own section, `external`, in the manifest: how many people outside the organization have an account, where their rows are (the `kernel.users` rows with `user_type` `external`) and the tables that hold their company, what is shared with them, their requests and what they did. Their link tokens, session tokens, second-factor secrets and the hashes of these are written as `null`.
+
 The archive is read while the organization keeps working, so it is not a point-in-time snapshot. Without ZIP64, one archive holds at most 4 GB and 65,000 entries: a larger organization's export fails and says so.
 
 ## Delete an organization

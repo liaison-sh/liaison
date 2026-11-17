@@ -86,7 +86,23 @@ export interface OrgArchiveManifest {
   kept: Array<{ column: string; why: string }>
   /** Tables whose rows the archive holds only in part (withheld.ts), with why. */
   withheld: Array<{ table: string; why: string }>
+  /** The people outside the organization (client portal accounts), as their own section. */
+  external: {
+    people: number
+    users: { file: string; where: string }
+    tables: Array<{ table: string; file: string; rows: number }>
+    note: string
+  }
 }
+
+/** The tables that hold what the people outside are, may see and did (client portal). */
+export const EXTERNAL_TABLES = [
+  "kernel.portal_people",
+  "kernel.portal_shares",
+  "kernel.client_actions",
+  "kernel.client_action_events",
+  "kernel.client_action_devices",
+] as const
 
 export interface BuildOrgArchiveOptions {
   orgId: string
@@ -368,6 +384,18 @@ function isMissingObject(err: unknown): boolean {
   return e?.name === "NoSuchKey" || e?.Code === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404
 }
 
+async function countExternalPeople(orgId: string): Promise<number> {
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [row] = await withSystemDb("org-export-external", async (tx) =>
+    extractRows<{ n: string }>(
+      await tx.execute(
+        drizzleSql`SELECT count(*)::text AS n FROM ${K}.users WHERE org_id = ${orgId}::uuid AND user_type = 'external'`,
+      ),
+    ),
+  )
+  return Number(row?.n ?? 0)
+}
+
 async function loadOrg(orgId: string): Promise<{ id: string; name: string; slug: string }> {
   const K = drizzleSql.raw(schemaRef("kernel"))
   const [org] = await withSystemDb("org-export-org", async (tx) =>
@@ -485,6 +513,16 @@ export async function buildOrgArchive(
       deflate: true,
     })
 
+    const externalTables = new Set<string>(EXTERNAL_TABLES)
+    const external: OrgArchiveManifest["external"] = {
+      people: await countExternalPeople(orgId),
+      users: { file: "data/kernel.users.ndjson", where: "user_type = 'external'" },
+      tables: tableStats
+        .filter((t) => externalTables.has(`${t.schema}.${t.table}`))
+        .map((t) => ({ table: `${t.schema}.${t.table}`, file: t.file, rows: t.rows })),
+      note: "People outside the organization who sign in to its client portal. Their accounts are the kernel.users rows with user_type 'external'; their company, what is shared with them, their requests and the trail of what they did are in the tables listed. Link tokens, session tokens, second-factor secrets and their hashes are written as null.",
+    }
+
     const manifest: OrgArchiveManifest = {
       formatVersion: ORG_ARCHIVE_FORMAT_VERSION,
       org,
@@ -523,6 +561,7 @@ export async function buildOrgArchive(
       withheld: [...Object.entries(WITHHELD_ROWS), ...Object.entries(PARTIAL_ROWS)]
         .map(([table, w]) => ({ table, why: w.why }))
         .sort((a, b) => a.table.localeCompare(b.table)),
+      external,
     }
     await writer.addEntry("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`, {
       deflate: true,

@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.44.0",
+  "version": "1.45.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -6589,8 +6589,14 @@
       "reconciliation:proposed",
       "client_report:drafted",
       "client_report:sent",
-      "client_report:rejected"
-    ]
+      "client_report:rejected",
+      "client_report:expired"
+    ],
+    "subscribes": {
+      "kernel/approval_request:update": "onClientReportCardClosed",
+      "kernel/portal_share:opened": "onReportsShareOpened",
+      "kernel/client_action:decided": "onMilestoneClientActionDecided"
+    }
   },
   "kind": "app",
   "settings": {
@@ -7052,7 +7058,7 @@
       "description": "Friday afternoon: one client report draft per project whose reports are shared with its client, for a person to approve.",
       "kind": "recurring",
       "cron": "0 15 * * 5",
-      "timezone": "UTC",
+      "timezone": "org",
       "promptTemplate": "For each project client_report_sources_get lists, read its sources for this week. If nothing moved, save nothing. Otherwise save one draft with client_report_save_draft: plain sections on what was done and what comes next, only in the open kinds, and list in leftOut what you left out and why. Never send: a person approves each report.",
       "scopes": [
         "projects:projects:read",

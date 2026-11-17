@@ -536,7 +536,17 @@ export async function setPortalShare(input: ShareInput): Promise<ShareResult> {
         ON CONFLICT DO NOTHING
         RETURNING id`),
     )
-    if (row)
+    if (row) {
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "portal_share",
+        action: "opened",
+        entityId: row.id,
+        data: { shareId: row.id, kind: input.kind, objectId, companyId: input.companyId },
+        actorId: input.actorId,
+        actorType: "user",
+        orgId: input.orgId,
+      })
       return {
         id: row.id,
         kind: input.kind,
@@ -545,6 +555,7 @@ export async function setPortalShare(input: ShareInput): Promise<ShareResult> {
         changed: true,
         company: company.name,
       }
+    }
     const [open] = extractRows<{ id: string }>(
       await tx.execute(sql`
         SELECT id FROM ${K()}.portal_shares

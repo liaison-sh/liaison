@@ -8,6 +8,9 @@ import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
 
+/** The Home row of a client report draft waiting for a person to send it. */
+export const CLIENT_REPORT_WAITING_KIND = "projects:client_reports.report_waiting"
+
 interface TaskAttentionRow {
   id: string
   assignee_id: string
@@ -158,6 +161,50 @@ export async function computeAttentionItems(
 
   // The month-close line, on its one day of the month, to the biller.
   items.push(...(await monthCloseItems(tx, orgId, callerUserId, forUserIds, now)))
+
+  // A client report draft waiting for a person to send it, to the project's lead. Only a
+  // reader of client reports sees one (the table's own row security).
+  const drafts = await tx.execute(drizzleSql`
+    SELECT r.id::text AS id, r.project_id::text AS project_id, p.name AS project_name,
+           r.period_end::text AS period_end, r.updated_at, p.owner_id::text AS owner_id
+      FROM ${projectsRel("client_reports")} r
+      JOIN ${projectsRel("projects")} p ON p.id = r.project_id AND p.org_id = r.org_id
+     WHERE r.org_id = ${orgId}::uuid AND r.status = 'draft' AND p.archived_at IS NULL
+       AND p.owner_id IN (${drizzleSql.join(
+         people.map((id) => drizzleSql`${id}::uuid`),
+         drizzleSql`, `,
+       )})
+     ORDER BY r.period_end DESC, p.name
+     LIMIT 50
+  `)
+  for (const r of extractRows<{
+    id: string
+    project_id: string
+    project_name: string
+    period_end: string
+    updated_at: Date | string
+    owner_id: string
+  }>(drafts)) {
+    items.push({
+      id: `projects:client_report:${r.id}`,
+      app: "projects",
+      entity: "client_report",
+      entityId: r.id,
+      // An app-qualified kind (as the month-close line is); its words are `homeKind.report_waiting`.
+      kind: CLIENT_REPORT_WAITING_KIND as AttentionItem["kind"],
+      summary: `${r.project_name}: the client report for the week ending ${r.period_end} waits for you to send it. Nothing has gone to the client.`,
+      urgency: 30,
+      occurredAt: toIso(r.updated_at),
+      action: { type: "open_entity", tabType: "projects:project", entityId: r.project_id },
+      metadata: {
+        projectId: r.project_id,
+        projectName: r.project_name,
+        reportId: r.id,
+        periodEnd: r.period_end,
+        ...(r.owner_id !== callerUserId ? { forUserId: r.owner_id } : {}),
+      },
+    })
+  }
 
   return items
 }

@@ -4913,7 +4913,8 @@ export async function handleEnableRoutineTemplate(
   // owner's 07:30, not UTC's.
   const ownerTz =
     params.timezone || tpl.timezone ? null : await loadUserTimezone(ctx.orgId, ownerUserId)
-  const tz = params.timezone ?? tpl.timezone ?? ownerTz ?? "UTC"
+  const tz =
+    params.timezone ?? (await templateTimezone(ctx.orgId, tpl.timezone)) ?? ownerTz ?? "UTC"
   // A flow template (0303) is enabled for one project: its own routine per project.
   const flowTpl = tpl.flow ? await resolveFlowTemplate(tpl, params.projectId, ctx) : null
   if (flowTpl && "error" in flowTpl) return flowTpl
@@ -5002,6 +5003,23 @@ export async function handleEnableRoutineTemplate(
   return { routine: row }
 }
 
+/**
+ * A template's zone as the routine stores it: `"org"` is the org's own time zone when the
+ * template is enabled or reset (a Friday 15:00 of the org, not of UTC), anything else as written.
+ */
+async function templateTimezone(
+  orgId: string,
+  tz: string | null | undefined,
+): Promise<string | undefined> {
+  if (!tz) return undefined
+  if (tz !== ORG_TIMEZONE) return tz
+  const { dashboardTimezone } = await import("~/modules/dashboards/org-timezone")
+  return dashboardTimezone(orgId)
+}
+
+/** The template timezone that stands for the org's own zone. */
+export const ORG_TIMEZONE = "org"
+
 interface ResetRoutineToTemplateParams {
   id: string
 }
@@ -5085,7 +5103,7 @@ export async function handleResetRoutineToTemplate(
   if (!tpl) {
     return { error: { code: "template_not_found", message: "Routine template not found" } }
   }
-  const tz = tpl.timezone ?? prior.timezone ?? "UTC"
+  const tz = (await templateTimezone(ctx.orgId, tpl.timezone)) ?? prior.timezone ?? "UTC"
   // A kernel template's time is the owner's choice (enable_routine_template
   // `time`): a reset re-applies the body and keeps that time.
   const priorTime = tpl.sourceKind === "kernel" ? timeOfCron(prior.cron) : null

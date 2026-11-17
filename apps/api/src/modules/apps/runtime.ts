@@ -4008,9 +4008,9 @@ async function registerSingleApp(
                   // A core app's cross-app or system events (server code): the
                   // handler needs privileged DB to see all rows. It acts as the app: a scope check in the database
                   // (a task number, say) reads the scopes its manifest declares.
-                  // The built-in projects app declares none, and needs none: it
-                  // subscribes to no event and declares no poll, so no privileged
-                  // handler runs as it (its CI webhook runs under RLS as `projects:*`).
+                  // The built-in projects app declares none: its kernel subscribers (a
+                  // client report's closed send card, an opened reports share, a client's
+                  // milestone answer) re-read the row the event names before they write.
                   const { withPrivilegedDb } = await import("~/db/privileged")
                   return withPrivilegedDb(eventOrgId, `event:${appName}:${exportName}`, fn, {
                     pool: "jobs",

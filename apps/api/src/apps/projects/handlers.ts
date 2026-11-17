@@ -80,6 +80,8 @@ export interface ProjectsMethods {
   projects_clientReportSendPreflight: (paramsJson: string) => Promise<string>
   projects_clientReportSend: (paramsJson: string) => Promise<string>
   projects_milestoneClientActionView: (paramsJson: string) => Promise<string>
+  projects_clientReportCardClosed: (paramsJson: string) => Promise<string>
+  projects_clientReportsRoutineOn: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -2060,4 +2062,43 @@ export async function milestoneClientActionView(
   ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_milestoneClientActionView(JSON.stringify(params ?? {})))
+}
+
+const CLOSED_CARD = new Set(["denied", "expired"])
+
+/**
+ * `kernel/approval_request:update`: a client report's send card a person rejected, or that
+ * expired, closes its draft. Any other card returns at once; the bridge re-reads the card.
+ */
+export async function onClientReportCardClosed(event: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const d = (event as { data?: { id?: unknown; toolName?: unknown; status?: unknown } })?.data
+  if (d?.toolName !== "projects:client_report_send" || !CLOSED_CARD.has(String(d.status)))
+    return { status: "ignored" }
+  if (typeof d.id !== "string") return { status: "ignored" }
+  return JSON.parse(await ctx.projects_clientReportCardClosed(JSON.stringify({ approvalId: d.id })))
+}
+
+/** `kernel/portal_share:opened`: a project's reports share turns the report routine on. */
+export async function onReportsShareOpened(event: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const d = (event as { data?: { shareId?: unknown; kind?: unknown } })?.data
+  if (d?.kind !== "project_reports" || typeof d.shareId !== "string") return { status: "ignored" }
+  return JSON.parse(
+    await ctx.projects_clientReportsRoutineOn(JSON.stringify({ shareId: d.shareId })),
+  )
+}
+
+/**
+ * `kernel/client_action:decided` for a milestone: the client's answer is the kernel's record
+ * (its sender and the company's manager are told). It moves nothing by itself: no task status,
+ * timebox, billing step or invoice changes, and an invoice never waits on it. Another app's
+ * target, or another type, returns at once.
+ */
+export async function onMilestoneClientActionDecided(
+  event: unknown,
+  _ctx: ProjectsCtx,
+): Promise<unknown> {
+  const d = (event as { data?: { decision?: unknown; target?: { app?: unknown; type?: unknown } } })
+    ?.data
+  if (d?.target?.app !== "projects" || d.target.type !== "milestone") return { status: "ignored" }
+  return { status: "recorded", decision: typeof d.decision === "string" ? d.decision : null }
 }

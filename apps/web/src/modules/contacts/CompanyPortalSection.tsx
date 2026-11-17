@@ -15,6 +15,8 @@ import {
   createSignal,
   For,
   Match,
+  onCleanup,
+  onMount,
   Show,
   Switch,
 } from "solid-js"
@@ -113,10 +115,27 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
     () => (canShare() ? props.companyId : null),
     (id) => companyProjects(api, id),
   )
-  const [log] = createResource(
+  const [log, { refetch: reloadLog }] = createResource(
     () => (canLog() ? props.companyId : null),
     () => api.get<PortalLogRow[]>(`${base()}/log`),
   )
+  // A client signs in and reads from their own browser: coming back to this window reads
+  // the people and the log again, so their sign-in and what they did show without a reload.
+  onMount(() => {
+    const again = () => {
+      void reloadPeople()
+      if (canLog()) void reloadLog()
+    }
+    const onVisible = () => {
+      if (document.visibilityState === "visible") again()
+    }
+    window.addEventListener("focus", again)
+    document.addEventListener("visibilitychange", onVisible)
+    onCleanup(() => {
+      window.removeEventListener("focus", again)
+      document.removeEventListener("visibilitychange", onVisible)
+    })
+  })
 
   // Who may read the log, by name, and the second step's current setting: each a read of its
   // own, so a failed one leaves the generic words and unmarked options, never a broken section.

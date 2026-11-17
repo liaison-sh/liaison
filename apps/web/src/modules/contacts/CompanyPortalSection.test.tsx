@@ -162,6 +162,31 @@ describe("company portal section", () => {
     expect(logAction("portal.something_new")).toBe("other")
   })
 
+  it("reads its people and access log again when the window comes back, so a client's sign-in shows", async () => {
+    mocks.scopes = ["kernel:portal:admin", "kernel:portal:logs"]
+    const log: unknown[] = []
+    const people = [{ ...PAUL, lastSignInAt: null }]
+    serve({ [`${BASE}/people`]: people, [`${BASE}/log`]: log })
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === `${BASE}/people`) return people.map((p) => ({ ...p }))
+      if (path === `${BASE}/log`) return [...log]
+      throw new Error(`unexpected GET ${path}`)
+    })
+    const r = render(() => <CompanyPortalSection companyId={CO} />)
+    await r.findByTestId("company-portal.person-u-paul")
+    // Meanwhile the client signed in, from their own browser.
+    log.push({
+      id: "l9",
+      at: "2026-11-03",
+      user_id: "u-paul",
+      action: "portal.sign_in",
+      entity_type: null,
+    })
+    people[0] = { ...PAUL }
+    window.dispatchEvent(new Event("focus"))
+    expect((await r.findByTestId("company-portal.log-l9")).textContent).toContain("Signed in")
+  })
+
   it("names the people who can read the access log", async () => {
     mocks.scopes = ["kernel:portal:admin", "kernel:portal:logs"]
     serve({

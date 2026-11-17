@@ -491,6 +491,8 @@ export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
     sha256: v.sha256,
     words_params: { number: a.number, version: String(v.number) },
     copies: await copyStatesOf(ctx, v.id),
+    // A send to a portal client of the company opens it on their portal under this kind.
+    portal_share_kind: a.kind === "change_request" ? "change_request" : "agreement",
   }
 }
 

@@ -19,7 +19,12 @@ import { generateToken, hashToken } from "~/lib/crypto"
 import { rootLogger } from "~/lib/logger"
 import { writeClientActionEvent } from "./events"
 import { newActionMailId, sendLinkMail, sendStaffTurnMail } from "./mail"
-import { type ClientActionKind, declaredTarget, viewTarget } from "./targets"
+import {
+  type ClientActionKind,
+  declaredTarget,
+  TARGET_PORTAL_SHARE_KINDS,
+  viewTarget,
+} from "./targets"
 
 const log = rootLogger.child({ module: "client-actions" })
 
@@ -436,7 +441,7 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
         orgId: input.orgId,
       })
     }
-    const shared = await openAutomaticShare(tx, input, invitee)
+    const shared = await openAutomaticShare(tx, input, invitee, view.portalShareKind ?? null)
     return {
       result: {
         id: row.id,
@@ -488,11 +493,11 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
 }
 
 /**
- * The portal share kinds a client action's target opens by itself: a target whose
- * declared type is one of these per-document kinds (kernel.portal_shares) is
- * shared under that kind. Read from the target's type, never from the app's name.
+ * The portal share kinds a client action's target opens by itself: the kind the
+ * app's view tool names for the target, else a target whose declared type is one
+ * of these per-document kinds. Never read from the app's name.
  */
-const AUTOMATIC_SHARE_KINDS = new Set(["agreement", "change_request"])
+const AUTOMATIC_SHARE_KINDS = new Set<string>(TARGET_PORTAL_SHARE_KINDS)
 
 /**
  * Sending an agreement or a change request to a portal client of that company
@@ -504,11 +509,11 @@ async function openAutomaticShare(
   tx: PrivilegedDb,
   input: MintInput,
   invitee: Invitee,
+  viewKind: string | null,
 ): Promise<boolean> {
-  if (!AUTOMATIC_SHARE_KINDS.has(input.targetType) || !invitee.companyId || !input.createdByUserId)
-    return false
+  const kind = viewKind ?? (AUTOMATIC_SHARE_KINDS.has(input.targetType) ? input.targetType : null)
+  if (!kind || !invitee.companyId || !input.createdByUserId) return false
   if (input.visibleTo && input.visibleTo.length > 0) return false
-  const kind = input.targetType
   const [portalPerson] = extractRows<{ id: string }>(
     await tx.execute(sql`
       SELECT u.id FROM ${K()}.users u
@@ -991,6 +996,8 @@ export interface TargetLink {
   expiresAt: Date
   /** A later link of the same signer replaced this one: it no longer counts in the send. */
   replaced: boolean
+  /** Why a withdrawn link was withdrawn (`access_ended` when the portal access ended), else null. */
+  revokeReason: string | null
 }
 
 /** Every link of one target of this app, newest turn last (no token, code or device field). */
@@ -1014,10 +1021,11 @@ export async function listTargetClientActions(input: {
       token_hash: string | null
       expires_at: Date
       replaced: boolean
+      revoke_reason: string | null
     }>(
       await tx.execute(sql`
         SELECT l.id, l.invited_name, l.invited_email, l.sign_order, l.decision, l.decided_at,
-               l.revoked_at, l.code_locked_at, l.code_verified_at, l.token_hash, l.expires_at,
+               l.revoked_at, l.revoke_reason, l.code_locked_at, l.code_verified_at, l.token_hash, l.expires_at,
                ${replacedSql("l")} AS replaced
           FROM ${K()}.client_actions l
          WHERE l.org_id = ${input.orgId} AND l.target_app = ${input.targetApp}
@@ -1050,6 +1058,7 @@ export async function listTargetClientActions(input: {
     codeVerified: r.code_verified_at !== null,
     expiresAt: new Date(r.expires_at),
     replaced: r.replaced === true,
+    revokeReason: r.revoked_at ? r.revoke_reason : null,
   }))
 }
 

@@ -12,6 +12,8 @@ import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { type PortalCaller, portalActionSight } from "~/modules/portal/decide-gate"
+import { attemptCode, wordsFor } from "./code-attempt"
 import { restoreProof, spendProof } from "./codes"
 import { writeClientActionEvent } from "./events"
 import { maskEmail } from "./mail"
@@ -46,6 +48,8 @@ export interface ActionRow {
   revoked_at: Date | null
   revoke_reason: string | null
   required_phrase: string | null
+  /** A restricted document's list: who may hear of this action. */
+  visible_to: string[] | null
   created_by_user_id: string | null
   sender_name: string | null
   sender_email: string | null
@@ -59,7 +63,8 @@ const ROW_COLUMNS = sql`
   a.id, a.org_id, o.name AS org_name, a.kind, a.target_app, a.target_type, a.target_id,
   a.target_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
   a.first_opened_at, a.document_shown_at, a.code_wrong_total, a.code_locked_at, a.code_verified_at,
-  a.decided_at, a.decision, a.revoked_at, a.revoke_reason, a.required_phrase, a.created_by_user_id,
+  a.decided_at, a.decision, a.revoked_at, a.revoke_reason, a.required_phrase, a.visible_to::text[] AS visible_to,
+  a.created_by_user_id,
   u.name AS sender_name, u.email AS sender_email, u.locale AS sender_locale,
   (a.token_hash IS NOT NULL) AS has_token,
   (c.id IS NOT NULL AND (c.closed_at IS NOT NULL OR c.portal_ended_at IS NOT NULL)) AS company_ended,
@@ -261,10 +266,14 @@ export type DecideInput = {
   | {
       via: "portal"
       actionId: string
-      orgId: string
-      portalUserId: string
-      /** The portal route checked the emailed code (or the fresh session's click) itself. */
-      codeVerified: boolean
+      /** The signed-in portal person: every check of who may decide is made here, as them. */
+      portal: PortalCaller
+      /** The emailed code, needed to sign and for any decision in a session past 12 hours. */
+      code?: string | null
+      /** The page's language: the consent words are recorded in it. */
+      lang?: string | null
+      /** The capacity the person signs in, typed with the decision. */
+      capacity?: string | null
     }
 )
 
@@ -274,30 +283,92 @@ export type DecideOutcome =
 
 const NOT_FOUND = { ok: false as const, status: 404, body: { error: { code: "not_found" } } }
 
+/** Why a typed name or phrase does not do, or null. */
+function typedRefusal(
+  row: ActionRow,
+  name: string | null,
+  provedName: string | null,
+  phrase: string | null,
+): "name_mismatch" | "phrase_mismatch" | null {
+  const typed = name ?? provedName
+  if (!typed || (provedName && !sameName(typed, provedName))) return "name_mismatch"
+  if (row.required_phrase && (!phrase || !phraseMatches(phrase, row.required_phrase)))
+    return "phrase_mismatch"
+  return null
+}
+
+/** A portal decision is older than this since the person's sign-in: it asks the code. */
+export const PORTAL_FRESH_SIGN_IN_MS = 12 * 60 * 60 * 1000
+
+type PortalGate =
+  | { ok: true; row: ActionRow & { portal_stale: boolean } }
+  | { ok: false; status: number; body: Record<string, unknown> }
+
+/**
+ * Who may decide on the portal, asked as the portal person: the action is one their
+ * company's open share shows them (portal.client_actions), and the address they signed
+ * in with is the one it was sent to. A colleague is told who it waits on.
+ */
+export async function portalDecideGate(
+  portal: PortalCaller,
+  actionId: string,
+): Promise<PortalGate> {
+  const sight = await portalActionSight(portal, actionId)
+  if (!sight.seen) {
+    if (sight.why === "refused")
+      return { ok: false, status: 401, body: { error: { code: "unauthorized" } } }
+    if (sight.why === "unavailable") return { ok: false, status: 503, body: { state: "down" } }
+    return NOT_FOUND
+  }
+  if (sight.myEmail !== sight.invitedEmail) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        error: { code: "NOT_INVITED", message: `Waiting on ${sight.invitedName}` },
+        waiting_on: sight.invitedName,
+      },
+    }
+  }
+  const row = await withPrivilegedDb(portal.orgId, "client-action-portal-read", async (tx) => {
+    const r = fromRows(
+      extractRows<ActionRow>(
+        await tx.execute(sql`
+          SELECT ${ROW_COLUMNS}
+            FROM ${K()}.client_actions a
+            JOIN ${K()}.organizations o ON o.id = a.org_id
+            LEFT JOIN ${K()}.users u ON u.id = a.created_by_user_id AND u.org_id = a.org_id
+            LEFT JOIN ${K()}.companies c ON c.id = a.company_id AND c.org_id = a.org_id
+           WHERE a.id = ${actionId} AND a.org_id = ${portal.orgId}
+        `),
+      ),
+    )
+    if (!r) return null
+    const [p] = extractRows<{ stale: boolean }>(
+      await tx.execute(sql`
+        SELECT (p.last_sign_in_at IS NULL
+                OR p.last_sign_in_at < now() - make_interval(secs => ${PORTAL_FRESH_SIGN_IN_MS / 1000})) AS stale
+          FROM ${K()}.portal_people p
+         WHERE p.user_id = ${portal.userId} AND p.org_id = ${portal.orgId} AND p.removed_at IS NULL`),
+    )
+    return { ...r, portal_stale: p?.stale !== false }
+  })
+  if (!row) return NOT_FOUND
+  return { ok: true, row }
+}
+
 /** The one decide. See the file's head for the order of the checks. */
 export async function decideClientAction(input: DecideInput): Promise<DecideOutcome> {
-  let pre: ActionRow | null
+  let pre: (ActionRow & { portal_stale?: boolean }) | null
   if (input.via === "link") {
     const m = await findByTokenHash(input.tokenHash)
     if (!m) return NOT_FOUND
     if (m.via === "prior") return { ok: false, status: 410, body: deadFrameBody(m.row, "replaced") }
     pre = m.row
   } else {
-    pre = await withPrivilegedDb(input.orgId, "client-action-portal-read", async (tx) =>
-      fromRows(
-        extractRows<ActionRow>(
-          await tx.execute(sql`
-            SELECT ${ROW_COLUMNS}
-              FROM ${K()}.client_actions a
-              JOIN ${K()}.organizations o ON o.id = a.org_id
-              LEFT JOIN ${K()}.users u ON u.id = a.created_by_user_id AND u.org_id = a.org_id
-              LEFT JOIN ${K()}.companies c ON c.id = a.company_id AND c.org_id = a.org_id
-             WHERE a.id = ${input.actionId} AND a.org_id = ${input.orgId}
-          `),
-        ),
-      ),
-    )
-    if (!pre) return NOT_FOUND
+    const gate = await portalDecideGate(input.portal, input.actionId)
+    if (!gate.ok) return gate
+    pre = gate.row
   }
   const wanted = input.decision === "decline" ? "declined" : DECISION_OF[pre.kind]
   if (input.decision !== "decline" && input.decision !== pre.kind) {
@@ -310,8 +381,37 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
   const name = cleanTyped(input.typedName)
   const phrase = cleanTyped(input.typedPhrase)
   const reason = cleanTyped(input.reason, 2000)
-  if (name === "invalid" || phrase === "invalid" || reason === "invalid") {
+  const portalCapacity = input.via === "portal" ? cleanTyped(input.capacity) : null
+  if (
+    name === "invalid" ||
+    phrase === "invalid" ||
+    reason === "invalid" ||
+    portalCapacity === "invalid"
+  ) {
     return { ok: false, status: 400, body: { error: { code: "invalid_text" } } }
+  }
+
+  // The portal's code: to sign, and for any decision once the sign-in is past 12 hours. A typo
+  // in the name or the phrase is refused first, so it costs no code.
+  let portalCodeChecked = false
+  if (input.via === "portal") {
+    // Signing and accepting record a signature, which is never sealed without a code (D48).
+    const needsCode = pre.portal_stale === true || (wanted !== "declined" && pre.kind !== "approve")
+    if (wanted !== "declined") {
+      const early = typedRefusal(pre, name, null, phrase)
+      if (early) return { ok: false, status: 422, body: { error: { code: early } } }
+    }
+    if (needsCode) {
+      if (!input.code) return { ok: false, status: 401, body: { error: { code: "code_required" } } }
+      const tried = await attemptCode(pre, input.code, {
+        kind: "portal_user",
+        userId: input.portal.userId,
+        ip: input.ip,
+        userAgent: input.userAgent,
+      })
+      if (!tried.ok) return tried
+      portalCodeChecked = true
+    }
   }
 
   // Asked before the transaction, within its budget: no lock is held while an app answers.
@@ -341,11 +441,8 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
     if (view.sha256 !== row.target_sha256) {
       return { ok: false as const, status: 409, body: { error: { code: "VERSION_CHANGED" } } }
     }
-    if (input.via === "portal" && !input.codeVerified && wanted !== "declined") {
-      return { ok: false as const, status: 401, body: { error: { code: "code_required" } } }
-    }
     let provedName: string | null = null
-    let provedCapacity: string | null = null
+    let provedCapacity: string | null = portalCapacity === "invalid" ? null : portalCapacity
     if (input.via === "link" && wanted !== "declined") {
       const proof = await spendProof(actionId, input.proof, input.userAgent)
       if (!proof.ok)
@@ -354,13 +451,7 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
       provedCapacity = proof.capacity
     }
     if (wanted !== "declined") {
-      const typed = name ?? provedName
-      const refusal =
-        !typed || (provedName && !sameName(typed, provedName))
-          ? "name_mismatch"
-          : row.required_phrase && (!phrase || !phraseMatches(phrase, row.required_phrase))
-            ? "phrase_mismatch"
-            : null
+      const refusal = typedRefusal(row, name, provedName, phrase)
       if (refusal) {
         // A typo in the name or the phrase costs no new code: the proof it spent is put back.
         if (input.via === "link" && input.proof && provedName !== null)
@@ -368,9 +459,12 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
         return { ok: false as const, status: 422, body: { error: { code: refusal } } }
       }
     }
-    const decidedUserId = input.via === "portal" ? input.portalUserId : null
-    // The portal route checked the code itself: the row records when, as the link's verify does.
-    const portalCodeChecked = input.via === "portal" && input.codeVerified
+    const decidedUserId = input.via === "portal" ? input.portal.userId : null
+    // The portal's consent words, in the page's language, as the link's verify records them.
+    const words =
+      input.via === "portal" && wanted !== "declined"
+        ? wordsFor(row, view.title, input.lang ?? undefined)
+        : null
     const updated = extractRows<{ id: string }>(
       await tx.execute(sql`
         UPDATE ${K()}.client_actions
@@ -380,7 +474,10 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
                capacity = ${wanted === "declined" ? null : provedCapacity},
                typed_phrase = ${wanted === "declined" ? null : phrase},
                decline_reason = ${wanted === "declined" ? reason : null},
-               code_verified_at = ${portalCodeChecked ? sql`coalesce(code_verified_at, now())` : sql`code_verified_at`}
+               code_verified_at = ${portalCodeChecked ? sql`now()` : sql`code_verified_at`},
+               words_shown = ${words ? words.words : sql`words_shown`},
+               words_key = ${words ? words.words_key : sql`words_key`},
+               words_lang = ${words ? words.lang : sql`words_lang`}
          WHERE id = ${actionId} AND decided_at IS NULL AND revoked_at IS NULL
            AND expires_at > now() AND code_locked_at IS NULL
          RETURNING id
@@ -418,6 +515,8 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
         title: view.title,
         invitedName: row.invited_name,
         senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
+        // A restricted document's decision reaches its list only, the manager included.
+        ...(row.visible_to ? { visibleTo: row.visible_to } : {}),
       },
       actorId: SYSTEM_ACTOR_ID,
       actorType: "system",

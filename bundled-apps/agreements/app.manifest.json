@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1637,7 +1637,8 @@
   ],
   "events": {
     "subscribes": {
-      "kernel/client_action:decided": "onClientActionDecidedHandler"
+      "kernel/client_action:decided": "onClientActionDecidedHandler",
+      "kernel/portal_user:access_ended": "onPortalAccessEndedHandler"
     },
     "emits": [
       "agreement:sent",
@@ -1647,6 +1648,7 @@
       "agreement:voided",
       "agreement:signed",
       "agreement:access_changed",
+      "agreement:links_withdrawn",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",

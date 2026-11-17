@@ -37,8 +37,15 @@ export interface RecipientContext {
    * reaches a client. Absent: no narrowing (unit callers).
    */
   keepMembers?: (orgId: string, ids: string[]) => Promise<string[]>
-  /** The company's account manager, or null when it has none. Absent: no company carries one. */
-  loadAccountManager?: (orgId: string, companyId: string) => Promise<string | null>
+  /**
+   * The company's account manager, or null when it has none; with `standIn`, also the
+   * colleague next in line while the manager is away. Absent: no company carries one.
+   */
+  loadAccountManager?: (
+    orgId: string,
+    companyId: string,
+    opts?: { standIn?: boolean },
+  ) => Promise<string | string[] | null>
 }
 
 interface EventLike {
@@ -120,12 +127,15 @@ export async function resolveRecipients(
     }
     case "account_manager": {
       const companyId = readPath(event, spec.path)
+      // A record closed to the organization reaches its list only: no stand-in is added.
+      const restricted = Array.isArray(readPath(event, "data.visibleTo"))
       const manager =
         typeof companyId === "string" && ctx.loadAccountManager
-          ? await ctx.loadAccountManager(ctx.orgId, companyId)
+          ? await ctx.loadAccountManager(ctx.orgId, companyId, { standIn: !restricted })
           : null
-      if (manager) {
-        initial = [manager]
+      const managers = manager === null ? [] : Array.isArray(manager) ? manager : [manager]
+      if (managers.length > 0) {
+        initial = dedupe(managers)
         break
       }
       rootLogger.info(

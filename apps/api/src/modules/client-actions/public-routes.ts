@@ -10,7 +10,6 @@
 // an hour per address. A token that matches nothing gets one body, one status,
 // padded to one time, however close it is to a real one. Redis down: 503 `down`.
 
-import { toShippedLocale } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { type Context, Hono } from "hono"
 import { z } from "zod"
@@ -30,17 +29,8 @@ import { memberTokenRefusal } from "~/middleware/auth"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { canDrawText } from "~/modules/agreement-evidence/signature-pages"
 import { verifyAccessToken } from "~/modules/auth/jwt"
-import { serverT } from "~/modules/i18n/server-i18n"
-import {
-  checkCode,
-  issueCode,
-  issueProof,
-  PAUSES_TO_TELL,
-  pausedUntil,
-  takeCodeSend,
-  WRONG_PER_CODE,
-  WRONG_TOTAL_LOCK,
-} from "./codes"
+import { attemptCode, queueClientActionEvent, wordsFor } from "./code-attempt"
+import { issueCode, issueProof, pausedUntil, takeCodeSend } from "./codes"
 import {
   type ActionRow,
   cleanTyped,
@@ -54,7 +44,7 @@ import {
 import { readTargetFile } from "./document-files"
 import { writeClientActionEvent } from "./events"
 import { maskEmail, newActionMailId, sendCodeMail, sendCopyMail } from "./mail"
-import { remailClientAction, SYSTEM_ACTOR_ID } from "./mint"
+import { remailClientAction } from "./mint"
 
 const log = rootLogger.child({ module: "client-actions" })
 
@@ -233,40 +223,6 @@ async function recordHolderEvent(
     })
     if (then) await then(tx)
   })
-}
-
-function queueClientActionEvent(
-  tx: Parameters<Parameters<typeof withPrivilegedDb>[2]>[0],
-  row: ActionRow,
-  action: "opened" | "requested" | "code_locked",
-  data: Record<string, unknown>,
-) {
-  return tx.queueEvent({
-    app: "kernel",
-    entity: "client_action",
-    action,
-    entityId: row.id,
-    data: {
-      id: row.id,
-      kind: row.kind,
-      companyId: row.company_id,
-      invitedName: row.invited_name,
-      senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
-      ...data,
-    },
-    actorId: SYSTEM_ACTOR_ID,
-    actorType: "system",
-    orgId: row.org_id,
-  })
-}
-
-function wordsFor(row: ActionRow, title: string, pageLang?: string) {
-  const lang =
-    toShippedLocale(pageLang ?? undefined) ??
-    toShippedLocale(row.sender_locale ?? undefined) ??
-    "en"
-  const words_key = `client-action.words.${row.kind}`
-  return { words: serverT(lang, words_key, { title }), words_key, lang }
 }
 
 type Handler = (ctx: Ctx, c: Context<AppEnv>) => Promise<Response>
@@ -561,69 +517,13 @@ clientActionPublicRoutes.post(
     if (row.kind === "sign" && !canDrawText(name)) {
       return caJson(400, { error: { code: "name_not_drawable" } })
     }
-    // The guess takes its place in the row's total before the compare: guesses sent at once
-    // never pass the lock. A right code, or one never compared, gives its place back.
-    const taken = await inClientActionOrg(row, "client-action-code-try", async (tx) =>
-      extractRows<{ id: string }>(
-        await tx.execute(sql`
-          UPDATE ${K()}.client_actions SET code_wrong_total = code_wrong_total + 1
-           WHERE id = ${row.id} AND code_wrong_total < ${WRONG_TOTAL_LOCK} AND code_locked_at IS NULL
-           RETURNING id
-        `),
-      ),
-    )
-    if (taken.length === 0) return caJson(410, deadFrameBody(row, "attempts"))
-    const giveBack = () =>
-      inClientActionOrg(row, "client-action-code-try-back", (tx) =>
-        tx.execute(sql`
-          UPDATE ${K()}.client_actions SET code_wrong_total = greatest(code_wrong_total - 1, 0)
-           WHERE id = ${row.id}
-        `),
-      )
-    const check = await checkCode(row.id, parsed.data.code.trim())
-    if (check.ok) await giveBack()
-    if (!check.ok) {
-      if (check.reason === "paused") {
-        await giveBack()
-        return caJson(423, { error: { code: "paused", retry_at: check.until.toISOString() } })
-      }
-      if (check.reason === "no_code") {
-        await giveBack()
-        return caJson(401, { error: { code: "code_ended" } })
-      }
-      // Wrong: the total lives on the row, so neither a new code nor a new address resets it.
-      const total = await inClientActionOrg(row, "client-action-code-wrong", async (tx) => {
-        const [r] = extractRows<{ code_wrong_total: number; locked: boolean }>(
-          await tx.execute(sql`
-            UPDATE ${K()}.client_actions
-               SET code_locked_at = CASE WHEN code_wrong_total >= ${WRONG_TOTAL_LOCK}
-                                         THEN coalesce(code_locked_at, now()) ELSE code_locked_at END
-             WHERE id = ${row.id}
-             RETURNING code_wrong_total, (code_locked_at IS NOT NULL) AS locked
-          `),
-        )
-        await writeClientActionEvent(tx, {
-          orgId: row.org_id,
-          actionId: row.id,
-          event: r?.locked ? "locked" : check.pausedNow ? "paused" : "code_wrong",
-          actorKind: "holder",
-          ip: ctx.ip,
-          userAgent: ctx.userAgent,
-        })
-        if (r?.locked || check.pausesInARow >= PAUSES_TO_TELL) {
-          await queueClientActionEvent(tx, row, "code_locked", { locked: r?.locked === true })
-        }
-        return r
-      })
-      if (total?.locked) return caJson(410, deadFrameBody(row, "attempts"))
-      if (check.pausedNow) {
-        const until2 = await pausedUntil(row.id)
-        return caJson(423, { error: { code: "paused", retry_at: until2?.toISOString() ?? null } })
-      }
-      return caJson(401, {
-        error: { code: "wrong_code", left: WRONG_PER_CODE - check.wrongForCode },
-      })
-    }
+    const tried = await attemptCode(row, parsed.data.code, {
+      kind: "holder",
+      userId: null,
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    })
+    if (!tried.ok) return caJson(tried.status, tried.body)
     const view = await viewOf(row)
     if (view === "down") return caJson(503, { state: "down" })
     const words = wordsFor(row, view.title, parsed.data.lang)

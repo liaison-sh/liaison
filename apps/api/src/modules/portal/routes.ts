@@ -26,6 +26,9 @@ import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { AuthServiceError } from "~/modules/auth/auth"
+import { wordsFor } from "~/modules/client-actions/code-attempt"
+import { decideClientAction } from "~/modules/client-actions/decide"
+import { sendPortalActionCode } from "~/modules/client-actions/portal-code"
 import { recordPortalAccess } from "~/modules/portal/access"
 import { portalSignedIn } from "~/modules/portal/auth-routes"
 import {
@@ -152,7 +155,42 @@ const BUILT = new Set([
   "POST /requests/:id/reply",
   "POST /requests/attachments",
   "GET /files/:id",
+  "GET /documents",
+  "GET /documents/:id",
+  "POST /actions/:id/code",
+  "POST /actions/:id/decide",
 ])
+
+const decideSchema = z.object({
+  decision: z.enum(["sign", "accept", "approve", "decline"]),
+  code: z.string().max(12).optional(),
+  typed_name: z.string().max(400).optional(),
+  typed_phrase: z.string().max(400).optional(),
+  capacity: z.string().max(400).optional(),
+  reason: z.string().max(4000).optional(),
+  lang: z.string().max(16).optional(),
+})
+
+const AGREEMENTS = drizzleSql`SELECT id, number, kind, title, status, signed_at,
+  price_minor::text AS price_minor, currency FROM portal.agreements`
+
+/** The links of the caller's company on these targets: who each waits on, and whether it is theirs. */
+const actionsOn = (
+  targetIds: string[],
+) => drizzleSql`SELECT a.id, a.kind, a.target_id, a.invited_name,
+    a.expires_at, a.decided_at, a.decision, a.revoked_at,
+    (a.invited_email = (SELECT lower(m.email) FROM portal.me m)) AS mine
+  FROM portal.client_actions a
+ WHERE a.target_id = ANY(${`{${targetIds.join(",")}}`}::uuid[])
+ ORDER BY a.created_at, a.id`
+
+/** Whether the app's view is there: without it there is nothing to list. */
+async function viewPresent(tx: PortalClient, name: string): Promise<boolean> {
+  const [view] = extractRows<{ present: boolean }>(
+    await tx.execute(drizzleSql`SELECT to_regclass(${`portal.${name}`}) IS NOT NULL AS present`),
+  )
+  return view?.present === true
+}
 
 const requestSchema = z.object({
   subject: z.string().trim().min(1).max(200),
@@ -516,6 +554,135 @@ export const portalRoutes = new Hono<AppEnv>()
     })
     await reparentStagedFiles(ctx.orgId, messageId, files, "portal-reply-files")
     return success(c, { id: messageId, requestId: id, attachments: files.length })
+  })
+  .get("/documents", async (c) => {
+    const list = await portalRead(c, async (tx) => {
+      if (!(await viewPresent(tx, "agreements"))) return []
+      return rows(
+        await part(
+          tx,
+          "agreements",
+          drizzleSql`${AGREEMENTS} ORDER BY signed_at DESC NULLS FIRST, number, id`,
+        ),
+      )
+    })
+    if (list instanceof Response) return list
+    if (list === null) return c.json({ error: { message: "This part is not available" } }, 503)
+    return success(c, list)
+  })
+  .get("/documents/:id", async (c) => {
+    const id = c.req.param("id")
+    if (!UUID.test(id)) return notFound(c)
+    const viewer = portalOf(c)
+    const doc = await portalRead(c, async (tx) => {
+      if (!(await viewPresent(tx, "agreements"))) return null
+      const found = await part<Record<string, unknown>>(
+        tx,
+        "agreements",
+        drizzleSql`${AGREEMENTS} WHERE id = ${id}::uuid`,
+      )
+      if (found === UNAVAILABLE) return UNAVAILABLE
+      const [a] = found
+      if (!a) return null
+      const versions = await part<Record<string, unknown>>(
+        tx,
+        "agreement_versions",
+        drizzleSql`SELECT id, number, source, sha256, file_id IS NOT NULL AS has_file
+          FROM portal.agreement_versions WHERE agreement_id = ${id}::uuid ORDER BY number DESC`,
+      )
+      const versionIds = versions === UNAVAILABLE ? [] : versions.map((v) => String(v.id))
+      const actions =
+        versionIds.length === 0
+          ? []
+          : await part<Record<string, unknown>>(tx, "client_actions", actionsOn(versionIds))
+      const title = `${a.number} ${a.title}`
+      return {
+        ...camel(a),
+        versions: rows(versions),
+        // The consent words come with the caller's own open link: the ones a decision records.
+        actions:
+          actions === UNAVAILABLE
+            ? null
+            : actions.map((x) => {
+                const { mine, ...rest } = x
+                const open = !x.decided_at && !x.revoked_at
+                return {
+                  ...camel(rest),
+                  mine: mine === true,
+                  ...(mine === true && open && x.kind !== "approve"
+                    ? {
+                        words: wordsFor(
+                          { kind: x.kind as "sign" | "accept", sender_locale: null },
+                          title,
+                          c.req.query("lang") ?? undefined,
+                        ).words,
+                      }
+                    : {}),
+                }
+              }),
+      }
+    })
+    if (doc instanceof Response) return doc
+    if (doc === UNAVAILABLE)
+      return c.json({ error: { message: "This part is not available" } }, 503)
+    if (!doc) return notFound(c)
+    recordPortalAccess({
+      orgId: viewer.orgId,
+      userId: viewer.userId,
+      action: "portal.view",
+      entityType: "agreement",
+      entityId: id,
+      userAgent: c.req.header("user-agent") ?? null,
+    })
+    return success(c, doc)
+  })
+  .post("/actions/:id/code", async (c) => {
+    const id = c.req.param("id")
+    if (!UUID.test(id)) return notFound(c)
+    const ctx = portalOf(c)
+    const out = await sendPortalActionCode({
+      portal: ctx,
+      actionId: id,
+      ip: getClientIp(c),
+      userAgent: c.req.header("user-agent") ?? null,
+    })
+    if (out.status === 404) return notFound(c)
+    return c.json(out.body, out.status as 202)
+  })
+  .post("/actions/:id/decide", zValidator("json", decideSchema), async (c) => {
+    const id = c.req.param("id")
+    if (!UUID.test(id)) return notFound(c)
+    const ctx = portalOf(c)
+    const body = c.req.valid("json")
+    const userAgent = c.req.header("user-agent") ?? null
+    const out = await decideClientAction({
+      via: "portal",
+      actionId: id,
+      portal: ctx,
+      decision: body.decision,
+      code: body.code ?? null,
+      typedName: body.typed_name ?? null,
+      typedPhrase: body.typed_phrase ?? null,
+      capacity: body.capacity ?? null,
+      reason: body.reason ?? null,
+      lang: body.lang ?? null,
+      ip: getClientIp(c),
+      userAgent,
+    })
+    if (!out.ok) {
+      if (out.status === 404) return notFound(c)
+      return c.json(out.body, out.status as 400)
+    }
+    // The decision is on the person's portal log, as a sign-in or a download is.
+    recordPortalAccess({
+      orgId: ctx.orgId,
+      userId: ctx.userId,
+      action: "portal.approve",
+      entityType: "client_action",
+      entityId: id,
+      userAgent,
+    })
+    return success(c, { state: out.state, copyTo: out.copyTo })
   })
   .get("/files/:id", async (c) => {
     const id = c.req.param("id")

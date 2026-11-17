@@ -86,15 +86,69 @@ const TICKETS_VIEWS: PortalViewDef[] = [
   },
 ]
 
+/**
+ * An agreement reaches the portal through an open `agreement` or `change_request`
+ * share made for its company, on the agreement or on one of its versions (a send's
+ * automatic share names the version its link is for). A restricted agreement
+ * (`org_access = 'none'`) needs that share to name the caller.
+ */
+function agreementsViews(): PortalViewDef[] {
+  const k = schemaRef("kernel")
+  return [
+    {
+      name: "agreements",
+      select: `SELECT a.id, a.number, a.kind, a.title, a.status, a.signed_at, a.price_minor, a.currency
+  FROM app_agreements.agreements a
+ WHERE a.org_id = (SELECT rls_ctx.org_id())::uuid
+   AND a.company_id = (SELECT portal.company_id())
+   AND a.status <> 'draft'
+   AND EXISTS (
+     SELECT 1 FROM ${k}.portal_shares s
+      WHERE s.org_id = a.org_id
+        AND s.company_id = a.company_id
+        AND s.kind IN ('agreement', 'change_request')
+        AND s.closed_at IS NULL
+        AND (s.object_id = a.id OR s.object_id IN (
+              SELECT v.id FROM app_agreements.agreement_versions v
+               WHERE v.agreement_id = a.id AND v.org_id = a.org_id))
+        AND CASE WHEN a.org_access = 'none'
+                 THEN s.only_user_ids IS NOT NULL AND (SELECT rls_ctx.user_id())::uuid = ANY (s.only_user_ids)
+                 ELSE s.only_user_ids IS NULL OR (SELECT rls_ctx.user_id())::uuid = ANY (s.only_user_ids)
+            END
+        AND NOT EXISTS (
+          SELECT 1 FROM ${k}.portal_people p
+           WHERE p.user_id = (SELECT rls_ctx.user_id())::uuid
+             AND p.sees_only_share_ids IS NOT NULL
+             AND NOT (s.id = ANY (p.sees_only_share_ids))))`,
+    },
+    {
+      // A frozen or signed version of a readable agreement; a file a scan found infected
+      // is never named.
+      name: "agreement_versions",
+      select: `SELECT v.id, v.agreement_id, v.number, v.source,
+       CASE WHEN v.scan_state = 'infected' THEN NULL ELSE v.file_id END AS file_id, v.sha256
+  FROM app_agreements.agreement_versions v
+ WHERE v.org_id = (SELECT rls_ctx.org_id())::uuid
+   AND v.status IN ('frozen', 'signed')
+   AND EXISTS (SELECT 1 FROM portal.agreements a WHERE a.id = v.agreement_id)`,
+    },
+  ]
+}
+
 /** An app's portal views, and the one-time step its views need first, if any. */
 interface PortalAppViews {
-  views: PortalViewDef[]
+  readonly views: PortalViewDef[]
   before?: (tx: PortalViewTx) => Promise<void>
 }
 
 const VIEWS_BY_APP: Record<string, PortalAppViews> = {
   invoicing: { views: INVOICING_VIEWS, before: (tx) => stampIssuedDocumentsOnce(tx) },
   tickets: { views: TICKETS_VIEWS },
+  agreements: {
+    get views() {
+      return agreementsViews()
+    },
+  },
 }
 
 /** The portal views an app brings; none for an app without any. */

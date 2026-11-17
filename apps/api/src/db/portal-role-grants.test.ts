@@ -41,6 +41,12 @@ const ALLOWED_WITH_APP: Record<string, Record<string, string>> = {
     "table portal.billing_upcoming SELECT":
       "what is still to be invoiced on the caller's company's projects: label, amount, due date",
   },
+  agreements: {
+    "table portal.agreements SELECT":
+      "the caller's company's agreements behind an open agreement or change request share, a restricted one only for the people it names",
+    "table portal.agreement_versions SELECT":
+      "the frozen or signed versions of an agreement the caller reads: source, hash, the file unless a scan found it infected",
+  },
 }
 
 /** Every entry the role may reach, each with why. Anything else is a failure. */

@@ -21,7 +21,10 @@ import { sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { appSequences } from "~/db/schema/kernel/app-sequences"
+import { clientActions } from "~/db/schema/kernel/client-actions"
 import { schemaRef } from "~/db/schema-ref"
+import { generateToken, hashToken } from "~/lib/crypto"
+import { writeClientActionEvent } from "~/modules/client-actions/events"
 import { plainGuardSince } from "~/modules/mail/send-guard"
 import type { SeedContext } from "~/seed/context"
 import { type AppCell, insertAppRow, jsonCell, upsertAppRow } from "~/seed/factories/app-tables"
@@ -156,6 +159,15 @@ const PORTAL_SOW_TEXT = [
 
 const textOf = (title: string, lines: string[]) =>
   [`${title}`, ...lines.map((l, i) => `${i + 1}. ${l}`)].join("\n")
+
+/** The frozen source of a stand-in version: its title as a heading, each line a paragraph. */
+export function blocksOfText(text: string): Array<{ type: string; text: string }> {
+  const [title = "", ...lines] = text.split("\n")
+  return [
+    { type: "heading", text: title },
+    ...lines.map((line) => ({ type: "paragraph", text: line })),
+  ]
+}
 
 /** Midday on a civil day, Paris summer or winter. */
 function noonOf(civil: string): Date {
@@ -652,6 +664,7 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
         agreement_id: id,
         number: 1,
         source_text: a.text,
+        source: jsonCell({ body: { blocks: blocksOfText(a.text) } }),
         sha256: digest,
         byte_size: Buffer.byteLength(a.text, "utf8"),
         frozen_at: sentIso,
@@ -707,6 +720,54 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
             updatedAt: sql`now()`,
           },
         })
+    }
+  })
+
+  // The next outside signer of each agreement still waiting holds an open link, as a send
+  // leaves it: what the client decides on in the portal. Written without the link mail (the
+  // product mails it at send; a seed sends nothing), so the link itself opens nothing.
+  await withPrivilegedDb(ctx.orgId, "seed-studio:waiting-links", async (tx) => {
+    for (const a of ordered) {
+      if (a.status !== "sent" && a.status !== "partly_signed") continue
+      const i = a.signers.findIndex((s) => !s.at)
+      const s = a.signers[i]
+      if (!s || s.person === "lea") continue
+      const c = contactOf(s.person)
+      if (!c) continue
+      const id = ctx.id("client_action", `studio:${a.key}:${i}`)
+      const inserted = await tx
+        .insert(clientActions)
+        .values({
+          id,
+          orgId: ctx.orgId,
+          groupId: ctx.id("client_action_group", `studio:${a.key}`),
+          kind: "sign",
+          targetApp: "agreements",
+          targetType: "agreement_version",
+          targetId: versionId(a.key),
+          targetSha256: sha256(a.text),
+          companyId: companyIds[a.company] ?? null,
+          contactId: c.id,
+          invitedEmail: c.email.toLowerCase(),
+          invitedName: c.name,
+          signOrder: i + 1,
+          tokenHash: hashToken(generateToken(32)),
+          expiresAt: new Date(a.sentAt.getTime() + 14 * DAY_MS),
+          sentAt: a.sentAt,
+          createdByUserId: lea,
+          createdAt: a.sentAt,
+        })
+        .onConflictDoNothing()
+        .returning({ id: clientActions.id })
+      if (inserted.length === 0) continue
+      await writeClientActionEvent(tx, {
+        orgId: ctx.orgId,
+        actionId: id,
+        event: "created",
+        actorKind: "staff",
+        actorUserId: lea,
+        meta: { kind: "sign", target: "agreements.agreement_version" },
+      })
     }
   })
 
@@ -794,6 +855,7 @@ async function seedStudioChangeRequest(
         mail_message_id: mailMessageId,
         sendGuard,
         guardKey: `${parentId}:${mailMessageId}`,
+        currency: "EUR",
       },
       requestedBy: ownerId,
       agentId,

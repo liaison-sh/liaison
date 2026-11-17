@@ -80,7 +80,7 @@ describe("the Scope check's group reconcile", () => {
   it("fills the group as soon as the Scope check template is enabled, not at the next daily pass", async () => {
     const w = await world(GROUP)
     const out = (await onScopeCheckEnabled(w.ctx, {
-      data: { appName: "agreements", templateKey: "scope-check", routineId: "r1" },
+      data: { appName: "agreements", templateKey: "scope-check" },
     })) as { status: string; added: number }
     expect(out).toMatchObject({ status: "ok", added: 1 })
     expect(w.calls).toHaveLength(1)

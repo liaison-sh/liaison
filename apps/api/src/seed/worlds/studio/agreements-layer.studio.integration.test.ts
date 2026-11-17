@@ -23,7 +23,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { uninstallApp } from "~/modules/apps/install-service"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
-import { createSession } from "~/modules/auth/auth"
+import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { evaluateSendGuard, type PinnedSendGuard } from "~/modules/mail/send-guard"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -441,5 +441,41 @@ describe("the services world's client portal at the board date", () => {
         studioAgreementNumber(PLAN.year, { series: "AG", seq: 15 }),
       ].sort(),
     )
+  })
+
+  it("the waiting addendum reads with its text on the portal and its signer holds the open link, unmailed", async () => {
+    const dpa = studioAgreementNumber(PLAN.year, { series: "AG", seq: 15 })
+    const [pauline, remi] = await people()
+    const [row] = await rows<{ id: string }>(sql`
+      SELECT id::text AS id FROM app_agreements.agreements
+       WHERE org_id = ${orgId}::uuid AND number = ${dpa}`)
+    const read = async (userId: string) => {
+      const { accessToken } = await createPortalSession(userId, orgId)
+      const res = await app.request(`/api/portal/documents/${row?.id}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      expect(res.status).toBe(200)
+      return (
+        (await res.json()) as {
+          data: {
+            versions: Array<{ source: { body: { blocks: Array<{ text: string }> } } }>
+            actions: Array<{ mine: boolean; kind: string; decidedAt: string | null }>
+          }
+        }
+      ).data
+    }
+    const mine = await read(pauline?.user_id as string)
+    const text = mine.versions[0]?.source.body.blocks.map((b) => b.text).join("\n") ?? ""
+    expect(text).toContain("Personal data stays in the European Union.")
+    expect(mine.actions.map((a) => [a.kind, a.mine, a.decidedAt])).toEqual([["sign", true, null]])
+    // A colleague sees who it waits on, and has nothing to decide.
+    expect((await read(remi?.user_id as string)).actions.map((a) => a.mine)).toEqual([false])
+    // The link was never mailed by the seed: no event says it was sent.
+    const events = await rows<{ event: string }>(sql`
+      SELECT e.event FROM kernel.client_action_events e
+        JOIN kernel.client_actions a ON a.id = e.action_id
+        JOIN app_agreements.agreement_versions v ON v.id = a.target_id
+       WHERE a.org_id = ${orgId}::uuid AND v.agreement_id = ${row?.id}::uuid`)
+    expect(events.map((e) => e.event)).toEqual(["created"])
   })
 })

@@ -28,14 +28,16 @@ const AGENT = "33333333-3333-4333-8333-333333333333"
 
 function ctxFor(
   db: DbClient,
-  opts: { user?: string; agent?: string | null; approved?: boolean } = {},
+  opts: { user?: string; agent?: string | null; approved?: boolean; viaMcp?: boolean } = {},
 ) {
   const approvals: unknown[] = []
   const ctx: AgreementsCtx & { approvals: unknown[] } = {
     orgId: "org",
     userId: opts.user ?? PERSON,
     db,
-    turn: { get: async () => ({ agentId: opts.agent ?? null }) },
+    turn: {
+      get: async () => ({ agentId: opts.agent ?? null, ...(opts.viaMcp ? { viaMcp: true } : {}) }),
+    },
     ...(opts.approved ? { approval: { id: "a" } } : {}),
     requestApproval: async (req) => {
       approvals.push(req)
@@ -190,6 +192,34 @@ describe("a proposal's price", () => {
     }
     expect(prepared.checks.find((c) => c.code === "PRICE_NOT_SET")?.ok).toBe(true)
     expect(prepared.error.code).toBe("DOCUMENT_EMPTY")
+  })
+})
+
+describe("clauses a person's coding agent writes over MCP", () => {
+  it("are agent text: prepare refuses them until a person reads and clears them", async () => {
+    const db = memoryDb()
+    const ctx = { ...ctxFor(db, { viaMcp: true }), ...fakeRenderer() }
+    const id = okId(await agreementCreate(ctx, { kind: "nda", title: "Addendum", source: WRITTEN }))
+    const out = (await agreementPrepare(ctx, { id })) as { error: { code: string } }
+    expect(out.error.code).toBe("AGENT_TEXT_UNREAD")
+    // The same text written by the person in the app reads as theirs.
+    const own = okId(
+      await agreementCreate(
+        { ...ctxFor(db), ...fakeRenderer() },
+        {
+          kind: "nda",
+          title: "Addendum",
+          source: WRITTEN,
+        },
+      ),
+    )
+    expect(
+      (
+        (await agreementPrepare({ ...ctxFor(db), ...fakeRenderer() }, { id: own })) as {
+          status: string
+        }
+      ).status,
+    ).toBe("ok")
   })
 })
 

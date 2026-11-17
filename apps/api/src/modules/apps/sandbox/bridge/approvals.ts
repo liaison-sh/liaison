@@ -20,10 +20,13 @@ export function createApprovalsMethods(ctx: BridgeContext): Record<string, any> 
     // The turn this handler runs in: which agent acts (null: no agent, a job or a webhook) and
     // whether a person is behind it (false for a routine tick, a background or coordinated turn,
     // a job). Read-only, from the frame captured when the bridge was built. `ctx.turn.get()`.
+    // `viaMcp`: the call came over MCP, from a person's own coding agent: an agent, not the
+    // person, so what it writes is agent text.
     turn_get: async (): Promise<string> =>
       JSON.stringify({
         agentId: bridgeActingAgentId,
         hasPerson: bridgeSpawnParentFrame?.hasPerson === true,
+        ...(bridgeOptions?.origin === "mcp" ? { viaMcp: true } : {}),
       }),
 
     // An app refreshes the payload of one of ITS OWN approvals still awaiting a decision, after

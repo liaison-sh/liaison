@@ -24,6 +24,7 @@ import {
 import {
   type AgreementsCtx,
   actingAgentId,
+  agentWrites,
   bridgeAnswer,
   callerUserId,
   type ErrorEnvelope,
@@ -361,7 +362,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       data: p.source?.data ?? {},
     }
   }
-  if (source && agent !== null) source = markAgentBlocks(null, source)
+  if (source && (await agentWrites(ctx))) source = markAgentBlocks(null, source)
   const orgAccess: OrgAccess = p.org_access ?? "editor"
   const requested = normaliseShares(p.shares ?? [])
   if (!requested)
@@ -609,7 +610,9 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     const body: Record<string, unknown> =
       p.source !== undefined
         ? {
-            source: agent !== null ? markAgentBlocks(draft.source ?? null, p.source) : p.source,
+            source: (await agentWrites(ctx))
+              ? markAgentBlocks(draft.source ?? null, p.source)
+              : p.source,
             upload_file_id: null,
             upload_state: null,
           }

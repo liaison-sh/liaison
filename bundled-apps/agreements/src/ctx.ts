@@ -136,6 +136,22 @@ export async function actingAgentId(ctx: AgreementsCtx): Promise<string | null> 
   }
 }
 
+/**
+ * Whether an agent writes in this call: an in-app agent, or a person's coding agent over MCP
+ * (an agent too: its clauses wait for a person to read them, as any agent's do).
+ */
+export async function agentWrites(ctx: AgreementsCtx): Promise<boolean> {
+  if ((await actingAgentId(ctx)) !== null) return true
+  if (!ctx.turn) return false
+  try {
+    const raw: unknown = await ctx.turn.get()
+    const t = (typeof raw === "string" ? JSON.parse(raw) : raw) as { viaMcp?: boolean }
+    return t?.viaMcp === true
+  } catch {
+    return true
+  }
+}
+
 /** The person the run acts for, or null (system work). */
 export async function callerUserId(ctx: AgreementsCtx): Promise<string | null> {
   if (ctx.kernel) {

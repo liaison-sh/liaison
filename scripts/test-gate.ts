@@ -99,6 +99,7 @@ export const GATE_LANES: Record<string, number> = {
   "bundled-invoicing-ui": 1,
   "bundled-boxtal-ui": 1,
   "bundled-monitoring-ui": 1,
+  "bundled-agreements-ui": 1,
   "bundled-social-ui": 1,
   "desktop-ui": 1,
   mobile: 1,

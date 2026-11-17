@@ -44,6 +44,16 @@ An agent never sets a price. A person sets it on the agreement's page. A proposa
 
 Clauses an agent wrote are marked as drafts. They block the checks until a person reads them and saves the text.
 
+## Work in the app
+
+**Agreements** in the sidebar opens the list: **Needs you** first (drafts and documents waiting for a signature), then every agreement you may see, in the order of what needs someone first. The rail groups them by kind and under **Follow up** (**Waiting on a signature**, **Ending or renewing soon**). **New agreement** starts a draft from a template or a blank document.
+
+An agreement's page has its actions on top and three parts: **Overview** (signers in order, dates, price, versions with their fingerprints), **Document** (the draft's text, or **Open the PDF** for the frozen file) and **Proof of signature** (the evidence, and **Check the stored files**). A link to an agreement in a conversation opens this page.
+
+**Edit** opens the editor. A clause an agent wrote carries the mark "Draft, written by an agent. Read it to clear this mark." until you press **I read it** or write it yourself, then **Save**. The rail holds the price (**Set price**, a person's own field), **What it is** for an uploaded PDF, the **Layout** (**Classic legal layout** numbers articles and pages itself), **Who can see this** and the checks. **Prepare for signature** is offered once every blocking check passes and the text is saved. Editing a sent agreement says first that it makes a new version and withdraws its open links.
+
+**Prepare for signature** freezes the version and shows its fingerprint; then name the signers, the **Signing order**, the **Words to type before signing** and how long the link works, and **Send for signature**. Your own click sends it, within your permissions; an agent's send waits for your approval. When it is your turn to sign, the agreement's page shows **Read and sign** for you, and for nobody else.
+
 ## Check before sending
 
 **Prepare** runs the checks a document needs before it is sent:

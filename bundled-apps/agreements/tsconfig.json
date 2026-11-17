@@ -23,5 +23,6 @@
       "~/*": ["../../liaison/apps/api/src/*"]
     }
   },
-  "include": ["*.ts", "*.tsx", "src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts"]
+  "include": ["*.ts", "*.tsx", "src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts"],
+  "exclude": ["src/**/*.vitest.tsx", "vitest.config.ts"]
 }

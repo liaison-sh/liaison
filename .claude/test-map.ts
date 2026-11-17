@@ -261,7 +261,7 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "bundled-apps/api-connector/**", suites: ["api-guards", "bundled-api-connector", "bundled-freeze", "e2e-parallel", "demo-seed", "unit", "integration"] },
   { glob: "bundled-apps/pennylane/**", suites: ["api-guards", "bundled-pennylane", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   // Agreements: its own suite, the door tests of what it shows and signs (security).
-  { glob: "bundled-apps/agreements/**", suites: ["api-guards", "bundled-agreements", "bundled-freeze", "security", "e2e-parallel", "demo-seed"] },
+  { glob: "bundled-apps/agreements/**", suites: ["api-guards", "bundled-agreements", "bundled-agreements-ui", "bundled-freeze", "security", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/shopify/**", suites: ["api-guards", "bundled-shopify", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/stripe/**", suites: ["api-guards", "bundled-stripe", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/social/**", suites: ["api-guards", "bundled-social", "bundled-social-ui", "integration-extra", "bundled-freeze", "e2e-parallel", "demo-seed"] },

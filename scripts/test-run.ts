@@ -2192,6 +2192,20 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/monitoring"),
   },
+  // The agreements app's staff screens (`*.vitest.tsx`), same toolchain as
+  // `bundled-ads-ui` (see bundled-apps/agreements/vitest.config.ts).
+  "bundled-agreements-ui": {
+    cmd: [
+      path.join(ROOT, "packages/app-ui/node_modules/.bin/vitest"),
+      "run",
+      "--config",
+      "vitest.config.ts",
+      ...bailBun,
+      ...vitestTestFlags,
+      ...fileArg,
+    ],
+    cwd: path.join(ROOT, "bundled-apps/agreements"),
+  },
   // The Capacitor shell. Discovery is bun's own rather than a hand written
   // list: apps/mobile has no JSX of its own (it wraps apps/web's build), so
   // every test here is a plain bun file and a new one must not be able to land
@@ -2321,6 +2335,7 @@ if (suite === "full") {
     "bundled-social-ui",
     "bundled-boxtal-ui",
     "bundled-monitoring-ui",
+    "bundled-agreements-ui",
     "mailbox-crypto",
     "integration",
     "integration-extra",

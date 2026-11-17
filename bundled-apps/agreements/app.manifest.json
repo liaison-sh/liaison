@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -2353,6 +2353,80 @@
         "projects:projects:read"
       ],
       "enabledByDefault": false
+    }
+  },
+  "views": {
+    "activityBar": {
+      "icon": "AgreementsAppIcon",
+      "label": "Agreements",
+      "order": 66,
+      "tabAction": {
+        "type": "home",
+        "entityId": "home",
+        "label": "Agreements"
+      }
+    },
+    "tabTypes": {
+      "home": {
+        "component": "AgreementsList",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreements",
+        "singleton": true,
+        "urlPattern": "/agreements",
+        "referenceable": false
+      },
+      "list": {
+        "component": "AgreementsList",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreements",
+        "singleton": false,
+        "urlPattern": "/agreements/list/:filter",
+        "referenceable": false
+      },
+      "agreement": {
+        "entity": "agreement",
+        "component": "AgreementDetailView",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreement",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/agreement/:id",
+        "referenceable": true
+      },
+      "editor": {
+        "entity": "agreement",
+        "component": "AgreementEditor",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Editor",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/editor/:id",
+        "referenceable": false
+      },
+      "send": {
+        "entity": "agreement",
+        "component": "AgreementSend",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Send for signature",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/send/:id",
+        "referenceable": false
+      },
+      "new": {
+        "component": "AgreementNew",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "New agreement",
+        "singleton": true,
+        "urlPattern": "/agreements/new",
+        "referenceable": false
+      }
     }
   }
 }

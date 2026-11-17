@@ -92,6 +92,11 @@ const STUDIO_APP_ROLES: ReadonlyArray<{ person: string; role: string }> = [
   { person: "anais", role: "projects.finance" },
 ]
 
+/** Who drafts and sends the studio's agreements beside the founders: its project lead. */
+const STUDIO_AGREEMENTS_ROLES: ReadonlyArray<{ person: string; role: string }> = [
+  { person: "bastien", role: "agreements.lead" },
+]
+
 function ownerIdOf(org: SeedDemoOrgResult): string {
   return org.ownerUserId ?? org.adminUserId
 }
@@ -123,22 +128,23 @@ function startOf(project: StudioProjectPlan, fallback: Date): Date {
   return new Date(Math.min(first, fallback.getTime()) - 86_400_000)
 }
 
-/** The lead and finance roles, given by the owner through the role writer. */
+/** The app roles (lead, finance), given by the owner through the role writer. */
 async function seedStudioRoles(
   ctx: SeedContext,
   org: SeedDemoOrgResult,
   owner: UserContext,
+  grants: ReadonlyArray<{ person: string; role: string }> = STUDIO_APP_ROLES,
 ): Promise<void> {
   await asUser(owner, async (tx) => {
-    const names = STUDIO_APP_ROLES.map((r) => r.role)
+    const names = grants.map((r) => r.role)
     const found = await tx
       .select({ id: roles.id, name: roles.name })
       .from(roles)
       .where(and(eq(roles.orgId, ctx.orgId), inArray(roles.name, names)))
     const idOf = new Map(found.map((r) => [r.name, r.id]))
-    for (const { person, role } of STUDIO_APP_ROLES) {
+    for (const { person, role } of grants) {
       const roleId = idOf.get(role)
-      if (!roleId) throw new Error(`studio layer: the projects app has no '${role}' role`)
+      if (!roleId) throw new Error(`studio layer: no app role '${role}'`)
       const out = await assignRole(tx as never, {
         userId: userIdOf(org, person),
         roleId,
@@ -152,7 +158,7 @@ async function seedStudioRoles(
       }
     }
   })
-  ctx.log(`roles: ${STUDIO_APP_ROLES.map((r) => `${r.person} ${r.role}`).join(", ")}`)
+  ctx.log(`roles: ${grants.map((r) => `${r.person} ${r.role}`).join(", ")}`)
 }
 
 /** The pipeline's deals, as its owner, on the clients the support layer wrote. */
@@ -962,6 +968,7 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
         (a) => a.name === "agreements" && a.enabled && a.installed,
       ))
   if (agreementsOn) {
+    await seedStudioRoles(ctx, org, owner, STUDIO_AGREEMENTS_ROLES)
     const dealRows = await withPrivilegedDb(ctx.orgId, "seed-studio:agreement-deals", (tx) =>
       tx.execute(sql`
         SELECT id::text AS id, external_ref FROM ${sql.raw(schemaRef("app_projects"))}.tasks

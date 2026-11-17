@@ -165,7 +165,9 @@ describe("company portal section", () => {
   it("reads its people and access log again when the window comes back, so a client's sign-in shows", async () => {
     mocks.scopes = ["kernel:portal:admin", "kernel:portal:logs"]
     const log: unknown[] = []
-    const people = [{ ...PAUL, lastSignInAt: null }]
+    const people: Array<Omit<typeof PAUL, "lastSignInAt"> & { lastSignInAt: string | null }> = [
+      { ...PAUL, lastSignInAt: null },
+    ]
     serve({ [`${BASE}/people`]: people, [`${BASE}/log`]: log })
     mocks.get.mockImplementation(async (path: string) => {
       if (path === `${BASE}/people`) return people.map((p) => ({ ...p }))

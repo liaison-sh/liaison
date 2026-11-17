@@ -1,7 +1,7 @@
 {
   "entry": "tool:agreement_price_set",
   "params": {
-    "id": "47c9b0e1-c93a-4d31-9b4f-5f1afef5f9a8",
+    "id": "a06bfc3a-f6ce-4567-8cd1-cb0f07ad6f78",
     "price_minor": "1200000",
     "currency": "EUR"
   },
@@ -19,14 +19,14 @@
     },
     {
       "method": "db_findOne",
-      "args": ["agreements", "47c9b0e1-c93a-4d31-9b4f-5f1afef5f9a8"],
-      "reply": "{\"id\":\"47c9b0e1-c93a-4d31-9b4f-5f1afef5f9a8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.468884+00\",\"updated_at\":\"2026-11-16 23:57:56.468884+00\",\"number\":\"PR-2026-001\",\"kind\":\"proposal\",\"status\":\"draft\",\"title\":\"Website proposal\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":null,\"template_version\":null,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
+      "args": ["agreements", "a06bfc3a-f6ce-4567-8cd1-cb0f07ad6f78"],
+      "reply": "{\"id\":\"a06bfc3a-f6ce-4567-8cd1-cb0f07ad6f78\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:26:02.074589+00\",\"updated_at\":\"2026-11-17 02:26:02.074589+00\",\"number\":\"PR-2026-001\",\"kind\":\"proposal\",\"status\":\"draft\",\"title\":\"Website proposal\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":null,\"template_version\":null,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
     },
     {
       "method": "db_update",
       "args": [
         "agreements",
-        "47c9b0e1-c93a-4d31-9b4f-5f1afef5f9a8",
+        "a06bfc3a-f6ce-4567-8cd1-cb0f07ad6f78",
         "{\"price_minor\":\"1200000\",\"currency\":\"EUR\",\"priced_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\"}"
       ]
     }

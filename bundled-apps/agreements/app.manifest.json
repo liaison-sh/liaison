@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -121,7 +121,8 @@
             "expired",
             "voided",
             "withdrawn",
-            "imported"
+            "imported",
+            "accepted"
           ],
           "default": "draft"
         },
@@ -1680,7 +1681,8 @@
       "type": "agreement_version",
       "kinds": [
         "sign",
-        "accept"
+        "accept",
+        "approve"
       ],
       "viewTool": "client_action_view_get",
       "mintedBy": "app"
@@ -1702,7 +1704,9 @@
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",
-      "evidence:seal_overdue"
+      "evidence:seal_overdue",
+      "change_request:accepted",
+      "change_request:declined"
     ]
   },
   "jobs": {

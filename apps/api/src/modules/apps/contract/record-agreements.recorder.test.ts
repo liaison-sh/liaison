@@ -35,6 +35,8 @@ const BODY = {
   blocks: [
     { type: "heading", text: "Mutual non-disclosure agreement" },
     { type: "paragraph", text: "Each party keeps the other's information confidential." },
+    { type: "heading", text: "1. Term" },
+    { type: "paragraph", text: "This agreement lasts two years." },
   ],
 }
 
@@ -101,6 +103,10 @@ const PLAN: RecordingStep[] = [
       s.values.version = String(a.version_id)
       s.values.sha = String(a.sha256)
     },
+  },
+  {
+    entry: "tool:agreement_passage_get",
+    input: (s) => params({ version_id: s.values.version, section: "1" }),
   },
   {
     entry: "preflight:agreement_send",

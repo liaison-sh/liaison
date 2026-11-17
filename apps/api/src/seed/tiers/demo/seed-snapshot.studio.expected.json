@@ -49,7 +49,7 @@
   },
   "app_invoicing.recurring_schedules": {
     "rows": 2,
-    "digest": "9f5211bbe4cbe1a1"
+    "digest": "51aebb066c9574d6"
   },
   "app_invoicing.tax_regimes": {
     "rows": 4,
@@ -153,7 +153,7 @@
   },
   "kernel.agents": {
     "rows": 25,
-    "digest": "d440723889bf7d82"
+    "digest": "68f4e10a401f81c3"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -216,8 +216,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 383,
-    "digest": "0a12eeca14aa8adc"
+    "rows": 388,
+    "digest": "b8a664169c9839f8"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -228,8 +228,8 @@
     "digest": "efe4c66973749d38"
   },
   "kernel.roles": {
-    "rows": 32,
-    "digest": "bfad9e6656b370dc"
+    "rows": 35,
+    "digest": "f94b91304a18738a"
   },
   "kernel.saved_views": {
     "rows": 8,
@@ -252,8 +252,8 @@
     "digest": "eec6a21c9a7518fb"
   },
   "kernel.user_roles": {
-    "rows": 26,
-    "digest": "f2fbc49b92c963a1"
+    "rows": 27,
+    "digest": "5c85c7f5b2dc043a"
   },
   "kernel.user_thread_state": {
     "rows": 121,
@@ -261,6 +261,6 @@
   },
   "kernel.users": {
     "rows": 26,
-    "digest": "b1e135987fc743da"
+    "digest": "65ebe4819ffb9061"
   }
 }

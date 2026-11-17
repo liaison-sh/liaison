@@ -284,16 +284,16 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 362,
-    "digest": "46152f1e2459e60c"
+    "rows": 366,
+    "digest": "8d92529b74b0867c"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 32,
-    "digest": "bfad9e6656b370dc"
+    "rows": 35,
+    "digest": "f94b91304a18738a"
   },
   "kernel.routines": {
     "rows": 7,

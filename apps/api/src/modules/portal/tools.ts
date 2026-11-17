@@ -27,6 +27,7 @@ interface ToolCtx {
   userId: string
   orgId: string
   db: RlsClient
+  scopes?: readonly string[]
 }
 
 function refusal(err: unknown) {
@@ -85,6 +86,7 @@ export async function handlePortalShareSet(p: z.infer<typeof portalShareSetParam
       orgId: ctx.orgId,
       actorId: ctx.userId,
       db: ctx.db,
+      scopes: ctx.scopes ?? [],
       companyId: p.company_id,
       kind: p.kind,
       objectId: p.object_id ?? null,

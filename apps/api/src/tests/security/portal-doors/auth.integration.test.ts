@@ -377,6 +377,10 @@ describe("portal doors: sign-in and token classes", () => {
     ).toBe(200)
   })
 
+  // Accepted as public: the branding route names an org from its slug, for any org, with or
+  // without portal people, because the portal page shows that name before anyone signs in. An
+  // org's name is not a secret on its own sign-in page; nothing else (people, companies, shares)
+  // is answered by slug.
   it("NT-52: branding gives a known slug's name, logo, notice and its version only, and an unknown slug the same shape", async () => {
     const known = (await (
       await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.orgSlug}`)

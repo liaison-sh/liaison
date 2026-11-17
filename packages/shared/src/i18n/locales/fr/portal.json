@@ -206,7 +206,10 @@
       "sign_in": "Connexion",
       "view": "Consultation",
       "download": "Téléchargement",
-      "approve": "Décision",
+      "sign": "Signature",
+      "accept": "Acceptation",
+      "approve": "Approbation",
+      "decline": "Refus",
       "failure": "Connexion échouée",
       "other": "Autre"
     },

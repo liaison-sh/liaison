@@ -123,6 +123,43 @@ export async function reparentStagedFiles(
   })
 }
 
+class StagedFilesTaken extends Error {}
+
+/**
+ * Moves a portal person's staged files onto their message, in one transaction: each row moves
+ * only while it is still that person's staged file, and unless every one moves, none does. Two
+ * requests naming the same files never both take them. True when they moved.
+ */
+export async function reparentPortalStagedFiles(
+  orgId: string,
+  userId: string,
+  messageId: string,
+  fileIds: readonly string[],
+  reason: string,
+): Promise<boolean> {
+  if (fileIds.length === 0) return true
+  const KS = drizzleSql.raw(schemaRef("kernel"))
+  try {
+    await withPrivilegedDb(orgId, reason, async (tx) => {
+      for (let i = 0; i < fileIds.length; i += 1) {
+        const moved = extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
+            UPDATE ${KS}.files
+            SET entity_type = 'message', entity_id = ${messageId}, ordinal = ${i}
+            WHERE id = ${fileIds[i]}::uuid AND org_id = ${orgId}::uuid AND app = 'tickets'
+              AND entity_type = 'portal_staged' AND entity_id = ${userId}
+            RETURNING id`),
+        )
+        if (moved.length !== 1) throw new StagedFilesTaken()
+      }
+    })
+    return true
+  } catch (err) {
+    if (err instanceof StagedFilesTaken) return false
+    throw err
+  }
+}
+
 /** A portal attachment: at most this big, and at most this many waiting per person. */
 export const PORTAL_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 export const PORTAL_ATTACHMENT_MAX_COUNT = 8

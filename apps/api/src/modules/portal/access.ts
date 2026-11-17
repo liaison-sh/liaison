@@ -30,6 +30,7 @@ import { writeClientActionEvent } from "~/modules/client-actions/events"
 import { resolveContact } from "~/modules/contacts/service"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
+import { hasScope } from "~/modules/permissions/permissions"
 import { createExternalUser } from "~/modules/users/external-user"
 
 const log = rootLogger.child({ module: "portal-access" })
@@ -339,6 +340,8 @@ export interface ShareInput {
   orgId: string
   actorId: string
   db: RlsClient
+  /** The sharer's own scopes: a company-wide share needs the read scope of what it opens. */
+  scopes: readonly string[]
   companyId: string
   kind: PortalShareKind
   objectId?: string | null
@@ -416,6 +419,19 @@ const OBJECT_CHECKS: Partial<
            WHERE p.id = ${id} AND p.company_id = ${c}) AS ok`,
   },
 }
+// An agreement or a change request (itself an agreement), named by its id or one of its
+// versions', read under the sharer's row security: a restricted one off their list reads as
+// nothing, so a person outside the list never opens it to the client.
+OBJECT_CHECKS.agreement = {
+  table: "app_agreements.agreements",
+  check: (id, c) =>
+    sql`SELECT EXISTS (SELECT 1 FROM ${sql.raw(schemaRef("app_agreements"))}.agreements a
+         WHERE a.company_id = ${c}
+           AND (a.id::text = ${id} OR EXISTS (
+                SELECT 1 FROM ${sql.raw(schemaRef("app_agreements"))}.agreement_versions v
+                 WHERE v.id::text = ${id} AND v.agreement_id = a.id AND v.org_id = a.org_id))) AS ok`,
+}
+OBJECT_CHECKS.change_request = OBJECT_CHECKS.agreement
 OBJECT_CHECKS.project_reports = OBJECT_CHECKS.project_progress
 OBJECT_CHECKS.project_hours = OBJECT_CHECKS.project_progress
 
@@ -439,6 +455,12 @@ async function runCheck(
   return r?.ok === true
 }
 
+/** A company-wide share opens every record of its kind: the sharer must read them. */
+const COMPANY_WIDE_READ_SCOPES: Partial<Record<PortalShareKind, string>> = {
+  invoices: "invoicing:documents:read",
+  requests: "tickets:tickets:read",
+}
+
 function notThisCompany(company: string): PortalAccessError {
   return new PortalAccessError(
     "SHARE_NOT_THIS_COMPANY",
@@ -449,7 +471,11 @@ function notThisCompany(company: string): PortalAccessError {
 /** Refuses a share whose object is not this company's, as the caller reads it. */
 async function assertShareable(input: ShareInput, company: CompanyRow): Promise<void> {
   const id = input.objectId
-  if (!id) return
+  if (!id) {
+    const need = COMPANY_WIDE_READ_SCOPES[input.kind]
+    if (input.open && need && !hasScope(need, [...input.scopes])) throw notThisCompany(company.name)
+    return
+  }
   if (input.kind === "file") {
     const [f] = extractRows<{ app: string; entity_type: string; entity_id: string | null }>(
       await input.db.execute(
@@ -1081,7 +1107,10 @@ export type PortalAccessAction =
   | "portal.sign_in_failed"
   | "portal.view"
   | "portal.download"
+  | "portal.sign"
+  | "portal.accept"
   | "portal.approve"
+  | "portal.decline"
 
 /**
  * One row of a company's portal access log: who (the client), their company, when, what,

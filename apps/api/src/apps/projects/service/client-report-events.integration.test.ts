@@ -147,6 +147,7 @@ async function openShare(kind: string, by: string): Promise<string> {
       orgId,
       actorId: by,
       db: tx,
+      scopes: ["*"],
       companyId,
       kind: kind as never,
       objectId: projectId,

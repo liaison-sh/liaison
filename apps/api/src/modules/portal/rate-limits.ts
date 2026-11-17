@@ -27,7 +27,15 @@ export interface PortalBudget {
   /** Per client address per window: an office behind one address holds several people. */
   perAddress: number
   windowSeconds: number
+  /**
+   * Longer budgets per person beside the per-minute one: a write that makes work for the
+   * team (a ticket, a reply, a file) is bounded by the hour and the day too.
+   */
+  perPersonLonger?: ReadonlyArray<{ limit: number; windowSeconds: number }>
 }
+
+const HOUR = 3600
+const DAY = 86400
 
 const ID = "[0-9a-fA-F-]{36}"
 
@@ -40,6 +48,10 @@ export const PORTAL_WRITE_BUDGETS: readonly PortalBudget[] = [
     perPerson: 10,
     perAddress: 50,
     windowSeconds: 60,
+    perPersonLonger: [
+      { limit: 30, windowSeconds: HOUR },
+      { limit: 100, windowSeconds: DAY },
+    ],
   },
   {
     name: "request-reply",
@@ -48,6 +60,10 @@ export const PORTAL_WRITE_BUDGETS: readonly PortalBudget[] = [
     perPerson: 20,
     perAddress: 100,
     windowSeconds: 60,
+    perPersonLonger: [
+      { limit: 60, windowSeconds: HOUR },
+      { limit: 300, windowSeconds: DAY },
+    ],
   },
   // Eight files wait at most; a few retries on top.
   {
@@ -57,6 +73,10 @@ export const PORTAL_WRITE_BUDGETS: readonly PortalBudget[] = [
     perPerson: 20,
     perAddress: 100,
     windowSeconds: 60,
+    perPersonLonger: [
+      { limit: 60, windowSeconds: HOUR },
+      { limit: 200, windowSeconds: DAY },
+    ],
   },
   {
     name: "totp-setup",
@@ -130,6 +150,11 @@ export function portalWriteRateLimit(redis: Redis): MiddlewareHandler<AppEnv> {
           limit: budget.perAddress,
           windowSeconds: budget.windowSeconds,
         },
+        ...(budget.perPersonLonger ?? []).map((b) => ({
+          identifier: `portal:${budget.name}:person:${person}:${b.windowSeconds}s`,
+          limit: b.limit,
+          windowSeconds: b.windowSeconds,
+        })),
       ])
       if (!result.allowed) {
         rootLogger.warn({ ip, person, budget: budget.name }, "portal write rate limit exceeded")

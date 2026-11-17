@@ -7,6 +7,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { redis } from "~/lib/redis"
+import { checkRateLimit } from "~/middleware/rate-limiter"
 import { createPortalSession } from "~/modules/auth/auth"
 import { portalBudgetFor } from "~/modules/portal/rate-limits"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
@@ -93,5 +95,27 @@ describe("portal write limits", () => {
     const [{ m }] = await sql<{ m: number }[]>`
       SELECT count(*)::int AS m FROM app_tickets.tickets WHERE org_id = ${w.orgId}`
     expect(m).toBe(0)
+  })
+
+  it("a person who spent the hour's budget for requests, replies or files is refused with the minute's budget still open", async () => {
+    const token = (await createPortalSession(w.clientA2.userId, w.orgId)).accessToken
+    for (const path of WRITES.slice(0, 3)) {
+      const budget = portalBudgetFor("POST", path)
+      const hour = budget?.perPersonLonger?.find((b) => b.windowSeconds === 3600)
+      expect({ path, hour: hour !== undefined }).toEqual({ path, hour: true })
+      if (!budget || !hour) continue
+      // The hour spent by earlier minutes: the same bucket the route counts in.
+      for (let i = 0; i < hour.limit; i++) {
+        await checkRateLimit(redis, [
+          {
+            identifier: `portal:${budget.name}:person:${w.clientA2.userId}:${hour.windowSeconds}s`,
+            limit: hour.limit,
+            windowSeconds: hour.windowSeconds,
+          },
+        ])
+      }
+      const res = await hit(path, token)
+      expect({ path, status: res.status }).toEqual({ path, status: 429 })
+    }
   })
 })

@@ -722,7 +722,16 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
   )
 }
 
-const LOG_ACTIONS = new Set(["sign_in", "view", "download", "approve", "failure"])
+const LOG_ACTIONS = new Set([
+  "sign_in",
+  "view",
+  "download",
+  "sign",
+  "accept",
+  "approve",
+  "decline",
+  "failure",
+])
 
 export function logAction(action: string): string {
   const short = action.replace(/^portal\./, "")

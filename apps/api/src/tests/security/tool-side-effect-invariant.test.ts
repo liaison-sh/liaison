@@ -613,6 +613,8 @@ const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "boxtal:shipment_draft_set_package": "local draft field",
   "boxtal:webhooks_repair":
     "re-registers the org's own provider webhooks; admin config scope boxtal:catalog:write, no data out",
+  "tickets:merge":
+    "conditionalGate + externalEffect: it parks after outside text, and an agent's merge into a ticket a client's portal shows parks for a person (apps/tickets/handlers.ts); another company's or a more sensitive ticket is refused (apps/tickets/merge.ts). Nothing is sent",
   "calendar:create_event":
     "host gate: approval when inviting an address nobody in the org knows (owner verdict; scopes/host-approval-gates.ts), sendUpdates=none",
   "calendar:delete_event":

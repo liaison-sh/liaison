@@ -1681,6 +1681,10 @@
       "requiredScopes": ["tickets:tickets:write"],
       "writesToTable": "app_tickets.tickets",
       "trustBoundary": "user",
+      "conditionalGate": true,
+      "externalEffect": true,
+      "approvalImpact": "external",
+      "approvalCard": { "summary": "Merge {{params.sourceTicketIds}} into {{params.targetTicketId}}" },
       "handler": "merge",
       "params": {
         "type": "object",

@@ -206,7 +206,10 @@
       "sign_in": "Signed in",
       "view": "Viewed",
       "download": "Downloaded",
-      "approve": "Decided",
+      "sign": "Signed",
+      "accept": "Accepted",
+      "approve": "Approved",
+      "decline": "Declined",
       "failure": "Failed sign-in",
       "other": "Other"
     },

@@ -41,6 +41,9 @@ const NO_PREFLIGHT_NEEDED: Record<string, string> = {
   // editor on the list, a non-empty list, the template's conditions) has passed.
   "agreements:agreement_update": "handler checks before it parks an agent's access change",
   "agreements:template_save": "handler validates the body before it parks an agent's save",
+  // conditionalGate: a merge into a ticket a client's portal shows parks from inside the
+  // handler, after the merge's own refusals (another company, a more sensitive source) ran.
+  "tickets:merge": "handler runs the merge's refusals before it parks",
   "knowledge:create": "stage-time guard via knowledge_create_validate",
   "knowledge:update": "stage-time guard via knowledge_update_validate",
   // Only post-approval failure is a document deleted between staging and the

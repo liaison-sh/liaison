@@ -299,6 +299,8 @@ function typedRefusal(
   return null
 }
 
+const normalEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase()
+
 /** A portal decision is older than this since the person's sign-in: it asks the code. */
 export const PORTAL_FRESH_SIGN_IN_MS = 12 * 60 * 60 * 1000
 
@@ -322,7 +324,7 @@ export async function portalDecideGate(
     if (sight.why === "unavailable") return { ok: false, status: 503, body: { state: "down" } }
     return NOT_FOUND
   }
-  if (sight.myEmail !== sight.invitedEmail) {
+  if (normalEmail(sight.myEmail) !== normalEmail(sight.invitedEmail)) {
     return {
       ok: false,
       status: 403,
@@ -397,8 +399,9 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
   // in the name or the phrase is refused first, so it costs no code.
   let portalCodeChecked = false
   if (input.via === "portal") {
-    // Signing and accepting record a signature, which is never sealed without a code.
-    const needsCode = pre.portal_stale === true || (wanted !== "declined" && pre.kind !== "approve")
+    // Every decision but a decline records a signature event (an approved change request moves
+    // money), and no event is sealed without a code: so each one asks it.
+    const needsCode = pre.portal_stale === true || wanted !== "declined"
     if (wanted !== "declined") {
       const early = typedRefusal(pre, name, null, phrase)
       if (early) return { ok: false, status: 422, body: { error: { code: early } } }
@@ -437,6 +440,18 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
       ),
     )
     if (!row) return NOT_FOUND
+    // Asked again under the lock: a share closed or an access ended since the gate decides
+    // nothing. The company's open shares are held until this transaction ends, so none closes
+    // between this check and the decision.
+    if (input.via === "portal") {
+      await tx.execute(sql`
+        SELECT 1 FROM ${K()}.portal_shares
+         WHERE org_id = ${orgId} AND company_id = ${row.company_id} AND closed_at IS NULL
+         FOR SHARE`)
+      const again = await portalActionSight(input.portal, actionId)
+      if (!again.seen || normalEmail(again.myEmail) !== normalEmail(again.invitedEmail))
+        return NOT_FOUND
+    }
     const frame = frameOf(row, "current")
     if (frame !== "open")
       return { ok: false as const, status: 409, body: deadFrameBody(row, frame) }

@@ -2,7 +2,7 @@
 //
 // The portal's decide: only the invited person decides, a colleague is told who it
 // waits on, a session past 12 hours since its sign-in asks the emailed code, signing
-// always asks it, and the code check is recorded on the action. Each door test fails
+// and approving always ask it, and the code check is recorded on the action. Each door test fails
 // when its check is taken out of decideClientAction.
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
@@ -37,6 +37,8 @@ let previous: EmailProvider
 const capture = new CaptureProvider()
 let prevForce: string | undefined
 let shareKind: "agreement" | null = null
+/** Runs when the decide asks the target for its view: between the portal's check and the lock. */
+let onView: (() => Promise<void>) | null = null
 const tokens: Record<string, string> = {}
 
 function view(): ClientActionView {
@@ -100,6 +102,19 @@ async function sharedAction(kind: "sign" | "approve", to: DoorPerson = w.clientA
   return { id, target }
 }
 
+/** The portal log's actions for an action, once the off-path write landed. */
+async function loggedAs(id: string): Promise<string[]> {
+  for (let i = 0; i < 50; i++) {
+    const rows = await sql.unsafe(
+      `SELECT action FROM ${k("audit_log")} WHERE actor_id = $1 AND entity_id = $2 AND action LIKE 'portal.%'`,
+      [w.clientA.userId, id],
+    )
+    if (rows.length > 0) return rows.map((r) => String((r as unknown as { action: string }).action))
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  return []
+}
+
 async function row(id: string) {
   const [r] = await sql.unsafe(`SELECT * FROM ${k("client_actions")} WHERE id = $1`, [id])
   return r as Record<string, unknown>
@@ -128,13 +143,17 @@ beforeAll(async () => {
   setSystemEmailProvider(capture)
   w = await createDoorWorld()
   await awaitOrgApps(w.orgId)
-  ClientActionTargetsTestAccess.set(TARGET_APP, TARGET_TYPE, ["sign", "approve"], async () =>
-    view(),
-  )
+  ClientActionTargetsTestAccess.set(TARGET_APP, TARGET_TYPE, ["sign", "approve"], async () => {
+    const hook = onView
+    onView = null
+    if (hook) await hook()
+    return view()
+  })
 })
 
 afterEach(async () => {
   shareKind = null
+  onView = null
   await clearRedisPatterns(["ca:*", "ratelimit:portal:action-*"])
 })
 
@@ -148,7 +167,7 @@ afterAll(async () => {
 })
 
 describe("portal doors: the portal decide", () => {
-  it("NT-42 a colleague's decide gets 403 naming who it waits on; the invited person's session at 11 h 59 confirms by click, at 12 h 01 gets code_required", async () => {
+  it("NT-42 a colleague's decide gets 403 naming who it waits on; the invited person's decline at 11 h 59 goes by click, at 12 h 01 gets code_required", async () => {
     const { id } = await sharedAction("approve")
     // The colleague sees the action (same company, same share) but it is not theirs.
     await signedInAgo(w.clientA2, "1 hour")
@@ -159,26 +178,71 @@ describe("portal doors: the portal decide", () => {
     expect((await row(id)).decided_at).toBeNull()
 
     await signedInAgo(w.clientA, "12 hours 1 minute")
-    const stale = await portalPost(`/actions/${id}/decide`, {
-      decision: "approve",
-      typed_name: w.clientA.name,
-    })
+    const stale = await portalPost(`/actions/${id}/decide`, { decision: "decline" })
     expect(stale.status).toBe(401)
     expect(((await stale.json()) as { error: { code: string } }).error.code).toBe("code_required")
     expect((await row(id)).decided_at).toBeNull()
 
     await signedInAgo(w.clientA, "11 hours 59 minutes")
-    const fresh = await portalPost(`/actions/${id}/decide`, {
-      decision: "approve",
-      typed_name: w.clientA.name,
-    })
+    const fresh = await portalPost(`/actions/${id}/decide`, { decision: "decline" })
     expect(fresh.status).toBe(200)
     const decided = await row(id)
-    expect(decided.decision).toBe("approved")
+    expect(decided.decision).toBe("declined")
     expect(decided.decided_via).toBe("portal")
     expect(decided.decided_user_id).toBe(w.clientA.userId)
     // No code was checked for the click, and none is recorded.
     expect(decided.code_verified_at).toBeNull()
+  })
+
+  it("an approval on the portal asks the emailed code even on a fresh sign-in, and records it, so the decision can be sealed", async () => {
+    await signedInAgo(w.clientA, "5 minutes")
+    const { id } = await sharedAction("approve")
+    const without = await portalPost(`/actions/${id}/decide`, {
+      decision: "approve",
+      typed_name: w.clientA.name,
+    })
+    expect(without.status).toBe(401)
+    expect(((await without.json()) as { error: { code: string } }).error.code).toBe("code_required")
+    expect((await row(id)).decided_at).toBeNull()
+    const code = await codeFor(id)
+    const approved = await portalPost(`/actions/${id}/decide`, {
+      decision: "approve",
+      typed_name: w.clientA.name,
+      code,
+    })
+    expect(approved.status).toBe(200)
+    const r = await row(id)
+    expect(r.decision).toBe("approved")
+    expect(r.code_verified_at).not.toBeNull()
+    expect(await loggedAs(id)).toEqual(["portal.approve"])
+  })
+
+  it("a share closed between the portal's check and the decision decides nothing", async () => {
+    await signedInAgo(w.clientA, "5 minutes")
+    const { id, target } = await sharedAction("sign")
+    const code = await codeFor(id)
+    // The share closes while the decision is on its way: after the gate, before the lock.
+    onView = async () => {
+      await sql.unsafe(
+        `UPDATE ${k("portal_shares")} SET closed_at = now() WHERE org_id = $1 AND object_id = $2`,
+        [w.orgId, target],
+      )
+    }
+    const res = await portalPost(`/actions/${id}/decide`, {
+      decision: "sign",
+      typed_name: w.clientA.name,
+      code,
+    })
+    expect(res.status).toBe(404)
+    expect((await row(id)).decided_at).toBeNull()
+  })
+
+  it("a decline is logged as a decline, never as an approval", async () => {
+    await signedInAgo(w.clientA, "5 minutes")
+    const { id } = await sharedAction("approve")
+    const res = await portalPost(`/actions/${id}/decide`, { decision: "decline", reason: "No" })
+    expect(res.status).toBe(200)
+    expect(await loggedAs(id)).toEqual(["portal.decline"])
   })
 
   it("signing always asks the code on the portal, and the code check is recorded on the action", async () => {
@@ -216,17 +280,8 @@ describe("portal doors: the portal decide", () => {
     )
     expect(ev?.actor_kind).toBe("portal_user")
     expect((ev?.meta as { code_verified?: boolean } | undefined)?.code_verified).toBe(true)
-    // The decision is on the person's portal log.
-    let logged = 0
-    for (let i = 0; i < 50 && logged === 0; i++) {
-      const [n] = await sql.unsafe(
-        `SELECT count(*)::int AS n FROM ${k("audit_log")} WHERE actor_id = $1 AND action = 'portal.approve' AND entity_id = $2`,
-        [w.clientA.userId, id],
-      )
-      logged = Number((n as unknown as { n: number } | undefined)?.n ?? 0)
-      if (logged === 0) await new Promise((r) => setTimeout(r, 20))
-    }
-    expect(logged).toBe(1)
+    // The decision is on the person's portal log, by its own name.
+    expect(await loggedAs(id)).toEqual(["portal.sign"])
   })
 
   it("only the invited person gets a code: a colleague's ask sends nothing", async () => {

@@ -41,6 +41,8 @@ export interface TicketsMethods {
   tickets_listSyncableAccounts: () => Promise<string>
   tickets_onGmailPushService: (accountEmail: string, historyId: string) => Promise<string>
   executeTool: (toolName: string, paramsJson: string) => Promise<string>
+  /** Handler-conditional gating: park this call behind a person's decision. */
+  requestApproval?: (inputJson: string) => Promise<string>
   tickets_conversion_readTicket: (ticketId: string) => Promise<string>
   tickets_createFromMail: (paramsJson: string) => Promise<string>
   tickets_conversion_closeAsMailConverted: (
@@ -496,8 +498,51 @@ export async function regenerateSummary(params: unknown, ctx: TicketsCtx): Promi
   return JSON.parse(await ctx.tickets_summary_regenerate(ref.ticketId))
 }
 
+/**
+ * A merge copies the sources' messages onto the target. When the target is shown on a client's
+ * portal, an agent's merge parks for a person; a person's own merge is decided by the tool's own
+ * scope (the request is granted inline). Refusals (another company, a more sensitive source) are
+ * asked first, so no card is staged for a merge that cannot happen.
+ */
 export async function merge(params: unknown, ctx: TicketsCtx): Promise<unknown> {
-  return JSON.parse(await ctx.tickets_merge(JSON.stringify(params ?? {})))
+  const p = { ...((params ?? {}) as Record<string, unknown>) }
+  delete p.checkOnly
+  if (!ctx.approval) {
+    const checked = JSON.parse(
+      await ctx.tickets_merge(JSON.stringify({ ...p, checkOnly: true })),
+    ) as { error?: unknown; check?: { targetHandle: string; portalVisible: boolean } }
+    if (checked.error) return checked
+    if (checked.check?.portalVisible) {
+      if (!ctx.requestApproval) {
+        throw new Error(
+          "tickets:merge into a ticket the client's portal shows needs a person's decision, but no approval channel is available here.",
+        )
+      }
+      const sources = Array.isArray(p.sourceTicketIds) ? p.sourceTicketIds.map(String) : []
+      const res = JSON.parse(
+        await ctx.requestApproval(
+          JSON.stringify({
+            tool_name: "tickets:merge",
+            summary: `Merge ${sources.join(", ")} into ${checked.check.targetHandle}`,
+            summary_detail: {
+              lines: [
+                `${checked.check.targetHandle} is shown on the client's portal: the merged messages will show there too.`,
+              ],
+            },
+            current_payload: p,
+          }),
+        ),
+      ) as { approval_id: string | null; auto_approved?: true }
+      if (res.auto_approved !== true) {
+        return {
+          status: "pending_approval",
+          approval_id: res.approval_id,
+          note: `Nothing was merged yet: ${checked.check.targetHandle} is shown on the client's portal, so the merge waits for a person to approve card ${res.approval_id}. Report it as pending, never as done.`,
+        }
+      }
+    }
+  }
+  return JSON.parse(await ctx.tickets_merge(JSON.stringify(p)))
 }
 
 export async function ticketsMarkRead(params: unknown, ctx: TicketsCtx): Promise<unknown> {

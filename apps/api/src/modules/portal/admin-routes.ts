@@ -20,6 +20,7 @@ import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { requireScope } from "~/middleware/require-scope"
 import { writeAuditLog } from "~/modules/audit/service"
+import { hasScope } from "~/modules/permissions/permissions"
 import {
   endPortalAccess,
   invitePortalPerson,
@@ -57,6 +58,21 @@ function fail(c: Context<AppEnv>, err: unknown): Response {
     )
   }
   throw err
+}
+
+/** The read scope each preview part needs: a part the previewing member may not read is null. */
+const PREVIEW_PART_SCOPES: Record<string, string> = {
+  projects: "projects:projects:read",
+  invoices: "invoicing:documents:read",
+  upcoming: "invoicing:documents:read",
+  requests: "tickets:tickets:read",
+}
+
+/** Where each row of a part lives, read again under the member's own row security. */
+const PREVIEW_PART_TABLES: Record<string, string> = {
+  projects: `${schemaRef("app_projects")}.projects`,
+  invoices: `${schemaRef("app_invoicing")}.documents`,
+  requests: `${schemaRef("app_tickets")}.tickets`,
 }
 
 const notFound = (c: Context<AppEnv>) =>
@@ -261,6 +277,7 @@ export const portalAdminRoutes = new Hono<AppEnv>()
             orgId: c.get("orgId"),
             actorId: c.get("userId"),
             db: tx,
+            scopes: (c.get("scopes") as string[] | undefined) ?? [],
             companyId: id,
             kind: body.kind,
             objectId: body.objectId ?? null,
@@ -359,10 +376,18 @@ export const portalAdminRoutes = new Hono<AppEnv>()
     const person = await personOfCompany(c, id)
     if (!person) return notFound(c)
     const orgId = c.get("orgId")
+    const scopes = (c.get("scopes") as string[] | undefined) ?? []
     const parts: Record<string, Record<string, unknown>[] | null> = {}
+    const needs: Record<string, string> = {}
     try {
       await withPortalContext({ orgId, userId: person.user_id }, async (tx) => {
         for (const [name, query] of Object.entries(PORTAL_HOME_READS)) {
+          const need = PREVIEW_PART_SCOPES[name]
+          if (need && !hasScope(need, scopes)) {
+            parts[name] = null
+            needs[name] = need
+            continue
+          }
           parts[name] = await tx
             .transaction(async (sp) =>
               extractRows<Record<string, unknown>>(await sp.execute(query)),
@@ -374,6 +399,28 @@ export const portalAdminRoutes = new Hono<AppEnv>()
       // The person cannot sign in now (access ended, deactivated): they see nothing.
       return success(c, { userId: person.user_id, signedInWouldSee: null })
     }
+    // The preview shows staff nothing their own reads would not: each row is kept only when
+    // the previewing member reads its record under their own row security.
+    await withRequestRls(c, async (tx) => {
+      for (const [name, table] of Object.entries(PREVIEW_PART_TABLES)) {
+        const rows = parts[name]
+        if (!rows || rows.length === 0) continue
+        const ids = rows.map((r) => String(r.id))
+        const readable = new Set(
+          await tx
+            .transaction(async (sp) =>
+              extractRows<{ id: string }>(
+                await sp.execute(
+                  sql`SELECT id::text AS id FROM ${sql.raw(table)}
+                       WHERE id = ANY(${`{${ids.join(",")}}`}::uuid[])`,
+                ),
+              ).map((r) => r.id),
+            )
+            .catch(() => [] as string[]),
+        )
+        parts[name] = rows.filter((r) => readable.has(String(r.id)))
+      }
+    })
     await withRequestRls(c, (tx) =>
       writeAuditLog(tx, {
         orgId,
@@ -386,7 +433,11 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         metadata: { companyId: id },
       }),
     )
-    return success(c, { userId: person.user_id, signedInWouldSee: parts })
+    return success(c, {
+      userId: person.user_id,
+      signedInWouldSee: parts,
+      ...(Object.keys(needs).length > 0 ? { hiddenParts: needs } : {}),
+    })
   })
 
 const settingsSchema = z

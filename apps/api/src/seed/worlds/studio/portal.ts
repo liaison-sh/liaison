@@ -93,8 +93,14 @@ export async function seedStudioPortal(input: StudioPortalInput): Promise<void> 
     userOf.set(p.contact, userId)
   }
 
-  const actor = await actorFor(ctx, lead)
+  // A share opens only what its maker reads: the agreements are opened by the person who
+  // keeps them, the rest by the project's lead.
+  const owner = org.peopleByKey.lea?.userId
+  if (!owner) throw new Error("studio portal: no agreements owner")
+  const leadActor = await actorFor(ctx, lead)
+  const ownerActor = await actorFor(ctx, owner)
   for (const s of STUDIO_PORTAL_SHARES) {
+    const actor = s.agreement ? ownerActor : leadActor
     if (s.needs === "invoicing" && !input.invoicing) continue
     const objectId = s.agreement
       ? ctx.id("agreement", `studio:${s.agreement}`)
@@ -104,8 +110,9 @@ export async function seedStudioPortal(input: StudioPortalInput): Promise<void> 
     await asUser(actor, (tx) =>
       setPortalShare({
         orgId: ctx.orgId,
-        actorId: lead,
+        actorId: actor.userId,
         db: tx,
+        scopes: actor.scopes,
         companyId,
         kind: s.kind,
         objectId,

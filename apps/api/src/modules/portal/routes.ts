@@ -46,7 +46,7 @@ import {
   PORTAL_ATTACHMENT_MAX_BYTES,
   PORTAL_ATTACHMENT_MAX_COUNT,
   portalStagedFilesOk,
-  reparentStagedFiles,
+  reparentPortalStagedFiles,
   stagePortalAttachment,
 } from "~/modules/tickets/ingest-core"
 
@@ -175,6 +175,14 @@ const BUILT = new Set([
   "POST /actions/:id/code",
   "POST /actions/:id/decide",
 ])
+
+/** Each decision is logged by its own name: a decline never reads as an approval. */
+const DECISION_LOG_ACTION = {
+  sign: "portal.sign",
+  accept: "portal.accept",
+  approve: "portal.approve",
+  decline: "portal.decline",
+} as const
 
 const decideSchema = z.object({
   decision: z.enum(["sign", "accept", "approve", "decline"]),
@@ -510,10 +518,21 @@ export const portalRoutes = new Hono<AppEnv>()
       log.error({ err: created.error, orgId: ctx.orgId }, "Portal request was not created")
       return refuse(c, 422, created.error.code, "Your request was not sent.")
     }
-    if (created.initialMessageId) {
-      await reparentStagedFiles(ctx.orgId, created.initialMessageId, files, "portal-request-files")
-    }
-    return success(c, { id: created.ticketId, subject: body.subject, attachments: files.length })
+    const attached =
+      created.initialMessageId !== undefined &&
+      created.initialMessageId !== null &&
+      (await reparentPortalStagedFiles(
+        ctx.orgId,
+        ctx.userId,
+        created.initialMessageId,
+        files,
+        "portal-request-files",
+      ))
+    return success(c, {
+      id: created.ticketId,
+      subject: body.subject,
+      attachments: attached ? files.length : 0,
+    })
   })
   .post("/requests/attachments", async (c) => {
     const ctx = portalOf(c)
@@ -590,8 +609,14 @@ export const portalRoutes = new Hono<AppEnv>()
       fromName: found.name,
       textBody: body.text,
     })
-    await reparentStagedFiles(ctx.orgId, messageId, files, "portal-reply-files")
-    return success(c, { id: messageId, requestId: id, attachments: files.length })
+    const attached = await reparentPortalStagedFiles(
+      ctx.orgId,
+      ctx.userId,
+      messageId,
+      files,
+      "portal-reply-files",
+    )
+    return success(c, { id: messageId, requestId: id, attachments: attached ? files.length : 0 })
   })
   .get("/documents", async (c) => {
     const list = await portalRead(c, async (tx) => {
@@ -766,7 +791,7 @@ export const portalRoutes = new Hono<AppEnv>()
     recordPortalAccess({
       orgId: ctx.orgId,
       userId: ctx.userId,
-      action: "portal.approve",
+      action: DECISION_LOG_ACTION[body.decision],
       entityType: "client_action",
       entityId: id,
       userAgent,

@@ -532,4 +532,17 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   SEND_GUARD_HELD: 409,
   SEND_GUARD_REF_STOP: 409,
   SEND_GUARD_UNAVAILABLE: 503,
+  // The client portal's staff side (modules/portal/access.ts): who may be invited, what a
+  // share may point at, a company whose access ended, the hour's invitation budget.
+  NO_MAIL_ON_DEMO: 403,
+  PORTAL_EMAIL_IN_USE: 409,
+  PORTAL_EMAIL_IS_STAFF: 409,
+  EMAIL_IS_PORTAL_USER: 409,
+  CONTACT_NOT_THIS_COMPANY: 409,
+  PORTAL_ACCESS_ENDED: 409,
+  PORTAL_INVITE_LIMIT: 429,
+  SHARE_NOT_THIS_COMPANY: 409,
+  SHARE_OBJECT_REQUIRED: 422,
+  PORTAL_SETTINGS_INVALID: 422,
+  ERASE_FAILED: 500,
 }

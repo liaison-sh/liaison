@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+
 import { csvCell as exportCsvCell } from "@liaison/shared"
 import { and, desc, sql as drizzleSql, eq, or } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
@@ -23,6 +24,7 @@ import { clearContactSoftReferences } from "~/modules/contacts/erasure"
 import { memberOfGroupCondition } from "~/modules/contacts/groups"
 import { runAfterContactMergeFailpoint } from "~/modules/contacts/merge-failpoint"
 import { buildStorageKey, loadOrgSettings, wouldExceedOrgQuota } from "~/modules/files/service"
+import { endPortalForContact } from "~/modules/portal/access"
 import { asAdmin, canManageSharing, recomputeSearchAcl } from "~/modules/sharing/service"
 
 // Local-part heuristic for noreply / notification / automated senders.
@@ -1720,6 +1722,8 @@ export async function deleteContact(
   await privilegedFrom(privileged ?? db, orgId, "contact-discussion-delete", async (ptx) => {
     await deleteContactDiscussions({ orgId, contactIds: [contactId] }, ptx)
     await clearContactSoftReferences(ptx, orgId, [contactId])
+    // A client of the portal made from this contact loses access with it.
+    await endPortalForContact(ptx, { orgId, contactId, actorId: userId })
   })
 
   await db.queueEvent({
@@ -1790,6 +1794,17 @@ export async function updateContact(
     .returning()
 
   if (!updated) return null
+  // Moved to another company (or to none): their portal access ends and carries nothing over.
+  if (u.companyId !== undefined) {
+    await privilegedFrom(db, params.orgId, "contact-move-portal", (ptx) =>
+      endPortalForContact(ptx, {
+        orgId: params.orgId,
+        contactId: updated.id,
+        actorId: params.userId,
+        companyId: u.companyId ?? null,
+      }),
+    )
+  }
 
   await db.queueEvent({
     app: "kernel",

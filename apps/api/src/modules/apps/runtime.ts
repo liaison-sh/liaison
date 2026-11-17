@@ -277,14 +277,14 @@ export async function resolveJobApprovalRequester(
     if (typeof onBehalfOf === "string" && UUID_RE.test(onBehalfOf)) {
       const named = extractRows<{ id: string }>(
         await tx.execute(
-          dsql`SELECT id::text AS id FROM ${dsql.raw(schemaRef("kernel"))}.users WHERE id = ${onBehalfOf} AND org_id = ${orgId} AND status = 'active' LIMIT 1`,
+          dsql`SELECT id::text AS id FROM ${dsql.raw(schemaRef("kernel"))}.users WHERE id = ${onBehalfOf} AND org_id = ${orgId} AND status = 'active' AND user_type = 'member' LIMIT 1`,
         ),
       )
       if (named.length > 0) return named
     }
     return extractRows<{ id: string }>(
       await tx.execute(
-        dsql`SELECT id::text AS id FROM ${dsql.raw(schemaRef("kernel"))}.users WHERE org_id = ${orgId} AND status = 'active' ORDER BY created_at ASC LIMIT 1`,
+        dsql`SELECT id::text AS id FROM ${dsql.raw(schemaRef("kernel"))}.users WHERE org_id = ${orgId} AND status = 'active' AND user_type = 'member' ORDER BY created_at ASC LIMIT 1`,
       ),
     )
   })

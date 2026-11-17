@@ -1,3 +1,5 @@
 # The client portal's sign-in and the member doors it closes.
 src/modules/portal/portal-auth.integration.test.ts
 src/modules/auth/member-doors.integration.test.ts
+src/modules/portal/portal-log.integration.test.ts
+src/modules/portal/notice.integration.test.ts

@@ -264,6 +264,7 @@ import {
 } from "~/modules/apps/registries"
 import { registerReportBugTool } from "~/modules/bug-reports/tool"
 import { registerClientActionTools } from "~/modules/client-actions/tools"
+import { registerPortalTools } from "~/modules/portal/tools"
 import { registerDashboardTools } from "~/modules/dashboards/tools"
 import { registerDataStoreTools } from "~/modules/data-store/tools"
 import {
@@ -3896,6 +3897,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
 
   // Requests to people outside the org to sign, accept or approve (modules/client-actions).
   registerClientActionTools(orgId)
+  registerPortalTools(orgId)
 
   // Liaison bug reports, the web form's twin for agents and MCP clients.
   registerReportBugTool(orgId)

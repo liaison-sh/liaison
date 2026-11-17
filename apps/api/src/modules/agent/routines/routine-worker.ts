@@ -381,7 +381,9 @@ export async function ensureOutputThread(
       const orgUsers = await tx
         .select({ id: users.id })
         .from(users)
-        .where(and(eq(users.orgId, orgId), eq(users.status, "active")))
+        .where(
+          and(eq(users.orgId, orgId), eq(users.status, "active"), eq(users.userType, "member")),
+        )
       for (const u of orgUsers) memberIds.add(u.id)
     }
 

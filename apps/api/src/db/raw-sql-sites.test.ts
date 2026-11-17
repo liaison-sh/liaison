@@ -40,8 +40,7 @@ const APP_DDL =
  */
 const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
-    alias:
-      "a table alias the module's own queries pass as a string literal (the client action row's alias); no value from a request or a row",
+    alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
   },
   "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
     "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",

@@ -891,6 +891,13 @@ export async function registerKernelJobs(): Promise<void> {
     await purgeExpiredAuditLog()
   })
 
+  // The client portal's access log, daily at 4:10 AM: its own length per org
+  // (settings.portal.logRetentionMonths, else 12 months; modules/org/audit-retention.ts).
+  await registerScheduledJob("kernel", "portal-log-retention", "10 4 * * *", async () => {
+    const { purgeExpiredPortalLog } = await import("~/modules/org/audit-retention")
+    await purgeExpiredPortalLog()
+  })
+
   // Dashboard table row history past 400 days, daily at 4:45 AM.
   await registerScheduledJob(
     "kernel",

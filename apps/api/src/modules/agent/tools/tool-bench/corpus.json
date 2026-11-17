@@ -3698,5 +3698,45 @@
     "say": "vérifie que le contrat signé n'a pas été modifié",
     "typed": ["vérifier sceau", "verify seal", "intégrité preuve"],
     "any": ["agreements__agreement_verify"]
+  },
+  {
+    "id": "C124",
+    "set": "seed",
+    "lang": "en",
+    "say": "give Arlon access to the portal",
+    "typed": ["portal invite", "client portal", "invite client"],
+    "any": ["kernel__portal_invite"]
+  },
+  {
+    "id": "C125",
+    "set": "seed",
+    "lang": "fr",
+    "say": "mets le devis sur l'espace client",
+    "typed": ["espace client", "portail partager", "share on portal"],
+    "any": ["kernel__portal_share_set"]
+  },
+  {
+    "id": "C126",
+    "set": "seed",
+    "lang": "fr",
+    "say": "coupe l'accès du client au portail",
+    "typed": ["portal end access", "fin accès portail", "revoke portal"],
+    "any": ["kernel__portal_end_access"]
+  },
+  {
+    "id": "C127",
+    "set": "seed",
+    "lang": "en",
+    "say": "remove Paul from the client portal and erase his account",
+    "typed": ["remove from portal", "retirer du portail", "effacer son compte portail"],
+    "any": ["kernel__portal_remove_person"]
+  },
+  {
+    "id": "C128",
+    "set": "seed",
+    "lang": "fr",
+    "say": "qui s'est connecté au portail client ce mois-ci ?",
+    "typed": ["portal access log", "journal d'accès portail", "connexions portail"],
+    "any": ["kernel__portal_access_log"]
   }
 ]

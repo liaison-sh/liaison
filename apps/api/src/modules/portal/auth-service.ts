@@ -36,6 +36,7 @@ import {
 } from "~/modules/auth/totp"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
+import { recordPortalAccess } from "~/modules/portal/access"
 
 /** Between two sign-in mails to one address of one org, and how many in an hour. */
 const SEND_COOLDOWN_SECONDS = 60
@@ -263,6 +264,8 @@ export async function verifyPortalSignIn(input: {
   challengeId: string
   token: string
   host?: string
+  /** The browser as it reported itself, for the access log only. */
+  userAgent?: string | null
 }): Promise<PortalSignInResult> {
   const { userId, orgId } = await consumePortalChallenge(input)
   const person = await openPortalPerson(orgId, { id: userId })
@@ -280,7 +283,9 @@ export async function verifyPortalSignIn(input: {
     )
     return { totpRequired: true, challengeToken }
   }
-  return createPortalSession(userId, orgId)
+  const tokens = await createPortalSession(userId, orgId)
+  recordPortalAccess({ orgId, userId, action: "portal.sign_in", userAgent: input.userAgent })
+  return tokens
 }
 
 /**
@@ -292,6 +297,8 @@ export async function verifyPortalTotp(input: {
   challengeToken: string
   code: string
   ip: string
+  /** The browser as it reported itself, for the access log only. */
+  userAgent?: string | null
 }): Promise<TokenPair> {
   const startedAt = performance.now()
   const fail = async (status: 401 | 429 = 401): Promise<never> => {
@@ -340,12 +347,20 @@ export async function verifyPortalTotp(input: {
   })
   if (!ok) {
     await recordFailedAttempt(redis, bruteKey, input.ip)
+    recordPortalAccess({
+      orgId,
+      userId,
+      action: "portal.sign_in_failed",
+      userAgent: input.userAgent,
+    })
     return fail()
   }
   // One use: only the caller whose delete removed the challenge signs in.
   if ((await redis.del(key)) !== 1) return fail()
   await resetAttempts(redis, bruteKey, input.ip).catch(() => {})
-  return createPortalSession(userId, orgId, undefined, true)
+  const tokens = await createPortalSession(userId, orgId, undefined, true)
+  recordPortalAccess({ orgId, userId, action: "portal.sign_in", userAgent: input.userAgent })
+  return tokens
 }
 
 const TOTP_SETUP_TTL_SECONDS = 600
@@ -443,7 +458,16 @@ export interface PortalBranding {
 /** An unknown slug answers the same shape, all empty: the generic sign-in page. */
 export async function portalBranding(slug: string): Promise<PortalBranding> {
   const org = await orgBySlug(slug)
-  return { name: org?.name ?? null, logoUrl: null, notice: null }
+  if (!org) return { name: null, logoUrl: null, notice: null }
+  // The org's own notice (settings.portal.notice), shown with its name before sign-in.
+  const [row] = await withSystemDb("portal-branding-notice", (db) =>
+    db
+      .select({ notice: sql<string | null>`${organizations.settings} -> 'portal' ->> 'notice'` })
+      .from(organizations)
+      .where(eq(organizations.id, org.id))
+      .limit(1),
+  )
+  return { name: org.name, logoUrl: null, notice: row?.notice ?? null }
 }
 
 /** Constant-time string equality, for an Origin compared with the allowed list. */

@@ -596,6 +596,8 @@ const OUTWARD_NAME =
 const REVIEWED_UNGATED_OUTWARD: Record<string, string> = {
   "kernel:client_action_revoke":
     "conditionalGate + externalEffect + requiresHumanTurn: a person's own clean turn withdraws a link at once; after outside text, or from a routine, MCP or sub-run, it parks for a person (modules/client-actions/tools.ts). It only stops a link working: nothing is sent or shown outside",
+  "kernel:portal_remove_person":
+    "conditionalGate + externalEffect + requiresHumanTurn, and gatedWhen erase: a person's own clean turn removes a client from the portal at once; after outside text, or from a routine, MCP or sub-run, it parks; erasing always parks with noAutoApprove (modules/portal/tools.ts). Removing only stops access: nothing is sent or shown outside",
   "boxtal:import_shipments":
     "local import of shipments already booked at the provider; no booking or purchase",
   "boxtal:prep_add_shipment": "local prep row; buying a label is the gated ship tools",

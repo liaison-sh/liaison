@@ -9,6 +9,9 @@
 // `auditDays`) days; the 90-day settings default is not read for a capped org.
 // A managed org without the cap keeps the admin's choice, else the setting,
 // else 90. Mirrors `effectiveAuditRetentionDays` (caps.ts).
+//
+// The client portal's access log (`app = 'portal'`) keeps its own length:
+// `settings.portal.logRetentionMonths`, else 12 months (`portal-log-retention`).
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
@@ -40,6 +43,7 @@ export async function purgeExpiredAuditLog(): Promise<{ orgId: string; count: nu
         USING ${K}.organizations o
         WHERE al.org_id = o.id
           AND ${notMoving(sql.raw("al.org_id"))}
+          AND al.app IS DISTINCT FROM 'portal'
           AND al.timestamp < NOW() - MAKE_INTERVAL(days => ${retentionDaysSql()})
         RETURNING al.org_id
       )
@@ -50,5 +54,36 @@ export async function purgeExpiredAuditLog(): Promise<{ orgId: string; count: nu
   const rows = extractRows(result) as { org_id: string; cnt: number }[]
   const out = rows.map((r) => ({ orgId: r.org_id, count: Number(r.cnt) }))
   for (const row of out) log.info(row, "Audit log retention cleanup")
+  return out
+}
+
+/** The months an org keeps its portal access log, as SQL over `o`; malformed reads as 12. */
+function portalMonthsSql() {
+  return sql`CASE WHEN jsonb_typeof(o.settings->'portal'->'logRetentionMonths') = 'number'
+    THEN LEAST(GREATEST((o.settings->'portal'->>'logRetentionMonths')::int, 6), 36) ELSE 12 END`
+}
+
+/** Delete every org's portal access rows older than its portal retention. */
+export async function purgeExpiredPortalLog(): Promise<{ orgId: string; count: number }[]> {
+  const K = sql.raw(schemaRef("kernel"))
+  const result = await sweepSkippingMoving((notMoving) =>
+    withSystemDb("portal-log-retention", (db) =>
+      db.execute(sql`
+      WITH deleted AS (
+        DELETE FROM ${K}.audit_log al
+        USING ${K}.organizations o
+        WHERE al.org_id = o.id
+          AND ${notMoving(sql.raw("al.org_id"))}
+          AND al.app = 'portal'
+          AND al.timestamp < NOW() - MAKE_INTERVAL(months => ${portalMonthsSql()})
+        RETURNING al.org_id
+      )
+      SELECT org_id, COUNT(*)::int AS cnt FROM deleted GROUP BY org_id
+    `),
+    ),
+  )
+  const rows = extractRows(result) as { org_id: string; cnt: number }[]
+  const out = rows.map((r) => ({ orgId: r.org_id, count: Number(r.cnt) }))
+  for (const row of out) log.info(row, "Portal access log retention cleanup")
   return out
 }

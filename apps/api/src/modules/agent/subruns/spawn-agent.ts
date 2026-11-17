@@ -351,7 +351,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
       tx
         .select({ id: kernelUsers.id })
         .from(kernelUsers)
-        .where(eq(kernelUsers.orgId, orgId))
+        .where(and(eq(kernelUsers.orgId, orgId), eq(kernelUsers.userType, "member")))
         .limit(1),
     )
     if (!anyUser) {

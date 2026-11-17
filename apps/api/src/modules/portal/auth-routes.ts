@@ -119,6 +119,7 @@ export const portalAuthRoutes = new Hono<AppEnv>()
       const result = await verifyPortalSignIn({
         ...c.req.valid("json"),
         host: effectiveRequest(c).host ?? undefined,
+        userAgent: c.req.header("user-agent") ?? null,
       })
       // A second factor to give, or one to set up first: no session cookie yet.
       if ("totpRequired" in result || "enrolmentRequired" in result) return success(c, result)
@@ -130,7 +131,11 @@ export const portalAuthRoutes = new Hono<AppEnv>()
   })
   .post("/totp", zValidator("json", totpSchema), async (c) => {
     try {
-      const tokens = await verifyPortalTotp({ ...c.req.valid("json"), ip: getClientIp(c) })
+      const tokens = await verifyPortalTotp({
+        ...c.req.valid("json"),
+        ip: getClientIp(c),
+        userAgent: c.req.header("user-agent") ?? null,
+      })
       return signedIn(c, tokens)
     } catch (err) {
       if (err instanceof AuthServiceError) {

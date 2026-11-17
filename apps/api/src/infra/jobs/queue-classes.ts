@@ -139,6 +139,7 @@ export const KERNEL_JOBS: Readonly<Record<string, KernelJobSpec>> = {
   // Daily/weekly maintenance: still crons, but they yield to the sweeps above.
   "cleanup-expired-sessions": { queueClass: "cron", priority: YIELD },
   "audit-log-retention": { queueClass: "cron", priority: YIELD },
+  "portal-log-retention": { queueClass: "cron", priority: YIELD },
   "agent-turn-retention": { queueClass: "cron", priority: YIELD },
   "effect-ledger-retention": { queueClass: "cron", priority: YIELD },
   "away-ranges-prune": { queueClass: "cron", priority: YIELD },

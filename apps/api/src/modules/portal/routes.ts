@@ -26,6 +26,7 @@ import { getClientIp } from "~/lib/request-context"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
 import { AuthServiceError } from "~/modules/auth/auth"
+import { recordPortalAccess } from "~/modules/portal/access"
 import { portalSignedIn } from "~/modules/portal/auth-routes"
 import {
   ackPortalNotice,
@@ -125,6 +126,15 @@ const UPCOMING = drizzleSql`SELECT label, amount_minor::text AS amount_minor, cu
   FROM portal.billing_upcoming ORDER BY due_on NULLS LAST, label`
 const TICKETS = drizzleSql`SELECT id, subject, status, channel, created_at, last_message_at
   FROM portal.tickets ORDER BY COALESCE(last_message_at, created_at) DESC, id LIMIT 100`
+
+/** The portal's own home reads, by part: staff's preview (admin-routes.ts) runs these same ones. */
+export const PORTAL_HOME_READS = {
+  me: ME,
+  projects: PROJECTS,
+  invoices: INVOICES,
+  upcoming: UPCOMING,
+  requests: TICKETS,
+} as const
 
 /** The routes this file serves; the rest of PORTAL_ROUTES answer 404 until built. */
 const BUILT = new Set([
@@ -232,6 +242,14 @@ export const portalRoutes = new Hono<AppEnv>()
     return success(c, camel(row))
   })
   .get("/home", async (c) => {
+    const viewer = portalOf(c)
+    recordPortalAccess({
+      orgId: viewer.orgId,
+      userId: viewer.userId,
+      action: "portal.view",
+      entityType: "home",
+      userAgent: c.req.header("user-agent") ?? null,
+    })
     const home = await portalRead(c, async (tx) => {
       const [me] = extractRows<Record<string, unknown>>(await tx.execute(ME))
       const projects = rows(await part(tx, "projects", PROJECTS))
@@ -323,7 +341,17 @@ export const portalRoutes = new Hono<AppEnv>()
         return found === UNAVAILABLE ? null : (found[0]?.pdf_file_id ?? null)
       })
       if (!pdf) return notFound(c)
-      return (await streamPortalFile(ctx, pdf)) ?? notFound(c)
+      const streamed = await streamPortalFile(ctx, pdf)
+      if (!streamed) return notFound(c)
+      recordPortalAccess({
+        orgId: ctx.orgId,
+        userId: ctx.userId,
+        action: "portal.download",
+        entityType: "invoice",
+        entityId: id,
+        userAgent: c.req.header("user-agent") ?? null,
+      })
+      return streamed
     } catch (err) {
       const refused = refusal(c, err)
       if (refused) return refused
@@ -492,7 +520,18 @@ export const portalRoutes = new Hono<AppEnv>()
   .get("/files/:id", async (c) => {
     const id = c.req.param("id")
     try {
-      return (await streamPortalFile(portalOf(c), id)) ?? notFound(c)
+      const ctx = portalOf(c)
+      const streamed = await streamPortalFile(ctx, id)
+      if (!streamed) return notFound(c)
+      recordPortalAccess({
+        orgId: ctx.orgId,
+        userId: ctx.userId,
+        action: "portal.download",
+        entityType: "file",
+        entityId: id,
+        userAgent: c.req.header("user-agent") ?? null,
+      })
+      return streamed
     } catch (err) {
       const refused = refusal(c, err)
       if (refused) return refused

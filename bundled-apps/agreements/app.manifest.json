@@ -6,7 +6,8 @@
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
   "agentInstructions": "Agreements holds the organization's proposals, statements of work, contracts and NDAs, each with its own number, and the templates they are made from.",
   "outsideTextFields": [
-    "signers"
+    "signers",
+    "imported_text"
   ],
   "listing": {
     "publisher": "Liaison",
@@ -246,7 +247,36 @@
         "claimed_at": "date?",
         "project_time_budgets": {
           "type": "boolean",
-  "version": "0.4.3",
+          "required": false,
+          "description": "Whether the project the signed agreement started uses time and budgets, as projects answered when it was made."
+        },
+        "project_timebox_minutes": {
+          "type": "integer",
+          "required": false,
+          "description": "The project's whole timebox in minutes, as last set from this agreement (its proposal, then each accepted change request)."
+        },
+        "effects_claim": "uuid?",
+        "effects_claimed_at": "date?",
+        "effects_task_id": "uuid?",
+        "effects_timebox_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "effects_time_plan": {
+          "type": "string",
+          "enum": [
+            "set",
+            "none"
+          ],
+          "required": false
+        },
+        "effects_done_at": "date?",
+        "effects_note": "text?",
+        "imported_text": {
+          "type": "string",
+          "required": false,
+          "description": "Text read from an imported PDF, kept as unverified: never the signed text."
+        }
       }
     },
     "agreement_shares": {
@@ -1285,13 +1315,16 @@
             "type": "string",
             "description": "The agreement version id (agreement_get lists them)."
           },
+          "agreement_id": {
+            "type": "string",
+            "description": "Instead of version_id, an imported agreement (it has no version): quotes the text read from its PDF, unverified."
+          },
           "section": {
             "type": "string",
             "description": "The section number, such as 8 or 8.2."
           }
         },
         "required": [
-          "version_id",
           "section"
         ]
       }
@@ -2028,7 +2061,8 @@
       "agreement:signed",
       "agreement:imported",
       "agreement:access_changed",
-  "version": "0.4.4",
+      "agreement:knowledge_copy_not_made",
+      "agreement:links_withdrawn",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",

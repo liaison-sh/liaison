@@ -439,6 +439,21 @@ const CASES: Case[] = [
     tool: "contacts_group_members",
     row: { group: { id: "g1" }, members: [{ id: "c1", name: INJECTED }], totalCount: 1 },
   },
+  // An imported agreement's text was read from a PDF that came from outside: nobody verified it.
+  {
+    app: "agreements",
+    dir: BUNDLED,
+    tool: "agreement_passage_get",
+    row: {
+      status: "ok",
+      agreement: { id: "a1", number: "AG-1", status: "imported" },
+      version: null,
+      source_kind: "uploaded",
+      unverified: true,
+      passage: { section: "1", text: INJECTED },
+      note: "Unverified: read from the PDF of AG-1, imported and signed outside Liaison, section 1.",
+    },
+  },
 ]
 
 type Seed = Awaited<ReturnType<typeof seedOrgWithTicketsApp>>

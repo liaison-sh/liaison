@@ -13,6 +13,7 @@
 
 import { RECORDED_APPROVAL } from "./change-requests"
 import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+import { addSignedClientToScopeGroup } from "./scope-group"
 import { startProjectAfterSigning } from "./signed-project"
 import { onAgreementSigned } from "./sow-knowledge"
 
@@ -385,6 +386,7 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
     // Its project first, so the signed event names it; the seal retry starts it when this
     // pass could not.
     await startProjectQuietly(ctx, agreement.id)
+    await addToScopeGroupQuietly(ctx, agreement.id)
     const projectId =
       ((await ctx.db.findOne("agreements", agreement.id)) as { project_id?: string | null } | null)
         ?.project_id ?? null
@@ -651,7 +653,6 @@ export async function copyStateOf(
   return c.attempts >= COPY_MAX_ATTEMPTS ? "not_sent" : "on_its_way"
 }
 
-/** `seal-retry`: every signed version with no complete package; one attention item after an hour. */
 /** The signed agreement's project; a failure is retried by `seal-retry`, never undoes the seal. */
 async function startProjectQuietly(ctx: SealCtx, agreementId: string): Promise<void> {
   try {
@@ -661,6 +662,16 @@ async function startProjectQuietly(ctx: SealCtx, agreementId: string): Promise<v
   }
 }
 
+/** The signed client joins the Scope check's group; a failure is caught up by its daily reconcile. */
+async function addToScopeGroupQuietly(ctx: SealCtx, agreementId: string): Promise<void> {
+  try {
+    await addSignedClientToScopeGroup(ctx, agreementId)
+  } catch {
+    // the group could not be reached on this pass: the daily reconcile adds the client.
+  }
+}
+
+/** `seal-retry`: every signed version with no complete package; one attention item after an hour. */
 export async function sealRetry(ctx: SealCtx) {
   const versions = (await ctx.db.findMany("agreement_versions", {
     where: { status: "signed" },

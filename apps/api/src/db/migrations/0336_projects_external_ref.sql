@@ -1,3 +1,4 @@
+-- SPDX-License-Identifier: FSL-1.1-ALv2
 -- A project made by another app's step (a signed agreement starting its project) names
 -- that step: a second delivery of the same step finds the project instead of making one.
 -- NULL for every project a person makes; unique per org when set.

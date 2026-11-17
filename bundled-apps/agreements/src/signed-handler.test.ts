@@ -2,8 +2,11 @@
 //
 // A signed proposal starts its project once: a replayed signature or the seal
 // retry makes nothing more, a kind that starts no project makes none, a pass
-// where projects could not be reached starts it on the retry, and time and
-// budgets stay a person's act (the agreement keeps the timebox for them).
+// where projects could not be reached starts it on the retry. Every call runs as
+// the agreement's sender, on its signed version: a proposal with a timebox starts
+// its project with time and budgets on and that timebox as its plan, and the
+// agreement records both for a later change request. Signing also adds the client
+// to the Scope check's group when that routine is enabled.
 
 import { describe, expect, it } from "bun:test"
 import type { CrossAppEnvelope } from "@liaison/app-sdk"
@@ -13,41 +16,83 @@ import { startProjectAfterSigning, timeboxOf } from "./signed-project"
 
 const COMPANY = "cccccccc-0000-4000-8000-00000000000c"
 
-/** A projects app that keeps one project per step, as createProject's externalRef does. */
-function fakeProjects() {
+const GROUP = "99999999-0000-4000-8000-000000000009"
+
+/**
+ * A projects app that keeps one project per step, as createProject's externalRef does, reached
+ * only through the kernel's call made as the sender. `refuseTime` answers time and budgets as
+ * projects does from a place it does not take them.
+ */
+function fakeProjects(opts: { refuseTime?: boolean; group?: string | null } = {}) {
   const byRef = new Map<string, string>()
-  const calls: Array<{ name: string; params: Record<string, unknown> }> = []
-  const executeTool = async (
-    name: string,
-    params: Record<string, unknown>,
-  ): Promise<CrossAppEnvelope> => {
-    calls.push({ name, params })
-    if (name === "projects:createProject") {
+  const timeOn = new Set<string>()
+  const calls: Array<{
+    name: string
+    params: Record<string, unknown>
+    target_type?: string
+    target_id?: string
+  }> = []
+  const answer = (tool: string, params: Record<string, unknown>): CrossAppEnvelope => {
+    if (tool === "projects:createProject") {
+      if (params.timeBudgets !== undefined && opts.refuseTime)
+        return { status: "error", error: { code: "human_turn_only", message: "a person turns it" } }
       const ref = String(params.externalRef)
       const existing = byRef.get(ref)
-      if (existing) return { status: "completed", result: { id: existing, existing: true } }
+      if (existing)
+        return {
+          status: "completed",
+          result: { id: existing, existing: true, timeBudgets: timeOn.has(existing) },
+        }
       const id = `project-${byRef.size + 1}`
       byRef.set(ref, id)
-      return { status: "completed", result: { id, name: params.name } }
+      if (params.timeBudgets === true) timeOn.add(id)
+      return { status: "completed", result: { id, name: params.name, timeBudgets: timeOn.has(id) } }
     }
-    return { status: "error", error: { code: "NOT_DECLARED", message: name } }
+    if (tool === "projects:time_plan_set") {
+      if (!timeOn.has(String(params.projectId)))
+        return { status: "error", error: { code: "planning_off", message: "time is off" } }
+      return { status: "completed", result: { projectId: params.projectId } }
+    }
+    if (tool === "kernel:contacts_group_add")
+      return { status: "completed", result: { added: params.contactIds } }
+    return { status: "error", error: { code: "NOT_DECLARED", message: tool } }
   }
-  return {
-    executeTool,
-    calls,
-    byRef,
+  const client_actions_call_as_sender = async (p: {
+    target_type: string
+    target_id: string
+    tool: string
+    params: Record<string, unknown>
+  }) => {
+    calls.push({
+      name: p.tool,
+      params: p.params,
+      target_type: p.target_type,
+      target_id: p.target_id,
+    })
+    return JSON.stringify(answer(p.tool, p.params))
   }
+  const client_actions_own_group = async () =>
+    JSON.stringify({ status: "ok", group_id: opts.group ?? null })
+  return { client_actions_call_as_sender, client_actions_own_group, calls, byRef }
 }
 
-async function world(values: Record<string, unknown>) {
+async function world(
+  values: Record<string, unknown>,
+  opts: { refuseTime?: boolean; group?: string | null } = {},
+) {
   const w = await signedWorld()
   await w.db.update("agreements", w.agreementId, {
     kind: "proposal",
     company_id: COMPANY,
     ...values,
   })
-  const projects = fakeProjects()
-  w.ctx.executeTool = projects.executeTool
+  const projects = fakeProjects(opts)
+  w.ctx.client_actions_call_as_sender = projects.client_actions_call_as_sender
+  w.ctx.client_actions_own_group = projects.client_actions_own_group
+  w.ctx.executeTool = async (name) => ({
+    status: "error",
+    error: { code: "NOT_AS_SENDER", message: `${name} was called as the app, not as the sender` },
+  })
   return { ...w, projects }
 }
 
@@ -74,15 +119,23 @@ describe("a signed agreement's project", () => {
     })
   })
 
-  it("time and budgets stay a person's act: the project starts with them off, the agreement keeps the timebox for them", async () => {
+  it("a proposal with a timebox starts its project as the sender, with time and budgets on and that timebox as its plan", async () => {
     const boxed = await world({ hours_minutes: 40 * 60 })
     await sealVersion(boxed.ctx, boxed.versionId)
-    expect(boxed.projects.calls.map((c) => c.name)).toEqual(["projects:createProject"])
-    expect(boxed.projects.calls[0]?.params).not.toHaveProperty("timeBudgets")
-    expect(
-      ((await boxed.db.findOne("agreements", boxed.agreementId)) as Record<string, unknown>)
-        .project_time_budgets,
-    ).toBe(true)
+    const projectCalls = boxed.projects.calls.filter((c) => c.name.startsWith("projects:"))
+    expect(projectCalls.map((c) => c.name)).toEqual([
+      "projects:createProject",
+      "projects:time_plan_set",
+    ])
+    for (const c of projectCalls) {
+      expect(c.target_type).toBe("agreement_version")
+      expect(c.target_id).toBe(boxed.versionId)
+    }
+    expect(projectCalls[0]?.params).toMatchObject({ timeBudgets: true })
+    expect(projectCalls[1]?.params).toEqual({ projectId: "project-1", timebox: "40 hours" })
+    const row = (await boxed.db.findOne("agreements", boxed.agreementId)) as Record<string, unknown>
+    expect(row.project_time_budgets).toBe(true)
+    expect(row.project_timebox_minutes).toBe(40 * 60)
     expect(await startProjectAfterSigning(boxed.ctx, boxed.agreementId)).toMatchObject({
       status: "skipped",
     })
@@ -90,10 +143,44 @@ describe("a signed agreement's project", () => {
     const open = await world({ hours_minutes: null })
     const out = await startProjectAfterSigning(open.ctx, open.agreementId)
     expect(out).toMatchObject({ status: "started", time_budgets: false, timebox: null })
-    expect(
-      ((await open.db.findOne("agreements", open.agreementId)) as Record<string, unknown>)
-        .project_time_budgets,
-    ).toBe(false)
+    expect(open.projects.calls[0]?.params).not.toHaveProperty("timeBudgets")
+    expect(open.projects.calls.map((c) => c.name)).toEqual(["projects:createProject"])
+    const openRow = (await open.db.findOne("agreements", open.agreementId)) as Record<
+      string,
+      unknown
+    >
+    expect(openRow.project_time_budgets).toBe(false)
+    expect(openRow.project_timebox_minutes ?? null).toBeNull()
+  })
+
+  it("where projects keeps time and budgets off, the project still starts, and the agreement records that it uses none", async () => {
+    const w = await world({ hours_minutes: 40 * 60 }, { refuseTime: true })
+    const out = await startProjectAfterSigning(w.ctx, w.agreementId)
+    expect(out).toMatchObject({ status: "started", time_budgets: false, timebox: null })
+    expect(w.projects.byRef.size).toBe(1)
+    expect(w.projects.calls.map((c) => c.name)).toEqual([
+      "projects:createProject",
+      "projects:createProject",
+    ])
+    const row = (await w.db.findOne("agreements", w.agreementId)) as Record<string, unknown>
+    expect(row.project_time_budgets).toBe(false)
+    expect(row.project_timebox_minutes ?? null).toBeNull()
+  })
+
+  it("signing adds the client to the Scope check's group as the sender, and nothing when the routine is not enabled", async () => {
+    const on = await world({ contact_id: "contact-a" }, { group: GROUP })
+    await sealVersion(on.ctx, on.versionId)
+    const adds = on.projects.calls.filter((c) => c.name === "kernel:contacts_group_add")
+    expect(adds).toHaveLength(1)
+    expect(adds[0]).toMatchObject({
+      target_type: "agreement_version",
+      target_id: on.versionId,
+      params: { groupId: GROUP, contactIds: ["contact-a"] },
+    })
+
+    const off = await world({ contact_id: "contact-a" }, { group: null })
+    await sealVersion(off.ctx, off.versionId)
+    expect(off.projects.calls.filter((c) => c.name === "kernel:contacts_group_add")).toHaveLength(0)
   })
 
   it("an agreement that starts no project, a change request included, calls nothing", async () => {
@@ -106,16 +193,14 @@ describe("a signed agreement's project", () => {
 
   it("a pass where projects could not be reached starts the project on the seal retry, once", async () => {
     const w = await world({ hours_minutes: 90 })
-    const real = w.ctx.executeTool
-    w.ctx.executeTool = async () => ({
-      status: "error",
-      error: { code: "down", message: "unavailable" },
-    })
+    const real = w.ctx.client_actions_call_as_sender
+    w.ctx.client_actions_call_as_sender = async () =>
+      JSON.stringify({ status: "error", error: { code: "down", message: "unavailable" } })
     await sealVersion(w.ctx, w.versionId)
     expect(
       ((await w.db.findOne("agreements", w.agreementId)) as { project_id?: string }).project_id,
     ).toBeFalsy()
-    w.ctx.executeTool = real
+    w.ctx.client_actions_call_as_sender = real
     await sealRetry(w.ctx)
     await sealRetry(w.ctx)
     expect(w.projects.byRef.size).toBe(1)

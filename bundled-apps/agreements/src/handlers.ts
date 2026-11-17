@@ -27,8 +27,8 @@ import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
 import { agreementImport, type ImportParams } from "./import"
 import { agreementPassageGet } from "./passage"
-import { scopeGroupReconcile } from "./scope-group"
 import { onPortalAccessEnded } from "./portal-ended"
+import { scopeGroupReconcile } from "./scope-group"
 import {
   agreementEvidenceGet,
   agreementVerify,
@@ -124,7 +124,7 @@ export const evidenceVerifyJobHandler = (_payload: unknown, ctx: Ctx) =>
 
 // --- Gated-tool approval summarizers ---
 export const agreementPassageGetHandler = (
-  p: { version_id?: string; section?: string },
+  p: { version_id?: string; agreement_id?: string; section?: string },
   ctx: Ctx,
 ) => agreementPassageGet(ctx, p ?? {})
 export const activityReadHandler = (p: Parameters<typeof activityRead>[1], ctx: Ctx) =>

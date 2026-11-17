@@ -105,6 +105,8 @@ async function mailTo(email: string, template: string, after: number) {
 
 /** One agreement sent by `sender` and signed by client A on the public page; the decided
  *  handler then runs from the outbox. `beforeSign` runs between the send and the signature. */
+let signings = 0
+
 async function sendAndSign(
   sender: string,
   title: string,
@@ -132,7 +134,9 @@ async function sendAndSign(
   expect(sent.data?.status).toBe("ok")
   if (beforeSign) await beforeSign()
   const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
-  const h = { "x-bun-socket-ip": "198.51.100.91" }
+  // One address per signing: the public surface's limit counts per address, and this file signs often.
+  signings += 1
+  const h = { "x-bun-socket-ip": `198.51.100.${90 + signings}` }
   expect((await call("open", { t: token }, h)).status).toBe(200)
   expect((await call("document", { t: token, format: "blocks" }, h)).status).toBe(200)
   await clearRedisPatterns(["ca:code:gap:*"])
@@ -398,30 +402,38 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
 })
 
 describe("a signed statement of work starts its project from the decided handler", () => {
-  it("one project for the agreement, named on it; time and budgets stay off for a person to turn on", async () => {
+  it("one project for the agreement, made as its sender; projects keeps time and budgets to a person's own turn, so it starts with them off and the agreement records that", async () => {
     const { agreementId } = await sendAndSign(w.admin.userId, "Statement of work", async () => {
       await sql`UPDATE ${app("agreements")} SET kind = 'sow', hours_minutes = 2400
                  WHERE org_id = ${w.orgId} AND title = 'Statement of work'`
     })
     const projects = (await sql`
-      SELECT id::text AS id, company_id::text AS company_id, time_budgets_on
+      SELECT id::text AS id, company_id::text AS company_id, owner_id::text AS owner_id,
+             time_budgets_on
         FROM app_projects.projects
        WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
       id: string
       company_id: string | null
+      owner_id: string | null
       time_budgets_on: boolean
     }>
     expect(projects).toHaveLength(1)
     expect(projects[0]?.company_id).toBe(w.companyA)
+    expect(projects[0]?.owner_id).toBe(w.admin.userId)
+    // The signed handler asks for time and budgets as the sender; projects answers that only a
+    // person turns them, in their own turn, and the project starts without them.
     expect(projects[0]?.time_budgets_on).toBe(false)
     const [a] = (await sql`
-      SELECT project_id::text AS project_id, project_time_budgets FROM ${app("agreements")}
+      SELECT project_id::text AS project_id, project_time_budgets, project_timebox_minutes
+        FROM ${app("agreements")}
        WHERE id = ${agreementId}`) as unknown as Array<{
       project_id: string | null
       project_time_budgets: boolean | null
+      project_timebox_minutes: number | null
     }>
     expect(a?.project_id).toBe(projects[0]?.id ?? "")
-    expect(a?.project_time_budgets).toBe(true)
+    expect(a?.project_time_budgets).toBe(false)
+    expect(a?.project_timebox_minutes).toBeNull()
     // The seal retry, run again, makes no second project.
     await drainOutbox()
     const again = (await sql`
@@ -430,5 +442,36 @@ describe("a signed statement of work starts its project from the decided handler
       n: number
     }>
     expect(again[0]?.n).toBe(1)
+  }, 120_000)
+
+  it("signing adds the client to the Scope check's group, as the sender", async () => {
+    const enabled = (await handleEnableRoutineTemplate(
+      { appName: "agreements", templateKey: "scope-check" },
+      {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        actorType: "user",
+        scopes: ["*"],
+        approverUserId: w.admin.userId,
+      } as never,
+    )) as { routine?: { id: string }; error?: unknown }
+    expect(enabled.error).toBeUndefined()
+    const [group] = (await sql`
+      SELECT id::text AS id FROM ${kernel("contact_segments")}
+       WHERE org_id = ${w.orgId} AND system_key = 'agreements:clients-signed'`) as unknown as Array<{
+      id: string
+    }>
+    expect(group?.id).toMatch(/^[0-9a-f-]{36}$/)
+    await sendAndSign(w.admin.userId, "Signed with a client", async () => {
+      await sql`UPDATE ${app("agreements")} SET contact_id = ${w.clientA.contactId}
+                 WHERE org_id = ${w.orgId} AND title = 'Signed with a client'`
+    })
+    const members = (await sql`
+      SELECT contact_id::text AS contact_id FROM ${kernel("contact_group_members")}
+       WHERE org_id = ${w.orgId} AND segment_id = ${group?.id ?? ""}::uuid`) as unknown as Array<{
+      contact_id: string
+    }>
+    expect(members.map((m) => m.contact_id)).toContain(w.clientA.contactId)
+    await sql`DELETE FROM ${kernel("routines")} WHERE id = ${enabled.routine?.id ?? ""}`
   }, 120_000)
 })

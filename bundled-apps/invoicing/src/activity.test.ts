@@ -107,8 +107,8 @@ describe("invoicing timeline source", () => {
     const out = await activityRead({ db }, input())
     expect(out.rows.map((r) => r.title)).toEqual([
       `Invoice ${paid.number} paid`,
-      "Credit note CN-2026-0001 credited, 1740.00 EUR",
-      `Invoice ${paid.number} issued, 1740.00 EUR`,
+      "Credit note CN-2026-0001 credited, 1,740.00 EUR",
+      `Invoice ${paid.number} issued, 1,740.00 EUR`,
     ])
     expect(out.rows.some((r) => r.id.startsWith(String(draft.id)))).toBe(false)
   })
@@ -220,5 +220,15 @@ describe("invoicing timeline source", () => {
     expect(calls).toEqual([
       ["kernel:companies_read", { companyId: "44444444-4444-4444-8444-444444444444" }],
     ])
+  })
+})
+
+describe("timeline amounts", () => {
+  test("group thousands like the rest of the product", async () => {
+    const { groupedMinor } = await import("./activity")
+    expect(groupedMinor(626400)).toBe("6,264.00")
+    expect(groupedMinor(123456789)).toBe("1,234,567.89")
+    expect(groupedMinor(5)).toBe("0.05")
+    expect(groupedMinor(-626400)).toBe("-6,264.00")
   })
 })

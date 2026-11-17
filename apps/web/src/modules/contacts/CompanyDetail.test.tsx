@@ -503,7 +503,7 @@ describe("CompanyDetail states", () => {
     mocks.routes[ACTIVITY] = {
       items: [
         {
-          ...row("i1", "invoicing", "2026-11-03T09:00:00Z", "F-2026-0512 issued, 6264.00 EUR"),
+          ...row("i1", "invoicing", "2026-11-03T09:00:00Z", "F-2026-0512 issued, 6,264.00 EUR"),
           who: "Maison Nord",
         },
       ],
@@ -512,7 +512,7 @@ describe("CompanyDetail states", () => {
     }
     render(() => <CompanyDetail entityId={CO} />)
     const r = await screen.findByTestId("company-activity.row-invoicing:i1")
-    expect(r.textContent).toContain("6264.00 EUR · Maison Nord")
+    expect(r.textContent).toContain("6,264.00 EUR · Maison Nord")
   })
 
   it("one source failing shows one notice with Retry and the rest", async () => {

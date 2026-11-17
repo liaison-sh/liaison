@@ -71,10 +71,17 @@ function dayStart(value: string): Date {
   return new Date(`${value.slice(0, 10)}T00:00:00.000Z`)
 }
 
+/** Minor units as the timeline reads money: thousands grouped, two decimals (6,264.00). */
+export function groupedMinor(n: number): string {
+  const [whole = "0", cents = "00"] = (n / 100).toFixed(2).split(".")
+  const sign = whole.startsWith("-") ? "-" : ""
+  return `${sign}${whole.replace("-", "").replace(/\B(?=(\d{3})+(?!\d))/g, ",")}.${cents}`
+}
+
 function amount(minor: unknown, currency: unknown): string {
   const n = Number(minor)
   if (!Number.isFinite(n)) return ""
-  return `, ${(n / 100).toFixed(2)} ${typeof currency === "string" ? currency : ""}`.trimEnd()
+  return `, ${groupedMinor(n)} ${typeof currency === "string" ? currency : ""}`.trimEnd()
 }
 
 const CADENCE: Record<string, string> = { month: "monthly", quarter: "quarterly", year: "yearly" }
@@ -97,7 +104,7 @@ function scheduleAmount(raw: unknown): string {
     if (!Number.isFinite(qty) || !Number.isFinite(unit)) return ""
     total += qty * unit
   }
-  return `, ${(total / 100).toFixed(2)} before VAT`
+  return `, ${groupedMinor(total)} before VAT`
 }
 
 const LABEL: Record<string, string> = {

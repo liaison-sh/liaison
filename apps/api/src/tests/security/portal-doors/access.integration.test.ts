@@ -563,6 +563,48 @@ describe("staff's reads of the portal", () => {
     expect(count(after, "external")).toBe(count(before, "external"))
   })
 
+  it("NT-37 the panel's preview reads through the portal's own reads: a share opened shows, closed it is gone", async () => {
+    const ticket = await insertTicket(w, {
+      company_id: w.companyB,
+      contact_id: w.clientB.contactId,
+      channel: "portal",
+      subject: "Preview probe",
+    })
+    const path = `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`
+    const requests = async () => {
+      const res = await get(path, adminToken)
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as {
+        data: { signedInWouldSee: { requests: Array<{ id: string }> | null } }
+      }
+      return (body.data.signedInWouldSee.requests ?? []).map((r) => r.id)
+    }
+    expect(await requests()).not.toContain(ticket.id)
+    const opened = await asAdmin((tx) =>
+      setPortalShare({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyB,
+        kind: "requests",
+        open: true,
+      }),
+    )
+    expect(opened.changed).toBe(true)
+    expect(await requests()).toContain(ticket.id)
+    await asAdmin((tx) =>
+      setPortalShare({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyB,
+        kind: "requests",
+        open: false,
+      }),
+    )
+    expect(await requests()).not.toContain(ticket.id)
+  })
+
   it("NT-58 a second factor reset needs the portal admin scope, is logged and mails the person", async () => {
     await sql.unsafe(
       `UPDATE kernel.users SET totp_secret = $2, totp_enabled = true WHERE id = $1`,

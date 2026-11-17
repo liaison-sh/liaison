@@ -8,11 +8,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { app } from "~/app"
 import { mergeTickets } from "~/apps/tickets/merge"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
 import { schemaRef } from "~/db/schema-ref"
 import { registerApps } from "~/modules/apps/runtime"
 import { createSession } from "~/modules/auth/auth"
 import { PortalAccessError, setPortalShare } from "~/modules/portal/access"
+import { ensurePortalViews } from "~/modules/portal/views"
 import { reparentPortalStagedFiles } from "~/modules/tickets/ingest-core"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -25,7 +27,13 @@ import {
   insertShare,
   memberContext,
 } from "./fixture"
-import { dropReadsWorld, insertFile, insertTicket } from "./reads-world"
+import {
+  dropReadsWorld,
+  insertFile,
+  insertProject,
+  insertTicket,
+  registerInvoicingSchema,
+} from "./reads-world"
 
 const k = (table: string) => `"${schemaRef("kernel")}".${table}`
 
@@ -89,6 +97,11 @@ beforeAll(async () => {
   await acquireTestLock()
   w = await createDoorWorld()
   await registerAgreementsSchema(w.orgId)
+  await registerInvoicingSchema(w.orgId)
+  // The views as the code holds them now, as boot puts them back.
+  await withSystemDb("portal-preview-test-views", (tx) =>
+    ensurePortalViews(tx, "invoicing", "compare"),
+  )
   adminToken = (await createSession(w.admin.userId, w.orgId)).accessToken
   for (const company of [w.companyA, w.companyB]) {
     await insertShare(w, { company_id: company, kind: "requests" })
@@ -207,6 +220,52 @@ describe("portal doors: the panel's preview", () => {
     const asAdmin = ((await (await get(path, adminToken)).json()) as Body).data
     expect((asAdmin.signedInWouldSee.requests ?? []).map((r) => r.id)).toContain(ticket.id)
     expect(asAdmin.hiddenParts).toBeUndefined()
+  })
+
+  it("the portal preview shows a member none of a project's upcoming billing when their own reads cannot see that project", async () => {
+    const project = await insertProject(w, {
+      company_id: w.companyB,
+      name: "Preview billing probe",
+    })
+    const stepId = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("app_invoicing.billing_steps", {
+        id: stepId,
+        org_id: w.orgId,
+        billing_project_id: project.id,
+        position: 1,
+        kind: "milestone",
+        label: "Preview step probe",
+        amount_minor: 125_000,
+        currency: "EUR",
+        state: "planned",
+      }),
+    )
+    await insertShare(w, { company_id: w.companyB, kind: "invoices" })
+    const path = `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`
+    type Body = { data: { signedInWouldSee: Record<string, Array<{ id: string }> | null> } }
+    // The invoicing read scope without the projects one: the step's project is not theirs to read.
+    await setMemberScopes([
+      "kernel:portal:admin",
+      "kernel:contacts:read",
+      "invoicing:documents:read",
+    ])
+    const blind = await get(path, memberToken)
+    expect(blind.status).toBe(200)
+    const seen = ((await blind.json()) as Body).data
+    expect(seen.signedInWouldSee.upcoming).toEqual([])
+    expect(JSON.stringify(seen)).not.toContain("Preview step probe")
+    // With the projects read scope too, the step shows: the check hides only what they cannot read.
+    await setMemberScopes([
+      "kernel:portal:admin",
+      "kernel:contacts:read",
+      "invoicing:documents:read",
+      "projects:projects:read",
+    ])
+    const both = ((await (await get(path, memberToken)).json()) as Body).data
+    expect((both.signedInWouldSee.upcoming ?? []).map((r) => r.id)).toEqual([stepId])
+    const asAdmin = ((await (await get(path, adminToken)).json()) as Body).data
+    expect((asAdmin.signedInWouldSee.upcoming ?? []).map((r) => r.id)).toEqual([stepId])
   })
 })
 

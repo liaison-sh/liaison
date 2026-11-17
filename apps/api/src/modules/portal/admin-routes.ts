@@ -68,11 +68,16 @@ const PREVIEW_PART_SCOPES: Record<string, string> = {
   requests: "tickets:tickets:read",
 }
 
-/** Where each row of a part lives, read again under the member's own row security. */
+/**
+ * Where each row of a part lives (as `r`), read again under the member's own row security.
+ * An upcoming billing step counts only when its project is readable too.
+ */
 const PREVIEW_PART_TABLES: Record<string, string> = {
-  projects: `${schemaRef("app_projects")}.projects`,
-  invoices: `${schemaRef("app_invoicing")}.documents`,
-  requests: `${schemaRef("app_tickets")}.tickets`,
+  projects: `${schemaRef("app_projects")}.projects r`,
+  invoices: `${schemaRef("app_invoicing")}.documents r`,
+  upcoming: `${schemaRef("app_invoicing")}.billing_steps r
+    JOIN ${schemaRef("app_projects")}.projects p ON p.id = r.billing_project_id AND p.org_id = r.org_id`,
+  requests: `${schemaRef("app_tickets")}.tickets r`,
 }
 
 const notFound = (c: Context<AppEnv>) =>
@@ -411,8 +416,8 @@ export const portalAdminRoutes = new Hono<AppEnv>()
             .transaction(async (sp) =>
               extractRows<{ id: string }>(
                 await sp.execute(
-                  sql`SELECT id::text AS id FROM ${sql.raw(table)}
-                       WHERE id = ANY(${`{${ids.join(",")}}`}::uuid[])`,
+                  sql`SELECT r.id::text AS id FROM ${sql.raw(table)}
+                       WHERE r.id = ANY(${`{${ids.join(",")}}`}::uuid[])`,
                 ),
               ).map((r) => r.id),
             )

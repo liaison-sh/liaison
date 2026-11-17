@@ -88,6 +88,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
     glob: "apps/api/src/modules/{signing,pdf-render}/**",
     suites: ["unit", "integration", "security", "api-guards", "e2e-parallel"],
   },
+  // The member sign-in checks (the socket ticket refuses a portal person): their door tests.
+  { glob: "apps/api/src/modules/auth/**", suites: ["unit", "integration", "security"] },
   // The app runtime and its limit table: the app wake-up contract runs in api-guards.
   { glob: "apps/api/src/modules/apps/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/**", suites: ["unit", "integration"] },
@@ -103,6 +105,11 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/src/middleware/**", suites: ["unit", "integration"] },
   // The agent's authoring reference carries generated tables (drift test in root).
   { glob: "apps/api/src/modules/apps/connections/api/reference/**", suites: ["root", "unit"] },
+  // A ticket merge checks each source's company and sensitivity: its door tests.
+  {
+    glob: "apps/api/src/apps/tickets/merge.ts",
+    suites: ["unit", "integration", "e2e-parallel", "api-guards", "security"],
+  },
   { glob: "apps/api/src/apps/**", suites: ["unit", "integration", "e2e-parallel", "api-guards"] },
   { glob: "apps/api/src/services/**", suites: ["unit", "integration"] },
   { glob: "apps/api/src/cli/**", suites: ["unit"] },

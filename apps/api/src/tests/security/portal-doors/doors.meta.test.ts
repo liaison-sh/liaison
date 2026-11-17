@@ -12,7 +12,11 @@ import { DOOR_IDS } from "./doors"
 const HERE = import.meta.dir
 const OWED_DIR = join(HERE, "owed.d")
 const ID = /NT-\d+[a-z]?(?![a-z0-9])/
-const TITLE = /\b(?:it|test|describe)(?:\.\w+)?\(\s*(["'`])(NT-\d+[a-z]?)(?![a-z0-9])/g
+// Only a test that runs closes a door: a plain or serial/concurrent form, never a parked one.
+const TITLE =
+  /\b(?:it|test|describe)(?:\.(?:serial|concurrent))?\(\s*(["'`])(NT-\d+[a-z]?)(?![a-z0-9])/g
+const PARKED =
+  /\b(?:it|test|describe)\.(?:skip|todo|only|failing|if|skipIf|todoIf|runIf)\b|\bx(?:it|test|describe)\(/g
 
 export function titledIds(source: string): string[] {
   const ids: string[] = []
@@ -20,10 +24,18 @@ export function titledIds(source: string): string[] {
   return ids
 }
 
+/** Every parked test form in a source: a skip, todo, only, failing or conditional test. */
+export function parkedTests(source: string): string[] {
+  return [...source.matchAll(PARKED)].map((m) => m[0])
+}
+
+function doorFiles(): string[] {
+  return readdirSync(HERE).filter((f) => f.endsWith(".test.ts") && f !== "doors.meta.test.ts")
+}
+
 function testedIds(): Map<string, string[]> {
   const found = new Map<string, string[]>()
-  for (const file of readdirSync(HERE)) {
-    if (!file.endsWith(".test.ts") || file === "doors.meta.test.ts") continue
+  for (const file of doorFiles()) {
     for (const id of titledIds(readFileSync(join(HERE, file), "utf8"))) {
       found.set(id, [...(found.get(id) ?? []), file])
     }
@@ -55,5 +67,29 @@ describe("the door table", () => {
     const sample = `it("NT-33b pickers", () => {})\ntest("NT-10 denied")\ndescribe('NT-22 ended', () => {})\nit("names NT-40 later")`
     expect(titledIds(sample)).toEqual(["NT-33b", "NT-10", "NT-22"])
     expect(ID.test("NT-33c")).toBe(true)
+  })
+
+  it("a skipped, todo or conditional test closes no door", () => {
+    const sample = [
+      `it.skip("NT-10 parked", () => {})`,
+      `it.todo("NT-11 later")`,
+      `test.skipIf(true)("NT-12 off")`,
+      `test.if(false)("NT-13 off")`,
+      `describe.skip("NT-14 parked", () => {})`,
+      `describe.todo("NT-15 later")`,
+      `it.failing("NT-16 inverted", () => {})`,
+    ].join("\n")
+    expect(titledIds(sample)).toEqual([])
+    expect(parkedTests(sample)).toHaveLength(7)
+  })
+
+  it("no door file parks a test: no skip, todo, only, failing or conditional form", () => {
+    const parked: string[] = []
+    for (const file of doorFiles()) {
+      for (const form of parkedTests(readFileSync(join(HERE, file), "utf8"))) {
+        parked.push(`${file}: ${form}`)
+      }
+    }
+    expect(parked).toEqual([])
   })
 })

@@ -43,10 +43,12 @@ async function levelOf(ctx: AgreementsCtx, id: unknown): Promise<Found | null> {
   }
 }
 
+// The agreement is named as the real answer names it (`agreement.id`), so the read of a
+// restricted agreement is stamped restricted on a stand-in too.
 function standIn(found: Found, what: string) {
   return {
     status: "ok",
-    agreement: found.agreement.number,
+    agreement: found.agreement,
     version: found.version.number,
     level: "demo",
     result: "stand-in",

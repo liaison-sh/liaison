@@ -43,7 +43,7 @@ const REVIEWED: Record<string, Record<string, string>> = {
     qualified: `a table of the module's literal COMPANY_STAMPS list, schemaRef and quoteIdent applied, checked by to_regclass first; ${IDENT_FROM_CODE}`,
   },
   "apps/api/src/modules/portal/admin-routes.ts#portalAdminRoutes.GET /preview/:userId": {
-    table: `a value of the module's literal PREVIEW_PART_TABLES map: schemaRef of an app schema plus a fixed table name; ${IDENT_FROM_CODE}`,
+    table: `a value of the module's literal PREVIEW_PART_TABLES map: schemaRef of app schemas plus fixed table names, aliases and one fixed join; ${IDENT_FROM_CODE}`,
   },
   "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
     alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,

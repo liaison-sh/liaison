@@ -118,6 +118,23 @@ describe("test map: the client-facing door", () => {
     }
   })
 
+  it("the member sign-in checks and the ticket merge run the door tests and keep their own suites", () => {
+    for (const file of [
+      "apps/api/src/modules/auth/ws-ticket.ts",
+      "apps/api/src/modules/auth/auth-state.ts",
+    ]) {
+      const suites = suitesFor(file)
+      expect(suites, file).toContain("security")
+      expect(suites, file).toContain("unit")
+      expect(suites, file).toContain("integration")
+    }
+    const merge = suitesFor("apps/api/src/apps/tickets/merge.ts")
+    expect(merge).toContain("security")
+    for (const suite of ["unit", "integration", "e2e-parallel", "api-guards"]) {
+      expect(merge).toContain(suite)
+    }
+  })
+
   it("the portal and token page logins run in both login shapes", () => {
     for (const file of [
       "apps/api/src/modules/portal/auth.ts",

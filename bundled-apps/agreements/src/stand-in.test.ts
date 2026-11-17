@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import manifest from "../app.manifest.json"
 import { sealVersion } from "./seal"
 import { signedWorld } from "./seal.testutil"
 import { agreementEvidenceGetNamed, agreementVerifyNamed, STAND_IN_SENTENCE } from "./stand-in"
@@ -40,6 +41,23 @@ describe("a stand-in signature never passes as a real one", () => {
     expect(out).toMatchObject({ status: "ok", level: "demo", result: "stand-in" })
     expect(out.signers).toBeUndefined()
     expect(String(out.message)).toContain("There is no evidence file to download or check.")
+  })
+
+  it("agreement_evidence_get's stand-in answer names the agreement where its restricted-row stamp reads it", async () => {
+    const w = await standInWorld()
+    const tools = manifest.tools as unknown as Record<
+      string,
+      { restrictedRows?: { idPath?: string } }
+    >
+    const path = tools.agreement_evidence_get?.restrictedRows?.idPath
+    expect(path).toBe("agreement.id")
+    for (const id of [w.versionId, w.agreementId]) {
+      const out = await agreementEvidenceGetNamed(w.ctx, { id })
+      let at: unknown = out
+      for (const key of String(path).split(".")) at = (at as Record<string, unknown> | null)?.[key]
+      expect(at).toBe(w.agreementId)
+      expect(out).toMatchObject({ result: "stand-in" })
+    }
   })
 
   it("a real signature's verify and evidence name the level they read", async () => {

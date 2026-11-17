@@ -64,7 +64,7 @@ const INVOICING_VIEWS: PortalViewDef[] = [
     // What is still to be invoiced on the company's projects: the step's label and
     // amount, due on the date of the step's task when it has one.
     name: "billing_upcoming",
-    select: `SELECT b.label, b.amount_minor, b.currency, t.due_date AS due_on
+    select: `SELECT b.label, b.amount_minor, b.currency, t.due_date AS due_on, b.id
   FROM app_invoicing.billing_steps b
   JOIN app_projects.projects p ON p.id = b.billing_project_id AND p.org_id = b.org_id
   LEFT JOIN app_projects.tasks t ON t.id = b.task_id AND t.org_id = b.org_id

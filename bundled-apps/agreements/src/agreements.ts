@@ -19,6 +19,7 @@ import {
   type Check,
   markAgentBlocks,
   prepareChecks,
+  priceInSource,
   sourceText,
 } from "./checks"
 import {
@@ -807,7 +808,8 @@ interface RenderAnswer {
 /** Every record a filled source reads: its own data plus the agreement's number and title. */
 function freezeRecord(row: AgreementRow, source: AgreementSource): Record<string, unknown> {
   const data = (source.data ?? {}) as Record<string, unknown>
-  return { ...data, agreement: { number: row.number, title: row.title } }
+  const own = (data.agreement as Record<string, unknown> | undefined) ?? {}
+  return { ...data, agreement: { ...own, number: row.number, title: row.title } }
 }
 
 /**
@@ -836,10 +838,12 @@ async function freezeDraft(
       "FREEZE_NOT_AVAILABLE",
       `This server cannot render ${row.number} for a freeze. Nothing was frozen.`,
     )
+  // A priced kind freezes with the person's price in its text (S703).
+  const source = priceInSource(row, draft.source)
   const out = bridgeAnswer<RenderAnswer>(
     await ctx.rich_text_render({
-      body: draft.source.body,
-      data: freezeRecord(row, draft.source),
+      body: source.body,
+      data: freezeRecord(row, source),
       title: row.title,
     }),
   )
@@ -869,7 +873,7 @@ async function freezeDraft(
   const version = (await ctx.db.insert("agreement_versions", {
     agreement_id: row.id,
     number,
-    source: draft.source,
+    source,
     source_text: out.sourceText ?? "",
     sha256: out.sha256,
     byte_size: out.byteSize ?? null,

@@ -9,6 +9,54 @@ export const UNFIT_TAGS = ["guarantee", "real_estate", "family", "employment"] a
 /** Kinds whose document prints a price a person set. */
 export const PRICED_KINDS = ["proposal", "sow", "retainer"] as const
 
+/** A money amount for the card and the text: "1,234.50 EUR", from minor units, no float. */
+export function moneyText(minor: bigint, currency: string | null | undefined): string {
+  const whole = (minor / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  const cents = (minor % 100n).toString().padStart(2, "0")
+  return `${whole}.${cents}${currency ? ` ${currency}` : ""}`
+}
+
+/** Placeholders a document prints its price through. */
+const PRICE_FIELDS = ["{{fees.total}}", "{{agreement.price}}"]
+
+/**
+ * The source as it is frozen for a priced kind: the person's price is the document's price.
+ * It fills `fees.total` and `agreement.price` (a template's price clause prints it there),
+ * and a body that prints neither gets a "Price" section of its own, before its signature
+ * block, so what is read, frozen and signed always holds the amount. No price, or a kind
+ * that is not priced: the source unchanged.
+ */
+export function priceInSource(
+  row: {
+    kind?: string | null
+    price_minor?: string | number | null
+    currency?: string | null
+    language?: string | null
+  },
+  source: AgreementSource,
+): AgreementSource {
+  if (!(PRICED_KINDS as readonly string[]).includes(row.kind ?? "")) return source
+  if (row.price_minor === null || row.price_minor === undefined) return source
+  const raw = String(row.price_minor)
+  if (!/^\d{1,15}$/.test(raw)) return source
+  const price = moneyText(BigInt(raw), row.currency)
+  const data = { ...(source.data ?? {}) } as Record<string, unknown>
+  data.fees = { ...((data.fees as Record<string, unknown> | undefined) ?? {}), total: price }
+  data.agreement = { ...((data.agreement as Record<string, unknown> | undefined) ?? {}), price }
+  const blocks = [...(source.body?.blocks ?? [])]
+  const printed = JSON.stringify(blocks)
+  if (!PRICE_FIELDS.some((f) => printed.includes(f))) {
+    const fr = row.language === "fr"
+    const section: SourceBlock[] = [
+      { type: "heading", level: 2, text: fr ? "Prix" : "Price" },
+      { type: "paragraph", text: price },
+    ]
+    const at = blocks.findIndex((b) => (b as { type?: unknown }).type === "signature_block")
+    blocks.splice(at === -1 ? blocks.length : at, 0, ...section)
+  }
+  return { ...source, data, body: { ...(source.body ?? {}), blocks } }
+}
+
 /** Words that make a document look like a personal guarantee or another unfit act. */
 export const GUARANTEE_WORDS = [
   "caution",

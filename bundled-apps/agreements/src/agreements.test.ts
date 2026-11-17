@@ -20,6 +20,7 @@ import {
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
+import { clientActionViewGet } from "./send"
 import { templateSave } from "./templates"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
@@ -192,6 +193,67 @@ describe("a proposal's price", () => {
     }
     expect(prepared.checks.find((c) => c.code === "PRICE_NOT_SET")?.ok).toBe(true)
     expect(prepared.error.code).toBe("DOCUMENT_EMPTY")
+  })
+})
+
+describe("the price a person set is in what is signed", () => {
+  it("freezes into the rendered document and its stored text, and the signer's page shows it", async () => {
+    const db = memoryDb()
+    let rendered: {
+      body: { blocks: Array<{ type: string; text?: string }> }
+      data: Record<string, any>
+    } | null = null
+    const renderer = fakeRenderer()
+    const ctx = {
+      ...ctxFor(db),
+      ...renderer,
+      rich_text_render: async (input: unknown) => {
+        rendered = input as never
+        return renderer.rich_text_render()
+      },
+    }
+    const id = okId(
+      await agreementCreate(ctx, { kind: "proposal", title: "Website", source: WRITTEN }),
+    )
+    await agreementPriceSet(ctx, { id, price_minor: "640000", currency: "EUR" })
+    const out = (await agreementPrepare(ctx, { id })) as { status: string; version_id: string }
+    expect(out.status).toBe("ok")
+    const printed = JSON.stringify(rendered)
+    expect(printed).toContain("6,400.00 EUR")
+    const version = db.tables.get("agreement_versions")?.find((r) => r.id === out.version_id) as Row
+    expect(JSON.stringify(version.source)).toContain("6,400.00 EUR")
+    // A later change of the draft's price never reaches the frozen version.
+    await agreementPriceSet(ctx, { id, price_minor: "1", currency: "EUR" })
+    const view = (await clientActionViewGet(ctx, {
+      targetType: "agreement_version",
+      targetId: out.version_id,
+    })) as { summary: Array<{ k: string; v: string }>; source_blocks: unknown[] }
+    expect(view.summary).toContainEqual({ k: "Price", v: "6,400.00 EUR" })
+    expect(JSON.stringify(view.source_blocks)).toContain("6,400.00 EUR")
+  })
+
+  it("fills a template's own price field, and never adds a second price", async () => {
+    const db = memoryDb()
+    let rendered: { body: unknown; data: Record<string, any> } | null = null
+    const renderer = fakeRenderer()
+    const ctx = {
+      ...ctxFor(db),
+      ...renderer,
+      rich_text_render: async (input: unknown) => {
+        rendered = input as never
+        return renderer.rich_text_render()
+      },
+    }
+    const source = {
+      body: { blocks: [{ type: "paragraph", text: "The price of the work is {{fees.total}}." }] },
+      data: { fees: { total: "1 €" } },
+    }
+    const id = okId(await agreementCreate(ctx, { kind: "sow", title: "Website", source }))
+    await agreementPriceSet(ctx, { id, price_minor: "640000", currency: "EUR" })
+    expect(((await agreementPrepare(ctx, { id })) as { status: string }).status).toBe("ok")
+    const r = rendered as unknown as { body: unknown; data: Record<string, any> }
+    expect(r.data.fees.total).toBe("6,400.00 EUR")
+    expect(JSON.stringify(r.body)).not.toContain("6,400.00 EUR")
   })
 })
 

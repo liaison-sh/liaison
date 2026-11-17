@@ -480,6 +480,8 @@ export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
       { k: "Agreement", v: a.number },
       { k: "Version", v: String(v.number) },
       { k: "Pages", v: String(v.page_count ?? "") },
+      // The price frozen into this version, never the draft's current one.
+      ...frozenPrice(v.source),
     ],
     source_blocks: Array.isArray(v.source?.body?.blocks) ? v.source?.body?.blocks : null,
     text: v.source_text ?? null,
@@ -502,6 +504,13 @@ export async function clientActionViewGet(ctx: AgreementsCtx, p: ViewParams) {
     // A send to a portal client of the company opens it on their portal under this kind.
     portal_share_kind: a.kind === "change_request" ? "change_request" : "agreement",
   }
+}
+
+/** The price a version was frozen with (`agreement.price` of its source), as a summary row. */
+function frozenPrice(source: unknown): Array<{ k: string; v: string }> {
+  const price = (source as { data?: { agreement?: { price?: unknown } } } | null)?.data?.agreement
+    ?.price
+  return typeof price === "string" && price ? [{ k: "Price", v: price }] : []
 }
 
 /** Each signer's copy state of a version, by client action id (the token page's last frame). */

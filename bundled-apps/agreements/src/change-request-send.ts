@@ -13,6 +13,7 @@ import type { DbBatchOp } from "@liaison/app-sdk"
 import { accessOps, currentShares, emitAccessChanged, type OrgAccess } from "./access"
 import { agreementPrepare } from "./agreements"
 import { CHANGE_REQUEST, changeRequestPrice } from "./change-requests"
+import { moneyText } from "./checks"
 import {
   type AgreementsCtx,
   actingAgentId,
@@ -75,12 +76,7 @@ function minorOf(v: unknown): bigint | null {
   return null
 }
 
-/** A money amount for the card and the text: "1,234.50 EUR", from minor units, no float. */
-export function moneyText(minor: bigint, currency: string | null | undefined): string {
-  const whole = (minor / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-  const cents = (minor % 100n).toString().padStart(2, "0")
-  return `${whole}.${cents}${currency ? ` ${currency}` : ""}`
-}
+export { moneyText }
 
 function hoursText(minutes: number): string {
   const h = Math.floor(minutes / 60)

@@ -314,7 +314,7 @@ describe("the month-end draft job", () => {
     expect(notes["2"]).toBe("Changed since October")
     expect(String(notes["3"])).toContain("First invoice")
   })
-  test("the draft and its lines are written by one call of the atomic draft tool", async () => {
+  test("the draft and its lines are written in one commit", async () => {
     const h = harness("2026-11-27")
     await recurringDraftJob(h.ctx)
     expect(h.draftWrites).toBe(1)

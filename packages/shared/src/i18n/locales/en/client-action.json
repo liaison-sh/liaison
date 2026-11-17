@@ -107,7 +107,8 @@
       "textEnd": "To continue, scroll the pages to the end.",
       "page": "Page {{n}}",
       "picture": "[Picture]",
-      "end": "End of the document"
+      "end": "End of the document",
+      "empty": "This document has nothing to read, so it cannot be signed or accepted here. Ask the sender for a new link."
     },
     "identity": {
       "heading": "Confirm who you are",

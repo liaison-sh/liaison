@@ -46,6 +46,18 @@ export function whenInView(el: Element, cb: () => void, rootMargin = "0px"): () 
   return () => io.disconnect()
 }
 
+/** Whether frozen blocks hold any text a person can read (headings, paragraphs, items, cells). */
+export function blocksHaveText(blocks: unknown): boolean {
+  const walk = (v: unknown): boolean => {
+    if (typeof v === "string") return v.trim() !== ""
+    if (Array.isArray(v)) return v.some(walk)
+    if (v && typeof v === "object")
+      return Object.entries(v).some(([k, x]) => k !== "type" && k !== "fileId" && walk(x))
+    return false
+  }
+  return walk(blocks)
+}
+
 function str(v: unknown): string {
   return typeof v === "string" ? v : ""
 }
@@ -192,12 +204,17 @@ export const DocumentView: Component<{
   let end: HTMLDivElement | undefined
 
   const pages = () => (props.content.format === "pages" ? props.content.pages : [])
+  // Nothing to read is never shown as a document read to its end.
+  const empty = () =>
+    props.content.format === "blocks"
+      ? !blocksHaveText(props.content.blocks)
+      : props.content.pages.length === 0
   const hasText = () => pages().some((p) => (p.text ?? "").trim() !== "")
   const needsPicture = () => props.content.format === "pages" && pages().length > 0
 
   // Checked from the two events that can complete it, never from an effect.
   function check() {
-    if (reported || asText()) return
+    if (reported || asText() || empty()) return
     if (endInView() && (!needsPicture() || lastLoaded())) {
       reported = true
       props.onReachedEnd()
@@ -214,77 +231,92 @@ export const DocumentView: Component<{
   })
 
   return (
-    <div data-testid="doc-view" class="flex flex-col gap-3">
-      <Show when={props.content.format === "pages" && hasText()}>
-        <div>
-          <button
-            type="button"
-            data-testid="doc-text-switch"
-            class="min-h-[44px] text-[13px] text-accent underline-offset-2 hover:underline"
-            onClick={() => {
-              setAsText(!asText())
-              check()
-            }}
+    <Show
+      when={!empty()}
+      fallback={
+        <div data-testid="doc-view" class="flex flex-col gap-3">
+          <p
+            data-testid="doc-empty"
+            role="status"
+            class="rounded-sm border border-border bg-bg px-5 py-6 text-[14px] text-text"
           >
-            {asText()
-              ? i18n.t("client-action.page.doc.asPages")
-              : i18n.t("client-action.page.doc.asText")}
-          </button>
-        </div>
-      </Show>
-      <Show when={asText()}>
-        <div data-testid="doc-text" class="flex flex-col gap-3 text-[14px] leading-6 text-text">
-          <p class="text-[12.5px] text-text-secondary">
-            {i18n.t("client-action.page.doc.textLabel")}
-          </p>
-          <For each={pages()}>
-            {(p) => (
-              <section>
-                <h3 class="text-[12.5px] font-medium text-text-secondary">
-                  {i18n.t("client-action.page.doc.page", { n: p.n })}
-                </h3>
-                <p class="whitespace-pre-wrap">{p.text ?? ""}</p>
-              </section>
-            )}
-          </For>
-          <p class="text-[12.5px] text-text-secondary">
-            {i18n.t("client-action.page.doc.textEnd")}
+            {i18n.t("client-action.page.doc.empty")}
           </p>
         </div>
-      </Show>
-      <div
-        data-testid="doc-body"
-        class="flex flex-col gap-3 text-[14px] leading-6 text-text"
-        style={{ display: asText() ? "none" : undefined }}
-      >
-        <Switch>
-          <Match when={props.content.format === "blocks" && props.content}>
-            {(c) => <DocumentBlocks blocks={(c() as { blocks: unknown[] }).blocks} />}
-          </Match>
-          <Match when={props.content.format === "pages"}>
+      }
+    >
+      <div data-testid="doc-view" class="flex flex-col gap-3">
+        <Show when={props.content.format === "pages" && hasText()}>
+          <div>
+            <button
+              type="button"
+              data-testid="doc-text-switch"
+              class="min-h-[44px] text-[13px] text-accent underline-offset-2 hover:underline"
+              onClick={() => {
+                setAsText(!asText())
+                check()
+              }}
+            >
+              {asText()
+                ? i18n.t("client-action.page.doc.asPages")
+                : i18n.t("client-action.page.doc.asText")}
+            </button>
+          </div>
+        </Show>
+        <Show when={asText()}>
+          <div data-testid="doc-text" class="flex flex-col gap-3 text-[14px] leading-6 text-text">
+            <p class="text-[12.5px] text-text-secondary">
+              {i18n.t("client-action.page.doc.textLabel")}
+            </p>
             <For each={pages()}>
-              {(p, i) => (
-                <PagePicture
-                  token={props.token}
-                  page={p}
-                  last={i() === pages().length - 1}
-                  onLastLoaded={() => {
-                    setLastLoaded(true)
-                    check()
-                  }}
-                />
+              {(p) => (
+                <section>
+                  <h3 class="text-[12.5px] font-medium text-text-secondary">
+                    {i18n.t("client-action.page.doc.page", { n: p.n })}
+                  </h3>
+                  <p class="whitespace-pre-wrap">{p.text ?? ""}</p>
+                </section>
               )}
             </For>
-          </Match>
-        </Switch>
+            <p class="text-[12.5px] text-text-secondary">
+              {i18n.t("client-action.page.doc.textEnd")}
+            </p>
+          </div>
+        </Show>
         <div
-          ref={end}
-          data-testid="doc-end"
-          class="py-1 text-center text-[12px] text-text-tertiary"
+          data-testid="doc-body"
+          class="flex flex-col gap-3 text-[14px] leading-6 text-text"
+          style={{ display: asText() ? "none" : undefined }}
         >
-          {i18n.t("client-action.page.doc.end")}
+          <Switch>
+            <Match when={props.content.format === "blocks" && props.content}>
+              {(c) => <DocumentBlocks blocks={(c() as { blocks: unknown[] }).blocks} />}
+            </Match>
+            <Match when={props.content.format === "pages"}>
+              <For each={pages()}>
+                {(p, i) => (
+                  <PagePicture
+                    token={props.token}
+                    page={p}
+                    last={i() === pages().length - 1}
+                    onLastLoaded={() => {
+                      setLastLoaded(true)
+                      check()
+                    }}
+                  />
+                )}
+              </For>
+            </Match>
+          </Switch>
+          <div
+            ref={end}
+            data-testid="doc-end"
+            class="py-1 text-center text-[12px] text-text-tertiary"
+          >
+            {i18n.t("client-action.page.doc.end")}
+          </div>
         </div>
       </div>
-    </div>
+    </Show>
   )
 }

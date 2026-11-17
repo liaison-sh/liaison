@@ -5,8 +5,8 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.5.1", () => {
-    expect(manifest.version).toBe("0.5.1")
+  it("is at version 0.5.2", () => {
+    expect(manifest.version).toBe("0.5.2")
   })
 
   it("an uploaded version's page text and source text are declared as outside text, so a read returning them taints the turn", () => {

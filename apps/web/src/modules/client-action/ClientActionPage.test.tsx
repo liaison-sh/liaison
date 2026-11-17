@@ -505,6 +505,34 @@ describe("the token page", () => {
     expect(screen.queryByTestId("doc-text-switch")).toBeNull()
   })
 
+  it("a document with nothing to read says so and never lets the person continue", async () => {
+    for (const content of [
+      { format: "blocks", content: [] },
+      { format: "blocks", content: [{ type: "paragraph", text: " " }] },
+      { format: "pages", content: [] },
+    ]) {
+      serve({
+        document: (b) =>
+          b.format === content.format
+            ? { status: 200, body: content }
+            : { status: 404, body: { error: { code: "not_found" } } },
+      })
+      renderAt(`#t=${TOKEN}`)
+      expect((await screen.findByTestId("doc-empty")).textContent).toBe(
+        "This document has nothing to read, so it cannot be signed or accepted here. Ask the sender for a new link.",
+      )
+      expect(screen.queryByTestId("doc-end")).toBeNull()
+      fireEvent.pointerDown(screen.getByTestId("client-action-page"))
+      scrollAll()
+      await new Promise((r) => setTimeout(r, 20))
+      expect((screen.getByTestId("read-continue") as HTMLButtonElement).disabled).toBe(true)
+      expect(of("seen").some((c) => c.body.reached_end === true)).toBe(false)
+      cleanup()
+      calls = []
+      ioCallbacks = []
+    }
+  })
+
   it("no fragment: the not-found frame, with no sender and no call", async () => {
     serve()
     renderAt("")

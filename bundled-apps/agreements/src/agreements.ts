@@ -14,7 +14,13 @@ import {
   type ShareEntry,
   type ShareRow,
 } from "./access"
-import { type AgreementSource, type Check, markAgentBlocks, prepareChecks } from "./checks"
+import {
+  type AgreementSource,
+  type Check,
+  markAgentBlocks,
+  prepareChecks,
+  sourceText,
+} from "./checks"
 import {
   type AgreementsCtx,
   actingAgentId,
@@ -453,7 +459,7 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       org_access: orgAccess,
       file_id: keptFileId,
     },
-    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}${notKept}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}. Next: agreement_prepare to check it.`,
+    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}${notKept}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}${!keptFileId && sourceText(source).trim() === "" ? "; it has no text yet: its clauses go in source.body.blocks (agreement_update)" : ""}. Next: agreement_prepare to check it.`,
   }
 }
 
@@ -753,7 +759,9 @@ export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
       `Agreement ${row.number} is ${row.status}: only a draft is prepared. Nothing was frozen.`,
     )
   const draft = await loadDraft(ctx, row.id)
-  const checks: Check[] = prepareChecks(row, draft?.source ?? null)
+  const checks: Check[] = prepareChecks(row, draft?.source ?? null, {
+    upload: !!draft?.upload_file_id,
+  })
   const failed = checks.filter((c) => c.blocking && !c.ok)
   if (failed.length > 0) {
     const first = failed[0] as Check

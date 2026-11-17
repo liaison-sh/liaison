@@ -67,6 +67,9 @@ function fakeRenderer(over: Record<string, unknown> = {}) {
   }
 }
 
+/** A draft with one written paragraph. */
+const WRITTEN = { body: { blocks: [{ type: "paragraph", text: "The work is a website." }] } }
+
 const okId = (r: unknown) => (r as { agreement: { id: string } }).agreement.id
 
 describe("the list of agreements", () => {
@@ -180,9 +183,62 @@ describe("a proposal's price", () => {
       currency: "EUR",
       priced_by_user_id: PERSON,
     })
-    // The agent wrote the brief: its clauses still wait for a person.
-    const prepared = (await agreementPrepare(ctxFor(db), { id })) as { status: string }
-    expect(prepared.status).toBe("checked")
+    // Priced now; the draft still has no text, so nothing is frozen.
+    const prepared = (await agreementPrepare(ctxFor(db), { id })) as {
+      error: { code: string }
+      checks: Array<{ code: string; ok: boolean }>
+    }
+    expect(prepared.checks.find((c) => c.code === "PRICE_NOT_SET")?.ok).toBe(true)
+    expect(prepared.error.code).toBe("DOCUMENT_EMPTY")
+  })
+})
+
+describe("a draft with no text", () => {
+  it("refuses prepare and freezes nothing, though the brief sits beside the empty body", async () => {
+    const db = memoryDb()
+    let rendered = 0
+    const renderer = fakeRenderer()
+    const ctx = {
+      ...ctxFor(db, { agent: AGENT }),
+      ...renderer,
+      rich_text_render: async (...a: Parameters<typeof renderer.rich_text_render>) => {
+        rendered++
+        return renderer.rich_text_render(...a)
+      },
+    }
+    const created = await agreementCreate(ctx, {
+      kind: "nda",
+      title: "Confidentiality addendum",
+      source: { body: { blocks: [] }, brief: "1. Confidentiality. 2. Term." } as never,
+    })
+    expect((created as { message: string }).message).toContain(
+      "it has no text yet: its clauses go in source.body.blocks",
+    )
+    const id = okId(created)
+    const out = (await agreementPrepare(ctx, { id })) as {
+      status: string
+      error: { code: string; message: string }
+    }
+    expect(out.status).toBe("error")
+    expect(out.error.code).toBe("DOCUMENT_EMPTY")
+    expect(out.error.message).toContain("source.body.blocks")
+    expect(out.error.message).toContain("Nothing was frozen")
+    expect(rendered).toBe(0)
+    expect(db.tables.get("agreement_versions") ?? []).toHaveLength(0)
+  })
+
+  it("a draft whose blocks hold only empty text is empty too", async () => {
+    const db = memoryDb()
+    const ctx = { ...ctxFor(db), ...fakeRenderer() }
+    const id = okId(
+      await agreementCreate(ctx, {
+        kind: "nda",
+        title: "Blank",
+        source: { body: { blocks: [{ type: "paragraph", text: "  " }] } },
+      }),
+    )
+    const out = (await agreementPrepare(ctx, { id })) as { error: { code: string } }
+    expect(out.error.code).toBe("DOCUMENT_EMPTY")
   })
 })
 
@@ -210,6 +266,7 @@ describe("documents this signature does not fit", () => {
         kind: "other",
         title: "Acte de caution",
         what_it_is: "Lettre",
+        source: WRITTEN,
       }),
     )
     const first = await agreementPrepare(ctxFor(db), { id })
@@ -222,9 +279,8 @@ describe("documents this signature does not fit", () => {
     })
     expect((agentSays as { error: { code: string } }).error.code).toBe("NEEDS_A_PERSON")
     await agreementUpdate(ctxFor(db), { id, not_a_guarantee: true })
-    expect(((await agreementPrepare(ctxFor(db), { id })) as { status: string }).status).toBe(
-      "checked",
-    )
+    const prepared = await agreementPrepare({ ...ctxFor(db), ...fakeRenderer() }, { id })
+    expect((prepared as { status: string }).status).toBe("ok")
   })
 
   it("any PDF makes a normal draft holding a copy of its file, with no project, invoice or knowledge document", async () => {
@@ -268,13 +324,14 @@ describe("documents this signature does not fit", () => {
         kind: "other",
         title: "PV",
         what_it_is: "Procès-verbal de l'assemblée générale",
+        source: WRITTEN,
       }),
     )
-    const out = (await agreementPrepare(ctxFor(db), { id })) as {
+    const out = (await agreementPrepare({ ...ctxFor(db), ...fakeRenderer() }, { id })) as {
       status: string
       checks: Array<{ code: string; blocking: boolean; message: string }>
     }
-    expect(out.status).toBe("checked")
+    expect(out.status).toBe("ok")
     const note = out.checks.find((c) => c.code === "CHECK_WITH_LAWYER")
     expect(note?.blocking).toBe(false)
     expect(note?.message).toContain("Check with your lawyer first")

@@ -110,7 +110,11 @@ export function agentDraftClauses(source: AgreementSource | null | undefined): s
 }
 
 /** The checks prepare runs, in order. A failed blocking check refuses the freeze. */
-export function prepareChecks(row: AgreementRowLike, source: AgreementSource | null): Check[] {
+export function prepareChecks(
+  row: AgreementRowLike,
+  source: AgreementSource | null,
+  opts: { upload: boolean } = { upload: false },
+): Check[] {
   const checks: Check[] = []
   const unfit = (UNFIT_TAGS as readonly string[]).includes(row.fit_tag ?? "")
   checks.push({
@@ -176,6 +180,18 @@ export function prepareChecks(row: AgreementRowLike, source: AgreementSource | n
         ? "Every clause was read by a person."
         : `A person must read and clear the clauses an agent wrote: ${drafts.join(", ")}.`,
   })
+  if (!opts.upload) {
+    // Only source.body.blocks is printed: a document with no text there is never frozen.
+    const written = sourceText(source).trim() !== ""
+    checks.push({
+      code: "DOCUMENT_EMPTY",
+      ok: written,
+      blocking: true,
+      message: written
+        ? "The document has text."
+        : "The document has no text: its clauses go in source.body.blocks (agreement_update); nothing else in source is printed.",
+    })
+  }
   return checks
 }
 

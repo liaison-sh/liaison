@@ -107,7 +107,8 @@
       "textEnd": "Pour continuer, faites défiler les pages jusqu'à la fin.",
       "page": "Page {{n}}",
       "picture": "[Image]",
-      "end": "Fin du document"
+      "end": "Fin du document",
+      "empty": "Ce document ne contient rien à lire : il ne peut donc pas être signé ni accepté ici. Demandez un nouveau lien à l'expéditeur."
     },
     "identity": {
       "heading": "Confirmez qui vous êtes",

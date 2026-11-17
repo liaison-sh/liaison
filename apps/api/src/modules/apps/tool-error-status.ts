@@ -462,6 +462,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   PERSONAL_GUARANTEE: 409,
   WHAT_IT_IS_REQUIRED: 409,
   AGENT_TEXT_UNREAD: 409,
+  DOCUMENT_EMPTY: 409,
   // Freezing and sending for signature (agreements; client action links through the bridge).
   BLANK_FIELD: 409,
   FREEZE_TEXT_MISMATCH: 409,

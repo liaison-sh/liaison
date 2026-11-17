@@ -79,7 +79,14 @@ function providerKinds(): string[] {
     const src = readFileSync(path, "utf8")
     for (const m of src.matchAll(/\bkind:\s*"([a-z][a-z_]+)"/g)) found.add(m[1] as string)
   }
-  for (const spec of ["field", "participants", "mentions", "scope_holders", "actor"]) {
+  for (const spec of [
+    "field",
+    "participants",
+    "mentions",
+    "scope_holders",
+    "actor",
+    "account_manager",
+  ]) {
     found.delete(spec)
   }
   return [...found]
@@ -138,6 +145,7 @@ describe("attention feed kind catalog", () => {
     expect(unionKinds()).toContain("dm_window_closing")
     expect(providerKinds()).toContain("sla_risk")
     expect(providerKinds()).not.toContain("scope_holders")
+    expect(providerKinds()).not.toContain("account_manager")
     expect(fixtureKinds()).toContain("ticket_assigned")
     expect(() => fixtureKinds("")).toThrow(/QA_ATTENTION/)
     expect(() => fixtureKinds("export const QA_ATTENTION = [\n]")).toThrow(/no kinds/)

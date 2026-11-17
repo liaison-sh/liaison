@@ -540,6 +540,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   FREEZE_NOT_AVAILABLE: 422,
   LINKS_NOT_AVAILABLE: 422,
   NOT_AVAILABLE: 422,
+  // The host offers no call made as the sender (an older host): the change request waits.
+  UNAVAILABLE: 422,
   // A send's pinned mail check, held again when the approved send goes: the card no longer
   // matches, or the address stopped taking mail since the card (a reply, a bounce, an opt-out).
   // A new link for one signer: they already answered, declined after proving the code, or

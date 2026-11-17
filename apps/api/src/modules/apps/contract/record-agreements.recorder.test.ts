@@ -188,6 +188,22 @@ const PLAN: RecordingStep[] = [
   { entry: "job:evidence-verify", input: () => ({ params: {} }) },
   { entry: "job:upload-freeze", input: () => ({ params: {} }) },
   { entry: "job:upload-rescan", input: () => ({ params: {} }) },
+  { entry: "job:change-request-effects", input: () => ({ params: {} }) },
+  { entry: "job:scope-group-reconcile", input: () => ({ params: {} }) },
+  {
+    entry: "tool:agreement_import",
+    input: () =>
+      refused(
+        {
+          kind: "msa",
+          title: "Framework agreement 2024",
+          file_id: "00000000-0000-4000-8000-0000000000f1",
+          signed_on: "2024-03-01",
+          unverified_text: "1. Purpose",
+        },
+        "the contract org holds no uploaded PDF, so the file cannot be read and nothing is imported (the agreement made for it is withdrawn)",
+      ),
+  },
   {
     entry: "tool:agreement_evidence_get",
     input: (s) => refused({ id: s.values.nda }, NOT_SIGNED),

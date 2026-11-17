@@ -1,0 +1,47 @@
+{
+  "entry": "tool:agreement_import",
+  "params": {
+    "kind": "msa",
+    "title": "Framework agreement 2024",
+    "file_id": "00000000-0000-4000-8000-0000000000f1",
+    "signed_on": "2024-03-01",
+    "unverified_text": "1. Purpose"
+  },
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "expectError": {
+    "reason": "the contract org holds no uploaded PDF, so the file cannot be read and nothing is imported (the agreement made for it is withdrawn)"
+  },
+  "calls": [
+    {
+      "method": "turn_get",
+      "args": [],
+      "reply": "{\"agentId\":null,\"hasPerson\":false}"
+    },
+    {
+      "method": "kernel_caller",
+      "args": [],
+      "reply": "{\"kind\":\"person\",\"userId\":\"00000000-0000-4000-8000-00000000c0df\",\"roleIds\":[],\"holds\":{}}"
+    },
+    {
+      "method": "db_batch",
+      "args": [
+        "{\"sequence\":{\"key\":\"agreements:AG:2026\",\"format\":{\"prefix\":\"AG-2026-\",\"pad\":3},\"unique\":{\"entity\":\"agreements\",\"field\":\"number\"}},\"ops\":[{\"insert\":\"agreements\",\"as\":\"agreement\",\"data\":{\"number\":{\"$seq\":\"formatted\"},\"kind\":\"msa\",\"status\":\"draft\",\"title\":\"Framework agreement 2024\",\"company_id\":null,\"contact_id\":null,\"template_id\":null,\"template_version\":null,\"language\":\"en\",\"fit_tag\":\"commercial\",\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"org_access\":\"editor\",\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null}},{\"insert\":\"agreement_drafts\",\"data\":{\"agreement_id\":{\"$ref\":\"agreement\"},\"source\":null,\"upload_file_id\":null,\"lock_version\":1,\"next_number\":1,\"updated_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"updated_by_agent_id\":null}},{\"insert\":\"agreement_shares\",\"data\":{\"agreement_id\":{\"$ref\":\"agreement\"},\"user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"role\":\"editor\",\"created_by\":\"00000000-0000-4000-8000-00000000c0df\"}},{\"update\":\"agreements\",\"id\":{\"$ref\":\"agreement\"},\"data\":{\"org_access\":\"editor\",\"acl_user_ids\":[]}}]}"
+      ],
+      "reply": "{\"rows\":{\"agreement\":{\"id\":\"ba48ec98-93cc-4029-87e8-d4084d66cb76\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 04:10:09.837489+00\",\"updated_at\":\"2026-11-17 04:10:09.837489+00\",\"number\":\"AG-2026-002\",\"kind\":\"msa\",\"status\":\"draft\",\"title\":\"Framework agreement 2024\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":null,\"template_version\":null,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null,\"project_time_budgets\":null,\"project_timebox_minutes\":null,\"effects_claim\":null,\"effects_claimed_at\":null,\"effects_task_id\":null,\"effects_timebox_minutes\":null,\"effects_time_plan\":null,\"effects_done_at\":null,\"effects_note\":null,\"imported_text\":null}},\"sequence\":{\"value\":2,\"formatted\":\"AG-2026-002\"}}"
+    },
+    {
+      "method": "files_attachToParent",
+      "args": [
+        "{\"sourceFileId\":\"00000000-0000-4000-8000-0000000000f1\",\"targetApp\":\"agreements\",\"targetEntityType\":\"agreement\",\"targetEntityId\":\"ba48ec98-93cc-4029-87e8-d4084d66cb76\"}"
+      ],
+      "error": {
+        "message": "Source file not visible to caller",
+        "code": "PARENT_NOT_FOUND"
+      }
+    },
+    {
+      "method": "db_update",
+      "args": ["agreements", "ba48ec98-93cc-4029-87e8-d4084d66cb76", "{\"status\":\"withdrawn\"}"]
+    }
+  ]
+}

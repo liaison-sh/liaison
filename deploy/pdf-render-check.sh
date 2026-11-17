@@ -96,9 +96,26 @@ say(c.status === "refused", "a cross-reference cycle is refused", c.status === "
 console.log(out.join("\n"))
 '
 
+# The service must be running before any probe: a stopped or restarting
+# service fails here at once, with its state, instead of hanging the probes.
+running=$(docker compose "$@" ps --status running --services 2>&1 || true)
+if ! printf '%s\n' "$running" | grep -qx 'pdf-render'; then
+  state=$(docker compose "$@" ps -a --format '{{.Service}} {{.State}} {{.Status}}' 2>/dev/null | grep '^pdf-render ' || true)
+  echo "FAIL the pdf-render service is not running (${state:-not found}): see docker compose logs pdf-render"
+  exit 1
+fi
+
+# Every probe is bounded: a probe that hangs prints a FAIL line, not nothing.
+PROBE_SECONDS="${LIAISON_PDF_RENDER_CHECK_TIMEOUT:-120}"
+bounded() {
+  if command -v timeout >/dev/null 2>&1; then timeout "$PROBE_SECONDS" "$@"; else "$@"; fi
+}
+
 report=$(
-  docker compose "$@" exec -T -e HOME=/tmp pdf-render bun --eval "$INSIDE_PROBE" 2>&1 || true
-  docker compose "$@" exec -T "$APP_SERVICE" bun --eval "$APP_PROBE" 2>&1 || true
+  bounded docker compose "$@" exec -T -e HOME=/tmp pdf-render bun --eval "$INSIDE_PROBE" 2>&1 \
+    || echo "FAIL the probe inside pdf-render did not finish (exit $?)"
+  bounded docker compose "$@" exec -T "$APP_SERVICE" bun --eval "$APP_PROBE" 2>&1 \
+    || echo "FAIL the probe from the app did not finish (exit $?)"
 )
 printf '%s\n' "$report"
 

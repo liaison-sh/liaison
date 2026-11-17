@@ -26,7 +26,7 @@
 
 import { join } from "node:path"
 import { pdfLogger as log } from "~/lib/logger"
-import { readProcessRssBytes } from "../apps/sandbox/worker-pool"
+import { readProcessRssBytes } from "~/lib/process-rss"
 import {
   type FillOptions,
   type FillResult,

@@ -2,9 +2,9 @@
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { readFileSync } from "node:fs"
 import { appsLogger } from "~/lib/logger"
+import { readProcessRssBytes } from "~/lib/process-rss"
 import {
   MAX_NESTED_BREADTH_PER_PARENT,
-  readProcessRssBytes,
   resolveSandboxPoolWarmSize,
   SandboxWorkerMemoryError,
   SandboxWorkerPool,

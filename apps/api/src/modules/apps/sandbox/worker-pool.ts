@@ -9,11 +9,11 @@
  * If a worker crashes (OOM, WASM trap), only that worker dies.
  * The pool detects the exit and spawns a replacement automatically.
  */
-import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import type { Subprocess } from "bun"
 import { SandboxQueueTimeoutError, sandboxCancelledError } from "~/lib/failure-severity"
 import { appsLogger as log } from "~/lib/logger"
+import { readProcessRssBytes } from "~/lib/process-rss"
 import { sandboxTenantKey } from "~/modules/apps/custom-app-name"
 import type { RunLane } from "~/modules/apps/run-limits"
 import {
@@ -223,39 +223,6 @@ export class SandboxWorkerMemoryError extends Error {
     this.rssBytes = rssBytes
     this.ceilingBytes = ceilingBytes
   }
-}
-
-/**
- * Resident set size of a live process in bytes, or null when it cannot be read
- * (the process is gone, or the platform offers no source).
- *
- * Sampled from the host, never self-reported: a worker stuck in a synchronous
- * QuickJS loop never yields its event loop, so it could not report on itself.
- * Linux reads VmRSS from /proc/<pid>/status, one procfs read and no child
- * process, which is what production (a Linux container) and the dev box run.
- * macOS has no procfs and asks `ps`, one short-lived child per sample, paid
- * only while a worker is busy.
- */
-export async function readProcessRssBytes(pid: number): Promise<number | null> {
-  try {
-    if (process.platform === "linux") {
-      const match = /^VmRSS:\s+(\d+)\s+kB$/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))
-      return match ? Number(match[1]) * 1024 : null
-    }
-    if (process.platform === "darwin") {
-      const ps = Bun.spawn(["ps", "-o", "rss=", "-p", String(pid)], {
-        stdout: "pipe",
-        stderr: "ignore",
-      })
-      const out = (await new Response(ps.stdout).text()).trim()
-      await ps.exited
-      const kb = Number(out)
-      return out !== "" && Number.isFinite(kb) ? kb * 1024 : null
-    }
-  } catch {
-    // The process exited between the check and the read.
-  }
-  return null
 }
 
 // -- Types -------------------------------------------------------------------

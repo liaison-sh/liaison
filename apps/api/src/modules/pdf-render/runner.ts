@@ -9,8 +9,7 @@
 // The child sees no host secret: only what the runtime needs to start.
 
 import { join } from "node:path"
-import { pdfLogger as log } from "~/lib/logger"
-import { readProcessRssBytes } from "~/modules/apps/sandbox/worker-pool"
+import { readProcessRssBytes } from "~/lib/process-rss"
 import {
   PDF_RENDER_FILE_MS,
   PDF_RENDER_MAX_RSS_BYTES,
@@ -172,9 +171,17 @@ function runInChild<T>(req: PdfRenderRequest): Promise<PdfRenderResponse<T>> {
     }, RSS_POLL_MS)
     void proc.exited.then((code) => {
       if (settled) return
-      log.warn(
-        { code, signal: proc.signalCode, stderr: stderrTail },
-        "pdf render child exited without answering",
+      // No API logger here: this file runs in the render service, which has
+      // none of the API's configuration. One JSON line on stderr instead.
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          service: "pdf",
+          code,
+          signal: proc.signalCode,
+          stderr: stderrTail,
+          msg: "pdf render child exited without answering",
+        }),
       )
       settle(unreadable("the file could not be read (the reader stopped)"))
     })

@@ -122,15 +122,46 @@ function agreementsViews(): PortalViewDef[] {
              AND NOT (s.id = ANY (p.sees_only_share_ids))))`,
     },
     {
-      // A frozen or signed version of a readable agreement; a file a scan found infected
-      // is never named.
+      // A frozen or signed version of a readable agreement, with its page pictures (number,
+      // size and picture file only, never the read text); a file a scan found infected is
+      // never named, nor are its pages.
       name: "agreement_versions",
       select: `SELECT v.id, v.agreement_id, v.number, v.source,
-       CASE WHEN v.scan_state = 'infected' THEN NULL ELSE v.file_id END AS file_id, v.sha256
+       CASE WHEN v.scan_state = 'infected' THEN NULL ELSE v.file_id END AS file_id, v.sha256,
+       CASE WHEN v.scan_state = 'infected' THEN NULL ELSE (
+         SELECT jsonb_agg(jsonb_build_object('n', p.value->'n', 'width', p.value->'width',
+                  'height', p.value->'height', 'file_id', p.value->'picture_file_id')
+                  ORDER BY (p.value->>'n')::int)
+           FROM jsonb_array_elements(CASE WHEN jsonb_typeof(to_jsonb(v.pages)) = 'array'
+                                          THEN to_jsonb(v.pages) ELSE '[]'::jsonb END) p) END AS pages
   FROM app_agreements.agreement_versions v
  WHERE v.org_id = (SELECT rls_ctx.org_id())::uuid
    AND v.status IN ('frozen', 'signed')
    AND EXISTS (SELECT 1 FROM portal.agreements a WHERE a.id = v.agreement_id)`,
+    },
+    {
+      // The sealed evidence of a readable version, as a client is given it: the signed PDF,
+      // and the copy of the caller's own decided link, or for a colleague who did not sign
+      // the copy with no device at all. The staff file is never named.
+      name: "evidence",
+      select: `SELECT e.version_id, e.signed_pdf_file_id,
+       (to_jsonb(e.signer_copy_file_ids) ->> COALESCE(own.id::text, 'colleague'))::uuid AS signer_copy_file_id,
+       (to_jsonb(e.stamped_signer_copy_file_ids) ->> COALESCE(own.id::text, 'colleague'))::uuid AS stamped_signer_copy_file_id,
+       e.sealed_at
+  FROM app_agreements.evidence_packages e
+  LEFT JOIN LATERAL (
+    SELECT ca.id FROM portal.client_actions ca
+     WHERE ca.target_id = e.version_id
+       AND ca.decided_at IS NOT NULL
+       AND lower(ca.invited_email) = (SELECT lower(m.email) FROM portal.me m)
+     ORDER BY ca.decided_at LIMIT 1) own ON true
+ WHERE e.org_id = (SELECT rls_ctx.org_id())::uuid
+   AND e.sealed_at IS NOT NULL
+   AND EXISTS (
+     SELECT 1 FROM app_agreements.agreement_versions v
+       JOIN portal.agreements a ON a.id = v.agreement_id
+      WHERE v.id = e.version_id AND v.org_id = e.org_id
+        AND v.status IN ('frozen', 'signed') AND v.scan_state <> 'infected')`,
     },
   ]
 }

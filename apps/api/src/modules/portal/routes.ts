@@ -157,6 +157,7 @@ const BUILT = new Set([
   "GET /files/:id",
   "GET /documents",
   "GET /documents/:id",
+  "GET /documents/:id/pages/:n",
   "POST /actions/:id/code",
   "POST /actions/:id/decide",
 ])
@@ -587,10 +588,28 @@ export const portalRoutes = new Hono<AppEnv>()
       const versions = await part<Record<string, unknown>>(
         tx,
         "agreement_versions",
-        drizzleSql`SELECT id, number, source, sha256, file_id IS NOT NULL AS has_file
+        drizzleSql`SELECT id, number, source, sha256, file_id IS NOT NULL AS has_file,
+            COALESCE(jsonb_array_length(pages), 0) AS page_count
           FROM portal.agreement_versions WHERE agreement_id = ${id}::uuid ORDER BY number DESC`,
       )
       const versionIds = versions === UNAVAILABLE ? [] : versions.map((v) => String(v.id))
+      // The sealed files the caller is given: the signed PDF and their own copy (the
+      // stamped one once the timestamp arrived), each downloaded through GET /files/:id.
+      const evidence =
+        versionIds.length === 0 || !(await viewPresent(tx, "evidence"))
+          ? []
+          : await part<Record<string, unknown>>(
+              tx,
+              "evidence",
+              drizzleSql`SELECT version_id, signed_pdf_file_id,
+                  COALESCE(stamped_signer_copy_file_id, signer_copy_file_id) AS copy_file_id, sealed_at
+                FROM portal.evidence
+               WHERE version_id IN (${drizzleSql.join(
+                 versionIds.map((v) => drizzleSql`${v}::uuid`),
+                 drizzleSql`, `,
+               )})
+               ORDER BY sealed_at DESC`,
+            )
       const actions =
         versionIds.length === 0
           ? []
@@ -599,6 +618,7 @@ export const portalRoutes = new Hono<AppEnv>()
       return {
         ...camel(a),
         versions: rows(versions),
+        evidence: rows(evidence),
         // The consent words come with the caller's own open link: the ones a decision records.
         actions:
           actions === UNAVAILABLE
@@ -635,6 +655,38 @@ export const portalRoutes = new Hono<AppEnv>()
       userAgent: c.req.header("user-agent") ?? null,
     })
     return success(c, doc)
+  })
+  // One page picture of a version the caller reads (`:id` the version, or the agreement
+  // for its latest readable version). Another company's, an infected file's or an unknown
+  // page answers as an unknown id does.
+  .get("/documents/:id/pages/:n", async (c) => {
+    const id = c.req.param("id")
+    const n = Number(c.req.param("n"))
+    if (!UUID.test(id) || !Number.isInteger(n) || n < 1 || n > 10_000) return notFound(c)
+    const ctx = portalOf(c)
+    try {
+      const picture = await withPortalContext(ctx, async (tx) => {
+        if (!(await viewPresent(tx, "agreement_versions"))) return null
+        const found = await part<{ file_id: string | null }>(
+          tx,
+          "agreement_pages",
+          drizzleSql`SELECT p.value->>'file_id' AS file_id
+            FROM portal.agreement_versions v, jsonb_array_elements(COALESCE(v.pages, '[]'::jsonb)) p
+           WHERE (v.id = ${id}::uuid OR v.agreement_id = ${id}::uuid)
+             AND p.value->>'n' = ${String(n)}
+           ORDER BY (v.id = ${id}::uuid) DESC, v.number DESC LIMIT 1`,
+        )
+        return found === UNAVAILABLE ? null : (found[0]?.file_id ?? null)
+      })
+      if (!picture) return notFound(c)
+      const streamed = await streamPortalFile(ctx, picture)
+      if (!streamed) return notFound(c)
+      return streamed
+    } catch (err) {
+      const refused = refusal(c, err)
+      if (refused) return refused
+      throw err
+    }
   })
   .post("/actions/:id/code", async (c) => {
     const id = c.req.param("id")

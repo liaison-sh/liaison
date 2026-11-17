@@ -398,7 +398,7 @@ export const ActivityPanel: Component<ActivityPanelProps> = (props) => {
                           <span class="min-w-0 flex-1 text-text">
                             {row.title}
                             <Show when={row.who}>
-                              <span class="ml-2 text-text-tertiary">{row.who}</span>
+                              <span class="text-text-tertiary"> · {row.who}</span>
                             </Show>
                           </span>
                         </button>

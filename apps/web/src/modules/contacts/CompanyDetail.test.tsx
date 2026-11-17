@@ -499,6 +499,22 @@ describe("CompanyDetail states", () => {
     }
   })
 
+  it("a row's who reads apart from its title, never run together", async () => {
+    mocks.routes[ACTIVITY] = {
+      items: [
+        {
+          ...row("i1", "invoicing", "2026-11-03T09:00:00Z", "F-2026-0512 issued, 6264.00 EUR"),
+          who: "Maison Nord",
+        },
+      ],
+      unavailable: [],
+      nextBefore: null,
+    }
+    render(() => <CompanyDetail entityId={CO} />)
+    const r = await screen.findByTestId("company-activity.row-invoicing:i1")
+    expect(r.textContent).toContain("6264.00 EUR · Maison Nord")
+  })
+
   it("one source failing shows one notice with Retry and the rest", async () => {
     mocks.routes[ACTIVITY] = {
       items: [

@@ -730,6 +730,46 @@ describe("agreement_get hands back no text a person outside the org wrote", () =
     expect(out.versions[0]?.file_id).toBe("file-1")
   })
 
+  it("says an agreement whose document is an uploaded file is one, once its upload was frozen", async () => {
+    const db = memoryDb()
+    const { id } = await db.insert("agreements", {
+      number: "DOC-2026-001",
+      title: "Term sheet",
+      kind: "other",
+      status: "sent",
+    })
+    await db.insert("agreement_drafts", { agreement_id: id, lock_version: 1, source: null })
+    await db.insert("agreement_versions", {
+      agreement_id: id,
+      number: 1,
+      status: "frozen",
+      source_kind: "uploaded",
+      file_id: "file-up",
+    })
+    const ctx = { ...ctxFor(db), client_actions_record: async () => ({ status: "ok", links: [] }) }
+    const out = (await agreementGet(ctx as unknown as AgreementsCtx, { id })) as {
+      agreement: { upload?: boolean }
+    }
+    expect(out.agreement.upload).toBe(true)
+    // A written document stays one.
+    const { id: written } = await db.insert("agreements", {
+      number: "AG-2026-002",
+      title: "NDA",
+      kind: "nda",
+      status: "sent",
+    })
+    await db.insert("agreement_versions", {
+      agreement_id: written,
+      number: 1,
+      status: "frozen",
+      source_kind: "generated",
+    })
+    const w = (await agreementGet(ctx as unknown as AgreementsCtx, { id: written })) as {
+      agreement: { upload?: boolean }
+    }
+    expect(w.agreement.upload).toBeUndefined()
+  })
+
   it("says when a decline came without the emailed code, and only then", async () => {
     const db = memoryDb()
     const { id } = await db.insert("agreements", {

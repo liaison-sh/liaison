@@ -8,10 +8,9 @@
 // wording says an agent signed.
 
 import { Badge, Button, Segmented } from "@liaison/app-ui/kit"
-import { fetchBlob, fetch as hostFetch, openFile } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { DocumentText } from "./DocumentText"
-import { call, go, paths } from "./host"
+import { call, go, openPdfFile, paths } from "./host"
 import { tr, uiLocale } from "./i18n"
 import { StatusBadge } from "./List"
 import {
@@ -159,16 +158,8 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
   }
 
   const openPdf = async (fileId: string, name: string) => {
-    try {
-      const res = await hostFetch<{ url?: string }>(`/api/files/${fileId}/download-url`)
-      if (!res?.url) throw new Error("no url")
-      const blob = await fetchBlob(res.url)
-      const pdf =
-        blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
-      if (!(await openFile(pdf, name))) window.open(URL.createObjectURL(pdf), "_blank", "noopener")
-    } catch {
+    if (!(await openPdfFile(fileId, name)))
       setNote({ text: tr("The file could not be opened."), error: true })
-    }
   }
 
   return (

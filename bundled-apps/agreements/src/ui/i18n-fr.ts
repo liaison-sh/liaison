@@ -172,6 +172,8 @@ export const FR: Record<string, string> = {
   "Read and approved": "Read and approved",
   "Read and sign": "Lire et signer",
   "Client company": "Société cliente",
+  "This document is an uploaded PDF: it is read and signed as that file. A change to it is a new upload.":
+    "Ce document est un PDF déposé : il est lu et signé tel quel. Pour le modifier, déposez-en un nouveau.",
   "No company": "Aucune société",
   Recitals: "Préambule",
   "Remind signers": "Relancer les signataires",

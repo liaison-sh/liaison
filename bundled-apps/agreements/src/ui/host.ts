@@ -3,7 +3,7 @@
 // The screens' one way to the server: the app's own tools through the host (the person's
 // click, decided by their own scopes), plus two best-effort kernel reads for names.
 
-import { app, fetch as hostFetch, navigate } from "@liaison/host"
+import { app, fetchBlob, fetch as hostFetch, navigate, openFile } from "@liaison/host"
 import { isRefusal } from "./model"
 
 export type Outcome<T> = { ok: true; data: T } | { ok: false; code: string; message: string }
@@ -71,5 +71,20 @@ export async function loadCompanyNames(): Promise<Map<string, string>> {
     return new Map(rows.map((r) => [r.id, r.name]))
   } catch {
     return new Map()
+  }
+}
+
+/** Opens a stored PDF the reader may read; false when it could not be opened. */
+export async function openPdfFile(fileId: string, name: string): Promise<boolean> {
+  try {
+    const res = await hostFetch<{ url?: string }>(`/api/files/${fileId}/download-url`)
+    if (!res?.url) return false
+    const blob = await fetchBlob(res.url)
+    const pdf =
+      blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
+    if (!(await openFile(pdf, name))) window.open(URL.createObjectURL(pdf), "_blank", "noopener")
+    return true
+  } catch {
+    return false
   }
 }

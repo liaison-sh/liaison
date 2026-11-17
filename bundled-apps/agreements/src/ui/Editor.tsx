@@ -19,7 +19,7 @@ import {
 } from "solid-js"
 import { articleLabel } from "./DocumentText"
 import { CHECK_WORDS } from "./Editor-words"
-import { call, go, loadMembers, paths } from "./host"
+import { call, go, loadMembers, openPdfFile, paths } from "./host"
 import { tr, uiLocale } from "./i18n"
 import { StatusBadge } from "./List"
 import {
@@ -36,6 +36,7 @@ import {
   formatMoney,
   isPricedKind,
   isTextBlock,
+  latestVersion,
   layoutOf,
   type NewBlockKind,
   parsePrice,
@@ -160,6 +161,10 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
           {(d) => {
             const a = () => d().agreement
             const editable = () => a().status === "draft" || editReplacesSent(a().status)
+            // The document is a file (S749z): it is read and signed as that file, and a change
+            // to it is another upload, never text added here.
+            const isUpload = () => a().upload === true
+            const uploadFile = () => latestVersion(d())?.file_id ?? null
             return (
               <>
                 <header class="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle px-5 py-3">
@@ -251,7 +256,35 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                       </label>
                     </Show>
                     <div class="flex flex-col gap-3" data-testid="agreement-editor-blocks">
-                      <Show when={blocksOf(source()).length === 0}>
+                      <Show when={isUpload() && blocksOf(source()).length === 0}>
+                        <div
+                          data-testid="agreement-editor-upload"
+                          class="flex flex-col gap-2 rounded-md border border-border-subtle bg-surface px-3 py-2 text-[12.5px] text-text-secondary"
+                        >
+                          <p>
+                            {tr(
+                              "This document is an uploaded PDF: it is read and signed as that file. A change to it is a new upload.",
+                            )}
+                          </p>
+                          <Show when={uploadFile()}>
+                            {(f) => (
+                              <div>
+                                <Button
+                                  testid="agreement-editor-upload-open"
+                                  onClick={() =>
+                                    void openPdfFile(f(), `${a().number}.pdf`).then(
+                                      (ok) => ok || say(tr("The file could not be opened."), true),
+                                    )
+                                  }
+                                >
+                                  {tr("Open the PDF")}
+                                </Button>
+                              </div>
+                            )}
+                          </Show>
+                        </div>
+                      </Show>
+                      <Show when={!isUpload() && blocksOf(source()).length === 0}>
                         <p class="text-[12.5px] text-text-tertiary">
                           {tr(
                             "The document has no text yet. Add a block, or ask the agent to draft it.",
@@ -341,7 +374,7 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                         )}
                       </For>
                     </div>
-                    <Show when={editable()}>
+                    <Show when={editable() && !isUpload()}>
                       <div
                         class="mt-3 flex flex-wrap items-center gap-2 text-[12px]"
                         data-testid="agreement-add-block"

@@ -405,3 +405,29 @@ describe("a new agreement", () => {
     })
   })
 })
+
+describe("the editor of an uploaded document", () => {
+  it("shows the file it is, offers no text to add, and no 'no text' check", async () => {
+    const base = agreement({
+      kind: "other",
+      status: "sent",
+      upload: true,
+      what_it_is: "Term sheet",
+    })
+    answers.agreement_get = () => ({
+      ...base,
+      draft: { lock_version: 1, source: null },
+      versions: [
+        { id: "v1", number: 1, status: "frozen", sha256: "d".repeat(64), file_id: "file-up" },
+      ],
+    })
+    render(() => <AgreementEditor entityId={ID} />)
+    expect((await screen.findByTestId("agreement-editor-upload")).textContent).toContain(
+      "uploaded PDF",
+    )
+    expect(screen.queryByText(/has no text yet/)).toBeNull()
+    expect(screen.queryByTestId("agreement-add-block")).toBeNull()
+    expect(screen.getByTestId("agreement-checks").textContent ?? "").not.toMatch(/no text/i)
+    expect(screen.getByTestId("agreement-editor-upload-open")).toBeTruthy()
+  })
+})

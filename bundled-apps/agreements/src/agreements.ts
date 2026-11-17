@@ -242,6 +242,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
     frozen_at?: string
     file_id?: string | null
     copy_differs_at?: string | null
+    source_kind?: string | null
   }>
   const draft = await loadDraft(ctx, row.id)
   const me = await callerUserId(ctx)
@@ -259,7 +260,11 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       template_id: row.template_id ?? null,
       template_version: row.template_version ?? null,
       ...(row.not_a_guarantee_by_user_id ? { not_a_guarantee: true } : {}),
-      ...(draft?.upload_file_id ? { upload: true } : {}),
+      // The document is a file: an upload waiting to freeze, or a frozen upload no text replaced.
+      ...(draft?.upload_file_id ||
+      (versions.at(-1)?.source_kind === "uploaded" && !sourceText(draft?.source).trim())
+        ? { upload: true }
+        : {}),
       ...(row.status === "imported" ? { status_note: "Imported, signed outside Liaison" } : {}),
     },
     draft: draft ? { lock_version: draft.lock_version, source: draft.source ?? null } : null,

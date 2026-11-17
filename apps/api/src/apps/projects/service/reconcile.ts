@@ -422,6 +422,8 @@ export async function reconcileFacts(args: {
   )[0]
 
   const tasks = c.inPeriod.map(shape)
+  // A retainer bills its month whatever was done: a month with no work still has its card.
+  const quietRetainer = c.basis === "retainer" && tasks.length === 0
   return {
     project: {
       id: c.project.id,
@@ -466,8 +468,14 @@ export async function reconcileFacts(args: {
       })),
     latestProposal: latest ? { id: latest.id, revision: latest.revision } : null,
     late,
-    message: `${tasks.length} task${tasks.length === 1 ? "" : "s"} of ${c.project.name} closed in ${c.period.label}; real time is entered on ${coverage.withEntries} of ${coverage.total}. Nothing was saved.`,
-    next: "Read this period's traces with your own tools (commits, meetings, notes, mail), then call reconcile_propose with the lines. Every figure is worked out by the server.",
+    message:
+      `${tasks.length} task${tasks.length === 1 ? "" : "s"} of ${c.project.name} closed in ${c.period.label}; real time is entered on ${coverage.withEntries} of ${coverage.total}. Nothing was saved.` +
+      (quietRetainer
+        ? ` A retainer month still has its invoice with no work in it: its monthly fee, less an advance already invoiced for it.`
+        : ""),
+    next: quietRetainer
+      ? "Call reconcile_propose with no lines (lines: []) to save the month's card; Create invoice on it drafts the month's invoice."
+      : "Read this period's traces with your own tools (commits, meetings, notes, mail), then call reconcile_propose with the lines. Every figure is worked out by the server.",
   }
 }
 

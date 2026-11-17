@@ -13,6 +13,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import {
   billingTermsSet,
   reconcileCreateInvoice,
+  reconcileFacts,
   reconcileGet,
   reconcileLineUpdate,
   reconcilePropose,
@@ -971,6 +972,42 @@ describe("what Create refuses", () => {
          WHERE advance_document_id = ${advance}::uuid`),
     )
     expect(taken).toEqual([{ final: final?.id as string, amount: "450000", state: "reserved" }])
+  }, 120_000)
+
+  it("a prepaid retainer month with no work still gets its card, and its final deducts the advance", async () => {
+    keys++
+    const key = `INV${keys}`
+    const made = await call<{ id: string }>("projects_createProject", {
+      name: `Maison Delorme ${key}`,
+      key,
+      companyId: delorme,
+      timeBudgets: true,
+    })
+    await awaitTimeFeatureSync(orgId)
+    await call("projects_timePlanSet", { projectId: made.id, basis: "retainer" })
+    const schedule = await retainerSchedule(made.id, "2026-01", { covers: "period_ahead" })
+    await retainerTimebox(made.id, schedule, "2026-10-01", "2026-10-31")
+    const advance = await issuedAdvance(made.id, `F-2026-9${keys}03`)
+    // Nothing closed in October: the facts say the month is still invoiced and how.
+    const facts = await run(reconcileFacts, { project: key, month: "2026-10" })
+    expect(facts.tasks).toEqual([])
+    expect(facts.message).toContain("still has its invoice")
+    expect(facts.next).toContain("reconcile_propose with no lines")
+    const card = await run(reconcilePropose, { project: key, month: "2026-10", lines: [] })
+    expect(card.error).toBeUndefined()
+    expect(card.reconciliationId).toBeString()
+    const out = await create(card)
+    expect(out.error).toBeUndefined()
+    expect(out.state).toBe("drafted")
+    const final = (await docsOf(made.id)).find((d) => d.id !== advance)
+    expect(final).toMatchObject({ status: "draft", external_ref: `retainer:${schedule}:2026-10` })
+    const taken = extractRows<Record<string, string>>(
+      await db.execute(drizzleSql`
+        SELECT final_document_id::text AS final, amount_minor::text AS amount
+          FROM app_invoicing.advance_deductions
+         WHERE advance_document_id = ${advance}::uuid`),
+    )
+    expect(taken).toEqual([{ final: final?.id as string, amount: "450000" }])
   }, 120_000)
 
   it("refunding an advance of a stopped project prepares its credit note", async () => {

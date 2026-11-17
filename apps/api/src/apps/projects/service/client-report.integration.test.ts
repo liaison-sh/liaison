@@ -13,11 +13,13 @@ import { withPortalContext } from "~/db/portal-rls"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
 import { type EmailMessage, type EmailProvider, setSystemEmailProvider } from "~/infra/email"
+import { validateToolResult } from "~/modules/apps/execute-tool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import projectsManifest from "../app.manifest.json"
 import { clientReportWarnings, reportText } from "./client-reports"
 
 const REPORT_SCOPES = [
@@ -373,6 +375,14 @@ describe("the sources of a report", () => {
       {},
     )
     expect(out.projects.map((p) => p.projectId)).toEqual([projectId])
+  })
+
+  it("both forms of the answer pass the tool's declared result check", async () => {
+    const schema = projectsManifest.tools.client_report_sources_get.returns.schema
+    const list = await call("projects_clientReportSources", {})
+    const one = await call("projects_clientReportSources", { projectId })
+    expect(validateToolResult(list, schema)).toBe(true)
+    expect(validateToolResult(one, schema)).toBe(true)
   })
 })
 

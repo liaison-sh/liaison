@@ -146,7 +146,9 @@ describe("projects.manifest", () => {
     //   checks) are cut.
     // 1.46.1: a client report read gives the guard key a person's send carries; report sources
     //   leave out messages stamped with a restricted record.
-    expect(projectsManifest.version).toBe("1.46.1")
+    // 1.46.2: report sources declare only the field both of their forms carry, so neither
+    //   form is refused as an invalid result.
+    expect(projectsManifest.version).toBe("1.46.2")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

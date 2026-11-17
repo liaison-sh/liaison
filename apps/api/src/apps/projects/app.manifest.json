@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.46.1",
+  "version": "1.46.2",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -5768,18 +5768,6 @@
       "readsFromTable": "app_projects.tasks",
       "returns": {
         "schema": {
-          "projectId": "string",
-          "projectName": "string",
-          "companyName": "any",
-          "since": "string",
-          "until": "string",
-          "openKinds": "array",
-          "tasks": "array",
-          "pullRequests": "array",
-          "threadMessages": "array",
-          "hours": "any",
-          "quiet": "boolean",
-          "projects": "any",
           "message": "string"
         }
       },

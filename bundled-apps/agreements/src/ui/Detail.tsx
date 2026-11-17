@@ -10,7 +10,7 @@
 import { Badge, Button, Segmented } from "@liaison/app-ui/kit"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { DocumentText } from "./DocumentText"
-import { call, go, openPdfFile, paths } from "./host"
+import { call, go, openPdfFile, openStoredFile, paths } from "./host"
 import { tr, uiLocale } from "./i18n"
 import { StatusBadge } from "./List"
 import {
@@ -40,6 +40,9 @@ interface Evidence {
   last_verify_ok: boolean | null
   retention_until: string | null
   devices: "shown" | "withheld"
+  signed_pdf_file_id?: string | null
+  /** Only for a holder of the devices permission: the evidence file holds each device. */
+  evidence_file_id?: string | null
   signers: Array<{
     name: string
     capacity: string | null
@@ -53,6 +56,54 @@ interface Evidence {
     user_agent?: string | null
   }>
 }
+
+/** What the proof shows and does not, how long it is kept, and what leaving Liaison changes (A-10). */
+const ProofNotes: Component<{ keptUntil: string | null }> = (props) => (
+  <div data-testid="agreement-proof-notes" class="mt-2 flex flex-col gap-3 text-[12.5px] text-text">
+    <section class="flex flex-col gap-1">
+      <h2 class="text-[12px] font-medium text-text-secondary">
+        {tr("What this proves, and what it does not")}
+      </h2>
+      <p>
+        {tr(
+          "This is a simple electronic signature. A court cannot refuse it just because it is electronic, and it can be used as evidence.",
+        )}
+      </p>
+      <p>
+        {tr(
+          "It does not count as a handwritten signature by itself. If someone denied signing, you would have to show that it was them. This file is how.",
+        )}
+      </p>
+      <p>
+        {tr(
+          "It does not show that a signer had the authority to bind their company, only that they said so.",
+        )}
+      </p>
+      <p class="text-text-tertiary">{tr("General information, not legal advice.")}</p>
+    </section>
+    <section class="flex flex-col gap-1">
+      <h2 class="text-[12px] font-medium text-text-secondary">{tr("How long it is kept")}</h2>
+      <p>
+        {props.keptUntil
+          ? tr(
+              "Until {{date}}, at least. Automatic clean-up cannot remove it, and neither can an agent.",
+              { date: dateText(props.keptUntil) },
+            )
+          : tr(
+              "As long as the agreement's retention requires. Automatic clean-up cannot remove it, and neither can an agent.",
+            )}
+      </p>
+    </section>
+    <section class="flex flex-col gap-1">
+      <h2 class="text-[12px] font-medium text-text-secondary">{tr("If you leave Liaison")}</h2>
+      <p>
+        {tr(
+          "The proof of signature file stands on its own. Once downloaded, it still checks with no Liaison and no server, for as long as you keep it.",
+        )}
+      </p>
+    </section>
+  </div>
+)
 
 export function dateText(iso: string | null | undefined): string {
   if (!iso) return ""
@@ -536,6 +587,41 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                                   >
                                     {tr("Check the stored files")}
                                   </Button>
+                                  <Show when={e().signed_pdf_file_id}>
+                                    {(f) => (
+                                      <Button
+                                        testid="agreement-download-signed"
+                                        onClick={() =>
+                                          void openPdf(f(), `${a().number}-signed.pdf`)
+                                        }
+                                      >
+                                        {tr("Download signed PDF")}
+                                      </Button>
+                                    )}
+                                  </Show>
+                                  <Show when={e().evidence_file_id}>
+                                    {(f) => (
+                                      <Button
+                                        testid="agreement-download-evidence"
+                                        onClick={() =>
+                                          void openStoredFile(
+                                            f(),
+                                            `${a().number}-proof-of-signature.zip`,
+                                            "application/zip",
+                                          ).then(
+                                            (ok) =>
+                                              ok ||
+                                              setNote({
+                                                text: tr("The file could not be opened."),
+                                                error: true,
+                                              }),
+                                          )
+                                        }
+                                      >
+                                        {tr("Download proof of signature")}
+                                      </Button>
+                                    )}
+                                  </Show>
                                   <Show when={check() === "matches"}>
                                     <span
                                       data-testid="agreement-verify-matches"
@@ -635,6 +721,7 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                                     )}
                                   </p>
                                 </Show>
+                                <ProofNotes keptUntil={e().retention_until} />
                               </>
                             )}
                           </Show>

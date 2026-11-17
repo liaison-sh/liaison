@@ -1048,6 +1048,12 @@ export async function agreementEvidenceGet(ctx: AgreementsCtx, p: { id: string }
       (agreement as Agreement & { retention_until?: string }).retention_until ?? null,
     signers,
     devices: devices ? "shown" : "withheld",
+    // What the agreement's page downloads: the signed PDF, and the evidence file (which holds
+    // each signer's device) only for a holder of the devices scope (S723).
+    signed_pdf_file_id: pkg.signed_pdf_file_id ?? null,
+    ...(devices
+      ? { evidence_file_id: pkg.stamped_evidence_file_id ?? pkg.evidence_file_id ?? null }
+      : {}),
     message: `${agreement.number} version ${version.number}: sealed with ${signers.length} signature(s); timestamp ${pkg.timestamp_status}.${devices ? "" : " IP and browser are withheld (they need agreements:evidence:devices)."} Check it with agreement_verify.`,
   }
 }

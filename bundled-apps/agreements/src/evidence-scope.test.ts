@@ -13,6 +13,10 @@ describe("evidence scope", () => {
     expect(text).not.toContain("UA-of-Paul")
     expect(out).toMatchObject({ status: "ok", devices: "withheld" })
     expect(text).toContain("Paul Morel")
+    // The signed PDF can be downloaded; the evidence file, which holds the devices, cannot.
+    const files = out as { signed_pdf_file_id?: string | null; evidence_file_id?: string | null }
+    expect(typeof files.signed_pdf_file_id).toBe("string")
+    expect(files.evidence_file_id).toBeUndefined()
   })
 
   it("with the devices scope, each signer's IP and user agent are shown", async () => {
@@ -22,6 +26,8 @@ describe("evidence scope", () => {
     const text = JSON.stringify(out)
     expect(text).toContain("198.51.100.7")
     expect(text).toContain("UA-of-Anne")
+    // A holder of the devices scope can download the evidence file from the agreement's page.
+    expect(typeof (out as { evidence_file_id?: string }).evidence_file_id).toBe("string")
   })
 
   it("an unsealed agreement answers that it is not sealed yet", async () => {

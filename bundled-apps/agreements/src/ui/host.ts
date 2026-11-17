@@ -75,14 +75,18 @@ export async function loadCompanyNames(): Promise<Map<string, string>> {
 }
 
 /** Opens a stored PDF the reader may read; false when it could not be opened. */
-export async function openPdfFile(fileId: string, name: string): Promise<boolean> {
+export function openPdfFile(fileId: string, name: string): Promise<boolean> {
+  return openStoredFile(fileId, name, "application/pdf")
+}
+
+/** Opens or saves a stored file the reader may read; false when it could not be opened. */
+export async function openStoredFile(fileId: string, name: string, type: string): Promise<boolean> {
   try {
     const res = await hostFetch<{ url?: string }>(`/api/files/${fileId}/download-url`)
     if (!res?.url) return false
     const blob = await fetchBlob(res.url)
-    const pdf =
-      blob.type === "application/pdf" ? blob : new Blob([blob], { type: "application/pdf" })
-    if (!(await openFile(pdf, name))) window.open(URL.createObjectURL(pdf), "_blank", "noopener")
+    const file = blob.type === type ? blob : new Blob([blob], { type })
+    if (!(await openFile(file, name))) window.open(URL.createObjectURL(file), "_blank", "noopener")
     return true
   } catch {
     return false

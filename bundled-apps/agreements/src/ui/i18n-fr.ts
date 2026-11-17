@@ -172,6 +172,24 @@ export const FR: Record<string, string> = {
   "Read and approved": "Read and approved",
   "Read and sign": "Lire et signer",
   "Client company": "Société cliente",
+  "Download signed PDF": "Télécharger le PDF signé",
+  "Download proof of signature": "Télécharger la preuve de signature",
+  "What this proves, and what it does not": "Ce que cela prouve, et ce que cela ne prouve pas",
+  "This is a simple electronic signature. A court cannot refuse it just because it is electronic, and it can be used as evidence.":
+    "C'est une signature électronique simple. Un juge ne peut pas l'écarter au seul motif qu'elle est électronique, et elle peut servir de preuve.",
+  "It does not count as a handwritten signature by itself. If someone denied signing, you would have to show that it was them. This file is how.":
+    "Elle ne vaut pas à elle seule une signature manuscrite. Si quelqu'un niait avoir signé, il vous faudrait montrer que c'était bien lui. Ce fichier sert à cela.",
+  "It does not show that a signer had the authority to bind their company, only that they said so.":
+    "Il ne montre pas qu'un signataire avait le pouvoir d'engager sa société, seulement qu'il l'a déclaré.",
+  "General information, not legal advice.": "Information générale, pas un conseil juridique.",
+  "How long it is kept": "Combien de temps il est conservé",
+  "Until {{date}}, at least. Automatic clean-up cannot remove it, and neither can an agent.":
+    "Jusqu'au {{date}} au moins. Le nettoyage automatique ne peut pas le supprimer, un agent non plus.",
+  "As long as the agreement's retention requires. Automatic clean-up cannot remove it, and neither can an agent.":
+    "Aussi longtemps que la conservation de l'accord l'exige. Le nettoyage automatique ne peut pas le supprimer, un agent non plus.",
+  "If you leave Liaison": "Si vous quittez Liaison",
+  "The proof of signature file stands on its own. Once downloaded, it still checks with no Liaison and no server, for as long as you keep it.":
+    "Le fichier de preuve de signature se suffit à lui-même. Une fois téléchargé, il se vérifie sans Liaison ni serveur, aussi longtemps que vous le gardez.",
   "This document is an uploaded PDF: it is read and signed as that file. A change to it is a new upload.":
     "Ce document est un PDF déposé : il est lu et signé tel quel. Pour le modifier, déposez-en un nouveau.",
   "No company": "Aucune société",

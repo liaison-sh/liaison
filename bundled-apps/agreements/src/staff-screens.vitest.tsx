@@ -431,3 +431,46 @@ describe("the editor of an uploaded document", () => {
     expect(screen.getByTestId("agreement-editor-upload-open")).toBeTruthy()
   })
 })
+
+describe("the proof of signature on the agreement's page", () => {
+  const evidence = (over: Record<string, unknown> = {}) => ({
+    status: "ok",
+    document_sha256: "a".repeat(64),
+    signed_pdf_sha256: "b".repeat(64),
+    seal: "c".repeat(64),
+    sealed_at: "2026-11-10",
+    timestamp: "stamped",
+    timestamped_at: "2026-11-10",
+    last_verified_at: null,
+    last_verify_ok: null,
+    retention_until: "2032-11-10",
+    devices: "shown",
+    signers: [],
+    signed_pdf_file_id: "file-signed",
+    evidence_file_id: "file-zip",
+    ...over,
+  })
+
+  it("downloads the signed PDF and the evidence file, and says what it proves and does not", async () => {
+    answers.agreement_get = () => agreement({ status: "signed" })
+    answers.agreement_evidence_get = () => evidence()
+    render(() => <AgreementDetailView entityId={ID} />)
+    fireEvent.click(await screen.findByTestId("agreement-pane-evidence"))
+    expect(await screen.findByTestId("agreement-download-signed")).toBeTruthy()
+    expect(screen.getByTestId("agreement-download-evidence")).toBeTruthy()
+    const text = screen.getByTestId("agreement-evidence").textContent ?? ""
+    expect(text).toContain("What this proves, and what it does not")
+    expect(text).toContain("How long it is kept")
+    expect(text).toContain("If you leave Liaison")
+  })
+
+  it("offers no evidence file to someone without the devices permission", async () => {
+    answers.agreement_get = () => agreement({ status: "signed" })
+    answers.agreement_evidence_get = () =>
+      evidence({ devices: "withheld", evidence_file_id: undefined })
+    render(() => <AgreementDetailView entityId={ID} />)
+    fireEvent.click(await screen.findByTestId("agreement-pane-evidence"))
+    expect(await screen.findByTestId("agreement-download-signed")).toBeTruthy()
+    expect(screen.queryByTestId("agreement-download-evidence")).toBeNull()
+  })
+})

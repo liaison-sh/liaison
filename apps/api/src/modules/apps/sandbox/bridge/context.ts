@@ -151,6 +151,12 @@ export type RpcBridgeOptions = {
    */
   jobsAttributedToSystem?: boolean
   /**
+   * The client action whose `kernel/client_action:decided` event this run handles (set by the
+   * event handler bridge for that event only). A call chained from that decision runs on the
+   * act of the person who approved that action's send (bridge/client-actions.ts).
+   */
+  decidedActionId?: string
+  /**
    * The job this bridge serves (runtime.ts buildJobBridge): `ctx.steps.run`
    * re-enqueues it (same name, same app payload) to continue, and reads its
    * continuation marker from `payload._steps`. Absent outside a job run, where

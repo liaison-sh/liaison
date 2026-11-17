@@ -154,10 +154,15 @@ function trailEvent(e: SignatureEvent): Record<string, unknown> {
 
 /** Signature events of a version, in signing order. */
 export async function eventsOf(ctx: AgreementsCtx, versionId: string): Promise<SignatureEvent[]> {
-  const rows = (await ctx.db.findMany("signature_events", {
+  const all = (await ctx.db.findMany("signature_events", {
     where: { version_id: versionId },
     limit: 500,
   })) as SignatureEvent[]
+  // One event per decision: two runs that wrote the same one at the same moment count once.
+  const seen = new Set<string>()
+  const rows = all
+    .sort((a, b) => String(a.signed_at).localeCompare(String(b.signed_at)))
+    .filter((e) => (seen.has(e.client_action_id) ? false : (seen.add(e.client_action_id), true)))
   return rows.sort(
     (a, b) =>
       (a.signer_order ?? 0) - (b.signer_order ?? 0) ||
@@ -232,6 +237,29 @@ export function isStandIn(events: SignatureEvent[]): boolean {
 }
 
 /**
+ * Why the events are not the send's whole set of signatures, or null when they are: every live
+ * link of the send (the group, as the kernel lists it) holds a positive decision and one event,
+ * and no event belongs to a link outside it.
+ */
+async function notEverySigner(ctx: SealCtx, events: SignatureEvent[]): Promise<string | null> {
+  const first = events[0]
+  if (!first || !ctx.client_actions_record) return null
+  const rec = bridgeAnswer<{
+    status: string
+    record?: { group?: Array<{ id: string; decision: string | null }> }
+  }>(await ctx.client_actions_record({ id: first.client_action_id })).record
+  const group = rec?.group
+  if (!group || group.length === 0)
+    return "The send behind this version cannot be read: it is not sealed."
+  const ids = new Set(events.map((e) => e.client_action_id))
+  const positive = (d: string | null) =>
+    d === "signed" || d === "accepted" || d === "approved"
+  if (group.some((g) => !positive(g.decision) || !ids.has(g.id)) || ids.size !== group.length)
+    return `${ids.size} of ${group.length} signatures are recorded on this version: it is sealed once every signer's is.`
+  return null
+}
+
+/**
  * Seal a version every signer signed. Idempotent: the first call that writes
  * the package emits `agreement:signed`; a later call (a retry, a replayed
  * event) finishes what is missing and emits nothing.
@@ -261,6 +289,10 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
   // signed copy, no seal, no timestamp, no copies, no event. Nothing was signed, so nothing is
   // proven or sent.
   if (isStandIn(events)) return recordStandIn(ctx, version)
+  // The events are exactly the live signers of the send, each of whom signed: a version marked
+  // signed before every decision was written is not sealed until the missing ones are.
+  const short = await notEverySigner(ctx, events)
+  if (short) return { status: "not_ready", reason: short }
   // Every signature it holds proved the emailed code; a version with one that did not is not sealed.
   if (events.some((e) => !e.code_verified_at))
     return {

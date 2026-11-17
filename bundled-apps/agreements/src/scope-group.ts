@@ -22,6 +22,7 @@ interface SignedRow {
   id: string
   number: string
   kind: string
+  org_access?: string | null
   status: string
   contact_id?: string | null
 }
@@ -44,7 +45,14 @@ async function addClient(
   a: SignedRow,
   ref: string,
 ): Promise<AddAnswer | null> {
-  if (a.kind === CHANGE_REQUEST || !a.contact_id || !ctx.client_actions_call_as_sender) return null
+  // A restricted agreement's client is not added: the routine's owner may be off its list.
+  if (
+    a.kind === CHANGE_REQUEST ||
+    a.org_access === "none" ||
+    !a.contact_id ||
+    !ctx.client_actions_call_as_sender
+  )
+    return null
   const versions = (await ctx.db.findMany("agreement_versions", {
     where: { agreement_id: a.id, status: "signed" },
     limit: 1,

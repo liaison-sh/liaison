@@ -9,8 +9,10 @@
 // person's mailbox under the same check. A reply that fails revokes the link, and the change
 // request stays a draft. Nothing is marked started.
 
+import { accessOps, currentShares, emitAccessChanged, type OrgAccess } from "./access"
 import { agreementPrepare } from "./agreements"
 import { CHANGE_REQUEST, changeRequestPrice } from "./change-requests"
+import type { DbBatchOp } from "@liaison/app-sdk"
 import {
   type AgreementsCtx,
   actingAgentId,
@@ -319,8 +321,33 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       "This server cannot send a change request (no links or no mail). Nothing was sent.",
     )
 
-  // 1. The change request, a draft under its parent, frozen.
+  // 1. The change request, a draft under its parent, frozen. It is seen by exactly who sees its
+  //    parent: the parent's access and list, written through the one access writer.
   const user = await callerUserId(ctx)
+  const parentAccess: OrgAccess =
+    ready.parent.org_access === "none" || ready.parent.org_access === "viewer"
+      ? ready.parent.org_access
+      : "editor"
+  const shares = (await currentShares(ctx, ready.parent.id)).map((s) => ({
+    user_id: s.user_id,
+    role: s.role,
+  }))
+  // The sender writes the change request: on its list as editor, as a creator is. They read
+  // the parent, so on a restricted parent they are already on its list.
+  const parentList =
+    shares.length > 0 && user && !shares.some((s) => s.user_id === user)
+      ? [...shares, { user_id: user, role: "editor" as const }]
+      : shares.map((s) => (s.user_id === user ? { ...s, role: "editor" as const } : s))
+  const access: DbBatchOp[] = []
+  if (parentList.length > 0) {
+    const acc = accessOps("", parentAccess, parentList, "new", user, new Date().toISOString())
+    if (isError(acc)) return acc
+    access.push(...acc)
+  } else if (parentAccess === "none")
+    return refusal(
+      "ACCESS_LIST_EMPTY",
+      `${ready.parent.number} is closed to the organization with nobody on its list. Nothing was sent.`,
+    )
   const created = await ctx.db.batch({
     sequence: {
       key: `agreements:CR:${ready.parent.id}`,
@@ -334,7 +361,7 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
     ops: [
       {
         insert: "agreements",
-        as: "cr",
+        as: "agreement",
         data: {
           number: { $seq: "formatted" },
           kind: CHANGE_REQUEST,
@@ -351,7 +378,7 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
           currency: ready.parent.currency ?? null,
           hours_minutes: p.hours_minutes,
           rate_minor: ready.rate.toString(),
-          org_access: "editor",
+          org_access: parentList.length > 0 ? "editor" : parentAccess,
           created_by_user_id: user,
           created_by_agent_id: null,
         },
@@ -359,7 +386,7 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
       {
         insert: "agreement_drafts",
         data: {
-          agreement_id: { $ref: "cr" },
+          agreement_id: { $ref: "agreement" },
           source: sourceOf(ready, p),
           upload_file_id: null,
           lock_version: 1,
@@ -368,9 +395,10 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
           updated_by_agent_id: null,
         },
       },
+      ...access,
     ],
   })
-  const crId = String(created.rows.cr?.id ?? "")
+  const crId = String(created.rows.agreement?.id ?? "")
   const number = created.sequence?.formatted ?? "CR"
   const frozen = (await agreementPrepare(ctx, { id: crId })) as {
     status: string
@@ -385,9 +413,13 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
     )
 
   // 2. The approval link, under the card's mail check: a client who wrote since stops it here.
+  //    A restricted change request's link is seen by its list alone, like its parent's.
+  const visibleTo = parentAccess === "none" ? parentList.map((s) => s.user_id).sort() : null
+  if (visibleTo) await emitAccessChanged(ctx, crId, parentAccess, parentList)
   const out = bridgeAnswer<MintAnswer>(
     await ctx.client_actions_mint({
       send: {
+        ...(visibleTo ? { visible_to: visibleTo } : {}),
         target_type: TARGET_TYPE,
         target_id: frozen.version_id,
         sha256: frozen.sha256,

@@ -5,8 +5,14 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.4.9", () => {
-    expect(manifest.version).toBe("0.4.9")
+  it("is at version 0.5.0", () => {
+    expect(manifest.version).toBe("0.5.0")
+  })
+
+  it("an uploaded version's page text and source text are declared as outside text, so a read returning them taints the turn", () => {
+    expect(manifest.outsideTextFields).toEqual(
+      expect.arrayContaining(["signers", "imported_text", "source_text", "pages"]),
+    )
   })
 
   it("parses as a package manifest", () => {

@@ -69,14 +69,22 @@ export async function senderOfSignedTarget(args: {
   return (await peopleOfSignedTarget(args))?.sender ?? null
 }
 
-/** The sender of a decided target, and the person who approved that send (null: nobody did). */
+/**
+ * The sender of a decided target, and the person who approved that send (null: nobody did),
+ * read from a link that was decided, never from a send that failed or was withdrawn. With
+ * `decidedActionId`, from that very link (it must be a positive decision on this target), so
+ * a later link approved by another person acts as that person; otherwise from the earliest
+ * positive decision of the target.
+ */
 async function peopleOfSignedTarget(args: {
   orgId: string
   targetApp: string
   targetType: string
   targetId: string
+  decidedActionId?: string | null
 }): Promise<{ sender: string; approver: string | null } | null> {
   if (!UUID.test(args.targetId)) return null
+  const one = args.decidedActionId && UUID.test(args.decidedActionId) ? args.decidedActionId : null
   const rows = await withPrivilegedDb(args.orgId, "signed-copy-sender", async (tx) =>
     extractRows<{ created_by_user_id: string; approved_by_user_id: string | null }>(
       await tx.execute(sql`
@@ -84,12 +92,9 @@ async function peopleOfSignedTarget(args: {
          WHERE a.org_id = ${args.orgId}::uuid AND a.target_app = ${args.targetApp}
            AND a.target_type = ${args.targetType} AND a.target_id = ${args.targetId}::uuid
            AND a.created_by_user_id IS NOT NULL
-           AND EXISTS (
-             SELECT 1 FROM ${K()}.client_actions d
-              WHERE d.org_id = a.org_id AND d.target_app = a.target_app
-                AND d.target_type = a.target_type AND d.target_id = a.target_id
-                AND d.decision IN ('signed', 'accepted', 'approved'))
-         ORDER BY a.created_at ASC, a.id ASC
+           AND a.decision IN ('signed', 'accepted', 'approved')
+           ${one ? sql`AND a.id = ${one}::uuid` : sql``}
+         ORDER BY a.decided_at ASC NULLS LAST, a.created_at ASC, a.id ASC
          LIMIT 1`),
     ),
   )
@@ -286,9 +291,12 @@ export async function callAsSender(args: {
   tool: string
   params: Record<string, unknown>
   idempotencyKey?: string
-  /** The caller's run is the consequence of the decision (the app's decided-target handler,
-   *  no agent, routine or approval of its own): an ungated call may run on the approver's act. */
-  onTheApproversAct?: boolean
+  /** The decided client action the caller's run is the consequence of (the app's decided
+   *  handler for that action's event, or its own job resuming that decision's work, with no
+   *  agent, routine or approval of its own): an ungated call runs on the act of the person who
+   *  approved that action's send. The handler and the job name the same action, so they act
+   *  as the same person and one idempotency key answers both. */
+  decidedActionId?: string | null
 }): Promise<AsSenderOutcome> {
   if (!args.declaredCalls.includes(args.tool) || args.tool.startsWith(`${args.appName}:`))
     return {
@@ -296,12 +304,23 @@ export async function callAsSender(args: {
       code: "CALL_NOT_DECLARED",
       message: `${args.appName} declares no call to ${args.tool}. Nothing was done.`,
     }
-  const people = await peopleOfSignedTarget({
-    orgId: args.orgId,
-    targetApp: args.appName,
-    targetType: args.targetType,
-    targetId: args.targetId,
-  })
+  const decided = args.decidedActionId
+    ? await peopleOfSignedTarget({
+        orgId: args.orgId,
+        targetApp: args.appName,
+        targetType: args.targetType,
+        targetId: args.targetId,
+        decidedActionId: args.decidedActionId,
+      })
+    : null
+  const people =
+    decided ??
+    (await peopleOfSignedTarget({
+      orgId: args.orgId,
+      targetApp: args.appName,
+      targetType: args.targetType,
+      targetId: args.targetId,
+    }))
   if (!people)
     return {
       status: "error",
@@ -312,7 +331,7 @@ export async function callAsSender(args: {
   let actor: Awaited<ReturnType<typeof liveActor>> = null
   let origin: "human-ui" | "system" = "system"
   if (
-    args.onTheApproversAct === true &&
+    decided !== null &&
     people.approver &&
     UUID.test(people.approver) &&
     (await ungatedAppTool(args.orgId, args.tool))
@@ -371,3 +390,6 @@ export async function ownSystemGroupId(args: {
   )
   return rows[0]?.id ?? null
 }
+
+/** For tests: who a target's sender call acts as, with or without its decided link. */
+export const SignedCopyTestAccess = { peopleOfSignedTarget }

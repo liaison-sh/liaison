@@ -86,6 +86,9 @@ export interface AgreementsCtx {
     tool: string
     params: Record<string, unknown>
     idempotency_key?: string
+    /** The decided link whose work a job resumes: the call acts as that send's approver,
+     *  as the decided handler's did (the kernel checks it is a positive decision of the target). */
+    decided_action_id?: string
   }) => Promise<unknown>
   /** The id of the contact group the app keeps for itself under a key, or null. */
   client_actions_own_group?: (p: { key: string }) => Promise<unknown>

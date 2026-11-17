@@ -940,11 +940,12 @@ export async function newLinkAfter(input: {
       revoked_at: Date | null
       expires_at: Date
       token_hash: string | null
+      visible_to: string[] | null
     }>(
       await tx.execute(sql`
         SELECT id, kind, target_type, target_id, target_sha256, target_blocks_sha256, contact_id,
                company_id, invited_email, invited_name, sign_order, group_id, required_phrase, decision,
-               code_verified_at, revoked_at, expires_at, token_hash
+               code_verified_at, revoked_at, expires_at, token_hash, visible_to
           FROM ${K()}.client_actions
          WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
            AND target_app = ${input.targetApp}
@@ -992,6 +993,9 @@ export async function newLinkAfter(input: {
     signOrder: prior.sign_order,
     groupId: prior.group_id,
     requiredPhrase: prior.required_phrase,
+    // A restricted target's link is seen by its list alone: the new link keeps the list the
+    // one it replaces holds (the follow step keeps that one current), never NULL for everyone.
+    ...(prior.visible_to && prior.visible_to.length > 0 ? { visibleTo: prior.visible_to } : {}),
     createdByUserId: input.createdByUserId,
     createdByAgentId: input.createdByAgentId ?? null,
     approvedByUserId: input.approvedByUserId ?? null,
@@ -1070,7 +1074,8 @@ export async function listTargetClientActions(input: {
                 : r.token_hash
                   ? "open"
                   : "waiting_turn",
-    decidedAt: r.decided_at,
+    // The driver may hand a timestamp back as text on some paths: always a Date here.
+    decidedAt: r.decided_at ? new Date(r.decided_at) : null,
     codeVerified: r.code_verified_at !== null,
     expiresAt: new Date(r.expires_at),
     replaced: r.replaced === true,

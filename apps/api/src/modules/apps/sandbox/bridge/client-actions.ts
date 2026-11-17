@@ -131,6 +131,33 @@ function actionOut(r: MintResult, signOrder: number | null) {
   }
 }
 
+/**
+ * The decided client action a run is the consequence of, or null; a call chained from it runs
+ * on the act of the person who approved that action's send (`callAsSender`). Never in a run with
+ * an agent, an MCP client, a routine or an approval of its own. The app's
+ * `kernel/client_action:decided` handler: the action of that event, as the kernel delivered it
+ * (the app cannot name another). The app's own job resuming that decision's work: the action it
+ * names, which `callAsSender` accepts only as a positive decision on the same target. Any other
+ * run, another event's handler included: none.
+ */
+export function decidedActionFor(run: {
+  bridgeOptions?: { jobsAttributedToSystem?: boolean; decidedActionId?: string; currentJob?: unknown; origin?: string }
+  actorType?: string
+  actingAgentId?: string | null
+  routineId?: string | null
+  approved: boolean
+  named: unknown
+}): string | null {
+  const o = run.bridgeOptions
+  if (run.actorType === "agent" || run.actorType === "mcp") return null
+  if (run.actingAgentId || run.routineId || run.approved) return null
+  if (o?.jobsAttributedToSystem === true)
+    return o.decidedActionId && UUID.test(o.decidedActionId) ? o.decidedActionId : null
+  if (o?.currentJob && o.origin !== "human-ui")
+    return typeof run.named === "string" && UUID.test(run.named) ? run.named : null
+  return null
+}
+
 export function createClientActionsMethods(ctx: BridgeContext): Record<string, any> {
   const {
     appName,
@@ -182,17 +209,15 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     return bridgeOptions?.origin === "human-ui" ? actorUserId() : null
   }
 
-  /**
-   * The run is the consequence of a decision, not anyone's own run: the app's event handler
-   * (a decided target), with no agent, routine, approval or person's turn in it.
-   */
-  const consequenceRun = (): boolean =>
-    bridgeOptions?.jobsAttributedToSystem === true &&
-    actorType !== "agent" &&
-    actorType !== "mcp" &&
-    !bridgeActingAgentId &&
-    !bridgeRoutineId &&
-    !approvalContext
+  const decidedActionOf = (named: unknown): string | null =>
+    decidedActionFor({
+      bridgeOptions,
+      actorType,
+      actingAgentId: bridgeActingAgentId,
+      routineId: bridgeRoutineId,
+      approved: approvalContext !== undefined && approvalContext !== null,
+      named,
+    })
 
   /** A pinned check must name every signer's address and still clear, or no link is made. */
   async function guardStops(
@@ -609,6 +634,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         tool?: unknown
         params?: unknown
         idempotency_key?: unknown
+        decided_action_id?: unknown
       }
       try {
         p = JSON.parse(paramsJson || "{}")
@@ -635,7 +661,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         targetId: p.target_id,
         tool: p.tool,
         params: (p.params ?? {}) as Record<string, unknown>,
-        onTheApproversAct: consequenceRun(),
+        decidedActionId: decidedActionOf(p.decided_action_id),
         ...(typeof p.idempotency_key === "string" && p.idempotency_key.length <= 200
           ? { idempotencyKey: p.idempotency_key }
           : {}),

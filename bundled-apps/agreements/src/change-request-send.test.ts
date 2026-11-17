@@ -194,6 +194,32 @@ describe("change_request_send", () => {
     expect(ctx.calls.replies.map((r) => r.name)).toEqual(["mail:reply"])
   })
 
+  it("a change request on a restricted agreement takes its list, and its link is seen by that list alone", async () => {
+    const { db, parentId, versionId } = await world()
+    const OTHER = "22222222-2222-4222-8222-222222222222"
+    await db.update("agreements", parentId, { org_access: "none", acl_user_ids: [OTHER, PERSON] })
+    await db.insert("agreement_shares", { agreement_id: parentId, user_id: PERSON, role: "editor" })
+    await db.insert("agreement_shares", { agreement_id: parentId, user_id: OTHER, role: "viewer" })
+    const pre = (await changeRequestSendPreflight(ctxFor(db), params(parentId, versionId))) as {
+      pinnedParams: Record<string, unknown>
+    }
+    const ctx = ctxFor(db, { approved: true })
+    const out = (await changeRequestSend(ctx, {
+      ...params(parentId, versionId),
+      ...pre.pinnedParams,
+    })) as { status: string }
+    expect(out.status).toBe("ok")
+    const [cr] = changeRequests(db)
+    expect(cr?.org_access).toBe("none")
+    expect([...((cr?.acl_user_ids as string[]) ?? [])].sort()).toEqual([PERSON, OTHER].sort())
+    const list = ((db.tables.get("agreement_shares") ?? []) as Row[])
+      .filter((r) => r.agreement_id === cr?.id)
+      .map((r) => `${r.user_id}:${r.role}`)
+      .sort()
+    expect(list).toEqual([`${OTHER}:viewer`, `${PERSON}:editor`].sort())
+    expect(ctx.calls.mints[0]?.send.visible_to).toEqual([PERSON, OTHER].sort())
+  })
+
   it("a link the kernel refuses (the client wrote after the card) sends no reply and leaves a draft", async () => {
     const { db, parentId, versionId } = await world()
     const pre = (await changeRequestSendPreflight(ctxFor(db), params(parentId, versionId))) as {

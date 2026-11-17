@@ -22,8 +22,10 @@
 // (`change_request:<id>:<step>`) as its idempotency key, and the time plan is set to an absolute
 // total recorded before the call, so a resumed step never doubles.
 //
-// Each call runs as the person who sent the change request (the kernel finds them on the
-// approval link and uses their live permissions), never as a wider system identity.
+// Each call runs as the person who approved the change request's send, read by the kernel from
+// its decided approval link (the sender when nobody approved it), with their live permissions,
+// never as a wider system identity. The decided handler and the job name the same link, so a
+// resumed step acts as the same person and its idempotency key answers the first call.
 //
 // What the parent's project uses is read from the parent agreement (recorded when it created the
 // project). When it was not recorded, the time plan call asks projects with no change, and
@@ -106,12 +108,26 @@ const crWhere = (cr: CrRow) => ({
   kind: CHANGE_REQUEST,
 })
 
+/**
+ * The client's approval link of the change request's version: the decision whose work this is.
+ * Every step names it, in the decided handler and in the job that resumes it alike, so each call
+ * acts as the same person (the approver of that send) and its idempotency key answers twice.
+ */
+async function decidedLinkOf(ctx: AgreementsCtx, versionId: string): Promise<string | undefined> {
+  if (!ctx.client_actions_record) return undefined
+  const out = bridgeAnswer<{
+    links?: Array<{ id: string; state: string; replaced?: boolean }>
+  }>(await ctx.client_actions_record({ target_type: TARGET_TYPE, target_id: versionId }))
+  return (out.links ?? []).find((l) => l.state === "decided" && l.replaced !== true)?.id
+}
+
 async function callAsSender(
   ctx: AgreementsCtx,
   versionId: string,
   tool: string,
   params: Record<string, unknown>,
   ref: string,
+  decided?: string,
 ): Promise<CallAnswer> {
   if (!ctx.client_actions_call_as_sender)
     return {
@@ -125,6 +141,7 @@ async function callAsSender(
       tool,
       params,
       idempotency_key: ref,
+      ...(decided ? { decided_action_id: decided } : {}),
     }),
   )
 }
@@ -229,6 +246,7 @@ export async function runChangeRequestEffects(
   })) as VersionRow[]
   const version = versions.sort((a, b) => Number(b.number ?? 0) - Number(a.number ?? 0))[0]
   if (!version) return stop(`${cr.number} has no approved version yet; tried again later.`)
+  const decided = await decidedLinkOf(ctx, version.id)
 
   const minutes = Math.max(0, Math.trunc(cr.hours_minutes ?? 0))
   let usesTime: boolean | null =
@@ -247,6 +265,7 @@ export async function runChangeRequestEffects(
       "projects:time_plan_set",
       { projectId },
       `change_request:${cr.id}:time_plan_probe`,
+      decided,
     )
     if (probe.status === "error" && NO_TIME_PLAN.has(probe.error.code)) usesTime = false
     else if (probe.status === "completed") {
@@ -282,6 +301,7 @@ export async function runChangeRequestEffects(
         ...(usesTime === true && minutes > 0 ? { timebox: hoursText(minutes) } : {}),
       },
       `change_request:${cr.id}:task`,
+      decided,
     )
     const id =
       made.status === "completed" ? (made.result as { id?: unknown } | undefined)?.id : undefined
@@ -316,6 +336,7 @@ export async function runChangeRequestEffects(
       "projects:time_plan_set",
       { projectId, timebox: hoursText(target) },
       `change_request:${cr.id}:time_plan`,
+      decided,
     )
     if (set.status === "error" && NO_TIME_PLAN.has(set.error.code)) timePlan = "none"
     else if (set.status !== "completed")
@@ -351,6 +372,7 @@ export async function runChangeRequestEffects(
           taskId,
         },
         `change_request:${cr.id}:billing_step`,
+        decided,
       )
       if (step.status === "completed") billing = "added"
       else if (step.status === "error" && NO_BILLING_STEP.has(step.error.code)) billing = "none"

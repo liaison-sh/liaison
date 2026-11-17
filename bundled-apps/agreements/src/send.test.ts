@@ -501,6 +501,7 @@ describe("a decision", () => {
     const { id, prepared } = await frozen(db)
     await db.update("agreements", id, { status: "partly_signed" })
     const ctx = ctxFor(db)
+    ctx.records.set("ca-1", record({ id: "ca-1", sign_order: 1 }))
     ctx.records.set(
       "ca-2",
       record({
@@ -758,6 +759,73 @@ describe("reminders and new links", () => {
       error: { code: string }
     }
     expect(out.error.code).toBe("DECLINED_BY_SIGNER")
+  })
+})
+
+describe("every signer's signature before the seal", () => {
+  const both = [
+    { id: "ca-1", sign_order: null, decision: "signed", open: false },
+    { id: "ca-2", sign_order: null, decision: "signed", open: false },
+  ]
+
+  it("when the first signer's delivery was lost, the last signature writes their event from its record before the version is marked signed", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = ctxFor(db)
+    ctx.records.set("ca-1", record({ id: "ca-1", sign_order: null, typed_name: "Paul Morel", group: both }))
+    ctx.records.set("ca-2", record({ id: "ca-2", sign_order: null, typed_name: "Anne Morel", group: both }))
+    const out = (await onClientActionDecided(ctx, {
+      data: {
+        id: "ca-2",
+        target: { app: "agreements", type: "agreement_version", id: prepared.version_id },
+      },
+    })) as { status: string }
+    expect(out.status).toBe("signed")
+    const events = (db.tables.get("signature_events") ?? []) as Row[]
+    expect(events.map((e) => e.client_action_id).sort()).toEqual(["ca-1", "ca-2"])
+  })
+
+  it("a signer whose decision cannot be read keeps the version waiting, never signed with one signature", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = ctxFor(db)
+    ctx.records.set("ca-2", record({ id: "ca-2", sign_order: null, group: both }))
+    const out = (await onClientActionDecided(ctx, {
+      data: {
+        id: "ca-2",
+        target: { app: "agreements", type: "agreement_version", id: prepared.version_id },
+      },
+    })) as { status: string }
+    expect(out.status).toBe("partly_signed")
+    expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("frozen")
+  })
+
+  it("the reconcile job repairs a version marked signed with fewer events than signers", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "signed" })
+    await db.update("agreement_versions", prepared.version_id, { status: "signed" })
+    const ctx = ctxFor(db)
+    ctx.records.set("ca-1", record({ id: "ca-1", sign_order: null, group: both }))
+    ctx.records.set("ca-2", record({ id: "ca-2", sign_order: null, group: both }))
+    await db.insert("signature_events", {
+      version_id: prepared.version_id,
+      client_action_id: "ca-2",
+      typed_name: "Anne Morel",
+      level: "ses",
+      code_verified_at: "2026-11-16",
+      signed_at: "2026-11-16",
+    })
+    const links = both.map((g) => ({ id: g.id, invited_name: "x", sign_order: null, state: "decided" }))
+    const read = ctx.client_actions_record
+    ctx.client_actions_record = async (p) =>
+      "target_id" in p ? { status: "ok", links } : read?.(p)
+    const out = (await decidedReconcile(ctx)) as { repaired: number }
+    expect(out.repaired).toBe(1)
+    const events = (db.tables.get("signature_events") ?? []) as Row[]
+    expect(events.map((e) => e.client_action_id).sort()).toEqual(["ca-1", "ca-2"])
   })
 })
 

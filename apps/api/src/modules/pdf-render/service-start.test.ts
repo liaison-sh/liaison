@@ -5,7 +5,7 @@
 // network): its entry must import nothing that validates the API's
 // configuration (lib/env.ts) or reaches a service.
 import { afterEach, describe, expect, it } from "bun:test"
-import { mkdtempSync, rmSync } from "node:fs"
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -17,6 +17,8 @@ let child: ReturnType<typeof Bun.spawn> | undefined
 afterEach(() => {
   child?.kill("SIGKILL")
   child = undefined
+  // The service leaves its socket folder unwritable: give it back before removing it.
+  if (dir) chmodSync(dir, 0o755)
   if (dir) rmSync(dir, { recursive: true, force: true })
 })
 
@@ -65,4 +67,33 @@ describe("the render service entry", () => {
     expect(res.status).toBe(200)
     expect(await res.text()).toBe("ok")
   }, 30_000)
+
+  it("leaves its socket folder holding only the socket: nothing else can be written there, and a restart still listens", async () => {
+    dir = mkdtempSync(path.join(tmpdir(), "pdf-render-start-"))
+    const socket = path.join(dir, "render.sock")
+    const start = () =>
+      Bun.spawn([process.execPath, MAIN], {
+        cwd: path.join(import.meta.dir, "../../.."),
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: dir,
+          NODE_ENV: "production",
+          LIAISON_PDF_RENDER_SOCKET: socket,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+    child = start()
+    await waitForLine(child.stdout as ReadableStream<Uint8Array>, "listening", 20_000)
+    expect(() => writeFileSync(path.join(dir, ".render-probe"), "x")).toThrow()
+    child.kill("SIGKILL")
+    await child.exited
+    // A restart over the stale socket (the container restarted) listens again.
+    child = start()
+    const again = await waitForLine(child.stdout as ReadableStream<Uint8Array>, "listening", 20_000)
+    expect(again).toContain("listening")
+    const res = await fetch("http://pdf-render/healthz", { unix: socket } as RequestInit)
+    expect(res.status).toBe(200)
+    expect(() => writeFileSync(path.join(dir, ".render-probe"), "x")).toThrow()
+  }, 45_000)
 })

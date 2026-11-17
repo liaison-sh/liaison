@@ -100,6 +100,15 @@ describe("the render service isolation check", () => {
     expect(Date.now() - started).toBeLessThan(5_000)
   })
 
+  it("the probe from the app exits once it printed its lines, whatever the app left open", () => {
+    const script = readFileSync(SCRIPT, "utf8")
+    const probe = /APP_PROBE='([\s\S]*?)'\n/.exec(script)?.[1] ?? ""
+    const lines = probe.trim().split("\n")
+    const printed = lines.indexOf('console.log(out.join("\\n"))')
+    expect(printed).toBeGreaterThan(0)
+    expect(lines.at(-1)).toMatch(/^process\.exit\(/)
+  })
+
   it("a probe that hangs fails at its bound with a FAIL line", () => {
     const r = run(pass(11, "inside"), pass(3, "app"), [], {
       SHIM_HANG: "1",

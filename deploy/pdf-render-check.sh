@@ -94,6 +94,8 @@ parts.push(`xref\n0 4\n0000000000 65535 f \n${rows}trailer\n<< /Size 4 /Root 1 0
 const c = await checkUploadedPdf(org, new Uint8Array(Buffer.from(parts.join(""), "latin1")))
 say(c.status === "refused", "a cross-reference cycle is refused", c.status === "refused" ? c.code : c.status)
 console.log(out.join("\n"))
+// The app module opened Redis and its pools: exit with the verdict instead of waiting on them.
+process.exit(0)
 '
 
 # The service must be running before any probe: a stopped or restarting

@@ -178,14 +178,21 @@ const SAAS_BASELINE = {
  * trips in 1 151 transactions on a Linux runner on a Sunday, 368 outbox events; 13 090 in
  * 1 175 on the Monday after (the pin, a working day; products 6 668 in 650, software 8 153 in 832).
  * One outbox event more once the finance role is granted the org's shared mailbox: 369.
+ * Re-measured 2026-11-17 (a working day) once the world carries its agreements layer: the
+ * agreements app installed and enabled, two companies only the agreements name, twelve
+ * agreements with their drafts, versions and stand-in signature events, the series counters,
+ * the client's mail, the change request card and its conversation, and two past-project notes in
+ * Knowledge: 13 412 round trips in 1 205 transactions locally, 376 outbox events (+7). The
+ * products and software worlds, with the agreements app now installed on the instance as on a
+ * demo box, measured 6 717 in 653 and 8 218 in 837: inside their margins, their pins unchanged.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 369,
+  outboxEvents: 376,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 13_090,
-  transactions: 1_175,
+  statements: 13_412,
+  transactions: 1_205,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

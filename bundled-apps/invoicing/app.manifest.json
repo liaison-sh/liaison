@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.32.0",
+  "version": "0.33.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -5134,6 +5134,59 @@
         }
       ]
     },
+    "quote_set_outcome": {
+      "description": "Record a sent quote's outcome once: accepted, rejected or expired. Creates no invoice; converting an accepted quote is its own step.",
+      "searchKeywords": [
+        "devis",
+        "quote",
+        "accepté",
+        "accepted",
+        "refusé",
+        "rejected",
+        "expiré",
+        "expired",
+        "outcome",
+        "résultat"
+      ],
+      "requiredScopes": [
+        "invoicing:documents:write"
+      ],
+      "handler": "quoteSetOutcomeHandler",
+      "preflight": "quoteSetOutcomePreflightHandler",
+      "gated": true,
+      "approvalImpact": "internal",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "document_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected",
+              "expired"
+            ]
+          }
+        },
+        "required": [
+          "document_id",
+          "outcome"
+        ]
+      },
+      "summarizer": "summarizeQuoteSetOutcome",
+      "summarizerContext": {
+        "tool": "documents_get",
+        "params": {
+          "id": "document_id"
+        }
+      },
+      "approvalCard": {
+        "summary": "Mark quote {{params.document_id}} {{params.outcome}}"
+      }
+    },
     "documents_mark_paid": {
       "focusCore": true,
       "description": "Mark a document as paid (full payment recorded).",
@@ -6770,7 +6823,8 @@
       "stripe/refund:created": "onStripeRefundCreatedEvent",
       "stripe/refund:settled": "onStripeRefundCreatedEvent",
       "stripe/refund:failed": "onStripeRefundCreatedEvent",
-      "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent"
+      "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent",
+      "kernel/client_action:decided": "onQuoteClientActionDecidedHandler"
     },
     "emits": [
       "recurring_run:drafted",

@@ -488,6 +488,9 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   SIGNER_HAS_NO_EMAIL: 409,
   NOT_THE_CONTACTS_ADDRESS: 409,
   TARGET_SENT_BY_ITS_APP: 409,
+  // A quote's outcome: set once, on a quote only.
+  OUTCOME_ALREADY_SET: 409,
+  NOT_A_QUOTE: 409,
   SIGNERS_REQUIRED: 400,
   TOO_MANY_SIGNERS: 400,
   INVALID_SIGNER: 400,

@@ -963,3 +963,19 @@ export const paymentLinkToInvoicePreflightHandler = async (
   const r = await paymentLinkToInvoicePreflight(ctx, params)
   return "status" in r ? { error: r.error } : r
 }
+
+// --- A sent quote's outcome (a person's call, or a client's answer on its link) ---
+import { onQuoteClientActionDecided, quoteOutcomePreflight, setQuoteOutcome } from "./quote-outcome"
+
+export const quoteSetOutcomeHandler = (
+  params: { document_id: string; outcome: string },
+  ctx: Parameters<typeof setQuoteOutcome>[0],
+) => setQuoteOutcome(ctx, { ...params, via: "person" })
+export const onQuoteClientActionDecidedHandler = (
+  event: Parameters<typeof onQuoteClientActionDecided>[1],
+  ctx: Parameters<typeof onQuoteClientActionDecided>[0],
+) => onQuoteClientActionDecided(ctx, event)
+export const quoteSetOutcomePreflightHandler = (
+  params: { document_id: string; outcome: string },
+  ctx: Parameters<typeof quoteOutcomePreflight>[0],
+) => quoteOutcomePreflight(ctx, params)

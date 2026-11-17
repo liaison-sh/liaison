@@ -3758,5 +3758,13 @@
       "reply with a change request"
     ],
     "any": ["agreements__change_request_send"]
+  },
+  {
+    "id": "C131",
+    "set": "seed",
+    "lang": "fr",
+    "say": "le client a accepté le devis Q-0007 par téléphone, note-le",
+    "typed": ["devis accepté", "quote accepted", "résultat du devis"],
+    "any": ["invoicing__quote_set_outcome"]
   }
 ]

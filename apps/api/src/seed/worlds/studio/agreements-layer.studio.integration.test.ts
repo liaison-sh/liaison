@@ -19,6 +19,8 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { evaluateSendGuard, type PinnedSendGuard } from "~/modules/mail/send-guard"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { seedContext } from "~/seed/context"
+import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import { rowsOf } from "~/seed/factories/people/actors"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
@@ -221,25 +223,54 @@ describe("the services world's agreements at the board date", () => {
     const check = () => evaluateSendGuard({ orgId, guard, recipients: guard.addresses, at: "card" })
     expect((await check()).state).toBe("clear")
 
-    const [conv] = await rows<{ account_id: string }>(sql`
-      SELECT account_id::text AS account_id FROM app_mail.conversations
-       WHERE id = ${guard.conversationId}::uuid`)
-    const client = guard.addresses[0] as string
-    await withPrivilegedDb(orgId, "studio-agreements-layer:new-mail", (tx) =>
-      tx.execute(sql`
-        INSERT INTO app_mail.messages (
-          org_id, conversation_id, account_id, external_message_id, message_references,
-          from_address, to_addresses, cc_addresses, bcc_addresses, subject, text_body, snippet,
-          is_read, is_starred, labels, direction, owner_type, sent_at, synced_at, raw_headers
-        ) VALUES (
-          ${orgId}::uuid, ${guard.conversationId}::uuid, ${conv?.account_id}::uuid,
-          ${`later-${crypto.randomUUID()}`}, '[]'::jsonb,
-          ${JSON.stringify({ name: "Client", email: client })}::jsonb, '[]'::jsonb,
-          '[]'::jsonb, '[]'::jsonb, 'Re: one more thing', 'Also, one question first.',
-          'Also, one question first.', false, false, '["INBOX"]'::jsonb, 'inbound', 'org',
-          now(), now(), '{}'::jsonb
-        )`),
-    )
+    // The client writes again in the same conversation, through the mail factory: the card's
+    // conversation and its first message are adopted, the second one is new.
+    const [box] = await rows<{ email: string; name: string | null }>(sql`
+      SELECT a.email_address AS email, a.display_name AS name FROM app_mail.conversations c
+        JOIN app_mail.accounts a ON a.id = c.account_id
+       WHERE c.id = ${guard.conversationId}::uuid`)
+    const cr = PLAN.changeRequest
+    const client = { name: "Client", email: guard.addresses[0] as string }
+    const mailbox = { name: box?.name ?? "", email: box?.email ?? "" }
+    const ctx = seedContext({ orgId, now: BOARD_DATE, log: () => {} })
+    const { conversationIds } = await insertUnarmedMail(ctx, {
+      domain: mailbox.email.split("@")[1] ?? "",
+      mailboxes: [
+        { box: "org", ownerUserId: null, email: mailbox.email, displayName: mailbox.name },
+      ],
+      conversations: [
+        {
+          key: `studio:${cr.key}`,
+          box: "org",
+          subject: cr.mailSubject,
+          status: "open",
+          labels: ["INBOX"],
+          isRead: false,
+          isStarred: false,
+          messages: [
+            {
+              direction: "inbound",
+              fromName: client.name,
+              fromEmail: client.email,
+              toName: mailbox.name,
+              toEmail: mailbox.email,
+              hoursAgo: (BOARD_DATE.getTime() - cr.mailAt.getTime()) / 3_600_000,
+              body: cr.mailBody,
+            },
+            {
+              direction: "inbound",
+              fromName: client.name,
+              fromEmail: client.email,
+              toName: mailbox.name,
+              toEmail: mailbox.email,
+              hoursAgo: 0,
+              body: "Also, one question first.",
+            },
+          ],
+        },
+      ],
+    })
+    expect(conversationIds).toEqual([guard.conversationId as string])
     const stopped = await check()
     expect(stopped.state).toBe("replied")
   })

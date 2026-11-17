@@ -114,3 +114,21 @@ export async function scopeGroupReconcile(ctx: AgreementsCtx, today?: string) {
   }
   return { status: "ok", group_id: groupId, added, not_added: notAdded }
 }
+
+/** The Scope check's routine template key in this manifest (`routines`). */
+export const SCOPE_CHECK_TEMPLATE_KEY = "scope-check"
+
+/**
+ * `kernel/routine:create`: when the Scope check template is enabled, its group is filled at
+ * once (the kernel made it empty), so mail from a client who already signed is read from the
+ * start rather than after the next daily reconcile. Any other routine is ignored.
+ */
+export async function onScopeCheckEnabled(
+  ctx: AgreementsCtx,
+  event: { data?: { appName?: unknown; templateKey?: unknown } } | null | undefined,
+) {
+  const d = event?.data
+  if (d?.appName !== "agreements" || d?.templateKey !== SCOPE_CHECK_TEMPLATE_KEY)
+    return { status: "ignored" }
+  return scopeGroupReconcile(ctx)
+}

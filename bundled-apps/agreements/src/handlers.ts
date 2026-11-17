@@ -28,7 +28,7 @@ import { datesDaily } from "./dates"
 import { agreementImport, type ImportParams } from "./import"
 import { agreementPassageGet } from "./passage"
 import { onPortalAccessEnded } from "./portal-ended"
-import { scopeGroupReconcile } from "./scope-group"
+import { onScopeCheckEnabled, scopeGroupReconcile } from "./scope-group"
 import { copiesRetry, evidenceVerify, type SealCtx, sealRetry, timestampRetry } from "./seal"
 import {
   agreementNewLink,
@@ -101,6 +101,8 @@ export const changeRequestEffectsJobHandler = (_payload: unknown, ctx: Ctx) =>
   changeRequestEffectsJob(ctx)
 export const scopeGroupReconcileJobHandler = (_payload: unknown, ctx: Ctx) =>
   scopeGroupReconcile(ctx)
+export const onRoutineCreatedHandler = (event: unknown, ctx: Ctx) =>
+  onScopeCheckEnabled(ctx, event as Parameters<typeof onScopeCheckEnabled>[1])
 export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
 export const uploadFreezeJobHandler = (_payload: unknown, ctx: Ctx) => uploadFreezeJob(ctx)
 export const uploadRescanJobHandler = (_payload: unknown, ctx: Ctx) => uploadRescanJob(ctx)

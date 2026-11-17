@@ -8,7 +8,7 @@
 import { describe, expect, it } from "bun:test"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb } from "./memory-db.testutil"
-import { SCOPE_GROUP_KEY, scopeGroupReconcile } from "./scope-group"
+import { onScopeCheckEnabled, SCOPE_GROUP_KEY, scopeGroupReconcile } from "./scope-group"
 
 const GROUP = "99999999-0000-4000-8000-000000000009"
 
@@ -75,5 +75,29 @@ describe("the Scope check's group reconcile", () => {
     const w = await world(null)
     expect(((await scopeGroupReconcile(w.ctx)) as { status: string }).status).toBe("skipped")
     expect(w.calls).toEqual([])
+  })
+
+  it("fills the group as soon as the Scope check template is enabled, not at the next daily pass", async () => {
+    const w = await world(GROUP)
+    const out = (await onScopeCheckEnabled(w.ctx, {
+      data: { appName: "agreements", templateKey: "scope-check", routineId: "r1" },
+    })) as { status: string; added: number }
+    expect(out).toMatchObject({ status: "ok", added: 1 })
+    expect(w.calls).toHaveLength(1)
+  })
+
+  it("another routine created does nothing", async () => {
+    const w = await world(GROUP)
+    for (const data of [
+      { appName: "agreements", templateKey: "other" },
+      { appName: "projects", templateKey: "scope-check" },
+      { appName: null, templateKey: null },
+    ]) {
+      expect(((await onScopeCheckEnabled(w.ctx, { data })) as { status: string }).status).toBe(
+        "ignored",
+      )
+    }
+    expect(w.calls).toEqual([])
+    expect(w.keys).toEqual([])
   })
 })

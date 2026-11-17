@@ -42,6 +42,8 @@ export interface ReportDetail {
   } | null
   approvedAt: string | null
   sentAt: string | null
+  /** Sent with a person's click, so exactly the text they read goes out. */
+  guardKey?: string | null
   message?: string
 }
 
@@ -117,6 +119,7 @@ const ReportView: Component<{ reportId: string; onChanged: () => void }> = (prop
     act(async () => {
       const out = await runTool<{ message?: string }>(api, "projects:client_report_send", {
         reportId: r.reportId,
+        ...(r.guardKey ? { guardKey: r.guardKey } : {}),
       })
       return out.message
     })

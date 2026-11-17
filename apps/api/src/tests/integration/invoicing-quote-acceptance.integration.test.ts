@@ -24,7 +24,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { mintClientAction } from "~/modules/client-actions/mint"
-import { blocksSha256 } from "~/modules/client-actions/targets"
+import { shownSha256 } from "~/modules/client-actions/targets"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import { seedFileRow } from "~/seed/factories/files/file-row"
 import { drainOutbox } from "~/tests/helpers/outbox"
@@ -262,13 +262,18 @@ describe("a quote sent for acceptance", () => {
       target_blocks_sha256: string | null
     }>
     const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+    const opened = (await (
+      await call("open", { t: token }, { "x-bun-socket-ip": "198.51.100.63" })
+    ).json()) as { title: string; summary: Array<{ k: string; v: string }> }
     const { h, proof } = await proved(token, "198.51.100.63")
-    // The fingerprint is over exactly the blocks the page shows, the line among them.
+    // The fingerprint is over exactly what the page shows: its title, summary and blocks.
     const shown = (await (await call("document", { t: token, format: "blocks" }, h)).json()) as {
       content: unknown[]
     }
     expect(JSON.stringify(shown.content)).toContain("Brand workshop")
-    expect(row?.target_blocks_sha256).toBe(blocksSha256(shown.content))
+    expect(row?.target_blocks_sha256).toBe(
+      shownSha256({ title: opened.title, summary: opened.summary, blocks: shown.content }),
+    )
     await sql`UPDATE ${inv("document_lines")} SET description = 'Brand workshop and launch film'
                WHERE id = ${lineId}`
     const refused = await call(
@@ -291,6 +296,34 @@ describe("a quote sent for acceptance", () => {
       decision: string | null
     }>
     expect(still?.decision).toBeNull()
+  }, 180_000)
+
+  it("refuses an accept once the counterparty the page names changed after sending, and the quote stays sent", async () => {
+    const pdf = await storedPdf(
+      Buffer.from(`%PDF-1.4\nquote Q-0104 ${crypto.randomUUID()}\n%%EOF\n`),
+    )
+    const quoteId = await sentQuote("Q-0104", pdf.id)
+    await sql`UPDATE ${inv("documents")} SET counterparty_name = 'Maison Avant' WHERE id = ${quoteId}`
+    await quoteLine(quoteId, "Site audit")
+    const before = capture.sent.length
+    await mint(quoteId)
+    const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+    const { h, proof } = await proved(token, "198.51.100.64")
+    await sql`UPDATE ${inv("documents")} SET counterparty_name = 'Maison Apres' WHERE id = ${quoteId}`
+    const refused = await call(
+      "decide",
+      { t: token, proof, decision: "accept", typed_name: w.clientA.name },
+      h,
+    )
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { error?: { code?: string } }).error?.code).toBe(
+      "VERSION_CHANGED",
+    )
+    const [q] = (await sql`
+      SELECT status FROM ${inv("documents")} WHERE id = ${quoteId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(q?.status).toBe("sent")
   }, 180_000)
 
   it("refuses an accept once the stored PDF's bytes changed, and the quote stays sent", async () => {

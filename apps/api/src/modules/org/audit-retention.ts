@@ -20,15 +20,25 @@ import { isManagedEdition } from "~/lib/edition"
 import { jobsLogger as log } from "~/lib/logger"
 import { sweepSkippingMoving } from "~/modules/org/transfer-state/skip-moving"
 
+/**
+ * A whole number of days read from one JSON setting, or NULL: a value that is not a JSON number
+ * reads as unset, a fraction is rounded down and the result is held to 1..36500, so one org's
+ * malformed setting can never fail the single DELETE that serves every org.
+ */
+function daysAt(json: ReturnType<typeof sql>) {
+  return sql`CASE WHEN jsonb_typeof(${json}) = 'number'
+    THEN LEAST(GREATEST(floor((${json})::text::numeric), 1), 36500)::int END`
+}
+
 /** The days an org keeps, as SQL over `o` (kernel.organizations). */
 function retentionDaysSql() {
+  const setting = daysAt(sql`o.settings->'auditRetentionDays'`)
   if (!isManagedEdition()) {
-    return sql`COALESCE((o.settings->>'auditRetentionDays')::int, 90)`
+    return sql`COALESCE(${setting}, 90)`
   }
-  // jsonb_typeof guards keep one malformed org from failing the whole purge.
-  const cap = sql`CASE WHEN jsonb_typeof(o.caps->'auditDays') = 'number' AND (o.caps->>'auditDays')::numeric >= 1 THEN (o.caps->>'auditDays')::int END`
-  const chosen = sql`CASE WHEN jsonb_typeof(o.settings->'auditRetentionDaysChosen') = 'number' THEN (o.settings->>'auditRetentionDaysChosen')::int END`
-  return sql`CASE WHEN ${cap} IS NOT NULL THEN LEAST(COALESCE(${chosen}, ${cap}), ${cap}) ELSE COALESCE(${chosen}, (o.settings->>'auditRetentionDays')::int, 90) END`
+  const cap = daysAt(sql`o.caps->'auditDays'`)
+  const chosen = daysAt(sql`o.settings->'auditRetentionDaysChosen'`)
+  return sql`CASE WHEN ${cap} IS NOT NULL THEN LEAST(COALESCE(${chosen}, ${cap}), ${cap}) ELSE COALESCE(${chosen}, ${setting}, 90) END`
 }
 
 /** Delete every org's audit rows older than its retention; returns rows deleted per org. */
@@ -60,7 +70,8 @@ export async function purgeExpiredAuditLog(): Promise<{ orgId: string; count: nu
 /** The months an org keeps its portal access log, as SQL over `o`; malformed reads as 12. */
 function portalMonthsSql() {
   return sql`CASE WHEN jsonb_typeof(o.settings->'portal'->'logRetentionMonths') = 'number'
-    THEN LEAST(GREATEST((o.settings->'portal'->>'logRetentionMonths')::int, 6), 36) ELSE 12 END`
+    THEN LEAST(GREATEST(floor((o.settings->'portal'->'logRetentionMonths')::text::numeric), 6), 36)::int
+    ELSE 12 END`
 }
 
 /** Delete every org's portal access rows older than its portal retention. */

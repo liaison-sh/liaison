@@ -2683,6 +2683,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             tx: txDb,
             orgId,
             approverId: decider,
+            personClick: !approvalContext?.approvalDeciderId,
             input: params,
             mail: (m) => sendClientReportMail({ orgId, replyTo: person.email, ...m }),
           }),

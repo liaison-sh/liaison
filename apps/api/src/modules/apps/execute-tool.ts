@@ -6720,7 +6720,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // whose rows could not be looked up is withheld.
   if ("data" in envelope && tool.restrictedRows && taintOriginStore) {
     try {
-      const scopes = await restrictedStampOf(opts.orgId, tool.restrictedRows, envelope.data)
+      const scopes = await restrictedStampOf(
+        opts.orgId,
+        tool.restrictedRows,
+        envelope.data,
+        validatedParams,
+      )
       if (scopes.length > 0) taintOriginStore.recordResultScopes(scopes)
     } catch (err) {
       log.error(
@@ -6809,10 +6814,16 @@ export function idsAtPath(data: unknown, path: string): string[] {
  */
 export async function restrictedStampOf(
   orgId: string,
-  decl: { kind: string; idPath: string },
+  decl: { kind: string; idPath?: string; paramPath?: string },
   data: unknown,
+  params?: unknown,
 ): Promise<string[]> {
-  const ids = idsAtPath(data, decl.idPath)
+  const ids = [
+    ...new Set([
+      ...(decl.idPath ? idsAtPath(data, decl.idPath) : []),
+      ...(decl.paramPath ? idsAtPath(params, decl.paramPath) : []),
+    ]),
+  ]
   if (ids.length === 0) return []
   const [app, entity] = decl.kind.split(".") as [string, string]
   const rows = await withPrivilegedDb(orgId, "restricted-rows-stamp", async (db) =>

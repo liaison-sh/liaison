@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -29,6 +29,7 @@
     "agreements:templates:write",
     "agreements:internal"
   ],
+  "legalStarterTemplates": { "corporateFeature": "corporateTemplates" },
   "features": {
     "corporateTemplates": {
       "adminScope": "agreements:templates:write",
@@ -68,6 +69,17 @@
         "schemaRef": "app_agreements",
         "joinOn": "id",
         "readScope": "agreements:evidence:read",
+        "writeScope": "agreements:internal"
+      }
+    },
+    "evidence_devices": {
+      "labelField": "seal_version",
+      "tableName": "evidence_packages",
+      "fileParent": {
+        "tableName": "evidence_packages",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:evidence:devices",
         "writeScope": "agreements:internal"
       }
     }
@@ -433,7 +445,8 @@
       },
       "immutable": {
         "retentionYears": 10,
-        "anchor": "signed_at"
+        "anchor": "signed_at",
+        "insertOnly": true
       },
       "fields": {
         "version_id": {
@@ -843,6 +856,7 @@
       }
     },
     "agreement_create": {
+      "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},
       "description": "Create an agreement draft from a template or a brief, or from an uploaded PDF (kind other). Never sets a price.",
       "searchKeywords": [
         "contrat",
@@ -954,6 +968,7 @@
       }
     },
     "agreement_update": {
+      "restrictedRows": {"entity":  "agreement", "paramPath":  "id"},
       "description": "Change an agreement draft: its text, dates or who can see it. An agent's change to who can see it waits for a person.",
       "searchKeywords": [
         "edit",
@@ -1052,6 +1067,7 @@
       }
     },
     "agreement_prepare": {
+      "restrictedRows": {"entity":  "agreement", "paramPath":  "id"},
       "description": "Check an agreement draft before sending: blanks, price, fit for this kind of signature, clauses an agent wrote.",
       "searchKeywords": [
         "préparer",
@@ -1264,6 +1280,7 @@
       }
     },
     "agreement_send": {
+      "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},
       "description": "Send a frozen agreement version for signature or acceptance to its signers, in order or all at once. Parks for a person's approval; nothing is sent if the version changed since agreement_prepare.",
       "searchKeywords": [
         "signer",
@@ -1370,6 +1387,7 @@
       "approvalDedupeKeyParam": "guardKey"
     },
     "agreement_reminder_send": {
+      "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},
       "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. Parks for a person's approval.",
       "searchKeywords": [
         "remind",
@@ -1425,6 +1443,7 @@
       "approvalDedupeKeyParam": "guardKey"
     },
     "agreement_new_link": {
+      "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},
       "description": "Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand. Parks for a person's approval.",
       "searchKeywords": [
         "lien",
@@ -1474,6 +1493,7 @@
       }
     },
     "agreement_void": {
+      "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id", "paramPath":  "id"},
       "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. Parks for a person's approval.",
       "searchKeywords": [
         "annuler",
@@ -1571,6 +1591,7 @@
       }
     },
     "agreement_verify": {
+      "restrictedRows": {"entity":  "agreement", "paramPath":  "id"},
       "description": "Check a signed agreement's evidence: re-hash the stored files and recompute the seal. A mismatch is recorded and reported, never repaired.",
       "searchKeywords": [
         "vérifier",

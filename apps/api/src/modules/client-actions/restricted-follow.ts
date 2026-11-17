@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Copies the kernel holds of a restricted record follow its list. When an app tells the kernel
-// that who can see one of its records changed (`<app>/<entity>:access_changed`, from the app's
-// one writer of that list), in one privileged transaction of that event's org:
-//   - the record's client actions (the record itself, or the versions the event names) get the
-//     list as `visible_to` while the record is closed, and nothing once it is open, so the
-//     kernel lists them, and their links, for those people alone;
-//   - the record's discussion drops everyone but the person who changed the list: each one who
-//     can still read the record is enrolled again when they next open it;
+// Copies the kernel holds of a restricted record follow its list. When an app changes who can
+// see one of its records (`<app>/<entity>:access_changed`, from the app's one writer of that
+// list, or the claim), the copies move in that writer's own transaction, through one database
+// function that reads the list itself (`kernel.restricted_access_follow`, 0332):
+//   - the record's client actions (the record itself and its versions) get the list as
+//     `visible_to` while the record is closed, and nothing once it is open;
 //   - once closed, its pending approvals become the asker's alone (owner-routed) when the asker
-//     is on the list, and are withdrawn when not, with one Home line to the list.
+//     is on the list, and are cancelled when not.
+// After the commit the event's handler runs the same function again (a reconcile: it changes
+// nothing when the transaction did its part), announces the cancelled requests with one Home
+// line to the list, lets waiting routines carry on, and drops everyone but the person who
+// changed the list from the record's discussion (each one who can still read the record is
+// enrolled again when they next open it).
 // Only record kinds with a list function are followed (`restrictedScopeOfEvent`).
 
 import { sql } from "drizzle-orm"
@@ -32,77 +35,98 @@ function uuids(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && UUID.test(x)) : []
 }
 
-/** Apply one access change of a restricted kind's record to the kernel's copies. */
+/** What the follow did: the list read (null once open) and the requests it cancelled. */
+export interface RestrictedFollowResult {
+  readers: string[] | null
+  withdrawn: string[]
+}
+
+type ExecTx = { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }
+
+/** The record kind and id an access change is about, or null when it is not followed. */
+function accessChangeOf(event: {
+  app?: string
+  entity?: string
+  action?: string
+  entityId?: unknown
+  data?: unknown
+}): { kind: string; id: string } | null {
+  if (event.action !== "access_changed") return null
+  const scope = restrictedScopeOfEvent(event)
+  if (!scope) return null
+  const m = /^restricted:([a-z0-9_]+\.[a-z0-9_]+):([0-9a-f-]{36})$/i.exec(scope)
+  if (!m || typeof event.entityId !== "string" || event.entityId !== m[2]) return null
+  return { kind: m[1] as string, id: m[2] as string }
+}
+
+/**
+ * Bring the kernel's copies of the record to its list, in the caller's transaction (the
+ * writer's own, under row-level security, or a privileged one). Null when the event is not an
+ * access change of a followed kind.
+ */
+export async function followRestrictedAccessInTx(
+  tx: ExecTx,
+  event: { orgId: string; app?: string; entity?: string; action?: string; entityId?: unknown; data?: unknown },
+): Promise<RestrictedFollowResult | null> {
+  const change = accessChangeOf(event)
+  if (!change) return null
+  const ks = sql.raw(quoteIdent(schemaRef("kernel")))
+  const [row] = extractRows<{ r: { state: string; readers?: string[] | null; withdrawn?: string[] } }>(
+    await tx.execute(
+      sql`SELECT ${ks}.restricted_access_follow(${event.orgId}::uuid, ${change.kind}, ${change.id}::uuid) AS r`,
+    ),
+  )
+  if (row?.r.state !== "followed") return null
+  return { readers: row.r.readers ?? null, withdrawn: uuids(row.r.withdrawn) }
+}
+
+/**
+ * After the commit of an access change: reconcile the copies, announce the requests the change
+ * cancelled (the writer's transaction names them in `withdrawn_request_ids`), and prune the
+ * record's discussion.
+ */
 export async function followRestrictedAccess(event: AppEvent): Promise<boolean> {
-  if (event.action !== "access_changed" || !restrictedScopeOfEvent(event)) return false
-  const recordId =
-    typeof event.entityId === "string" && UUID.test(event.entityId) ? event.entityId : null
-  if (!recordId) return false
+  const change = accessChangeOf(event)
+  if (!change) return false
   const data =
     event.data && typeof event.data === "object" ? (event.data as Record<string, unknown>) : {}
-  const closed = data.org_access === "none"
-  const list = uuids(data.visible_to)
-  const targets = [recordId, ...uuids(data.version_ids)]
-  const ks = sql.raw(quoteIdent(schemaRef("kernel")))
-  const visibleTo =
-    closed && list.length > 0 ? sql`${`{${list.join(",")}}`}::uuid[]` : sql`NULL::uuid[]`
+  const actorId = typeof event.actorId === "string" ? event.actorId : null
   let withdrawn: string[] = []
   await withPrivilegedDb(event.orgId, "restricted-access-follow", async (tx) => {
-    await tx.execute(sql`
-      UPDATE ${ks}.client_actions SET visible_to = ${visibleTo}
-       WHERE org_id = ${event.orgId}::uuid AND target_app = ${event.app}
-         AND target_id = ANY(${`{${targets.join(",")}}`}::uuid[])`)
-    // Pending approvals about the record: still the asker's to decide when they stay on the list,
-    // now owner-routed so nobody else sees them; withdrawn when the asker is off it.
-    if (closed) {
-      const about = sql`org_id = ${event.orgId}::uuid AND status = 'pending'
-        AND tool_name LIKE ${`${event.app}:%`}
-        AND (current_payload->>'id' = ANY(${`{${targets.join(",")}}`}::text[])
-          OR current_payload->>'version_id' = ANY(${`{${targets.join(",")}}`}::text[]))`
-      const onList = `{${list.join(",")}}`
-      await tx.execute(sql`
-        UPDATE ${ks}.approval_requests SET resource_owner_id = requested_by
-         WHERE ${about} AND requested_by = ANY(${onList}::uuid[])`)
-      withdrawn = extractRows<{ id: string }>(
-        await tx.execute(sql`
-          UPDATE ${ks}.approval_requests
-             SET status = 'cancelled', decided_at = now(),
-                 reason = 'Cancelled: the record became visible to named people only, and the person who asked is not one of them'
-           WHERE ${about} AND NOT (requested_by = ANY(${onList}::uuid[]))
-          RETURNING id::text AS id`),
-      ).map((r) => r.id)
-      for (const id of withdrawn) {
-        await tx.queueEvent({
-          app: "kernel",
-          entity: "approval_request",
-          action: "update",
-          entityId: id,
-          orgId: event.orgId,
-          actorId: typeof event.actorId === "string" ? event.actorId : null,
-          actorType: "system",
-          data: await loadApprovalSummary(tx as never, event.orgId, id),
-        })
-      }
-      // The list hears that requests about the record went away, on Home: one line, naming
-      // nothing of the record, whoever asked.
-      if (withdrawn.length > 0 && list.length > 0) {
-        await tx.queueEvent({
-          app: "kernel",
-          entity: "restricted_record",
-          action: "requests_withdrawn",
-          entityId: recordId,
-          orgId: event.orgId,
-          actorId: typeof event.actorId === "string" ? event.actorId : null,
-          actorType: "system",
-          data: { targetUserIds: list, count: withdrawn.length },
-        })
-      }
+    const followed = await followRestrictedAccessInTx(tx as never, event)
+    withdrawn = [...new Set([...uuids(data.withdrawn_request_ids), ...(followed?.withdrawn ?? [])])]
+    for (const id of withdrawn) {
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "approval_request",
+        action: "update",
+        entityId: id,
+        orgId: event.orgId,
+        actorId,
+        actorType: "system",
+        data: await loadApprovalSummary(tx as never, event.orgId, id),
+      })
+    }
+    // The list hears that requests about the record went away, on Home: one line, naming
+    // nothing of the record, whoever asked.
+    const list = followed?.readers ?? []
+    if (withdrawn.length > 0 && list.length > 0) {
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "restricted_record",
+        action: "requests_withdrawn",
+        entityId: change.id,
+        orgId: event.orgId,
+        actorId,
+        actorType: "system",
+        data: { targetUserIds: list, count: withdrawn.length },
+      })
     }
     await pruneEntityDiscussion(
       {
         orgId: event.orgId,
-        ref: { app: event.app, entityType: event.entity, entityId: recordId },
-        keepUserId: typeof event.actorId === "string" ? event.actorId : null,
+        ref: { app: event.app, entityType: event.entity, entityId: change.id },
+        keepUserId: actorId,
       },
       tx as never,
     )

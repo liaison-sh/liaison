@@ -3378,8 +3378,16 @@ async function registerSingleApp(
             }
             // A read that may return a restricted row: the kernel stamps the turn after it returns.
             if (tool.restrictedRows !== null && typeof tool.restrictedRows === "object") {
-              const decl = tool.restrictedRows as { entity: string; idPath: string }
-              entry.restrictedRows = { kind: `${desc.name}.${decl.entity}`, idPath: decl.idPath }
+              const decl = tool.restrictedRows as {
+                entity: string
+                idPath?: string
+                paramPath?: string
+              }
+              entry.restrictedRows = {
+                kind: `${desc.name}.${decl.entity}`,
+                ...(decl.idPath ? { idPath: decl.idPath } : {}),
+                ...(decl.paramPath ? { paramPath: decl.paramPath } : {}),
+              }
             }
             // What a tool writes is read only by the person writing it: it narrows a scope-taint
             // refusal, so it counts for a first-party app alone (registration refuses any other).
@@ -4614,6 +4622,7 @@ async function registerSingleApp(
           roles: (desc as any).roles ?? undefined,
           savedViews: (desc as any).savedViews ?? undefined,
           features: (desc as any).features ?? undefined,
+          legalStarterTemplates: (desc as any).legalStarterTemplates ?? undefined,
           entities: safeEntities,
           tools: projectBulkToolSchemas((desc as any).bulk, desc.tools as any),
           configKeys: desc.configKeys ?? undefined,

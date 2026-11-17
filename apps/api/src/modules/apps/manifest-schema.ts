@@ -769,8 +769,15 @@ const toolSchema = {
           type: "string",
           pattern: "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
         },
+        // Where the record's id sits in the call's params, for a write whose result names the
+        // record without its id: the same lookup runs over those ids.
+        paramPath: {
+          type: "string",
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
+        },
       },
-      required: ["entity", "idPath"],
+      required: ["entity"],
+      anyOf: [{ required: ["idPath"] }, { required: ["paramPath"] }],
       additionalProperties: false,
     },
     // On a tool with `agentVisible: false`: the visible tool of the same app to use instead.
@@ -992,6 +999,13 @@ export const appManifestJsonSchema = {
         additionalProperties: false,
       },
     },
+    // The kernel's legal starter document templates this app's users get while it is on; the
+    // corporate ones only while the named feature is on (modules/documents/legal-templates).
+    legalStarterTemplates: {
+      type: "object",
+      properties: { corporateFeature: { type: "string", minLength: 1 } },
+      additionalProperties: false,
+    },
     // Fields of this app's data that a person outside the org can set.
     outsideTextFields: {
       type: "array",
@@ -1207,6 +1221,8 @@ export const appManifestJsonSchema = {
                 minItems: 1,
                 items: { type: "string", pattern: "^[a-z_][a-z0-9_]*$" },
               },
+              // No UPDATE at all: a column recorded empty stays empty.
+              insertOnly: { type: "boolean" },
             },
             required: ["retentionYears"],
             additionalProperties: false,

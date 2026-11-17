@@ -1280,7 +1280,7 @@ function contextProviderErrors(manifest: any): string[] {
   return errors
 }
 
-/** A `restrictedRows` names a record kind the kernel has a list function for, on a read. */
+/** A `restrictedRows` names a record kind the kernel has a list function for. */
 export function restrictedRowsErrors(manifest: any): string[] {
   const errors: string[] = []
   const app = typeof manifest?.name === "string" ? manifest.name : ""
@@ -1292,9 +1292,6 @@ export function restrictedRowsErrors(manifest: any): string[] {
       errors.push(
         `tools.${toolName}.restrictedRows.entity: '${kind}' has no list function; known: ${RESTRICTED_ENTITY_KINDS.join(", ")}`,
       )
-    }
-    if (tool?.readOnly !== true) {
-      errors.push(`tools.${toolName}.restrictedRows: only a readOnly tool declares it`)
     }
   }
   return errors

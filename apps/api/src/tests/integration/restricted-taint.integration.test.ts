@@ -204,6 +204,17 @@ describe("a read of a restricted agreement stamps the turn", () => {
   })
 })
 
+describe("a write on a restricted agreement stamps the turn too", () => {
+  it("a save on the agreement by a person on the list adds its restricted scope, as a read does", async () => {
+    const dm = await minimal.agentDm(orgId, listedId)
+    await turn(listedId, dm, async (call, taint) => {
+      const out = await call("agreements:agreement_update", { id: closedId })
+      expect(JSON.stringify(out)).toContain("AG-2026-101")
+      expect(taint()).toContain(scope)
+    })
+  })
+})
+
 describe("what the turn writes next stays with the list", () => {
   it("a summary posted into a thread with an admin off the list parks, owner-routed to the person who asked", async () => {
     const dm = await minimal.agentDm(orgId, listedId)
@@ -365,6 +376,15 @@ describe("what is derived from a restricted agreement follows its list", () => {
 
   it("an access change narrows the record's client actions to the list and drops an ex-reader from its discussion", async () => {
     const versionId = crypto.randomUUID()
+    await withPrivilegedDb(orgId, "test:closed-version", (tx) =>
+      insertAppRow(tx, "agreements", "agreement_versions", {
+        org_id: orgId,
+        id: versionId,
+        agreement_id: closedId,
+        number: 1,
+        frozen_at: new Date().toISOString(),
+      }),
+    )
     const actionId = await insertClientAction(
       { orgId, clientA: { email: "signer@maison-roux.example", name: "Signer" } } as never,
       { company_id: null, target_id: versionId },
@@ -392,7 +412,14 @@ describe("what is derived from a restricted agreement follows its list", () => {
       SELECT user_id::text AS user_id FROM kernel.thread_participants
        WHERE thread_id = ${discussion}::uuid AND user_id IS NOT NULL`
     expect(seats.map((r) => r.user_id)).toEqual([listedId])
-    // Open again: the client actions are no longer narrowed.
+    // Open again: the client actions are no longer narrowed. The follow reads the stored list.
+    const setAccess = (access: string) =>
+      withPrivilegedDb(orgId, "test:access", (tx) =>
+        tx.execute(
+          dsql`UPDATE app_agreements.agreements SET org_access = ${access} WHERE id = ${closedId}::uuid` as never,
+        ),
+      )
+    await setAccess("editor")
     await followRestrictedAccess({
       app: "agreements",
       entity: "agreement",
@@ -405,6 +432,7 @@ describe("what is derived from a restricted agreement follows its list", () => {
     const [reopened] = await sql<{ visible_to: string[] | null }[]>`
       SELECT visible_to FROM kernel.client_actions WHERE id = ${actionId}::uuid`
     expect(reopened?.visible_to).toBeNull()
+    await setAccess("none")
   })
 
   it("closing the record withdraws a pending card of someone off the list, and makes the list member's card theirs alone", async () => {
@@ -425,6 +453,18 @@ describe("what is derived from a restricted agreement follows its list", () => {
     const onId = await park(listedId, "Renamed by someone on the list")
     expect(typeof offId).toBe("string")
     expect(typeof onId).toBe("string")
+    // The list closes on the person on it: the follow reads the stored list.
+    await withPrivilegedDb(orgId, "test:close-open", async (tx) => {
+      await tx.execute(
+        dsql`UPDATE app_agreements.agreements SET org_access = 'none' WHERE id = ${openId}::uuid` as never,
+      )
+      await insertAppRow(tx, "agreements", "agreement_shares", {
+        org_id: orgId,
+        agreement_id: openId,
+        user_id: listedId,
+        role: "editor",
+      })
+    })
     await followRestrictedAccess({
       app: "agreements",
       entity: "agreement",

@@ -2332,6 +2332,13 @@
       "when": 1900003420004,
       "tag": "0331_restricted_disclosure",
       "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1900003420005,
+      "tag": "0332_restricted_stamp_live_list",
+      "breakpoints": true
     }
   ]
 }

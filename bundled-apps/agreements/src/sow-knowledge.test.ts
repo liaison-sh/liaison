@@ -8,6 +8,7 @@ const LEAD = "11111111-0000-4000-8000-000000000001"
 const READER = "22222222-0000-4000-8000-000000000002"
 const OWNER = "33333333-0000-4000-8000-000000000003"
 const ROLE = "44444444-0000-4000-8000-000000000004"
+const STAFF_SIGNER = "55555555-0000-4000-8000-000000000005"
 
 type Call = {
   name: string
@@ -15,6 +16,7 @@ type Call = {
   target: { type: string; id: string }
   archive: string[]
   readersOnly?: string[]
+  routineOwnersOf?: string[]
 }
 
 async function world(opts: { restricted?: boolean; knowledgeDown?: boolean } = {}) {
@@ -31,6 +33,7 @@ async function world(opts: { restricted?: boolean; knowledgeDown?: boolean } = {
       target: { type: p.target_type, id: p.target_id },
       archive: p.archive_ids ?? [],
       ...(p.readers_only ? { readersOnly: p.readers_only } : {}),
+      ...(p.routine_owners_of ? { routineOwnersOf: p.routine_owners_of } : {}),
     })
     if (down.on)
       return {
@@ -92,18 +95,34 @@ describe("signed text as Knowledge", () => {
     )
     expect(p.shareWithRoles).toEqual([{ roleId: ROLE, access: "viewer" }])
     expect(w.calls[0]?.readersOnly).toBeUndefined()
+    // The kernel adds whoever enabled the Scope check routine.
+    expect(w.calls[0]?.routineOwnersOf).toEqual(["scope-check"])
   })
 
-  it("a restricted agreement's copy is shared with exactly its list, without its creator or the reader role", async () => {
+  it("an open agreement's copy is also shared with the staff who signed that version", async () => {
+    const w = await world()
+    const [first] = (w.db.tables.get("signature_events") ?? []) as Array<Record<string, unknown>>
+    if (first) first.signer_user_id = STAFF_SIGNER
+    await sealVersion(w.ctx, w.versionId)
+    const p = w.calls[0]?.params as Record<string, unknown>
+    expect(p.shareWithUsers).toEqual(
+      [LEAD, READER, OWNER, STAFF_SIGNER].sort().map((userId) => ({ userId, role: "viewer" })),
+    )
+  })
+
+  it("a restricted agreement's copy is shared with exactly its list, without its creator, a staff signer or the reader role", async () => {
     const w = await world({ restricted: true })
+    const [first] = (w.db.tables.get("signature_events") ?? []) as Array<Record<string, unknown>>
+    if (first) first.signer_user_id = STAFF_SIGNER
     await sealVersion(w.ctx, w.versionId)
     const p = w.calls[0]?.params as Record<string, unknown>
     expect(p.shareWithUsers).toEqual(
       [LEAD, READER].sort().map((userId) => ({ userId, role: "viewer" })),
     )
     expect(p.shareWithRoles).toBeUndefined()
-    // The kernel writes it only when the sender is on that list.
+    // The kernel writes it only when the sender is on that list, and adds nobody.
     expect(w.calls[0]?.readersOnly).toEqual([LEAD, READER].sort())
+    expect(w.calls[0]?.routineOwnersOf).toBeUndefined()
   })
 
   it("a copy that could not be made leaves the seal done, says why in the activity, and is written by the seal retry once", async () => {

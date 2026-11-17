@@ -801,7 +801,7 @@ export const approvalEditableFieldsRegistry = createTypedRegistry<
   Array<{
     field: string
     label: string
-    widget: "text" | "richtext" | "checkbox" | "checkbox-per-line" | "key-value-list"
+    widget: "text" | "richtext" | "number" | "checkbox" | "checkbox-per-line" | "key-value-list"
     listSource?: string
     /** Derived payload keys blanked when this field is edited (see
      *  ApprovalEditableField.invalidates in @liaison/shared). */

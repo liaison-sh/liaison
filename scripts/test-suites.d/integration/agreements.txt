@@ -8,3 +8,4 @@ src/tests/integration/agreements-signing-links.integration.test.ts
 src/tests/integration/agreements-sow-knowledge.integration.test.ts
 src/tests/integration/agreements-sow-decided.integration.test.ts
 src/tests/integration/agreements-change-request.integration.test.ts
+src/tests/integration/agreements-scope-group.integration.test.ts

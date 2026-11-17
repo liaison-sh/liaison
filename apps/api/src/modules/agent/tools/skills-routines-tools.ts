@@ -4756,6 +4756,68 @@ async function resolveFlowTemplate(
   }
 }
 
+/**
+ * A template's sender filter that names contact groups by key (`eventFilter.fromGroupKeys`,
+ * `{ key: name }`): each key is the app's own group (`<app>:<key>`), created once under the
+ * owner's row security when the org has none, and the filter is stored with the groups' ids.
+ * Only an authenticated sender's mail matches it (event-routine-gate.ts). Null when the
+ * template names no group key.
+ */
+async function resolveGroupKeyFilter(
+  tpl: NonNullable<ReturnType<typeof routineTemplateRegistry.get>>,
+  appName: string,
+  ctx: AppContext,
+): Promise<
+  { eventFilter: StoredEventFilter } | { error: { code: string; message: string } } | null
+> {
+  const keys = (tpl.eventFilter as { fromGroupKeys?: unknown } | undefined)?.fromGroupKeys
+  if (!keys || typeof keys !== "object" || Array.isArray(keys)) return null
+  const entries = Object.entries(keys as Record<string, unknown>)
+  if (entries.length === 0) return null
+  const { ensureSystemGroup } = await import("~/modules/contacts/groups")
+  const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
+  const ownerUserId = ctx.approverUserId ?? ctx.userId
+  const perms = await withPrivilegedDb(ctx.orgId, "routine-template-group-perms", (tx) =>
+    loadEffectivePermissions(tx, ownerUserId, ctx.orgId),
+  )
+  try {
+    const ids = await withRlsContext(
+      {
+        actorType: "user",
+        userId: ownerUserId,
+        orgId: ctx.orgId,
+        scopes: perms.scopes,
+        dimensionGrants: perms.dimensionGrants,
+      },
+      async (tx) => {
+        const out: string[] = []
+        for (const [key, name] of entries) {
+          const g = await ensureSystemGroup(tx as never, {
+            orgId: ctx.orgId,
+            userId: ownerUserId,
+            systemKey: `${appName}:${key}`,
+            name: typeof name === "string" && name.trim() ? name : key,
+          })
+          out.push(g.id)
+        }
+        return out
+      },
+    )
+    const filterCheck = resolveRoutineEventFilter(tpl.kind, tpl.event ?? null, {
+      fromGroupIds: ids,
+    } as StoredEventFilter)
+    if ("error" in filterCheck) return filterCheck
+    return { eventFilter: filterCheck.filter as StoredEventFilter }
+  } catch (err) {
+    return {
+      error: {
+        code: "group_not_available",
+        message: `The routine reads mail from a contact group its owner cannot keep (${(err as Error).message}). Nothing was enabled.`,
+      },
+    }
+  }
+}
+
 /** Shared template lookup for enable_routine_template: called by BOTH the stage-time
  *  preflight and the post-approval handler, so the two can never drift. */
 function resolveRoutineTemplate(
@@ -4855,6 +4917,9 @@ export async function handleEnableRoutineTemplate(
   // A flow template (0303) is enabled for one project: its own routine per project.
   const flowTpl = tpl.flow ? await resolveFlowTemplate(tpl, params.projectId, ctx) : null
   if (flowTpl && "error" in flowTpl) return flowTpl
+  // A sender filter naming the app's own contact groups by key, resolved for this org.
+  const groupTpl = tpl.flow ? null : await resolveGroupKeyFilter(tpl, params.appName, ctx)
+  if (groupTpl && "error" in groupTpl) return groupTpl
   if (flowTpl) {
     // The flow's own needs (flow-scopes.ts): the template's list plus what its steps need.
     const { flowScopeNeeds, uncoveredFlowNeeds, flowScopeRefusal, withFlowScopes } = await import(
@@ -4891,6 +4956,7 @@ export async function handleEnableRoutineTemplate(
         visibility: tpl.visibility ?? "personal",
         followUp: tpl.followUp === true,
         ...(flowTpl ? { flow: flowTpl.flow, eventFilter: flowTpl.eventFilter } : {}),
+        ...(groupTpl ? { eventFilter: groupTpl.eventFilter } : {}),
         enabled: true,
         status: "active",
         // A kernel template's routine has no app (S28, F5).

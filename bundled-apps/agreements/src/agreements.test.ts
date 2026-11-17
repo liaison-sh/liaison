@@ -118,6 +118,29 @@ describe("the list of agreements", () => {
       ["Master", "signed"],
     ])
   })
+
+  it("the search's status filter offers accepted, and it finds an accepted change request", async () => {
+    const statuses = (
+      manifest.tools as unknown as Record<
+        string,
+        { params: { properties: { status: { enum: string[] } } } }
+      >
+    ).agreements_search?.params.properties.status.enum
+    expect(statuses).toContain("accepted")
+    const db = memoryDb()
+    const ctx = ctxFor(db)
+    await agreementCreate(ctx, { kind: "msa", title: "Master" })
+    await db.insert("agreements", {
+      number: "CR-1",
+      kind: "change_request",
+      title: "Booking page",
+      status: "accepted",
+    })
+    const out = (await agreementsSearch(ctx, { status: "accepted" })) as {
+      items: Array<{ title: string }>
+    }
+    expect(out.items.map((i) => i.title)).toEqual(["Booking page"])
+  })
 })
 
 describe("a proposal's price", () => {

@@ -8,6 +8,7 @@
 // inside the person's decision on the gated tool; nothing here signs.
 
 import { currentShares } from "./access"
+import { runChangeRequestEffects } from "./change-request-effects"
 import {
   acceptChangeRequest,
   CHANGE_REQUEST,
@@ -628,11 +629,17 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
     // transaction, once; then sealed and stamped like a signature.
     const accepted = await acceptChangeRequest(ctx, agreement, WAITING, version.id)
     const sealed = await sealVersion(ctx as SealCtx, version.id)
+    // The work follows the recorded approval: the task, then the time plan, from the change
+    // request's own claim (a crash resumes from the job, never twice).
+    const effects = accepted.accepted
+      ? await runChangeRequestEffects(ctx, agreement.id).catch(() => ({ status: "stopped" }))
+      : undefined
     return {
       status: accepted.accepted ? "accepted" : "ignored",
       signed: done,
       of: all,
       seal: sealed.status,
+      ...(effects ? { effects: effects.status } : {}),
     }
   }
   if (done >= all) {

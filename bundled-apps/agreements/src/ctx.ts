@@ -77,7 +77,18 @@ export interface AgreementsCtx {
     create: Record<string, unknown>
     archive_ids?: string[]
     readers_only?: string[]
+    routine_owners_of?: string[]
   }) => Promise<unknown>
+  /** One declared cross-app call run as the person who sent the target (kernel-found). */
+  client_actions_call_as_sender?: (p: {
+    target_type: string
+    target_id: string
+    tool: string
+    params: Record<string, unknown>
+    idempotency_key?: string
+  }) => Promise<unknown>
+  /** The id of the contact group the app keeps for itself under a key, or null. */
+  client_actions_own_group?: (p: { key: string }) => Promise<unknown>
   /** A declared cross-app call (`cross_app_calls`): the K4 envelope. */
   executeTool?: (name: string, params: Record<string, unknown>) => Promise<CrossAppEnvelope>
   /** Emits one of the app's declared events. */

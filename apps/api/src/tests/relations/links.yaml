@@ -1092,8 +1092,8 @@ links:
 
   - name: agreement-parent
     what: an agreement to the deal, project and quote it came from, and to the agreement it changes or became
-    storedIn: app_agreements.agreements.deal_task_id, project_id, quote_document_id, parent_agreement_id, became_agreement_id (soft)
-    columns: [app_agreements.agreements.deal_task_id, app_agreements.agreements.project_id, app_agreements.agreements.quote_document_id, app_agreements.agreements.parent_agreement_id, app_agreements.agreements.became_agreement_id]
+    storedIn: app_agreements.agreements.deal_task_id, project_id, quote_document_id, parent_agreement_id, became_agreement_id, effects_task_id (soft)
+    columns: [app_agreements.agreements.deal_task_id, app_agreements.agreements.project_id, app_agreements.agreements.quote_document_id, app_agreements.agreements.parent_agreement_id, app_agreements.agreements.became_agreement_id, app_agreements.agreements.effects_task_id]
     paths:
       - bundled-apps/agreements/
       - apps/api/src/apps/projects/

@@ -6,11 +6,13 @@
 // cannot leave (here: the person has no mailbox for that conversation), the kernel withdraws
 // the link in the same call and the change request stays a draft: nothing reaches the client.
 // Approved on its link with the code, the change request is a recorded approval sealed like a
-// signature, accepted, and its parent's amended total rises by its price.
+// signature, accepted, and its parent's amended total rises by its price; its parent's project
+// then gets one milestone task, made as the person who sent the change request.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { createProject } from "~/apps/projects/service/create-project"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -19,15 +21,22 @@ import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { env } from "~/lib/env"
+import { decideApproval } from "~/modules/approvals/decide"
+import { updatePayload } from "~/modules/approvals/edit"
+import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
+import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { mintClientAction } from "~/modules/client-actions/mint"
+import { seedContext } from "~/seed/context"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { asUser } from "~/seed/factories/people/actors"
+import * as minimal from "~/seed/tiers/minimal"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -37,6 +46,11 @@ import {
   dropDoorWorld,
 } from "~/tests/security/portal-doors/fixture"
 import { call, codeOf, tokenOf } from "../../../test-support/client-actions-kit"
+import {
+  appendMailMessages,
+  ensureMailAccount,
+  seedMailConversation,
+} from "../../../test-support/seed/mail"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const SCOPES = ["agreements:agreements:read", "agreements:agreements:write", "mail:*"]
@@ -59,6 +73,11 @@ async function mailTo(email: string, template: string, after: number) {
 let w: DoorWorld
 let parentId = ""
 let versionId = ""
+let projectId = ""
+let conversationId = ""
+let agentThreadId = ""
+/** What the stubbed SMTP was handed: a row here is a mail that left the person's mailbox. */
+const smtpSent: Array<Record<string, unknown>> = []
 const capture = new CaptureProvider()
 let previousMail: EmailProvider
 let prevTsa: string | undefined
@@ -71,6 +90,8 @@ function descriptor(): Record<string, unknown> {
     ...manifest,
     trusted: false,
     _format: "manifest",
+    // As the image installs it: its own catalog tarball, so its transaction keys hold.
+    _firstParty: true,
     _bundlePath: join(
       REPO_ROOT,
       "bundled-apps",
@@ -115,8 +136,64 @@ beforeAll(async () => {
   expect(failedApps).toEqual([])
   await primeOrgApps(w.orgId, 0)
   await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
+  // The person's own mailbox and the client's mail the reply answers (an hour old).
+  SandboxBridgeTestAccess.setSmtpSend(async (_connection, _identifier, message) => {
+    smtpSent.push(message as Record<string, unknown>)
+    return { messageId: `<sent-${smtpSent.length}@studio.test>`, deliveryState: "delivered" }
+  })
+  const seedCtx = seedContext({ orgId: w.orgId, now: new Date() })
+  const { accountId } = await ensureMailAccount(seedCtx, {
+    ownerType: "user",
+    userId: w.admin.userId,
+    email: "studio@studio.test",
+    provider: "imap",
+  })
+  conversationId = (
+    await seedMailConversation(seedCtx, {
+      accountId,
+      subject: "Single sign-on",
+      status: "open",
+      labels: [],
+      isRead: false,
+      isStarred: false,
+      contactId: w.clientA.contactId,
+      messageCount: 1,
+      messages: [],
+    })
+  ).conversationId
+  await appendMailMessages(seedCtx, {
+    conversationId,
+    messages: [
+      {
+        direction: "inbound",
+        from: { email: w.clientA.email },
+        to: [{ email: "studio@studio.test" }],
+        textBody: "Could we add sign-in with our identity provider?",
+        sentAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      },
+    ],
+    updateConversation: true,
+    announce: false,
+  })
+  agentThreadId = await minimal.thread(w.orgId, w.admin.userId)
   parentId = crypto.randomUUID()
   versionId = crypto.randomUUID()
+  const owner: UserContext = {
+    actorType: "user",
+    userId: w.admin.userId,
+    orgId: w.orgId,
+    scopes: ["*"],
+    dimensionGrants: {},
+  }
+  projectId = await asUser(owner, async (tx) => {
+    const made = await createProject({
+      tx: tx as never,
+      orgId: w.orgId,
+      actor: owner,
+      input: { name: "Website", key: "WEB" },
+    })
+    return made.id
+  })
   await withPrivilegedDb(w.orgId, "test:change-request-parent", async (tx) => {
     await insertAppRow(tx, "agreements", "agreements", {
       org_id: w.orgId,
@@ -129,6 +206,7 @@ beforeAll(async () => {
       contact_id: w.clientA.contactId,
       currency: "EUR",
       price_minor: "4200000",
+      project_id: projectId,
       org_access: "editor",
       created_by_user_id: w.admin.userId,
     })
@@ -147,6 +225,7 @@ beforeAll(async () => {
 }, 300_000)
 
 afterAll(async () => {
+  SandboxBridgeTestAccess.setSmtpSend(null)
   await rebuildFilesSelectPolicy()
   forgetOrgApps(w.orgId)
   await shutdownWorkerPool()
@@ -156,6 +235,15 @@ afterAll(async () => {
   await clearRedisPatterns(["ca:*"])
   if (w) {
     await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
+    for (const t of ["tasks", "projects"])
+      await sql`DELETE FROM ${sql(`${schemaRef("app_projects")}.${t}`)} WHERE org_id = ${w.orgId}`
+    for (const t of [
+      "approved_handler_executions",
+      "approval_requests",
+      "thread_participants",
+      "threads",
+    ])
+      await sql`DELETE FROM ${kernel(t)} WHERE org_id = ${w.orgId}`
     await dropDoorWorld(w)
   }
   await releaseTestLock()
@@ -211,7 +299,7 @@ describe("a change request sent through the sandbox", () => {
     expect(links.every((l) => l.kind === "approve" && l.revoked)).toBe(true)
   }, 120_000)
 
-  it("approved on its link with the code, it is a recorded approval sealed like a signature, and the parent's total rises by its price", async () => {
+  it("approved on its link with the code, it is a recorded approval sealed like a signature, the parent's total rises by its price, and its project gets the task as its sender", async () => {
     // As if the reply had left: the change request waits for its client.
     await sql`UPDATE ${app("agreements")} SET status = 'sent' WHERE id = ${crId}`
     const before = capture.sent.length
@@ -266,5 +354,98 @@ describe("a change request sent through the sandbox", () => {
       level: string
     }>
     expect(pkg?.level).toBe("recorded_approval")
+    // The work follows: one milestone task in the parent's project, made by the person who sent
+    // the change request (never a system identity), recorded on the change request.
+    const tasks = (await sql`
+      SELECT id::text AS id, title, created_by::text AS created_by
+        FROM ${sql(`${schemaRef("app_projects")}.tasks`)}
+       WHERE org_id = ${w.orgId} AND project_id = ${projectId}::uuid`) as unknown as Array<{
+      id: string
+      title: string
+      created_by: string | null
+    }>
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({ title: "CR-1: Single sign-on", created_by: w.admin.userId })
+    const [effects] = (await sql`
+      SELECT effects_task_id::text AS task, effects_done_at IS NOT NULL AS done, effects_note AS note
+        FROM ${app("agreements")} WHERE id = ${crId}`) as unknown as Array<{
+      task: string | null
+      done: boolean
+      note: string | null
+    }>
+    expect(effects).toMatchObject({ task: tasks[0]?.id, done: true })
   }, 120_000)
+  it("staged by an agent and its hours edited on the card, the approved change request is priced from the edit, its link is minted and the reply leaves the person's mailbox", async () => {
+    const actor: UserContext = {
+      actorType: "user",
+      userId: w.admin.userId,
+      orgId: w.orgId,
+      scopes: ["*"],
+      dimensionGrants: {},
+    }
+    const staged = (await executeToolCore({
+      toolName: "agreements:change_request_send",
+      orgId: w.orgId,
+      actor,
+      threadId: agentThreadId,
+      origin: "in-app-agent",
+      params: {
+        parent_agreement_id: parentId,
+        title: "Identity provider sign-in",
+        work: ["Sign-in with the client's identity provider"],
+        hours_minutes: 3600,
+        hours_source: "past similar work",
+        rate_minor: "10000",
+        reply: { conversation_id: conversationId, body: "Here is a change request for it." },
+        passage: { version_id: versionId, section: "8.2" },
+        mail_message_id: "mail-2",
+      },
+    } as never)) as { blocked?: { approvalRequestId?: string }; error?: unknown }
+    expect(staged.error).toBeUndefined()
+    const requestId = staged.blocked?.approvalRequestId ?? ""
+    expect(requestId).toMatch(/^[0-9a-f-]{36}$/)
+    // The person changes the hours on the card: 70 h instead of 60 h.
+    const edited = await updatePayload({
+      orgId: w.orgId,
+      requestId,
+      actor,
+      fields: { hours_minutes: 4200 },
+    } as never)
+    expect(edited.currentPayload.hours_minutes).toBe(4200)
+    // The edit re-binds the payload: its fingerprint is the edited payload's.
+    expect(edited.payloadHash).toBe(
+      approvalPayloadHash("agreements:change_request_send", edited.currentPayload),
+    )
+    const [row] = (await sql`
+      SELECT current_payload FROM ${kernel("approval_requests")} WHERE id = ${requestId}`) as unknown as Array<{
+      current_payload: Record<string, unknown>
+    }>
+    expect(row?.current_payload.hours_minutes).toBe(4200)
+    const before = smtpSent.length
+    await decideApproval({ orgId: w.orgId, requestId, actor, decision: "approve" } as never)
+    await drainOutbox()
+    const crs = (await sql`
+      SELECT id, number, status, hours_minutes, price_minor::text AS price FROM ${app("agreements")}
+       WHERE org_id = ${w.orgId} AND parent_agreement_id = ${parentId} AND title = 'Identity provider sign-in'`) as unknown as Array<{
+      id: string
+      number: string
+      status: string
+      hours_minutes: number
+      price: string
+    }>
+    expect(crs).toHaveLength(1)
+    expect(crs[0]).toMatchObject({ status: "sent", hours_minutes: 4200, price: "700000" })
+    const links = (await sql`
+      SELECT a.kind, a.revoked_at IS NULL AS open FROM ${kernel("client_actions")} a
+        JOIN ${app("agreement_versions")} v ON v.id = a.target_id
+       WHERE a.org_id = ${w.orgId} AND v.agreement_id = ${crs[0]?.id}`) as unknown as Array<{
+      kind: string
+      open: boolean
+    }>
+    expect(links).toEqual([{ kind: "approve", open: true }])
+    // The reply left the person's mailbox, once, to the client.
+    const replies = smtpSent.slice(before)
+    expect(replies).toHaveLength(1)
+    expect(JSON.stringify(replies[0])).toContain(w.clientA.email)
+  }, 180_000)
 })

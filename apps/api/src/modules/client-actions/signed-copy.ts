@@ -15,6 +15,11 @@
 // app names its target, and only a target of that app with a decided action has a sender.
 // No copy is written (and the caller says so, then tries again later) when the sender is no
 // longer an active member, or no longer holds the Knowledge write scope.
+//
+// The same path carries the other consequences of a decided record: a call the app declares in
+// its `cross_app_calls` (a change request's task, its time plan) runs as that same sender, with
+// their live permissions and nothing more (`callAsSender`). A decided handler never gains a
+// wider system identity for it.
 
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -91,6 +96,9 @@ export async function writeSignedCopyAsSender(args: {
   /** A restricted record: its list. The writer reads its own document, so a sender off the
    *  list gets no copy written (the copy's readers are exactly the list). */
   readersOnly?: string[]
+  /** The app's own routine templates whose routines' owners read the copy too (an open
+   *  record only): the people who enabled them in this org. */
+  routineOwnersOf?: string[]
 }): Promise<SignedCopyOutcome> {
   const paths = CROSS_APP_INGESTIONS[args.appName] ?? []
   if (!paths.includes(CREATE_TOOL))
@@ -134,6 +142,34 @@ export async function writeSignedCopyAsSender(args: {
         "The person who sent it for signature can no longer write Knowledge documents, so the Knowledge copy was not made. It is tried again on the next signed version or the seal retry.",
     }
 
+  // An open record's copy is also read by the owners of the app's named routines (for
+  // example the routine that checks a client's mail against the signed text).
+  const create = { ...args.create }
+  const templates = (args.routineOwnersOf ?? []).filter((k) => /^[a-z][a-z0-9_-]{0,63}$/.test(k))
+  if (!args.readersOnly && templates.length > 0) {
+    const owners = await withPrivilegedDb(args.orgId, "signed-copy-routine-owners", async (tx) =>
+      extractRows<{ owner_user_id: string }>(
+        await tx.execute(sql`
+          SELECT DISTINCT r.owner_user_id::text AS owner_user_id FROM ${K()}.routines r
+           WHERE r.org_id = ${args.orgId}::uuid AND r.app_name = ${args.appName}
+             AND r.template_key IN (${sql.join(
+               templates.map((k) => sql`${k}`),
+               sql`, `,
+             )})
+             AND r.enabled = true AND r.owner_user_id IS NOT NULL`),
+      ),
+    )
+    const given = Array.isArray(create.shareWithUsers)
+      ? (create.shareWithUsers as Array<{ userId: string; role: string }>)
+      : []
+    const have = new Set(given.map((u) => u.userId))
+    const more = owners
+      .map((o) => o.owner_user_id)
+      .filter((id) => !have.has(id) && id !== sender)
+      .map((userId) => ({ userId, role: "viewer" }))
+    if (more.length > 0) create.shareWithUsers = [...given, ...more]
+  }
+
   const { executeToolCore } = await import("~/modules/apps/execute-tool")
   const idempotencyKey =
     typeof args.create.idempotencyKey === "string" ? args.create.idempotencyKey : undefined
@@ -141,7 +177,7 @@ export async function writeSignedCopyAsSender(args: {
     toolName: CREATE_TOOL,
     orgId: args.orgId,
     actor,
-    params: { ...args.create },
+    params: create,
     origin: "system",
     internalCall: { callerApp: args.appName, idempotencyKey },
   } as never)) as Envelope
@@ -200,4 +236,94 @@ export async function writeSignedCopyAsSender(args: {
     }
   }
   return { status: "created", documentId, senderUserId: sender, archived }
+}
+
+export type AsSenderOutcome =
+  | { status: "completed"; result: unknown; senderUserId: string }
+  | { status: "pending_approval"; approvalId: string | null; senderUserId: string }
+  | { status: "error"; code: string; message: string }
+
+/**
+ * One call the app declares in its `cross_app_calls`, run as the member who sent the target
+ * for signature (or for approval), with that member's live scopes. The caller names the
+ * target; the kernel finds the sender itself, so an app cannot pick whose name it acts in.
+ * `idempotencyKey` is the step's own reference: a second call with it answers the first.
+ */
+export async function callAsSender(args: {
+  orgId: string
+  appName: string
+  declaredCalls: readonly string[]
+  targetType: string
+  targetId: string
+  tool: string
+  params: Record<string, unknown>
+  idempotencyKey?: string
+}): Promise<AsSenderOutcome> {
+  if (!args.declaredCalls.includes(args.tool) || args.tool.startsWith(`${args.appName}:`))
+    return {
+      status: "error",
+      code: "CALL_NOT_DECLARED",
+      message: `${args.appName} declares no call to ${args.tool}. Nothing was done.`,
+    }
+  const sender = await senderOfSignedTarget({
+    orgId: args.orgId,
+    targetApp: args.appName,
+    targetType: args.targetType,
+    targetId: args.targetId,
+  })
+  if (!sender)
+    return {
+      status: "error",
+      code: "NOT_SIGNED",
+      message: "Nobody's decision is recorded on this record yet. Nothing was done.",
+    }
+  const actor = await liveActor(args.orgId, sender)
+  if (!actor)
+    return {
+      status: "error",
+      code: "SENDER_INACTIVE",
+      message:
+        "The person who sent it is no longer an active member, so nothing was done in their name.",
+    }
+  const { executeToolCore } = await import("~/modules/apps/execute-tool")
+  const env = (await executeToolCore({
+    toolName: args.tool,
+    orgId: args.orgId,
+    actor,
+    params: { ...args.params },
+    origin: "system",
+    internalCall: { callerApp: args.appName, idempotencyKey: args.idempotencyKey },
+  } as never)) as Envelope
+  if (env.error) return { status: "error", code: env.error.code, message: env.error.message }
+  if (env.blocked) {
+    const b = env.blocked as { approvalRequestId?: string | null }
+    return {
+      status: "pending_approval",
+      approvalId: b.approvalRequestId ?? null,
+      senderUserId: sender,
+    }
+  }
+  return { status: "completed", result: env.data, senderUserId: sender }
+}
+
+/**
+ * The id of the contact group an app keeps for itself under `<app>:<key>` (created when one of
+ * its routine templates naming the key was enabled), or null when the org has none yet.
+ */
+export async function ownSystemGroupId(args: {
+  orgId: string
+  appName: string
+  key: string
+}): Promise<string | null> {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(args.key)) return null
+  const rows = await withPrivilegedDb(args.orgId, "app-own-contact-group", async (tx) =>
+    extractRows<{ id: string }>(
+      await tx.execute(sql`
+        SELECT id::text AS id FROM ${K()}.contact_segments
+         WHERE org_id = ${args.orgId}::uuid AND kind = 'manual'
+           AND system_key = ${`${args.appName}:${args.key}`}
+         LIMIT 1`),
+    ),
+  )
+  return rows[0]?.id ?? null
 }

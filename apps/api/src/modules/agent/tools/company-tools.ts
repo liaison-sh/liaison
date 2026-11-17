@@ -14,7 +14,7 @@ import type { ApprovalSummary } from "@liaison/shared"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
-import type { RlsClient } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { companies as companiesTable, contacts as contactsTable } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
@@ -48,6 +48,7 @@ import {
   unlinkContactsFromCompany,
   updateCompany,
 } from "~/modules/contacts/companies"
+import { portalMergeSentence } from "~/modules/portal/company-merge"
 
 interface CompanyToolContext {
   userId: string
@@ -590,7 +591,7 @@ export async function handleCompaniesMerge(
       deletedId: r.source.id,
       moved: m,
       managerId: r.managerId,
-      message: `${r.source.name} was merged into ${r.target.name} and deleted: ${parts.join(", ")} now name ${r.target.name}${r.discussionMoved ? ", and its discussion joined" : ""}. ${manager} Sharing of ${r.target.name} did not change.`,
+      message: `${r.source.name} was merged into ${r.target.name} and deleted: ${parts.join(", ")} now name ${r.target.name}${r.discussionMoved ? ", and its discussion joined" : ""}. ${manager} Sharing of ${r.target.name} did not change.${r.portal.keptNames.length > 0 ? ` ${portalMergeSentence(r.portal.keptNames)}` : ""}${r.portal.signedOut > 0 ? ` ${r.portal.signedOut} portal ${r.portal.signedOut === 1 ? "person was" : "people were"} signed out and sign in again.` : ""}`,
     }
   } catch (err) {
     return asToolError(err)
@@ -773,6 +774,20 @@ export async function companiesMergePreflight(
  * one stays, and that the survivor's sharing (portal accounts included) does
  * not widen.
  */
+/** The active portal people of these companies the caller may see (portal admins only, by RLS). */
+async function portalPeopleNames(tx: RlsClient, orgId: string, companyIds: string[]) {
+  if (companyIds.length === 0) return []
+  const rows = extractRows<{ name: string }>(
+    await tx.execute(drizzleSql`
+      SELECT u.name FROM ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.portal_people p
+        JOIN ${drizzleSql.raw(quoteIdent(schemaRef("kernel")))}.users u ON u.id = p.user_id
+       WHERE p.org_id = ${orgId}::uuid AND p.removed_at IS NULL AND u.status = 'active'
+         AND p.company_id = ANY(${`{${companyIds.join(",")}}`}::uuid[])
+       ORDER BY u.name`),
+  )
+  return rows.map((r) => r.name).filter(Boolean)
+}
+
 export async function summarizeCompaniesMerge(
   params: unknown,
   ctx: { tx: RlsClient; orgId: string; userId: string },
@@ -817,6 +832,8 @@ export async function summarizeCompaniesMerge(
   lines.push(
     `Sharing stays as ${targetName}'s: nobody, a portal account included, sees more than before.`,
   )
+  const portalNames = await portalPeopleNames(ctx.tx, ctx.orgId, ids)
+  if (portalNames.length > 0) lines.push(portalMergeSentence(portalNames))
   lines.push("This cannot be undone.")
   return {
     kind: "companies_merge",

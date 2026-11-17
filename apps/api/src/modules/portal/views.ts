@@ -52,7 +52,13 @@ const INVOICING_VIEWS: PortalViewDef[] = [
    AND d.issued_at IS NOT NULL
    AND d.status NOT IN ('draft', 'pending_approval')
    AND d.internal_cancellation IS NOT TRUE
-   AND EXISTS (SELECT 1 FROM portal.shares s WHERE s.kind = 'invoices' AND s.object_id IS NULL)`,
+   AND EXISTS (SELECT 1 FROM portal.shares s WHERE s.kind = 'invoices' AND s.object_id IS NULL)
+   AND NOT EXISTS (
+     SELECT 1 FROM ${schemaRef("kernel")}.portal_people pp
+      WHERE pp.user_id = (SELECT rls_ctx.user_id())::uuid
+        AND pp.sees_only_contact_ids IS NOT NULL
+        AND (d.counterparty_contact_id IS NULL
+             OR NOT (d.counterparty_contact_id = ANY (pp.sees_only_contact_ids))))`,
   },
   {
     // What is still to be invoiced on the company's projects: the step's label and
@@ -66,7 +72,12 @@ const INVOICING_VIEWS: PortalViewDef[] = [
    AND p.company_id = (SELECT portal.company_id())
    AND p.kind = 'work'
    AND b.state IN ('planned', 'drafted')
-   AND EXISTS (SELECT 1 FROM portal.shares s WHERE s.kind = 'invoices' AND s.object_id IS NULL)`,
+   AND EXISTS (SELECT 1 FROM portal.shares s WHERE s.kind = 'invoices' AND s.object_id IS NULL)
+   AND NOT EXISTS (
+     SELECT 1 FROM ${schemaRef("kernel")}.portal_people pp
+      WHERE pp.user_id = (SELECT rls_ctx.user_id())::uuid
+        AND pp.sees_only_share_ids IS NOT NULL
+        AND NOT EXISTS (SELECT 1 FROM portal.shares s WHERE s.object_id = p.id))`,
   },
 ]
 

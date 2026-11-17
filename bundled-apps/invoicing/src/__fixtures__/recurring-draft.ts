@@ -2,7 +2,6 @@
 //
 // Schedules, earlier documents and the in-memory harness shared by the month-end draft job
 // tests (recurring/draft-job.test.ts, run-card.test.ts, amount-check.test.ts).
-import { recurringDraftWrite } from "../recurring/draft-job"
 import type { RunCtx } from "../recurring/run-card"
 import { weekdayOf } from "../recurring/schedule"
 import { createMockDb, type MockDb } from "../test-db"
@@ -82,6 +81,7 @@ export interface Harness {
   restaged: Array<Record<string, unknown>>
   /** The card text each restage carried (its 4th argument), in order. */
   agentCalls: number
+  /** Commits that wrote a draft document (a `db.batch` inserting into `documents`). */
   draftWrites: number
 }
 
@@ -132,6 +132,11 @@ export function harness(
     agentCalls: 0,
     draftWrites: 0,
   }
+  const batch = db.batch.bind(db)
+  db.batch = async (spec) => {
+    if (spec.ops.some((op) => op.insert === "documents")) h.draftWrites += 1
+    return batch(spec)
+  }
   let n = 0
   h.ctx = {
     db: db as never,
@@ -168,10 +173,6 @@ export function harness(
     // A stub agent: any model or agent call made while drafting is counted and fails the test.
     executeTool: async (target: string, params: Record<string, unknown>) => {
       if (target.startsWith("kernel:agents") || target.includes("agent")) h.agentCalls += 1
-      if (target === "invoicing:recurring_draft_write") {
-        h.draftWrites += 1
-        return { status: "completed", result: await recurringDraftWrite(h.ctx, params as never) }
-      }
       const kernel = opts.kernel?.[target] ?? CONTACT_RECORDS[target]
       if (kernel) return { status: "completed", result: kernel(params) }
       // No Stripe app here: the kernel answers an absent app's tool as not found.

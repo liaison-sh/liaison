@@ -5,9 +5,10 @@
 // rates and terms, with `{period}` filled. No model is asked anything. Each draft joins the run of
 // its issuer and issue day, as one item, and the run gets one card.
 //
-// The draft and its lines are written by one call of `recurring_draft_write`, a tool only the
-// app's own jobs reach, in one commit: a job that dies between the document and its lines leaves
-// neither. A
+// The draft and its lines are written in one commit (one `ctx.db.batch` call, the same write the
+// `recurring_draft_write` tool makes): a job that dies between the document and its lines leaves
+// neither. The job makes that write itself rather than through the tool: a nested tool call
+// starts a fresh sandbox run per row, which made a run of a few dozen rows outlast a request. A
 // draft found already written (a run that stopped before this rule, or a person's edit) is checked
 // line by line against its schedule, and a draft that differs needs a fix before it can be ready.
 //
@@ -201,22 +202,22 @@ export async function recurringDraftWrite(
   }
 }
 
-/** Write the draft through the atomic tool. Null when it was not written (the next tick tries again). */
+/** Write the draft and its lines in one commit. Null when it was not written (the next tick tries again). */
 async function writeDraft(
   ctx: RunCtx,
   input: DraftWriteInput,
 ): Promise<{ id: string; created: boolean } | null> {
-  if (!ctx.executeTool) return null
-  const env = await ctx.executeTool(
-    "invoicing:recurring_draft_write",
-    input as unknown as Record<string, unknown>,
-  )
-  const res =
-    env.status === "completed"
-      ? (env.result as { status?: string; document_id?: string; created?: boolean } | null)
-      : null
-  if (res?.status !== "completed" || typeof res.document_id !== "string") return null
-  return { id: res.document_id, created: res.created === true }
+  try {
+    const res = await recurringDraftWrite(ctx, input)
+    if (res.status !== "completed") return null
+    return { id: res.document_id, created: res.created }
+  } catch (err) {
+    // One row's failed write rolls back alone and leaves the other rows of the run to draft.
+    console.warn(
+      `recurring draft: the draft ${String(input.document.external_ref)} was not written: ${(err as Error)?.message ?? String(err)}`,
+    )
+    return null
+  }
 }
 
 /** Whether a draft's lines are the schedule's lines, one by one. */

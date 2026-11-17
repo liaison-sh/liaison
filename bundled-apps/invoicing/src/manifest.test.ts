@@ -1774,6 +1774,8 @@ describe("invoicing manifest", () => {
     // 0.34.0: a quote is a client action target (accept), its link showing the issued PDF the
     //   kernel fingerprints; an accepted change request adds one milestone (billing_step_add,
     //   agreements' call only), and a plan's total takes the accepted amendments it lists.
+    // 0.34.1: the month-end draft job writes each draft and its lines in one commit itself, not
+    //   through a nested tool call per row, so a long run drafts in seconds.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

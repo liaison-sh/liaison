@@ -99,11 +99,11 @@ Ask an agent, with `agreements:evidence:read`:
 
 ## After signing
 
-A signed proposal, statement of work, retainer or time and materials agreement starts its project once, for the agreement's company, and the agreement names it. A second delivery of the signature, or the nightly retry, finds the same project. Time and budgets stay off on that project: a person turns them on, and the agreement keeps whether its proposal had a timebox. When the project's billing plan has an advance step, Invoicing drafts that advance for a person to issue; nothing is issued or sent.
+A signed proposal, statement of work, retainer or time and materials agreement starts its project once, for the agreement's company, and the agreement names it. A second delivery of the signature, or the nightly retry, finds the same project. The project is made as the person who sent the agreement for signature. When the proposal has a timebox, Liaison asks Projects for time and budgets and that timebox; Projects turns time and budgets on only from a person's own turn, so today the project starts with them off and a person turns them on. The agreement records whether its project uses time and budgets, which a later change request follows. When the Scope check routine is on, signing also adds the client to its group. When the project's billing plan has an advance step, Invoicing drafts that advance for a person to issue; nothing is issued or sent.
 
 ## Import a contract signed before Liaison
 
-Ask an agent to import it (`agreement_import`) with its PDF, its kind, title, company and the day it was signed. It is filed as **Imported, signed outside Liaison**: no version, no signature, no evidence and no signature level. Text read from the PDF is kept as unverified. Set its dates afterwards on the agreement.
+Ask an agent to import it (`agreement_import`) with its PDF, its kind, title, company and the day it was signed. It is filed as **Imported, signed outside Liaison**: no version, no signature, no evidence and no signature level. Text read from the PDF is kept as unverified: an agent quotes a section of it with `agreement_passage_get` and the agreement's id, always marked unverified, and the conversation that read it is treated like one that read outside mail. Set its dates afterwards on the agreement.
 
 ## Scopes
 

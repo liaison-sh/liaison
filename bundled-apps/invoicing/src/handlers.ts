@@ -996,6 +996,12 @@ export const quoteSetOutcomePreflightHandler = (
 
 // --- A signed agreement drafts its project's advance (never issues it) ---
 import { onAgreementSignedAdvance } from "./agreement-signed"
+import { onMilestoneTaskDone } from "./milestone-done"
+
+export const onMilestoneTaskDoneHandler = (
+  event: Parameters<typeof onMilestoneTaskDone>[1],
+  ctx: Parameters<typeof onMilestoneTaskDone>[0],
+) => onMilestoneTaskDone(ctx, event)
 
 export const onAgreementSignedAdvanceHandler = (
   event: Parameters<typeof onAgreementSignedAdvance>[1],

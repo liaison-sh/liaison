@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.34.2",
+  "version": "0.35.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -6867,7 +6867,8 @@
       "stripe/refund:failed": "onStripeRefundCreatedEvent",
       "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent",
       "kernel/client_action:decided": "onQuoteClientActionDecidedHandler",
-      "agreements/agreement:signed": "onAgreementSignedAdvanceHandler"
+      "agreements/agreement:signed": "onAgreementSignedAdvanceHandler",
+      "projects/task:status_changed": "onMilestoneTaskDoneHandler"
     },
     "emits": [
       "recurring_run:drafted",
@@ -6962,7 +6963,7 @@
       {"event": "deferred:stripe_tax_review", "kind": "invoicing:stripe_invoice.tax_review", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: its tax needs a decision ({{data.reason}}).", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_stream:switched", "kind": "invoicing:stripe_stream.issuer_switched", "urgency": 60, "summary": "Card subscriptions are now invoiced by {{data.issuer}}. {{data.unpaid}} invoices issued before the change are unpaid: they keep their issuer and numbers. Check the change with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:settings:write"}},
       {"event": "stripe_payment:advance_received", "kind": "invoicing:stripe_payment.advance_received", "urgency": 60, "summary": "{{data.customer}} paid {{data.amount}} ({{data.charge_id}}) before any invoice, and {{data.step_label}} has none yet. Draft the advance invoice from the billing plan, or say it is not an advance and invoice or link the payment as usual. Nothing was issued.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
-      {"event": "billing_step:milestone_no_invoice", "kind": "invoicing:billing_step.milestone_no_invoice", "urgency": 70, "summary": "Done with no invoice yet: {{data.step_label}}. Draft it from the billing plan.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "billing_step:milestone_no_invoice", "kind": "invoicing:billing_step.milestone_no_invoice", "urgency": 70, "summary": "Done with no invoice yet: {{data.step_label}}. Draft it from the billing plan.", "recipients": {"kind": "scope_holders", "scope": "projects:money:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:partial", "kind": "invoicing:recurring_run.partial", "urgency": 70, "summary": "Draft {{data.document_id}} of the month-end run was not issued ({{data.code}}): {{data.reason}} It stays a draft and used no number.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:due", "kind": "invoicing:recurring_run.due", "urgency": 85, "summary": "The month-end run for {{data.period}} waits for approval. {{data.when}}: invoices must issue by {{data.latest_issue_on}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "recurring_run:held", "kind": "invoicing:recurring_run.held", "urgency": 90, "summary": "Month-end invoicing is held until {{data.until}} by the organisation's daily app limit ({{data.job}}). Nothing was drafted or issued meanwhile; it resumes by itself after that time.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},

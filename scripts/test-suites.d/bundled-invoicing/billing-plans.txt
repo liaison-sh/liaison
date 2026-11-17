@@ -2,3 +2,4 @@
 src/billing-plan.test.ts
 src/advances.test.ts
 src/billing-steps-sweep.test.ts
+src/milestone-done.test.ts

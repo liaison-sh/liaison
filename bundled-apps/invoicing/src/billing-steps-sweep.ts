@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// billing-steps-sweep (hourly): milestones whose task is done but which have no invoice yet raise
-// one Home line per project to the people who issue invoices, naming them, so a lost status event
-// or a routine turned off never loses an invoice. A draft of the project whose issue approval is
-// pending holds the line (that approval is the project's one money item). It drafts nothing:
-// a person drafts it (milestone_draft_create). It reads each step's task through projects' own
-// milestone read (done or not, no assignee, time or activity), and settles the stored state of the
-// steps and advance deductions whose documents were issued since.
+// billing-steps-sweep (hourly): a milestone whose task is done but which has no invoice yet is
+// drafted, as the status event would have drafted it (milestone-done.ts), so a lost event never
+// loses an invoice; the draft parks for a person's issue approval and nothing is issued. A step
+// it cannot draft (its plan needs a person) raises one Home line per project to the people who
+// bill the project, naming it. A draft of the project whose issue approval is pending holds the
+// line (that approval is the project's one money item). It reads each step's task through
+// projects' own milestone read (done or not, no assignee, time or activity), and settles the
+// stored state of the steps and advance deductions whose documents were issued since.
 
 import type { CrossAppExecuteTool } from "./cross-app"
-import { stepState } from "./mutations/billing-plan"
+import { milestoneDraftCreate, stepState } from "./mutations/billing-plan"
 
 type Row = Record<string, unknown>
 
@@ -26,6 +27,8 @@ export interface BillingStepsSweepCtx {
 }
 
 export interface BillingStepsSweepResult {
+  /** Done steps drafted by this pass. */
+  drafted: number
   raised: number
   resolved: number
   settled: number
@@ -39,6 +42,7 @@ export async function billingStepsSweep(
   const today = (await ctx.time.civil({ timezone: "UTC" })).date
   const steps = (await ctx.db.findMany("billing_steps", { limit: 2000 })) as Row[]
   let raised = 0
+  let drafted = 0
   let resolved = 0
   let settled = 0
   // The projects whose line is up: a step noticed and not yet taken down.
@@ -126,10 +130,25 @@ export async function billingStepsSweep(
     } catch {
       continue
     }
-    const doneSteps = list.filter((s) => {
+    const doneTasks = list.filter((s) => {
       const task = (read.tasks ?? []).find((t) => t.id === s.task_id)
       return Boolean(task?.terminal && task.isMilestone)
     })
+    // Each done step is drafted; only the ones that cannot be stay on the project's line.
+    const doneSteps: Row[] = []
+    for (const s of doneTasks) {
+      const out = (await milestoneDraftCreate(ctx as never, { taskId: String(s.task_id) })) as {
+        status?: string
+        error?: { code?: string }
+      }
+      if (out?.status === "completed") drafted += 1
+      else if (out?.error?.code !== "already_drafted") doneSteps.push(s)
+    }
+    if (doneSteps.length < doneTasks.length) {
+      // A draft now waits with its issue approval: that is the project's item.
+      if (lineUp.has(projectId)) await takeDown(projectId, list)
+      continue
+    }
     if (doneSteps.length === 0) {
       if (lineUp.has(projectId)) await takeDown(projectId, list)
       continue
@@ -152,7 +171,7 @@ export async function billingStepsSweep(
     }
     raised += 1
   }
-  return { raised, resolved, settled }
+  return { drafted, raised, resolved, settled }
 }
 
 /** The drafts whose issue approval is pending. */

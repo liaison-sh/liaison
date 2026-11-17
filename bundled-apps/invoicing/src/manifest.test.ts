@@ -1777,7 +1777,18 @@ describe("invoicing manifest", () => {
     // 0.34.1: the month-end draft job writes each draft and its lines in one commit itself, not
     //   through a nested tool call per row, so a long run drafts in seconds.
     // 0.34.2: timeline amounts group thousands (6,264.00 EUR).
+    // 0.35.0: a milestone moved to done drafts its step's invoice (and the hourly sweep drafts one
+    //   whose event was lost); the line of a step it cannot draft goes to who bills the project.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
+    const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
+      .events.subscribes
+    expect(subscribes["projects/task:status_changed"]).toBe("onMilestoneTaskDoneHandler")
+    const milestoneLine = (
+      manifest as unknown as {
+        attention: { translations: Array<{ event: string; recipients: { scope?: string } }> }
+      }
+    ).attention.translations.find((t) => t.event === "billing_step:milestone_no_invoice")
+    expect(milestoneLine?.recipients.scope).toBe("projects:money:write")
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"
     ]

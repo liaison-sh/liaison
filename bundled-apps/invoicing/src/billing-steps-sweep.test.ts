@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The hourly sweep of a project's billing plan: a done milestone with no invoice raises one Home
-// line, once per step, and drafts nothing; the line goes once the step has its invoice.
+// The hourly sweep of a project's billing plan: a done milestone with no invoice is drafted (the
+// backstop of a lost status event); one it cannot draft raises one Home line, which goes once the
+// step has its invoice.
 
 import { describe, expect, test } from "bun:test"
 import {
@@ -13,108 +14,77 @@ import {
   withPlan,
 } from "./__tests__/billing-plan-fixtures"
 import { billingStepsSweep } from "./billing-steps-sweep"
-import { invoiceIssue } from "./mutations"
-import { milestoneDraftCreate } from "./mutations/billing-plan"
 
 type Row = Record<string, unknown>
 
+// The job's ctx is the app's own: the sweep drafts through the same mutation a person calls.
 function sweepCtx(h: ReturnType<typeof harness>, emitted: Row[]) {
-  return {
-    db: h.db,
-    executeTool: h.ctx.executeTool,
-    approvals: h.ctx.approvals,
-    time: h.ctx.time,
-    emit: async (e: Row) => {
-      emitted.push(e)
-    },
-  } as never
+  h.ctx.emit = async (e: Row) => {
+    emitted.push(e)
+  }
+  return h.ctx as never
 }
 
+const invoices = (h: ReturnType<typeof harness>) =>
+  h.db.__all("documents").filter((d) => d.type === "invoice")
+
 describe("billing steps sweep", () => {
-  test("a done step with no invoice raises one line, once, and drafts nothing", async () => {
+  test("a done step with no invoice is drafted by the sweep, once, parked for a person, with no line", async () => {
     const h = harness()
     await withPlan(h)
     const emitted: Row[] = []
-    // Nothing done yet: no line.
-    expect(await billingStepsSweep(sweepCtx(h, emitted))).toMatchObject({ raised: 0 })
+    // Nothing done yet: nothing drafted, no line.
+    expect(await billingStepsSweep(sweepCtx(h, emitted))).toMatchObject({ raised: 0, drafted: 0 })
     done(h, T_BETA)
     const first = await billingStepsSweep(sweepCtx(h, emitted))
     const second = await billingStepsSweep(sweepCtx(h, emitted))
-    expect(first.raised).toBe(1)
-    expect(second.raised).toBe(0)
-    expect(emitted).toHaveLength(1)
-    expect(emitted[0]).toMatchObject({
-      entity: "billing_step",
-      action: "milestone_no_invoice",
-      data: { step_label: "Beta", resolved: false },
-    })
-    // It drafted nothing and asked nobody.
-    expect(h.db.__all("documents").filter((d) => d.type === "invoice")).toHaveLength(0)
-    expect(h.approvals).toHaveLength(0)
-    // The person drafts it: the line goes at once, once; the sweep has nothing left to take down.
-    h.ctx.emit = async (e: Row) => {
-      emitted.push(e)
-    }
-    const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
-    expect(d.status).toBe("completed")
-    expect((await billingStepsSweep(sweepCtx(h, emitted))).resolved).toBe(0)
-    expect((await billingStepsSweep(sweepCtx(h, emitted))).raised).toBe(0)
-    const lineEvents = emitted.filter((e) => e.action === "milestone_no_invoice")
-    expect(lineEvents.filter((e) => (e.data as Row).resolved === true)).toHaveLength(1)
-    expect(lineEvents.at(-1)).toMatchObject({ data: { resolved: true } })
+    expect(first).toMatchObject({ drafted: 1, raised: 0 })
+    expect(second).toMatchObject({ drafted: 0, raised: 0 })
+    expect(invoices(h)).toHaveLength(1)
+    expect(invoices(h)[0]).toMatchObject({ status: "draft" })
+    // Its issue approval is the project's one item; nothing was issued and no line went up.
+    expect(h.approvals.filter((a) => a.status === "pending")).toHaveLength(1)
+    expect(emitted.filter((e) => (e.data as Row).resolved === false)).toHaveLength(0)
   })
 
-  test("two milestones done in one month make one Home line for the project, and a waiting draft holds it", async () => {
+  test("a done step the sweep cannot draft raises one line, once, and the line goes once it is drafted", async () => {
     const h = harness()
     await withPlan(h)
     const emitted: Row[] = []
-    h.ctx.emit = async (e: Row) => {
-      emitted.push(e)
-    }
+    const beta = h.db.__all("billing_steps").find((s) => s.task_id === T_BETA) as Row
+    const quote = beta.quote_document_id
+    await h.db.update("billing_steps", String(beta.id), { quote_document_id: crypto.randomUUID() })
     done(h, T_BETA)
-    done(h, T_GAMMA)
     const first = await billingStepsSweep(sweepCtx(h, emitted))
-    expect(first.raised).toBe(1)
-    const raisedLines = () => emitted.filter((e) => (e.data as Row).resolved === false)
-    expect(raisedLines()).toHaveLength(1)
-    expect(raisedLines()[0]).toMatchObject({ entityId: PROJECT })
-    expect(String((raisedLines()[0]?.data as Row | undefined)?.step_label)).toContain("Beta")
-    expect(String((raisedLines()[0]?.data as Row | undefined)?.step_label)).toContain("Gamma")
-    // Drafting one of them takes the line down at once: its issue approval is the project's item.
-    const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
-    if (d.status !== "completed") throw new Error(JSON.stringify(d))
-    expect(emitted.at(-1)).toMatchObject({ entityId: PROJECT, data: { resolved: true } })
-    // While the draft waits, Gamma raises no second line.
-    const waiting = await billingStepsSweep(sweepCtx(h, emitted))
-    expect(waiting.raised).toBe(0)
-    expect(raisedLines()).toHaveLength(1)
-    // Once it is issued, Gamma's line comes up, alone.
-    await invoiceIssue(h.ctx, { draft_id: d.draftId })
+    const second = await billingStepsSweep(sweepCtx(h, emitted))
+    expect(first).toMatchObject({ raised: 1, drafted: 0 })
+    expect(second.raised).toBe(0)
+    const raised = emitted.filter((e) => (e.data as Row).resolved === false)
+    expect(raised).toHaveLength(1)
+    expect(raised[0]).toMatchObject({
+      entity: "billing_step",
+      action: "milestone_no_invoice",
+      entityId: PROJECT,
+      data: { step_label: "Beta", resolved: false },
+    })
+    expect(invoices(h)).toHaveLength(0)
+    // The plan is put right: the next sweep drafts it and the line goes, once.
+    await h.db.update("billing_steps", String(beta.id), { quote_document_id: quote })
     const after = await billingStepsSweep(sweepCtx(h, emitted))
-    expect(after.raised).toBe(1)
-    expect(raisedLines()).toHaveLength(2)
-    expect(String((raisedLines()[1]?.data as Row | undefined)?.step_label)).toBe("Gamma")
+    expect(after.drafted).toBe(1)
+    expect(invoices(h)).toHaveLength(1)
+    expect(emitted.at(-1)).toMatchObject({ data: { resolved: true } })
+    expect((await billingStepsSweep(sweepCtx(h, emitted))).raised).toBe(0)
   })
 
-  test("a draft whose issue approval was turned down or ran out no longer holds the project's line", async () => {
-    for (const ended of ["rejected", "expired"]) {
-      const h = harness()
-      await withPlan(h)
-      const emitted: Row[] = []
-      h.ctx.emit = async (e: Row) => {
-        emitted.push(e)
-      }
-      done(h, T_BETA)
-      done(h, T_GAMMA)
-      await billingStepsSweep(sweepCtx(h, emitted))
-      const d = await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
-      if (d.status !== "completed") throw new Error(JSON.stringify(d))
-      for (const a of h.approvals) a.status = ended
-      // Beta's draft keeps its own milestone off the line; Gamma comes up, alone.
-      const after = await billingStepsSweep(sweepCtx(h, emitted))
-      expect(after.raised).toBe(1)
-      const raised = emitted.filter((e) => (e.data as Row).resolved === false)
-      expect(String((raised.at(-1)?.data as Row | undefined)?.step_label)).toBe("Gamma")
-    }
+  test("two milestones done on one day make two drafts, one per step", async () => {
+    const h = harness()
+    await withPlan(h)
+    const emitted: Row[] = []
+    done(h, T_BETA)
+    done(h, T_GAMMA)
+    expect(await billingStepsSweep(sweepCtx(h, emitted))).toMatchObject({ drafted: 2, raised: 0 })
+    expect(invoices(h)).toHaveLength(2)
+    expect(await billingStepsSweep(sweepCtx(h, emitted))).toMatchObject({ drafted: 0, raised: 0 })
   })
 })

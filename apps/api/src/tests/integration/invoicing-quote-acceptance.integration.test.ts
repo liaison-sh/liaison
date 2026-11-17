@@ -10,7 +10,6 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { sql as drizzleSql } from "drizzle-orm"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -24,6 +23,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { mintClientAction } from "~/modules/client-actions/mint"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -76,12 +76,16 @@ async function storedPdf(bytes: Buffer): Promise<{ id: string; key: string }> {
   const id = crypto.randomUUID()
   const key = `test/${w.orgId}/${id}.pdf`
   await putObject({ key, body: bytes, contentType: "application/pdf" })
-  await withPrivilegedDb(w.orgId, "test:quote-pdf", async (tx) => {
-    await tx.execute(drizzleSql`
-      INSERT INTO ${drizzleSql.raw(schemaRef("kernel"))}.files
-        (id, org_id, app, entity_type, entity_id, filename, mime_type, size_bytes, storage_key)
-      VALUES (${id}, ${w.orgId}, 'invoicing', 'document', ${id}, 'quote.pdf', 'application/pdf',
-              ${bytes.byteLength}, ${key})`)
+  await seedFileRow({
+    id,
+    orgId: w.orgId,
+    app: "invoicing",
+    entityType: "document",
+    entityId: id,
+    filename: "quote.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: bytes.byteLength,
+    storageKey: key,
   })
   return { id, key }
 }

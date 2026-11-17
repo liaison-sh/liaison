@@ -116,7 +116,7 @@ async function callAsSender(
   if (!ctx.client_actions_call_as_sender)
     return {
       status: "error",
-      error: { code: "UNAVAILABLE", message: "This host cannot call as the sender." },
+      error: { code: "SENDER_CALL_UNAVAILABLE", message: "This host cannot call as the sender." },
     }
   return bridgeAnswer<CallAnswer>(
     await ctx.client_actions_call_as_sender({

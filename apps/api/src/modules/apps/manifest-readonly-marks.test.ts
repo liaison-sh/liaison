@@ -73,6 +73,12 @@ const READ_ONLY: Record<string, string[]> = {
     // The invoicing app's internal reads: a reconciliation's billed lines, tasks' done state.
     "reconcile_lines_read",
     "milestone_status_read",
+    // Client reports: the list, one report, a week's sources; and the milestone a client is
+    // shown on an approval link (the kernel's page reads it). Nothing stored.
+    "client_reports_list",
+    "client_report_get",
+    "client_report_sources_get",
+    "milestone_client_action_view",
     "tasks_byAssignee",
     "attentionItems",
     "tasks_byProject",

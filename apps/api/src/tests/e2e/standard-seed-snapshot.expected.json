@@ -61,7 +61,7 @@
   },
   "kernel.apps": {
     "rows": 12,
-    "digest": "a05004ea8733cb5d"
+    "digest": "2d30ecb57fb7e0f5"
   },
   "kernel.attention_events": {
     "rows": 49,
@@ -69,7 +69,7 @@
   },
   "kernel.audit_log": {
     "rows": 223,
-    "digest": "3e0d132ac125adeb"
+    "digest": "f0ee9aa0a0624e16"
   },
   "kernel.connected_accounts": {
     "rows": 5,
@@ -113,19 +113,19 @@
   },
   "kernel.pending_events": {
     "rows": 218,
-    "digest": "63ebe0344e30edc4"
+    "digest": "e60ffd7993754165"
   },
   "kernel.role_dimension_grants": {
     "rows": 1,
     "digest": "e4f244d9734ab9c4"
   },
   "kernel.role_scope_grants": {
-    "rows": 336,
-    "digest": "ac6998c2c6f5cf4c"
+    "rows": 340,
+    "digest": "ae7396ba7d838742"
   },
   "kernel.roles": {
     "rows": 26,
-    "digest": "58823b8b1a4f6b19"
+    "digest": "4fdeed4e9bf1a026"
   },
   "kernel.routine_runs": {
     "rows": 6,

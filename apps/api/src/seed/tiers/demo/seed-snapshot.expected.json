@@ -281,7 +281,7 @@
   },
   "kernel.pending_events": {
     "rows": 362,
-    "digest": "c08156c69d178f7d"
+    "digest": "46152f1e2459e60c"
   },
   "kernel.resource_grants": {
     "rows": 7,
@@ -289,7 +289,7 @@
   },
   "kernel.roles": {
     "rows": 32,
-    "digest": "b5d0feb3a042f17a"
+    "digest": "bfad9e6656b370dc"
   },
   "kernel.routines": {
     "rows": 7,

@@ -57,6 +57,7 @@ const EXPECTED_CLOSURE: Record<string, string> = {
     "via app_mcp_manager.mcp_connections (connection_id -> id)",
   "app_mcp_manager.mcp_tool_policy": "via app_mcp_manager.mcp_connections (connection_id -> id)",
   "app_projects.billing_claims": "direct",
+  "app_projects.client_reports": "direct",
   "app_projects.cost_rates": "direct",
   "app_projects.days_off": "direct",
   "app_projects.deal_values": "direct",

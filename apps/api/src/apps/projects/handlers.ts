@@ -73,6 +73,13 @@ export interface ProjectsMethods {
   projects_reconcileLinesRead: (paramsJson: string) => Promise<string>
   projects_reconcileMark: (paramsJson: string) => Promise<string>
   projects_milestoneStatusRead: (paramsJson: string) => Promise<string>
+  projects_clientReportsList: (paramsJson: string) => Promise<string>
+  projects_clientReportGet: (paramsJson: string) => Promise<string>
+  projects_clientReportSources: (paramsJson: string) => Promise<string>
+  projects_clientReportSaveDraft: (paramsJson: string) => Promise<string>
+  projects_clientReportSendPreflight: (paramsJson: string) => Promise<string>
+  projects_clientReportSend: (paramsJson: string) => Promise<string>
+  projects_milestoneClientActionView: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -2011,4 +2018,46 @@ export async function reconcileMark(params: unknown, ctx: ProjectsCtx): Promise<
 
 export async function milestoneStatusRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_milestoneStatusRead(JSON.stringify(params ?? {})))
+}
+
+// ── Client reports ──────────────────────────────────────────────────────────
+
+export async function clientReportsList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportsList(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportGet(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportSourcesGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSources(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportSaveDraft(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSaveDraft(JSON.stringify(params ?? {})))
+}
+
+/** `client_report_send`'s card: the same refusals as the send, the pinned check and key. */
+export async function clientReportSendPreflight(
+  params: unknown,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  const out = JSON.parse(
+    await ctx.projects_clientReportSendPreflight(JSON.stringify(params ?? {})),
+  ) as { ok?: boolean; pinnedParams?: unknown; error?: { code: string; message: string } }
+  if (out.error) return { error: { ...out.error, retryable: false } }
+  return { ok: true, pinnedParams: out.pinnedParams }
+}
+
+export async function clientReportSend(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSend(JSON.stringify(params ?? {})))
+}
+
+/** What a client is shown on a milestone's approval link (internal: the kernel's page). */
+export async function milestoneClientActionView(
+  params: unknown,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_milestoneClientActionView(JSON.stringify(params ?? {})))
 }

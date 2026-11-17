@@ -300,6 +300,10 @@ export const IMPORT_COVERAGE: Readonly<Record<string, CoverageEntry>> = {
     exempt: "derived",
     reason: "proofs of a reconciliation line, never imported",
   },
+  "app_projects.client_reports": {
+    exempt: "system",
+    reason: "a project's weekly client report, drafted and sent in Liaison, never imported",
+  },
   "app_projects.billing_claims": {
     exempt: "system",
     reason: "billing reservations written when an invoice is made, never imported",

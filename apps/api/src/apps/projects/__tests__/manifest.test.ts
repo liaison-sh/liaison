@@ -138,7 +138,9 @@ describe("projects.manifest", () => {
     // 1.42.0: a planned vs done card has its own page, the link a coding agent hands a person.
     // 1.43.0: createProject takes another app's step as externalRef and returns the project it
     //   already made; the reconcile card offers a line as a change request when agreements is on.
-    expect(projectsManifest.version).toBe("1.43.0")
+    // 1.44.0: client reports (list, read, sources, draft, a person's send) and a milestone as
+    //   a client action target.
+    expect(projectsManifest.version).toBe("1.44.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {
@@ -640,6 +642,8 @@ describe("projects.manifest", () => {
       ["merge", "mergeTasksPreflight", "summarizeMergeTasks"],
       ["status_delete", "deleteStatusPreflight", "summarizeDeleteStatus"],
       ["checklist_remove_item", "checklistRemoveItemPreflight", "summarizeRemoveChecklistItem"],
+      // A client report goes out only on a person's decision (never auto-approved).
+      ["client_report_send", "clientReportSendPreflight", "summarizeClientReportSend"],
     ]
     for (const [name, preflight, summarizer] of stillGated) {
       expect(tools[name]!.gated, `${name}.gated`).toBe(true)
@@ -650,7 +654,13 @@ describe("projects.manifest", () => {
       .filter(([, t]) => t.gated === true)
       .map(([n]) => n)
       .sort()
-    expect(gatedNames).toEqual(["checklist_remove_item", "delete", "merge", "status_delete"])
+    expect(gatedNames).toEqual([
+      "checklist_remove_item",
+      "client_report_send",
+      "delete",
+      "merge",
+      "status_delete",
+    ])
   })
 
   it("projects.manifest.get-accepts-explicit-taskId-and-projectId (task detail regression)", () => {

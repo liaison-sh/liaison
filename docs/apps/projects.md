@@ -186,6 +186,16 @@ A routine can react to a project's status changes and act on its tasks without a
 
 To set one up from the project, open **Automations** in the project's top bar (on a phone, in the project menu). The tab lists the project's automations with an on/off switch, the trigger in words (its statuses as coloured pills), the last run's state as a dot with how long ago it ran, and a small strip with one segment per step of that run; click a name to open the routine. **New automation** shows the four templates. Pick one and the flow editor opens filled in for this project, its statuses already chosen (if the project has no status of that name, the editor says which one is missing until you pick one). Its name starts as the template and the project ("When a status is reached, assign · Website"), and that name is what lists and the routine's page show. Adjust the steps, the name and the description, then **Create the automation**.
 
+## Send a client report
+
+A client report is a short status report on one project for its client, sent by mail and shown on the client portal. A person always approves it before it goes: no routine, schedule or approval policy sends one.
+
+A report exists only for a project whose reports a person shared with the client on the company's client access panel. Each section belongs to one portal share (`project_reports`, `project_progress` or `project_hours`), and a section of a share that is not open is refused when the draft is saved, and again when it is sent if the share was closed meanwhile (`SHARE_CLOSED`).
+
+The `client-reports` routine template drafts one report per shared project on Friday at 15:00. It reads the week's sources with `client_report_sources_get`: task titles and statuses, pull request titles and the messages of threads linked to the project. Task comments and internal notes are not part of them. Hours appear only as the totals the portal shows (billed hours, or the retainer's hours so far), and only when the hours share is open and the project uses time and budgets. A week where nothing moved gets no draft.
+
+`client_report_send` parks a card for a person (it expires after three days, and nothing goes out). The card shows what goes out and to whom, and warns, without blocking, on any text that matches an internal note of the project or the name of an active member of your team. Once sent, the report does not change: a correction goes in next week's report. Reading and writing reports needs `projects:reports:read` and `projects:reports:write` (the lead role holds both).
+
 ## Project templates
 
 A template holds the status columns, the task fields and a task tree a new project starts with, each task with its priority, status and field values. Ask an agent to save one (`template_save`), from scratch or by copying a project's statuses, fields and open tasks, then to create a project from it (`instantiate_template`). A stored template that can no longer be read refuses to create a project rather than create one without its tasks; `templates_list` marks it `unreadable`.

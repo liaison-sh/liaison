@@ -113,14 +113,19 @@ const CATALOG_DEMO_APPS = [
  * With the database app installed here as on a demo box (it was only when an
  * earlier file of the suite had installed it): 362 outbox events, its role
  * events (+3), on the runner and locally alike.
+ * Re-pinned 2026-11-17 (a working day) to the runner's figure, 6 748 round trips in 659
+ * transactions: the agreements app, installed on the instance as on a demo box since that day,
+ * took the seed to 6 717-6 723 in 653-654 locally (inside the margin, so the pin stayed), and the
+ * runner counts about 25 more than this Mac, which crossed it. The same day's fix round moved
+ * nothing here: 6 723 in 654 locally before and after it.
  */
 const PRODUCTS_BASELINE = {
   outboxEvents: 362,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_668,
-  transactions: 650,
+  statements: 6_748,
+  transactions: 659,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across
@@ -145,12 +150,15 @@ const SAAS_BASELINE = {
   // runner, 507 outbox events: a status change event per seeded task (+35), less
   // the role events of the four apps that moved to the catalog (-12).
   // 510 with the database app installed here as on a demo box (+3 role events).
+  // Re-pinned 2026-11-17 to the runner's figure, 8 304 in 852: the agreements app installed on
+  // the instance as on a demo box took it to 8 214-8 219 in 836-837 locally (inside the margin),
+  // and the runner's usual excess over this Mac (about one percent) crossed it.
   outboxEvents: 510,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_153,
-  transactions: 832,
+  statements: 8_304,
+  transactions: 852,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
@@ -191,14 +199,19 @@ const SAAS_BASELINE = {
  * permissions), the contacts read once, and each seeded invoice stamped with its company from one
  * read of the contacts: 13 521 round trips in 1 223 transactions, 383 outbox events (+7). Products
  * 6 723 in 654 and software 8 214 in 836: inside their margins, their pins unchanged.
+ * Re-pinned 2026-11-17 (the same working day) to the runner's figure, 13 682 round trips in
+ * 1 250 transactions: 13 538 in 1 224 locally once the portal and agreements fixes landed (+17
+ * in 1: the agreements layer opens each agreement's shares as their owner, and the portal shares
+ * are read under the sharer's own row security), and the runner counts about one percent more
+ * than this Mac. Outbox events unchanged.
  */
 const STUDIO_BASELINE = {
   outboxEvents: 383,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 13_521,
-  transactions: 1_223,
+  statements: 13_682,
+  transactions: 1_250,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

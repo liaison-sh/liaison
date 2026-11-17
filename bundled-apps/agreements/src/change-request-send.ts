@@ -9,10 +9,10 @@
 // person's mailbox under the same check. A reply that fails revokes the link, and the change
 // request stays a draft. Nothing is marked started.
 
+import type { DbBatchOp } from "@liaison/app-sdk"
 import { accessOps, currentShares, emitAccessChanged, type OrgAccess } from "./access"
 import { agreementPrepare } from "./agreements"
 import { CHANGE_REQUEST, changeRequestPrice } from "./change-requests"
-import type { DbBatchOp } from "@liaison/app-sdk"
 import {
   type AgreementsCtx,
   actingAgentId,

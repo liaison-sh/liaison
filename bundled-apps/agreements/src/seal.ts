@@ -252,8 +252,7 @@ async function notEverySigner(ctx: SealCtx, events: SignatureEvent[]): Promise<s
   if (!group || group.length === 0)
     return "The send behind this version cannot be read: it is not sealed."
   const ids = new Set(events.map((e) => e.client_action_id))
-  const positive = (d: string | null) =>
-    d === "signed" || d === "accepted" || d === "approved"
+  const positive = (d: string | null) => d === "signed" || d === "accepted" || d === "approved"
   if (group.some((g) => !positive(g.decision) || !ids.has(g.id)) || ids.size !== group.length)
     return `${ids.size} of ${group.length} signatures are recorded on this version: it is sealed once every signer's is.`
   return null

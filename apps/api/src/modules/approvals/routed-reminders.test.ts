@@ -254,7 +254,8 @@ describe("routed reminders: a sweep's page limit starves no row", () => {
     return {
       id,
       org_id: org,
-      handle: `APR-${id.slice(0, 8)}${id.slice(-4)}`,
+      // The whole id: 4,100 handles cut from eight random hex digits collide about once in 500 runs.
+      handle: `APR-${id.replace(/-/g, "")}`,
       thread_id: thread,
       originating_thread_id: thread,
       tool_name: "projects:createTask",

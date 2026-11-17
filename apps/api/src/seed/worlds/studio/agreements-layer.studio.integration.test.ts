@@ -12,13 +12,15 @@ import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { app } from "~/app"
 import { withPortalContext } from "~/db/portal-rls"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
+import { activeVersionRows } from "~/modules/apps/activation"
 import { resetAppRegistries } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import { uninstallApp } from "~/modules/apps/install-service"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
 import { createSession } from "~/modules/auth/auth"
@@ -43,6 +45,8 @@ const PLAN = studioAgreements(BOARD_DATE)
 
 let orgId = ""
 let ownerId = ""
+/** Whether this file installed the app: a later file in the same process must not inherit it. */
+let installedAgreements = false
 
 async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
   return withPrivilegedDb(orgId, "studio-agreements-layer", async (tx) =>
@@ -98,6 +102,9 @@ beforeAll(async () => {
   await initSandboxPool()
   registerTranslatorConsumer()
   await installFromDist("invoicing", crypto.randomUUID())
+  installedAgreements =
+    (await withSystemDb("test-agreements-layer", (db) => activeVersionRows(db, "agreements")))
+      .length === 0
   await installFromDist("agreements", crypto.randomUUID())
   const slug = `studio-agr-${crypto.randomUUID().slice(0, 8)}`
   const result = await seedDemoWorld({
@@ -116,6 +123,8 @@ beforeAll(async () => {
 }, 900_000)
 
 afterAll(async () => {
+  // The install is instance-wide: left in place, every org a later file seeds holds the app.
+  if (installedAgreements) await uninstallApp({ name: "agreements" })
   await shutdownSandboxPool()
   resetAppRegistries()
   DemoModeTestAccess.set(null)

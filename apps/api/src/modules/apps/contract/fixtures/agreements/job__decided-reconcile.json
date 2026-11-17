@@ -10,6 +10,14 @@
         "{\"where\":{\"status\":{\"in\":[\"sent\",\"partly_signed\"]}},\"limit\":500}"
       ],
       "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "agreements",
+        "{\"where\":{\"status\":{\"in\":[\"signed\",\"accepted\"]}},\"limit\":500}"
+      ],
+      "reply": "[]"
     }
   ]
 }

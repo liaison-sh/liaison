@@ -141,7 +141,12 @@ function actionOut(r: MintResult, signOrder: number | null) {
  * run, another event's handler included: none.
  */
 export function decidedActionFor(run: {
-  bridgeOptions?: { jobsAttributedToSystem?: boolean; decidedActionId?: string; currentJob?: unknown; origin?: string }
+  bridgeOptions?: {
+    jobsAttributedToSystem?: boolean
+    decidedActionId?: string
+    currentJob?: unknown
+    origin?: string
+  }
   actorType?: string
   actingAgentId?: string | null
   routineId?: string | null

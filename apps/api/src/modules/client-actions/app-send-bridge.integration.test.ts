@@ -337,7 +337,9 @@ describe("an app's send through the bridge", () => {
       targetId,
     }
     expect((await peopleOfSignedTarget(base))?.approver).toBe(admin)
-    expect((await peopleOfSignedTarget({ ...base, decidedActionId: a2?.id }))?.approver).toBe(member)
+    expect((await peopleOfSignedTarget({ ...base, decidedActionId: a2?.id }))?.approver).toBe(
+      member,
+    )
     // A link that was not decided positively names nobody.
     expect(await peopleOfSignedTarget({ ...base, decidedActionId: failed[0]?.id })).toBeNull()
   })
@@ -349,15 +351,26 @@ describe("an app's send through the bridge", () => {
     expect(decidedActionFor({ bridgeOptions: handler, approved: false, named: other })).toBe(id)
     // Another event's handler (no decided event) gets none, whatever the app names.
     expect(
-      decidedActionFor({ bridgeOptions: { jobsAttributedToSystem: true }, approved: false, named: id }),
+      decidedActionFor({
+        bridgeOptions: { jobsAttributedToSystem: true },
+        approved: false,
+        named: id,
+      }),
     ).toBeNull()
-    expect(decidedActionFor({ bridgeOptions: { currentJob: {} }, approved: false, named: id })).toBe(id)
+    expect(
+      decidedActionFor({ bridgeOptions: { currentJob: {} }, approved: false, named: id }),
+    ).toBe(id)
     // An agent's, a routine's, an approval's or a person's own run: none.
     expect(
       decidedActionFor({ bridgeOptions: handler, actorType: "agent", approved: false, named: id }),
     ).toBeNull()
     expect(
-      decidedActionFor({ bridgeOptions: { currentJob: {} }, routineId: "r", approved: false, named: id }),
+      decidedActionFor({
+        bridgeOptions: { currentJob: {} },
+        routineId: "r",
+        approved: false,
+        named: id,
+      }),
     ).toBeNull()
     expect(decidedActionFor({ bridgeOptions: handler, approved: true, named: id })).toBeNull()
     expect(

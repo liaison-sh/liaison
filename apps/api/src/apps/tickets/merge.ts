@@ -198,8 +198,12 @@ export async function mergeTickets(
   // them: refuse a source of another company, or one more sensitive than the target. Every
   // source is asked before anything is written.
   const targetShown = await portalVisible(tx, orgId, target)
+  // Each source is read once, here; the writes below use these rows (the guarded update still
+  // refuses a source merged meanwhile).
+  const sourceRows = new Map<string, TicketRow>()
   for (const sourceId of params.sourceTicketIds) {
     const source = await fetchTicket(tx, orgId, sourceId)
+    if (source) sourceRows.set(sourceId, source)
     if (!source) {
       return {
         error: { code: "not_found", message: `source ${sourceId} not found`, retryable: false },
@@ -242,7 +246,7 @@ export async function mergeTickets(
 
   let totalMessageCount = 0
   for (const sourceId of params.sourceTicketIds) {
-    const source = await fetchTicket(tx, orgId, sourceId)
+    const source = sourceRows.get(sourceId)
     if (!source) {
       return {
         error: { code: "not_found", message: `source ${sourceId} not found`, retryable: false },

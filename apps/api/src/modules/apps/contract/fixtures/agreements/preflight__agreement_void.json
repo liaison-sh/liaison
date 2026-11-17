@@ -1,7 +1,7 @@
 {
   "entry": "preflight:agreement_void",
   "params": {
-    "id": "9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1",
+    "id": "36481e64-0ed1-419b-b6d6-93d08da312c6",
     "reason": "Terms changed"
   },
   "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
@@ -11,8 +11,8 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["agreements", "9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1"],
-      "reply": "{\"id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:33:33.743681+00\",\"updated_at\":\"2026-11-17 02:33:33.889741+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"463ee78d-49c4-4414-9b37-01093719223f\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
+      "args": ["agreements", "36481e64-0ed1-419b-b6d6-93d08da312c6"],
+      "reply": "{\"id\":\"36481e64-0ed1-419b-b6d6-93d08da312c6\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 08:26:21.54079+00\",\"updated_at\":\"2026-11-17 08:26:21.678428+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"70026b06-94e4-40fb-b8ba-39079afa6f0f\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null,\"project_time_budgets\":null,\"project_timebox_minutes\":null,\"effects_claim\":null,\"effects_claimed_at\":null,\"effects_task_id\":null,\"effects_timebox_minutes\":null,\"effects_time_plan\":null,\"effects_billing\":null,\"effects_done_at\":null,\"effects_note\":null,\"imported_text\":null}"
     }
   ]
 }

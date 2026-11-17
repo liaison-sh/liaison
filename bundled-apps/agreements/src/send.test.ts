@@ -773,8 +773,14 @@ describe("every signer's signature before the seal", () => {
     const { id, prepared } = await frozen(db)
     await db.update("agreements", id, { status: "sent" })
     const ctx = ctxFor(db)
-    ctx.records.set("ca-1", record({ id: "ca-1", sign_order: null, typed_name: "Paul Morel", group: both }))
-    ctx.records.set("ca-2", record({ id: "ca-2", sign_order: null, typed_name: "Anne Morel", group: both }))
+    ctx.records.set(
+      "ca-1",
+      record({ id: "ca-1", sign_order: null, typed_name: "Paul Morel", group: both }),
+    )
+    ctx.records.set(
+      "ca-2",
+      record({ id: "ca-2", sign_order: null, typed_name: "Anne Morel", group: both }),
+    )
     const out = (await onClientActionDecided(ctx, {
       data: {
         id: "ca-2",
@@ -818,7 +824,12 @@ describe("every signer's signature before the seal", () => {
       code_verified_at: "2026-11-16",
       signed_at: "2026-11-16",
     })
-    const links = both.map((g) => ({ id: g.id, invited_name: "x", sign_order: null, state: "decided" }))
+    const links = both.map((g) => ({
+      id: g.id,
+      invited_name: "x",
+      sign_order: null,
+      state: "decided",
+    }))
     const read = ctx.client_actions_record
     ctx.client_actions_record = async (p) =>
       "target_id" in p ? { status: "ok", links } : read?.(p)

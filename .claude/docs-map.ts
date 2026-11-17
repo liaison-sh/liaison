@@ -78,7 +78,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/projects/import-deal-kind*", pages: ["sales/importing-companies-and-deals", "sales/deals"] },
   { glob: "apps/api/src/apps/projects/service/deals*", pages: ["sales/deals", "sales/quiet-deals", "sales/follow-ups", "sales/forecast"] },
   { glob: "apps/web/src/modules/contacts/Compan*", pages: ["sales/companies", "apps/contacts"] },
-  { glob: "apps/web/src/modules/portal/**", pages: ["apps/contacts"] },
+  { glob: "apps/web/src/modules/portal/**", pages: ["apps/contacts", "apps/client-portal"] },
   { glob: "apps/web/src/modules/contacts/Activity*", pages: ["sales/companies", "apps/contacts"] },
   { glob: "apps/web/src/modules/projects/Deal*", pages: ["sales/deals", "apps/projects"] },
   { glob: "apps/web/src/modules/projects/CompanyWorkPanel*", pages: ["sales/companies", "apps/projects"] },

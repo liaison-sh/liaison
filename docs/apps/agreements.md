@@ -5,6 +5,37 @@ description: "Draft proposals, statements of work, contracts and any PDF, keep t
 
 The Agreements app keeps your proposals, statements of work, contracts and any PDF you upload as drafts, checks them before they go out for a simple electronic signature, and keeps the templates they come from.
 
+## What a signature here is
+
+Simple electronic signature: the signer reads the document, confirms with a code sent by email, and types their name. You keep the proof.
+
+What that shows, and what it does not:
+
+- It shows that someone who could read the signer's mailbox opened the document, proved the code and typed that name and capacity, at a recorded time from a recorded device. It does not check an identity document.
+- It is the simple level only. Liaison offers no higher signature level, and the signed PDF carries signature pages, not a signature embedded in the file.
+- One outside timestamp covers the sealed package, once the last signer signed: each signer's own time is the server's clock.
+- The copy on your server is the weakest proof, since whoever administers its database could change it. The signers' copies by email and the outside timestamp are the proof that does not depend on your server.
+
+In a demo organization, seeded signatures are stand-ins: the agreement says "In this demo the signature, seal and timestamp are stand-ins. No signature took place.", **verify** answers "stand-in" and checks nothing, and there is no evidence file to download or check.
+
+## Who does what
+
+| Who | Does |
+|---|---|
+| A person with `agreements:agreements:write` | Drafts, sets the price, prepares and sends. |
+| An agent | Drafts, prepares, reads and quotes. Its sends, reminders, new links, voids and template saves wait for a person's approval. It never sets a price and never signs, accepts or decides anything. |
+| A signer outside the organization | Reads, proves the code, signs or declines on their own link (or on the client portal). |
+| A colleague who signs | Signs in their own session, from their Home. |
+| People with `agreements:evidence:read` | Read and verify the proof; device details need `agreements:evidence:devices`. |
+| Administrators | See nothing of an agreement closed to the organization while someone on its list is active (see below). |
+
+## Set up signing on your server
+
+- `LIAISON_TSA_URL`: the RFC 3161 timestamp authority. Without it, a send for signature is refused with `TIMESTAMP_NOT_CONFIGURED`; drafts, templates, preparing and acceptances that need no stamp keep working.
+- `LIAISON_TSA_CHAIN_FILE` (a path, preferred) or `LIAISON_TSA_CHAIN_PEM` (inline): the authority's published certificate chain, the only certificates a timestamp is checked against. A URL with no chain is a configuration error: nothing is stamped.
+- `LIAISON_TSA_ALLOW_PRIVATE`: lets the server reach an authority on a private address, for a test authority only. Off by default.
+- The render service `pdf-render` checks and pictures uploaded PDFs. Without it, an uploaded PDF is refused with `PDF_RENDER_UNAVAILABLE`; agreements Liaison writes from a template or a brief need no render service. See [Run without the render service](../self-hosting/docker.md#run-without-the-render-service).
+
 ## Draft an agreement
 
 Ask an agent, or use the app: an agreement starts as a draft from a template, a short brief, or an uploaded PDF (kind **other**, where a person says what the document is). Every agreement gets its number from its series: `PR-` for proposals, `DOC-` for an uploaded PDF, `AG-` for the rest, with the year.
@@ -50,7 +81,7 @@ The audit log shows what it recorded about a closed agreement to the people on i
 
 A signer opens the link, reads the document, proves the code sent to their address and types their name. A link whose code was never proved can read and decline, never sign. Each signature is recorded once; the agreement shows **partly signed**, then **signed** when the last signer signed. A decline closes it as **declined**.
 
-A server signs only with a timestamp authority set up (`LIAISON_TSA_URL`). On the hosted edition, signatures are off unless the operator turns them on (`LIAISON_MANAGED_SIGNING_ENABLED`).
+A server signs only with a timestamp authority set up (see [Set up signing on your server](#set-up-signing-on-your-server)). On the hosted edition, signatures are off unless the operator turns them on (`LIAISON_MANAGED_SIGNING_ENABLED`).
 
 ## Follow up a send
 
@@ -86,7 +117,7 @@ Anyone holding an evidence file (the staff file or a signer's copy) can check a 
 
 The page also shows the seal (compare it with the one in the signer's mail), says whether the timestamp names this seal, and on the staff file whether the signature record is the sealed one. A signer's copy leaves other people's devices out, so its record is not checked. The page does not check the timestamp authority's signature: it shows the `openssl ts -verify` line for that.
 
-`packages/evidence-check/verify-with-openssl.sh <evidence.zip> <tsa-chain.pem>` runs every check with openssl alone, the timestamp's signature included. `tsa-chain.pem` is the timestamp authority's published certificate chain (the one set as `LIAISON_TSA_CHAIN_FILE`); the zip does not carry it, so that the file cannot vouch for itself.
+`packages/evidence-check/verify-with-openssl.sh <evidence.zip> <tsa-chain.pem>` runs every check with openssl alone, the timestamp's signature included. `tsa-chain.pem` is the timestamp authority's published certificate chain (the one set as `LIAISON_TSA_CHAIN_FILE` or `LIAISON_TSA_CHAIN_PEM`); the zip does not carry it, so that the file cannot vouch for itself.
 
 Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, a set field never changes, and a signature's record is never updated once written, an empty field included.
 

@@ -10,6 +10,7 @@ import { app } from "~/app"
 import { extractRows, sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { createPortalSession } from "~/modules/auth/auth"
+import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { purgeExpiredAuditLog, purgeExpiredPortalLog } from "~/modules/org/audit-retention"
 import { PortalAccessError, readPortalAccessLog, setPortalSettings } from "~/modules/portal/access"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -90,6 +91,17 @@ describe("what the access log records", () => {
       readPortalAccessLog({ db: tx, companyId: w.companyA }),
     )
     expect(log.map((r) => r.action)).toContain("portal.view")
+    // And in the person's data subject export, with their portal account.
+    const bundle = await withRlsContext(memberContext(w, ["*"]), (tx) =>
+      buildDataSubjectBundle(w.clientA.contactId, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        db: tx,
+      }),
+    )
+    if ("error" in bundle) throw new Error(bundle.error.message)
+    expect(bundle.records.portal.account?.userId).toBe(w.clientA.userId)
+    expect(bundle.records.portal.accessLog.map((r) => r.action)).toContain("portal.view")
   })
 })
 

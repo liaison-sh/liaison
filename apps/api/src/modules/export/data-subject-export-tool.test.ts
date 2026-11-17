@@ -112,13 +112,15 @@ describe("buildDataSubjectBundle — DSR assembly [BL-261]", () => {
     expect(bundle.records.shopify.includedInBundle).toBe(false)
     expect(bundle.records.shopify.note.toLowerCase()).toContain("live connector")
     // No invented record types leaked into the bundle. `memory` is P4m-T32's
-    // one appended section, following the same one-section-per-data-holder shape.
+    // one appended section, following the same one-section-per-data-holder shape; `portal`
+    // the client portal's (account, access log, requests to sign).
     expect(Object.keys(bundle.records).sort()).toEqual([
       "deals",
       "identity",
       "invoices",
       "memory",
       "payments",
+      "portal",
       "recurringSchedules",
       "shopify",
       "tickets",

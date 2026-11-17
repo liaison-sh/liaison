@@ -367,6 +367,37 @@ export interface DataSubjectExportBundle {
       issuedAt: string | null
       dueAt: string | null
     }>
+    /**
+     * The subject's client portal: their account (made from this contact), its access
+     * log (sign-ins, views, downloads, approvals) and the requests to sign, accept or
+     * approve sent to them. Each part reads under the caller's own rights: empty for
+     * a caller without the portal and client action scopes.
+     */
+    portal: {
+      account: {
+        userId: string
+        companyId: string
+        invitedAt: string | null
+        lastSignInAt: string | null
+        removedAt: string | null
+      } | null
+      accessLog: Array<{
+        at: string | null
+        action: string
+        entityType: string | null
+        entityId: string | null
+      }>
+      clientActions: Array<{
+        id: string
+        kind: string
+        target: string
+        invitedEmail: string
+        decision: string | null
+        decidedAt: string | null
+        revokedAt: string | null
+        createdAt: string | null
+      }>
+    }
     /** The subject's invoicing counterparty identity, null when none is held. */
     identity: {
       kind: string | null
@@ -779,6 +810,7 @@ export async function buildDataSubjectBundle(
         line: await optedOutLine(ctx.orgId, suppression),
       }
     : null
+  const portal = await readPortalSection(ctx, contact.id, contact.email)
 
   return {
     kind: "gdpr_data_subject_export",
@@ -809,6 +841,7 @@ export async function buildDataSubjectBundle(
     },
     records: {
       memory,
+      portal,
       identity: identityRow
         ? {
             kind: identityRow.customer_kind,
@@ -1139,5 +1172,86 @@ export async function handleDataSubjectExport(
     subjectName: bundle.subject.name,
     counts: bundle.counts,
     shopifyIncluded: bundle.records.shopify.includedInBundle,
+  }
+}
+
+/** The subject's client portal part of the bundle, read under the caller's RLS. */
+async function readPortalSection(
+  ctx: DataSubjectExportToolCtx,
+  contactId: string,
+  email: string | null,
+): Promise<DataSubjectExportBundle["records"]["portal"]> {
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [account] = extractRows<{
+    user_id: string
+    company_id: string
+    invited_at: string | Date | null
+    last_sign_in_at: string | Date | null
+    removed_at: string | Date | null
+  }>(
+    await ctx.db.execute(drizzleSql`
+      SELECT user_id::text, company_id::text, invited_at, last_sign_in_at, removed_at
+        FROM ${K}.portal_people
+       WHERE org_id = ${ctx.orgId} AND contact_id = ${contactId}
+       ORDER BY invited_at DESC LIMIT 1`),
+  )
+  const accessLog = account
+    ? extractRows<{
+        at: string | Date | null
+        action: string
+        entity_type: string | null
+        entity_id: string | null
+      }>(
+        await ctx.db.execute(drizzleSql`
+          SELECT "timestamp" AS at, action, entity_type, entity_id FROM ${K}.audit_log
+           WHERE org_id = ${ctx.orgId} AND app = 'portal' AND actor_id = ${account.user_id}::uuid
+           ORDER BY "timestamp" DESC LIMIT 1000`),
+      )
+    : []
+  const actions = extractRows<{
+    id: string
+    kind: string
+    target_app: string
+    target_type: string
+    invited_email: string
+    decision: string | null
+    decided_at: string | Date | null
+    revoked_at: string | Date | null
+    created_at: string | Date | null
+  }>(
+    await ctx.db.execute(drizzleSql`
+      SELECT id::text, kind, target_app, target_type, invited_email, decision, decided_at,
+             revoked_at, created_at
+        FROM ${K}.client_actions
+       WHERE org_id = ${ctx.orgId}
+         AND (contact_id = ${contactId} OR invited_email = ${(email ?? "").toLowerCase()})
+       ORDER BY created_at DESC LIMIT 1000`),
+  )
+  return {
+    account: account
+      ? {
+          userId: account.user_id,
+          companyId: account.company_id,
+          invitedAt: toIso(account.invited_at),
+          lastSignInAt: toIso(account.last_sign_in_at),
+          removedAt: toIso(account.removed_at),
+        }
+      : null,
+    accessLog: accessLog.map((r) => ({
+      at: toIso(r.at),
+      action: r.action,
+      entityType: r.entity_type,
+      entityId: r.entity_id,
+    })),
+    clientActions: actions.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      target: `${a.target_app}.${a.target_type}`,
+      invitedEmail: a.invited_email,
+      decision: a.decision,
+      decidedAt: toIso(a.decided_at),
+      revokedAt: toIso(a.revoked_at),
+      createdAt: toIso(a.created_at),
+    })),
   }
 }

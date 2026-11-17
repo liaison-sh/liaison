@@ -61,6 +61,8 @@ const CATALOG_DEMO_APPS = [
   // The oracle layer's headless app: a catalog app on a demo box like the others, so a
   // database with no catalog holding it would enable it for the org without registering it.
   "database",
+  // The services world signs its client work: its layer seeds agreements when this is installed.
+  "agreements",
 ]
 
 /**

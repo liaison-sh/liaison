@@ -7,9 +7,10 @@
  * the world while it has no door tours (`enabledDemoWorlds`).
  *
  * This layer of the world holds people, roles, companies, the pipeline, the
- * projects with their time and budgets, and who is away. Its desks, support
- * backlog, knowledge, threads and routines are not seeded yet: the specs below
- * are empty on purpose.
+ * projects with their time and budgets, who is away, the agreements and the
+ * notes of past projects a change request is sized from. Its desks, support
+ * backlog, threads and routines are not seeded yet: those specs are empty on
+ * purpose.
  *
  * A driver outside the seed reads `personas` and `namedRows`, never copies.
  */
@@ -24,6 +25,7 @@ import {
   STUDIO_TEAM,
   STUDIO_WORLD,
 } from "./fiction"
+import { STUDIO_KNOWLEDGE_SPECS } from "./knowledge"
 import { STUDIO_PIPELINE_KEY, seedStudioLayer } from "./layer"
 import { STUDIO_COST_RATES, STUDIO_DATED_LINES, studioPlan } from "./plan"
 
@@ -83,7 +85,7 @@ export const STUDIO_WORLD_PACK: DemoWorldPack & { plan: typeof studioPlan } = {
     approvals: [],
     productScenarios: false,
   },
-  knowledgeSpecs: { authorKey: "lea", collections: [], articles: [] },
+  knowledgeSpecs: STUDIO_KNOWLEDGE_SPECS,
   threadSpecs: { threads: [], agentDms: [] },
   agentNative: {
     skills: [],

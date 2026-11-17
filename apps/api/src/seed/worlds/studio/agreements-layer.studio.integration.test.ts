@@ -23,6 +23,7 @@ import { rowsOf } from "~/seed/factories/people/actors"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { STUDIO_SOW_EXCLUSIONS, studioAgreementNumber, studioAgreements } from "./agreements"
+import { STUDIO_KNOWLEDGE_SPECS, STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -155,6 +156,24 @@ describe("the services world's agreements at the board date", () => {
     )
     expect(out.passage.text).toBe(STUDIO_SOW_EXCLUSIONS)
     expect(out.passage.text).toContain("single sign-on")
+  })
+
+  it("the past projects' notes in Knowledge hold the sign-on hours the change request is sized from", async () => {
+    const hours: number[] = []
+    for (const article of STUDIO_KNOWLEDGE_SPECS.articles) {
+      const found = await asOwner<{ found: boolean; document: { id: string } | null }>(
+        "knowledge:find_by_title",
+        { title: article.title },
+      )
+      expect(found.found).toBe(true)
+      const doc = await asOwner("knowledge:get", { id: found.document?.id })
+      const h = Number(/took (\d+) h of real time/.exec(JSON.stringify(doc))?.[1])
+      hours.push(h)
+    }
+    expect(hours).toEqual([STUDIO_PAST_SIGN_ON_HOURS.brume, STUDIO_PAST_SIGN_ON_HOURS.osier])
+    const mean = (hours[0]! + hours[1]!) / 2
+    expect(PLAN.changeRequest.hoursMinutes).toBe(mean * 60)
+    expect(PLAN.changeRequest.hoursSource).toContain(`${mean} h on average`)
   })
 
   it("every signed row is a stand-in level", async () => {

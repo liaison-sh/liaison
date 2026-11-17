@@ -31,6 +31,7 @@ import { rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STUDIO_CONTACTS } from "./fiction"
+import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
 import { parisCivil } from "./plan"
 
 const DAY_MS = 86_400_000
@@ -486,6 +487,8 @@ export function studioAgreements(anchor: Date): StudioAgreementsPlan {
     },
   ]
 
+  const signOnMeanMinutes =
+    ((STUDIO_PAST_SIGN_ON_HOURS.brume + STUDIO_PAST_SIGN_ON_HOURS.osier) / 2) * 60
   return {
     year: ty,
     agreements,
@@ -498,9 +501,9 @@ export function studioAgreements(anchor: Date): StudioAgreementsPlan {
         "Single sign-on for partner accounts through their own identity provider",
         "Tests and a runbook for adding a partner",
       ],
-      hoursMinutes: 60 * 60,
-      hoursSource:
-        "past similar work: sign-on on the Brume and Osier projects took 52 h and 68 h, 60 h on average",
+      // The mean of the two past projects' sign-on, from their Knowledge notes.
+      hoursMinutes: signOnMeanMinutes,
+      hoursSource: `past similar work in Knowledge: sign-on on the BRUME and OSIER projects took ${STUDIO_PAST_SIGN_ON_HOURS.brume} h and ${STUDIO_PAST_SIGN_ON_HOURS.osier} h, ${signOnMeanMinutes / 60} h on average`,
       rateMinor: 11_000,
       mailSubject: "Partner portal: one more thing",
       mailBody: "Hello, can you also add single sign-on for our partners? Thanks, Pauline",

@@ -283,9 +283,11 @@ describe("portal doors: the client action page", () => {
       .filter((p) => p.startsWith("modules/client-actions/"))
       .sort()
     expect(listed).toEqual([
+      "modules/client-actions/code-attempt.ts",
       "modules/client-actions/decide.ts",
       "modules/client-actions/document-files.ts",
       "modules/client-actions/mint.ts",
+      "modules/client-actions/portal-code.ts",
       "modules/client-actions/public-routes.ts",
       "modules/client-actions/restricted-follow.ts",
       "modules/client-actions/routes.ts",

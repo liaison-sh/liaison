@@ -40,6 +40,7 @@ export const DOOR_IDS = [
   "NT-33",
   "NT-33b",
   "NT-33c",
+  "NT-33d",
   "NT-34",
   "NT-35",
   "NT-36",

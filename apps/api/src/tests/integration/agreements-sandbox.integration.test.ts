@@ -9,6 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { sql } from "~/db"
 import type { UserContext } from "~/db/rls"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -19,6 +20,7 @@ import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worke
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { insertClientAction } from "~/tests/security/portal-doors/fixture"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const SCOPES = ["agreements:agreements:read", "agreements:agreements:write"]
@@ -141,6 +143,34 @@ describe("agreements through the sandbox", () => {
     )
     const read = await call(other, "agreement_get", { id })
     expect(JSON.stringify(read)).toContain("NOT_FOUND")
+  }, 60_000)
+
+  it("a change of who can see an agreement moves its client actions to the new list in the same call", async () => {
+    const created = await call(owner, "agreement_create", {
+      kind: "nda",
+      title: "Closed supplier NDA",
+      org_access: "none",
+    })
+    expect(created.error).toBeUndefined()
+    const id = created.data?.agreement?.id as string
+    const actionId = await insertClientAction(
+      { orgId, clientA: { email: "signer@supplier.example", name: "Signer" } } as never,
+      { company_id: null, target_id: id },
+    )
+    const changed = await call(owner, "agreement_update", {
+      id,
+      org_access: "none",
+      shares: [
+        { user_id: owner, role: "editor" },
+        { user_id: other, role: "viewer" },
+      ],
+    })
+    expect(changed.error).toBeUndefined()
+    // Read as soon as the call returns: no after-commit step has run for it.
+    const [row] = await sql<{ to: string[] | null }[]>`
+      SELECT visible_to::text[] AS to FROM kernel.client_actions WHERE id = ${actionId}::uuid`
+    expect([...(row?.to ?? [])].sort()).toEqual([owner, other].sort())
+    await sql`DELETE FROM kernel.client_actions WHERE id = ${actionId}::uuid`
   }, 60_000)
 
   it("a person saves a template, then saves it again as its second version", async () => {

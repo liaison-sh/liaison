@@ -317,12 +317,18 @@ export async function insertThreadWithParticipants(
     title: params.hiddenFromList ? null : title,
   })
 
-  // Verify all participants belong to this org and are active
+  // Verify all participants are active members of this org (a client's portal account never
+  // takes part in a conversation, whatever the caller can see)
   const validUsers = await tx
     .select({ id: users.id })
     .from(users)
     .where(
-      and(inArray(users.id, participantIds), eq(users.orgId, orgId), eq(users.status, "active")),
+      and(
+        inArray(users.id, participantIds),
+        eq(users.orgId, orgId),
+        eq(users.status, "active"),
+        eq(users.userType, "member"),
+      ),
     )
   if (validUsers.length !== participantIds.length) {
     throw new HTTPException(400, {

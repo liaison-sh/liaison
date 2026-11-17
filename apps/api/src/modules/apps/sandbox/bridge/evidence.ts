@@ -139,7 +139,7 @@ function refuse(code: string, message: string): string {
 type FilesMethods = Record<string, (json: string) => Promise<string>>
 
 interface Parent {
-  entityType: "agreement_version" | "evidence_package"
+  entityType: "agreement_version" | "evidence_package" | "evidence_devices"
   entityId: string
 }
 
@@ -295,6 +295,10 @@ export function createEvidenceMethods(
       )
       const version: Parent = { entityType: "agreement_version", entityId: p.versionId }
       const pkg: Parent = { entityType: "evidence_package", entityId: p.packageId }
+      // The staff file and each signer's copy hold signers' devices (IP, browser): they sit on
+      // the package's device parent, read only with the device scope. The colleague copy holds
+      // none and sits on the package itself.
+      const devices: Parent = { entityType: "evidence_devices", entityId: p.packageId }
       const signedPdf = await readBytes(p.signedFileId, version)
       const frozenRead = await readFrozen(p.versionId, p.frozenFileId)
       if (frozenRead.status !== "ok") return frozenRead.refusal
@@ -332,7 +336,7 @@ export function createEvidenceMethods(
         const suffix = p.stamped ? "-stamped" : ""
         const base = `${p.agreement}-v${p.version}`
         const evidenceFileId = await store(
-          pkg,
+          devices,
           `${base}-evidence${suffix}.zip`,
           "application/zip",
           built.evidence,
@@ -340,7 +344,7 @@ export function createEvidenceMethods(
         const signerCopyFileIds: Record<string, string> = {}
         for (const [id, bytes] of Object.entries(built.signerCopies)) {
           signerCopyFileIds[id] = await store(
-            pkg,
+            devices,
             `${base}-copy${suffix}.zip`,
             "application/zip",
             bytes,
@@ -404,7 +408,7 @@ export function createEvidenceMethods(
           entityId: p.versionId,
         })
         const copyZip = await readBytes(p.copyFileId, {
-          entityType: "evidence_package",
+          entityType: "evidence_devices",
           entityId: p.packageId,
         })
         const base = `${p.agreement}-v${p.version}`

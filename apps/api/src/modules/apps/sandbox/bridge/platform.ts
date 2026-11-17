@@ -302,7 +302,18 @@ export function createPlatformMethods(ctx: BridgeContext): Record<string, any> {
   return {
     // --- Events ---
     emit: async (eventJson: string) => {
-      await txDb.queueEvent(stampDeclaredEmit(JSON.parse(eventJson)))
+      const event = stampDeclaredEmit(JSON.parse(eventJson))
+      // An access change of a restricted record moves the kernel's copies of its list in this
+      // same transaction; the requests it cancelled ride on the event for the announcement.
+      const { followRestrictedAccessInTx } = await import(
+        "~/modules/client-actions/restricted-follow"
+      )
+      const followed = await followRestrictedAccessInTx(txDb as never, { ...event, orgId })
+      await txDb.queueEvent(
+        followed
+          ? { ...event, data: { ...(event.data ?? {}), withdrawn_request_ids: followed.withdrawn } }
+          : event,
+      )
     },
 
     // --- Realtime pub/sub (capability: realtime.publish) ---

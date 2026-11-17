@@ -452,7 +452,7 @@ export const toolRegistry = createTypedRegistry<
     resultTaintWhen?: { fields: readonly string[]; scopes: readonly string[] }
     /** The manifest's `restrictedRows`: the record kind (`<app>.<entity>`) and where its ids sit
      *  in a result, for the kernel's restricted stamp (execute-tool.ts). */
-    restrictedRows?: { kind: string; idPath: string }
+    restrictedRows?: { kind: string; idPath?: string; paramPath?: string }
     /** Manifest `approvalCard`: the summary template and the `pill` shown on the card. */
     approvalCard?: { summary?: string; pill?: { label: string; labelKey?: string } }
     /** Manifest `resultCard`: how the tool's result is drawn as a card. */
@@ -1161,6 +1161,8 @@ export const manifestFileParentRegistry = createTypedRegistry<
     deleteScope?: string
     /** Set when the parent table is immutable with a legal retention period. */
     retention?: { retentionYears: number; anchor: string }
+    /** `readScope`, when the parent table's own row policy does not ask for it. */
+    requiredScope?: string
   }
 >({ orgScoped: true })
 
@@ -1437,6 +1439,8 @@ export const manifestRegistry = createTypedRegistry<
       string,
       { adminScope: string; labelKey: string; offMessageKey?: string; offNextKey?: string }
     >
+    /** Manifest `legalStarterTemplates`: the app wants the kernel's legal starter templates. */
+    legalStarterTemplates?: { corporateFeature?: string }
     /** Widget hints for the bulk form: only the bulk underlying tools' shared
      *  fields (see bulk-field-schemas.ts), never the full tool catalog. */
     tools?: Record<string, BulkToolSchema>

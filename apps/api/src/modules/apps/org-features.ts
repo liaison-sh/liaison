@@ -85,9 +85,9 @@ export async function writeOrgAppFeature(
     })
     .returning({ feature: orgAppFeatures.feature })
   if (written.length === 0) return { changed: false }
-  // Switching agreements' corporate templates on offers the corporate starter templates at
+  // Switching on the feature an app names for the corporate starter templates offers them at
   // once, in this transaction (the other starters came with the app).
-  if (enabled && app === "agreements" && feature === "corporateTemplates")
+  if (enabled && manifestRegistry.get([orgId, app])?.legalStarterTemplates?.corporateFeature === feature)
     await seedLegalStarterTemplates(tx, orgId, { corporateTemplates: true })
   // Durable and delivered to every process after the commit: each one tells its
   // own live MCP sessions that the tool list changed (mcp/catalog-notifier.ts).

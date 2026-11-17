@@ -36,18 +36,24 @@ export async function seedManifestDefaults(tx: PrivilegedDb, orgId: string): Pro
 }
 
 /**
- * An organisation using agreements gets the starter agreement templates: kernel document
- * templates in the classic legal layout (modules/documents/legal-templates). Only the missing
- * ones are added, so an organisation's own edits, renames and archives stay; the corporate acts
- * only while the agreements app's corporateTemplates feature is on.
+ * An organisation using an app that declares `legalStarterTemplates` gets the starter
+ * templates: kernel document templates in the classic legal layout
+ * (modules/documents/legal-templates). Only the missing ones are added, so an organisation's own
+ * edits, renames and archives stay; the corporate acts only while the feature the app names is on.
  */
 async function seedAgreementStarters(tx: PrivilegedDb, orgId: string): Promise<void> {
-  const installed = [...manifestRegistry.entriesOf(orgId)].some(
-    ([[regOrgId, appName]]) => regOrgId === orgId && appName === "agreements",
-  )
-  if (!installed || isAppOffForOrg(orgId, "agreements")) return
-  const corporateTemplates = enabledFeaturesFor(orgId).some(
-    (f) => f.app === "agreements" && f.feature === "corporateTemplates",
-  )
-  await seedLegalStarterTemplates(tx, orgId, { corporateTemplates })
+  let wanted = false
+  let corporateTemplates = false
+  for (const [[regOrgId, appName], manifest] of manifestRegistry.entriesOf(orgId)) {
+    const decl = manifest.legalStarterTemplates
+    if (regOrgId !== orgId || !decl || isAppOffForOrg(orgId, appName)) continue
+    wanted = true
+    const feature = decl.corporateFeature
+    if (
+      feature &&
+      enabledFeaturesFor(orgId).some((f) => f.app === appName && f.feature === feature)
+    )
+      corporateTemplates = true
+  }
+  if (wanted) await seedLegalStarterTemplates(tx, orgId, { corporateTemplates })
 }

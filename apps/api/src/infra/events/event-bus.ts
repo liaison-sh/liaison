@@ -756,6 +756,9 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   "client_action:decided",
   "client_action:send_failed",
   "client_action:staff_turn",
+  // Pending requests about a record withdrawn when its list closed on the asker
+  // (modules/client-actions/restricted-follow.ts): one Home line to the list.
+  "restricted_record:requests_withdrawn",
   "user:registered",
   "user:deactivate",
   "user:reactivate",

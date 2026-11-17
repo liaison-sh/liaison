@@ -188,7 +188,8 @@ handlers teaches exactly one thing.
   access. Write `org_access` and the list from one place in the app, and keep
   the list from ever being empty.
 - **Legal records.** A table declared `immutable` (`retentionYears`, optional
-  `writeOnceColumns`) holds legal originals: the kernel refuses to change its
+  `writeOnceColumns`, or `insertOnly` for rows that are never updated, an empty
+  column included) holds legal originals: the kernel refuses to change its
   write-once columns or delete its rows within the retention period. When the
   operator deletes an organization, every row of each `immutable` table, and
   the rows a table's `legalRetention` marker selects, go into the encrypted
@@ -411,7 +412,7 @@ Keys on a tool:
 | `feature` | string | A feature the app declares under `features` |
 | `focusCore` | `true` or an entity type | The tool is loaded when the app has the focus, or when that entity is in focus |
 | `taintSourceWhen` | `{field, equals}` | Narrows `taintSource` to the rows whose field has that value: a result with one such row marks the turn, rows that all carry another value leave it clean, and a result with no row carrying the field marks it |
-| `restrictedRows` | `{entity, idPath}` | On a read whose rows can be closed to the organization: after a successful call the kernel looks up each id at `idPath` (`items[].id`, `agreement.id`) and marks the turn for each closed row, so what the turn writes next stays with that row's list. Only record kinds with a list function are accepted |
+| `restrictedRows` | `{entity, idPath?, paramPath?}` | On a tool whose rows can be closed to the organization, a read or a write: after a successful call the kernel looks up each id at `idPath` in the result (`items[].id`, `agreement.id`) and at `paramPath` in the call's params (`id`), and marks the turn for each closed row, so what the turn writes next stays with that row's list. Only record kinds with a list function are accepted |
 | `useInstead` | string | On a hidden tool (`agentVisible: false`): the visible tool of the same app to use |
 | `trustBoundary: "internal"` | string | Only code calls the tool: the app's own jobs, event handlers and tools through `ctx.executeTool`, or another app that declares it in `cross_app_calls`. A person (the REST tool route), an agent and an MCP client are refused with `forbidden`. Give a step that must run in one transaction (`atomic: true`) this mark, and call it from a tool or job that holds no transaction while it talks to another service |
 | `sinkReadersSelf` | boolean | First-party apps only: what the tool writes (its `writesToTable`) is read only by the person writing it, so a turn that read other data may still write there when that person holds it. Any other app declaring it is not loaded |

@@ -172,6 +172,14 @@ describe("raw fetch discipline", () => {
     // is the `Bun.serve` request handler of that local server, not an outbound
     // call. Nothing in production imports it.
     "modules/signing/test-fixtures/tsa/authority.ts",
+    // The PDF render service's client: one POST to the deployment's own render
+    // process over a unix socket (LIAISON_PDF_RENDER_SOCKET, operator env). The
+    // host name in the URL is a placeholder the socket ignores; no network, no
+    // user or org input reaches the address.
+    "modules/pdf-render/client.ts",
+    // `async fetch(req)` is the `Bun.serve` request handler of the render
+    // service itself (it listens on that socket), not an outbound call.
+    "modules/pdf-render/server.ts",
   ])
 
   const files = findProductionTsFiles(srcDir)

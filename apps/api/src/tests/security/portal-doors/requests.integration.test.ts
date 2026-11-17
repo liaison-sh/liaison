@@ -208,6 +208,9 @@ describe("portal requests", () => {
       expect((await upload("ninth.pdf", new Uint8Array([1]))).status).toBe(422)
       await sql`DELETE FROM kernel.files WHERE org_id = ${w.orgId} AND entity_type = 'portal_staged'`
       expect((await upload("big.pdf", new Uint8Array(10 * 1024 * 1024 + 1))).status).toBe(413)
+      // A file well over the default request body limit, under the 10 MB a file may be, is staged.
+      expect((await upload("nine.pdf", new Uint8Array(9 * 1024 * 1024))).status).toBe(200)
+      await sql`DELETE FROM kernel.files WHERE org_id = ${w.orgId} AND entity_type = 'portal_staged'`
       scan.mockImplementation(async (att) => ({
         quarantined: true,
         signature: "Eicar-Test-Signature",

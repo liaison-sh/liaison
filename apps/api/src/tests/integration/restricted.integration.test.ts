@@ -12,9 +12,11 @@ import { app } from "~/app"
 import { sql } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
+import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { type EmailMessage, setSystemEmailProvider } from "~/infra/email"
 import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { deleteObject, getObjectBuffer } from "~/infra/storage/object-storage"
+import { handleMemorySet } from "~/modules/agent/memory/memory"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
@@ -23,6 +25,7 @@ import {
   RESTRICTED_DECISION_TITLE,
 } from "~/modules/approvals/attention"
 import { listApprovals } from "~/modules/approvals/list"
+import { CatalogDerivationsTestAccess } from "~/modules/apps/catalog-derivations"
 import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
@@ -36,6 +39,7 @@ import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
 import { type AppCell, insertAppRow } from "~/seed/factories/app-tables"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import { seedAuditEntry, seedOrgRow } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -93,6 +97,7 @@ async function seen(ctx: UserContext): Promise<Record<string, number>> {
 
 const READ = ["agreements:agreements:read", "agreements:evidence:read"]
 let agreementId = ""
+const packageId = crypto.randomUUID()
 
 async function setOrgAccess(access: "none" | "viewer" | "editor") {
   await withPrivilegedDb(orgId, "test:agreement-access", async (tx) => {
@@ -142,6 +147,7 @@ beforeAll(async () => {
       signed_at: now,
     })
     await put("evidence_packages", {
+      id: packageId,
       version_id: versionId,
       level: "ses",
       hash_alg: "sha-256",
@@ -181,6 +187,41 @@ describe("who can see an agreement", () => {
     expect(await seen(reader(member, READ))).toEqual(one)
     // The scope still decides for an open agreement: no read scope, no rows.
     expect((await seen(reader(member, []))).agreements).toBe(0)
+  })
+
+  it("the evidence file holding every signer's device is read only with the device scope; the colleague copy with the evidence scope", async () => {
+    await setOrgAccess("viewer")
+    const fileOn = (entityType: string) =>
+      seedFileRow({
+        orgId,
+        app: "agreements",
+        entityType,
+        entityId: packageId,
+        filename: "evidence.zip",
+        mimeType: "application/zip",
+        sizeBytes: 12,
+        storageKey: `${orgId}/evidence/${crypto.randomUUID()}`,
+      })
+    // Production builds the files row policy from the installed catalog; this app is
+    // registered from its manifest, so the policy is built from the registry's parents.
+    await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
+    const colleague = await fileOn("evidence_package")
+    const devices = await fileOn("evidence_devices")
+    const visible = (ctx: UserContext) =>
+      withRlsContext(ctx, async (tx) => {
+        const rows = (await tx.execute(
+          dsql`SELECT id::text AS id FROM kernel.files WHERE id IN (${colleague}::uuid, ${devices}::uuid)`,
+        )) as unknown as Array<{ id: string }>
+        return rows.map((r) => r.id).sort()
+      })
+    // Every file door reads kernel.files under the caller's context, so this is each door's answer.
+    expect(await visible(reader(member, READ))).toEqual([colleague])
+    expect(await visible(reader(member, [...READ, "agreements:evidence:devices"]))).toEqual(
+      [colleague, devices].sort(),
+    )
+    expect(await visible(reader(member, ["agreements:evidence:devices"]))).toEqual([])
+    expect(await visible(reader(admin, ["*"]))).toEqual([colleague, devices].sort())
+    await rebuildFilesSelectPolicy()
   })
 })
 
@@ -461,6 +502,15 @@ describe("every surface honours the list", () => {
     })
     // The list changed once the agreement had a link out and a discussion.
     const versionId = crypto.randomUUID()
+    await withPrivilegedDb(world.orgId, "test:restricted-surfaces-version", (tx) =>
+      insertAppRow(tx, "agreements", "agreement_versions", {
+        org_id: world.orgId,
+        id: versionId,
+        agreement_id: world.closed,
+        number: 1,
+        frozen_at: new Date().toISOString(),
+      }),
+    )
     world.action = await insertClientAction(
       {
         orgId: world.orgId,
@@ -563,6 +613,81 @@ describe("every surface honours the list", () => {
     })
   }
 
+  it("a person no longer on the list reads none of the messages or memory a turn stamped with the record, though they were on the list when it was written", async () => {
+    const scope = restrictedScope("agreements", "agreement", world.closed)
+    const setShare = (removed: boolean) =>
+      withPrivilegedDb(world.orgId, "test:member-on-list", async (tx) => {
+        if (!removed)
+          await insertAppRow(tx, "agreements", "agreement_shares", {
+            org_id: world.orgId,
+            agreement_id: world.closed,
+            user_id: world.member,
+            role: "viewer",
+          })
+        else
+          await tx.execute(
+            dsql`UPDATE app_agreements.agreement_shares SET removed_at = now()
+                  WHERE agreement_id = ${world.closed}::uuid AND user_id = ${world.member}::uuid` as never,
+          )
+      })
+    // Written while the member is on the list: the message's disclosure list names them, and
+    // their agent keeps a memory stamped with the record.
+    await setShare(false)
+    const marker = `Earlier note ${crypto.randomUUID()}`
+    await withRlsContext(await held(world.listed), (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId: world.orgId,
+          userId: world.listed,
+          threadId: world.room,
+          content: `${marker} on ${NUMBER}`,
+          authorType: "user",
+          requiredScopes: [scope],
+        } as never,
+      ),
+    )
+    await minimal.agentDm(world.orgId, world.member)
+    const memoryName = `closed-terms-${crypto.randomUUID().slice(0, 8)}`
+    const memberActor = await held(world.member)
+    await withRlsContext(memberActor, (tx) =>
+      handleMemorySet(
+        { type: "project", name: memoryName, description: "terms", content: `Prices of ${NUMBER}` },
+        {
+          userId: world.member,
+          orgId: world.orgId,
+          db: tx as never,
+          scopes: memberActor.scopes,
+        } as never,
+        [scope],
+      ),
+    )
+    const messageQ = `SELECT count(*)::int AS n FROM kernel.messages WHERE content LIKE '${marker}%'`
+    const memoryQ = `SELECT count(*)::int AS n FROM kernel.agent_memory WHERE name = '${memoryName}'`
+    expect(await rlsCount(world.member, messageQ)).toBe(1)
+    expect(await rlsCount(world.member, memoryQ)).toBe(1)
+    // Taken off the list: neither is read any more; the people still on it read the message.
+    await setShare(true)
+    expect(await rlsCount(world.member, messageQ)).toBe(0)
+    expect(await rlsCount(world.member, memoryQ)).toBe(0)
+    expect(await rlsCount(world.listed, messageQ)).toBe(1)
+    // Once the record is open to the organization again, the stamp hides nothing more.
+    await withPrivilegedDb(world.orgId, "test:reopen", (tx) =>
+      tx.execute(
+        dsql`UPDATE app_agreements.agreements SET org_access = 'viewer' WHERE id = ${world.closed}::uuid` as never,
+      ),
+    )
+    try {
+      expect(await rlsCount(world.member, memoryQ)).toBe(1)
+    } finally {
+      await withPrivilegedDb(world.orgId, "test:reclose", (tx) =>
+        tx.execute(
+          dsql`UPDATE app_agreements.agreements SET org_access = 'none' WHERE id = ${world.closed}::uuid` as never,
+        ),
+      )
+    }
+  })
+
   it("a parked request about the restricted agreement reaches the person who asked under a title that names nothing of it", async () => {
     const actor = await held(world.listed)
     const items = await withRlsContext(actor, (tx) =>
@@ -619,6 +744,8 @@ describe("every surface honours the list", () => {
   // An admin's one way in: only once every person on the list has been deactivated for 7 days.
   describe("claiming a restricted agreement", () => {
     const claimable = crypto.randomUUID()
+    const claimableVersion = crypto.randomUUID()
+    let claimableAction = ""
     let gone = ""
     let boss = { bearer: "", userId: "" }
     let plain = { bearer: "", userId: "" }
@@ -628,20 +755,11 @@ describe("every surface honours the list", () => {
         method: "POST",
         headers: { Authorization: `Bearer ${bearer}`, "Content-Type": "application/json" },
       })
+    // When the person was deactivated, whatever path did it: the user row's own stamp, from the
+    // database's own clock. No audit row is written.
     const goneSince = async (interval: string) => {
-      await sql`DELETE FROM kernel.audit_log WHERE org_id = ${world.orgId}::uuid
-                 AND action = 'user.deactivate' AND entity_id = ${gone}`
-      // The instant comes from the database's own clock.
-      const [at] = await sql<{ ms: string }[]>`
-        SELECT (extract(epoch FROM now() - ${interval}::interval) * 1000)::bigint::text AS ms`
-      await seedAuditEntry({
-        orgId: world.orgId,
-        actorType: "user",
-        action: "user.deactivate",
-        entityType: "user",
-        entityId: gone,
-        timestamp: new Date(Number(at?.ms)),
-      })
+      await sql`UPDATE kernel.users SET deactivated_at = now() - ${interval}::interval
+                 WHERE id = ${gone}::uuid AND status = 'deactivated'`
     }
     const bossSees = () =>
       rlsCount(
@@ -668,7 +786,21 @@ describe("every surface honours the list", () => {
           user_id: gone,
           role: "editor",
         })
+        await insertAppRow(tx, "agreements", "agreement_versions", {
+          org_id: world.orgId,
+          id: claimableVersion,
+          agreement_id: claimable,
+          number: 1,
+          frozen_at: new Date().toISOString(),
+        })
       })
+      claimableAction = await insertClientAction(
+        {
+          orgId: world.orgId,
+          clientA: { email: "left@maison-roux.example", name: "Signer" },
+        } as never,
+        { company_id: null, target_id: claimableVersion, visible_to: [gone] },
+      )
       setSystemEmailProvider({
         send: async (m) => {
           sent.push(m)
@@ -686,7 +818,12 @@ describe("every surface honours the list", () => {
     })
 
     it("is refused at 6 days 23 hours after the last person on the list was deactivated, and allowed at 7 days", async () => {
+      // Deactivated by a path that writes no audit row: the row's stamp counts.
       await sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${gone}::uuid`
+      const [stamped] = await sql<{ fresh: boolean }[]>`
+        SELECT deactivated_at > now() - interval '1 minute' AS fresh FROM kernel.users WHERE id = ${gone}::uuid`
+      expect(stamped?.fresh).toBe(true)
+      expect((await claim(boss.bearer)).status).toBe(404)
       await goneSince("6 days 23 hours")
       const early = await claim(boss.bearer)
       expect(early.status).toBe(404)
@@ -701,6 +838,10 @@ describe("every surface honours the list", () => {
       expect(row?.by).toBe(boss.userId)
       expect(row?.at).not.toBeNull()
       expect([...(row?.acl ?? [])].sort()).toEqual([boss.userId, gone].sort())
+      // The client actions of its versions follow the new list in the claim's own transaction.
+      const [action] = await sql<{ to: string[] | null }[]>`
+        SELECT visible_to::text[] AS to FROM kernel.client_actions WHERE id = ${claimableAction}::uuid`
+      expect([...(action?.to ?? [])].sort()).toEqual([boss.userId, gone].sort())
       // Everyone ever on the list is told, and nobody else.
       const [goneUser] = await sql<{ email: string }[]>`
         SELECT email FROM kernel.users WHERE id = ${gone}::uuid`

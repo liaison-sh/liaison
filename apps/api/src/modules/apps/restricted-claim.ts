@@ -22,6 +22,7 @@ import { renderBrandedEmail } from "~/infra/email-layout"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { requireScope } from "~/middleware/require-scope"
+import { followRestrictedAccessInTx } from "~/modules/client-actions/restricted-follow"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 
@@ -115,14 +116,24 @@ export const restrictedClaimRoutes = new Hono<{
       actorId: userId,
       data: { visible_to: visibleTo },
     })
-    await tx.queueEvent({
+    // The kernel's copies follow the new list in this transaction, through the same function
+    // the app's writer uses; the event then announces what it cancelled.
+    const change = {
       app: "agreements",
       entity: "agreement",
       action: "access_changed",
       entityId: id,
       orgId,
+    }
+    const followed = await followRestrictedAccessInTx(tx as never, change)
+    await tx.queueEvent({
+      ...change,
       actorId: userId,
-      data: { org_access: "none", visible_to: visibleTo, version_ids: [] },
+      data: {
+        org_access: "none",
+        visible_to: visibleTo,
+        withdrawn_request_ids: followed?.withdrawn ?? [],
+      },
     })
     const ever = result.ever_listed ?? []
     const people =

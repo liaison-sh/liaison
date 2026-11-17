@@ -227,6 +227,22 @@ describe("agreements evidence is immutable", () => {
     expect(left[0]).toEqual({ p: 1, e: 1 })
   })
 
+  it("a signature's evidence field recorded empty stays empty: filling it raises under three roles", async () => {
+    const s = await seed()
+    await expect(
+      run(sql`UPDATE app_agreements.signature_events SET code_verified_at = now() WHERE id = ${s.eventId}`),
+    ).rejects.toThrow(/immutable_row/)
+    for (const as of [asPrivileged, asAppRole]) {
+      expect(
+        await as(
+          dsql`UPDATE app_agreements.signature_events SET code_verified_at = now(), typed_phrase = 'I agree' WHERE id = ${s.eventId}`,
+        ),
+      ).toMatch(/immutable_row/)
+    }
+    const [row] = await sql`SELECT code_verified_at, typed_phrase FROM app_agreements.signature_events WHERE id = ${s.eventId}`
+    expect(row).toEqual({ code_verified_at: null, typed_phrase: null })
+  })
+
   it("a write-once column left empty at the seal is filled once, the mutable state moves freely", async () => {
     const s = await seed()
     const tsr = randomUUID()

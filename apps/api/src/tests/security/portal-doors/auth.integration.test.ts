@@ -481,6 +481,30 @@ describe("portal doors: sign-in and token classes", () => {
     }
   })
 
+  it("with org hosts, a portal token and a portal refresh of one org work only on that org's host", async () => {
+    const saved = env.LIAISON_ORG_HOST_TEMPLATE
+    env.LIAISON_ORG_HOST_TEMPLATE = "https://{slug}.example.com"
+    try {
+      const s = await createPortalSession(w.clientA.userId, w.orgId)
+      const own = `${w.orgSlug}.example.com`
+      const foreign = `${w.otherOrgSlug}.example.com`
+      const me = (host: string) =>
+        call("GET", `${PORTAL_PREFIX}/me`, { Authorization: `Bearer ${s.accessToken}`, Host: host })
+      expect((await me(foreign)).status).toBe(401)
+      expect((await me(own)).status).toBe(200)
+      const cookie = `${PORTAL_REFRESH_COOKIE}=${s.refreshToken}`
+      const refresh = (host: string) =>
+        post(
+          "/api/portal/auth/refresh",
+          {},
+          { Cookie: cookie, Origin: `https://${host}`, Host: host },
+        )
+      expect((await refresh(foreign)).status).toBe(401)
+    } finally {
+      env.LIAISON_ORG_HOST_TEMPLATE = saved
+    }
+  })
+
   it("a deactivated client's live token stops at the next request", async () => {
     const token = (await createPortalSession(w.clientB.userId, w.orgId)).accessToken
     await sql`UPDATE kernel.users SET status = 'deactivated', auth_version = auth_version + 1 WHERE id = ${w.clientB.userId}`

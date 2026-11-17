@@ -35,6 +35,8 @@ import {
 } from "~/modules/search/searchable-entities"
 import { listShareMembers } from "~/modules/sharing/targets"
 import { listActiveMembers } from "~/modules/threads/member-directory"
+import { addParticipant } from "~/modules/threads/participant"
+import { createThread } from "~/modules/threads/thread"
 import { createExternalUser } from "~/modules/users/external-user"
 import { listUsers } from "~/modules/users/service"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -436,6 +438,48 @@ describe("pickers, mentions and assignment hold no client", () => {
       resolveAssignee(tx, w.orgId, { assigneeId: w.member.userId }),
     )
     expect(assigned).toBe(w.member.userId)
+  })
+
+  it("NT-33d a client is never made a participant of a conversation, by an admin holding every scope", async () => {
+    const ctx = adminContext(w)
+    const created = await withRlsContext(ctx, (tx) =>
+      createThread(tx, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        participantIds: [w.admin.userId, w.clientA.userId],
+        title: "With a client",
+      } as never).then(
+        () => "created",
+        (err: { status?: number }) => err.status ?? "error",
+      ),
+    )
+    expect(created).toBe(400)
+    const added = await withRlsContext(ctx, async (tx) => {
+      const thread = await createThread(tx, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        participantIds: [w.admin.userId, w.member.userId],
+        title: "Staff only",
+      } as never)
+      const threadId = (thread as { id: string }).id
+      return {
+        threadId,
+        out: await addParticipant(tx, {
+          orgId: w.orgId,
+          userId: w.admin.userId,
+          threadId,
+          targetUserId: w.clientA.userId,
+        }),
+      }
+    })
+    expect(added.out).toBeNull()
+    await withPrivilegedDb(w.orgId, "test:drop-staff-thread", async (tx) => {
+      for (const table of ["user_thread_state", "thread_participants"])
+        await tx.execute(
+          drizzleSql`DELETE FROM ${drizzleSql.raw(`kernel.${table}`)} WHERE thread_id = ${added.threadId}::uuid`,
+        )
+      await tx.execute(drizzleSql`DELETE FROM kernel.threads WHERE id = ${added.threadId}::uuid`)
+    })
   })
 })
 

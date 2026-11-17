@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Every agent-visible read of an app whose rows can be closed to the organization declares
-// `restrictedRows`, so the kernel stamps the turn when it returns such a row, or says here why
-// it never returns one. A new read tool of such an app fails this guard until it does either.
+// Every agent-visible tool of an app whose rows can be closed to the organization, read or
+// write, declares `restrictedRows`, so the kernel stamps the turn when the call touches such a
+// row, or says here why it never does. A new tool of such an app fails this guard until it does
+// either.
 
 import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
@@ -10,10 +11,11 @@ import { join } from "node:path"
 
 const REPO = join(import.meta.dir, "../../../../..")
 
-/** Reads that never return a restricted row, with the reason. */
+/** Tools that never touch a restricted row, with the reason. */
 const NO_RESTRICTED_ROWS: Record<string, string> = {
   "agreements.templates_list": "templates are org-wide documents, never closed to the organization",
   "agreements.template_get": "templates are org-wide documents, never closed to the organization",
+  "agreements.template_save": "templates are org-wide documents, never closed to the organization",
 }
 
 /** Apps whose closed rows are hand-written in a migration rather than `sharedRows`. */
@@ -45,16 +47,17 @@ function manifests(): Manifest[] {
 }
 
 describe("restricted rows guard", () => {
-  it("every agent-visible read of an app with closable rows declares restrictedRows or a reason", () => {
+  it("every agent-visible tool of an app with closable rows declares restrictedRows or a reason", () => {
     const missing: string[] = []
     let checked = 0
     for (const m of manifests()) {
-      const closable =
-        MIGRATION_RESTRICTED_APPS.has(m.name) ||
-        Object.values(m.schema ?? {}).some((t) => t && t.sharedRows !== undefined)
+      const shared = Object.values(m.schema ?? {}).some((t) => t && t.sharedRows !== undefined)
+      const closable = MIGRATION_RESTRICTED_APPS.has(m.name) || shared
       if (!closable) continue
       for (const [name, tool] of Object.entries(m.tools ?? {})) {
-        if (tool.readOnly !== true || tool.agentVisible === false) continue
+        if (tool.agentVisible === false) continue
+        // Writes are checked for apps whose rows close by `sharedRows`.
+        if (tool.readOnly !== true && !shared) continue
         checked += 1
         if (tool.restrictedRows) continue
         if (NO_RESTRICTED_ROWS[`${m.name}.${name}`]) continue
@@ -65,7 +68,7 @@ describe("restricted rows guard", () => {
     expect(missing).toEqual([])
   })
 
-  it("every stated reason still names a read tool that exists", () => {
+  it("every stated reason still names a tool that exists", () => {
     const tools = new Set(
       manifests().flatMap((m) => Object.keys(m.tools ?? {}).map((t) => `${m.name}.${t}`)),
     )

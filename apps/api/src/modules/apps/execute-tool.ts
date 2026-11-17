@@ -5037,11 +5037,18 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
   }
 
-  const idemKey =
+  const rawIdemKey =
     opts.internalCall?.idempotencyKey ??
     (typeof (validatedParams as any)?.idempotencyKey === "string"
       ? ((validatedParams as any).idempotencyKey as string)
       : undefined)
+  // The stored answer is one caller's, read under their access and stamped for their turn: the
+  // key is that caller's own, so another person's call with the same key runs as theirs.
+  const idemActor = opts.actor as { actorType: string; userId?: string | null; agentId?: string }
+  const idemKey =
+    rawIdemKey === undefined
+      ? undefined
+      : `${idemActor.actorType}:${idemActor.userId ?? "-"}:${idemActor.agentId ?? "-"}:${rawIdemKey}`
   const innerChain = [...callChain, opts.toolName]
   const userId = opts.actor.actorType === "user" ? opts.actor.userId : "system"
 
@@ -6720,7 +6727,12 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // whose rows could not be looked up is withheld.
   if ("data" in envelope && tool.restrictedRows && taintOriginStore) {
     try {
-      const scopes = await restrictedStampOf(opts.orgId, tool.restrictedRows, envelope.data)
+      const scopes = await restrictedStampOf(
+        opts.orgId,
+        tool.restrictedRows,
+        envelope.data,
+        validatedParams,
+      )
       if (scopes.length > 0) taintOriginStore.recordResultScopes(scopes)
     } catch (err) {
       log.error(
@@ -6809,10 +6821,16 @@ export function idsAtPath(data: unknown, path: string): string[] {
  */
 export async function restrictedStampOf(
   orgId: string,
-  decl: { kind: string; idPath: string },
+  decl: { kind: string; idPath?: string; paramPath?: string },
   data: unknown,
+  params?: unknown,
 ): Promise<string[]> {
-  const ids = idsAtPath(data, decl.idPath)
+  const ids = [
+    ...new Set([
+      ...(decl.idPath ? idsAtPath(data, decl.idPath) : []),
+      ...(decl.paramPath ? idsAtPath(params, decl.paramPath) : []),
+    ]),
+  ]
   if (ids.length === 0) return []
   const [app, entity] = decl.kind.split(".") as [string, string]
   const rows = await withPrivilegedDb(orgId, "restricted-rows-stamp", async (db) =>

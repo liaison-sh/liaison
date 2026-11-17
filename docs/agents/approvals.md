@@ -91,7 +91,7 @@ Some fields can be edited by the person who asked or by an approver, for example
 Anyone who may approve a request may edit it, even when the request waits in a conversation they never joined, such as a team channel an agent posted it in. The edit is then kept on the request and its history, without a note in that conversation. Someone who may not approve it, and is not in that conversation, cannot edit it.
 
 1. On the card, click **Edit**.
-2. Change the text.
+2. Change the text. Hours and amounts are edited as you read them: hours in hours and a rate in the currency's units, even when the request stores minutes or cents.
 3. Click **Save** (or **Cancel** to drop the change), then click **Approve**.
 
 A draft from a personal mailbox stays encrypted in the request: only the mailbox's owner sees it on the card and approves it. To edit it, unlock the mailbox on that device: **Edit** opens on the decrypted text, and saving encrypts the new text to the mailbox again, so the request never holds it readable. Until the mailbox is unlocked, the card shows **Unlock** instead of **Edit**. An agent can edit such a draft the same way. When the edit cannot carry every encrypted part of the draft (a reply's subject, for example), it is refused: the agent withdraws the request and drafts a new one.

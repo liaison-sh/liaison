@@ -55,7 +55,9 @@ A company page has a **Client portal** section for people who hold `kernel:porta
 
 1. Click **Invite someone**, enter a name and an email, and click **Send the invitation**. The person gets one email with a link to the portal; they sign in each time with a link sent by email, with no password.
 2. Under **What the company sees**, open what the company should read: **Invoices**, **Requests**, and for each of the company's projects its **Progress**, **Hours** and **Reports**. Everything starts closed. Opening hours or invoices asks first and says what the client will then read. Everyone invited sees the same thing, except what names them.
-3. Click **What they see** to read the portal as one of them, through the portal's own reads.
+3. Click **What they see** to read the portal as one of them, through the portal's own reads: each project they see, with its hours line when its hours are shared.
+
+The portal lists a project only once its **Progress** or **Reports** is open, and shows its hours on the project's page. So **Hours** open on its own shows nothing yet: the switch says "Nobody sees these hours yet", and **What they see** names the projects whose hours are open but not seen. An agent's invitation of someone already invited or signed in is answered with who is already there, and no second invitation is staged.
 
 Below the switches, each document shared with the company (an agreement sent to one of its people) is listed by its number and title when you may read it, with the same **Open** switch: click it to close that share.
 

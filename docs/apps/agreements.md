@@ -31,7 +31,7 @@ In a demo organization, seeded signatures are stand-ins: the agreement says "In 
 
 ## Set up signing on your server
 
-- `LIAISON_TSA_URL`: the RFC 3161 timestamp authority. Without it, a send for signature is refused with `TIMESTAMP_NOT_CONFIGURED`; drafts, templates, preparing and acceptances that need no stamp keep working.
+- `LIAISON_TSA_URL`: the RFC 3161 timestamp authority. Without it, a send for signature is refused with `TIMESTAMP_NOT_CONFIGURED`, and the Agreements screens (the list, **New agreement**, the editor and the send page) say at the top that signatures are off on this server, before anyone prepares a document; **Send for signature** stays greyed. Drafts, templates, preparing and acceptances that need no stamp keep working.
 - `LIAISON_TSA_CHAIN_FILE` (a path, preferred) or `LIAISON_TSA_CHAIN_PEM` (inline): the authority's published certificate chain, the only certificates a timestamp is checked against. A URL with no chain is a configuration error: nothing is stamped.
 - `LIAISON_TSA_ALLOW_PRIVATE`: lets the server reach an authority on a private address, for a test authority only. Off by default.
 - The render service `pdf-render` checks and pictures uploaded PDFs. Without it, an uploaded PDF is refused with `PDF_RENDER_UNAVAILABLE`; agreements Liaison writes from a template or a brief need no render service. See [Run without the render service](../self-hosting/docker.md#run-without-the-render-service).

@@ -327,6 +327,12 @@ and an edit of such a field is refused too. A handler cannot park an approval
 for a tool with pinned params through `ctx.requestApproval`; call the tool
 itself so its preflight pins them.
 
+An `editableFields` entry may carry a `unit` when the param is stored in
+another unit than the one a person reads: `"hours"` on a `number` widget over
+an integer of minutes, `"money"` on a `text` or `number` widget over minor
+units (cents), shown in the payload's `currency`. The card shows and takes the
+person's unit and saves the stored one; any other pairing refuses the manifest.
+
 **An approval's deadline.** A handler that parks an approval with
 `ctx.requestApproval` can set `expiry_hours`, a whole number from 1 to 720,
 when it knows its own deadline. It wins over the tool's `approvalExpiryHours`

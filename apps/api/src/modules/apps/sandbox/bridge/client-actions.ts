@@ -17,6 +17,10 @@
  *  - `client_actions_revoke({ target_type, target_id, reason })`: every open
  *    action of one target, in one transaction. "replaced" needs no decision (a
  *    newer version kills the old links); any other reason does, like a send.
+ *  - `client_actions_signed_copy({ target_type, target_id, create, archive_ids, readers_only })`:
+ *    the Knowledge copy of a signed target, written and read back as the member who
+ *    sent it for signature (modules/client-actions/signed-copy.ts). Only for a
+ *    declared target with a decided action; the kernel finds the sender itself.
  *
  * Every refusal answers data with a code, never a throw, since only an error's
  * message crosses the sandbox boundary.
@@ -480,6 +484,57 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         byAgent: bridgeActingAgentId != null,
       })
       return JSON.stringify({ status: "ok", revoked_ids: ids })
+    },
+
+    client_actions_signed_copy: async (paramsJson: string): Promise<string> => {
+      let p: {
+        target_type?: unknown
+        target_id?: unknown
+        create?: unknown
+        archive_ids?: unknown
+        readers_only?: unknown
+      }
+      try {
+        p = JSON.parse(paramsJson || "{}")
+      } catch {
+        return refuse("INVALID_INPUT", "client_actions_signed_copy takes a JSON object.")
+      }
+      if (typeof p.target_type !== "string" || !declaredTarget(orgId, appName, p.target_type))
+        return refuse(
+          "TARGET_NOT_REGISTERED",
+          `${appName} declares no client action target ${String(p.target_type)}. No copy was written.`,
+        )
+      if (typeof p.target_id !== "string" || !UUID.test(p.target_id))
+        return refuse("INVALID_INPUT", "client_actions_signed_copy takes a target_id.")
+      if (!p.create || typeof p.create !== "object" || Array.isArray(p.create))
+        return refuse("INVALID_INPUT", "client_actions_signed_copy takes the create params.")
+      const archiveIds = Array.isArray(p.archive_ids)
+        ? p.archive_ids.filter((x): x is string => typeof x === "string" && UUID.test(x))
+        : []
+      const { writeSignedCopyAsSender } = await import("~/modules/client-actions/signed-copy")
+      const out = await writeSignedCopyAsSender({
+        orgId,
+        appName,
+        targetType: p.target_type,
+        targetId: p.target_id,
+        create: p.create as Record<string, unknown>,
+        archiveIds,
+        ...(Array.isArray(p.readers_only)
+          ? {
+              readersOnly: p.readers_only.filter(
+                (x): x is string => typeof x === "string" && UUID.test(x),
+              ),
+            }
+          : {}),
+      })
+      if (out.status === "created")
+        return JSON.stringify({
+          status: "ok",
+          document_id: out.documentId,
+          sender_user_id: out.senderUserId,
+          archived: out.archived,
+        })
+      return JSON.stringify({ status: "not_made", code: out.code, message: out.message })
     },
   }
 }

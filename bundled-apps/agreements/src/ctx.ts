@@ -70,6 +70,14 @@ export interface AgreementsCtx {
     target_id: string
     reason: string
   }) => Promise<unknown>
+  /** The Knowledge copy of a signed target, written by the kernel as the person who sent it. */
+  client_actions_signed_copy?: (p: {
+    target_type: string
+    target_id: string
+    create: Record<string, unknown>
+    archive_ids?: string[]
+    readers_only?: string[]
+  }) => Promise<unknown>
   /** A declared cross-app call (`cross_app_calls`): the K4 envelope. */
   executeTool?: (name: string, params: Record<string, unknown>) => Promise<CrossAppEnvelope>
   /** Emits one of the app's declared events. */

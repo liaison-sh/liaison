@@ -645,7 +645,7 @@ export async function sealRetry(ctx: SealCtx) {
     const pkg = await packageOf(ctx, v.id)
     if (pkg?.evidence_file_id) {
       if (!(v as Version & { knowledge_document_id?: string | null }).knowledge_document_id)
-        await onAgreementSigned(ctx, { versionId: v.id })
+        await onAgreementSigned(ctx, { versionId: v.id, announce: false })
       continue
     }
     const out = await sealVersion(ctx, v.id)

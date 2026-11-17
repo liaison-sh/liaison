@@ -1,5 +1,5 @@
 {
   "id": "NT-67",
-  "owner": "change requests and portal shares",
-  "part": "the copies' half left: the signed restricted sow in Knowledge read by the list only (the change-request task's Knowledge copy), and a restricted document sent to one portal user that no colleague reads (the portal share and portal web tasks)"
+  "owner": "portal shares and portal web",
+  "part": "the portal half left: a restricted document sent to one portal user that no colleague reads (the portal share and portal web tasks)"
 }

@@ -9,13 +9,17 @@
 // the settings name. On a restricted agreement exactly its list, nobody else, whatever the
 // settings say.
 //
-// The one caller of the ingestion (`knowledge:create`, CROSS_APP_INGESTIONS) is
-// `onAgreementSigned`, run by the seal on its first pass and by the seal retry for a signed
-// version whose copy was not written. A superseding signed version archives the copies of the
+// The one caller of the ingestion (`knowledge:create`, CROSS_APP_INGESTIONS, written by the
+// kernel as the sender through `client_actions_signed_copy`) is `onAgreementSigned`, run by
+// the seal on its first pass and by the seal retry for a signed version whose copy was not
+// written. A superseding signed version archives the copies of the
 // versions before it.
 
 import { currentShares } from "./access"
-import type { AgreementsCtx } from "./ctx"
+import { type AgreementsCtx, bridgeAnswer } from "./ctx"
+
+/** The client action target a signed version is (send.ts `TARGET_TYPE`; not imported: send imports the seal). */
+const TARGET_TYPE = "agreement_version"
 
 interface SignedAgreement {
   id: string
@@ -79,10 +83,17 @@ export async function sowShares(
 /**
  * Write the Knowledge copy of one signed version, once. Never throws: a copy that could not be
  * written is tried again by the seal retry (the version keeps no document id until it is).
+ *
+ * The copy is written by the kernel as the person who sent the version for signature, under
+ * their own row security (`client_actions_signed_copy`): the decided handler and the seal retry
+ * run as the app, which Knowledge does not let write a person's closed document. When that
+ * person is no longer active, can no longer write Knowledge, or (restricted) is off the list,
+ * no copy is made, the seal goes on, and the agreement's activity says so.
  */
 export async function onAgreementSigned(
   ctx: SowCtx,
-  input: { versionId: string },
+  /** `announce: false` (the seal retry): a copy still not made is not said again. */
+  input: { versionId: string; announce?: boolean },
 ): Promise<SowOutcome> {
   try {
     const version = (await ctx.db.findOne(
@@ -98,55 +109,64 @@ export async function onAgreementSigned(
       version.agreement_id,
     )) as SignedAgreement | null
     if (!agreement) return { status: "skipped", reason: "No agreement holds this version." }
-    if (typeof ctx.executeTool !== "function")
+    if (typeof ctx.client_actions_signed_copy !== "function")
       return { status: "failed", reason: "Knowledge is not reachable on this run." }
 
     const shares = await sowShares(ctx, agreement)
-    const readers = shares.users.map((u) => u.userId)
-    const owner =
-      agreement.created_by_user_id && readers.includes(agreement.created_by_user_id)
-        ? agreement.created_by_user_id
-        : (readers[0] ?? null)
     const body = `${sowHeaderLine(agreement, version)}\n\n${version.source_text ?? ""}`
-    const env = await ctx.executeTool("knowledge:create", {
-      documentScope: "organization",
-      title: `${agreement.number} version ${version.number}: ${agreement.title}`,
-      summary: `Signed text of ${agreement.number}, version ${version.number}. The signed file is the record.`,
-      body,
-      sensitivity: "internal",
-      orgAccess: "none",
-      // Written in the name of a person who reads it: the creator when on the list, else the
-      // first person on it (a system run has no person of its own).
-      ...(owner ? { ownerUserId: owner } : {}),
-      shareWithUsers: shares.users,
-      ...(shares.roles.length > 0 ? { shareWithRoles: shares.roles } : {}),
-      idempotencyKey: `agreements:sow:${version.id}`,
-    })
-    if (env.status !== "completed")
-      return {
-        status: "failed",
-        reason:
-          env.status === "error"
-            ? `${env.error.code}: ${env.error.message}`
-            : "The Knowledge copy waits on an approval it should never need.",
-      }
-    const documentId = (env.result as { id?: unknown } | null)?.id
-    if (typeof documentId !== "string" || documentId === "")
-      return { status: "failed", reason: "Knowledge answered without a document id." }
-    await ctx.db.update("agreement_versions", version.id, { knowledge_document_id: documentId })
-
-    // The versions this one supersedes: their copies are archived.
+    // The versions this one supersedes: their copies are archived once it is written.
     const older = (await ctx.db.findMany("agreement_versions", {
       where: { agreement_id: agreement.id },
       limit: 200,
     })) as SignedVersion[]
-    const archived: string[] = []
-    for (const v of older) {
-      if (v.id === version.id || v.number >= version.number || !v.knowledge_document_id) continue
-      const out = await ctx.executeTool("knowledge:archive", { id: v.knowledge_document_id })
-      if (out.status === "completed") archived.push(v.knowledge_document_id)
+    const archiveIds = older
+      .filter((v) => v.id !== version.id && v.number < version.number && v.knowledge_document_id)
+      .map((v) => v.knowledge_document_id as string)
+    const answer = bridgeAnswer<{
+      status: string
+      document_id?: string
+      archived?: string[]
+      code?: string
+      message?: string
+    }>(
+      await ctx.client_actions_signed_copy({
+        target_type: TARGET_TYPE,
+        target_id: version.id,
+        create: {
+          documentScope: "organization",
+          title: `${agreement.number} version ${version.number}: ${agreement.title}`,
+          summary: `Signed text of ${agreement.number}, version ${version.number}. The signed file is the record.`,
+          body,
+          sensitivity: "internal",
+          orgAccess: "none",
+          shareWithUsers: shares.users,
+          ...(shares.roles.length > 0 ? { shareWithRoles: shares.roles } : {}),
+          idempotencyKey: `agreements:sow:${version.id}`,
+        },
+        archive_ids: archiveIds,
+        ...(shares.restricted ? { readers_only: shares.users.map((u) => u.userId) } : {}),
+      }),
+    )
+    if (answer.status !== "ok" || typeof answer.document_id !== "string") {
+      const reason = answer.message ?? answer.code ?? "The Knowledge copy was not made."
+      if (answer.status === "not_made" && input.announce !== false)
+        await ctx.emit?.({
+          entity: "agreement",
+          action: "knowledge_copy_not_made",
+          entityId: agreement.id,
+          data: {
+            number: agreement.number,
+            version: version.number,
+            code: answer.code ?? null,
+            reason,
+          },
+        })
+      return { status: "failed", reason }
     }
-    return { status: "created", document_id: documentId, archived }
+    await ctx.db.update("agreement_versions", version.id, {
+      knowledge_document_id: answer.document_id,
+    })
+    return { status: "created", document_id: answer.document_id, archived: answer.archived ?? [] }
   } catch (err) {
     return { status: "failed", reason: (err as Error)?.message ?? "the copy was not written" }
   }

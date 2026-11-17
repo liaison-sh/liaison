@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1698,6 +1698,7 @@
       "agreement:voided",
       "agreement:signed",
       "agreement:access_changed",
+      "agreement:knowledge_copy_not_made",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",

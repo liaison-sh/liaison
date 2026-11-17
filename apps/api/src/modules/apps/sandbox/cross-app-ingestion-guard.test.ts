@@ -110,21 +110,36 @@ describe("cross-app ingestion: the approval-gate exemption is one declared path"
     expect(src).toContain("if (!ctx.approval && !(await ingestionCallerOf(ctx))) {")
   })
 
-  it("agreements writes and archives the copy from its signed handler alone", () => {
+  it("agreements writes and archives the copy from its signed handler alone, through the kernel's write as the sender", () => {
     const src = path.join(BUNDLED, "agreements", "src")
-    const callers = readdirSync(src)
-      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".testutil.ts"))
-      .filter((f) => {
-        const text = readFileSync(path.join(src, f), "utf8")
-        return text.includes('"knowledge:create"') || text.includes('"knowledge:archive"')
-      })
+    const files = readdirSync(src).filter(
+      (f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".testutil.ts"),
+    )
+    // No agreements file dispatches the Knowledge tools itself any more.
+    const direct = files.filter((f) => {
+      const text = readFileSync(path.join(src, f), "utf8")
+      return text.includes('"knowledge:create"') || text.includes('"knowledge:archive"')
+    })
+    expect(direct).toEqual([])
+    const callers = files
+      .filter((f) =>
+        readFileSync(path.join(src, f), "utf8").includes("client_actions_signed_copy("),
+      )
       .sort()
     expect(callers).toEqual(["sow-knowledge.ts"])
     const text = readFileSync(path.join(src, "sow-knowledge.ts"), "utf8")
     const at = text.indexOf("export async function onAgreementSigned(")
     expect(at).toBeGreaterThan(-1)
-    // Both calls sit inside that one function.
-    expect(text.indexOf('"knowledge:create"')).toBeGreaterThan(at)
-    expect(text.indexOf('"knowledge:archive"')).toBeGreaterThan(at)
+    expect(text.indexOf("client_actions_signed_copy(")).toBeGreaterThan(at)
+    // On the kernel side, one bridge method reaches the write, and one module dispatches it.
+    const kernelSrc = path.join(import.meta.dir, "..", "..")
+    const bridge = readFileSync(
+      path.join(kernelSrc, "apps", "sandbox", "bridge", "client-actions.ts"),
+      "utf8",
+    )
+    expect(bridge).toContain("writeSignedCopyAsSender")
+    const helper = readFileSync(path.join(kernelSrc, "client-actions", "signed-copy.ts"), "utf8")
+    expect(helper).toContain('const CREATE_TOOL = "knowledge:create"')
+    expect(helper).toContain("internalCall: { callerApp: args.appName")
   })
 })

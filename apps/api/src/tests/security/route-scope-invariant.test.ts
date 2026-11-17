@@ -38,6 +38,8 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/apps/host-api": "the app host API major versions this server supports, no org data",
   "GET /api/connections/oauth-done":
     "the static page an OAuth popup lands on; it carries no data and closes itself",
+  "GET /api/client-actions/signing":
+    "whether this server can ask for a signature (an instance setting), the same for every member, no org data",
   "GET /api/imports/uploads/config":
     "the instance's upload mode and size limits, the same for every member",
   "GET /api/auth/bootstrap-state": "public route, see route-auth-invariant.test.ts",

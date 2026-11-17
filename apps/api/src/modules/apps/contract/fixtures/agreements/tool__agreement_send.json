@@ -43,7 +43,7 @@
       "args": [
         "{\"send\":{\"target_type\":\"agreement_version\",\"target_id\":\"09098998-02d6-44b3-bb94-f78ab053cd02\",\"sha256\":\"1b348ca301098af84cbbeea94fa20975234c8a4febce30da825ef3a7ea549091\",\"kind\":\"sign\",\"expires_in_days\":14,\"order\":\"sequential\",\"message\":null,\"required_phrase\":null,\"company_id\":null,\"signers\":[{\"contact_id\":null,\"email\":\"person1@example.com\",\"name\":\"Customer 174d8e42\"}]}}"
       ],
-      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"TIMESTAMP_NOT_CONFIGURED\",\"message\":\"This server has no timestamp authority (LIAISON_TSA_URL), so a signature cannot be sealed. Nothing was sent; the operator sets one up.\"}}"
+      "reply": "{\"status\":\"error\",\"error\":{\"code\":\"TIMESTAMP_NOT_CONFIGURED\",\"message\":\"Signatures are off on this server: it has no timestamp service to date a signature. Nothing was sent. Whoever runs this server can turn signatures on.\"}}"
     }
   ]
 }

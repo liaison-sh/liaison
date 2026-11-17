@@ -33,8 +33,6 @@
  * message crosses the sandbox boundary.
  */
 
-import { isManagedEdition } from "~/lib/edition"
-import { env } from "~/lib/env"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   ClientActionError,
@@ -51,6 +49,7 @@ import {
   revokeTargetClientActions,
   signerAddresses,
 } from "~/modules/client-actions/mint"
+import { signingUnavailable } from "~/modules/client-actions/signing-state"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
 import { describeStop, evaluateSendGuard, isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { hasScope } from "~/modules/permissions/permissions"
@@ -69,29 +68,6 @@ const REVOKE_REASONS: ClientActionRevokeReason[] = [
 
 function refuse(code: string, message: string): string {
   return JSON.stringify({ status: "error", error: { code, message } })
-}
-
-/**
- * Why a signature cannot be asked on this server, or null. The hosted edition
- * offers no signature unless its operator turned it on; a signature with no
- * timestamp authority would seal nothing a court could date.
- */
-export function signingUnavailable(kind: string): { code: string; message: string } | null {
-  if (kind !== "sign") return null
-  if (isManagedEdition() && !env.LIAISON_MANAGED_SIGNING_ENABLED) {
-    return {
-      code: "SIGNING_NOT_AVAILABLE",
-      message: "Signatures are not offered on this hosted service. Nothing was sent.",
-    }
-  }
-  if (!env.LIAISON_TSA_URL) {
-    return {
-      code: "TIMESTAMP_NOT_CONFIGURED",
-      message:
-        "This server has no timestamp authority (LIAISON_TSA_URL), so a signature cannot be sealed. Nothing was sent; the operator sets one up.",
-    }
-  }
-  return null
 }
 
 interface SendSigner {

@@ -469,6 +469,9 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   PDF_VARIES_BY_VIEWER: 422,
   PDF_INFECTED: 422,
   NOT_READABLE: 404,
+  // A passage read: a section number that is not one, or one the signed text does not hold.
+  INVALID_SECTION: 400,
+  SECTION_NOT_FOUND: 404,
   PDF_RENDER_UNAVAILABLE: 503,
   PDF_RENDER_BUSY: 429,
   COPY_DIFFERS: 409,

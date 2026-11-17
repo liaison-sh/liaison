@@ -1,0 +1,4 @@
+# The signed text as Knowledge, the passage read, the company timeline, change requests.
+src/sow-knowledge.test.ts
+src/passage.test.ts
+src/activity-source.test.ts

@@ -352,6 +352,8 @@ const READ_ONLY: Record<string, string[]> = {
     "approval_route_read",
     "client_action_view_get",
     "agreement_evidence_get",
+    "agreement_passage_get",
+    "activity_read",
   ],
   pennylane: [
     "supplier_invoices_list",

@@ -3698,5 +3698,13 @@
     "say": "vérifie que le contrat signé n'a pas été modifié",
     "typed": ["vérifier sceau", "verify seal", "intégrité preuve"],
     "any": ["agreements__agreement_verify"]
+  },
+  {
+    "id": "C124",
+    "set": "seed",
+    "lang": "fr",
+    "say": "cite la section 8.2 du texte signé du contrat",
+    "typed": ["citer section contrat", "quote agreement section", "passage signé"],
+    "any": ["agreements__agreement_passage_get"]
   }
 ]

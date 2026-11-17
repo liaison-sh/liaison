@@ -12,6 +12,7 @@
 // `evidence-verify` (weekly re-hash, never a repair).
 
 import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+import { onAgreementSigned } from "./sow-knowledge"
 
 /** Copies give up and raise one attention item after this many failed sends. */
 export const COPY_MAX_ATTEMPTS = 3
@@ -384,6 +385,8 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
         seal: pkg.seal,
       },
     })
+    // The signed text as Knowledge, once; the seal retry writes it when this pass could not.
+    await onAgreementSigned(ctx, { versionId: version.id })
   }
   return {
     status: "sealed",
@@ -640,7 +643,11 @@ export async function sealRetry(ctx: SealCtx) {
   let waiting = 0
   for (const v of versions) {
     const pkg = await packageOf(ctx, v.id)
-    if (pkg?.evidence_file_id) continue
+    if (pkg?.evidence_file_id) {
+      if (!(v as Version & { knowledge_document_id?: string | null }).knowledge_document_id)
+        await onAgreementSigned(ctx, { versionId: v.id })
+      continue
+    }
     const out = await sealVersion(ctx, v.id)
     if (out.status === "sealed") {
       sealed += 1

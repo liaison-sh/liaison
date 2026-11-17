@@ -1882,7 +1882,7 @@
     },
     "knowledge__create": {
       "desc": 501,
-      "schema": 765
+      "schema": 827
     },
     "knowledge__find_by_title": {
       "desc": 599,
@@ -3016,6 +3016,9 @@
     "C123|intégrité preuve": "15tl",
     "C123|vérifier sceau": "15tl",
     "C123|verify seal": "15tl",
+    "C124|citer section contrat": "15t",
+    "C124|passage signé": "15tl",
+    "C124|quote agreement section": "15tl",
     "C13|clôture mensuelle": "",
     "C13|facture du mois": "",
     "C13|facturer projet": "",
@@ -3161,7 +3164,7 @@
     "C62|customer history": "",
     "C62|history with client": "",
     "C63|fil d'activité": "15t",
-    "C63|historique client": "5",
+    "C63|historique client": "",
     "C63|historique société": "15tl",
     "C64|end schedule": "",
     "C64|remove from month end run": "15t",

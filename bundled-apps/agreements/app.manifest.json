@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -736,6 +736,19 @@
   "approvalRoute": {
     "agreements:agreement": "approval_route_read"
   },
+  "activitySources": [
+    { "tool": "activity_read", "scope": "agreements:agreements:read", "label": "Agreements", "filterKey": "agreements" }
+  ],
+  "cross_app_calls": [
+    {
+      "target": "knowledge:create",
+      "reason": "one Knowledge document per signed version, closed to the organization and shared by name, from the version's frozen text"
+    },
+    {
+      "target": "knowledge:archive",
+      "reason": "a superseding signed version archives the Knowledge copy of the version before it"
+    }
+  ],
   "tools": {
     "home_load": {
       "description": "Load the agreements list for the app's home page, in the order of what needs someone first.",
@@ -1122,6 +1135,44 @@
           "price_minor",
           "currency"
         ]
+      }
+    },
+    "agreement_passage_get": {
+      "restrictedRows": { "entity": "agreement", "idPath": "agreement.id" },
+      "description": "Quote one numbered section of a signed or sent agreement version, cut from its own text. Answers NOT_READABLE when the version has no readable text: then say you could not read it.",
+      "searchKeywords": ["passage", "section", "clause", "article", "citer", "quote", "texte", "signé", "scope", "périmètre"],
+      "requiredScopes": ["agreements:agreements:read"],
+      "handler": "agreementPassageGetHandler",
+      "readOnly": true,
+      "taintSource": true,
+      "taintSourceWhen": { "field": "source_kind", "equals": "uploaded" },
+      "params": {
+        "type": "object",
+        "properties": {
+          "version_id": { "type": "string", "description": "The agreement version id (agreement_get lists them)." },
+          "section": { "type": "string", "description": "The section number, such as 8 or 8.2." }
+        },
+        "required": ["version_id", "section"]
+      }
+    },
+    "activity_read": {
+      "description": "The agreements of a company or of its people, one row each at its latest status, newest first, for their timeline. Read by the kernel.",
+      "readOnly": true,
+      "agentVisible": false,
+      "timeoutMs": 2000,
+      "requiredScopes": ["agreements:agreements:read"],
+      "trustBoundary": "user",
+      "handler": "activityReadHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactIds": { "type": "array", "items": { "type": "string" } },
+          "companyId": { "type": ["string", "null"] },
+          "dealIds": { "type": "array", "items": { "type": "string" } },
+          "before": { "type": ["object", "null"] },
+          "limit": { "type": "integer" },
+          "prefix": { "type": "string" }
+        }
       }
     },
     "templates_list": {

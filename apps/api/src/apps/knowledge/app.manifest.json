@@ -1038,6 +1038,8 @@
             },
             "description": "Explicit role-based access grants applied at creation. REQUIRED (non-empty) when sensitivity is 'confidential' or 'restricted': such documents are invisible to everyone but the owner until shared, so name who may access them. Find role ids with the kernel roles_list tool; for finance/pricing/margin material grant the executive (e.g. C-Level) role."
           },
+          "orgAccess": { "type": "string", "enum": ["none", "viewer", "editor"] },
+          "shareWithUsers": { "type": "array", "items": { "type": "object", "properties": { "userId": { "type": "string" }, "role": { "type": "string", "enum": ["viewer", "editor"] } }, "required": ["userId", "role"] } },
           "tagNames": {
             "type": "array",
             "items": {

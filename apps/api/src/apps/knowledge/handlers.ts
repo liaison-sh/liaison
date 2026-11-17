@@ -307,7 +307,9 @@ export async function archive(
   ctx: KnowledgeCtx,
 ): Promise<unknown> {
   const p = params ?? {}
-  if (!ctx.approval) {
+  // A recognised ingestion's archive (a superseded copy the same connector wrote) is a machine
+  // write path, like its create: no agent proposes it and nobody watches the turn.
+  if (!ctx.approval && !(await ingestionCallerOf(ctx))) {
     const scope = await documentScopeOf(ctx, p.id)
     if (scope === "organization") {
       const parked = await parkForApproval(ctx, {

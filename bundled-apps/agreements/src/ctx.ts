@@ -3,7 +3,7 @@
 // The context every agreements handler receives: the generic CRUD bridge, who the run
 // acts for, the turn (which agent acts, if any), and the approval it runs under.
 
-import type { DbClient, KernelCaller } from "@liaison/app-sdk"
+import type { CrossAppEnvelope, DbClient, KernelCaller } from "@liaison/app-sdk"
 
 export interface ApprovalRequest {
   tool_name: string
@@ -70,6 +70,8 @@ export interface AgreementsCtx {
     target_id: string
     reason: string
   }) => Promise<unknown>
+  /** A declared cross-app call (`cross_app_calls`): the K4 envelope. */
+  executeTool?: (name: string, params: Record<string, unknown>) => Promise<CrossAppEnvelope>
   /** Emits one of the app's declared events. */
   emit?: (e: {
     entity: string

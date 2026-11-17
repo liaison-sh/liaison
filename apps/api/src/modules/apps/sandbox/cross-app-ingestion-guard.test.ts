@@ -45,8 +45,11 @@ function declaringApps(target: string): string[] {
 }
 
 describe("cross-app ingestion: the approval-gate exemption is one declared path", () => {
-  it("names exactly the calls connector's knowledge:create", () => {
-    expect(CROSS_APP_INGESTIONS).toEqual({ calls: ["knowledge:create"] })
+  it("names exactly the calls connector's create and the agreements signed-text copy", () => {
+    expect(CROSS_APP_INGESTIONS).toEqual({
+      calls: ["knowledge:create"],
+      agreements: ["knowledge:create", "knowledge:archive"],
+    })
   })
 
   it("every ingestion pair is declared in that app's own cross_app_calls", () => {
@@ -57,8 +60,9 @@ describe("cross-app ingestion: the approval-gate exemption is one declared path"
     }
   })
 
-  it("no other app declares knowledge:create as a cross-app target", () => {
-    expect(declaringApps("knowledge:create")).toEqual(["calls"])
+  it("no other app declares knowledge:create or knowledge:archive as a cross-app target", () => {
+    expect(declaringApps("knowledge:create")).toEqual(["agreements", "calls"])
+    expect(declaringApps("knowledge:archive")).toEqual(["agreements"])
   })
 
   it("answers only for a recognised pair that the caller really declared", () => {
@@ -68,6 +72,8 @@ describe("cross-app ingestion: the approval-gate exemption is one declared path"
     // Declared, but not an ingestion path: the everyday cross-app call, still gated.
     expect(call("calls", "knowledge:update", true)).toBe("")
     expect(call("shopify", "knowledge:create", true)).toBe("")
+    expect(call("agreements", "knowledge:archive", true)).toBe("agreements")
+    expect(call("agreements", "knowledge:update", true)).toBe("")
     // A recognised pair the caller never declared, and a direct user or agent call.
     expect(call("calls", "knowledge:create", false)).toBe("")
     expect(call(undefined, "knowledge:create", true)).toBe("")
@@ -94,5 +100,31 @@ describe("cross-app ingestion: the approval-gate exemption is one declared path"
       )
       .sort()
     expect(callers).toEqual(["webhooks.ts"])
+  })
+
+  it("the knowledge archive gate asks for the ingestion too", () => {
+    const src = readFileSync(
+      path.resolve(import.meta.dir, "../../../apps/knowledge/handlers.ts"),
+      "utf8",
+    )
+    expect(src).toContain("if (!ctx.approval && !(await ingestionCallerOf(ctx))) {")
+  })
+
+  it("agreements writes and archives the copy from its signed handler alone", () => {
+    const src = path.join(BUNDLED, "agreements", "src")
+    const callers = readdirSync(src)
+      .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts") && !f.endsWith(".testutil.ts"))
+      .filter((f) => {
+        const text = readFileSync(path.join(src, f), "utf8")
+        return text.includes('"knowledge:create"') || text.includes('"knowledge:archive"')
+      })
+      .sort()
+    expect(callers).toEqual(["sow-knowledge.ts"])
+    const text = readFileSync(path.join(src, "sow-knowledge.ts"), "utf8")
+    const at = text.indexOf("export async function onAgreementSigned(")
+    expect(at).toBeGreaterThan(-1)
+    // Both calls sit inside that one function.
+    expect(text.indexOf('"knowledge:create"')).toBeGreaterThan(at)
+    expect(text.indexOf('"knowledge:archive"')).toBeGreaterThan(at)
   })
 })

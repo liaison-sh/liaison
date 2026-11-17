@@ -309,6 +309,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   ],
   "seed/factories/org/rows.ts": ["creates-member", "seed data"],
   "seed/factories/people/people.ts": ["creates-member", "seed data"],
+  "seed/factories/people/portal-people.ts": [
+    "one-row",
+    "seed data: the seeded contact's own portal person, written through createExternalUser",
+  ],
   "seed/tiers/demo/seed-org.ts": ["creates-member", "seed data"],
   "seed/tiers/lively/seed-lively.ts": ["creates-member", "seed data"],
   "seed/tiers/minimal.ts": ["creates-member", "seed data"],

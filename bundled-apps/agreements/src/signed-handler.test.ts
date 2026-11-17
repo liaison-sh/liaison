@@ -72,6 +72,10 @@ describe("a signed agreement's project", () => {
     expect(created(w.projects.calls)).toBe(1)
     const a = (await w.db.findOne("agreements", w.agreementId)) as { project_id: string }
     expect(a.project_id).toBe("project-1")
+    // The signed event names the project, so invoicing can draft its advance.
+    const signedEvents = w.ctx.calls.emitted.filter((e) => e.action === "signed")
+    expect(signedEvents).toHaveLength(1)
+    expect(signedEvents[0]?.data).toMatchObject({ project_id: "project-1", kind: "proposal" })
     expect(w.projects.calls[0]?.params).toMatchObject({
       companyId: COMPANY,
       externalRef: `agreement:${w.agreementId}`,

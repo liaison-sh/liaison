@@ -6824,7 +6824,8 @@
       "stripe/refund:settled": "onStripeRefundCreatedEvent",
       "stripe/refund:failed": "onStripeRefundCreatedEvent",
       "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent",
-      "kernel/client_action:decided": "onQuoteClientActionDecidedHandler"
+      "kernel/client_action:decided": "onQuoteClientActionDecidedHandler",
+      "agreements/agreement:signed": "onAgreementSignedAdvanceHandler"
     },
     "emits": [
       "recurring_run:drafted",

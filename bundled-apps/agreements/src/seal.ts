@@ -382,6 +382,12 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
       signed_at: lastSigned,
       retention_until: retentionUntil(pkg.sealed_at, agreement.ends_on, await yearsAfterEndOf(ctx)),
     })
+    // Its project first, so the signed event names it; the seal retry starts it when this
+    // pass could not.
+    await startProjectQuietly(ctx, agreement.id)
+    const projectId =
+      ((await ctx.db.findOne("agreements", agreement.id)) as { project_id?: string | null } | null)
+        ?.project_id ?? null
     await ctx.emit?.({
       entity: "agreement",
       action: "signed",
@@ -394,12 +400,11 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
         version_id: version.id,
         package_id: pkg.id,
         seal: pkg.seal,
+        project_id: projectId,
       },
     })
     // The signed text as Knowledge, once; the seal retry writes it when this pass could not.
     await onAgreementSigned(ctx, { versionId: version.id })
-    // Its project, once; the seal retry starts it when this pass could not.
-    await startProjectQuietly(ctx, agreement.id)
   }
   return {
     status: "sealed",

@@ -959,3 +959,40 @@ export async function setPortalSettings(
   )
   return parsed.data
 }
+
+// ── Access log writer ─────────────────────────────────────────────────────
+
+export type PortalAccessAction =
+  | "portal.sign_in"
+  | "portal.sign_in_failed"
+  | "portal.view"
+  | "portal.download"
+  | "portal.approve"
+
+/**
+ * One row of a company's portal access log: who (the client), their company, when, what,
+ * and the device as the browser reported it (outside text: the reader's turn is marked).
+ * Never a token, a code or an address. Written off the request's path; a failure is
+ * logged, never answered.
+ */
+export function recordPortalAccess(input: {
+  orgId: string
+  userId: string
+  action: PortalAccessAction
+  entityType?: string
+  entityId?: string
+  userAgent?: string | null
+}): void {
+  void withPrivilegedDb(input.orgId, "portal-access-log", (tx) =>
+    tx.execute(sql`
+      INSERT INTO ${K()}.audit_log (org_id, actor_type, actor_id, app, action, entity_type, entity_id, metadata)
+      SELECT ${input.orgId}, 'external', u.id, 'portal', ${input.action},
+             ${input.entityType ?? null}, ${input.entityId ?? null},
+             jsonb_build_object('companyId', u.company_id::text,
+                                'device', jsonb_build_object('userAgent', ${(input.userAgent ?? "").slice(0, 300)}::text))
+        FROM ${K()}.users u
+       WHERE u.id = ${input.userId} AND u.org_id = ${input.orgId} AND u.user_type = 'external'`),
+  ).catch((err) =>
+    log.error({ err, orgId: input.orgId, userId: input.userId }, "portal access log write failed"),
+  )
+}

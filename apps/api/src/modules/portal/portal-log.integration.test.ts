@@ -6,15 +6,19 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { portalSettingsSchema } from "@liaison/shared"
+import { app } from "~/app"
 import { extractRows, sql } from "~/db"
+import { withRlsContext } from "~/db/rls"
+import { createPortalSession } from "~/modules/auth/auth"
 import { purgeExpiredAuditLog, purgeExpiredPortalLog } from "~/modules/org/audit-retention"
-import { PortalAccessError, setPortalSettings } from "~/modules/portal/access"
+import { PortalAccessError, readPortalAccessLog, setPortalSettings } from "~/modules/portal/access"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   createDoorWorld,
   type DoorWorld,
   dropDoorWorld,
+  memberContext,
 } from "~/tests/security/portal-doors/fixture"
 
 let w: DoorWorld
@@ -54,6 +58,39 @@ beforeAll(async () => {
 afterAll(async () => {
   await dropDoorWorld(w)
   await releaseTestLock()
+})
+
+describe("what the access log records", () => {
+  it("a client's view of their portal writes one row: who, their company, what, the device; never a token", async () => {
+    const { accessToken } = await createPortalSession(w.clientA.userId, w.orgId)
+    const res = await app.request("/api/portal/home", {
+      headers: { Authorization: `Bearer ${accessToken}`, "User-Agent": "Maison Browser 1.0" },
+    })
+    expect(res.status).toBe(200)
+    let rows: Array<{ actor_type: string; action: string; metadata: Record<string, unknown> }> = []
+    for (let i = 0; i < 50 && rows.length === 0; i++) {
+      await new Promise((r) => setTimeout(r, 20))
+      rows = extractRows(
+        await sql.unsafe(
+          `SELECT actor_type::text, action, metadata FROM kernel.audit_log
+            WHERE org_id = $1 AND actor_id = $2 AND app = 'portal' AND action = 'portal.view'`,
+          [w.orgId, w.clientA.userId],
+        ),
+      )
+    }
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.actor_type).toBe("external")
+    expect(rows[0]?.metadata).toEqual({
+      companyId: w.companyA,
+      device: { userAgent: "Maison Browser 1.0" },
+    })
+    expect(JSON.stringify(rows)).not.toContain(accessToken)
+    // Read back through the panel's log with the log scope.
+    const log = await withRlsContext(memberContext(w, ["kernel:portal:logs"]), (tx) =>
+      readPortalAccessLog({ db: tx, companyId: w.companyA }),
+    )
+    expect(log.map((r) => r.action)).toContain("portal.view")
+  })
 })
 
 describe("the portal access log's length", () => {

@@ -385,9 +385,21 @@ export function yourOpenLink(links: SigningLinkView[]): SigningLinkView | null {
   return links.find((l) => l.yours === true && l.state === "open") ?? null
 }
 
-/** Links that ended before everyone signed: a new link may be sent for these. */
+const ENDED_LINK = new Set(["expired", "revoked", "locked"])
+
+/**
+ * Links that ended before everyone signed and whose signer holds no newer link: a new link
+ * may be sent for these. An ended link a new one already replaced offers nothing more.
+ */
 export function relinkable(links: SigningLinkView[]): SigningLinkView[] {
-  return links.filter((l) => l.state === "expired" || l.state === "revoked" || l.state === "locked")
+  return links.filter(
+    (l) =>
+      ENDED_LINK.has(l.state) &&
+      !links.some(
+        (o) =>
+          o !== l && o.email.toLowerCase() === l.email.toLowerCase() && !ENDED_LINK.has(o.state),
+      ),
+  )
 }
 
 /** A decline made without the emailed code: "If this was not them, send a new link". */

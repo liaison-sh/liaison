@@ -439,7 +439,7 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                                           {tr("If this was not them, send a new link")}
                                         </Button>
                                       </Show>
-                                      <Show when={relinkable([l]).length > 0}>
+                                      <Show when={relinkable(d().signing_links).includes(l)}>
                                         <Button
                                           testid={`agreement-new-link-${l.client_action_id}`}
                                           disabled={busy()}

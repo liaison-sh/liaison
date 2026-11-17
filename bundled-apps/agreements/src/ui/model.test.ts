@@ -18,6 +18,7 @@ import {
   layoutOf,
   needsYou,
   parsePrice,
+  relinkable,
   setBlockText,
   setLayout,
   sidebarCounts,
@@ -173,6 +174,21 @@ describe("signers", () => {
     expect(yourOpenLink([link({ yours: true, client_action_id: "me" })])?.client_action_id).toBe(
       "me",
     )
+  })
+  it("offers a new link only for an ended link its signer has no newer link for", () => {
+    const link = (id: string, email: string, state: string) => ({
+      client_action_id: id,
+      signer: "S",
+      email,
+      sign_order: 1,
+      state,
+      expires_at: "",
+    })
+    const ended = link("old", "jean@client.example", "expired")
+    const renewed = link("new", "jean@client.example", "open")
+    const other = link("other", "anne@client.example", "revoked")
+    expect(relinkable([ended, renewed, other]).map((l) => l.client_action_id)).toEqual(["other"])
+    expect(relinkable([ended]).map((l) => l.client_action_id)).toEqual(["old"])
   })
   it("takes complete signers only", () => {
     expect(signersForSend([{ name: "Jean", email: "jean@client.example" }])).toEqual([

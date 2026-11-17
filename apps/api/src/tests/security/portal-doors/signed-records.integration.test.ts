@@ -31,6 +31,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import { call, codeOf, tokenOf } from "../../../../test-support/client-actions-kit"
@@ -318,20 +319,54 @@ describe("a signed record and its copies", () => {
       })
     const project = await bridgeCall("projects_createProject", { name: "Report source project" })
     const projectId = project.id as string
-    const [thread] = (await sql`
-      INSERT INTO ${kernel("threads")} (org_id, handle, type, created_by)
-      VALUES (${w.orgId}, ${`report-src-${crypto.randomUUID().slice(0, 8)}`}, 'thread', ${w.admin.userId})
-      RETURNING id::text AS id`) as unknown as Array<{ id: string }>
-    await sql`INSERT INTO ${kernel("thread_participants")} (thread_id, user_id, org_id)
-              VALUES (${thread?.id ?? ""}, ${w.admin.userId}, ${w.orgId})`
-    await sql`INSERT INTO ${kernel("thread_references")} (thread_id, org_id, app, entity_type, entity_id, added_by)
-              VALUES (${thread?.id ?? ""}, ${w.orgId}, 'projects', 'project', ${projectId}, ${w.admin.userId})`
-    await sql`INSERT INTO ${kernel("messages")} (thread_id, org_id, author_id, content, required_scopes)
-              VALUES (${thread?.id ?? ""}, ${w.orgId}, ${w.admin.userId}, 'The homepage went live.', '{}'::text[])`
-    await sql`INSERT INTO ${kernel("messages")} (thread_id, org_id, author_id, content, required_scopes, disclosure_list)
-              VALUES (${thread?.id ?? ""}, ${w.orgId}, ${w.admin.userId}, 'The closed price is 90,000.',
-                      ${`{restricted:agreements.agreement:${closedId}}`}::text[],
-                      ${`{${w.admin.userId}}`}::uuid[])`
+    const threadId = crypto.randomUUID()
+    const uuidLike = /^[0-9a-f-]{36}$/
+    if (!uuidLike.test(closedId) || !uuidLike.test(w.admin.userId)) throw new Error("not a uuid")
+    await sql.unsafe(
+      insertSql("kernel.threads", {
+        id: threadId,
+        org_id: w.orgId,
+        handle: `report-src-${threadId.slice(0, 8)}`,
+        type: "thread",
+        created_by: w.admin.userId,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.thread_participants", {
+        thread_id: threadId,
+        user_id: w.admin.userId,
+        org_id: w.orgId,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.thread_references", {
+        thread_id: threadId,
+        org_id: w.orgId,
+        app: "projects",
+        entity_type: "project",
+        entity_id: projectId,
+        added_by: w.admin.userId,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.messages", {
+        thread_id: threadId,
+        org_id: w.orgId,
+        author_id: w.admin.userId,
+        content: "The homepage went live.",
+        required_scopes: { raw: "'{}'::text[]" },
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.messages", {
+        thread_id: threadId,
+        org_id: w.orgId,
+        author_id: w.admin.userId,
+        content: "The closed price is 90,000.",
+        required_scopes: { raw: `ARRAY['restricted:agreements.agreement:${closedId}']::text[]` },
+        disclosure_list: { raw: `ARRAY['${w.admin.userId}']::uuid[]` },
+      }),
+    )
     const today = new Date().toISOString().slice(0, 10)
     const sources = await bridgeCall("projects_clientReportSources", { projectId, until: today })
     const text = JSON.stringify(sources.threadMessages)

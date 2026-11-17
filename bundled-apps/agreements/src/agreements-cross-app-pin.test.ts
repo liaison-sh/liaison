@@ -28,6 +28,7 @@ const ALLOWED = new Set([
   "knowledge:archive",
   "mail:reply",
   "projects:create",
+  "projects:createProject",
   "projects:time_plan_set",
 ])
 

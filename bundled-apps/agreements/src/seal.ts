@@ -13,6 +13,7 @@
 
 import { RECORDED_APPROVAL } from "./change-requests"
 import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+import { startProjectAfterSigning } from "./signed-project"
 import { onAgreementSigned } from "./sow-knowledge"
 
 /** Copies give up and raise one attention item after this many failed sends. */
@@ -397,6 +398,8 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
     })
     // The signed text as Knowledge, once; the seal retry writes it when this pass could not.
     await onAgreementSigned(ctx, { versionId: version.id })
+    // Its project, once; the seal retry starts it when this pass could not.
+    await startProjectQuietly(ctx, agreement.id)
   }
   return {
     status: "sealed",
@@ -644,6 +647,15 @@ export async function copyStateOf(
 }
 
 /** `seal-retry`: every signed version with no complete package; one attention item after an hour. */
+/** The signed agreement's project; a failure is retried by `seal-retry`, never undoes the seal. */
+async function startProjectQuietly(ctx: SealCtx, agreementId: string): Promise<void> {
+  try {
+    await startProjectAfterSigning(ctx, agreementId)
+  } catch {
+    // projects could not be reached on this pass: the next seal-retry tries again.
+  }
+}
+
 export async function sealRetry(ctx: SealCtx) {
   const versions = (await ctx.db.findMany("agreement_versions", {
     where: { status: "signed" },
@@ -656,6 +668,7 @@ export async function sealRetry(ctx: SealCtx) {
     if (pkg?.evidence_file_id) {
       if (!(v as Version & { knowledge_document_id?: string | null }).knowledge_document_id)
         await onAgreementSigned(ctx, { versionId: v.id, announce: false })
+      await startProjectQuietly(ctx, v.agreement_id)
       continue
     }
     const out = await sealVersion(ctx, v.id)

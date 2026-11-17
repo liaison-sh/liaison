@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.9",
+  "version": "0.4.1",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -241,7 +241,12 @@
           "userRef": true,
           "onErase": "anonymize"
         },
-        "claimed_at": "date?"
+        "claimed_at": "date?",
+        "project_time_budgets": {
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the signed proposal had a timebox when it started its project: time and budgets on that project followed it."
+        }
       }
     },
     "agreement_shares": {
@@ -748,6 +753,14 @@
     {
       "target": "knowledge:archive",
       "reason": "a superseding signed version archives the Knowledge copy of the version before it"
+    },
+    {
+      "target": "projects:createProject",
+      "reason": "a signed proposal or statement of work starts its project once, named by the agreement so a replay finds it (no assignee, time or activity read)"
+    },
+    {
+      "target": "projects:time_plan_set",
+      "reason": "the project a signed proposal started takes the proposal's timebox as its plan"
     },
     {
       "target": "mail:reply",

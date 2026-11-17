@@ -49,7 +49,10 @@ import {
   CONNECTION_CREDENTIALS_MISSING,
   ConnectionCredentialsMissingError,
 } from "~/modules/apps/connections/credentials-missing"
-import { NoConnectedAccountError } from "~/modules/apps/connections/no-connected-account"
+import {
+  CONNECTION_NOT_CONNECTED,
+  NoConnectedAccountError,
+} from "~/modules/apps/connections/no-connected-account"
 import { createAppContext } from "~/modules/apps/context"
 import { CORE_OPEN_TRANSACTION, type OpenTransaction } from "~/modules/apps/core/ctx"
 import { coreModuleFor } from "~/modules/apps/core/registry"
@@ -3622,6 +3625,18 @@ export function isNotConnectedToolErrorCode(code: string): boolean {
   return code === "not_connected" || code.endsWith("_not_connected")
 }
 
+/** A tool that writes a table or is gated: its not-connected answer means nothing was done. */
+function actsOnSomething(params: { orgId: string; toolName: string }): boolean {
+  const i = params.toolName.indexOf(":")
+  if (i <= 0) return false
+  const tool = toolRegistry.get([
+    params.orgId,
+    params.toolName.slice(0, i),
+    params.toolName.slice(i + 1),
+  ])
+  return Boolean(tool && (typeof tool.writesToTable === "string" || tool.gated === true))
+}
+
 export const HUMAN_TURN_ONLY_CODE = "human_turn_only"
 export const DM_ONLY_CODE = "dm_only"
 
@@ -3804,6 +3819,8 @@ export function statusForToolError(code: string): number {
       return 409
     // A connection with no stored credentials: the person reconnects it.
     case CONNECTION_CREDENTIALS_MISSING:
+    // A connection with no connected account, answered by a write or a send: nothing was done.
+    case CONNECTION_NOT_CONNECTED:
       return 422
     case "call_chain_limit":
       return 400
@@ -6930,8 +6947,9 @@ export async function executeTool<TData = unknown>(
     ...(agentId !== undefined ? { actingAgentId: agentId } : {}),
   })
   if ("error" in envelope) {
-    // Not connected is an answer, not a failure: see isNotConnectedToolErrorCode.
-    if (isNotConnectedToolErrorCode(envelope.error.code)) {
+    // Not connected is a read's answer, not a failure: see isNotConnectedToolErrorCode. A write
+    // or a gated act (a send) that found its connection gone did nothing, so it stays a refusal.
+    if (isNotConnectedToolErrorCode(envelope.error.code) && !actsOnSomething(params)) {
       return {
         data: {
           error: { code: envelope.error.code, message: envelope.error.message },

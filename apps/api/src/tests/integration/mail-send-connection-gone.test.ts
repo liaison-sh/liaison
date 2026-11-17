@@ -195,21 +195,19 @@ describe("sending from a mailbox whose connection is gone", () => {
     expect(err?.message).toContain("Reconnect it in Settings → Connections")
   }
 
-  it("the person's reply (mail:reply) answers connection_not_connected, naming the mailbox", async () => {
-    // A not-connected state is the tool's answer, not a failure (execute-tool
-    // isNotConnectedToolErrorCode): the error rides back as the result.
-    const result = await executeTool({
+  it("the person's reply (mail:reply) is refused connection_not_connected, naming the mailbox", async () => {
+    // A send that found its mailbox gone did nothing: a refusal (422), never a 200 answer.
+    const err = (await executeTool({
       toolName: "mail:reply",
       orgId,
       actor,
       params: { conversationId, textBody: "It ships tomorrow." },
       origin: "human-ui",
-    })
-    const answer = (result.data as { error?: { code?: string; message?: string } }).error
-    expect(answer?.code).toBe("connection_not_connected")
-    expect(answer?.message).toContain(MAILBOX)
-    expect(answer?.message).toContain("nothing was sent")
-    expect(answer?.message).toContain("Reconnect it in Settings → Connections")
+    }).then(
+      () => null,
+      (e: unknown) => e,
+    )) as Typed | null
+    expectNotConnected(err)
   })
 
   it("the web's reply send (mail service sendReply) answers the same", async () => {

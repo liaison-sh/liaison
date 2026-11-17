@@ -7,6 +7,7 @@
 // `sent`. No outcome creates an invoice: converting an accepted quote stays its
 // own step, so no invoice ever waits on a client.
 
+import { formatMoneyMinor } from "./money"
 import type { ErrorEnvelope, MutationsCtx } from "./mutations/shared"
 import { transition } from "./state"
 
@@ -201,4 +202,76 @@ export async function onQuoteClientActionDecided(ctx: DecidedCtx, event: Decided
   return out.status === "completed"
     ? { status: outcome }
     : { status: "unchanged", error: out.error }
+}
+
+/** A quote a client can be asked to accept, or still sees once they answered. */
+const VIEWABLE = new Set(["sent", "accepted", "rejected", "expired"])
+
+/**
+ * What the client is shown on a quote's acceptance link (internal: the kernel's client action
+ * page): its title, a short summary, its issued lines and its issued PDF. It names the PDF and no hash: the kernel
+ * fingerprints the stored file itself, and checks that fingerprint again when the client answers.
+ */
+export async function quoteClientActionView(
+  ctx: Pick<OutcomeCtx, "db">,
+  p: { targetType: string; targetId: string },
+) {
+  if (p.targetType !== QUOTE_TARGET_TYPE) return fail("NOT_FOUND", "Not an invoicing document.")
+  const doc = (await ctx.db.findOne("documents", p.targetId)) as
+    | (QuoteRow & {
+        pdf_file_id?: string | null
+        currency?: string | null
+        grand_total_minor?: unknown
+        due_at?: string | null
+        counterparty_name?: string | null
+      })
+    | null
+  if (!doc || doc.type !== "quote") return fail("NOT_FOUND", `No quote ${p.targetId}.`)
+  const label = doc.number ? `Quote ${doc.number}` : `Quote ${doc.id}`
+  if (!VIEWABLE.has(doc.status))
+    return fail("NOT_SENT", `${label} is ${doc.status}: only a sent quote is shown to a client.`)
+  if (!doc.pdf_file_id) return fail("NOT_READABLE", `${label} has no PDF yet.`)
+  const currency = doc.currency ?? "EUR"
+  const total =
+    typeof doc.grand_total_minor === "bigint" ||
+    typeof doc.grand_total_minor === "number" ||
+    (typeof doc.grand_total_minor === "string" && /^-?\d+$/.test(doc.grand_total_minor))
+      ? formatMoneyMinor(doc.grand_total_minor, currency)
+      : null
+  // The quote as the client reads it on the page, from its issued lines: what shows the quote
+  // before an answer. The fingerprint stays the issued PDF's.
+  const lines = (
+    ((await ctx.db.findMany("document_lines", {
+      where: { document_id: doc.id },
+      limit: 500,
+    })) ?? []) as Array<{ position?: unknown; description?: unknown; subtotal_minor?: unknown }>
+  ).sort((a, b) => Number(a.position) - Number(b.position))
+  const money = (v: unknown) =>
+    typeof v === "bigint" || typeof v === "number" || (typeof v === "string" && /^-?\d+$/.test(v))
+      ? formatMoneyMinor(v, currency)
+      : null
+  const blocks = [
+    { type: "heading", text: label },
+    ...lines.map((l) => {
+      const amount = money(l.subtotal_minor)
+      return {
+        type: "paragraph",
+        text: `${String(l.description ?? "").trim() || "Line"}${amount ? `: ${amount} excl. VAT` : ""}`,
+      }
+    }),
+    ...(total ? [{ type: "paragraph", text: `Total incl. VAT: ${total}` }] : []),
+  ]
+  return {
+    title: label,
+    summary: [
+      { k: "Quote", v: doc.number ?? doc.id },
+      ...(total ? [{ k: "Total incl. VAT", v: total }] : []),
+      ...(doc.counterparty_name ? [{ k: "For", v: doc.counterparty_name }] : []),
+    ],
+    source_blocks: blocks,
+    text: null,
+    pdf_file_id: doc.pdf_file_id,
+    words_params: { number: doc.number ?? doc.id },
+    copies: {},
+  }
 }

@@ -13,32 +13,23 @@ const manifest = JSON.parse(
   readFileSync(join(import.meta.dir, "..", "app.manifest.json"), "utf8"),
 ) as { cross_app_calls?: Array<{ target: string; reason: string }> }
 
-const ALLOWED = new Set([
-  "kernel:contacts_read",
-  "kernel:companies_read",
+/** Exactly the calls agreements declares, sorted. */
+const DECLARED = [
+  "invoicing:billing_step_add",
   "kernel:contacts_group_add",
-  "kernel:contacts_group_remove",
-  "kernel:files_merge_pdfs",
-  "invoicing:documents_get",
-  "invoicing:quote_create_and_issue",
-  "invoicing:quote_set_outcome",
-  "invoicing:billing_plan_get",
-  "invoicing:billing_plan_set",
-  "knowledge:create",
   "knowledge:archive",
+  "knowledge:create",
   "mail:reply",
   "projects:create",
   "projects:createProject",
   "projects:time_plan_set",
-])
+]
 
 test("agreements calls only the declared targets, and never the agent's link tools", () => {
   const calls = manifest.cross_app_calls ?? []
-  for (const c of calls) {
-    expect(ALLOWED.has(c.target)).toBe(true)
-    expect(c.reason.length).toBeGreaterThan(20)
-  }
+  for (const c of calls) expect(c.reason.length).toBeGreaterThan(20)
   const targets = calls.map((c) => c.target)
+  expect([...targets].sort()).toEqual(DECLARED)
   expect(targets).not.toContain("kernel:client_action_create")
   expect(targets).not.toContain("kernel:client_action_revoke")
   expect(targets.filter((t) => t === "projects:get" || t.includes("time_summary"))).toEqual([])

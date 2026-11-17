@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -269,6 +269,14 @@
           "type": "string",
           "enum": [
             "set",
+            "none"
+          ],
+          "required": false
+        },
+        "effects_billing": {
+          "type": "string",
+          "enum": [
+            "added",
             "none"
           ],
           "required": false
@@ -802,6 +810,10 @@
     {
       "target": "projects:time_plan_set",
       "reason": "an accepted change request grows its parent project's whole timebox by its hours, as the person who sent it; projects answers whether the project uses time and budgets"
+    },
+    {
+      "target": "invoicing:billing_step_add",
+      "reason": "an accepted change request adds one milestone for its price to its parent project's billing plan, once, as the person who sent it; a project without a plan gets none"
     },
     {
       "target": "kernel:contacts_group_add",

@@ -66,8 +66,14 @@ describe("agreements on the company timeline", () => {
   it("a row names number and status only: no price, no signer", async () => {
     const w = await world()
     const out = await activityRead(w.ctx, { companyId: COMPANY, contactIds: [PERSON] })
-    // The row's own id is random and may hold any digits; the rest is what a reader sees.
-    const text = JSON.stringify(out.rows.map(({ id: _id, ...rest }) => rest))
+    // The row's own id and its link's id are random and may hold any digits; the rest is what a
+    // reader sees.
+    const text = JSON.stringify(
+      out.rows.map(({ id: _id, href, ...rest }) => ({
+        ...rest,
+        href: { ...href, entityId: undefined },
+      })),
+    )
     expect(text).not.toContain("4200000")
     expect(text).not.toContain("42")
     expect(out.rows.every((r) => r.who === null)).toBe(true)

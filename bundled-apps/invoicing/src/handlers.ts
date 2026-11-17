@@ -89,6 +89,7 @@ import {
 import {
   billingPlanGet,
   billingPlanSet,
+  billingStepAdd,
   milestoneDraftCreate,
   milestoneDraftPreview,
 } from "./mutations/billing-plan"
@@ -278,6 +279,10 @@ export const billingPlanSetHandler = (
   params: Parameters<typeof billingPlanSet>[1],
   ctx: Parameters<typeof billingPlanSet>[0],
 ) => billingPlanSet(ctx, params)
+export const billingStepAddHandler = (
+  params: Parameters<typeof billingStepAdd>[1],
+  ctx: Parameters<typeof billingStepAdd>[0],
+) => billingStepAdd(ctx, params)
 export const milestoneDraftCreateHandler = (
   params: Parameters<typeof milestoneDraftCreate>[1],
   ctx: Parameters<typeof milestoneDraftCreate>[0],
@@ -965,12 +970,21 @@ export const paymentLinkToInvoicePreflightHandler = async (
 }
 
 // --- A sent quote's outcome (a person's call, or a client's answer on its link) ---
-import { onQuoteClientActionDecided, quoteOutcomePreflight, setQuoteOutcome } from "./quote-outcome"
+import {
+  onQuoteClientActionDecided,
+  quoteClientActionView,
+  quoteOutcomePreflight,
+  setQuoteOutcome,
+} from "./quote-outcome"
 
 export const quoteSetOutcomeHandler = (
   params: { document_id: string; outcome: string },
   ctx: Parameters<typeof setQuoteOutcome>[0],
 ) => setQuoteOutcome(ctx, { ...params, via: "person" })
+export const quoteClientActionViewHandler = (
+  params: Parameters<typeof quoteClientActionView>[1],
+  ctx: Parameters<typeof quoteClientActionView>[0],
+) => quoteClientActionView(ctx, params)
 export const onQuoteClientActionDecidedHandler = (
   event: Parameters<typeof onQuoteClientActionDecided>[1],
   ctx: Parameters<typeof onQuoteClientActionDecided>[0],

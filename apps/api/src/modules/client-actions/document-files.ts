@@ -6,6 +6,7 @@
 // in that action's org. A file sealed for a mailbox (`enc_version > 0`) is never
 // served here: its key is not the server's.
 
+import { createHash } from "node:crypto"
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -55,4 +56,14 @@ export async function readTargetFile(
     log.warn({ err, orgId, actionId, fileId }, "client action file read failed")
     return null
   }
+}
+
+/**
+ * The hex SHA-256 of one stored file of the org, for a target whose app names its file but not
+ * its hash (a sandboxed app never hashes): a fingerprint of the bytes as stored, nothing else.
+ * Null when the file is absent or not servable here.
+ */
+export async function storedFileSha256(orgId: string, fileId: string): Promise<string | null> {
+  const file = await readTargetFile(orgId, "fingerprint", fileId)
+  return file ? createHash("sha256").update(file.bytes).digest("hex") : null
 }

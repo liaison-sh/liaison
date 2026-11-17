@@ -1,0 +1,2 @@
+# A quote sent for acceptance through the real sandbox: the kernel fingerprints its stored PDF.
+src/tests/integration/invoicing-quote-acceptance.integration.test.ts

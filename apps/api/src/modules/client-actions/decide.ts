@@ -33,6 +33,8 @@ export interface ActionRow {
   target_type: string
   target_id: string
   target_sha256: string
+  /** Set when the kernel fingerprinted the blocks the page shows: checked with the file's. */
+  target_blocks_sha256: string | null
   company_id: string | null
   signer_user_id: string | null
   invited_email: string
@@ -61,7 +63,7 @@ export interface ActionRow {
 
 const ROW_COLUMNS = sql`
   a.id, a.org_id, o.name AS org_name, a.kind, a.target_app, a.target_type, a.target_id,
-  a.target_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
+  a.target_sha256, a.target_blocks_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
   a.first_opened_at, a.document_shown_at, a.code_wrong_total, a.code_locked_at, a.code_verified_at,
   a.decided_at, a.decision, a.revoked_at, a.revoke_reason, a.required_phrase, a.visible_to::text[] AS visible_to,
   a.created_by_user_id,
@@ -438,7 +440,12 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
     const frame = frameOf(row, "current")
     if (frame !== "open")
       return { ok: false as const, status: 409, body: deadFrameBody(row, frame) }
-    if (view.sha256 !== row.target_sha256) {
+    // What is kept (the stored file) and what is shown (its blocks): either changed refuses.
+    if (
+      view.sha256 !== row.target_sha256 ||
+      (row.target_blocks_sha256 !== null &&
+        (view.blocksSha256 ?? null) !== row.target_blocks_sha256)
+    ) {
       return { ok: false as const, status: 409, body: { error: { code: "VERSION_CHANGED" } } }
     }
     let provedName: string | null = null

@@ -280,7 +280,7 @@ import {
   orgFeaturesUnreadable,
   primeOrgApps,
 } from "~/modules/apps/org-apps"
-import { featureOffAnswer } from "~/modules/apps/org-features"
+import { featureOffAnswer, settleFeatureRecomputes } from "~/modules/apps/org-features"
 import type { CandidateCredentials } from "~/modules/apps/sandbox/bridge/context"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import { CapLimitError } from "~/modules/org/caps"
@@ -4903,8 +4903,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // A FEATURE SWITCHED OFF INSIDE THE APP runs nothing, for an admin holding `*` as
   // for anyone: its tool is gone from every catalog, so a call that still names it
   // comes from an old schema or a stale list, and it is told what happened in the
-  // feature's own words. Before anything can park an approval for it.
-  if (isFeatureOffForTool(opts.orgId, tool)) {
+  // feature's own words. Before anything can park an approval for it. A row still being
+  // recomputed from a write that just committed (the first project to turn the feature on, then
+  // a call that uses it) is waited for once, so the call sees what that write made.
+  if (
+    isFeatureOffForTool(opts.orgId, tool) &&
+    !((await settleFeatureRecomputes(opts.orgId)) && !isFeatureOffForTool(opts.orgId, tool))
+  ) {
     const { code, message, feature, next, retryable } = featureOffAnswer(opts.orgId, tool)
     return { error: { code, message, retryable, status: 409, body: { feature, next } } }
   }

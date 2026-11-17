@@ -59,6 +59,8 @@ export interface MintInput {
   targetId: string
   /** When given, the target must still hash to it. */
   targetSha256?: string
+  /** When given, the blocks the page shows must still hash to it (a new link of a send). */
+  targetBlocksSha256?: string
   contactId?: string | null
   companyId?: string | null
   invitedEmail?: string | null
@@ -73,6 +75,9 @@ export interface MintInput {
   message?: string | null
   createdByUserId: string | null
   createdByAgentId?: string | null
+  /** The person who approved this send (the approval's decider, or their own click); null when
+   *  no person did. A call chained from the approved send runs on that person's act. */
+  approvedByUserId?: string | null
   /** The link of the same signer this one replaces (a new link): it leaves the send's group. */
   replacesActionId?: string | null
 }
@@ -330,7 +335,10 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
       503,
     )
   }
-  if (input.targetSha256 && input.targetSha256 !== view.sha256) {
+  if (
+    (input.targetSha256 && input.targetSha256 !== view.sha256) ||
+    (input.targetBlocksSha256 && input.targetBlocksSha256 !== (view.blocksSha256 ?? null))
+  ) {
     throw new ClientActionError(
       "VERSION_CHANGED",
       "The document changed since it was read; read it again and send that version",
@@ -388,19 +396,23 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
     const [row] = extractRows<{ id: string; expires_at: Date }>(
       await tx.execute(sql`
         INSERT INTO ${K()}.client_actions (
-          org_id, group_id, kind, target_app, target_type, target_id, target_sha256, company_id,
+          org_id, group_id, kind, target_app, target_type, target_id, target_sha256,
+          target_blocks_sha256, company_id,
           contact_id, signer_user_id, invited_email, invited_name, sign_order, token_hash,
-          expires_at, sent_at, visible_to, required_phrase, created_by_user_id, created_by_agent_id
+          expires_at, sent_at, visible_to, required_phrase, created_by_user_id, created_by_agent_id,
+          approved_by_user_id
         ) VALUES (
           ${input.orgId}, coalesce(${input.groupId ?? null}::uuid, gen_random_uuid()), ${input.kind},
           ${input.targetApp}, ${input.targetType}, ${input.targetId}, ${view.sha256},
+          ${view.blocksSha256 ?? null},
           ${invitee.companyId}, ${invitee.contactId}, ${signerUserId}, ${invitee.email},
           ${invitee.name.slice(0, 200)}, ${input.signOrder ?? null},
           ${token ? hashToken(token) : null},
           now() + make_interval(days => ${input.expiresInDays}),
           ${token && !signerUserId ? sql`now()` : sql`NULL`},
           ${input.visibleTo && input.visibleTo.length > 0 ? sql`${`{${input.visibleTo.join(",")}}`}::uuid[]` : sql`NULL`},
-          ${input.requiredPhrase ?? null}, ${input.createdByUserId}, ${input.createdByAgentId ?? null}
+          ${input.requiredPhrase ?? null}, ${input.createdByUserId}, ${input.createdByAgentId ?? null},
+          ${input.approvedByUserId ?? null}::uuid
         ) RETURNING id, expires_at
       `),
     )
@@ -906,6 +918,7 @@ export async function newLinkAfter(input: {
   expiresInDays?: (typeof EXPIRY_DAYS)[number]
   createdByUserId: string | null
   createdByAgentId?: string | null
+  approvedByUserId?: string | null
 }): Promise<MintResult & { replacedId: string }> {
   const [prior] = await withPrivilegedDb(input.orgId, "client-action-new-link-read", async (tx) =>
     extractRows<{
@@ -914,6 +927,7 @@ export async function newLinkAfter(input: {
       target_type: string
       target_id: string
       target_sha256: string | null
+      target_blocks_sha256: string | null
       contact_id: string | null
       company_id: string | null
       invited_email: string
@@ -928,8 +942,8 @@ export async function newLinkAfter(input: {
       token_hash: string | null
     }>(
       await tx.execute(sql`
-        SELECT id, kind, target_type, target_id, target_sha256, contact_id, company_id,
-               invited_email, invited_name, sign_order, group_id, required_phrase, decision,
+        SELECT id, kind, target_type, target_id, target_sha256, target_blocks_sha256, contact_id,
+               company_id, invited_email, invited_name, sign_order, group_id, required_phrase, decision,
                code_verified_at, revoked_at, expires_at, token_hash
           FROM ${K()}.client_actions
          WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
@@ -969,6 +983,7 @@ export async function newLinkAfter(input: {
     targetType: prior.target_type,
     targetId: prior.target_id,
     ...(prior.target_sha256 ? { targetSha256: prior.target_sha256 } : {}),
+    ...(prior.target_blocks_sha256 ? { targetBlocksSha256: prior.target_blocks_sha256 } : {}),
     contactId: prior.contact_id,
     companyId: prior.company_id,
     invitedEmail: email,
@@ -979,6 +994,7 @@ export async function newLinkAfter(input: {
     requiredPhrase: prior.required_phrase,
     createdByUserId: input.createdByUserId,
     createdByAgentId: input.createdByAgentId ?? null,
+    approvedByUserId: input.approvedByUserId ?? null,
     replacesActionId: prior.id,
   })
   return { ...r, replacedId: prior.id }

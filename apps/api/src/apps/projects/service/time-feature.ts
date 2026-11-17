@@ -20,7 +20,11 @@ import { afterCurrentCommit } from "~/db/commit-hooks"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
-import { noteOrgFeatureChanged, writeOrgAppFeature } from "~/modules/apps/org-features"
+import {
+  noteOrgFeatureChanged,
+  trackFeatureRecompute,
+  writeOrgAppFeature,
+} from "~/modules/apps/org-features"
 import { isSeeding } from "~/modules/notifications/seeded"
 import { scopeHoldersInTx } from "~/modules/permissions/scope-holders"
 
@@ -115,6 +119,7 @@ export function scheduleTimeBudgetsSync(orgId: string, actorUserId: string | nul
         if (inFlight.get(orgId) === next) inFlight.delete(orgId)
       })
     inFlight.set(orgId, next)
+    trackFeatureRecompute(orgId, next)
   }
   if (!afterCurrentCommit(start)) start()
 }

@@ -4,7 +4,9 @@
 // manifest, its own read tool run in the sandbox, which names the issued PDF and no hash. The
 // kernel fingerprints the stored PDF itself (SHA-256 of its bytes), records that on the link,
 // and checks it again when the client answers: an accept records against it and invoicing's own
-// subscriber sets the quote accepted, with no invoice; a PDF whose bytes changed is refused.
+// subscriber sets the quote accepted, with no invoice; a PDF whose bytes changed is refused. The
+// page shows the quote through its lines, so the kernel also fingerprints those blocks
+// (canonical JSON) beside the file: a line changed after sending is refused too.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { createHash } from "node:crypto"
@@ -22,6 +24,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { mintClientAction } from "~/modules/client-actions/mint"
+import { blocksSha256 } from "~/modules/client-actions/targets"
 import { insertAppRow } from "~/seed/factories/app-tables"
 import { seedFileRow } from "~/seed/factories/files/file-row"
 import { drainOutbox } from "~/tests/helpers/outbox"
@@ -105,6 +108,25 @@ async function sentQuote(number: string, pdfFileId: string): Promise<string> {
       grand_total_minor: "120000",
       counterparty_name: "Maison A",
       pdf_file_id: pdfFileId,
+    })
+  })
+  return id
+}
+
+async function quoteLine(quoteId: string, description: string): Promise<string> {
+  const id = crypto.randomUUID()
+  await withPrivilegedDb(w.orgId, "test:quote-line", async (tx) => {
+    await insertAppRow(tx, "invoicing", "document_lines", {
+      org_id: w.orgId,
+      id,
+      document_id: quoteId,
+      position: 1,
+      description,
+      quantity: "1",
+      unit_price_minor: "100000",
+      subtotal_minor: "100000",
+      tax_minor: "20000",
+      total_minor: "120000",
     })
   })
   return id
@@ -225,6 +247,50 @@ describe("a quote sent for acceptance", () => {
       SELECT count(*)::int AS n FROM ${inv("documents")}
        WHERE org_id = ${w.orgId} AND type = 'invoice'`) as unknown as Array<{ n: number }>
     expect(invoices?.n).toBe(0)
+  }, 180_000)
+
+  it("records the fingerprint of the lines the page shows beside the PDF's, and refuses an accept once a line changed after sending; the quote stays sent", async () => {
+    const pdf = await storedPdf(
+      Buffer.from(`%PDF-1.4\nquote Q-0103 ${crypto.randomUUID()}\n%%EOF\n`),
+    )
+    const quoteId = await sentQuote("Q-0103", pdf.id)
+    const lineId = await quoteLine(quoteId, "Brand workshop")
+    const before = capture.sent.length
+    const minted = await mint(quoteId)
+    const [row] = (await sql`
+      SELECT target_blocks_sha256 FROM ${kernel("client_actions")} WHERE id = ${minted.id}`) as unknown as Array<{
+      target_blocks_sha256: string | null
+    }>
+    const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+    const { h, proof } = await proved(token, "198.51.100.63")
+    // The fingerprint is over exactly the blocks the page shows, the line among them.
+    const shown = (await (await call("document", { t: token, format: "blocks" }, h)).json()) as {
+      content: unknown[]
+    }
+    expect(JSON.stringify(shown.content)).toContain("Brand workshop")
+    expect(row?.target_blocks_sha256).toBe(blocksSha256(shown.content))
+    await sql`UPDATE ${inv("document_lines")} SET description = 'Brand workshop and launch film'
+               WHERE id = ${lineId}`
+    const refused = await call(
+      "decide",
+      { t: token, proof, decision: "accept", typed_name: w.clientA.name },
+      h,
+    )
+    expect(refused.status).toBe(409)
+    expect(((await refused.json()) as { error?: { code?: string } }).error?.code).toBe(
+      "VERSION_CHANGED",
+    )
+    await drainOutbox()
+    const [q] = (await sql`
+      SELECT status FROM ${inv("documents")} WHERE id = ${quoteId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(q?.status).toBe("sent")
+    const [still] = (await sql`
+      SELECT decision FROM ${kernel("client_actions")} WHERE id = ${minted.id}`) as unknown as Array<{
+      decision: string | null
+    }>
+    expect(still?.decision).toBeNull()
   }, 180_000)
 
   it("refuses an accept once the stored PDF's bytes changed, and the quote stays sent", async () => {

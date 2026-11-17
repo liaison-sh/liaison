@@ -2374,6 +2374,20 @@
       "when": 1900003430009,
       "tag": "0337_portal_agreement_files",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1900003430010,
+      "tag": "0338_client_action_approved_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 340,
+      "version": "7",
+      "when": 1900003430011,
+      "tag": "0339_client_action_blocks_fingerprint",
+      "breakpoints": true
     }
   ]
 }

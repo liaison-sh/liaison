@@ -4,11 +4,12 @@
 // seal, agreements calls projects' declared `createProject` with the agreement as
 // the step that makes it (`externalRef`), so a replayed event, the seal retry or
 // two deliveries at once find the same project. Every call runs as the person who
-// sent the agreement for signature (the kernel finds them on its signed version),
-// never as a wider system identity: the approved send is that person's act. A
-// proposal with a timebox asks for time and budgets and then sets the project's
-// plan to that timebox; projects decides by its own rules, and when it keeps time
-// and budgets off the project starts without them. The agreement records what the
+// approved the send (the kernel finds them on its signed version; the sender when
+// nobody's approval is recorded), never as a wider system identity: the approved
+// send is that person's act. A proposal with a timebox asks for time and budgets
+// and then sets the project's plan to that timebox; projects decides by its own
+// rules, and when it keeps time and budgets off (a send no person approved) the
+// project starts without them. The agreement records what the
 // project uses (`project_time_budgets`) and the timebox it was given
 // (`project_timebox_minutes`), which a later change request reads. Nothing else
 // happens on signing here: no invoice, no task, no mail.
@@ -107,7 +108,8 @@ export async function startProjectAfterSigning(
     timebox ? { ...base, timeBudgets: true } : base,
     `agreement:${a.id}:project`,
   )
-  // projects keeps time and budgets to a person's own place: the project starts without them.
+  // projects keeps time and budgets to a person's own act; a send no person approved is not
+  // one, and the project starts without them.
   if (timebox && made.status === "error" && made.error.code === HUMAN_TURN_ONLY)
     made = await call("projects:createProject", base, `agreement:${a.id}:project:plain`)
   const project = made.status === "completed" ? objectOf(made.result) : null

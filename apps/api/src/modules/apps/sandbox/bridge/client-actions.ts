@@ -24,6 +24,8 @@
  *  - `client_actions_call_as_sender({ target_type, target_id, tool, params, idempotency_key })`:
  *    one call the app declares in `cross_app_calls`, run as that same sender with their live
  *    permissions (a change request's task and time plan), never as a wider system identity.
+ *    From the app's handler of a decided target (no agent, routine or approval in the run), an
+ *    ungated call runs on the act of the person who approved the send, as that person.
  *  - `client_actions_own_group({ key })`: the id of the contact group the app keeps for itself
  *    under that key (made when its routine template was enabled), or null.
  *
@@ -130,7 +132,16 @@ function actionOut(r: MintResult, signOrder: number | null) {
 }
 
 export function createClientActionsMethods(ctx: BridgeContext): Record<string, any> {
-  const { appName, orgId, userId, approvalContext, bridgeOptions, bridgeActingAgentId } = ctx
+  const {
+    appName,
+    orgId,
+    userId,
+    actorType,
+    approvalContext,
+    bridgeOptions,
+    bridgeActingAgentId,
+    bridgeRoutineId,
+  } = ctx
 
   /** One of this app's own gated, never auto-approved tools. */
   const ownHumanOnlyGated = async (full: string | undefined): Promise<boolean> => {
@@ -159,6 +170,29 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
   }
 
   const actorUserId = (): string | null => (UUID.test(userId) ? userId : null)
+
+  /**
+   * The person whose decision this run is (after `personDecided`): the approval's decider, or
+   * the person who clicked. Recorded on every action of the send, so a call chained from the
+   * approved send runs on that person's own act. Null when no person decided.
+   */
+  const decidingPerson = async (): Promise<string | null> => {
+    if (approvalContext && (await ownHumanOnlyGated(approvalContext.toolName)))
+      return UUID.test(approvalContext.approvalDeciderId) ? approvalContext.approvalDeciderId : null
+    return bridgeOptions?.origin === "human-ui" ? actorUserId() : null
+  }
+
+  /**
+   * The run is the consequence of a decision, not anyone's own run: the app's event handler
+   * (a decided target), with no agent, routine, approval or person's turn in it.
+   */
+  const consequenceRun = (): boolean =>
+    bridgeOptions?.jobsAttributedToSystem === true &&
+    actorType !== "agent" &&
+    actorType !== "mcp" &&
+    !bridgeActingAgentId &&
+    !bridgeRoutineId &&
+    !approvalContext
 
   /** A pinned check must name every signer's address and still clear, or no link is made. */
   async function guardStops(
@@ -253,6 +287,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         expiresInDays: days as (typeof EXPIRY_DAYS)[number],
         createdByUserId: actorUserId(),
         createdByAgentId: bridgeActingAgentId ?? null,
+        approvedByUserId: await decidingPerson(),
       })
       return JSON.stringify({
         status: "ok",
@@ -299,6 +334,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     }
     const sequential = p.order === "sequential"
     const groupId = crypto.randomUUID()
+    const approvedBy = await decidingPerson()
     const made: Array<ReturnType<typeof actionOut>> = []
     try {
       for (const [i, s] of signers.entries()) {
@@ -323,6 +359,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
           message: p.message ?? null,
           createdByUserId: actorUserId(),
           createdByAgentId: bridgeActingAgentId ?? null,
+          approvedByUserId: approvedBy,
         })
         made.push(actionOut(r, signOrder))
       }
@@ -598,6 +635,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         targetId: p.target_id,
         tool: p.tool,
         params: (p.params ?? {}) as Record<string, unknown>,
+        onTheApproversAct: consequenceRun(),
         ...(typeof p.idempotency_key === "string" && p.idempotency_key.length <= 200
           ? { idempotencyKey: p.idempotency_key }
           : {}),

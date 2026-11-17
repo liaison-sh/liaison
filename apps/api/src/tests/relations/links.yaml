@@ -823,9 +823,9 @@ links:
       Ex: the data subject export does not carry a person's decisions yet
 
   - name: client-action-sender
-    what: a client action to the colleague or agent who sent it
-    storedIn: kernel.client_actions.created_by_user_id, created_by_agent_id
-    columns: [kernel.client_actions.created_by_user_id, kernel.client_actions.created_by_agent_id]
+    what: a client action to the colleague or agent who sent it, and the person who approved the send
+    storedIn: kernel.client_actions.created_by_user_id, created_by_agent_id, approved_by_user_id
+    columns: [kernel.client_actions.created_by_user_id, kernel.client_actions.created_by_agent_id, kernel.client_actions.approved_by_user_id]
     paths:
       - apps/api/src/modules/client-actions/
       - apps/api/src/modules/erasure/erase-user.ts

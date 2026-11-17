@@ -166,6 +166,31 @@ async function versionRow(versionId: string) {
   return v
 }
 
+async function projectsOf(agreementId: string) {
+  return (await sql`
+    SELECT id::text AS id, company_id::text AS company_id, owner_id::text AS owner_id,
+           time_budgets_on
+      FROM app_projects.projects
+     WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
+    id: string
+    company_id: string | null
+    owner_id: string | null
+    time_budgets_on: boolean
+  }>
+}
+
+async function agreementProject(agreementId: string) {
+  const [a] = (await sql`
+    SELECT project_id::text AS project_id, project_time_budgets, project_timebox_minutes
+      FROM ${app("agreements")}
+     WHERE id = ${agreementId}`) as unknown as Array<{
+    project_id: string | null
+    project_time_budgets: boolean | null
+    project_timebox_minutes: number | null
+  }>
+  return a
+}
+
 async function sealedPackage(versionId: string): Promise<boolean> {
   const rows = (await sql`
     SELECT evidence_file_id FROM ${app("evidence_packages")}
@@ -402,46 +427,60 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
 })
 
 describe("a signed statement of work starts its project from the decided handler", () => {
-  it("one project for the agreement, made as its sender; projects keeps time and budgets to a person's own turn, so it starts with them off and the agreement records that", async () => {
+  it("one project for the agreement, made as the person who approved the send; a proposal with a timebox starts it with time and budgets on and the timebox as its plan", async () => {
     const { agreementId } = await sendAndSign(w.admin.userId, "Statement of work", async () => {
-      await sql`UPDATE ${app("agreements")} SET kind = 'sow', hours_minutes = 2400
+      await sql`UPDATE ${app("agreements")} SET kind = 'proposal', hours_minutes = 2400
                  WHERE org_id = ${w.orgId} AND title = 'Statement of work'`
     })
-    const projects = (await sql`
-      SELECT id::text AS id, company_id::text AS company_id, owner_id::text AS owner_id,
-             time_budgets_on
-        FROM app_projects.projects
-       WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
-      id: string
-      company_id: string | null
-      owner_id: string | null
-      time_budgets_on: boolean
+    // The send was the admin's own click: every action of it names them as its approver.
+    const approvers = (await sql`
+      SELECT DISTINCT approved_by_user_id::text AS id FROM ${kernel("client_actions")}
+       WHERE org_id = ${w.orgId} AND target_id IN (
+         SELECT id FROM ${app("agreement_versions")} WHERE agreement_id = ${agreementId})`) as unknown as Array<{
+      id: string | null
     }>
+    expect(approvers.map((r) => r.id)).toEqual([w.admin.userId])
+    const projects = await projectsOf(agreementId)
     expect(projects).toHaveLength(1)
     expect(projects[0]?.company_id).toBe(w.companyA)
     expect(projects[0]?.owner_id).toBe(w.admin.userId)
-    // The signed handler asks for time and budgets as the sender; projects answers that only a
-    // person turns them, in their own turn, and the project starts without them.
-    expect(projects[0]?.time_budgets_on).toBe(false)
-    const [a] = (await sql`
-      SELECT project_id::text AS project_id, project_time_budgets, project_timebox_minutes
-        FROM ${app("agreements")}
-       WHERE id = ${agreementId}`) as unknown as Array<{
-      project_id: string | null
-      project_time_budgets: boolean | null
-      project_timebox_minutes: number | null
+    // The approved send is that person's act: projects takes time and budgets from it.
+    expect(projects[0]?.time_budgets_on).toBe(true)
+    const [plan] = (await sql`
+      SELECT timebox_minutes FROM app_projects.project_time_plan
+       WHERE org_id = ${w.orgId} AND project_id = ${projects[0]?.id ?? ""}::uuid`) as unknown as Array<{
+      timebox_minutes: number | null
     }>
+    expect(plan?.timebox_minutes).toBe(2400)
+    const a = await agreementProject(agreementId)
+    expect(a?.project_id).toBe(projects[0]?.id ?? "")
+    expect(a?.project_time_budgets).toBe(true)
+    expect(a?.project_timebox_minutes).toBe(2400)
+    // The seal retry, run again, makes no second project.
+    await drainOutbox()
+    expect(await projectsOf(agreementId)).toHaveLength(1)
+  }, 120_000)
+
+  it("a send no person approved starts its project with time and budgets off, and the agreement records that", async () => {
+    const { agreementId } = await sendAndSign(w.admin.userId, "Sent by nobody", async () => {
+      await sql`UPDATE ${app("agreements")} SET kind = 'sow', hours_minutes = 2400
+                 WHERE org_id = ${w.orgId} AND title = 'Sent by nobody'`
+      // A send no person approved: its actions name no approver, so its calls stay the system's.
+      await sql`UPDATE ${kernel("client_actions")} SET approved_by_user_id = NULL
+                 WHERE org_id = ${w.orgId} AND target_id IN (
+                   SELECT v.id FROM ${app("agreement_versions")} v
+                     JOIN ${app("agreements")} g ON g.id = v.agreement_id
+                    WHERE g.org_id = ${w.orgId} AND g.title = 'Sent by nobody')`
+    })
+    const projects = await projectsOf(agreementId)
+    expect(projects).toHaveLength(1)
+    // Made as its sender, on no person's act: projects keeps time and budgets off.
+    expect(projects[0]?.owner_id).toBe(w.admin.userId)
+    expect(projects[0]?.time_budgets_on).toBe(false)
+    const a = await agreementProject(agreementId)
     expect(a?.project_id).toBe(projects[0]?.id ?? "")
     expect(a?.project_time_budgets).toBe(false)
     expect(a?.project_timebox_minutes).toBeNull()
-    // The seal retry, run again, makes no second project.
-    await drainOutbox()
-    const again = (await sql`
-      SELECT count(*)::int AS n FROM app_projects.projects
-       WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
-      n: number
-    }>
-    expect(again[0]?.n).toBe(1)
   }, 120_000)
 
   it("signing adds the client to the Scope check's group, as the sender", async () => {

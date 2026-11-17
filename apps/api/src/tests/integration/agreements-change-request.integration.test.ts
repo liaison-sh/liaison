@@ -495,4 +495,77 @@ describe("a change request sent through the sandbox", () => {
     expect(replies).toHaveLength(1)
     expect(JSON.stringify(replies[0])).toContain(w.clientA.email)
   }, 180_000)
+  it("a change request on a restricted agreement takes its list: a member off it reads the change request as a random id, and its link is the list's alone", async () => {
+    const closedParent = crypto.randomUUID()
+    const closedVersion = crypto.randomUUID()
+    await withPrivilegedDb(w.orgId, "test:change-request-closed-parent", async (tx) => {
+      await insertAppRow(tx, "agreements", "agreements", {
+        org_id: w.orgId,
+        id: closedParent,
+        number: "AG-2026-015",
+        kind: "sow",
+        status: "signed",
+        title: "Closed takeover review",
+        company_id: w.companyA,
+        contact_id: w.clientA.contactId,
+        currency: "EUR",
+        price_minor: "4200000",
+        org_access: "none",
+        created_by_user_id: w.admin.userId,
+      })
+      await insertAppRow(tx, "agreements", "agreement_shares", {
+        org_id: w.orgId,
+        agreement_id: closedParent,
+        user_id: w.admin.userId,
+        role: "editor",
+      })
+      await insertAppRow(tx, "agreements", "agreement_versions", {
+        org_id: w.orgId,
+        id: closedVersion,
+        agreement_id: closedParent,
+        number: 1,
+        status: "signed",
+        sha256: SHA,
+        source_text: "1. Scope\nA review.\n8.2 Extra work is billed at 100.00 EUR per hour.",
+        frozen_at: new Date().toISOString(),
+      })
+    })
+    // The reply cannot leave (no mailbox for that conversation): the change request stays a
+    // draft, written, frozen and its link minted then withdrawn, which is all this needs.
+    await asPerson(w.admin.userId, "change_request_send", {
+      parent_agreement_id: closedParent,
+      title: "Extra review",
+      work: ["A second review round"],
+      hours_minutes: 600,
+      hours_source: "past similar work",
+      rate_minor: "10000",
+      reply: { conversation_id: crypto.randomUUID(), body: "Here is a change request." },
+      passage: { version_id: closedVersion, section: "8.2" },
+      mail_message_id: "mail-2",
+    })
+    const [cr] = (await sql`
+      SELECT id, org_access FROM ${app("agreements")}
+       WHERE org_id = ${w.orgId} AND parent_agreement_id = ${closedParent}`) as unknown as Array<{
+      id: string
+      org_access: string
+    }>
+    expect(cr?.org_access).toBe("none")
+    const shape = (out: Out, id: string) => ({
+      data: out.data === undefined,
+      code: out.error?.code,
+      message: out.error?.message.replaceAll(id, "<id>"),
+    })
+    const random = crypto.randomUUID()
+    expect(
+      shape(await asPerson(w.member.userId, "agreement_get", { id: cr?.id ?? "" }), cr?.id ?? ""),
+    ).toEqual(shape(await asPerson(w.member.userId, "agreement_get", { id: random }), random))
+    const links = (await sql`
+      SELECT a.visible_to FROM ${kernel("client_actions")} a
+        JOIN ${app("agreement_versions")} v ON v.id = a.target_id
+       WHERE a.org_id = ${w.orgId} AND v.agreement_id = ${cr?.id ?? ""}`) as unknown as Array<{
+      visible_to: string[] | null
+    }>
+    expect(links.length).toBeGreaterThan(0)
+    for (const l of links) expect(l.visible_to).toEqual([w.admin.userId])
+  }, 120_000)
 })

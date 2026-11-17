@@ -42,6 +42,8 @@ export interface PortalShareRow {
   kind: string
   objectId: string | null
   onlyUserIds: string[] | null
+  /** The shared document's number and title, when the reader can read it. */
+  label?: string | null
 }
 
 export interface PortalLogRow {
@@ -609,7 +611,7 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
                           class="flex flex-wrap items-center justify-between gap-2 py-1.5"
                         >
                           <span class="text-[13px] text-text">
-                            {i18n.t(`portal.staff.kind.${s.kind}`)}
+                            {s.label || i18n.t(`portal.staff.kind.${s.kind}`)}
                           </span>
                           <Show when={s.onlyUserIds && s.onlyUserIds.length > 0}>
                             <span
@@ -621,13 +623,18 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
                               })}
                             </span>
                           </Show>
+                          {/* The same switch as the rows above: it says the share is open,
+                              and a click closes it. */}
                           <button
                             type="button"
+                            role="switch"
+                            aria-checked={true}
+                            data-testid="company-portal.share-toggle"
                             class={btn}
                             disabled={busy()}
                             onClick={() => setShare(s.kind, s.objectId, false)}
                           >
-                            {i18n.t("portal.staff.close")}
+                            {i18n.t("portal.staff.open")}
                           </button>
                         </li>
                       )}

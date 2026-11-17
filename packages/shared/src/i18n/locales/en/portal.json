@@ -171,7 +171,7 @@
     "cancel": "Cancel",
     "shareOpened": "{{what}} is now open on the portal.",
     "shareClosed": "{{what}} is closed on the portal.",
-    "onlyThese": "Only {{names}} see it",
+    "onlyThese": "Seen only by {{names}}",
     "never": "Can never be shared: notes, discussions, agents, routines, cost rates, margin, other clients.",
     "kind": {
       "invoices": "Invoices",

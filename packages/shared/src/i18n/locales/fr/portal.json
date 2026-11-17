@@ -171,7 +171,7 @@
     "cancel": "Annuler",
     "shareOpened": "{{what}} : maintenant ouvert sur le portail.",
     "shareClosed": "{{what}} : fermé sur le portail.",
-    "onlyThese": "Seuls {{names}} le voient",
+    "onlyThese": "Visible seulement par {{names}}",
     "never": "Ne peut jamais être partagé : notes, discussions, agents, routines, taux de coût, marge, autres clients.",
     "kind": {
       "invoices": "Factures",

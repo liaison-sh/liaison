@@ -118,7 +118,7 @@ describe("company portal section", () => {
     )
     const r = render(() => <CompanyPortalSection companyId={CO} />)
     expect((await r.findByTestId("company-portal.restricted-row")).textContent).toBe(
-      "Only Anne Morel see it",
+      "Seen only by Anne Morel",
     )
     expect(r.getByTestId("company-portal.never-shared").textContent).toContain("margin")
     const hours = await r.findByTestId("company-portal.share-project_hours-p-1")
@@ -131,6 +131,39 @@ describe("company portal section", () => {
         kind: "project_hours",
         open: true,
         objectId: "p-1",
+      }),
+    )
+  })
+
+  it("names each shared document, and its row reads like the other switches", async () => {
+    mocks.scopes = ["kernel:portal:admin", "kernel:portal:share"]
+    serve({
+      [`${BASE}/people`]: [PAUL],
+      [`${BASE}/shares`]: [
+        {
+          id: "sh-1",
+          kind: "agreement",
+          objectId: "v-1",
+          onlyUserIds: null,
+          label: "AG-2026-011 Statement of work",
+        },
+        { id: "sh-2", kind: "agreement", objectId: "v-2", onlyUserIds: null },
+      ],
+    })
+    const r = render(() => <CompanyPortalSection companyId={CO} />)
+    const named = await r.findByTestId("company-portal.shared-sh-1")
+    expect(named.textContent).toContain("AG-2026-011 Statement of work")
+    const toggle = named.querySelector("[data-testid='company-portal.share-toggle']") as Element
+    expect(toggle.getAttribute("aria-checked")).toBe("true")
+    expect(toggle.textContent).toBe("Open")
+    // A document the reader cannot read keeps its kind only.
+    expect(r.getByTestId("company-portal.shared-sh-2").textContent).toContain("Agreement")
+    fireEvent.click(toggle)
+    await waitFor(() =>
+      expect(mocks.post).toHaveBeenCalledWith(`${BASE}/shares`, {
+        kind: "agreement",
+        open: false,
+        objectId: "v-1",
       }),
     )
   })

@@ -235,6 +235,45 @@ export function shareCardTitle(input: {
   return `${input.open ? "Show" : "Hide"} ${what} on ${where}`
 }
 
+/** Share kinds whose object is an agreement or one of its versions. */
+const AGREEMENT_SHARE_KINDS = new Set(["agreement", "change_request"])
+
+/**
+ * Each agreement share's number and title, by share id, as the reader reads them: their
+ * own row rules decide, so a restricted agreement they are not on stays unnamed, and an org
+ * without agreements names nothing. Its object is the agreement or one of its versions.
+ */
+export async function agreementShareLabels(
+  tx: RlsClient,
+  shares: Array<{ id: string; kind: string; objectId: string | null }>,
+): Promise<Map<string, string>> {
+  const wanted = shares.filter((s) => AGREEMENT_SHARE_KINDS.has(s.kind) && s.objectId)
+  const out = new Map<string, string>()
+  if (wanted.length === 0) return out
+  const agreements = schemaRef("app_agreements")
+  const [present] = extractRows<{ ok: boolean }>(
+    await tx.execute(
+      sql`SELECT to_regclass(${`${agreements}.agreement_versions`}) IS NOT NULL AS ok`,
+    ),
+  )
+  if (!present?.ok) return out
+  const a = sql.raw(agreements)
+  const objects = sql.join(
+    wanted.map((s) => sql`(${s.id}::uuid, ${s.objectId}::uuid)`),
+    sql`, `,
+  )
+  const rows = extractRows<{ id: string; label: string }>(
+    await tx.execute(sql`
+      SELECT o.share_id::text AS id, ag.number || ' ' || ag.title AS label
+        FROM (VALUES ${objects}) AS o(share_id, object_id)
+        JOIN ${a}.agreements ag
+          ON ag.id = o.object_id
+          OR ag.id = (SELECT v.agreement_id FROM ${a}.agreement_versions v WHERE v.id = o.object_id)`),
+  )
+  for (const r of rows) out.set(r.id, r.label)
+  return out
+}
+
 /** The company's and the shared thing's names, as the caller reads them; null when not. */
 async function shareNames(
   tx: RlsClient,

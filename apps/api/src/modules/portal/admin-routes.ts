@@ -41,6 +41,7 @@ import {
   showWholeCompany,
 } from "./access"
 import { PORTAL_HOME_READS } from "./routes"
+import { agreementShareLabels } from "./tools"
 
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const K = () => sql.raw(schemaRef("kernel"))
@@ -299,16 +300,19 @@ export const portalAdminRoutes = new Hono<AppEnv>()
   .get("/shares", requireScope("kernel:portal:share"), async (c) => {
     const id = companyId(c)
     if (!id) return notFound(c)
-    const rows = await withRequestRls(c, async (tx) =>
-      extractRows<Record<string, unknown>>(
+    const rows = await withRequestRls(c, async (tx) => {
+      const shares = extractRows<{ id: string; kind: string; objectId: string | null }>(
         await tx.execute(sql`
           SELECT id, kind, object_id AS "objectId", only_user_ids AS "onlyUserIds",
                  shared_by_user_id AS "sharedBy", shared_at AS "sharedAt"
             FROM ${K()}.portal_shares
            WHERE company_id = ${id} AND closed_at IS NULL
            ORDER BY shared_at`),
-      ),
-    )
+      )
+      // A shared document is named by its number and title, when this reader can read it.
+      const labels = await agreementShareLabels(tx, shares)
+      return shares.map((s) => (labels.has(s.id) ? { ...s, label: labels.get(s.id) } : s))
+    })
     return success(c, rows)
   })
   .post("/end", ADMIN, zValidator("json", endSchema), async (c) => {

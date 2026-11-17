@@ -55,6 +55,8 @@ function fakeProjects(opts: { refuseTime?: boolean; group?: string | null } = {}
     }
     if (tool === "kernel:contacts_group_add")
       return { status: "completed", result: { added: params.contactIds } }
+    if (tool === "invoicing:retainer_terms_renew")
+      return { status: "completed", result: { scheduleId: "schedule-1", from: "2026-12" } }
     return { status: "error", error: { code: "NOT_DECLARED", message: tool } }
   }
   const client_actions_call_as_sender = async (p: {
@@ -98,6 +100,56 @@ async function world(
 
 const created = (calls: Array<{ name: string }>) =>
   calls.filter((c) => c.name === "projects:createProject").length
+
+describe("a signed retainer renewal", () => {
+  const RETAINER_PROJECT = "dccbd24c-0000-4000-8000-000000000001"
+
+  it("rolls its hours, fee, rate and first month into the retainer it names, and starts no project", async () => {
+    const w = await world({
+      kind: "retainer",
+      project_id: RETAINER_PROJECT,
+      hours_minutes: 44 * 60,
+      price_minor: "495000",
+      rate_minor: "12500",
+      currency: "EUR",
+      starts_on: "2026-12-01",
+    })
+    await sealVersion(w.ctx, w.versionId)
+    await sealRetry(w.ctx)
+    expect(created(w.projects.calls)).toBe(0)
+    const renew = w.projects.calls.filter((c) => c.name === "invoicing:retainer_terms_renew")
+    expect(renew.length).toBeGreaterThanOrEqual(1)
+    const a = (await w.db.findOne("agreements", w.agreementId)) as { number: string }
+    expect(renew[0]).toMatchObject({ target_type: "agreement_version", target_id: w.versionId })
+    expect(renew[0]?.params).toEqual({
+      projectId: RETAINER_PROJECT,
+      agreementId: w.agreementId,
+      agreementNumber: a.number,
+      startsOn: "2026-12-01",
+      minutes: 44 * 60,
+      feeMinor: "495000",
+      overageRateMinor: "12500",
+    })
+    const row = (await w.db.findOne("agreements", w.agreementId)) as Record<string, unknown>
+    expect(row.project_id).toBe(RETAINER_PROJECT)
+  })
+
+  it("a renewal with no hours or no price rolls nothing and starts no project", async () => {
+    const w = await world({
+      kind: "retainer",
+      project_id: RETAINER_PROJECT,
+      hours_minutes: null,
+      price_minor: "495000",
+      starts_on: "2026-12-01",
+    })
+    await sealVersion(w.ctx, w.versionId)
+    expect(created(w.projects.calls)).toBe(0)
+    expect(w.projects.calls.map((c) => c.name)).not.toContain("invoicing:retainer_terms_renew")
+    expect(await startProjectAfterSigning(w.ctx, w.agreementId)).toMatchObject({
+      status: "skipped",
+    })
+  })
+})
 
 describe("a signed agreement's project", () => {
   it("a replayed signed event creates nothing", async () => {

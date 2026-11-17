@@ -5,8 +5,20 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.6.2", () => {
-    expect(manifest.version).toBe("0.6.2")
+  it("is at version 0.7.0", () => {
+    expect(manifest.version).toBe("0.7.0")
+  })
+
+  it("a lead role drafts and sends agreements; every member only reads them", () => {
+    const roles = (manifest as { roles: Record<string, { extends?: string; scopes: string[] }> })
+      .roles
+    expect(roles.member?.scopes).toEqual(["agreements:agreements:read"])
+    expect(roles.lead?.extends).toBe("member")
+    expect(roles.lead?.scopes).toEqual(
+      expect.arrayContaining(["agreements:agreements:write", "agreements:evidence:read"]),
+    )
+    expect(roles.lead?.scopes).not.toContain("agreements:evidence:devices")
+    expect(roles.admin?.scopes).toContain("agreements:evidence:devices")
   })
 
   it("the Scope check can read past similar work to size hours, and fills its group when enabled", () => {

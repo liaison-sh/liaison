@@ -14,6 +14,11 @@
 // (`project_timebox_minutes`), which a later change request reads. Nothing else
 // happens on signing here: no invoice, no task, no mail. A restricted agreement's project is
 // named by its number alone, with no client.
+//
+// A retainer that names its project is a renewal of that project's retainer: signing starts no
+// project and rolls the agreement's terms (included hours, monthly fee, overage rate, first day)
+// into the retainer through invoicing's declared `retainer_terms_renew`, once per agreement, as the
+// same person. The months before the renewal's first one keep the old terms.
 
 import { type AgreementsCtx, bridgeAnswer } from "./ctx"
 
@@ -33,6 +38,9 @@ interface SignedAgreement {
   company_id?: string | null
   project_id?: string | null
   hours_minutes?: number | null
+  price_minor?: string | number | null
+  rate_minor?: string | number | null
+  starts_on?: string | null
   org_access?: string | null
 }
 
@@ -46,6 +54,7 @@ export type ProjectStart =
       /** The timebox the project's plan was set to, or null. */
       timebox: string | null
     }
+  | { status: "renewed"; project_id: string; from: string | null }
   | { status: "skipped"; reason: string }
   | { status: "failed"; reason: string }
 
@@ -69,6 +78,66 @@ function objectOf(r: unknown): Record<string, unknown> | null {
 const why = (a: Answer): string =>
   a.status === "error" ? `${a.error.code}: ${a.error.message}` : "waiting on a person"
 
+/** The newest signed version of the agreement, or null. */
+async function signedVersionOf(
+  ctx: Pick<AgreementsCtx, "db">,
+  agreementId: string,
+): Promise<{ id: string } | null> {
+  const versions = (await ctx.db.findMany("agreement_versions", {
+    where: { agreement_id: agreementId, status: "signed" },
+    limit: 50,
+  })) as Array<{ id: string; number?: number | null }>
+  return versions.sort((x, y) => Number(y.number ?? 0) - Number(x.number ?? 0))[0] ?? null
+}
+
+/** The day a string or a stored date names, `YYYY-MM-DD`, or null. */
+function dayOf(v: unknown): string | null {
+  const d = v instanceof Date ? v.toISOString() : typeof v === "string" ? v : ""
+  return /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10) : null
+}
+
+/** A signed renewal of the retainer on the project it names: its terms roll into that retainer. */
+async function renewRetainer(
+  ctx: Pick<AgreementsCtx, "db" | "client_actions_call_as_sender">,
+  a: SignedAgreement,
+): Promise<ProjectStart> {
+  const projectId = String(a.project_id)
+  const minutes = typeof a.hours_minutes === "number" ? a.hours_minutes : 0
+  const fee = a.price_minor === null || a.price_minor === undefined ? "" : String(a.price_minor)
+  const startsOn = dayOf(a.starts_on)
+  if (!(minutes > 0) || !/^\d+$/.test(fee) || !startsOn)
+    return {
+      status: "skipped",
+      reason: "a renewal needs its included hours, its monthly price and its first day",
+    }
+  const callAsSender = ctx.client_actions_call_as_sender
+  if (!callAsSender)
+    return { status: "failed", reason: "invoicing cannot be reached as the sender on this run" }
+  const version = await signedVersionOf(ctx, a.id)
+  if (!version) return { status: "failed", reason: "the agreement has no signed version yet" }
+  const rate = a.rate_minor === null || a.rate_minor === undefined ? null : String(a.rate_minor)
+  const out = bridgeAnswer<Answer>(
+    await callAsSender({
+      target_type: TARGET_TYPE,
+      target_id: version.id,
+      tool: "invoicing:retainer_terms_renew",
+      params: {
+        projectId,
+        agreementId: a.id,
+        agreementNumber: a.number,
+        startsOn,
+        minutes,
+        feeMinor: fee,
+        ...(rate !== null ? { overageRateMinor: rate } : {}),
+      },
+      idempotency_key: `agreement:${a.id}:renewal`,
+    }),
+  )
+  if (out.status !== "completed") return { status: "failed", reason: why(out) }
+  const from = objectOf(out.result)?.from
+  return { status: "renewed", project_id: projectId, from: typeof from === "string" ? from : null }
+}
+
 /** Starts the signed agreement's project, unless it has one or its kind starts none. */
 export async function startProjectAfterSigning(
   ctx: Pick<AgreementsCtx, "db" | "client_actions_call_as_sender">,
@@ -76,6 +145,7 @@ export async function startProjectAfterSigning(
 ): Promise<ProjectStart> {
   const a = (await ctx.db.findOne("agreements", agreementId)) as SignedAgreement | null
   if (!a) return { status: "skipped", reason: "no such agreement" }
+  if (a.project_id && a.kind === "retainer") return renewRetainer(ctx, a)
   if (a.project_id) return { status: "skipped", reason: "the agreement already names its project" }
   if (!STARTS_A_PROJECT.has(String(a.kind ?? "")))
     return { status: "skipped", reason: `a ${a.kind ?? "plain"} agreement starts no project` }

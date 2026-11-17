@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -32,6 +32,30 @@
     "agreements:templates:write",
     "agreements:internal"
   ],
+  "roles": {
+    "member": {
+      "description": "Agreements reader: read agreements and their templates",
+      "scopes": [
+        "agreements:agreements:read"
+      ]
+    },
+    "lead": {
+      "description": "Agreements lead: draft, send and renew agreements and change requests, keep templates and read the evidence, in addition to member rights",
+      "extends": "member",
+      "scopes": [
+        "agreements:agreements:write",
+        "agreements:templates:write",
+        "agreements:evidence:read"
+      ]
+    },
+    "admin": {
+      "description": "Agreements administrator: lead rights plus the signers' device details in the evidence",
+      "extends": "lead",
+      "scopes": [
+        "agreements:evidence:devices"
+      ]
+    }
+  },
   "legalStarterTemplates": {
     "corporateFeature": "corporateTemplates"
   },
@@ -801,6 +825,10 @@
       "reason": "a superseding signed version archives the Knowledge copy of the version before it"
     },
     {
+      "target": "invoicing:retainer_terms_renew",
+      "reason": "a signed retainer renewal rolls its included hours, monthly fee, overage rate and first day into the retainer of the project it names, once, as the person who approved its send; the months before keep the old terms"
+    },
+    {
       "target": "projects:createProject",
       "reason": "a signed proposal or statement of work starts its project once, named by the agreement so a replay finds it (no assignee, time or activity read)"
     },
@@ -1058,6 +1086,15 @@
               ]
             },
             "maxItems": 50
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Included minutes a month for a retainer, or the work's size."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "The project it is for. A retainer for a company with a signed retainer renews that one's project."
           }
         },
         "required": [
@@ -1227,6 +1264,11 @@
               ]
             },
             "maxItems": 50
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Included minutes a month for a retainer, or the work's size."
           }
         },
         "required": [
@@ -1286,6 +1328,11 @@
           "currency": {
             "type": "string",
             "pattern": "^[A-Z]{3}$"
+          },
+          "rate_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,18}$",
+            "description": "A retainer's hourly rate above its included hours, in minor units."
           }
         },
         "required": [

@@ -316,6 +316,45 @@ export interface CreateParams {
   what_it_is?: string
   org_access?: OrgAccess
   shares?: ShareEntry[]
+  /** Included minutes a period (a retainer), or the work's size (a proposal's timebox). */
+  hours_minutes?: number
+  /** The project it is for: a retainer renewal names its retainer's project. */
+  project_id?: string
+}
+
+/** A refusal for hours that are not whole minutes above zero, or null. */
+function badHours(v: unknown, what: string): ErrorEnvelope | null {
+  if (v === undefined || (Number.isInteger(v) && (v as number) > 0 && (v as number) <= 1_000_000))
+    return null
+  return refusal(
+    "INVALID_HOURS",
+    `hours_minutes is the included hours in whole minutes, above zero. Nothing was ${what}.`,
+  )
+}
+
+/** "44 h", "44 h 30": minutes as a message says them. */
+function hoursWords(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return m === 0 ? `${h} h` : `${h} h ${String(m).padStart(2, "0")}`
+}
+
+/**
+ * The retainer a new retainer agreement for this company renews: the company's latest signed
+ * retainer that names its project, or null.
+ */
+async function renewedRetainer(
+  ctx: AgreementsCtx,
+  companyId: string,
+): Promise<{ number: string; project_id: string } | null> {
+  const rows = (await ctx.db.findMany("agreements", {
+    where: { company_id: companyId, kind: "retainer", status: "signed" },
+    limit: 50,
+  })) as Array<AgreementRow & { project_id?: string | null }>
+  const named = rows
+    .filter((r) => typeof r.project_id === "string" && UUID.test(r.project_id))
+    .sort((a, b) => String(b.signed_at ?? "").localeCompare(String(a.signed_at ?? "")))[0]
+  return named ? { number: named.number, project_id: String(named.project_id) } : null
 }
 
 async function templateSource(
@@ -364,6 +403,17 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       "INVALID_FILE",
       "file_id is the id files_upload_confirm returned for the uploaded PDF. Nothing was created.",
     )
+  const hoursRefused = badHours(p.hours_minutes, "created")
+  if (hoursRefused) return hoursRefused
+  if (p.project_id !== undefined && (typeof p.project_id !== "string" || !UUID.test(p.project_id)))
+    return refusal("INVALID_PROJECT", "project_id is a project's id. Nothing was created.")
+  // A retainer for a company that already has one renews it: signing rolls the new terms into
+  // that retainer's project instead of starting another.
+  const renews =
+    p.kind === "retainer" && !p.project_id && p.company_id
+      ? await renewedRetainer(ctx, p.company_id)
+      : null
+  const projectId = p.project_id ?? renews?.project_id ?? null
   const agent = await actingAgentId(ctx)
   const user = await callerUserId(ctx)
   let source: AgreementSource | null = p.source ?? null
@@ -407,6 +457,8 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
         title: p.title.trim(),
         company_id: p.company_id ?? null,
         contact_id: p.contact_id ?? null,
+        project_id: projectId,
+        hours_minutes: p.hours_minutes ?? null,
         template_id: p.template_id ?? null,
         template_version: templateVersion,
         language: p.language ?? "en",
@@ -477,8 +529,10 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
       title: p.title.trim(),
       org_access: orgAccess,
       file_id: keptFileId,
+      project_id: projectId,
+      hours_minutes: p.hours_minutes ?? null,
     },
-    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}${notKept}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}${!keptFileId && sourceText(source).trim() === "" ? "; it has no text yet: its clauses go in source.body.blocks (agreement_update)" : ""}. Next: agreement_prepare to check it.`,
+    message: `Draft ${number} "${p.title.trim()}" was created${templateVersion ? ` from template version ${templateVersion}` : ""}${notKept}${renews ? `; it renews the retainer of ${renews.number}: once signed, its hours, price and first day apply to that retainer from its first month` : ""}${p.hours_minutes ? `; ${hoursWords(p.hours_minutes)} included` : ""}; no price was set${p.kind === "other" && !p.what_it_is ? ", and a person must still say what the document is" : ""}${!keptFileId && sourceText(source).trim() === "" ? "; it has no text yet: its clauses go in source.body.blocks (agreement_update)" : ""}. Next: agreement_prepare to check it.`,
   }
 }
 
@@ -497,6 +551,7 @@ export interface UpdateParams {
   not_a_guarantee?: boolean
   org_access?: OrgAccess
   shares?: ShareEntry[]
+  hours_minutes?: number
 }
 
 export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
@@ -508,6 +563,8 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
       "PRICE_NEEDS_A_PERSON",
       `The price of ${row.number} is set by a person on its page, never here. Nothing was changed.`,
     )
+  const hoursRefused = badHours(p.hours_minutes, "changed")
+  if (hoursRefused) return hoursRefused
   let replaced: { version: number; revoked: number } | null = null
   if (p.file_id !== undefined && (typeof p.file_id !== "string" || !UUID.test(p.file_id)))
     return refusal(
@@ -596,7 +653,7 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
   }
   const data: Record<string, unknown> = {}
   if (p.title !== undefined) data.title = p.title.trim()
-  for (const k of ["starts_on", "ends_on", "renews_on", "notice_days"] as const)
+  for (const k of ["starts_on", "ends_on", "renews_on", "notice_days", "hours_minutes"] as const)
     if (p[k] !== undefined) data[k] = p[k]
   if (p.what_it_is !== undefined) {
     data.what_it_is = p.what_it_is.trim() || null
@@ -734,7 +791,7 @@ async function replaceSentVersion(
 /** Set the price: a person's own call only (the tool is hidden from agents and MCP). */
 export async function agreementPriceSet(
   ctx: AgreementsCtx,
-  p: { id: string; price_minor: string; currency: string },
+  p: { id: string; price_minor: string; currency: string; rate_minor?: string },
 ) {
   const agent = await actingAgentId(ctx)
   const user = await callerUserId(ctx)
@@ -760,14 +817,23 @@ export async function agreementPriceSet(
       "INVALID_CURRENCY",
       "The currency is a three-letter code such as EUR. Nothing was changed.",
     )
+  if (
+    p.rate_minor !== undefined &&
+    (typeof p.rate_minor !== "string" || !/^[0-9]{1,18}$/.test(p.rate_minor))
+  )
+    return refusal(
+      "INVALID_PRICE",
+      "The hourly rate is whole minor units, digits only. Nothing was changed.",
+    )
   await ctx.db.update("agreements", row.id, {
     price_minor: p.price_minor,
     currency: p.currency,
+    ...(p.rate_minor !== undefined ? { rate_minor: p.rate_minor } : {}),
     priced_by_user_id: user,
   })
   return {
     status: "ok",
-    message: `The price of ${row.number} is now ${p.price_minor} minor units of ${p.currency}. Next: agreement_prepare.`,
+    message: `The price of ${row.number} is now ${p.price_minor} minor units of ${p.currency}${p.rate_minor !== undefined ? `, its hourly rate ${p.rate_minor}` : ""}. Next: agreement_prepare.`,
   }
 }
 

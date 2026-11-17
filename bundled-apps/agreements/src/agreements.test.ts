@@ -196,6 +196,85 @@ describe("a proposal's price", () => {
   })
 })
 
+describe("a retainer renewal", () => {
+  const COMPANY = "cccccccc-0000-4000-8000-00000000000c"
+  const RETAINER_PROJECT = "dccbd24c-0000-4000-8000-000000000001"
+  const OTHER_PROJECT = "dccbd24c-0000-4000-8000-000000000002"
+
+  it("drafted for a company with a signed retainer, it renews that retainer's project and carries its hours", async () => {
+    const db = memoryDb()
+    db.tables.set("agreements", [
+      {
+        id: "a-old",
+        number: "AG-2026-006",
+        kind: "retainer",
+        status: "signed",
+        title: "Retainer",
+        company_id: COMPANY,
+        project_id: RETAINER_PROJECT,
+        signed_at: "2026-01-02",
+      },
+    ])
+    const created = await agreementCreate(ctxFor(db), {
+      kind: "retainer",
+      title: "Retainer renewal",
+      company_id: COMPANY,
+      hours_minutes: 44 * 60,
+    })
+    const id = okId(created)
+    const row = () => db.tables.get("agreements")?.find((r) => r.id === id) as Row
+    expect(row()).toMatchObject({ project_id: RETAINER_PROJECT, hours_minutes: 44 * 60 })
+    const message = (created as { message: string }).message
+    expect(message).toContain("AG-2026-006")
+    expect(message).toContain("44 h")
+    // The hours change on the draft; the overage rate is the person's, with the price.
+    await agreementUpdate(ctxFor(db), { id, hours_minutes: 42 * 60 })
+    expect(row().hours_minutes).toBe(42 * 60)
+    const byAgent = await agreementPriceSet(ctxFor(db, { agent: AGENT }), {
+      id,
+      price_minor: "495000",
+      currency: "EUR",
+      rate_minor: "12500",
+    })
+    expect((byAgent as { error: { code: string } }).error.code).toBe("PRICE_NEEDS_A_PERSON")
+    await agreementPriceSet(ctxFor(db), {
+      id,
+      price_minor: "495000",
+      currency: "EUR",
+      rate_minor: "12500",
+    })
+    expect(row()).toMatchObject({ price_minor: "495000", rate_minor: "12500" })
+  })
+
+  it("a project named on the draft is kept, and a company with no signed retainer gets none", async () => {
+    const db = memoryDb()
+    const named = okId(
+      await agreementCreate(ctxFor(db), {
+        kind: "retainer",
+        title: "Retainer",
+        company_id: COMPANY,
+        project_id: OTHER_PROJECT,
+      }),
+    )
+    const plain = okId(
+      await agreementCreate(ctxFor(db), {
+        kind: "retainer",
+        title: "Retainer",
+        company_id: COMPANY,
+      }),
+    )
+    const rows = db.tables.get("agreements") as Row[]
+    expect(rows.find((r) => r.id === named)?.project_id).toBe(OTHER_PROJECT)
+    expect(rows.find((r) => r.id === plain)?.project_id ?? null).toBeNull()
+    const bad = await agreementCreate(ctxFor(db), {
+      kind: "retainer",
+      title: "Retainer",
+      hours_minutes: -5,
+    })
+    expect((bad as { error: { code: string } }).error.code).toBe("INVALID_HOURS")
+  })
+})
+
 describe("the price a person set is in what is signed", () => {
   it("freezes into the rendered document and its stored text, and the signer's page shows it", async () => {
     const db = memoryDb()

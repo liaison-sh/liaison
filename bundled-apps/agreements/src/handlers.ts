@@ -58,7 +58,7 @@ export const agreementImportHandler = (p: ImportParams, ctx: Ctx) => agreementIm
 export const agreementUpdateHandler = (p: UpdateParams, ctx: Ctx) => agreementUpdate(ctx, p)
 export const agreementPrepareHandler = (p: { id: string }, ctx: Ctx) => agreementPrepare(ctx, p)
 export const agreementPriceSetHandler = (
-  p: { id: string; price_minor: string; currency: string },
+  p: { id: string; price_minor: string; currency: string; rate_minor?: string },
   ctx: Ctx,
 ) => agreementPriceSet(ctx, p)
 export const templatesListHandler = (p: { kind?: string; include_archived?: boolean }, ctx: Ctx) =>

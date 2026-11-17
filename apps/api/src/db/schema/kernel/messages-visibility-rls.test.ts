@@ -175,7 +175,13 @@ describe("kernel.messages SELECT policy: requiredScopes visibility", () => {
               ) AS t ORDER BY t.n`),
           ),
         )
-        for (const row of rows) expect({ grants, user, ...row, gen: row.gen }).toEqual({ grants, user, ...row, gen: row.inst })
+        for (const row of rows)
+          expect({ grants, user, ...row, gen: row.gen }).toEqual({
+            grants,
+            user,
+            ...row,
+            gen: row.inst,
+          })
       }
     }
   })

@@ -310,7 +310,9 @@ describe("Bridge Scenario", () => {
         .join(",")}}`
     }
     const requestHash = createHash("sha256").update(canonicalize(innerParams)).digest("hex")
-    const redisKey = `${env.redisPrefix}app_idem:${world.org.id}:test-bridge-a:idempotent:${key}`
+    const { callerIdempotencyKey } = await import("~/modules/apps/idempotency")
+    const scoped = callerIdempotencyKey({ actorType: "user", userId: dualScopeUser.id }, key)
+    const redisKey = `${env.redisPrefix}app_idem:${world.org.id}:test-bridge-a:idempotent:${scoped}`
     await env.redis.redis.set(
       redisKey,
       JSON.stringify({ status: "pending", requestHash }),

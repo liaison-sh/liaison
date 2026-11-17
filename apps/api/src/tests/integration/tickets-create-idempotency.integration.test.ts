@@ -137,13 +137,15 @@ afterAll(async () => {
 
 describe("tickets:create idempotencyKey", () => {
   it("another person's call with the same key and params runs as their own, never replaying the first person's answer", async () => {
-    const other = await withSystemDb("tickets-create-idem-other", async (tx) =>
-      extractRows<{ id: string }>(
-        await tx.execute(drizzleSql`
+    const other = await withSystemDb(
+      "tickets-create-idem-other",
+      async (tx) =>
+        extractRows<{ id: string }>(
+          await tx.execute(drizzleSql`
           INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
           VALUES (gen_random_uuid(), ${orgId}, ${`other-${crypto.randomUUID()}@test.com`}, 'Other', 'active', 'hash', 1, 1)
           RETURNING id`),
-      )[0]!.id,
+        )[0]!.id,
     )
     const subject = uniqueSubject("Shared key")
     const params = { subject, channel: "manual", idempotencyKey: `idem-${crypto.randomUUID()}` }

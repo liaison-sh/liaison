@@ -39,6 +39,10 @@ const APP_DDL =
  * fails until it has its own entry.
  */
 const REVIEWED: Record<string, Record<string, string>> = {
+  "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
+    alias:
+      "a table alias the module's own queries pass as a string literal (the client action row's alias); no value from a request or a row",
+  },
   "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
     "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",
     's.columns.map((c) => `COALESCE(pg_column_size("${c}"), 0)`).join(" + ")':

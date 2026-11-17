@@ -66,12 +66,21 @@ function accessChangeOf(event: {
  */
 export async function followRestrictedAccessInTx(
   tx: ExecTx,
-  event: { orgId: string; app?: string; entity?: string; action?: string; entityId?: unknown; data?: unknown },
+  event: {
+    orgId: string
+    app?: string
+    entity?: string
+    action?: string
+    entityId?: unknown
+    data?: unknown
+  },
 ): Promise<RestrictedFollowResult | null> {
   const change = accessChangeOf(event)
   if (!change) return null
   const ks = sql.raw(quoteIdent(schemaRef("kernel")))
-  const [row] = extractRows<{ r: { state: string; readers?: string[] | null; withdrawn?: string[] } }>(
+  const [row] = extractRows<{
+    r: { state: string; readers?: string[] | null; withdrawn?: string[] }
+  }>(
     await tx.execute(
       sql`SELECT ${ks}.restricted_access_follow(${event.orgId}::uuid, ${change.kind}, ${change.id}::uuid) AS r`,
     ),

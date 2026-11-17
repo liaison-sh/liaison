@@ -63,6 +63,7 @@ describe("Knowledge app registration", () => {
       schemaRef: "app_knowledge",
       joinOn: "id",
       readScope: "knowledge:attachments:download",
+      requiredScope: "knowledge:attachments:download",
       writeScope: "knowledge:documents:update",
     })
   })

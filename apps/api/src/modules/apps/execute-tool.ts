@@ -56,6 +56,7 @@ import { coreModuleFor } from "~/modules/apps/core/registry"
 import { validateParamsForTool } from "~/modules/apps/execute-tool-params"
 import { mintExecutionToken } from "~/modules/apps/execution-token"
 import {
+  callerIdempotencyKey,
   finalizeIdempotency,
   invalidateIdempotency,
   reserveIdempotency,
@@ -5044,11 +5045,13 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       : undefined)
   // The stored answer is one caller's, read under their access and stamped for their turn: the
   // key is that caller's own, so another person's call with the same key runs as theirs.
-  const idemActor = opts.actor as { actorType: string; userId?: string | null; agentId?: string }
   const idemKey =
     rawIdemKey === undefined
       ? undefined
-      : `${idemActor.actorType}:${idemActor.userId ?? "-"}:${idemActor.agentId ?? "-"}:${rawIdemKey}`
+      : callerIdempotencyKey(
+          opts.actor as { actorType: string; userId?: string | null; agentId?: string },
+          rawIdemKey,
+        )
   const innerChain = [...callChain, opts.toolName]
   const userId = opts.actor.actorType === "user" ? opts.actor.userId : "system"
 
@@ -5253,6 +5256,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       opts.toolName,
       idemKey,
       validatedParams,
+      rawIdemKey,
     )
     if (reservation.outcome === "hit") return reservation.cached as ExecuteToolEnvelope
     if (reservation.outcome === "conflict") {

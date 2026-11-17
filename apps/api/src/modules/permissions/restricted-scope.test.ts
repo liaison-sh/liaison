@@ -90,7 +90,7 @@ describe("restrictedRows on a read tool", () => {
     expect(idsAtPath("text", "items[].id")).toEqual([])
   })
 
-  it("is refused for a record kind with no list function and on a tool that writes", () => {
+  it("is refused for a record kind with no list function, and taken on a tool that writes as on one that reads", () => {
     const manifest = (tool: Record<string, unknown>) => ({ name: "agreements", tools: { t: tool } })
     expect(
       restrictedRowsErrors(
@@ -104,6 +104,6 @@ describe("restrictedRows on a read tool", () => {
     ).toHaveLength(1)
     expect(
       restrictedRowsErrors(manifest({ restrictedRows: { entity: "agreement", idPath: "id" } })),
-    ).toHaveLength(1)
+    ).toEqual([])
   })
 })

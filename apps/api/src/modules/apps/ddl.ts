@@ -455,7 +455,9 @@ export function generateImmutableTriggerDdl(
   if (only && only.length === 0)
     throw new Error(`immutable.writeOnceColumns for "${tableName}" must not be empty`)
   if (spec.insertOnly === true && only)
-    throw new Error(`immutable.insertOnly for "${tableName}" cannot be combined with writeOnceColumns`)
+    throw new Error(
+      `immutable.insertOnly for "${tableName}" cannot be combined with writeOnceColumns`,
+    )
   // An insert-only row refuses every UPDATE, a NULL filled later included.
   const insertOnlyLine =
     spec.insertOnly === true

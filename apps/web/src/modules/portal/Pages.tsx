@@ -7,7 +7,7 @@
 
 import { type Component, createResource, For, type JSX, Show } from "solid-js"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { day, hoursLine, money, periodLabel } from "./format"
+import { day, documentState, hoursLine, money, periodLabel } from "./format"
 import { portalDownload, portalGet } from "./portal-api"
 import type {
   PortalDocument,
@@ -190,7 +190,7 @@ export const HomePage: Component<{
       </Show>
       <Show when={(props.documents?.length ?? 0) > 0}>
         <Section title={i18n.t("portal.nav.documents")} testid="portal-home-documents">
-          <For each={props.documents ?? []}>
+          <For each={(props.documents ?? []).filter((d) => d.status !== "voided")}>
             {(d) => (
               <button
                 type="button"
@@ -202,7 +202,7 @@ export const HomePage: Component<{
                   {d.number} {d.title}
                 </span>
                 <span class="text-[12.5px] text-text-secondary">
-                  {i18n.t(`portal.documents.status.${d.status ?? "sent"}`)}
+                  {i18n.t(`portal.documents.status.${documentState(d.status)}`)}
                 </span>
               </button>
             )}

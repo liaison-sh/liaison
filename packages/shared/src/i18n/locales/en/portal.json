@@ -94,6 +94,7 @@
     "yourCopy": "Your copy",
     "read": "The document",
     "page": "Page {{n}}",
+    "empty": "This document cannot be shown here. Ask your contact for a copy.",
     "status": {
       "waiting": "Waiting",
       "signed": "Signed",

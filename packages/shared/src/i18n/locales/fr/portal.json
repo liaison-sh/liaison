@@ -94,6 +94,7 @@
     "yourCopy": "Votre copie",
     "read": "Le document",
     "page": "Page {{n}}",
+    "empty": "Ce document ne peut pas être affiché ici. Demandez-en une copie à votre contact.",
     "status": {
       "waiting": "En attente",
       "signed": "Signé",

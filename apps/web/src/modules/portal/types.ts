@@ -114,7 +114,14 @@ export interface PortalAction {
 }
 
 export interface PortalDocumentDetail extends PortalDocument {
-  versions: Array<{ id: string; number: number; hasFile: boolean; pageCount: number }> | null
+  versions: Array<{
+    id: string
+    number: number
+    hasFile: boolean
+    pageCount: number
+    /** The frozen source: a generated version's blocks are in `body.blocks`. */
+    source?: unknown
+  }> | null
   evidence: Array<{
     versionId: string
     signedPdfFileId: string | null

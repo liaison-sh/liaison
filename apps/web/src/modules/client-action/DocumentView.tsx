@@ -118,6 +118,13 @@ const BlockView: Component<{ block: Block }> = (props) => {
   )
 }
 
+/** A generated document's frozen blocks, drawn as plain text (the portal reads them too). */
+export const DocumentBlocks: Component<{ blocks: unknown[] }> = (props) => (
+  <article class="flex flex-col gap-3 rounded-sm border border-border bg-bg px-5 py-6">
+    <For each={props.blocks as Block[]}>{(block) => <BlockView block={block} />}</For>
+  </article>
+)
+
 const PagePicture: Component<{
   token: string
   page: PageEntry
@@ -252,13 +259,7 @@ export const DocumentView: Component<{
       >
         <Switch>
           <Match when={props.content.format === "blocks" && props.content}>
-            {(c) => (
-              <article class="flex flex-col gap-3 rounded-sm border border-border bg-bg px-5 py-6">
-                <For each={(c() as { blocks: unknown[] }).blocks as Block[]}>
-                  {(block) => <BlockView block={block} />}
-                </For>
-              </article>
-            )}
+            {(c) => <DocumentBlocks blocks={(c() as { blocks: unknown[] }).blocks} />}
           </Match>
           <Match when={props.content.format === "pages"}>
             <For each={pages()}>

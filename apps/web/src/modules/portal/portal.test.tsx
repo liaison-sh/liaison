@@ -9,8 +9,8 @@ import { cleanup, fireEvent, render, waitFor } from "@solidjs/testing-library"
 import { createSignal } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { englishT, I18nProvider } from "~/modules/i18n/i18n-context"
-import { DocumentPage, documentState } from "./Approve"
-import { hoursLine, money } from "./format"
+import { DocumentPage } from "./Approve"
+import { documentState, hoursLine, money } from "./format"
 import { NoticeToRead } from "./Notice"
 import { HomePage, InvoicesPage, ProjectPage } from "./Pages"
 import PortalRoot, { portalPath } from "./PortalRoot"
@@ -215,6 +215,28 @@ describe("home and shell", () => {
     expect(r.getByTestId("portal-part-failed-invoices")).toBeTruthy()
     expect(r.getByTestId("portal-project-row-p1").textContent).toContain("Website")
     expect(r.getByTestId("portal-home-new-request")).toBeTruthy()
+  })
+
+  it("lists documents with their state in the client's words, and no withdrawn one", () => {
+    const doc = (id: string, status: string) => ({
+      id,
+      number: `AG-${id}`,
+      kind: "sow",
+      title: "Statement of work",
+      status,
+      signedAt: null,
+    })
+    const r = wrap(() => (
+      <HomePage
+        home={home()}
+        documents={[doc("1", "sent"), doc("2", "voided"), doc("3", "partly_signed")]}
+        go={() => {}}
+      />
+    ))
+    expect(r.getByTestId("portal-document-row-1").textContent).toContain("Waiting")
+    expect(r.getByTestId("portal-document-row-3").textContent).toContain("Waiting")
+    expect(r.queryByTestId("portal-document-row-2")).toBeNull()
+    expect(r.getByTestId("portal-home-documents").textContent).not.toContain("portal.")
   })
 
   it("has a nav item only for a page with something shared", () => {
@@ -509,7 +531,49 @@ describe("approve", () => {
 
   it("names a document's state in the client's words", () => {
     expect(documentState("sent")).toBe("waiting")
+    expect(documentState("partly_signed")).toBe("waiting")
     expect(documentState("signed")).toBe("signed")
+    expect(documentState("voided")).toBe("withdrawn")
+  })
+
+  it("a generated document shows its text; an uploaded one its page pictures", async () => {
+    setPortalAccessToken("acc")
+    const doc = DOC([]) as { status: number; body: { data: Record<string, unknown> } }
+    doc.body.data.versions = [
+      {
+        id: "v1",
+        number: 1,
+        hasFile: true,
+        pageCount: 0,
+        source: {
+          body: {
+            blocks: [
+              { type: "heading", text: "1. Scope" },
+              { type: "paragraph", text: "The studio builds the sign-on." },
+            ],
+          },
+        },
+      },
+    ]
+    serve({ "GET /documents/a1": () => doc })
+    const r = wrap(() => <DocumentPage id="a1" />)
+    const body = await r.findByTestId("portal-document-body")
+    expect(body.textContent).toContain("1. Scope")
+    expect(body.textContent).toContain("The studio builds the sign-on.")
+    expect(r.queryByTestId("portal-document-empty")).toBeNull()
+  })
+
+  it("a version with neither text nor pictures says so instead of an empty section", async () => {
+    setPortalAccessToken("acc")
+    const doc = DOC([]) as { status: number; body: { data: Record<string, unknown> } }
+    doc.body.data.versions = [
+      { id: "v1", number: 1, hasFile: false, pageCount: 0, source: { body: { blocks: [] } } },
+    ]
+    serve({ "GET /documents/a1": () => doc })
+    const r = wrap(() => <DocumentPage id="a1" />)
+    expect((await r.findByTestId("portal-document-empty")).textContent).toBe(
+      "This document cannot be shown here. Ask your contact for a copy.",
+    )
   })
 })
 

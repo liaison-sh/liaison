@@ -6,8 +6,9 @@
 // only when the server says this session is too old for a click alone.
 
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
+import { DocumentBlocks } from "~/modules/client-action/DocumentView"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { day } from "./format"
+import { day, documentState } from "./format"
 import { Loading, NotAvailable, PartFailed, Section } from "./Pages"
 import { portalBlob, portalDownload, portalGet, portalPost } from "./portal-api"
 import type { PortalAction, PortalDocumentDetail } from "./types"
@@ -19,11 +20,10 @@ const primaryClass =
 const secondaryClass =
   "min-h-[44px] rounded-md border border-border px-4 text-[14px] text-text disabled:opacity-60"
 
-const DOC_STATES = new Set(["signed", "accepted", "declined", "expired", "withdrawn"])
-
-/** A document's status in the client's words: anything not final reads as waiting. */
-export function documentState(status: string | null | undefined): string {
-  return status && DOC_STATES.has(status) ? status : "waiting"
+/** A generated version's frozen blocks, or none (an upload is read from its page pictures). */
+function blocksOf(source: unknown): unknown[] {
+  const blocks = (source as { body?: { blocks?: unknown } } | null)?.body?.blocks
+  return Array.isArray(blocks) ? blocks : []
 }
 
 type Step = "choose" | "code" | "decline" | "busy" | "done"
@@ -316,13 +316,37 @@ export const DocumentPage: Component<{ id: string }> = (props) => {
               <Show when={d().versions?.[0]}>
                 {(v) => (
                   <Section title={i18n.t("portal.documents.read")} testid="portal-document-pages">
-                    <div class="flex flex-col gap-3">
-                      <For
-                        each={Array.from({ length: Math.min(v().pageCount, 50) }, (_, i) => i + 1)}
-                      >
-                        {(n) => <PagePicture docId={v().id} n={n} />}
-                      </For>
-                    </div>
+                    <Switch
+                      fallback={
+                        <p
+                          data-testid="portal-document-empty"
+                          class="text-[13px] text-text-secondary"
+                        >
+                          {i18n.t("portal.documents.empty")}
+                        </p>
+                      }
+                    >
+                      <Match when={blocksOf(v().source).length > 0}>
+                        <div
+                          data-testid="portal-document-body"
+                          class="text-[14px] leading-6 text-text"
+                        >
+                          <DocumentBlocks blocks={blocksOf(v().source)} />
+                        </div>
+                      </Match>
+                      <Match when={v().pageCount > 0}>
+                        <div class="flex flex-col gap-3">
+                          <For
+                            each={Array.from(
+                              { length: Math.min(v().pageCount, 50) },
+                              (_, i) => i + 1,
+                            )}
+                          >
+                            {(n) => <PagePicture docId={v().id} n={n} />}
+                          </For>
+                        </div>
+                      </Match>
+                    </Switch>
                   </Section>
                 )}
               </Show>

@@ -72,3 +72,14 @@ export function periodLabel(period: string | null, locale: string): string | nul
   const d = noonOf(from)
   return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(d)
 }
+
+const DOC_STATES = new Set(["signed", "accepted", "declined", "expired", "withdrawn"])
+
+/**
+ * A document's status in the client's words: a voided one was withdrawn by the
+ * sender; anything not final reads as waiting.
+ */
+export function documentState(status: string | null | undefined): string {
+  if (status === "voided") return "withdrawn"
+  return status && DOC_STATES.has(status) ? status : "waiting"
+}

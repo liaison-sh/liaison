@@ -5,6 +5,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import {
   agents,
   appDrafts,
+  clientActions,
   dashboards,
   dashboardTables,
   nodeSessions,
@@ -412,6 +413,19 @@ async function loadKnownEntityLabelAndSnippet(
       return {
         label: row.title,
         snippet: `[Entity: kernel:app-builder, id: ${entityId}] { title: "${row.title}" }`,
+      }
+    }
+    if (app === "kernel" && entityType === "client_action") {
+      // Named by the person it waits on; the document's own words stay with its app.
+      const [row] = await tx
+        .select({ name: clientActions.invitedName })
+        .from(clientActions)
+        .where(and(eq(clientActions.id, entityId), eq(clientActions.orgId, orgId)))
+        .limit(1)
+      if (!row) return null
+      return {
+        label: row.name,
+        snippet: `[Entity: kernel:client_action, id: ${entityId}] { invited: "${row.name}" }`,
       }
     }
     // Non-kernel app entities resolve generically through the entity registry —

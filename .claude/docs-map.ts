@@ -134,6 +134,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/pennylane/**", pages: ["apps/pennylane"] },
   { glob: "bundled-apps/agreements/**", pages: ["apps/agreements"] },
   { glob: "apps/api/src/modules/agreement-evidence/**", pages: ["apps/agreements"] },
+  { glob: "apps/web/src/modules/staff-sign/**", pages: ["apps/agreements"] },
   { glob: "packages/evidence-check/**", pages: ["apps/agreements"] },
   // The render service that reads uploaded PDFs, and what an upload does in the app.
   { glob: "apps/api/src/modules/pdf-render/**", pages: ["self-hosting/docker", "apps/agreements"] },

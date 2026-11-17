@@ -67,6 +67,7 @@ const KERNEL_READERS = new Set([
   "skill",
   "agent",
   "session",
+  "client_action",
 ])
 
 function hasReader(record: NonNullable<OpenView["record"]>): boolean {

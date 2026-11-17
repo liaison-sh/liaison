@@ -24,6 +24,8 @@
  *  - `client_actions_call_as_sender({ target_type, target_id, tool, params, idempotency_key })`:
  *    one call the app declares in `cross_app_calls`, run as that same sender with their live
  *    permissions (a change request's task and time plan), never as a wider system identity.
+ *  - `client_actions_own_group({ key })`: the id of the contact group the app keeps for itself
+ *    under that key (made when its routine template was enabled), or null.
  *
  * Every refusal answers data with a code, never a throw, since only an error's
  * message crosses the sandbox boundary.
@@ -538,6 +540,20 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
           archived: out.archived,
         })
       return JSON.stringify({ status: "not_made", code: out.code, message: out.message })
+    },
+
+    client_actions_own_group: async (paramsJson: string): Promise<string> => {
+      let p: { key?: unknown }
+      try {
+        p = JSON.parse(paramsJson || "{}")
+      } catch {
+        return refuse("INVALID_INPUT", "client_actions_own_group takes a JSON object.")
+      }
+      if (typeof p.key !== "string")
+        return refuse("INVALID_INPUT", "client_actions_own_group takes a key.")
+      const { ownSystemGroupId } = await import("~/modules/client-actions/signed-copy")
+      const id = await ownSystemGroupId({ orgId, appName, key: p.key })
+      return JSON.stringify({ status: "ok", group_id: id })
     },
 
     client_actions_call_as_sender: async (paramsJson: string): Promise<string> => {

@@ -89,10 +89,17 @@ export const contactSegments = kernel.table(
     /** 'rule': a stored filter evaluated live. 'manual': a contact group whose
      *  members are hand-picked rows of contact_group_members (migration 0124). */
     kind: text("kind").$type<ContactSegmentKind>().notNull().default("rule"),
+    /** `<app>:<key>`: a manual group an app keeps for itself, one per key (migration 0335). */
+    systemKey: text("system_key"),
     createdBy: uuid("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("contact_segments_org_idx").on(table.orgId)],
+  (table) => [
+    index("contact_segments_org_idx").on(table.orgId),
+    uniqueIndex("contact_segments_system_key_uniq")
+      .on(table.orgId, table.systemKey)
+      .where(sql`system_key IS NOT NULL`),
+  ],
 )
 
 export type ContactSegmentKind = "rule" | "manual"

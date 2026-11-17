@@ -26,6 +26,7 @@ import {
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
 import { agreementPassageGet } from "./passage"
+import { scopeGroupReconcile } from "./scope-group"
 import {
   agreementEvidenceGet,
   agreementVerify,
@@ -99,6 +100,8 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
 export const changeRequestEffectsJobHandler = (_payload: unknown, ctx: Ctx) =>
   changeRequestEffectsJob(ctx)
+export const scopeGroupReconcileJobHandler = (_payload: unknown, ctx: Ctx) =>
+  scopeGroupReconcile(ctx)
 export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
 export const uploadFreezeJobHandler = (_payload: unknown, ctx: Ctx) => uploadFreezeJob(ctx)
 export const uploadRescanJobHandler = (_payload: unknown, ctx: Ctx) => uploadRescanJob(ctx)

@@ -274,3 +274,25 @@ export async function callAsSender(args: {
   }
   return { status: "completed", result: env.data, senderUserId: sender }
 }
+
+/**
+ * The id of the contact group an app keeps for itself under `<app>:<key>` (created when one of
+ * its routine templates naming the key was enabled), or null when the org has none yet.
+ */
+export async function ownSystemGroupId(args: {
+  orgId: string
+  appName: string
+  key: string
+}): Promise<string | null> {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(args.key)) return null
+  const rows = await withPrivilegedDb(args.orgId, "app-own-contact-group", async (tx) =>
+    extractRows<{ id: string }>(
+      await tx.execute(sql`
+        SELECT id::text AS id FROM ${K()}.contact_segments
+         WHERE org_id = ${args.orgId}::uuid AND kind = 'manual'
+           AND system_key = ${`${args.appName}:${args.key}`}
+         LIMIT 1`),
+    ),
+  )
+  return rows[0]?.id ?? null
+}

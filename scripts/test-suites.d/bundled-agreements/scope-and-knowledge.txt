@@ -5,3 +5,4 @@ src/activity-source.test.ts
 src/change-request-approve.test.ts
 src/change-request-send.test.ts
 src/change-request-accepted.test.ts
+src/scope-group.test.ts

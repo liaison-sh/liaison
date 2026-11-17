@@ -86,6 +86,8 @@ export interface AgreementsCtx {
     params: Record<string, unknown>
     idempotency_key?: string
   }) => Promise<unknown>
+  /** The id of the contact group the app keeps for itself under a key, or null. */
+  client_actions_own_group?: (p: { key: string }) => Promise<unknown>
   /** A declared cross-app call (`cross_app_calls`): the K4 envelope. */
   executeTool?: (name: string, params: Record<string, unknown>) => Promise<CrossAppEnvelope>
   /** Emits one of the app's declared events. */

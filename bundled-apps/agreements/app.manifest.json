@@ -792,6 +792,10 @@
     {
       "target": "projects:time_plan_set",
       "reason": "an accepted change request grows its parent project's whole timebox by its hours, as the person who sent it; projects answers whether the project uses time and budgets"
+    },
+    {
+      "target": "kernel:contacts_group_add",
+      "reason": "the clients under a signed agreement are kept in the app's own contact group, whose authenticated mail the Scope check reads, as the person who sent each agreement"
     }
   ],
   "tools": {
@@ -2133,6 +2137,24 @@
       },
       "schedule": "*/10 * * * *",
       "timeoutMs": 120000
+    },
+    "scope-group-reconcile": {
+      "handler": "scopeGroupReconcileJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "30 5 * * *",
+      "timeoutMs": 120000
     }
   },
   "attention": {
@@ -2194,5 +2216,24 @@
         }
       }
     ]
+  },
+  "routines": {
+    "scope-check": {
+      "description": "When a client under a signed agreement writes, check the request against the signed text.",
+      "kind": "event",
+      "event": "mail:message:create",
+      "eventFilter": {
+        "fromGroupKeys": {
+          "clients-signed": "Clients under a signed agreement"
+        }
+      },
+      "promptTemplate": "A client under a signed agreement wrote (the new mail is in the event; its sender's address passed the receiving provider's authentication). Find the client's signed agreement with agreements_search, then read the signed text with agreement_passage_get: never quote it from memory. Decide one of four things. In scope: say which section covers it, quoting that passage, and change nothing. Out of scope and the signed text names a rate: propose one change request with change_request_send (mail_message_id is this mail's id, so one mail gets one card), its hours labelled with where they come from and the rate from the signed text; a person approves the card, the reply and the price. Unclear: say what in the signed text is unclear, quoting it, and change nothing. Not a request: say nothing. Never reply to the client yourself and never send anything without the card.",
+      "scopes": [
+        "agreements:agreements:read",
+        "agreements:agreements:write",
+        "mail:conversations:read"
+      ],
+      "enabledByDefault": false
+    }
   }
 }

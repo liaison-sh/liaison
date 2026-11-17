@@ -81,6 +81,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["callerHasScope", "sync"],
   ["client_actions_call_as_sender", "async"],
   ["client_actions_mint", "async"],
+  ["client_actions_own_group", "async"],
   ["client_actions_record", "async"],
   ["client_actions_revoke", "async"],
   ["client_actions_signed_copy", "async"],

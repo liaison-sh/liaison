@@ -1791,6 +1791,26 @@ export function validateAppManifest(manifest: any): ValidationResult {
           continue
         }
         const [evApp, ent, act] = parts
+        // One exception: a template that reads new mail from the app's own contact groups,
+        // named by key (resolved to the org's groups when enabled; authenticated senders only).
+        const groupKeys = (t.eventFilter as { fromGroupKeys?: unknown } | undefined)?.fromGroupKeys
+        if (t.event === "mail:message:create" && groupKeys !== undefined) {
+          const keys =
+            groupKeys && typeof groupKeys === "object" && !Array.isArray(groupKeys)
+              ? Object.entries(groupKeys as Record<string, unknown>)
+              : []
+          if (
+            keys.length === 0 ||
+            keys.some(
+              ([k, v]) =>
+                !/^[a-z][a-z0-9_-]{0,63}$/.test(k) || typeof v !== "string" || v.trim() === "",
+            )
+          )
+            errors.push(
+              `routines.${key}.eventFilter.fromGroupKeys: one or more { key: group name }, keys lowercase`,
+            )
+          continue
+        }
         if (evApp !== manifest.name) {
           errors.push(
             `routines.${key}.event: app "${evApp}" must equal manifest name "${manifest.name}"`,

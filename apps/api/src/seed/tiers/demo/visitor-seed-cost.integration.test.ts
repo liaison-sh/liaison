@@ -118,9 +118,11 @@ const CATALOG_DEMO_APPS = [
  * took the seed to 6 717-6 723 in 653-654 locally (inside the margin, so the pin stayed), and the
  * runner counts about 25 more than this Mac, which crossed it. The same day's fix round moved
  * nothing here: 6 723 in 654 locally before and after it.
+ * 366 outbox events once the agreements app declares its roles (member, lead, admin): their
+ * registration events and the Full Member grant (+4); round trips 6 744 in 655, pin unchanged.
  */
 const PRODUCTS_BASELINE = {
-  outboxEvents: 362,
+  outboxEvents: 366,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
@@ -153,7 +155,8 @@ const SAAS_BASELINE = {
   // Re-pinned 2026-11-17 to the runner's figure, 8 304 in 852: the agreements app installed on
   // the instance as on a demo box took it to 8 214-8 219 in 836-837 locally (inside the margin),
   // and the runner's usual excess over this Mac (about one percent) crossed it.
-  outboxEvents: 510,
+  // 514 once the agreements app declares its roles (+4 role events); 8 235 in 837, pin unchanged.
+  outboxEvents: 514,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
@@ -204,9 +207,11 @@ const SAAS_BASELINE = {
  * in 1: the agreements layer opens each agreement's shares as their owner, and the portal shares
  * are read under the sharer's own row security), and the runner counts about one percent more
  * than this Mac. Outbox events unchanged.
+ * 388 outbox events once the agreements app declares its roles (+4 role events) and the project
+ * lead is given the agreements lead role (+1); 13 618 round trips in 1 227, pin unchanged.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 383,
+  outboxEvents: 388,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,

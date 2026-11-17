@@ -247,6 +247,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       ends_on: row.ends_on ?? null,
       template_id: row.template_id ?? null,
       template_version: row.template_version ?? null,
+      ...(row.status === "imported" ? { status_note: "Imported, signed outside Liaison" } : {}),
     },
     draft: draft ? { lock_version: draft.lock_version, source: draft.source ?? null } : null,
     versions: versions.map((v) => ({

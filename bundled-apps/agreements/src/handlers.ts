@@ -24,6 +24,7 @@ import {
 } from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
+import { agreementImport, type ImportParams } from "./import"
 import { agreementPassageGet } from "./passage"
 import {
   agreementEvidenceGet,
@@ -57,6 +58,7 @@ export const homeLoadHandler = (p: { limit?: number }, ctx: Ctx) =>
 export const agreementsSearchHandler = (p: SearchParams, ctx: Ctx) => agreementsSearch(ctx, p ?? {})
 export const agreementGetHandler = (p: { id: string }, ctx: Ctx) => agreementGet(ctx, p)
 export const agreementCreateHandler = (p: CreateParams, ctx: Ctx) => agreementCreate(ctx, p)
+export const agreementImportHandler = (p: ImportParams, ctx: Ctx) => agreementImport(ctx, p)
 export const agreementUpdateHandler = (p: UpdateParams, ctx: Ctx) => agreementUpdate(ctx, p)
 export const agreementPrepareHandler = (p: { id: string }, ctx: Ctx) => agreementPrepare(ctx, p)
 export const agreementPriceSetHandler = (

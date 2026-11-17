@@ -246,6 +246,11 @@
           "type": "boolean",
           "required": false,
           "description": "Whether the signed proposal had a timebox when it started its project: time and budgets on that project followed it."
+        },
+        "imported_text": {
+          "type": "string",
+          "required": false,
+          "description": "Text read from an imported PDF, kept as unverified: never the signed text."
         }
       }
     },
@@ -995,6 +1000,89 @@
         "required": [
           "kind",
           "title"
+        ]
+      }
+    },
+    "agreement_import": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "File a contract signed before Liaison from its PDF: it is imported, signed outside Liaison, with no evidence and no signature level. Text read from the PDF is kept as unverified.",
+      "searchKeywords": ["importer", "import", "ancien", "archive", "signé", "signed", "contrat", "contract", "pdf"],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementImportHandler",
+      "writesToTable": "app_agreements.agreements",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "contact_id": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "signed_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "starts_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "ends_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "renews_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "notice_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650
+          },
+          "unverified_text": {
+            "type": "string",
+            "maxLength": 200000
+          },
+          "what_it_is": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "file_id"
         ]
       }
     },
@@ -1844,6 +1932,7 @@
       "agreement:expiring",
       "agreement:voided",
       "agreement:signed",
+      "agreement:imported",
       "agreement:access_changed",
       "agreement:knowledge_copy_not_made",
       "evidence:mismatch",

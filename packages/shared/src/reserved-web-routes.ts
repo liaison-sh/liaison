@@ -22,6 +22,8 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "connect",
   // The page a person outside opens from a signing or acceptance link (`/a#t=...`).
   "a",
+  // The client portal (`/portal`, its sign-in and its own shell), for people outside.
+  "portal",
   // The kernel's own tabs.
   "threads",
   "sessions",

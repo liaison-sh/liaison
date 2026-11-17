@@ -40,6 +40,7 @@ describe("projects.schema", () => {
     const tables = await listTables("app_projects")
     expect(tables.sort()).toEqual([
       "billing_claims",
+      "client_reports",
       "cost_rates",
       "days_off",
       "deal_values",

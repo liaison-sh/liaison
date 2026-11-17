@@ -305,6 +305,11 @@ describe("the one place a REST request becomes a person's click", () => {
           // the tests and the demo-mode signup only (the test below proves no other route
           // reaches it).
           if (path.startsWith(join(root, "seed") + sep)) continue
+          // The second reviewed exemption: a call an app's decided handler makes after a send a
+          // person approved (modules/client-actions/signed-copy.ts). It runs as that approver
+          // only for an ungated tool the app declares as a cross-app call, and only when the
+          // approval's decider is a live member; anything else runs with a system origin.
+          if (path.endsWith(join("modules", "client-actions", "signed-copy.ts"))) continue
           if (/\borigin: "human-ui"/.test(readFileSync(path, "utf8"))) offenders.push(path)
         }
       }

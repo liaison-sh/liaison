@@ -9,6 +9,9 @@
  */
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { ApiError } from "~/lib/api-error"
+import { ComposerAssist } from "~/modules/assist/ComposerAssist"
+import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
+import { useDictation } from "~/modules/assist/useDictation"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 
@@ -194,15 +197,13 @@ const ReportView: Component<{ reportId: string; onChanged: () => void }> = (prop
                     when={editing()}
                     fallback={<p class="whitespace-pre-line text-[13px] text-text">{s.text}</p>}
                   >
-                    <textarea
-                      data-testid={`client-report.section-text-${i()}`}
-                      rows={4}
-                      class="mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-text"
+                    <SectionTextField
+                      index={i()}
                       value={s.text}
-                      onInput={(e) => {
+                      onInput={(text) => {
                         const next = [...(editing() ?? [])]
                         const cur = next[i()]
-                        if (cur) next[i()] = { ...cur, text: e.currentTarget.value }
+                        if (cur) next[i()] = { ...cur, text }
                         setEditing(next)
                       }}
                     />
@@ -314,5 +315,33 @@ export const ClientReportsPanel: Component<{ projectId: string }> = (props) => {
         </Show>
       </section>
     </Show>
+  )
+}
+
+/** One section's text while the draft is edited, with the writing helpers beside it. */
+const SectionTextField: Component<{
+  index: number
+  value: string
+  onInput: (text: string) => void
+}> = (props) => {
+  let field: HTMLTextAreaElement | undefined
+  const dictation = useDictation({ target: () => field })
+  return (
+    <>
+      <textarea
+        ref={field}
+        data-testid={`client-report.section-text-${props.index}`}
+        rows={4}
+        class="mt-1 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-[13px] text-text"
+        value={props.value}
+        onInput={(e) => props.onInput(e.currentTarget.value)}
+      />
+      <div class="mt-1 flex items-center justify-end gap-0.5">
+        <ComposerAssist target={() => field} />
+        <RecorderRow dictation={dictation}>
+          <DictationMic dictation={dictation} />
+        </RecorderRow>
+      </div>
+    </>
   )
 }

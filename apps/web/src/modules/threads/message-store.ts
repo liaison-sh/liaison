@@ -2322,16 +2322,28 @@ export async function reconcileAgentStreamsWithServer(
         if (!key.startsWith(prefix) || stream.state !== "streaming") continue
         if (stream.lastActivityAt > askedAt - AGENT_STREAM_RECHECK_QUIET_MS) continue
         const agentId = agentOfStreamKey(key, prefix)
-        const running = runs.some((run) => {
-          const runAgent = typeof run.agentId === "string" ? run.agentId : null
+        const run = runs.find((r) => {
+          const runAgent = typeof r.agentId === "string" ? r.agentId : null
           if (runAgent !== agentId) return false
-          const runTurn = typeof run.turnId === "string" && run.turnId ? run.turnId : null
+          const runTurn = typeof r.turnId === "string" && r.turnId ? r.turnId : null
           return !stream.turnId || !runTurn || runTurn === stream.turnId
         })
         // The server still runs it: the turn is working (a model thinking sends nothing for a
-        // while), so it reads Working again until it is quiet for another threshold.
-        if (running) {
+        // while), so it reads Working again until it is quiet for another threshold. When the
+        // server drew past what this client holds, its frames stopped reaching this client while
+        // the turn went on: the block takes the server's snapshot, so the text does not stay
+        // frozen mid-word until a reload.
+        if (run) {
           stream.lastActivityAt = askedAt
+          const snapSeq = typeof run.seq === "number" && run.seq > 0 ? run.seq : null
+          if (snapSeq !== null && snapSeq > (stream.lastSeq ?? 0)) {
+            stream.content = (run.content as string) ?? stream.content
+            stream.reasoning = (run.reasoning as string) ?? stream.reasoning
+            stream.reasoningStreaming = Boolean(run.reasoningStreaming)
+            if (Array.isArray(run.toolCalls)) stream.toolCalls = run.toolCalls as never[]
+            if (Array.isArray(run.timeline)) stream.timeline = run.timeline as never[]
+            stream.lastSeq = snapSeq
+          }
           continue
         }
         noteTurnEnded(threadId, agentId, stream.turnId)

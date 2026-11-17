@@ -179,6 +179,24 @@ describe("asking the server about a live block", () => {
     expect(getChannelAgentStream(threadId).state).toBe("streaming")
   })
 
+  it("a quiet block the server drew past takes the server's text: frames that stopped arriving no longer freeze it mid-word", async () => {
+    frame("start", "ask-1", { seq: 1 })
+    frame("delta", "ask-1", { seq: 2, delta: "Here is where things st" })
+    quietFor(60_000)
+    const { api, release } = deferredSnapshot({ ...liveRun, seq: 9 })
+    release()
+    await reconcileAgentStreamsWithServer(api, threadId)
+    const block = getChannelAgentStream(threadId)
+    expect(block.state).toBe("streaming")
+    expect(block.content).toBe("Here is where things stand. Shall I continue")
+    // The next frame after the snapshot is drawn on top of it; an older one is dropped.
+    frame("delta", "ask-1", { seq: 5, delta: " stale" })
+    frame("delta", "ask-1", { seq: 10, delta: "?" })
+    expect(getChannelAgentStream(threadId).content).toBe(
+      "Here is where things stand. Shall I continue?",
+    )
+  })
+
   it("keeps a block that streamed recently, whatever the server says", async () => {
     frame("start", "ask-1")
     frame("delta", "ask-1", { delta: "Working" })

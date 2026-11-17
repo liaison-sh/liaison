@@ -41,7 +41,12 @@ interface TicketRow {
   converted_to_mail_conversation_id: string | null
   first_response_at: string | Date | null
   message_count: number | null
+  sensitivity: string | null
 }
+
+/** How far a ticket's text may travel: a merge never moves text to a ticket read more widely. */
+const SENSITIVITY_RANK: Record<string, number> = { internal: 0, confidential: 1, restricted: 2 }
+const rankOf = (s: string | null) => SENSITIVITY_RANK[s ?? "internal"] ?? 2
 
 async function fetchTicket(
   tx: SqlClient,
@@ -49,7 +54,8 @@ async function fetchTicket(
   ticketId: string,
 ): Promise<TicketRow | null> {
   const result = await tx.execute(drizzleSql`
-    SELECT id, handle, status, closed_reason, merged_into_ticket_id, converted_to_mail_conversation_id, first_response_at, message_count
+    SELECT id, handle, status, closed_reason, merged_into_ticket_id, converted_to_mail_conversation_id, first_response_at, message_count,
+      sensitivity
     FROM ${ticketsRel("tickets")}
     WHERE id = ${ticketId} AND org_id = ${orgId}
     LIMIT 1
@@ -141,6 +147,27 @@ export async function mergeTickets(
   if (!targetValidation.ok) {
     return {
       error: { code: targetValidation.code, message: targetValidation.message, retryable: false },
+    }
+  }
+
+  // A merge copies every message of a source onto the target, so the target's readers read
+  // them: refuse a source more sensitive than the target. Every source is asked before anything
+  // is written.
+  for (const sourceId of params.sourceTicketIds) {
+    const source = await fetchTicket(tx, orgId, sourceId)
+    if (!source) {
+      return {
+        error: { code: "not_found", message: `source ${sourceId} not found`, retryable: false },
+      }
+    }
+    if (rankOf(source.sensitivity) > rankOf(target.sensitivity)) {
+      return {
+        error: {
+          code: "merge_more_sensitive",
+          message: `${source.handle} is ${source.sensitivity} and ${target.handle} is ${target.sensitivity ?? "internal"}: merging would show its messages to more people, so nothing was merged. Merge into the more sensitive ticket instead.`,
+          retryable: false,
+        },
+      }
     }
   }
 

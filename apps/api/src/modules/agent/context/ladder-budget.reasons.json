@@ -14,5 +14,9 @@
   {
     "key": "all-apps:announcementTokens",
     "capability": "agreements: drafting, sending, following up, verifying a signed agreement and reading its evidence (fourteen deferred agreements tools, 67 tokens of index lines, 3446 without the app), only in an org that installed agreements"
+  },
+  {
+    "key": "all-apps:agreements",
+    "capability": "agreements: drafting, sending, change requests, evidence and filing a contract signed before Liaison (agreement_import), deferred-loaded: their schemas cost only once loaded, only in an org that installed agreements (2553 at the integration head, 2692 with the import tool)"
   }
 ]

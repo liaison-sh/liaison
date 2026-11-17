@@ -1008,8 +1008,18 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "File a contract signed before Liaison from its PDF: it is imported, signed outside Liaison, with no evidence and no signature level. Text read from the PDF is kept as unverified.",
-      "searchKeywords": ["importer", "import", "ancien", "archive", "signé", "signed", "contrat", "contract", "pdf"],
+      "description": "File a contract signed before Liaison from its PDF: imported, with no evidence and no signature level. Its dates are set after with agreement_update.",
+      "searchKeywords": [
+        "importer",
+        "import",
+        "ancien",
+        "archive",
+        "signé",
+        "signed",
+        "contrat",
+        "contract",
+        "pdf"
+      ],
       "requiredScopes": [
         "agreements:agreements:write"
       ],
@@ -1043,40 +1053,13 @@
           "contact_id": {
             "type": "string"
           },
-          "language": {
-            "type": "string",
-            "enum": [
-              "en",
-              "fr"
-            ]
-          },
           "signed_on": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
-          "starts_on": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "ends_on": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "renews_on": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "notice_days": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 3650
-          },
           "unverified_text": {
             "type": "string",
             "maxLength": 200000
-          },
-          "what_it_is": {
-            "type": "string"
           }
         },
         "required": [

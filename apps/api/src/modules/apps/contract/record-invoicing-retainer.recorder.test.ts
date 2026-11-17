@@ -2,9 +2,10 @@
 //
 // Records the invoicing app's contract fixtures for retainers and the card's own discard
 // (fixtures/invoicing/tool__retainer_draft_from_reconcile.json, tool__reconcile_draft_discard.json,
-// job__retainer-timebox-roll.json) and the refund preflight (preflight__advance_refund_prepare.json):
+// job__retainer-timebox-roll.json, tool__retainer_terms_renew.json) and the refund preflight (preflight__advance_refund_prepare.json):
 // a retainer card that cannot be read (no projects app in the contract org), a discard of a
-// document that is not a card's draft, a roll over an org with no retainer, and a refund preflight
+// document that is not a card's draft, a roll over an org with no retainer, a renewal of a project
+// with no retainer, and a refund preflight
 // of a document that is not an advance. Not part of any suite run (it skips unless
 // CONTRACT_RECORD=1): run it by path when these entries' bridge calls change, read what it wrote,
 // commit it.
@@ -59,6 +60,24 @@ const PLAN: RecordingStep[] = [
     }),
   },
   { entry: "job:retainer-timebox-roll", input: () => ({ params: {} }) },
+  // A signed renewal for a project with no retainer schedule: it renews nothing.
+  {
+    entry: "tool:retainer_terms_renew",
+    input: () => ({
+      params: {
+        projectId: "7a1d2c3e-0000-4000-8000-0000000000aa",
+        agreementId: "7a1d2c3e-0000-4000-8000-0000000000ab",
+        agreementNumber: "AG-2026-001",
+        startsOn: "2026-12-01",
+        minutes: 2640,
+        feeMinor: "495000",
+      },
+      expectError: {
+        reason:
+          "the contract org has no retainer schedule, so the renewal renews nothing: pins that refusal; the renewal itself is proven by retainer-renewal.test.ts",
+      },
+    }),
+  },
 ]
 
 describe.skipIf(process.env.CONTRACT_RECORD !== "1")("record invoicing retainer fixtures", () => {

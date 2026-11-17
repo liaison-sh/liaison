@@ -1,0 +1,32 @@
+{
+  "entry": "tool:billing_step_add",
+  "params": {
+    "projectId": "7a000000-0000-4000-8000-00000000b1a1",
+    "changeRequestId": "7f000000-0000-4000-8000-00000000b1a1",
+    "label": "Single sign-on",
+    "amountMinor": 600000,
+    "taskId": "7e000000-0000-4000-8000-00000000b1a1"
+  },
+  "recordedFrom": "the contract org on a local stack, record-invoicing-billing-plan.recorder.test.ts",
+  "expectError": {
+    "reason": "the project has no billing plan, so the accepted change request adds no step: pins that answer; adding the step is proven by billing-step-add.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"change_request_ref\":\"7f000000-0000-4000-8000-00000000b1a1\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "billing_steps",
+        "{\"where\":{\"billing_project_id\":\"7a000000-0000-4000-8000-00000000b1a1\"},\"limit\":500}"
+      ],
+      "reply": "[]"
+    }
+  ]
+}

@@ -17,7 +17,12 @@ import {
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
-import { privilegedFrom, withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import {
+  privilegedFrom,
+  withPrivilegedDb,
+  withPrivilegedReadReusingHeld,
+  withSystemDb,
+} from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { readPeopleDecide } from "~/modules/approvals/route-world"
@@ -709,7 +714,7 @@ export async function nextInLineOn(
   userId: string,
   date: string,
 ): Promise<string | null> {
-  return withPrivilegedDb(orgId, "away-next-in-line-on", async (tx) => {
+  return withPrivilegedReadReusingHeld(orgId, "away-next-in-line-on", async (tx) => {
     const covering = extractRows<RangeRow>(
       await tx.execute(drizzleSql`
         SELECT ${RANGE_COLUMNS} FROM ${K}.away_ranges

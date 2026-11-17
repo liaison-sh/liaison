@@ -3,7 +3,7 @@
 import type { ThreadAnchor } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { withPrivilegedDb, withPrivilegedReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { UUID_RE } from "~/lib/uuid"
 import { nextInLineOn } from "~/modules/users/away"
@@ -1465,9 +1465,12 @@ export async function loadAccountManager(
 ): Promise<string[] | null> {
   if (!UUID_RE.test(companyId)) return null
   const K = sql.raw(schemaRef("kernel"))
-  const [row] = await withPrivilegedDb(orgId, "attention-account-manager", async (tx) =>
-    extractRows<{ id: string }>(
-      await tx.execute(sql`
+  const [row] = await withPrivilegedReadReusingHeld(
+    orgId,
+    "attention-account-manager",
+    async (tx) =>
+      extractRows<{ id: string }>(
+        await tx.execute(sql`
         WITH RECURSIVE chain(id, depth) AS (
           SELECT ${companyId}::uuid, 0
           UNION ALL
@@ -1486,7 +1489,7 @@ export async function loadAccountManager(
           JOIN ${K}.users u ON u.id = c.owner_user_id AND u.org_id = c.org_id
          WHERE u.status = 'active' AND u.user_type = 'member'
          ORDER BY chain.depth LIMIT 1`),
-    ),
+      ),
   )
   if (!row) return null
   if (opts?.standIn === false) return [row.id]

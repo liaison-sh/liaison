@@ -716,6 +716,33 @@ export async function readPortalPerson(db: RlsClient, userId: string): Promise<P
 }
 
 /**
+ * A person a company merge narrowed (`sees_only_*` set to what they read before) sees
+ * the whole company again: the client access panel's click, the only way to clear it.
+ * True when the person was narrowed; a person who already sees the whole company is
+ * left as is.
+ */
+export async function showWholeCompany(input: {
+  orgId: string
+  actorId: string
+  db: RlsClient
+  userId: string
+}): Promise<{ person: PortalPersonRow; widened: boolean }> {
+  const person = await readPortalPerson(input.db, input.userId)
+  const widened = await withPrivilegedDb(input.orgId, "portal-show-whole-company", async (tx) => {
+    const rows = extractRows<{ user_id: string }>(
+      await tx.execute(sql`
+        UPDATE ${K()}.portal_people
+           SET sees_only_share_ids = NULL, sees_only_contact_ids = NULL
+         WHERE user_id = ${input.userId} AND org_id = ${input.orgId} AND removed_at IS NULL
+           AND (sees_only_share_ids IS NOT NULL OR sees_only_contact_ids IS NOT NULL)
+        RETURNING user_id`),
+    )
+    return rows.length > 0
+  })
+  return { person, widened }
+}
+
+/**
  * Removes one person from their company's portal: signed out, deactivated, their open links
  * withdrawn. Nothing they read or signed is deleted. Erasure is a separate step (eraseUser).
  */

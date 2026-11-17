@@ -35,6 +35,7 @@ import {
   setPortalRequireTotp,
   setPortalSettings,
   setPortalShare,
+  showWholeCompany,
 } from "./access"
 import { PORTAL_HOME_READS } from "./routes"
 
@@ -100,7 +101,8 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         return extractRows<Record<string, unknown>>(
           await tx.execute(sql`
             SELECT p.user_id AS "userId", u.name, u.email, p.title, p.invited_at AS "invitedAt",
-                   p.last_sign_in_at AS "lastSignInAt", u.status, u.totp_enabled AS "totpEnabled"
+                   p.last_sign_in_at AS "lastSignInAt", u.status, u.totp_enabled AS "totpEnabled",
+                   (p.sees_only_share_ids IS NOT NULL OR p.sees_only_contact_ids IS NOT NULL) AS "keepsWhatTheySawBefore"
               FROM ${K()}.portal_people p JOIN ${K()}.users u ON u.id = p.user_id
              WHERE p.company_id = ${id} AND p.removed_at IS NULL
              ORDER BY u.name`),
@@ -148,6 +150,41 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         }),
       )
       return success(c, { userId: r.person.user_id, cancelledLinks: r.cancelledLinks })
+    } catch (err) {
+      return fail(c, err)
+    }
+  })
+  // After a merge a person keeps what they read before; a person here clears it for them.
+  .post("/people/:userId/show-whole-company", ADMIN, async (c) => {
+    const id = companyId(c)
+    if (!id) return notFound(c)
+    if (!(await personOfCompany(c, id))) return notFound(c)
+    const orgId = c.get("orgId")
+    const actorId = c.get("userId")
+    const userId = c.req.param("userId")
+    try {
+      const r = await withRequestRls(c, async (tx) => {
+        const out = await showWholeCompany({ orgId, actorId, db: tx, userId })
+        if (out.widened)
+          await writeAuditLog(tx, {
+            orgId,
+            actorId,
+            actorType: "user",
+            app: "kernel",
+            entityType: "portal_person",
+            entityId: userId,
+            action: "portal.whole_company_shown",
+            metadata: { companyId: id },
+          })
+        return out
+      })
+      return success(c, {
+        userId,
+        widened: r.widened,
+        message: r.widened
+          ? `${r.person.name} now sees everything the company shares on the portal, not only what they saw before the merge.`
+          : `${r.person.name} already sees everything the company shares on the portal. Nothing changed.`,
+      })
     } catch (err) {
       return fail(c, err)
     }

@@ -12,7 +12,7 @@ import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { ensureInstalledAppPortalViews } from "~/infra/boot-phase10"
 import { summarizeCompaniesMerge } from "~/modules/agent/tools/company-tools"
-import { createPortalSession } from "~/modules/auth/auth"
+import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { mergeCompanies } from "~/modules/contacts/companies"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -56,6 +56,7 @@ async function readsOf(userId: string) {
 
 let before: Record<string, Awaited<ReturnType<typeof readsOf>>> = {}
 let token = ""
+let adminToken = ""
 let cardLines: string[] = []
 let mergeMessage: { keptNames: string[]; signedOut: number; closedShares: number }
 
@@ -121,6 +122,7 @@ beforeAll(async () => {
       ),
     )
   ).lines
+  adminToken = (await createSession(w.admin.userId, w.orgId)).accessToken
   token = (await createPortalSession(w.clientA.userId, w.orgId)).accessToken
   const r = await withRlsContext(adminContext(w), (tx) =>
     mergeCompanies(tx, {
@@ -176,9 +178,26 @@ describe("a company merge and the portal", () => {
     expect(mergeMessage.closedShares).toBe(2)
   })
 
-  it("NT-57 the survivor's shares reach the merged company's people only once their lists are cleared", async () => {
-    await sql`UPDATE kernel.portal_people SET sees_only_share_ids = NULL, sees_only_contact_ids = NULL
-               WHERE user_id = ${w.clientA2.userId}`
+  it("NT-57 the survivor's shares reach the merged company's people only once a person clears their lists on the client access panel", async () => {
+    const path = `/api/contacts/companies/${w.companyB}/portal/people/${w.clientA2.userId}/show-whole-company`
+    const asMember = await app.request(path, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${(await createSession(w.member.userId, w.orgId)).accessToken}`,
+      },
+    })
+    expect(asMember.status).toBe(403)
+    const people = await app.request(`/api/contacts/companies/${w.companyB}/portal/people`, {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    const listed = ((await people.json()) as { data: Array<Record<string, unknown>> }).data
+    expect(listed.every((p) => p.keepsWhatTheySawBefore === true)).toBe(true)
+    const click = await app.request(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    expect(click.status).toBe(200)
+    expect(((await click.json()) as { data: { widened: boolean } }).data.widened).toBe(true)
     const widened = await readsOf(w.clientA2.userId)
     expect(widened.projects).toEqual([ids.projectA, ids.projectB].sort())
     expect(widened.invoices).toEqual([ids.docA, ids.docB].sort())

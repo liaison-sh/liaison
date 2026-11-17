@@ -3706,5 +3706,13 @@
     "say": "cite la section 8.2 du texte signé du contrat",
     "typed": ["citer section contrat", "quote agreement section", "passage signé"],
     "any": ["agreements__agreement_passage_get"]
+  },
+  {
+    "id": "C125",
+    "set": "seed",
+    "lang": "en",
+    "say": "the client asks for single sign-on, which is not in the signed scope: answer them and offer a change request",
+    "typed": ["change request out of scope", "avenant hors périmètre", "reply with a change request"],
+    "any": ["agreements__change_request_send"]
   }
 ]

@@ -60,6 +60,22 @@ const VOID_REASON =
 const NOT_SIGNED =
   "the agreement was never signed here (no link could be minted), so it has no evidence to read or check"
 const refused = (p: Rec, reason = NO_LINK) => ({ params: p, expectError: { reason } })
+const PARENT_UNSIGNED =
+  "a change request goes only on a signed agreement; the contract org signs nothing, so it is refused before any card"
+const changeRequest = (parent: unknown, version: unknown): Rec => ({
+  parent_agreement_id: parent,
+  title: "Single sign-on",
+  work: ["Sign-in with the client's identity provider"],
+  hours_minutes: 3600,
+  hours_source: "past similar work",
+  rate_minor: "10000",
+  reply: {
+    conversation_id: "00000000-0000-4000-8000-0000000000c1",
+    body: "Here is a change request.",
+  },
+  passage: { version_id: version, section: "1" },
+  mail_message_id: "contract-mail-1",
+})
 
 const PLAN: RecordingStep[] = [
   {
@@ -179,6 +195,15 @@ const PLAN: RecordingStep[] = [
   {
     entry: "tool:agreement_verify",
     input: (s) => refused({ id: s.values.nda }, NOT_SIGNED),
+  },
+  {
+    entry: "preflight:change_request_send",
+    input: (s) => refused(changeRequest(s.values.nda, s.values.version), PARENT_UNSIGNED),
+  },
+  {
+    entry: "tool:change_request_send",
+    input: (s) => refused(changeRequest(s.values.nda, s.values.version), PARENT_UNSIGNED),
+    bridgeOptions: () => click("change_request_send"),
   },
   { entry: "tool:agreement_get", input: (s) => params({ id: s.values.nda }) },
   { entry: "tool:agreements_search", input: () => params({ kind: "nda" }) },

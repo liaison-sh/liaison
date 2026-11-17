@@ -42,6 +42,26 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   })
 }
 
+export function summarizeChangeRequestSend(params: Record<string, unknown>): Promise<Card> {
+  const reply = (params.reply ?? {}) as { body?: unknown }
+  const work = Array.isArray(params.work) ? params.work.map(String) : []
+  const minutes = Number(params.hours_minutes ?? 0)
+  const lines = [
+    `Reply: ${String(reply.body ?? "")}`,
+    `Change request: ${String(params.title ?? "")}`,
+    ...work.map((w) => `Work: ${w}`),
+    `Hours: ${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""} (from ${String(params.hours_source ?? "not said")})`,
+    `Rate: ${String(params.rate_minor ?? "")} (minor units per hour)`,
+    "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
+  ]
+  return done({
+    kind: "change_request_send",
+    title: "Reply to the client and send a change request",
+    subtitle: "Nothing is sent if the client wrote after this card",
+    lines,
+  })
+}
+
 export function summarizeAgreementVoid(params: Record<string, unknown>): Promise<Card> {
   return done({
     kind: "agreement_void",

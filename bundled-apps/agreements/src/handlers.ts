@@ -17,6 +17,11 @@ import {
   uploadFreezeJob,
   uploadRescanJob,
 } from "./agreements"
+import {
+  type ChangeRequestSendParams,
+  changeRequestSend,
+  changeRequestSendPreflight,
+} from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
 import { agreementPassageGet } from "./passage"
@@ -68,6 +73,10 @@ export const approvalRouteReadHandler = (p: { entityType: string; entityId: stri
 export const agreementSendHandler = (p: SendParams, ctx: Ctx) => agreementSend(ctx, p)
 export const agreementSendPreflightHandler = (p: SendParams, ctx: Ctx) =>
   agreementSendPreflight(ctx, p)
+export const changeRequestSendHandler = (p: ChangeRequestSendParams, ctx: Ctx) =>
+  changeRequestSend(ctx, p)
+export const changeRequestSendPreflightHandler = (p: ChangeRequestSendParams, ctx: Ctx) =>
+  changeRequestSendPreflight(ctx, p)
 export const agreementVoidPreflightHandler = (p: { id: string; reason: string }, ctx: Ctx) =>
   agreementVoidPreflight(ctx, p)
 export const agreementVoidHandler = (p: { id: string; reason: string }, ctx: Ctx) =>

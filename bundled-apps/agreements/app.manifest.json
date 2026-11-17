@@ -748,6 +748,10 @@
     {
       "target": "knowledge:archive",
       "reason": "a superseding signed version archives the Knowledge copy of the version before it"
+    },
+    {
+      "target": "mail:reply",
+      "reason": "the change request's reply leaves from the person's own mailbox, under the card's mail check"
     }
   ],
   "tools": {
@@ -1437,6 +1441,134 @@
         "guardKey"
       ],
       "approvalDedupeKeyParam": "guardKey"
+    },
+    "change_request_send": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "change_request.id"
+      },
+      "description": "Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on. Parks for a person's approval; nothing is sent if the client wrote after the card.",
+      "searchKeywords": [
+        "avenant",
+        "scope",
+        "périmètre",
+        "extra",
+        "supplémentaire"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "changeRequestSendHandler",
+      "summarizer": "summarizeChangeRequestSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Reply and change request on {{params.parent_agreement_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "parent_agreement_id": {
+            "type": "string",
+            "description": "The signed agreement the change request adds to."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "work": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "The work it adds, one line each."
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Its size in minutes."
+          },
+          "hours_source": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Where the hours come from, such as past similar work."
+          },
+          "rate_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,15}$",
+            "description": "The hourly rate from the signed text, in minor units, as a string."
+          },
+          "reply": {
+            "type": "object",
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 8000
+              }
+            },
+            "required": [
+              "conversation_id",
+              "body"
+            ],
+            "additionalProperties": false
+          },
+          "passage": {
+            "type": "object",
+            "properties": {
+              "version_id": {
+                "type": "string"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version_id",
+              "section"
+            ],
+            "additionalProperties": false,
+            "description": "The signed text's section, read with agreement_passage_get."
+          },
+          "mail_message_id": {
+            "type": "string",
+            "description": "The client's mail this answers."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "parent_agreement_id",
+          "title",
+          "work",
+          "hours_minutes",
+          "hours_source",
+          "rate_minor",
+          "reply",
+          "passage",
+          "mail_message_id"
+        ]
+      },
+      "preflight": "changeRequestSendPreflightHandler",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "mail_message_id"
     },
     "agreement_reminder_send": {
       "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},

@@ -501,6 +501,21 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   EMAIL_REQUIRED: 400,
   MINT_NEEDS_A_PERSON: 403,
   REVOKE_NEEDS_A_PERSON: 403,
+  // A change request: only on a signed agreement that is not itself one, with its work, hours
+  // and their source, rate, reply and client mail, quoting the parent's signed text; a reply
+  // that did not leave withdraws the approval link.
+  PARENT_NOT_SIGNED: 409,
+  PARENT_IS_A_CHANGE_REQUEST: 409,
+  PASSAGE_NOT_SIGNED_TEXT: 409,
+  NO_CLIENT_CONTACT: 409,
+  WORK_REQUIRED: 400,
+  HOURS_REQUIRED: 400,
+  HOURS_SOURCE_REQUIRED: 400,
+  RATE_REQUIRED: 400,
+  REPLY_REQUIRED: 400,
+  MAIL_REQUIRED: 400,
+  REPLY_NOT_SENT: 502,
+  FREEZE_FAILED: 409,
   // A signed agreement's evidence: not signed or not sealed yet, a frozen file that no longer
   // matches its fingerprint (never sealed, never repaired), a name no font can draw.
   NOT_SIGNED: 409,

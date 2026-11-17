@@ -5,7 +5,7 @@
 // Each door is driven through the service, the panel's routes or the tool itself,
 // on the real roles.
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, beforeEach, describe, expect, it, setSystemTime } from "bun:test"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
 import { extractRows, sql } from "~/db"
@@ -21,15 +21,18 @@ import { handleAuditSearch } from "~/modules/agent/tools/admin-tools"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { createPortalSession, createSession } from "~/modules/auth/auth"
+import { SessionRevocationTestAccess } from "~/modules/auth/session-revocation"
 import { generateTotpSecret } from "~/modules/auth/totp"
 import { deleteContact, updateContact } from "~/modules/contacts/service"
 import {
+  endPortalAccess,
   invitePortalPerson,
   PORTAL_INVITES_PER_HOUR,
   PortalAccessError,
   restorePortalAccess,
   setPortalShare,
 } from "~/modules/portal/access"
+import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import {
   handlePortalAccessLog,
   handlePortalRemovePerson,
@@ -46,6 +49,7 @@ import {
   insertClientAction,
   insertShare,
   memberContext,
+  ORIGIN,
 } from "./fixture"
 import { dropReadsWorld, insertFile, insertTicket } from "./reads-world"
 
@@ -667,5 +671,57 @@ describe("a contact moved, deleted or erased", () => {
       signed,
     ])
     expect(record.map((r) => r.decision)).toEqual(["signed"])
+  })
+})
+
+describe("ending access when the other processes do not hear it", () => {
+  it("NT-22b with the revocation broadcast lost, the token is refused once the auth cache lapses and the refresh at once", async () => {
+    const companyD = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.companies", {
+        id: companyD,
+        org_id: w.orgId,
+        handle: `d-${companyD.slice(0, 8)}`,
+        name: "Maison Delta",
+        closed_at: null,
+      }),
+    )
+    const person = await asAdmin((tx) =>
+      invitePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: companyD,
+        email: `delta-${w.orgId.slice(0, 8)}@doors.example.com`,
+        name: "Delta Client",
+      }),
+    )
+    const session = await createPortalSession(person.userId, w.orgId)
+    const me = () =>
+      app.request("/api/portal/me", { headers: { Authorization: `Bearer ${session.accessToken}` } })
+    expect((await me()).status).toBe(200)
+    await asAdmin((tx) =>
+      endPortalAccess({ orgId: w.orgId, actorId: w.admin.userId, db: tx, companyId: companyD }),
+    )
+    // A peer that never got the message: no revoked session in its memory.
+    await SessionRevocationTestAccess.settle()
+    SessionRevocationTestAccess.reset()
+    // Its cached auth state lapses within 15 s; the token is refused on the next read after.
+    setSystemTime(new Date(Date.now() + 16_000))
+    try {
+      expect((await me()).status).toBe(401)
+    } finally {
+      setSystemTime()
+    }
+    const refresh = await app.request("/api/portal/auth/refresh", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: ORIGIN,
+        Cookie: `${PORTAL_REFRESH_COOKIE}=${session.refreshToken}`,
+      },
+      body: "{}",
+    })
+    expect(refresh.status).toBe(401)
   })
 })

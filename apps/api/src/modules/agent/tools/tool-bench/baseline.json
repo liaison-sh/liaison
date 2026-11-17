@@ -2134,7 +2134,7 @@
     },
     "projects__createProject": {
       "desc": 523,
-      "schema": 956
+      "schema": 995
     },
     "projects__delete": {
       "desc": 164,
@@ -2976,7 +2976,7 @@
     "C108|requests waiting for the client": "15tl",
     "C109|agreements renew": "15tl",
     "C109|contract renewal": "15tl",
-    "C109|contracts": "5l",
+    "C109|contracts": "",
     "C11|log time": "",
     "C11|task time": "5tl",
     "C11|temps passé": "15tl",
@@ -3041,6 +3041,12 @@
     "C130|avenant hors périmètre": "15tl",
     "C130|change request out of scope": "15t",
     "C130|reply with a change request": "15tl",
+    "C131|devis accepté": "15tl",
+    "C131|quote accepted": "15tl",
+    "C131|résultat du devis": "15tl",
+    "C132|ancien contrat pdf": "15tl",
+    "C132|import signed contract": "15tl",
+    "C132|importer contrat signé": "15tl",
     "C14|refund": "5tl",
     "C14|refund charge": "15tl",
     "C14|refund payment": "",
@@ -3067,7 +3073,7 @@
     "C20|nouvelle opportunité": "5t",
     "C21|close deal": "5t",
     "C21|deal won": "15tl",
-    "C21|mark won": "15t",
+    "C21|mark won": "5t",
     "C22|deals by stage": "5t",
     "C22|pipeline": "5t",
     "C22|sales forecast": "15t",

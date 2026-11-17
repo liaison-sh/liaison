@@ -359,6 +359,45 @@ describe("resolveToolCard, groups", () => {
     })
   })
 
+  it("a row's ask names the row by its id after the fixed words, only on the rows it holds for", () => {
+    const template = {
+      ...GROUPS,
+      groups: {
+        ...GROUPS.groups,
+        rows: {
+          ...GROUPS.groups?.rows,
+          acts: [
+            {
+              kind: "ask",
+              label: { label: "Offer it as a change request" },
+              prompt: "Offer this line as a change request.",
+              refPath: "row.id",
+              when: { path: "row.late", exists: true },
+            },
+          ],
+        },
+      },
+    } as CardTemplate
+    const card = plain(resolved(template, PLAN))
+    const [late, onTime] = card.groups[0].rows
+    expect(late.acts).toEqual([
+      {
+        kind: "ask",
+        label: { label: "Offer it as a change request" },
+        prompt: "Offer this line as a change request. (l1)",
+      },
+    ])
+    expect(onTime.acts).toBeUndefined()
+    // An id that is not one (text with spaces or markup) drops the action, never the words.
+    const odd = plain(
+      resolved(template, {
+        ...PLAN,
+        groups: [{ label: "Design", rows: [{ id: "l1 <b>x</b>", name: "W", late: true }] }],
+      }),
+    )
+    expect(odd.groups[0].rows[0].acts).toBeUndefined()
+  })
+
   it("draws a summary line instead of the groups when its condition holds", () => {
     const template = {
       ...GROUPS,

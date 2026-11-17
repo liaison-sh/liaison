@@ -29,7 +29,17 @@ const HOST =
 const COLUMN_KEY = /^[A-Za-z_][A-Za-z0-9_]*$/
 const MARKUP = /<\s*[A-Za-z/!?]/
 
-const LIMITS = { rows: 8, actions: 3, items: 20, links: 6, columns: 5, tot: 6, notes: 3, fields: 3 }
+const LIMITS = {
+  rows: 8,
+  actions: 3,
+  items: 20,
+  links: 6,
+  columns: 5,
+  tot: 6,
+  notes: 3,
+  fields: 3,
+  rowActs: 2,
+}
 
 const HEADER_KEYS = ["ref", "title", "sub", "end", "foot", "open", "status", "actions"]
 const KIND_KEYS: Record<ToolCardKind, string[]> = {
@@ -262,7 +272,7 @@ class CardCheck {
     }
   }
 
-  action(v: unknown, roots: readonly Root[], at: string, rowAct = false): void {
+  action(v: unknown, roots: readonly Root[], at: string, rowAct = false, rowId?: unknown): void {
     if (!this.object(v, at)) return
     const common = ["kind", "label", "when"]
     this.label(v.label, `${at}.label`)
@@ -294,8 +304,12 @@ class CardCheck {
         // The click posts the prompt as the person's own message, so it is the app's fixed
         // words: a value of the result may be text someone outside the org wrote (a subject,
         // a mail body), and neither the prompt nor the button's label is drawn from it.
-        this.keys(v, [...common, "prompt"], at)
+        // On a row, the one value it may carry is the row's own id (`refPath`, the rows' `id`
+        // path): an id, never text, added after the fixed words so the agent knows which row.
+        this.keys(v, [...common, "prompt", ...(rowAct ? ["refPath"] : [])], at)
         this.fixedText(v.prompt, `${at}.prompt`)
+        if (v.refPath !== undefined && v.refPath !== rowId)
+          this.err(`${at}.refPath`, "must be the rows' own id path")
         break
       case "external":
         this.keys(v, [...common, "urlTemplate", ...(rowAct ? ["labelPath"] : [])], at)
@@ -491,7 +505,7 @@ class CardCheck {
     if (!this.object(v.rows, ".groups.rows")) return
     const r = v.rows
     const at = ".groups.rows"
-    this.keys(r, ["path", "id", "name", "tag", "flag", "why", "cells", "links", "act"], at)
+    this.keys(r, ["path", "id", "name", "tag", "flag", "why", "cells", "links", "act", "acts"], at)
     this.path(r.path, GROUP, `${at}.path`)
     this.path(r.id, ROW, `${at}.id`)
     this.tpl(r.name, ROW, `${at}.name`)
@@ -521,7 +535,14 @@ class CardCheck {
         }
       }
     }
-    if (r.act !== undefined) this.action(r.act, ROW, `${at}.act`, true)
+    if (r.act !== undefined) this.action(r.act, ROW, `${at}.act`, true, r.id)
+    if (r.acts !== undefined) {
+      if (!Array.isArray(r.acts) || r.acts.length < 1 || r.acts.length > LIMITS.rowActs) {
+        this.err(`${at}.acts`, `must list 1 to ${LIMITS.rowActs} actions`)
+      } else {
+        for (const [i, a] of r.acts.entries()) this.action(a, ROW, `${at}.acts[${i}]`, true, r.id)
+      }
+    }
   }
 
   private edit(v: unknown): void {

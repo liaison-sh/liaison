@@ -487,3 +487,46 @@ describe("the card's money states", () => {
     }
   })
 })
+
+describe("offering a line as a change request", () => {
+  const OFFER = "Offer it as a change request"
+  const offers = (card: ResolvedCard) =>
+    (card.groups ?? []).flatMap((g) =>
+      g.rows.filter((r) => (r.acts ?? []).some((a) => a.label.label === OFFER)).map((r) => r.id),
+    )
+
+  it("a proposed line not in the plan offers itself, carrying only its own id, when agreements is on", () => {
+    const card = draw({
+      changeRequests: true,
+      lines: [line("in-plan"), line("extra", { kind: "unplanned", plannedMinutes: null })],
+    })
+    expect(offers(card)).toEqual(["extra"])
+    const act = card.groups
+      ?.flatMap((g) => g.rows)
+      .find((r) => r.id === "extra")
+      ?.acts?.find((a) => a.label.label === OFFER)
+    expect(act).toEqual({
+      kind: "ask",
+      label: { label: OFFER },
+      prompt:
+        "Offer this line of the planned vs done card to the client as a change request. (extra)",
+    })
+  })
+
+  it("no line offers itself without agreements, or once the card is past proposed", () => {
+    const lines = [line("extra", { kind: "unplanned", plannedMinutes: null })]
+    expect(offers(draw({ lines }))).toEqual([])
+    expect(offers(draw({ lines, changeRequests: true, state: "drafted" }))).toEqual([])
+  })
+
+  it("every reconcile card offers the same action", () => {
+    const withOffer = Object.entries(tools)
+      .filter(([, t]) => {
+        const rows = (t.resultCard as CardTemplate | undefined)?.groups?.rows
+        return rows?.act?.kind === "tool" && rows.act.tool === "move"
+      })
+      .map(([name, t]) => [name, (t.resultCard as CardTemplate).groups?.rows.acts?.[0]?.label])
+    expect(withOffer.length).toBe(5)
+    for (const [, label] of withOffer) expect(label).toEqual({ label: OFFER })
+  })
+})

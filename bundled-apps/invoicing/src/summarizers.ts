@@ -923,6 +923,24 @@ export function summarizeMarkPaid(
   })
 }
 
+export function summarizeQuoteSetOutcome(
+  params: { document_id?: string; outcome?: string },
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const doc = docOf(meta)
+  const outcome =
+    params.outcome === "rejected" || params.outcome === "expired" ? params.outcome : "accepted"
+  return done({
+    kind: "quote_set_outcome",
+    title: `Mark ${docWithCustomer(doc)} ${outcome}`,
+    subtitle:
+      "Records the quote's outcome once; no invoice is created and the customer is not emailed",
+    lines: [...docFacts(doc), `Outcome: ${outcome}`],
+    links: openLink(params.document_id, doc),
+  })
+}
+
 export function summarizeRecordRefund(
   params: { document_id?: string; refund_amount_minor?: unknown; refund_kind?: string },
   _ctx?: unknown,

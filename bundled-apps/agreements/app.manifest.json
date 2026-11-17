@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -246,29 +246,7 @@
         "claimed_at": "date?",
         "project_time_budgets": {
           "type": "boolean",
-          "required": false
-        },
-        "project_timebox_minutes": {
-          "type": "integer",
-          "required": false
-        },
-        "effects_claim": "uuid?",
-        "effects_claimed_at": "date?",
-        "effects_task_id": "uuid?",
-        "effects_timebox_minutes": {
-          "type": "integer",
-          "required": false
-        },
-        "effects_time_plan": {
-          "type": "string",
-          "enum": [
-            "set",
-            "none"
-          ],
-          "required": false
-        },
-        "effects_done_at": "date?",
-        "effects_note": "text?"
+  "version": "0.4.3",
       }
     },
     "agreement_shares": {
@@ -782,6 +760,10 @@
       "reason": "a superseding signed version archives the Knowledge copy of the version before it"
     },
     {
+      "target": "projects:createProject",
+      "reason": "a signed proposal or statement of work starts its project once, named by the agreement so a replay finds it (no assignee, time or activity read)"
+    },
+    {
       "target": "mail:reply",
       "reason": "the change request's reply leaves from the person's own mailbox, under the card's mail check"
     },
@@ -1036,6 +1018,72 @@
         "required": [
           "kind",
           "title"
+        ]
+      }
+    },
+    "agreement_import": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "File a contract signed before Liaison from its PDF: imported, with no evidence and no signature level. Its dates are set after with agreement_update.",
+      "searchKeywords": [
+        "importer",
+        "import",
+        "ancien",
+        "archive",
+        "signé",
+        "signed",
+        "contrat",
+        "contract",
+        "pdf"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementImportHandler",
+      "writesToTable": "app_agreements.agreements",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "contact_id": {
+            "type": "string"
+          },
+          "signed_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "unverified_text": {
+            "type": "string",
+            "maxLength": 200000
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "file_id"
         ]
       }
     },
@@ -1977,6 +2025,7 @@
       "agreement:expiring",
       "agreement:voided",
       "agreement:signed",
+      "agreement:imported",
       "agreement:access_changed",
       "agreement:knowledge_copy_not_made",
       "evidence:mismatch",

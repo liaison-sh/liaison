@@ -3758,5 +3758,21 @@
       "reply with a change request"
     ],
     "any": ["agreements__change_request_send"]
+  },
+  {
+    "id": "C131",
+    "set": "seed",
+    "lang": "fr",
+    "say": "le client a accepté le devis Q-0007 par téléphone, note-le",
+    "typed": ["devis accepté", "quote accepted", "résultat du devis"],
+    "any": ["invoicing__quote_set_outcome"]
+  },
+  {
+    "id": "C132",
+    "set": "seed",
+    "lang": "fr",
+    "say": "importe ce contrat signé en 2024 avant Liaison, voici le PDF",
+    "typed": ["importer contrat signé", "import signed contract", "ancien contrat pdf"],
+    "any": ["agreements__agreement_import"]
   }
 ]

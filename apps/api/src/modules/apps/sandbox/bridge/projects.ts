@@ -20,6 +20,29 @@ import { envelopeError } from "~/modules/apps/sandbox/bridge/shared"
  * same "admin fallback until personas are active" convention the ops
  * provisioners already use for RJ/DSP2/compliance tasks).
  */
+/** The project another app's step already made, as createProject answers it then. */
+async function projectByExternalRef(
+  txDb: RlsClient,
+  orgId: string,
+  ref: string,
+): Promise<Record<string, unknown> | null> {
+  const [row] = extractRows<{ id: string; name: string; key: string | null }>(
+    await txDb.execute(drizzleSql`
+      SELECT id::text AS id, name, key FROM ${drizzleSql.raw(`"${schemaRef("app_projects")}".projects`)}
+       WHERE org_id = ${orgId}::uuid AND external_ref = ${ref}
+       LIMIT 1`),
+  )
+  if (!row) return null
+  return {
+    id: row.id,
+    name: row.name,
+    key: row.key,
+    externalRef: ref,
+    existing: true,
+    message: `Project ${row.name} was already made for this step: nothing new was created.`,
+  }
+}
+
 async function resolveWebhookFallbackUserId(txDb: RlsClient, orgId: string): Promise<string> {
   const rows = extractRows<{ id: string }>(
     await txDb.execute(
@@ -605,6 +628,18 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         tasks?: unknown
         companyId?: string | null
         timeBudgets?: boolean
+        /** The other app's step this project is made for: a second call with it finds the project. */
+        externalRef?: string
+      }
+      const ref = params.externalRef
+      if (ref !== undefined && (typeof ref !== "string" || ref.length === 0 || ref.length > 200))
+        return envelopeError(
+          "INVALID_INPUT",
+          "externalRef is 1 to 200 characters. Nothing was created.",
+        )
+      if (ref) {
+        const found = await projectByExternalRef(txDb, orgId, ref)
+        if (found) return JSON.stringify(found)
       }
       const placeRefusal = await timeBudgetsPlaceRefusal(params.timeBudgets)
       if (placeRefusal) return placeRefusal
@@ -613,7 +648,14 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       )
       const { setValidationLevels } = await import("~/apps/projects/service/checklist")
       const actor = await writeActor()
-      const { validationLevels, tasks: rawTasks, companyId, timeBudgets, ...input } = params
+      const {
+        validationLevels,
+        tasks: rawTasks,
+        companyId,
+        timeBudgets,
+        externalRef: _ref,
+        ...input
+      } = params
       const levels = Array.isArray(validationLevels) ? validationLevels : []
       // Checked before anything is written: a bad list creates no project.
       const initialTasks = normalizeInitialTasks(rawTasks)
@@ -626,78 +668,96 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       // One savepoint: an invalid level list, or a task that cannot be created
       // (an unknown assignee), leaves no half-configured project behind. One
       // approval of a held create is then the project and every task in it.
-      const created = await txDb.transaction(async (stepTx) => {
-        const project = await createProject({ tx: stepTx as never, orgId, actor, input })
-        const saved =
-          levels.length === 0
-            ? project.validationLevels
-            : await setValidationLevels({
+      let created: unknown
+      try {
+        created = await txDb.transaction(async (stepTx) => {
+          const project = await createProject({ tx: stepTx as never, orgId, actor, input })
+          if (ref) {
+            await stepTx.execute(drizzleSql`
+            UPDATE ${drizzleSql.raw(`"${schemaRef("app_projects")}".projects`)}
+               SET external_ref = ${ref}
+             WHERE id = ${project.id}::uuid AND org_id = ${orgId}::uuid`)
+          }
+          const saved =
+            levels.length === 0
+              ? project.validationLevels
+              : await setValidationLevels({
+                  tx: stepTx as never,
+                  orgId,
+                  userId: actor.userId,
+                  projectId: project.id,
+                  levels,
+                })
+          const tasks: Array<{ id: string; key: string | null; title: string }> = []
+          if (initialTasks.length > 0) {
+            const { createTask } = await import("~/apps/projects/service/tasks")
+            const { resolveAssignee } = await import("~/apps/projects/service/resolve")
+            for (const task of initialTasks) {
+              const assigneeId = await resolveAssignee(stepTx as never, orgId, task)
+              const row = await createTask({
                 tx: stepTx as never,
                 orgId,
-                userId: actor.userId,
-                projectId: project.id,
-                levels,
+                actor,
+                via: await transitionVia(),
+                input: {
+                  projectId: project.id,
+                  title: task.title,
+                  ...(task.description !== undefined ? { description: task.description } : {}),
+                  assigneeId,
+                  createdByAgentLabel: await agentCreatorLabel(),
+                },
               })
-        const tasks: Array<{ id: string; key: string | null; title: string }> = []
-        if (initialTasks.length > 0) {
-          const { createTask } = await import("~/apps/projects/service/tasks")
-          const { resolveAssignee } = await import("~/apps/projects/service/resolve")
-          for (const task of initialTasks) {
-            const assigneeId = await resolveAssignee(stepTx as never, orgId, task)
-            const row = await createTask({
-              tx: stepTx as never,
-              orgId,
-              actor,
-              via: await transitionVia(),
-              input: {
-                projectId: project.id,
-                title: task.title,
-                ...(task.description !== undefined ? { description: task.description } : {}),
-                assigneeId,
-                createdByAgentLabel: await agentCreatorLabel(),
-              },
-            })
-            tasks.push({ id: row.id, key: row.key ?? null, title: row.title })
-          }
-        }
-        let timeBudgetsFlipped: "on" | "off" | undefined
-        let switchKeys: Record<string, unknown> = {}
-        if (companyId || timeBudgets !== undefined) {
-          const { updateProjectWithOutcome } = await import(
-            "~/apps/projects/service/update-project"
-          )
-          const outcome = await updateProjectWithOutcome({
-            tx: stepTx as never,
-            orgId,
-            projectId: project.id,
-            actor,
-            actorType: actorKind === "agent" ? "agent" : "user",
-            patch: {
-              ...(companyId ? { companyId } : {}),
-              ...(timeBudgets !== undefined ? { timeBudgets } : {}),
-            },
-          })
-          timeBudgetsFlipped = outcome.timeBudgetsFlipped
-          const d = outcome.detail
-          if (d.timeBudgets !== undefined) {
-            switchKeys = {
-              timeBudgets: d.timeBudgets,
-              ...(d.timeBudgetsChangedAt ? { timeBudgetsChangedAt: d.timeBudgetsChangedAt } : {}),
-              ...(d.timeBudgetsChangedBy ? { timeBudgetsChangedBy: d.timeBudgetsChangedBy } : {}),
+              tasks.push({ id: row.id, key: row.key ?? null, title: row.title })
             }
           }
-        }
-        return withTimeBudgetsNote(
-          { ...project, ...switchKeys } as never,
-          timeBudgets !== undefined,
-          timeBudgetsFlipped,
-        ).then((withNote) => ({
-          ...withNote,
-          ...(companyId ? { companyId } : {}),
-          validationLevels: saved,
-          ...(initialTasks.length > 0 ? { tasks, taskCount: tasks.length } : {}),
-        }))
-      })
+          let timeBudgetsFlipped: "on" | "off" | undefined
+          let switchKeys: Record<string, unknown> = {}
+          if (companyId || timeBudgets !== undefined) {
+            const { updateProjectWithOutcome } = await import(
+              "~/apps/projects/service/update-project"
+            )
+            const outcome = await updateProjectWithOutcome({
+              tx: stepTx as never,
+              orgId,
+              projectId: project.id,
+              actor,
+              actorType: actorKind === "agent" ? "agent" : "user",
+              patch: {
+                ...(companyId ? { companyId } : {}),
+                ...(timeBudgets !== undefined ? { timeBudgets } : {}),
+              },
+            })
+            timeBudgetsFlipped = outcome.timeBudgetsFlipped
+            const d = outcome.detail
+            if (d.timeBudgets !== undefined) {
+              switchKeys = {
+                timeBudgets: d.timeBudgets,
+                ...(d.timeBudgetsChangedAt ? { timeBudgetsChangedAt: d.timeBudgetsChangedAt } : {}),
+                ...(d.timeBudgetsChangedBy ? { timeBudgetsChangedBy: d.timeBudgetsChangedBy } : {}),
+              }
+            }
+          }
+          return withTimeBudgetsNote(
+            { ...project, ...switchKeys } as never,
+            timeBudgets !== undefined,
+            timeBudgetsFlipped,
+          ).then((withNote) => ({
+            ...withNote,
+            ...(companyId ? { companyId } : {}),
+            validationLevels: saved,
+            ...(initialTasks.length > 0 ? { tasks, taskCount: tasks.length } : {}),
+            ...(ref ? { externalRef: ref } : {}),
+          }))
+        })
+      } catch (err) {
+        // Two deliveries of one step at once: the second finds the first's project.
+        const code =
+          (err as { code?: string; cause?: { code?: string } })?.cause?.code ??
+          (err as { code?: string })?.code
+        const found = ref && code === "23505" ? await projectByExternalRef(txDb, orgId, ref) : null
+        if (!found) throw err
+        return JSON.stringify(found)
+      }
       return JSON.stringify(created)
     },
     projects_createTask: async (paramsJson: string): Promise<string> => {

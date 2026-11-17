@@ -17,6 +17,6 @@
   },
   {
     "key": "all-apps:agreements",
-    "capability": "agreements: quoting a section of a signed agreement and answering a client with a change request (agreement_passage_get, change_request_send) on top of drafting, sending, following up and verifying, only in an org that installed agreements"
+    "capability": "agreements: drafting, sending, following up, quoting a signed section, answering with a change request, evidence and filing a contract signed before Liaison (agreement_passage_get, change_request_send, agreement_import), deferred-loaded: their schemas cost only once loaded, only in an org that installed agreements (2553 at the integration head, 2692 with the import tool)"
   }
 ]

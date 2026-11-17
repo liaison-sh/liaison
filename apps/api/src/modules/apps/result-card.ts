@@ -199,8 +199,11 @@ function externalUrl(template: string, scope: Scope): string | undefined {
   }
 }
 
+/** A row id an ask may name after its fixed words: an id, never text. */
+const ROW_REF = /^[A-Za-z0-9_-]{1,64}$/
+
 function action(
-  a: CardAction & { labelPath?: string },
+  a: CardAction & { labelPath?: string; refPath?: string },
   scope: Scope,
 ): ResolvedCardAction | undefined {
   if (!cond(a.when, scope)) return undefined
@@ -231,7 +234,12 @@ function action(
     }
     case "ask": {
       const prompt = tpl(a.prompt, scope)
-      return prompt === undefined ? undefined : { kind: "ask", label: shown, prompt }
+      if (prompt === undefined) return undefined
+      if (a.refPath === undefined) return { kind: "ask", label: shown, prompt }
+      const ref = scalar(lookup(scope, a.refPath))
+      return ref !== undefined && ROW_REF.test(ref)
+        ? { kind: "ask", label: shown, prompt: `${prompt} (${ref})` }
+        : undefined
     }
     case "external": {
       const url = externalUrl(a.urlTemplate, scope)
@@ -421,6 +429,10 @@ function buildGroupBody(t: CardTemplate, scope: Scope, card: ResolvedCard): void
       if (spec.rows.act) {
         const act = action(spec.rows.act, at)
         if (act) resolved.act = act
+      }
+      if (spec.rows.acts) {
+        const more = actions(spec.rows.acts, at)
+        if (more.length > 0) resolved.acts = more
       }
       if (editing) {
         const values: NonNullable<ResolvedCardGroupRow["edit"]> = {}

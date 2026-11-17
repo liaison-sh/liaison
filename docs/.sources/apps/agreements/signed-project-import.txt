@@ -1,0 +1,5 @@
+A signed proposal, statement of work, retainer or time and materials agreement starts its project once and names it -> bundled-apps/agreements/src/signed-project.ts (startProjectAfterSigning) ; bundled-apps/agreements/src/seal.ts (sealVersionSteps, sealRetry)
+A second delivery or the retry finds the same project -> apps/api/src/modules/apps/sandbox/bridge/projects.ts (projectByExternalRef)
+Time and budgets stay off; the agreement keeps whether the proposal had a timebox -> bundled-apps/agreements/src/signed-project.ts (startProjectAfterSigning) ; apps/api/src/modules/apps/sandbox/bridge/projects.ts (timeBudgetsPlaceRefusal)
+A planned advance step is drafted, nothing issued or sent -> bundled-apps/invoicing/src/agreement-signed.ts (onAgreementSignedAdvance)
+Import: imported, signed outside Liaison, no version, signature, evidence or level; text unverified; dates set afterwards -> bundled-apps/agreements/src/import.ts (agreementImport, IMPORTED_LABEL) ; bundled-apps/agreements/src/agreements.ts (agreementGet)

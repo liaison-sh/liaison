@@ -61,6 +61,8 @@ Only the person who created the company can change its sharing. For a company wh
 2. Search for **the company to keep** and click **Merge into <name>**.
 3. Confirm. The company you opened goes into the one you keep: its people, deals, recurring invoice schedules, linked Stripe customers and discussion move there, and the opened one is deleted.
 
+On the client portal, nobody sees more after a merge: each portal person of either company keeps exactly what they read before (their shares, invoices and requests), and every portal person is signed out. The merge result names who keeps what they saw. To let one of them see everything the merged company shares, open the company's client access panel and choose to show them the whole company (`POST /api/contacts/companies/:id/portal/people/:userId/show-whole-company`, portal admins only).
+
 The page says it merges in a few seconds and offers **Undo** until then. A page that shows **Looks like the same company as <name>** names the reason (the same web domain, a name typed two ways, or both) and merges nothing until you say so. **Keep them separate** stops the suggestion. Agents find duplicates with `companies_find_duplicates` and merge with `companies_merge`, which waits for approval.
 
 ## The person's own page

@@ -1769,6 +1769,8 @@ describe("invoicing manifest", () => {
     //   scope allows, its dates in the issuer's zone; a retainer month's draft is made out to the
     //   client's contact.
     // 0.32.0: an issued document carries the client company it is made out to, stamped at issue.
+    // 0.33.0: a sent quote's outcome is set once (quote_set_outcome, and a client's answer on its
+    //   link); no outcome creates an invoice.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

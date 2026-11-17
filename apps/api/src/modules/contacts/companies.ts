@@ -32,6 +32,9 @@ import { contactsLogger as log } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { isConsumerMailDomain } from "~/modules/apps/connections/api/consumer-domains"
+import { invalidateAuthCache } from "~/modules/auth/auth-state"
+import { revokeSessions } from "~/modules/auth/session-revocation"
+import { repointPortalForCompanyMerge } from "~/modules/portal/company-merge"
 import {
   actorGrantRole,
   asAdmin,
@@ -1533,6 +1536,8 @@ export interface CompanyMergeResult {
     projects: number
   }
   discussionMoved: boolean
+  /** The portal people of both companies: who keeps what they read, how many were signed out. */
+  portal: { keptNames: string[]; signedOut: number; closedShares: number }
 }
 
 /** A request about a company that was merged away: 404, naming the survivor. */
@@ -1699,6 +1704,14 @@ export async function mergeCompanies(
             RETURNING status`),
         ).filter((r) => r.status === "pending" || r.status === "approving").length
         await runCompanyMergeFailpoint("after-routes")
+        // The portal side first, while the people still name their own company: who
+        // read what before is kept, and every portal person of both is signed out.
+        const portal = await repointPortalForCompanyMerge(sp, {
+          orgId,
+          sourceId,
+          targetId,
+          actorId: actorUuid(userId),
+        })
         const contactsMoved = await repoint(drizzleSql`
           UPDATE ${ks()}.contacts SET company_id = ${targetId}::uuid, company = ${kept.name}, updated_at = now()
            WHERE org_id = ${orgId}::uuid AND company_id = ${sourceId}::uuid
@@ -1737,6 +1750,7 @@ export async function mergeCompanies(
         return {
           moved: { contacts: contactsMoved, accounts, waitingApprovals, deals, projects },
           discussionMoved,
+          portal,
         }
       }),
     )
@@ -1749,6 +1763,10 @@ export async function mergeCompanies(
     if (!deleted) {
       throw new HTTPException(403, { message: `You can see ${source.name} but not delete it.` })
     }
+
+    // Every process caches auth state for 15 s: tell them now, and end the access tokens.
+    for (const id of moved.portal.userIds) invalidateAuthCache(id)
+    revokeSessions(moved.portal.sessionIds, "company-merge")
 
     const sourceRef = { id: source.id, name: source.name }
     const targetRef = { id: kept.id, name: kept.name }
@@ -1794,6 +1812,11 @@ export async function mergeCompanies(
       managerFrom,
       moved: moved.moved,
       discussionMoved: moved.discussionMoved,
+      portal: {
+        keptNames: moved.portal.keptNames,
+        signedOut: moved.portal.userIds.length,
+        closedShares: moved.portal.closedShares,
+      },
     }
   })
 }

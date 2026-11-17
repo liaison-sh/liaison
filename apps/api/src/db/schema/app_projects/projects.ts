@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
+import { sql } from "drizzle-orm"
 import {
   boolean,
   index,
@@ -53,6 +54,9 @@ export const projects = appProjects.table(
     timeBudgetsOn: boolean("time_budgets_on").notNull().default(false),
     timeBudgetsChangedBy: uuid("time_budgets_changed_by"),
     timeBudgetsChangedAt: timestamp("time_budgets_changed_at", { withTimezone: true }),
+    // The other app's step that made this project (0335), e.g. a signed agreement; unique per
+    // org when set, NULL for a project a person makes.
+    externalRef: text("external_ref"),
     ownerId: uuid("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
@@ -63,5 +67,8 @@ export const projects = appProjects.table(
   (t) => [
     index("idx_projects_org_updated").on(t.orgId, t.updatedAt),
     uniqueIndex("app_projects_org_key_uidx").on(t.orgId, t.key),
+    uniqueIndex("app_projects_org_external_ref_uidx")
+      .on(t.orgId, t.externalRef)
+      .where(sql`external_ref IS NOT NULL`),
   ],
 )

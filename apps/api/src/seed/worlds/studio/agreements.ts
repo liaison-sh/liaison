@@ -389,7 +389,15 @@ export function studioAgreements(anchor: Date): StudioAgreementsPlan {
       priceMinor: 940_000,
       sentAt: ago(75),
       closedAt: ago(61),
-      signers: [],
+      signers: [
+        {
+          person: "vallee-contact",
+          name: "Camille Roux",
+          email: "camille.roux@vallee-energie.example",
+          capacity: "Head of data",
+          at: null,
+        },
+      ],
       text: textOf("Warehouse dashboards", ["Dashboards over the warehouse data, fixed price."]),
     },
     {
@@ -406,7 +414,15 @@ export function studioAgreements(anchor: Date): StudioAgreementsPlan {
       priceMinor: 1_200_000,
       sentAt: ago(30),
       closedAt: ago(19),
-      signers: [],
+      signers: [
+        {
+          person: "nord-contact",
+          name: "Hugo Lemaire",
+          email: "hugo.lemaire@maison-nord.example",
+          capacity: "Director",
+          at: null,
+        },
+      ],
       text: textOf("Mobile app scoping", ["Scoping of a mobile app, fixed price."]),
     },
     {
@@ -723,51 +739,80 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
     }
   })
 
-  // The next outside signer of each agreement still waiting holds an open link, as a send
-  // leaves it: what the client decides on in the portal. Written without the link mail (the
-  // product mails it at send; a seed sends nothing), so the link itself opens nothing.
-  await withPrivilegedDb(ctx.orgId, "seed-studio:waiting-links", async (tx) => {
+  // Every signer of every sent agreement holds the link its send left them, in the state the
+  // story reached: signed, declined, expired, withdrawn, open for the next signer, or waiting
+  // its turn after them. So a page lists each signer, a closed one offers a new link, and the
+  // Scope check finds who sent a signed agreement. Written without any mail (the product
+  // mails at send; a seed sends nothing), so no link opens anything.
+  await withPrivilegedDb(ctx.orgId, "seed-studio:signing-links", async (tx) => {
     for (const a of ordered) {
-      if (a.status !== "sent" && a.status !== "partly_signed") continue
-      const i = a.signers.findIndex((s) => !s.at)
-      const s = a.signers[i]
-      if (!s || s.person === "lea") continue
-      const c = contactOf(s.person)
-      if (!c) continue
-      const id = ctx.id("client_action", `studio:${a.key}:${i}`)
-      const inserted = await tx
-        .insert(clientActions)
-        .values({
-          id,
+      const openAt = a.signers.findIndex((s) => !s.at)
+      for (const [i, s] of a.signers.entries()) {
+        const staff = s.person === "lea"
+        // An outside signer is a client contact, or a person named on the agreement alone.
+        const c = staff
+          ? null
+          : (contactOf(s.person) ??
+            (s.email ? { id: null, name: s.name ?? s.email, email: s.email } : null))
+        if (!staff && !c) continue
+        const signed = s.at !== null
+        const closedAt = a.closedAt ?? a.sentAt
+        const declined = !signed && a.status === "declined" && i === openAt
+        const withdrawn = !signed && a.status === "withdrawn"
+        const expired = !signed && a.status === "expired"
+        // The next signer holds the open link; one after them waits its turn (no token yet).
+        const holdsToken = signed || declined || expired || withdrawn || i === openAt
+        const id = ctx.id("client_action", `studio:${a.key}:${i}`)
+        const inserted = await tx
+          .insert(clientActions)
+          .values({
+            id,
+            orgId: ctx.orgId,
+            groupId: ctx.id("client_action_group", `studio:${a.key}`),
+            kind: "sign",
+            targetApp: "agreements",
+            targetType: "agreement_version",
+            targetId: versionId(a.key),
+            targetSha256: sha256(a.text),
+            companyId: staff ? null : (companyIds[a.company] ?? null),
+            contactId: c?.id ?? null,
+            signerUserId: staff ? lea : null,
+            invitedEmail: (staff ? leaEmail : (c?.email ?? "")).toLowerCase(),
+            invitedName: staff ? leaName : (c?.name ?? ""),
+            signOrder: i + 1,
+            tokenHash: holdsToken ? hashToken(generateToken(32)) : null,
+            expiresAt: expired ? closedAt : new Date(a.sentAt.getTime() + 14 * DAY_MS),
+            sentAt: holdsToken ? a.sentAt : null,
+            ...(signed && s.at
+              ? {
+                  decidedAt: s.at,
+                  decision: "signed",
+                  decidedVia: "link",
+                  codeVerifiedAt: s.at,
+                  documentShownAt: s.at,
+                  typedName: staff ? leaName : (c?.name ?? ""),
+                  capacity: s.capacity,
+                }
+              : {}),
+            ...(declined ? { decidedAt: closedAt, decision: "declined", decidedVia: "link" } : {}),
+            ...(withdrawn
+              ? { revokedAt: closedAt, revokedBy: lea, revokeReason: "withdrawn" }
+              : {}),
+            createdByUserId: lea,
+            createdAt: a.sentAt,
+          })
+          .onConflictDoNothing()
+          .returning({ id: clientActions.id })
+        if (inserted.length === 0) continue
+        await writeClientActionEvent(tx, {
           orgId: ctx.orgId,
-          groupId: ctx.id("client_action_group", `studio:${a.key}`),
-          kind: "sign",
-          targetApp: "agreements",
-          targetType: "agreement_version",
-          targetId: versionId(a.key),
-          targetSha256: sha256(a.text),
-          companyId: companyIds[a.company] ?? null,
-          contactId: c.id,
-          invitedEmail: c.email.toLowerCase(),
-          invitedName: c.name,
-          signOrder: i + 1,
-          tokenHash: hashToken(generateToken(32)),
-          expiresAt: new Date(a.sentAt.getTime() + 14 * DAY_MS),
-          sentAt: a.sentAt,
-          createdByUserId: lea,
-          createdAt: a.sentAt,
+          actionId: id,
+          event: "created",
+          actorKind: "staff",
+          actorUserId: lea,
+          meta: { kind: "sign", target: "agreements.agreement_version" },
         })
-        .onConflictDoNothing()
-        .returning({ id: clientActions.id })
-      if (inserted.length === 0) continue
-      await writeClientActionEvent(tx, {
-        orgId: ctx.orgId,
-        actionId: id,
-        event: "created",
-        actorKind: "staff",
-        actorUserId: lea,
-        meta: { kind: "sign", target: "agreements.agreement_version" },
-      })
+      }
     }
   })
 

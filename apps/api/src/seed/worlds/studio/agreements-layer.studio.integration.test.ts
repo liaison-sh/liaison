@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm"
 import { app } from "~/app"
 import { withPortalContext } from "~/db/portal-rls"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { activeVersionRows } from "~/modules/apps/activation"
@@ -27,6 +28,7 @@ import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { evaluateSendGuard, type PinnedSendGuard } from "~/modules/mail/send-guard"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { agreementShareLabels } from "~/modules/portal/tools"
 import { seedContext } from "~/seed/context"
 import { insertUnarmedMail } from "~/seed/factories/mail/conversations"
 import { rowsOf } from "~/seed/factories/people/actors"
@@ -406,6 +408,24 @@ describe("the services world's client portal at the board date", () => {
     ])
   })
 
+  it("each open agreement share is named by its number and title for the person who manages the portal", async () => {
+    const shares = await rows<{ id: string; kind: string; objectId: string | null }>(sql`
+      SELECT id::text AS id, kind, object_id::text AS "objectId" FROM kernel.portal_shares
+       WHERE org_id = ${orgId}::uuid AND closed_at IS NULL AND kind = 'agreement'`)
+    const labels = await withRlsContext(
+      {
+        actorType: "user",
+        userId: ownerId,
+        orgId,
+        scopes: ["agreements:agreements:read"],
+        dimensionGrants: { "*": ["*"] },
+      },
+      (tx) => agreementShareLabels(tx, shares),
+    )
+    expect(shares.length).toBeGreaterThan(0)
+    for (const s of shares) expect(labels.get(s.id)).toMatch(/^AG-\d{4}-\d{3} \S/)
+  })
+
   it("the client access preview reads the paid invoices and the milestones still to bill, as the portal does", async () => {
     const [pauline] = await people()
     const seen = await preview(pauline?.user_id as string)
@@ -477,5 +497,41 @@ describe("the services world's client portal at the board date", () => {
         JOIN app_agreements.agreement_versions v ON v.id = a.target_id
        WHERE a.org_id = ${orgId}::uuid AND v.agreement_id = ${row?.id}::uuid`)
     expect(events.map((e) => e.event)).toEqual(["created"])
+  })
+
+  it("every signer of every sent agreement holds the link its story left, sent by the person who sent it", async () => {
+    const links = await rows<{
+      number: string
+      status: string
+      signer: string
+      decision: string | null
+      revoked: string | null
+      expired: boolean
+      waiting: boolean
+      sender: string | null
+    }>(sql`
+      SELECT ag.number, ag.status, ca.invited_name AS signer, ca.decision,
+             ca.revoke_reason AS revoked, ca.expires_at < now() AS expired,
+             ca.token_hash IS NULL AS waiting, ca.created_by_user_id::text AS sender
+        FROM kernel.client_actions ca
+        JOIN app_agreements.agreement_versions v ON v.id = ca.target_id
+        JOIN app_agreements.agreements ag ON ag.id = v.agreement_id
+       WHERE ca.org_id = ${orgId}::uuid AND ag.kind <> 'change_request'
+       ORDER BY ag.number, ca.sign_order`)
+    const byStatus = (st: string) => links.filter((l) => l.status === st)
+    // A signed agreement: each signer signed, and the Scope check finds who sent it.
+    expect(byStatus("signed").length).toBeGreaterThan(0)
+    for (const l of byStatus("signed")) {
+      expect(l.decision).toBe("signed")
+      expect(l.sender).not.toBeNull()
+    }
+    expect(byStatus("declined").map((l) => l.decision)).toEqual(["declined"])
+    expect(byStatus("withdrawn").map((l) => l.revoked)).toEqual(["withdrawn"])
+    expect(byStatus("expired").map((l) => [l.decision, l.expired])).toEqual([[null, true]])
+    // Partly signed: the studio's own signer signed and the client's link is open.
+    expect(byStatus("partly_signed").map((l) => [l.decision, l.waiting])).toEqual([
+      ["signed", false],
+      [null, false],
+    ])
   })
 })

@@ -176,12 +176,12 @@
     "digest": "f2f95245063203a2"
   },
   "kernel.client_action_events": {
-    "rows": 2,
-    "digest": "fd35f9cbbcc5a93f"
+    "rows": 19,
+    "digest": "9aa2f0efd7d439b5"
   },
   "kernel.client_actions": {
-    "rows": 2,
-    "digest": "07f735e4e2ca3331"
+    "rows": 19,
+    "digest": "a5d76e80f766fca9"
   },
   "kernel.companies": {
     "rows": 8,

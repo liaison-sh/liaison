@@ -16,6 +16,7 @@ import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { type EmailMessage, setSystemEmailProvider } from "~/infra/email"
 import { ownerCanSeeEventEntity } from "~/infra/jobs/event-routine-gate"
 import { deleteObject, getObjectBuffer } from "~/infra/storage/object-storage"
+import { handleMemorySet } from "~/modules/agent/memory/memory"
 import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-context"
 import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { registerKernelAgentTools } from "~/modules/agent/tools/kernel-tools"
@@ -38,6 +39,7 @@ import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { restrictedScope } from "~/modules/permissions/restricted-scope"
 import { sendMessage } from "~/modules/threads/message"
 import { type AppCell, insertAppRow } from "~/seed/factories/app-tables"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import { seedAuditEntry, seedOrgRow } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -189,17 +191,17 @@ describe("who can see an agreement", () => {
 
   it("the evidence file holding every signer's device is read only with the device scope; the colleague copy with the evidence scope", async () => {
     await setOrgAccess("viewer")
-    const fileOn = async (entityType: string) => {
-      const id = crypto.randomUUID()
-      await withSystemDb("test:evidence-file", (tx) =>
-        tx.execute(dsql`
-          INSERT INTO kernel.files (id, org_id, app, entity_type, entity_id, filename, mime_type,
-                                    size_bytes, storage_key)
-          VALUES (${id}::uuid, ${orgId}::uuid, 'agreements', ${entityType}, ${packageId},
-                  'evidence.zip', 'application/zip', 12, ${`${orgId}/evidence/${id}`})` as never),
-      )
-      return id
-    }
+    const fileOn = (entityType: string) =>
+      seedFileRow({
+        orgId,
+        app: "agreements",
+        entityType,
+        entityId: packageId,
+        filename: "evidence.zip",
+        mimeType: "application/zip",
+        sizeBytes: 12,
+        storageKey: `${orgId}/evidence/${crypto.randomUUID()}`,
+      })
     // Production builds the files row policy from the installed catalog; this app is
     // registered from its manifest, so the policy is built from the registry's parents.
     await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
@@ -613,34 +615,62 @@ describe("every surface honours the list", () => {
 
   it("a person no longer on the list reads none of the messages or memory a turn stamped with the record, though they were on the list when it was written", async () => {
     const scope = restrictedScope("agreements", "agreement", world.closed)
-    // Written while the member was on the list: the stamp's disclosure list names them.
-    const [message] = await sql<{ id: string }[]>`
-      INSERT INTO kernel.messages (thread_id, org_id, author_id, content, required_scopes, disclosure_list)
-      VALUES (${world.room}::uuid, ${world.orgId}::uuid, ${world.listed}::uuid,
-              ${`Earlier note on ${NUMBER}`}, ARRAY[${scope}]::text[],
-              ARRAY[${world.listed}, ${world.member}]::uuid[])
-      RETURNING id`
+    const setShare = (removed: boolean) =>
+      withPrivilegedDb(world.orgId, "test:member-on-list", async (tx) => {
+        if (!removed)
+          await insertAppRow(tx, "agreements", "agreement_shares", {
+            org_id: world.orgId,
+            agreement_id: world.closed,
+            user_id: world.member,
+            role: "viewer",
+          })
+        else
+          await tx.execute(
+            dsql`UPDATE app_agreements.agreement_shares SET removed_at = now()
+                  WHERE agreement_id = ${world.closed}::uuid AND user_id = ${world.member}::uuid` as never,
+          )
+      })
+    // Written while the member is on the list: the message's disclosure list names them, and
+    // their agent keeps a memory stamped with the record.
+    await setShare(false)
+    const marker = `Earlier note ${crypto.randomUUID()}`
+    await withRlsContext(await held(world.listed), (tx) =>
+      sendMessage(
+        tx as never,
+        {
+          orgId: world.orgId,
+          userId: world.listed,
+          threadId: world.room,
+          content: `${marker} on ${NUMBER}`,
+          authorType: "user",
+          requiredScopes: [scope],
+        } as never,
+      ),
+    )
     await minimal.agentDm(world.orgId, world.member)
-    const [agent] = await sql<{ id: string }[]>`
-      SELECT id FROM kernel.agents WHERE org_id = ${world.orgId}::uuid AND kind = 'personal'
-         AND owner_user_id = ${world.member}::uuid AND archived_at IS NULL LIMIT 1`
-    const memoryId = crypto.randomUUID()
-    await sql`
-      INSERT INTO kernel.agent_memory (id, org_id, user_id, owner_agent_id, type, name, description,
-                                       content, required_scopes, path)
-      VALUES (${memoryId}::uuid, ${world.orgId}::uuid, ${world.member}::uuid, ${agent?.id ?? null}::uuid,
-              'project', 'closed-terms', 'terms', ${`Prices of ${NUMBER}`}, ARRAY[${scope}]::text[],
-              ${`project/closed-terms-${memoryId}.md`})`
-    const count = (u: string, q: string) => rlsCount(u, q)
-    expect(
-      await count(world.member, `SELECT count(*)::int AS n FROM kernel.messages WHERE id = '${message?.id}'`),
-    ).toBe(0)
-    expect(
-      await count(world.listed, `SELECT count(*)::int AS n FROM kernel.messages WHERE id = '${message?.id}'`),
-    ).toBe(1)
-    expect(
-      await count(world.member, `SELECT count(*)::int AS n FROM kernel.agent_memory WHERE id = '${memoryId}'`),
-    ).toBe(0)
+    const memoryName = `closed-terms-${crypto.randomUUID().slice(0, 8)}`
+    const memberActor = await held(world.member)
+    await withRlsContext(memberActor, (tx) =>
+      handleMemorySet(
+        { type: "project", name: memoryName, description: "terms", content: `Prices of ${NUMBER}` },
+        {
+          userId: world.member,
+          orgId: world.orgId,
+          db: tx as never,
+          scopes: memberActor.scopes,
+        } as never,
+        [scope],
+      ),
+    )
+    const messageQ = `SELECT count(*)::int AS n FROM kernel.messages WHERE content LIKE '${marker}%'`
+    const memoryQ = `SELECT count(*)::int AS n FROM kernel.agent_memory WHERE name = '${memoryName}'`
+    expect(await rlsCount(world.member, messageQ)).toBe(1)
+    expect(await rlsCount(world.member, memoryQ)).toBe(1)
+    // Taken off the list: neither is read any more; the people still on it read the message.
+    await setShare(true)
+    expect(await rlsCount(world.member, messageQ)).toBe(0)
+    expect(await rlsCount(world.member, memoryQ)).toBe(0)
+    expect(await rlsCount(world.listed, messageQ)).toBe(1)
     // Once the record is open to the organization again, the stamp hides nothing more.
     await withPrivilegedDb(world.orgId, "test:reopen", (tx) =>
       tx.execute(
@@ -648,17 +678,13 @@ describe("every surface honours the list", () => {
       ),
     )
     try {
-      expect(
-        await count(world.member, `SELECT count(*)::int AS n FROM kernel.agent_memory WHERE id = '${memoryId}'`),
-      ).toBe(1)
+      expect(await rlsCount(world.member, memoryQ)).toBe(1)
     } finally {
       await withPrivilegedDb(world.orgId, "test:reclose", (tx) =>
         tx.execute(
           dsql`UPDATE app_agreements.agreements SET org_access = 'none' WHERE id = ${world.closed}::uuid` as never,
         ),
       )
-      await sql`DELETE FROM kernel.messages WHERE id = ${message?.id ?? null}::uuid`
-      await sql`DELETE FROM kernel.agent_memory WHERE id = ${memoryId}::uuid`
     }
   })
 

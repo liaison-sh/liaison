@@ -102,12 +102,14 @@ describe("seeding the starter templates", () => {
 
 describe("the kernel seeder brings the starters to an organisation using agreements", () => {
   it("the org's manifest defaults add the services starters, and switching corporate templates on adds the corporate acts", async () => {
-    // The agreements app as the registry holds it once registered for the org: its features.
+    // The agreements app as the registry holds it once registered for the org: its features
+    // and its declaration that it wants the legal starters.
     const registered = manifestRegistry.get([otherOrgId, "agreements"])
     if (!registered)
       manifestRegistry.set([otherOrgId, "agreements"], {
         name: "agreements",
         displayName: "Agreements",
+        legalStarterTemplates: { corporateFeature: "corporateTemplates" },
         features: {
           corporateTemplates: {
             adminScope: "agreements:templates:write",

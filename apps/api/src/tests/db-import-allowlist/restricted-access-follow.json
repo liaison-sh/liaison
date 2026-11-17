@@ -1,5 +1,5 @@
 {
   "privileged": {
-    "modules/client-actions/restricted-follow.ts": "A restricted record's access change, from the owning app's one writer of its list: in that event's org, sets the list as visible_to on the client actions of that record and its versions, and prunes that record's discussion to the person who changed it. Nothing is read beyond those rows."
+    "modules/client-actions/restricted-follow.ts": "After a restricted record's access change commits, in that event's org: runs kernel.restricted_access_follow again as a reconcile (it reads the record's stored list itself and sets it as visible_to on the client actions of the record and its versions, and owner-routes or cancels its pending approvals), announces the cancelled requests, and prunes that record's discussion to the person who changed it. Nothing is read beyond those rows."
   }
 }

@@ -88,13 +88,13 @@ The page also shows the seal (compare it with the one in the signer's mail), say
 
 `packages/evidence-check/verify-with-openssl.sh <evidence.zip> <tsa-chain.pem>` runs every check with openssl alone, the timestamp's signature included. `tsa-chain.pem` is the timestamp authority's published certificate chain (the one set as `LIAISON_TSA_CHAIN_FILE`); the zip does not carry it, so that the file cannot vouch for itself.
 
-Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, and a set field never changes.
+Evidence is kept at least ten years from the seal, or until the contract's end plus the organization's years after the end when that is later. Nothing in the app deletes it, a set field never changes, and a signature's record is never updated once written, an empty field included.
 
 ## Check a signed agreement
 
 Ask an agent, with `agreements:evidence:read`:
 
-- for an agreement's **evidence** (`agreement_evidence_get`): the fingerprints, the seal, the timestamp, each signature and whether each signer's copy was sent. Signers' IP addresses and browsers need `agreements:evidence:devices`.
+- for an agreement's **evidence** (`agreement_evidence_get`): the fingerprints, the seal, the timestamp, each signature and whether each signer's copy was sent. Signers' IP addresses and browsers need `agreements:evidence:devices`, and so do the staff evidence file and the signers' copies, which list them: without that permission they are not found, by any route. The colleague copy, with no device, needs `agreements:evidence:read` only.
 - to **verify** it (`agreement_verify`): the app hashes the stored files again and recomputes the seal. A mismatch is recorded, shown and reported as an incident, and nothing is repaired: the signers' copies are the reference. The app also checks every sealed agreement once a week.
 
 ## Scopes

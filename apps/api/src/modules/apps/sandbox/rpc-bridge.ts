@@ -396,6 +396,8 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // Projects
   "projects_createProject",
   "projects_createTask",
+  "projects_clientReportCardClosed",
+  "projects_clientReportsRoutineOn",
   "projects_updateTask",
   "projects_moveTask",
   "projects_addStatus",

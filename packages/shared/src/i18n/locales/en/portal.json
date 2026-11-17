@@ -141,6 +141,7 @@
   },
   "staff": {
     "title": "Client portal",
+    "loadFailed": "The client portal section could not be loaded.",
     "viewControls": "Access",
     "viewPreview": "What they see",
     "invite": "Invite someone",

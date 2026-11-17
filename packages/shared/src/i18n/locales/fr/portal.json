@@ -141,6 +141,7 @@
   },
   "staff": {
     "title": "Portail client",
+    "loadFailed": "La section du portail client n'a pas pu être chargée.",
     "viewControls": "Accès",
     "viewPreview": "Ce qu'ils voient",
     "invite": "Inviter quelqu'un",

@@ -24,6 +24,7 @@ import {
   createMemo,
   createResource,
   createSignal,
+  ErrorBoundary,
   For,
   lazy,
   onCleanup,
@@ -728,7 +729,18 @@ export const CompanyDetail: Component<CompanyDetailProps> = (props) => {
                     </For>
                     {/* The client portal (R-08): a section of this page, no tab, no route. */}
                     <Show when={hasScope("kernel:portal:admin")}>
-                      <CompanyPortalSection companyId={props.entityId} />
+                      <ErrorBoundary
+                        fallback={
+                          <p
+                            data-testid="company-portal-load-failed"
+                            class="text-[13px] text-text-secondary"
+                          >
+                            {i18n.t("portal.staff.loadFailed")}
+                          </p>
+                        }
+                      >
+                        <CompanyPortalSection companyId={props.entityId} />
+                      </ErrorBoundary>
                     </Show>
                   </Show>
 

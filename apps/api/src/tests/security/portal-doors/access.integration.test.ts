@@ -37,6 +37,7 @@ import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import {
   handlePortalAccessLog,
   handlePortalRemovePerson,
+  portalShareSetParams,
   registerPortalTools,
 } from "~/modules/portal/tools"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -206,6 +207,38 @@ describe("inviting a client", () => {
         ),
       ),
     ).toBe("PORTAL_EMAIL_IS_STAFF")
+  })
+
+  it("NT-30 the portal invite refuses a staff address, active or deactivated, and makes no client row", async () => {
+    const users = async () =>
+      (
+        await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM kernel.users WHERE org_id = ${w.orgId}`
+      )[0]?.n
+    const before = await users()
+    const invite = (email: string) =>
+      refusalCode(
+        asAdmin((tx) =>
+          invitePortalPerson({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId: w.companyA,
+            email,
+            name: "A colleague",
+          }),
+        ),
+      )
+    expect(await invite(w.member.email)).toBe("PORTAL_EMAIL_IS_STAFF")
+    expect(await invite(w.member.email.toUpperCase())).toBe("PORTAL_EMAIL_IS_STAFF")
+    await sql`UPDATE kernel.users SET status = 'deactivated' WHERE id = ${w.member.userId}`
+    try {
+      expect(await invite(w.member.email)).toBe("PORTAL_EMAIL_IS_STAFF")
+    } finally {
+      await sql`UPDATE kernel.users SET status = 'active' WHERE id = ${w.member.userId}`
+    }
+    expect(await users()).toBe(before)
+    expect(capture.sent).toEqual([])
   })
 
   it("NT-29 moving a person to another company: removed from the first, invited to the second, old sessions end and nothing carries over", async () => {
@@ -380,6 +413,31 @@ describe("what a share may point at", () => {
     ).map((r) => r.object_id)
     expect(open).toContain(ours)
     expect(open).not.toContain(theirs)
+  })
+
+  it("NT-39 the share tool refuses a kind for notes, discussions, agents, routines, cost or margin and writes nothing", async () => {
+    const shares = async () =>
+      (
+        await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM kernel.portal_shares WHERE org_id = ${w.orgId}`
+      )[0]?.n
+    const before = await shares()
+    for (const kind of ["notes", "threads", "agents", "routines", "cost", "margin", "task_time"]) {
+      expect(
+        portalShareSetParams.safeParse({ company_id: w.companyA, kind, open: true }).success,
+        kind,
+      ).toBe(false)
+      const outcome = await runContextStore
+        .run(humanFrame(), () =>
+          callTool("portal_share_set", CLEAN, { company_id: w.companyA, kind, open: true }),
+        )
+        .then(
+          (r) => ({ blocked: (r as { blocked?: unknown }).blocked }),
+          () => ({ blocked: undefined }),
+        )
+      expect({ kind, parked: Boolean(outcome.blocked) }).toEqual({ kind, parked: false })
+    }
+    expect(await shares()).toBe(before)
   })
 
   it("a named person must be on this company's portal", async () => {

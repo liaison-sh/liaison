@@ -12,9 +12,11 @@ import { withPrivilegedDb } from "~/db/privileged"
 import type { EmailProvider } from "~/infra/email"
 import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
 import { env } from "~/lib/env"
+import { redis } from "~/lib/redis"
 import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { generateCurrentCode } from "~/modules/auth/totp"
+import { consumeWsTicket } from "~/modules/auth/ws-ticket"
 import { PORTAL_REFRESH_COOKIE } from "~/modules/portal/auth-routes"
 import { PORTAL_PREFIX, PORTAL_ROUTES } from "~/modules/portal/routes-list"
 import { createInvitation } from "~/modules/users/invites"
@@ -146,6 +148,35 @@ describe("portal doors: sign-in and token classes", () => {
       (await call("POST", "/api/auth/ws-ticket", { Authorization: `Bearer ${memberToken}` }))
         .status,
     ).toBe(200)
+  })
+
+  it("NT-25: a socket ticket naming a client's row opens nothing, and a member's ticket still does", async () => {
+    const mint = async (userId: string, key: string) => {
+      const [user] = await sql<{ auth_version: number; permission_version: number }[]>`
+        SELECT auth_version, permission_version FROM kernel.users WHERE id = ${userId}`
+      await redis.set(
+        `ws-ticket:${key}`,
+        JSON.stringify({
+          userId,
+          orgId: w.orgId,
+          scopes: [],
+          roles: [],
+          dimensionGrants: {},
+          authVersion: user?.auth_version ?? 0,
+          permissionVersion: user?.permission_version ?? 0,
+        }),
+        "EX",
+        30,
+      )
+    }
+    await mint(w.member.userId, "nt25-member")
+    await mint(w.clientA.userId, "nt25-client")
+    try {
+      expect(await consumeWsTicket(redis, "nt25-client")).toBeNull()
+      expect((await consumeWsTicket(redis, "nt25-member"))?.userId).toBe(w.member.userId)
+    } finally {
+      await redis.del("ws-ticket:nt25-member", "ws-ticket:nt25-client")
+    }
   })
 
   it("NT-27: a member door never opens a session for a client's row", async () => {

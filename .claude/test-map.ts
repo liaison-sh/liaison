@@ -77,6 +77,17 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   { glob: "apps/api/src/seed/factories/payments/**", suites: ["demo-seed", "integration", "unit"] },
   { glob: "apps/api/src/modules/users/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/mcp/**", suites: ["unit", "integration", "api-guards"] },
+  // The client-facing door: the token page's actions, the portal's own login and reads,
+  // the signing and evidence code, the PDF render service. Their door tests (security),
+  // the one-login elevation paths (unsplit-logins) and the cross-app paths (e2e-parallel).
+  {
+    glob: "apps/api/src/modules/{client-actions,portal}/**",
+    suites: ["unit", "integration", "security", "api-guards", "unsplit-logins", "e2e-parallel"],
+  },
+  {
+    glob: "apps/api/src/modules/{signing,pdf-render}/**",
+    suites: ["unit", "integration", "security", "api-guards", "e2e-parallel"],
+  },
   // The app runtime and its limit table: the app wake-up contract runs in api-guards.
   { glob: "apps/api/src/modules/apps/**", suites: ["unit", "integration", "api-guards"] },
   { glob: "apps/api/src/modules/**", suites: ["unit", "integration"] },
@@ -128,6 +139,12 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
 
   // Web code
   // A testid a tour names can be renamed here: the tour anchor check is in guards.
+  // The public token page and the portal: no member shell, so their door tests (security)
+  // read these sources, and the pages themselves are proven in the browser.
+  {
+    glob: "apps/web/src/modules/{portal,client-action}/**",
+    suites: ["web-unit", "playwright", "security", "api-guards", "guards"],
+  },
   { glob: "apps/web/src/modules/**", suites: ["web-unit", "playwright", "api-guards", "guards"] },
   { glob: "apps/web/src/framework/**", suites: ["web-unit", "playwright"] },
   // The isolated-app frame runtime (an app UI in its own frame): its own tests
@@ -236,7 +253,8 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // platform-held API connection tests register (apps/api/src/db/apply-app-schemas.ts).
   { glob: "bundled-apps/api-connector/**", suites: ["api-guards", "bundled-api-connector", "bundled-freeze", "e2e-parallel", "demo-seed", "unit", "integration"] },
   { glob: "bundled-apps/pennylane/**", suites: ["api-guards", "bundled-pennylane", "bundled-freeze", "e2e-parallel", "demo-seed"] },
-  { glob: "bundled-apps/agreements/**", suites: ["api-guards", "bundled-agreements", "bundled-freeze", "e2e-parallel", "demo-seed"] },
+  // Agreements: its own suite, the door tests of what it shows and signs (security).
+  { glob: "bundled-apps/agreements/**", suites: ["api-guards", "bundled-agreements", "bundled-freeze", "security", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/shopify/**", suites: ["api-guards", "bundled-shopify", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/stripe/**", suites: ["api-guards", "bundled-stripe", "bundled-freeze", "e2e-parallel", "demo-seed"] },
   { glob: "bundled-apps/social/**", suites: ["api-guards", "bundled-social", "bundled-social-ui", "integration-extra", "bundled-freeze", "e2e-parallel", "demo-seed"] },

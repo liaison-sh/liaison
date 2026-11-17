@@ -222,7 +222,7 @@ describe("portal documents", () => {
     expect(JSON.stringify(colleague)).not.toContain(w.clientA.email)
   })
 
-  it("a restricted agreement reads only for the portal people its share names; a draft for nobody", async () => {
+  it("NT-67 a restricted agreement sent to one portal user reads only for them: a colleague of their company gets the random-id 404 on the page, its pictures and its list; a draft reads for nobody", async () => {
     const r = await agreement(w.companyA, { orgAccess: "none" })
     await insertShare(w, { company_id: w.companyA, kind: "agreement", object_id: r.id })
     expect((await get(`/documents/${r.id}`)).status).toBe(404)
@@ -234,7 +234,14 @@ describe("portal documents", () => {
       only_user_ids: [w.clientA.userId],
     })
     expect((await get(`/documents/${named.id}`)).status).toBe(200)
-    expect((await get(`/documents/${named.id}`, w.clientA2)).status).toBe(404)
+    const colleagueRead = await get(`/documents/${named.id}`, w.clientA2)
+    const randomRead = await get(`/documents/${crypto.randomUUID()}`, w.clientA2)
+    expect(colleagueRead.status).toBe(404)
+    expect(await colleagueRead.text()).toBe(await randomRead.text())
+    expect((await get(`/documents/${named.id}/pages/1`, w.clientA2)).status).toBe(404)
+    expect((await get(`/documents/${named.id}`, w.clientA)).status).toBe(200)
+    expect(await (await get("/documents", w.clientA2)).text()).not.toContain(named.id)
+    expect(await (await get("/documents", w.clientA2)).text()).not.toContain(r.id)
     const draft = await agreement(w.companyA, { status: "draft" })
     await insertShare(w, { company_id: w.companyA, kind: "agreement", object_id: draft.id })
     expect((await get(`/documents/${draft.id}`)).status).toBe(404)

@@ -111,6 +111,60 @@ describe("portal requests", () => {
     ).not.toContain(id)
   })
 
+  it("NT-12 a portal route given another company's or another org's id in the body reads and writes nothing of it", async () => {
+    const theirs = await insertTicket(w, {
+      company_id: w.companyB,
+      contact_id: w.clientB.contactId,
+    })
+    const foreign = {
+      org_id: w.otherOrgId,
+      orgId: w.otherOrgId,
+      company_id: w.companyB,
+      companyId: w.companyB,
+      contact_id: w.clientB.contactId,
+      contactId: w.clientB.contactId,
+      ticket_id: theirs.id,
+      user_id: w.clientB.userId,
+    }
+    const messagesOf = async (ticketId: string) =>
+      (
+        await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM app_tickets.messages WHERE ticket_id = ${ticketId}`
+      )[0]?.n
+    const before = async (orgId: string) =>
+      (
+        await sql<{ n: number }[]>`
+          SELECT count(*)::int AS n FROM app_tickets.messages WHERE org_id = ${orgId}`
+      )[0]?.n
+    const otherBefore = await before(w.otherOrgId)
+    const theirsBefore = await messagesOf(theirs.id)
+    const created = await send("/requests", { subject: "Body ids", text: "Mine.", ...foreign })
+    if (created.status === 200) {
+      const { id } = ((await created.json()) as { data: { id: string } }).data
+      // Whatever the body said, the row is stamped from the session's own person.
+      expect(await ticketRow(id)).toMatchObject({
+        company_id: w.companyA,
+        contact_id: w.clientA.contactId,
+      })
+      const [owner] = await sql<{ org_id: string }[]>`
+        SELECT org_id FROM app_tickets.tickets WHERE id = ${id}`
+      expect(owner?.org_id).toBe(w.orgId)
+      // A reply naming another company's ticket in its body lands on the path's own request only.
+      const reply = await send(`/requests/${id}/reply`, { text: "More.", ...foreign })
+      expect([200, 400]).toContain(reply.status)
+    } else {
+      expect(created.status).toBe(400)
+    }
+    expect(await messagesOf(theirs.id)).toBe(theirsBefore)
+    expect(await before(w.otherOrgId)).toBe(otherBefore)
+    // A foreign id in the body of a reply to another company's request changes nothing there.
+    const asB = await send(`/requests/${theirs.id}/reply`, { text: "Hi", ...foreign })
+    const random = await send(`/requests/${crypto.randomUUID()}/reply`, { text: "Hi", ...foreign })
+    expect(asB.status).toBe(404)
+    expect(await asB.text()).toBe(await random.text())
+    expect(await messagesOf(theirs.id)).toBe(theirsBefore)
+  })
+
   it("a portal request goes to the company's account manager on Home, and to the inbox admins when there is none", async () => {
     const res = await send("/requests", { subject: "Routing", text: "Who sees this?" })
     const { id } = ((await res.json()) as { data: { id: string } }).data

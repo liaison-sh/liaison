@@ -102,3 +102,48 @@ describe("test map: the invoicing screens", () => {
     expect(suites).not.toContain("playwright")
   })
 })
+
+describe("test map: the client-facing door", () => {
+  it("the token page, portal, signing and render service run the door tests", () => {
+    for (const file of [
+      "apps/api/src/modules/client-actions/mint.ts",
+      "apps/api/src/modules/portal/routes.ts",
+      "apps/api/src/modules/signing/seal.ts",
+      "apps/api/src/modules/pdf-render/one-reading.test.ts",
+      "apps/web/src/modules/portal/PortalShell.tsx",
+      "apps/web/src/modules/client-action/ClientActionPage.tsx",
+      "bundled-apps/agreements/src/send.ts",
+    ]) {
+      expect(suitesFor(file), file).toContain("security")
+    }
+  })
+
+  it("the portal and token page logins run in both login shapes", () => {
+    for (const file of [
+      "apps/api/src/modules/portal/auth.ts",
+      "apps/api/src/modules/client-actions/public-routes.ts",
+    ]) {
+      const suites = suitesFor(file)
+      expect(suites, file).toContain("unsplit-logins")
+      expect(suites, file).toContain("integration")
+    }
+  })
+
+  it("the public pages run in the browser and the web unit suite", () => {
+    for (const file of [
+      "apps/web/src/modules/portal/Requests.tsx",
+      "apps/web/src/modules/client-action/TokenFrame.tsx",
+    ]) {
+      const suites = suitesFor(file)
+      expect(suites, file).toContain("web-unit")
+      expect(suites, file).toContain("playwright")
+    }
+  })
+
+  it("agreements keeps its own suite beside the door tests, and the checker its offline scenario", () => {
+    const suites = suitesFor("bundled-apps/agreements/app.manifest.json")
+    expect(suites).toContain("bundled-agreements")
+    expect(suites).toContain("security")
+    expect(suitesFor("packages/evidence-check/src/check.ts")).toContain("playwright")
+  })
+})

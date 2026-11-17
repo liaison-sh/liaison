@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Every door of the client portal and the public action page, by its id. Each one
-// has a test in this folder whose title starts with its id, or a file in owed.d/
-// naming who still owes it. The list only grows; the owed list only shrinks.
+// has a test in this folder whose title starts with its id. The owed list (owed.d/)
+// is closed and stays empty; the list of doors only grows.
 export const DOOR_IDS = [
   "NT-01",
   "NT-02",

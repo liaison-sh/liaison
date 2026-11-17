@@ -329,6 +329,47 @@ describe("inviting a client", () => {
       }),
     )
     expect(res.blocked?.approvalRequestId).toBeDefined()
+    // The card names the company, never its id.
+    const [card] = (await sql`
+      SELECT summary FROM kernel.approval_requests WHERE id = ${res.blocked?.approvalRequestId ?? ""}`) as unknown as [
+      { summary: { title: string; lines: string[] } },
+    ]
+    expect(card.summary.title).toBe("Invite Agent Asked to Maison Beta's client portal")
+    expect(JSON.stringify(card.summary)).not.toContain(w.companyB)
+  })
+
+  it("an agent's invitation of someone already on the company's portal answers that and stages no second card", async () => {
+    const email = `already-${w.orgId.slice(0, 8)}@doors.example.com`
+    await asAdmin((tx) =>
+      invitePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyB,
+        email,
+        name: "Already Here",
+      }),
+    )
+    const [{ n: before }] = (await sql`
+      SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${w.orgId}`) as unknown as [
+      { n: number },
+    ]
+    const refused = await runContextStore
+      .run(humanFrame(), () =>
+        callTool("portal_invite", CLEAN, { company_id: w.companyB, email, name: "Already Here" }),
+      )
+      .then(
+        () => null,
+        (err: Error & { code?: string }) => err,
+      )
+    expect(refused?.code).toBe("EMAIL_IS_PORTAL_USER")
+    expect(refused?.message).toContain("already invited")
+    expect(refused?.message).toContain("Already Here")
+    const [{ n: after }] = (await sql`
+      SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${w.orgId}`) as unknown as [
+      { n: number },
+    ]
+    expect(after).toBe(before)
   })
 
   it("refuses on a demo box, which sends no mail", async () => {

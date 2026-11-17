@@ -112,6 +112,94 @@ async function takeInvite(orgId: string): Promise<boolean> {
   return n <= PORTAL_INVITES_PER_HOUR
 }
 
+interface InviteHolder {
+  id: string
+  name: string | null
+  user_type: string
+  company_id: string | null
+  open: boolean
+  signed_in: boolean
+}
+
+/**
+ * Who already holds the address in this org: a member, a client with access, or a client
+ * whose access was removed (who may be invited again, to this company or another).
+ */
+async function inviteHolder(orgId: string, email: string): Promise<InviteHolder | undefined> {
+  const [holder] = await withPrivilegedDb(orgId, "portal-invite-holder", async (tx) =>
+    extractRows<InviteHolder>(
+      await tx.execute(
+        sql`SELECT u.id, u.name, u.user_type, u.company_id,
+                   (u.status = 'active' AND EXISTS (
+                      SELECT 1 FROM ${K()}.portal_people p
+                       WHERE p.user_id = u.id AND p.removed_at IS NULL)) AS open,
+                   EXISTS (SELECT 1 FROM ${K()}.portal_people p
+                            WHERE p.user_id = u.id AND p.last_sign_in_at IS NOT NULL) AS signed_in
+              FROM ${K()}.users u
+             WHERE u.org_id = ${orgId} AND lower(u.email) = ${email} LIMIT 1`,
+      ),
+    ),
+  )
+  return holder
+}
+
+/** Why this address cannot be invited to this company, or null when it can. */
+function inviteRefusal(
+  holder: InviteHolder | undefined,
+  email: string,
+  companyId: string,
+  companyName: string,
+): PortalAccessError | null {
+  if (holder?.user_type === "member") {
+    return new PortalAccessError(
+      "PORTAL_EMAIL_IS_STAFF",
+      `Nobody was invited: ${email} belongs to a member of this organisation, who never signs in to the portal.`,
+    )
+  }
+  if (holder?.open && holder.company_id !== companyId) {
+    return new PortalAccessError(
+      "PORTAL_EMAIL_IN_USE",
+      `Nobody was invited: ${email} already has portal access for another company. One address reaches one company's portal; links sent for a document still reach them. Next: remove them from that company's portal first.`,
+    )
+  }
+  if (holder?.open) {
+    const who = holder.name ? `${holder.name} <${email}>` : email
+    return new PortalAccessError(
+      "EMAIL_IS_PORTAL_USER",
+      holder.signed_in
+        ? `Nobody was invited: ${who} already has access to ${companyName}'s portal and has signed in. Nothing to do.`
+        : `Nobody was invited: ${who} is already invited to ${companyName}'s portal; the invitation mail went out then and they have not signed in yet. Nothing to do.`,
+    )
+  }
+  return null
+}
+
+/**
+ * The invitation's refusals before a card is staged: an agent's invite of someone already on
+ * the portal answers that, instead of parking a second invitation a person would decide.
+ */
+export async function portalInviteStagingRefusal(input: {
+  orgId: string
+  db: RlsClient
+  companyId: string
+  contactId?: string
+  email?: string
+}): Promise<PortalAccessError | null> {
+  const company = await readCompany(input.db, input.companyId)
+  let email = (input.email ?? "").trim().toLowerCase()
+  if (input.contactId) {
+    const [c] = extractRows<{ email: string | null }>(
+      await input.db.execute(
+        sql`SELECT lower(email) AS email FROM ${K()}.contacts WHERE id = ${input.contactId}`,
+      ),
+    )
+    if (!c) return new PortalAccessError("not_found", `No contact ${input.contactId}.`, 404)
+    email = c.email ?? email
+  }
+  if (!email) return null
+  return inviteRefusal(await inviteHolder(input.orgId, email), email, input.companyId, company.name)
+}
+
 export async function invitePortalPerson(input: InviteInput): Promise<InviteResult> {
   if (env.LIAISON_DEMO_MODE) {
     throw new PortalAccessError(
@@ -154,38 +242,9 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
       422,
     )
   }
-  // Who already holds the address in this org: a member, a client with access, or a client
-  // whose access was removed (who may be invited again, to this company or another).
-  const [holder] = await withPrivilegedDb(input.orgId, "portal-invite-holder", async (tx) =>
-    extractRows<{ id: string; user_type: string; company_id: string | null; open: boolean }>(
-      await tx.execute(
-        sql`SELECT u.id, u.user_type, u.company_id,
-                   (u.status = 'active' AND EXISTS (
-                      SELECT 1 FROM ${K()}.portal_people p
-                       WHERE p.user_id = u.id AND p.removed_at IS NULL)) AS open
-              FROM ${K()}.users u
-             WHERE u.org_id = ${input.orgId} AND lower(u.email) = ${email} LIMIT 1`,
-      ),
-    ),
-  )
-  if (holder?.user_type === "member") {
-    throw new PortalAccessError(
-      "PORTAL_EMAIL_IS_STAFF",
-      `Nobody was invited: ${email} belongs to a member of this organisation, who never signs in to the portal.`,
-    )
-  }
-  if (holder?.open && holder.company_id !== input.companyId) {
-    throw new PortalAccessError(
-      "PORTAL_EMAIL_IN_USE",
-      `Nobody was invited: ${email} already has portal access for another company. One address reaches one company's portal; links sent for a document still reach them. Next: remove them from that company's portal first.`,
-    )
-  }
-  if (holder?.open) {
-    throw new PortalAccessError(
-      "EMAIL_IS_PORTAL_USER",
-      `Nobody was invited: ${email} already has access to ${company.name}'s portal.`,
-    )
-  }
+  const holder = await inviteHolder(input.orgId, email)
+  const refused = inviteRefusal(holder, email, input.companyId, company.name)
+  if (refused) throw refused
   const returning = holder && !holder.open ? holder.id : null
   if (!(await takeInvite(input.orgId))) {
     throw new PortalAccessError(

@@ -21,6 +21,7 @@ import {
   keptForPerson,
   PORTAL_SHARE_KINDS,
   PortalAccessError,
+  portalInviteStagingRefusal,
   readPortalAccessLog,
   removePortalPerson,
   setPortalShare,
@@ -70,6 +71,23 @@ export async function handlePortalInvite(p: z.infer<typeof portalInviteParams>, 
       result: `${r.name} <${r.email}> can now sign in to ${r.company}'s portal${r.mailed ? "; the invitation mail is on its way" : "; the invitation mail failed, they can still sign in from the portal page"}. Nothing is shared yet: the portal shows only what a person opens.`,
       next: "Open what they should see with portal_share_set.",
     }
+  } catch (err) {
+    return refusal(err)
+  }
+}
+
+/** Stage time: someone already on this company's portal (invited or signed in) is answered,
+ *  never parked as a second invitation. */
+export async function portalInvitePreflight(p: z.infer<typeof portalInviteParams>, ctx: ToolCtx) {
+  try {
+    const refused = await portalInviteStagingRefusal({
+      orgId: ctx.orgId,
+      db: ctx.db,
+      companyId: p.company_id,
+      contactId: p.contact_id,
+      email: p.email,
+    })
+    return refused ? refusal(refused) : { ok: true }
   } catch (err) {
     return refusal(err)
   }
@@ -335,15 +353,17 @@ export function registerPortalTools(orgId: string): void {
     approvalImpact: "external",
     writesToTable: "kernel.portal_people",
     params: portalInviteParams,
+    preflight: portalInvitePreflight as (p: unknown, c: any) => Promise<unknown>,
     handler: handlePortalInvite as (p: unknown, c: any) => Promise<unknown>,
   })
-  registerApprovalSummarizer(orgId, "kernel", "portal_invite", (params) => {
+  registerApprovalSummarizer(orgId, "kernel", "portal_invite", async (params, sctx) => {
     const p = params as Partial<z.infer<typeof portalInviteParams>>
+    const { companyName } = await shareNames(sctx.tx, p)
     return summarize(
       "portal_invite",
-      `Invite ${p.name ?? p.email ?? p.contact_id ?? "a contact"} to the client portal`,
+      `Invite ${p.name ?? p.email ?? "a contact"} to ${companyName ? `${companyName}'s` : "the"} client portal`,
       [
-        `Company ${p.company_id ?? "?"}. They get a mail and can sign in; nothing is shared until a person opens it.`,
+        `${p.email ? `${p.email}. ` : ""}They get a mail and can sign in; nothing is shared until a person opens it.`,
       ],
     )
   })
@@ -404,9 +424,10 @@ export function registerPortalTools(orgId: string): void {
     params: portalEndAccessParams,
     handler: handlePortalEndAccess as (p: unknown, c: any) => Promise<unknown>,
   })
-  registerApprovalSummarizer(orgId, "kernel", "portal_end_access", (params) => {
+  registerApprovalSummarizer(orgId, "kernel", "portal_end_access", async (params, sctx) => {
     const p = params as Partial<z.infer<typeof portalEndAccessParams>>
-    return summarize("portal_end_access", `End company ${p.company_id ?? "?"}'s portal access`, [
+    const { companyName } = await shareNames(sctx.tx, p)
+    return summarize("portal_end_access", `End ${companyName ?? "this company"}'s portal access`, [
       "Everyone of that company is signed out, open links stop working and every share closes. Giving access again reopens none of them.",
       ...(p.reason ? [`Reason: ${p.reason}`] : []),
     ])

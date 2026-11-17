@@ -246,7 +246,35 @@
         "claimed_at": "date?",
         "project_time_budgets": {
           "type": "boolean",
-  "version": "0.4.3",
+          "required": false,
+          "description": "Whether the signed proposal had a timebox when it started its project: time and budgets on that project followed it."
+        },
+        "imported_text": {
+          "type": "string",
+          "required": false,
+          "description": "Text read from an imported PDF, kept as unverified: never the signed text."
+        },
+        "project_timebox_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "effects_claim": "uuid?",
+        "effects_claimed_at": "date?",
+        "effects_task_id": "uuid?",
+        "effects_timebox_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "effects_time_plan": {
+          "type": "string",
+          "enum": [
+            "set",
+            "none"
+          ],
+          "required": false
+        },
+        "effects_done_at": "date?",
+        "effects_note": "text?"
       }
     },
     "agreement_shares": {
@@ -2028,7 +2056,7 @@
       "agreement:signed",
       "agreement:imported",
       "agreement:access_changed",
-  "version": "0.4.4",
+      "agreement:knowledge_copy_not_made",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",

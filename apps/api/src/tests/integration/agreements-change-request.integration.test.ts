@@ -6,11 +6,13 @@
 // cannot leave (here: the person has no mailbox for that conversation), the kernel withdraws
 // the link in the same call and the change request stays a draft: nothing reaches the client.
 // Approved on its link with the code, the change request is a recorded approval sealed like a
-// signature, accepted, and its parent's amended total rises by its price.
+// signature, accepted, and its parent's amended total rises by its price; its parent's project
+// then gets one milestone task, made as the person who sent the change request.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { createProject } from "~/apps/projects/service/create-project"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -28,6 +30,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { mintClientAction } from "~/modules/client-actions/mint"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { asUser } from "~/seed/factories/people/actors"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -59,6 +62,7 @@ async function mailTo(email: string, template: string, after: number) {
 let w: DoorWorld
 let parentId = ""
 let versionId = ""
+let projectId = ""
 const capture = new CaptureProvider()
 let previousMail: EmailProvider
 let prevTsa: string | undefined
@@ -117,6 +121,22 @@ beforeAll(async () => {
   await rebuildFilesSelectPolicy({ parents: CatalogDerivationsTestAccess.registryFileParents() })
   parentId = crypto.randomUUID()
   versionId = crypto.randomUUID()
+  const owner: UserContext = {
+    actorType: "user",
+    userId: w.admin.userId,
+    orgId: w.orgId,
+    scopes: ["*"],
+    dimensionGrants: {},
+  }
+  projectId = await asUser(owner, async (tx) => {
+    const made = await createProject({
+      tx: tx as never,
+      orgId: w.orgId,
+      actor: owner,
+      input: { name: "Website", key: "WEB" },
+    })
+    return made.id
+  })
   await withPrivilegedDb(w.orgId, "test:change-request-parent", async (tx) => {
     await insertAppRow(tx, "agreements", "agreements", {
       org_id: w.orgId,
@@ -129,6 +149,7 @@ beforeAll(async () => {
       contact_id: w.clientA.contactId,
       currency: "EUR",
       price_minor: "4200000",
+      project_id: projectId,
       org_access: "editor",
       created_by_user_id: w.admin.userId,
     })
@@ -156,6 +177,10 @@ afterAll(async () => {
   await clearRedisPatterns(["ca:*"])
   if (w) {
     await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
+    for (const t of ["tasks", "projects"])
+      await sql`DELETE FROM ${sql(`${schemaRef("app_projects")}.${t}`)} WHERE org_id = ${w.orgId}`
+    for (const t of ["thread_participants", "threads"])
+      await sql`DELETE FROM ${kernel(t)} WHERE org_id = ${w.orgId}`
     await dropDoorWorld(w)
   }
   await releaseTestLock()
@@ -211,7 +236,7 @@ describe("a change request sent through the sandbox", () => {
     expect(links.every((l) => l.kind === "approve" && l.revoked)).toBe(true)
   }, 120_000)
 
-  it("approved on its link with the code, it is a recorded approval sealed like a signature, and the parent's total rises by its price", async () => {
+  it("approved on its link with the code, it is a recorded approval sealed like a signature, the parent's total rises by its price, and its project gets the task as its sender", async () => {
     // As if the reply had left: the change request waits for its client.
     await sql`UPDATE ${app("agreements")} SET status = 'sent' WHERE id = ${crId}`
     const before = capture.sent.length
@@ -266,5 +291,25 @@ describe("a change request sent through the sandbox", () => {
       level: string
     }>
     expect(pkg?.level).toBe("recorded_approval")
+    // The work follows: one milestone task in the parent's project, made by the person who sent
+    // the change request (never a system identity), recorded on the change request.
+    const tasks = (await sql`
+      SELECT id::text AS id, title, created_by::text AS created_by
+        FROM ${sql(`${schemaRef("app_projects")}.tasks`)}
+       WHERE org_id = ${w.orgId} AND project_id = ${projectId}::uuid`) as unknown as Array<{
+      id: string
+      title: string
+      created_by: string | null
+    }>
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({ title: "CR-1: Single sign-on", created_by: w.admin.userId })
+    const [effects] = (await sql`
+      SELECT effects_task_id::text AS task, effects_done_at IS NOT NULL AS done, effects_note AS note
+        FROM ${app("agreements")} WHERE id = ${crId}`) as unknown as Array<{
+      task: string | null
+      done: boolean
+      note: string | null
+    }>
+    expect(effects).toMatchObject({ task: tasks[0]?.id, done: true })
   }, 120_000)
 })

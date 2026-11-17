@@ -17,6 +17,7 @@ import {
   uploadFreezeJob,
   uploadRescanJob,
 } from "./agreements"
+import { changeRequestEffectsJob } from "./change-request-effects"
 import {
   type ChangeRequestSendParams,
   changeRequestSend,
@@ -96,6 +97,8 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
   onClientActionDecided(ctx, event as Parameters<typeof onClientActionDecided>[1])
 
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
+export const changeRequestEffectsJobHandler = (_payload: unknown, ctx: Ctx) =>
+  changeRequestEffectsJob(ctx)
 export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(ctx)
 export const uploadFreezeJobHandler = (_payload: unknown, ctx: Ctx) => uploadFreezeJob(ctx)
 export const uploadRescanJobHandler = (_payload: unknown, ctx: Ctx) => uploadRescanJob(ctx)

@@ -272,6 +272,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   "client_actions_mint",
   "client_actions_revoke",
   "client_actions_signed_copy",
+  "client_actions_call_as_sender",
   "nextHandle",
   "invalidateIdempotency",
   "effects_claim",

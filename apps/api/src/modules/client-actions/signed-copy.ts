@@ -15,6 +15,11 @@
 // app names its target, and only a target of that app with a decided action has a sender.
 // No copy is written (and the caller says so, then tries again later) when the sender is no
 // longer an active member, or no longer holds the Knowledge write scope.
+//
+// The same path carries the other consequences of a decided record: a call the app declares in
+// its `cross_app_calls` (a change request's task, its time plan) runs as that same sender, with
+// their live permissions and nothing more (`callAsSender`). A decided handler never gains a
+// wider system identity for it.
 
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -200,4 +205,72 @@ export async function writeSignedCopyAsSender(args: {
     }
   }
   return { status: "created", documentId, senderUserId: sender, archived }
+}
+
+export type AsSenderOutcome =
+  | { status: "completed"; result: unknown; senderUserId: string }
+  | { status: "pending_approval"; approvalId: string | null; senderUserId: string }
+  | { status: "error"; code: string; message: string }
+
+/**
+ * One call the app declares in its `cross_app_calls`, run as the member who sent the target
+ * for signature (or for approval), with that member's live scopes. The caller names the
+ * target; the kernel finds the sender itself, so an app cannot pick whose name it acts in.
+ * `idempotencyKey` is the step's own reference: a second call with it answers the first.
+ */
+export async function callAsSender(args: {
+  orgId: string
+  appName: string
+  declaredCalls: readonly string[]
+  targetType: string
+  targetId: string
+  tool: string
+  params: Record<string, unknown>
+  idempotencyKey?: string
+}): Promise<AsSenderOutcome> {
+  if (!args.declaredCalls.includes(args.tool) || args.tool.startsWith(`${args.appName}:`))
+    return {
+      status: "error",
+      code: "CALL_NOT_DECLARED",
+      message: `${args.appName} declares no call to ${args.tool}. Nothing was done.`,
+    }
+  const sender = await senderOfSignedTarget({
+    orgId: args.orgId,
+    targetApp: args.appName,
+    targetType: args.targetType,
+    targetId: args.targetId,
+  })
+  if (!sender)
+    return {
+      status: "error",
+      code: "NOT_SIGNED",
+      message: "Nobody's decision is recorded on this record yet. Nothing was done.",
+    }
+  const actor = await liveActor(args.orgId, sender)
+  if (!actor)
+    return {
+      status: "error",
+      code: "SENDER_INACTIVE",
+      message:
+        "The person who sent it is no longer an active member, so nothing was done in their name.",
+    }
+  const { executeToolCore } = await import("~/modules/apps/execute-tool")
+  const env = (await executeToolCore({
+    toolName: args.tool,
+    orgId: args.orgId,
+    actor,
+    params: { ...args.params },
+    origin: "system",
+    internalCall: { callerApp: args.appName, idempotencyKey: args.idempotencyKey },
+  } as never)) as Envelope
+  if (env.error) return { status: "error", code: env.error.code, message: env.error.message }
+  if (env.blocked) {
+    const b = env.blocked as { approvalRequestId?: string | null }
+    return {
+      status: "pending_approval",
+      approvalId: b.approvalRequestId ?? null,
+      senderUserId: sender,
+    }
+  }
+  return { status: "completed", result: env.data, senderUserId: sender }
 }

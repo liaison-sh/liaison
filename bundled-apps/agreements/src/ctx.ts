@@ -78,6 +78,14 @@ export interface AgreementsCtx {
     archive_ids?: string[]
     readers_only?: string[]
   }) => Promise<unknown>
+  /** One declared cross-app call run as the person who sent the target (kernel-found). */
+  client_actions_call_as_sender?: (p: {
+    target_type: string
+    target_id: string
+    tool: string
+    params: Record<string, unknown>
+    idempotency_key?: string
+  }) => Promise<unknown>
   /** A declared cross-app call (`cross_app_calls`): the K4 envelope. */
   executeTool?: (name: string, params: Record<string, unknown>) => Promise<CrossAppEnvelope>
   /** Emits one of the app's declared events. */

@@ -1,5 +1,5 @@
 {
   "privileged": {
-    "modules/client-actions/signed-copy.ts": "Finds who sent one signed target for signature: the creator of the first client action of that app's target, in the caller's org, when a decided action exists. That member's live permissions then write and read back the target's Knowledge copy under their own row security, through Knowledge's normal tool as the app's declared ingestion; nothing else is read or written on the privileged handle."
+    "modules/client-actions/signed-copy.ts": "Finds who sent one decided target for signature or approval: the creator of the first client action of that app's target, in the caller's org, when a decided action exists. That member's live permissions then write and read back the target's Knowledge copy under their own row security, through Knowledge's normal tool as the app's declared ingestion, or run one call the app declares in cross_app_calls (a change request's task and time plan) as that member; nothing else is read or written on the privileged handle."
   }
 }

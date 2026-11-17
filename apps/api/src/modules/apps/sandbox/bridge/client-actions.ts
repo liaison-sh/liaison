@@ -21,6 +21,9 @@
  *    the Knowledge copy of a signed target, written and read back as the member who
  *    sent it for signature (modules/client-actions/signed-copy.ts). Only for a
  *    declared target with a decided action; the kernel finds the sender itself.
+ *  - `client_actions_call_as_sender({ target_type, target_id, tool, params, idempotency_key })`:
+ *    one call the app declares in `cross_app_calls`, run as that same sender with their live
+ *    permissions (a change request's task and time plan), never as a wider system identity.
  *
  * Every refusal answers data with a code, never a throw, since only an error's
  * message crosses the sandbox boundary.
@@ -535,6 +538,50 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
           archived: out.archived,
         })
       return JSON.stringify({ status: "not_made", code: out.code, message: out.message })
+    },
+
+    client_actions_call_as_sender: async (paramsJson: string): Promise<string> => {
+      let p: {
+        target_type?: unknown
+        target_id?: unknown
+        tool?: unknown
+        params?: unknown
+        idempotency_key?: unknown
+      }
+      try {
+        p = JSON.parse(paramsJson || "{}")
+      } catch {
+        return refuse("INVALID_INPUT", "client_actions_call_as_sender takes a JSON object.")
+      }
+      if (typeof p.target_type !== "string" || !declaredTarget(orgId, appName, p.target_type))
+        return refuse(
+          "TARGET_NOT_REGISTERED",
+          `${appName} declares no client action target ${String(p.target_type)}. Nothing was done.`,
+        )
+      if (typeof p.target_id !== "string" || !UUID.test(p.target_id))
+        return refuse("INVALID_INPUT", "client_actions_call_as_sender takes a target_id.")
+      if (typeof p.tool !== "string" || !p.tool.includes(":"))
+        return refuse("INVALID_INPUT", "client_actions_call_as_sender takes a tool app:name.")
+      if (p.params !== undefined && (typeof p.params !== "object" || Array.isArray(p.params)))
+        return refuse("INVALID_INPUT", "client_actions_call_as_sender takes params as an object.")
+      const { callAsSender } = await import("~/modules/client-actions/signed-copy")
+      const out = await callAsSender({
+        orgId,
+        appName,
+        declaredCalls: (ctx.manifest.cross_app_calls ?? []).map((c) => c.target),
+        targetType: p.target_type,
+        targetId: p.target_id,
+        tool: p.tool,
+        params: (p.params ?? {}) as Record<string, unknown>,
+        ...(typeof p.idempotency_key === "string" && p.idempotency_key.length <= 200
+          ? { idempotencyKey: p.idempotency_key }
+          : {}),
+      })
+      if (out.status === "completed")
+        return JSON.stringify({ status: "completed", result: out.result })
+      if (out.status === "pending_approval")
+        return JSON.stringify({ status: "pending_approval", approval_id: out.approvalId })
+      return refuse(out.code, out.message)
     },
   }
 }

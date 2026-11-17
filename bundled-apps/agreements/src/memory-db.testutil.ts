@@ -17,7 +17,9 @@ export function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
     Object.entries(where).every(([k, v]) =>
       v && typeof v === "object" && Array.isArray((v as { in?: unknown[] }).in)
         ? ((v as { in: unknown[] }).in as unknown[]).includes(r[k])
-        : r[k] === v,
+        : v === null
+          ? r[k] === null || r[k] === undefined
+          : r[k] === v,
     )
   const seq = new Map<string, number>()
   const resolve = (

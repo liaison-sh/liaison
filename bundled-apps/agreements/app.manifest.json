@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.4.7",
+  "version": "0.4.9",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",

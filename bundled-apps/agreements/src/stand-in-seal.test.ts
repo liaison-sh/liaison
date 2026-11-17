@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { type EvidencePackage, packageOf, sealRetry, timestampRetry, verifyPackage } from "./seal"
+import {
+  type EvidencePackage,
+  evidenceVerify,
+  packageOf,
+  sealRetry,
+  timestampRetry,
+  verifyPackage,
+} from "./seal"
 import { at, signedWorld } from "./seal.testutil"
 
 describe("the seal of a version signed only by demo stand-ins", () => {
@@ -44,6 +51,18 @@ describe("the seal of a version signed only by demo stand-ins", () => {
     const pkg = (await packageOf(w.ctx, w.versionId)) as EvidencePackage
     const out = await verifyPackage(w.ctx, pkg)
     expect(out).toMatchObject({ error: { code: "NOT_SEALED" } })
+    expect(w.ctx.calls.emitted).toEqual([])
+  })
+
+  it("the weekly evidence check passes over the record: it checks nothing and opens no incident", async () => {
+    const w = await signedWorld({ level: "demo" })
+    await sealRetry(w.ctx)
+    // Even a stand-in record that carried a seal string is not checked.
+    const pkg = (await packageOf(w.ctx, w.versionId)) as EvidencePackage
+    await w.db.update("evidence_packages", pkg.id, { seal: "x" })
+    expect(await evidenceVerify(w.ctx)).toMatchObject({ mismatches: 0 })
+    const after = (await packageOf(w.ctx, w.versionId)) as EvidencePackage
+    expect(after.last_verified_at ?? null).toBeNull()
     expect(w.ctx.calls.emitted).toEqual([])
   })
 

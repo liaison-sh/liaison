@@ -908,7 +908,8 @@ export async function evidenceVerify(ctx: SealCtx) {
   const all = (await ctx.db.findMany("evidence_packages", { limit: 1000 })) as EvidencePackage[]
   let mismatches = 0
   for (const pkg of all) {
-    if (!pkg.seal) continue
+    // A stand-in's record has no seal: nothing to check, no incident to open.
+    if (pkg.level === "demo" || !pkg.seal) continue
     const out = await verifyPackage(ctx, pkg)
     if (out.status === "ok" && !out.matches) mismatches += 1
   }

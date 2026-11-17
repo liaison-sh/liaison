@@ -377,7 +377,7 @@ describe("portal doors: sign-in and token classes", () => {
     ).toBe(200)
   })
 
-  it("NT-52: branding gives a known slug's name, logo and notice only, and an unknown slug the same shape", async () => {
+  it("NT-52: branding gives a known slug's name, logo, notice and its version only, and an unknown slug the same shape", async () => {
     const known = (await (
       await call("GET", `${PORTAL_PREFIX}/auth/branding/${w.orgSlug}`)
     ).json()) as {
@@ -388,10 +388,10 @@ describe("portal doors: sign-in and token classes", () => {
     ).json()) as {
       data: Record<string, unknown>
     }
-    expect(Object.keys(known.data).sort()).toEqual(["logoUrl", "name", "notice"])
-    expect(Object.keys(unknown.data).sort()).toEqual(["logoUrl", "name", "notice"])
+    expect(Object.keys(known.data).sort()).toEqual(["logoUrl", "name", "notice", "noticeVersion"])
+    expect(Object.keys(unknown.data).sort()).toEqual(["logoUrl", "name", "notice", "noticeVersion"])
     expect(known.data.name).toBe(w.orgName)
-    expect(unknown.data).toEqual({ name: null, logoUrl: null, notice: null })
+    expect(unknown.data).toEqual({ name: null, logoUrl: null, notice: null, noticeVersion: null })
   })
 
   it("a company whose portal access ended gives its person no link, no session and no refresh", async () => {

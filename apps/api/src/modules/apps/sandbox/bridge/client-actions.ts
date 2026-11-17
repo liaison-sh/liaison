@@ -473,6 +473,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
             expires_at: l.expiresAt.toISOString(),
             replaced: l.replaced,
             revoke_reason: l.revokeReason,
+            signer_user_id: l.signerUserId,
           })),
         })
       }

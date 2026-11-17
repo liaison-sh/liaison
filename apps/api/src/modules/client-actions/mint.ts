@@ -1018,6 +1018,8 @@ export interface TargetLink {
   replaced: boolean
   /** Why a withdrawn link was withdrawn (`access_ended` when the portal access ended), else null. */
   revokeReason: string | null
+  /** The member who signs with this link (a staff signer), else null. */
+  signerUserId: string | null
 }
 
 /** Every link of one target of this app, newest turn last (no token, code or device field). */
@@ -1042,10 +1044,12 @@ export async function listTargetClientActions(input: {
       expires_at: Date
       replaced: boolean
       revoke_reason: string | null
+      signer_user_id: string | null
     }>(
       await tx.execute(sql`
         SELECT l.id, l.invited_name, l.invited_email, l.sign_order, l.decision, l.decided_at,
                l.revoked_at, l.revoke_reason, l.code_locked_at, l.code_verified_at, l.token_hash, l.expires_at,
+               l.signer_user_id,
                ${replacedSql("l")} AS replaced
           FROM ${K()}.client_actions l
          WHERE l.org_id = ${input.orgId} AND l.target_app = ${input.targetApp}
@@ -1080,6 +1084,7 @@ export async function listTargetClientActions(input: {
     expiresAt: new Date(r.expires_at),
     replaced: r.replaced === true,
     revokeReason: r.revoked_at ? r.revoke_reason : null,
+    signerUserId: r.signer_user_id ?? null,
   }))
 }
 

@@ -1111,6 +1111,8 @@ export interface SigningLink {
   expires_at: string
   /** A later link of the same signer replaced this one. */
   replaced?: boolean
+  /** The member who signs with this link (a staff signer), else null. */
+  signer_user_id?: string | null
 }
 
 /** The signing links of one version, as the kernel lists them (no token, code or device). */

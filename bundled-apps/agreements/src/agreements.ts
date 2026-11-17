@@ -239,8 +239,10 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
     sha256?: string | null
     page_count?: number | null
     frozen_at?: string
+    file_id?: string | null
   }>
   const draft = await loadDraft(ctx, row.id)
+  const me = await callerUserId(ctx)
   const shares = await currentShares(ctx, row.id)
   // The links of the version that went out: the latest one, once the agreement left draft.
   const latest = versions[versions.length - 1]
@@ -254,6 +256,8 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       ends_on: row.ends_on ?? null,
       template_id: row.template_id ?? null,
       template_version: row.template_version ?? null,
+      ...(row.not_a_guarantee_by_user_id ? { not_a_guarantee: true } : {}),
+      ...(draft?.upload_file_id ? { upload: true } : {}),
       ...(row.status === "imported" ? { status_note: "Imported, signed outside Liaison" } : {}),
     },
     draft: draft ? { lock_version: draft.lock_version, source: draft.source ?? null } : null,
@@ -264,6 +268,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       sha256: v.sha256 ?? null,
       page_count: v.page_count ?? null,
       frozen_at: v.frozen_at ?? null,
+      file_id: v.file_id ?? null,
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
     // An admin's claim, once every person on the list had left, stays shown to whoever reads it.
@@ -277,6 +282,8 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       sign_order: l.sign_order,
       state: l.state,
       expires_at: l.expires_at,
+      // The reader's own link (a staff signer): their Read and sign, never anyone else's.
+      ...(me && l.signer_user_id === me ? { yours: true } : {}),
     })),
     message:
       `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`

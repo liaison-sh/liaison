@@ -47,6 +47,8 @@ export const RESERVED_WEB_ROUTE_SEGMENTS = [
   "dashboard-table",
   // The kernel's app builder tab (`/apps/builder/:draftId`).
   "apps",
+  // A staff signer's own Read and sign tab (`/sign/:id`), which mints a signing link on load.
+  "sign",
   // The server's API prefix: a tab URL under it would reload into the API.
   "api",
 ] as const

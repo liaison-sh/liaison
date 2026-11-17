@@ -619,4 +619,52 @@ describe("agreement_get hands back no text a person outside the org wrote", () =
     expect(JSON.stringify(out)).not.toContain(MARK)
     expect(out).toMatchObject({ status: "ok" })
   })
+
+  it("marks the reader's own signing link, and only theirs, and names each version's file", async () => {
+    const db = memoryDb()
+    const { id } = await db.insert("agreements", {
+      number: "AG-2026-010",
+      title: "Two signers",
+      kind: "nda",
+      status: "partly_signed",
+    })
+    await db.insert("agreement_versions", {
+      agreement_id: id,
+      number: 1,
+      status: "sent",
+      sha256: "a".repeat(64),
+      file_id: "file-1",
+    })
+    const link = (over: object) => ({
+      invited_name: "S",
+      invited_email: "s@example.com",
+      sign_order: 1,
+      state: "open",
+      expires_at: "2026-12-01",
+      ...over,
+    })
+    const ctx = {
+      ...ctxFor(db),
+      client_actions_record: async () => ({
+        status: "ok",
+        links: [
+          link({ id: "theirs", signer_user_id: null }),
+          link({ id: "colleague", signer_user_id: "someone-else", sign_order: 2 }),
+          link({ id: "mine", signer_user_id: PERSON, sign_order: 3 }),
+        ],
+      }),
+    } as unknown as AgreementsCtx
+    const out = (await agreementGet(ctx, { id })) as {
+      signing_links: Array<{ client_action_id: string; yours?: boolean }>
+      versions: Array<{ file_id: string | null }>
+    }
+    expect(out.signing_links.map((l) => [l.client_action_id, l.yours === true])).toEqual([
+      ["theirs", false],
+      ["colleague", false],
+      ["mine", true],
+    ])
+    // No member id of anyone reaches the result: only the reader's own mark.
+    expect(JSON.stringify(out)).not.toContain("someone-else")
+    expect(out.versions[0]?.file_id).toBe("file-1")
+  })
 })

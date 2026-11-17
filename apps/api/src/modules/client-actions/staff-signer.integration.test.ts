@@ -20,7 +20,7 @@ import {
   nextIp,
   useClientActionWorld,
 } from "../../../test-support/client-actions-kit"
-import { mintClientAction } from "./mint"
+import { listTargetClientActions, mintClientAction } from "./mint"
 
 const kit = useClientActionWorld("staffdocs")
 
@@ -92,6 +92,18 @@ describe("a staff signer", () => {
     expect(turns).toHaveLength(1)
     expect(turns[0]?.payload.data.signerUserIds).toEqual([kit.w.member.userId])
     expect((await actionRow(r.id)).signer_user_id).toBe(kit.w.member.userId)
+  })
+
+  it("the app's list of a target's links names the member who signs, so their screen offers their own Read and sign", async () => {
+    const { r } = await mintToStaff()
+    const target = (await actionRow(r.id)).target_id as string
+    const links = await listTargetClientActions({
+      orgId: kit.w.orgId,
+      targetApp: kit.targetApp,
+      targetType: kit.targetType,
+      targetId: target,
+    })
+    expect(links.map((l) => [l.id, l.signerUserId])).toEqual([[r.id, kit.w.member.userId]])
   })
 
   it("Read and sign makes the link for the signer only", async () => {

@@ -11,7 +11,9 @@
 // (the authority was down; also resends copies that failed) and
 // `evidence-verify` (weekly re-hash, never a repair).
 
+import { RECORDED_APPROVAL } from "./change-requests"
 import { type AgreementsCtx, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
+import { onAgreementSigned } from "./sow-knowledge"
 
 /** Copies give up and raise one attention item after this many failed sends. */
 export const COPY_MAX_ATTEMPTS = 3
@@ -27,6 +29,7 @@ interface Agreement {
   number: string
   title: string
   status: string
+  kind?: string | null
   language?: string | null
   ends_on?: string | null
   signed_at?: string | null
@@ -305,7 +308,13 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
       return { status: "seal_pending", reason: signed.error?.message ?? code }
     }
     const trail = buildTrail(agreement, version, events)
-    const level = events.every((e) => e.level === "demo") ? "demo" : "ses"
+    // The record's level: a demo, a recorded approval (a change request: never a signature),
+    // or a simple electronic signature.
+    const level = events.every((e) => e.level === "demo")
+      ? "demo"
+      : events.every((e) => e.level === RECORDED_APPROVAL)
+        ? RECORDED_APPROVAL
+        : "ses"
     const sealed = bridgeAnswer<{
       manifest: unknown
       manifestJson: string
@@ -378,12 +387,16 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
       entityId: agreement.id,
       data: {
         number: agreement.number,
+        // A change request's approval is sealed here too: a subscriber tells it by its kind.
+        kind: agreement.kind ?? null,
         version: version.number,
         version_id: version.id,
         package_id: pkg.id,
         seal: pkg.seal,
       },
     })
+    // The signed text as Knowledge, once; the seal retry writes it when this pass could not.
+    await onAgreementSigned(ctx, { versionId: version.id })
   }
   return {
     status: "sealed",
@@ -640,7 +653,11 @@ export async function sealRetry(ctx: SealCtx) {
   let waiting = 0
   for (const v of versions) {
     const pkg = await packageOf(ctx, v.id)
-    if (pkg?.evidence_file_id) continue
+    if (pkg?.evidence_file_id) {
+      if (!(v as Version & { knowledge_document_id?: string | null }).knowledge_document_id)
+        await onAgreementSigned(ctx, { versionId: v.id, announce: false })
+      continue
+    }
     const out = await sealVersion(ctx, v.id)
     if (out.status === "sealed") {
       sealed += 1

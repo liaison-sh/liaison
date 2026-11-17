@@ -63,6 +63,7 @@ describe("Knowledge app registration", () => {
       schemaRef: "app_knowledge",
       joinOn: "id",
       readScope: "knowledge:attachments:download",
+      // A file door asks the parent's read scope even where the parent's own policy does not.
       requiredScope: "knowledge:attachments:download",
       writeScope: "knowledge:documents:update",
     })

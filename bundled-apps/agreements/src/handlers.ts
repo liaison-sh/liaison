@@ -2,6 +2,7 @@
 //
 // Handler barrel: every tool handler the manifest names, by exact export name.
 
+import { activityRead } from "./activity"
 import {
   agreementCreate,
   agreementGet,
@@ -16,8 +17,14 @@ import {
   uploadFreezeJob,
   uploadRescanJob,
 } from "./agreements"
+import {
+  type ChangeRequestSendParams,
+  changeRequestSend,
+  changeRequestSendPreflight,
+} from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { datesDaily } from "./dates"
+import { agreementPassageGet } from "./passage"
 import {
   agreementEvidenceGet,
   agreementVerify,
@@ -66,6 +73,10 @@ export const approvalRouteReadHandler = (p: { entityType: string; entityId: stri
 export const agreementSendHandler = (p: SendParams, ctx: Ctx) => agreementSend(ctx, p)
 export const agreementSendPreflightHandler = (p: SendParams, ctx: Ctx) =>
   agreementSendPreflight(ctx, p)
+export const changeRequestSendHandler = (p: ChangeRequestSendParams, ctx: Ctx) =>
+  changeRequestSend(ctx, p)
+export const changeRequestSendPreflightHandler = (p: ChangeRequestSendParams, ctx: Ctx) =>
+  changeRequestSendPreflight(ctx, p)
 export const agreementVoidPreflightHandler = (p: { id: string; reason: string }, ctx: Ctx) =>
   agreementVoidPreflight(ctx, p)
 export const agreementVoidHandler = (p: { id: string; reason: string }, ctx: Ctx) =>
@@ -100,4 +111,11 @@ export const evidenceVerifyJobHandler = (_payload: unknown, ctx: Ctx) =>
   evidenceVerify(ctx as SealCtx)
 
 // --- Gated-tool approval summarizers ---
+export const agreementPassageGetHandler = (
+  p: { version_id?: string; section?: string },
+  ctx: Ctx,
+) => agreementPassageGet(ctx, p ?? {})
+export const activityReadHandler = (p: Parameters<typeof activityRead>[1], ctx: Ctx) =>
+  activityRead(ctx, p ?? {})
+
 export * from "./summarizers"

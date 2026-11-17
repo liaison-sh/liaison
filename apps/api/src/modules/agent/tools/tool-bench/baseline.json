@@ -1882,7 +1882,7 @@
     },
     "knowledge__create": {
       "desc": 501,
-      "schema": 765
+      "schema": 827
     },
     "knowledge__find_by_title": {
       "desc": 599,
@@ -3031,10 +3031,16 @@
     "C128|connexions portail": "15tl",
     "C128|journal d'accès portail": "15tl",
     "C128|portal access log": "15tl",
+    "C129|citer section contrat": "15t",
+    "C129|passage signé": "15tl",
+    "C129|quote agreement section": "15tl",
     "C13|clôture mensuelle": "",
     "C13|facture du mois": "",
     "C13|facturer projet": "",
     "C13|rapprochement": "15tl",
+    "C130|avenant hors périmètre": "15tl",
+    "C130|change request out of scope": "15t",
+    "C130|reply with a change request": "15tl",
     "C14|refund": "5tl",
     "C14|refund charge": "15tl",
     "C14|refund payment": "",

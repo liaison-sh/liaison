@@ -2,25 +2,25 @@
   "entry": "tool:client_action_view_get",
   "params": {
     "targetType": "agreement_version",
-    "targetId": "1aa33e7c-6294-4104-a7fd-244c0d745576"
+    "targetId": "1e508ee5-7b03-40c4-a0bd-8ffb44c048d1"
   },
   "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["agreement_versions", "1aa33e7c-6294-4104-a7fd-244c0d745576"],
-      "reply": "{\"id\":\"1aa33e7c-6294-4104-a7fd-244c0d745576\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.73016+00\",\"updated_at\":\"2026-11-16 23:57:56.839016+00\",\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"number\":1,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"}]},\"data\":{}},\"source_text\":\"Mutual non-disclosure agreement\\nEach party keeps the other's information confidential.\",\"file_id\":\"38fd6cd5-b0a3-4ad9-a324-0613226b2012\",\"sha256\":\"ba6634070efa7df7848072eb9ed893751bf65b155fddef1ecf64988b3e8ad90a\",\"byte_size\":14373,\"page_count\":1,\"frozen_at\":\"2026-01-01 00:00:00+00\",\"frozen_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"source_kind\":\"generated\",\"source_text_origin\":\"rendered\",\"pages\":null,\"pages_sha256\":null,\"file_report\":null,\"status\":\"frozen\",\"change_note\":null,\"knowledge_document_id\":null,\"scan_state\":\"not_run\"}"
+      "args": ["agreement_versions", "1e508ee5-7b03-40c4-a0bd-8ffb44c048d1"],
+      "reply": "{\"id\":\"1e508ee5-7b03-40c4-a0bd-8ffb44c048d1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:33:34.084548+00\",\"updated_at\":\"2026-11-17 02:33:34.148155+00\",\"agreement_id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"number\":1,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"},{\"text\":\"1. Term\",\"type\":\"heading\"},{\"text\":\"This agreement lasts two years.\",\"type\":\"paragraph\"}]},\"data\":{}},\"source_text\":\"Mutual non-disclosure agreement\\nEach party keeps the other's information confidential.\\n1. Term\\nThis agreement lasts two years.\",\"file_id\":\"0882628f-5e36-4ce7-a053-9a7ccd8c2356\",\"sha256\":\"d73f42eebf4e29587961119f6232e17cebe9ec09c0a41b19a36b5805e7622e82\",\"byte_size\":15657,\"page_count\":1,\"frozen_at\":\"2026-01-01 00:00:00+00\",\"frozen_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"source_kind\":\"generated\",\"source_text_origin\":\"rendered\",\"pages\":null,\"pages_sha256\":null,\"file_report\":null,\"status\":\"frozen\",\"change_note\":null,\"knowledge_document_id\":null,\"scan_state\":\"not_run\"}"
     },
     {
       "method": "db_findOne",
-      "args": ["agreements", "fc2c0640-fc62-410d-a9e1-d2613f6b0b93"],
-      "reply": "{\"id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.552232+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"f766d71a-72d3-49fe-aa95-1dfcc74254da\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
+      "args": ["agreements", "9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1"],
+      "reply": "{\"id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:33:33.743681+00\",\"updated_at\":\"2026-11-17 02:33:33.889741+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"463ee78d-49c4-4414-9b37-01093719223f\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
     },
     {
       "method": "db_findMany",
       "args": [
         "signature_events",
-        "{\"where\":{\"version_id\":\"1aa33e7c-6294-4104-a7fd-244c0d745576\"},\"limit\":500}"
+        "{\"where\":{\"version_id\":\"1e508ee5-7b03-40c4-a0bd-8ffb44c048d1\"},\"limit\":500}"
       ],
       "reply": "[]"
     }

@@ -82,6 +82,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["client_actions_mint", "async"],
   ["client_actions_record", "async"],
   ["client_actions_revoke", "async"],
+  ["client_actions_signed_copy", "async"],
   ["config_get", "async"],
   ["config_has", "async"],
   ["config_setSecret", "async"],

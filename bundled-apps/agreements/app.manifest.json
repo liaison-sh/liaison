@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.3.6",
+  "version": "0.3.9",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -121,7 +121,8 @@
             "expired",
             "voided",
             "withdrawn",
-            "imported"
+            "imported",
+            "accepted"
           ],
           "default": "draft"
         },
@@ -736,6 +737,23 @@
   "approvalRoute": {
     "agreements:agreement": "approval_route_read"
   },
+  "activitySources": [
+    { "tool": "activity_read", "scope": "agreements:agreements:read", "label": "Agreements", "filterKey": "agreements" }
+  ],
+  "cross_app_calls": [
+    {
+      "target": "knowledge:create",
+      "reason": "one Knowledge document per signed version, closed to the organization and shared by name, from the version's frozen text"
+    },
+    {
+      "target": "knowledge:archive",
+      "reason": "a superseding signed version archives the Knowledge copy of the version before it"
+    },
+    {
+      "target": "mail:reply",
+      "reason": "the change request's reply leaves from the person's own mailbox, under the card's mail check"
+    }
+  ],
   "tools": {
     "home_load": {
       "description": "Load the agreements list for the app's home page, in the order of what needs someone first.",
@@ -1124,6 +1142,44 @@
         ]
       }
     },
+    "agreement_passage_get": {
+      "restrictedRows": { "entity": "agreement", "idPath": "agreement.id" },
+      "description": "Quote one numbered section of a signed or sent agreement version, cut from its own text. Answers NOT_READABLE when the version has no readable text: then say you could not read it.",
+      "searchKeywords": ["passage", "section", "clause", "article", "citer", "quote", "texte", "signé", "scope", "périmètre"],
+      "requiredScopes": ["agreements:agreements:read"],
+      "handler": "agreementPassageGetHandler",
+      "readOnly": true,
+      "taintSource": true,
+      "taintSourceWhen": { "field": "source_kind", "equals": "uploaded" },
+      "params": {
+        "type": "object",
+        "properties": {
+          "version_id": { "type": "string", "description": "The agreement version id (agreement_get lists them)." },
+          "section": { "type": "string", "description": "The section number, such as 8 or 8.2." }
+        },
+        "required": ["version_id", "section"]
+      }
+    },
+    "activity_read": {
+      "description": "The agreements of a company or of its people, one row each at its latest status, newest first, for their timeline. Read by the kernel.",
+      "readOnly": true,
+      "agentVisible": false,
+      "timeoutMs": 2000,
+      "requiredScopes": ["agreements:agreements:read"],
+      "trustBoundary": "user",
+      "handler": "activityReadHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactIds": { "type": "array", "items": { "type": "string" } },
+          "companyId": { "type": ["string", "null"] },
+          "dealIds": { "type": "array", "items": { "type": "string" } },
+          "before": { "type": ["object", "null"] },
+          "limit": { "type": "integer" },
+          "prefix": { "type": "string" }
+        }
+      }
+    },
     "templates_list": {
       "description": "List the agreement templates with their kind, language and current version.",
       "searchKeywords": [
@@ -1386,6 +1442,134 @@
       ],
       "approvalDedupeKeyParam": "guardKey"
     },
+    "change_request_send": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "change_request.id"
+      },
+      "description": "Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on. Parks for a person's approval; nothing is sent if the client wrote after the card.",
+      "searchKeywords": [
+        "avenant",
+        "scope",
+        "périmètre",
+        "extra",
+        "supplémentaire"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "changeRequestSendHandler",
+      "summarizer": "summarizeChangeRequestSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Reply and change request on {{params.parent_agreement_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "parent_agreement_id": {
+            "type": "string",
+            "description": "The signed agreement the change request adds to."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "work": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "The work it adds, one line each."
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Its size in minutes."
+          },
+          "hours_source": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Where the hours come from, such as past similar work."
+          },
+          "rate_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,15}$",
+            "description": "The hourly rate from the signed text, in minor units, as a string."
+          },
+          "reply": {
+            "type": "object",
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 8000
+              }
+            },
+            "required": [
+              "conversation_id",
+              "body"
+            ],
+            "additionalProperties": false
+          },
+          "passage": {
+            "type": "object",
+            "properties": {
+              "version_id": {
+                "type": "string"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version_id",
+              "section"
+            ],
+            "additionalProperties": false,
+            "description": "The signed text's section, read with agreement_passage_get."
+          },
+          "mail_message_id": {
+            "type": "string",
+            "description": "The client's mail this answers."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "parent_agreement_id",
+          "title",
+          "work",
+          "hours_minutes",
+          "hours_source",
+          "rate_minor",
+          "reply",
+          "passage",
+          "mail_message_id"
+        ]
+      },
+      "preflight": "changeRequestSendPreflightHandler",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "mail_message_id"
+    },
     "agreement_reminder_send": {
       "restrictedRows": {"entity":  "agreement", "idPath":  "agreement.id"},
       "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. Parks for a person's approval.",
@@ -1629,7 +1813,8 @@
       "type": "agreement_version",
       "kinds": [
         "sign",
-        "accept"
+        "accept",
+        "approve"
       ],
       "viewTool": "client_action_view_get",
       "mintedBy": "app"
@@ -1647,10 +1832,13 @@
       "agreement:voided",
       "agreement:signed",
       "agreement:access_changed",
+      "agreement:knowledge_copy_not_made",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",
-      "evidence:seal_overdue"
+      "evidence:seal_overdue",
+      "change_request:accepted",
+      "change_request:declined"
     ]
   },
   "jobs": {

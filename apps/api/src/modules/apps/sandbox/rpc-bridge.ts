@@ -271,6 +271,7 @@ const READ_ONLY_REFUSED_BRIDGE_METHODS: ReadonlySet<string> = new Set([
   // Client action links (bridge/client-actions.ts): a send mints and mails, a void withdraws.
   "client_actions_mint",
   "client_actions_revoke",
+  "client_actions_signed_copy",
   "nextHandle",
   "invalidateIdempotency",
   "effects_claim",

@@ -89,6 +89,8 @@ export function memoryDb(): DbClient & { tables: Map<string, Row[]> } {
             t(op.insert).push(row)
             if (op.as) refs[op.as] = row
           } else if ("updateMany" in op) {
+            // As the host: a bulk write's filter never names `id`.
+            if ("id" in (op.where ?? {})) throw new Error("where.id is not allowed here")
             const rows = t(op.updateMany).filter((r) => matches(r, op.where))
             if (op.expect?.minRows !== undefined && rows.length < op.expect.minRows)
               throw Object.assign(

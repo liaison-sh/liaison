@@ -1,7 +1,7 @@
 {
   "entry": "tool:agreement_update",
   "params": {
-    "id": "fc2c0640-fc62-410d-a9e1-d2613f6b0b93",
+    "id": "9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1",
     "lock_version": 1,
     "renews_on": "2027-06-30"
   },
@@ -9,8 +9,8 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["agreements", "fc2c0640-fc62-410d-a9e1-d2613f6b0b93"],
-      "reply": "{\"id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.383066+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"f766d71a-72d3-49fe-aa95-1dfcc74254da\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
+      "args": ["agreements", "9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1"],
+      "reply": "{\"id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:33:33.743681+00\",\"updated_at\":\"2026-11-17 02:33:33.743681+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"463ee78d-49c4-4414-9b37-01093719223f\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null}"
     },
     {
       "method": "turn_get",
@@ -26,14 +26,14 @@
       "method": "db_findMany",
       "args": [
         "agreement_shares",
-        "{\"where\":{\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\"},\"limit\":500}"
+        "{\"where\":{\"agreement_id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\"},\"limit\":500}"
       ],
-      "reply": "[{\"id\":\"85e76601-ce9e-4838-8f9e-4b40771fcb5e\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-16 23:57:56.383066+00\",\"updated_at\":\"2026-11-16 23:57:56.383066+00\",\"agreement_id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"role\":\"editor\",\"created_by\":\"00000000-0000-4000-8000-00000000c0df\",\"removed_at\":null}]"
+      "reply": "[{\"id\":\"6f0518a2-d87e-4aa8-a30f-69feece02c11\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-17 02:33:33.743681+00\",\"updated_at\":\"2026-11-17 02:33:33.743681+00\",\"agreement_id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"role\":\"editor\",\"created_by\":\"00000000-0000-4000-8000-00000000c0df\",\"removed_at\":null}]"
     },
     {
       "method": "db_batch",
       "args": [
-        "{\"ops\":[{\"update\":\"agreements\",\"id\":\"fc2c0640-fc62-410d-a9e1-d2613f6b0b93\",\"data\":{\"renews_on\":\"2027-06-30\"}}]}"
+        "{\"ops\":[{\"update\":\"agreements\",\"id\":\"9ede4f49-151a-4a85-8fa2-6a55c2f1f6b1\",\"data\":{\"renews_on\":\"2027-06-30\"}}]}"
       ],
       "reply": "{\"rows\":{}}"
     }

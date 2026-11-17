@@ -8,6 +8,13 @@
 // inside the person's decision on the gated tool; nothing here signs.
 
 import { currentShares } from "./access"
+import {
+  acceptChangeRequest,
+  CHANGE_REQUEST,
+  decisionFits,
+  declineChangeRequest,
+  RECORDED_APPROVAL,
+} from "./change-requests"
 import { UNFIT_TAGS } from "./checks"
 import { type AgreementsCtx, actingAgentId, bridgeAnswer, type ErrorEnvelope, refusal } from "./ctx"
 import { type CopyState, copyStateOf, eventsOf, type SealCtx, sealVersion } from "./seal"
@@ -563,6 +570,7 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   if (!agreement) return { status: "ignored" }
   // A link a later one replaced counts for nothing: its signer answers on the new link.
   if (rec.replaced === true) return { status: "ignored" }
+  const isChangeRequest = agreement.kind === CHANGE_REQUEST
   if (rec.decision === "declined") {
     if (agreement.status === "sent" || agreement.status === "partly_signed") {
       await ctx.db.update("agreements", agreement.id, { status: "declined" })
@@ -572,10 +580,13 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
         entityId: agreement.id,
         data: { number: agreement.number, version: version.number, signer: rec.invited_name },
       })
+      if (isChangeRequest) await declineChangeRequest(ctx, agreement)
     }
     return { status: "declined" }
   }
-  if (rec.decision !== "signed" && rec.decision !== "accepted") return { status: "ignored" }
+  // A change request is approved (a recorded approval), never signed; anything else is signed
+  // or accepted, never approved.
+  if (!decisionFits(agreement.kind, rec.decision)) return { status: "ignored" }
   // Only a version this app sent and still waits on is signed and sealed: never one of a voided,
   // declined, draft or replaced agreement, whoever minted the link.
   if (!WAITING.includes(agreement.status) || version.status !== "frozen")
@@ -599,7 +610,7 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
       capacity: rec.capacity ?? "",
       consent_words: rec.words_shown ?? "",
       consent_lang: rec.words_lang ?? agreement.language ?? "en",
-      level: "ses",
+      level: isChangeRequest ? RECORDED_APPROVAL : "ses",
       document_sha256: rec.target_sha256,
       signed_at: rec.decided_at ?? new Date().toISOString(),
       ip: rec.ip,
@@ -609,9 +620,21 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
       reached_end_at: rec.reached_end_at,
     })
   }
-  const positive = (x: string | null) => x === "signed" || x === "accepted"
+  const positive = (x: string | null) => decisionFits(agreement.kind, x)
   const done = rec.group.filter((g) => positive(g.decision) || g.id === rec.id).length
   const all = rec.group.length
+  if (done >= all && isChangeRequest) {
+    // Accepted, its version marked for the seal and the parent's amended total raised, in one
+    // transaction, once; then sealed and stamped like a signature.
+    const accepted = await acceptChangeRequest(ctx, agreement, WAITING, version.id)
+    const sealed = await sealVersion(ctx as SealCtx, version.id)
+    return {
+      status: accepted.accepted ? "accepted" : "ignored",
+      signed: done,
+      of: all,
+      seal: sealed.status,
+    }
+  }
   if (done >= all) {
     await ctx.db.update("agreement_versions", version.id, { status: "signed" })
     await ctx.db.update("agreements", agreement.id, { status: "signed" })

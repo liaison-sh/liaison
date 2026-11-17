@@ -239,6 +239,7 @@ describe("every surface honours the list", () => {
     room: "",
     action: "",
     discussion: "",
+    company: crypto.randomUUID(),
   }
   const NUMBER = "AG-2026-301"
 
@@ -362,7 +363,16 @@ describe("every surface honours the list", () => {
           `SELECT count(*)::int AS n FROM app_agreements.agreements WHERE id = '${world.closed}'`,
         ),
     },
-    { surface: "activity", mechanism: "owed to the change-request task (the activity read)" },
+    {
+      surface: "activity (the company timeline's Agreements source)",
+      mechanism: "row-level security",
+      seen: async (u) =>
+        JSON.stringify(
+          await tool(u, "agreements:activity_read", { companyId: world.company, contactIds: [] }),
+        ).includes(NUMBER)
+          ? 1
+          : 0,
+    },
     {
       surface: "audit search",
       mechanism:
@@ -385,7 +395,7 @@ describe("every surface honours the list", () => {
     {
       surface: "Knowledge",
       mechanism:
-        "owed to the change-request task (the signed text's Knowledge copy, shared with the list)",
+        "owed: the signed text's copy is shared with exactly the list (agreements-sow-knowledge), but the decided handler's system run cannot write it yet, and a later list change does not reach it",
     },
     {
       surface: "entity discussions",
@@ -486,6 +496,8 @@ describe("every surface honours the list", () => {
         id: world.closed,
         number: NUMBER,
         kind: "nda",
+        status: "signed",
+        company_id: world.company,
         title: "Closed surface terms",
         org_access: "none",
       })

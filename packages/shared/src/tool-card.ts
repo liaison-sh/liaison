@@ -82,6 +82,11 @@ export interface CardGroupRow {
     limit?: number
   }
   act?: CardAction & { when?: CardCond; labelPath?: CardPath }
+  /**
+   * Further row actions after `act` (at most 2). On a row, an `ask` may take `refPath`: the
+   * rows' own `id` path, the one value it carries after its fixed words.
+   */
+  acts?: Array<CardAction & { when?: CardCond; labelPath?: CardPath; refPath?: CardPath }>
 }
 
 export interface CardTemplate {
@@ -190,6 +195,8 @@ export interface ResolvedCardGroupRow {
   cells: Record<string, ResolvedCardValue>
   links: { label: string; open?: ResolvedCardOpen; url?: string }[]
   act?: ResolvedCardAction
+  /** The row's further actions, in order. */
+  acts?: ResolvedCardAction[]
   /** Current value of each editable field, by tool parameter. */
   edit?: Record<string, { value: string | number; unit?: string }>
 }

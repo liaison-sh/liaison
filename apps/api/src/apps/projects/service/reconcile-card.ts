@@ -46,6 +46,8 @@ export interface CardInput {
   lines: readonly CardLine[]
   rateMinor: number | null
   currency: string | null
+  /** Agreements is on: a proposed line not in the plan offers itself as a change request. */
+  changeRequests?: boolean
   coverage: { withEntries: number; total: number }
   notSeen: ReadonlyArray<{ source: string; why: string }>
   excludedCount: number
@@ -235,6 +237,13 @@ export function reconcileCardFields(input: CardInput) {
             moveProjectId: l.moveTo.projectId,
             moveLabel: `Move it to ${l.moveTo.key}`,
           }
+        : {}),
+      // Work outside the plan, on a card still proposed: the person may offer it to the client
+      // as a change request (the row's own id is all the button carries).
+      ...(input.changeRequests &&
+      input.state === "proposed" &&
+      (l.kind === "unplanned" || l.kind === "other")
+        ? { offerChangeRequest: "yes" }
         : {}),
       ...(editable
         ? {

@@ -390,6 +390,26 @@ describe("the groups card", () => {
     expect(judge(card)).toContain("labelPath")
   })
 
+  it("a row's ask may carry the row's own id after its fixed words, and nothing else", () => {
+    const card = groupsCard() as { groups: { rows: Record<string, unknown> } }
+    const offer = {
+      kind: "ask",
+      label: { label: "Offer it as a change request" },
+      prompt: "Offer this line as a change request.",
+      refPath: "row.id",
+    }
+    card.groups.rows.acts = [offer]
+    expect(judge(card)).toBe("")
+    card.groups.rows.acts = [{ ...offer, refPath: "row.name" }]
+    expect(judge(card)).toContain("groups.rows.acts[0].refPath: must be the rows' own id path")
+    card.groups.rows.acts = [{ ...offer, prompt: "Offer {{row.name}}." }]
+    expect(judge(card)).toContain("groups.rows.acts[0].prompt: must be fixed text")
+    card.groups.rows.acts = [offer, offer, offer]
+    expect(judge(card)).toContain("groups.rows.acts: must list 1 to 2 actions")
+    // A card's own actions are not a row's: they carry no row id.
+    expect(judge({ ...groupsCard(), actions: [offer] })).toContain("refPath")
+  })
+
   it("refuses a row action on a gated tool without a confirm", () => {
     const card = groupsCard() as { groups: { rows: Record<string, unknown> } }
     card.groups.rows.act = {

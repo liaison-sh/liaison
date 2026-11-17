@@ -715,12 +715,15 @@ export const ToolCard: Component<ToolCardProps> = (props) => {
             )
           }}
         </For>
-        <Show when={p.row.act}>
-          {(act) => (
-            <div class="@md:col-span-full">
-              <CardActions {...actionProps([act()], `r:${p.row.id}:`)} />
-            </div>
-          )}
+        <Show when={p.row.act || p.row.acts?.length}>
+          <div class="@md:col-span-full">
+            <CardActions
+              {...actionProps(
+                [...(p.row.act ? [p.row.act] : []), ...(p.row.acts ?? [])],
+                `r:${p.row.id}:`,
+              )}
+            />
+          </div>
         </Show>
       </li>
     )

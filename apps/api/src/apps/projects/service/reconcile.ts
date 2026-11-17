@@ -14,6 +14,7 @@ import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import { orgPublicBaseUrl } from "~/lib/org-public-url"
+import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 import { LINE_SOURCE } from "./claims"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
@@ -91,6 +92,8 @@ interface Context {
   rateMinor: number | null
   currency: string | null
   sourceRepos: Array<{ provider: string; repo: string }>
+  /** Agreements is on for the org: a line not in the plan can be offered as a change request. */
+  changeRequests: boolean
 }
 
 /**
@@ -272,6 +275,7 @@ async function loadContext(args: {
     rateMinor,
     currency,
     sourceRepos: Array.isArray(plan?.source_repos) ? plan.source_repos : [],
+    changeRequests: (await getEnabledApps(orgId)).includes("agreements"),
   }
 }
 
@@ -1181,6 +1185,7 @@ function cardData(args: {
     })),
     rateMinor: money ? c.rateMinor : null,
     currency: c.currency,
+    changeRequests: c.changeRequests,
     coverage,
     notSeen: shape.notSeen,
     excludedCount: shape.excludedCount,

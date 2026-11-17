@@ -2703,7 +2703,16 @@
               "labelPath": "row.moveLabel",
               "tool": "move",
               "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
-            }
+            },
+            "acts": [
+              {
+                "kind": "ask",
+                "label": { "label": "Offer it as a change request" },
+                "prompt": "Offer this line of the planned vs done card to the client as a change request.",
+                "refPath": "row.id",
+                "when": { "path": "row.offerChangeRequest", "equals": "yes" }
+              }
+            ]
           }
         },
         "tot": {
@@ -3150,7 +3159,16 @@
               "labelPath": "row.moveLabel",
               "tool": "move",
               "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
-            }
+            },
+            "acts": [
+              {
+                "kind": "ask",
+                "label": { "label": "Offer it as a change request" },
+                "prompt": "Offer this line of the planned vs done card to the client as a change request.",
+                "refPath": "row.id",
+                "when": { "path": "row.offerChangeRequest", "equals": "yes" }
+              }
+            ]
           }
         },
         "tot": {
@@ -3483,7 +3501,16 @@
               "labelPath": "row.moveLabel",
               "tool": "move",
               "params": { "taskId": "row.moveTaskId", "projectId": "row.moveProjectId" }
-            }
+            },
+            "acts": [
+              {
+                "kind": "ask",
+                "label": { "label": "Offer it as a change request" },
+                "prompt": "Offer this line of the planned vs done card to the client as a change request.",
+                "refPath": "row.id",
+                "when": { "path": "row.offerChangeRequest", "equals": "yes" }
+              }
+            ]
           }
         },
         "tot": {
@@ -3802,7 +3829,16 @@
                 "taskId": "row.moveTaskId",
                 "projectId": "row.moveProjectId"
               }
-            }
+            },
+            "acts": [
+              {
+                "kind": "ask",
+                "label": { "label": "Offer it as a change request" },
+                "prompt": "Offer this line of the planned vs done card to the client as a change request.",
+                "refPath": "row.id",
+                "when": { "path": "row.offerChangeRequest", "equals": "yes" }
+              }
+            ]
           }
         },
         "tot": {
@@ -4132,7 +4168,16 @@
                 "taskId": "row.moveTaskId",
                 "projectId": "row.moveProjectId"
               }
-            }
+            },
+            "acts": [
+              {
+                "kind": "ask",
+                "label": { "label": "Offer it as a change request" },
+                "prompt": "Offer this line of the planned vs done card to the client as a change request.",
+                "refPath": "row.id",
+                "when": { "path": "row.offerChangeRequest", "equals": "yes" }
+              }
+            ]
           }
         },
         "tot": {

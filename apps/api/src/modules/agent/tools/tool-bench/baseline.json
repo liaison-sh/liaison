@@ -2217,7 +2217,7 @@
       "schema": 766
     },
     "projects__template_save": {
-      "desc": 643,
+      "desc": 410,
       "schema": 245
     },
     "projects__templates_list": {
@@ -3087,7 +3087,7 @@
     "C145|contrôle avant signature": "15t",
     "C145|préparer le contrat": "15tl",
     "C146|lien expiré": "15tl",
-    "C146|nouveau lien de signature": "5t",
+    "C146|nouveau lien de signature": "5",
     "C147|agreement section": "15tl",
     "C147|signed clause": "15tl",
     "C148|seal and timestamp": "15tl",

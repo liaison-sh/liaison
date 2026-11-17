@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.45.0",
+  "version": "1.46.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1929,7 +1929,7 @@
       }
     },
     "template_save": {
-      "description": "Create or replace a PROJECT TEMPLATE: the status columns, task fields and task tree a new project starts with (`instantiate_template` builds a project from it). Either describe it (statuses, fields, tasks) or copy a project with `fromProjectId` (its statuses, fields and OPEN task tree; any of statuses / fields / tasks you also pass replaces the copied one). Pass `templateId` to replace an existing template. The whole template is checked first: a task's field value is checked against the template's fields (invalid_field / unknown_field), a status label against its statuses. Not gated: the result is the saved template with its structure.",
+      "description": "Create or replace a PROJECT TEMPLATE: the status columns, task fields and task tree a new project starts with (`instantiate_template` builds a project from it). Either describe it (statuses, fields, tasks) or copy a project with `fromProjectId` (its statuses, fields and OPEN task tree; any of statuses / fields / tasks you also pass replaces the copied one). Pass `templateId` to replace an existing template.",
       "searchKeywords": ["modèle", "gabarit", "template", "enregistrer", "save"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
@@ -5919,7 +5919,7 @@
     },
     "client_report_send": {
       "deferLoading": true,
-      "description": "Send a project's client report to the client, by mail and on their portal, once a person approves it. Parks for a person's approval; no routine or policy sends one.",
+      "description": "Send a project's client report to the client, by mail and on their portal, once a person approves it. No routine or policy sends one.",
       "searchKeywords": [
         "report",
         "rapport",

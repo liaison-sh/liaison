@@ -1297,7 +1297,7 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "Quote one numbered section of a signed or sent agreement version, cut from its own text. Answers NOT_READABLE when the version has no readable text: then say you could not read it.",
+      "description": "Quote one numbered section of a signed or sent agreement version, cut from its own text.",
       "searchKeywords": [
         "passage",
         "section",
@@ -1547,7 +1547,7 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "Send a frozen agreement version for signature or acceptance to its signers, in order or all at once. Parks for a person's approval; nothing is sent if the version changed since agreement_prepare.",
+      "description": "Send a frozen agreement version for signature or acceptance to its signers, in order or all at once.",
       "searchKeywords": [
         "signer",
         "signature",
@@ -1657,7 +1657,7 @@
         "entity": "agreement",
         "idPath": "change_request.id"
       },
-      "description": "Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on. Parks for a person's approval; nothing is sent if the client wrote after the card.",
+      "description": "Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on.",
       "searchKeywords": [
         "avenant",
         "scope",
@@ -1711,7 +1711,7 @@
           "rate_minor": {
             "type": "string",
             "pattern": "^[0-9]{1,15}$",
-            "description": "The hourly rate from the signed text, in minor units, as a string."
+            "description": "The hourly rate from the signed text, in minor units."
           },
           "reply": {
             "type": "object",
@@ -1798,7 +1798,7 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. Parks for a person's approval.",
+      "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working.",
       "searchKeywords": [
         "remind",
         "reminder",
@@ -1857,7 +1857,7 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand. Parks for a person's approval.",
+      "description": "Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code.",
       "searchKeywords": [
         "lien",
         "link",
@@ -1911,7 +1911,7 @@
         "idPath": "agreement.id",
         "paramPath": "id"
       },
-      "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. Parks for a person's approval.",
+      "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay.",
       "searchKeywords": [
         "annuler",
         "void",
@@ -1980,7 +1980,7 @@
         "entity": "agreement",
         "idPath": "agreement.id"
       },
-      "description": "Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent. IP and browser need agreements:evidence:devices.",
+      "description": "Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent.",
       "searchKeywords": [
         "preuve",
         "evidence",
@@ -2015,7 +2015,7 @@
         "entity": "agreement",
         "paramPath": "id"
       },
-      "description": "Check a signed agreement's evidence: re-hash the stored files and recompute the seal. A mismatch is recorded and reported, never repaired.",
+      "description": "Check a signed agreement's evidence: re-hash the stored files and recompute the seal.",
       "searchKeywords": [
         "vérifier",
         "verify",

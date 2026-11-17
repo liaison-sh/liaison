@@ -142,7 +142,9 @@ describe("projects.manifest", () => {
     //   a client action target.
     // 1.45.0: a rejected or expired send card closes the draft, opening a reports share turns
     //   the report routine on in the org's time zone, a client's milestone answer moves nothing.
-    expect(projectsManifest.version).toBe("1.45.0")
+    // 1.46.0: descriptions that repeated what the result says (a send parks, a template's
+    //   checks) are cut.
+    expect(projectsManifest.version).toBe("1.46.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

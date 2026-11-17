@@ -26,7 +26,11 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, rowsOf } from "~/seed/factories/people/actors"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
-import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
+import {
+  activeAppNames,
+  installFromDist,
+  uninstallAppsSince,
+} from "../../../../test-support/seed/install-dist-apps"
 import { STUDIO_DATED_LINES, studioPlan } from "./plan"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
@@ -68,6 +72,9 @@ async function call<T = Record<string, any>>(who: string, method: string, input:
   return out
 }
 
+/** The apps active before the world seed: the ones it adds are removed after the file. */
+let appsBeforeSeed = new Set<string>()
+
 beforeAll(async () => {
   if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
   DemoModeTestAccess.set(true)
@@ -78,6 +85,8 @@ beforeAll(async () => {
     )
   }
   await installFromDist("invoicing", crypto.randomUUID())
+  // What the world seed installs from the catalog (its needs name the agreements app).
+  appsBeforeSeed = await activeAppNames()
   const slug = `studio-fig-${crypto.randomUUID().slice(0, 8)}`
   const result = await seedDemoWorld({
     orgSlug: slug,
@@ -101,7 +110,8 @@ beforeAll(async () => {
   )
 }, 900_000)
 
-afterAll(() => {
+afterAll(async () => {
+  await uninstallAppsSince(appsBeforeSeed)
   DemoModeTestAccess.set(null)
 })
 

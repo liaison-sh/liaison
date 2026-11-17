@@ -25,7 +25,11 @@ import { seedReconciliation } from "~/seed/factories/projects/reconcile"
 import { seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import * as minimal from "~/seed/tiers/minimal"
 import { invoiceCarrying } from "~/tests/helpers/projects-claims"
-import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
+import {
+  activeAppNames,
+  installFromDist,
+  uninstallAppsSince,
+} from "../../../../test-support/seed/install-dist-apps"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -124,6 +128,9 @@ async function drafted(key: string, month: string, latestOn: string, ref?: strin
   })
 }
 
+/** The apps active before the world seed: the ones it adds are removed after the file. */
+let appsBeforeSeed = new Set<string>()
+
 beforeAll(async () => {
   if (DB_URL === "") throw new Error("DATABASE_URL must be set for this test")
   DemoModeTestAccess.set(true)
@@ -134,6 +141,8 @@ beforeAll(async () => {
     )
   }
   await installFromDist("invoicing", crypto.randomUUID())
+  // What the world seed installs from the catalog (its needs name the agreements app).
+  appsBeforeSeed = await activeAppNames()
   const slug = `studio-money-${crypto.randomUUID().slice(0, 8)}`
   const result = await seedDemoWorld({
     orgSlug: slug,
@@ -168,7 +177,8 @@ beforeAll(async () => {
   }
 }, 900_000)
 
-afterAll(() => {
+afterAll(async () => {
+  await uninstallAppsSince(appsBeforeSeed)
   DemoModeTestAccess.set(null)
 })
 

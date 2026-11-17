@@ -5,7 +5,9 @@
 // (`bash scripts/build-bundled-app.sh <app>` writes it under the app's `dist/`).
 import { readFileSync } from "node:fs"
 import path from "node:path"
-import { installAppFromTarball } from "~/modules/apps/install-service"
+import { withSystemDb } from "~/db/privileged"
+import { activeVersionRows } from "~/modules/apps/activation"
+import { installAppFromTarball, uninstallApp } from "~/modules/apps/install-service"
 import { ensureBundledAppBuilt } from "~/tests/helpers/bundled-app-build"
 import { bakeIntoTestCatalog } from "~/tests/helpers/test-app-catalog"
 
@@ -37,4 +39,21 @@ export async function installFromDist(name: string, installedBy: string): Promis
     requireSignature: false,
     sourceUrl: `dist:${name}@${manifest.version}`,
   })
+}
+
+/** The installed apps active on the instance now (in-tree apps hold no install row). */
+export async function activeAppNames(): Promise<Set<string>> {
+  const rows = await withSystemDb("test-active-apps", (db) => activeVersionRows(db))
+  return new Set(rows.map((r) => r.name))
+}
+
+/**
+ * Uninstall every app active now that was not active in `before`. A world seed
+ * installs the catalog apps its needs name, and an install is instance-wide:
+ * left in place, every org a later file in the same process seeds holds them.
+ */
+export async function uninstallAppsSince(before: Set<string>): Promise<void> {
+  for (const name of await activeAppNames()) {
+    if (!before.has(name)) await uninstallApp({ name })
+  }
 }

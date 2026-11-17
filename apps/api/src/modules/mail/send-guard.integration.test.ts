@@ -1509,6 +1509,26 @@ describe("a delivery failure for one recipient of a group mail", () => {
   }, 60_000)
 })
 
+describe("any tool's pinned send check reads on its card", () => {
+  it("an app tool's card whose client wrote after it says so before anyone approves", async () => {
+    // An app's gated send (a reply with an offer) pins the same check as a mail draft, with its
+    // addresses and no `to`: the card reads it as a draft's card does.
+    const to = unique("app-tool")
+    const id = await stageCompose(to, { followUp: {} })
+    await sql`
+      UPDATE kernel.approval_requests
+         SET tool_name = 'maison-app:offer_send',
+             current_payload = (current_payload - 'to' - 'cc' - 'bcc')
+                               || jsonb_build_object('reply', jsonb_build_object('body', 'Hello'))
+       WHERE id = ${id}`
+    await seedInbound(to, { subject: "One more thing", body: "Also, could you add a page?" })
+    const card = await withRlsContext(admin, (tx) =>
+      getApproval(tx as never, { orgId, userId: admin.userId, requestId: id, sendGuards: true }),
+    )
+    expect((card as { sendGuard?: { state: string } } | null)?.sendGuard?.state).toBe("replied")
+  }, 60_000)
+})
+
 describe("a reply through a ticket inbox", () => {
   it("stage a follow-up, ingest an inbound on a ticket inbox from that address, approve: no provider call", async () => {
     const to = unique("ticket")

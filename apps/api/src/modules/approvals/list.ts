@@ -380,7 +380,16 @@ export async function listApprovals(
 
 // ── The send check, as a card shows it ──────────────────────────────────────
 
-const GUARDED_SENDS = new Set(["mail:compose", "mail:reply"])
+/**
+ * Who a guarded send goes to: a mail draft's to, cc and bcc; any other tool that pins the
+ * check (an app's reply with an offer) has no recipient fields, so the check's own addresses.
+ */
+function guardedRecipients(payload: Record<string, unknown>): string[] {
+  const listed = recipientsOf(payload.to, payload.cc, payload.bcc)
+  if (listed.length > 0) return listed
+  const pinned = (payload.sendGuard as { addresses?: unknown } | undefined)?.addresses
+  return recipientsOf(pinned)
+}
 const QUOTE_CHARS = 200
 const GUARD_STATES = new Set<ApprovalSendGuard["state"]>([
   "clear",
@@ -518,9 +527,7 @@ async function readSendGuards(
     const guard = out.get(row.id)
     if (!guard || row.status !== "pending") return []
     const payload = row.current_payload
-    const addresses = recipientsOf(payload.to, payload.cc, payload.bcc).map((a) =>
-      a.trim().toLowerCase(),
-    )
+    const addresses = guardedRecipients(payload).map((a) => a.trim().toLowerCase())
     return [{ guard, addresses }]
   })
   if (pending.length === 0) return out
@@ -559,7 +566,9 @@ async function readSendGuardVerdicts(
 ): Promise<Map<string, SendGuardVerdict>> {
   const out = new Map<string, SendGuardVerdict>()
   const guarded = rows.filter(
-    (r) => GUARDED_SENDS.has(r.tool_name) && isPinnedSendGuard(r.current_payload?.sendGuard),
+    // Every tool whose call pinned the send check, whatever its app: the mail drafts and an
+    // app's own gated send alike.
+    (r) => isPinnedSendGuard(r.current_payload?.sendGuard),
   )
   if (guarded.length === 0) return out
   const closed = guarded.filter((r) => r.status !== "pending")
@@ -580,7 +589,7 @@ async function readSendGuardVerdicts(
     return {
       ...(zones.get(r.requested_by) ?? { locale: null, timeZone: null }),
       guard: payload.sendGuard as PinnedSendGuard,
-      recipients: recipientsOf(payload.to, payload.cc, payload.bcc),
+      recipients: guardedRecipients(payload),
       toolName: r.tool_name,
     }
   })

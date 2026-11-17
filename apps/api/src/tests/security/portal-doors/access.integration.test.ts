@@ -29,6 +29,7 @@ import {
   invitePortalPerson,
   PORTAL_INVITES_PER_HOUR,
   PortalAccessError,
+  removePortalPerson,
   restorePortalAccess,
   setPortalShare,
 } from "~/modules/portal/access"
@@ -205,6 +206,66 @@ describe("inviting a client", () => {
         ),
       ),
     ).toBe("PORTAL_EMAIL_IS_STAFF")
+  })
+
+  it("NT-29 moving a person to another company: removed from the first, invited to the second, old sessions end and nothing carries over", async () => {
+    const email = `mover-${w.orgId.slice(0, 8)}@doors.example.com`
+    const invite = (companyId: string) =>
+      asAdmin((tx) =>
+        invitePortalPerson({
+          orgId: w.orgId,
+          actorId: w.admin.userId,
+          db: tx,
+          companyId,
+          email,
+          name: "Mover Client",
+        }),
+      )
+    const first = await invite(w.companyA)
+    const old = await createPortalSession(first.userId, w.orgId)
+    await asAdmin((tx) =>
+      removePortalPerson({ orgId: w.orgId, actorId: w.admin.userId, db: tx, userId: first.userId }),
+    )
+    // The contact made for company A stays A's; company B gets its own contact.
+    const second = await refusalCode(invite(w.companyB))
+    expect(second).toBe("CONTACT_NOT_THIS_COMPANY")
+    await asAdmin((tx) =>
+      updateContact(tx, {
+        orgId: w.orgId,
+        userId: w.admin.userId,
+        contactId: first.contactId,
+        updates: { companyId: w.companyB },
+      }),
+    )
+    const moved = await invite(w.companyB)
+    expect(moved.userId).toBe(first.userId)
+    const oldRead = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${old.accessToken}` },
+    })
+    expect(oldRead.status).toBe(401)
+    const fresh = await createPortalSession(moved.userId, w.orgId)
+    const now = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${fresh.accessToken}` },
+    })
+    expect(now.status).toBe(200)
+    const company = await withPortalContext({ orgId: w.orgId, userId: moved.userId }, async (tx) =>
+      extractRows<{ company_id: string }>(
+        await tx.execute(drizzleSql`SELECT company_id FROM portal.me`),
+      ).map((r) => r.company_id),
+    )
+    expect(company).toEqual([w.companyB])
+    // Nothing read in the first company comes along: no notice read, no sign-in time.
+    const [row] = extractRows<{
+      company_id: string
+      notice_ack_at: string | null
+      last_sign_in_at: string | null
+    }>(
+      await sql.unsafe(
+        `SELECT company_id, notice_ack_at, last_sign_in_at FROM kernel.portal_people WHERE user_id = $1`,
+        [moved.userId],
+      ),
+    )
+    expect(row).toEqual({ company_id: w.companyB, notice_ack_at: null, last_sign_in_at: null })
   })
 
   it("NT-61 the fiftieth invitation in an hour goes, the next is refused; an agent's always parks", async () => {

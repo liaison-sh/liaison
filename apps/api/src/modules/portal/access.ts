@@ -153,12 +153,17 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
       422,
     )
   }
-  // Who already holds the address in this org: a member, or a client of a company.
+  // Who already holds the address in this org: a member, a client with access, or a client
+  // whose access was removed (who may be invited again, to this company or another).
   const [holder] = await withPrivilegedDb(input.orgId, "portal-invite-holder", async (tx) =>
-    extractRows<{ user_type: string; company_id: string | null }>(
+    extractRows<{ id: string; user_type: string; company_id: string | null; open: boolean }>(
       await tx.execute(
-        sql`SELECT user_type, company_id FROM ${K()}.users
-             WHERE org_id = ${input.orgId} AND lower(email) = ${email} LIMIT 1`,
+        sql`SELECT u.id, u.user_type, u.company_id,
+                   (u.status = 'active' AND EXISTS (
+                      SELECT 1 FROM ${K()}.portal_people p
+                       WHERE p.user_id = u.id AND p.removed_at IS NULL)) AS open
+              FROM ${K()}.users u
+             WHERE u.org_id = ${input.orgId} AND lower(u.email) = ${email} LIMIT 1`,
       ),
     ),
   )
@@ -168,18 +173,19 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
       `Nobody was invited: ${email} belongs to a member of this organisation, who never signs in to the portal.`,
     )
   }
-  if (holder && holder.company_id !== input.companyId) {
+  if (holder?.open && holder.company_id !== input.companyId) {
     throw new PortalAccessError(
       "PORTAL_EMAIL_IN_USE",
-      `Nobody was invited: ${email} already has portal access for another company. One address reaches one company's portal; links sent for a document still reach them.`,
+      `Nobody was invited: ${email} already has portal access for another company. One address reaches one company's portal; links sent for a document still reach them. Next: remove them from that company's portal first.`,
     )
   }
-  if (holder) {
+  if (holder?.open) {
     throw new PortalAccessError(
       "EMAIL_IS_PORTAL_USER",
       `Nobody was invited: ${email} already has access to ${company.name}'s portal.`,
     )
   }
+  const returning = holder && !holder.open ? holder.id : null
   if (!(await takeInvite(input.orgId))) {
     throw new PortalAccessError(
       "PORTAL_INVITE_LIMIT",
@@ -211,6 +217,38 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
   const contactId = contact.id
 
   const out = await withPrivilegedDb(input.orgId, "portal-invite", async (tx) => {
+    if (returning) {
+      // A person removed before comes back as a new start: this company, no session, no
+      // notice read, nothing of what another company shared with them.
+      const [moved] = extractRows<{ id: string }>(
+        await tx.execute(sql`
+          UPDATE ${K()}.users
+             SET company_id = ${input.companyId}, status = 'active', name = ${name},
+                 auth_version = auth_version + 1
+           WHERE id = ${returning} AND org_id = ${input.orgId} AND user_type = 'external'
+          RETURNING id`),
+      )
+      if (!moved) throw new PortalAccessError("not_found", `No portal account for ${email}.`, 404)
+      await tx.execute(sql`DELETE FROM ${K()}.sessions WHERE user_id = ${returning}`)
+      await tx.execute(sql`
+        UPDATE ${K()}.portal_people
+           SET company_id = ${input.companyId}, contact_id = ${contactId}, title = ${input.title ?? null},
+               invited_by_user_id = ${input.actorId}, invited_at = now(), removed_at = NULL,
+               notice_ack_at = NULL, notice_version = NULL, last_sign_in_at = NULL,
+               sees_only_share_ids = NULL, sees_only_contact_ids = NULL
+         WHERE user_id = ${returning} AND org_id = ${input.orgId}`)
+      await tx.queueEvent({
+        app: "kernel",
+        entity: "portal_user",
+        action: "invited",
+        orgId: input.orgId,
+        actorId: input.actorId,
+        actorType: "user",
+        entityId: returning,
+        data: { companyId: input.companyId, contactId },
+      })
+      return { userId: returning, contactId }
+    }
     const made = await createExternalUser(tx, {
       orgId: input.orgId,
       companyId: input.companyId,
@@ -240,6 +278,7 @@ export async function invitePortalPerson(input: InviteInput): Promise<InviteResu
     return { userId: made.userId, contactId }
   })
 
+  if (returning) invalidateAuthCache(returning)
   const mailed = await sendInviteMail(input.orgId, email, company.name).then(
     () => true,
     (err) => {

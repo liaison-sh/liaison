@@ -235,7 +235,7 @@ export async function readersTaintGap(opts: {
       const members = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.orgId, opts.orgId))
+        .where(and(eq(users.orgId, opts.orgId), eq(users.userType, "member")))
       const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
       const collector = gapCollector()
       for (const member of members) {
@@ -550,7 +550,7 @@ export async function loadOrgMemberGrants(
   opts: { userIds?: readonly string[] } = {},
 ): Promise<{ id: string; scopes: string[] }[]> {
   return withPrivilegedDb(orgId, "scope-taint-org-member-grants", async (db) => {
-    const conditions = [eq(users.orgId, orgId)]
+    const conditions = [eq(users.orgId, orgId), eq(users.userType, "member")]
     if (opts.userIds) {
       if (opts.userIds.length === 0) return []
       conditions.push(inArray(users.id, [...opts.userIds]))

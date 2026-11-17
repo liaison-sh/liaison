@@ -131,7 +131,7 @@ async function exportUsers(priv: Priv, orgId: string) {
       .from(users)
       .innerJoin(userRoles, and(eq(userRoles.userId, users.id), eq(userRoles.orgId, orgId)))
       .innerJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(and(eq(users.orgId, orgId), eq(users.status, "active"))),
+      .where(and(eq(users.orgId, orgId), eq(users.status, "active"), eq(users.userType, "member"))),
   )
   const byEmail = new Map<string, { email: string; name: string; role: string }>()
   for (const r of rows) if (!byEmail.has(r.email)) byEmail.set(r.email, r)

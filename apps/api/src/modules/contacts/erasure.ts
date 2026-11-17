@@ -52,7 +52,8 @@ export async function firstOrgAdmin(
         FROM ${drizzleSql.raw(rel("kernel", "users"))} u
         JOIN ${drizzleSql.raw(rel("kernel", "user_roles"))} ur ON ur.user_id = u.id
         JOIN ${drizzleSql.raw(rel("kernel", "roles"))} r ON r.id = ur.role_id
-       WHERE u.org_id = ${orgId}::uuid AND u.status = 'active' AND u.id <> ${exceptUserId}::uuid
+       WHERE u.org_id = ${orgId}::uuid AND u.status = 'active' AND u.user_type = 'member'
+         AND u.id <> ${exceptUserId}::uuid
          AND (r.name = 'admin' OR EXISTS (
                SELECT 1 FROM ${drizzleSql.raw(rel("kernel", "role_scope_grants"))} g
                 WHERE g.role_id = r.id AND g.scope IN ('*', 'kernel', 'kernel:*', 'kernel:users:admin')))

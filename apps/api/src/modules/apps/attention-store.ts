@@ -286,7 +286,7 @@ export interface AttentionStoreDeps {
 export async function listEveryActiveUser(orgId: string): Promise<string[]> {
   return withPrivilegedDb(orgId, "attention-store:list-users", async (tx) => {
     const rows = (await tx.execute(
-      sql`SELECT id::text AS id FROM ${K}.users WHERE org_id = ${orgId} AND status = 'active'`,
+      sql`SELECT id::text AS id FROM ${K}.users WHERE org_id = ${orgId} AND status = 'active' AND user_type = 'member'`,
     )) as unknown as Array<{ id: string }>
     return rows.map((r) => r.id)
   })

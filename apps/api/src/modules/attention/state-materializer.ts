@@ -90,7 +90,7 @@ async function defaultListOrgsWithActiveUsers(): Promise<string[]> {
     "state-materializer:list-orgs",
     async (tx: PrivilegedDb) => {
       const rows = (await tx.execute(
-        sql`SELECT DISTINCT org_id FROM ${K}.users WHERE status = 'active'`,
+        sql`SELECT DISTINCT org_id FROM ${K}.users WHERE status = 'active' AND user_type = 'member'`,
       )) as unknown as Array<{ org_id: string }>
       return rows.map((r) => r.org_id)
     },
@@ -105,7 +105,7 @@ export async function defaultListActiveUsers(orgId: string): Promise<string[]> {
   return withPrivilegedDb(orgId, "state-materializer:list-users", async (tx: PrivilegedDb) => {
     const rows = (await tx.execute(
       sql`SELECT u.id FROM ${K}.users u
-          WHERE u.org_id = ${orgId} AND u.status = 'active'`,
+          WHERE u.org_id = ${orgId} AND u.status = 'active' AND u.user_type = 'member'`,
     )) as unknown as Array<{ id: string }>
     return rows.map((r) => r.id)
   })

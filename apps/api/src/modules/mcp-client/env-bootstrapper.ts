@@ -71,7 +71,7 @@ async function resolveCreatedBy(conn: ParsedConnection): Promise<string | null> 
     const rows = await db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.orgId, conn.orgId))
+      .where(and(eq(users.orgId, conn.orgId), eq(users.userType, "member")))
       .limit(1)
     return rows[0]?.id ?? null
   })

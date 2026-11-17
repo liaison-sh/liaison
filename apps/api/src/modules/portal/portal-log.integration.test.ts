@@ -12,7 +12,12 @@ import { withRlsContext } from "~/db/rls"
 import { createPortalSession } from "~/modules/auth/auth"
 import { buildDataSubjectBundle } from "~/modules/export/data-subject-export-tool"
 import { purgeExpiredAuditLog, purgeExpiredPortalLog } from "~/modules/org/audit-retention"
-import { PortalAccessError, readPortalAccessLog, setPortalSettings } from "~/modules/portal/access"
+import {
+  PortalAccessError,
+  readPortalAccessLog,
+  recordPortalAccess,
+  setPortalSettings,
+} from "~/modules/portal/access"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
@@ -102,6 +107,29 @@ describe("what the access log records", () => {
     if ("error" in bundle) throw new Error(bundle.error.message)
     expect(bundle.records.portal.account?.userId).toBe(w.clientA.userId)
     expect(bundle.records.portal.accessLog.map((r) => r.action)).toContain("portal.view")
+  })
+})
+
+describe("a sign-in's record", () => {
+  it("a sign-in writes its row and the person's last sign-in time", async () => {
+    recordPortalAccess({ orgId: w.orgId, userId: w.clientA2.userId, action: "portal.sign_in" })
+    let at: string | null = null
+    for (let i = 0; i < 50 && !at; i++) {
+      await new Promise((r) => setTimeout(r, 20))
+      at =
+        extractRows<{ at: string | null }>(
+          await sql.unsafe(
+            `SELECT last_sign_in_at AS at FROM kernel.portal_people WHERE user_id = $1`,
+            [w.clientA2.userId],
+          ),
+        )[0]?.at ?? null
+    }
+    expect(at).not.toBeNull()
+    const rows = await sql.unsafe(
+      `SELECT 1 FROM kernel.audit_log WHERE actor_id = $1 AND action = 'portal.sign_in'`,
+      [w.clientA2.userId],
+    )
+    expect(rows).toHaveLength(1)
   })
 })
 

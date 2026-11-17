@@ -983,16 +983,22 @@ export function recordPortalAccess(input: {
   entityId?: string
   userAgent?: string | null
 }): void {
-  void withPrivilegedDb(input.orgId, "portal-access-log", (tx) =>
-    tx.execute(sql`
+  void withPrivilegedDb(input.orgId, "portal-access-log", async (tx) => {
+    await tx.execute(sql`
       INSERT INTO ${K()}.audit_log (org_id, actor_type, actor_id, app, action, entity_type, entity_id, metadata)
       SELECT ${input.orgId}, 'external', u.id, 'portal', ${input.action},
              ${input.entityType ?? null}, ${input.entityId ?? null},
              jsonb_build_object('companyId', u.company_id::text,
                                 'device', jsonb_build_object('userAgent', ${(input.userAgent ?? "").slice(0, 300)}::text))
         FROM ${K()}.users u
-       WHERE u.id = ${input.userId} AND u.org_id = ${input.orgId} AND u.user_type = 'external'`),
-  ).catch((err) =>
+       WHERE u.id = ${input.userId} AND u.org_id = ${input.orgId} AND u.user_type = 'external'`)
+    // When they last signed in: what a decision's freshness is judged against.
+    if (input.action === "portal.sign_in") {
+      await tx.execute(sql`
+        UPDATE ${K()}.portal_people SET last_sign_in_at = now()
+         WHERE user_id = ${input.userId} AND org_id = ${input.orgId} AND removed_at IS NULL`)
+    }
+  }).catch((err) =>
     log.error({ err, orgId: input.orgId, userId: input.userId }, "portal access log write failed"),
   )
 }

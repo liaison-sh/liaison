@@ -69,7 +69,7 @@ export async function agreementImport(ctx: AgreementsCtx, p: ImportParams) {
     // The file could not be read by the caller: nothing is left half-imported.
     await ctx.db.update("agreements", id, { status: "withdrawn" })
     return refusal(
-      "FILE_NOT_READABLE",
+      "NOT_READABLE",
       `The file ${p.file_id} could not be read by you, so ${number} was not imported (it is withdrawn). Upload the PDF again and import it.`,
     )
   }

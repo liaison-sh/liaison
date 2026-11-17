@@ -87,7 +87,7 @@ describe("importing a past contract", () => {
       title: "Old NDA",
       file_id: UPLOAD,
     })
-    expect(out).toMatchObject({ status: "error", error: { code: "FILE_NOT_READABLE" } })
+    expect(out).toMatchObject({ status: "error", error: { code: "NOT_READABLE" } })
     const rows = (await unreadable.db.findMany("agreements", {})) as Array<{ status: string }>
     expect(rows.every((r) => r.status !== "imported")).toBe(true)
   })

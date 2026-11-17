@@ -491,6 +491,9 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // A quote's outcome: set once, on a quote only.
   OUTCOME_ALREADY_SET: 409,
   NOT_A_QUOTE: 409,
+  // An imported agreement is filed from its PDF, with its dates as days.
+  FILE_REQUIRED: 400,
+  INVALID_DATE: 400,
   SIGNERS_REQUIRED: 400,
   TOO_MANY_SIGNERS: 400,
   INVALID_SIGNER: 400,

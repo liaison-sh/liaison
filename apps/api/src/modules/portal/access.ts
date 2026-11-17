@@ -407,7 +407,7 @@ function notThisCompany(company: string): PortalAccessError {
   )
 }
 
-/** Refuses a share whose object is not this company's, as the caller reads it (S799l). */
+/** Refuses a share whose object is not this company's, as the caller reads it. */
 async function assertShareable(input: ShareInput, company: CompanyRow): Promise<void> {
   const id = input.objectId
   if (!id) return

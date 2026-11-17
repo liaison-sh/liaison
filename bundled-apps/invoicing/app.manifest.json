@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.33.0",
+  "version": "0.34.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1404,6 +1404,7 @@
         },
         "quote_line_position": "integer?",
         "agreement_ref": "text?",
+        "change_request_ref": "text?",
         "document_id": {
           "type": "uuid",
           "required": false,
@@ -1419,7 +1420,8 @@
       "constraints": {
         "unique": [
           ["billing_project_id", "position"],
-          { "columns": ["task_id"], "where": "task_id IS NOT NULL" }
+          { "columns": ["task_id"], "where": "task_id IS NOT NULL" },
+          { "columns": ["change_request_ref"], "where": "change_request_ref IS NOT NULL" }
         ]
       },
       "indexes": [["document_id"]]
@@ -2662,7 +2664,8 @@
                 "percent": { "type": "number", "description": "Or a percent of the quote's total excl. VAT." },
                 "taskId": { "type": "string", "description": "Milestones and the final: the task whose completion invoices it." },
                 "quoteLinePosition": { "type": "integer" },
-                "taxRateBp": { "type": "integer", "description": "A VAT rate other than the usual one, in basis points." }
+                "taxRateBp": { "type": "integer", "description": "A VAT rate other than the usual one, in basis points." },
+                "changeRequestId": { "type": "string", "description": "An accepted amendment's milestone already on the plan: its change request. Its amount adds to the quote's total." }
               },
               "required": ["kind", "label"],
               "additionalProperties": false
@@ -2689,6 +2692,29 @@
           { "label": { "label": "Milestones" }, "value": "{{result.milestonesTotal}}", "format": "money" },
           { "label": { "label": "Advances" }, "value": "{{result.advancesTotal}}", "format": "money" }
         ]
+      }
+    },
+    "billing_step_add": {
+      "description": "Add one milestone to a project's billing plan for a change request the client accepted, billed when its task is done; once per change request. Called by the agreements app only, as the change request's sender.",
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "billingStepAddHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "writesToTable": "app_invoicing.billing_steps",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string" },
+          "changeRequestId": { "type": "string" },
+          "label": { "type": "string" },
+          "amountMinor": { "type": ["integer", "string"], "description": "Excl. VAT, in minor units." },
+          "currency": { "type": "string" },
+          "taskId": { "type": "string" },
+          "taxRateBp": { "type": "integer" }
+        },
+        "required": ["projectId", "changeRequestId", "label", "amountMinor", "taskId"],
+        "additionalProperties": false
       }
     },
     "milestone_draft_create": {
@@ -5187,6 +5213,22 @@
         "summary": "Mark quote {{params.document_id}} {{params.outcome}}"
       }
     },
+    "client_action_view_get": {
+      "description": "What a client is shown on a quote's acceptance link: its title, summary and issued PDF (internal: the kernel's client action page, which fingerprints the PDF itself).",
+      "requiredScopes": ["invoicing:documents:read"],
+      "handler": "quoteClientActionViewHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "timeoutMs": 5000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "targetType": { "type": "string" },
+          "targetId": { "type": "string" }
+        },
+        "required": ["targetType", "targetId"]
+      }
+    },
     "documents_mark_paid": {
       "focusCore": true,
       "description": "Mark a document as paid (full payment recorded).",
@@ -7369,6 +7411,13 @@
       "timeoutMs": 120000
     }
   },
+  "clientActionTargets": [
+    {
+      "type": "document",
+      "kinds": ["accept"],
+      "viewTool": "client_action_view_get"
+    }
+  ],
   "contract_calls": [
     {
       "contract": "einvoicing-pa@1",

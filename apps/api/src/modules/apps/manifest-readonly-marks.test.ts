@@ -259,6 +259,7 @@ const READ_ONLY: Record<string, string[]> = {
   calls: ["calls_segments_since", "calls_list", "webhook_info"],
   invoicing: [
     "activity_read", // a timeline read the kernel makes, in a read-only savepoint
+    "client_action_view_get", // a quote as its acceptance link shows it, read by the kernel
     "documents_search",
     "documents_get",
     "documents_for_orders",

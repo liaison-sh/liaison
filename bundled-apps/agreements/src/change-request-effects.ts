@@ -6,7 +6,10 @@
 //   1. the task: one milestone task in the parent's project, sized by the change request's
 //      hours when the project uses time and budgets, with no size otherwise;
 //   2. the time plan: when the project has a whole-project timebox, that timebox grows by the
-//      change request's hours.
+//      change request's hours;
+//   3. the billing step: when the project has a billing plan, one milestone for the change
+//      request's price, billed when the task is done (invoicing's `billing_step_add`, once per
+//      change request).
 //
 // Never anything else: no switch is turned on, no invoice is made, nothing is marked started.
 //
@@ -27,7 +30,7 @@
 // projects answers by its own state: a project without time and budgets refuses with
 // `planning_off`, read here as "no time plan".
 
-import { CHANGE_REQUEST } from "./change-requests"
+import { CHANGE_REQUEST, changeRequestPrice } from "./change-requests"
 import { type AgreementsCtx, bridgeAnswer } from "./ctx"
 
 const TARGET_TYPE = "agreement_version"
@@ -35,6 +38,13 @@ const TARGET_TYPE = "agreement_version"
 export const CLAIM_STALE_MS = 15 * 60 * 1000
 /** Answers of the time plan call that mean the project has no time plan. */
 const NO_TIME_PLAN = new Set(["planning_off", "feature_off"])
+/** Answers of the billing step call that mean the project is not billed by a plan. */
+const NO_BILLING_STEP = new Set([
+  "no_billing_plan",
+  "plan_on_rate_project",
+  "tool_not_found",
+  "app_disabled",
+])
 
 interface CrRow {
   id: string
@@ -49,7 +59,11 @@ interface CrRow {
   effects_task_id?: string | null
   effects_timebox_minutes?: number | null
   effects_time_plan?: string | null
+  effects_billing?: string | null
   effects_done_at?: string | null
+  price_minor?: string | number | null
+  rate_minor?: string | number | null
+  currency?: string | null
 }
 
 interface ParentRow {
@@ -71,6 +85,7 @@ export interface EffectsOutcome {
   change_request: string
   task_id?: string | null
   time_plan?: string | null
+  billing?: string | null
   message: string
 }
 
@@ -101,7 +116,7 @@ async function callAsSender(
   if (!ctx.client_actions_call_as_sender)
     return {
       status: "error",
-      error: { code: "UNAVAILABLE", message: "This host cannot call as the sender." },
+      error: { code: "SENDER_CALL_UNAVAILABLE", message: "This host cannot call as the sender." },
     }
   return bridgeAnswer<CallAnswer>(
     await ctx.client_actions_call_as_sender({
@@ -169,6 +184,7 @@ export async function runChangeRequestEffects(
       change_request: cr.number,
       task_id: cr.effects_task_id ?? null,
       time_plan: cr.effects_time_plan ?? null,
+      billing: cr.effects_billing ?? null,
       message: `${cr.number}'s work was already added.`,
     }
   const mine = await claim(ctx, cr, now)
@@ -194,6 +210,7 @@ export async function runChangeRequestEffects(
       change_request: cr.number,
       task_id: (extra.effects_task_id as string | undefined) ?? cr.effects_task_id ?? null,
       time_plan: (extra.effects_time_plan as string | undefined) ?? cr.effects_time_plan ?? null,
+      billing: (extra.effects_billing as string | undefined) ?? cr.effects_billing ?? null,
       message: note,
     }
   }
@@ -311,12 +328,48 @@ export async function runChangeRequestEffects(
     }
   }
   if (timePlan === null) timePlan = "none"
+  if (timePlan !== cr.effects_time_plan)
+    await record(ctx, cr, mine, { effects_time_plan: timePlan })
 
+  // 3. The billing step, once the task exists: invoicing adds it once per change request (a
+  //    resumed call answers the step the first one added).
+  let billing = cr.effects_billing ?? null
+  if (billing === null) {
+    const price = changeRequestPrice(cr as never)
+    if (price <= 0n) billing = "none"
+    else {
+      const step = await callAsSender(
+        ctx,
+        version.id,
+        "invoicing:billing_step_add",
+        {
+          projectId,
+          changeRequestId: cr.id,
+          label: `${cr.number}: ${cr.title ?? "change request"}`,
+          amountMinor: price.toString(),
+          ...(cr.currency ? { currency: cr.currency } : {}),
+          taskId,
+        },
+        `change_request:${cr.id}:billing_step`,
+      )
+      if (step.status === "completed") billing = "added"
+      else if (step.status === "error" && NO_BILLING_STEP.has(step.error.code)) billing = "none"
+      else
+        return stop(
+          `${cr.number}: the task was added, its billing step was not (${step.status === "error" ? `${step.error.code}: ${step.error.message}` : "waiting on a person"}); tried again later.`,
+        )
+    }
+  }
+
+  const billed =
+    billing === "added"
+      ? " Its billing plan has one more milestone for it, invoiced when the task is done; no invoice was made."
+      : " No invoice was made."
   return finish(
     timePlan === "set" && target !== null
-      ? `${cr.number}'s milestone task was added to the project and its timebox is now ${hoursText(target)}. Nothing was turned on and no invoice was made.`
-      : `${cr.number}'s milestone task was added to the project${usesTime === true ? "" : " with no size (the project does not use time and budgets)"}. Nothing was turned on and no invoice was made.`,
-    { effects_task_id: taskId, effects_time_plan: timePlan },
+      ? `${cr.number}'s milestone task was added to the project and its timebox is now ${hoursText(target)}. Nothing was turned on.${billed}`
+      : `${cr.number}'s milestone task was added to the project${usesTime === true ? "" : " with no size (the project does not use time and budgets)"}. Nothing was turned on.${billed}`,
+    { effects_task_id: taskId, effects_time_plan: timePlan, effects_billing: billing },
   )
 }
 

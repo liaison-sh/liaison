@@ -4,8 +4,12 @@
 // and the drafts each step makes. A plan is for a fixed-price project; a project billed by the
 // hour or the day bills from planned vs done instead, so a plan on one is refused.
 //
-// - The milestone and final amounts add up to the quote's total excl. VAT. An advance does not
-//   add: it is invoiced early and deducted from the final.
+// - The milestone and final amounts add up to the quote's total excl. VAT, plus the accepted
+//   amendments the plan lists. An advance does not add: it is invoiced early and deducted from
+//   the final.
+// - An accepted amendment (a change request the client approved) adds one milestone of its own
+//   (`billing_step_add`, called by the agreements app as the change request's sender), once per
+//   change request: the step carries the change request's id, and a second call returns it.
 // - A milestone's invoice is drafted from its task only: the task must be done (a terminal status)
 //   and flagged a milestone. Hours and time spent never move it. The task is read through projects'
 //   own milestone read, which hands over no assignee, time or activity.
@@ -188,6 +192,10 @@ async function planView(ctx: MutationsCtx, projectId: string) {
       amountMinor: Number(asBig(s.amount_minor)),
       currency: String(s.currency ?? ""),
       taskId: typeof s.task_id === "string" ? s.task_id : null,
+      changeRequestId:
+        typeof s.change_request_ref === "string" && s.change_request_ref !== ""
+          ? s.change_request_ref
+          : null,
       state: stepState(s, doc),
       document: doc
         ? {
@@ -277,6 +285,8 @@ export interface PlanStepInput {
   taskId?: string | null
   quoteLinePosition?: number | null
   taxRateBp?: number | null
+  /** An accepted amendment's milestone, already on the plan: the change request it bills. */
+  changeRequestId?: string | null
 }
 
 export interface BillingPlanSetInput {
@@ -317,7 +327,14 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
     taskId: string | null
     quoteLinePosition: number | null
     taxRateBp: number | null
+    changeRequestId: string | null
   }> = []
+  // The accepted amendments on this plan, by change request: each adds its own amount once.
+  const current = await stepsOf(ctx, projectId)
+  const amendments = new Map<string, bigint>()
+  for (const s of current)
+    if (typeof s.change_request_ref === "string" && s.change_request_ref !== "")
+      amendments.set(s.change_request_ref, asBig(s.amount_minor))
   for (const [i, s] of given.entries()) {
     const kind = s.kind as StepKind
     if (kind !== "advance" && kind !== "milestone" && kind !== "final")
@@ -343,6 +360,21 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
         "invalid_step",
         `Step ${i + 1} (${label}) is a ${kind}: name the task whose completion invoices it. No plan was saved.`,
       )
+    const changeRequestId =
+      typeof s.changeRequestId === "string" && s.changeRequestId !== "" ? s.changeRequestId : null
+    if (changeRequestId !== null) {
+      const accepted = amendments.get(changeRequestId)
+      if (kind !== "milestone" || accepted === undefined)
+        return refuse(
+          "amendment_not_accepted",
+          `Step ${i + 1} (${label}) names change request ${changeRequestId}, which has no accepted amendment on this plan. No plan was saved.`,
+        )
+      if (accepted !== amount)
+        return refuse(
+          "amendment_amount_mismatch",
+          `Step ${i + 1} (${label}) bills change request ${changeRequestId} at ${formatMoneyMinor(amount, currency)}, but the client accepted ${formatMoneyMinor(accepted, currency)} excl. VAT. No plan was saved.`,
+        )
+    }
     steps.push({
       kind,
       label,
@@ -350,8 +382,13 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
       taskId: kind === "advance" ? null : taskId,
       quoteLinePosition: typeof s.quoteLinePosition === "number" ? s.quoteLinePosition : null,
       taxRateBp: typeof s.taxRateBp === "number" ? s.taxRateBp : null,
+      changeRequestId,
     })
   }
+  const listed = steps.flatMap((s) => (s.changeRequestId ? [s.changeRequestId] : []))
+  if (new Set(listed).size !== listed.length)
+    return refuse("invalid_step", "Two steps name the same change request. No plan was saved.")
+  const amended = steps.reduce((a, s) => (s.changeRequestId ? a + s.amount : a), 0n)
   if (steps.filter((s) => s.kind === "final").length > 1)
     return refuse("invalid_step", "A plan has one final step. No plan was saved.")
   if (steps.some((s) => s.kind === "advance") && !steps.some((s) => s.kind === "final"))
@@ -364,11 +401,16 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
     return refuse("invalid_step", "Two steps name the same task. No plan was saved.")
 
   const billed = steps.filter((s) => s.kind !== "advance").reduce((a, s) => a + s.amount, 0n)
-  if (billed !== quoteExcl) {
-    const diff = quoteExcl - billed
+  const expected = quoteExcl + amended
+  if (billed !== expected) {
+    const diff = expected - billed
+    const target =
+      amended > 0n
+        ? `quote ${quoteName}'s ${formatMoneyMinor(quoteExcl, currency)} plus the ${formatMoneyMinor(amended, currency)} of the accepted amendments it lists, ${formatMoneyMinor(expected, currency)}`
+        : `quote ${quoteName}'s ${formatMoneyMinor(quoteExcl, currency)}`
     return refuse(
       "plan_total_mismatch",
-      `The milestone and final amounts add up to ${formatMoneyMinor(billed, currency)}, not quote ${quoteName}'s ${formatMoneyMinor(quoteExcl, currency)} excl. VAT: ${diff > 0n ? `${formatMoneyMinor(diff, currency)} is missing` : `${formatMoneyMinor(-diff, currency)} too much`}. Advances do not count toward it. No plan was saved.`,
+      `The milestone and final amounts add up to ${formatMoneyMinor(billed, currency)}, not ${target} excl. VAT: ${diff > 0n ? `${formatMoneyMinor(diff, currency)} is missing` : `${formatMoneyMinor(-diff, currency)} too much`}. Advances do not count toward it. No plan was saved.`,
     )
   }
 
@@ -400,7 +442,6 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
   }
 
   // A step that already made a document stays as it is: the new plan must keep it unchanged.
-  const current = await stepsOf(ctx, projectId)
   const ops: Array<Record<string, unknown>> = []
   for (const s of current) {
     const locked =
@@ -443,6 +484,7 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
         task_id: s.taskId,
         quote_document_id: quoteId,
         quote_line_position: s.quoteLinePosition,
+        change_request_ref: s.changeRequestId,
         state: "planned",
       },
     })
@@ -462,6 +504,151 @@ export async function billingPlanSet(ctx: MutationsCtx, input: BillingPlanSetInp
           )} deducted at the final`
         : "") +
       ". Nothing was invoiced. Draft each milestone's invoice once its task is done (milestone_draft_create with the task); a done milestone with no invoice is raised on Home within the hour.",
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// billing_step_add
+
+export interface BillingStepAddInput {
+  projectId?: string
+  changeRequestId?: string
+  label?: string
+  /** Excl. VAT, in minor units: an integer, or its decimal string. */
+  amountMinor?: number | string
+  currency?: string
+  taskId?: string
+  taxRateBp?: number | null
+}
+
+const asMinor = (v: unknown): bigint | null => {
+  if (typeof v === "number" && Number.isSafeInteger(v)) return BigInt(v)
+  if (typeof v === "string" && /^\d{1,18}$/.test(v.trim())) return BigInt(v.trim())
+  return null
+}
+
+/**
+ * One milestone for an accepted amendment: the change request the client approved, billed when
+ * its task is done. Called by the agreements app only, as the change request's sender, once the
+ * task exists. Once per change request: a second call (a retry, a resumed run) returns the step
+ * the first one added and adds nothing. A project with no billing plan gets no step.
+ */
+export async function billingStepAdd(ctx: MutationsCtx, input: BillingStepAddInput) {
+  const projectId = typeof input.projectId === "string" ? input.projectId : ""
+  const crId = typeof input.changeRequestId === "string" ? input.changeRequestId : ""
+  if (!UUID.test(projectId))
+    return refuse(
+      "invalid_project",
+      `projectId ${projectId || "(none)"} is not a project id. No step was added.`,
+    )
+  if (!UUID.test(crId))
+    return refuse(
+      "invalid_step",
+      `changeRequestId ${crId || "(none)"} is not a change request id. No step was added.`,
+    )
+  const label = typeof input.label === "string" ? input.label.trim() : ""
+  const amount = asMinor(input.amountMinor)
+  const taskId = typeof input.taskId === "string" ? input.taskId : ""
+  if (!label || amount === null || amount <= 0n || !UUID.test(taskId))
+    return refuse(
+      "invalid_step",
+      "An amendment's step needs a label, a positive amountMinor and the task whose completion invoices it. No step was added.",
+    )
+
+  const already = async () => {
+    const existing = await one(ctx, "billing_steps", { change_request_ref: crId })
+    if (!existing) return null
+    if (existing.billing_project_id !== projectId)
+      return refuse(
+        "amendment_on_other_plan",
+        `Change request ${crId} is already billed by another project's plan. No step was added.`,
+      )
+    const view = await planView(ctx, projectId)
+    return {
+      status: "completed" as const,
+      ...view,
+      added: false,
+      position: Number(existing.position),
+      message: `Change request ${crId} is already step ${Number(existing.position)} (${String(existing.label)}) of this plan. Nothing was added.`,
+    }
+  }
+  const before = await already()
+  if (before) return before
+
+  const current = await stepsOf(ctx, projectId)
+  if (current.length === 0)
+    return refuse(
+      "no_billing_plan",
+      `Project ${projectId} has no billing plan, so the amendment adds no step. Nothing was changed.`,
+    )
+  const currency = String(current[0]?.currency ?? "EUR")
+  if (typeof input.currency === "string" && input.currency !== "" && input.currency !== currency)
+    return refuse(
+      "currency_mismatch",
+      `The amendment is in ${input.currency} and the plan in ${currency}. No step was added.`,
+    )
+  if (
+    current.some((s) => s.task_id === taskId) ||
+    (await one(ctx, "billing_steps", { task_id: taskId }))
+  )
+    return refuse(
+      "task_on_other_plan",
+      `Task ${taskId} already invoices a step of a plan. No step was added.`,
+    )
+  const read = await readMilestones(ctx, projectId, [taskId])
+  if (!read)
+    return refuse(
+      "project_unreadable",
+      `Project ${projectId} could not be read. No step was added.`,
+    )
+  if (RATE_BASES.has(read.basis))
+    return refuse(
+      "plan_on_rate_project",
+      `This project bills ${read.basis === "retainer" ? "a monthly retainer" : `by the ${read.basis === "daily" ? "day" : "hour"}`}, from planned vs done, so no billing step was added.`,
+    )
+  if (!read.tasks.some((t) => t.id === taskId))
+    return refuse(
+      "task_not_in_project",
+      `Task ${taskId} is not a task of this project. No step was added.`,
+    )
+  const quoteId = current.find((s) => typeof s.quote_document_id === "string")?.quote_document_id
+  const position = current.reduce((m, s) => Math.max(m, Number(s.position)), 0) + 1
+  try {
+    await ctx.db.batch({
+      ops: [
+        {
+          insert: "billing_steps",
+          data: {
+            billing_project_id: projectId,
+            position,
+            kind: "milestone",
+            label,
+            amount_minor: amount,
+            currency,
+            tax_rate_bp: typeof input.taxRateBp === "number" ? input.taxRateBp : null,
+            task_id: taskId,
+            quote_document_id: typeof quoteId === "string" ? quoteId : null,
+            quote_line_position: null,
+            change_request_ref: crId,
+            state: "planned",
+          },
+        },
+      ],
+    } as never)
+  } catch (err) {
+    // A concurrent call for the same change request added it first: answer that one.
+    if (!isUniqueViolation(err)) throw err
+    const raced = await already()
+    if (raced) return raced
+    throw err
+  }
+  const view = await planView(ctx, projectId)
+  return {
+    status: "completed" as const,
+    ...view,
+    added: true,
+    position,
+    message: `Added step ${position}, ${label}, ${formatMoneyMinor(amount, currency)} excl. VAT, for change request ${crId}: it is invoiced when its task is done (milestone_draft_create). Nothing was invoiced.`,
   }
 }
 

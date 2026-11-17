@@ -249,6 +249,12 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   task_gone: 404,
   task_not_in_project: 404,
   task_on_other_plan: 409,
+  // An accepted amendment's milestone (billing_step_add) and a plan that lists amendments.
+  amendment_not_accepted: 422,
+  amendment_amount_mismatch: 422,
+  amendment_on_other_plan: 409,
+  currency_mismatch: 422,
+  no_billing_plan: 409,
   // Correcting a billed line of a planned vs done invoice by a credit note.
   correction_by_hand: 422,
   line_not_found: 404,
@@ -525,6 +531,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // A signed agreement's evidence: not signed or not sealed yet, a frozen file that no longer
   // matches its fingerprint (never sealed, never repaired), a name no font can draw.
   NOT_SIGNED: 409,
+  SENDER_CALL_UNAVAILABLE: 409,
   NOT_SEALED: 409,
   DOCUMENT_CHANGED: 409,
   NOT_THIS_VERSION_FILE: 409,

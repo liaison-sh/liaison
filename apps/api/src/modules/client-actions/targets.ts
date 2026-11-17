@@ -11,6 +11,7 @@ import type { CLIENT_ACTION_KINDS } from "~/db/schema/kernel/client-actions"
 import { rootLogger } from "~/lib/logger"
 import { appBridgeManifest } from "~/modules/apps/app-registries"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { storedFileSha256 } from "./document-files"
 
 export type ClientActionKind = (typeof CLIENT_ACTION_KINDS)[number]
 
@@ -130,6 +131,7 @@ export function declaredTarget(
 }
 
 const HEX64 = /^[0-9a-f]{64}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 function asView(data: unknown): ClientActionView | null {
   if (!data || typeof data !== "object") return null
@@ -220,7 +222,22 @@ async function viewThroughTool(
     origin: "system",
     signal,
   })
-  return "data" in answer ? asView(answer.data) : null
+  if (!("data" in answer)) return null
+  return asView(await withStoredFileHash(req.orgId, answer.data))
+}
+
+/**
+ * A view that names its stored file (`pdf_file_id`) without a hash gets the file's SHA-256 from
+ * the kernel: the app shows the file, the kernel fingerprints its bytes. A view with its own
+ * hash is left as it is.
+ */
+export async function withStoredFileHash(orgId: string, data: unknown): Promise<unknown> {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data
+  const d = data as Record<string, unknown>
+  if (d.sha256 !== undefined && d.sha256 !== null) return data
+  if (typeof d.pdf_file_id !== "string" || !UUID.test(d.pdf_file_id)) return data
+  const sha = await storedFileSha256(orgId, d.pdf_file_id)
+  return sha ? { ...d, sha256: sha } : data
 }
 
 /**

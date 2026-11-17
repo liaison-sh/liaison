@@ -4,8 +4,9 @@
 // projects answered by a double of the kernel's call made as the change request's sender: the
 // milestone task first, then the whole-project timebox (420 h to 480 h), from a claim on the
 // change request's row; a project that does not use time and budgets gets a task with no size;
-// no project, or a decline, gets nothing; a run that dies between steps is resumed by the job
-// without a second task.
+// a project with a billing plan gets one milestone for the price, once; no project, or a
+// decline, gets nothing; a run that dies between steps is resumed by the job without a second
+// task or step.
 
 import { describe, expect, it } from "bun:test"
 import {
@@ -33,6 +34,8 @@ type Projects = {
   timeboxMinutes: number | null
   /** Throws once on this tool: a run that dies there. */
   dieOn?: string
+  /** The project's billing plan, when it has one: the steps invoicing holds, by change request. */
+  billingPlan?: Map<string, Record<string, unknown>>
 }
 
 async function acceptedWorld(
@@ -101,6 +104,19 @@ async function acceptedWorld(
       if (typeof t === "string") projects.timeboxMinutes = Number.parseFloat(t) * 60
       return { status: "completed", result: { timeboxMinutes: projects.timeboxMinutes } }
     }
+    if (p.tool === "invoicing:billing_step_add") {
+      const plan = projects.billingPlan
+      if (!plan)
+        return {
+          status: "error",
+          error: { code: "no_billing_plan", message: "The project has no billing plan." },
+        }
+      // Invoicing's own reference: a second call for the change request answers the first step.
+      const crId = String(p.params.changeRequestId)
+      const added = !plan.has(crId)
+      if (added) plan.set(crId, { ...p.params })
+      return { status: "completed", result: { added } }
+    }
     return { status: "error", error: { code: "CALL_NOT_DECLARED", message: p.tool } }
   }
   const record = (decision: string) => ({
@@ -155,7 +171,11 @@ describe("an accepted change request's work", () => {
     const out = await w.decide("approved")
     expect(out.status).toBe("accepted")
     expect(out.effects).toBe("done")
-    expect(tools(w.calls)).toEqual(["projects:create", "projects:time_plan_set"])
+    expect(tools(w.calls)).toEqual([
+      "projects:create",
+      "projects:time_plan_set",
+      "invoicing:billing_step_add",
+    ])
     const [task, plan] = w.calls
     expect(task?.params).toMatchObject({
       projectId: PROJECT,
@@ -173,8 +193,10 @@ describe("an accepted change request's work", () => {
     expect(cr.effects_time_plan).toBe("set")
     expect(cr.effects_done_at).toBeTruthy()
     expect(w.row(w.parentId).project_timebox_minutes).toBe(480 * 60)
-    // No invoice, nothing turned on: no other app is called.
-    expect(w.calls.some((c) => !c.tool.startsWith("projects:"))).toBe(false)
+    // No invoice, nothing turned on: beyond projects, only the billing step is asked for.
+    expect(w.calls.filter((c) => !c.tool.startsWith("projects:")).map((c) => c.tool)).toEqual([
+      "invoicing:billing_step_add",
+    ])
   })
 
   it("on a project that does not use time and budgets, adds the task with no size and leaves the plan alone", async () => {
@@ -183,7 +205,7 @@ describe("an accepted change request's work", () => {
       projects: { usesTime: false, timeboxMinutes: null },
     })
     expect((await w.decide("approved")).effects).toBe("done")
-    expect(tools(w.calls)).toEqual(["projects:create"])
+    expect(tools(w.calls)).toEqual(["projects:create", "invoicing:billing_step_add"])
     expect(w.calls[0]?.params.timebox).toBeUndefined()
     expect(w.row(w.crId).effects_time_plan).toBe("none")
   })
@@ -194,7 +216,11 @@ describe("an accepted change request's work", () => {
       projects: { usesTime: false, timeboxMinutes: null },
     })
     expect((await w.decide("approved")).effects).toBe("done")
-    expect(tools(w.calls)).toEqual(["projects:time_plan_set", "projects:create"])
+    expect(tools(w.calls)).toEqual([
+      "projects:time_plan_set",
+      "projects:create",
+      "invoicing:billing_step_add",
+    ])
     expect(w.calls[0]?.params).toEqual({ projectId: PROJECT })
     expect(w.calls[1]?.params.timebox).toBeUndefined()
     expect(w.row(w.crId).effects_time_plan).toBe("none")
@@ -273,6 +299,83 @@ describe("an accepted change request's work", () => {
     expect(new Set(creates.map((c) => c.key)).size).toBe(1)
     expect(w.row(w.crId).effects_done_at).toBeTruthy()
     expect(w.projects.timeboxMinutes).toBe(480 * 60)
+  })
+
+  it("on a project with a billing plan, adds one milestone for its price after the task, as its sender", async () => {
+    const billingPlan = new Map<string, Record<string, unknown>>()
+    const w = await acceptedWorld({
+      projects: { usesTime: true, timeboxMinutes: 420 * 60, billingPlan },
+    })
+    const out = await w.decide("approved")
+    expect(out.effects).toBe("done")
+    expect(tools(w.calls)).toEqual([
+      "projects:create",
+      "projects:time_plan_set",
+      "invoicing:billing_step_add",
+    ])
+    const step = w.calls.find((c) => c.tool === "invoicing:billing_step_add") as Call
+    expect(step.params).toMatchObject({
+      projectId: PROJECT,
+      changeRequestId: w.crId,
+      amountMinor: "600000",
+      currency: "EUR",
+      taskId: w.row(w.crId).effects_task_id,
+    })
+    expect(step.key).toBe(`change_request:${w.crId}:billing_step`)
+    expect(step.target_id).toBe(w.world.versionId)
+    expect(billingPlan.size).toBe(1)
+    expect(w.row(w.crId).effects_billing).toBe("added")
+    expect(String(w.row(w.crId).effects_note)).toContain("no invoice was made")
+  })
+
+  it("a retry of a finished change request adds no second billing step", async () => {
+    const billingPlan = new Map<string, Record<string, unknown>>()
+    const w = await acceptedWorld({
+      projects: { usesTime: true, timeboxMinutes: 420 * 60, billingPlan },
+    })
+    await w.decide("approved")
+    const n = w.calls.length
+    expect((await runChangeRequestEffects(w.ctx, w.crId)).status).toBe("done")
+    await changeRequestEffectsJob(w.ctx)
+    expect(w.calls).toHaveLength(n)
+    expect(billingPlan.size).toBe(1)
+  })
+
+  it("a project with no billing plan gets no step, and the work is still done", async () => {
+    const w = await acceptedWorld()
+    expect((await w.decide("approved")).effects).toBe("done")
+    expect(tools(w.calls)).toContain("invoicing:billing_step_add")
+    expect(w.row(w.crId).effects_billing).toBe("none")
+    expect(w.row(w.crId).effects_done_at).toBeTruthy()
+  })
+
+  it("a crash between the task and the billing step resumes with one task and one step", async () => {
+    const billingPlan = new Map<string, Record<string, unknown>>()
+    const w = await acceptedWorld({
+      projects: {
+        usesTime: true,
+        timeboxMinutes: 420 * 60,
+        billingPlan,
+        dieOn: "invoicing:billing_step_add",
+      },
+    })
+    expect((await w.decide("approved")).effects).toBe("stopped")
+    const after = w.row(w.crId)
+    expect(after.effects_task_id).toBeTruthy()
+    expect(after.effects_billing ?? null).toBeNull()
+    expect(after.effects_done_at ?? null).toBeNull()
+    await w.world.db.update("agreements", w.crId, {
+      effects_claimed_at: new Date(Date.now() - CLAIM_STALE_MS - 60_000).toISOString(),
+    })
+    expect((await changeRequestEffectsJob(w.ctx)).resumed).toBe(1)
+    expect(tools(w.calls).filter((t) => t === "projects:create")).toHaveLength(1)
+    const steps = w.calls.filter((c) => c.tool === "invoicing:billing_step_add")
+    expect(steps).toHaveLength(2)
+    expect(new Set(steps.map((c) => c.key)).size).toBe(1)
+    expect(billingPlan.size).toBe(1)
+    expect(w.projects.timeboxMinutes).toBe(480 * 60)
+    expect(w.row(w.crId).effects_billing).toBe("added")
+    expect(w.row(w.crId).effects_done_at).toBeTruthy()
   })
 
   it("two runs at once add the work once", async () => {

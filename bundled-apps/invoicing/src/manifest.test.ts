@@ -1771,6 +1771,9 @@ describe("invoicing manifest", () => {
     // 0.32.0: an issued document carries the client company it is made out to, stamped at issue.
     // 0.33.0: a sent quote's outcome is set once (quote_set_outcome, and a client's answer on its
     //   link); no outcome creates an invoice.
+    // 0.34.0: a quote is a client action target (accept), its link showing the issued PDF the
+    //   kernel fingerprints; an accepted change request adds one milestone (billing_step_add,
+    //   agreements' call only), and a plan's total takes the accepted amendments it lists.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const overdue = (manifest as unknown as { jobs: Record<string, { runsFor?: unknown }> }).jobs[
       "overdue-scan"

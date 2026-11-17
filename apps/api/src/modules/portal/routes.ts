@@ -126,6 +126,15 @@ const UPCOMING = drizzleSql`SELECT label, amount_minor::text AS amount_minor, cu
 const TICKETS = drizzleSql`SELECT id, subject, status, channel, created_at, last_message_at
   FROM portal.tickets ORDER BY COALESCE(last_message_at, created_at) DESC, id LIMIT 100`
 
+/** The portal's own home reads, by part: staff's preview (admin-routes.ts) runs these same ones. */
+export const PORTAL_HOME_READS = {
+  me: ME,
+  projects: PROJECTS,
+  invoices: INVOICES,
+  upcoming: UPCOMING,
+  requests: TICKETS,
+} as const
+
 /** The routes this file serves; the rest of PORTAL_ROUTES answer 404 until built. */
 const BUILT = new Set([
   "GET /me",

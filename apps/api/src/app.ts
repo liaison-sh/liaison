@@ -172,6 +172,7 @@ import { dimensionCatalogRoutes } from "~/modules/permissions/dimension-catalog-
 import { adminRoles } from "~/modules/permissions/roles-routes"
 import { scopeCatalogRoutes } from "~/modules/permissions/scope-catalog-routes"
 import type { Scope } from "~/modules/permissions/types"
+import { portalAdminRoutes } from "~/modules/portal/admin-routes"
 import { portalAuthMiddleware, portalAvailableGate } from "~/modules/portal/auth-middleware"
 import { portalAuthRoutes } from "~/modules/portal/auth-routes"
 import { portalRoutes } from "~/modules/portal/routes"
@@ -995,6 +996,9 @@ app.use(
   "/api/contacts/*",
   requireScope({ GET: "kernel:contacts:read", "*": "kernel:contacts:write" }),
 )
+// A company's client portal, from the client access panel (modules/portal/admin-routes.ts):
+// each route names its portal scope; a person's click, never an agent's.
+app.route("/api/contacts/companies/:id/portal", portalAdminRoutes)
 app.route("/api/contacts", contacts)
 
 // Trusted senders (any member reads with contacts or tickets read; a contacts or tickets

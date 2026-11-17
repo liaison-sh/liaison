@@ -759,6 +759,10 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   // Pending requests about a record withdrawn when its list closed on the asker
   // (modules/client-actions/restricted-follow.ts): one Home line to the list.
   "restricted_record:requests_withdrawn",
+  // A client invited to a company's portal, and a company's portal access ended
+  // (modules/portal/access.ts): apps follow the end (agreements marks its waiting versions).
+  "portal_user:invited",
+  "portal_user:access_ended",
   "user:registered",
   "user:deactivate",
   "user:reactivate",

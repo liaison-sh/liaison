@@ -1,0 +1,577 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// Staff's side of the client portal: inviting, sharing, ending a company's access,
+// removing a person, resetting a second factor, the preview and the access log.
+// Each door is driven through the service, the panel's routes or the tool itself,
+// on the real roles.
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
+import { sql as drizzleSql } from "drizzle-orm"
+import { app } from "~/app"
+import { extractRows, sql } from "~/db"
+import { PortalContextRefusedError, withPortalContext } from "~/db/portal-rls"
+import { withRlsContext } from "~/db/rls"
+import type { EmailProvider } from "~/infra/email"
+import { getSystemEmailProvider, setSystemEmailProvider } from "~/infra/email"
+import { env } from "~/lib/env"
+import { redis } from "~/lib/redis"
+import { runContextStore } from "~/modules/agent/runtime/run-context"
+import { handleAuditSearch } from "~/modules/agent/tools/admin-tools"
+import { toolRegistry } from "~/modules/apps/app-registries"
+import { executeTool } from "~/modules/apps/execute-tool"
+import { createPortalSession, createSession } from "~/modules/auth/auth"
+import { generateTotpSecret } from "~/modules/auth/totp"
+import {
+  invitePortalPerson,
+  PORTAL_INVITES_PER_HOUR,
+  PortalAccessError,
+  restorePortalAccess,
+  setPortalShare,
+} from "~/modules/portal/access"
+import { handlePortalAccessLog, registerPortalTools } from "~/modules/portal/tools"
+import { insertSql } from "~/seed/factories/org/test-rows"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import {
+  adminContext,
+  CaptureProvider,
+  createDoorWorld,
+  type DoorWorld,
+  dropDoorWorld,
+  insertClientAction,
+  insertShare,
+  memberContext,
+} from "./fixture"
+import { dropReadsWorld, insertFile, insertTicket } from "./reads-world"
+
+let w: DoorWorld
+let previous: EmailProvider
+const capture = new CaptureProvider()
+let adminToken: string
+const CLEAN = crypto.randomUUID()
+const TAINTED = crypto.randomUUID()
+
+const refusalCode = (p: Promise<unknown>) =>
+  p.then(
+    () => "ok",
+    (err: unknown) => (err instanceof PortalAccessError ? err.code : String(err)),
+  )
+
+const asAdmin = <T>(fn: Parameters<typeof withRlsContext<T>>[1]) =>
+  withRlsContext(adminContext(w), fn)
+
+const inviteKey = () => `portal:invite:hour:${w.orgId}`
+
+/** A file on a ticket of the company, with the ticket's sensitivity. */
+async function ticketFile(companyId: string, contactId: string, sensitivity = "internal") {
+  const ticket = await insertTicket(w, {
+    company_id: companyId,
+    contact_id: contactId,
+    sensitivity,
+  })
+  const file = await insertFile(w, { app: "tickets", entity_type: "ticket", entity_id: ticket.id })
+  return { ticket: ticket.id, file }
+}
+
+beforeAll(async () => {
+  await acquireTestLock()
+  w = await createDoorWorld()
+  previous = getSystemEmailProvider()
+  setSystemEmailProvider(capture)
+  registerPortalTools(w.orgId)
+  adminToken = (await createSession(w.admin.userId, w.orgId)).accessToken
+  for (const [id, tainted] of [
+    [CLEAN, false],
+    [TAINTED, true],
+  ] as const) {
+    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
+      VALUES (${id}, ${w.orgId}, ${`portal-${id.slice(0, 8)}`}, 'agent_chat', ${w.admin.userId}, ${tainted})`
+    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
+      VALUES (${id}, ${w.admin.userId}, ${w.orgId})`
+  }
+})
+
+afterAll(async () => {
+  setSystemEmailProvider(previous)
+  toolRegistry.deleteByPrefix([w.orgId])
+  await redis.del(inviteKey())
+  await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${w.orgId}`
+  await sql`DELETE FROM kernel.thread_participants WHERE org_id = ${w.orgId}`
+  await sql`DELETE FROM kernel.threads WHERE org_id = ${w.orgId}`
+  await dropReadsWorld(w)
+  // Invited contacts name their inviter as owner; the world drops users before contacts.
+  await sql`UPDATE kernel.contacts SET owner_user_id = NULL WHERE org_id = ${w.orgId}`
+  await dropDoorWorld(w)
+  await releaseTestLock()
+})
+
+beforeEach(async () => {
+  capture.sent = []
+  await redis.del(inviteKey())
+})
+
+const humanFrame = {
+  runId: "r",
+  parentRunId: null,
+  rootRunId: "r",
+  nestingDepth: 0,
+  humanTurn: true,
+}
+
+function callTool(toolName: string, threadId: string, params: Record<string, unknown>) {
+  return executeTool({
+    toolName: `kernel:${toolName}`,
+    orgId: w.orgId,
+    actor: adminContext(w),
+    params,
+    threadId,
+    origin: "in-app-agent",
+    // The turn read no scoped data: only the outside-text rules decide here.
+    turnTaintScopes: [],
+  })
+}
+
+describe("inviting a client", () => {
+  it("NT-29 one address reaches one company's portal: a second company's invite is refused", async () => {
+    const email = `twice-${w.orgId.slice(0, 8)}@doors.example.com`
+    const first = await asAdmin((tx) =>
+      invitePortalPerson({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyA,
+        email,
+        name: "Paule Deux",
+      }),
+    )
+    expect(first.userId).toBeTruthy()
+    const [row] = extractRows<{ user_type: string; company_id: string }>(
+      await sql.unsafe(`SELECT user_type, company_id FROM kernel.users WHERE id = $1`, [
+        first.userId,
+      ]),
+    )
+    expect(row).toEqual({ user_type: "external", company_id: w.companyA })
+    expect(capture.sent.map((m) => m.template)).toEqual(["portal.invite"])
+    // The invitation holds no secret: the person asks the portal for their link.
+    expect(capture.sent[0]?.text ?? "").not.toMatch(/#c=|&t=/)
+    const again = (companyId: string) =>
+      refusalCode(
+        asAdmin((tx) =>
+          invitePortalPerson({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId,
+            email,
+            name: "Paule Deux",
+          }),
+        ),
+      )
+    expect(await again(w.companyB)).toBe("PORTAL_EMAIL_IN_USE")
+    expect(await again(w.companyA)).toBe("EMAIL_IS_PORTAL_USER")
+    expect(
+      await refusalCode(
+        asAdmin((tx) =>
+          invitePortalPerson({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId: w.companyA,
+            email: w.member.email,
+            name: "A member",
+          }),
+        ),
+      ),
+    ).toBe("PORTAL_EMAIL_IS_STAFF")
+  })
+
+  it("NT-61 the fiftieth invitation in an hour goes, the next is refused; an agent's always parks", async () => {
+    await redis.set(inviteKey(), String(PORTAL_INVITES_PER_HOUR - 1), "EX", 3600)
+    const invite = (n: number) =>
+      refusalCode(
+        asAdmin((tx) =>
+          invitePortalPerson({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId: w.companyB,
+            email: `flood-${n}-${w.orgId.slice(0, 8)}@doors.example.com`,
+            name: `Flood ${n}`,
+          }),
+        ),
+      )
+    expect(await invite(50)).toBe("ok")
+    expect(await invite(51)).toBe("PORTAL_INVITE_LIMIT")
+    const tool = toolRegistry.get([w.orgId, "kernel", "portal_invite"])
+    expect(tool?.gated).toBe(true)
+    expect(tool?.noAutoApprove).toBe(true)
+    const res = await runContextStore.run(humanFrame, () =>
+      callTool("portal_invite", CLEAN, {
+        company_id: w.companyB,
+        email: `agent-${w.orgId.slice(0, 8)}@doors.example.com`,
+        name: "Agent Asked",
+      }),
+    )
+    expect(res.blocked?.approvalRequestId).toBeDefined()
+  })
+
+  it("refuses on a demo box, which sends no mail", async () => {
+    const was = env.LIAISON_DEMO_MODE
+    ;(env as { LIAISON_DEMO_MODE: boolean }).LIAISON_DEMO_MODE = true
+    try {
+      expect(
+        await refusalCode(
+          asAdmin((tx) =>
+            invitePortalPerson({
+              orgId: w.orgId,
+              actorId: w.admin.userId,
+              db: tx,
+              companyId: w.companyB,
+              email: `demo-${w.orgId.slice(0, 8)}@doors.example.com`,
+              name: "Demo",
+            }),
+          ),
+        ),
+      ).toBe("NO_MAIL_ON_DEMO")
+    } finally {
+      ;(env as { LIAISON_DEMO_MODE: boolean }).LIAISON_DEMO_MODE = was
+    }
+  })
+})
+
+describe("what a share may point at", () => {
+  it("NT-70 another company's file is refused, for a person and an agent, and this company's opens", async () => {
+    const theirs = (await ticketFile(w.companyB, w.clientB.contactId)).file
+    const restricted = (await ticketFile(w.companyA, w.clientA.contactId, "restricted")).file
+    const { ticket, file: ours } = await ticketFile(w.companyA, w.clientA.contactId)
+    const share = (objectId: string) =>
+      refusalCode(
+        asAdmin((tx) =>
+          setPortalShare({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId: w.companyA,
+            kind: "file",
+            objectId,
+            open: true,
+          }),
+        ),
+      )
+    expect(await share(theirs)).toBe("SHARE_NOT_THIS_COMPANY")
+    expect(await share(restricted)).toBe("SHARE_NOT_THIS_COMPANY")
+    expect(await share(crypto.randomUUID())).toBe("SHARE_NOT_THIS_COMPANY")
+    expect(await share(ours)).toBe("ok")
+    const allowed = () =>
+      withPortalContext(
+        { orgId: w.orgId, userId: w.clientA.userId },
+        async (tx) =>
+          extractRows<{ ok: boolean }>(
+            await tx.execute(drizzleSql`SELECT portal.file_allowed(${ours}::uuid) AS ok`),
+          )[0]?.ok,
+      )
+    expect(await allowed()).toBe(true)
+    // The parent turns restricted later: the share stays open, the file no longer reads.
+    await sql.unsafe(`UPDATE app_tickets.tickets SET sensitivity = 'restricted' WHERE id = $1`, [
+      ticket,
+    ])
+    expect(await allowed()).toBe(false)
+    const tool = toolRegistry.get([w.orgId, "kernel", "portal_share_set"])
+    expect(tool?.gated).toBe(true)
+    expect(tool?.noAutoApprove).toBe(true)
+    const parked = await runContextStore.run(humanFrame, () =>
+      callTool("portal_share_set", CLEAN, {
+        company_id: w.companyA,
+        kind: "file",
+        object_id: theirs,
+        open: true,
+      }),
+    )
+    expect(parked.blocked?.approvalRequestId).toBeDefined()
+    const open = extractRows<{ object_id: string }>(
+      await sql.unsafe(
+        `SELECT object_id FROM kernel.portal_shares WHERE company_id = $1 AND kind = 'file' AND closed_at IS NULL`,
+        [w.companyA],
+      ),
+    ).map((r) => r.object_id)
+    expect(open).toContain(ours)
+    expect(open).not.toContain(theirs)
+  })
+
+  it("a named person must be on this company's portal", async () => {
+    expect(
+      await refusalCode(
+        asAdmin((tx) =>
+          setPortalShare({
+            orgId: w.orgId,
+            actorId: w.admin.userId,
+            db: tx,
+            companyId: w.companyA,
+            kind: "invoices",
+            open: true,
+            onlyUserIds: [w.clientB.userId],
+          }),
+        ),
+      ),
+    ).toBe("SHARE_NOT_THIS_COMPANY")
+  })
+})
+
+describe("closing tools never run from outside text", () => {
+  it("NT-71 an injected 'close our portal and erase our accounts' in a tainted turn or a routine closes nothing", async () => {
+    const before = await sql.unsafe(`SELECT portal_ended_at FROM kernel.companies WHERE id = $1`, [
+      w.companyB,
+    ])
+    // A person's clean typed turn still parks the end of access and the erasure: neither can be undone.
+    for (const [name, params] of [
+      ["portal_end_access", { company_id: w.companyB }],
+      ["portal_remove_person", { user_id: w.clientB.userId, erase: true }],
+    ] as const) {
+      const clean = await runContextStore.run(humanFrame, () => callTool(name, CLEAN, params))
+      expect(clean.blocked?.approvalRequestId).toBeDefined()
+      const tainted = await runContextStore.run(humanFrame, () => callTool(name, TAINTED, params))
+      expect(tainted.blocked).toBeDefined()
+      const routine = await runContextStore.run(
+        { ...humanFrame, humanTurn: undefined, routineId: "rt", background: true },
+        () => callTool(name, CLEAN, params),
+      )
+      expect(routine.blocked).toBeDefined()
+    }
+    // Removing without erasure: a routine and a tainted turn park; a person's clean turn runs.
+    const params = { user_id: w.clientB.userId, erase: false }
+    const routine = await runContextStore.run(
+      { ...humanFrame, humanTurn: undefined, routineId: "rt", background: true },
+      () => callTool("portal_remove_person", CLEAN, params),
+    )
+    expect(routine.blocked).toBeDefined()
+    const tainted = await runContextStore.run(humanFrame, () =>
+      callTool("portal_remove_person", TAINTED, params),
+    )
+    expect(tainted.blocked).toBeDefined()
+    const [stillThere] = extractRows<{ removed_at: string | null; status: string }>(
+      await sql.unsafe(
+        `SELECT p.removed_at, u.status FROM kernel.portal_people p JOIN kernel.users u ON u.id = p.user_id WHERE p.user_id = $1`,
+        [w.clientB.userId],
+      ),
+    )
+    expect(stillThere).toEqual({ removed_at: null, status: "active" })
+    expect(
+      await sql.unsafe(`SELECT portal_ended_at FROM kernel.companies WHERE id = $1`, [w.companyB]),
+    ).toEqual(before)
+    for (const name of [
+      "portal_end_access",
+      "portal_remove_person",
+      "portal_invite",
+      "portal_share_set",
+    ]) {
+      expect(toolRegistry.get([w.orgId, "kernel", name])?.externalEffect).toBe(true)
+    }
+  })
+})
+
+describe("ending a company's access", () => {
+  it("NT-22 ends at once: reads refused, sessions gone, links withdrawn, shares closed; giving access again restores none of it", async () => {
+    const session = await createPortalSession(w.clientA.userId, w.orgId)
+    const share = await insertShare(w, { company_id: w.companyA, kind: "requests" })
+    const action = await insertClientAction(w, { company_id: w.companyA })
+    const before = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    })
+    expect(before.status).toBe(200)
+
+    const res = await app.request(`/api/contacts/companies/${w.companyA}/portal/end`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ reason: "contract over" }),
+    })
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as { data: { signedOut: number; cancelledLinks: number } }
+    expect(body.data.signedOut).toBeGreaterThanOrEqual(2)
+    expect(body.data.cancelledLinks).toBeGreaterThanOrEqual(1)
+
+    const after = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    })
+    expect(after.status).toBe(401)
+    await expect(
+      withPortalContext({ orgId: w.orgId, userId: w.clientA.userId }, async (tx) =>
+        tx.execute(drizzleSql`SELECT 1`),
+      ),
+    ).rejects.toBeInstanceOf(PortalContextRefusedError)
+    const [state] = extractRows<{ sessions: number; share_closed: boolean; reason: string | null }>(
+      await sql.unsafe(
+        `SELECT (SELECT count(*)::int FROM kernel.sessions s JOIN kernel.users u ON u.id = s.user_id
+                  WHERE u.company_id = $1) AS sessions,
+                (SELECT closed_at IS NOT NULL FROM kernel.portal_shares WHERE id = $2) AS share_closed,
+                (SELECT revoke_reason FROM kernel.client_actions WHERE id = $3) AS reason`,
+        [w.companyA, share, action],
+      ),
+    )
+    expect(state).toEqual({ sessions: 0, share_closed: true, reason: "access_ended" })
+
+    // Giving access again: people may sign in anew, nothing else comes back.
+    await asAdmin((tx) =>
+      restorePortalAccess({
+        orgId: w.orgId,
+        actorId: w.admin.userId,
+        db: tx,
+        companyId: w.companyA,
+      }),
+    )
+    const old = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${session.accessToken}` },
+    })
+    expect(old.status).toBe(401)
+    const [restored] = extractRows<{ open: number; revoked: boolean; ended: string | null }>(
+      await sql.unsafe(
+        `SELECT (SELECT count(*)::int FROM kernel.portal_shares WHERE company_id = $1 AND closed_at IS NULL) AS open,
+                (SELECT revoked_at IS NOT NULL FROM kernel.client_actions WHERE id = $2) AS revoked,
+                (SELECT portal_ended_at FROM kernel.companies WHERE id = $1) AS ended`,
+        [w.companyA, action],
+      ),
+    )
+    expect(restored).toEqual({ open: 0, revoked: true, ended: null })
+    const fresh = await createPortalSession(w.clientA.userId, w.orgId)
+    const now = await app.request("/api/portal/me", {
+      headers: { Authorization: `Bearer ${fresh.accessToken}` },
+    })
+    expect(now.status).toBe(200)
+  })
+
+  it("a member without the portal admin scope cannot end access", async () => {
+    const token = (await createSession(w.member.userId, w.orgId)).accessToken
+    const res = await app.request(`/api/contacts/companies/${w.companyB}/portal/end`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+    })
+    expect(res.status).toBe(403)
+  })
+})
+
+/** A role holding exactly these scopes, given to the world's member. */
+async function grantMember(scopes: string[]): Promise<void> {
+  const role = crypto.randomUUID()
+  await sql.unsafe(
+    insertSql("kernel.roles", { id: role, org_id: w.orgId, name: `member-${role.slice(0, 8)}` }),
+  )
+  for (const scope of scopes) {
+    await sql.unsafe(insertSql("kernel.role_scope_grants", { role_id: role, scope }))
+  }
+  await sql.unsafe(
+    insertSql("kernel.user_roles", { user_id: w.member.userId, role_id: role, org_id: w.orgId }),
+  )
+}
+
+const get = (path: string, token: string) =>
+  app.request(path, { headers: { Authorization: `Bearer ${token}` } })
+
+describe("staff's reads of the portal", () => {
+  it("NT-40 the audit search tool and the access log tool give no portal row without the portal log scope", async () => {
+    await sql.unsafe(
+      insertSql("kernel.audit_log", {
+        org_id: w.orgId,
+        actor_type: "external",
+        actor_id: w.clientB.userId,
+        app: "portal",
+        action: "portal.sign_in",
+        metadata: JSON.stringify({ companyId: w.companyB }),
+      }),
+    )
+    await grantMember(["kernel:audit:read"])
+    const search = await handleAuditSearch(
+      { limit: 200 },
+      { orgId: w.orgId, userId: w.member.userId },
+    )
+    expect(search.entries.filter((e) => e.app === "portal")).toEqual([])
+    const log = (scopes: string[]) =>
+      withRlsContext(memberContext(w, scopes), (tx) =>
+        handlePortalAccessLog(
+          { company_id: w.companyB, limit: 50 },
+          {
+            orgId: w.orgId,
+            userId: w.member.userId,
+            db: tx,
+          },
+        ),
+      )
+    expect((await log(["kernel:audit:read"])).items).toEqual([])
+    expect((await log(["kernel:portal:logs"])).items.map((r) => r.action)).toEqual([
+      "portal.sign_in",
+    ])
+  })
+
+  it("NT-54 the preview is GET only, needs the portal admin scope, writes one staff row and none as the client", async () => {
+    const adminRows = () =>
+      sql.unsafe(
+        `SELECT actor_type::text AS t, count(*)::int AS n FROM kernel.audit_log
+          WHERE org_id = $1 AND entity_id = $2 GROUP BY 1 ORDER BY 1`,
+        [w.orgId, w.clientB.userId],
+      )
+    // The member may read and write contacts, so only the portal scope refuses them.
+    await grantMember(["kernel:contacts:read", "kernel:contacts:write"])
+    const before = await adminRows()
+    const path = `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`
+    const res = await get(path, adminToken)
+    expect(res.status).toBe(200)
+    const body = (await res.json()) as {
+      data: { signedInWouldSee: Record<string, unknown> | null }
+    }
+    expect(body.data.signedInWouldSee?.me).toBeDefined()
+    const post = await app.request(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    expect(post.status).toBe(404)
+    const memberToken = (await createSession(w.member.userId, w.orgId)).accessToken
+    expect((await get(path, memberToken)).status).toBe(403)
+    // Another company's person through this company's path: nothing.
+    expect(
+      (
+        await get(
+          `/api/contacts/companies/${w.companyA}/portal/preview/${w.clientB.userId}`,
+          adminToken,
+        )
+      ).status,
+    ).toBe(404)
+    const after = await adminRows()
+    const count = (rows: unknown, t: string) =>
+      (rows as Array<{ t: string; n: number }>).find((r) => r.t === t)?.n ?? 0
+    expect(count(after, "user") - count(before, "user")).toBe(1)
+    expect(count(after, "external")).toBe(count(before, "external"))
+  })
+
+  it("NT-58 a second factor reset needs the portal admin scope, is logged and mails the person", async () => {
+    await sql.unsafe(
+      `UPDATE kernel.users SET totp_secret = $2, totp_enabled = true WHERE id = $1`,
+      [w.clientB.userId, generateTotpSecret()],
+    )
+    const path = `/api/contacts/companies/${w.companyB}/portal/people/${w.clientB.userId}/totp-reset`
+    const memberToken = (await createSession(w.member.userId, w.orgId)).accessToken
+    const refused = await app.request(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${memberToken}` },
+    })
+    expect(refused.status).toBe(403)
+    capture.sent = []
+    const res = await app.request(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${adminToken}` },
+    })
+    expect(res.status).toBe(200)
+    const [u] = extractRows<{ totp_enabled: boolean; totp_secret: string | null }>(
+      await sql.unsafe(`SELECT totp_enabled, totp_secret FROM kernel.users WHERE id = $1`, [
+        w.clientB.userId,
+      ]),
+    )
+    expect(u).toEqual({ totp_enabled: false, totp_secret: null })
+    const audit = await sql.unsafe(
+      `SELECT actor_id FROM kernel.audit_log WHERE org_id = $1 AND action = 'portal.totp_reset' AND entity_id = $2`,
+      [w.orgId, w.clientB.userId],
+    )
+    expect(audit.map((r) => r.actor_id)).toEqual([w.admin.userId])
+    await new Promise((r) => setTimeout(r, 50))
+    expect(capture.sent.map((m) => [m.to, m.template])).toEqual([
+      [w.clientB.email, "portal.totp-reset"],
+    ])
+  })
+})

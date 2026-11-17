@@ -89,10 +89,23 @@ beforeAll(async () => {
     [CLEAN, false],
     [TAINTED, true],
   ] as const) {
-    await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by, tainted)
-      VALUES (${id}, ${w.orgId}, ${`portal-${id.slice(0, 8)}`}, 'agent_chat', ${w.admin.userId}, ${tainted})`
-    await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-      VALUES (${id}, ${w.admin.userId}, ${w.orgId})`
+    await sql.unsafe(
+      insertSql("kernel.threads", {
+        id,
+        org_id: w.orgId,
+        handle: `portal-${id.slice(0, 8)}`,
+        type: "agent_chat",
+        created_by: w.admin.userId,
+        tainted,
+      }),
+    )
+    await sql.unsafe(
+      insertSql("kernel.thread_participants", {
+        thread_id: id,
+        user_id: w.admin.userId,
+        org_id: w.orgId,
+      }),
+    )
   }
 })
 

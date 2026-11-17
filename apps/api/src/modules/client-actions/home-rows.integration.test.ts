@@ -4,6 +4,7 @@
 // decided, opened it, asked something or was locked out, and a failed send; a
 // member who is a signer is told it is their turn. Nobody else gets a row.
 import { describe, expect, it } from "bun:test"
+import { NOW_URGENCY } from "@liaison/shared"
 import { sql } from "~/db"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { processTranslationEvent } from "~/modules/attention/translator"
@@ -29,11 +30,13 @@ function event(action: string, data: Record<string, unknown>): AppEvent {
 async function rowsFor(e: AppEvent) {
   await processTranslationEvent(e)
   return (await sql`
-    SELECT user_id, kind, summary FROM ${k("attention_events")}
+    SELECT user_id, kind, summary, urgency, metadata FROM ${k("attention_events")}
      WHERE org_id = ${kit.w.orgId} AND entity_id = ${e.entityId ?? ""}`) as unknown as Array<{
     user_id: string
     kind: string
     summary: string
+    urgency: number
+    metadata: Record<string, unknown> | null
   }>
 }
 
@@ -64,11 +67,15 @@ describe("client action rows on Home", () => {
         title: "Contrat Alpha",
         kind: "sign",
         signerUserIds: [kit.w.member.userId],
+        staffTurn: true,
       }),
     )
     expect(rows.map((r) => r.user_id)).toEqual([kit.w.member.userId])
     expect(rows[0]?.summary).toBe("Contrat Alpha: open it in Liaison to read and sign")
     expect(rows[0]?.summary).not.toContain("#t=")
+    // Their own turn is a decision of theirs: it needs them now, and the row says so.
+    expect(rows[0]?.urgency).toBeGreaterThanOrEqual(NOW_URGENCY)
+    expect(rows[0]?.metadata?.staffTurn).toBe(true)
   })
 
   it("an event that names no sender reaches nobody", async () => {

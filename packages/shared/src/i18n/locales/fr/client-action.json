@@ -31,7 +31,7 @@
     "staff": {
       "subject": "À vous de {{verb}} « {{title}} »",
       "body": "Ouvrez Liaison, trouvez « {{title}} » sur votre accueil et choisissez Lire et signer. Cet e-mail ne contient volontairement aucun lien : vous le faites dans votre propre session connectée.",
-      "footer": "Personne de {{org}} ne vous enverra de code ni de lien par e-mail pour cela."
+      "footer": "Aucun lien n'est envoyé par e-mail pour cela. Quand vous choisissez Lire et signer, un code de confirmation est envoyé à cette adresse."
     }
   },
   "verb": {
@@ -70,6 +70,11 @@
       "sign": "{{sender}} de {{org}} vous demande de signer ce document.",
       "accept": "{{sender}} de {{org}} vous demande d'accepter ce document.",
       "approve": "{{sender}} de {{org}} vous demande d'approuver ce document."
+    },
+    "askOwn": {
+      "sign": "{{org}} : à vous de signer ce document.",
+      "accept": "{{org}} : à vous d'accepter ce document.",
+      "approve": "{{org}} : à vous d'approuver ce document."
     },
     "ref": "Référence {{ref}}",
     "validUntil": "Ce lien est valable jusqu'au {{date}}",
@@ -173,12 +178,14 @@
       "approve": "Vous avez approuvé",
       "signCopy": "Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
       "otherCopy": "Une copie de votre décision est envoyée à {{email}}.",
-      "told": "{{sender}} a été informé. Ce lien est maintenant fermé."
+      "told": "{{sender}} a été informé. Ce lien est maintenant fermé.",
+      "toldOwn": "Ce tour est maintenant fermé."
     },
     "declined": {
       "heading": "Vous avez refusé",
       "bodySign": "Rien n'a été signé. {{sender}} a été informé, et ce lien est maintenant fermé.",
       "bodyOther": "Rien ne change. {{sender}} a été informé, et ce lien est maintenant fermé.",
+      "bodyOwn": "Rien n'a été signé, et ce tour est maintenant fermé.",
       "again": "Si vous changez d'avis, ou souhaitez en parler, répondez au message de {{sender}}. Un nouveau lien peut être envoyé."
     },
     "foot": "Aucun compte nécessaire. Aucun traceur. Envoyé avec Liaison, le logiciel qu'utilise {{org}}.",

@@ -67,8 +67,14 @@ export function offersAskDraft(item: AttentionItem): boolean {
     item.action?.type === "open_entity" &&
     !isStoppedSendNotice(item) &&
     kind !== "kernel:away.recap" &&
-    kind !== UNOWNED_COMPANIES_KIND
+    kind !== UNOWNED_COMPANIES_KIND &&
+    !isStaffTurn(item)
   )
+}
+
+/** A member's own turn to sign, accept or approve (client-actions `staff_turn`): theirs to read and sign. */
+export function isStaffTurn(item: AttentionItem): boolean {
+  return item.kind === "client_action" && item.metadata?.staffTurn === true
 }
 
 /** The row of companies left without an account manager when someone was deactivated. */

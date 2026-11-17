@@ -1657,3 +1657,31 @@ describe("AttentionRow: what a newcomer reads on a Home row", () => {
     expect(queryByTestId("approval-card-handle")).toBeNull()
   })
 })
+
+// A member who signs: their own turn reads as their decision, with the one way to make it.
+describe("AttentionRow: a staff signer's own turn", () => {
+  const turn: AttentionItem = {
+    id: "kernel:client_action:ca-1",
+    app: "kernel",
+    entity: "client_action",
+    entityId: "ca-1",
+    kind: "client_action",
+    summary: "PR-2026-001 Website: open it in Liaison to read and sign",
+    urgency: 70,
+    occurredAt: "2026-11-08T00:00:00Z",
+    persisted: true,
+    action: { type: "open_entity", tabType: "kernel:client_action", entityId: "ca-1" },
+    metadata: { staffTurn: true },
+  }
+  const tid = "attention-row-kernel-client_action-ca-1"
+
+  it("offers Read and sign, and no draft to ask an agent for", () => {
+    const { getByTestId, queryByTestId } = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={turn} />
+      </ApiContext.Provider>
+    ))
+    expect(getByTestId(`${tid}-open`).textContent).toContain("Read and sign")
+    expect(queryByTestId(`${tid}-ask-draft`)).toBeNull()
+  })
+})

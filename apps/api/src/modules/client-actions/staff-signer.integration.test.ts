@@ -79,6 +79,9 @@ describe("a staff signer", () => {
     expect(`${staffMail?.text}`).toContain("Read and sign")
     // The signer may be the sender themselves: the subject never says someone asks them.
     expect(staffMail?.subject).toMatch(/^Your turn to sign "/)
+    // The mail says what really follows: a code to confirm comes to this address.
+    expect(`${staffMail?.text}`).not.toContain("will send you a code")
+    expect(`${staffMail?.text}`).toContain("code")
     expect(
       kit.capture.sent
         .slice(before)
@@ -91,6 +94,7 @@ describe("a staff signer", () => {
     }>
     expect(turns).toHaveLength(1)
     expect(turns[0]?.payload.data.signerUserIds).toEqual([kit.w.member.userId])
+    expect((turns[0]?.payload.data as { staffTurn?: boolean }).staffTurn).toBe(true)
     expect((await actionRow(r.id)).signer_user_id).toBe(kit.w.member.userId)
   })
 

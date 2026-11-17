@@ -90,6 +90,9 @@ describe("a staff signer's Read and sign", () => {
   it("makes this session's link, shows the document, and verifies with the member's session", async () => {
     const api = mount(async () => ({ token: TOKEN }))
     expect((await screen.findByTestId("doc-paragraph")).textContent).toBe("The parties agree.")
+    // The member may have sent it themselves: their own page never says someone asks them.
+    expect(screen.getByTestId("client-action-ask").textContent).not.toContain("asks you")
+    expect(screen.getByTestId("client-action-ask").textContent).toContain("your turn to sign")
     expect(api.post).toHaveBeenCalledWith(
       "/client-actions/a1b2c3d4-0000-4000-8000-000000000001/my-link",
       {},

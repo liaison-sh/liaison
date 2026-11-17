@@ -545,8 +545,10 @@ export const kernelTranslations: Translation[] = [
     event: "client_action:staff_turn",
     app: "kernel",
     kind: "client_action",
-    urgency: 50,
+    // The signer's own decision: it needs them now (NOW_URGENCY), and the row offers Read and sign.
+    urgency: 70,
     summary: "{{payload.data.title}}: open it in Liaison to read and sign",
     recipients: { kind: "participants", path: "data.signerUserIds" },
+    metadataFromData: ["staffTurn"],
   },
 ]

@@ -31,7 +31,7 @@
     "staff": {
       "subject": "Your turn to {{verb}} \"{{title}}\"",
       "body": "Open Liaison, find \"{{title}}\" on your Home and choose Read and sign. This email has no link on purpose: you {{verb}} it in your own signed-in session.",
-      "footer": "Nobody from {{org}} will send you a code or a link for this by email."
+      "footer": "No link for this is sent by email. When you choose Read and sign, a code to confirm it is sent to this address."
     }
   },
   "verb": {
@@ -70,6 +70,11 @@
       "sign": "{{sender}} at {{org}} asks you to sign this document.",
       "accept": "{{sender}} at {{org}} asks you to accept this document.",
       "approve": "{{sender}} at {{org}} asks you to approve this document."
+    },
+    "askOwn": {
+      "sign": "{{org}}: your turn to sign this document.",
+      "accept": "{{org}}: your turn to accept this document.",
+      "approve": "{{org}}: your turn to approve this document."
     },
     "ref": "Reference {{ref}}",
     "validUntil": "This link is valid until {{date}}",
@@ -173,12 +178,14 @@
       "approve": "You approved",
       "signCopy": "When everyone has signed, the signed PDF and its proof of signature go to {{email}}. Keep that email: it is your own proof, separate from {{org}}'s systems.",
       "otherCopy": "A copy of what you decided goes to {{email}}.",
-      "told": "{{sender}} has been told. This link is now closed."
+      "told": "{{sender}} has been told. This link is now closed.",
+      "toldOwn": "This turn is now closed."
     },
     "declined": {
       "heading": "You declined",
       "bodySign": "Nothing was signed. {{sender}} has been told, and this link is now closed.",
       "bodyOther": "Nothing changes. {{sender}} has been told, and this link is now closed.",
+      "bodyOwn": "Nothing was signed, and this turn is now closed.",
       "again": "If you change your mind, or want to talk about it, reply to {{sender}}'s mail. A new link can be sent."
     },
     "foot": "No account needed. No trackers. Sent with Liaison, the software {{org}} uses.",

@@ -67,6 +67,7 @@ import {
   BackToFiveDaysButton,
   DismissButton,
   GuardLine,
+  isStaffTurn,
   isStoppedDraft,
   isStoppedSendNotice,
   NotNowButton,
@@ -855,7 +856,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                 >
                   {isApproval() && decideInContext()
                     ? i18n.t("kernel.homeRowOpenTicket")
-                    : i18n.t("kernel.homeRowOpen")}
+                    : isStaffTurn(props.item)
+                      ? i18n.t("kernel.nav.readAndSign")
+                      : i18n.t("kernel.homeRowOpen")}
                 </button>
               </Show>
               <Show when={offersAskDraft(props.item)}>
@@ -1172,7 +1175,9 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
               >
                 {isApproval() && decideInContext()
                   ? i18n.t("kernel.homeRowOpenTicket")
-                  : i18n.t("kernel.homeRowOpen")}
+                  : isStaffTurn(props.item)
+                    ? i18n.t("kernel.nav.readAndSign")
+                    : i18n.t("kernel.homeRowOpen")}
                 <KbdHint k="O" />
               </button>
             </Show>

@@ -213,6 +213,9 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
     void load()
   })
   const bearer = () => props.memberBearer?.() ?? null
+  // A member's own turn, in their session: they may have sent it themselves, so the page speaks
+  // of their turn, never of someone asking or being told.
+  const own = () => props.memberBearer !== undefined
 
   // Only a person's gesture marks the link opened: a scanner that renders the page
   // and never touches it changes nothing.
@@ -527,7 +530,7 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
             <main class="mx-auto w-full max-w-[1280px] px-4 py-6 sm:px-8">
               <div class="mb-5 flex flex-col gap-1">
                 <p data-testid="client-action-ask" class="text-[13px] text-text-secondary">
-                  {i18n.t(`client-action.page.ask.${kind()}`, {
+                  {i18n.t(`client-action.page.${own() ? "askOwn" : "ask"}.${kind()}`, {
                     sender: senderName(),
                     org: org(),
                   })}
@@ -952,7 +955,9 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
                                 })}
                         </p>
                         <p class="text-[13px] text-text-secondary">
-                          {i18n.t("client-action.page.done.told", { sender: senderName() })}
+                          {own()
+                            ? i18n.t("client-action.page.done.toldOwn")
+                            : i18n.t("client-action.page.done.told", { sender: senderName() })}
                         </p>
                       </div>
                     </Match>
@@ -967,12 +972,14 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
                           {i18n.t("client-action.page.declined.heading")}
                         </h2>
                         <p class="text-[13.5px]">
-                          {i18n.t(
-                            kind() === "sign"
-                              ? "client-action.page.declined.bodySign"
-                              : "client-action.page.declined.bodyOther",
-                            { sender: senderName() },
-                          )}
+                          {own()
+                            ? i18n.t("client-action.page.declined.bodyOwn")
+                            : i18n.t(
+                                kind() === "sign"
+                                  ? "client-action.page.declined.bodySign"
+                                  : "client-action.page.declined.bodyOther",
+                                { sender: senderName() },
+                              )}
                         </p>
                         <p class="text-[13px] text-text-secondary">
                           {i18n.t("client-action.page.declined.again", { sender: senderName() })}

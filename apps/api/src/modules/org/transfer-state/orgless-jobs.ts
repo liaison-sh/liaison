@@ -33,6 +33,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "kernel:org-export-sweep": skips("modules/export/org-archive/store.ts"),
   "kernel:cleanup-expired-sessions": skips("infra/jobs/kernel-jobs.ts"),
   "kernel:audit-log-retention": skips("modules/org/audit-retention.ts"),
+  "kernel:portal-log-retention": skips("modules/org/audit-retention.ts"),
   "kernel:agent-side-thread-reaper": skips("infra/jobs/agent-side-thread-reaper.ts"),
   "kernel:routine-event-reconcile": skips(
     "modules/agent/routines/routine-event-reconciler.ts",

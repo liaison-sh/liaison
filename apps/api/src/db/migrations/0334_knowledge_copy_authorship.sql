@@ -18,15 +18,15 @@ ALTER TABLE app_knowledge.documents ADD COLUMN IF NOT EXISTS author_reads boolea
 -- expand-safe: replaced in this transaction by 0117's policy with one more condition on the author branch, which shows the previous release less, never more
 DROP POLICY IF EXISTS knowledge_documents_select ON app_knowledge.documents;
 --> statement-breakpoint
--- expand-safe: 0117's policy verbatim except that the author and owner branch also needs author_reads, true on every row the previous release wrote
+-- expand-safe: 0117's policy, read through the rls_ctx readers, except that the author and owner branch also needs author_reads, true on every row the previous release wrote
 CREATE POLICY knowledge_documents_select ON app_knowledge.documents FOR SELECT TO liaison_rls
   USING (
-    org_id = current_setting('app.current_org_id', true)::uuid
+    org_id = rls_ctx.org_id()::uuid
     AND (archived_at IS NULL OR app_knowledge.app_has_scope('knowledge:documents:archive') OR app_knowledge.app_has_scope('knowledge:documents:admin'))
     AND (
       (
         document_scope = 'personal'
-        AND owner_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+        AND owner_user_id = rls_ctx.user_id()::uuid
         AND app_knowledge.app_has_scope('knowledge:documents:read')
       )
       OR (
@@ -41,8 +41,8 @@ CREATE POLICY knowledge_documents_select ON app_knowledge.documents FOR SELECT T
         app_knowledge.app_has_scope('knowledge:documents:read')
         AND author_reads
         AND (
-          created_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
-          OR owner_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+          created_by = rls_ctx.user_id()::uuid
+          OR owner_user_id = rls_ctx.user_id()::uuid
         )
       )
     )

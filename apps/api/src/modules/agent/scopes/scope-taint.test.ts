@@ -398,6 +398,11 @@ describe("writesToTable annotations on kernel tools", () => {
       notify_user: "kernel.attention_events",
       // Lifts the thread's outside-text mark on a person's approval (outside-text-tools.ts).
       outside_text_clear: "kernel.threads",
+      // The client portal: invite, end access, remove a person, and what is shared with a company.
+      portal_end_access: "kernel.portal_people",
+      portal_invite: "kernel.portal_people",
+      portal_remove_person: "kernel.portal_people",
+      portal_share_set: "kernel.portal_shares",
       merge_imported_user: "kernel.users",
       // The bug report tool files a ticket.
       report_bug: "app_tickets.tickets",
@@ -627,6 +632,8 @@ describe("writesToTable annotations on kernel tools", () => {
         // Lists what marked the conversation, from its own history; writes nothing.
         "outside_text_sources",
         "policy_get",
+        // Who signed in to the client portal and what they opened, read under the caller's RLS.
+        "portal_access_log",
         // Product attributes by SKU, read under the caller's RLS; writes nothing.
         "product_attributes_list",
         "roles_list",

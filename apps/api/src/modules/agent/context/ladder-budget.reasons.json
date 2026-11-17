@@ -14,5 +14,9 @@
   {
     "key": "all-apps:announcementTokens",
     "capability": "agreements: drafting, sending, following up, verifying a signed agreement and reading its evidence (fourteen deferred agreements tools, 67 tokens of index lines, 3446 without the app), only in an org that installed agreements"
+  },
+  {
+    "key": "all-apps:agreements",
+    "capability": "agreements: quoting a section of a signed agreement and answering a client with a change request (agreement_passage_get, change_request_send) on top of drafting, sending, following up and verifying, only in an org that installed agreements"
   }
 ]

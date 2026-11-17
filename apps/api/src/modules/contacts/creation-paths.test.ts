@@ -94,6 +94,9 @@ describe("contact creation paths", () => {
       ],
       // contacts_write: the acting person's own (sharing is contacts_share).
       "modules/agent/tools/contact-tools.ts": ['{ audience: "owner", ownerUserId: ctx.userId }'],
+      // A client portal invite (kernel:portal_invite): the admin invites a person of a company,
+      // so the contact is the organisation's, under that company.
+      "modules/portal/access.ts": ['{ audience: "org" }'],
       // Ticket intake (inbound mail, public form): link only, never create.
       "apps/tickets/inbound.ts": ['{ audience: "none" }'],
       "modules/webhooks/tickets-public.ts": ['{ audience: "none" }'],

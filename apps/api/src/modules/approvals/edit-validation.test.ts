@@ -35,6 +35,19 @@ describe("validateEditableFieldsSchema", () => {
 })
 
 describe("validateEditedParams", () => {
+  it("a number field takes a finite number, never its text", () => {
+    const fields = [{ field: "hours_minutes", label: "Hours", widget: "number" as const }]
+    const edit = (v: unknown) =>
+      validateEditedParams({
+        editableFields: fields,
+        originalParams: { hours_minutes: 3600 },
+        revision: { hours_minutes: v },
+      }).ok
+    expect(edit(4200)).toBe(true)
+    expect(edit("4200")).toBe(false)
+    expect(edit(Number.NaN)).toBe(false)
+  })
+
   it("validates checkbox-per-line edits against params shape", () => {
     const result = validateEditedParams({
       editableFields: [

@@ -1548,6 +1548,14 @@ export function validateAppManifest(manifest: any): ValidationResult {
             errors.push(
               `tools.${toolName}.editableFields: field "${ef.field}" widget "${ef.widget}" requires params.properties.${ef.field}.type === "string"`,
             )
+          } else if (
+            ef.widget === "number" &&
+            props[ef.field].type !== "integer" &&
+            props[ef.field].type !== "number"
+          ) {
+            errors.push(
+              `tools.${toolName}.editableFields: field "${ef.field}" widget "number" requires params.properties.${ef.field}.type === "integer" or "number"`,
+            )
           } else if (ef.widget === "email-list" && props[ef.field].type !== "array") {
             errors.push(
               `tools.${toolName}.editableFields: field "${ef.field}" widget "email-list" requires params.properties.${ef.field}.type === "array"`,

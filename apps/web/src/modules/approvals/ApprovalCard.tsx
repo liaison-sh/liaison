@@ -893,6 +893,20 @@ const BundleStepRow: Component<{
                         onInput={onInput}
                       />
                     </Match>
+                    <Match when={field.widget === "number"}>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        id={inputId}
+                        data-testid={inputId}
+                        class="rounded border border-border bg-bg px-2 py-1 text-text"
+                        value={value()}
+                        onInput={(e) => {
+                          const n = Number((e.currentTarget as HTMLInputElement).value)
+                          if (Number.isFinite(n)) setDraft({ ...draft(), [field.field]: n })
+                        }}
+                      />
+                    </Match>
                     <Match when={field.widget === "checkbox"}>
                       <input
                         type="checkbox"

@@ -895,6 +895,7 @@ const toolSchema = {
             enum: [
               "text",
               "richtext",
+              "number",
               "checkbox",
               "checkbox-per-line",
               "key-value-list",

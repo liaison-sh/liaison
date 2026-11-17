@@ -163,7 +163,14 @@ export interface ApprovalEditableField {
   // a card edit a sparse map (e.g. line-item quantity overrides);
   // `checkbox` is a single boolean (e.g. "Notify customer");
   // `email-list` edits a recipient array (mail to/cc/bcc) before approving a send.
-  widget: "text" | "richtext" | "checkbox" | "checkbox-per-line" | "key-value-list" | "email-list"
+  widget:
+    | "text"
+    | "richtext"
+    | "number"
+    | "checkbox"
+    | "checkbox-per-line"
+    | "key-value-list"
+    | "email-list"
   /**
    * For `checkbox-per-line` and `key-value-list` widgets only — names the
    * dot-path under `currentPayload` whose entries the widget renders.

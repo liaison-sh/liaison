@@ -10,6 +10,8 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { DEMO_WORLD_NEEDS } from "@liaison/shared"
 import { sql } from "drizzle-orm"
+import { app } from "~/app"
+import { withPortalContext } from "~/db/portal-rls"
 import { withPrivilegedDb } from "~/db/privileged"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
@@ -19,6 +21,7 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { createSession } from "~/modules/auth/auth"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { evaluateSendGuard, type PinnedSendGuard } from "~/modules/mail/send-guard"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -30,6 +33,8 @@ import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { STUDIO_SOW_EXCLUSIONS, studioAgreementNumber, studioAgreements } from "./agreements"
 import { STUDIO_KNOWLEDGE_SPECS, STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
+import { studioMoney } from "./money"
+import { STUDIO_PORTAL_CLIENT } from "./portal"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -239,8 +244,11 @@ describe("the services world's agreements at the board date", () => {
       SELECT number FROM app_agreements.agreements
        WHERE org_id = ${orgId}::uuid AND seal_overdue_at IS NOT NULL`)
     expect(overdue).toEqual([])
-    const feed = await aggregateAttentionItems({ orgId, actor: await ownerActor() })
-    expect(feed.items.filter((i) => i.kind === "agreements:evidence.seal_overdue")).toEqual([])
+    // No Home line for anyone who reads the evidence.
+    const lines = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM kernel.attention_events
+       WHERE org_id = ${orgId}::uuid AND kind = 'agreements:evidence.seal_overdue'`)
+    expect(lines[0]?.n).toBe(0)
   }, 120_000)
 
   it("the next agreement a person makes takes the next number of its series", async () => {
@@ -328,5 +336,101 @@ describe("the services world's agreements at the board date", () => {
     expect(conversationIds).toEqual([guard.conversationId as string])
     const stopped = await check()
     expect(stopped.state).toBe("replied")
+  })
+})
+
+describe("the services world's client portal at the board date", () => {
+  type Person = { user_id: string; name: string; user_type: string; company: string }
+  const people = () =>
+    rows<Person & { last_sign_in_at: string | null; sessions: number }>(sql`
+      SELECT p.user_id::text AS user_id, u.name, u.user_type, c.name AS company,
+             p.last_sign_in_at::text AS last_sign_in_at,
+             (SELECT count(*)::int FROM kernel.sessions s WHERE s.user_id = u.id) AS sessions
+        FROM kernel.portal_people p
+        JOIN kernel.users u ON u.id = p.user_id
+        JOIN kernel.companies c ON c.id = p.company_id
+       WHERE p.org_id = ${orgId}::uuid AND p.removed_at IS NULL
+       ORDER BY u.name`)
+  const companyOf = async () =>
+    (
+      await rows<{ id: string }>(sql`
+        SELECT DISTINCT p.company_id::text AS id FROM kernel.portal_people p
+         WHERE p.org_id = ${orgId}::uuid`)
+    )[0]?.id as string
+
+  async function preview(userId: string) {
+    const { accessToken } = await createSession(ownerId, orgId)
+    const res = await app.request(
+      `/api/contacts/companies/${await companyOf()}/portal/preview/${userId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    )
+    expect(res.status).toBe(200)
+    return ((await res.json()) as { data: { signedInWouldSee: Record<string, any[] | null> } }).data
+      .signedInWouldSee
+  }
+
+  it("the fixed-price client's two people are its portal users, invited and never signed in", async () => {
+    const found = await people()
+    expect(found.map((p) => [p.name, p.user_type, p.last_sign_in_at, p.sessions])).toEqual([
+      ["Pauline Gros", "external", null, 0],
+      ["Rémi Castel", "external", null, 0],
+    ])
+    expect(new Set(found.map((p) => p.company)).size).toBe(1)
+    const [client] = await rows<{ key: string }>(sql`
+      SELECT ${STUDIO_PORTAL_CLIENT}::text AS key FROM kernel.companies
+       WHERE id = ${await companyOf()}::uuid AND name = ${found[0]?.company ?? ""}`)
+    expect(client?.key).toBe(STUDIO_PORTAL_CLIENT)
+  })
+
+  it("only the project's progress and reports, invoices, requests and three agreements are open; hours and files stay closed", async () => {
+    const shares = await rows<{ kind: string; named: number | null }>(sql`
+      SELECT kind, cardinality(only_user_ids)::int AS named FROM kernel.portal_shares
+       WHERE org_id = ${orgId}::uuid AND closed_at IS NULL ORDER BY kind, named NULLS FIRST`)
+    expect(shares.map((s) => [s.kind, s.named])).toEqual([
+      ["agreement", null],
+      ["agreement", null],
+      ["agreement", 1],
+      ["invoices", null],
+      ["project_progress", null],
+      ["project_reports", null],
+      ["requests", null],
+    ])
+  })
+
+  it("the client access preview reads the paid invoices and the milestones still to bill, as the portal does", async () => {
+    const [pauline] = await people()
+    const seen = await preview(pauline?.user_id as string)
+    const paid = (seen.invoices ?? [])
+      .filter((i) => i.payment_status === "paid")
+      .reduce((sum, i) => sum + Number(i.grand_total_minor), 0)
+    expect(paid).toBe(5_376_000)
+    const plan = studioMoney(BOARD_DATE)
+    expect((seen.upcoming ?? []).map((u) => [u.label, Number(u.amount_minor)]).sort()).toEqual(
+      plan.steps
+        .filter((s) => s.state === "planned" || s.state === "drafted")
+        .map((s) => [s.label, s.amountMinor])
+        .sort(),
+    )
+    expect((seen.projects ?? []).map((p) => p.name)).toEqual(["Partner portal rebuild"])
+  })
+
+  it("the mutual NDA reaches the person it is named to and not the other", async () => {
+    const nda = studioAgreementNumber(PLAN.year, { series: "AG", seq: 2 })
+    // The portal's own read of agreements, as each person.
+    const seenBy = (userId: string) =>
+      withPortalContext({ orgId, userId }, async (tx) =>
+        rowsOf<{ number: string }>(await tx.execute(sql`SELECT number FROM portal.agreements`)).map(
+          (r) => r.number,
+        ),
+      )
+    const [pauline, remi] = await people()
+    expect(await seenBy(pauline?.user_id as string)).toContain(nda)
+    expect(await seenBy(remi?.user_id as string)).not.toContain(nda)
+    expect((await seenBy(remi?.user_id as string)).sort()).toEqual(
+      [
+        studioAgreementNumber(PLAN.year, { series: "AG", seq: 11 }),
+        studioAgreementNumber(PLAN.year, { series: "AG", seq: 15 }),
+      ].sort(),
+    )
   })
 })

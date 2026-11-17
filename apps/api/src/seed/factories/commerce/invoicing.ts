@@ -16,8 +16,10 @@
 // Never `pending`: that is an issue whose render is still owed, which the app's
 // interrupted-issue sweep would take up.
 import { sql } from "drizzle-orm"
+import { extractRows } from "~/db"
 import { withSystemDb } from "~/db/privileged"
 import { appSequences } from "~/db/schema/kernel/app-sequences"
+import { schemaRef } from "~/db/schema-ref"
 import type { SeedContext } from "~/seed/context"
 import { type AppCell, iso, jsonCell, type SeedTx, shiftTime, upsertAppRow } from "../app-tables"
 
@@ -559,7 +561,23 @@ export async function seedInvoicingHistory(
       })
     }
 
+    // The company stamp the app writes at issue: the counterparty contact's company now.
+    const contactIds = [
+      ...new Set(Object.values(input.contactIdsByPartyKey).filter((id): id is string => !!id)),
+    ]
+    const companyOfContact = new Map(
+      contactIds.length === 0
+        ? []
+        : extractRows<{ id: string; company_id: string }>(
+            await tx.execute(sql`
+              SELECT id::text AS id, company_id::text AS company_id
+                FROM ${sql.raw(schemaRef("kernel"))}.contacts
+               WHERE org_id = ${orgId}::uuid AND company_id IS NOT NULL
+                 AND id = ANY(${`{${contactIds.join(",")}}`}::uuid[])`),
+          ).map((r) => [r.id, r.company_id]),
+    )
     for (const d of input.documents) {
+      const contactId = input.contactIdsByPartyKey[d.party.key] ?? null
       const row: Record<string, AppCell> & { id: string; org_id: string } = {
         id: d.id,
         org_id: orgId,
@@ -571,7 +589,8 @@ export async function seedInvoicingHistory(
         number_int: d.numberInt,
         year_of_issue: d.yearOfIssue,
         issuer_profile_id: profileId,
-        counterparty_contact_id: input.contactIdsByPartyKey[d.party.key] ?? null,
+        counterparty_contact_id: contactId,
+        company_id: contactId ? (companyOfContact.get(contactId) ?? null) : null,
         counterparty_name: d.party.name,
         counterparty_address: d.party.address,
         counterparty_vat_id: d.party.vatId,

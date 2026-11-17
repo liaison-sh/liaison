@@ -131,6 +131,63 @@ describe("AgentRoutinesTab", () => {
 
 // A routine's run log is read here, under the agent that runs it: a run of the
 // history opens that run's own transcript, never a chat row.
+describe("AgentRoutinesTab app templates", () => {
+  const TEMPLATE = {
+    appName: "agreements",
+    templateKey: "scope-check",
+    description: "When a client under a signed agreement writes, check the request.",
+    kind: "event",
+    enabled: false,
+  }
+
+  function mount(showTemplates: boolean) {
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/agent/routines/templates") return [TEMPLATE]
+        if (path.endsWith("/runs")) return []
+        return [OWNED]
+      }),
+      post: vi.fn(async () => ({})),
+      put: vi.fn(),
+      patch: vi.fn(),
+      delete: vi.fn(),
+      rawPost: vi.fn(),
+      rawGet: vi.fn(),
+      getEnvelope: vi.fn(),
+    }
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <AgentRoutinesTab agentId="agent-1" canCreate={true} showTemplates={showTemplates} />
+      </ApiContext.Provider>
+    ))
+    return api
+  }
+
+  it("the owner's personal agent offers the apps' routine templates, each with its own switch", async () => {
+    const api = mount(true)
+    const enable = await screen.findByTestId("routine-template-enable-agreements-scope-check")
+    fireEvent.click(enable)
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith(
+        "/agent/routines/templates/agreements/scope-check/enable",
+        {},
+      ),
+    )
+    // The agent's own list is read again, so the new routine shows here.
+    await waitFor(() =>
+      expect(
+        api.get.mock.calls.filter((c) => c[0] === "/agent/routines?ownerAgentId=agent-1").length,
+      ).toBeGreaterThan(1),
+    )
+  })
+
+  it("another agent's page offers no template", async () => {
+    mount(false)
+    await screen.findByTestId("routine-row-morning-digest")
+    expect(screen.queryByTestId("routine-templates-section")).toBeNull()
+  })
+})
+
 describe("AgentRoutinesTab run history", () => {
   const RUNS = [
     {

@@ -1593,10 +1593,39 @@ export function listRoutinesNotes(): string[] {
   ]
 }
 
+/**
+ * The org's app routine templates no routine was made from yet (an app template is one per
+ * org; flow templates, made per project, excepted): a request to switch one on finds it here
+ * and enables it with enable_routine_template.
+ */
+function templatesToEnable(
+  orgId: string,
+  rows: Array<{ appName: string | null; templateKey: string | null; sourceKind: string | null }>,
+): Array<{ appName: string; templateKey: string; description: string }> {
+  const have = new Set(
+    rows.filter((r) => r.sourceKind === "app").map((r) => `${r.appName}\0${r.templateKey}`),
+  )
+  const out: Array<{ appName: string; templateKey: string; description: string }> = []
+  for (const [key, tpl] of routineTemplateRegistry.entriesOf(orgId)) {
+    const [, appName, templateKey] = key
+    // A flow template is made per project, from that project's statuses, not offered here.
+    if (appName === KERNEL_TEMPLATE_APP || tpl.flow || have.has(`${appName}\0${templateKey}`))
+      continue
+    out.push({ appName, templateKey, description: tpl.description })
+  }
+  return out.sort((a, b) =>
+    `${a.appName}${a.templateKey}`.localeCompare(`${b.appName}${b.templateKey}`),
+  )
+}
+
 export async function handleListRoutines(
   params: { visibility?: "mine" | "shared" },
   ctx: ToolCtx,
-): Promise<{ routines: RoutineListItem[]; notes: string[] }> {
+): Promise<{
+  routines: RoutineListItem[]
+  notes: string[]
+  templatesToEnable?: Array<{ appName: string; templateKey: string; description: string }>
+}> {
   const visibility = params?.visibility ?? "mine"
   const rows = await withPrivilegedDb(ctx.orgId, "list-routines", (tx) =>
     tx
@@ -1636,7 +1665,27 @@ export async function handleListRoutines(
       flow: r.flow ?? null,
       title: r.title ?? null,
     })),
-    notes: listRoutinesNotes(),
+    ...(await (async () => {
+      const made = await withPrivilegedDb(ctx.orgId, "list-routines-templates", (tx) =>
+        tx
+          .select({
+            appName: routinesTbl.appName,
+            templateKey: routinesTbl.templateKey,
+            sourceKind: routinesTbl.sourceKind,
+          })
+          .from(routinesTbl)
+          .where(and(eq(routinesTbl.orgId, ctx.orgId), eq(routinesTbl.sourceKind, "app"))),
+      )
+      const offer = templatesToEnable(ctx.orgId, made)
+      if (offer.length === 0) return { notes: listRoutinesNotes() }
+      return {
+        notes: [
+          ...listRoutinesNotes(),
+          "templatesToEnable: the apps' routine templates nobody switched on yet; kernel__enable_routine_template switches one on.",
+        ],
+        templatesToEnable: offer,
+      }
+    })()),
   }
 }
 

@@ -870,6 +870,59 @@ describe("skills-routines-tools — read-only set", () => {
       expect(ship?.lastRunError).toContain("boxtal:shipments:read")
     })
 
+    it("names the apps' routine templates not switched on yet, so a request for one finds it", async () => {
+      const { routineTemplateRegistry } = await import("~/modules/apps/app-registries")
+      routineTemplateRegistry.set([orgId, "maison-app", "check"], {
+        description: "When a client writes, check the request.",
+        kind: "event",
+        event: "maison-app:thing:create",
+        promptTemplate: "p",
+        scopes: [],
+        enabledByDefault: false,
+      } as never)
+      routineTemplateRegistry.set([orgId, "maison-app", "already-on"], {
+        description: "Already switched on.",
+        kind: "recurring",
+        cron: "0 9 * * *",
+        promptTemplate: "p",
+        scopes: [],
+        enabledByDefault: false,
+      } as never)
+      try {
+        await withPrivilegedDb(orgId, "rt-list-template-seed", async (tx) => {
+          await tx.insert(routines).values({
+            orgId,
+            ownerUserId: userId,
+            name: "maison-app-already-on",
+            description: "d",
+            cron: "0 9 * * *",
+            timezone: "UTC",
+            prompt: "p",
+            scopes: [],
+            appName: "maison-app",
+            templateKey: "already-on",
+            sourceKind: "app",
+            createdByUserId: userId,
+            createdByActorType: "user",
+          })
+        })
+        const r = (await handleListRoutines({}, { orgId, userId })) as {
+          templatesToEnable?: Array<{ appName: string; templateKey: string; description: string }>
+        }
+        expect(r.templatesToEnable?.filter((t) => t.appName === "maison-app")).toEqual([
+          {
+            appName: "maison-app",
+            templateKey: "check",
+            description: "When a client writes, check the request.",
+          },
+        ])
+        // A flow template is made per project, from its statuses: not offered here.
+        expect(r.templatesToEnable?.map((t) => t.templateKey)).not.toContain("notify-on-status")
+      } finally {
+        routineTemplateRegistry.deleteByPrefix([orgId, "maison-app"])
+      }
+    })
+
     it("never returns other users' routines", async () => {
       const otherId = await withSystemDb("rt-list-other-user", async (db) => {
         const [u] = await db

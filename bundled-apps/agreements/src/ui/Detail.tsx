@@ -16,6 +16,7 @@ import { tr, uiLocale } from "./i18n"
 import { StatusBadge } from "./List"
 import {
   type AgreementDetail,
+  declinedUnproven,
   editReplacesSent,
   formatMoney,
   KIND_LABEL,
@@ -186,6 +187,9 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
             const a = () => d().agreement
             const latest = () => latestVersion(d())
             const mine = () => yourOpenLink(d().signing_links)
+            // The signed copy read differently from the frozen file: nothing was sealed, and a
+            // person withdraws it to send it again from a clean file (never a repair).
+            const copyDiffers = () => a().status === "signed" && latest()?.copy_differs === true
             return (
               <>
                 <header class="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle px-5 py-3">
@@ -248,6 +252,11 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                         {tr("Withdraw")}
                       </Button>
                     </Show>
+                    <Show when={copyDiffers()}>
+                      <Button testid="agreement-void-open" onClick={() => setVoiding(!voiding())}>
+                        {tr("Withdraw")}
+                      </Button>
+                    </Show>
                   </div>
                 </header>
 
@@ -298,6 +307,16 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                     <Note testid="agreement-state-declined" title={tr("A signer declined")}>
                       {tr(
                         "Nothing was signed. You can send a new version, or a new link if it was not them.",
+                      )}
+                    </Note>
+                  </Show>
+                  <Show when={copyDiffers()}>
+                    <Note
+                      testid="agreement-state-copy-differs"
+                      title={tr("The signed copy differs")}
+                    >
+                      {tr(
+                        "The signed copy did not match what was read. Nothing was sealed. Send it again.",
                       )}
                     </Note>
                   </Show>
@@ -368,6 +387,15 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                                             date: dateText(l.expires_at),
                                           })}
                                         </span>
+                                      </Show>
+                                      <Show when={declinedUnproven(l)}>
+                                        <Button
+                                          testid={`agreement-not-them-${l.client_action_id}`}
+                                          disabled={busy()}
+                                          onClick={() => newLink(l.client_action_id)}
+                                        >
+                                          {tr("If this was not them, send a new link")}
+                                        </Button>
                                       </Show>
                                       <Show when={relinkable([l]).length > 0}>
                                         <Button

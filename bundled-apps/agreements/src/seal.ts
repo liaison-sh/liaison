@@ -44,7 +44,12 @@ interface Version {
   status: string
   sha256?: string | null
   file_id?: string | null
+  /** When the signed copy of an upload read differently from the frozen file (no seal). */
+  copy_differs_at?: string | null
 }
+
+const COPY_DIFFERS_TEXT =
+  "The signed copy did not match what was read. Nothing was sealed. Send it again."
 
 export interface SignatureEvent {
   id: string
@@ -281,6 +286,8 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
   const agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
   if (!agreement)
     return refusal("NOT_FOUND", "No agreement holds this version. Nothing was sealed.")
+  // Its signed copy already read differently from the frozen file: never built again.
+  if (version.copy_differs_at) return refusal("COPY_DIFFERS", COPY_DIFFERS_TEXT)
   const events = await eventsOf(ctx, version.id)
   if (events.length === 0)
     return { status: "not_ready", reason: "This version has no recorded signature." }
@@ -332,6 +339,11 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
       // The frozen file changed, or the signed copy of an upload does not read
       // as the frozen file did: no package, no seal, no copy, no repair.
       if (code === "DOCUMENT_CHANGED" || code === "COPY_DIFFERS") {
+        // Remembered on the version, so the page says so and nothing retries it.
+        if (code === "COPY_DIFFERS")
+          await ctx.db.update("agreement_versions", version.id, {
+            copy_differs_at: nowOf(ctx).toISOString(),
+          })
         await ctx.emit?.({
           entity: "evidence",
           action: "mismatch",
@@ -745,6 +757,8 @@ export async function sealRetry(ctx: SealCtx) {
   let sealed = 0
   let waiting = 0
   for (const v of versions) {
+    // A signed copy that read differently is never retried: a person voids and sends again.
+    if (v.copy_differs_at) continue
     const pkg = await packageOf(ctx, v.id)
     // A stand-in's record is complete as written: nothing to seal, start or announce.
     if (pkg?.level === "demo") continue

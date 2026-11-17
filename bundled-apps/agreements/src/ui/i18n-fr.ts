@@ -3,6 +3,11 @@
 // French for this app's UI, keyed by the English source text (see i18n.ts).
 // Formal "vous", no dash punctuation (the repo's lint:copy rule).
 export const FR: Record<string, string> = {
+  "If this was not them, send a new link":
+    "Si ce n'était pas cette personne, envoyez un nouveau lien",
+  "The signed copy differs": "La copie signée diffère",
+  "The signed copy did not match what was read. Nothing was sealed. Send it again.":
+    "La copie signée ne correspond pas à ce qui a été lu. Rien n'a été scellé. Envoyez le document à nouveau.",
   "+ New agreement": "+ Nouveau contrat",
   "A blank document": "Un document vierge",
   "A block from the template": "Un bloc du modèle",

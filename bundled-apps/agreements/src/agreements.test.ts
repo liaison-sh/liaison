@@ -667,4 +667,41 @@ describe("agreement_get hands back no text a person outside the org wrote", () =
     expect(JSON.stringify(out)).not.toContain("someone-else")
     expect(out.versions[0]?.file_id).toBe("file-1")
   })
+
+  it("says when a decline came without the emailed code, and only then", async () => {
+    const db = memoryDb()
+    const { id } = await db.insert("agreements", {
+      number: "AG-2026-011",
+      title: "Declined",
+      kind: "nda",
+      status: "declined",
+    })
+    await db.insert("agreement_versions", { agreement_id: id, number: 1, status: "frozen" })
+    const link = (over: object) => ({
+      invited_name: "S",
+      invited_email: "s@example.com",
+      sign_order: 1,
+      expires_at: "2026-12-01",
+      ...over,
+    })
+    const ctx = {
+      ...ctxFor(db),
+      client_actions_record: async () => ({
+        status: "ok",
+        links: [
+          link({ id: "unproven", state: "declined", code_verified: false }),
+          link({ id: "proven", state: "declined", code_verified: true }),
+          link({ id: "open", state: "open", code_verified: false }),
+        ],
+      }),
+    } as unknown as AgreementsCtx
+    const out = (await agreementGet(ctx, { id })) as {
+      signing_links: Array<{ client_action_id: string; code_verified?: boolean }>
+    }
+    expect(out.signing_links.map((l) => [l.client_action_id, l.code_verified])).toEqual([
+      ["unproven", false],
+      ["proven", undefined],
+      ["open", undefined],
+    ])
+  })
 })

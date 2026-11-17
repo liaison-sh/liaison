@@ -5,8 +5,8 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.6.0", () => {
-    expect(manifest.version).toBe("0.6.0")
+  it("is at version 0.6.1", () => {
+    expect(manifest.version).toBe("0.6.1")
   })
 
   it("the Scope check can read past similar work to size hours, and fills its group when enabled", () => {

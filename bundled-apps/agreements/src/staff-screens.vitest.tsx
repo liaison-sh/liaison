@@ -181,6 +181,91 @@ describe("the agreement", () => {
       client_action_id: "late",
     })
   })
+
+  it("offers a new link in one click on a decline made without the emailed code, and only then", async () => {
+    answers.agreement_get = () =>
+      agreement(
+        { status: "declined" },
+        {
+          signing_links: [
+            link({ client_action_id: "unproven", state: "declined", code_verified: false }),
+            link({ client_action_id: "proven", state: "declined", sign_order: 2 }),
+          ],
+        },
+      )
+    answers.agreement_new_link = () => ({ status: "ok", message: "sent" })
+    render(() => <AgreementDetailView entityId={ID} />)
+    const relink = await screen.findByTestId("agreement-not-them-unproven")
+    expect(relink.textContent).toContain("If this was not them, send a new link")
+    expect(screen.queryByTestId("agreement-not-them-proven")).toBeNull()
+    fireEvent.click(relink)
+    await waitFor(() => expect(calls.some((c) => c.tool === "agreement_new_link")).toBe(true))
+    expect(calls.find((c) => c.tool === "agreement_new_link")?.args).toEqual({
+      client_action_id: "unproven",
+    })
+  })
+
+  it("says the signed copy did not match, offers no repair, and lets a person withdraw it", async () => {
+    answers.agreement_get = () =>
+      agreement(
+        { status: "signed" },
+        {
+          versions: [
+            {
+              id: "v1",
+              number: 1,
+              status: "signed",
+              sha256: "a".repeat(64),
+              page_count: 2,
+              frozen_at: "2026-11-10",
+              copy_differs: true,
+            },
+          ],
+          signing_links: [link({ client_action_id: "done", state: "decided" })],
+        },
+      )
+    answers.agreement_evidence_get = () => ({ status: "error", error: { code: "NOT_SEALED" } })
+    answers.agreement_void = () => ({ status: "ok", message: "voided" })
+    render(() => <AgreementDetailView entityId={ID} />)
+    const state = await screen.findByTestId("agreement-state-copy-differs")
+    expect(state.textContent).toContain(
+      "The signed copy did not match what was read. Nothing was sealed. Send it again.",
+    )
+    expect(screen.queryByText(/seal again|repair|try again/i)).toBeNull()
+    fireEvent.click(screen.getByTestId("agreement-void-open"))
+    fireEvent.input(screen.getByTestId("agreement-void-reason"), {
+      target: { value: "print to a clean PDF" },
+    })
+    fireEvent.click(screen.getByTestId("agreement-void"))
+    await waitFor(() => expect(calls.some((c) => c.tool === "agreement_void")).toBe(true))
+    expect(calls.find((c) => c.tool === "agreement_void")?.args).toEqual({
+      id: ID,
+      reason: "print to a clean PDF",
+    })
+  })
+
+  it("a plainly signed agreement shows neither the difference nor a way to withdraw it", async () => {
+    answers.agreement_get = () =>
+      agreement(
+        { status: "signed" },
+        {
+          versions: [
+            {
+              id: "v1",
+              number: 1,
+              status: "signed",
+              sha256: "a".repeat(64),
+              page_count: 2,
+              frozen_at: "2026-11-10",
+            },
+          ],
+        },
+      )
+    render(() => <AgreementDetailView entityId={ID} />)
+    expect(await screen.findByTestId("agreement-overview")).toBeTruthy()
+    expect(screen.queryByTestId("agreement-state-copy-differs")).toBeNull()
+    expect(screen.queryByTestId("agreement-void-open")).toBeNull()
+  })
 })
 
 describe("the editor", () => {

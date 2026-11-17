@@ -38,6 +38,8 @@ export interface SigningLinkView {
   expires_at: string
   /** The signed-in person is this signer (a staff signer reads and signs in session). */
   yours?: boolean
+  /** `false` on a decline made without the emailed code: maybe not them. */
+  code_verified?: boolean
 }
 
 export interface VersionView {
@@ -48,6 +50,8 @@ export interface VersionView {
   page_count: number | null
   frozen_at: string | null
   file_id?: string | null
+  /** The signed copy did not read as the frozen file: nothing was sealed. */
+  copy_differs?: boolean
 }
 
 /** `agreement_get`. */
@@ -384,6 +388,11 @@ export function yourOpenLink(links: SigningLinkView[]): SigningLinkView | null {
 /** Links that ended before everyone signed: a new link may be sent for these. */
 export function relinkable(links: SigningLinkView[]): SigningLinkView[] {
   return links.filter((l) => l.state === "expired" || l.state === "revoked" || l.state === "locked")
+}
+
+/** A decline made without the emailed code: "If this was not them, send a new link". */
+export function declinedUnproven(link: SigningLinkView): boolean {
+  return link.state === "declined" && link.code_verified === false
 }
 
 export function latestVersion(detail: AgreementDetail): VersionView | null {

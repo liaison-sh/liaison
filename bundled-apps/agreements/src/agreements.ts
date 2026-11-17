@@ -240,6 +240,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
     page_count?: number | null
     frozen_at?: string
     file_id?: string | null
+    copy_differs_at?: string | null
   }>
   const draft = await loadDraft(ctx, row.id)
   const me = await callerUserId(ctx)
@@ -269,6 +270,8 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       page_count: v.page_count ?? null,
       frozen_at: v.frozen_at ?? null,
       file_id: v.file_id ?? null,
+      // The signed copy did not read as the frozen file: nothing was sealed (no repair).
+      ...(v.copy_differs_at ? { copy_differs: true } : {}),
     })),
     shares: shares.map((s) => ({ user_id: s.user_id, role: s.role })),
     // An admin's claim, once every person on the list had left, stays shown to whoever reads it.
@@ -284,6 +287,8 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       expires_at: l.expires_at,
       // The reader's own link (a staff signer): their Read and sign, never anyone else's.
       ...(me && l.signer_user_id === me ? { yours: true } : {}),
+      // A decline without the emailed code may not be theirs: a new link is offered.
+      ...(l.state === "declined" && !l.code_verified ? { code_verified: false } : {}),
     })),
     message:
       `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${row.status === "draft" ? "Check it with agreement_prepare." : ""}`

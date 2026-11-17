@@ -719,6 +719,17 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   return { status: "partly_signed", signed: done, of: all }
 }
 
+/**
+ * A document waiting for signatures, or a signed one whose signed copy read differently from
+ * the frozen file (nothing was sealed): voided so a person sends it again from a clean file.
+ */
+async function voidable(ctx: AgreementsCtx, a: Agreement): Promise<boolean> {
+  if (a.status === "sent" || a.status === "partly_signed") return true
+  if (a.status !== "signed") return false
+  const v = (await latestOf(ctx, a.id)) as (Version & { copy_differs_at?: string | null }) | null
+  return !!v?.copy_differs_at
+}
+
 /** Checked before the card is staged: a reason, and a document still waiting for signatures. */
 export async function agreementVoidPreflight(
   ctx: AgreementsCtx,
@@ -739,7 +750,7 @@ export async function agreementVoidPreflight(
         message: `No agreement ${p.id} you can see. Nothing was changed.`,
       },
     }
-  if (a.status !== "sent" && a.status !== "partly_signed")
+  if (!(await voidable(ctx, a)))
     return {
       error: {
         code: "NOT_SENT",
@@ -758,7 +769,7 @@ export async function agreementVoid(ctx: AgreementsCtx, p: { id: string; reason:
       ? ((await ctx.db.findOne("agreements", p.id)) as Agreement | null)
       : null
   if (!a) return refusal("NOT_FOUND", `No agreement ${p.id} you can see. Nothing was changed.`)
-  if (a.status !== "sent" && a.status !== "partly_signed")
+  if (!(await voidable(ctx, a)))
     return refusal(
       "NOT_SENT",
       `${a.number} is ${a.status}: only a document waiting for signatures is voided. Nothing was changed.`,

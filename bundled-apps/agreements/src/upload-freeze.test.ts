@@ -8,6 +8,7 @@
 import { describe, expect, it } from "bun:test"
 import {
   agreementCreate,
+  agreementGet,
   agreementPrepare,
   agreementUpdate,
   uploadFreezeJob,
@@ -15,9 +16,9 @@ import {
 } from "./agreements"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
-import { packageOf, sealVersion } from "./seal"
+import { packageOf, sealRetry, sealVersion } from "./seal"
 import { signedWorld } from "./seal.testutil"
-import { agreementSend, agreementSendPreflight } from "./send"
+import { agreementSend, agreementSendPreflight, agreementVoid } from "./send"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const UPLOAD = "44444444-4444-4444-8444-444444444444"
@@ -289,5 +290,63 @@ describe("the seal of an uploaded version", () => {
     const mismatch = w.ctx.calls.emitted.filter((e) => e.action === "mismatch")
     expect(mismatch[0]?.data).toMatchObject({ what: "signed_copy" })
     expect(w.ctx.calls.mails).toHaveLength(0)
+  })
+
+  it("remembers the difference: the page says so, nothing retries it, and a person can void it", async () => {
+    const w = await signedWorld()
+    let merges = 0
+    w.ctx.evidence_signed_pdf = async () => {
+      merges++
+      return { status: "error", error: { code: "COPY_DIFFERS", message: "differs" } }
+    }
+    await sealVersion(w.ctx, w.versionId)
+    const row = (await w.db.findOne("agreement_versions", w.versionId)) as Row | null
+    expect(row?.copy_differs_at).toBeTruthy()
+    expect(row?.status).toBe("signed")
+    // No retry: neither the job nor a second seal builds the copy again or raises it again.
+    await sealRetry(w.ctx)
+    expect(await sealVersion(w.ctx, w.versionId)).toMatchObject({
+      status: "error",
+      error: { code: "COPY_DIFFERS" },
+    })
+    expect(merges).toBe(1)
+    expect(w.ctx.calls.emitted.filter((e) => e.action === "mismatch")).toHaveLength(1)
+    expect(w.ctx.calls.emitted.filter((e) => e.action === "seal_overdue")).toHaveLength(0)
+    const got = (await agreementGet(w.ctx as unknown as AgreementsCtx, { id: w.agreementId })) as {
+      versions: Array<{ copy_differs?: boolean }>
+    }
+    expect(got.versions[0]?.copy_differs).toBe(true)
+    // A person voids it, to send it again from a clean file.
+    const revoked: unknown[] = []
+    const vctx = {
+      ...w.ctx,
+      client_actions_revoke: async (x: unknown) => {
+        revoked.push(x)
+        return { status: "ok", revoked_ids: [] }
+      },
+    } as unknown as AgreementsCtx
+    expect(
+      await agreementVoid(vctx, { id: w.agreementId, reason: "print to a clean PDF" }),
+    ).toMatchObject({
+      status: "ok",
+      agreement: { status: "voided" },
+    })
+    expect(revoked).toHaveLength(1)
+  })
+
+  it("a sealed or plainly signed agreement is still never voided, and its page carries no mark", async () => {
+    const w = await signedWorld()
+    const vctx = {
+      ...w.ctx,
+      client_actions_revoke: async () => ({ status: "ok", revoked_ids: [] }),
+    } as unknown as AgreementsCtx
+    expect(await agreementVoid(vctx, { id: w.agreementId, reason: "r" })).toMatchObject({
+      status: "error",
+      error: { code: "NOT_SENT" },
+    })
+    const got = (await agreementGet(w.ctx as unknown as AgreementsCtx, { id: w.agreementId })) as {
+      versions: Array<Record<string, unknown>>
+    }
+    expect(got.versions[0]).not.toHaveProperty("copy_differs")
   })
 })

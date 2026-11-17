@@ -153,14 +153,7 @@ function asView(data: unknown): ClientActionView | null {
   return {
     title: d.title,
     senderName: typeof sender?.name === "string" ? sender.name : null,
-    summary: Array.isArray(d.summary)
-      ? d.summary
-          .filter(
-            (r): r is { k: string; v: string } =>
-              !!r && typeof r.k === "string" && typeof r.v === "string",
-          )
-          .map((r) => ({ k: r.k, v: r.v }))
-      : [],
+    summary: summaryOf(d.summary),
     sourceBlocks: Array.isArray(d.source_blocks) ? d.source_blocks : null,
     text: typeof d.text === "string" ? d.text : null,
     pdfFileId: typeof d.pdf_file_id === "string" ? d.pdf_file_id : null,
@@ -257,14 +250,42 @@ export async function withStoredFileHash(orgId: string, data: unknown): Promise<
     ...d,
     sha256: sha,
     ...(Array.isArray(d.source_blocks)
-      ? { [KERNEL_BLOCKS_HASH]: blocksSha256(d.source_blocks) }
+      ? {
+          [KERNEL_BLOCKS_HASH]: shownSha256({
+            title: typeof d.title === "string" ? d.title : "",
+            summary: summaryOf(d.summary),
+            blocks: d.source_blocks,
+          }),
+        }
       : {}),
   }
 }
 
-/** Hex SHA-256 of the canonical JSON (RFC 8785) of the blocks a page shows. */
-export function blocksSha256(blocks: unknown[]): string {
-  return createHash("sha256").update(canonicalJson(blocks)).digest("hex")
+/** The summary rows a page shows (`k`/`v` text pairs), as `asView` keeps them. */
+function summaryOf(raw: unknown): Array<{ k: string; v: string }> {
+  return Array.isArray(raw)
+    ? raw
+        .filter(
+          (r): r is { k: string; v: string } =>
+            !!r && typeof r.k === "string" && typeof r.v === "string",
+        )
+        .map((r) => ({ k: r.k, v: r.v }))
+    : []
+}
+
+/**
+ * Hex SHA-256 of the canonical JSON (RFC 8785) of everything a page shows beside its file: the
+ * title, the summary rows and the blocks. A change to any of them after sending (a counterparty
+ * renamed, a line edited) refuses the decision.
+ */
+export function shownSha256(shown: {
+  title: string
+  summary: Array<{ k: string; v: string }>
+  blocks: unknown[]
+}): string {
+  return createHash("sha256")
+    .update(canonicalJson({ title: shown.title, summary: shown.summary, blocks: shown.blocks }))
+    .digest("hex")
 }
 
 /**

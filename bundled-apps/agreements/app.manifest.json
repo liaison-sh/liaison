@@ -1,13 +1,15 @@
 {
   "name": "agreements",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
   "agentInstructions": "Agreements holds the organization's proposals, statements of work, contracts and NDAs, each with its own number, and the templates they are made from.",
   "outsideTextFields": [
     "signers",
-    "imported_text"
+    "imported_text",
+    "source_text",
+    "pages"
   ],
   "listing": {
     "publisher": "Liaison",

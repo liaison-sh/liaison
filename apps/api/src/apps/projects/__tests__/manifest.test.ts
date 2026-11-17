@@ -144,7 +144,9 @@ describe("projects.manifest", () => {
     //   the report routine on in the org's time zone, a client's milestone answer moves nothing.
     // 1.46.0: descriptions that repeated what the result says (a send parks, a template's
     //   checks) are cut.
-    expect(projectsManifest.version).toBe("1.46.0")
+    // 1.46.1: a client report read gives the guard key a person's send carries; report sources
+    //   leave out messages stamped with a restricted record.
+    expect(projectsManifest.version).toBe("1.46.1")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

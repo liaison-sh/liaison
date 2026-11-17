@@ -27,6 +27,7 @@ interface Call {
   params: Record<string, unknown>
   key?: string
   target_id: string
+  decided?: string
 }
 
 type Projects = {
@@ -81,8 +82,15 @@ async function acceptedWorld(
     tool: string
     params: Record<string, unknown>
     idempotency_key?: string
+    decided_action_id?: string
   }) => {
-    calls.push({ tool: p.tool, params: p.params, key: p.idempotency_key, target_id: p.target_id })
+    calls.push({
+      tool: p.tool,
+      params: p.params,
+      key: p.idempotency_key,
+      target_id: p.target_id,
+      decided: p.decided_action_id,
+    })
     if (projects.dieOn === p.tool && !died) {
       died = true
       throw new Error("the worker stopped")
@@ -146,7 +154,19 @@ async function acceptedWorld(
   let current = record("approved")
   const ctx = {
     ...world.ctx,
-    client_actions_record: async () => ({ status: "ok", record: current }),
+    client_actions_record: async (p: { id?: string }) =>
+      p.id
+        ? { status: "ok", record: current }
+        : {
+            status: "ok",
+            links: [
+              {
+                id: ACTION,
+                state: current.decision === "declined" ? "declined" : "decided",
+                replaced: false,
+              },
+            ],
+          },
     client_actions_call_as_sender: callAsSender,
   } as unknown as AgreementsCtx
   const decide = (decision: string) => {
@@ -297,6 +317,9 @@ describe("an accepted change request's work", () => {
     expect(creates).toHaveLength(2)
     // Both carry the same reference, so the kernel answers the second with the first task.
     expect(new Set(creates.map((c) => c.key)).size).toBe(1)
+    // And both name the same decided link, so the kernel runs them as the same person: the
+    // reference is one caller's, never a miss for the job's run.
+    expect(creates.map((c) => c.decided)).toEqual([ACTION, ACTION])
     expect(w.row(w.crId).effects_done_at).toBeTruthy()
     expect(w.projects.timeboxMinutes).toBe(480 * 60)
   })

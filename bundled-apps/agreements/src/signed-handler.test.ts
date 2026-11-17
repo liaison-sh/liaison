@@ -119,6 +119,20 @@ describe("a signed agreement's project", () => {
     })
   })
 
+  it("a restricted agreement's project is named by its number alone, with no client, and its client joins no group", async () => {
+    const w = await world(
+      { hours_minutes: null, org_access: "none", title: "Takeover due diligence, Maison Nord" },
+      { group: GROUP },
+    )
+    await sealVersion(w.ctx, w.versionId)
+    const create = w.projects.calls.find((c) => c.name === "projects:createProject")
+    const a = (await w.db.findOne("agreements", w.agreementId)) as { number: string }
+    expect(create?.params.name).toBe(`Agreement ${a.number}`)
+    expect(create?.params).not.toHaveProperty("companyId")
+    expect(JSON.stringify(w.projects.calls)).not.toContain("Maison Nord")
+    expect(w.projects.calls.map((c) => c.name)).not.toContain("kernel:contacts_group_add")
+  })
+
   it("a proposal with a timebox starts its project as the sender, with time and budgets on and that timebox as its plan", async () => {
     const boxed = await world({ hours_minutes: 40 * 60 })
     await sealVersion(boxed.ctx, boxed.versionId)

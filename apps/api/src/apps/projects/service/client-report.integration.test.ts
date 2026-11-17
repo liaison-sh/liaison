@@ -249,6 +249,40 @@ describe("a client report waits for a person", () => {
     await expect(rewrite()).rejects.toThrow()
   })
 
+  it("a person's own send goes out only with the version of the text they read, never one a routine saved since", async () => {
+    const saved = await draft(week(5), [summary("The booking page is live.")])
+    const read = await call<{ guardKey?: string | null }>("projects_clientReportGet", {
+      reportId: saved.reportId,
+    })
+    expect(typeof read.guardKey).toBe("string")
+    // A click that names no version is refused, and nothing goes out.
+    const bare = await call<{ error?: { code: string } }>("projects_clientReportSend", {
+      reportId: saved.reportId,
+    })
+    expect(bare.error?.code).toBe("SEND_GUARD_MISMATCH")
+    // A routine saves new text after the person read the draft: what they read is not sent.
+    await draft(week(5), [summary("Rewritten by the routine.")])
+    const stale = await call<{ error?: { code: string } }>("projects_clientReportSend", {
+      reportId: saved.reportId,
+      guardKey: read.guardKey,
+    })
+    expect(stale.error?.code).toBe("SEND_GUARD_MISMATCH")
+    expect(
+      mail.sent.filter(
+        (m) => m.template === "projects.client-report" && (m.text ?? "").includes("Rewritten"),
+      ),
+    ).toHaveLength(0)
+    // The text they read now goes out with its own key.
+    const fresh = await call<{ guardKey?: string | null }>("projects_clientReportGet", {
+      reportId: saved.reportId,
+    })
+    const sent = await call<{ status?: string }>("projects_clientReportSend", {
+      reportId: saved.reportId,
+      guardKey: fresh.guardKey,
+    })
+    expect(sent.status).toBe("sent")
+  })
+
   it("the send tool parks for a person and no auto-approve policy can take it", async () => {
     const manifest = (await import("~/apps/projects/app.manifest.json")).default as {
       tools: Record<string, Record<string, unknown>>

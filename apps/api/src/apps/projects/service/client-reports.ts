@@ -200,7 +200,10 @@ export async function clientReportSources(
          AND (pr.occurred_on IS NULL OR (pr.occurred_on >= ${since}::date AND pr.occurred_on <= ${until}::date))
        LIMIT 50`),
   )
-  // Threads a person linked to the project, never a task's own discussion thread.
+  // Threads a person linked to the project, never a task's own discussion thread. A message
+  // stamped with a restricted record's scope (a turn that read a restricted agreement) is never a
+  // source: the report is read by every reports reader and, once approved, by the client, who
+  // are not that record's list. The stamp decides, whoever runs this read.
   const threadMessages = extractRows<{ threadTitle: string | null; text: string; at: string }>(
     await b.tx.execute(drizzleSql`
       SELECT th.title AS "threadTitle", m.content AS text, m.created_at::text AS at
@@ -212,6 +215,8 @@ export async function clientReportSources(
          AND NOT EXISTS (SELECT 1 FROM ${projectsRel("tasks")} t
                           WHERE t.thread_id = th.id AND t.org_id = th.org_id)
          AND m.created_at >= ${since}::date AND m.created_at < (${until}::date + 1)
+         AND NOT EXISTS (SELECT 1 FROM unnest(m.required_scopes) AS rq(s)
+                          WHERE left(rq.s, 11) = 'restricted:')
        ORDER BY m.created_at
        LIMIT 100`),
   )
@@ -333,6 +338,13 @@ export async function clientReportGet(b: Base & { input: { reportId?: unknown } 
     approvedAt: r.approved_at,
     sentAt: r.sent_at,
     edited: r.edited,
+    // What a person's send of this text passes, so it sends exactly what they read.
+    guardKey: r.sent_at
+      ? null
+      : await clientReportReadyToSend(b).then(
+          (x) => x.guardKey,
+          () => null,
+        ),
     message:
       r.status === "sent"
         ? `The report on ${r.project_name} for the week ending ${r.period_end} was sent on ${String(r.sent_at).slice(0, 10)}; it does not change. Next: a correction goes in next week's report.`
@@ -682,6 +694,8 @@ export function reportText(sections: ReportSection[]): string {
 export async function clientReportSend(
   b: Base & {
     approverId: string
+    /** The person's own click on the report (no approval card): it must carry the guard key. */
+    personClick?: boolean
     input: { reportId?: unknown; sendGuard?: unknown; guardKey?: unknown }
     mail: (m: {
       to: string
@@ -694,9 +708,22 @@ export async function clientReportSend(
   const ready = await clientReportReadyToSend(b)
   const r = ready.report
   const guard = b.input.sendGuard as { addresses?: unknown } | undefined
+  // A person's own click is bound to the text and recipient they read: the screen passes the
+  // report's guard key, and a click without it is refused, so a draft a routine saved after
+  // they read it never goes out under their name.
+  if (b.personClick === true && typeof b.input.guardKey !== "string")
+    refuse(
+      409,
+      "SEND_GUARD_MISMATCH",
+      `The send of the report on ${r.project_name} names no version of its text. Nothing was sent. Next: open the report again and send what it shows.`,
+    )
   if (b.input.guardKey !== undefined || guard !== undefined) {
     const addresses = Array.isArray(guard?.addresses) ? guard.addresses : []
-    if (b.input.guardKey !== ready.guardKey || !addresses.includes(ready.recipient.email))
+    const addressed =
+      guard === undefined && b.personClick === true
+        ? true
+        : addresses.includes(ready.recipient.email)
+    if (b.input.guardKey !== ready.guardKey || !addressed)
       refuse(
         409,
         "SEND_GUARD_MISMATCH",

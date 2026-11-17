@@ -346,6 +346,16 @@ export function backgroundAppSession(opts: {
   }
 }
 
+/**
+ * The decided client action a `kernel/client_action:decided` handler run serves, from the
+ * kernel's own event (never from the app). Any other event names none.
+ */
+function decidedOf(eventType: string, event: unknown): { decidedActionId?: string } {
+  if (eventType !== "kernel/client_action:decided") return {}
+  const id = (event as { data?: { id?: unknown } } | null)?.data?.id
+  return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? { decidedActionId: id } : {}
+}
+
 /** Bridge for a manifest job run: session-owned per-call transactions when the
  *  worker handed over `_session`, else the legacy ambient `_tx` bridge. */
 export function buildJobBridge(
@@ -4054,6 +4064,7 @@ async function registerSingleApp(
                     session: { run: inTx },
                     manifest: bridgeManifest,
                     actorType: bridgeActorType,
+                    ...decidedOf(eventType, event),
                   }),
                   false,
                 )
@@ -4077,6 +4088,7 @@ async function registerSingleApp(
                         txDb,
                         manifest: bridgeManifest,
                         actorType: bridgeActorType,
+                        ...decidedOf(eventType, event),
                       }),
                       true,
                     ),

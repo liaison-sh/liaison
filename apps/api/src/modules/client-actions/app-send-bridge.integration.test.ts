@@ -7,12 +7,19 @@
 // no link is made outside a person's decision; a server that cannot seal a
 // signature refuses the send before any row.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql } from "~/db"
+import { sql as dsql } from "drizzle-orm"
+import { extractRows, sql } from "~/db"
+import { type UserContext, withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { toolRegistry } from "~/modules/apps/app-registries"
-import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
+import {
+  createClientActionsMethods,
+  decidedActionFor,
+} from "~/modules/apps/sandbox/bridge/client-actions"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { SignedCopyTestAccess } from "~/modules/client-actions/signed-copy"
 import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
 
 const kit = useClientActionWorld("sendbridge", "agreement_version")
@@ -266,6 +273,96 @@ describe("an app's send through the bridge", () => {
     // A corrected address is not the contact's: the new signer is tied to no contact.
     expect(row?.contact_id).toBeNull()
     expect((await newLink(true, second?.id ?? "")).error?.code).toBe("DECLINED_BY_SIGNER")
+  })
+
+  it("a new link on a restricted record keeps its list: a member off the list sees neither the new link nor its decision", async () => {
+    const targetId = crypto.randomUUID()
+    const list = [kit.w.admin.userId]
+    const out = await send(true, targetId, "any", { visible_to: list })
+    const [first] = out.actions ?? []
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'declined'
+               WHERE id = ${first?.id ?? ""}`
+    const made = JSON.parse(
+      await bridge({ approved: true }).client_actions_mint(
+        JSON.stringify({ new_link: { after: first?.id ?? "" } }),
+      ),
+    ) as { status: string; action?: { id: string } }
+    expect(made.status).toBe("ok")
+    const newId = made.action?.id ?? ""
+    const [row] = (await sql`
+      SELECT visible_to FROM ${k("client_actions")} WHERE id = ${newId}`) as unknown as Array<{
+      visible_to: string[] | null
+    }>
+    expect(row?.visible_to).toEqual(list)
+    const seen = async (userId: string) =>
+      withRlsContext(
+        {
+          actorType: "user",
+          userId,
+          orgId: kit.w.orgId,
+          scopes: ["*"],
+          dimensionGrants: {},
+        } as UserContext,
+        async (tx) =>
+          extractRows<{ id: string }>(
+            await tx.execute(
+              dsql`SELECT id FROM ${dsql.raw(schemaRef("kernel"))}.client_actions WHERE id = ${newId}`,
+            ),
+          ).length,
+      )
+    expect(await seen(kit.w.member.userId)).toBe(0)
+    expect(await seen(kit.w.admin.userId)).toBe(1)
+  })
+
+  it("a call chained from a decision acts as the approver of the decided link, never of a send that failed or of another person's link", async () => {
+    const { peopleOfSignedTarget } = SignedCopyTestAccess
+    const targetId = crypto.randomUUID()
+    const admin = kit.w.admin.userId
+    const member = kit.w.member.userId
+    // A first send that failed and was withdrawn, approved by the member.
+    const failed = (await send(true, targetId, "any")).actions ?? []
+    await sql`UPDATE ${k("client_actions")} SET revoked_at = now(), revoke_reason = 'withdrawn', approved_by_user_id = ${member}
+               WHERE id IN ${sql(failed.map((a) => a.id))}`
+    // The send that was decided: its first signer approved under the admin, a later link under
+    // the member.
+    const [a1, a2] = (await send(true, targetId, "any")).actions ?? []
+    await sql`UPDATE ${k("client_actions")} SET decision = 'signed', decided_at = now() - interval '1 minute',
+               approved_by_user_id = ${admin} WHERE id = ${a1?.id ?? ""}`
+    await sql`UPDATE ${k("client_actions")} SET decision = 'signed', decided_at = now(),
+               approved_by_user_id = ${member} WHERE id = ${a2?.id ?? ""}`
+    const base = {
+      orgId: kit.w.orgId,
+      targetApp: kit.targetApp,
+      targetType: kit.targetType,
+      targetId,
+    }
+    expect((await peopleOfSignedTarget(base))?.approver).toBe(admin)
+    expect((await peopleOfSignedTarget({ ...base, decidedActionId: a2?.id }))?.approver).toBe(member)
+    // A link that was not decided positively names nobody.
+    expect(await peopleOfSignedTarget({ ...base, decidedActionId: failed[0]?.id })).toBeNull()
+  })
+
+  it("only the decided handler's own event, or the app's job naming a link, runs on the approver's act", () => {
+    const id = crypto.randomUUID()
+    const other = crypto.randomUUID()
+    const handler = { jobsAttributedToSystem: true, decidedActionId: id }
+    expect(decidedActionFor({ bridgeOptions: handler, approved: false, named: other })).toBe(id)
+    // Another event's handler (no decided event) gets none, whatever the app names.
+    expect(
+      decidedActionFor({ bridgeOptions: { jobsAttributedToSystem: true }, approved: false, named: id }),
+    ).toBeNull()
+    expect(decidedActionFor({ bridgeOptions: { currentJob: {} }, approved: false, named: id })).toBe(id)
+    // An agent's, a routine's, an approval's or a person's own run: none.
+    expect(
+      decidedActionFor({ bridgeOptions: handler, actorType: "agent", approved: false, named: id }),
+    ).toBeNull()
+    expect(
+      decidedActionFor({ bridgeOptions: { currentJob: {} }, routineId: "r", approved: false, named: id }),
+    ).toBeNull()
+    expect(decidedActionFor({ bridgeOptions: handler, approved: true, named: id })).toBeNull()
+    expect(
+      decidedActionFor({ bridgeOptions: { origin: "human-ui" }, approved: false, named: id }),
+    ).toBeNull()
   })
 
   it("an app lists the links of its own target with each signer's turn and state", async () => {

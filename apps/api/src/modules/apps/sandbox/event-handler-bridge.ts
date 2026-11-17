@@ -23,6 +23,8 @@ export function createEventHandlerBridge(args: {
   txDb: RlsClient
   manifest: AppManifestForBridge
   actorType: ActorType
+  /** The decided client action, when the event is `kernel/client_action:decided`. */
+  decidedActionId?: string
 }): Record<string, any> {
   return createSandboxRpcBridge(
     args.appName,
@@ -33,7 +35,10 @@ export function createEventHandlerBridge(args: {
     [`${args.appName}:*`],
     args.actorType,
     undefined,
-    { jobsAttributedToSystem: true },
+    {
+      jobsAttributedToSystem: true,
+      ...(args.decidedActionId ? { decidedActionId: args.decidedActionId } : {}),
+    },
   )
 }
 
@@ -50,6 +55,8 @@ export function createEventHandlerSessionBridge(args: {
   session: Pick<RlsSession, "run">
   manifest: AppManifestForBridge
   actorType: ActorType
+  /** The decided client action, when the event is `kernel/client_action:decided`. */
+  decidedActionId?: string
 }): Record<string, any> {
   return createSessionRpcBridge(
     args.appName,
@@ -60,6 +67,9 @@ export function createEventHandlerSessionBridge(args: {
     [`${args.appName}:*`],
     args.actorType,
     undefined,
-    { jobsAttributedToSystem: true },
+    {
+      jobsAttributedToSystem: true,
+      ...(args.decidedActionId ? { decidedActionId: args.decidedActionId } : {}),
+    },
   )
 }

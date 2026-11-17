@@ -551,6 +551,88 @@ interface ActionRecord {
   group: Array<{ id: string; sign_order: number | null; decision: string | null; open: boolean }>
 }
 
+/** One signature event per client action: the decision as the kernel recorded it. */
+async function writeSignatureEvent(
+  ctx: AgreementsCtx,
+  agreement: Agreement,
+  version: Version,
+  rec: ActionRecord,
+): Promise<void> {
+  const seen = async () =>
+    (
+      await ctx.db.findMany("signature_events", {
+        where: { client_action_id: rec.id },
+        limit: 1,
+      })
+    ).length > 0
+  if (await seen()) return
+  try {
+    await ctx.db.insert("signature_events", {
+      version_id: version.id,
+      client_action_id: rec.id,
+      required_phrase: rec.required_phrase,
+      typed_phrase: rec.typed_phrase,
+      signer_order: rec.sign_order,
+      signer_contact_id: rec.contact_id,
+      signer_user_id: rec.signer_user_id,
+      invited_email: rec.invited_email,
+      invited_by: rec.invited_by,
+      typed_name: rec.typed_name ?? "",
+      capacity: rec.capacity ?? "",
+      consent_words: rec.words_shown ?? "",
+      consent_lang: rec.words_lang ?? agreement.language ?? "en",
+      level: agreement.kind === CHANGE_REQUEST ? RECORDED_APPROVAL : "ses",
+      document_sha256: rec.target_sha256,
+      signed_at: rec.decided_at ?? new Date().toISOString(),
+      ip: rec.ip,
+      user_agent: rec.user_agent,
+      code_verified_at: rec.code_verified_at,
+      document_shown_at: rec.document_shown_at,
+      reached_end_at: rec.reached_end_at,
+    })
+  } catch (err) {
+    // Another run wrote the same decision first: one event stands.
+    if (!(await seen())) throw err
+  }
+}
+
+/**
+ * Writes the signature event of every live signer of the send whose decision is recorded but
+ * whose event is not (a lost or concurrent delivery), from each one's own record. Answers how
+ * many signers still have no event: a version is marked signed only at zero.
+ */
+export async function recordEverySigner(
+  ctx: AgreementsCtx,
+  agreement: Agreement,
+  version: Version,
+  group: ActionRecord["group"],
+): Promise<number> {
+  let missing = 0
+  for (const g of group) {
+    const had = await ctx.db.findMany("signature_events", {
+      where: { client_action_id: g.id },
+      limit: 1,
+    })
+    if (had.length > 0) continue
+    const rec = ctx.client_actions_record
+      ? bridgeAnswer<{ status: string; record?: ActionRecord }>(
+          await ctx.client_actions_record({ id: g.id }),
+        ).record
+      : undefined
+    if (
+      !rec ||
+      rec.replaced === true ||
+      (rec.target_id !== undefined && rec.target_id !== version.id) ||
+      !decisionFits(agreement.kind, rec.decision)
+    ) {
+      missing += 1
+      continue
+    }
+    await writeSignatureEvent(ctx, agreement, version, rec)
+  }
+  return missing
+}
+
 /**
  * `kernel/client_action:decided`: for this app's versions only. A signature
  * becomes one signature event (once per client action), opens the next signer's
@@ -594,38 +676,17 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   // declined, draft or replaced agreement, whoever minted the link.
   if (!WAITING.includes(agreement.status) || version.status !== "frozen")
     return { status: "ignored" }
-  const existing = await ctx.db.findMany("signature_events", {
-    where: { client_action_id: rec.id },
-    limit: 1,
-  })
-  if (existing.length === 0) {
-    await ctx.db.insert("signature_events", {
-      version_id: version.id,
-      client_action_id: rec.id,
-      required_phrase: rec.required_phrase,
-      typed_phrase: rec.typed_phrase,
-      signer_order: rec.sign_order,
-      signer_contact_id: rec.contact_id,
-      signer_user_id: rec.signer_user_id,
-      invited_email: rec.invited_email,
-      invited_by: rec.invited_by,
-      typed_name: rec.typed_name ?? "",
-      capacity: rec.capacity ?? "",
-      consent_words: rec.words_shown ?? "",
-      consent_lang: rec.words_lang ?? agreement.language ?? "en",
-      level: isChangeRequest ? RECORDED_APPROVAL : "ses",
-      document_sha256: rec.target_sha256,
-      signed_at: rec.decided_at ?? new Date().toISOString(),
-      ip: rec.ip,
-      user_agent: rec.user_agent,
-      code_verified_at: rec.code_verified_at,
-      document_shown_at: rec.document_shown_at,
-      reached_end_at: rec.reached_end_at,
-    })
-  }
+  await writeSignatureEvent(ctx, agreement, version, rec)
   const positive = (x: string | null) => decisionFits(agreement.kind, x)
-  const done = rec.group.filter((g) => positive(g.decision) || g.id === rec.id).length
+  let done = rec.group.filter((g) => positive(g.decision) || g.id === rec.id).length
   const all = rec.group.length
+  // Every signer's decision is a recorded signature event before the version is marked signed:
+  // a decision whose own delivery was lost, or whose handler runs at the same moment, is
+  // written here from its record. A signer whose event cannot be written keeps it waiting.
+  if (done >= all) {
+    const missing = await recordEverySigner(ctx, agreement, version, rec.group)
+    if (missing > 0) done = all - missing
+  }
   if (done >= all && isChangeRequest) {
     // Accepted, its version marked for the seal and the parent's amended total raised, in one
     // transaction, once; then sealed and stamped like a signature.
@@ -1096,5 +1157,34 @@ export async function decidedReconcile(ctx: AgreementsCtx) {
       if (l.state === "declined") break
     }
   }
-  return { status: "ok", checked: waiting.length, handled }
+  // A version marked signed (or accepted) with fewer events than its signers, and not sealed:
+  // the missing events are written from their records, and the seal tried again.
+  const marked = (await ctx.db.findMany("agreements", {
+    where: { status: { in: ["signed", "accepted"] } },
+    limit: 500,
+  })) as Agreement[]
+  let repaired = 0
+  for (const a of marked) {
+    const v = await latestOf(ctx, a.id)
+    if (!v || v.status !== "signed") continue
+    const sealed = await ctx.db.findMany("evidence_packages", {
+      where: { version_id: v.id },
+      limit: 1,
+    })
+    if (sealed.length > 0) continue
+    const live = (await linksOf(ctx, v.id)).filter((l) => l.replaced !== true)
+    const events = await eventsOf(ctx, v.id)
+    if (events.some((e) => e.level === "demo")) continue
+    const have = new Set(events.map((e) => e.client_action_id))
+    if (live.every((l) => have.has(l.id))) continue
+    await recordEverySigner(
+      ctx,
+      a,
+      v,
+      live.map((l) => ({ id: l.id, sign_order: l.sign_order, decision: null, open: false })),
+    )
+    await sealVersion(ctx as SealCtx, v.id)
+    repaired += 1
+  }
+  return { status: "ok", checked: waiting.length, handled, repaired }
 }

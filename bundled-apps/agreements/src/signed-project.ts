@@ -12,7 +12,8 @@
 // project starts without them. The agreement records what the
 // project uses (`project_time_budgets`) and the timebox it was given
 // (`project_timebox_minutes`), which a later change request reads. Nothing else
-// happens on signing here: no invoice, no task, no mail.
+// happens on signing here: no invoice, no task, no mail. A restricted agreement's project is
+// named by its number alone, with no client.
 
 import { type AgreementsCtx, bridgeAnswer } from "./ctx"
 
@@ -32,6 +33,7 @@ interface SignedAgreement {
   company_id?: string | null
   project_id?: string | null
   hours_minutes?: number | null
+  org_access?: string | null
 }
 
 export type ProjectStart =
@@ -98,9 +100,12 @@ export async function startProjectAfterSigning(
     )
 
   const timebox = timeboxOf(a.hours_minutes)
+  // projects has no list of its own: a restricted agreement's project carries nothing of it but
+  // its number (no title, no client), so a member off the list learns nothing from it.
+  const restricted = a.org_access === "none"
   const base = {
-    name: a.title || a.number,
-    ...(a.company_id ? { companyId: a.company_id } : {}),
+    name: restricted ? `Agreement ${a.number}` : a.title || a.number,
+    ...(a.company_id && !restricted ? { companyId: a.company_id } : {}),
     externalRef: `agreement:${a.id}`,
   }
   let made = await call(

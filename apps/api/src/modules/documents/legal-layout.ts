@@ -963,14 +963,17 @@ function checkClauses(
   builder: Builder,
 ): void {
   const texts = visibleTexts(body, fill)
-  // A clause whose text starts with a number: the renderer numbers clauses.
+  // A clause, a clause's heading or a heading whose text starts with a number: the renderer
+  // numbers clauses, so a typed "1. Scope" would print a number nothing keeps true.
   const starts = texts.filter(
-    (t) => t.block.type === "article" && NUMBERED_START_RE.test(`${withoutInline(t.text)} `),
+    (t) =>
+      (t.block.type === "article" || t.block.type === "heading") &&
+      NUMBERED_START_RE.test(`${withoutInline(t.text)} `),
   )
   if (starts.length > 0) {
     fill.refuse(
       "numbered_clause",
-      `A clause starts with a number, and numbers are computed: ${starts
+      `A clause or a heading starts with a number, and numbers are computed: ${starts
         .map((t) => `${t.where} ("${t.text.trim().slice(0, 30)}")`)
         .join(", ")}. Remove the typed number; the layout numbers each clause.`,
     )

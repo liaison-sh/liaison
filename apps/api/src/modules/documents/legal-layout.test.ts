@@ -287,6 +287,17 @@ describe("numbers are the renderer's", () => {
     lay(legal([article("objet", "2026 sera l'année du lancement.")]))
   })
 
+  it("a heading or a clause heading with a typed number is refused too: the layout numbers them", () => {
+    for (const blocks of [
+      [{ type: "heading", level: 2, text: "1. Scope" }, article("a", "The work.")],
+      [article("a", "The work.", { heading: "2. Timeline" })],
+    ]) {
+      const err = refusal(() => lay(legal(blocks as never)))
+      expect(err.code).toBe("numbered_clause")
+    }
+    lay(legal([{ type: "heading", level: 2, text: "Scope" }, article("a", "The work.")] as never))
+  })
+
   it("legal blocks print only in the legal layout, and the legal layout takes no table", () => {
     expect(() => parseRichTextBody({ blocks: [article("a", "A.")] })).toThrow(/legal layout only/)
     expect(() =>

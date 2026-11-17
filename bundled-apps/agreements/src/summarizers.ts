@@ -11,6 +11,8 @@ interface Card {
   lines: string[]
 }
 
+import { moneyText } from "./change-request-send"
+
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const done = (c: Card): Promise<Card> =>
   Promise.resolve({ ...c, lines: c.lines.slice(0, 40).map((l) => clip(l)) })
@@ -42,6 +44,22 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   })
 }
 
+/** The rate and the price it makes, in the agreement's currency; nothing for an unreadable rate. */
+function moneyLines(rate: unknown, minutes: number, currency: unknown): string[] {
+  const minor =
+    typeof rate === "string" && /^\d{1,15}$/.test(rate)
+      ? BigInt(rate)
+      : typeof rate === "number" && Number.isSafeInteger(rate) && rate >= 0
+        ? BigInt(rate)
+        : null
+  if (minor === null) return [`Rate: ${String(rate ?? "not set")}`]
+  const cur = typeof currency === "string" && currency ? currency : null
+  const lines = [`Rate: ${moneyText(minor, cur)} per hour`]
+  if (Number.isSafeInteger(minutes) && minutes >= 0)
+    lines.push(`Price: ${moneyText((minor * BigInt(minutes) + 30n) / 60n, cur)}`)
+  return lines
+}
+
 export function summarizeChangeRequestSend(params: Record<string, unknown>): Promise<Card> {
   const reply = (params.reply ?? {}) as { body?: unknown }
   const work = Array.isArray(params.work) ? params.work.map(String) : []
@@ -51,7 +69,7 @@ export function summarizeChangeRequestSend(params: Record<string, unknown>): Pro
     `Change request: ${String(params.title ?? "")}`,
     ...work.map((w) => `Work: ${w}`),
     `Hours: ${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ""} (from ${String(params.hours_source ?? "not said")})`,
-    `Rate: ${String(params.rate_minor ?? "")} (minor units per hour)`,
+    ...moneyLines(params.rate_minor, minutes, params.currency),
     "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
   ]
   return done({

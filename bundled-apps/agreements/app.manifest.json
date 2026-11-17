@@ -1761,6 +1761,10 @@
           "guardKey": {
             "type": "string",
             "description": "Set by the server; leave it out."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
           }
         },
         "required": [
@@ -1778,7 +1782,8 @@
       "preflight": "changeRequestSendPreflightHandler",
       "pinnedParams": [
         "sendGuard",
-        "guardKey"
+        "guardKey",
+        "currency"
       ],
       "approvalDedupeKeyParam": "mail_message_id",
       "editableFields": [

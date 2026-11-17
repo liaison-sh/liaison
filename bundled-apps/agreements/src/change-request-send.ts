@@ -39,6 +39,8 @@ export interface ChangeRequestSendParams {
   mail_message_id: string
   sendGuard?: Record<string, unknown>
   guardKey?: string
+  /** Pinned by the preflight: the parent's currency, for the card. */
+  currency?: string
 }
 
 interface Parent {
@@ -73,9 +75,9 @@ function minorOf(v: unknown): bigint | null {
   return null
 }
 
-/** A money amount for the card and the text: "1234.50 EUR", from minor units, no float. */
+/** A money amount for the card and the text: "1,234.50 EUR", from minor units, no float. */
 export function moneyText(minor: bigint, currency: string | null | undefined): string {
-  const whole = minor / 100n
+  const whole = (minor / 100n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")
   const cents = (minor % 100n).toString().padStart(2, "0")
   return `${whole}.${cents}${currency ? ` ${currency}` : ""}`
 }
@@ -228,14 +230,21 @@ export async function changeRequestSendPreflight(
   ctx: AgreementsCtx,
   p: ChangeRequestSendParams,
 ): Promise<
-  | { ok: true; pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string } }
+  | {
+      ok: true
+      pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string; currency: string }
+    }
   | { error: { code: string; message: string } }
 > {
   const ready = await readyToSend(ctx, p)
   if (isError(ready)) return { error: ready.error }
   return {
     ok: true,
-    pinnedParams: { sendGuard: guardOf(ready, p), guardKey: changeRequestGuardKey(p) },
+    pinnedParams: {
+      sendGuard: guardOf(ready, p),
+      guardKey: changeRequestGuardKey(p),
+      currency: ready.parent.currency ?? "",
+    },
   }
 }
 
@@ -437,7 +446,7 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
   if (out.status !== "ok")
     return refusal(
       out.error?.code ?? "SEND_FAILED",
-      `Neither the reply nor ${number} was sent: ${out.error?.message ?? "no link was made"}. ${number} stays a draft.`,
+      `Neither the reply nor ${number} was sent: ${(out.error?.message ?? "no link was made").replace(/\.+\s*$/, "")}. ${number} stays a draft.`,
     )
 
   // 3. The reply, from the person's mailbox, under the same check.

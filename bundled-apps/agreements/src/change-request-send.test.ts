@@ -8,9 +8,10 @@
 // the link, and the change request stays a draft.
 
 import { describe, expect, it } from "bun:test"
-import { changeRequestSend, changeRequestSendPreflight } from "./change-request-send"
+import { changeRequestSend, changeRequestSendPreflight, moneyText } from "./change-request-send"
 import type { AgreementsCtx } from "./ctx"
 import { memoryDb, type Row } from "./memory-db.testutil"
+import { summarizeChangeRequestSend } from "./summarizers"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const AGENT = "33333333-3333-4333-8333-333333333333"
@@ -141,7 +142,7 @@ describe("change_request_send", () => {
     const lines = card?.summary_detail?.lines ?? []
     expect(lines).toContain("Hours: 60 h (from past similar work)")
     expect(lines).toContain("Rate: 100.00 EUR per hour")
-    expect(lines).toContain("Price: 6000.00 EUR")
+    expect(lines).toContain("Price: 6,000.00 EUR")
     expect(
       lines.some((l) => l.includes("section 8.2") && l.includes("8.2 Extra work is billed")),
     ).toBe(true)
@@ -149,6 +150,25 @@ describe("change_request_send", () => {
     expect(changeRequests(db)).toEqual([])
     expect(ctx.calls.mints).toEqual([])
     expect(ctx.calls.replies).toEqual([])
+  })
+
+  it("the parked card reads money in the agreement's currency, with the price, never minor units", async () => {
+    const { db, parentId, versionId } = await world()
+    const pre = (await changeRequestSendPreflight(ctxFor(db), params(parentId, versionId))) as {
+      ok: true
+      pinnedParams: Record<string, unknown>
+    }
+    expect(pre.pinnedParams.currency).toBe("EUR")
+    const card = await summarizeChangeRequestSend({
+      ...params(parentId, versionId),
+      ...pre.pinnedParams,
+      hours_minutes: 2400,
+      rate_minor: "11000",
+    })
+    expect(card.lines).toContain("Rate: 110.00 EUR per hour")
+    expect(card.lines).toContain("Price: 4,400.00 EUR")
+    expect(card.lines.join("\n")).not.toContain("minor units")
+    expect(moneyText(626400n, "EUR")).toBe("6,264.00 EUR")
   })
 
   it("an approved call writes the change request, mints its approval link under the card's check, then sends the reply under it", async () => {

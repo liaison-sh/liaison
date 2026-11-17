@@ -56,7 +56,16 @@ export interface ClientActionView {
    * own entry is ever shown. Empty when the target has no copies.
    */
   copyStates: Record<string, CopyState>
+  /**
+   * The per-document portal share a send of this target opens for a portal client
+   * of its company (`agreement` or `change_request`), as the app names it; absent
+   * when the target opens none.
+   */
+  portalShareKind?: PortalShareKindOfTarget | null
 }
+
+export const TARGET_PORTAL_SHARE_KINDS = ["agreement", "change_request"] as const
+export type PortalShareKindOfTarget = (typeof TARGET_PORTAL_SHARE_KINDS)[number]
 
 export const COPY_STATES = ["waiting_for_others", "on_its_way", "sent", "not_sent"] as const
 export type CopyState = (typeof COPY_STATES)[number]
@@ -171,6 +180,9 @@ function asView(data: unknown): ClientActionView | null {
             ),
           )
         : {},
+    portalShareKind: (TARGET_PORTAL_SHARE_KINDS as readonly unknown[]).includes(d.portal_share_kind)
+      ? (d.portal_share_kind as PortalShareKindOfTarget)
+      : null,
     copyStates:
       d.copies && typeof d.copies === "object" && !Array.isArray(d.copies)
         ? Object.fromEntries(

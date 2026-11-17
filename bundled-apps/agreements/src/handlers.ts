@@ -28,6 +28,7 @@ import { datesDaily } from "./dates"
 import { agreementImport, type ImportParams } from "./import"
 import { agreementPassageGet } from "./passage"
 import { scopeGroupReconcile } from "./scope-group"
+import { onPortalAccessEnded } from "./portal-ended"
 import {
   agreementEvidenceGet,
   agreementVerify,
@@ -98,6 +99,9 @@ export const clientActionViewGetHandler = (p: { targetType: string; targetId: st
   clientActionViewGet(ctx, p)
 export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
   onClientActionDecided(ctx, event as Parameters<typeof onClientActionDecided>[1])
+
+export const onPortalAccessEndedHandler = (event: unknown, ctx: Ctx) =>
+  onPortalAccessEnded(ctx, event as Parameters<typeof onPortalAccessEnded>[1])
 
 export const decidedReconcileJobHandler = (_payload: unknown, ctx: Ctx) => decidedReconcile(ctx)
 export const changeRequestEffectsJobHandler = (_payload: unknown, ctx: Ctx) =>

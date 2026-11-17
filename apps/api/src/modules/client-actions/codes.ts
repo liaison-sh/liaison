@@ -113,10 +113,13 @@ export async function checkCode(actionId: string, typed: string): Promise<CodeCh
     return { ok: true }
   }
   if (wrong >= WRONG_PER_CODE) {
+    // The guess count stays until it expires or a new code replaces it: a guess sent at
+    // the same moment that read the code before this delete then counts past the budget
+    // and is never compared, instead of starting a fresh count of its own.
     await redis
       .multi()
       .set(k.pause(actionId), "1", "EX", PAUSE_SECONDS)
-      .del(k.code(actionId), k.wrong(actionId))
+      .del(k.code(actionId))
       .exec()
     const pauses = await redis.incr(k.pauses(actionId))
     await redis.expire(k.pauses(actionId), 86_400)

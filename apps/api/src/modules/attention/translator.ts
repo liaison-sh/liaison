@@ -2,10 +2,11 @@
 
 import type { ThreadAnchor } from "@liaison/shared"
 import { sql } from "drizzle-orm"
-import type { PrivilegedDb } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { UUID_RE } from "~/lib/uuid"
+import { nextInLineOn } from "~/modules/users/away"
 
 const K = sql.raw(schemaRef("kernel"))
 
@@ -970,12 +971,16 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
+    loadAccountManager: deps.recipientContext?.loadAccountManager ?? loadAccountManager,
     // Members only, and for a record closed to the organization its list only (a derived
     // copy: recipients follow the list whatever the manifest's recipient kind).
     keepMembers:
       deps.recipientContext?.keepMembers ??
       (async (orgId, ids) =>
-        keepRestrictedReaders(orgId, event, await withoutExternalUsers(orgId, ids))),
+        keepListed(
+          event,
+          await keepRestrictedReaders(orgId, event, await withoutExternalUsers(orgId, ids)),
+        )),
   }
 
   // null = the preferences could not be read: the router degrades (in_app
@@ -1434,4 +1439,57 @@ export const AttentionTranslatorTestAccess = {
   resetRegistration(): void {
     registered = false
   },
+}
+
+/**
+ * An event that carries the list of a record closed to the organization (`data.visibleTo`)
+ * reaches the people on it only, whatever its recipient kind names.
+ */
+function keepListed(event: { data?: unknown }, ids: string[]): string[] {
+  const list = (event.data as { visibleTo?: unknown } | null | undefined)?.visibleTo
+  if (!Array.isArray(list)) return ids
+  const named = new Set(list.filter((x): x is string => typeof x === "string"))
+  return ids.filter((id) => named.has(id))
+}
+
+/**
+ * A company's account manager, an active member, and while they are away today the
+ * colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
+ * A company merged into another answers with the surviving company's manager: the
+ * merge's audit row names the survivor (followed through a few merges in a row).
+ */
+export async function loadAccountManager(
+  orgId: string,
+  companyId: string,
+  opts?: { standIn?: boolean },
+): Promise<string[] | null> {
+  if (!UUID_RE.test(companyId)) return null
+  const K = sql.raw(schemaRef("kernel"))
+  const [row] = await withPrivilegedDb(orgId, "attention-account-manager", async (tx) =>
+    extractRows<{ id: string }>(
+      await tx.execute(sql`
+        WITH RECURSIVE chain(id, depth) AS (
+          SELECT ${companyId}::uuid, 0
+          UNION ALL
+          SELECT (a.changes->>'mergedInto')::uuid, chain.depth + 1
+            FROM chain
+            JOIN ${K}.audit_log a
+              ON a.org_id = ${orgId}::uuid AND a.entity_type = 'company'
+             AND a.entity_id = chain.id::text AND a.action = 'company.delete'
+             AND a.changes->>'mergedInto' ~ '^[0-9a-fA-F-]{36}$'
+           WHERE chain.depth < 5
+             AND NOT EXISTS (SELECT 1 FROM ${K}.companies c0
+                              WHERE c0.id = chain.id AND c0.org_id = ${orgId}::uuid)
+        )
+        SELECT u.id::text AS id FROM chain
+          JOIN ${K}.companies c ON c.id = chain.id AND c.org_id = ${orgId}::uuid
+          JOIN ${K}.users u ON u.id = c.owner_user_id AND u.org_id = c.org_id
+         WHERE u.status = 'active' AND u.user_type = 'member'
+         ORDER BY chain.depth LIMIT 1`),
+    ),
+  )
+  if (!row) return null
+  if (opts?.standIn === false) return [row.id]
+  const next = await nextInLineOn(orgId, row.id, new Date().toISOString().slice(0, 10))
+  return next ? [row.id, next] : [row.id]
 }

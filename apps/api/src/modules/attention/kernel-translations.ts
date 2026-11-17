@@ -487,6 +487,17 @@ export const kernelTranslations: Translation[] = [
     metadataFromData: ["decision", "companyId"],
   },
   {
+    // The client's company manager hears it too, and their next in line while they are
+    // away; on a restricted document only if the list names them (data.visibleTo).
+    event: "client_action:decided",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.title}}: {{payload.data.decision}} by {{payload.data.invitedName}}",
+    recipients: { kind: "account_manager", path: "data.companyId" },
+    metadataFromData: ["decision", "companyId"],
+  },
+  {
     event: "client_action:opened",
     app: "kernel",
     kind: "client_action",

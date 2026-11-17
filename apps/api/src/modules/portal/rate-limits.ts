@@ -75,6 +75,24 @@ export const PORTAL_WRITE_BUDGETS: readonly PortalBudget[] = [
     perAddress: 25,
     windowSeconds: 60,
   },
+  // The code mail has its own budget per action (codes.ts); this bounds the calls.
+  {
+    name: "action-code",
+    method: "POST",
+    path: new RegExp(`^/actions/${ID}/code$`),
+    perPerson: 10,
+    perAddress: 50,
+    windowSeconds: 60,
+  },
+  // A code typed with the decision counts against the action's own guesses as well.
+  {
+    name: "action-decide",
+    method: "POST",
+    path: new RegExp(`^/actions/${ID}/decide$`),
+    perPerson: 10,
+    perAddress: 50,
+    windowSeconds: 60,
+  },
   {
     name: "notice-ack",
     method: "POST",

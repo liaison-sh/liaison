@@ -283,6 +283,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   "modules/threads/participant.ts": ["one-row", "the ids a caller adds"],
   "modules/threads/routes.ts": ["one-row", "the id a caller names"],
   "modules/threads/thread.ts": ["one-row", "the ids a caller adds"],
+  "modules/tickets/ingest-core.ts": [
+    "member-filter",
+    "the person assigned to a portal request, an active member only, for its Home row",
+  ],
   "modules/users/avatar-service.ts": ["one-row", "the caller's own row, or a public key"],
   "modules/users/external-user.ts": [
     "member-filter",

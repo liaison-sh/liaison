@@ -41,6 +41,14 @@ const ALLOWED_WITH_APP: Record<string, Record<string, string>> = {
     "table portal.billing_upcoming SELECT":
       "what is still to be invoiced on the caller's company's projects: label, amount, due date",
   },
+  agreements: {
+    "table portal.agreements SELECT":
+      "the caller's company's agreements behind an open agreement or change request share, a restricted one only for the people it names",
+    "table portal.agreement_versions SELECT":
+      "the frozen or signed versions of an agreement the caller reads: source, hash, the file and page pictures unless a scan found it infected",
+    "table portal.evidence SELECT":
+      "the signed PDF of a version the caller reads and the copy for the caller (their own, or the one with no device for a colleague), never the staff file",
+  },
 }
 
 /** Every entry the role may reach, each with why. Anything else is a failure. */
@@ -55,7 +63,9 @@ const ALLOWED: Record<string, string> = {
   "table portal.shares SELECT":
     "the open shares of the caller's own open company, without those named for someone else",
   "table portal.client_actions SELECT":
-    "the caller's company's actions behind an open share on their target, never a token hash",
+    "the caller's company's actions behind an open share on their target or the record it belongs to, never a token hash",
+  "function portal.target_parent(p_app text, p_type text, p_target uuid)":
+    "the agreement a version of the caller's own company belongs to; answers one id or nothing",
   "function portal.contact_id()":
     "the caller's own contact id, only while their company is open; for the caller's own requests",
   "function portal.company_id()":

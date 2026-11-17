@@ -1,5 +1,0 @@
-{
-  "id": "NT-20",
-  "owner": "portal decisions",
-  "part": "the portal routes not built yet, whose ids answer 404 today because nothing serves them: GET /documents/:id, GET /documents/:id/pages/:n, POST /actions/:id/code and POST /actions/:id/decide"
-}

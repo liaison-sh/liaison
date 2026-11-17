@@ -318,23 +318,18 @@ async function nextTicketHandle(
 }
 
 /**
- * Who a client's portal request goes to on Home: the company's account manager
- * while they are an active member; with none, the inbox admins (`noAccountManager`).
- * The ticket has no assignee yet, so nobody is on it before the manager.
+ * Who a client's portal request goes to on Home: the company's account manager while
+ * they are an active member, and their next in line while they are away today; with
+ * none, the inbox admins (`noAccountManager`). The ticket has no assignee yet, so nobody
+ * is on it before the manager.
  */
 async function portalRequestRecipient(
-  tx: { execute: RlsClient["execute"] },
   orgId: string,
   companyId: string,
-): Promise<{ accountManagerId: string } | { noAccountManager: true }> {
-  const [row] = extractRows<{ id: string }>(
-    await tx.execute(drizzleSql`
-      SELECT u.id FROM ${kernelRel("companies")} c
-        JOIN ${kernelRel("users")} u ON u.id = c.owner_user_id AND u.org_id = c.org_id
-       WHERE c.id = ${companyId}::uuid AND c.org_id = ${orgId}::uuid
-         AND u.status = 'active' AND u.user_type <> 'external'`),
-  )
-  return row ? { accountManagerId: row.id } : { noAccountManager: true }
+): Promise<{ portalRecipientIds: string[] } | { noAccountManager: true }> {
+  const { loadAccountManager } = await import("~/modules/attention/translator")
+  const ids = await loadAccountManager(orgId, companyId)
+  return ids && ids.length > 0 ? { portalRecipientIds: ids } : { noAccountManager: true }
 }
 
 /** What a new-ticket notice calls the person who asked: name and address, whichever exist. */
@@ -1008,7 +1003,7 @@ export async function createTicket(
             ...(opts.portalRequest
               ? {
                   companyId: opts.portalRequest.companyId,
-                  ...(await portalRequestRecipient(sp, orgId, opts.portalRequest.companyId)),
+                  ...(await portalRequestRecipient(orgId, opts.portalRequest.companyId)),
                 }
               : {}),
           },

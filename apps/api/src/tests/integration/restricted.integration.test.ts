@@ -438,7 +438,7 @@ describe("every surface honours the list", () => {
     {
       surface: "portal",
       mechanism:
-        "owed to the portal share and portal web tasks: no automatic share, open shares narrowed",
+        "the portal views: portal.agreements reads a restricted agreement only for the portal people its share names, a send opens no automatic share on it, and portal.client_actions shows its link only to them (portal-documents and portal-decide door tests); staff off the list are not portal people",
     },
     {
       surface: "mail previews",

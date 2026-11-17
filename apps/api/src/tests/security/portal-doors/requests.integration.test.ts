@@ -121,7 +121,7 @@ describe("portal requests", () => {
     expect(event?.payload.data).toMatchObject({
       channel: "portal",
       companyId: w.companyA,
-      accountManagerId: w.member.userId,
+      portalRecipientIds: [w.member.userId],
     })
     const resB = await send("/requests", { subject: "No manager", text: "Hello" }, w.clientB.userId)
     const idB = ((await resB.json()) as { data: { id: string } }).data.id
@@ -129,7 +129,7 @@ describe("portal requests", () => {
       SELECT payload FROM kernel.pending_events
        WHERE org_id = ${w.orgId} AND payload->>'entityId' = ${idB} AND payload->>'entity' = 'ticket'`
     expect(eventB?.payload.data.noAccountManager).toBe(true)
-    expect(eventB?.payload.data.accountManagerId).toBeUndefined()
+    expect(eventB?.payload.data.portalRecipientIds).toBeUndefined()
   })
 
   it("a portal request's Home row reaches the account manager and never the client; with no manager it reaches the inbox admins", async () => {

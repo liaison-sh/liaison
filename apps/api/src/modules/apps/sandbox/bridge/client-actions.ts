@@ -405,6 +405,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
             code_verified: l.codeVerified,
             expires_at: l.expiresAt.toISOString(),
             replaced: l.replaced,
+            revoke_reason: l.revokeReason,
           })),
         })
       }

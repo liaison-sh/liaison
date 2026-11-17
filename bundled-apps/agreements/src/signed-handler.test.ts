@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// A signed proposal starts its project once: time and budgets follow its
-// timebox, a replayed signature or the seal retry makes nothing more, a kind that
-// starts no project makes none, and a pass that stopped before the plan finishes
-// it on the next one.
+// A signed proposal starts its project once: a replayed signature or the seal
+// retry makes nothing more, a kind that starts no project makes none, a pass
+// where projects could not be reached starts it on the retry, and time and
+// budgets stay a person's act (the agreement keeps the timebox for them).
 
 import { describe, expect, it } from "bun:test"
 import type { CrossAppEnvelope } from "@liaison/app-sdk"
@@ -17,7 +17,6 @@ const COMPANY = "cccccccc-0000-4000-8000-00000000000c"
 function fakeProjects() {
   const byRef = new Map<string, string>()
   const calls: Array<{ name: string; params: Record<string, unknown> }> = []
-  let planFails = false
   const executeTool = async (
     name: string,
     params: Record<string, unknown>,
@@ -31,19 +30,12 @@ function fakeProjects() {
       byRef.set(ref, id)
       return { status: "completed", result: { id, name: params.name } }
     }
-    if (name === "projects:time_plan_set") {
-      if (planFails) return { status: "error", error: { code: "down", message: "unavailable" } }
-      return { status: "completed", result: { projectId: params.projectId } }
-    }
     return { status: "error", error: { code: "NOT_DECLARED", message: name } }
   }
   return {
     executeTool,
     calls,
     byRef,
-    failPlan: (v: boolean) => {
-      planFails = v
-    },
   }
 }
 
@@ -82,23 +74,26 @@ describe("a signed agreement's project", () => {
     })
   })
 
-  it("time and budgets on when the proposal has a timebox, off when it has none", async () => {
+  it("time and budgets stay a person's act: the project starts with them off, the agreement keeps the timebox for them", async () => {
     const boxed = await world({ hours_minutes: 40 * 60 })
     await sealVersion(boxed.ctx, boxed.versionId)
-    expect(boxed.projects.calls[0]?.params.timeBudgets).toBe(true)
-    expect(boxed.projects.calls[1]).toEqual({
-      name: "projects:time_plan_set",
-      params: { projectId: "project-1", timebox: "40 hours" },
-    })
+    expect(boxed.projects.calls.map((c) => c.name)).toEqual(["projects:createProject"])
+    expect(boxed.projects.calls[0]?.params).not.toHaveProperty("timeBudgets")
     expect(
       ((await boxed.db.findOne("agreements", boxed.agreementId)) as Record<string, unknown>)
         .project_time_budgets,
     ).toBe(true)
+    expect(await startProjectAfterSigning(boxed.ctx, boxed.agreementId)).toMatchObject({
+      status: "skipped",
+    })
 
     const open = await world({ hours_minutes: null })
-    await sealVersion(open.ctx, open.versionId)
-    expect(open.projects.calls.map((c) => c.name)).toEqual(["projects:createProject"])
-    expect(open.projects.calls[0]?.params.timeBudgets).toBe(false)
+    const out = await startProjectAfterSigning(open.ctx, open.agreementId)
+    expect(out).toMatchObject({ status: "started", time_budgets: false, timebox: null })
+    expect(
+      ((await open.db.findOne("agreements", open.agreementId)) as Record<string, unknown>)
+        .project_time_budgets,
+    ).toBe(false)
   })
 
   it("an agreement that starts no project, a change request included, calls nothing", async () => {
@@ -109,20 +104,24 @@ describe("a signed agreement's project", () => {
     }
   })
 
-  it("a pass that stopped before the plan finishes it on the next one, without a second project", async () => {
+  it("a pass where projects could not be reached starts the project on the seal retry, once", async () => {
     const w = await world({ hours_minutes: 90 })
-    w.projects.failPlan(true)
+    const real = w.ctx.executeTool
+    w.ctx.executeTool = async () => ({
+      status: "error",
+      error: { code: "down", message: "unavailable" },
+    })
     await sealVersion(w.ctx, w.versionId)
     expect(
       ((await w.db.findOne("agreements", w.agreementId)) as { project_id?: string }).project_id,
     ).toBeFalsy()
-    w.projects.failPlan(false)
+    w.ctx.executeTool = real
+    await sealRetry(w.ctx)
     await sealRetry(w.ctx)
     expect(w.projects.byRef.size).toBe(1)
     expect(
       ((await w.db.findOne("agreements", w.agreementId)) as { project_id: string }).project_id,
     ).toBe("project-1")
-    expect(w.projects.calls.filter((c) => c.name === "projects:time_plan_set")).toHaveLength(2)
   })
 
   it("two deliveries at once name the same project", async () => {

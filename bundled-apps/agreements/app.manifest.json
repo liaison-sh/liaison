@@ -764,10 +764,6 @@
       "reason": "a signed proposal or statement of work starts its project once, named by the agreement so a replay finds it (no assignee, time or activity read)"
     },
     {
-      "target": "projects:time_plan_set",
-      "reason": "the project a signed proposal started takes the proposal's timebox as its plan"
-    },
-    {
       "target": "mail:reply",
       "reason": "the change request's reply leaves from the person's own mailbox, under the card's mail check"
     }

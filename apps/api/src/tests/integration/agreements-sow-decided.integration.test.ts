@@ -39,6 +39,7 @@ import {
   type DoorWorld,
   dropDoorWorld,
 } from "~/tests/security/portal-doors/fixture"
+import { dropReadsWorld } from "~/tests/security/portal-doors/reads-world"
 import { call, codeOf, tokenOf } from "../../../test-support/client-actions-kit"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
@@ -254,6 +255,7 @@ afterAll(async () => {
     await sql`DELETE FROM ${knowledge("documents")} WHERE org_id = ${w.orgId}`
     await sql`DELETE FROM ${kernel("attention_events")} WHERE org_id = ${w.orgId}`
     await sql`DELETE FROM ${kernel("files")} WHERE org_id = ${w.orgId}`
+    await dropReadsWorld(w)
     await dropDoorWorld(w)
   }
   await releaseTestLock()
@@ -349,5 +351,41 @@ describe("the signed text's Knowledge copy from the decided handler", () => {
       )
     })
     expect(await reads(w.admin.userId, ["*"], documentId)).toBe(0)
+  }, 120_000)
+})
+
+describe("a signed statement of work starts its project from the decided handler", () => {
+  it("one project for the agreement, named on it; time and budgets stay off for a person to turn on", async () => {
+    const { agreementId } = await sendAndSign(w.admin.userId, "Statement of work", async () => {
+      await sql`UPDATE ${app("agreements")} SET kind = 'sow', hours_minutes = 2400
+                 WHERE org_id = ${w.orgId} AND title = 'Statement of work'`
+    })
+    const projects = (await sql`
+      SELECT id::text AS id, company_id::text AS company_id, time_budgets_on
+        FROM app_projects.projects
+       WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
+      id: string
+      company_id: string | null
+      time_budgets_on: boolean
+    }>
+    expect(projects).toHaveLength(1)
+    expect(projects[0]?.company_id).toBe(w.companyA)
+    expect(projects[0]?.time_budgets_on).toBe(false)
+    const [a] = (await sql`
+      SELECT project_id::text AS project_id, project_time_budgets FROM ${app("agreements")}
+       WHERE id = ${agreementId}`) as unknown as Array<{
+      project_id: string | null
+      project_time_budgets: boolean | null
+    }>
+    expect(a?.project_id).toBe(projects[0]?.id ?? "")
+    expect(a?.project_time_budgets).toBe(true)
+    // The seal retry, run again, makes no second project.
+    await drainOutbox()
+    const again = (await sql`
+      SELECT count(*)::int AS n FROM app_projects.projects
+       WHERE org_id = ${w.orgId} AND external_ref = ${`agreement:${agreementId}`}`) as unknown as Array<{
+      n: number
+    }>
+    expect(again[0]?.n).toBe(1)
   }, 120_000)
 })

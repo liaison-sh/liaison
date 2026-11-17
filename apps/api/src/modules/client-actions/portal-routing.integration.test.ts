@@ -8,6 +8,7 @@ import { describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import type { AppEvent } from "~/infra/events/event-bus"
 import { processTranslationEvent } from "~/modules/attention/translator"
+import { seedAwayRange } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
 import { SYSTEM_ACTOR_ID } from "./mint"
@@ -71,11 +72,13 @@ describe("a client's decision on Home", () => {
         name: "Stand In",
       }),
     )
-    const away = crypto.randomUUID()
-    await sql`
-      INSERT INTO ${k("away_ranges")} (id, org_id, user_id, starts_on, ends_on, next_in_line_id, source, status)
-      VALUES (${away}, ${kit.w.orgId}, ${kit.w.member.userId}, (now() - interval '2 days')::date,
-              (now() + interval '2 days')::date, ${standIn}, 'said', 'active')`
+    const away = await seedAwayRange({
+      orgId: kit.w.orgId,
+      userId: kit.w.member.userId,
+      nextInLineId: standIn,
+      daysBefore: 2,
+      daysAfter: 2,
+    })
     try {
       await setManager(kit.w.member.userId)
       expect(await usersFor(decided())).toEqual(

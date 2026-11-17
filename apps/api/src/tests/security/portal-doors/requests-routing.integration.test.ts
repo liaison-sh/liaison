@@ -12,6 +12,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { processTranslationEvent } from "~/modules/attention/translator"
 import { createPortalSession } from "~/modules/auth/auth"
 import { appendPortalReply } from "~/modules/tickets/ingest-core"
+import { seedAuditEntry, seedAwayRange } from "~/seed/factories/org/rows"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { createDoorWorld, type DoorWorld, dropDoorWorld, insertShare } from "./fixture"
@@ -77,12 +78,13 @@ async function setManager(companyId: string, userId: string | null) {
 }
 
 async function away(userId: string, nextInLine: string): Promise<string> {
-  const id = crypto.randomUUID()
-  await sql`
-    INSERT INTO kernel.away_ranges (id, org_id, user_id, starts_on, ends_on, next_in_line_id, source, status)
-    VALUES (${id}, ${w.orgId}, ${userId}, (now() - interval '2 days')::date,
-            (now() + interval '2 days')::date, ${nextInLine}, 'said', 'active')`
-  return id
+  return seedAwayRange({
+    orgId: w.orgId,
+    userId,
+    nextInLineId: nextInLine,
+    daysBefore: 2,
+    daysAfter: 2,
+  })
 }
 
 const sorted = (ids: string[]) => [...ids].sort()
@@ -157,10 +159,14 @@ describe("portal request routing", () => {
     // (not an inbox admin, so the fallback could not pass for the survivor's manager).
     const gone = crypto.randomUUID()
     await sql`UPDATE app_tickets.tickets SET company_id = ${gone} WHERE id = ${id}`
-    await sql`
-      INSERT INTO kernel.audit_log (org_id, actor_type, entity_type, entity_id, action, changes)
-      VALUES (${w.orgId}, 'system', 'company', ${gone}, 'company.delete',
-              ${JSON.stringify({ mergedInto: w.companyB })}::jsonb)`
+    await seedAuditEntry({
+      orgId: w.orgId,
+      actorType: "system",
+      entityType: "company",
+      entityId: gone,
+      action: "company.delete",
+      changes: { mergedInto: w.companyB },
+    })
     await setManager(w.companyB, w.member.userId)
     try {
       expect(await homeOf("message", await reply(id))).toEqual([w.member.userId])

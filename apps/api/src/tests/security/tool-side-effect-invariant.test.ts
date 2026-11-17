@@ -99,6 +99,8 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   time_civil: "read",
   // A decided client action of the calling app's own target, as recorded (bridge/client-actions.ts).
   client_actions_record: "read",
+  // The id of the contact group the calling app keeps under a key, or null (bridge/client-actions.ts).
+  client_actions_own_group: "read",
   // Renders a filled rich-text source to bytes in memory; stores nothing (bridge/rich-text.ts).
   rich_text_render: "read",
   // An uploaded PDF checked, or a frozen one scanned again, in the render service and the

@@ -45,6 +45,9 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/portal/admin-routes.ts#portalAdminRoutes.GET /preview/:userId": {
     table: `a value of the module's literal PREVIEW_PART_TABLES map: schemaRef of app schemas plus fixed table names, aliases and one fixed join; ${IDENT_FROM_CODE}`,
   },
+  "apps/api/src/modules/portal/tools.ts#agreementShareLabels": {
+    agreements: `schemaRef("app_agreements"), a literal app schema name, checked with to_regclass first; ${IDENT_FROM_CODE}`,
+  },
   "apps/api/src/modules/client-actions/mint.ts#replacedSql": {
     alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
   },

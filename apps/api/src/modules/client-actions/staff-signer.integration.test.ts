@@ -93,8 +93,11 @@ describe("a staff signer", () => {
       payload: { data: { signerUserIds: string[] } }
     }>
     expect(turns).toHaveLength(1)
-    expect(turns[0]?.payload.data.signerUserIds).toEqual([kit.w.member.userId])
-    expect((turns[0]?.payload.data as { staffTurn?: boolean }).staffTurn).toBe(true)
+    const turn = turns[0]?.payload.data as
+      | { signerUserIds: string[]; staffTurn?: boolean }
+      | undefined
+    expect(turn?.signerUserIds).toEqual([kit.w.member.userId])
+    expect(turn?.staffTurn).toBe(true)
     expect((await actionRow(r.id)).signer_user_id).toBe(kit.w.member.userId)
   })
 

@@ -7,6 +7,7 @@ import { ProtectedRoute } from "~/modules/auth/ProtectedRoute"
 import ClientActionRoute from "~/modules/client-action/ClientActionRoute"
 import DesktopUpdateCard from "~/modules/desktop/DesktopUpdateCard"
 import { I18nProvider, useI18n } from "~/modules/i18n/i18n-context"
+import PortalRoute from "~/modules/portal/PortalRoute"
 import ClientVersionNotice from "~/modules/shell/ClientVersionNotice"
 import CompatModeNotice from "~/modules/shell/CompatModeNotice"
 import { OrgSuspendedRoot } from "~/modules/shell/OrgSuspendedRoot"
@@ -150,6 +151,9 @@ const App: Component = () => {
             {/* The token page a client opens from a mail (`/a#t=...`): its own lazy chunk,
                 no shell, no session. */}
             <Route path="/a" component={ClientActionRoute} />
+            {/* The client portal: its own lazy chunk, no shell, no agent, no member session. */}
+            <Route path="/portal" component={PortalRoute} />
+            <Route path="/portal/:slug/*" component={PortalRoute} />
 
             {/* Protected routes — shell layout with tab system */}
             <Route path="/*" component={ProtectedShell} />

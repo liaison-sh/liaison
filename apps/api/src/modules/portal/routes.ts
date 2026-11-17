@@ -295,6 +295,8 @@ export const portalRoutes = new Hono<AppEnv>()
       const invoices = rows(await part(tx, "invoices", INVOICES))
       const upcoming = rows(await part(tx, "billing_upcoming", UPCOMING))
       const requests = await ticketsWithMessages(tx)
+      // Whether the company may send requests here: the page offers a new request only then.
+      const who = await tx.transaction((sp) => requesterOf(sp)).catch(() => null)
       const unavailable = [
         projects === null && "projects",
         invoices === null && "invoices",
@@ -307,6 +309,7 @@ export const portalRoutes = new Hono<AppEnv>()
         invoices,
         upcoming,
         requests,
+        requestsOpen: who?.open === true && who.contact_id !== null,
         unavailable,
       }
     })

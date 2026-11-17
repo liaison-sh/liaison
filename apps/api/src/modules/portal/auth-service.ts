@@ -155,7 +155,8 @@ export async function requestPortalSignIn(orgSlug: string, email: string): Promi
   })
   // The secret travels in the fragment: never sent to a server, never in a log
   // or a referrer. The page posts it, on a click, to the verify route.
-  const link = `${base}/portal/sign-in#c=${encodeURIComponent(minted.challengeId)}&t=${encodeURIComponent(minted.linkToken)}`
+  // The org's slug (not a secret) in the query, so the page names the org.
+  const link = `${base}/portal/sign-in?org=${encodeURIComponent(orgSlug)}#c=${encodeURIComponent(minted.challengeId)}&t=${encodeURIComponent(minted.linkToken)}`
   const locale = toShippedLocale(person.locale) ?? "en"
   const t = (key: string) => serverT(locale, `portal-auth.mail.${key}`, { org: org.name })
   const subject = t("subject")

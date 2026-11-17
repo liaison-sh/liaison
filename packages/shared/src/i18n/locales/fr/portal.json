@@ -1,0 +1,219 @@
+{
+  "signin": {
+    "eyebrow": "Portail client",
+    "title": "Connexion à votre portail client",
+    "titleOrg": "Se connecter à {{org}}",
+    "email": "Votre adresse e-mail",
+    "submit": "M'envoyer un lien de connexion",
+    "sent": "Si cette adresse a un accès, un lien de connexion est en route. Consultez votre boîte de réception.",
+    "noOrg": "Ouvrez le lien de votre invitation ou de votre e-mail de connexion pour accéder à votre portail.",
+    "ended": "Votre accès à ce portail a pris fin. Si vous pensez que c'est une erreur, contactez les personnes avec qui vous travaillez.",
+    "oneClick": "Votre lien vous connecte une seule fois. Cliquez pour continuer.",
+    "continue": "Se connecter",
+    "continueOrg": "Se connecter à {{org}}",
+    "linkInvalid": "Ce lien ne fonctionne plus. Demandez-en un nouveau depuis la page de connexion.",
+    "totp": "Code de votre application d'authentification",
+    "totpSubmit": "Continuer",
+    "totpInvalid": "Ce code n'a pas fonctionné. Réessayez.",
+    "tooMany": "Trop de tentatives. Patientez un instant, puis réessayez.",
+    "enrol": "Ce portail demande une seconde étape. Ajoutez cette clé à votre application d'authentification, puis saisissez le code qu'elle affiche."
+  },
+  "shell": {
+    "signOut": "Se déconnecter",
+    "by": "Portail par Liaison",
+    "fallbackOrg": "Portail client"
+  },
+  "nav": {
+    "home": "Accueil",
+    "projects": "Projets",
+    "invoices": "Factures",
+    "requests": "Demandes",
+    "documents": "Documents"
+  },
+  "home": {
+    "hello": "Bonjour {{name}}",
+    "contact": "Votre contact : {{name}}",
+    "upcoming": "Prochaines facturations"
+  },
+  "project": {
+    "lead": "Responsable du projet : {{name}}",
+    "steps": "Étapes",
+    "noSteps": "Aucune étape n'est encore listée.",
+    "stepDone": "Terminée",
+    "stepOpen": "En cours",
+    "stepShare": "Environ {{share}} % fait",
+    "hoursTitle": "Heures",
+    "hours": {
+      "soFarOf": "Heures utilisées : {{used}} sur {{of}} h à ce jour",
+      "soFar": "Heures utilisées : {{used}} h à ce jour",
+      "billed": "Heures facturées : {{used}} h",
+      "period": "Pour {{month}}"
+    }
+  },
+  "invoices": {
+    "issued": "Factures émises",
+    "none": "Aucune facture pour l'instant.",
+    "pdf": "Télécharger le PDF",
+    "paidOn": "Payée le {{date}}",
+    "dueOn": "À payer le {{date}}",
+    "issuedOn": "Émise le {{date}}",
+    "creditNote": "Avoir",
+    "corrects": "Avoir corrigeant {{number}}",
+    "howToPay": "Paiement par virement bancaire : les coordonnées figurent sur chaque facture."
+  },
+  "requests": {
+    "new": "Nouvelle demande",
+    "yours": "Vos demandes",
+    "none": "Vous n'avez encore envoyé aucune demande.",
+    "subject": "Objet",
+    "text": "Votre message",
+    "files": "Fichiers (8 au plus, 10 Mo chacun)",
+    "send": "Envoyer",
+    "sendAgain": "Envoyer à nouveau",
+    "sent": "Votre demande a été envoyée.",
+    "failed": "Elle n'a pas été envoyée. Votre texte est toujours là : envoyez à nouveau.",
+    "fileRefused": "Le fichier {{name}} n'a pas été accepté, donc rien n'a été envoyé. Votre texte est toujours là.",
+    "reply": "Répondre",
+    "replyPlaceholder": "Écrire une réponse",
+    "you": "Vous",
+    "status": {
+      "open": "Ouverte",
+      "answered": "Répondue",
+      "closed": "Fermée"
+    }
+  },
+  "documents": {
+    "files": "Fichiers",
+    "signedPdf": "PDF signé",
+    "yourCopy": "Votre copie",
+    "read": "Le document",
+    "page": "Page {{n}}",
+    "status": {
+      "waiting": "En attente",
+      "signed": "Signé",
+      "accepted": "Accepté",
+      "declined": "Refusé",
+      "expired": "Expiré",
+      "withdrawn": "Retiré"
+    }
+  },
+  "approve": {
+    "title": {
+      "sign": "À signer",
+      "accept": "À accepter",
+      "approve": "À approuver"
+    },
+    "do": {
+      "sign": "Signer",
+      "accept": "Accepter",
+      "approve": "Approuver"
+    },
+    "decline": "Refuser",
+    "declineConfirm": "Le refuser",
+    "back": "Revenir",
+    "reason": "Pourquoi (facultatif)",
+    "code": "Le code envoyé par e-mail",
+    "typedName": "Votre nom complet",
+    "codeSent": "Nous avons envoyé un code à {{to}}.",
+    "codeNotSent": "Le code n'a pas pu être envoyé. Réessayez dans un instant.",
+    "waitsOn": "En attente de {{name}}",
+    "until": "Ouvert jusqu'au {{date}}",
+    "nameMismatch": "Le nom ne correspond pas. Saisissez votre nom complet tel qu'il est écrit.",
+    "alreadyDecided": "C'est déjà décidé, ou ce n'est plus ouvert.",
+    "failed": "Cela n'a pas fonctionné. Vérifiez le code et réessayez.",
+    "done": {
+      "decided": "C'est fait. Les personnes avec qui vous travaillez sont prévenues.",
+      "declined": "Refusé. Les personnes avec qui vous travaillez sont prévenues."
+    }
+  },
+  "states": {
+    "loading": "Chargement…",
+    "partFailed": "Cette partie ne peut pas être affichée pour l'instant. Le reste de la page est à jour.",
+    "notAvailable": "Cette page n'est pas disponible.",
+    "down": "Le portail client n'est pas disponible pour l'instant. Réessayez dans un instant.",
+    "retry": "Réessayer"
+  },
+  "staff": {
+    "title": "Portail client",
+    "viewControls": "Accès",
+    "viewPreview": "Ce qu'ils voient",
+    "invite": "Inviter quelqu'un",
+    "inviteSend": "Envoyer l'invitation",
+    "name": "Nom",
+    "email": "E-mail",
+    "invited": "{{name}} a été invité à {{email}}. Il apparaît comme invité jusqu'à sa première connexion.",
+    "sameForAll": "Toutes les personnes invitées voient la même chose, sauf ce qui les nomme.",
+    "empty": "Personne de cette entreprise n'a encore accès au portail.",
+    "endedState": "L'accès au portail a pris fin pour cette entreprise. Les factures et les documents signés sont conservés.",
+    "people": "Personnes",
+    "hasSignedIn": "S'est connecté",
+    "invitedState": "Invité",
+    "remove": "Retirer",
+    "cancelInvite": "Annuler l'invitation",
+    "removed": "{{name}} n'a plus accès au portail.",
+    "resetTotp": "Réinitialiser la seconde étape",
+    "totpReset": "{{name}} configurera à nouveau sa seconde étape à la prochaine connexion.",
+    "mergeKept": "Personne sur le portail ne voit davantage : {{name}} garde ce qu'il voyait avant.",
+    "showWhole": "Montrer toute l'entreprise",
+    "shares": "Ce que voit l'entreprise",
+    "open": "Ouvert",
+    "closed": "Fermé",
+    "close": "Fermer",
+    "openIt": "L'ouvrir",
+    "cancel": "Annuler",
+    "shareOpened": "{{what}} : maintenant ouvert sur le portail.",
+    "shareClosed": "{{what}} : fermé sur le portail.",
+    "onlyThese": "Seuls {{names}} le voient",
+    "never": "Ne peut jamais être partagé : notes, discussions, agents, routines, taux de coût, marge, autres clients.",
+    "kind": {
+      "invoices": "Factures",
+      "requests": "Demandes",
+      "project_progress": "Avancement",
+      "project_hours": "Heures",
+      "project_reports": "Rapports",
+      "agreement": "Accord",
+      "change_request": "Avenant",
+      "file": "Fichier",
+      "ticket": "Ticket"
+    },
+    "warn": {
+      "project_hours": "Le client verra les heures de ce projet en total : heures facturées, ou heures d'un forfait à ce jour.",
+      "invoices": "Le client verra chaque facture et chaque avoir émis pour cette entreprise."
+    },
+    "signInOptions": "Seconde étape à la connexion",
+    "requireTotp": "L'exiger",
+    "optionalTotp": "La rendre facultative",
+    "totpRequired": "Les personnes de cette entreprise ont désormais besoin d'une seconde étape pour se connecter.",
+    "totpOptional": "La seconde étape est désormais facultative pour les personnes de cette entreprise.",
+    "end": "Mettre fin à l'accès",
+    "endConfirm": "Mettre fin à l'accès maintenant",
+    "endReason": "Raison (facultatif)",
+    "endExplain": "Toutes les personnes de cette entreprise sont déconnectées, les liens ouverts sont annulés et les partages fermés. Les factures et les documents signés sont conservés.",
+    "ended": "Accès terminé : {{people}} déconnectés, {{links}} liens annulés, {{shares}} partages fermés. Les factures et les documents signés sont conservés.",
+    "restore": "Redonner l'accès",
+    "restored": "{{people}} peuvent se reconnecter. Aucun partage n'a été rouvert.",
+    "log": "Journal d'accès",
+    "logReaders": "Seules les personnes ayant la permission du journal d'accès peuvent le lire.",
+    "logEmpty": "Rien pour l'instant.",
+    "logAction": {
+      "sign_in": "Connexion",
+      "view": "Consultation",
+      "download": "Téléchargement",
+      "approve": "Décision",
+      "failure": "Connexion échouée",
+      "other": "Autre"
+    },
+    "previewAs": "En tant que",
+    "previewTrue": "Voici ce qu'ils voient maintenant, lu comme le portail le lit.",
+    "previewNone": "Ils ne peuvent pas se connecter maintenant, donc ils ne voient rien.",
+    "previewNothing": "Rien de partagé.",
+    "previewPart": {
+      "projects": "Projets",
+      "invoices": "Factures",
+      "upcoming": "Prochaines facturations",
+      "requests": "Demandes"
+    },
+    "loadFailed": "Le portail client n'a pas pu être lu pour l'instant.",
+    "failed": "Cela n'a pas fonctionné."
+  }
+}

@@ -573,5 +573,24 @@
     "slaAhead": "SLA {{when}}",
     "whereTitle": "Where the time went",
     "automationsTitle": "Automations on this task"
+  },
+  "clientReports": {
+    "title": "Client reports",
+    "waitingCount": "{{n}} waiting for a person",
+    "loading": "Loading…",
+    "failed": "That did not work.",
+    "edit": "Edit",
+    "save": "Save the draft",
+    "send": "Send to the client",
+    "asRead": "As the client will read it",
+    "staffOnly": "For your team only",
+    "leftOut": "Left out on purpose",
+    "sources": "Read from {{tasks}} tasks, {{prs}} pull requests and {{messages}} messages.",
+    "state": {
+      "waiting": "Waiting for a person",
+      "approved": "Approved",
+      "sent": "Sent",
+      "rejected": "Not sent"
+    }
   }
 }

@@ -5,6 +5,8 @@
 // approval link minted by the kernel, and the reply as the declared mail call. When the reply
 // cannot leave (here: the person has no mailbox for that conversation), the kernel withdraws
 // the link in the same call and the change request stays a draft: nothing reaches the client.
+// Approved on its link with the code, the change request is a recorded approval sealed like a
+// signature, accepted, and its parent's amended total rises by its price.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -24,7 +26,9 @@ import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { mintClientAction } from "~/modules/client-actions/mint"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { drainOutbox } from "~/tests/helpers/outbox"
 import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
 import {
   CaptureProvider,
@@ -32,6 +36,7 @@ import {
   type DoorWorld,
   dropDoorWorld,
 } from "~/tests/security/portal-doors/fixture"
+import { call, codeOf, tokenOf } from "../../../test-support/client-actions-kit"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..")
 const SCOPES = ["agreements:agreements:read", "agreements:agreements:write", "mail:*"]
@@ -39,6 +44,17 @@ const mutableEnv = env as { LIAISON_TSA_URL?: string }
 const kernel = (table: string) => sql(`${schemaRef("kernel")}.${table}`)
 const app = (table: string) => sql(`${schemaRef("app_agreements")}.${table}`)
 const SHA = "c".repeat(64)
+let crId = ""
+let crVersionId = ""
+
+async function mailTo(email: string, template: string, after: number) {
+  for (let i = 0; i < 250; i++) {
+    const m = capture.sent.find((x, n) => n >= after && x.to === email && x.template === template)
+    if (m) return m
+    await new Promise((r) => setTimeout(r, 20))
+  }
+  throw new Error(`no ${template} mail to ${email}`)
+}
 
 let w: DoorWorld
 let parentId = ""
@@ -183,6 +199,8 @@ describe("a change request sent through the sandbox", () => {
       status: string
     }>
     expect(v?.status).toBe("frozen")
+    crId = crs[0]?.id ?? ""
+    crVersionId = v?.id ?? ""
     const links = (await sql`
       SELECT kind, revoked_at IS NOT NULL AS revoked FROM ${kernel("client_actions")}
        WHERE org_id = ${w.orgId} AND target_id = ${v?.id}::uuid`) as unknown as Array<{
@@ -191,5 +209,62 @@ describe("a change request sent through the sandbox", () => {
     }>
     expect(links.length).toBeGreaterThan(0)
     expect(links.every((l) => l.kind === "approve" && l.revoked)).toBe(true)
+  }, 120_000)
+
+  it("approved on its link with the code, it is a recorded approval sealed like a signature, and the parent's total rises by its price", async () => {
+    // As if the reply had left: the change request waits for its client.
+    await sql`UPDATE ${app("agreements")} SET status = 'sent' WHERE id = ${crId}`
+    const before = capture.sent.length
+    await mintClientAction({
+      orgId: w.orgId,
+      kind: "approve",
+      targetApp: "agreements",
+      targetType: "agreement_version",
+      targetId: crVersionId,
+      contactId: w.clientA.contactId,
+      companyId: w.companyA,
+      invitedEmail: w.clientA.email,
+      invitedName: w.clientA.name,
+      expiresInDays: 14,
+      createdByUserId: w.admin.userId,
+    })
+    const token = tokenOf(await mailTo(w.clientA.email, "client-action.link", before))
+    const h = { "x-bun-socket-ip": "198.51.100.92" }
+    expect((await call("open", { t: token }, h)).status).toBe(200)
+    expect((await call("document", { t: token, format: "blocks" }, h)).status).toBe(200)
+    await clearRedisPatterns(["ca:code:gap:*"])
+    const codeAt = capture.sent.length
+    expect((await call("code", { t: token }, h)).status).toBe(202)
+    const code = codeOf(await mailTo(w.clientA.email, "client-action.code", codeAt))
+    const verified = await call("verify", { t: token, code, name: w.clientA.name }, h)
+    expect(verified.status).toBe(200)
+    const { proof } = (await verified.json()) as { proof: string }
+    const approved = await call(
+      "decide",
+      { t: token, proof, decision: "approve", typed_name: w.clientA.name },
+      h,
+    )
+    expect(approved.status).toBe(200)
+    await drainOutbox()
+    const [cr] = (await sql`
+      SELECT status FROM ${app("agreements")} WHERE id = ${crId}`) as unknown as Array<{
+      status: string
+    }>
+    expect(cr?.status).toBe("accepted")
+    const [parent] = (await sql`
+      SELECT amended_total_minor::text AS total FROM ${app("agreements")} WHERE id = ${parentId}`) as unknown as Array<{
+      total: string | null
+    }>
+    expect(parent?.total).toBe("4800000")
+    const events = (await sql`
+      SELECT level FROM ${app("signature_events")} WHERE version_id = ${crVersionId}`) as unknown as Array<{
+      level: string
+    }>
+    expect(events.map((e) => e.level)).toEqual(["recorded_approval"])
+    const [pkg] = (await sql`
+      SELECT level FROM ${app("evidence_packages")} WHERE version_id = ${crVersionId}`) as unknown as Array<{
+      level: string
+    }>
+    expect(pkg?.level).toBe("recorded_approval")
   }, 120_000)
 })

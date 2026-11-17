@@ -77,8 +77,15 @@ export async function acceptChangeRequest(
     await ctx.db.batch({
       ops: [
         {
+          // The host refuses `id` in a bulk write's filter: a change request is found by its
+          // parent and its number, which are unique together (its number's sequence).
           updateMany: "agreements",
-          where: { id: cr.id, status: { in: [...waiting] } },
+          where: {
+            parent_agreement_id: parentId ?? null,
+            number: cr.number,
+            kind: CHANGE_REQUEST,
+            status: { in: [...waiting] },
+          },
           data: { status: "accepted" },
           expect: { minRows: 1 },
         },

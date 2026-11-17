@@ -97,6 +97,14 @@ Ask an agent, with `agreements:evidence:read`:
 - for an agreement's **evidence** (`agreement_evidence_get`): the fingerprints, the seal, the timestamp, each signature and whether each signer's copy was sent. Signers' IP addresses and browsers need `agreements:evidence:devices`, and so do the staff evidence file and the signers' copies, which list them: without that permission they are not found, by any route. The colleague copy, with no device, needs `agreements:evidence:read` only.
 - to **verify** it (`agreement_verify`): the app hashes the stored files again and recomputes the seal. A mismatch is recorded, shown and reported as an incident, and nothing is repaired: the signers' copies are the reference. The app also checks every sealed agreement once a week.
 
+## After signing
+
+A signed proposal, statement of work, retainer or time and materials agreement starts its project once, for the agreement's company, and the agreement names it. A second delivery of the signature, or the nightly retry, finds the same project. Time and budgets stay off on that project: a person turns them on, and the agreement keeps whether its proposal had a timebox. When the project's billing plan has an advance step, Invoicing drafts that advance for a person to issue; nothing is issued or sent.
+
+## Import a contract signed before Liaison
+
+Ask an agent to import it (`agreement_import`) with its PDF, its kind, title, company and the day it was signed. It is filed as **Imported, signed outside Liaison**: no version, no signature, no evidence and no signature level. Text read from the PDF is kept as unverified. Set its dates afterwards on the agreement.
+
 ## Scopes
 
 | Scope | Lets you |

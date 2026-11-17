@@ -393,6 +393,7 @@ On a project that uses time and budgets, ask your agent in your DM with it, or y
 - **Where the card lives.** The card is in your conversation with the agent; ask it again ("show me the saved reconcile for Atlas") to open it. Its actions are changing a line, **Connect GitHub**, **Move it to** another project and **Create invoice**.
 - **Proof on a line.** A line shows at most three proofs; when it has more, the last chip counts the rest ("+2").
 - **Lines not in the plan.** The card's note counts them and says nothing is asked of you about them: each is left off the bill until you change its line to bill it.
+- **Offer it as a change request.** With the Agreements app on, each line not in the plan on a proposed card offers **Offer it as a change request**: the click asks your agent, in fixed words naming only the line, to prepare a change request for it.
 
 ## Create the invoice from the card
 

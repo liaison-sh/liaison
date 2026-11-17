@@ -971,7 +971,7 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
-    loadAccountManager: deps.recipientContext?.loadAccountManager ?? defaultLoadAccountManager,
+    loadAccountManager: deps.recipientContext?.loadAccountManager ?? loadAccountManager,
     // Members only, and for a record closed to the organization its list only (a derived
     // copy: recipients follow the list whatever the manifest's recipient kind).
     keepMembers:
@@ -1455,8 +1455,10 @@ function keepListed(event: { data?: unknown }, ids: string[]): string[] {
 /**
  * A company's account manager, an active member, and while they are away today the
  * colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
+ * A company merged into another answers with the surviving company's manager: the
+ * merge's audit row names the survivor (followed through a few merges in a row).
  */
-async function defaultLoadAccountManager(
+export async function loadAccountManager(
   orgId: string,
   companyId: string,
   opts?: { standIn?: boolean },
@@ -1466,10 +1468,24 @@ async function defaultLoadAccountManager(
   const [row] = await withPrivilegedDb(orgId, "attention-account-manager", async (tx) =>
     extractRows<{ id: string }>(
       await tx.execute(sql`
-        SELECT u.id::text AS id FROM ${K}.companies c
+        WITH RECURSIVE chain(id, depth) AS (
+          SELECT ${companyId}::uuid, 0
+          UNION ALL
+          SELECT (a.changes->>'mergedInto')::uuid, chain.depth + 1
+            FROM chain
+            JOIN ${K}.audit_log a
+              ON a.org_id = ${orgId}::uuid AND a.entity_type = 'company'
+             AND a.entity_id = chain.id::text AND a.action = 'company.delete'
+             AND a.changes->>'mergedInto' ~ '^[0-9a-fA-F-]{36}$'
+           WHERE chain.depth < 5
+             AND NOT EXISTS (SELECT 1 FROM ${K}.companies c0
+                              WHERE c0.id = chain.id AND c0.org_id = ${orgId}::uuid)
+        )
+        SELECT u.id::text AS id FROM chain
+          JOIN ${K}.companies c ON c.id = chain.id AND c.org_id = ${orgId}::uuid
           JOIN ${K}.users u ON u.id = c.owner_user_id AND u.org_id = c.org_id
-         WHERE c.id = ${companyId}::uuid AND c.org_id = ${orgId}::uuid
-           AND u.status = 'active' AND u.user_type = 'member'`),
+         WHERE u.status = 'active' AND u.user_type = 'member'
+         ORDER BY chain.depth LIMIT 1`),
     ),
   )
   if (!row) return null

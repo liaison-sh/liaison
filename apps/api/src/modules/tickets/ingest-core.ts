@@ -8,7 +8,7 @@
 // names one, and files the sender staged move onto its first message. A quoted
 // signing link is cut from every text before it is stored (client-actions/quoted-link.ts).
 import { sql as drizzleSql } from "drizzle-orm"
-import { ticketsRel } from "~/apps/tickets/schema-refs"
+import { kernelRel, ticketsRel } from "~/apps/tickets/schema-refs"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -224,6 +224,42 @@ export async function portalStagedFilesOk(
   return (row?.n ?? 0) === new Set(fileIds).size
 }
 
+/**
+ * Who a client's reply on their request goes to on Home: the person assigned to it
+ * while they are active; else the company's account manager now (a manager changed
+ * since the request was made: the new one; a company merged away: the survivor's),
+ * with their next in line while away; else the inbox admins (`noAccountManager`).
+ */
+async function portalReplyRecipient(
+  tx: Pick<PrivilegedDb, "execute">,
+  orgId: string,
+  ticketId: string,
+): Promise<
+  { subject: string; portalRecipientIds: string[] } | { subject: string; noAccountManager: true }
+> {
+  const [t] = extractRows<{
+    subject: string | null
+    company_id: string | null
+    assignee: string | null
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT t.subject, t.company_id::text AS company_id, u.id::text AS assignee
+        FROM ${ticketsRel("tickets")} t
+        LEFT JOIN ${kernelRel("users")} u
+          ON u.id = t.assigned_to AND u.org_id = t.org_id
+         AND u.status = 'active' AND u.user_type = 'member'
+       WHERE t.id = ${ticketId}::uuid AND t.org_id = ${orgId}::uuid`),
+  )
+  const subject = t?.subject ?? ""
+  if (t?.assignee) return { subject, portalRecipientIds: [t.assignee] }
+  if (t?.company_id) {
+    const { loadAccountManager } = await import("~/modules/attention/translator")
+    const ids = await loadAccountManager(orgId, t.company_id)
+    if (ids && ids.length > 0) return { subject, portalRecipientIds: ids }
+  }
+  return { subject, noAccountManager: true }
+}
+
 /** A portal person's reply on their request: one inbound message, as a customer's mail. */
 export async function appendPortalReply(
   orgId: string,
@@ -244,6 +280,7 @@ export async function appendPortalReply(
       )
       RETURNING id`)
     const messageId = extractRows<{ id: string }>(r)[0]!.id
+    const recipients = await portalReplyRecipient(tx, orgId, input.ticketId)
     await recordInboundOnTicket(tx, {
       orgId,
       ticketId: input.ticketId,
@@ -266,6 +303,9 @@ export async function appendPortalReply(
         sentAt,
         orgId,
         channel: "portal",
+        // Who hears it on Home: the person on the request, else the company's manager
+        // as they are now (and their next in line while away), else the inbox admins.
+        ...recipients,
       },
       actorId: SYSTEM_ACTOR,
       actorType: "system",

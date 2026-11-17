@@ -27,7 +27,9 @@ import {
   PortalAccessError,
   readCompany,
   readPortalAccessLog,
+  readPortalLogReaders,
   readPortalPerson,
+  readPortalRequireTotp,
   readPortalSettings,
   removePortalPerson,
   resetPortalTotp,
@@ -215,6 +217,19 @@ export const portalAdminRoutes = new Hono<AppEnv>()
       return fail(c, err)
     }
   })
+  // The second step's current setting, for the panel's sign-in options.
+  .get("/sign-in", ADMIN, async (c) => {
+    const id = companyId(c)
+    if (!id) return notFound(c)
+    try {
+      return success(
+        c,
+        await withRequestRls(c, (tx) => readPortalRequireTotp({ db: tx, companyId: id })),
+      )
+    } catch (err) {
+      return fail(c, err)
+    }
+  })
   .post("/sign-in", ADMIN, zValidator("json", signInSchema), async (c) => {
     const id = companyId(c)
     if (!id) return notFound(c)
@@ -305,6 +320,21 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         }),
       )
       return success(c, r)
+    } catch (err) {
+      return fail(c, err)
+    }
+  })
+  // Who can read the access log, by name: the panel's "Only <names> can read it".
+  .get("/log/readers", ADMIN, async (c) => {
+    const id = companyId(c)
+    if (!id) return notFound(c)
+    try {
+      return success(
+        c,
+        await withRequestRls(c, (tx) =>
+          readPortalLogReaders({ orgId: c.get("orgId"), db: tx, companyId: id }),
+        ),
+      )
     } catch (err) {
       return fail(c, err)
     }

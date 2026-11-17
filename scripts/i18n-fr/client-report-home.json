@@ -1,0 +1,6 @@
+{
+  "key": {
+    "kernel.homeKind.report_waiting.one": "rapport client qui attend votre envoi",
+    "kernel.homeKind.report_waiting.other": "rapports clients qui attendent votre envoi"
+  }
+}

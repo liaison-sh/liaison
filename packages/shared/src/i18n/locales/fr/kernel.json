@@ -1787,6 +1787,10 @@
       "one": "projet à rapprocher ce mois-ci",
       "other": "projets à rapprocher ce mois-ci"
     },
+    "report_waiting": {
+      "one": "rapport client qui attend votre envoi",
+      "other": "rapports clients qui attendent votre envoi"
+    },
     "calendar_ended": {
       "one": "calendrier partagé de jours non travaillés à choisir de nouveau",
       "other": "calendriers partagés de jours non travaillés à choisir de nouveau"

@@ -150,6 +150,7 @@ describe("attention feed kind catalog", () => {
     expect(unionKinds()).toContain("dm_window_closing")
     expect(providerKinds()).toContain("sla_risk")
     expect(providerKinds()).not.toContain("scope_holders")
+    expect(providerKinds()).not.toContain("account_manager")
     expect(fixtureKinds()).toContain("ticket_assigned")
     expect(() => fixtureKinds("")).toThrow(/QA_ATTENTION/)
     expect(() => fixtureKinds("export const QA_ATTENTION = [\n]")).toThrow(/no kinds/)

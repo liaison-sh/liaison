@@ -140,7 +140,9 @@ describe("projects.manifest", () => {
     //   already made; the reconcile card offers a line as a change request when agreements is on.
     // 1.44.0: client reports (list, read, sources, draft, a person's send) and a milestone as
     //   a client action target.
-    expect(projectsManifest.version).toBe("1.44.0")
+    // 1.45.0: a rejected or expired send card closes the draft, opening a reports share turns
+    //   the report routine on in the org's time zone, a client's milestone answer moves nothing.
+    expect(projectsManifest.version).toBe("1.45.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

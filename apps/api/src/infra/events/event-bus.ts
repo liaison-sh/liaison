@@ -763,6 +763,9 @@ export const KERNEL_DECLARED_EMITS: ReadonlySet<string> = new Set([
   // (modules/portal/access.ts): apps follow the end (agreements marks its waiting versions).
   "portal_user:invited",
   "portal_user:access_ended",
+  // A person opened a share for a client company (modules/portal/access.ts): apps follow
+  // their own kinds (projects turns its client reports routine on for a reports share).
+  "portal_share:opened",
   "user:registered",
   "user:deactivate",
   "user:reactivate",

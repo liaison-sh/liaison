@@ -2395,6 +2395,13 @@
       "when": 1900003430012,
       "tag": "0340_client_action_blocks_fingerprint",
       "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1900003430013,
+      "tag": "0341_portal_project_hours_basis",
+      "breakpoints": true
     }
   ]
 }

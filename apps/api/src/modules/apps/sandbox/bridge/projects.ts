@@ -2689,6 +2689,26 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         )
       })
     },
+    /** A rejected or expired send card closes its draft; the card is re-read, never trusted. */
+    projects_clientReportCardClosed: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { approvalId?: string }
+      return typedCall(async () => {
+        const { clientReportCardClosed } = await import(
+          "~/apps/projects/service/client-report-events"
+        )
+        return clientReportCardClosed({ tx: txDb, orgId, approvalId: params.approvalId ?? "" })
+      })
+    },
+    /** A person's open reports share turns the report routine on, once per org. */
+    projects_clientReportsRoutineOn: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { shareId?: string }
+      return typedCall(async () => {
+        const { clientReportsRoutineOn } = await import(
+          "~/apps/projects/service/client-report-events"
+        )
+        return clientReportsRoutineOn({ tx: txDb, orgId, shareId: params.shareId ?? "" })
+      })
+    },
     /** What a client is shown on a milestone's approval link (internal: the kernel's page). */
     projects_milestoneClientActionView: async (paramsJson: string): Promise<string> => {
       const params = JSON.parse(paramsJson || "{}") as { targetType?: string; targetId?: string }

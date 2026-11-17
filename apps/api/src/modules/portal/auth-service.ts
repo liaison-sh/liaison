@@ -441,6 +441,22 @@ export async function ackPortalNotice(
 ): Promise<{ noticeAckAt: string; noticeVersion: number }> {
   const at = new Date()
   const K = sql.raw(schemaRef("kernel"))
+  // Only the notice the page showed counts: a version the org has since replaced (or never had)
+  // records nothing, and the person reads the current text again.
+  const [current] = await withPrivilegedDb(orgId, "portal-notice-version", (tx) =>
+    tx
+      .select({
+        version: sql<string | null>`${organizations.settings} -> 'portal' ->> 'noticeVersion'`,
+      })
+      .from(organizations)
+      .where(eq(organizations.id, orgId))
+      .limit(1),
+  )
+  if (Number(current?.version ?? 0) !== version)
+    throw new AuthServiceError(
+      "The notice changed since it was shown. Nothing was recorded: read the new notice, then acknowledge it.",
+      409,
+    )
   await withPrivilegedDb(orgId, "portal-notice-ack", (tx) =>
     tx.execute(sql`UPDATE ${K}.portal_people
       SET notice_ack_at = ${at.toISOString()}::timestamptz, notice_version = ${version}
@@ -454,21 +470,32 @@ export interface PortalBranding {
   name: string | null
   logoUrl: string | null
   notice: string | null
+  /** The notice's version: what the portal sends back when the person acknowledges it. */
+  noticeVersion: number | null
 }
 
 /** An unknown slug answers the same shape, all empty: the generic sign-in page. */
 export async function portalBranding(slug: string): Promise<PortalBranding> {
   const org = await orgBySlug(slug)
-  if (!org) return { name: null, logoUrl: null, notice: null }
+  if (!org) return { name: null, logoUrl: null, notice: null, noticeVersion: null }
   // The org's own notice (settings.portal.notice), shown with its name before sign-in.
   const [row] = await withSystemDb("portal-branding-notice", (db) =>
     db
-      .select({ notice: sql<string | null>`${organizations.settings} -> 'portal' ->> 'notice'` })
+      .select({
+        notice: sql<string | null>`${organizations.settings} -> 'portal' ->> 'notice'`,
+        version: sql<string | null>`${organizations.settings} -> 'portal' ->> 'noticeVersion'`,
+      })
       .from(organizations)
       .where(eq(organizations.id, org.id))
       .limit(1),
   )
-  return { name: org.name, logoUrl: null, notice: row?.notice ?? null }
+  const notice = row?.notice ?? null
+  return {
+    name: org.name,
+    logoUrl: null,
+    notice,
+    noticeVersion: notice ? Number(row?.version ?? 0) || null : null,
+  }
 }
 
 /** Constant-time string equality, for an Origin compared with the allowed list. */

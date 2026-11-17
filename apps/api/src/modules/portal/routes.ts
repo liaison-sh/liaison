@@ -346,10 +346,22 @@ export const portalRoutes = new Hono<AppEnv>()
         drizzleSql`SELECT kind, used_minutes::int AS used_minutes, of_minutes::int AS of_minutes, period
           FROM portal.project_hours(${id}::uuid)`,
       )
+      const shown = hours === UNAVAILABLE ? null : hours[0] ? camel(hours[0]) : null
+      // No hours row: say why only when the project bills by milestone. A closed hours share
+      // answers nothing at all, the same as a project with no hours.
+      const basis = shown
+        ? []
+        : await part<{ note: string | null }>(
+            tx,
+            "project_hours",
+            drizzleSql`SELECT portal.project_hours_basis(${id}::uuid) AS note`,
+          )
+      const note = basis === UNAVAILABLE ? null : (basis[0]?.note ?? null)
       return {
         ...camel(p),
         steps,
-        hours: hours === UNAVAILABLE ? null : hours[0] ? camel(hours[0]) : null,
+        hours: shown,
+        hoursNote: note === "by_milestone" ? "by_milestone" : null,
       }
     })
     if (project instanceof Response) return project
@@ -410,7 +422,13 @@ export const portalRoutes = new Hono<AppEnv>()
     const ctx = portalOf(c)
     const me = await portalRead(c, async (tx) => extractRows(await tx.execute(ME)))
     if (me instanceof Response) return me
-    return success(c, await ackPortalNotice(ctx.userId, ctx.orgId, c.req.valid("json").version))
+    try {
+      return success(c, await ackPortalNotice(ctx.userId, ctx.orgId, c.req.valid("json").version))
+    } catch (err) {
+      if (err instanceof AuthServiceError && err.status === 409)
+        return c.json({ error: { code: "NOTICE_CHANGED", message: err.message } }, 409)
+      throw err
+    }
   })
   .post("/me/totp/setup", async (c) => {
     const ctx = portalOf(c)

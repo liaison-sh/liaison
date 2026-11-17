@@ -11,3 +11,5 @@ src/modules/apps/context-provider-manifest.test.ts
 src/modules/apps/result-card-schema.test.ts
 # A person is decided by the tool's own scope: no code checks an approve scope.
 src/modules/approvals/no-approve-scope.guard.test.ts
+# Only the seed writes a portal person without the invitation mail.
+src/seed/factories/people/portal-people.guard.test.ts

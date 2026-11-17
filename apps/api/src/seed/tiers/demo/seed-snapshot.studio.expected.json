@@ -41,7 +41,7 @@
   },
   "app_invoicing.documents": {
     "rows": 513,
-    "digest": "31ac11edb8df4013"
+    "digest": "14e07c5d8b09d214"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -208,8 +208,16 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 376,
-    "digest": "384d095f0d12314a"
+    "rows": 383,
+    "digest": "0a12eeca14aa8adc"
+  },
+  "kernel.portal_people": {
+    "rows": 2,
+    "digest": "55c6c427d51c886d"
+  },
+  "kernel.portal_shares": {
+    "rows": 7,
+    "digest": "efe4c66973749d38"
   },
   "kernel.roles": {
     "rows": 32,
@@ -244,7 +252,7 @@
     "digest": "1919d4000337a4a3"
   },
   "kernel.users": {
-    "rows": 24,
-    "digest": "569d3a958d21f885"
+    "rows": 26,
+    "digest": "b1e135987fc743da"
   }
 }

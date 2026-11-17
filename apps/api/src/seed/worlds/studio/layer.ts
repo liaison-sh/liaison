@@ -73,6 +73,7 @@ import {
   studioMoney,
 } from "./money"
 import { type StudioPlan, type StudioProjectPlan, studioPlan } from "./plan"
+import { seedStudioPortal } from "./portal"
 
 /** Midday UTC, so a past work day keeps its civil date in any zone near UTC. */
 const NOON_MS = 12 * 60 * 60 * 1000
@@ -983,6 +984,15 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
       quoteDocumentId: input.plan.apps.includes("invoicing")
         ? ctx.id("document", `studio:${money.quote.key}`)
         : null,
+    })
+    // The client's portal: its two people and what is open for them, which the agreements
+    // shared there need first.
+    await seedStudioPortal({
+      ctx,
+      org,
+      companyIds,
+      projectIds: Object.fromEntries(Object.entries(tasksOf).map(([k, v]) => [k, v.projectId])),
+      invoicing: input.plan.apps.includes("invoicing"),
     })
   }
 

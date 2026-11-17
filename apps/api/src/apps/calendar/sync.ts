@@ -499,8 +499,10 @@ async function grantCalendarAccessDimension(
   if (ownerType === "user" && ownerId) {
     userIds.push(ownerId)
   } else if (ownerType === "org") {
+    // The org's members: a client on the portal (an external user) holds no grant.
     const rows = (await db.execute(sql`
-      SELECT id FROM ${sql.raw(KERNEL_SCHEMA())}.users WHERE org_id = ${orgId}::uuid AND status = 'active'
+      SELECT id FROM ${sql.raw(KERNEL_SCHEMA())}.users
+       WHERE org_id = ${orgId}::uuid AND status = 'active' AND user_type = 'member'
     `)) as unknown as { rows?: Array<{ id: string }> } | Array<{ id: string }>
     const list = Array.isArray(rows) ? rows : (rows.rows ?? [])
     userIds.push(...list.map((r) => r.id))

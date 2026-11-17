@@ -5,8 +5,8 @@ import manifest from "../app.manifest.json"
 import * as handlers from "../handlers"
 
 describe("agreements manifest", () => {
-  it("is at version 0.4.8", () => {
-    expect(manifest.version).toBe("0.4.8")
+  it("is at version 0.4.9", () => {
+    expect(manifest.version).toBe("0.4.9")
   })
 
   it("parses as a package manifest", () => {

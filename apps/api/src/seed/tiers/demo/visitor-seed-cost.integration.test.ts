@@ -185,14 +185,20 @@ const SAAS_BASELINE = {
  * Knowledge: 13 412 round trips in 1 205 transactions locally, 376 outbox events (+7). The
  * products and software worlds, with the agreements app now installed on the instance as on a
  * demo box, measured 6 717 in 653 and 8 218 in 837: inside their margins, their pins unchanged.
+ * Re-measured 2026-11-17 (the same working day) once the fixed-price client has its portal: two
+ * portal people (one transaction each), seven shares through the share writer as the project's
+ * lead (one transaction and one `portal_share:opened` event each, plus loading the lead's
+ * permissions), the contacts read once, and each seeded invoice stamped with its company from one
+ * read of the contacts: 13 521 round trips in 1 223 transactions, 383 outbox events (+7). Products
+ * 6 723 in 654 and software 8 214 in 836: inside their margins, their pins unchanged.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 376,
+  outboxEvents: 383,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 13_412,
-  transactions: 1_205,
+  statements: 13_521,
+  transactions: 1_223,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

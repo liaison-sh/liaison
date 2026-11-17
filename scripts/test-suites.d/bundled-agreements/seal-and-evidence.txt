@@ -5,3 +5,4 @@ src/signed-event-once.test.ts
 src/verify-mismatch.test.ts
 src/evidence-scope.test.ts
 src/retention.test.ts
+src/stand-in-seal.test.ts

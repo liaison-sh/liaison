@@ -219,8 +219,6 @@
     "previewTrue": "Voici ce qu'ils voient maintenant, lu comme le portail le lit.",
     "previewNone": "Ils ne peuvent pas se connecter maintenant, donc ils ne voient rien.",
     "previewNothing": "Rien de partagé.",
-    "previewHoursNotShown": "Les heures sont ouvertes pour {{names}}, mais ils ne les voient pas : les heures s'affichent sur la page d'un projet, et un projet ne s'affiche qu'une fois son avancement ou ses rapports ouverts.",
-    "hoursNotSeen": "Personne ne voit encore ces heures : elles s'affichent sur la page du projet, que le client voit une fois son avancement ou ses rapports ouverts.",
     "previewPart": {
       "projects": "Projets",
       "invoices": "Factures",

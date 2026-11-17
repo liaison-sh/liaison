@@ -272,7 +272,7 @@ export function requestState(status: string): "open" | "answered" | "closed" {
   return "open"
 }
 
-/** R-02: a project's steps and, when shared, its hours as a total. */
+/** R-02: a project's steps when its progress is shared, and its hours as a total when they are. */
 export const ProjectPage: Component<{ id: string }> = (props) => {
   const i18n = useI18n()
   const [project] = createResource(
@@ -324,47 +324,49 @@ export const ProjectPage: Component<{ id: string }> = (props) => {
                   </p>
                 </Section>
               </Show>
-              <Section title={i18n.t("portal.project.steps")} testid="portal-project-steps">
-                <Show when={p().steps} fallback={<PartFailed part="steps" />}>
-                  {(steps) => (
-                    <Show
-                      when={steps().length > 0}
-                      fallback={
-                        <p class="text-[13px] text-text-secondary">
-                          {i18n.t("portal.project.noSteps")}
-                        </p>
-                      }
-                    >
-                      <ul class="flex flex-col divide-y divide-border">
-                        <For each={steps()}>
-                          {(s) => (
-                            <li
-                              data-testid={`portal-step-${s.id}`}
-                              class="flex flex-wrap items-center gap-3 py-2 text-[14px]"
-                            >
-                              <span class="min-w-0 flex-1 text-text">{s.title}</span>
-                              <span class="text-[12.5px] text-text-secondary">
-                                {s.state === "done"
-                                  ? i18n.t("portal.project.stepDone")
-                                  : s.doneShare
-                                    ? i18n.t("portal.project.stepShare", {
-                                        share: String(s.doneShare),
-                                      })
-                                    : i18n.t("portal.project.stepOpen")}
-                              </span>
-                              <Show when={s.dueOn}>
+              <Show when={p().stepsShown !== false}>
+                <Section title={i18n.t("portal.project.steps")} testid="portal-project-steps">
+                  <Show when={p().steps} fallback={<PartFailed part="steps" />}>
+                    {(steps) => (
+                      <Show
+                        when={steps().length > 0}
+                        fallback={
+                          <p class="text-[13px] text-text-secondary">
+                            {i18n.t("portal.project.noSteps")}
+                          </p>
+                        }
+                      >
+                        <ul class="flex flex-col divide-y divide-border">
+                          <For each={steps()}>
+                            {(s) => (
+                              <li
+                                data-testid={`portal-step-${s.id}`}
+                                class="flex flex-wrap items-center gap-3 py-2 text-[14px]"
+                              >
+                                <span class="min-w-0 flex-1 text-text">{s.title}</span>
                                 <span class="text-[12.5px] text-text-secondary">
-                                  {day(s.dueOn, i18n.locale())}
+                                  {s.state === "done"
+                                    ? i18n.t("portal.project.stepDone")
+                                    : s.doneShare
+                                      ? i18n.t("portal.project.stepShare", {
+                                          share: String(s.doneShare),
+                                        })
+                                      : i18n.t("portal.project.stepOpen")}
                                 </span>
-                              </Show>
-                            </li>
-                          )}
-                        </For>
-                      </ul>
-                    </Show>
-                  )}
-                </Show>
-              </Section>
+                                <Show when={s.dueOn}>
+                                  <span class="text-[12.5px] text-text-secondary">
+                                    {day(s.dueOn, i18n.locale())}
+                                  </span>
+                                </Show>
+                              </li>
+                            )}
+                          </For>
+                        </ul>
+                      </Show>
+                    )}
+                  </Show>
+                </Section>
+              </Show>
             </div>
           )}
         </Show>

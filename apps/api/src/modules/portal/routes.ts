@@ -356,6 +356,15 @@ export const portalRoutes = new Hono<AppEnv>()
         ),
       )
       if (!p) return null
+      // Listed behind any of its progress, reports or hours shares: the steps show only with
+      // its progress open. A failed read of that leaves the steps part as it answers.
+      const progress = await part<{ open: boolean }>(
+        tx,
+        "project_progress",
+        drizzleSql`SELECT EXISTS (SELECT 1 FROM portal.shares
+          WHERE kind = 'project_progress' AND object_id = ${id}::uuid) AS open`,
+      )
+      const stepsShown = progress === UNAVAILABLE || progress[0]?.open === true
       const steps = rows(
         await part(
           tx,
@@ -384,6 +393,7 @@ export const portalRoutes = new Hono<AppEnv>()
       return {
         ...camel(p),
         steps,
+        stepsShown,
         hours: shown,
         hoursNote: note === "by_milestone" ? "by_milestone" : null,
       }

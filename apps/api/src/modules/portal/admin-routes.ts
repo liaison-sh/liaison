@@ -23,7 +23,6 @@ import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   endPortalAccess,
-  hoursSharesNotShown,
   invitePortalPerson,
   PORTAL_SHARE_KINDS,
   PortalAccessError,
@@ -463,13 +462,9 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         metadata: { companyId: id },
       }),
     )
-    // Hours opened on a project the portal does not list: the client sees none of them yet.
-    const hoursNotShown =
-      parts.projects === null ? [] : await withRequestRls(c, (tx) => hoursSharesNotShown(tx, id))
     return success(c, {
       userId: person.user_id,
       signedInWouldSee: parts,
-      hoursNotShown,
       ...(Object.keys(needs).length > 0 ? { hiddenParts: needs } : {}),
     })
   })

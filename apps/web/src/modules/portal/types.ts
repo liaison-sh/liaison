@@ -82,6 +82,8 @@ export interface PortalStep {
 
 export interface PortalProjectDetail extends PortalProject {
   steps: PortalStep[] | null
+  /** False when the project is listed without its progress open: its steps are not shown. */
+  stepsShown?: boolean
   hours: {
     kind: string
     usedMinutes: number

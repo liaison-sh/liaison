@@ -308,6 +308,30 @@ describe("hours", () => {
     )
   })
 
+  it("a project listed for its hours alone shows the hours and no steps section", async () => {
+    setPortalAccessToken("acc")
+    serve({
+      "GET /projects/p1": () => ({
+        status: 200,
+        body: {
+          data: {
+            id: "p1",
+            name: "Retainer",
+            ownerName: null,
+            steps: [],
+            stepsShown: false,
+            hours: { kind: "so_far", usedMinutes: 1080, ofMinutes: 2400, period: null },
+          },
+        },
+      }),
+    })
+    const r = wrap(() => <ProjectPage id="p1" />)
+    expect((await r.findByTestId("portal-hours-line")).textContent).toBe(
+      "Hours used: 18 of 40 h so far",
+    )
+    expect(r.queryByTestId("portal-project-steps")).toBeNull()
+  })
+
   it("a project with no hours row shows no hours at all", async () => {
     setPortalAccessToken("acc")
     serve({

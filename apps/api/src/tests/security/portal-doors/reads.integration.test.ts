@@ -342,6 +342,39 @@ describe("portal reads", () => {
     for (const id of [...w.staffIds, w.member.userId]) expect(bodies).not.toContain(id)
   })
 
+  it("a retainer with only its hours open is listed and its page shows the hours alone; with nothing open it is not listed", async () => {
+    const p = await insertProject(w, {
+      company_id: w.companyA,
+      basis: "retainer",
+      name: "Hours only",
+    })
+    await insertCurrentTimebox(w, p.id, 2400)
+    await insertTime(w, p, p.childOpenId, 1080)
+    const listed = async () => (await data<Array<{ id: string }>>("/projects")).map((r) => r.id)
+    // Nothing open: not listed, and its page is the same 404 as a random id.
+    expect(await listed()).not.toContain(p.id)
+    expect((await get(`/projects/${p.id}`)).status).toBe(404)
+    // Hours alone: listed, on the home page too, and the page shows the hours so far.
+    await insertShare(w, { company_id: w.companyA, kind: "project_hours", object_id: p.id })
+    expect(await listed()).toContain(p.id)
+    const home = await data<{ projects: Array<{ id: string }> }>("/home")
+    expect(home.projects.map((r) => r.id)).toContain(p.id)
+    const page = await data<{
+      hours: unknown
+      steps: unknown[]
+      stepsShown: boolean
+    }>(`/projects/${p.id}`)
+    expect(page.hours).toMatchObject({ kind: "so_far", usedMinutes: 1080, ofMinutes: 2400 })
+    // Its progress stays closed: no step, and the page says the steps are not shown.
+    expect(page.steps).toEqual([])
+    expect(page.stepsShown).toBe(false)
+    // Progress opened too: the steps show as before.
+    await insertShare(w, { company_id: w.companyA, kind: "project_progress", object_id: p.id })
+    const both = await data<{ steps: unknown[]; stepsShown: boolean }>(`/projects/${p.id}`)
+    expect(both.stepsShown).toBe(true)
+    expect(both.steps.length).toBeGreaterThan(0)
+  })
+
   it("NT-41 a colleague's request, a restricted mail ticket, a confidential portal ticket and a past mail ticket are absent; after a person shares the mail ticket it appears for the people it names", async () => {
     const own = await insertTicket(w, { company_id: w.companyA, contact_id: w.clientA.contactId })
     const colleague = await insertTicket(w, {

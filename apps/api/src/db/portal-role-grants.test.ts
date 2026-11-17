@@ -71,7 +71,7 @@ const ALLOWED: Record<string, string> = {
   "function portal.company_id()":
     "the caller's own company; every later view filters on it, and it reads only the caller's row",
   "table portal.projects SELECT":
-    "the caller's company's work projects behind an open progress or reports share: name and manager's name",
+    "the caller's company's work projects behind an open progress, reports or hours share: name and manager's name",
   "table portal.project_steps SELECT":
     "the milestones of those projects behind an open progress share, with a done share from task statuses only",
   "table portal.client_reports SELECT":

@@ -297,7 +297,7 @@ describe("company portal section", () => {
     expect(r.getByTestId("company-portal.preview-requests").textContent).toContain("Nothing shared")
   })
 
-  it("an hours share with the project's progress and reports closed says nobody sees it yet; the preview names it and shows hours as the portal does", async () => {
+  it("an hours share open alone shows its project in the preview with the hours as the portal does, and no line says nobody sees it", async () => {
     mocks.scopes = ["kernel:portal:admin", "kernel:portal:share"]
     serve({
       [`${BASE}/people`]: [PAUL],
@@ -310,8 +310,8 @@ describe("company portal section", () => {
           me: [],
           projects: [
             {
-              id: "p-2",
-              name: "Reader app",
+              id: "p-1",
+              name: "Retainer",
               hours: { kind: "so_far", usedMinutes: 1080, ofMinutes: 2400, period: null },
             },
           ],
@@ -319,7 +319,6 @@ describe("company portal section", () => {
           upcoming: [],
           requests: [],
         },
-        hoursNotShown: [{ id: "p-1", name: "Retainer" }],
       },
     })
     mocks.post.mockImplementation(async (path: string) =>
@@ -328,14 +327,17 @@ describe("company portal section", () => {
     const r = render(() => <CompanyPortalSection companyId={CO} />)
     const row = await r.findByTestId("company-portal.share-project_hours-p-1")
     await waitFor(() =>
-      expect(row.querySelector("[data-testid='company-portal.hours-not-seen']")).not.toBeNull(),
+      expect(row.querySelector("[data-testid='company-portal.share-toggle']")?.textContent).toBe(
+        "Open",
+      ),
     )
+    expect(r.container.textContent).not.toContain("Nobody sees")
     fireEvent.click(r.getByTestId("company-portal.view-preview"))
-    expect((await r.findByTestId("company-portal.preview-hours")).textContent).toContain(
-      "Hours used: 18 of 40 h so far",
-    )
-    expect(r.getByTestId("company-portal.preview-hours-not-shown").textContent).toContain(
+    expect((await r.findByTestId("company-portal.preview-projects")).textContent).toContain(
       "Retainer",
+    )
+    expect(r.getByTestId("company-portal.preview-hours").textContent).toContain(
+      "Hours used: 18 of 40 h so far",
     )
   })
 

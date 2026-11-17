@@ -38,6 +38,7 @@ export type EmailTemplateId =
   | "client-action.staff"
   | "agreements.signed-copy"
   | "agreements.claimed"
+  | "projects.client-report"
   | "portal.request-reply"
   | "portal.invite"
   | "portal.totp-reset"

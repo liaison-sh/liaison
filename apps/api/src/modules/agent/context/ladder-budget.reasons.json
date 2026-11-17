@@ -18,5 +18,9 @@
   {
     "key": "all-apps:agreements",
     "capability": "agreements: drafting, sending, following up, quoting a signed section, answering with a change request, evidence and filing a contract signed before Liaison (agreement_passage_get, change_request_send, agreement_import), deferred-loaded: their schemas cost only once loaded, only in an org that installed agreements (2553 at the integration head, 2692 with the import tool)"
+  },
+  {
+    "key": "time-and-budgets:projects",
+    "capability": "client reports: listing, reading, the week's sources, a draft and a person's approved send (client_reports_list, client_report_get, client_report_sources_get, client_report_save_draft, client_report_send), deferred-loaded: their 829 schema tokens are paid only once loaded"
   }
 ]

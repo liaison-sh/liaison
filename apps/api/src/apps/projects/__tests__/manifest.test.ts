@@ -138,7 +138,9 @@ describe("projects.manifest", () => {
     // 1.42.0: a planned vs done card has its own page, the link a coding agent hands a person.
     // 1.43.0: createProject takes another app's step as externalRef and returns the project it
     //   already made; the reconcile card offers a line as a change request when agreements is on.
-    expect(projectsManifest.version).toBe("1.43.0")
+    // 1.44.0: client reports (list, read, sources, draft, a person's send) and a milestone as
+    //   a client action target.
+    expect(projectsManifest.version).toBe("1.44.0")
   })
 
   it("capacity has no sort parameter and answers in name order only", () => {

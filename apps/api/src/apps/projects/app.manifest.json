@@ -139,7 +139,7 @@
       }
     ]
   },
-  "version": "1.43.0",
+  "version": "1.44.0",
   "description": "Projects + tasks (Phase 8)",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -5637,6 +5637,375 @@
           }
         }
       }
+    },
+    "client_reports_list": {
+      "deferLoading": true,
+      "description": "List the client reports of the projects you can read (drafts, waiting, sent), newest week first; optionally for one project or one status.",
+      "searchKeywords": [
+        "report",
+        "reports",
+        "rapport",
+        "rapports",
+        "compte",
+        "rendu",
+        "hebdomadaire",
+        "weekly",
+        "friday",
+        "vendredi",
+        "client"
+      ],
+      "readOnly": true,
+      "trustBoundary": "user",
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:reports:read"
+      ],
+      "handler": "clientReportsList",
+      "readsFromTable": "app_projects.client_reports",
+      "returns": {
+        "schema": {
+          "reports": "array",
+          "total": "number",
+          "message": "string"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project's id."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "approved",
+              "sent",
+              "rejected",
+              "expired"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "client_report_get": {
+      "deferLoading": true,
+      "description": "Read one client report as staff see it: its sections, what was left out and why, and the sources it was written from.",
+      "searchKeywords": [
+        "report",
+        "rapport",
+        "compte",
+        "rendu",
+        "client"
+      ],
+      "readOnly": true,
+      "taintSource": true,
+      "trustBoundary": "user",
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:reports:read"
+      ],
+      "handler": "clientReportGet",
+      "readsFromTable": "app_projects.client_reports",
+      "returns": {
+        "schema": {
+          "reportId": "string",
+          "projectId": "string",
+          "projectName": "string",
+          "periodEnd": "string",
+          "status": "string",
+          "sections": "array",
+          "leftOut": "array",
+          "sources": "object",
+          "recipientContactId": "any",
+          "approvedAt": "any",
+          "sentAt": "any",
+          "edited": "boolean",
+          "message": "string"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "The report's id."
+          }
+        },
+        "required": [
+          "reportId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "client_report_sources_get": {
+      "deferLoading": true,
+      "description": "What a project's client report is written from, for one week (without a projectId: the projects whose reports are shared): task titles and statuses, pull request titles and the messages of threads linked to the project. No task comments, notes, people or real time; hours only as the portal's totals when they are shared.",
+      "searchKeywords": [
+        "report",
+        "rapport",
+        "compte",
+        "rendu",
+        "sources",
+        "semaine",
+        "week"
+      ],
+      "readOnly": true,
+      "taintSource": true,
+      "trustBoundary": "user",
+      "retryOnTransientDbError": true,
+      "requiredScopes": [
+        "projects:reports:read"
+      ],
+      "handler": "clientReportSourcesGet",
+      "readsFromTable": "app_projects.tasks",
+      "returns": {
+        "schema": {
+          "projectId": "string",
+          "projectName": "string",
+          "companyName": "any",
+          "since": "string",
+          "until": "string",
+          "openKinds": "array",
+          "tasks": "array",
+          "pullRequests": "array",
+          "threadMessages": "array",
+          "hours": "any",
+          "quiet": "boolean",
+          "projects": "any",
+          "message": "string"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project's id."
+          },
+          "until": {
+            "type": "string",
+            "description": "Last day of the week, YYYY-MM-DD; default today."
+          },
+          "since": {
+            "type": "string",
+            "description": "First day, YYYY-MM-DD; default six days before until."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "client_report_save_draft": {
+      "deferLoading": true,
+      "description": "Save the draft of a project's client report for one week: its sections (each in a share the client has open), what was left out and why, and its sources. Nothing reaches the client.",
+      "searchKeywords": [
+        "report",
+        "rapport",
+        "compte",
+        "rendu",
+        "draft",
+        "brouillon"
+      ],
+      "writesToTable": "app_projects.client_reports",
+      "trustBoundary": "user",
+      "requiredScopes": [
+        "projects:reports:write"
+      ],
+      "handler": "clientReportSaveDraft",
+      "returns": {
+        "schema": {
+          "reportId": "string",
+          "projectId": "string",
+          "projectName": "string",
+          "periodEnd": "string",
+          "status": "string",
+          "outcome": "string",
+          "message": "string"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project's id."
+          },
+          "periodEnd": {
+            "type": "string",
+            "description": "Last day of the week reported, YYYY-MM-DD."
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "project_reports",
+                    "project_progress",
+                    "project_hours"
+                  ],
+                  "description": "The portal share it belongs to: project_reports (the report itself), project_progress (steps), project_hours (hour totals)."
+                },
+                "heading": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 6000
+                }
+              },
+              "required": [
+                "kind",
+                "heading",
+                "text"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 12
+          },
+          "leftOut": {
+            "type": "array",
+            "maxItems": 40,
+            "items": {
+              "type": "object",
+              "properties": {
+                "what": {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                "why": {
+                  "type": "string",
+                  "maxLength": 300
+                }
+              },
+              "required": [
+                "what",
+                "why"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "sources": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "What the draft was written from, for staff only."
+          },
+          "recipientContactId": {
+            "type": "string",
+            "description": "The client contact it goes to."
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "projectId",
+          "periodEnd",
+          "sections"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "client_report_send": {
+      "deferLoading": true,
+      "description": "Send a project's client report to the client, by mail and on their portal, once a person approves it. Parks for a person's approval; no routine or policy sends one.",
+      "searchKeywords": [
+        "report",
+        "rapport",
+        "compte",
+        "rendu",
+        "send",
+        "envoyer"
+      ],
+      "writesToTable": "app_projects.client_reports",
+      "trustBoundary": "user",
+      "requiredScopes": [
+        "projects:reports:write"
+      ],
+      "handler": "clientReportSend",
+      "preflight": "clientReportSendPreflight",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "summarizer": "summarizeClientReportSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "externalEffect": true,
+      "approvalImpact": "external",
+      "approvalExpiryHours": 72,
+      "approvalDedupeKeyParam": "reportId",
+      "returns": {
+        "schema": {
+          "reportId": "string",
+          "projectName": "string",
+          "periodEnd": "string",
+          "status": "string",
+          "sentTo": "string",
+          "message": "string"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "The report's id."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "reportId"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "milestone_client_action_view": {
+      "description": "What a client is shown on a milestone's approval link: its title, project and due day (internal: the kernel's client action page). No assignee, time or activity.",
+      "readOnly": true,
+      "agentVisible": false,
+      "trustBoundary": "user",
+      "timeoutMs": 5000,
+      "requiredScopes": [
+        "projects:tasks:read"
+      ],
+      "handler": "milestoneClientActionView",
+      "readsFromTable": "app_projects.tasks",
+      "params": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "sendGuardProviders": {
@@ -5647,6 +6016,15 @@
       }
     }
   },
+  "clientActionTargets": [
+    {
+      "type": "milestone",
+      "kinds": [
+        "approve"
+      ],
+      "viewTool": "milestone_client_action_view"
+    }
+  ],
   "export": {
     "formats": [
       "json",
@@ -6207,7 +6585,10 @@
       "deal:closed",
       "deal:reopened",
       "time_feature:changed",
-      "reconciliation:proposed"
+      "reconciliation:proposed",
+      "client_report:drafted",
+      "client_report:sent",
+      "client_report:rejected"
     ]
   },
   "kind": "app",
@@ -6606,7 +6987,7 @@
       ]
     },
     "lead": {
-      "description": "Project lead: create and edit projects, deal amounts, project money, reconciling, capacity and the dated sheet of the projects they lead, in addition to member rights",
+      "description": "Project lead: create and edit projects, deal amounts, project money, reconciling, capacity, client reports and the dated sheet of the projects they lead, in addition to member rights",
       "extends": "member",
       "scopes": [
         "projects:projects:write",
@@ -6618,7 +6999,9 @@
         "projects:reconcile:write",
         "projects:capacity:read",
         "projects:capacity:write",
-        "projects:dated_sheet:read"
+        "projects:dated_sheet:read",
+        "projects:reports:read",
+        "projects:reports:write"
       ]
     },
     "finance": {
@@ -6664,6 +7047,20 @@
     "translations": []
   },
   "routines": {
+    "client-reports": {
+      "description": "Friday afternoon: one client report draft per project whose reports are shared with its client, for a person to approve.",
+      "kind": "recurring",
+      "cron": "0 15 * * 5",
+      "timezone": "UTC",
+      "promptTemplate": "For each project client_report_sources_get lists, read its sources for this week. If nothing moved, save nothing. Otherwise save one draft with client_report_save_draft: plain sections on what was done and what comes next, only in the open kinds, and list in leftOut what you left out and why. Never send: a person approves each report.",
+      "scopes": [
+        "projects:projects:read",
+        "projects:tasks:read",
+        "projects:reports:read",
+        "projects:reports:write"
+      ],
+      "enabledByDefault": false
+    },
     "assign-on-status": {
       "description": "When a task reaches a status, assign it and tell the assignee.",
       "kind": "event",

@@ -3774,5 +3774,45 @@
     "say": "importe ce contrat signé en 2024 avant Liaison, voici le PDF",
     "typed": ["importer contrat signé", "import signed contract", "ancien contrat pdf"],
     "any": ["agreements__agreement_import"]
+  },
+  {
+    "id": "C133",
+    "set": "seed",
+    "lang": "en",
+    "say": "draft the Friday client report",
+    "typed": ["client report", "weekly report client", "status report"],
+    "any": ["projects__client_report_save_draft", "projects__client_report_sources_get"]
+  },
+  {
+    "id": "C134",
+    "set": "seed",
+    "lang": "fr",
+    "say": "le compte rendu client de la semaine",
+    "typed": ["compte rendu client", "rapport client"],
+    "any": ["projects__client_report_save_draft", "projects__client_report_get"]
+  },
+  {
+    "id": "C135",
+    "set": "seed",
+    "lang": "en",
+    "say": "which client reports went out this month?",
+    "typed": ["client reports", "reports sent"],
+    "any": ["projects__client_reports_list"]
+  },
+  {
+    "id": "C136",
+    "set": "seed",
+    "lang": "en",
+    "say": "send the client report once I approve it",
+    "typed": ["send client report", "envoyer compte rendu"],
+    "any": ["projects__client_report_send"]
+  },
+  {
+    "id": "C137",
+    "set": "seed",
+    "lang": "fr",
+    "say": "sur quoi s'appuie le compte rendu de cette semaine ?",
+    "typed": ["sources compte rendu", "report sources"],
+    "any": ["projects__client_report_sources_get"]
   }
 ]

@@ -74,6 +74,8 @@ const ALLOWED: Record<string, string> = {
     "the caller's company's work projects behind an open progress or reports share: name and manager's name",
   "table portal.project_steps SELECT":
     "the milestones of those projects behind an open progress share, with a done share from task statuses only",
+  "table portal.client_reports SELECT":
+    "the sent reports of those projects behind an open reports share: the sent sections, the period and the sender's name, never the draft, its sources or what was left out",
   "table portal.tickets SELECT":
     "the caller's own portal requests or a shared ticket, internal and stamped with the caller's company, behind an open requests share",
   "function portal.project_hours(p_project uuid)":

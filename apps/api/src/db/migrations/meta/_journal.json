@@ -2374,6 +2374,13 @@
       "when": 1900003430009,
       "tag": "0337_portal_agreement_files",
       "breakpoints": true
+    },
+    {
+      "idx": 339,
+      "version": "7",
+      "when": 1900003430010,
+      "tag": "0338_projects_client_reports",
+      "breakpoints": true
     }
   ]
 }

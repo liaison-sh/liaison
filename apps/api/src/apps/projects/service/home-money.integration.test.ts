@@ -403,6 +403,44 @@ describe("a draft waiting on its latest issue day", () => {
        WHERE id IN (${waiting.approvalId}::uuid, ${String(other.approval_id)}::uuid)`)
   })
 
+  it("a client's open approval of the milestone holds nothing: four days before its latest day the draft is back on top", async () => {
+    const { mintClientAction } = await import("~/modules/client-actions/mint")
+    const milestone = await call<{ id: string }>("projects_createTask", {
+      projectId: project.fixed!,
+      title: "Design signed off",
+      isMilestone: true,
+    })
+    // A real link, sent to the client and still open: nobody has approved or declined it.
+    const action = await mintClientAction({
+      orgId,
+      kind: "approve",
+      targetApp: "projects",
+      targetType: "milestone",
+      targetId: milestone.id,
+      invitedEmail: "client@maison-marlin.example.com",
+      invitedName: "Client Marlin",
+      expiresInDays: 30,
+      createdByUserId: owner.userId,
+    })
+    expect(action.status).toBe("open")
+    const waiting = await waitingDraft({
+      projectId: project.fixed!,
+      externalRef: `milestone:${milestone.id}`,
+      latestOn: "2028-03-31",
+    })
+    const urgency = async (day: string) =>
+      (await homeOf(biller, day)).find((i) => i.entityId === waiting.approvalId)?.urgency
+    expect(await urgency("2028-03-26")).toBe(60)
+    expect(await urgency("2028-03-27")).toBe(90)
+    const [open] = extractRows<{ decided_at: string | null; revoked_at: string | null }>(
+      await db.execute(drizzleSql`
+        SELECT decided_at::text, revoked_at::text FROM kernel.client_actions WHERE id = ${action.id}::uuid`),
+    )
+    expect(open).toEqual({ decided_at: null, revoked_at: null })
+    await db.execute(drizzleSql`
+      UPDATE kernel.approval_requests SET status = 'cancelled' WHERE id = ${waiting.approvalId}::uuid`)
+  })
+
   it("a draft created late raises no second item", async () => {
     // Reconciled in the next month's first days: the draft is late from its creation.
     for (const [month, last, after] of [

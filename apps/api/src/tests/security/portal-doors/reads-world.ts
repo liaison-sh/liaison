@@ -278,6 +278,7 @@ export async function dropReadsWorld(w: DoorWorld): Promise<void> {
     ]) {
       await tx.unsafe(`DELETE FROM ${table} WHERE org_id = $1`, [org])
     }
+    await tx.unsafe("DELETE FROM app_projects.client_reports WHERE org_id = $1", [org])
     await tx.unsafe(
       "DELETE FROM app_projects.tasks WHERE org_id = $1 AND parent_task_id IS NOT NULL",
       [org],

@@ -7,6 +7,8 @@ import { schemaRef } from "~/db/schema-ref"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { envelopeError } from "~/modules/apps/sandbox/bridge/shared"
 
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * U4.12 (CI→projects webhook): `createTask`/`updateTask`/`createProject` take
  * an `actor: UserContext` with a REAL `userId` (it lands in the `created_by`
@@ -2592,6 +2594,114 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             },
           }),
         )
+      })
+    },
+    /** Client reports the caller can read (projects:reports:read). */
+    projects_clientReportsList: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedCall(async () => {
+        const { clientReportsList } = await import("~/apps/projects/service/client-reports")
+        return clientReportsList({ tx: txDb, orgId, input: params })
+      })
+    },
+    /** One client report as staff read it: body, what was left out, sources. */
+    projects_clientReportGet: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedCall(async () => {
+        const { clientReportGet } = await import("~/apps/projects/service/client-reports")
+        return clientReportGet({ tx: txDb, orgId, input: params })
+      })
+    },
+    /** The one project read a report is written from: no comments, notes, people or real time. */
+    projects_clientReportSources: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedCall(async () => {
+        const { clientReportSources } = await import("~/apps/projects/service/client-reports")
+        return clientReportSources({ tx: txDb, orgId, input: params })
+      })
+    },
+    /** Saves a report draft; nothing reaches the client. */
+    projects_clientReportSaveDraft: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedServiceCall(async () => {
+        const { clientReportSaveDraft } = await import("~/apps/projects/service/client-reports")
+        const actor = await writeActor()
+        return JSON.stringify(
+          await clientReportSaveDraft({
+            tx: txDb,
+            orgId,
+            userId: actor.userId,
+            human: bridgeOptions?.origin === "human-ui" && !bridgeActingAgentId,
+            routineId: bridgeRoutineId ?? null,
+            input: params,
+          }),
+        )
+      })
+    },
+    /** The send's card: its refusals, pinned check and key, and the warning for the approver. */
+    projects_clientReportSendPreflight: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      return typedCall(async () => {
+        const { clientReportReadyToSend } = await import("~/apps/projects/service/client-reports")
+        const ready = await clientReportReadyToSend({ tx: txDb, orgId, input: params })
+        return {
+          ok: true,
+          pinnedParams: { sendGuard: ready.sendGuard, guardKey: ready.guardKey },
+          warnings: ready.warnings,
+        }
+      })
+    },
+    /** Sends an approved report: only a person's decision, never a routine's or a policy's. */
+    projects_clientReportSend: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown>
+      const human = bridgeOptions?.origin === "human-ui" && !bridgeActingAgentId && !bridgeRoutineId
+      const decider = approvalContext?.approvalDeciderId ?? (human ? userId : null)
+      if (!decider || !UUID_SHAPE.test(decider)) {
+        return envelopeError(
+          "APPROVAL_REQUIRED",
+          "A client report goes out only when a person approves its send. Nothing was sent.",
+        )
+      }
+      const [person] = extractRows<{ email: string; name: string | null }>(
+        await txDb.execute(drizzleSql`
+          SELECT email, name FROM ${drizzleSql.raw(schemaRef("kernel"))}.users
+           WHERE id = ${decider}::uuid AND org_id = ${orgId}::uuid
+             AND user_type = 'member' AND status = 'active'
+           LIMIT 1`),
+      )
+      if (!person) {
+        return envelopeError(
+          "APPROVAL_REQUIRED",
+          "A client report goes out only when an active member approves its send. Nothing was sent.",
+        )
+      }
+      return typedServiceCall(async () => {
+        const { clientReportSend } = await import("~/apps/projects/service/client-reports")
+        const { sendClientReportMail } = await import("~/apps/projects/service/client-report-mail")
+        return JSON.stringify(
+          await clientReportSend({
+            tx: txDb,
+            orgId,
+            approverId: decider,
+            input: params,
+            mail: (m) => sendClientReportMail({ orgId, replyTo: person.email, ...m }),
+          }),
+        )
+      })
+    },
+    /** What a client is shown on a milestone's approval link (internal: the kernel's page). */
+    projects_milestoneClientActionView: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as { targetType?: string; targetId?: string }
+      return typedCall(async () => {
+        const { milestoneClientActionView } = await import(
+          "~/apps/projects/service/milestone-client-action"
+        )
+        return milestoneClientActionView({
+          tx: txDb,
+          orgId,
+          targetType: params.targetType ?? "",
+          targetId: params.targetId ?? "",
+        })
       })
     },
     /** Planned against available time per person for one ISO week, in name order. */

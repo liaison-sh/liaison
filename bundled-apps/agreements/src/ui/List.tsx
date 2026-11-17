@@ -17,7 +17,8 @@ import {
   formatMoney,
   KIND_LABEL,
   needsYou,
-  statusLabel,
+  STATUS_LABEL,
+  statusKey,
   statusTone,
 } from "./model"
 import { SigningOff } from "./signing"
@@ -28,7 +29,7 @@ export const StatusBadge: Component<{ status: string; kind?: string; testid?: st
   props,
 ) => (
   <Badge tone={statusTone(props.status)} testid={props.testid} variant={props.status}>
-    {tr(statusLabel(props.status, props.kind))}
+    {tr(STATUS_LABEL[statusKey(props.status, props.kind)] ?? "Draft")}
   </Badge>
 )
 

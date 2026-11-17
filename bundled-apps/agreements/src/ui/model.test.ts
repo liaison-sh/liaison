@@ -17,14 +17,16 @@ import {
   formatMoney,
   layoutOf,
   needsYou,
+  PREPARE_WHY,
   parsePrice,
   prepareWhy,
   relinkable,
+  STATUS_LABEL,
   setBlockText,
   setLayout,
   sidebarCounts,
   signersForSend,
-  statusLabel,
+  statusKey,
   yourOpenLink,
 } from "./model"
 
@@ -140,17 +142,20 @@ describe("what the editor and the list say", () => {
     const priced = detail({ price_minor: "100" })
     const empty = editorChecks(priced, { body: { blocks: [] } })
     expect(empty.map((c) => c.code)).not.toContain("AGENT_TEXT_UNREAD")
-    expect(prepareWhy(false, empty)).toContain("Before it can be sent")
+    expect(prepareWhy(false, empty)).toBe("checks")
+    expect(PREPARE_WHY.checks).toContain("Before it can be sent")
     const written = { body: { blocks: [{ type: "paragraph", text: "x" }] } }
     const ready = editorChecks(priced, written)
     expect(ready.find((c) => c.code === "AGENT_TEXT_UNREAD")?.ok).toBe(true)
-    expect(prepareWhy(true, ready)).toContain("Save your changes first")
+    expect(prepareWhy(true, ready)).toBe("unsaved")
     expect(prepareWhy(false, ready)).toBeNull()
   })
 
   it("a change request waiting on the client reads as an approval, never as signatures", () => {
-    expect(statusLabel("sent", "change_request")).toBe("Waiting for the client's approval")
-    expect(statusLabel("sent", "sow")).toBe("Waiting for signatures")
+    expect(STATUS_LABEL[statusKey("sent", "change_request")]).toBe(
+      "Waiting for the client's approval",
+    )
+    expect(STATUS_LABEL[statusKey("sent", "sow")]).toBe("Waiting for signatures")
   })
 })
 

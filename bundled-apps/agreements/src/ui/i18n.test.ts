@@ -12,7 +12,7 @@ import {
 import { CHECK_WORDS_FOR_TEST } from "./Editor-words"
 import { tr } from "./i18n"
 import { FR } from "./i18n-fr"
-import { KIND_GROUPS, KIND_LABEL, LINK_LABEL, STATUS_LABEL } from "./model"
+import { KIND_GROUPS, KIND_LABEL, LINK_LABEL, PREPARE_WHY, STATUS_LABEL } from "./model"
 
 const UI_DIR = import.meta.dir
 
@@ -34,6 +34,7 @@ describe("agreements UI copy is translated", () => {
   it("every label table read through tr() has its French", () => {
     const tables = [
       ...Object.values(STATUS_LABEL),
+      ...Object.values(PREPARE_WHY),
       ...Object.values(LINK_LABEL),
       ...Object.values(KIND_LABEL),
       ...KIND_GROUPS.map((g) => g.label),

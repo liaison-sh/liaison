@@ -94,6 +94,7 @@ export type Tone = "neutral" | "accent" | "success" | "warning" | "error" | "mut
 export const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   sent: "Waiting for signatures",
+  change_request_sent: "Waiting for the client's approval",
   partly_signed: "Partly signed",
   signed: "Signed",
   accepted: "Accepted",
@@ -375,18 +376,22 @@ export function editorChecks(detail: AgreementDetail, source: AgreementSource | 
   return empty ? checks.filter((c) => c.code !== "AGENT_TEXT_UNREAD") : checks
 }
 
-/** Why Prepare for signature is not offered yet, in the reader's words; null when it is. */
-export function prepareWhy(dirty: boolean, checks: Check[]): string | null {
-  if (dirty) return "Save your changes first: then it can be prepared for signature."
-  if (!canPrepare(checks))
-    return "It can be prepared for signature once every line of Before it can be sent is ticked."
+/** Why Prepare for signature is not offered yet (translated where drawn). */
+export const PREPARE_WHY: Record<"unsaved" | "checks", string> = {
+  unsaved: "Save your changes first: then it can be prepared for signature.",
+  checks: "It can be prepared for signature once every line of Before it can be sent is ticked.",
+}
+
+/** Why Prepare for signature is not offered yet (a PREPARE_WHY key); null when it is. */
+export function prepareWhy(dirty: boolean, checks: Check[]): keyof typeof PREPARE_WHY | null {
+  if (dirty) return "unsaved"
+  if (!canPrepare(checks)) return "checks"
   return null
 }
 
-/** The badge words of an agreement: a change request is approved by the client, never signed. */
-export function statusLabel(status: string, kind?: string): string {
-  if (kind === "change_request" && status === "sent") return "Waiting for the client's approval"
-  return STATUS_LABEL[status] ?? "Draft"
+/** The STATUS_LABEL key of an agreement: a change request is approved by the client, never signed. */
+export function statusKey(status: string, kind?: string): string {
+  return kind === "change_request" && status === "sent" ? "change_request_sent" : status
 }
 
 /** Prepare is offered only when no blocking check fails. */

@@ -40,6 +40,7 @@ import {
   latestVersion,
   layoutOf,
   type NewBlockKind,
+  PREPARE_WHY,
   parsePrice,
   prepareWhy,
   removeBlock,
@@ -222,7 +223,7 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                       data-testid="agreement-editor-prepare-why"
                       class="border-b border-border-subtle px-5 py-1.5 text-[12px] text-text-secondary"
                     >
-                      {tr(why())}
+                      {tr(PREPARE_WHY[why()])}
                     </p>
                   )}
                 </Show>

@@ -3,10 +3,10 @@
 // retainer-timebox-roll (daily): each active retainer's next month gets its included hours as a
 // timebox on the retainer's project, through projects' own timebox tool. Only the month to come is
 // written: the current month keeps what it was given (terms changed during a month apply from the
-// next). It reads schedules only, never anyone's time or activity, and drafts nothing.
+// next; a signed renewal's hours apply from its first month). It reads schedules only, never anyone's time or activity, and drafts nothing.
 
 import type { CrossAppExecuteTool } from "./cross-app"
-import { isRetainerSchedule, monthOf, nextMonth } from "./recurring/retainer"
+import { isRetainerSchedule, monthOf, nextMonth, termsForMonth } from "./recurring/retainer"
 import { writeRetainerTimeboxes } from "./recurring/tools"
 
 type Row = Record<string, unknown>
@@ -38,7 +38,8 @@ export async function retainerTimeboxRoll(
       ctx as never,
       { id: String(s.id), retainer_project_id: s.retainer_project_id },
       [month],
-      Number(s.retainer_minutes),
+      // A renewal signed for this month on gives it the renewed hours.
+      Number(termsForMonth(s, month).retainer_minutes),
     )
     written += done.length
     for (const m of done) months.add(m)

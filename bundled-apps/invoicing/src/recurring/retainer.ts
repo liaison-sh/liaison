@@ -141,3 +141,49 @@ export function hoursText(minutes: number): string {
 /** The warning a prepaid retainer carries: billed before the month, settled after it. */
 export const PREPAID_WARNING =
   "Prepaid: each month's fee is invoiced ahead as an advance, and the month-end invoice deducts it and adds any overage, so it can total zero; check this way of billing with your accountant."
+
+/**
+ * The renewed terms a signed renewal left on a retainer schedule (`retainer_renewal`): they apply
+ * from `from` (`YYYY-MM`); the months before keep the schedule's own terms.
+ */
+export interface RetainerRenewal {
+  from: string
+  agreement_id: string
+  agreement_number: string
+  retainer_minutes: number
+  retainer_overage_rate_minor: string | null
+  lines: unknown[]
+}
+
+/** The schedule's renewal, when it has one. */
+export function renewalOf(
+  s: { retainer_renewal?: unknown } | null | undefined,
+): RetainerRenewal | null {
+  let r = s?.retainer_renewal as unknown
+  if (typeof r === "string") {
+    try {
+      r = JSON.parse(r)
+    } catch {
+      return null
+    }
+  }
+  const v = r as Partial<RetainerRenewal> | null
+  return v && typeof v.from === "string" && Number(v.retainer_minutes) > 0
+    ? (v as RetainerRenewal)
+    : null
+}
+
+/**
+ * The schedule as it bills `month` (`YYYY-MM`): its renewed hours, overage rate and fee lines from
+ * the renewal's first month on, its own terms before it. Every reader of a month's terms asks this.
+ */
+export function termsForMonth<T extends Record<string, unknown>>(s: T, month: string): T {
+  const r = renewalOf(s)
+  if (!r || month < r.from) return s
+  return {
+    ...s,
+    retainer_minutes: r.retainer_minutes,
+    retainer_overage_rate_minor: r.retainer_overage_rate_minor ?? s.retainer_overage_rate_minor,
+    lines: Array.isArray(r.lines) && r.lines.length > 0 ? r.lines : s.lines,
+  }
+}

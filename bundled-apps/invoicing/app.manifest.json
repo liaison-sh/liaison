@@ -1380,7 +1380,8 @@
         "retainer_minutes": "integer?",
         "retainer_overage_rate_minor": "bigint?",
         "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" },
-        "retainer_from": "text?"
+        "retainer_from": "text?",
+        "retainer_renewal": "json?"
       },
       "constraints": { "unique": [["external_ref"]] },
       "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]
@@ -2714,6 +2715,29 @@
           "taxRateBp": { "type": "integer" }
         },
         "required": ["projectId", "changeRequestId", "label", "amountMinor", "taskId"],
+        "additionalProperties": false
+      }
+    },
+    "retainer_terms_renew": {
+      "description": "Renew a project's retainer from a signed agreement: its included hours, monthly fee and overage rate apply from the agreement's first month (at the earliest the next), the months before keep the old terms. Once per agreement. Called by the agreements app only, as the person who approved the agreement's send.",
+      "requiredScopes": ["invoicing:documents:write"],
+      "handler": "retainerTermsRenewHandler",
+      "agentVisible": false,
+      "trustBoundary": "internal",
+      "writesToTable": "app_invoicing.recurring_schedules",
+      "timeoutMs": 30000,
+      "params": {
+        "type": "object",
+        "properties": {
+          "projectId": { "type": "string" },
+          "agreementId": { "type": "string" },
+          "agreementNumber": { "type": "string" },
+          "startsOn": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+          "minutes": { "type": "integer", "minimum": 1 },
+          "feeMinor": { "type": ["integer", "string"], "description": "Excl. VAT, in minor units." },
+          "overageRateMinor": { "type": ["integer", "string", "null"] }
+        },
+        "required": ["projectId", "agreementId", "agreementNumber", "startsOn", "minutes", "feeMinor"],
         "additionalProperties": false
       }
     },

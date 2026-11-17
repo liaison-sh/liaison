@@ -139,6 +139,7 @@ import {
   recurringScheduleCreate,
   recurringSchedulePause,
   recurringScheduleUpdate,
+  retainerTermsRenew,
 } from "./recurring/tools"
 import {
   cardStreamIssuer,
@@ -283,6 +284,10 @@ export const billingStepAddHandler = (
   params: Parameters<typeof billingStepAdd>[1],
   ctx: Parameters<typeof billingStepAdd>[0],
 ) => billingStepAdd(ctx, params)
+export const retainerTermsRenewHandler = (
+  params: Parameters<typeof retainerTermsRenew>[1],
+  ctx: Parameters<typeof retainerTermsRenew>[0],
+) => retainerTermsRenew(ctx, params)
 export const milestoneDraftCreateHandler = (
   params: Parameters<typeof milestoneDraftCreate>[1],
   ctx: Parameters<typeof milestoneDraftCreate>[0],

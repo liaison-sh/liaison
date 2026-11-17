@@ -8,10 +8,19 @@
 // schedule that is paused or ended is never due.
 import { civilDateOf, type TimeSurface } from "../issue-date"
 import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
+import { formatMoneyMinor } from "../money"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { SCHEDULE_PAUSED } from "./end-schedule"
 import { type EditCtx, logRunEdit, stageRunCardAfterRemoval } from "./restage"
-import { isRetainerSchedule, monthOf, nextMonth, PREPAID_WARNING } from "./retainer"
+import {
+  hoursText,
+  isRetainerSchedule,
+  monthOf,
+  nextMonth,
+  PREPAID_WARNING,
+  type RetainerRenewal,
+  renewalOf,
+} from "./retainer"
 import {
   type Cadence,
   datesFrom,
@@ -119,6 +128,7 @@ export interface ScheduleRow extends Cadence {
   retainer_overage_rate_minor?: number | string | null
   retainer_rollover?: string
   retainer_from?: string | null
+  retainer_renewal?: unknown
 }
 
 type Fail = ErrorEnvelope
@@ -694,6 +704,160 @@ export async function recurringScheduleUpdate(
     ...(status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead"
       ? { warning: PREPAID_WARNING }
       : {}),
+  }
+}
+
+// retainer_terms_renew
+
+export interface RetainerTermsRenewInput {
+  projectId: string
+  agreementId: string
+  agreementNumber: string
+  /** The renewal's first day (`YYYY-MM-DD`): its terms apply from that month, at the earliest the next. */
+  startsOn: string
+  /** Included minutes a month. */
+  minutes: number
+  /** The monthly fee excl. VAT, in minor units, as a decimal string. */
+  feeMinor: string | number
+  /** The hourly rate above the included hours, in minor units; the schedule's own when absent. */
+  overageRateMinor?: string | number | null
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+const MINOR = /^\d{1,15}$/
+
+/** The old fee line with its new price; an hours figure in its wording follows the new hours. */
+function renewedLine(
+  line: ScheduleLineInput,
+  feeMinor: number,
+  minutes: number,
+): ScheduleLineInput {
+  const hours = Math.round((minutes / 60) * 100) / 100
+  const description = String(line.description).replace(
+    /\b\d+(?:[.,]\d+)?(\s*(?:h|hours?|heures?)\b)/i,
+    `${hours}$1`,
+  )
+  return { ...line, description, qty: 1, unit_price_minor: feeMinor }
+}
+
+/**
+ * A retainer renewed by a signed agreement (agreements' call, as the person who approved its
+ * send): the new included hours, fee and overage rate are kept on the project's retainer schedule
+ * as its renewal, which every month from the renewal's first one is billed on (`termsForMonth`);
+ * the months before keep the schedule's own terms, so no month is billed twice or on two sets of
+ * terms. The first renewed month's timebox is written now when it is the next month; later ones
+ * come with the daily roll. The same agreement again changes nothing.
+ */
+export async function retainerTermsRenew(ctx: RecurringCtx, input: RetainerTermsRenewInput) {
+  const fee = String(input.feeMinor ?? "")
+  const rate =
+    input.overageRateMinor === undefined || input.overageRateMinor === null
+      ? null
+      : String(input.overageRateMinor)
+  if (
+    !UUID.test(String(input.projectId)) ||
+    !UUID.test(String(input.agreementId)) ||
+    !DAY.test(String(input.startsOn)) ||
+    !(Number.isInteger(input.minutes) && input.minutes > 0) ||
+    !MINOR.test(fee) ||
+    Number(fee) <= 0 ||
+    (rate !== null && !MINOR.test(rate))
+  )
+    return fail(
+      "invalid_input",
+      "A renewal takes the project, the agreement, its first day (YYYY-MM-DD), the included minutes a month above zero and the monthly fee in minor units. Nothing was changed.",
+    )
+  const refused = await retainerScopeRefusal(ctx, { retainer_minutes: input.minutes })
+  if (refused) return refused
+  const rows = (
+    (await ctx.db.findMany(ENTITY, {
+      where: { retainer_project_id: input.projectId },
+      limit: 20,
+    })) as unknown[]
+  )
+    .map(normalize)
+    .filter((r) => r.status !== "ended" && isRetainerSchedule(r))
+  const current = rows[0]
+  if (!current || rows.length > 1)
+    return fail(
+      "no_retainer_schedule",
+      current
+        ? `Project ${input.projectId} has ${rows.length} retainer schedules, so ${input.agreementNumber} renewed none of them. Nothing was changed; set the new terms on the right schedule with recurring_schedule_update.`
+        : `Project ${input.projectId} has no retainer schedule, so ${input.agreementNumber} has no retainer to renew. Nothing was changed.`,
+    )
+  const issuer = await issuerOf(ctx, current.issuer_profile_id)
+  const now = await today(ctx, issuer)
+  if (!now.ok) return now.error
+  const next = nextMonth(monthOf(now.date))
+  const asked = monthOf(input.startsOn)
+  const from = asked > next ? asked : next
+  const pending = renewalOf(current)
+  if (pending?.agreement_id === input.agreementId)
+    return {
+      status: "completed" as const,
+      scheduleId: current.id,
+      from: pending.from,
+      unchanged: true,
+      message: `${input.agreementNumber} already renewed retainer schedule ${current.id} from ${pending.from}. Nothing changed.`,
+    }
+
+  // A renewal already in force is the schedule's own terms now: the new one follows it.
+  const data: Record<string, unknown> = {}
+  let base: ScheduleRow = current
+  if (pending && pending.from <= monthOf(now.date)) {
+    base = {
+      ...current,
+      lines: (pending.lines as ScheduleLineInput[]) ?? current.lines,
+      retainer_minutes: pending.retainer_minutes,
+      retainer_overage_rate_minor:
+        pending.retainer_overage_rate_minor ?? current.retainer_overage_rate_minor ?? null,
+    }
+    data.lines = base.lines
+    data.retainer_minutes = base.retainer_minutes
+    data.retainer_overage_rate_minor = base.retainer_overage_rate_minor
+  }
+  if (base.lines.length !== 1)
+    return fail(
+      "fee_lines_ambiguous",
+      `Retainer schedule ${current.id} bills ${base.lines.length} fee lines, so ${input.agreementNumber}'s fee cannot replace one of them. Nothing was changed; set the new terms with recurring_schedule_update.`,
+    )
+  const line = renewedLine(base.lines[0] as ScheduleLineInput, Number(fee), input.minutes)
+  const renewal: RetainerRenewal = {
+    from,
+    agreement_id: input.agreementId,
+    agreement_number: input.agreementNumber,
+    retainer_minutes: input.minutes,
+    retainer_overage_rate_minor: rate ?? String(base.retainer_overage_rate_minor ?? 0),
+    lines: [line],
+  }
+  data.retainer_renewal = renewal
+  data.version = current.version + 1
+  await ctx.db.update(ENTITY, current.id, data)
+  await announceScheduleChange(ctx, current.id, current.version + 1)
+  const wrote =
+    from === next
+      ? await writeRetainerTimeboxes(
+          ctx,
+          { id: current.id, retainer_project_id: current.retainer_project_id ?? null },
+          [from],
+          input.minutes,
+        )
+      : []
+  const currency = String((issuer as { default_currency?: string }).default_currency ?? "EUR")
+  const oldFee = Number((base.lines[0] as ScheduleLineInput).unit_price_minor)
+  return {
+    status: "completed" as const,
+    scheduleId: current.id,
+    from,
+    version: current.version + 1,
+    message:
+      `${input.agreementNumber} renewed retainer schedule ${current.id}: from ${from}, ${hoursText(input.minutes)} included and ${formatMoneyMinor(fee, currency)} a month` +
+      `${rate !== null ? `, ${formatMoneyMinor(rate, currency)} an hour above them` : ""}. ` +
+      `The months before keep ${hoursText(Number(base.retainer_minutes))} and ${formatMoneyMinor(oldFee, currency)}. ` +
+      (wrote.length > 0
+        ? `The project's ${from} timebox is ${hoursText(input.minutes)}.`
+        : `The project's timebox for ${from} is written by the daily roll.`),
   }
 }
 

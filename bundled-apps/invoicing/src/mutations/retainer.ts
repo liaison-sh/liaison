@@ -32,6 +32,7 @@ import {
   retainerRefsOf,
   rolloverOut,
   runDocumentRef,
+  termsForMonth,
 } from "../recurring/retainer"
 import {
   advanceRemaining,
@@ -245,9 +246,11 @@ export interface RetainerPlanInput {
 }
 
 /** A retainer month's lines and figures, priced exactly as its draft will be. Nothing is written. */
-export async function retainerPlan(ctx: DbCtx, s: Row, input: RetainerPlanInput) {
-  const scheduleId = String(s.id)
+export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPlanInput) {
+  const scheduleId = String(schedule.id)
   const month = monthOf(input.period.from)
+  // The month is billed on its own terms: a renewal's from its first month, the old ones before.
+  const s = termsForMonth(schedule, month)
   const included =
     Number(input.timeboxMinutes ?? 0) > 0
       ? Number(input.timeboxMinutes)

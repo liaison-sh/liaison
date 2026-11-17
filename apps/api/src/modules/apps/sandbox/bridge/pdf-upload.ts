@@ -9,7 +9,8 @@
  *    verdict, the fingerprints and the report. Stores nothing. A tool call
  *    passes `deadlineMs`: past it the answer is `{status: "checking"}` and the
  *    app finishes the work in its `upload-freeze` job.
- *  - `pdf_upload_freeze`: for a version the app just created, runs the same
+ *  - `pdf_upload_freeze`: for the uploaded version the app just created (no file yet, the
+ *    checked fingerprints recorded on it; any other version is refused), runs the same
  *    checks again, refuses unless the bytes and the reading are the ones
  *    checked, then stores the uploaded bytes untouched as the version's frozen
  *    file and every page picture on the version. Answers their ids.
@@ -226,6 +227,21 @@ export function createPdfUploadMethods(
       }
       if (!UUID.test(p.versionId))
         return refuse("NOT_FOUND", "No such agreement version. Nothing was frozen.")
+      // Only the uploaded version just made for exactly these bytes and this reading, with no
+      // file yet, takes them: never another version, nor one already holding its file.
+      const [waiting] = extractRows<{ id: string }>(
+        await txDb.execute(drizzleSql`
+          SELECT id::text AS id FROM ${drizzleSql.raw(schemaRef("app_agreements"))}.agreement_versions
+           WHERE id = ${p.versionId}::uuid AND org_id = ${orgId}::uuid
+             AND source_kind = 'uploaded' AND status = 'frozen' AND file_id IS NULL
+             AND sha256 = ${String(p.sha256 ?? "")} AND pages_sha256 = ${String(p.pagesSha256 ?? "")}
+           LIMIT 1`),
+      )
+      if (!waiting)
+        return refuse(
+          "NOT_FOUND",
+          "No uploaded version waits for this file with these fingerprints. Nothing was frozen.",
+        )
       const read = await readUpload(p.fileId)
       if ("refusal" in read) return read.refusal
       const check = await checkUploadedPdf(orgId, read.bytes)

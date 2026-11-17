@@ -46,7 +46,7 @@ The audit log shows what it recorded about a closed agreement to the people on i
 
 ## Send for signature
 
-**Send** takes the version **Prepare** froze, with its fingerprint, and the signers: contacts or email addresses, in order (one after the other) or all at once, with links that last 7, 14 or 30 days. An agent's send waits for a person's approval; nothing goes out if the version changed since **Prepare**, and the approved send goes only to the addresses its card showed. Under "one after the other", the next signer gets a link only once the signer before them signed. A colleague who signs gets a line on their Home and signs in their own session, with no mailed link.
+**Send** takes the version **Prepare** froze, with its fingerprint, and the signers: contacts or email addresses, in order (one after the other) or all at once, with links that last 7, 14 or 30 days. A contact signs at the address the directory holds for them; a send that names a contact with another address is refused (name that signer by email instead, or correct the contact). An agent's send waits for a person's approval; nothing goes out if the version changed since **Prepare**, and the approved send goes only to the addresses its card showed. Under "one after the other", the next signer gets a link only once the signer before them signed. A colleague who signs gets a line on their Home and signs in their own session, with no mailed link; their **Read and sign** opens only once their turn has come.
 
 A signer opens the link, reads the document, proves the code sent to their address and types their name. A link whose code was never proved can read and decline, never sign. Each signature is recorded once; the agreement shows **partly signed**, then **signed** when the last signer signed. A decline closes it as **declined**.
 
@@ -55,7 +55,7 @@ A server signs only with a timestamp authority set up (`LIAISON_TSA_URL`). On th
 ## Follow up a send
 
 - **Remind** sends each named signer whose link is still open a fresh link; the one mailed before stops working. A signer who answered, or who waits for their turn, gets nothing.
-- **New link** gives one signer a new link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand. After a decline made with the code, send a new version instead.
+- **New link** gives one signer a new link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. Signatures already given stand, and the link it replaces no longer counts: the agreement is signed once every signer signed on their current link. A new link to a corrected address is no longer tied to the contact. After a decline made with the code, send a new version instead.
 - **Void** withdraws every open link at once, with a reason. Signatures already given stay.
 
 An agent's reminder, new link or void waits for a person's approval. **Agreement details** list every signing link with its signer, turn and state.

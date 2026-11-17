@@ -246,6 +246,12 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
   const events = await eventsOf(ctx, version.id)
   if (events.length === 0)
     return { status: "not_ready", reason: "This version has no recorded signature." }
+  // Every signature it holds proved the emailed code; a version with one that did not is not sealed.
+  if (events.some((e) => !e.code_verified_at))
+    return {
+      status: "not_ready",
+      reason: "A signature on this version has no proven code: it is not sealed.",
+    }
 
   let pkg = await packageOf(ctx, version.id)
   let first = false

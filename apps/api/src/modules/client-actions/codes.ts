@@ -101,14 +101,17 @@ export async function checkCode(actionId: string, typed: string): Promise<CodeCh
   if (until) return { ok: false, reason: "paused", until }
   const stored = await redis.get(k.code(actionId))
   if (!stored) return { ok: false, reason: "no_code" }
+  // Every guess takes its place before it is compared: guesses sent at once count one by one,
+  // and one past the code's budget is never compared.
+  const wrong = await redis.incr(k.wrong(actionId))
+  if (wrong === 1) await redis.expire(k.wrong(actionId), CODE_TTL_SECONDS)
+  if (wrong > WRONG_PER_CODE) return { ok: false, reason: "no_code" }
   if (/^\d{6}$/.test(typed) && sameHex(stored, codeHash(actionId, typed))) {
     // One use: only the caller whose delete removed it goes on.
     if ((await redis.del(k.code(actionId))) !== 1) return { ok: false, reason: "no_code" }
     await redis.del(k.wrong(actionId), k.pauses(actionId))
     return { ok: true }
   }
-  const wrong = await redis.incr(k.wrong(actionId))
-  await redis.expire(k.wrong(actionId), CODE_TTL_SECONDS)
   if (wrong >= WRONG_PER_CODE) {
     await redis
       .multi()

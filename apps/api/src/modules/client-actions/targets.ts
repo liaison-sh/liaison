@@ -24,6 +24,8 @@ export interface ClientActionTarget {
   type: string
   kinds: ClientActionKind[]
   viewTool: string
+  /** "app": only the declaring app's own send makes links to it, never the generic tool. */
+  mintedBy: "app" | "any"
 }
 
 /** What the app's read tool returns for one target. */
@@ -70,7 +72,10 @@ export interface ViewRequest {
 
 type ViewFn = (req: ViewRequest, signal: AbortSignal) => Promise<ClientActionView | null>
 
-const testTargets = new Map<string, { kinds: ClientActionKind[]; view: ViewFn }>()
+const testTargets = new Map<
+  string,
+  { kinds: ClientActionKind[]; view: ViewFn; mintedBy: "app" | "any" }
+>()
 
 const key = (app: string, type: string) => `${app}\u0000${type}`
 
@@ -79,9 +84,15 @@ const key = (app: string, type: string) => `${app}\u0000${type}`
  * app's tool would return. Production targets come from manifests alone.
  */
 export const ClientActionTargetsTestAccess = {
-  set(app: string, type: string, kinds: ClientActionKind[], view: ViewFn): void {
+  set(
+    app: string,
+    type: string,
+    kinds: ClientActionKind[],
+    view: ViewFn,
+    mintedBy: "app" | "any" = "any",
+  ): void {
     if (process.env.NODE_ENV !== "test") throw new Error("test targets are for tests only")
-    testTargets.set(key(app, type), { kinds, view })
+    testTargets.set(key(app, type), { kinds, view, mintedBy })
   },
   clear(app: string, type: string): void {
     testTargets.delete(key(app, type))
@@ -95,7 +106,7 @@ export function declaredTarget(
   type: string,
 ): ClientActionTarget | null {
   const t = testTargets.get(key(app, type))
-  if (t) return { app, type, kinds: t.kinds, viewTool: "__test__" }
+  if (t) return { app, type, kinds: t.kinds, viewTool: "__test__", mintedBy: t.mintedBy }
   const decl = appBridgeManifest(orgId, app)?.clientActionTargets?.find((d) => d.type === type)
   if (!decl) return null
   return {
@@ -105,6 +116,7 @@ export function declaredTarget(
       ["sign", "accept", "approve"].includes(k),
     ),
     viewTool: decl.viewTool,
+    mintedBy: decl.mintedBy === "app" ? "app" : "any",
   }
 }
 

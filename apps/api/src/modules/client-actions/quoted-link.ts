@@ -33,3 +33,42 @@ export function cutSigningLinks(text: string | null | undefined): string | null 
   if (!text) return text
   return text.replace(LINK, SIGNING_LINK_REMOVED)
 }
+
+/** A run of base64 lines, as a MIME part's body carries it. */
+const BASE64_BLOCK = /(?:^[A-Za-z0-9+/]{16,}={0,2}\r?\n)+/gm
+
+function hasSigningLink(text: string): boolean {
+  LINK.lastIndex = 0
+  const hit = LINK.test(text)
+  LINK.lastIndex = 0
+  return hit
+}
+
+/**
+ * A mail attached as a file (a forwarded `.eml`, a `message/rfc822` part) with every signing
+ * link cut, in its headers and in its parts however they are encoded: plain, quoted-printable
+ * (its soft line breaks joined where they split a link) or base64 (the part decoded, cut and
+ * written again). Bytes are read and written one to one (latin1), so a file holding no link
+ * comes back unchanged, byte for byte.
+ */
+export function cutSigningLinksInMailFile(bytes: Uint8Array): Uint8Array {
+  const raw = Buffer.from(bytes).toString("latin1")
+  let out = raw
+  const unfolded = out.replace(/=\r?\n/g, "")
+  // Only a file holding a link is rewritten; its soft line breaks go so none splits one.
+  if (hasSigningLink(unfolded)) out = unfolded
+  out = cutSigningLinks(out)
+  out = out.replace(BASE64_BLOCK, (block) => {
+    const eol = block.includes("\r\n") ? "\r\n" : "\n"
+    const decoded = Buffer.from(block.replace(/\s+/g, ""), "base64").toString("latin1")
+    if (!hasSigningLink(decoded)) return block
+    const cut = Buffer.from(cutSigningLinks(decoded), "latin1").toString("base64")
+    return `${(cut.match(/.{1,76}/g) ?? []).join(eol)}${eol}`
+  })
+  return out === raw ? bytes : new Uint8Array(Buffer.from(out, "latin1"))
+}
+
+/** A file that is a mail of its own: what `cutSigningLinksInMailFile` applies to. */
+export function isMailFile(mimeType: string, filename: string): boolean {
+  return /^message\/rfc822\b/i.test(mimeType.trim()) || /\.eml$/i.test(filename.trim())
+}

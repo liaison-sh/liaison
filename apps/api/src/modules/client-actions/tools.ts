@@ -23,6 +23,7 @@ import {
 } from "~/modules/mail/send-guard"
 import { ClientActionError, type EXPIRY_DAYS, mintClientAction, revokeClientAction } from "./mint"
 import { clientActionState } from "./state"
+import { declaredTarget } from "./targets"
 
 interface ToolCtx {
   userId: string
@@ -84,10 +85,31 @@ async function invitedAddress(
  * plain service mail to the invited address, checked again when it goes) and
  * the dedupe key, so the card shows them and the approved call is held to them.
  */
+/**
+ * A target whose app sends its own links (it checks the document, its state and its signers
+ * before any link goes) is never reached by this generic tool.
+ */
+function sentByItsApp(
+  params: z.infer<typeof clientActionCreateParams>,
+  orgId: string,
+): { error: { code: string; message: string; status: number } } | null {
+  const target = declaredTarget(orgId, params.target_app, params.target_type)
+  if (target?.mintedBy !== "app") return null
+  return {
+    error: {
+      code: "TARGET_SENT_BY_ITS_APP",
+      message: `Nothing was sent: links to ${params.target_app}.${params.target_type} are made only by the ${params.target_app} app's own send, which checks the document and its signers first. Next: send it with that app's send tool.`,
+      status: 409,
+    },
+  }
+}
+
 export async function clientActionCreatePreflight(
   params: z.infer<typeof clientActionCreateParams>,
   ctx: ToolCtx,
 ): Promise<unknown> {
+  const byApp = sentByItsApp(params, ctx.orgId)
+  if (byApp) return byApp
   const email = await invitedAddress(params, ctx)
   if (!email) {
     return {
@@ -114,6 +136,8 @@ export async function handleClientActionCreate(
   params: z.infer<typeof clientActionCreateParams>,
   ctx: ToolCtx,
 ) {
+  const byApp = sentByItsApp(params, ctx.orgId)
+  if (byApp) return byApp
   // An approved agent call carries the pinned check: the link goes only if the
   // address still takes mail and the call is the one the card showed.
   if (params.sendGuard !== undefined || params.guardKey !== undefined) {

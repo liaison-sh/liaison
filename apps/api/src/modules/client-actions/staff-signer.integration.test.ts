@@ -5,9 +5,13 @@
 // Read and sign makes the link in their session, and the link and code alone
 // never sign for them.
 import { describe, expect, it } from "bun:test"
+import * as jose from "jose"
 import { app } from "~/app"
 import { sql } from "~/db"
+import { env } from "~/lib/env"
 import { createSession } from "~/modules/auth/auth"
+import { signAccessToken } from "~/modules/auth/jwt"
+import { revokeSessions } from "~/modules/auth/session-revocation"
 import {
   actionRow,
   call,
@@ -20,9 +24,10 @@ import { mintClientAction } from "./mint"
 
 const kit = useClientActionWorld("staffdocs")
 
-async function mintToStaff() {
+async function mintToStaff(over: { waitingTurn?: boolean; signOrder?: number } = {}) {
   const before = kit.capture.sent.length
   const r = await mintClientAction({
+    ...over,
     orgId: kit.w.orgId,
     kind: "sign",
     targetApp: kit.targetApp,
@@ -46,6 +51,15 @@ async function myLink(id: string, userId: string) {
 
 async function bearerOf(userId: string): Promise<string> {
   return `Bearer ${(await createSession(userId, kit.w.orgId)).accessToken}`
+}
+
+type Claims = Parameters<typeof signAccessToken>[0]
+
+/** The member's real session token, signed again with `change` applied to its claims. */
+async function alteredBearer(userId: string, change: (c: Claims) => Claims): Promise<string> {
+  const { accessToken } = await createSession(userId, kit.w.orgId)
+  const claims = jose.decodeJwt(accessToken) as unknown as Claims
+  return `Bearer ${await signAccessToken(change(claims), env.JWT_SECRET)}`
 }
 
 describe("a staff signer", () => {
@@ -120,5 +134,58 @@ describe("a staff signer", () => {
     const signed = await call("decide", decide, { "x-bun-socket-ip": ip, Authorization: own })
     expect(signed.status).toBe(200)
     expect((await actionRow(r.id)).decision).toBe("signed")
+  })
+
+  it("still waiting for the signer before them, Read and sign gives no link and the turn stays closed", async () => {
+    const { r } = await mintToStaff({ waitingTurn: true, signOrder: 2 })
+    expect(r.status).toBe("waiting_turn")
+    const res = await myLink(r.id, kit.w.member.userId)
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: { code: string }; data?: unknown }
+    expect(body.error.code).toBe("not_your_turn")
+    expect(body.data).toBeUndefined()
+    const row = await actionRow(r.id)
+    expect(row.token_hash).toBeNull()
+    expect(row.decided_at).toBeNull()
+  })
+
+  it("signs only in a session the member door accepts: an MCP, agent-bound, second-factor-pending, ended or outdated token refuses", async () => {
+    const { r } = await mintToStaff()
+    const { data } = (await (await myLink(r.id, kit.w.member.userId)).json()) as {
+      data: { token: string }
+    }
+    const token = data.token
+    const ip = nextIp()
+    const code = await codeFor(kit, token, ip, kit.w.member.email)
+    const body = { t: token, code, name: kit.w.member.name }
+    const uid = kit.w.member.userId
+    const ended = await createSession(uid, kit.w.orgId)
+    const endedSid = (jose.decodeJwt(ended.accessToken) as { sid?: string }).sid
+    expect(endedSid).toBeTruthy()
+    revokeSessions([endedSid as string], "signed out")
+    const refused = [
+      await alteredBearer(uid, (c) => ({ ...c, mcpConnectionId: crypto.randomUUID() })),
+      await alteredBearer(uid, (c) => ({ ...c, agentId: crypto.randomUUID() })),
+      await alteredBearer(uid, (c) => ({ ...c, secondFactorRequired: true })),
+      await alteredBearer(uid, (c) => ({ ...c, authVersion: c.authVersion + 1 })),
+      await alteredBearer(uid, (c) => ({ ...c, permissionVersion: c.permissionVersion + 1 })),
+      `Bearer ${ended.accessToken}`,
+    ]
+    for (const bearer of refused) {
+      const res = await call("verify", body, { "x-bun-socket-ip": ip, Authorization: bearer })
+      expect(res.status).toBe(401)
+    }
+    const own = await bearerOf(uid)
+    const verified = await call("verify", body, { "x-bun-socket-ip": ip, Authorization: own })
+    expect(verified.status).toBe(200)
+    const { proof } = (await verified.json()) as { proof: string }
+    const decide = { t: token, proof, decision: "sign", typed_name: kit.w.member.name }
+    for (const bearer of refused) {
+      const res = await call("decide", decide, { "x-bun-socket-ip": ip, Authorization: bearer })
+      expect(res.status).toBe(401)
+    }
+    expect((await actionRow(r.id)).decided_at).toBeNull()
+    const signed = await call("decide", decide, { "x-bun-socket-ip": ip, Authorization: own })
+    expect(signed.status).toBe(200)
   })
 })

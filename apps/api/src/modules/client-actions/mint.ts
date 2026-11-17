@@ -68,6 +68,22 @@ export interface MintInput {
   message?: string | null
   createdByUserId: string | null
   createdByAgentId?: string | null
+  /** The link of the same signer this one replaces (a new link): it leaves the send's group. */
+  replacesActionId?: string | null
+}
+
+/**
+ * True for the row `alias` when a later link of the same send replaced it (a new link after an
+ * expiry, a withdrawal, a code-less decline or a corrected address). A replaced link no longer
+ * counts in the send's signers or its turn order; its trail stays as it was.
+ */
+function replacedSql(alias: string) {
+  const a = sql.raw(alias)
+  return sql`EXISTS (
+    SELECT 1 FROM ${K()}.client_actions n
+      JOIN ${K()}.client_action_events e ON e.action_id = n.id AND e.org_id = n.org_id
+     WHERE n.org_id = ${a}.org_id AND n.group_id = ${a}.group_id AND n.id <> ${a}.id
+       AND e.event = 'created' AND e.meta->>'replaces' = ${a}.id::text)`
 }
 
 export interface MintResult {
@@ -107,6 +123,18 @@ async function resolveInvitee(tx: PrivilegedDb, input: MintInput): Promise<Invit
       throw new ClientActionError("NOT_FOUND", "No contact with this id in this organization", 404)
     const email = (input.invitedEmail ?? c.email ?? "").trim().toLowerCase()
     if (!email) throw new ClientActionError("EMAIL_REQUIRED", "The contact has no email address")
+    // A contact signer is the contact at the contact's own address. Another address than the one
+    // the directory holds makes a signer at that address, linked to no contact, so the trail
+    // never names the contact for someone else's signature. A contact with no address takes the
+    // one given.
+    if (c.email && email !== c.email) {
+      return {
+        email,
+        name: input.invitedName?.trim() || email,
+        contactId: null,
+        companyId: input.companyId ?? null,
+      }
+    }
     return {
       email,
       name: input.invitedName?.trim() || c.name,
@@ -378,7 +406,11 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
       event: "created",
       actorKind: input.createdByAgentId ? "agent" : input.createdByUserId ? "staff" : "system",
       actorUserId: input.createdByUserId,
-      meta: { kind: input.kind, target: `${input.targetApp}.${input.targetType}` },
+      meta: {
+        kind: input.kind,
+        target: `${input.targetApp}.${input.targetType}`,
+        ...(input.replacesActionId ? { replaces: input.replacesActionId } : {}),
+      },
     })
     const mailed = token !== null && signerUserId === null
     if (mailed) {
@@ -681,12 +713,13 @@ export async function openNextSignerTurn(input: {
       signer_user_id: string | null
     }>(
       await tx.execute(sql`
-        SELECT id, sign_order, decision, revoked_at, token_hash, expires_at, target_id,
-               target_sha256, signer_user_id
-          FROM ${K()}.client_actions
-         WHERE org_id = ${input.orgId} AND group_id = ${after.group_id}
-         ORDER BY sign_order NULLS LAST, created_at
-         FOR UPDATE
+        SELECT g.id, g.sign_order, g.decision, g.revoked_at, g.token_hash, g.expires_at,
+               g.target_id, g.target_sha256, g.signer_user_id
+          FROM ${K()}.client_actions g
+         WHERE g.org_id = ${input.orgId} AND g.group_id = ${after.group_id}
+           AND NOT ${replacedSql("g")}
+         ORDER BY g.sign_order NULLS LAST, g.created_at
+         FOR UPDATE OF g
       `),
     )
     if (group.some((g) => g.decision === "declined")) return null
@@ -941,6 +974,7 @@ export async function newLinkAfter(input: {
     requiredPhrase: prior.required_phrase,
     createdByUserId: input.createdByUserId,
     createdByAgentId: input.createdByAgentId ?? null,
+    replacesActionId: prior.id,
   })
   return { ...r, replacedId: prior.id }
 }
@@ -955,6 +989,8 @@ export interface TargetLink {
   decidedAt: Date | null
   codeVerified: boolean
   expiresAt: Date
+  /** A later link of the same signer replaced this one: it no longer counts in the send. */
+  replaced: boolean
 }
 
 /** Every link of one target of this app, newest turn last (no token, code or device field). */
@@ -977,14 +1013,16 @@ export async function listTargetClientActions(input: {
       code_verified_at: Date | null
       token_hash: string | null
       expires_at: Date
+      replaced: boolean
     }>(
       await tx.execute(sql`
-        SELECT id, invited_name, invited_email, sign_order, decision, decided_at, revoked_at,
-               code_locked_at, code_verified_at, token_hash, expires_at
-          FROM ${K()}.client_actions
-         WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
-           AND target_type = ${input.targetType} AND target_id = ${input.targetId}
-         ORDER BY sign_order NULLS LAST, created_at
+        SELECT l.id, l.invited_name, l.invited_email, l.sign_order, l.decision, l.decided_at,
+               l.revoked_at, l.code_locked_at, l.code_verified_at, l.token_hash, l.expires_at,
+               ${replacedSql("l")} AS replaced
+          FROM ${K()}.client_actions l
+         WHERE l.org_id = ${input.orgId} AND l.target_app = ${input.targetApp}
+           AND l.target_type = ${input.targetType} AND l.target_id = ${input.targetId}
+         ORDER BY l.sign_order NULLS LAST, l.created_at
       `),
     ),
   )
@@ -1011,6 +1049,7 @@ export async function listTargetClientActions(input: {
     decidedAt: r.decided_at,
     codeVerified: r.code_verified_at !== null,
     expiresAt: new Date(r.expires_at),
+    replaced: r.replaced === true,
   }))
 }
 
@@ -1044,7 +1083,10 @@ export interface ClientActionRecord {
   declineReason: string | null
   ip: string | null
   userAgent: string | null
-  /** Every action of the same send, in signing order: who signed, who declined, who waits. */
+  /** A later link of the same signer replaced this one: its decision no longer counts. */
+  replaced: boolean
+  /** Every live action of the same send, in signing order: who signed, who declined, who
+   * waits. A link a later one replaced is not in it. */
   group: Array<{ id: string; signOrder: number | null; decision: string | null; open: boolean }>
 }
 
@@ -1066,7 +1108,7 @@ export async function readClientActionRecord(
                (SELECT (e.meta->>'reached_end_at') FROM ${K()}.client_action_events e
                  WHERE e.action_id = a.id AND e.event = 'reached_end'
                  ORDER BY e.at ASC LIMIT 1) AS reached_end_at,
-               d.ip, d.user_agent
+               d.ip, d.user_agent, ${replacedSql("a")} AS replaced
           FROM ${K()}.client_actions a
           JOIN ${K()}.organizations o ON o.id = a.org_id
           LEFT JOIN ${K()}.users u ON u.id = a.created_by_user_id AND u.org_id = a.org_id
@@ -1087,11 +1129,11 @@ export async function readClientActionRecord(
       open: boolean
     }>(
       await tx.execute(sql`
-        SELECT id, sign_order, decision,
-               (decided_at IS NULL AND revoked_at IS NULL AND expires_at > now()) AS open
-          FROM ${K()}.client_actions
-         WHERE org_id = ${orgId} AND group_id = ${r.group_id}
-         ORDER BY sign_order NULLS LAST, created_at
+        SELECT g.id, g.sign_order, g.decision,
+               (g.decided_at IS NULL AND g.revoked_at IS NULL AND g.expires_at > now()) AS open
+          FROM ${K()}.client_actions g
+         WHERE g.org_id = ${orgId} AND g.group_id = ${r.group_id} AND NOT ${replacedSql("g")}
+         ORDER BY g.sign_order NULLS LAST, g.created_at
       `),
     )
     const date = (v: unknown) => (v ? new Date(v as string) : null)
@@ -1125,6 +1167,7 @@ export async function readClientActionRecord(
       declineReason: str(r.decline_reason),
       ip: str(r.ip),
       userAgent: str(r.user_agent),
+      replaced: r.replaced === true,
       group: group.map((g) => ({
         id: g.id,
         signOrder: g.sign_order,

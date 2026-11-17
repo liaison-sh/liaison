@@ -414,6 +414,22 @@ describe("signers", () => {
     expect(out.error.code).toBe("SIGNER_HAS_NO_EMAIL")
     expect(out.error.message).toContain("Jean Petit")
   })
+
+  it("a contact named with another address than the directory's is refused, and the directory's own address passes", async () => {
+    const ctx = ctxFor(memoryDb())
+    const out = (await resolveSigners(ctx, [
+      { contact_id: C1, email: "someone-else@other.example" },
+    ])) as { error: { code: string; message: string } }
+    expect(out.error.code).toBe("NOT_THE_CONTACTS_ADDRESS")
+    expect(out.error.message).toContain("paul@maison-morel.example")
+    expect(out.error.message).toContain("Nothing was sent")
+    const same = (await resolveSigners(ctx, [
+      { contact_id: C1, email: "Paul@Maison-Morel.example" },
+    ])) as { signers: Array<{ email: string; contact_id: string | null }> }
+    expect(same.signers).toEqual([
+      expect.objectContaining({ contact_id: C1, email: "paul@maison-morel.example" }),
+    ])
+  })
 })
 
 function record(over: Record<string, unknown>) {
@@ -451,6 +467,7 @@ describe("a decision", () => {
   it("signer 2's link is minted by the decided handler with no card", async () => {
     const db = memoryDb()
     const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
     const ctx = ctxFor(db)
     ctx.records.set("ca-1", record({}))
     const event = {
@@ -482,6 +499,7 @@ describe("a decision", () => {
   it("the last signature marks the version signed", async () => {
     const db = memoryDb()
     const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "partly_signed" })
     const ctx = ctxFor(db)
     ctx.records.set(
       "ca-2",
@@ -503,6 +521,48 @@ describe("a decision", () => {
     expect(out.status).toBe("signed")
     expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("signed")
     expect(rowOf(db, "agreements", id).status).toBe("signed")
+  })
+
+  it("a signature on an agreement that is not waiting for signatures records nothing and seals nothing", async () => {
+    for (const status of ["draft", "voided", "declined", "signed"]) {
+      const db = memoryDb()
+      const { id, prepared } = await frozen(db)
+      await db.update("agreements", id, { status })
+      const ctx = ctxFor(db)
+      ctx.records.set(
+        "ca-1",
+        record({ group: [{ id: "ca-1", sign_order: null, decision: "signed", open: false }] }),
+      )
+      const out = (await onClientActionDecided(ctx, {
+        data: {
+          id: "ca-1",
+          target: { app: "agreements", type: "agreement_version", id: prepared.version_id },
+        },
+      })) as { status: string }
+      expect(out.status).toBe("ignored")
+      expect(db.tables.get("signature_events") ?? []).toEqual([])
+      expect(rowOf(db, "agreements", id).status).toBe(status)
+      expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("frozen")
+    }
+  })
+
+  it("a decision on a link a later one replaced counts for nothing", async () => {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "partly_signed" })
+    const ctx = ctxFor(db)
+    ctx.records.set(
+      "ca-1",
+      record({ decision: "declined", code_verified_at: null, replaced: true }),
+    )
+    const out = (await onClientActionDecided(ctx, {
+      data: {
+        id: "ca-1",
+        target: { app: "agreements", type: "agreement_version", id: prepared.version_id },
+      },
+    })) as { status: string }
+    expect(out.status).toBe("ignored")
+    expect(rowOf(db, "agreements", id).status).toBe("partly_signed")
   })
 
   it("a decline writes no signature and closes the agreement as declined", async () => {

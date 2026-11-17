@@ -80,6 +80,87 @@ describe("client action public flow", () => {
     expect(r.decision).toBeNull()
   })
 
+  it("ten wrong guesses sent at once at one code: five are compared, the code ends, and the right one no longer works", async () => {
+    const { id, token } = await mintTo(kit)
+    const ip = nextIp()
+    const code = await codeFor(kit, token, ip, kit.w.clientA.email)
+    const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, "0")
+    await Promise.all(
+      Array.from({ length: 10 }, () =>
+        call(
+          "verify",
+          { t: token, code: wrong, name: kit.w.clientA.name },
+          { "x-bun-socket-ip": nextIp() },
+        ),
+      ),
+    )
+    expect((await actionRow(id)).code_wrong_total).toBe(5)
+    const right = await call(
+      "verify",
+      { t: token, code, name: kit.w.clientA.name },
+      { "x-bun-socket-ip": ip },
+    )
+    expect(right.status).not.toBe(200)
+  })
+
+  it("wrong guesses sent at once near the lock stop at the lock", async () => {
+    const { id, token } = await mintTo(kit)
+    const ip = nextIp()
+    const code = await codeFor(kit, token, ip, kit.w.clientA.email)
+    await sql`UPDATE ${k("client_actions")} SET code_wrong_total = 18 WHERE id = ${id}`
+    const wrong = String((Number(code) + 1) % 1_000_000).padStart(6, "0")
+    await Promise.all(
+      Array.from({ length: 5 }, () =>
+        call(
+          "verify",
+          { t: token, code: wrong, name: kit.w.clientA.name },
+          { "x-bun-socket-ip": nextIp() },
+        ),
+      ),
+    )
+    const r = await actionRow(id)
+    expect(r.code_wrong_total).toBe(20)
+    expect(r.code_locked_at).not.toBeNull()
+  })
+
+  it("a typo in the typed name or phrase keeps the proof: the corrected decide signs with it", async () => {
+    const { id, token } = await mintTo(kit, kit.w.clientA, { requiredPhrase: "Bon pour accord" })
+    const ip = nextIp()
+    const proof = await proofFor(kit, token, ip)
+    const h = { "x-bun-socket-ip": ip }
+    const typo = await call(
+      "decide",
+      {
+        t: token,
+        proof,
+        decision: "sign",
+        typed_name: "Someone Else",
+        typed_phrase: "Bon pour accord",
+      },
+      h,
+    )
+    expect(typo.status).toBe(422)
+    const phrase = await call(
+      "decide",
+      { t: token, proof, decision: "sign", typed_name: kit.w.clientA.name, typed_phrase: "Bon" },
+      h,
+    )
+    expect(phrase.status).toBe(422)
+    const signed = await call(
+      "decide",
+      {
+        t: token,
+        proof,
+        decision: "sign",
+        typed_name: kit.w.clientA.name,
+        typed_phrase: "Bon pour accord",
+      },
+      h,
+    )
+    expect(signed.status).toBe(200)
+    expect((await actionRow(id)).decision).toBe("signed")
+  })
+
   it("ten parallel decides give one success and nine conflicts", async () => {
     const { id, token } = await mintTo(kit)
     const ip = nextIp()

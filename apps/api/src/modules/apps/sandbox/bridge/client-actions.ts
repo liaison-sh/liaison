@@ -395,6 +395,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
             decided_at: l.decidedAt ? l.decidedAt.toISOString() : null,
             code_verified: l.codeVerified,
             expires_at: l.expiresAt.toISOString(),
+            replaced: l.replaced,
           })),
         })
       }
@@ -437,6 +438,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
           decline_reason: r.declineReason,
           ip: r.ip,
           user_agent: r.userAgent,
+          replaced: r.replaced,
           group: r.group.map((g) => ({
             id: g.id,
             sign_order: g.signOrder,

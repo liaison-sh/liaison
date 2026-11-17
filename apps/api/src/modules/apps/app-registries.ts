@@ -95,7 +95,12 @@ export interface BridgeManifest {
   /** Per entity type, the read-only tool that says who an approval about such a record is for. */
   approvalRoute?: Record<string, string>
   /** What a person outside the org may sign, accept or approve, and the internal tool that shows it (client actions). */
-  clientActionTargets?: Array<{ type: string; kinds: string[]; viewTool: string }>
+  clientActionTargets?: Array<{
+    type: string
+    kinds: string[]
+    viewTool: string
+    mintedBy?: "app" | "any"
+  }>
   /** Read-only tools that add a few lines about the entity a turn is about (context-providers.ts). */
   contextProviders?: Array<{ on: string[]; tool: string; scope: string; loadTools?: string[] }>
   /** Read-only tools that give a company's or a contact's timeline its rows (one per source). */

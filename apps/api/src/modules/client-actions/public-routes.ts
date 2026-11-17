@@ -21,10 +21,12 @@ import { schemaRef } from "~/db/schema-ref"
 import { hashToken } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
+import { hostAllowsOrg } from "~/lib/org-host"
 import { redis } from "~/lib/redis"
 import { RequestBodyTooLargeError, readRequestTextWithLimit } from "~/lib/request-body"
 import { getClientIp } from "~/lib/request-context"
 import { padToResponseFloor } from "~/lib/response-timing"
+import { memberTokenRefusal } from "~/middleware/auth"
 import { checkRateLimit } from "~/middleware/rate-limiter"
 import { canDrawText } from "~/modules/agreement-evidence/signature-pages"
 import { verifyAccessToken } from "~/modules/auth/jwt"
@@ -187,17 +189,26 @@ function deadAnswer(ctx: Ctx, status = 410): Answer | null {
   return new Answer(caJson(status, deadFrameBody(ctx.match.row, frame)))
 }
 
-/** A staff signer acts only in their own signed-in session (bearer access token). */
-async function staffSessionHolds(
-  row: ActionRow,
-  authorization: string | undefined,
-): Promise<boolean> {
+/**
+ * A staff signer acts only in their own signed-in session (bearer access token), checked as the
+ * member door checks it: a live session of an active member, on this org's host, and never a
+ * restricted, second-factor-pending, MCP or agent-bound token.
+ */
+async function staffSessionHolds(row: ActionRow, c: Context<AppEnv>): Promise<boolean> {
   if (!row.signer_user_id) return true
+  const authorization = c.req.header("authorization")
   const bearer = authorization?.startsWith("Bearer ") ? authorization.slice(7) : null
   if (!bearer) return false
   try {
     const p = await verifyAccessToken(bearer, env.JWT_SECRET)
-    return p.userId === row.signer_user_id && p.orgId === row.org_id && p.restricted !== true
+    if (p.userId !== row.signer_user_id || p.orgId !== row.org_id) return false
+    if (p.restricted === true || p.secondFactorRequired === true || p.agentId) return false
+    const refused = await memberTokenRefusal(p)
+    if (refused) {
+      rootLogger.warn({ actionId: row.id, reason: refused.reason }, "staff signer session refused")
+      return false
+    }
+    return hostAllowsOrg(c, p.orgId)
   } catch {
     return false
   }
@@ -258,10 +269,7 @@ function wordsFor(row: ActionRow, title: string, pageLang?: string) {
   return { words: serverT(lang, words_key, { title }), words_key, lang }
 }
 
-type Handler = (
-  ctx: Ctx,
-  c: { req: { header(n: string): string | undefined } },
-) => Promise<Response>
+type Handler = (ctx: Ctx, c: Context<AppEnv>) => Promise<Response>
 
 function clientActionRouteHandler(
   clientActionStep: Handler,
@@ -537,7 +545,7 @@ clientActionPublicRoutes.post(
     const { row } = ctx.match
     const dead = deadAnswer(ctx)
     if (dead) return dead.res
-    if (!(await staffSessionHolds(row, c.req.header("authorization")))) {
+    if (!(await staffSessionHolds(row, c))) {
       return caJson(401, { error: { code: "session_required" } })
     }
     const parsed = verifySchema.safeParse(ctx.body)
@@ -553,19 +561,42 @@ clientActionPublicRoutes.post(
     if (row.kind === "sign" && !canDrawText(name)) {
       return caJson(400, { error: { code: "name_not_drawable" } })
     }
+    // The guess takes its place in the row's total before the compare: guesses sent at once
+    // never pass the lock. A right code, or one never compared, gives its place back.
+    const taken = await inClientActionOrg(row, "client-action-code-try", async (tx) =>
+      extractRows<{ id: string }>(
+        await tx.execute(sql`
+          UPDATE ${K()}.client_actions SET code_wrong_total = code_wrong_total + 1
+           WHERE id = ${row.id} AND code_wrong_total < ${WRONG_TOTAL_LOCK} AND code_locked_at IS NULL
+           RETURNING id
+        `),
+      ),
+    )
+    if (taken.length === 0) return caJson(410, deadFrameBody(row, "attempts"))
+    const giveBack = () =>
+      inClientActionOrg(row, "client-action-code-try-back", (tx) =>
+        tx.execute(sql`
+          UPDATE ${K()}.client_actions SET code_wrong_total = greatest(code_wrong_total - 1, 0)
+           WHERE id = ${row.id}
+        `),
+      )
     const check = await checkCode(row.id, parsed.data.code.trim())
+    if (check.ok) await giveBack()
     if (!check.ok) {
       if (check.reason === "paused") {
+        await giveBack()
         return caJson(423, { error: { code: "paused", retry_at: check.until.toISOString() } })
       }
-      if (check.reason === "no_code") return caJson(401, { error: { code: "code_ended" } })
+      if (check.reason === "no_code") {
+        await giveBack()
+        return caJson(401, { error: { code: "code_ended" } })
+      }
       // Wrong: the total lives on the row, so neither a new code nor a new address resets it.
       const total = await inClientActionOrg(row, "client-action-code-wrong", async (tx) => {
         const [r] = extractRows<{ code_wrong_total: number; locked: boolean }>(
           await tx.execute(sql`
             UPDATE ${K()}.client_actions
-               SET code_wrong_total = code_wrong_total + 1,
-                   code_locked_at = CASE WHEN code_wrong_total + 1 >= ${WRONG_TOTAL_LOCK}
+               SET code_locked_at = CASE WHEN code_wrong_total >= ${WRONG_TOTAL_LOCK}
                                          THEN coalesce(code_locked_at, now()) ELSE code_locked_at END
              WHERE id = ${row.id}
              RETURNING code_wrong_total, (code_locked_at IS NOT NULL) AS locked
@@ -632,7 +663,7 @@ clientActionPublicRoutes.post(
     const parsed = decideSchema.safeParse(ctx.body)
     if (!parsed.success) return caJson(400, { error: { code: "invalid_body" } })
     if (ctx.match.via === "prior") return caJson(410, deadFrameBody(row, "replaced"))
-    if (!(await staffSessionHolds(row, c.req.header("authorization")))) {
+    if (!(await staffSessionHolds(row, c))) {
       return caJson(401, { error: { code: "session_required" } })
     }
     const out = await decideClientAction({

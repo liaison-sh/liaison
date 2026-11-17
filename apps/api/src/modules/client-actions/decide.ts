@@ -12,7 +12,7 @@ import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
-import { spendProof } from "./codes"
+import { restoreProof, spendProof } from "./codes"
 import { writeClientActionEvent } from "./events"
 import { maskEmail } from "./mail"
 import { SYSTEM_ACTOR_ID } from "./mint"
@@ -355,14 +355,22 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
     }
     if (wanted !== "declined") {
       const typed = name ?? provedName
-      if (!typed || (provedName && !sameName(typed, provedName))) {
-        return { ok: false as const, status: 422, body: { error: { code: "name_mismatch" } } }
-      }
-      if (row.required_phrase && (!phrase || !phraseMatches(phrase, row.required_phrase))) {
-        return { ok: false as const, status: 422, body: { error: { code: "phrase_mismatch" } } }
+      const refusal =
+        !typed || (provedName && !sameName(typed, provedName))
+          ? "name_mismatch"
+          : row.required_phrase && (!phrase || !phraseMatches(phrase, row.required_phrase))
+            ? "phrase_mismatch"
+            : null
+      if (refusal) {
+        // A typo in the name or the phrase costs no new code: the proof it spent is put back.
+        if (input.via === "link" && input.proof && provedName !== null)
+          await restoreProof(actionId, input.proof, input.userAgent, provedName, provedCapacity)
+        return { ok: false as const, status: 422, body: { error: { code: refusal } } }
       }
     }
     const decidedUserId = input.via === "portal" ? input.portalUserId : null
+    // The portal route checked the code itself: the row records when, as the link's verify does.
+    const portalCodeChecked = input.via === "portal" && input.codeVerified
     const updated = extractRows<{ id: string }>(
       await tx.execute(sql`
         UPDATE ${K()}.client_actions
@@ -371,7 +379,8 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
                typed_name = ${wanted === "declined" ? null : (name ?? provedName)},
                capacity = ${wanted === "declined" ? null : provedCapacity},
                typed_phrase = ${wanted === "declined" ? null : phrase},
-               decline_reason = ${wanted === "declined" ? reason : null}
+               decline_reason = ${wanted === "declined" ? reason : null},
+               code_verified_at = ${portalCodeChecked ? sql`coalesce(code_verified_at, now())` : sql`code_verified_at`}
          WHERE id = ${actionId} AND decided_at IS NULL AND revoked_at IS NULL
            AND expires_at > now() AND code_locked_at IS NULL
          RETURNING id
@@ -386,7 +395,11 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
       event: wanted === "declined" ? "declined" : "decided",
       actorKind: input.via === "portal" ? "portal_user" : "holder",
       actorUserId: decidedUserId,
-      meta: { decision: wanted, via: input.via, code_verified: row.code_verified_at !== null },
+      meta: {
+        decision: wanted,
+        via: input.via,
+        code_verified: row.code_verified_at !== null || portalCodeChecked,
+      },
       ip: input.ip,
       userAgent: input.userAgent,
     })

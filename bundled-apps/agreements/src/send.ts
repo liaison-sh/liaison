@@ -139,7 +139,16 @@ export async function resolveSigners(
       if (!c)
         return refusal("NOT_FOUND", `No contact ${s.contact_id} you can see. Nothing was sent.`)
       const name = String(s.name ?? c.name ?? c.email ?? "").trim()
-      const email = String(s.email ?? c.email ?? "").trim()
+      const directory = String(c.email ?? "").trim()
+      const given = String(s.email ?? "").trim()
+      // A contact signs at the directory's address: another one is a signer of its own. A contact
+      // with no address takes the one given.
+      if (directory && given && keyOf(given) !== keyOf(directory))
+        return refusal(
+          "NOT_THE_CONTACTS_ADDRESS",
+          `${name || s.contact_id}'s address in the directory is ${directory}, not ${given}. To ask ${given}, name that signer by email only, or correct the contact first. Nothing was sent.`,
+        )
+      const email = directory || given
       if (!email) {
         noEmail.push(name || s.contact_id)
         continue
@@ -273,7 +282,9 @@ function cardLines(ready: Ready, p: SendParams): string[] {
   ]
   if (ready.scanState === "not_run") lines.push("Not checked for viruses.")
   for (const a of ready.sharedAddresses)
-    lines.push(`Two signers share ${a}: each signs with their own name and their own code.`)
+    lines.push(
+      `Two signers share ${a}: each signs with their own name and their own code, and each copy shows that signer's device.`,
+    )
   // A signer is not a reader: on a restricted agreement a colleague off its list signs by their
   // own link and reads the document only there, and the card says so before anyone approves.
   if (ready.agreement.org_access === "none")
@@ -525,6 +536,8 @@ interface ActionRecord {
   ip: string | null
   user_agent: string | null
   target_sha256: string
+  /** A later link of the same signer replaced this one: its decision no longer counts. */
+  replaced?: boolean
   group: Array<{ id: string; sign_order: number | null; decision: string | null; open: boolean }>
 }
 
@@ -548,6 +561,8 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   if (!version) return { status: "ignored" }
   const agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
   if (!agreement) return { status: "ignored" }
+  // A link a later one replaced counts for nothing: its signer answers on the new link.
+  if (rec.replaced === true) return { status: "ignored" }
   if (rec.decision === "declined") {
     if (agreement.status === "sent" || agreement.status === "partly_signed") {
       await ctx.db.update("agreements", agreement.id, { status: "declined" })
@@ -561,6 +576,10 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
     return { status: "declined" }
   }
   if (rec.decision !== "signed" && rec.decision !== "accepted") return { status: "ignored" }
+  // Only a version this app sent and still waits on is signed and sealed: never one of a voided,
+  // declined, draft or replaced agreement, whoever minted the link.
+  if (!WAITING.includes(agreement.status) || version.status !== "frozen")
+    return { status: "ignored" }
   const existing = await ctx.db.findMany("signature_events", {
     where: { client_action_id: rec.id },
     limit: 1,
@@ -997,6 +1016,8 @@ export interface SigningLink {
   decided_at: string | null
   code_verified: boolean
   expires_at: string
+  /** A later link of the same signer replaced this one. */
+  replaced?: boolean
 }
 
 /** The signing links of one version, as the kernel lists them (no token, code or device). */
@@ -1027,6 +1048,7 @@ export async function decidedReconcile(ctx: AgreementsCtx) {
     const v = await latestOf(ctx, a.id)
     if (!v) continue
     for (const l of await linksOf(ctx, v.id)) {
+      if (l.replaced === true) continue
       if (l.state !== "decided" && l.state !== "declined") continue
       if (l.state === "decided") {
         const seen = await ctx.db.findMany("signature_events", {

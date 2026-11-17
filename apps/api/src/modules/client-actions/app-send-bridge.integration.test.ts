@@ -263,7 +263,8 @@ describe("an app's send through the bridge", () => {
       group_id: string
     }>
     expect(row?.group_id).toBe(orig?.group_id)
-    expect(row?.contact_id).toBe(kit.w.clientA.contactId)
+    // A corrected address is not the contact's: the new signer is tied to no contact.
+    expect(row?.contact_id).toBeNull()
     expect((await newLink(true, second?.id ?? "")).error?.code).toBe("DECLINED_BY_SIGNER")
   })
 

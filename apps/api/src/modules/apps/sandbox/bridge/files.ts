@@ -225,8 +225,17 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           { filename: p.filename || "attachment", mimeType: p.mimeType, bytes: received },
           { orgId, where: p.targetApp },
         )
-        const bytes = Buffer.from(scan.attachment.bytes)
         const mimeType = scan.attachment.mimeType
+        // A mail attached as a file (a forwarded signing mail) keeps no live signing link, as
+        // a mail's own text keeps none (client-actions/quoted-link.ts).
+        const { cutSigningLinksInMailFile, isMailFile } = await import(
+          "~/modules/client-actions/quoted-link"
+        )
+        const bytes = Buffer.from(
+          !scan.quarantined && isMailFile(mimeType, scan.attachment.filename)
+            ? cutSigningLinksInMailFile(scan.attachment.bytes)
+            : scan.attachment.bytes,
+        )
         const disposition = scan.quarantined ? "attachment" : (p.disposition ?? "attachment")
         const safeName = sanitizeFilename(scan.attachment.filename)
         const storageKey = `orgs/${orgId}/${p.targetApp}/${p.targetEntityType}/${p.targetEntityId}/${fileId}/${safeName}`

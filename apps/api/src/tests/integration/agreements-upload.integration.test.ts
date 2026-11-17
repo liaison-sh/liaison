@@ -25,6 +25,8 @@ import { executeToolCore } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { forgetOrgApps, primeOrgApps } from "~/modules/apps/org-apps"
 import { registerApps } from "~/modules/apps/runtime"
+import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
+import { createPdfUploadMethods } from "~/modules/apps/sandbox/bridge/pdf-upload"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { PRICE, plainPdf } from "~/modules/pdf-render/fixtures.testutil"
@@ -179,6 +181,62 @@ describe("an uploaded PDF frozen as an agreement version", () => {
     expect(version?.sha256).toBe(sha)
     expect(version?.file_id).toBeTruthy()
     expect((await frozenBytes(version?.file_id as string)).equals(Buffer.from(bytes))).toBe(true)
+  }, 120_000)
+
+  it("the freeze stores nothing on a version that already holds its file or was not made for these bytes", async () => {
+    const bytes = plainPdf({ contents: PRICE("56000") })
+    const { id, fileId } = await draftWithUpload("Upload frozen once", bytes)
+    expect((await asPerson("agreement_prepare", { id })).data?.status).toBe("ok")
+    const [frozen] = (await sql`
+      SELECT id, sha256, pages_sha256 FROM ${app("agreement_versions")}
+       WHERE agreement_id = ${id}`) as unknown as Array<{
+      id: string
+      sha256: string
+      pages_sha256: string
+    }>
+    const text = await asPerson("agreement_create", {
+      kind: "nda",
+      title: "Text version",
+      company_id: w.companyA,
+      source: { body: { blocks: [{ type: "paragraph", text: "Typed text." }] } },
+    })
+    const textPrepared = await asPerson("agreement_prepare", {
+      id: text.data?.agreement?.id as string,
+    })
+    const stored: string[] = []
+    const out = await withRlsContext(person(), async (db) => {
+      const methods = createPdfUploadMethods(
+        { requireApp: () => {}, orgId: w.orgId, txDb: db } as unknown as BridgeContext,
+        {
+          files_importAttachment: async (json: string) => {
+            stored.push(json)
+            return JSON.stringify({ id: crypto.randomUUID() })
+          },
+        },
+      )
+      const answers: Array<{ status: string; error?: { code: string } }> = []
+      for (const versionId of [frozen?.id as string, textPrepared.data?.version_id as string]) {
+        answers.push(
+          JSON.parse(
+            await methods.pdf_upload_freeze!(
+              JSON.stringify({
+                fileId,
+                versionId,
+                sha256: frozen?.sha256,
+                pagesSha256: frozen?.pages_sha256,
+                filename: "x.pdf",
+              }),
+            ),
+          ),
+        )
+      }
+      return answers
+    })
+    for (const a of out) {
+      expect(a.status).toBe("error")
+      expect(a.error?.code).toBe("NOT_FOUND")
+    }
+    expect(stored).toEqual([])
   }, 120_000)
 
   it("a check that outlasted the tool call is finished by the job, which reads the upload under row rules", async () => {

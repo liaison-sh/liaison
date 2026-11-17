@@ -1015,6 +1015,9 @@ export const appManifestJsonSchema = {
             uniqueItems: true,
           },
           viewTool: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+          // "app": links to this target are made only by the app's own send (its checks run
+          // first); the kernel's generic client action tool refuses it.
+          mintedBy: { type: "string", enum: ["app", "any"] },
         },
         required: ["type", "kinds", "viewTool"],
         additionalProperties: false,

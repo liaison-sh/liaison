@@ -2,3 +2,5 @@ Client action bridge methods, their modes and the person's decision they need ->
 Declared targets only -> apps/api/src/modules/client-actions/targets.ts (declaredTarget)
 Links listed with no token, code or device field -> apps/api/src/modules/client-actions/mint.ts (listTargetClientActions)
 Rich text rendered by the host, read-only -> apps/api/src/modules/apps/sandbox/bridge/rich-text.ts (createRichTextMethods)
+A target minted by its app only, refused by the kernel tool -> apps/api/src/modules/client-actions/tools.ts (sentByItsApp) ; apps/api/src/modules/client-actions/targets.ts (declaredTarget mintedBy) ; apps/api/src/modules/apps/manifest-schema.ts (clientActionTargets mintedBy)
+A replaced link leaves the send's group and is marked replaced -> apps/api/src/modules/client-actions/mint.ts (replacedSql, readClientActionRecord, listTargetClientActions, openNextSignerTurn)

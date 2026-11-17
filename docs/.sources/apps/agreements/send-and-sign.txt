@@ -9,3 +9,6 @@ New link: same turn, same or corrected address, signatures stand, refused after 
 Void withdraws every open link with a reason -> bundled-apps/agreements/src/send.ts (agreementVoid)
 Agreement details list signing links -> bundled-apps/agreements/src/agreements.ts (agreementGet) ; apps/api/src/modules/client-actions/mint.ts (listTargetClientActions)
 Daily notice and expired sends; ten-minute reconcile -> bundled-apps/agreements/src/dates.ts (datesDaily) ; bundled-apps/agreements/src/send.ts (decidedReconcile) ; bundled-apps/agreements/app.manifest.json (jobs)
+A contact signs at the directory's address; another address is refused -> bundled-apps/agreements/src/send.ts (resolveSigners NOT_THE_CONTACTS_ADDRESS) ; apps/api/src/modules/client-actions/mint.ts (resolveInvitee)
+Read and sign opens only on the signer's turn -> apps/api/src/modules/client-actions/routes.ts (clientActionRoutes my-link not_your_turn)
+A replaced link no longer counts; signed once every current link signed; a corrected address is not tied to the contact -> apps/api/src/modules/client-actions/mint.ts (replacedSql, newLinkAfter, resolveInvitee) ; bundled-apps/agreements/src/send.ts (onClientActionDecided)

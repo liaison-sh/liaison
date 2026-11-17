@@ -1,9 +1,23 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
 import { packageOf, sealRetry, sealVersion } from "./seal"
-import { signedWorld } from "./seal.testutil"
+import { ACTION_B, signedWorld } from "./seal.testutil"
 
 describe("the signed event", () => {
+  it("a version holding a signature with no proven code is not sealed, and no signed event goes", async () => {
+    const w = await signedWorld()
+    const events = (await w.db.findMany("signature_events", {
+      where: { client_action_id: ACTION_B },
+      limit: 1,
+    })) as Array<{ id: string }>
+    await w.db.update("signature_events", String(events[0]?.id), { code_verified_at: null })
+    expect(await sealVersion(w.ctx, w.versionId)).toMatchObject({ status: "not_ready" })
+    await sealRetry(w.ctx)
+    expect(await packageOf(w.ctx, w.versionId)).toBeNull()
+    expect(w.ctx.calls.emitted).toHaveLength(0)
+    expect(w.ctx.calls.mails).toHaveLength(0)
+  })
+
   it("the signed event is emitted once, after sealing", async () => {
     const w = await signedWorld()
     await sealVersion(w.ctx, w.versionId)

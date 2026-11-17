@@ -54,7 +54,7 @@ export async function datesDaily(ctx: AgreementsCtx) {
   for (const a of waiting) {
     const v = await latestOf(ctx, a.id)
     if (!v) continue
-    const links = await linksOf(ctx, v.id)
+    const links = (await linksOf(ctx, v.id)).filter((l) => l.replaced !== true)
     if (links.length === 0 || !links.every((l) => l.state === "expired")) continue
     await ctx.db.update("agreements", a.id, { status: "expired" })
     await ctx.emit?.({

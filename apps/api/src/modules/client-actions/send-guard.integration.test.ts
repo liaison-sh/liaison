@@ -8,7 +8,8 @@ import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
 import { isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { adminContext } from "~/tests/security/portal-doors/fixture"
-import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
+import { baseView, k, useClientActionWorld } from "../../../test-support/client-actions-kit"
+import { ClientActionTargetsTestAccess } from "./targets"
 import {
   clientActionCreatePreflight,
   clientActionGuardKey,
@@ -97,5 +98,31 @@ describe("the send check a client request carries", () => {
       handleClientActionCreate({ ...p, ...pin, sendGuard: { applies: false } }, ctx),
     )) as { error?: { code: string } }
     expect(r.error?.code).toBe("SEND_GUARD_MISMATCH")
+  })
+
+  it("a target whose app sends its own links is refused at the preflight and at the call, and nothing is made", async () => {
+    ClientActionTargetsTestAccess.set(
+      kit.targetApp,
+      "appsent",
+      ["sign"],
+      async () => baseView(),
+      "app",
+    )
+    try {
+      const p = { ...params(), target_type: "appsent" }
+      const staged = (await asAdmin((ctx) => clientActionCreatePreflight(p, ctx))) as {
+        error?: { code: string; message: string }
+      }
+      expect(staged.error?.code).toBe("TARGET_SENT_BY_ITS_APP")
+      expect(staged.error?.message).toContain("Nothing was sent")
+      const r = (await asAdmin((ctx) => handleClientActionCreate(p, ctx))) as {
+        error?: { code: string }
+      }
+      expect(r.error?.code).toBe("TARGET_SENT_BY_ITS_APP")
+      const rows = await sql`SELECT id FROM ${k("client_actions")} WHERE target_id = ${p.target_id}`
+      expect(rows).toHaveLength(0)
+    } finally {
+      ClientActionTargetsTestAccess.clear(kit.targetApp, "appsent")
+    }
   })
 })

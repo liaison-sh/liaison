@@ -5,7 +5,12 @@
 // by its header id, on Gmail and IMAP alike, or quoted in a bounce's text.
 import { describe, expect, it } from "bun:test"
 import { IMAP_INGEST_HEADERS } from "~/modules/apps/sandbox/imap-bridge"
-import { cutSigningLinks, SIGNING_LINK_REMOVED } from "./quoted-link"
+import {
+  cutSigningLinks,
+  cutSigningLinksInMailFile,
+  isMailFile,
+  SIGNING_LINK_REMOVED,
+} from "./quoted-link"
 import { actionMailIdsOf } from "./synced-mail"
 
 const TOKEN = "Zx9_k-3QeLmN0pRsT1uVwXyZaBcDeFgHiJkLmNoPqRs"
@@ -68,5 +73,56 @@ describe("the signing mail id a synced message carries", () => {
 
   it("is fetched by the IMAP sync, which asks for named headers only", () => {
     expect(IMAP_INGEST_HEADERS as readonly string[]).toContain("x-liaison-action-mail")
+  })
+})
+
+describe("a signing mail forwarded as an attached file", () => {
+  const eml = (body: string, headers = "") =>
+    new Uint8Array(
+      Buffer.from(
+        `From: a@x.example\r\nSubject: Read and sign\r\n${headers}MIME-Version: 1.0\r\n\r\n${body}`,
+        "latin1",
+      ),
+    )
+  const text = (b: Uint8Array) => Buffer.from(b).toString("latin1")
+
+  it("loses its link in a plain part, a quoted-printable part split by soft breaks, and a base64 part", () => {
+    const plain = eml(`Content-Type: text/plain\r\n\r\nOpen: ${LINK}\r\n`)
+    expect(text(cutSigningLinksInMailFile(plain))).not.toContain(TOKEN)
+
+    const qp = `Open: https://app.maison.example/a#t=3D${TOKEN.slice(0, 20)}=\r\n${TOKEN.slice(20)}\r\n`
+    const qpOut = text(
+      cutSigningLinksInMailFile(eml(qp, "Content-Transfer-Encoding: quoted-printable\r\n")),
+    )
+    expect(qpOut).not.toContain(TOKEN.slice(20))
+    expect(qpOut).toContain(SIGNING_LINK_REMOVED)
+
+    const b64 = Buffer.from(
+      `<p>Open <a href="${LINK}">the document</a> \u00e9t\u00e9</p>`,
+      "latin1",
+    )
+      .toString("base64")
+      .replace(/(.{76})/g, "$1\r\n")
+    const b64Out = text(
+      cutSigningLinksInMailFile(eml(`${b64}\r\n`, "Content-Transfer-Encoding: base64\r\n")),
+    )
+    const decoded = Buffer.from(
+      b64Out.split("\r\n\r\n")[1]?.replace(/\s+/g, "") ?? "",
+      "base64",
+    ).toString("latin1")
+    expect(decoded).not.toContain(TOKEN)
+    expect(decoded).toContain(SIGNING_LINK_REMOVED)
+    expect(decoded).toContain("the document")
+  })
+
+  it("holding no link, comes back byte for byte", () => {
+    const bytes = eml("Content-Type: text/plain\r\n\r\nNo link here, caf\u00e9.\r\n")
+    expect(cutSigningLinksInMailFile(bytes)).toBe(bytes)
+  })
+
+  it("is told by its type or its name", () => {
+    expect(isMailFile("message/rfc822", "forward")).toBe(true)
+    expect(isMailFile("application/octet-stream", "Fwd signing.EML")).toBe(true)
+    expect(isMailFile("application/pdf", "contract.pdf")).toBe(false)
   })
 })

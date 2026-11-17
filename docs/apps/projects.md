@@ -458,3 +458,8 @@ An agent sets field values with `fields` on `create` and `update` (`null` emptie
 In a task's discussion, the agent knows which task the conversation is about: its key, title and project. Ask it there to break the task into subtasks and it files them under that task.
 
 See the [agent tool reference](../reference/agent-tools.md).
+
+## Read and send a project's client reports
+
+A project of a client company shows a **Client reports** line once it has a report, with how many wait for a person. Open it and pick a week: the report shows as the client will read it, and under **For your team only** what was left out on purpose and what it was read from. **Edit** and **Save the draft** change a waiting report; **Send to the client** asks for the send, and the answer says whether it was sent or waits for approval.
+

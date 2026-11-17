@@ -114,6 +114,7 @@ import { createOverflowed } from "~/primitives/createOverflowed"
 import { BottomSheetActions, type SheetAction } from "~/ui/BottomSheetActions"
 import { Button } from "~/ui/Button"
 import { OverlaySheet } from "~/ui/OverlaySheet"
+import { shownValue, storedValue } from "./edit-units"
 
 interface ApprovalCardProps {
   requestId: string
@@ -783,10 +784,20 @@ const BundleStepRow: Component<{
         <div class="mt-2 flex flex-col gap-2">
           <For each={editableFields()}>
             {(field) => {
-              const value = () => String(draft()[field.field] ?? "")
+              // A field stored in another unit than the one a person reads (minutes, cents).
+              const unit = (field as { unit?: string }).unit
+              const currency = () => (draft() as Record<string, unknown>).currency
+              // The person's own text while they type, so "110." is not rewritten under them.
+              const [typed, setTyped] = createSignal(
+                unit ? shownValue(unit, draft()[field.field], currency()) : "",
+              )
+              const value = () => (unit ? typed() : String(draft()[field.field] ?? ""))
               const onInput = (e: InputEvent) => {
                 const target = e.currentTarget as HTMLInputElement | HTMLTextAreaElement
-                setDraft({ ...draft(), [field.field]: target.value })
+                if (!unit) return setDraft({ ...draft(), [field.field]: target.value })
+                setTyped(target.value)
+                const next = storedValue(unit, target.value, draft()[field.field], currency())
+                if (next !== undefined) setDraft({ ...draft(), [field.field]: next })
               }
               const inputId = `${testidBase()}-field-${field.field}`
               // The draft's text field (rich or plain) for the writing helpers.
@@ -902,6 +913,7 @@ const BundleStepRow: Component<{
                         class="rounded border border-border bg-bg px-2 py-1 text-text"
                         value={value()}
                         onInput={(e) => {
+                          if (unit) return onInput(e)
                           const n = Number((e.currentTarget as HTMLInputElement).value)
                           if (Number.isFinite(n)) setDraft({ ...draft(), [field.field]: n })
                         }}

@@ -59,6 +59,8 @@ export const APPROVAL_SUMMARY_LONG_LINES_MAX = 50
 export const APPROVAL_SUMMARY_FULL_TEXT_KINDS: ReadonlySet<string> = new Set([
   // api-connector: a write whose adapter declares what its card shows (approval).
   "api-connector.write.full",
+  // agreements: the reply to a client's mail sent with a change request, read whole.
+  "change_request_send",
 ])
 export const APPROVAL_SUMMARY_FULL_TEXT_LINE_MAX = 8000
 export const APPROVAL_SUMMARY_FULL_TEXT_LINES_MAX = 16
@@ -186,6 +188,13 @@ export interface ApprovalEditableField {
    * htmlBody, not the edited textBody).
    */
   invalidates?: string[]
+  /**
+   * The unit a person reads, when the param is stored in another one: `hours` shows and
+   * edits an integer count of minutes as hours; `money` shows and edits an amount in minor
+   * units (a string or integer) in major units, by the payload's `currency`. The payload
+   * keeps the stored unit.
+   */
+  unit?: "hours" | "money"
 }
 
 export interface ApprovalLastEdit {

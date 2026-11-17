@@ -903,6 +903,9 @@ const toolSchema = {
             ],
           },
           listSource: { type: "string" },
+          // The unit a person reads when the param is stored in another: `hours` over an
+          // integer of minutes, `money` over minor units by the payload's `currency`.
+          unit: { type: "string", enum: ["hours", "money"] },
           // Derived payload keys blanked when this field is edited (e.g. a
           // pre-rendered `htmlBody` derived from `textBody`) so the executed
           // handler regenerates them from the edited value instead of sending

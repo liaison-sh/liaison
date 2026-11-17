@@ -1556,6 +1556,19 @@ export function validateAppManifest(manifest: any): ValidationResult {
             errors.push(
               `tools.${toolName}.editableFields: field "${ef.field}" widget "number" requires params.properties.${ef.field}.type === "integer" or "number"`,
             )
+          } else if (
+            (ef as { unit?: unknown }).unit !== undefined &&
+            !(
+              ((ef as { unit?: unknown }).unit === "hours" &&
+                ef.widget === "number" &&
+                props[ef.field].type === "integer") ||
+              ((ef as { unit?: unknown }).unit === "money" &&
+                (ef.widget === "text" || ef.widget === "number"))
+            )
+          ) {
+            errors.push(
+              `tools.${toolName}.editableFields: field "${ef.field}" unit must be "hours" on an integer number widget or "money" on a text or number widget`,
+            )
           } else if (ef.widget === "email-list" && props[ef.field].type !== "array") {
             errors.push(
               `tools.${toolName}.editableFields: field "${ef.field}" widget "email-list" requires params.properties.${ef.field}.type === "array"`,

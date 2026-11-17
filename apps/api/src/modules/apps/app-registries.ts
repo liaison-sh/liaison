@@ -803,6 +803,8 @@ export const approvalEditableFieldsRegistry = createTypedRegistry<
     label: string
     widget: "text" | "richtext" | "number" | "checkbox" | "checkbox-per-line" | "key-value-list"
     listSource?: string
+    /** The unit a person reads (see ApprovalEditableField.unit in @liaison/shared). */
+    unit?: "hours" | "money"
     /** Derived payload keys blanked when this field is edited (see
      *  ApprovalEditableField.invalidates in @liaison/shared). */
     invalidates?: string[]

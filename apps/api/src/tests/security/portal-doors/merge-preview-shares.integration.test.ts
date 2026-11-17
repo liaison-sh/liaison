@@ -14,6 +14,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { registerApps } from "~/modules/apps/runtime"
 import { createSession } from "~/modules/auth/auth"
 import { PortalAccessError, setPortalShare } from "~/modules/portal/access"
+import { handlePortalShareSet } from "~/modules/portal/tools"
 import { ensurePortalViews } from "~/modules/portal/views"
 import { reparentPortalStagedFiles } from "~/modules/tickets/ingest-core"
 import { insertSql } from "~/seed/factories/org/test-rows"
@@ -29,9 +30,11 @@ import {
 } from "./fixture"
 import {
   dropReadsWorld,
+  insertCurrentTimebox,
   insertFile,
   insertProject,
   insertTicket,
+  insertTime,
   registerInvoicingSchema,
 } from "./reads-world"
 
@@ -266,6 +269,45 @@ describe("portal doors: the panel's preview", () => {
     expect((both.signedInWouldSee.upcoming ?? []).map((r) => r.id)).toEqual([stepId])
     const asAdmin = ((await (await get(path, adminToken)).json()) as Body).data
     expect((asAdmin.signedInWouldSee.upcoming ?? []).map((r) => r.id)).toEqual([stepId])
+  })
+
+  it("the portal preview shows a project's hours as the portal does, and names hours opened on a project the portal does not list", async () => {
+    const project = await insertProject(w, {
+      company_id: w.companyB,
+      basis: "retainer",
+      name: "Hours preview probe",
+    })
+    await insertCurrentTimebox(w, project.id, 2400)
+    await insertTime(w, project, project.childOpenId, 300)
+    const path = `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`
+    type Body = {
+      data: {
+        signedInWouldSee: Record<string, Array<Record<string, unknown>> | null>
+        hoursNotShown: Array<{ id: string; name: string }>
+      }
+    }
+    const read = async () => ((await (await get(path, adminToken)).json()) as Body).data
+    // Hours alone: the portal lists no project, so the client sees none of its hours.
+    const share = await withRlsContext(adminContext(w), (tx) =>
+      handlePortalShareSet(
+        { company_id: w.companyB, kind: "project_hours", object_id: project.id, open: true },
+        { userId: w.admin.userId, orgId: w.orgId, db: tx as never, scopes: ["*"] },
+      ),
+    )
+    expect(JSON.stringify(share)).toContain("does not see Hours preview probe's hours yet")
+    const alone = await read()
+    expect((alone.signedInWouldSee.projects ?? []).map((r) => r.id)).not.toContain(project.id)
+    expect(alone.hoursNotShown).toEqual([{ id: project.id, name: "Hours preview probe" }])
+    // With its progress open too, the project shows with the same hours line the portal reads.
+    await insertShare(w, {
+      company_id: w.companyB,
+      kind: "project_progress",
+      object_id: project.id,
+    })
+    const both = await read()
+    const row = (both.signedInWouldSee.projects ?? []).find((r) => r.id === project.id)
+    expect(row?.hours).toMatchObject({ kind: "so_far", usedMinutes: 300, ofMinutes: 2400 })
+    expect(both.hoursNotShown).toEqual([])
   })
 })
 

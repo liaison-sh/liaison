@@ -219,6 +219,8 @@
     "previewTrue": "This is what they see now, read the way the portal reads it.",
     "previewNone": "They cannot sign in now, so they see nothing.",
     "previewNothing": "Nothing shared.",
+    "previewHoursNotShown": "Hours are open for {{names}}, but they do not see them: hours show on a project's page, and a project shows only once its progress or reports is open too.",
+    "hoursNotSeen": "Nobody sees these hours yet: they show on the project's page, which the client sees once its progress or reports is open too.",
     "previewPart": {
       "projects": "Projects",
       "invoices": "Invoices",

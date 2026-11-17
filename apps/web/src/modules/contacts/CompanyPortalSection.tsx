@@ -23,6 +23,7 @@ import {
 import { ApiError } from "~/lib/api-error"
 import { hasScope } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { hoursLine, type ProjectHours } from "~/modules/portal/format"
 import { useApi } from "~/modules/shell/ApiContext"
 
 export interface PortalPerson {
@@ -169,7 +170,11 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
   const [pendingShare, setPendingShare] = createSignal<string | null>(null)
   const [previewOf, setPreviewOf] = createSignal<string | null>(null)
   const [preview] = createResource(previewOf, (userId) =>
-    api.get<{ userId: string; signedInWouldSee: Preview }>(`${base()}/preview/${userId}`),
+    api.get<{
+      userId: string
+      signedInWouldSee: Preview
+      hoursNotShown?: Array<{ id: string; name: string }>
+    }>(`${base()}/preview/${userId}`),
   )
 
   const list = () => people() ?? []
@@ -306,6 +311,21 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
               : i18n.t("portal.staff.closed")}
           </button>
         </div>
+        {/* The portal lists a project only with its progress or reports open, and its hours
+            show on that project's page: an hours share alone is seen by nobody yet. */}
+        <Show
+          when={
+            sp.kind === "project_hours" &&
+            sp.objectId !== null &&
+            isOpen(sp.kind, sp.objectId) &&
+            !isOpen("project_progress", sp.objectId) &&
+            !isOpen("project_reports", sp.objectId)
+          }
+        >
+          <p data-testid="company-portal.hours-not-seen" class="text-[12.5px] text-text-secondary">
+            {i18n.t("portal.staff.hoursNotSeen")}
+          </p>
+        </Show>
         <Show when={pendingShare() === key()}>
           <div
             data-testid="company-portal.share-warning"
@@ -738,6 +758,7 @@ export const CompanyPortalSection: Component<{ companyId: string }> = (props) =>
               </label>
               <PreviewBody
                 preview={preview()?.signedInWouldSee ?? null}
+                hoursNotShown={preview()?.hoursNotShown ?? []}
                 loading={preview.loading}
               />
             </div>
@@ -765,8 +786,14 @@ export function logAction(action: string): string {
 }
 
 /** What the person would see now, through the portal's own reads. */
-const PreviewBody: Component<{ preview: Preview; loading: boolean }> = (props) => {
+const PreviewBody: Component<{
+  preview: Preview
+  hoursNotShown: Array<{ id: string; name: string }>
+  loading: boolean
+}> = (props) => {
   const i18n = useI18n()
+  const hours = (r: Record<string, unknown>) =>
+    hoursLine((r.hours as ProjectHours | null | undefined) ?? null, i18n.t, i18n.locale())
   const rows = (part: string) => props.preview?.[part] ?? []
   return (
     <Show
@@ -804,7 +831,21 @@ const PreviewBody: Component<{ preview: Preview; loading: boolean }> = (props) =
                 >
                   <ul>
                     <For each={rows(part as string)}>
-                      {(r) => <li class="text-text">{String(r[field as string] ?? "")}</li>}
+                      {(r) => (
+                        <li class="text-text">
+                          {String(r[field as string] ?? "")}
+                          <Show when={part === "projects" && hours(r)}>
+                            {(line) => (
+                              <span
+                                data-testid="company-portal.preview-hours"
+                                class="text-text-secondary"
+                              >
+                                {` · ${line()}`}
+                              </span>
+                            )}
+                          </Show>
+                        </li>
+                      )}
                     </For>
                   </ul>
                 </Show>
@@ -812,6 +853,13 @@ const PreviewBody: Component<{ preview: Preview; loading: boolean }> = (props) =
             </div>
           )}
         </For>
+        <Show when={props.hoursNotShown.length > 0}>
+          <p data-testid="company-portal.preview-hours-not-shown" class="text-text-secondary">
+            {i18n.t("portal.staff.previewHoursNotShown", {
+              names: props.hoursNotShown.map((p) => p.name).join(", "),
+            })}
+          </p>
+        </Show>
       </div>
     </Show>
   )

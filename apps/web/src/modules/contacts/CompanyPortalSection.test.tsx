@@ -297,6 +297,48 @@ describe("company portal section", () => {
     expect(r.getByTestId("company-portal.preview-requests").textContent).toContain("Nothing shared")
   })
 
+  it("an hours share with the project's progress and reports closed says nobody sees it yet; the preview names it and shows hours as the portal does", async () => {
+    mocks.scopes = ["kernel:portal:admin", "kernel:portal:share"]
+    serve({
+      [`${BASE}/people`]: [PAUL],
+      [`${BASE}/shares`]: [
+        { id: "sh-h", kind: "project_hours", objectId: "p-1", onlyUserIds: null },
+      ],
+      [`${BASE}/preview/u-paul`]: {
+        userId: "u-paul",
+        signedInWouldSee: {
+          me: [],
+          projects: [
+            {
+              id: "p-2",
+              name: "Reader app",
+              hours: { kind: "so_far", usedMinutes: 1080, ofMinutes: 2400, period: null },
+            },
+          ],
+          invoices: [],
+          upcoming: [],
+          requests: [],
+        },
+        hoursNotShown: [{ id: "p-1", name: "Retainer" }],
+      },
+    })
+    mocks.post.mockImplementation(async (path: string) =>
+      path === "/apps/run-tool" ? { projects: [{ id: "p-1", name: "Retainer" }] } : {},
+    )
+    const r = render(() => <CompanyPortalSection companyId={CO} />)
+    const row = await r.findByTestId("company-portal.share-project_hours-p-1")
+    await waitFor(() =>
+      expect(row.querySelector("[data-testid='company-portal.hours-not-seen']")).not.toBeNull(),
+    )
+    fireEvent.click(r.getByTestId("company-portal.view-preview"))
+    expect((await r.findByTestId("company-portal.preview-hours")).textContent).toContain(
+      "Hours used: 18 of 40 h so far",
+    )
+    expect(r.getByTestId("company-portal.preview-hours-not-shown").textContent).toContain(
+      "Retainer",
+    )
+  })
+
   it("End access asks first, then says what it did and what was kept", async () => {
     serve({ [`${BASE}/people`]: [PAUL] })
     mocks.post.mockResolvedValue({ signedOut: 1, cancelledLinks: 2, closedShares: 3 })

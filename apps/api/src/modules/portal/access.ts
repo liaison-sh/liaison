@@ -599,6 +599,36 @@ export async function setPortalShare(input: ShareInput): Promise<ShareResult> {
   })
 }
 
+/**
+ * The company's projects whose hours are open while neither their progress nor their reports
+ * is: the portal lists a project only with one of those two open (`portal.projects`), and its
+ * hours show on the project's page, so the client sees none of these hours yet. Read under the
+ * caller's own row security; an unreadable project, or no projects app, reads as none.
+ */
+export async function hoursSharesNotShown(
+  db: RlsClient,
+  companyId: string,
+): Promise<Array<{ id: string; name: string }>> {
+  return db
+    .transaction(async (sp) =>
+      extractRows<{ id: string; name: string }>(
+        await sp.execute(sql`
+          SELECT p.id::text AS id, p.name
+            FROM ${K()}.portal_shares s
+            JOIN ${sql.raw(schemaRef("app_projects"))}.projects p
+              ON p.id = s.object_id AND p.org_id = s.org_id
+           WHERE s.company_id = ${companyId} AND s.kind = 'project_hours' AND s.closed_at IS NULL
+             AND NOT EXISTS (
+               SELECT 1 FROM ${K()}.portal_shares o
+                WHERE o.org_id = s.org_id AND o.company_id = s.company_id
+                  AND o.object_id = s.object_id AND o.closed_at IS NULL
+                  AND o.kind IN ('project_progress', 'project_reports'))
+           ORDER BY p.name, p.id`),
+      ),
+    )
+    .catch(() => [])
+}
+
 // ── End access, give it again ───────────────────────────────────────────
 
 export interface EndAccessResult {

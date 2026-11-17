@@ -23,6 +23,7 @@ import { writeAuditLog } from "~/modules/audit/service"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   endPortalAccess,
+  hoursSharesNotShown,
   invitePortalPerson,
   PORTAL_SHARE_KINDS,
   PortalAccessError,
@@ -403,6 +404,26 @@ export const portalAdminRoutes = new Hono<AppEnv>()
             )
             .catch(() => null)
         }
+        // Each project's hours line, through the same function the portal's project page calls.
+        for (const row of parts.projects ?? []) {
+          const [h] = await tx
+            .transaction(async (sp) =>
+              extractRows<Record<string, unknown>>(
+                await sp.execute(sql`SELECT kind, used_minutes::int AS used_minutes,
+                  of_minutes::int AS of_minutes, period
+                  FROM portal.project_hours(${String(row.id)}::uuid)`),
+              ),
+            )
+            .catch(() => [] as Record<string, unknown>[])
+          row.hours = h
+            ? {
+                kind: h.kind,
+                usedMinutes: h.used_minutes,
+                ofMinutes: h.of_minutes,
+                period: h.period,
+              }
+            : null
+        }
       })
     } catch {
       // The person cannot sign in now (access ended, deactivated): they see nothing.
@@ -442,9 +463,13 @@ export const portalAdminRoutes = new Hono<AppEnv>()
         metadata: { companyId: id },
       }),
     )
+    // Hours opened on a project the portal does not list: the client sees none of them yet.
+    const hoursNotShown =
+      parts.projects === null ? [] : await withRequestRls(c, (tx) => hoursSharesNotShown(tx, id))
     return success(c, {
       userId: person.user_id,
       signedInWouldSee: parts,
+      hoursNotShown,
       ...(Object.keys(needs).length > 0 ? { hiddenParts: needs } : {}),
     })
   })

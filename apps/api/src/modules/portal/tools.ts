@@ -16,6 +16,7 @@ import { toolRegistry } from "~/modules/apps/app-registries"
 import { registerApprovalSummarizer } from "~/modules/apps/approval-summarizers"
 import {
   endPortalAccess,
+  hoursSharesNotShown,
   invitePortalPerson,
   keptForPerson,
   PORTAL_SHARE_KINDS,
@@ -96,11 +97,23 @@ export async function handlePortalShareSet(p: z.infer<typeof portalShareSetParam
       onlyUserIds: p.only_user_ids ?? null,
     })
     const what = `${r.kind}${r.objectId ? ` ${r.objectId}` : ""}`
+    // Hours show on the project's page, and the portal lists a project only with its progress
+    // or reports open: say so rather than let "shown" read as seen.
+    const unseen =
+      r.open && r.kind === "project_hours"
+        ? (await hoursSharesNotShown(ctx.db, p.company_id)).find((x) => x.id === r.objectId)
+        : undefined
     return {
       share: { id: r.id, kind: r.kind, object_id: r.objectId, open: r.open },
       result: r.changed
         ? `${what} is now ${r.open ? "shown on" : "hidden from"} ${r.company}'s portal.`
         : `${what} was already ${r.open ? "shown on" : "hidden from"} ${r.company}'s portal: nothing changed.`,
+      ...(unseen
+        ? {
+            not_seen_yet: `The client does not see ${unseen.name}'s hours yet: hours show on the project's page, and the portal lists the project only once its progress or reports is open too.`,
+            next: "Open project_progress or project_reports for this project if the client should see it.",
+          }
+        : {}),
     }
   } catch (err) {
     return refusal(err)

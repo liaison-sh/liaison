@@ -392,3 +392,50 @@ describe("a name word no other word qualifies", () => {
     expect(score("invoices", "customer_invoices_list")).toBe(score("invoices", "invoices_list"))
   })
 })
+
+describe("French words for contracts, amendments, the portal and a client report", () => {
+  // No tool here declares a keyword: the French word reaches the tool by its name alone.
+  const catalog: Row[] = [
+    row("deals", "agreements_search", "Find signed documents by status or date."),
+    row("deals", "agreement_get", "Read one signed document."),
+    row("deals", "change_request_send", "Send the client more work to accept."),
+    row("billing", "documents_search", "Find invoices and quotes."),
+    row("kernel", "portal_invite", "Invite a client person."),
+    row("kernel", "portal_access_log", "Read who signed in."),
+    row("kernel", "users_list", "List the members."),
+    row("work", "client_report_get", "Read the Friday status."),
+    row("work", "tasks_byProject", "List a project's tasks."),
+    row("money", "account_info", "Read the bank account."),
+  ]
+  const apps = new Set(catalog.map((t) => t.appName))
+  const first = (query: string) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps }).ranked[0]?.tool.sdkName
+  const WRITE_WORDS = ["create", "issue", "set", "update", "send", "add", "delete", "draft", "save"]
+
+  it("contrat, avenant and portail reach their tools and never an English write synonym", () => {
+    expect(first("contrats")).toBe("deals__agreements_search")
+    expect(first("avenant")).toBe("deals__change_request_send")
+    expect(first("portail")).toMatch(/^kernel__portal_/)
+    for (const word of ["contrat", "avenant", "portail"]) {
+      const names = NAME_WORD_SYNONYMS[word] ?? []
+      expect(names.length).toBeGreaterThan(0)
+      expect(names.filter((n) => WRITE_WORDS.includes(n))).toEqual([])
+    }
+  })
+
+  const top = (query: string, n: number) =>
+    rankDeferredTools(catalog, query, { cap: 5, appNames: apps })
+      .ranked.slice(0, n)
+      .map((r) => r.tool.sdkName)
+  const portal = (names: string[]) => names.filter((n) => n.startsWith("kernel__portal_"))
+
+  it("an espace client is the portal and a compte rendu a report, each word alone is not", () => {
+    // "client" is a name word of the report tool too; the portal comes up beside it.
+    const at = (query: string) => top(query, 5).indexOf("kernel__portal_invite")
+    expect(at("espace client")).toBeGreaterThanOrEqual(0)
+    expect(at("espace client")).toBeLessThan(at("client"))
+    expect(portal(top("espace", 5))).toEqual([])
+    expect(first("compte rendu")).toBe("work__client_report_get")
+    expect(first("compte")).toBe("money__account_info")
+  })
+})

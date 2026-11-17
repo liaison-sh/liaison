@@ -167,6 +167,9 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   // ── French, the things ──
   facture: ["invoice", "invoices", "documents"],
   devis: ["quote"],
+  contrat: ["agreement", "agreements"],
+  avenant: ["change"],
+  portail: ["portal"],
   commande: ["order", "orders"],
   client: ["customer", "customers", "contact", "contacts"],
   clientele: ["customers"],
@@ -272,7 +275,7 @@ export const NAME_WORD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
  * Synonyms that hold only beside another word. "Report" means an export only when the query also
  * names a file ("the report as a PDF"); alone ("the monthly report for the client") it asks for
  * the report itself, not for whatever exports. A "forfait" alone is a fixed price; a monthly one
- * ("forfait mensuel") is a retainer.
+ * ("forfait mensuel") is a retainer. An "espace client" is a portal, a "compte rendu" a report.
  */
 type Companions = Readonly<Record<string, { names: readonly string[]; withAny: readonly string[] }>>
 const ENGLISH_COMPANIONS: Companions = {
@@ -296,6 +299,10 @@ const ENGLISH_COMPANIONS: Companions = {
 export const COMPANION_SYNONYMS: Companions = {
   ...ENGLISH_COMPANIONS,
   forfait: { names: ["retainer"], withAny: ["mensuel", "mensuelle", "monthly", "mois"] },
+  // An "espace client" is the client's portal; an "espace" alone is a space.
+  espace: { names: ["portal"], withAny: ["client", "clients"] },
+  // A "compte rendu" is a report; a "compte" alone is an account.
+  compte: { names: ["report"], withAny: ["rendu", "rendus"] },
 }
 
 /** The English words of the lexicon: its English entries and every name word. */

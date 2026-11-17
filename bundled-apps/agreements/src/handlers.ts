@@ -29,15 +29,7 @@ import { agreementImport, type ImportParams } from "./import"
 import { agreementPassageGet } from "./passage"
 import { onPortalAccessEnded } from "./portal-ended"
 import { scopeGroupReconcile } from "./scope-group"
-import {
-  agreementEvidenceGet,
-  agreementVerify,
-  copiesRetry,
-  evidenceVerify,
-  type SealCtx,
-  sealRetry,
-  timestampRetry,
-} from "./seal"
+import { copiesRetry, evidenceVerify, type SealCtx, sealRetry, timestampRetry } from "./seal"
 import {
   agreementNewLink,
   agreementNewLinkPreflight,
@@ -52,6 +44,7 @@ import {
   onClientActionDecided,
   type SendParams,
 } from "./send"
+import { agreementEvidenceGetNamed, agreementVerifyNamed } from "./stand-in"
 import { type SaveParams, templateGet, templateSave, templatesList } from "./templates"
 
 type Ctx = AgreementsCtx
@@ -112,9 +105,9 @@ export const datesDailyJobHandler = (_payload: unknown, ctx: Ctx) => datesDaily(
 export const uploadFreezeJobHandler = (_payload: unknown, ctx: Ctx) => uploadFreezeJob(ctx)
 export const uploadRescanJobHandler = (_payload: unknown, ctx: Ctx) => uploadRescanJob(ctx)
 export const agreementEvidenceGetHandler = (p: { id: string }, ctx: Ctx) =>
-  agreementEvidenceGet(ctx, p)
+  agreementEvidenceGetNamed(ctx, p)
 export const agreementVerifyHandler = (p: { id: string }, ctx: Ctx) =>
-  agreementVerify(ctx as SealCtx, p)
+  agreementVerifyNamed(ctx as SealCtx, p)
 export const sealRetryJobHandler = (_payload: unknown, ctx: Ctx) => sealRetry(ctx as SealCtx)
 export const timestampRetryJobHandler = (_payload: unknown, ctx: Ctx) =>
   timestampRetry(ctx as SealCtx)

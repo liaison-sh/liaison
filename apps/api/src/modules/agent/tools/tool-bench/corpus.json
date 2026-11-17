@@ -3577,7 +3577,8 @@
     "lang": "en",
     "say": "withdraw the link I sent Anne, the quote changed",
     "typed": ["withdraw the link", "retirer le lien envoyé"],
-    "any": ["kernel__client_action_revoke"]
+    "any": ["kernel__client_action_revoke"],
+    "modelRun": true
   },
   {
     "id": "C108",
@@ -3585,7 +3586,8 @@
     "lang": "fr",
     "say": "qui n'a pas encore signé ?",
     "typed": ["requests waiting for the client", "demandes en attente de signature"],
-    "any": ["kernel__client_actions_list"]
+    "any": ["kernel__client_actions_list"],
+    "modelRun": true
   },
   {
     "id": "C109",
@@ -3593,7 +3595,8 @@
     "lang": "en",
     "say": "which contracts renew before March",
     "typed": ["contract renewal", "agreements renew", "contracts"],
-    "any": ["agreements__agreements_search"]
+    "any": ["agreements__agreements_search"],
+    "modelRun": true
   },
   {
     "id": "C110",
@@ -3601,7 +3604,8 @@
     "lang": "en",
     "say": "typo: agreemnt with Maison Verre",
     "typed": ["agreemnt", "agrement"],
-    "any": ["agreements__agreements_search"]
+    "any": ["agreements__agreements_search"],
+    "modelRun": true
   },
   {
     "id": "C112",
@@ -3625,7 +3629,8 @@
     "lang": "fr",
     "say": "change la date de fin du contrat",
     "typed": ["modifier contrat", "edit agreement"],
-    "any": ["agreements__agreement_update"]
+    "any": ["agreements__agreement_update"],
+    "modelRun": true
   },
   {
     "id": "C115",
@@ -3633,7 +3638,8 @@
     "lang": "en",
     "say": "is the proposal ready to send for signature",
     "typed": ["prepare agreement", "vérifier contrat avant envoi"],
-    "any": ["agreements__agreement_prepare"]
+    "any": ["agreements__agreement_prepare"],
+    "modelRun": true
   },
   {
     "id": "C116",
@@ -3641,7 +3647,8 @@
     "lang": "fr",
     "say": "quels modèles de contrat avons-nous",
     "typed": ["modèles de contrat", "agreement templates"],
-    "any": ["agreements__templates_list"]
+    "any": ["agreements__templates_list"],
+    "modelRun": true
   },
   {
     "id": "C117",
@@ -3649,7 +3656,8 @@
     "lang": "en",
     "say": "show me the NDA template",
     "typed": ["template get", "voir modèle"],
-    "any": ["agreements__template_get", "agreements__templates_list"]
+    "any": ["agreements__template_get", "agreements__templates_list"],
+    "modelRun": true
   },
   {
     "id": "C118",
@@ -3657,7 +3665,8 @@
     "lang": "fr",
     "say": "enregistre ce modèle de contrat",
     "typed": ["enregistrer modèle", "save template"],
-    "any": ["agreements__template_save"]
+    "any": ["agreements__template_save"],
+    "modelRun": true
   },
   {
     "id": "C119",
@@ -3665,7 +3674,8 @@
     "lang": "fr",
     "say": "annule la signature envoyée à Thomas",
     "typed": ["annuler signature", "void agreement", "withdraw contract"],
-    "any": ["agreements__agreement_void"]
+    "any": ["agreements__agreement_void"],
+    "modelRun": true
   },
   {
     "id": "C120",
@@ -3681,7 +3691,8 @@
     "lang": "en",
     "say": "the signer's address had a typo: send a new link to the corrected address",
     "typed": ["send a new link", "new signing link"],
-    "any": ["agreements__agreement_new_link"]
+    "any": ["agreements__agreement_new_link"],
+    "modelRun": true
   },
   {
     "id": "C122",
@@ -3689,7 +3700,8 @@
     "lang": "fr",
     "say": "montre la preuve de signature du contrat avec son empreinte et le sceau",
     "typed": ["preuve contrat", "evidence agreement", "empreinte sceau"],
-    "any": ["agreements__agreement_evidence_get"]
+    "any": ["agreements__agreement_evidence_get"],
+    "modelRun": true
   },
   {
     "id": "C123",
@@ -3697,7 +3709,8 @@
     "lang": "fr",
     "say": "vérifie que le contrat signé n'a pas été modifié",
     "typed": ["vérifier sceau", "verify seal", "intégrité preuve"],
-    "any": ["agreements__agreement_verify"]
+    "any": ["agreements__agreement_verify"],
+    "modelRun": true
   },
   {
     "id": "C124",
@@ -3705,7 +3718,8 @@
     "lang": "en",
     "say": "give Arlon access to the portal",
     "typed": ["portal invite", "client portal", "invite client"],
-    "any": ["kernel__portal_invite"]
+    "any": ["kernel__portal_invite"],
+    "modelRun": true
   },
   {
     "id": "C125",
@@ -3713,7 +3727,8 @@
     "lang": "fr",
     "say": "mets le devis sur l'espace client",
     "typed": ["espace client", "portail partager", "share on portal"],
-    "any": ["kernel__portal_share_set"]
+    "any": ["kernel__portal_share_set"],
+    "modelRun": true
   },
   {
     "id": "C126",
@@ -3721,7 +3736,8 @@
     "lang": "fr",
     "say": "coupe l'accès du client au portail",
     "typed": ["portal end access", "fin accès portail", "revoke portal"],
-    "any": ["kernel__portal_end_access"]
+    "any": ["kernel__portal_end_access"],
+    "modelRun": true
   },
   {
     "id": "C127",
@@ -3729,7 +3745,8 @@
     "lang": "en",
     "say": "remove Paul from the client portal and erase his account",
     "typed": ["remove from portal", "retirer du portail", "effacer son compte portail"],
-    "any": ["kernel__portal_remove_person"]
+    "any": ["kernel__portal_remove_person"],
+    "modelRun": true
   },
   {
     "id": "C128",
@@ -3737,7 +3754,8 @@
     "lang": "fr",
     "say": "qui s'est connecté au portail client ce mois-ci ?",
     "typed": ["portal access log", "journal d'accès portail", "connexions portail"],
-    "any": ["kernel__portal_access_log"]
+    "any": ["kernel__portal_access_log"],
+    "modelRun": true
   },
   {
     "id": "C129",
@@ -3745,7 +3763,8 @@
     "lang": "fr",
     "say": "cite la section 8.2 du texte signé du contrat",
     "typed": ["citer section contrat", "quote agreement section", "passage signé"],
-    "any": ["agreements__agreement_passage_get"]
+    "any": ["agreements__agreement_passage_get"],
+    "modelRun": true
   },
   {
     "id": "C130",
@@ -3765,7 +3784,8 @@
     "lang": "fr",
     "say": "le client a accepté le devis Q-0007 par téléphone, note-le",
     "typed": ["devis accepté", "quote accepted", "résultat du devis"],
-    "any": ["invoicing__quote_set_outcome"]
+    "any": ["invoicing__quote_set_outcome"],
+    "modelRun": true
   },
   {
     "id": "C132",
@@ -3781,7 +3801,8 @@
     "lang": "en",
     "say": "draft the Friday client report",
     "typed": ["client report", "weekly report client", "status report"],
-    "any": ["projects__client_report_save_draft", "projects__client_report_sources_get"]
+    "any": ["projects__client_report_save_draft", "projects__client_report_sources_get"],
+    "modelRun": true
   },
   {
     "id": "C134",
@@ -3789,7 +3810,8 @@
     "lang": "fr",
     "say": "le compte rendu client de la semaine",
     "typed": ["compte rendu client", "rapport client"],
-    "any": ["projects__client_report_save_draft", "projects__client_report_get"]
+    "any": ["projects__client_report_save_draft", "projects__client_report_get"],
+    "modelRun": true
   },
   {
     "id": "C135",
@@ -3797,7 +3819,8 @@
     "lang": "en",
     "say": "which client reports went out this month?",
     "typed": ["client reports", "reports sent"],
-    "any": ["projects__client_reports_list"]
+    "any": ["projects__client_reports_list"],
+    "modelRun": true
   },
   {
     "id": "C136",
@@ -3805,7 +3828,8 @@
     "lang": "en",
     "say": "send the client report once I approve it",
     "typed": ["send client report", "envoyer compte rendu"],
-    "any": ["projects__client_report_send"]
+    "any": ["projects__client_report_send"],
+    "modelRun": true
   },
   {
     "id": "C137",
@@ -3814,5 +3838,192 @@
     "say": "sur quoi s'appuie le compte rendu de cette semaine ?",
     "typed": ["sources compte rendu", "report sources"],
     "any": ["projects__client_report_sources_get"]
+  },
+  {
+    "id": "C138",
+    "set": "seed",
+    "lang": "en",
+    "say": "send the pacte to the 6 shareholders restricted to Élise and Sara",
+    "typed": [
+      "send for signature",
+      "sign document",
+      "send pdf for signature",
+      "restricted document signature"
+    ],
+    "any": [
+      "agreements__agreement_send",
+      "agreements__agreement_create",
+      "agreements__agreement_import"
+    ],
+    "modelRun": true
+  },
+  {
+    "id": "C139",
+    "set": "seed",
+    "lang": "fr",
+    "say": "fais signer ce PDF aux actionnaires",
+    "typed": ["faire signer", "signature électronique", "pdf signature", "signer document"],
+    "any": [
+      "agreements__agreement_send",
+      "agreements__agreement_create",
+      "agreements__agreement_import"
+    ],
+    "modelRun": true
+  },
+  {
+    "id": "C140",
+    "set": "seed",
+    "lang": "fr",
+    "say": "fais un avenant pour les 12h en plus",
+    "typed": ["avenant", "change request", "change order", "scope change"],
+    "any": ["agreements__change_request_send"],
+    "modelRun": true
+  },
+  {
+    "id": "C141",
+    "set": "seed",
+    "lang": "en",
+    "say": "has Thomas signed yet",
+    "typed": ["signature status", "agreement status", "who signed"],
+    "any": ["agreements__agreements_search", "agreements__agreement_get"],
+    "modelRun": true
+  },
+  {
+    "id": "C142",
+    "set": "seed",
+    "lang": "en",
+    "say": "remind Thomas to sign",
+    "typed": ["remind signer", "reminder agreement"],
+    "any": ["agreements__agreement_reminder_send"],
+    "modelRun": true
+  },
+  {
+    "id": "C143",
+    "set": "seed",
+    "lang": "en",
+    "say": "can a client approve this quote online",
+    "typed": ["client approve quote", "client action", "portal approval"],
+    "any": ["kernel__client_action_create"],
+    "modelRun": true
+  },
+  {
+    "id": "C144",
+    "set": "seed",
+    "lang": "en",
+    "say": "move the contract's end date to June",
+    "typed": ["edit agreement dates", "update agreement"],
+    "any": ["agreements__agreement_update"]
+  },
+  {
+    "id": "C145",
+    "set": "seed",
+    "lang": "fr",
+    "say": "contrôle le contrat avant de l'envoyer à la signature",
+    "typed": ["préparer le contrat", "contrôle avant signature"],
+    "any": ["agreements__agreement_prepare"]
+  },
+  {
+    "id": "C146",
+    "set": "seed",
+    "lang": "fr",
+    "say": "son lien de signature a expiré, renvoie-lui un nouveau lien",
+    "typed": ["nouveau lien de signature", "lien expiré"],
+    "any": ["agreements__agreement_new_link"]
+  },
+  {
+    "id": "C147",
+    "set": "seed",
+    "lang": "en",
+    "say": "quote section 4 of the signed agreement",
+    "typed": ["agreement section", "signed clause"],
+    "any": ["agreements__agreement_passage_get"]
+  },
+  {
+    "id": "C148",
+    "set": "seed",
+    "lang": "en",
+    "say": "show me the evidence of the signed contract",
+    "typed": ["signature evidence", "seal and timestamp"],
+    "any": ["agreements__agreement_evidence_get"]
+  },
+  {
+    "id": "C149",
+    "set": "seed",
+    "lang": "en",
+    "say": "check the signed agreement was not altered",
+    "typed": ["verify agreement", "check seal"],
+    "any": ["agreements__agreement_verify"]
+  },
+  {
+    "id": "C150",
+    "set": "seed",
+    "lang": "fr",
+    "say": "montre le modèle de NDA",
+    "typed": ["voir le modèle", "modèle de contrat NDA"],
+    "any": ["agreements__template_get", "agreements__templates_list"]
+  },
+  {
+    "id": "C151",
+    "set": "seed",
+    "lang": "en",
+    "say": "save this as a new version of the proposal template",
+    "typed": ["store template version", "template new version"],
+    "any": ["agreements__template_save"]
+  },
+  {
+    "id": "C152",
+    "set": "seed",
+    "lang": "fr",
+    "say": "retire la demande d'acceptation envoyée au client",
+    "typed": ["retirer la demande", "withdraw client request"],
+    "any": ["kernel__client_action_revoke"]
+  },
+  {
+    "id": "C153",
+    "set": "seed",
+    "lang": "en",
+    "say": "which requests are still waiting for the client",
+    "typed": ["waiting requests", "open client requests"],
+    "any": ["kernel__client_actions_list"]
+  },
+  {
+    "id": "C154",
+    "set": "seed",
+    "lang": "fr",
+    "say": "enlève Paul du portail client",
+    "typed": ["enlever du portail", "supprimer accès portail"],
+    "any": ["kernel__portal_remove_person"]
+  },
+  {
+    "id": "C155",
+    "set": "seed",
+    "lang": "en",
+    "say": "who signed in to the client portal this month",
+    "typed": ["portal sign-ins", "portal access"],
+    "any": ["kernel__portal_access_log"]
+  },
+  {
+    "id": "C156",
+    "set": "seed",
+    "lang": "fr",
+    "say": "quels comptes rendus clients sont partis ce mois-ci ?",
+    "typed": ["comptes rendus envoyés", "liste des comptes rendus"],
+    "any": ["projects__client_reports_list"]
+  },
+  {
+    "id": "C157",
+    "set": "seed",
+    "lang": "fr",
+    "say": "envoie le compte rendu au client",
+    "typed": ["envoi compte rendu client", "compte rendu à envoyer"],
+    "any": ["projects__client_report_send"]
+  },
+  {
+    "id": "C158",
+    "set": "seed",
+    "lang": "en",
+    "say": "the client accepted quote Q-0007 by phone, record it",
+    "typed": ["quote won by phone", "mark quote outcome"],
+    "any": ["invoicing__quote_set_outcome"]
   }
 ]

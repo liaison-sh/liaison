@@ -85,7 +85,8 @@
         "aclUserIds",
         "aclRoleIds",
         "orgWide",
-        "requiredScopes"
+        "requiredScopes",
+        "authorReads"
       ],
       "fields": {
         "title": "string",

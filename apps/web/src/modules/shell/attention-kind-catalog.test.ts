@@ -79,10 +79,22 @@ function providerKinds(): string[] {
     const src = readFileSync(path, "utf8")
     for (const m of src.matchAll(/\bkind:\s*"([a-z][a-z_]+)"/g)) found.add(m[1] as string)
   }
-  for (const spec of ["field", "participants", "mentions", "scope_holders", "actor"]) {
-    found.delete(spec)
-  }
+  for (const spec of recipientSpecKinds()) found.delete(spec)
   return [...found]
+}
+
+/** The recipient spec kinds (`RecipientSpec` in the attention recipients module): who
+ *  hears a row, never a kind of row. Read from the type itself, so a new recipient kind
+ *  is not mistaken for a feed kind. */
+function recipientSpecKinds(): string[] {
+  const src = readIfPresent(join(REPO, "apps/api/src/modules/attention/recipients.ts"))
+  const start = src.indexOf("export type NamedRecipientSpec")
+  const end = src.indexOf("export interface RecipientContext")
+  const kinds = [...src.slice(start, end).matchAll(/\bkind:\s*"([a-z_]+)"/g)].map(
+    (m) => m[1] as string,
+  )
+  expect(kinds).toEqual(expect.arrayContaining(["field", "participants", "scope_holders"]))
+  return kinds
 }
 
 /** Kinds the standard (QA) world seeds into the feed. A seeded org reads the same Home.

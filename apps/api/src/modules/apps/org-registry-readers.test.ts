@@ -150,6 +150,8 @@ const READERS: Record<string, string> = {
     "client action tools: registered with the kernel tools at the org's setup (awaitOrgApps)",
   "modules/portal/tools.ts":
     "client portal tools: registered with the kernel tools at the org's setup (awaitOrgApps)",
+  "modules/client-actions/signed-copy.ts":
+    "call as the sender: reached only from an app's bridge call (its tool or decided-target handler), whose run set the org up first",
 }
 
 function sourceFiles(dir: string): string[] {

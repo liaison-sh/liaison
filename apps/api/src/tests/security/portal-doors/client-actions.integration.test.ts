@@ -606,15 +606,21 @@ describe("portal doors: the client action page", () => {
     // An app's tool on this list is only the `viewTool` its manifest names for a
     // client action target: the kernel's page loads with it what the person
     // outside is shown. It is read only and hidden from agents, and decides nothing.
-    const bundled = join(import.meta.dir, "../../../../../../bundled-apps")
+    // Both the bundled apps and the in-tree ones (projects' milestone target).
+    const appDirs = [
+      join(import.meta.dir, "../../../../../../bundled-apps"),
+      join(import.meta.dir, "../../../apps"),
+    ]
     const viewTools = new Set<string>()
-    for (const appName of readdirSync(bundled)) {
+    for (const [dir, appName] of appDirs.flatMap((d) =>
+      readdirSync(d).map((a) => [d, a] as const),
+    )) {
       let manifest: {
         clientActionTargets?: Array<{ viewTool?: string }>
         tools?: Record<string, { readOnly?: boolean; agentVisible?: boolean }>
       }
       try {
-        manifest = JSON.parse(readFileSync(join(bundled, appName, "app.manifest.json"), "utf8"))
+        manifest = JSON.parse(readFileSync(join(dir, appName, "app.manifest.json"), "utf8"))
       } catch {
         continue
       }

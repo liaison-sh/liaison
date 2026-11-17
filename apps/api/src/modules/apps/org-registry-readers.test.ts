@@ -148,6 +148,8 @@ const READERS: Record<string, string> = {
     "away days: reached from set_away (tool call) and the preferences and Home routes (request)",
   "modules/client-actions/tools.ts":
     "client action tools: registered with the kernel tools at the org's setup (awaitOrgApps)",
+  "modules/portal/tools.ts":
+    "client portal tools: registered with the kernel tools at the org's setup (awaitOrgApps)",
 }
 
 function sourceFiles(dir: string): string[] {

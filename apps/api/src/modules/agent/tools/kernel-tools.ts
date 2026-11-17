@@ -264,7 +264,6 @@ import {
 } from "~/modules/apps/registries"
 import { registerReportBugTool } from "~/modules/bug-reports/tool"
 import { registerClientActionTools } from "~/modules/client-actions/tools"
-import { registerPortalTools } from "~/modules/portal/tools"
 import { registerDashboardTools } from "~/modules/dashboards/tools"
 import { registerDataStoreTools } from "~/modules/data-store/tools"
 import {
@@ -320,6 +319,7 @@ import {
   RUN_ON_MY_COMPUTER_DESCRIPTION,
   summarizeRunOnMyComputer,
 } from "~/modules/nodes/run-on-my-computer"
+import { registerPortalTools } from "~/modules/portal/tools"
 import { agentCreateOpensNewConversation } from "~/modules/threads/thread"
 import { handleSetAwayTool, setAwayRefusal } from "~/modules/users/away"
 import {

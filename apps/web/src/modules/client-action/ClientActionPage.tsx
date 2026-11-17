@@ -96,7 +96,17 @@ function isOpenBody(b: Record<string, unknown> | null): b is Record<string, unkn
   return !!b && b.state === "open" && typeof b.title === "string" && typeof b.kind === "string"
 }
 
-const ClientActionPage: Component = () => {
+/**
+ * Opened at `/a`, the page reads its token from the fragment. A staff signer's own
+ * sign tab in the member app passes the token it just made (`my-link`) and the
+ * member's session, which verify and decide require for a staff signer.
+ */
+export interface ClientActionPageProps {
+  token?: string
+  memberBearer?: () => string | null
+}
+
+const ClientActionPage: Component<ClientActionPageProps> = (props) => {
   const i18n = useI18n()
   const [s, set] = createStore<PageState>({
     phase: "loading",
@@ -199,9 +209,10 @@ const ClientActionPage: Component = () => {
   }
 
   onMount(() => {
-    setToken(takeLinkToken())
+    setToken(props.token ?? takeLinkToken())
     void load()
   })
+  const bearer = () => props.memberBearer?.() ?? null
 
   // Only a person's gesture marks the link opened: a scanner that renders the page
   // and never touches it changes nothing.
@@ -268,13 +279,17 @@ const ClientActionPage: Component = () => {
     const t = token()
     if (!t || s.busy) return
     set({ busy: true, note: null })
-    const a = await postPublic("verify", {
-      t,
-      code: s.code.replace(/\D/g, ""),
-      name: s.name.trim(),
-      ...(kind() === "sign" && s.capacity.trim() ? { capacity: s.capacity.trim() } : {}),
-      lang: i18n.locale(),
-    })
+    const a = await postPublic(
+      "verify",
+      {
+        t,
+        code: s.code.replace(/\D/g, ""),
+        name: s.name.trim(),
+        ...(kind() === "sign" && s.capacity.trim() ? { capacity: s.capacity.trim() } : {}),
+        lang: i18n.locale(),
+      },
+      bearer(),
+    )
     set("busy", false)
     if (a.status === 200 && typeof a.body?.proof === "string") {
       set({
@@ -310,13 +325,17 @@ const ClientActionPage: Component = () => {
     const t = token()
     if (!t || s.busy || !canConfirm()) return
     set({ busy: true, note: null })
-    const a = await postPublic("decide", {
-      t,
-      proof: s.proof,
-      decision: kind(),
-      typed_name: s.typedName.trim(),
-      ...(s.open?.phrase ? { typed_phrase: s.typedPhrase.trim() } : {}),
-    })
+    const a = await postPublic(
+      "decide",
+      {
+        t,
+        proof: s.proof,
+        decision: kind(),
+        typed_name: s.typedName.trim(),
+        ...(s.open?.phrase ? { typed_phrase: s.typedPhrase.trim() } : {}),
+      },
+      bearer(),
+    )
     set("busy", false)
     if (a.status === 200) {
       set({ step: "done", copyTo: typeof a.body?.copy_to === "string" ? a.body.copy_to : null })
@@ -354,11 +373,11 @@ const ClientActionPage: Component = () => {
     if (!t || s.busy) return
     set({ busy: true, note: null })
     const reason = s.reason.trim()
-    const a = await postPublic("decide", {
-      t,
-      decision: "decline",
-      ...(reason ? { reason } : {}),
-    })
+    const a = await postPublic(
+      "decide",
+      { t, decision: "decline", ...(reason ? { reason } : {}) },
+      bearer(),
+    )
     set("busy", false)
     if (a.status === 200) {
       set("step", "declined")

@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   LayoutGrid,
   MessageSquare,
+  PenLine,
   Search,
   Settings,
   Table2,
@@ -584,6 +585,17 @@ export function bootstrapKernelApps(): void {
         defaultLabel: "Table",
         defaultLabelKey: "kernel.nav.dashboardTable",
         resolveLabel: (entityId) => tableTitle(entityId),
+        referenceable: false,
+      },
+      // A staff signer's own Read and sign (Home, kind client_action): the link is made in
+      // this session and the document is read and signed here (modules/staff-sign).
+      client_action: {
+        component: lazy(() => import("~/modules/staff-sign/StaffSignTab")),
+        sidebar: HomeAttentionSidebar,
+        icon: PenLine,
+        urlPattern: "/sign/:entityId",
+        defaultLabel: "Read and sign",
+        defaultLabelKey: "kernel.nav.readAndSign",
         referenceable: false,
       },
       // P4: one app draft in the builder (`/apps/builder/:id`), named by its title.

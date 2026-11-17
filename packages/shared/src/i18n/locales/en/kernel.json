@@ -2169,7 +2169,8 @@
     "dashboards": "Dashboards",
     "hideFromSidebar": "Hide from sidebar",
     "railEntryMenu": "{{app}} options",
-    "dashboardTable": "Table"
+    "dashboardTable": "Table",
+    "readAndSign": "Read and sign"
   },
   "newConversation": {
     "newChannel": "New channel",
@@ -7457,5 +7458,10 @@
     "contents": "Contents",
     "copy": "Copy",
     "copied": "Copied"
+  },
+  "staffSign": {
+    "not_your_turn": "This document waits for the signer before you. You can sign it after them.",
+    "session_restricted": "Sign in on this device to sign.",
+    "gone": "There is nothing for you to sign here: the request is not yours, or it is no longer open."
   }
 }

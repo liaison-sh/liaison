@@ -2,7 +2,9 @@
 //
 // The token page's only way to the server: POSTs to this origin's public client
 // action routes, the token in the JSON body (never a path, a query or a header),
-// no cookie, no member session. A network failure reads as the `down` frame.
+// no cookie. No member session either, except a staff signer's, which the member
+// app's own sign tab passes for verify and decide. A network failure reads as the
+// `down` frame.
 
 import { apiBase } from "~/lib/env"
 
@@ -21,10 +23,14 @@ function url(route: PublicRoute): string {
   return `${apiBase()}/public/client-actions/${route}`
 }
 
-function init(body: Record<string, unknown>): RequestInit {
+function init(body: Record<string, unknown>, bearer?: string | null): RequestInit {
   return {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      // A staff signer's own session, which their verify and decide require.
+      ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+    },
     body: JSON.stringify(body),
     credentials: "omit",
     cache: "no-store",
@@ -35,10 +41,11 @@ function init(body: Record<string, unknown>): RequestInit {
 export async function postPublic(
   route: PublicRoute,
   body: Record<string, unknown>,
+  bearer?: string | null,
 ): Promise<PublicAnswer> {
   let res: Response
   try {
-    res = await fetch(url(route), init(body))
+    res = await fetch(url(route), init(body, bearer))
   } catch {
     return UNREACHABLE
   }

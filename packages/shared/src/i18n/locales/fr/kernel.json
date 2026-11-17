@@ -2166,7 +2166,8 @@
     "dashboards": "Tableaux de bord",
     "hideFromSidebar": "Masquer de la barre latérale",
     "railEntryMenu": "Options de {{app}}",
-    "dashboardTable": "Table"
+    "dashboardTable": "Table",
+    "readAndSign": "Lire et signer"
   },
   "newConversation": {
     "newChannel": "Nouveau canal",
@@ -7454,5 +7455,10 @@
     "contents": "Sommaire",
     "copy": "Copier",
     "copied": "Copié"
+  },
+  "staffSign": {
+    "not_your_turn": "Ce document attend le signataire qui vous précède. Vous pourrez signer après lui.",
+    "session_restricted": "Connectez-vous sur cet appareil pour signer.",
+    "gone": "Il n'y a rien à signer pour vous ici : la demande ne vous est pas adressée, ou elle n'est plus ouverte."
   }
 }

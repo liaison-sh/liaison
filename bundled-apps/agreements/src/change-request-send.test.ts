@@ -186,6 +186,56 @@ describe("change_request_send", () => {
     expect(replyWithLinkNote("Bonjour", "fr")).toContain("e-mail séparé")
   })
 
+  it("the reply states the card's own hours, rate and price: hours edited on the card reach the mail", async () => {
+    const { db, parentId, versionId } = await world()
+    const staged = params(parentId, versionId)
+    const parked = ctxFor(db, { agent: true })
+    await changeRequestSend(parked, staged)
+    const lines = parked.calls.approvals[0]?.summary_detail?.lines ?? []
+    const shown = lines.find((l) => l.startsWith("Reply to ")) ?? ""
+    expect(shown).toContain("60 h at 100.00 EUR per hour, 6,000.00 EUR in total")
+
+    // A person changes the hours to 12 on the card: the rebuilt card and the mail both say 12 h.
+    const pre = (await changeRequestSendPreflight(ctxFor(db), staged)) as {
+      pinnedParams: Record<string, unknown>
+    }
+    const edited = { ...staged, ...pre.pinnedParams, hours_minutes: 720 }
+    const card = await summarizeChangeRequestSend(edited)
+    expect(card.lines[0]).toContain("12 h at 100.00 EUR per hour, 1,200.00 EUR in total")
+    expect(card.lines[0]).not.toContain("60 h")
+    const approved = ctxFor(db, { approved: true })
+    await changeRequestSend(approved, edited)
+    const sent = String(approved.calls.replies[0]?.textBody ?? "")
+    expect(sent).toContain("12 h at 100.00 EUR per hour, 1,200.00 EUR in total")
+    expect(sent).not.toContain("6,000.00")
+    expect(changeRequests(db)[0]?.price_minor).toBe("120000")
+  })
+
+  it("a reply that states hours or an amount of its own is refused before any card, and at the approved call", async () => {
+    const { db, parentId, versionId } = await world()
+    for (const body of [
+      "Here is a change request: 60 h at 100.00 EUR, 6,000.00 EUR.",
+      "Voici l'avenant : 60 heures, soit 6 000 €.",
+      "That comes to $6,000.",
+    ]) {
+      const p = params(parentId, versionId, { reply: { conversation_id: CONVERSATION, body } })
+      const pre = (await changeRequestSendPreflight(ctxFor(db), p)) as {
+        error?: { code: string; message: string }
+      }
+      expect(pre.error?.code).toBe("REPLY_STATES_FIGURES")
+      expect(pre.error?.message).toContain("Nothing was sent")
+      const parked = ctxFor(db, { agent: true })
+      await changeRequestSend(parked, p)
+      expect(parked.calls.approvals).toEqual([])
+      const approved = ctxFor(db, { approved: true })
+      const out = (await changeRequestSend(approved, p)) as { error?: { code: string } }
+      expect(out.error?.code).toBe("REPLY_STATES_FIGURES")
+      expect(approved.calls.mints).toEqual([])
+      expect(approved.calls.replies).toEqual([])
+    }
+    expect(changeRequests(db)).toEqual([])
+  })
+
   it("the parked card reads money in the agreement's currency, with the price, never minor units", async () => {
     const { db, parentId, versionId } = await world()
     const pre = (await changeRequestSendPreflight(ctxFor(db), params(parentId, versionId))) as {

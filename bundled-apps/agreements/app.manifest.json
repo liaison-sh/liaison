@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1771,7 +1771,8 @@
               },
               "body": {
                 "type": "string",
-                "maxLength": 8000
+                "maxLength": 8000,
+                "description": "No hours or amounts: the reply that goes out adds them from this card."
               }
             },
             "required": [

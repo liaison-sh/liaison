@@ -97,6 +97,44 @@ function hoursText(minutes: number): string {
   return m === 0 ? `${h} h` : `${h} h ${m} min`
 }
 
+/**
+ * The reply's figures, written by the server from the card's own hours and rate: the text the
+ * client reads states exactly what the card holds, before an edit of the card and after it.
+ */
+export function replyFiguresLine(
+  minutes: number,
+  rate: bigint,
+  currency: string | null | undefined,
+  language: string | null | undefined,
+): string {
+  const price = (rate * BigInt(minutes) + 30n) / 60n
+  const r = moneyText(rate, currency)
+  const total = moneyText(price, currency)
+  return language?.startsWith("fr")
+    ? `La demande de modification : ${hoursText(minutes)} à ${r} de l'heure, soit ${total} au total.`
+    : `The change request: ${hoursText(minutes)} at ${r} per hour, ${total} in total.`
+}
+
+/** The reply as it goes out and as the card shows it: the body, the card's figures, the link note. */
+export function replyAsSent(
+  body: string,
+  figures: { minutes: number; rate: bigint; currency: string | null | undefined },
+  language: string | null | undefined,
+): string {
+  const line = replyFiguresLine(figures.minutes, figures.rate, figures.currency, language)
+  return replyWithLinkNote(`${body.trimEnd()}\n\n${line}`, language)
+}
+
+// A figure the body states by itself (an amount, or a count of hours) would not follow an edit
+// of the card's hours or rate: the body leaves them to the server's line.
+const BODY_AMOUNT =
+  /(?:[€$£]\s?\d)|(?:\b(?:EUR|USD|GBP|CHF)\s?\d)|(?:\d[\d\s.,'\u00a0\u202f]*\s?(?:[€$£]|(?:EUR|USD|GBP|CHF|euros?|dollars?)\b))/i
+const BODY_HOURS = /\b\d+(?:[.,]\d+)?\s?(?:h|hrs?|hours?|heures?)\b/i
+
+export function replyStatesFigures(body: string): boolean {
+  return BODY_AMOUNT.test(body) || BODY_HOURS.test(body)
+}
+
 /** Every refusal the send has, before the card and again when it is approved. */
 async function readyToSend(
   ctx: AgreementsCtx,
@@ -150,6 +188,11 @@ async function readyToSend(
     return refusal(
       "REPLY_REQUIRED",
       "reply is the answer to the client's mail: its conversation_id and body. Nothing was sent.",
+    )
+  if (replyStatesFigures(p.reply.body))
+    return refusal(
+      "REPLY_STATES_FIGURES",
+      "reply.body states hours or an amount itself. The reply that goes out adds the change request's hours, rate and price from the card, so they always match what is approved: write reply.body without them. Nothing was sent.",
     )
   if (typeof p.mail_message_id !== "string" || p.mail_message_id.trim() === "")
     return refusal("MAIL_REQUIRED", "mail_message_id is the client's mail. Nothing was sent.")
@@ -221,7 +264,7 @@ function guardOf(ready: Ready, p: ChangeRequestSendParams): Record<string, unkno
 function cardLines(ready: Ready, p: ChangeRequestSendParams): string[] {
   const cur = ready.parent.currency ?? null
   return [
-    `Reply to ${ready.client.name} <${ready.client.email}>:\n${replyWithLinkNote(p.reply.body, ready.parent.language)}`,
+    `Reply to ${ready.client.name} <${ready.client.email}>:\n${replyAsSent(p.reply.body, { minutes: p.hours_minutes, rate: ready.rate, currency: cur }, ready.parent.language)}`,
     `Change request on ${ready.parent.number} "${ready.parent.title}": ${p.title.trim()}`,
     ...p.work.map((w) => `Work: ${w}`),
     `Hours: ${hoursText(p.hours_minutes)} (from ${p.hours_source.trim()})`,
@@ -460,7 +503,11 @@ export async function changeRequestSend(ctx: AgreementsCtx, p: ChangeRequestSend
   // 3. The reply, from the person's mailbox, under the same check.
   const reply = await ctx.executeTool("mail:reply", {
     conversationId: p.reply.conversation_id,
-    textBody: replyWithLinkNote(p.reply.body, ready.parent.language),
+    textBody: replyAsSent(
+      p.reply.body,
+      { minutes: p.hours_minutes, rate: ready.rate, currency: ready.parent.currency },
+      ready.parent.language,
+    ),
     ...(p.sendGuard ? { sendGuard: p.sendGuard } : {}),
   })
   if (reply?.status !== "completed") {

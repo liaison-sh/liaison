@@ -537,8 +537,7 @@ export function studioAgreements(anchor: Date): StudioAgreementsPlan {
       mailBody: "Hello, can you also add single sign-on for our partners? Thanks, Pauline",
       replyBody:
         "Hello Pauline, single sign-on is outside the signed scope (section 3). Here is a change " +
-        "request: 60 h at 110.00 EUR, 6,600.00 EUR excluding VAT. Approve it on the link and we " +
-        "start. Best regards",
+        "request for it, excluding VAT. Approve it on the link and we start. Best regards",
       mailAt: ago(0, 0.2),
       stagedAt: ago(0, 0.15),
     },

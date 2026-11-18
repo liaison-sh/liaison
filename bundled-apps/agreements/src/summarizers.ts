@@ -11,7 +11,7 @@ interface Card {
   lines: string[]
 }
 
-import { moneyText, replyWithLinkNote } from "./change-request-send"
+import { moneyText, replyAsSent, replyWithLinkNote } from "./change-request-send"
 
 const clip = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const done = (c: Card): Promise<Card> =>
@@ -70,6 +70,21 @@ function moneyLines(rate: unknown, minutes: number, currency: unknown): string[]
   return lines
 }
 
+/** The reply as the approved call sends it, from the payload's own hours and rate. */
+function replyShown(body: string, params: Record<string, unknown>, minutes: number): string {
+  const rate = params.rate_minor
+  const minor =
+    typeof rate === "string" && /^\d{1,15}$/.test(rate)
+      ? BigInt(rate)
+      : typeof rate === "number" && Number.isSafeInteger(rate) && rate >= 0
+        ? BigInt(rate)
+        : null
+  if (minor === null || !Number.isSafeInteger(minutes) || minutes <= 0)
+    return replyWithLinkNote(body, null)
+  const currency = typeof params.currency === "string" && params.currency ? params.currency : null
+  return replyAsSent(body, { minutes, rate: minor, currency }, null)
+}
+
 export function summarizeChangeRequestSend(params: Record<string, unknown>): Promise<Card> {
   const reply = (params.reply ?? {}) as { body?: unknown }
   const work = Array.isArray(params.work) ? params.work.map(String) : []
@@ -90,7 +105,7 @@ export function summarizeChangeRequestSend(params: Record<string, unknown>): Pro
   // The reply is read whole before it goes out: it is not cut like the other lines.
   return done(card).then((c) => ({
     ...c,
-    lines: [`Reply:\n${replyWithLinkNote(String(reply.body ?? ""), null)}`, ...c.lines].slice(
+    lines: [`Reply:\n${replyShown(String(reply.body ?? ""), params, minutes)}`, ...c.lines].slice(
       0,
       16,
     ),

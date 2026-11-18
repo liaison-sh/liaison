@@ -15,36 +15,28 @@ import { computeApprovalAttentionItems } from "~/modules/approvals/attention"
 import { decideApproval } from "~/modules/approvals/decide"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
+import * as minimal from "~/seed/tiers/minimal"
+import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
-const ORG = "00000000-0000-4000-8000-0000000b7001"
-const USER = "00000000-0000-4000-8000-0000000b7002"
-const THREAD = "00000000-0000-4000-8000-0000000b7003"
-const actor: ActorContext & UserContext = {
-  actorType: "user",
-  userId: USER,
-  orgId: ORG,
-  scopes: ["bulk_test:write", "bulk_test:approve"],
-  dimensionGrants: {},
-}
+let ORG = ""
+let USER = ""
+let THREAD = ""
+let actor: ActorContext & UserContext
 
 const ran: string[] = []
 
 beforeAll(async () => {
   await acquireTestLock()
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG}, 'Turn Bundle Org', 'turn-bundle-org') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, status, password_hash)
-    VALUES (${USER}, ${ORG}, 'turn-bundle@test.com', 'Decider', 'active', 'hash') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
-    VALUES (${THREAD}, ${ORG}, 'turn-bundle-thread', 'agent_chat', ${USER}) ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id, role)
-    VALUES (${THREAD}, ${USER}, ${ORG}, 'admin') ON CONFLICT DO NOTHING`
-  await sql`INSERT INTO kernel.user_thread_state (user_id, thread_id, org_id)
-    VALUES (${USER}, ${THREAD}, ${ORG}) ON CONFLICT DO NOTHING`
-  for (const scope of ["bulk_test:write", "bulk_test:approve"]) {
-    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-      VALUES (${USER}, ${ORG}, ${scope}) ON CONFLICT DO NOTHING`
+  ORG = (await createTestOrg()).id
+  USER = (await minimal.orgAdmin(ORG)).id
+  THREAD = await minimal.thread(ORG, USER)
+  actor = {
+    actorType: "user",
+    userId: USER,
+    orgId: ORG,
+    scopes: ["bulk_test:write", "bulk_test:approve"],
+    dimensionGrants: {},
   }
   for (const name of ["update", "archive"]) {
     toolRegistry.set([ORG, "bulk_test", name], {
@@ -66,7 +58,6 @@ afterEach(async () => {
   await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${ORG}`
 })
 afterAll(async () => {
-  await sql`DELETE FROM kernel.user_scope_grants WHERE org_id = ${ORG}`
   toolRegistry.deleteByPrefix([ORG])
   await releaseTestLock()
 })

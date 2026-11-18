@@ -2203,6 +2203,24 @@ export interface TurnToolBundle {
   lastId: string
 }
 
+/**
+ * The key a call joins its turn's request under: the tool alone for an untainted call; for a
+ * tainted one, the tool plus the audience its approval parks for (the taint it demands, its
+ * deciding scope, whether approving discloses to the target's readers). Only calls with the
+ * same audience share a request, so no step shows to, or is decided by, anyone its own call
+ * would not have reached.
+ */
+export function turnBundleKey(
+  toolName: string,
+  parkTaint: readonly string[] | null,
+  approveScope: string | null,
+  disclosedToReaders: boolean,
+): string {
+  if (parkTaint === null) return toolName
+  const demand = [...new Set(parkTaint)].sort()
+  return `${toolName}\u0000${JSON.stringify([demand, approveScope, disclosedToReaders])}`
+}
+
 /** The turn's same-tool bundles, created on the turn's first gated call. Null outside a turn. */
 export function turnToolBundlesOf(
   frame: RunContext | undefined,
@@ -2439,6 +2457,9 @@ export async function createSequencedApprovalStep(args: {
   proposingTurnScopes?: string[] | null
   /** FX18: the acting agent, forwarded by that same caller (A11). */
   actingAgentId?: string | null
+  /** A tainted turn's step whose approval discloses what the turn read to its target's
+   *  readers (rule 8), recorded like its head's so an edit of the step keeps saying so. */
+  taintDisclosedToReaders?: boolean
 }): Promise<string> {
   const id = crypto.randomUUID()
   // Invariant K, as in createApprovalRequest: a sequenced mail send from an
@@ -2631,12 +2652,18 @@ export async function createSequencedApprovalStep(args: {
           agentId: rowAgentId,
           // A routine run's step carries its routine and run like any of its
           // approvals (createApprovalRequest), so the run waits on it too.
-          ...(stepAskId || stepRoutine.originRoutineId || stepMustHold.length > 0
+          ...(stepAskId ||
+          stepRoutine.originRoutineId ||
+          stepMustHold.length > 0 ||
+          args.taintDisclosedToReaders === true
             ? {
                 metadata: {
                   ...(stepAskId ? { askId: stepAskId } : {}),
                   ...stepRoutine,
                   ...(stepMustHold.length > 0 ? { taintAudienceMustHold: stepMustHold } : {}),
+                  ...(args.taintDisclosedToReaders === true
+                    ? { taintDisclosedToReaders: true }
+                    : {}),
                 },
               }
             : {}),
@@ -6141,13 +6168,19 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           })
         // One agent turn staging the same tool again and again (one ask over ten projects) makes
         // ONE request: the first call is its head, each later one a step after it. A request
-        // with its own audience (a tainted turn, a personal resource, an N-eyes policy) or a
-        // step-scoped bundle stays on its own.
+        // with its own audience (a personal resource, an N-eyes policy, a post's disclosure
+        // snapshot) or a step-scoped bundle stays on its own.
+        // A tainted turn's calls join too, but only calls parked for the SAME audience: the same
+        // taint demand, deciding scope and disclosure. A step shows to its head's audience and
+        // demands what the head demands (rule 8f), so a call whose turn has read more since the
+        // head starts a request of its own instead of riding on a narrower head. Each step keeps
+        // its own payload and card line, and can be declined on its own.
         const turnBundles =
           opts.stepBundleId == null &&
-          parkTaint === null &&
           !resourceReadRoutesToRequester &&
           approvalTighten === undefined &&
+          taintPostSnapshot === undefined &&
+          taintPostExternalClientScopes === undefined &&
           opts.threadId
             ? turnToolBundlesOf(currentRunContext())
             : null
@@ -6155,7 +6188,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           const turnThreadId = opts.threadId
           const staged = await stageInTurnBundle(
             turnBundles,
-            opts.toolName,
+            turnBundleKey(opts.toolName, parkTaint, approveScope, taintDisclosedToReaders),
             standalone,
             async (tail) =>
               (await joinTurnBundleHead(opts.orgId, userId, tail, actingAgentId))
@@ -6173,6 +6206,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
                     bundle: { bundleId: tail.headId, dependsOnId: tail.lastId, position: -1 },
                     proposingTurnScopes: dispatchProposingTurnScopes,
                     actingAgentId,
+                    ...(taintDisclosedToReaders ? { taintDisclosedToReaders: true } : {}),
                   })
                 : null,
           )

@@ -1806,6 +1806,10 @@
       "one": "finished milestone not yet invoiced",
       "other": "finished milestones not yet invoiced"
     },
+    "renewal_not_rolled": {
+      "one": "signed renewal that kept its old terms",
+      "other": "signed renewals that kept their old terms"
+    },
     "advance_received": {
       "one": "payment received before its advance invoice",
       "other": "payments received before their advance invoice"

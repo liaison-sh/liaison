@@ -1803,6 +1803,10 @@
       "one": "jalon terminé pas encore facturé",
       "other": "jalons terminés pas encore facturés"
     },
+    "renewal_not_rolled": {
+      "one": "renouvellement signé resté aux anciennes conditions",
+      "other": "renouvellements signés restés aux anciennes conditions"
+    },
     "advance_received": {
       "one": "paiement reçu avant sa facture d'acompte",
       "other": "paiements reçus avant leur facture d'acompte"

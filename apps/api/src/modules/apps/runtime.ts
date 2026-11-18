@@ -121,6 +121,7 @@ import {
   mapFieldTypeToPgDataType,
   validateIdentifier,
 } from "~/modules/apps/ddl"
+import { APP_DDL_STAMP_PREFIX } from "~/modules/apps/ddl-stamp"
 import { hostApiIncompatibility } from "~/modules/apps/host-api"
 import { resolveOperatorOrgId } from "~/modules/apps/operator-org"
 import { isAppActiveForOrgAsync, noteAppRegistered } from "~/modules/apps/org-apps"
@@ -1740,8 +1741,6 @@ async function isAppSchemaDdlCurrent(
   if (rows[0]?.stamp !== stamp) return false
   return (await findDriftedSchemaObjects(desc, orgId, tx)).length === 0
 }
-
-const APP_DDL_STAMP_PREFIX = "liaison:app-ddl:v2:"
 
 let registrationCodeIdentity: string | undefined
 /**

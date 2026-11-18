@@ -25,6 +25,7 @@ import {
   supersedingApp,
 } from "~/modules/apps/catalog-derivations"
 import { registerRevokeOnDisconnectConsumer } from "~/modules/apps/connections/revoke"
+import { appSchemaApplied } from "~/modules/apps/ddl-stamp"
 import { registerDigestScheduledJobs } from "~/modules/attention/digest-jobs"
 import { registerStateMaterializerScheduledJob } from "~/modules/attention/state-materializer"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
@@ -51,6 +52,7 @@ import { registerMailProducerConsumer } from "~/modules/notifications/mail-produ
 import { wireAfterCommitResume } from "~/modules/org/transfer/after-commit"
 import { wireIncomingOrgPurge } from "~/modules/org/transfer/purge"
 import { registerOrgTransferResolver } from "~/modules/org/transfer-state/resolver"
+import type { EnsureResult, PortalViewTx } from "~/modules/portal/views"
 import {
   primeSearchSettings,
   registerReindexWorker,
@@ -512,28 +514,43 @@ export function registerApprovalSummaryBackfill(): void {
  * leaves both as they are.
  */
 /**
- * The portal views of every installed catalog app, checked once at boot: a view
- * whose definition, barrier, owner or grant was changed in the database is put back
- * as the code holds it, and a missing one is made. Never throws.
+ * The portal views of every installed app, checked once at boot: a view whose
+ * definition, barrier, owner or grant was changed in the database is put back as
+ * the code holds it, and a missing one is made. Never throws.
+ *
+ * Only on an app schema a registration has fully applied (its DDL stamp): a view
+ * reads columns the app's manifest adds, and a schema a numbered migration made
+ * (the tickets app's, on a fresh database) lacks them until the app's first
+ * registration, which makes the views itself once its columns exist.
  */
 export async function ensureInstalledAppPortalViews(): Promise<void> {
-  const { appsWithPortalViews, ensurePortalViews } = await import("~/modules/portal/views")
+  const { appsWithPortalViews } = await import("~/modules/portal/views")
   for (const app of appsWithPortalViews()) {
     try {
-      await withSystemDb(`portal-views:${app}`, async (tx) => {
-        const [row] = extractRowsOf<{ installed: boolean }>(
-          await tx.execute(
-            drizzleSql`SELECT to_regnamespace(${schemaRef(`app_${app}`)}) IS NOT NULL AS installed`,
-          ),
-        )
-        if (!row?.installed) return
-        const out = await ensurePortalViews(tx, app, "compare")
-        if (out.written.length > 0) log.info({ app, views: out.written }, "Portal views restored")
-      })
+      const out = await withSystemDb(`portal-views:${app}`, (tx) =>
+        ensureAppPortalViewsAtBoot(tx, app),
+      )
+      if (typeof out !== "string" && out.written.length > 0)
+        log.info({ app, views: out.written }, "Portal views restored")
     } catch (err) {
       log.error({ err, app }, "Portal views check at boot failed")
     }
   }
+}
+
+/** One app's boot check of its portal views, or why it waits for the app's registration. */
+export async function ensureAppPortalViewsAtBoot(
+  tx: PortalViewTx,
+  app: string,
+): Promise<EnsureResult | "not-installed" | "not-applied"> {
+  const { ensurePortalViews } = await import("~/modules/portal/views")
+  const schemaName = schemaRef(`app_${app}`)
+  const [row] = extractRowsOf<{ installed: boolean }>(
+    await tx.execute(drizzleSql`SELECT to_regnamespace(${schemaName}) IS NOT NULL AS installed`),
+  )
+  if (!row?.installed) return "not-installed"
+  if (!(await appSchemaApplied(tx, schemaName))) return "not-applied"
+  return ensurePortalViews(tx, app, "compare")
 }
 
 export async function runPhase10Boot(): Promise<void> {

@@ -165,7 +165,7 @@
   },
   "kernel.apps": {
     "rows": 20,
-    "digest": "68c0563131d00453"
+    "digest": "a51a9d105269f5a5"
   },
   "kernel.away_ranges": {
     "rows": 2,
@@ -208,8 +208,8 @@
     "digest": "8b59c9fe4bb9015b"
   },
   "kernel.pending_events": {
-    "rows": 514,
-    "digest": "21452d789580f36b"
+    "rows": 515,
+    "digest": "f0c1823e5659868c"
   },
   "kernel.roles": {
     "rows": 35,
@@ -257,6 +257,6 @@
   },
   "kernel.users": {
     "rows": 14,
-    "digest": "8b9523f97883eb9d"
+    "digest": "970b25d9b66a8e53"
   }
 }

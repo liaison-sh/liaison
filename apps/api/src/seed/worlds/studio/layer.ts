@@ -30,13 +30,21 @@ import { awaitTimeRowWrites } from "~/apps/projects/service/time-rows"
 import { updateProjectWithOutcome } from "~/apps/projects/service/update-project"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
-import { roles } from "~/db/schema/kernel"
+import { roles, routines } from "~/db/schema/kernel"
+import { messages } from "~/db/schema/kernel/threads"
 import { schemaRef } from "~/db/schema-ref"
+import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
+import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { listCatalogWithState } from "~/modules/apps/catalog"
+import { awaitOrgApps } from "~/modules/apps/init"
 import { addAddress } from "~/modules/contacts/addresses"
+import { SEEDED_METADATA } from "~/modules/notifications/seeded"
 import { assignRole } from "~/modules/permissions/roles"
+import { sendMessage } from "~/modules/threads/message"
+import { createThread } from "~/modules/threads/thread"
 import { setAway } from "~/modules/users/away"
 import { type SeedContext, seedContext } from "~/seed/context"
+import { scopeReader, seedRoutine } from "~/seed/factories/agent/routines"
 import { jsonCell, upsertAppRow } from "~/seed/factories/app-tables"
 import {
   type ComputedDocument,
@@ -53,9 +61,11 @@ import { seedPipeline } from "~/seed/factories/projects/deals"
 import { seedProject, type TaskSpec } from "~/seed/factories/projects/projects"
 import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
-import { STORY_TIME_ZONE } from "~/seed/worlds/story-clock"
+import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import type { DemoWorldLayerInput } from "../index"
+import { STUDIO_MORNING_BRIEF, STUDIO_ROUTINES } from "./agent-native"
 import { seedStudioAgreements } from "./agreements"
+import { studioMorningBrief } from "./brief"
 import {
   STUDIO_CLIENT_SIREN,
   STUDIO_CLIENTS,
@@ -126,6 +136,160 @@ function startOf(project: StudioProjectPlan, fallback: Date): Date {
   ]
   const first = dates.length > 0 ? Math.min(...dates) : fallback.getTime()
   return new Date(Math.min(first, fallback.getTime()) - 86_400_000)
+}
+
+/** The owner's personal agent: the one with no person key, else the person's own. */
+function personalAgentOf(org: SeedDemoOrgResult, userId: string) {
+  const personal = org.agents.filter((a) => a.kind === "personal")
+  if (org.ownerUserId === userId) {
+    const own = personal.find((a) => (a as { ownerKey?: string }).ownerKey === undefined)
+    if (own) return own
+  }
+  const person = org.people.find((p) => p.userId === userId)
+  return person ? personal.find((a) => a.agentId === person.personalAgentId) : undefined
+}
+
+/**
+ * The Morning brief as its routine last wrote it, so Home's brief card has the day's brief:
+ * the routine's output thread (made the way the routine worker makes it, the owner its admin)
+ * and the brief posted there by the owner's agent. A re-run that finds the brief adopts it.
+ */
+async function seedStudioMorningBriefText(
+  ctx: SeedContext,
+  routineId: string,
+  ownerUserId: string,
+  agent: { agentId: string; displayName: string },
+): Promise<void> {
+  const owner = await actorFor(ctx, ownerUserId)
+  const [routine] = await withPrivilegedDb(ctx.orgId, "studio-brief:routine", (tx) =>
+    tx
+      .select({ outputThreadId: routines.outputThreadId })
+      .from(routines)
+      .where(and(eq(routines.orgId, ctx.orgId), eq(routines.id, routineId))),
+  )
+  let threadId = routine?.outputThreadId ?? null
+  if (!threadId) {
+    threadId = await asUser(owner, async (tx) => {
+      const created = await createThread(
+        tx as never,
+        {
+          orgId: ctx.orgId,
+          userId: ownerUserId,
+          participantIds: [],
+          title: STUDIO_MORNING_BRIEF.name,
+          type: "routine",
+          forceCreate: true,
+        } as never,
+      )
+      return created.id as string
+    })
+    const outputThreadId = threadId
+    await withPrivilegedDb(ctx.orgId, "studio-brief:link", (tx) =>
+      tx
+        .update(routines)
+        .set({ outputThreadId, lastRunAt: storyClock(ctx.now).h(-1) })
+        .where(and(eq(routines.orgId, ctx.orgId), eq(routines.id, routineId))),
+    )
+  }
+  const briefThreadId = threadId
+  const [written] = await withPrivilegedDb(ctx.orgId, "studio-brief:count", (tx) =>
+    tx
+      .select({ id: messages.id })
+      .from(messages)
+      .where(
+        and(
+          eq(messages.orgId, ctx.orgId),
+          eq(messages.threadId, briefThreadId),
+          eq(messages.authorType, "agent"),
+        ),
+      )
+      .limit(1),
+  )
+  if (written) return
+  await asUser(owner, (tx) =>
+    sendMessage(
+      tx as never,
+      {
+        orgId: ctx.orgId,
+        userId: ownerUserId,
+        threadId: briefThreadId,
+        content: studioMorningBrief(ctx.now),
+        authorType: "agent",
+        agentId: agent.agentId,
+        agentAuthorLabel: agent.displayName,
+        requiredScopes: [],
+        metadata: { ...SEEDED_METADATA, seededAt: storyClock(ctx.now).h(-1).toISOString() },
+      } as never,
+    ),
+  )
+  ctx.log("routines: the morning brief written to its thread")
+}
+
+/**
+ * The studio's routines, on: the Morning brief from the kernel's template (and the brief it
+ * last wrote), and the apps' Scope check and Client reports through the product's own
+ * template writer, as the person each runs as, the way enabling a template from the routines
+ * page writes them. An app's routine exists only where its app is on. A re-run adopts them.
+ */
+async function seedStudioRoutines(
+  ctx: SeedContext,
+  org: SeedDemoOrgResult,
+  appOn: (app: string) => boolean,
+): Promise<void> {
+  await awaitOrgApps(ctx.orgId)
+  const scopesOf = scopeReader(ctx)
+  const ownerUserId = ownerIdOf(org)
+  const brief = routineTemplateRegistry.get([
+    ctx.orgId,
+    STUDIO_MORNING_BRIEF.template.appName,
+    STUDIO_MORNING_BRIEF.template.templateKey,
+  ])
+  if (!brief || STUDIO_MORNING_BRIEF.template.templateKey !== MORNING_BRIEF_TEMPLATE_KEY)
+    throw new Error("studio layer: the morning brief template is not registered for this org")
+  const agent = personalAgentOf(org, ownerUserId)
+  if (!agent) throw new Error("studio layer: the owner has no personal agent")
+  const briefId = await seedRoutine(ctx, {
+    createdByUserId: org.adminUserId,
+    ownerScopes: await scopesOf(ownerUserId),
+    enabled: true,
+    routine: {
+      name: STUDIO_MORNING_BRIEF.name,
+      description: brief.description,
+      kind: "recurring",
+      cron: STUDIO_MORNING_BRIEF.cron,
+      timezone: org.timezone,
+      ownerUserId,
+      ownerAgentId: agent.agentId,
+      scopes: [...brief.scopes],
+      prompt: brief.promptTemplate,
+      template: STUDIO_MORNING_BRIEF.template,
+      followUp: brief.followUp === true,
+    },
+  })
+  await seedStudioMorningBriefText(ctx, briefId, ownerUserId, agent)
+  let on = 1
+  const { handleEnableRoutineTemplate } = await import(
+    "~/modules/agent/tools/skills-routines-tools"
+  )
+  for (const spec of STUDIO_ROUTINES) {
+    if (!appOn(spec.template.appName)) {
+      ctx.log(
+        `routines: ${spec.template.templateKey} left out, the ${spec.template.appName} app is not on`,
+      )
+      continue
+    }
+    const userId = userIdOf(org, spec.ownerKey)
+    const out = (await handleEnableRoutineTemplate(
+      { appName: spec.template.appName, templateKey: spec.template.templateKey },
+      { orgId: ctx.orgId, userId, actorType: "user", scopes: await scopesOf(userId) } as never,
+    )) as { routine?: { id: string }; error?: { code: string; message?: string } }
+    if (!out.routine && out.error?.code !== "already_enabled")
+      throw new Error(
+        `studio layer: routine ${spec.template.appName}/${spec.template.templateKey} not enabled: ${out.error?.code} ${out.error?.message ?? ""}`,
+      )
+    on++
+  }
+  ctx.log(`routines: ${on} on`)
 }
 
 /** The app roles (lead, finance), given by the owner through the role writer. */
@@ -961,9 +1125,11 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   // The agreements layer needs the agreements app. The world brings it (its client work signs
   // agreements) through the app factory, when this instance's catalog holds it; without it the
   // world seeds no agreement.
+  // A plan naming it installed it with the org's apps: on only where that install took.
   const agreementsOn =
-    input.plan.apps.includes("agreements") ||
-    ((await listCatalogWithState()).some((c) => c.name === "agreements") &&
+    (org.appsByName.agreements?.enabled === true && org.appsByName.agreements.installed) ||
+    (!input.plan.apps.includes("agreements") &&
+      (await listCatalogWithState()).some((c) => c.name === "agreements") &&
       (await installApps(org.orgId, org.adminUserId, ["agreements"], log)).some(
         (a) => a.name === "agreements" && a.enabled && a.installed,
       ))
@@ -1002,6 +1168,11 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
       invoicing: input.plan.apps.includes("invoicing"),
     })
   }
+
+  // The routines, once the apps they come from are on.
+  await seedStudioRoutines(ctx, org, (app) =>
+    app === "agreements" ? agreementsOn : org.appsByName[app]?.enabled === true,
+  )
 
   // The product writes each task now, at the seed's run, and setting its timebox touches it
   // again; a task the plan closed weeks ago was last changed when it closed. Its row says so,

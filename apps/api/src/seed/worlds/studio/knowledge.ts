@@ -57,3 +57,34 @@ export const STUDIO_KNOWLEDGE_SPECS: DemoKnowledgeSpecs = {
     },
   ],
 }
+
+/**
+ * The studio's own handbook, beside the past projects: one note whose review date has passed,
+ * so Knowledge asks someone to check it again.
+ */
+export const STUDIO_HANDBOOK_SPECS: Pick<DemoKnowledgeSpecs, "collections" | "articles"> = {
+  collections: [
+    {
+      key: "handbook",
+      name: "Studio handbook",
+      description: "How the studio works with its clients: support hours, releases and access.",
+      owner: "lea",
+    },
+  ],
+  articles: [
+    {
+      key: "support-hours",
+      title: "Support hours and response times",
+      collection: "handbook",
+      owner: "noemie",
+      summary: "When clients can reach support, and how fast a first reply comes.",
+      tags: ["support", "clients"],
+      body:
+        "# Support hours and response times\n\nClients write to support on weekdays, 9:00 to " +
+        "18:00 in Lyon. A first reply comes within four working hours, and a blocked release " +
+        "goes to the project lead the same day.",
+      reviewDueInDays: -4,
+      verified: false,
+    },
+  ],
+}

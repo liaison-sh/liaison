@@ -271,7 +271,8 @@ export async function seedTickets(
       for (let i = 0; i < (spec.followups?.length ?? 0); i++) {
         const f = (spec.followups as TicketFollowup[])[i] as TicketFollowup
         const author = f.author ? input.people[f.author] : undefined
-        await insertTicketMessageHistory(
+        const sentAt = new Date(createdAt.getTime() + f.hoursAfter * HOUR_MS)
+        const added = await insertTicketMessageHistory(
           tx as never,
           orgId,
           ticketId,
@@ -283,10 +284,19 @@ export async function seedTickets(
             toEmails: f.kind === "outbound" ? [contact.email] : [],
             subject: f.kind === "note" ? null : `Re: ${spec.subject}`,
             textBody: f.body,
-            sentAt: new Date(createdAt.getTime() + f.hoursAfter * HOUR_MS),
+            sentAt,
             createdBy: author?.userId ?? input.adminUserId,
           },
         )
+        // A sent reply is the ticket's first response, as the reply service stamps it
+        // (`appendTicketMessages` does the same): an answered ticket is no SLA risk.
+        if (added && f.kind === "outbound") {
+          await tx.execute(
+            sql`UPDATE ${ticketsRel("tickets")}
+                SET first_response_at = coalesce(first_response_at, ${sentAt.toISOString()}::timestamptz)
+                WHERE id = ${ticketId}::uuid`,
+          )
+        }
       }
 
       // Snooze and reopen go through the real state machine so the followup

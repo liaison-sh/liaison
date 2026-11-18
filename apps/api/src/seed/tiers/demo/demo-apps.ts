@@ -31,20 +31,47 @@ export const DEMO_APPS = [
   "monitoring",
   "api-connector",
   "stripe",
+  "agreements",
+  "github",
 ] as const
 
 export type DemoApp = (typeof DEMO_APPS)[number]
 
 /**
  * The demo apps each world can show. `products` keeps the list it always had
- * (no payments app); `saas` sells subscriptions, so it has the payments app and
- * no shop, carrier, books, monitoring, social or connector. `studio` holds the
- * shared desk apps until its own pack brings the client-work apps.
+ * (no payments, agreements or code apps), written out so a new demo app never
+ * joins it by default; `saas` sells subscriptions, so it has the payments app
+ * and no shop, carrier, books, monitoring, social or connector; `studio` does
+ * client work, so it has agreements and the code host, and no payments app.
  */
 export const DEMO_WORLD_APPS: Readonly<Record<DemoWorldId, readonly DemoApp[]>> = {
-  products: DEMO_APPS.filter((app) => app !== "stripe"),
+  products: [
+    "tickets",
+    "mail",
+    "knowledge",
+    "projects",
+    "calendar",
+    "contacts",
+    "invoicing",
+    "social",
+    "pennylane",
+    "boxtal",
+    "shopify",
+    "monitoring",
+    "api-connector",
+  ],
   saas: ["tickets", "mail", "knowledge", "projects", "calendar", "contacts", "invoicing", "stripe"],
-  studio: ["tickets", "mail", "knowledge", "projects", "calendar", "contacts", "invoicing"],
+  studio: [
+    "tickets",
+    "mail",
+    "knowledge",
+    "projects",
+    "calendar",
+    "contacts",
+    "invoicing",
+    "agreements",
+    "github",
+  ],
 }
 
 /**

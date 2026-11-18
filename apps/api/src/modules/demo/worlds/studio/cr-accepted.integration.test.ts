@@ -17,6 +17,7 @@ import {
 } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
+import { tourProgress } from "~/db/schema/kernel"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { decideApproval } from "~/modules/approvals/decide"
@@ -136,13 +137,26 @@ beforeAll(async () => {
   )
 
   // Beat 5: the owner stands on the world beat and clicks twice at once.
+  const done = "done" as const
+  const progress = {
+    status: "active" as const,
+    beatId: WORLD_BEAT,
+    beatIndex: 4,
+    beatStates: {
+      "more-than-signed": done,
+      "read-scope": done,
+      "open-agreement": done,
+      "approve-cr": done,
+    },
+  }
   await withPrivilegedDb(orgId, "test-studio-cr-accepted-progress", (tx) =>
-    tx.execute(sql`
-      INSERT INTO kernel.tour_progress (org_id, user_id, tour_id, status, beat_id, beat_index, beat_states, source)
-      VALUES (${orgId}::uuid, ${ownerId}::uuid, ${TOUR_ID}, 'active', ${WORLD_BEAT}, 4,
-              '{"more-than-signed":"done","read-scope":"done","open-agreement":"done","approve-cr":"done"}'::jsonb, 'demo')
-      ON CONFLICT (org_id, user_id, tour_id) DO UPDATE
-        SET status = 'active', beat_id = ${WORLD_BEAT}, beat_index = 4`),
+    tx
+      .insert(tourProgress)
+      .values({ orgId, userId: ownerId, tourId: TOUR_ID, source: "demo", ...progress })
+      .onConflictDoUpdate({
+        target: [tourProgress.orgId, tourProgress.userId, tourProgress.tourId],
+        set: progress,
+      }),
   )
   outcomes = await Promise.all([
     runWorldBeatOnce(orgId, ownerId, TOUR_ID),

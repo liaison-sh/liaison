@@ -139,12 +139,12 @@ describe("one turn's calls of one gated tool", () => {
   it("two tools in one turn, or one tool in two turns, stay separate requests", async () => {
     const frame = turn()
     await runContextStore.run(frame, async () => {
-      await stage("update", "P1")
-      await stage("archive", "P2")
-      await stage("update", "P3")
+      await stage("update", "alpha")
+      await stage("archive", "bravo")
+      await stage("update", "charlie")
     })
     expect(await homeItems()).toHaveLength(2)
-    await runContextStore.run(turn(), () => stage("update", "P4"))
+    await runContextStore.run(turn(), () => stage("update", "delta"))
     expect(await homeItems()).toHaveLength(3)
   })
 
@@ -180,9 +180,9 @@ describe("one turn's calls of one gated tool", () => {
 
   it("a call after the request was decided starts a new one", async () => {
     const frame = turn()
-    const first = await runContextStore.run(frame, () => stage("update", "P1"))
+    const first = await runContextStore.run(frame, () => stage("update", "alpha"))
     await decideApproval({ orgId: ORG, requestId: first, actor, decision: "deny" })
-    const second = await runContextStore.run(frame, () => stage("update", "P2"))
+    const second = await runContextStore.run(frame, () => stage("update", "bravo"))
     expect(await statuses([second])).toEqual(["pending"])
     const items = await homeItems()
     expect(items.map((i) => i.entityId)).toEqual([second])

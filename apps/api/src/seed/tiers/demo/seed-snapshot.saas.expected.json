@@ -164,8 +164,8 @@
     "digest": "66cbcf6ee4ae6f3e"
   },
   "kernel.apps": {
-    "rows": 20,
-    "digest": "a51a9d105269f5a5"
+    "rows": 21,
+    "digest": "864aff6d35407e0d"
   },
   "kernel.away_ranges": {
     "rows": 2,
@@ -208,12 +208,12 @@
     "digest": "8b59c9fe4bb9015b"
   },
   "kernel.pending_events": {
-    "rows": 515,
-    "digest": "f0c1823e5659868c"
+    "rows": 519,
+    "digest": "32128b9cc95dcfa3"
   },
   "kernel.roles": {
-    "rows": 35,
-    "digest": "114b98ebb4706c7f"
+    "rows": 37,
+    "digest": "91f070ac1c48d2e6"
   },
   "kernel.routines": {
     "rows": 3,
@@ -257,6 +257,6 @@
   },
   "kernel.users": {
     "rows": 14,
-    "digest": "970b25d9b66a8e53"
+    "digest": "ccfab058787824c5"
   }
 }

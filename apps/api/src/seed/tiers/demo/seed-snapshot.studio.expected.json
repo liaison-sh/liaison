@@ -184,8 +184,8 @@
     "digest": "d4ec4c7341b6ce13"
   },
   "kernel.apps": {
-    "rows": 20,
-    "digest": "561412089d108119"
+    "rows": 21,
+    "digest": "5cb13856940228c0"
   },
   "kernel.away_ranges": {
     "rows": 1,
@@ -206,6 +206,10 @@
   "kernel.config_applied_fields": {
     "rows": 8,
     "digest": "c631fa31a5505dad"
+  },
+  "kernel.connected_accounts": {
+    "rows": 1,
+    "digest": "1bf469e435dad0d1"
   },
   "kernel.contact_addresses": {
     "rows": 6,
@@ -240,8 +244,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 441,
-    "digest": "4da596452f9ddaa4"
+    "rows": 444,
+    "digest": "332f166feb1b3ac4"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -252,8 +256,8 @@
     "digest": "efe4c66973749d38"
   },
   "kernel.roles": {
-    "rows": 35,
-    "digest": "114b98ebb4706c7f"
+    "rows": 37,
+    "digest": "91f070ac1c48d2e6"
   },
   "kernel.routines": {
     "rows": 3,

@@ -49,6 +49,8 @@ const CATALOG_DEMO_APPS = [
   "database",
   // The services world signs its client work: its layer seeds agreements when this is installed.
   "agreements",
+  // The services world reads its delivery traces: its layer installs the stand-in connection.
+  "github",
 ]
 /** The software world's file, beside the products world's (which keeps its old name). */
 const SAAS_EXPECTED_FILE = path.join(import.meta.dir, "seed-snapshot.saas.expected.json")

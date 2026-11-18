@@ -1783,6 +1783,8 @@ describe("invoicing manifest", () => {
     //   a card adds no second timesheet).
     // 0.35.2: projects and agreements are named as optional dependencies, so the milestone-done
     //   and agreement-signed subscriptions are registered (they were skipped without them).
+    // 0.36.0: an advance invoice's page shows its own number, the deduction its final carries,
+    //   the final that took it, and money received first gives the person two choices.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

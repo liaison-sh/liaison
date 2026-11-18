@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/demo/worlds/studio/github/connection.ts": "The services world's GitHub stand-in: the world's seed layer installs the org-owned connection row (sentinel token, the world's owner and the seed's anchor only, no caller input), and the stand-in reads that row's anchor back on the handle scoped to the org whose request it answers, to date the world's history from its story clock."
+  }
+}

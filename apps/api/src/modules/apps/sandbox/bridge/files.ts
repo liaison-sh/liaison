@@ -13,6 +13,7 @@ import {
 } from "~/modules/apps/sandbox/bridge/shared"
 import { maybeDemoBoxtalResponse } from "~/modules/demo/boxtal/responder"
 import { maybeDemoPaymentsResponse } from "~/modules/demo/worlds/saas/payments/provider"
+import { maybeDemoGithubResponse } from "~/modules/demo/worlds/studio/github/provider"
 
 /** Headers a sandbox may set on a `files_importFromUrl` download. */
 const IMPORT_HEADER_ALLOWLIST = new Set(["authorization", "accept"])
@@ -558,7 +559,9 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
           method: "GET",
           body: undefined,
           headers,
-        }))
+        })) ??
+        // The services world's GitHub stand-in token never leaves either, on any box.
+        (await maybeDemoGithubResponse({ orgId, url: p.url, method: "GET", headers }))
       const response =
         demoResponse ??
         (await fetchWithPinnedHost(

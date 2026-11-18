@@ -38,6 +38,7 @@ import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 import { listCatalogWithState } from "~/modules/apps/catalog"
 import { awaitOrgApps } from "~/modules/apps/init"
 import { addAddress } from "~/modules/contacts/addresses"
+import { installDemoGithubConnection } from "~/modules/demo/worlds/studio/github/connection"
 import { SEEDED_METADATA } from "~/modules/notifications/seeded"
 import { assignRole } from "~/modules/permissions/roles"
 import { sendMessage } from "~/modules/threads/message"
@@ -1202,6 +1203,16 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
       companyIds,
       projectIds: Object.fromEntries(Object.entries(tasksOf).map(([k, v]) => [k, v.projectId])),
       invoicing: input.plan.apps.includes("invoicing"),
+    })
+  }
+
+  // The code host: a stand-in connection, so the delivery traces read from the world's own
+  // history and nothing reaches GitHub. Only where the plan names the app and its install took.
+  if (input.plan.apps.includes("github") && org.appsByName.github?.installed === true) {
+    await installDemoGithubConnection({
+      orgId: ctx.orgId,
+      createdByUserId: org.adminUserId,
+      anchor: baseTime,
     })
   }
 

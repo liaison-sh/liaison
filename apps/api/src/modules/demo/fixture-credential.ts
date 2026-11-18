@@ -3,8 +3,9 @@
 // A seeded fixture connection never reaches a third party, whatever mode the
 // box runs in.
 //
-// The demo world installs Shopify, Boxtal and card-payments connections whose credentials are
-// sentinels (shopify/sentinel.ts, boxtal/sentinel.ts) and whose shop domain is
+// The demo worlds install Shopify, Boxtal, card-payments and GitHub connections whose
+// credentials are sentinels (shopify/sentinel.ts, boxtal/sentinel.ts,
+// worlds/saas/payments/sentinel.ts, worlds/studio/github/sentinel.ts) and whose shop domain is
 // fixed. On the demo instance the providers answer them from fixtures. A box
 // that is NOT in demo mode can still hold that world (`liaison seed --tier
 // lively` on a self-hosted install, a private walk box), and there the gate
@@ -18,11 +19,12 @@
 import { DEMO_BOXTAL_SENTINEL_KEY } from "./boxtal/sentinel"
 import { DEMO_SHOP_DOMAIN, DEMO_SHOPIFY_SENTINEL_TOKEN } from "./shopify/sentinel"
 import { DEMO_PAYMENTS_SENTINEL_KEY } from "./worlds/saas/payments/sentinel"
+import { DEMO_GITHUB_SENTINEL_TOKEN } from "./worlds/studio/github/sentinel"
 
 /** The prefix of every access token the Boxtal fixture responder issues. */
 export const DEMO_BOXTAL_TOKEN_PREFIX = "liaison-demo-boxtal-token-"
 
-export type FixtureProvider = "shopify" | "boxtal" | "stripe"
+export type FixtureProvider = "shopify" | "boxtal" | "stripe" | "github"
 
 function headerValues(headers: Record<string, string> | undefined): string[] {
   if (!headers) return []
@@ -57,6 +59,7 @@ export function fixtureConnectionOf(
   for (const value of headerValues(headers)) {
     if (value.includes(DEMO_SHOPIFY_SENTINEL_TOKEN)) return "shopify"
     if (value.includes(DEMO_PAYMENTS_SENTINEL_KEY)) return "stripe"
+    if (value.includes(DEMO_GITHUB_SENTINEL_TOKEN)) return "github"
     if (value.includes(DEMO_BOXTAL_SENTINEL_KEY) || value.includes(DEMO_BOXTAL_TOKEN_PREFIX)) {
       return "boxtal"
     }
@@ -78,6 +81,17 @@ export function fixtureRefusal(provider: FixtureProvider): Response {
           message:
             "This payments connection is a demo fixture: it holds no real key and is never sent to the card processor.",
         },
+      }),
+      { status: 403, headers: { "content-type": "application/json" } },
+    )
+  }
+  if (provider === "github") {
+    // In GitHub's own error shape (`message`), on GitHub's refusal status.
+    return new Response(
+      JSON.stringify({
+        message:
+          "This GitHub connection is a demo fixture: it holds no real token and is never sent to GitHub. Nothing was read.",
+        documentation_url: "https://github-standin.example/docs",
       }),
       { status: 403, headers: { "content-type": "application/json" } },
     )

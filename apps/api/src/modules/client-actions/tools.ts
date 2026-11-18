@@ -23,7 +23,7 @@ import {
 } from "~/modules/mail/send-guard"
 import { ClientActionError, type EXPIRY_DAYS, mintClientAction, revokeClientAction } from "./mint"
 import { clientActionState } from "./state"
-import { declaredTarget } from "./targets"
+import { declaredTarget, viewTarget } from "./targets"
 
 interface ToolCtx {
   userId: string
@@ -47,7 +47,13 @@ export const clientActionCreateParams = z.object({
   target_sha256: z
     .string()
     .regex(/^[0-9a-f]{64}$/)
-    .describe("The hash the target's own tool gave; refused when the document changed since."),
+    .optional()
+    .describe("Set by Liaison; never pass it."),
+  target_blocks_sha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .optional()
+    .describe("Set by Liaison; never pass it."),
   contact_id: z.string().uuid(),
   invited_email: z
     .string()
@@ -119,6 +125,24 @@ export async function clientActionCreatePreflight(
       },
     }
   }
+  // The version the card stands for: the target as it reads now, hashed by its app (or the
+  // kernel). The approved call mints only while the target still hashes to it.
+  const view = await viewTarget({
+    orgId: ctx.orgId,
+    targetApp: params.target_app,
+    targetType: params.target_type,
+    targetId: params.target_id,
+    actingUserId: ctx.userId,
+  })
+  if (view === "down") {
+    return {
+      error: {
+        code: "TARGET_UNAVAILABLE",
+        message: `${params.target_app}.${params.target_type} ${params.target_id} could not be read: nothing was staged. Next: check the id with that app's own read, then ask again.`,
+        status: 503,
+      },
+    }
+  }
   const sendGuard = {
     ...plainGuardSince([email], [params.contact_id], new Date()),
     classification: "service" as const,
@@ -128,6 +152,8 @@ export async function clientActionCreatePreflight(
     pinnedParams: {
       sendGuard,
       guardKey: clientActionGuardKey(params.target_id, params.contact_id, email),
+      target_sha256: view.sha256,
+      ...(view.blocksSha256 ? { target_blocks_sha256: view.blocksSha256 } : {}),
     },
   }
 }
@@ -140,10 +166,15 @@ export async function handleClientActionCreate(
   if (byApp) return byApp
   // An approved agent call carries the pinned check: the link goes only if the
   // address still takes mail and the call is the one the card showed.
-  if (params.sendGuard !== undefined || params.guardKey !== undefined) {
+  if (
+    params.sendGuard !== undefined ||
+    params.guardKey !== undefined ||
+    params.target_sha256 === undefined
+  ) {
     const email = await invitedAddress(params, ctx)
     if (
       !email ||
+      params.target_sha256 === undefined ||
       !isPinnedSendGuard(params.sendGuard) ||
       params.guardKey !== clientActionGuardKey(params.target_id, params.contact_id, email) ||
       !params.sendGuard.addresses.includes(email)
@@ -181,6 +212,7 @@ export async function handleClientActionCreate(
       targetType: params.target_type,
       targetId: params.target_id,
       targetSha256: params.target_sha256,
+      ...(params.target_blocks_sha256 ? { targetBlocksSha256: params.target_blocks_sha256 } : {}),
       contactId: params.contact_id,
       invitedEmail: params.invited_email ?? null,
       expiresInDays: params.expires_in_days as (typeof EXPIRY_DAYS)[number],
@@ -384,6 +416,11 @@ export async function summarizeClientActionCreate(
     lines: [
       `A link and, when they open it, an emailed code go to ${who}${to} only.`,
       `It works for ${p.expires_in_days ?? "?"} days. Nothing is signed or accepted until they do it themselves.`,
+      ...(p.target_sha256
+        ? [
+            `It is for the document as it read when this was asked (version ${p.target_sha256.slice(0, 12)}); if the document changes first, no link goes.`,
+          ]
+        : []),
       ...(p.message ? [`Message: ${p.message}`] : []),
     ],
   }
@@ -405,7 +442,7 @@ export function registerClientActionTools(orgId: string): void {
     name: "client_action_create",
     deferLoading: true,
     description:
-      "Send a person outside the organization a link to sign, accept or approve one document an app offers for it, with the target's own hash. A person approves the send first; the recipient then acts alone with an emailed code. Never signs anything.",
+      "Send a person outside the organization a link to sign, accept or approve one document an app offers for it. Liaison fixes the version the link is for when the request is staged. A person approves the send first; the recipient then acts alone with an emailed code. Never signs anything.",
     searchKeywords: [
       "signer",
       "faire signer",
@@ -424,7 +461,7 @@ export function registerClientActionTools(orgId: string): void {
     approvalImpact: "external",
     writesToTable: "kernel.client_actions",
     params: clientActionCreateParams,
-    pinnedParams: ["sendGuard", "guardKey"],
+    pinnedParams: ["sendGuard", "guardKey", "target_sha256", "target_blocks_sha256"],
     preflight: clientActionCreatePreflight as (p: unknown, c: any) => Promise<unknown>,
     handler: handleClientActionCreate as (p: unknown, c: any) => Promise<unknown>,
   })

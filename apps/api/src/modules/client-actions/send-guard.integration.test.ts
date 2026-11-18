@@ -6,6 +6,7 @@
 import { describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { withRlsContext } from "~/db/rls"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { isPinnedSendGuard } from "~/modules/mail/send-guard"
 import { adminContext } from "~/tests/security/portal-doors/fixture"
 import { baseView, k, useClientActionWorld } from "../../../test-support/client-actions-kit"
@@ -124,5 +125,88 @@ describe("the send check a client request carries", () => {
     } finally {
       ClientActionTargetsTestAccess.clear(kit.targetApp, "appsent")
     }
+  })
+})
+
+describe("the document version a client request is bound to", () => {
+  const staged = () => {
+    const { target_sha256: _given, ...rest } = params()
+    return rest
+  }
+
+  it("the preflight reads the target and pins its current hash when the caller gives none", async () => {
+    kit.view = { ...baseView(), sha256: "c".repeat(64), blocksSha256: "d".repeat(64) }
+    const out = (await asAdmin((ctx) => clientActionCreatePreflight(staged(), ctx))) as {
+      ok?: true
+      pinnedParams?: Record<string, unknown>
+    }
+    expect(out.ok).toBe(true)
+    expect(out.pinnedParams?.target_sha256).toBe("c".repeat(64))
+    expect(out.pinnedParams?.target_blocks_sha256).toBe("d".repeat(64))
+  })
+
+  it("a target that cannot be read is refused at the preflight and nothing is staged", async () => {
+    kit.viewAnswers = false
+    const out = (await asAdmin((ctx) => clientActionCreatePreflight(staged(), ctx))) as {
+      ok?: true
+      error?: { code: string; message: string }
+    }
+    expect(out.ok).toBeUndefined()
+    expect(out.error?.code).toBe("TARGET_UNAVAILABLE")
+    expect(out.error?.message).toContain("nothing was staged")
+  })
+
+  it("an agent's request with no hash parks with the version it read, and the approved call is held to it", async () => {
+    const actor = adminContext(kit.w)
+    const p = { ...staged(), kind: "accept" as const }
+    try {
+      const r = await executeTool({
+        toolName: "kernel:client_action_create",
+        orgId: kit.w.orgId,
+        actor,
+        params: p,
+        origin: "in-app-agent",
+      })
+      expect(r.blocked).toBeDefined()
+      const [row] = await sql<{ current_payload: Record<string, unknown> }[]>`
+        SELECT current_payload FROM kernel.approval_requests
+         WHERE org_id = ${kit.w.orgId} AND tool_name = 'kernel:client_action_create'
+           AND status = 'pending' AND current_payload->>'target_id' = ${p.target_id}`
+      const payload = row?.current_payload as Record<string, unknown>
+      expect(payload.target_sha256).toBe(baseView().sha256)
+
+      // The document moved after the card was staged: the approved call makes nothing.
+      kit.view = { ...baseView(), sha256: "e".repeat(64) }
+      const moved = (await asAdmin((ctx) =>
+        handleClientActionCreate(payload as Parameters<typeof handleClientActionCreate>[0], ctx),
+      )) as { error?: { code: string } }
+      expect(moved.error?.code).toBe("VERSION_CHANGED")
+      const none = await sql`SELECT id FROM ${k("client_actions")} WHERE target_id = ${p.target_id}`
+      expect(none).toHaveLength(0)
+
+      // The version that was approved: the link is made.
+      kit.view = baseView()
+      const ok = (await asAdmin((ctx) =>
+        handleClientActionCreate(payload as Parameters<typeof handleClientActionCreate>[0], ctx),
+      )) as { id?: string; sent?: boolean }
+      expect(ok.sent).toBe(true)
+      const [made] = await sql<{ target_sha256: string }[]>`
+        SELECT target_sha256 FROM ${k("client_actions")} WHERE id = ${ok.id as string}`
+      expect(made?.target_sha256).toBe(baseView().sha256)
+    } finally {
+      await sql`DELETE FROM kernel.approval_requests WHERE org_id = ${kit.w.orgId}`
+    }
+  })
+
+  it("an approved call that carries no pinned version is refused", async () => {
+    const p = params()
+    const pin = await pinned(p)
+    const { target_sha256: _dropped, ...unbound } = { ...p, ...pin }
+    const r = (await asAdmin((ctx) =>
+      handleClientActionCreate(unbound as Parameters<typeof handleClientActionCreate>[0], ctx),
+    )) as { error?: { code: string } }
+    expect(r.error?.code).toBe("SEND_GUARD_MISMATCH")
+    const rows = await sql`SELECT id FROM ${k("client_actions")} WHERE target_id = ${p.target_id}`
+    expect(rows).toHaveLength(0)
   })
 })

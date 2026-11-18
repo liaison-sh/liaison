@@ -921,4 +921,45 @@ export const FR: Record<string, string> = {
   "This project has no billing plan.": "Ce projet n'a pas d'échéancier.",
   "See the billing plan": "Voir l'échéancier",
   "{{amount}} excl. VAT": "{{amount}} HT",
+  "invoice {{number}}": "facture {{number}}",
+  "its draft, no number yet": "son brouillon, sans numéro pour l'instant",
+  "No credit note was made.": "Aucun avoir n'a été fait.",
+  "Advance invoice {{number}}: its own number in the normal invoice series.":
+    "Facture d'acompte {{number}} : son propre numéro dans la série normale des factures.",
+  "No number yet: an advance takes its own number in the normal series when it issues.":
+    "Pas encore de numéro : un acompte prend son propre numéro dans la série normale à son émission.",
+  "This advance": "Cet acompte",
+  "{{excl}} excl. VAT, {{vat}} VAT, {{incl}} incl. VAT":
+    "{{excl}} HT, {{vat}} de TVA, {{incl}} TTC",
+  "VAT was due when the money came in, so it is on this invoice and not on the deducted part.":
+    "La TVA était due à l'encaissement : elle figure sur cette facture et non sur la part déduite.",
+  "Cancelled: nothing is deducted from it.": "Annulé : rien n'en est déduit.",
+  "Paid in advance for {{month}}: that month's retainer invoice deducts it.":
+    "Payé d'avance pour {{month}} : la facture de forfait de ce mois le déduit.",
+  "Where it goes: {{label}}": "Où il est déduit : {{label}}",
+  "The deduction cites this advance's number and date, so it is worked out once the advance issues.":
+    "La déduction cite le numéro et la date de cet acompte : elle est calculée une fois l'acompte émis.",
+  "{{label}}, excl. VAT: {{amount}}": "{{label}}, HT : {{amount}}",
+  "Less {{description}}: {{amount}}": "Moins {{description}} : {{amount}}",
+  "Left to invoice on {{label}}, excl. VAT: {{amount}}":
+    "Reste à facturer sur {{label}}, HT : {{amount}}",
+  "This advance is larger than {{label}} ({{amount}}), so that invoice cannot deduct it and will not be drafted: refund the part above it, or change the plan.":
+    "Cet acompte dépasse {{label}} ({{amount}}) : cette facture ne peut pas le déduire et ne sera pas préparée. Remboursez la part qui dépasse, ou modifiez l'échéancier.",
+  "Have your accountant check this layout once":
+    "Faites vérifier cette présentation une fois par votre expert-comptable",
+  "An advance must have its own invoice, linked to the final one: that part is firm. How the final invoice shows the deduction is less clear in current French rules. Liaison prints what you see here.":
+    "Un acompte doit avoir sa propre facture, liée à la facture finale : ce point est établi. La façon dont la facture finale présente la déduction est moins claire dans les règles françaises actuelles. Liaison imprime ce que vous voyez ici.",
+  "Deducted from {{name}}.": "Déduit de {{name}}.",
+  "It cannot be fully credited while {{name}} stands: refunding it too would pay it back twice. Credit {{name}} first.":
+    "Il ne peut pas être entièrement remboursé par avoir tant que {{name}} est en vigueur : le rembourser aussi le rendrait deux fois. Faites d'abord un avoir sur {{name}}.",
+  "If the project stops before its final invoice, a credit note citing this advance gives back what remains of it.":
+    "Si le projet s'arrête avant sa facture finale, un avoir citant cet acompte rend ce qu'il en reste.",
+  "Prepare a credit note": "Préparer un avoir",
+  "Nothing was drafted.": "Rien n'a été préparé.",
+  "Money in before this advance has an invoice? Money received before delivery needs an advance invoice. Neither choice issues anything.":
+    "De l'argent reçu avant que cet acompte ait sa facture ? Un encaissement avant livraison demande une facture d'acompte. Aucun des deux choix n'émet quoi que ce soit.",
+  "Draft the advance invoice": "Préparer la facture d'acompte",
+  "Not an advance": "Ce n'est pas un acompte",
+  "Then invoice or link the payment as any other payment, from its line on Home. Nothing was drafted.":
+    "Facturez ou rattachez alors ce paiement comme tout autre, depuis sa ligne sur l'Accueil. Rien n'a été préparé.",
 }

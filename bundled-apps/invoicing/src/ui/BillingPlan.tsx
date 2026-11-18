@@ -7,6 +7,7 @@
 
 import { app, navigate } from "@liaison/host"
 import { type Component, createResource, For, Show } from "solid-js"
+import { MoneyFirstChoices } from "./AdvanceLedger"
 import { tr } from "./i18n"
 import { Button, formatMoneyMinor } from "./kit"
 
@@ -112,6 +113,9 @@ export const InvoicingBillingPlan: Component<{ entityId?: string }> = (props) =>
                   >
                     {stateText(step)}
                   </span>
+                  <Show when={shownState(step) === "not-invoiced" && props.entityId}>
+                    {(projectId) => <MoneyFirstChoices projectId={projectId()} stepId={step.id} />}
+                  </Show>
                 </div>
                 <div class="flex items-center gap-3">
                   <span class="text-text">

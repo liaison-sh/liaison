@@ -3,7 +3,7 @@ Milestone and final amounts add up to the quote's total excl. VAT, or the plan i
 A project billed by the hour, the day or a retainer bills from planned vs done, so a plan on it is refused -> bundled-apps/invoicing/src/mutations/billing-plan.ts (billingPlanSet)
 A milestone's invoice is drafted from its task only, once the task is done and flagged a milestone; hours never change it -> bundled-apps/invoicing/src/mutations/billing-plan.ts (milestoneDraftCreate)
 The task is read through the projects app's milestone read, which returns whether it is done and nothing about who did it or how long it took -> bundled-apps/invoicing/src/mutations/billing-plan.ts (readMilestones) ; apps/api/src/apps/projects/service/claims.ts (milestoneStatusRead)
-The final's draft deducts every issued advance of the project by itself, one line per advance and VAT rate, citing the advance's number and date -> bundled-apps/invoicing/src/mutations/billing-plan.ts (renderDeductionLines)
+The final's draft deducts every issued advance of the project by itself, one line per advance and VAT rate, citing the advance's number and date -> bundled-apps/invoicing/src/deduction-lines.ts (renderDeductionLines)
 An advance larger than the final, or not yet issued, is refused and nothing is drafted -> bundled-apps/invoicing/src/mutations/billing-plan.ts (milestoneDraftCreate)
 An advance is an ordinary invoice in the normal series, with its VAT -> bundled-apps/invoicing/src/mutations/advances.ts (advanceDraftCreate)
 An advance is deducted from one final only -> bundled-apps/invoicing/app.manifest.json (schema.advance_deductions) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (projectAdvances)

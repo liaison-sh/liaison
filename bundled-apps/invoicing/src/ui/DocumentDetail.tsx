@@ -43,6 +43,7 @@ import {
 } from "solid-js"
 import { formatMoneyMinor } from "../money"
 import { type DocumentType, transition } from "../state"
+import { AdvanceLedgerPanel } from "./AdvanceLedger"
 import { loadViewerAccess } from "./access"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
@@ -103,6 +104,10 @@ export interface DocumentSummary {
   external_ref?: string | null
   /** Who approved the draft for issue; null while it waits. */
   approved_by?: string | null
+  /** `advance`, `final` or `standard` for an invoice (documents_get); null when unset. */
+  invoice_role?: string | null
+  /** The project the document bills, when it bills one (documents_get). */
+  billing_project_id?: string | null
   /** The draft's latest issue day (the end of its service month). */
   latest_issue_on?: string | null
   /** The HUMAN store order reference ("#1149") this document bills, resolved by
@@ -1660,6 +1665,8 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
               {/* A draft from planned vs done, a milestone, a retainer month or an advance: where
                   it came from, what stays inside, and its one issue button, at the top. */}
               <SourcedDraftPanel doc={doc()} lines={lines()} onDone={props.onMutate} />
+              {/* An advance: its own number, where it goes, and what became of it. */}
+              <AdvanceLedgerPanel doc={doc()} lines={lines()} onDone={props.onMutate} />
               <Show when={footerActionNote()}>
                 {(note) => (
                   <div

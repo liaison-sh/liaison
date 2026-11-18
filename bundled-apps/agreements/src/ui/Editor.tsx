@@ -509,7 +509,8 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                       </label>
                     </Show>
 
-                    <Show when={editable()}>
+                    {/* A layout lays out text: an uploaded file has none to lay out. */}
+                    <Show when={editable() && !isUpload()}>
                       <label class="flex flex-col gap-1">
                         <span class="text-[12px] font-medium text-text">{tr("Layout")}</span>
                         <select
@@ -521,7 +522,8 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
                               setLayout(
                                 source(),
                                 e.currentTarget.value === "legal" ? "legal" : "standard",
-                                uiLocale().startsWith("fr") ? "fr" : "en",
+                                // The layout's own words follow the document, not the screen.
+                                a().language === "fr" ? "fr" : "en",
                               ),
                             )
                           }

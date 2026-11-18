@@ -10,6 +10,7 @@ import path from "node:path"
 import { MAX_RAW_SQL_CHARS } from "@liaison/db-core"
 import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
+import agreementsManifest from "../../../../../bundled-apps/agreements/app.manifest.json"
 import databaseManifest from "../../../../../bundled-apps/database/app.manifest.json"
 import { validateParamsForTool } from "./execute-tool"
 
@@ -408,5 +409,82 @@ describe("validateParamsForTool: bundled manifest tool schemas", () => {
     const msg = invalidMessage(tool, { id: "not-a-uuid" })
     expect(msg).toContain("Invalid parameters for app:")
     expect(msg).toContain('"id"')
+  })
+})
+
+describe("agreements: the text an agent writes is the text the editor reads", () => {
+  const update = manifestTool(agreementsManifest.tools.agreement_update.params)
+  const create = manifestTool(agreementsManifest.tools.agreement_create.params)
+  const ID = "3f2b8c1e-9d4a-4c6b-8e2f-1a2b3c4d5e6f"
+
+  it("takes clauses in source.body.blocks, with the page settings and the fields' data", () => {
+    const source = {
+      body: {
+        page: { layout: "legal", lang: "en" },
+        blocks: [
+          { type: "heading", level: 1, text: "Statement of work" },
+          { type: "paragraph", text: "The work is a website." },
+          {
+            type: "article",
+            level: 1,
+            heading: "Scope",
+            text: "Design and build.",
+            agent_draft: true,
+          },
+          { type: "signature_block", parties: [] },
+        ],
+      },
+      data: { client: { name: "A client" } },
+    }
+    expect(validate(update, { id: ID, source })).toEqual({ id: ID, source })
+  })
+
+  it("refuses a source in another shape before anything is staged, naming the field", () => {
+    const msg = invalidMessage(update, {
+      id: ID,
+      source: { sections: [{ title: "Scope", text: "Design and build." }] },
+    })
+    expect(msg).toContain('"source.sections" is not a recognised field; use one of: body, data')
+    expect(invalidMessage(update, { id: ID, source: { data: {} } })).toContain(
+      '"source.body" is required but was not provided',
+    )
+    expect(invalidMessage(update, { id: ID, source: { body: { sections: [] } } })).toContain(
+      '"source.body.sections" is not a recognised field',
+    )
+  })
+
+  it("refuses a block the editor cannot show, naming the block and the field", () => {
+    expect(
+      invalidMessage(update, {
+        id: ID,
+        source: { body: { blocks: [{ type: "section", text: "Scope" }] } },
+      }),
+    ).toContain('"source.body.blocks.0.type" must be one of:')
+    const content = invalidMessage(update, {
+      id: ID,
+      source: { body: { blocks: [{ type: "paragraph", content: "Scope" }] } },
+    })
+    expect(content).toContain('"source.body.blocks.0.content" is not a recognised field')
+    expect(content).toContain('"source.body.blocks.0.text" is required but was not provided')
+    expect(content).not.toContain("then")
+    expect(
+      invalidMessage(update, {
+        id: ID,
+        source: { body: { blocks: [{ type: "article", level: 1, text: ["a"] }] } },
+      }),
+    ).toContain('"source.body.blocks.0.text" must be string')
+  })
+
+  it("a new draft's source takes the same shape, and its data alone beside a template", () => {
+    expect(validate(create, { kind: "nda", title: "NDA", source: { data: {} } })).toBeTruthy()
+    expect(
+      invalidMessage(create, { kind: "nda", title: "NDA", source: { sections: [] } }),
+    ).toContain('"source.sections" is not a recognised field')
+  })
+
+  it("a malformed company id on a new draft is refused naming the field, before the handler", () => {
+    const msg = invalidMessage(create, { kind: "nda", title: "NDA", company_id: "Sorel" })
+    expect(msg).toContain('"company_id"')
+    expect(validate(create, { kind: "nda", title: "NDA", company_id: ID })).toBeTruthy()
   })
 })

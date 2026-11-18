@@ -20,6 +20,7 @@
 // into the retainer through invoicing's declared `retainer_terms_renew`, once per agreement, as the
 // same person. The months before the renewal's first one keep the old terms.
 
+import { renewalTermsMissing } from "./checks"
 import { type AgreementsCtx, bridgeAnswer } from "./ctx"
 
 /** The kinds whose signature starts a project. A framework, an NDA or a DPA starts none. */
@@ -40,7 +41,7 @@ interface SignedAgreement {
   hours_minutes?: number | null
   price_minor?: string | number | null
   rate_minor?: string | number | null
-  starts_on?: string | null
+  starts_on?: string | Date | null
   org_access?: string | null
 }
 
@@ -56,6 +57,8 @@ export type ProjectStart =
     }
   | { status: "renewed"; project_id: string; from: string | null }
   | { status: "skipped"; reason: string }
+  /** A renewal signed without the terms it rolls: the retainer keeps its old terms. */
+  | { status: "not_renewed"; reason: string; missing: string[] }
   | { status: "failed"; reason: string }
 
 /** The proposal's timebox as projects reads a plan's size, or null when it has none. */
@@ -105,10 +108,14 @@ async function renewRetainer(
   const minutes = typeof a.hours_minutes === "number" ? a.hours_minutes : 0
   const fee = a.price_minor === null || a.price_minor === undefined ? "" : String(a.price_minor)
   const startsOn = dayOf(a.starts_on)
-  if (!(minutes > 0) || !/^\d+$/.test(fee) || !startsOn)
+  // Prepare refuses a renewal without its terms; one signed without them (prepared before that
+  // rule) rolls nothing, and says so to whoever started it (seal.ts).
+  const missing = renewalTermsMissing(a)
+  if (missing.length > 0 || !startsOn)
     return {
-      status: "skipped",
-      reason: "a renewal needs its included hours, its monthly price and its first day",
+      status: "not_renewed",
+      reason: `the renewal lacks ${missing.join(", ") || "its first day (starts_on)"}`,
+      missing: missing.length > 0 ? missing : ["its first day (starts_on)"],
     }
   const callAsSender = ctx.client_actions_call_as_sender
   if (!callAsSender)

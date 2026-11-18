@@ -4,3 +4,6 @@ A link to an agreement opens its page (tab type agreement) -> bundled-apps/agree
 Editor: the agent mark and I read it, Save, Set price, What it is, Layout, Who can see this, the checks, Prepare once checks pass and saved, the sent-version warning -> bundled-apps/agreements/src/ui/Editor.tsx (AgreementEditor) ; bundled-apps/agreements/src/ui/model.ts (clearAgentMark, setLayout, editorChecks, canPrepare)
 Prepare then Send for signature with signers, order, words and expiry; a person's click runs the tool directly -> bundled-apps/agreements/src/ui/Send.tsx (AgreementSend) ; apps/api/src/modules/apps/routes.ts (runAppTool)
 Read and sign for the reader's own open link only -> bundled-apps/agreements/src/ui/model.ts (yourOpenLink) ; bundled-apps/agreements/src/agreements.ts (agreementGet)
+The editor of an uploaded PDF offers no Layout -> bundled-apps/agreements/src/ui/Editor.tsx (AgreementEditor, isUpload)
+The legal layout prints its own words in the agreement's language -> bundled-apps/agreements/src/checks.ts (inDocumentLanguage) ; bundled-apps/agreements/src/agreements.ts (freezeDraft)
+An agent's text goes in source.body.blocks; another shape is refused at staging, naming the field -> bundled-apps/agreements/app.manifest.json (tools.agreement_update.params.source) ; apps/api/src/modules/apps/execute-tool-params.ts (formatAjvParamError)

@@ -205,9 +205,12 @@ describe("sending for signature", () => {
     const ctx = ctxFor(db, { agent: AGENT, approved: true })
     const out = (await agreementSend(ctx, { ...p, ...(await pinnedFor(db, p)) })) as {
       status: string
+      message: string
       client_actions: Array<{ state: string }>
     }
     expect(out.status).toBe("ok")
+    // One signer waiting for the one before: "Léa Roux gets a link only after...".
+    expect(out.message).toContain("Léa Roux gets a link only after the signer before them")
     expect(ctx.calls.approvals).toEqual([])
     expect(ctx.calls.mints).toHaveLength(1)
     const send = (ctx.calls.mints[0] as { send: { signers: unknown[]; sha256: string } }).send

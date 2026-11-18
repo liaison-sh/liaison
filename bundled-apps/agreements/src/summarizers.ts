@@ -143,3 +143,83 @@ export function summarizeAgreementNewLink(params: Record<string, unknown>): Prom
     ],
   })
 }
+
+/** What a change of an agreement draft changes, in the card's words, in the order it lists them. */
+const UPDATE_PARTS: ReadonlyArray<{ words: string; keys: readonly string[] }> = [
+  { words: "text", keys: ["source"] },
+  { words: "file", keys: ["file_id"] },
+  { words: "title", keys: ["title"] },
+  { words: "dates", keys: ["starts_on", "ends_on", "renews_on", "notice_days"] },
+  { words: "hours", keys: ["hours_minutes"] },
+  { words: "description", keys: ["what_it_is", "not_a_guarantee"] },
+]
+
+/** The text a source holds, in one line: how many blocks and the words it starts with. */
+function textLine(source: unknown): string {
+  const blocks = (source as { body?: { blocks?: unknown } } | undefined)?.body?.blocks
+  const list = Array.isArray(blocks) ? blocks : []
+  if (list.length === 0) return "Text: no text"
+  const first = list
+    .map((b) => (b as { heading?: unknown; text?: unknown }) ?? {})
+    .map((b) => (typeof b.heading === "string" && b.heading ? b.heading : b.text))
+    .find((t): t is string => typeof t === "string" && t.trim() !== "")
+  const n = `${list.length} block${list.length === 1 ? "" : "s"}`
+  return first ? `Text: ${n}, starting with "${clip(first.trim(), 60)}"` : `Text: ${n}`
+}
+
+/**
+ * A change of an agreement draft: the title says what changes (its text, who can see it, its
+ * dates) and names the agreement by its number and title, read from the agreement itself.
+ */
+export function summarizeAgreementUpdate(
+  params: Record<string, unknown>,
+  _ctx?: unknown,
+  meta?: { connectionIdentifier?: string | null; context?: unknown },
+): Promise<Card> {
+  const a = (meta?.context as { agreement?: { number?: unknown; title?: unknown } } | null)
+    ?.agreement
+  const number = typeof a?.number === "string" && a.number ? a.number : null
+  const name = number
+    ? `${number}${typeof a?.title === "string" && a.title ? ` "${a.title}"` : ""}`
+    : "an agreement draft"
+  const access = params.org_access !== undefined || params.shares !== undefined
+  const parts = UPDATE_PARTS.filter((p) => p.keys.some((k) => params[k] !== undefined)).map(
+    (p) => p.words,
+  )
+  const lines: string[] = []
+  if (number) lines.push(`Agreement: ${name}`)
+  if (params.source !== undefined) lines.push(textLine(params.source))
+  if (typeof params.title === "string") lines.push(`New title: ${params.title}`)
+  for (const [k, label] of [
+    ["starts_on", "Starts on"],
+    ["ends_on", "Ends on"],
+    ["renews_on", "Renews on"],
+    ["notice_days", "Notice in days"],
+  ] as const)
+    if (params[k] !== undefined) lines.push(`${label}: ${String(params[k])}`)
+  if (typeof params.hours_minutes === "number")
+    lines.push(`Hours: ${Math.round((params.hours_minutes / 60) * 100) / 100} h`)
+  if (params.org_access !== undefined)
+    lines.push(`Organization access: ${String(params.org_access)}`)
+  if (Array.isArray(params.shares))
+    lines.push(
+      `People: ${
+        params.shares
+          .map((s) => {
+            const o = (s ?? {}) as { user_id?: unknown; role?: unknown }
+            return `${String(o.user_id ?? "")} (${String(o.role ?? "")})`
+          })
+          .join(", ") || "(none)"
+      }`,
+    )
+  let title: string
+  if (access && parts.length === 0) title = `Change who can see ${name}`
+  else if (!access && parts.length === 1) title = `Change the ${parts[0]} of ${name}`
+  else {
+    const all = [...parts, ...(access ? ["who can see it"] : [])]
+    const said =
+      all.length <= 1 ? (all[0] ?? "") : `${all.slice(0, -1).join(", ")} and ${all.at(-1)}`
+    title = `Change ${name}: its ${said}`
+  }
+  return done({ kind: "agreement_update", title, lines })
+}

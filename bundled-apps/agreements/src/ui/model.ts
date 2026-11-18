@@ -60,6 +60,10 @@ export interface AgreementDetail {
     what_it_is: string | null
     starts_on: string | null
     ends_on: string | null
+    project_id?: string | null
+    hours_minutes?: number | null
+    /** The document's language: the legal layout prints its own words in it. */
+    language?: string | null
     template_id: string | null
     template_version: number | null
     status_note?: string
@@ -366,6 +370,9 @@ export function editorChecks(detail: AgreementDetail, source: AgreementSource | 
       what_it_is: a.what_it_is,
       price_minor: a.price_minor,
       not_a_guarantee_by_user_id: a.not_a_guarantee ? "set" : null,
+      project_id: a.project_id ?? null,
+      hours_minutes: a.hours_minutes ?? null,
+      starts_on: a.starts_on,
     },
     source,
     { upload: a.upload === true },

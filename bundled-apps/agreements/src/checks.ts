@@ -92,6 +92,22 @@ export const PERSONAL_GUARANTEE_TEXT =
 export const CHECK_WITH_LAWYER_TEXT =
   "Check with your lawyer first: some of these acts can need a higher signature level, which Liaison does not offer; another service can provide it."
 
+/**
+ * The classic legal layout prints words of its own (clause, page X of Y, signed electronically):
+ * they follow the agreement's language, never the page setting the editor wrote in the language
+ * of whoever chose the layout.
+ */
+export function inDocumentLanguage(
+  row: { language?: string | null },
+  source: AgreementSource,
+): AgreementSource {
+  const page = (source.body as { page?: Record<string, unknown> } | undefined)?.page
+  if (!page || page.layout !== "legal") return source
+  const lang = row.language === "fr" ? "fr" : "en"
+  if (page.lang === lang) return source
+  return { ...source, body: { ...source.body, page: { ...page, lang } } }
+}
+
 export interface SourceBlock {
   type?: string
   text?: string
@@ -145,6 +161,33 @@ export interface AgreementRowLike {
   what_it_is?: string | null
   price_minor?: string | number | null
   not_a_guarantee_by_user_id?: string | null
+  /** A retainer that names its project renews that project's retainer. */
+  project_id?: string | null
+  hours_minutes?: number | null
+  /** A stored date reads back as a Date or as its text. */
+  starts_on?: string | Date | null
+}
+
+/**
+ * What a retainer renewal still lacks to roll into its retainer when signed: its included
+ * hours, its monthly price and its first day, as the fields that hold them. Empty for anything
+ * that is not a renewal (a retainer naming its project).
+ */
+export function renewalTermsMissing(row: AgreementRowLike): string[] {
+  if (row.kind !== "retainer" || !row.project_id) return []
+  const missing: string[] = []
+  if (!(typeof row.hours_minutes === "number" && row.hours_minutes > 0))
+    missing.push("its included hours (hours_minutes)")
+  if (
+    row.price_minor === null ||
+    row.price_minor === undefined ||
+    !/^\d+$/.test(String(row.price_minor))
+  )
+    missing.push("its monthly price (a person sets the price on its page)")
+  const day = row.starts_on instanceof Date ? row.starts_on.toISOString() : row.starts_on
+  if (!(typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day)))
+    missing.push("its first day (starts_on)")
+  return missing
 }
 
 /** The clauses an agent wrote that no person has read yet: their positions (1-based) and first words. */
@@ -216,6 +259,18 @@ export function prepareChecks(
       message: priced
         ? "A person set the price."
         : "No price yet: a person sets it in the agreement's page; an agent never does.",
+    })
+  }
+  const renewalMissing = renewalTermsMissing(row)
+  if (row.kind === "retainer" && row.project_id) {
+    checks.push({
+      code: "RENEWAL_TERMS_MISSING",
+      ok: renewalMissing.length === 0,
+      blocking: true,
+      message:
+        renewalMissing.length === 0
+          ? "The renewal has its included hours, monthly price and first day."
+          : `This retainer renews an existing one: once signed, its terms replace the retainer's from its first day, so it needs ${renewalMissing.join(", ")}.`,
     })
   }
   const drafts = agentDraftClauses(source)

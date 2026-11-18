@@ -430,6 +430,23 @@ describe("the editor of an uploaded document", () => {
     expect(screen.getByTestId("agreement-checks").textContent ?? "").not.toMatch(/no text/i)
     expect(screen.getByTestId("agreement-editor-upload-open")).toBeTruthy()
   })
+
+  it("offers no layout to choose: a layout lays out text, and a file has none to lay out", async () => {
+    const base = agreement({
+      kind: "other",
+      status: "draft",
+      upload: true,
+      what_it_is: "Term sheet",
+    })
+    answers.agreement_get = () => ({
+      ...base,
+      draft: { lock_version: 1, source: null },
+      versions: [],
+    })
+    render(() => <AgreementEditor entityId={ID} />)
+    await screen.findByTestId("agreement-editor-upload")
+    expect(screen.queryByTestId("agreement-layout")).toBeNull()
+  })
 })
 
 describe("the proof of signature on the agreement's page", () => {

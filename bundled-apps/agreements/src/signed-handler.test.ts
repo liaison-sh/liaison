@@ -146,8 +146,29 @@ describe("a signed retainer renewal", () => {
     expect(created(w.projects.calls)).toBe(0)
     expect(w.projects.calls.map((c) => c.name)).not.toContain("invoicing:retainer_terms_renew")
     expect(await startProjectAfterSigning(w.ctx, w.agreementId)).toMatchObject({
-      status: "skipped",
+      status: "not_renewed",
+      missing: ["its included hours (hours_minutes)"],
     })
+  })
+
+  it("a renewal signed without its terms tells the people who draft agreements, once", async () => {
+    const w = await world({
+      kind: "retainer",
+      project_id: RETAINER_PROJECT,
+      hours_minutes: null,
+      price_minor: "495000",
+      starts_on: "2026-12-01",
+    })
+    const emitted: Array<{ action: string; data: Record<string, unknown> }> = []
+    w.ctx.emit = async (e) => {
+      emitted.push({ action: e.action, data: (e.data ?? {}) as Record<string, unknown> })
+    }
+    await sealVersion(w.ctx, w.versionId)
+    await sealRetry(w.ctx)
+    await sealRetry(w.ctx)
+    const told = emitted.filter((e) => e.action === "renewal_not_rolled")
+    expect(told).toHaveLength(1)
+    expect(String(told[0]?.data.missing)).toContain("included hours")
   })
 })
 

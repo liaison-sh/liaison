@@ -454,7 +454,7 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       state: a.status,
       signs_in_session: a.signer_is_staff,
     })),
-    message: `${ready.agreement.number} version ${ready.version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} get a link only after the signer before them` : ""}. Nothing else was sent.`,
+    message: `${ready.agreement.number} version ${ready.version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} ${waiting.length === 1 ? "gets" : "get"} a link only after the signer before them` : ""}. Nothing else was sent.`,
   }
 }
 

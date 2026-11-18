@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1021,13 +1021,19 @@
             "type": "string"
           },
           "company_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid",
+            "description": "The company's id (a uuid), as contacts answers it."
           },
           "contact_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid",
+            "description": "The contact's id (a uuid)."
           },
           "template_id": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid",
+            "description": "The template's id (a uuid), from templates_list."
           },
           "language": {
             "type": "string",
@@ -1048,7 +1054,178 @@
           },
           "source": {
             "type": "object",
-            "additionalProperties": true
+            "description": "The document's whole text, as the agreement's editor shows it: body.blocks in reading order, a heading {type: heading, level 1-3, text}, a paragraph {type: paragraph, text} or a clause {type: article, level 1-5, heading, text}; body.page holds the layout. data holds the values of the template's fields. Nothing else is kept.",
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "blocks"
+                ],
+                "properties": {
+                  "page": {
+                    "type": "object"
+                  },
+                  "blocks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "heading",
+                            "paragraph",
+                            "article",
+                            "list",
+                            "table",
+                            "image",
+                            "spacer",
+                            "repeat",
+                            "parties",
+                            "recitals",
+                            "definitions",
+                            "annex",
+                            "toc",
+                            "signature_block"
+                          ]
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "heading"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "text": {
+                                "type": "string"
+                              },
+                              "level": {
+                                "type": "integer",
+                                "enum": [
+                                  1,
+                                  2,
+                                  3
+                                ]
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "paragraph"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "text": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "number"
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "article"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "level",
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "id": {
+                                "type": "string"
+                              },
+                              "level": {
+                                "type": "integer",
+                                "enum": [
+                                  1,
+                                  2,
+                                  3,
+                                  4,
+                                  5
+                                ]
+                              },
+                              "heading": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "citation": {
+                                "type": "boolean"
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "data": {
+                "type": "object"
+              }
+            }
           },
           "file_id": {
             "type": "string"
@@ -1094,7 +1271,8 @@
           },
           "project_id": {
             "type": "string",
-            "description": "The project it is for. A retainer for a company with a signed retainer renews that one's project."
+            "description": "The project it is for. A retainer for a company with a signed retainer renews that one's project.",
+            "format": "uuid"
           }
         },
         "required": [
@@ -1189,8 +1367,12 @@
       "writesToTable": "app_agreements.agreements",
       "conditionalGate": true,
       "approvalImpact": "internal",
-      "approvalCard": {
-        "summary": "Change who can see agreement {{params.id}}"
+      "summarizer": "summarizeAgreementUpdate",
+      "summarizerContext": {
+        "tool": "agreement_get",
+        "params": {
+          "id": "id"
+        }
       },
       "params": {
         "type": "object",
@@ -1206,7 +1388,181 @@
           },
           "source": {
             "type": "object",
-            "additionalProperties": true
+            "description": "The document's whole text, as the agreement's editor shows it: body.blocks in reading order, a heading {type: heading, level 1-3, text}, a paragraph {type: paragraph, text} or a clause {type: article, level 1-5, heading, text}; body.page holds the layout. data holds the values of the template's fields. Nothing else is kept, and it replaces the text the draft had.",
+            "additionalProperties": false,
+            "required": [
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "blocks"
+                ],
+                "properties": {
+                  "page": {
+                    "type": "object"
+                  },
+                  "blocks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "heading",
+                            "paragraph",
+                            "article",
+                            "list",
+                            "table",
+                            "image",
+                            "spacer",
+                            "repeat",
+                            "parties",
+                            "recitals",
+                            "definitions",
+                            "annex",
+                            "toc",
+                            "signature_block"
+                          ]
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "heading"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "text": {
+                                "type": "string"
+                              },
+                              "level": {
+                                "type": "integer",
+                                "enum": [
+                                  1,
+                                  2,
+                                  3
+                                ]
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "paragraph"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "text": {
+                                "type": "string"
+                              },
+                              "size": {
+                                "type": "number"
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "if": {
+                            "type": "object",
+                            "properties": {
+                              "type": {
+                                "const": "article"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "type": "object",
+                            "required": [
+                              "level",
+                              "text"
+                            ],
+                            "additionalProperties": false,
+                            "properties": {
+                              "type": {},
+                              "id": {
+                                "type": "string"
+                              },
+                              "level": {
+                                "type": "integer",
+                                "enum": [
+                                  1,
+                                  2,
+                                  3,
+                                  4,
+                                  5
+                                ]
+                              },
+                              "heading": {
+                                "type": "string"
+                              },
+                              "text": {
+                                "type": "string"
+                              },
+                              "citation": {
+                                "type": "boolean"
+                              },
+                              "when": {},
+                              "agent_draft": {
+                                "type": "boolean"
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "data": {
+                "type": "object"
+              }
+            }
           },
           "file_id": {
             "type": "string"
@@ -2135,6 +2491,7 @@
       "agreement:access_changed",
       "agreement:knowledge_copy_not_made",
       "agreement:links_withdrawn",
+      "agreement:renewal_not_rolled",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",
@@ -2378,6 +2735,20 @@
         "recipients": {
           "kind": "scope_holders",
           "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "agreement:renewal_not_rolled",
+        "kind": "agreements:agreement.renewal_not_rolled",
+        "urgency": 70,
+        "summary": "{{data.number}} is signed, but its retainer was not renewed: it lacks {{data.missing}}. The retainer keeps its old terms until a person sets the new ones.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:agreements:write"
         },
         "resolveWhen": {
           "field": "resolved",

@@ -274,6 +274,113 @@ describe("a retainer renewal", () => {
     })
     expect((bad as { error: { code: string } }).error.code).toBe("INVALID_HOURS")
   })
+
+  it("prepare refuses a renewal missing its included hours, monthly price or first day, naming each", async () => {
+    const db = memoryDb()
+    const id = okId(
+      await agreementCreate(ctxFor(db), {
+        kind: "retainer",
+        title: "Retainer renewal",
+        company_id: COMPANY,
+        project_id: RETAINER_PROJECT,
+        source: WRITTEN,
+      }),
+    )
+    const refused = (await agreementPrepare(ctxFor(db), { id })) as {
+      error: { code: string; message: string }
+      checks: Array<{ code: string; ok: boolean; message: string }>
+    }
+    const check = refused.checks.find((c) => c.code === "RENEWAL_TERMS_MISSING")
+    expect(check?.ok).toBe(false)
+    expect(check?.message).toContain("hours_minutes")
+    expect(check?.message).toContain("price")
+    expect(check?.message).toContain("starts_on")
+    expect(refused.error.message).toContain("hours_minutes")
+    await agreementUpdate(ctxFor(db), { id, hours_minutes: 44 * 60, starts_on: "2026-12-01" })
+    await agreementPriceSet(ctxFor(db), { id, price_minor: "495000", currency: "EUR" })
+    const ready = (await agreementPrepare({ ...ctxFor(db), ...fakeRenderer() }, { id })) as {
+      status: string
+      checks: Array<{ code: string; ok: boolean }>
+    }
+    expect(ready.status).not.toBe("error")
+    expect(ready.checks.find((c) => c.code === "RENEWAL_TERMS_MISSING")?.ok).toBe(true)
+  })
+
+  it("a retainer that starts its own project needs no renewal terms", async () => {
+    const db = memoryDb()
+    const id = okId(
+      await agreementCreate(ctxFor(db), { kind: "retainer", title: "Retainer", source: WRITTEN }),
+    )
+    const out = (await agreementPrepare(ctxFor(db), { id })) as {
+      checks: Array<{ code: string }>
+    }
+    expect(out.checks.map((c) => c.code)).not.toContain("RENEWAL_TERMS_MISSING")
+  })
+})
+
+describe("a render the host refuses", () => {
+  it("says the host's reason in one sentence, with no doubled stop", async () => {
+    const db = memoryDb()
+    const ctx = {
+      ...ctxFor(db),
+      ...fakeRenderer({
+        status: "error",
+        error: {
+          code: "NUMBERED_CLAUSE",
+          message: "Remove the typed number; the layout numbers each clause.",
+        },
+      }),
+    }
+    const id = okId(await agreementCreate(ctx, { kind: "nda", title: "NDA", source: WRITTEN }))
+    const out = (await agreementPrepare(ctx, { id })) as {
+      error: { code: string; message: string }
+    }
+    expect(out.error.code).toBe("NUMBERED_CLAUSE")
+    expect(out.error.message).toContain("numbers each clause. Nothing was frozen.")
+    expect(out.error.message).not.toContain("..")
+  })
+})
+
+describe("the classic legal layout prints in the document's language", () => {
+  it("an English agreement drawn in the legal layout is rendered in English, whatever the page said", async () => {
+    const db = memoryDb()
+    const seen: Array<{ body: { page?: { lang?: string; layout?: string } } }> = []
+    const renderer = fakeRenderer()
+    const ctx = {
+      ...ctxFor(db),
+      ...renderer,
+      rich_text_render: async (input: { body: unknown }) => {
+        seen.push(input as { body: { page?: { lang?: string; layout?: string } } })
+        return renderer.rich_text_render()
+      },
+    }
+    const legal = (lang: string) => ({
+      body: {
+        page: { layout: "legal", lang },
+        blocks: [{ type: "article", level: 1, heading: "Scope", text: "The work is a website." }],
+      },
+    })
+    const en = okId(
+      await agreementCreate(ctx, {
+        kind: "nda",
+        title: "NDA",
+        language: "en",
+        source: legal("fr"),
+      }),
+    )
+    await agreementPrepare(ctx, { id: en })
+    expect(seen.at(-1)?.body.page).toEqual({ layout: "legal", lang: "en" })
+    const fr = okId(
+      await agreementCreate(ctx, {
+        kind: "nda",
+        title: "NDA",
+        language: "fr",
+        source: legal("en"),
+      }),
+    )
+    await agreementPrepare(ctx, { id: fr })
+    expect(seen.at(-1)?.body.page?.lang).toBe("fr")
+  })
 })
 
 describe("the price a person set is in what is signed", () => {

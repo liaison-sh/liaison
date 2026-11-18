@@ -438,7 +438,7 @@ async function sealVersionSteps(ctx: SealCtx, versionId: string): Promise<SealOu
     })
     // Its project first, so the signed event names it; the seal retry starts it when this
     // pass could not.
-    await startProjectQuietly(ctx, agreement.id)
+    await startProjectQuietly(ctx, agreement.id, { announce: true })
     await addToScopeGroupQuietly(ctx, agreement.id)
     const projectId =
       ((await ctx.db.findOne("agreements", agreement.id)) as { project_id?: string | null } | null)
@@ -731,9 +731,24 @@ export async function copyStateOf(
 }
 
 /** The signed agreement's project; a failure is retried by `seal-retry`, never undoes the seal. */
-async function startProjectQuietly(ctx: SealCtx, agreementId: string): Promise<void> {
+async function startProjectQuietly(
+  ctx: SealCtx,
+  agreementId: string,
+  opts: { announce: boolean } = { announce: false },
+): Promise<void> {
   try {
-    await startProjectAfterSigning(ctx, agreementId)
+    const out = await startProjectAfterSigning(ctx, agreementId)
+    // A renewal signed without its terms rolls nothing: the people who draft agreements are
+    // told once, at the seal, never by each retry.
+    if (out.status === "not_renewed" && opts.announce) {
+      const a = (await ctx.db.findOne("agreements", agreementId)) as { number?: string } | null
+      await ctx.emit?.({
+        entity: "agreement",
+        action: "renewal_not_rolled",
+        entityId: agreementId,
+        data: { number: a?.number ?? "", missing: out.missing.join(", ") },
+      })
+    }
   } catch {
     // projects could not be reached on this pass: the next seal-retry tries again.
   }

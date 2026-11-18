@@ -17,6 +17,7 @@ import {
 import {
   type AgreementSource,
   type Check,
+  inDocumentLanguage,
   markAgentBlocks,
   prepareChecks,
   priceInSource,
@@ -54,6 +55,8 @@ export interface AgreementRow {
   signed_at?: string | null
   starts_on?: string | null
   ends_on?: string | null
+  project_id?: string | null
+  hours_minutes?: number | null
   what_it_is?: string | null
   what_it_is_by_user_id?: string | null
   not_a_guarantee_by_user_id?: string | null
@@ -257,6 +260,9 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       what_it_is: row.what_it_is ?? null,
       starts_on: row.starts_on ?? null,
       ends_on: row.ends_on ?? null,
+      project_id: row.project_id ?? null,
+      hours_minutes: row.hours_minutes ?? null,
+      language: row.language ?? null,
       template_id: row.template_id ?? null,
       template_version: row.template_version ?? null,
       ...(row.not_a_guarantee_by_user_id ? { not_a_guarantee: true } : {}),
@@ -910,7 +916,7 @@ async function freezeDraft(
       `This server cannot render ${row.number} for a freeze. Nothing was frozen.`,
     )
   // A priced kind freezes with the person's price in its text.
-  const source = priceInSource(row, draft.source)
+  const source = inDocumentLanguage(row, priceInSource(row, draft.source))
   const out = bridgeAnswer<RenderAnswer>(
     await ctx.rich_text_render({
       body: source.body,
@@ -921,7 +927,7 @@ async function freezeDraft(
   if (out.status !== "ok" || !out.bytesBase64 || !out.sha256)
     return refusal(
       out.error?.code ?? "RENDER_FAILED",
-      `${row.number} could not be rendered: ${out.error?.message ?? "no file"}. Nothing was frozen.`,
+      `${row.number} could not be rendered: ${(out.error?.message ?? "no file").replace(/[.\s]+$/, "")}. Nothing was frozen.`,
     )
   const blanks = out.blanks ?? []
   if (blanks.length > 0)

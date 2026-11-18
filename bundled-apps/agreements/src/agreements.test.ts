@@ -589,6 +589,42 @@ describe("documents this signature does not fit", () => {
     expect((bad as { error: { code: string } }).error.code).toBe("INVALID_FILE")
   })
 
+  it("a heading, paragraph or clause with a field the editor cannot show is refused, naming it, before anything is written", async () => {
+    const db = memoryDb()
+    const id = okId(await agreementCreate(ctxFor(db), { kind: "nda", title: "NDA" }))
+    const before = JSON.stringify([...db.tables.entries()])
+    const ctx = ctxFor(db, { agent: AGENT })
+    const out = (await agreementUpdate(ctx, {
+      id,
+      source: {
+        body: {
+          blocks: [
+            { type: "paragraph", text: "Scope", content: "Scope" },
+            { type: "article", level: 9, text: "Design." },
+            { type: "heading", text: "Fees", agent_draft: true },
+            { type: "signature_block", parties: [] },
+          ],
+        },
+      },
+    })) as { error: { code: string; message: string } }
+    expect(out.error.code).toBe("INVALID_SOURCE")
+    expect(out.error.message).toContain(
+      '"source.body.blocks.0.content" is not a recognised field of a paragraph; use one of: type, text, when, agent_draft, size.',
+    )
+    expect(out.error.message).toContain('"source.body.blocks.1.level" must be 1 to 5.')
+    expect(out.error.message).not.toContain("blocks.2")
+    expect(out.error.message).not.toContain("blocks.3")
+    expect(ctx.approvals).toEqual([])
+    expect(JSON.stringify([...db.tables.entries()])).toBe(before)
+    const created = (await agreementCreate(ctxFor(db), {
+      kind: "nda",
+      title: "NDA",
+      source: { body: { blocks: [{ type: "heading", level: 4, text: "Title" }] } },
+    })) as { error: { code: string; message: string } }
+    expect(created.error.code).toBe("INVALID_SOURCE")
+    expect(created.error.message).toContain('"source.body.blocks.0.level" must be 1, 2 or 3.')
+  })
+
   it("a document of kind other needs a person to say what it is", async () => {
     const db = memoryDb()
     const id = okId(await agreementCreate(ctxFor(db), { kind: "other", title: "Scan" }))

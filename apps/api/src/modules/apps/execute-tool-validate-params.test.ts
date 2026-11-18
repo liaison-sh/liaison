@@ -464,7 +464,7 @@ describe("agreements: the text an agent writes is the text the editor reads", ()
       id: ID,
       source: { body: { blocks: [{ type: "paragraph", content: "Scope" }] } },
     })
-    expect(content).toContain('"source.body.blocks.0.content" is not a recognised field')
+    // A stray field beside the text is the handler's to refuse (bundled-apps/agreements).
     expect(content).toContain('"source.body.blocks.0.text" is required but was not provided')
     expect(content).not.toContain("then")
     expect(

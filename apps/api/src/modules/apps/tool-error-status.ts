@@ -450,6 +450,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   TITLE_REQUIRED: 400,
   TEMPLATE_INVALID: 400,
   USE_CHANGE_REQUEST: 400,
+  // A heading, paragraph or clause in a field or value the editor cannot show.
+  INVALID_SOURCE: 400,
   // Who may do it: only a person sets a price or says a document is not a guarantee; only an
   // editor on the list changes who can see it; an agent's change waits for a person.
   PRICE_NEEDS_A_PERSON: 403,
@@ -467,6 +469,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   WHAT_IT_IS_REQUIRED: 409,
   AGENT_TEXT_UNREAD: 409,
   DOCUMENT_EMPTY: 409,
+  // A renewal retainer lacks the hours, price or first day that replace the current terms.
+  RENEWAL_TERMS_MISSING: 409,
   // Freezing and sending for signature (agreements; client action links through the bridge).
   BLANK_FIELD: 409,
   FREEZE_TEXT_MISMATCH: 409,

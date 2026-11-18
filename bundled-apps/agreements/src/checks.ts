@@ -120,6 +120,58 @@ export interface AgreementSource {
   data?: Record<string, unknown>
 }
 
+/**
+ * The fields each text block takes, as the renderer's block shapes declare them. The tool
+ * schema names the block types and requires `text`; the rest of each shape is checked here so
+ * the schema stays short.
+ */
+type FieldRule = [ok: (v: unknown) => boolean, takes: string]
+const isString: FieldRule = [(v) => typeof v === "string", "a string"]
+const isBoolean: FieldRule = [(v) => typeof v === "boolean", "true or false"]
+const TEXT_BLOCK_FIELDS: Record<string, Record<string, FieldRule>> = {
+  heading: { level: [(v) => v === 1 || v === 2 || v === 3, "1, 2 or 3"] },
+  paragraph: { size: [(v) => typeof v === "number", "a number"] },
+  article: {
+    id: isString,
+    level: [(v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 5, "1 to 5"],
+    heading: isString,
+    citation: isBoolean,
+  },
+}
+const ANY_TEXT_BLOCK: Record<string, FieldRule> = {
+  type: [() => true, ""],
+  text: isString,
+  when: [() => true, ""],
+  agent_draft: isBoolean,
+}
+
+/**
+ * What is wrong with the headings, paragraphs and clauses of a source an agent sent, one line
+ * per field, each naming its path (`source.body.blocks.0.content`); empty when the editor can
+ * show them all.
+ */
+export function sourceBlockProblems(source: unknown): string[] {
+  const blocks = (source as AgreementSource | undefined)?.body?.blocks
+  if (!Array.isArray(blocks)) return []
+  const out: string[] = []
+  blocks.forEach((b, i) => {
+    if (!b || typeof b !== "object") return
+    const own = TEXT_BLOCK_FIELDS[String((b as SourceBlock).type)]
+    if (!own) return
+    const fields = { ...ANY_TEXT_BLOCK, ...own }
+    const at = `source.body.blocks.${i}`
+    for (const [k, v] of Object.entries(b)) {
+      const rule = fields[k]
+      if (!rule)
+        out.push(
+          `"${at}.${k}" is not a recognised field of a ${(b as SourceBlock).type}; use one of: ${Object.keys(fields).join(", ")}.`,
+        )
+      else if (!rule[0](v)) out.push(`"${at}.${k}" must be ${rule[1]}.`)
+    }
+  })
+  return out
+}
+
 /** Every text an agreement's source prints, joined (headings, paragraphs, list lines, cells). */
 export function sourceText(source: AgreementSource | null | undefined): string {
   const out: string[] = []

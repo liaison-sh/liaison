@@ -21,6 +21,7 @@ import {
   markAgentBlocks,
   prepareChecks,
   priceInSource,
+  sourceBlockProblems,
   sourceText,
 } from "./checks"
 import {
@@ -338,6 +339,13 @@ function badHours(v: unknown, what: string): ErrorEnvelope | null {
   )
 }
 
+/** A refusal for headings, paragraphs or clauses the editor cannot show, naming each field. */
+function badBlocks(source: unknown, what: string): ErrorEnvelope | null {
+  const problems = sourceBlockProblems(source)
+  if (problems.length === 0) return null
+  return refusal("INVALID_SOURCE", `${problems.join(" ")} Nothing was ${what}.`)
+}
+
 /** "44 h", "44 h 30": minutes as a message says them. */
 function hoursWords(minutes: number): string {
   const h = Math.floor(minutes / 60)
@@ -413,6 +421,8 @@ export async function agreementCreate(ctx: AgreementsCtx, p: CreateParams) {
   if (hoursRefused) return hoursRefused
   if (p.project_id !== undefined && (typeof p.project_id !== "string" || !UUID.test(p.project_id)))
     return refusal("INVALID_PROJECT", "project_id is a project's id. Nothing was created.")
+  const blocksRefused = badBlocks(p.source, "created")
+  if (blocksRefused) return blocksRefused
   // A retainer for a company that already has one renews it: signing rolls the new terms into
   // that retainer's project instead of starting another.
   const renews =
@@ -571,6 +581,8 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     )
   const hoursRefused = badHours(p.hours_minutes, "changed")
   if (hoursRefused) return hoursRefused
+  const blocksRefused = badBlocks(p.source, "changed")
+  if (blocksRefused) return blocksRefused
   let replaced: { version: number; revoked: number } | null = null
   if (p.file_id !== undefined && (typeof p.file_id !== "string" || !UUID.test(p.file_id)))
     return refusal(

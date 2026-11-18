@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1093,53 +1093,21 @@
                             "toc",
                             "signature_block"
                           ]
+                        },
+                        "text": {
+                          "type": "string"
                         }
                       },
                       "allOf": [
                         {
                           "if": {
-                            "type": "object",
                             "properties": {
                               "type": {
-                                "const": "heading"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ]
-                          },
-                          "then": {
-                            "type": "object",
-                            "required": [
-                              "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "text": {
-                                "type": "string"
-                              },
-                              "level": {
-                                "type": "integer",
                                 "enum": [
-                                  1,
-                                  2,
-                                  3
+                                  "heading",
+                                  "paragraph",
+                                  "article"
                                 ]
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
-                          }
-                        },
-                        {
-                          "if": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "const": "paragraph"
                               }
                             },
                             "required": [
@@ -1147,29 +1115,13 @@
                             ]
                           },
                           "then": {
-                            "type": "object",
                             "required": [
                               "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "text": {
-                                "type": "string"
-                              },
-                              "size": {
-                                "type": "number"
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
+                            ]
                           }
                         },
                         {
                           "if": {
-                            "type": "object",
                             "properties": {
                               "type": {
                                 "const": "article"
@@ -1180,41 +1132,9 @@
                             ]
                           },
                           "then": {
-                            "type": "object",
                             "required": [
-                              "level",
-                              "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "id": {
-                                "type": "string"
-                              },
-                              "level": {
-                                "type": "integer",
-                                "enum": [
-                                  1,
-                                  2,
-                                  3,
-                                  4,
-                                  5
-                                ]
-                              },
-                              "heading": {
-                                "type": "string"
-                              },
-                              "text": {
-                                "type": "string"
-                              },
-                              "citation": {
-                                "type": "boolean"
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
+                              "level"
+                            ]
                           }
                         }
                       ]
@@ -1430,53 +1350,21 @@
                             "toc",
                             "signature_block"
                           ]
+                        },
+                        "text": {
+                          "type": "string"
                         }
                       },
                       "allOf": [
                         {
                           "if": {
-                            "type": "object",
                             "properties": {
                               "type": {
-                                "const": "heading"
-                              }
-                            },
-                            "required": [
-                              "type"
-                            ]
-                          },
-                          "then": {
-                            "type": "object",
-                            "required": [
-                              "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "text": {
-                                "type": "string"
-                              },
-                              "level": {
-                                "type": "integer",
                                 "enum": [
-                                  1,
-                                  2,
-                                  3
+                                  "heading",
+                                  "paragraph",
+                                  "article"
                                 ]
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
-                          }
-                        },
-                        {
-                          "if": {
-                            "type": "object",
-                            "properties": {
-                              "type": {
-                                "const": "paragraph"
                               }
                             },
                             "required": [
@@ -1484,29 +1372,13 @@
                             ]
                           },
                           "then": {
-                            "type": "object",
                             "required": [
                               "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "text": {
-                                "type": "string"
-                              },
-                              "size": {
-                                "type": "number"
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
+                            ]
                           }
                         },
                         {
                           "if": {
-                            "type": "object",
                             "properties": {
                               "type": {
                                 "const": "article"
@@ -1517,41 +1389,9 @@
                             ]
                           },
                           "then": {
-                            "type": "object",
                             "required": [
-                              "level",
-                              "text"
-                            ],
-                            "additionalProperties": false,
-                            "properties": {
-                              "type": {},
-                              "id": {
-                                "type": "string"
-                              },
-                              "level": {
-                                "type": "integer",
-                                "enum": [
-                                  1,
-                                  2,
-                                  3,
-                                  4,
-                                  5
-                                ]
-                              },
-                              "heading": {
-                                "type": "string"
-                              },
-                              "text": {
-                                "type": "string"
-                              },
-                              "citation": {
-                                "type": "boolean"
-                              },
-                              "when": {},
-                              "agent_draft": {
-                                "type": "boolean"
-                              }
-                            }
+                              "level"
+                            ]
                           }
                         }
                       ]

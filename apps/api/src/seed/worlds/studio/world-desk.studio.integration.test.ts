@@ -18,7 +18,7 @@ import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, rowsOf } from "~/seed/factories/people/actors"
-import { DEMO_WORLD_APPS } from "~/seed/tiers/demo/demo-apps"
+import { DEMO_APPS, DEMO_WORLD_APPS } from "~/seed/tiers/demo/demo-apps"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import {
@@ -157,9 +157,12 @@ describe("the services world's desks, queues and Home at the board date", () => 
       .filter((a) => a.enabled)
       .map((a) => a.name)
     expect(on.sort()).toEqual([...DEMO_WORLD_APPS.studio].sort())
+    const studio = new Set<string>(DEMO_WORLD_APPS.studio)
+    const offNames = DEMO_APPS.filter((n) => !studio.has(n))
+    expect(offNames.length).toBeGreaterThan(0)
     const off = await rows(sql`
       SELECT name, status FROM kernel.apps
-       WHERE org_id = ${world.orgId}::uuid AND name = ANY(${"{stripe,shopify,boxtal,pennylane,monitoring,social,api-connector}"}::text[])`)
+       WHERE org_id = ${world.orgId}::uuid AND name = ANY(${`{${offNames.join(",")}}`}::text[])`)
     expect(off.filter((a) => a.status === "active")).toEqual([])
   })
 

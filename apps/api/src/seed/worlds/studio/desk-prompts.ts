@@ -120,7 +120,6 @@ export const STUDIO_ROLE_AGENTS: DemoRoleAgent[] = [
       "projects:capacity_get",
       "projects:timesheet_get",
       "projects:task_time_get",
-      "projects:reconcile_facts",
       "tickets:search",
       "tickets:get",
       "knowledge:search",

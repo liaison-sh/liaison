@@ -68,6 +68,7 @@ import {
 import { demoFixtureMessageId, isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { maybeDemoShopifyResponse } from "~/modules/demo/shopify/provider"
 import { maybeDemoPaymentsResponse } from "~/modules/demo/worlds/saas/payments/provider"
+import { maybeDemoGithubResponse } from "~/modules/demo/worlds/studio/github/provider"
 
 // Per-call egress limits of a sandboxed `ctx.fetch`, from the limit table
 // (run-limits.ts `egressLimits`): a read waits 10 s by default
@@ -521,17 +522,32 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
               headers: headersWithActor,
             })
 
+      // The services world's GitHub: a request carrying its stand-in token is answered from the
+      // world's history (or refused) on every box, whatever its demo mode, and never put on the
+      // wire. Every other request returns null after one string compare per header.
+      const demoGithub =
+        demoShopify || demoBoxtal || demoPayments
+          ? null
+          : await maybeDemoGithubResponse({
+              url: wireUrl,
+              method,
+              orgId,
+              headers: headersWithActor,
+            })
+
       // TEST STACKS ONLY (LIAISON_TEST_VIES_STUB=1 under NODE_ENV test): the EU VIES VAT check
       // is answered by a stand-in, so a test never depends on the live service (test-vies.ts).
       const testVies =
-        demoShopify || demoBoxtal || demoPayments ? null : maybeTestViesResponse(wireUrl)
+        demoShopify || demoBoxtal || demoPayments || demoGithub
+          ? null
+          : maybeTestViesResponse(wireUrl)
 
       // LABELLED PRIVATE TEST BOX ONLY (LIAISON_TEST_SHOPIFY_ADMIN_URL, gated in
       // lib/shopify-fake-admin-gate.ts): the Shopify app's Admin API request goes
       // to the box's fake instead of the store. Null on every real instance, where
       // the request below goes to Shopify exactly as before.
       const fakeShopify =
-        demoShopify || demoBoxtal || demoPayments || testVies
+        demoShopify || demoBoxtal || demoPayments || demoGithub || testVies
           ? null
           : shopifyFakeAdminTarget(appName, wireUrl)
       if (fakeShopify) headersWithActor[FAKE_SHOP_DOMAIN_HEADER] = fakeShopify.shopDomain
@@ -547,6 +563,8 @@ export function createEgressMethods(ctx: BridgeContext): Record<string, any> {
           response = demoBoxtal
         } else if (demoPayments) {
           response = demoPayments
+        } else if (demoGithub) {
+          response = demoGithub
         } else if (testVies) {
           response = testVies
         } else {

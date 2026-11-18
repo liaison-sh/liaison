@@ -49,6 +49,8 @@ const CATALOG_DEMO_APPS = [
   "database",
   // The services world signs its client work: its layer seeds agreements when this is installed.
   "agreements",
+  // The services world reads its delivery traces: its layer installs the stand-in connection.
+  "github",
 ]
 
 /**
@@ -120,9 +122,11 @@ const CATALOG_DEMO_APPS = [
  * nothing here: 6 723 in 654 locally before and after it.
  * 366 outbox events once the agreements app declares its roles (member, lead, admin): their
  * registration events and the Full Member grant (+4); round trips 6 744 in 655, pin unchanged.
+ * 369 outbox events once the code host app is installed on the instance as on a demo box (its
+ * role registration events, +3); round trips 6 785 in 659, inside the margin, pin unchanged.
  */
 const PRODUCTS_BASELINE = {
-  outboxEvents: 366,
+  outboxEvents: 369,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
@@ -160,12 +164,16 @@ const SAAS_BASELINE = {
   // agreements and code host apps, which this world governs Off; turning the installed
   // agreements app Off writes its row, re-reads each of the 14 people's apps (+208 round trips
   // in 30 transactions) and queues one status event. Rows otherwise unchanged.
-  outboxEvents: 515,
+  // Re-pinned 2026-11-18 at 8 693 in 902, 519 outbox events, once the code host app is installed
+  // on the instance as on a demo box: this world turns it Off as it does agreements (its row
+  // and each of the 14 people's apps re-read, +250 round trips in 35 transactions, one status
+  // event) and its role registration events (+3). Rows otherwise unchanged.
+  outboxEvents: 519,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_443,
-  transactions: 867,
+  statements: 8_693,
+  transactions: 902,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
@@ -219,14 +227,18 @@ const SAAS_BASELINE = {
  * and one handbook note due for review (support layer), three channels and the owner's chat
  * with their messages (threads), and three routines with the Morning brief's thread and text
  * (the world's layer). No job, attention row or delivery is queued.
+ * Re-pinned 2026-11-18 at 14 187 round trips in 1 279 transactions, 444 outbox events (+43 in 5,
+ * +3 events), once the code host app is installed on the instance as on a demo box: the org
+ * layer enables it with its roles (their three registration events), and the world's layer
+ * installs its stand-in connection (one transaction, no event).
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 441,
+  outboxEvents: 444,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 14_144,
-  transactions: 1_274,
+  statements: 14_187,
+  transactions: 1_279,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

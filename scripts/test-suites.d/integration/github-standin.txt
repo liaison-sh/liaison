@@ -1,0 +1,2 @@
+# The services world's GitHub stand-in: reads answered in-process from the world's history, never forwarded.
+src/modules/demo/worlds/studio/github/github-standin.integration.test.ts

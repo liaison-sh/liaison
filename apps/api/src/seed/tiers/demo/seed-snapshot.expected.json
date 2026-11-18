@@ -244,8 +244,8 @@
     "digest": "9f916c3abef3049b"
   },
   "kernel.apps": {
-    "rows": 20,
-    "digest": "cb2ed65784f7bed4"
+    "rows": 21,
+    "digest": "915599131082129c"
   },
   "kernel.audit_log": {
     "rows": 35,
@@ -284,16 +284,16 @@
     "digest": "80cdbe01c0fdd51d"
   },
   "kernel.pending_events": {
-    "rows": 366,
-    "digest": "8d92529b74b0867c"
+    "rows": 369,
+    "digest": "7befa622bae72cec"
   },
   "kernel.resource_grants": {
     "rows": 7,
     "digest": "b1ae9ad68f7cda0f"
   },
   "kernel.roles": {
-    "rows": 35,
-    "digest": "f94b91304a18738a"
+    "rows": 37,
+    "digest": "d55c3b458c5fc247"
   },
   "kernel.routines": {
     "rows": 7,

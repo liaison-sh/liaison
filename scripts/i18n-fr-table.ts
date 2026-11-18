@@ -5081,7 +5081,8 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.homeKind.milestone_no_invoice.one": "jalon terminé pas encore facturé",
   "kernel.homeKind.milestone_no_invoice.other": "jalons terminés pas encore facturés",
   "kernel.homeKind.renewal_not_rolled.one": "renouvellement signé resté aux anciennes conditions",
-  "kernel.homeKind.renewal_not_rolled.other": "renouvellements signés restés aux anciennes conditions",
+  "kernel.homeKind.renewal_not_rolled.other":
+    "renouvellements signés restés aux anciennes conditions",
   "kernel.homeKind.cancelled.other": "annulées",
   "kernel.homeKind.created.other": "nouveaux",
   "kernel.homeKind.deferred.other": "différés",

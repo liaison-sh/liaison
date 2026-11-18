@@ -156,6 +156,21 @@ describe("the document version a client request is bound to", () => {
     expect(out.error?.message).toContain("nothing was staged")
   })
 
+  it("a target its app refuses to show is refused at the preflight with the app's own reason", async () => {
+    ClientActionTargetsTestAccess.set(kit.targetApp, "unshown", ["accept"], async () => ({
+      refused: "Quote Q-7 has no PDF yet.",
+    }))
+    try {
+      const out = (await asAdmin((ctx) =>
+        clientActionCreatePreflight({ ...staged(), kind: "accept", target_type: "unshown" }, ctx),
+      )) as { error?: { code: string; message: string } }
+      expect(out.error?.code).toBe("TARGET_UNAVAILABLE")
+      expect(out.error?.message).toContain("Quote Q-7 has no PDF yet.")
+    } finally {
+      ClientActionTargetsTestAccess.clear(kit.targetApp, "unshown")
+    }
+  })
+
   it("an agent's request with no hash parks with the version it read, and the approved call is held to it", async () => {
     const actor = adminContext(kit.w)
     const p = { ...staged(), kind: "accept" as const }

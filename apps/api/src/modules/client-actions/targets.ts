@@ -89,7 +89,15 @@ export interface ViewRequest {
   actingUserId: string | null
 }
 
-type ViewFn = (req: ViewRequest, signal: AbortSignal) => Promise<ClientActionView | null>
+/** The app's own refusal to show the target (not sent yet, no PDF yet), in its words. */
+export interface ViewRefusal {
+  refused: string
+}
+
+type ViewFn = (
+  req: ViewRequest,
+  signal: AbortSignal,
+) => Promise<ClientActionView | ViewRefusal | null>
 
 const testTargets = new Map<
   string,
@@ -209,7 +217,7 @@ async function viewThroughTool(
   target: ClientActionTarget,
   req: ViewRequest,
   signal: AbortSignal,
-): Promise<ClientActionView | null> {
+): Promise<ClientActionView | ViewRefusal | null> {
   if (!req.actingUserId) return null
   const userId = req.actingUserId
   const perms = await withPrivilegedDb(req.orgId, "client-action-view-perms", (tx) =>
@@ -230,7 +238,10 @@ async function viewThroughTool(
     origin: "system",
     signal,
   })
-  if (!("data" in answer)) return null
+  if (!("data" in answer)) {
+    const message = "error" in answer ? answer.error.message : null
+    return typeof message === "string" && message ? { refused: message } : null
+  }
   return asView(await withStoredFileHash(req.orgId, answer.data))
 }
 
@@ -290,11 +301,13 @@ export function shownSha256(shown: {
 
 /**
  * The target as the person outside sees it, or `down` when the app's tool
- * failed, refused or took longer than VIEW_TOOL_BUDGET_MS. Never throws.
+ * failed, refused or took longer than VIEW_TOOL_BUDGET_MS. Never throws. An app's
+ * own refusal is written to `out.refused`, for a caller that tells a person why.
  */
 export async function viewTarget(
   req: ViewRequest,
   budgetMs: number = VIEW_TOOL_BUDGET_MS,
+  out?: { refused?: string },
 ): Promise<ClientActionView | "down"> {
   const target = declaredTarget(req.orgId, req.targetApp, req.targetType)
   if (!target) return "down"
@@ -310,7 +323,13 @@ export async function viewTarget(
   const asked = (
     test ? test.view(req, controller.signal) : viewThroughTool(target, req, controller.signal)
   ).then(
-    (v) => v ?? ("down" as const),
+    (v) => {
+      if (v && "refused" in v) {
+        if (out) out.refused = v.refused
+        return "down" as const
+      }
+      return v ?? ("down" as const)
+    },
     (err) => {
       log.warn({ err, app: req.targetApp, type: req.targetType }, "client action view failed")
       return "down" as const

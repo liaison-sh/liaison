@@ -127,18 +127,25 @@ export async function clientActionCreatePreflight(
   }
   // The version the card stands for: the target as it reads now, hashed by its app (or the
   // kernel). The approved call mints only while the target still hashes to it.
-  const view = await viewTarget({
-    orgId: ctx.orgId,
-    targetApp: params.target_app,
-    targetType: params.target_type,
-    targetId: params.target_id,
-    actingUserId: ctx.userId,
-  })
+  const why: { refused?: string } = {}
+  const view = await viewTarget(
+    {
+      orgId: ctx.orgId,
+      targetApp: params.target_app,
+      targetType: params.target_type,
+      targetId: params.target_id,
+      actingUserId: ctx.userId,
+    },
+    undefined,
+    why,
+  )
   if (view === "down") {
     return {
       error: {
         code: "TARGET_UNAVAILABLE",
-        message: `${params.target_app}.${params.target_type} ${params.target_id} could not be read: nothing was staged. Next: check the id with that app's own read, then ask again.`,
+        message: why.refused
+          ? `${params.target_app}.${params.target_type} ${params.target_id} cannot be shown to the client: ${why.refused.replace(/\.+\s*$/, "")}. Nothing was staged.`
+          : `${params.target_app}.${params.target_type} ${params.target_id} could not be read: nothing was staged. Next: check the id with that app's own read, then ask again.`,
         status: 503,
       },
     }

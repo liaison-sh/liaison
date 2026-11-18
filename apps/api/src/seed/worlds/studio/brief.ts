@@ -9,6 +9,12 @@ import { studioAgreements } from "./agreements"
 import { STUDIO_DELIVERY_KEYS } from "./fiction"
 import { studioPlan } from "./plan"
 
+/** Midday UTC on a Paris civil date `YYYY-MM-DD` (or `YYYY-MM` and a day). */
+const middayOf = (civil: string, day?: number): Date => {
+  const [y, m, d] = civil.split("-").map(Number) as [number, number, number?]
+  return new Date(Date.UTC(y, m - 1, day ?? d ?? 1, 12))
+}
+
 const hours = (minutes: number) => `${Math.round((minutes / 60) * 10) / 10} h`
 
 /** The brief's text at `anchor`, in English. */
@@ -34,7 +40,7 @@ export function studioMorningBrief(anchor: Date): string {
   const done = under.filter((t) => t.status === "done").length
   // The milestone counts as one of its own tasks, as the project's budget counts it.
   const pct = next ? Math.round((done / (under.length + 1)) * 100) : 0
-  const due = next?.dueOn ? clock.fmt(new Date(`${next.dueOn}T12:00:00Z`), "en", "dayMonth") : ""
+  const due = next?.dueOn ? clock.fmt(middayOf(next.dueOn), "en", "dayMonth") : ""
 
   // The retainer: this month's hours against the month's included hours.
   const month = clock.monthKey()
@@ -42,7 +48,7 @@ export function studioMorningBrief(anchor: Date): string {
   const included = sorel.periods.find((p) => p.periodStart.startsWith(month))?.minutes ?? 0
   const monthName = (d: Date) =>
     new Intl.DateTimeFormat("en-GB", { month: "long", timeZone: STORY_TIME_ZONE }).format(d)
-  const thisMonth = monthName(new Date(`${month}-15T12:00:00Z`))
+  const thisMonth = monthName(middayOf(month, 15))
   const lastMonth = monthName(clock.lastMonthWeekday(1))
 
   // Next week: the open work of delivery due in it, against a full week each.

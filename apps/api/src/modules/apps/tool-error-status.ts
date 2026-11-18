@@ -486,6 +486,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   PDF_RENDER_UNAVAILABLE: 503,
   PDF_RENDER_BUSY: 429,
   COPY_DIFFERS: 409,
+  // A change request's reply states its own hours or amount; the figures line comes from the card.
+  REPLY_STATES_FIGURES: 422,
   // The legal layout refuses the text itself: a reference to nothing or to a hidden clause, a
   // typed number of one of its own articles, a clause starting with a number, a character no
   // face draws.

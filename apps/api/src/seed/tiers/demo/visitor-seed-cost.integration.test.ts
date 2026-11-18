@@ -168,16 +168,20 @@ const SAAS_BASELINE = {
   // on the instance as on a demo box: this world turns it Off as it does agreements (its row
   // and each of the 14 people's apps re-read, +250 round trips in 35 transactions, one status
   // event) and its role registration events (+3). Rows otherwise unchanged.
+  // Re-pinned 2026-11-18 to the runner's figure, 8 807 in 922, 519 outbox events: the pin above
+  // was this Mac's count, and the runner counts about one percent more round trips and two
+  // percent more transactions than this Mac (as on 2026-11-17), which crossed the margin. Nothing
+  // the world seeds moved: this Mac measures 8 693-8 698 in 902-903 on the same head.
   outboxEvents: 519,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_693,
-  transactions: 902,
+  statements: 8_807,
+  transactions: 922,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
- * clients, pipeline, seven projects with their tasks, time, plans, cost rates
+ * clients, pipeline, seven projects and two closed ones with their tasks, time, plans, cost rates
  * and who is away, every row through the product's writers.
  *
  * Measured 2026-11-13: 10 870 round trips in 1 048 transactions, 351 outbox
@@ -231,14 +235,23 @@ const SAAS_BASELINE = {
  * +3 events), once the code host app is installed on the instance as on a demo box: the org
  * layer enables it with its roles (their three registration events), and the world's layer
  * installs its stand-in connection (one transaction, no event).
+ * The runner counted that head at 14 326 round trips in 1 304 transactions (this Mac 14 187 in
+ * 1 279): its usual excess over this Mac, about one percent in round trips and two in
+ * transactions, crossed the margin since the pin above was this Mac's count.
+ * Re-pinned 2026-11-18 at 14 526 round trips in 1 322 transactions, 454 outbox events: the
+ * runner's figure plus what the two closed past projects add, measured here (14 387 in 1 297,
+ * +200 in 18, +10 events): each project created with its statuses, its time switched on and its
+ * plan written, its one sign-on task with its comment thread, that task's time entered by its
+ * person, and the project archived on the day it closed (created, switched and archived events,
+ * and the task's).
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 444,
+  outboxEvents: 454,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 14_187,
-  transactions: 1_279,
+  statements: 14_526,
+  transactions: 1_322,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

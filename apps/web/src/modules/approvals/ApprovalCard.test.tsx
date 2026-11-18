@@ -666,6 +666,36 @@ describe("ApprovalCard", () => {
     )
   })
 
+  it("a field stored in minutes or cents is edited in hours and in the currency, and saved stored", async () => {
+    apiMocks.post.mockResolvedValue({ id: "ar-1", currentPayload: {}, lastEdit: null })
+    handleWsCreate(
+      baseRow({
+        editableFields: [
+          { field: "hours_minutes", label: "Hours", widget: "number", unit: "hours" },
+          { field: "rate_minor", label: "Hourly rate", widget: "text", unit: "money" },
+        ],
+        currentPayload: { hours_minutes: 3600, rate_minor: "11000", currency: "EUR" },
+      }),
+      "u-approver",
+    )
+    render(() => <ApprovalCard requestId="ar-1" />)
+    fireEvent.click(await screen.findByTestId("approval-card-action-edit"))
+    const hours = (await screen.findByTestId(
+      "approval-card-field-hours_minutes",
+    )) as HTMLInputElement
+    const rate = screen.getByTestId("approval-card-field-rate_minor") as HTMLInputElement
+    expect(hours.value).toBe("60")
+    expect(rate.value).toBe("110.00")
+    fireEvent.input(hours, { target: { value: "44" } })
+    fireEvent.input(rate, { target: { value: "125" } })
+    fireEvent.click(screen.getByTestId("approval-card-action-save"))
+    await waitFor(() =>
+      expect(apiMocks.post).toHaveBeenCalledWith("/approvals/ar-1/payload", {
+        fields: { hours_minutes: 2640, rate_minor: "12500" },
+      }),
+    )
+  })
+
   // A customer email body is edited with the editor of the surface it writes
   // to (formatting shows as formatting), and the card saves its markdown.
   it("edits a ticket reply with the shared editor and saves its markdown", async () => {

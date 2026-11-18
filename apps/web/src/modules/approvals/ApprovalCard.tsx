@@ -2567,12 +2567,30 @@ const ApprovalCard: Component<ApprovalCardProps> = (props) => {
                       <div class="mt-3 flex flex-col gap-2">
                         <For each={c().editableFields}>
                           {(field) => {
-                            const value = () => String(draft()[field.field] ?? "")
+                            // A field stored in another unit than the one a person reads
+                            // (minutes, cents): shown and typed in hours or the currency,
+                            // saved in the stored unit, as a bundle step's editor does.
+                            const unit = field.unit
+                            const currency = () => (draft() as Record<string, unknown>).currency
+                            const [typed, setTyped] = createSignal(
+                              unit ? shownValue(unit, draft()[field.field], currency()) : "",
+                            )
+                            const value = () =>
+                              unit ? typed() : String(draft()[field.field] ?? "")
                             const onInput = (e: InputEvent) => {
                               const target = e.currentTarget as
                                 | HTMLInputElement
                                 | HTMLTextAreaElement
-                              setDraft({ ...draft(), [field.field]: target.value })
+                              if (!unit)
+                                return setDraft({ ...draft(), [field.field]: target.value })
+                              setTyped(target.value)
+                              const next = storedValue(
+                                unit,
+                                target.value,
+                                draft()[field.field],
+                                currency(),
+                              )
+                              if (next !== undefined) setDraft({ ...draft(), [field.field]: next })
                             }
                             const inputId = `approval-card-field-${field.field}`
                             let richField: RichEditorHandle | undefined

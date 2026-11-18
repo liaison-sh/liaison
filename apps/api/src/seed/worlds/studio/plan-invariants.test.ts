@@ -10,6 +10,7 @@ import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { scanWorldPackDir } from "~/seed/worlds/prose-guard"
 import { STUDIO_SOW_EXCLUSIONS, studioAgreements } from "./agreements"
 import { STUDIO_DELIVERY_KEYS, STUDIO_TEAM } from "./fiction"
+import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
 import { invoiceTotals, studioMoney } from "./money"
 import {
   inNameOrder,
@@ -262,6 +263,41 @@ describe("services world plan", () => {
       expect([excl, excl / 5, excl + excl / 5]).toEqual([651_000, 130_200, 781_200])
     })
 
+    it(`two past projects are closed, each holding its sign-on task with the hours its Knowledge note gives, at ${at}`, () => {
+      const closed = plan.projects.filter((p) => p.closedAt)
+      expect(closed.map((p) => p.key)).toEqual(["BRUME", "OSIER"])
+      for (const p of closed) {
+        const closedAt = p.closedAt as Date
+        expect(closedAt.getTime()).toBeLessThan(anchor.getTime())
+        // Everything in it is done before it closed, and nothing in it is planned.
+        expect(p.tasks.length).toBeGreaterThan(0)
+        for (const t of p.tasks) {
+          expect(t.status).toBe("done")
+          expect((t.completedAt as Date).getTime()).toBeLessThanOrEqual(closedAt.getTime())
+          expect(t.timeboxMinutes).toBeUndefined()
+        }
+        expect(p.periods).toEqual([])
+        expect(p.timeBudgets).toBe(true)
+        const signOn = p.tasks.filter((t) => /single sign-on/i.test(t.title))
+        expect(signOn.length).toBe(1)
+        const rows = plan.taskTime.filter((r) => r.project === p.key && r.task === signOn[0]!.key)
+        const hours = STUDIO_PAST_SIGN_ON_HOURS[p.key.toLowerCase() as "brume" | "osier"]
+        expect(hoursOf(rows)).toBe(hours)
+        for (const r of rows) expect(r.workDate < parisCivil(closedAt)).toBe(true)
+      }
+      const signOnHours = closed.map((p) =>
+        hoursOf(
+          plan.taskTime.filter(
+            (r) =>
+              r.project === p.key &&
+              p.tasks.some((t) => t.key === r.task && /single sign-on/i.test(t.title)),
+          ),
+        ),
+      )
+      expect(signOnHours).toEqual([52, 68])
+      expect((signOnHours[0]! + signOnHours[1]!) / 2).toBe(60)
+    })
+
     it(`the second fixed-price project takes 212 h on its eight closed tasks against 180 h at ${at}`, () => {
       const verd = project(plan, "VERD")
       const time = plan.taskTime.filter((r) => r.project === "VERD")
@@ -344,8 +380,22 @@ describe("services world plan", () => {
       for (const t of p.tasks) if (t.assignee) expect(keys.has(t.assignee)).toBe(true)
   })
 
-  it("seven projects hold 120 tasks in the per-project counts, and each column follows from its own tasks", () => {
-    const counts = studioBoardCounts(studioPlan(BOARD_DATE))
+  it("seven active projects hold 120 tasks in the per-project counts, two closed ones 2 more, and each column follows from its own tasks", () => {
+    const plan = studioPlan(BOARD_DATE)
+    const counts = studioBoardCounts(plan)
+    // A closed project is off the board; its tasks are still the world's.
+    const closed = plan.projects.filter((p) => p.closedAt)
+    expect(closed.map((p) => [p.key, p.tasks.length])).toEqual([
+      ["BRUME", 1],
+      ["OSIER", 1],
+    ])
+    const active = plan.projects.filter((p) => !p.closedAt)
+    expect(
+      active.reduce(
+        (n, p) => n + (p.key === plan.pipeline.key ? plan.pipeline.deals.length : p.tasks.length),
+        0,
+      ) + closed.reduce((n, p) => n + p.tasks.length, 0),
+    ).toBe(122)
     const total = (k: string) => Object.values(counts[k] ?? {}).reduce((n, v) => n + v, 0)
     expect(Object.keys(counts)).toEqual([
       "MARLIN",
@@ -366,10 +416,15 @@ describe("services world plan", () => {
     expect(sum).toEqual({ todo: 24, in_progress: 15, done: 81 })
   })
 
-  it("time and budgets is on for the five client projects, off for the studio's own, never on the pipeline", () => {
+  it("time and budgets is on for the five active client projects, off for the studio's own, never on the pipeline", () => {
     const plan = studioPlan(BOARD_DATE)
-    const on = plan.projects.filter((p) => p.timeBudgets).map((p) => p.key)
+    const on = plan.projects.filter((p) => p.timeBudgets && !p.closedAt).map((p) => p.key)
     expect(on).toEqual(["MARLIN", "SOREL", "ALPINE", "RHONE", "VERD"])
+    // The closed projects used it while they ran: their time is on record.
+    expect(plan.projects.filter((p) => p.closedAt && p.timeBudgets).map((p) => p.key)).toEqual([
+      "BRUME",
+      "OSIER",
+    ])
     expect(plan.projects.filter((p) => p.datedHours).map((p) => p.key)).toEqual(["SOREL"])
     expect(project(plan, "STUDIO").tasks.some((t) => t.timeboxMinutes)).toBe(false)
     expect(plan.taskTime.some((r) => r.project === "STUDIO" || r.project === "SALES")).toBe(false)

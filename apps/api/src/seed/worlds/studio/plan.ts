@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The `studio` world's plan for time and budgets: its seven projects, their
-// 120 tasks with milestones, timeboxes and due dates, the time people took,
+// The `studio` world's plan for time and budgets: its seven active projects,
+// their 120 tasks with milestones, timeboxes and due dates, two closed past
+// projects with their sign-on work, the time people took,
 // the project timeboxes per period, billing terms, cost rates, hours in a day
 // and who is away, as a pure function of the anchor. No database, no wall
 // clock: the layer writes exactly this, and `plan-invariants.test.ts` holds
@@ -22,12 +23,15 @@
 //   and 7.5 days real plus half a day of outage, this month 2.5 days so far.
 // - The second fixed-price project: 212 h on eight closed tasks against a
 //   whole-project timebox of 180 h.
+// - The two past projects, closed months ago: their partner sign-on took the
+//   hours their Knowledge notes give (`knowledge.ts`), 52 h and 68 h.
 // - Next week: every open task of the ten people of delivery is due on next
 //   week's Wednesday with its own timebox, so a person's planned hours next
 //   week are the sum of those tasks; later work is due after next week.
 import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { type StoryClock, storyClock } from "~/seed/worlds/story-clock"
 import { STUDIO_AWAY, STUDIO_HOURS_PER_DAY_MINUTES, type StudioDeliveryKey } from "./fiction"
+import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
 
 export type StudioTaskStatus = "todo" | "in_progress" | "done"
 
@@ -82,6 +86,8 @@ export interface StudioProjectPlan {
   sourceRepos: string[]
   periods: StudioPeriodTimebox[]
   tasks: StudioTaskPlan[]
+  /** When a past project closed: it is archived then, every task in it done. */
+  closedAt?: Date
 }
 
 export interface StudioDealPlan {
@@ -587,6 +593,37 @@ export function studioPlan(anchor: Date): StudioPlan {
     })
   }
 
+  // --- Two past projects, closed: the sign-on work a change request is sized from
+  const pastSignOn = (
+    project: "BRUME" | "OSIER",
+    number: number,
+    who: StudioDeliveryKey,
+    back: number,
+  ): { tasks: StudioTaskPlan[]; closedAt: Date } => {
+    const key = `${project}-${number}`
+    took(
+      project,
+      key,
+      who,
+      cal.monthDate(back, 12),
+      STUDIO_PAST_SIGN_ON_HOURS[project === "BRUME" ? "brume" : "osier"],
+    )
+    return {
+      tasks: [
+        {
+          key,
+          title: "Partner single sign-on",
+          assignee: who,
+          status: "done",
+          completedAt: closed(back, 20),
+        },
+      ],
+      closedAt: closed(back, 27),
+    }
+  }
+  const brume = pastSignOn("BRUME", 5, "hugo", 8)
+  const osier = pastSignOn("OSIER", 4, "yanis", 6)
+
   // --- The studio's own work: time and budgets off, no timebox -------------
   const studio: StudioTaskPlan[] = [
     { key: "STUDIO-8", title: "Laptop refresh", assignee: "paul", status: "todo" },
@@ -745,6 +782,38 @@ export function studioPlan(anchor: Date): StudioPlan {
       tasks: verd,
     },
     {
+      key: "BRUME",
+      name: "Client extranet",
+      description:
+        "An extranet for Brume Conseil's clients, at a fixed price, with partner sign-on. Closed.",
+      icon: "lock",
+      owner: "bastien",
+      timeBudgets: true,
+      basis: "fixed",
+      currency: "EUR",
+      datedHours: false,
+      sourceRepos: [],
+      periods: [],
+      tasks: brume.tasks,
+      closedAt: brume.closedAt,
+    },
+    {
+      key: "OSIER",
+      name: "Tenant portal",
+      description:
+        "A portal for Osier Habitat's tenants and partners, at a fixed price, with partner sign-on. Closed.",
+      icon: "building",
+      owner: "bastien",
+      timeBudgets: true,
+      basis: "fixed",
+      currency: "EUR",
+      datedHours: false,
+      sourceRepos: [],
+      periods: [],
+      tasks: osier.tasks,
+      closedAt: osier.closedAt,
+    },
+    {
       key: "STUDIO",
       name: "Studio",
       description: "The studio's own work: equipment, onboarding, reviews and the build machines.",
@@ -873,12 +942,13 @@ export function studioPlan(anchor: Date): StudioPlan {
   }
 }
 
-/** A project's tasks by board column; the pipeline's are its deals. */
+/** An active project's tasks by board column; the pipeline's are its deals. A closed one is off the board. */
 export function studioBoardCounts(
   plan: StudioPlan,
 ): Record<string, Record<StudioTaskStatus, number>> {
   const out: Record<string, Record<StudioTaskStatus, number>> = {}
   for (const p of plan.projects) {
+    if (p.closedAt) continue
     const rows: { status: StudioTaskStatus }[] =
       p.key === plan.pipeline.key ? plan.pipeline.deals : p.tasks
     const counts = { todo: 0, in_progress: 0, done: 0 }

@@ -14,12 +14,14 @@
 //   terms writer), then its tasks in board-number order, timeboxes and
 //   milestones through the task plan writer;
 // - the time each person took, as that person; cost rates as finance;
+// - the past projects archived on the day they closed, as their owner;
 // - who is away, through the away writer.
 //
 // No figure is computed here: budgets, capacity, the dated sheet and margin
 // are what the product's reads make of these rows. Every write is idempotent:
 // a re-run adopts what is there.
 import { and, eq, inArray, sql } from "drizzle-orm"
+import { archiveProject } from "~/apps/projects/service/archive-project"
 import { reconcileMark } from "~/apps/projects/service/claims"
 import { setCostRate } from "~/apps/projects/service/margin"
 import { reconcilePropose } from "~/apps/projects/service/reconcile"
@@ -425,15 +427,19 @@ async function seedStudioProject(
   const wanted = project.client ? companyIds[project.client] : undefined
   // A re-run finds the client already set and writes nothing for it.
   const current = await asUser(owner, async (tx) =>
-    rowsOf<{ company_id: string | null }>(
+    rowsOf<{ company_id: string | null; archived: boolean }>(
       await (tx as ExecTx).execute(
-        sql`SELECT company_id::text AS company_id FROM ${sql.raw(schemaRef("app_projects"))}.projects
+        sql`SELECT company_id::text AS company_id, archived_at IS NOT NULL AS archived
+              FROM ${sql.raw(schemaRef("app_projects"))}.projects
             WHERE id = ${projectId}::uuid AND org_id = ${ctx.orgId}::uuid`,
       ),
     ),
   )
+  // A closed project a previous run archived is finished: the writers refuse an archived
+  // project, and it holds everything already. A re-run only adopts its tasks.
+  const archived = current[0]?.archived === true
   const companyId = wanted && current[0]?.company_id !== wanted ? wanted : undefined
-  if (project.timeBudgets || companyId) {
+  if (!archived && (project.timeBudgets || companyId)) {
     // The client and the switch through the project writer: the org's row follows.
     await asUser(owner, (tx) =>
       updateProjectWithOutcome({
@@ -450,7 +456,7 @@ async function seedStudioProject(
       }),
     )
   }
-  if (project.timeBudgets) {
+  if (project.timeBudgets && !archived) {
     // The org's feature row follows after commit; the writers below read it.
     await awaitTimeFeatureSync(ctx.orgId)
 
@@ -1136,6 +1142,33 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   }
   await awaitTimeRowWrites()
   ctx.log(`time: ${plan.taskTime.length} rows`)
+
+  // The past projects close once their time is on record, on the day they closed, through the
+  // archive writer, as their owner. A re-run finds them archived and writes nothing.
+  for (const project of plan.projects) {
+    if (!project.closedAt) continue
+    const projectId = tasksOf[project.key]?.projectId
+    if (!projectId) throw new Error(`studio layer: no project ${project.key}`)
+    const closer = await actors(project.owner)
+    const closedAt = project.closedAt
+    await asUser(closer, async (tx) => {
+      const open = rowsOf<{ id: string }>(
+        await (tx as ExecTx).execute(
+          sql`SELECT id::text AS id FROM ${sql.raw(schemaRef("app_projects"))}.projects
+              WHERE id = ${projectId}::uuid AND org_id = ${ctx.orgId}::uuid AND archived_at IS NULL`,
+        ),
+      )
+      if (open.length === 0) return
+      await archiveProject({
+        tx: tx as never,
+        orgId: ctx.orgId,
+        projectId,
+        actorId: closer.userId,
+        archivedAt: closedAt,
+      })
+    })
+  }
+  await awaitTimeFeatureSync(ctx.orgId)
 
   // Cost rates through the rate writer, as finance sets them.
   const finance = await actors("anais")

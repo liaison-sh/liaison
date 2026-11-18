@@ -333,8 +333,10 @@ export const STUDIO_CLIENTS: StudioClient[] = [
 ]
 
 /**
- * Clients of earlier work the year's other invoices went to: names on invoices only, no contact
- * and no project here. Their reserved `.example` domains carry the invoice address.
+ * Clients of earlier work the year's other invoices went to: names on invoices, no contact. The
+ * first two are the closed past projects BRUME and OSIER (`plan.ts`), named in their
+ * descriptions; the others have no project here. Their reserved `.example` domains carry the
+ * invoice address.
  */
 export const STUDIO_PAST_CLIENTS: ReadonlyArray<{ key: string; name: string; domain: string }> = [
   { key: "brume", name: "Brume Conseil", domain: "brume-conseil.example" },

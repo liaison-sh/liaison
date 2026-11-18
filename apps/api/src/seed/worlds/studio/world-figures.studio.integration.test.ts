@@ -31,7 +31,8 @@ import {
   installFromDist,
   uninstallAppsSince,
 } from "../../../../test-support/seed/install-dist-apps"
-import { STUDIO_DATED_LINES, studioPlan } from "./plan"
+import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
+import { STUDIO_COST_RATES, STUDIO_DATED_LINES, studioPlan } from "./plan"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -117,14 +118,22 @@ afterAll(async () => {
 
 describe("the services world's figures at the board date", () => {
   it("five projects use time, the internal one does not, the pipeline cannot, and the org is in use", async () => {
-    const rows = await withPrivilegedDb(orgId, "studio-figures:switch", async (tx) =>
-      rowsOf<{ key: string; id: string; kind: string; on: boolean }>(
+    const all = await withPrivilegedDb(orgId, "studio-figures:switch", async (tx) =>
+      rowsOf<{ key: string; id: string; kind: string; on: boolean; archived: boolean }>(
         await tx.execute(
-          sql`SELECT key, id::text AS id, kind, time_budgets_on AS on FROM app_projects.projects
+          sql`SELECT key, id::text AS id, kind, time_budgets_on AS on,
+                     archived_at IS NOT NULL AS archived
+                FROM app_projects.projects
               WHERE org_id = ${orgId}::uuid ORDER BY key`,
         ),
       ),
     )
+    // The closed past projects used time while they ran; the rest are the active ones.
+    expect(all.filter((r) => r.archived).map((r) => [r.key, r.on])).toEqual([
+      ["BRUME", true],
+      ["OSIER", true],
+    ])
+    const rows = all.filter((r) => !r.archived)
     expect(rows.filter((r) => r.on).map((r) => r.key)).toEqual([
       "ALPINE",
       "MARLIN",
@@ -150,6 +159,50 @@ describe("the services world's figures at the board date", () => {
       timeBudgets: true,
     })
     expect(JSON.stringify(refused)).toContain("planning_off")
+  })
+
+  it("the two past projects are closed, their sign-on taking 52 h and 68 h, 60 h on average, costed at the person's rate", async () => {
+    const plan = studioPlan(BOARD_DATE)
+    const closed = await withPrivilegedDb(orgId, "studio-figures:closed", async (tx) =>
+      rowsOf<{ key: string; id: string; archived_at: string | Date | null; open: number }>(
+        await tx.execute(
+          sql`SELECT p.key, p.id::text AS id, p.archived_at,
+                     (SELECT count(*)::int FROM app_projects.tasks t
+                       WHERE t.project_id = p.id AND t.completed_at IS NULL) AS open
+                FROM app_projects.projects p
+               WHERE p.org_id = ${orgId}::uuid AND p.key IN ('BRUME', 'OSIER') ORDER BY p.key`,
+        ),
+      ),
+    )
+    expect(closed.map((r) => r.key)).toEqual(["BRUME", "OSIER"])
+    const figures: Array<[string, number, number]> = []
+    for (const row of closed) {
+      const spec = plan.projects.find((p) => p.key === row.key)
+      // Closed on the plan's day, before the board date, with nothing left open.
+      expect(new Date(row.archived_at as string).getTime()).toBe(spec?.closedAt?.getTime() ?? 0)
+      expect(row.open).toBe(0)
+      const signOn = spec?.tasks.find((t) => /single sign-on/i.test(t.title))
+      const who = signOn?.assignee as keyof typeof STUDIO_COST_RATES
+      // Margin, read as finance by the project's id: an archived project has no name to look
+      // up by. Every hour is the sign-on's, at its person's rate; no invoice is linked to it.
+      const out = await handler("anais", marginGet, { projectId: row.id })
+      const hours = STUDIO_PAST_SIGN_ON_HOURS[row.key.toLowerCase() as "brume" | "osier"]
+      const cost = (hours * STUDIO_COST_RATES[who]) / 100
+      expect([out.takenMinutes / 60, out.cost, out.invoiced, out.margin]).toEqual([
+        hours,
+        cost,
+        0,
+        -cost,
+      ])
+      expect(out.how).toContain("No issued invoice is linked to the project yet.")
+      figures.push([row.key, out.takenMinutes / 60, out.margin])
+    }
+    // Hugo at 50 an hour on the first, Yanis at 50 on the second.
+    expect(figures).toEqual([
+      ["BRUME", 52, -2600],
+      ["OSIER", 68, -3400],
+    ])
+    expect((figures[0]![1] + figures[1]![1]) / 2).toBe(60)
   })
 
   it("the fixed-price project reads 420, 346, 74 left, its coverage and its milestone figures", async () => {

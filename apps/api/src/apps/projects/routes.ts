@@ -5,6 +5,7 @@ import { createMiddleware } from "hono/factory"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
 import { projectsRel } from "~/apps/projects/schema-refs"
+import { archiveProject } from "~/apps/projects/service/archive-project"
 import {
   addItems,
   getChecklistStatus,
@@ -457,57 +458,10 @@ export const projectsRoutes = new Hono<AppEnv>()
   .post("/:projectId/archive", scopeProjectsWrite, async (c) => {
     const projectId = c.req.param("projectId")
     const orgId = c.get("orgId")
-    const result = await withRequestRls(c, async (tx) => {
-      const rows = extractRows<{ id: string; name: string }>(
-        await tx.execute(drizzleSql`
-          SELECT id, name FROM ${projectsRel("projects")}
-          WHERE id = ${projectId}::uuid AND org_id = ${orgId}::uuid
-          LIMIT 1
-        `),
-      )
-      if (rows.length === 0) {
-        throw new ProjectsHttpError(404, "not_found", "project not found")
-      }
-      // A retainer bills this project from its card each month: archiving it would leave a month
-      // no one can bill. Its months still to bill are timeboxes derived from the schedule.
-      const held = extractRows<{ source_ref: string | null; period_end: string }>(
-        await tx.execute(drizzleSql`
-          SELECT source_ref, period_end::text AS period_end FROM ${projectsRel("project_timeboxes")}
-           WHERE org_id = ${orgId}::uuid AND project_id = ${projectId}::uuid
-             AND source = 'retainer' AND period_end >= current_date
-           ORDER BY period_end DESC LIMIT 1
-        `),
-      )[0]
-      if (held) {
-        throw new ProjectsHttpError(
-          409,
-          "retainer_live",
-          `${rows[0]?.name ?? "This project"} stays open: a retainer bills it from its planned vs done card each month, through ${held.period_end}. Nothing was changed.`,
-          {
-            scheduleId: held.source_ref,
-            next: `End the retainer's recurring schedule in Invoicing; the project can be archived once its last retainer month (to ${held.period_end}) has passed.`,
-          },
-        )
-      }
-      await tx.execute(drizzleSql`
-        UPDATE ${projectsRel("projects")}
-        SET archived_at = now(), updated_at = now()
-        WHERE id = ${projectId}::uuid AND org_id = ${orgId}::uuid
-      `)
-      await tx.queueEvent({
-        app: "projects",
-        entity: "project",
-        action: "archived",
-        entityId: projectId,
-        data: { id: projectId },
-        actorId: c.get("userId"),
-        actorType: "user",
-        orgId,
-      })
-      // An archived project no longer counts for the org's time tools (time-feature.ts).
-      scheduleTimeBudgetsSync(orgId, c.get("userId"))
-      return loadProjectDetail(tx, orgId, projectId)
-    })
+    const actorId = c.get("userId")
+    const result = await withRequestRls(c, (tx) =>
+      archiveProject({ tx, orgId, projectId, actorId }),
+    )
     await awaitTimeFeatureSync(orgId)
     return success(c, result)
   })

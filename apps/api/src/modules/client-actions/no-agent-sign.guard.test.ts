@@ -3,8 +3,10 @@
 // Agents never sign. Read from the source, with no server: (a) the one decide is
 // imported only by the public client action routes and the portal routes, so no
 // tool handler reaches it; (b) no tool's name signs, decides or accepts a client
-// action; (d) no app manifest declares a write to the client actions table, and
-// in the kernel only the gated create and the withdraw do.
+// action; (c) a decision is written in exactly two files, the one decide and the
+// demo decide, and the demo decide is reached only from the services world's
+// acceptance step; (d) no app manifest declares a write to the client actions
+// table, and in the kernel only the gated create and the withdraw do.
 import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync, statSync } from "node:fs"
 import { join, relative } from "node:path"
@@ -97,5 +99,73 @@ describe("agents never sign", () => {
     const tools = readFileSync(join(API_SRC, "modules/client-actions/tools.ts"), "utf8")
     expect(tools.match(/writesToTable:\s*"kernel\.client_actions"/g)).toHaveLength(2)
     expect(tools).not.toMatch(/\bdecideClientAction\b/)
+  })
+})
+
+/** A raw UPDATE of the client actions table whose SET clause writes `decided_at`. */
+const DECISION_WRITE_SQL = /UPDATE\s+[^;`]*?client_actions\b[\s\S]*?\bSET\b([\s\S]*?)\bWHERE\b/g
+/** The same through the query builder: `.update(clientActions).set({ ... decidedAt`. */
+const DECISION_WRITE_ORM = /\.update\(\s*clientActions\s*\)\s*\.set\(\s*\{[^}]*\bdecidedAt\b/g
+
+function decisionWrites(text: string): number {
+  let n = 0
+  for (const m of text.matchAll(DECISION_WRITE_SQL)) if (/\bdecided_at\s*=/.test(m[1] ?? "")) n++
+  n += [...text.matchAll(DECISION_WRITE_ORM)].length
+  return n
+}
+
+/** Files (relative to the api source, or to the repo for bundled apps) that write a decision. */
+function decisionWriters(files: string[]): string[] {
+  return files
+    .filter((f) => decisionWrites(readFileSync(f, "utf8")) > 0)
+    .map((f) => (f.startsWith(API_SRC) ? relative(API_SRC, f) : relative(ROOT, f)))
+    .sort()
+}
+
+const DEMO_DECIDE_IMPORT =
+  /from\s+["'](?:~\/modules\/client-actions\/demo-decide|\.\/demo-decide|\.\.\/client-actions\/demo-decide|[./]*modules\/client-actions\/demo-decide)["']/
+
+describe("who writes a decision", () => {
+  const files = () => [...sourceFiles(API_SRC), ...sourceFiles(join(ROOT, "bundled-apps"))]
+
+  it("only the one decide and the demo decide write a decision", () => {
+    expect(decisionWriters(files())).toEqual([
+      "modules/client-actions/decide.ts",
+      "modules/client-actions/demo-decide.ts",
+    ])
+  })
+
+  it("the decision scan catches a raw update and a query-builder update in another file", () => {
+    const raw =
+      "await tx.execute(sql`UPDATE kernel.client_actions SET decision = 'signed', decided_at = now() WHERE id = $1`)"
+    const orm = "await tx.update(clientActions).set({ decision: 'signed', decidedAt: new Date() })"
+    const rotate =
+      "await tx.execute(sql`UPDATE kernel.client_actions SET sent_at = NULL WHERE decided_at IS NULL`)"
+    expect(decisionWrites(raw)).toBe(1)
+    expect(decisionWrites(orm)).toBe(1)
+    expect(decisionWrites(rotate)).toBe(0)
+  })
+
+  it("the demo decide is imported only by the services world's acceptance step", () => {
+    const importers = files()
+      .filter((f) => DEMO_DECIDE_IMPORT.test(readFileSync(f, "utf8")))
+      .map((f) => relative(API_SRC, f))
+      .sort()
+    expect(importers).toEqual(["modules/demo/worlds/studio/cr-accepted.ts"])
+  })
+
+  it("decide.ts exports no other function that writes a decision", () => {
+    const text = readFileSync(join(API_SRC, "modules/client-actions/decide.ts"), "utf8")
+    expect(decisionWrites(text)).toBe(1)
+    const start = text.indexOf("export async function decideClientAction(")
+    expect(start).toBeGreaterThan(-1)
+    const next = text.indexOf("\nexport ", start + 1)
+    const body = text.slice(start, next === -1 ? undefined : next)
+    expect(decisionWrites(body)).toBe(1)
+    // And the demo decide writes one, in its one exported function.
+    const demo = readFileSync(join(API_SRC, "modules/client-actions/demo-decide.ts"), "utf8")
+    expect(decisionWrites(demo)).toBe(1)
+    const exported = [...demo.matchAll(/^export (?:async )?function (\w+)/gm)].map((m) => m[1])
+    expect(exported).toEqual(["decideDemoClientAction"])
   })
 })

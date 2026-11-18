@@ -1360,6 +1360,47 @@
         "body": "Vous, Sara à la finance et tout agent que l'un de vous interroge peuvent lire la politique de remboursement. Clémence au support, et tout agent qu'elle interroge, ne le peuvent pas.",
         "role": "Un agent lit avec les accès de la personne qui l'interroge. C'est pourquoi vous pouvez donner aux agents toutes les connaissances de l'entreprise : personne n'obtient par un agent plus que ce qu'il pourrait ouvrir lui-même."
       }
+    },
+    "studioClient": {
+      "title": "Travail client",
+      "summary": "Un client demande plus que ce que vous avez signé : votre agent vérifie l'accord, puis rédige la réponse et une demande de modification. Vous l'approuvez.",
+      "moreThanSigned": {
+        "title": "Pauline demande plus que ce que vous avez signé",
+        "role": "Vous dirigez Halden Studio. Pauline Gros veut ajouter l'authentification unique au portail partenaires. Votre agent a lu l'accord signé : la section 3 l'exclut.",
+        "body": "Il a rédigé une réponse et la demande de modification 1, pour 6 600 €. Rien n'est parti. Lisez la ligne, puis appuyez sur Suivant."
+      },
+      "readScope": {
+        "title": "Voyez ce que dit l'accord",
+        "role": "Avant d'approuver, vous voulez lire le passage vous-même, et voir la réponse que Pauline recevrait.",
+        "body": "Demandez à votre agent depuis Discussions. Il répond avec le passage, la réponse et la demande de modification 1 sur une seule carte d'approbation.",
+        "say": "Demandez à votre agent :",
+        "text": "L'authentification unique est-elle dans le périmètre de Marlin ?",
+        "way1": "Ouvrez Discussions en bas de l'écran"
+      },
+      "openAgreement": {
+        "title": "Le passage, et la même carte",
+        "role": "La section 3 de l'énoncé des travaux signé, mot pour mot, et la carte qui attendait déjà : pas de seconde approbation.",
+        "body": "Lisez la réponse de votre agent. Son passage ouvre l'accord à la section 3. Puis appuyez sur Suivant.",
+        "way3": "Lisez la réponse, puis ouvrez le passage"
+      },
+      "approveCr": {
+        "title": "Approuvez la demande de modification",
+        "role": "La réponse et la demande de modification 1 partent ensemble vers Pauline, avec un lien pour l'approuver.",
+        "body": "Ouvrez la ligne en surbrillance sur l'Accueil et appuyez sur Approuver sur sa carte. Pauline est fictive : aucun e-mail ne quitte cette démo.",
+        "way2": "Ouvrez la ligne en surbrillance"
+      },
+      "clientDecides": {
+        "title": "Pauline approuve la demande de modification",
+        "role": "Pauline l'approuve sur son lien. Son approbation est fictive, pour la démo : aucune signature n'a eu lieu, et rien n'est scellé.",
+        "body": "Rien à faire : Accords enregistre l'approbation et met le projet à jour. Appuyez sur Suivant une fois que c'est fait.",
+        "way1": "Accords"
+      },
+      "whatMoved": {
+        "title": "Ce qui a bougé",
+        "role": "Le total du contrat a augmenté, l'enveloppe d'heures du projet a grandi, et une tâche et une ligne de facturation pour le nouveau travail sont prévues. Rien n'a été facturé.",
+        "body": "L'enveloppe est maintenant de {{timebox}}, dont {{left}} restantes. Les deux sont lues dans le budget du projet, comme cette page les lit.",
+        "way1": "Ouvrez le projet du portail partenaires"
+      }
     }
   }
 }

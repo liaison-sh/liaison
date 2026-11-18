@@ -35,7 +35,7 @@ import { seedCompanies } from "~/seed/factories/people/companies"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STUDIO_CONTACTS } from "./fiction"
 import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
-import { parisCivil } from "./plan"
+import { parisCivil, studioPlan } from "./plan"
 
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
@@ -569,6 +569,53 @@ async function insertOnce(
   if (found.length === 0) await insertAppRow(tx, "agreements", table, row)
 }
 
+/** The words a stand-in signature event records: no person signed anything. */
+export const STAND_IN_CONSENT_WORDS = "A stand-in for the demo: no signature took place."
+
+/**
+ * A stand-in signature event (level `demo`): what the services world records where a fictional
+ * client "signs". The seal finds only `demo` events and writes a stand-in record: no seal, no
+ * signed copy, no timestamp, no copy mail. Written once per id.
+ */
+export async function writeStandInSignatureEvent(
+  tx: Parameters<typeof insertAppRow>[0],
+  e: {
+    id: string
+    orgId: string
+    versionId: string
+    clientActionId: string
+    signerOrder: number | null
+    signerContactId: string | null
+    signerUserId: string | null
+    invitedEmail: string
+    invitedBy: string
+    typedName: string
+    capacity: string
+    documentSha256: string
+    at: Date
+  },
+): Promise<void> {
+  await insertOnce(tx, "signature_events", {
+    id: e.id,
+    org_id: e.orgId,
+    version_id: e.versionId,
+    client_action_id: e.clientActionId,
+    signer_order: e.signerOrder,
+    signer_contact_id: e.signerContactId,
+    signer_user_id: e.signerUserId,
+    invited_email: e.invitedEmail,
+    invited_by: e.invitedBy,
+    typed_name: e.typedName,
+    capacity: e.capacity,
+    consent_words: STAND_IN_CONSENT_WORDS,
+    consent_lang: "en",
+    level: "demo",
+    document_sha256: e.documentSha256,
+    signed_at: e.at.toISOString(),
+    created_at: e.at.toISOString(),
+  })
+}
+
 export interface StudioAgreementsInput {
   ctx: SeedContext
   org: SeedDemoOrgResult
@@ -587,6 +634,8 @@ export interface StudioAgreementsInput {
 export async function seedStudioAgreements(input: StudioAgreementsInput): Promise<void> {
   const { ctx, org, owner } = input
   const plan = studioAgreements(ctx.now)
+  const projects = studioPlan(ctx.now).projects
+  const projectOf = (key: string) => projects.find((p) => p.key === key)
   const lea = org.peopleByKey.lea?.userId
   if (!lea) throw new Error("studio agreements: no co-founder")
   const ownerId = org.ownerUserId ?? org.adminUserId
@@ -638,6 +687,11 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
         contact_id: contact?.id ?? null,
         deal_task_id: a.deal ? (input.dealIds[a.deal] ?? null) : null,
         project_id: a.project ? (input.projectIds[a.project] ?? null) : null,
+        // What the product records when a signed agreement makes its project: whether the
+        // project uses time and budgets, and the whole-project timebox it was given. A change
+        // request reads both.
+        project_time_budgets: a.project ? (projectOf(a.project)?.timeBudgets ?? null) : null,
+        project_timebox_minutes: a.project ? (projectOf(a.project)?.timeboxMinutes ?? null) : null,
         quote_document_id: a.key === "portal-sow" ? input.quoteDocumentId : null,
         parent_agreement_id: a.parent ? agreementId(a.parent) : null,
         became_agreement_id: a.became ? agreementId(a.became) : null,
@@ -694,24 +748,20 @@ export async function seedStudioAgreements(input: StudioAgreementsInput): Promis
         if (!s.at) continue
         const staff = s.person === "lea"
         const c = staff ? null : contactOf(s.person)
-        await insertOnce(tx, "signature_events", {
+        await writeStandInSignatureEvent(tx, {
           id: ctx.id("signature_event", `studio:${a.key}:${i}`),
-          org_id: ctx.orgId,
-          version_id: versionId(a.key),
-          client_action_id: ctx.id("client_action", `studio:${a.key}:${i}`),
-          signer_order: i + 1,
-          signer_contact_id: c?.id ?? null,
-          signer_user_id: staff ? lea : null,
-          invited_email: staff ? leaEmail : (c?.email ?? s.email ?? ""),
-          invited_by: leaName,
-          typed_name: staff ? leaName : (c?.name ?? s.name ?? ""),
+          orgId: ctx.orgId,
+          versionId: versionId(a.key),
+          clientActionId: ctx.id("client_action", `studio:${a.key}:${i}`),
+          signerOrder: i + 1,
+          signerContactId: c?.id ?? null,
+          signerUserId: staff ? lea : null,
+          invitedEmail: staff ? leaEmail : (c?.email ?? s.email ?? ""),
+          invitedBy: leaName,
+          typedName: staff ? leaName : (c?.name ?? s.name ?? ""),
           capacity: s.capacity,
-          consent_words: "A stand-in for the demo: no signature took place.",
-          consent_lang: "en",
-          level: "demo",
-          document_sha256: digest,
-          signed_at: s.at.toISOString(),
-          created_at: s.at.toISOString(),
+          documentSha256: digest,
+          at: s.at,
         })
       }
     }

@@ -64,6 +64,7 @@ import { paymentRecoveredInjector } from "~/modules/demo/worlds/saas/payment-rec
 import { saasProjectsCommentInjector } from "~/modules/demo/worlds/saas/projects-comment"
 import { saasSalesEmailInjector } from "~/modules/demo/worlds/saas/sales-email"
 import { saasSupportTicketInjector } from "~/modules/demo/worlds/saas/support-ticket"
+import { studioCrAcceptedInjector } from "~/modules/demo/worlds/studio/cr-accepted"
 import {
   assertWorldBeatAllowed,
   completeDoBeat,
@@ -144,6 +145,7 @@ function injectors(): Map<string, WorldInjector> {
       saasChatQuestionInjector,
       saasSalesEmailInjector,
       saasKnowledgeAsksInjector,
+      studioCrAcceptedInjector,
     ].map((injector) => [injector.id, injector]),
   )
   return injectorMap

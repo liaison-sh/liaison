@@ -14,6 +14,8 @@ const PENDING = "…"
 
 export function formatTourFigure(figure: TourFigure, locale: string): string {
   if (figure.kind === "count") return new Intl.NumberFormat(locale).format(figure.n)
+  if (figure.kind === "hours")
+    return `${new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(figure.minutes / 60)} h`
   return new Intl.NumberFormat(locale, { style: "currency", currency: figure.currency }).format(
     figure.minor / 100,
   )

@@ -156,12 +156,16 @@ const SAAS_BASELINE = {
   // the instance as on a demo box took it to 8 214-8 219 in 836-837 locally (inside the margin),
   // and the runner's usual excess over this Mac (about one percent) crossed it.
   // 514 once the agreements app declares its roles (+4 role events); 8 235 in 837, pin unchanged.
-  outboxEvents: 514,
+  // Re-pinned 2026-11-18 at 8 443 in 867, 515 outbox events: the demo's app list gained the
+  // agreements and code host apps, which this world governs Off; turning the installed
+  // agreements app Off writes its row, re-reads each of the 14 people's apps (+208 round trips
+  // in 30 transactions) and queues one status event. Rows otherwise unchanged.
+  outboxEvents: 515,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 8_304,
-  transactions: 852,
+  statements: 8_443,
+  transactions: 867,
 }
 /**
  * The services world's visitor seed, measured on its own: its people and roles,
@@ -209,14 +213,20 @@ const SAAS_BASELINE = {
  * than this Mac. Outbox events unchanged.
  * 388 outbox events once the agreements app declares its roles (+4 role events) and the project
  * lead is given the agreements lead role (+1); 13 618 round trips in 1 227, pin unchanged.
+ * Re-pinned 2026-11-18 at 14 144 round trips in 1 274 transactions, 441 outbox events (+526 in
+ * 47, +53 events), once the pack seeds its desks and the rest of its day: four desks with their
+ * prompts and tools (org layer), five tickets with their thirteen messages and four categories
+ * and one handbook note due for review (support layer), three channels and the owner's chat
+ * with their messages (threads), and three routines with the Morning brief's thread and text
+ * (the world's layer). No job, attention row or delivery is queued.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 388,
+  outboxEvents: 441,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 13_682,
-  transactions: 1_250,
+  statements: 14_144,
+  transactions: 1_274,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

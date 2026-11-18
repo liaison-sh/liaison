@@ -240,8 +240,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 445,
-    "digest": "a5d8313c2533f858"
+    "rows": 441,
+    "digest": "4da596452f9ddaa4"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -257,7 +257,7 @@
   },
   "kernel.routines": {
     "rows": 3,
-    "digest": "5b8c3be90b7c6f24"
+    "digest": "08f625783d353ad6"
   },
   "kernel.saved_views": {
     "rows": 8,
@@ -268,12 +268,12 @@
     "digest": "52b5dce6e8ef1bde"
   },
   "kernel.thread_participants": {
-    "rows": 267,
-    "digest": "ac10c7d757ca3354"
+    "rows": 264,
+    "digest": "ee691d0be905ed6e"
   },
   "kernel.threads": {
-    "rows": 127,
-    "digest": "7dfdad5d4ddd978c"
+    "rows": 126,
+    "digest": "82741b67debe6365"
   },
   "kernel.user_dimension_grants": {
     "rows": 24,
@@ -284,8 +284,8 @@
     "digest": "5c85c7f5b2dc043a"
   },
   "kernel.user_thread_state": {
-    "rows": 143,
-    "digest": "25f8296de1fe3ff4"
+    "rows": 141,
+    "digest": "7510c4228ffb0433"
   },
   "kernel.users": {
     "rows": 26,

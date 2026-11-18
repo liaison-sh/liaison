@@ -279,14 +279,50 @@ async function seedStudioRoutines(
       continue
     }
     const userId = userIdOf(org, spec.ownerKey)
-    const out = (await handleEnableRoutineTemplate(
-      { appName: spec.template.appName, templateKey: spec.template.templateKey },
-      { orgId: ctx.orgId, userId, actorType: "user", scopes: await scopesOf(userId) } as never,
-    )) as { routine?: { id: string }; error?: { code: string; message?: string } }
-    if (!out.routine && out.error?.code !== "already_enabled")
+    const tpl = routineTemplateRegistry.get([
+      ctx.orgId,
+      spec.template.appName,
+      spec.template.templateKey,
+    ])
+    if (!tpl)
       throw new Error(
-        `studio layer: routine ${spec.template.appName}/${spec.template.templateKey} not enabled: ${out.error?.code} ${out.error?.message ?? ""}`,
+        `studio layer: routine template ${spec.template.appName}/${spec.template.templateKey} is not registered for this org`,
       )
+    if (tpl.kind === "event") {
+      // An event routine's sender filter names the app's contact groups, which only the
+      // template writer resolves for the org; it schedules nothing, it subscribes.
+      const out = (await handleEnableRoutineTemplate(
+        { appName: spec.template.appName, templateKey: spec.template.templateKey },
+        { orgId: ctx.orgId, userId, actorType: "user", scopes: await scopesOf(userId) } as never,
+      )) as { routine?: { id: string }; error?: { code: string; message?: string } }
+      if (!out.routine && out.error?.code !== "already_enabled")
+        throw new Error(
+          `studio layer: routine ${spec.template.appName}/${spec.template.templateKey} not enabled: ${out.error?.code} ${out.error?.message ?? ""}`,
+        )
+    } else {
+      // A recurring routine is written as the template writer names and fills it; its cron is
+      // scheduled by the routine scheduler, not by the seed, so the seed queues no job.
+      const own = personalAgentOf(org, userId)
+      if (!own) throw new Error(`studio layer: no personal agent for '${spec.ownerKey}'`)
+      await seedRoutine(ctx, {
+        createdByUserId: userId,
+        ownerScopes: await scopesOf(userId),
+        enabled: true,
+        routine: {
+          name: `${spec.template.appName}-${spec.template.templateKey}`,
+          description: tpl.description,
+          kind: "recurring",
+          cron: tpl.cron ?? "0 9 * * 1-5",
+          timezone: tpl.timezone && tpl.timezone !== "org" ? tpl.timezone : org.timezone,
+          ownerUserId: userId,
+          ownerAgentId: own.agentId,
+          scopes: [...tpl.scopes],
+          prompt: tpl.promptTemplate,
+          template: spec.template,
+          followUp: tpl.followUp === true,
+        },
+      })
+    }
     on++
   }
   ctx.log(`routines: ${on} on`)

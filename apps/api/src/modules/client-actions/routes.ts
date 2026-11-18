@@ -32,9 +32,10 @@ export const clientActionRoutes = new Hono<AppEnv>()
     }
     if (!UUID.test(id)) return c.json({ error: { code: "not_found", message: "Not found" } }, 404)
     const out = await withPrivilegedDb(orgId, "client-action-my-link", async (tx) => {
-      const [row] = extractRows<{ id: string; waiting: boolean }>(
+      const [row] = extractRows<{ id: string; waiting: boolean; answered: boolean }>(
         await tx.execute(sql`
-        SELECT id, (token_hash IS NULL AND decided_at IS NULL AND revoked_at IS NULL) AS waiting
+        SELECT id, (token_hash IS NULL AND decided_at IS NULL AND revoked_at IS NULL) AS waiting,
+               (decided_at IS NOT NULL) AS answered
           FROM ${sql.raw(schemaRef("kernel"))}.client_actions
          WHERE id = ${id} AND org_id = ${orgId} AND signer_user_id = ${userId}
          FOR UPDATE
@@ -44,6 +45,9 @@ export const clientActionRoutes = new Hono<AppEnv>()
       // A turn not yet opened (one after the other) opens only after the signer before; Read and
       // sign never opens it early.
       if (row.waiting) return "waiting" as const
+      // An answered request opens nothing again: the signer is told it is done, not that it is
+      // someone else's.
+      if (row.answered) return "answered" as const
       return rotateClientActionToken(tx, orgId, id)
     })
     if (out === "waiting")
@@ -54,6 +58,11 @@ export const clientActionRoutes = new Hono<AppEnv>()
             message: "This document waits for the signer before you; you can sign after them",
           },
         },
+        409,
+      )
+    if (out === "answered")
+      return c.json(
+        { error: { code: "answered", message: "You have already answered this request" } },
         409,
       )
     if (!out) return c.json({ error: { code: "not_found", message: "Not found" } }, 404)

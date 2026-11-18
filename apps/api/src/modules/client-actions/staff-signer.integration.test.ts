@@ -155,6 +155,10 @@ describe("a staff signer", () => {
     const signed = await call("decide", decide, { "x-bun-socket-ip": ip, Authorization: own })
     expect(signed.status).toBe(200)
     expect((await actionRow(r.id)).decision).toBe("signed")
+    // Read and sign again, once answered: it says so, and makes no new link.
+    const again = await myLink(r.id, kit.w.member.userId)
+    expect(again.status).toBe(409)
+    expect(((await again.json()) as { error: { code: string } }).error.code).toBe("answered")
   })
 
   it("still waiting for the signer before them, Read and sign gives no link and the turn stays closed", async () => {

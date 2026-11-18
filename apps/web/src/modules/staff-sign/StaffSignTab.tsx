@@ -13,7 +13,8 @@ import ClientActionPage from "~/modules/client-action/ClientActionPage"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 
-type Link = { token: string } | { refused: "not_your_turn" | "session_restricted" | "gone" }
+type Refusal = "not_your_turn" | "session_restricted" | "answered" | "gone"
+type Link = { token: string } | { refused: Refusal }
 
 const StaffSignTab: Component<{ entityId: string }> = (props) => {
   const api = useApi()
@@ -29,7 +30,8 @@ const StaffSignTab: Component<{ entityId: string }> = (props) => {
         return out?.token ? { token: out.token } : { refused: "gone" }
       } catch (err) {
         const code = err instanceof ApiError ? err.code : undefined
-        if (code === "not_your_turn" || code === "session_restricted") return { refused: code }
+        if (code === "not_your_turn" || code === "session_restricted" || code === "answered")
+          return { refused: code }
         return { refused: "gone" }
       }
     },

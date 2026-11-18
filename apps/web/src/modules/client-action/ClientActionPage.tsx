@@ -543,7 +543,10 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
                   <span>
                     {closed()
                       ? i18n.t("client-action.page.closed")
-                      : i18n.t("client-action.page.validUntil", { date: until() })}
+                      : // A staff signer in their own session holds no link, only an open request.
+                        i18n.t(`client-action.page.${own() ? "openUntil" : "validUntil"}`, {
+                          date: until(),
+                        })}
                   </span>
                 </p>
                 <Show when={kind() === "sign"}>

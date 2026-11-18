@@ -78,6 +78,7 @@
     },
     "ref": "Référence {{ref}}",
     "validUntil": "Ce lien est valable jusqu'au {{date}}",
+    "openUntil": "Ouvert pour vous jusqu'au {{date}}",
     "closed": "Ce lien est fermé",
     "levelLead": "Signature électronique simple :",
     "levelBody": "vous lisez le document, confirmez avec un code envoyé par e-mail et tapez votre nom. Vous recevez une copie et la preuve.",

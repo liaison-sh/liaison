@@ -7462,6 +7462,7 @@
   "staffSign": {
     "not_your_turn": "This document waits for the signer before you. You can sign it after them.",
     "session_restricted": "Sign in on this device to sign.",
-    "gone": "There is nothing for you to sign here: the request is not yours, or it is no longer open."
+    "gone": "There is nothing for you to sign here: the request is not yours, or it is no longer open.",
+    "answered": "You have already answered this request: there is nothing more to do here."
   }
 }

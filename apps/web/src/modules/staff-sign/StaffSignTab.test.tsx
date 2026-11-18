@@ -93,6 +93,10 @@ describe("a staff signer's Read and sign", () => {
     // The member may have sent it themselves: their own page never says someone asks them.
     expect(screen.getByTestId("client-action-ask").textContent).not.toContain("asks you")
     expect(screen.getByTestId("client-action-ask").textContent).toContain("your turn to sign")
+    // In the signer's own session there is no link: the page says how long it stays open.
+    const page = screen.getByTestId("client-action-page").textContent ?? ""
+    expect(page).not.toContain("This link is valid until")
+    expect(page).toContain("Open for you until")
     expect(api.post).toHaveBeenCalledWith(
       "/client-actions/a1b2c3d4-0000-4000-8000-000000000001/my-link",
       {},
@@ -115,6 +119,15 @@ describe("a staff signer's Read and sign", () => {
     expect(header(calls.find((c) => c.route === "verify")?.init, "authorization")).toBe(
       "Bearer member-session",
     )
+  })
+
+  it("a request already answered says so, not that it is someone else's", async () => {
+    mount(async () => {
+      throw new ApiError("answered", 409, "answered")
+    })
+    const text = (await screen.findByTestId("staff-sign-refused")).textContent ?? ""
+    expect(text).toBe("You have already answered this request: there is nothing more to do here.")
+    expect(calls).toEqual([])
   })
 
   it("not their turn yet says so, and shows no document", async () => {

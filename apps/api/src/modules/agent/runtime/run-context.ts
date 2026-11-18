@@ -281,6 +281,12 @@ export interface RunContext {
    */
   toolTerminalFailures?: Map<string, Set<string>>
   /**
+   * Lazily-created: this turn's requests by gated tool (execute-tool.ts `stageInTurnBundle`).
+   * The turn's first gated call of a tool is a request; each later call of the same tool joins
+   * it as a step, so one ask fanned over many records is one decision and one Home item.
+   */
+  turnToolBundles?: Map<string, Promise<{ headId: string; lastId: string } | null>>
+  /**
    * The nonce the CLIENT minted when the user submitted this turn, forwarded by
    * `POST /api/agent/chat`. Its absence is meaningful: a turn with no nonce was
    * not started by a browser that can answer a decrypt request, so the mailbox

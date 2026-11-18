@@ -1048,17 +1048,31 @@ const BundleStepRow: Component<{
           </RecorderRow>
         </div>
       </Show>
-      <Show when={!editing() && canEdit()}>
-        <div class="mt-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            data-testid={`${testidBase()}-edit`}
-            onClick={enterEdit}
-          >
-            {i18n.t("kernel.common.edit")}
-          </Button>
+      <Show when={!editing() && (canEdit() || canDecline())}>
+        <div class="mt-2 flex gap-2">
+          <Show when={canEdit()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid={`${testidBase()}-edit`}
+              onClick={enterEdit}
+            >
+              {i18n.t("kernel.common.edit")}
+            </Button>
+          </Show>
+          <Show when={canDecline()}>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid={`${testidBase()}-decline`}
+              disabled={isDecideInFlight(props.step.id)}
+              onClick={() => void onDeclineStep()}
+            >
+              {i18n.t("kernel.approvalDeny")}
+            </Button>
+          </Show>
         </div>
       </Show>
       <Show when={!editing() && props.step.status === "pending" && sealedStep()}>
@@ -1081,6 +1095,32 @@ const BundleStepRow: Component<{
       </Show>
     </div>
   )
+
+  // One step of a request made of independent steps (one ask over many records) can be
+  // declined on its own; the rest still waits on the request's Approve. A step that reads an
+  // earlier step's result is part of a sequence and is decided with the whole request.
+  function canDecline(): boolean {
+    return (
+      Boolean(props.api) &&
+      props.step.status === "deferred" &&
+      !containsRefToken(JSON.stringify(props.step.currentPayload ?? {}))
+    )
+  }
+
+  async function onDeclineStep() {
+    const api = props.api
+    if (!api) return
+    try {
+      await decide(api, props.step.id, "deny", { reason: "" })
+    } catch (err) {
+      if (isDecisionUndone(err)) return
+      addToast(
+        err instanceof ApiError
+          ? decideErrorToast(err, i18n.t).toast
+          : { message: i18n.t("kernel.approvalsUi.couldnTReachServer"), type: "error" },
+      )
+    }
+  }
 
   async function onApproveStep() {
     const api = props.api

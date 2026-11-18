@@ -182,6 +182,7 @@ import {
   currentToolCallScopesBefore,
   isPersonClientFrame,
   isPersonExternalClientCall,
+  type RunContext,
   runHasPerson,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
@@ -2189,6 +2190,95 @@ async function resolveBundleForRefs(
       await queueHeadPromotedEvent(tx, orgId, requesterId, headId, actingAgentId)
     }
     return { bundleId, dependsOnId: target.id, position: Number(siblings[0].max) + 1 }
+  })
+}
+
+/**
+ * One agent turn's requests of one tool (`RunContext.turnToolBundles`, keyed by tool): the
+ * request's head and its last step. Each later call of the tool in the turn waits for the one
+ * before it, so the steps chain in call order even when the model calls the tool in parallel.
+ */
+export interface TurnToolBundle {
+  headId: string
+  lastId: string
+}
+
+/** The turn's same-tool bundles, created on the turn's first gated call. Null outside a turn. */
+export function turnToolBundlesOf(
+  frame: RunContext | undefined,
+): Map<string, Promise<TurnToolBundle | null>> | null {
+  if (!frame) return null
+  frame.turnToolBundles ??= new Map()
+  return frame.turnToolBundles
+}
+
+/**
+ * Stages one gated call of `key` in the turn: as a step of the turn's request for that tool when
+ * one is still open (`join` answers the step's id, or null when the request was decided in the
+ * meantime), else as a new request (`standalone`) that later calls join.
+ */
+export async function stageInTurnBundle(
+  bundles: Map<string, Promise<TurnToolBundle | null>>,
+  key: string,
+  standalone: () => Promise<string>,
+  join: (tail: TurnToolBundle) => Promise<string | null>,
+): Promise<{ id: string; joined: boolean }> {
+  const prior = bundles.get(key)
+  let settle: (tail: TurnToolBundle | null) => void = () => {}
+  bundles.set(
+    key,
+    new Promise<TurnToolBundle | null>((resolve) => {
+      settle = resolve
+    }),
+  )
+  const tail = prior ? await prior : null
+  try {
+    if (tail) {
+      const id = await join(tail)
+      if (id) {
+        settle({ headId: tail.headId, lastId: id })
+        return { id, joined: true }
+      }
+    }
+    const id = await standalone()
+    settle({ headId: id, lastId: id })
+    return { id, joined: false }
+  } catch (err) {
+    settle(tail)
+    throw err
+  }
+}
+
+/**
+ * Whether a turn's request can still take a step: its head is undecided and its last step too.
+ * A head still on its own becomes the bundle's head (bundle_id = its id, position 0), as a
+ * sequenced step's source does.
+ */
+async function joinTurnBundleHead(
+  orgId: string,
+  requesterId: string,
+  tail: TurnToolBundle,
+  actingAgentId: string | null,
+): Promise<boolean> {
+  return withPrivilegedDb(orgId, "turn-bundle-join", async (tx) => {
+    const rows = extractRows<{ id: string; status: string; bundle_id: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT id, status, bundle_id FROM ${K}.approval_requests
+        WHERE org_id = ${orgId} AND id IN (${tail.headId}::uuid, ${tail.lastId}::uuid)
+        FOR UPDATE`),
+    )
+    const head = rows.find((r) => r.id === tail.headId)
+    const last = rows.find((r) => r.id === tail.lastId)
+    if (head?.status !== "pending") return false
+    if (head.bundle_id !== null && head.bundle_id !== head.id) return false
+    if (!last || (last.status !== "pending" && last.status !== "deferred")) return false
+    if (head.bundle_id === null) {
+      await tx.execute(drizzleSql`
+        UPDATE ${K}.approval_requests SET bundle_id = id, bundle_position = 0
+        WHERE id = ${head.id} AND bundle_id IS NULL`)
+      await queueHeadPromotedEvent(tx, orgId, requesterId, head.id, actingAgentId)
+    }
+    return true
   })
 }
 
@@ -6009,50 +6099,95 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           }
         }
       }
+      let joinedTurnBundle = false
       if (approvalRequestId === null) {
-        approvalRequestId = await createApprovalRequest({
-          orgId: opts.orgId,
-          // Creates the fallback surface thread ONLY on this arm — the dedupe
-          // hit above must not leave an orphan behind.
-          threadId: await ensureApprovalThreadId(),
-          toolName: opts.toolName,
-          toolParams: validatedParams,
-          defaultedParams,
-          requestedBy: userId,
-          reason: "gated",
-          summary,
-          appName,
-          toolShortName: name,
-          requesterCanApprove,
-          approveScope,
-          dimensionConstraint,
-          origin: opts.origin,
-          bundleId: opts.stepBundleId ?? null,
-          tighten: approvalTighten,
-          proposingTurnScopes: dispatchProposingTurnScopes,
-          ...(opts.spawnParentFrame !== undefined
-            ? { originRun: opts.spawnParentFrame?.run ?? null }
-            : {}),
-          ...(parkTaint
-            ? {
-                audienceMustHold: parkTaint,
-                taintDisclosedToReaders,
-                ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
-                ...(taintPostExternalClientScopes
-                  ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
-                  : {}),
-              }
-            : {}),
-          actingAgentId,
-          routeToRequester: resourceReadRoutesToRequester,
-          ...(autoCreatedApprovalId ? { id: autoCreatedApprovalId } : {}),
-        })
+        const standalone = async () =>
+          createApprovalRequest({
+            orgId: opts.orgId,
+            // Creates the fallback surface thread ONLY on this arm — the dedupe
+            // hit above must not leave an orphan behind.
+            threadId: await ensureApprovalThreadId(),
+            toolName: opts.toolName,
+            toolParams: validatedParams,
+            defaultedParams,
+            requestedBy: userId,
+            reason: "gated",
+            summary,
+            appName,
+            toolShortName: name,
+            requesterCanApprove,
+            approveScope,
+            dimensionConstraint,
+            origin: opts.origin,
+            bundleId: opts.stepBundleId ?? null,
+            tighten: approvalTighten,
+            proposingTurnScopes: dispatchProposingTurnScopes,
+            ...(opts.spawnParentFrame !== undefined
+              ? { originRun: opts.spawnParentFrame?.run ?? null }
+              : {}),
+            ...(parkTaint
+              ? {
+                  audienceMustHold: parkTaint,
+                  taintDisclosedToReaders,
+                  ...(taintPostSnapshot ? { taintDisclosureAudience: taintPostSnapshot } : {}),
+                  ...(taintPostExternalClientScopes
+                    ? { taintDisclosureExternalClientScopes: taintPostExternalClientScopes }
+                    : {}),
+                }
+              : {}),
+            actingAgentId,
+            routeToRequester: resourceReadRoutesToRequester,
+            ...(autoCreatedApprovalId ? { id: autoCreatedApprovalId } : {}),
+          })
+        // One agent turn staging the same tool again and again (one ask over ten projects) makes
+        // ONE request: the first call is its head, each later one a step after it. A request
+        // with its own audience (a tainted turn, a personal resource, an N-eyes policy) or a
+        // step-scoped bundle stays on its own.
+        const turnBundles =
+          opts.stepBundleId == null &&
+          parkTaint === null &&
+          !resourceReadRoutesToRequester &&
+          approvalTighten === undefined &&
+          opts.threadId
+            ? turnToolBundlesOf(currentRunContext())
+            : null
+        if (turnBundles && opts.threadId) {
+          const turnThreadId = opts.threadId
+          const staged = await stageInTurnBundle(
+            turnBundles,
+            opts.toolName,
+            standalone,
+            async (tail) =>
+              (await joinTurnBundleHead(opts.orgId, userId, tail, actingAgentId))
+                ? createSequencedApprovalStep({
+                    orgId: opts.orgId,
+                    threadId: turnThreadId,
+                    toolName: opts.toolName,
+                    toolParams: validatedParams,
+                    requestedBy: userId,
+                    summary,
+                    appName,
+                    toolShortName: name,
+                    approveScope,
+                    dimensionConstraint,
+                    bundle: { bundleId: tail.headId, dependsOnId: tail.lastId, position: -1 },
+                    proposingTurnScopes: dispatchProposingTurnScopes,
+                    actingAgentId,
+                  })
+                : null,
+          )
+          approvalRequestId = staged.id
+          joinedTurnBundle = staged.joined
+        } else {
+          approvalRequestId = await standalone()
+        }
       }
       envelope = {
         blocked: {
           reason: "gated",
           approvalRequestId,
           summary,
+          ...(joinedTurnBundle ? { sequenced: true } : {}),
           // The row's real audience: an owner-routed approval (a personal
           // resource of the requester) is decided by the requester alone even
           // without the approve scope, so the agent must tell THEM to decide.

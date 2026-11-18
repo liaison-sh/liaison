@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 
-import { isApprovingWedged } from "@liaison/shared"
+import { findRefTokens, isApprovingWedged } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -217,6 +217,8 @@ export async function decideApproval(args: DecideArgs): Promise<DecideResult> {
   // through its bundle head. This guard is placed BEFORE the scope checks so a
   // deferred step can never be denied out-of-band via denyFlow's requester check.
   if (row.status === "deferred") {
+    // Declining one step of a request leaves the rest to its head's decision.
+    if (args.decision === "deny") return declineBundleStep(args, row)
     throw new ApprovalDecisionError(403, "forbidden", "decide the sequence via its first step")
   }
 
@@ -503,6 +505,108 @@ async function healWedgedApproving(args: DecideArgs, row: ApprovalRow): Promise<
     })
   })
   row.status = "pending"
+}
+
+/**
+ * Declines one step of a bundle while its head is undecided: the step is denied, the steps after
+ * it now follow the step before it, and the head's approve runs the rest. Only an independent
+ * step (no `@ref` from or to it, as one ask over many records stages) can go, and only by someone
+ * who may decide it.
+ */
+async function declineBundleStep(args: DecideArgs, row: ApprovalRow): Promise<DecideResult> {
+  const reason = (args.reason ?? "").trim()
+  if (reason.length > REASON_MAX) {
+    throw new ApprovalDecisionError(400, "invalid_reason", "invalid_reason")
+  }
+  const eligible = await withPrivilegedDb(args.orgId, "approval-load-decider-perms", (tx) =>
+    mayDecideApproval({
+      orgId: args.orgId,
+      userId: args.actor.userId,
+      row,
+      sharedSurface: isSharedSurfaceApproval(row),
+      tx,
+    }),
+  )
+  if (!eligible) throw new ApprovalDecisionError(403, "forbidden", "forbidden")
+  const result = await withPrivilegedDb(args.orgId, "approval-decline-step", async (tx) => {
+    const [step] = extractRows<{ status: string; depends_on_id: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT status, depends_on_id FROM ${K}.approval_requests
+        WHERE id = ${row.id} AND org_id = ${args.orgId}::uuid FOR UPDATE`),
+    )
+    if (step?.status !== "deferred") throw new AlreadyDecidedError(step?.status ?? "unknown")
+    const [head] = extractRows<{ status: string }>(
+      await tx.execute(drizzleSql`
+        SELECT status FROM ${K}.approval_requests
+        WHERE id = ${row.bundle_id} AND org_id = ${args.orgId}::uuid FOR UPDATE`),
+    )
+    if (!row.bundle_id || head?.status !== "pending") {
+      throw new ApprovalDecisionError(403, "forbidden", "decide the sequence via its first step")
+    }
+    // A step that reads an earlier step's result, or whose result a later step reads, is part of
+    // a sequence: it is decided with the whole request on its first step.
+    const others = extractRows<{ current_payload: unknown }>(
+      await tx.execute(drizzleSql`
+        SELECT current_payload FROM ${K}.approval_requests
+        WHERE bundle_id = ${row.bundle_id} AND org_id = ${args.orgId}::uuid
+          AND status = 'deferred' AND id <> ${row.id}`),
+    )
+    const stepId = row.id.toLowerCase()
+    if (
+      findRefTokens(row.current_payload).length > 0 ||
+      others.some((o) =>
+        findRefTokens(o.current_payload).some((r) => r.approvalId.toLowerCase() === stepId),
+      )
+    ) {
+      throw new ApprovalDecisionError(403, "forbidden", "decide the sequence via its first step")
+    }
+    const updated = await lockedUpdateApproval<{
+      id: string
+      status: string
+      decided_by: string
+      decided_at: string
+      reason: string
+      originating_thread_id: string
+    }>(tx, {
+      requestId: row.id,
+      from: "deferred",
+      set: drizzleSql`status = 'denied', decided_by = ${args.actor.userId}, decided_at = now(), reason = ${reason}`,
+      returning: drizzleSql`id, status, decided_by, decided_at, reason, originating_thread_id`,
+    })
+    if (!updated) throw new AlreadyDecidedError("unknown")
+    await tx.execute(drizzleSql`
+      UPDATE ${K}.approval_requests SET depends_on_id = ${step.depends_on_id}
+      WHERE depends_on_id = ${row.id} AND status = 'deferred'`)
+    const deciderName = await loadUserName(tx, args.actor.userId)
+    await emitApprovalStateChange(tx, {
+      requiredScopes: [],
+      orgId: args.orgId,
+      requestId: row.id,
+      threadId: row.thread_id,
+      originatingThreadId: updated.originating_thread_id,
+      requesterId: row.requested_by,
+      actorUserId: args.actor.userId,
+      actorType: "user",
+      content: reason
+        ? `This step was declined by ${deciderName}. Reason: ${reason}. The rest of the request waits on its own decision.`
+        : `This step was declined by ${deciderName}. The rest of the request waits on its own decision.`,
+      metadata: {
+        type: "approval-decision",
+        decision: "denied",
+        actorId: args.actor.userId,
+        reason,
+        bundleStep: true,
+      },
+    })
+    return updated
+  })
+  return {
+    id: result.id,
+    status: "denied",
+    decidedBy: result.decided_by,
+    decidedAt: new Date(result.decided_at).toISOString(),
+    reason: result.reason,
+  }
 }
 
 async function denyFlow(args: DecideArgs, row: ApprovalRow): Promise<DecideResult> {

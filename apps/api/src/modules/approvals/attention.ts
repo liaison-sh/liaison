@@ -631,6 +631,8 @@ export async function computeApprovalAttentionItems(
                depends_on_id IS NOT NULL AS has_dep
         FROM ${K}.approval_requests
         WHERE org_id = ${orgId}
+          -- A step declined on its own is no longer part of what the request does.
+          AND status NOT IN ('denied', 'cancelled')
           AND bundle_id IN (${drizzleSql.join(
             headBundleIds.map((id) => drizzleSql`${id}::uuid`),
             drizzleSql`, `,

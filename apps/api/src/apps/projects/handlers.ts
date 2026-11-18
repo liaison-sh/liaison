@@ -1836,9 +1836,11 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   })
   if (finished.error) return finished
 
-  // A project with dated hours: the month's sheet goes on the draft with the report.
+  // A retainer month on a project with dated hours: the month's sheet goes on the draft with the
+  // report. A card billed by the day or the hour carries its report only. Invoicing files one
+  // sheet per draft, so a second Create on the same card adds none.
   const sheet =
-    prep.datedHours === true && typeof prep.month === "string"
+    prep.basis === "retainer" && prep.datedHours === true && typeof prep.month === "string"
       ? await fileMonthSheet(ctx, String(prep.projectId), prep.month, documentId)
       : null
 

@@ -283,6 +283,39 @@ describe("filing an annex on an invoice", () => {
     expect(sent.db.__all("document_attachments")).toHaveLength(0)
   })
 
+  test("a kind already filed on the document is not filed again, another kind still is", async () => {
+    const a = annexCtx("draft", true)
+    const first = await documentAttachmentAdd(a.ctx as never, {
+      documentId: DOC,
+      fileId: FILE,
+      kind: "timesheet",
+      partial: true,
+    })
+    expect(first.status).toBe("completed")
+    const again = await documentAttachmentAdd(a.ctx as never, {
+      documentId: DOC,
+      fileId: "7a1d2c3e-0000-4000-8000-0000000000f2",
+      kind: "timesheet",
+      partial: true,
+    })
+    expect(again).toMatchObject({
+      status: "completed",
+      alreadyFiled: true,
+      fileId: "copy-1",
+      kind: "timesheet",
+    })
+    expect(again.status === "completed" && again.message).toContain("nothing new was filed")
+    expect(a.db.__all("document_attachments")).toHaveLength(1)
+    expect(a.attached).toHaveLength(1)
+    const report = await documentAttachmentAdd(a.ctx as never, {
+      documentId: DOC,
+      fileId: FILE,
+      kind: "activity_report",
+    })
+    expect(report.status === "completed" && report.alreadyFiled).toBeUndefined()
+    expect(a.db.__all("document_attachments")).toHaveLength(2)
+  })
+
   test("a file the caller cannot read is refused and nothing is filed", async () => {
     const a = annexCtx("draft", false)
     const r = await documentAttachmentAdd(a.ctx as never, {

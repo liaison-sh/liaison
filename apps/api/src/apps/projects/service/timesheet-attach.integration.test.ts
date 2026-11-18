@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The month's timesheet filed on an invoice draft, on the real database with the invoicing app
-// registered from source: Create invoice on a card of a project with dated hours files the sheet
-// with the draft (marked partial when it is), and the only file projects hands invoicing is the
-// sheet that same call exported for the person.
+// registered from source: Create invoice on a retainer month of a project with dated hours files
+// the sheet with the draft (marked partial when it is), once however often Create is pressed; a
+// card billed by the day files none; and the only file projects hands invoicing is the sheet that
+// same call exported for the person.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -23,6 +24,7 @@ import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/poo
 import { createRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { seedContext } from "~/seed/context"
+import { insertAppRow, jsonCell } from "~/seed/factories/app-tables"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -44,6 +46,7 @@ let orgId = ""
 let owner: minimal.Session
 let thread = ""
 let delorme = ""
+let issuerId = ""
 
 function actorOf(userId: string, scopes: string[]): UserContext {
   return { actorType: "user", userId, orgId, scopes, dimensionGrants: { "*": ["*"] } }
@@ -115,10 +118,11 @@ function invoicingDescriptor(): Record<string, unknown> {
 
 let keys = 0
 /**
- * A project billed by the day with dated hours on, two tasks closed in October and time entered
- * on the sheet for the first only (so October's sheet is partial, 1 of 2), and its card.
+ * A project with dated hours on, billed by a monthly retainer (the default) or by the day, two
+ * tasks closed in October and time entered on the sheet for the first only (so October's sheet is
+ * partial, 1 of 2), and its card. A retainer month gets its schedule and October's timebox.
  */
-async function datedOctober() {
+async function datedOctober(basis: "retainer" | "daily" = "retainer") {
   keys++
   const key = `SHEET${keys}`
   const made = await call<{ id: string }>("projects_createProject", {
@@ -128,7 +132,7 @@ async function datedOctober() {
     timeBudgets: true,
   })
   await awaitTimeFeatureSync(orgId)
-  await call("projects_timePlanSet", { projectId: made.id, basis: "daily", datedHours: true })
+  await call("projects_timePlanSet", { projectId: made.id, basis, datedHours: true })
   await call("projects_billingTermsSet", { projectId: made.id, rate: 930, currency: "EUR" })
   const ids: string[] = []
   for (const [title, box] of [
@@ -161,7 +165,41 @@ async function datedOctober() {
     ],
   })
   if (card.error) throw new Error(`no card: ${JSON.stringify(card.error)}`)
+  if (basis === "retainer") await retainerOctober(made.id)
   return { projectId: made.id, key, card }
+}
+
+/** A 40 h retainer schedule on the project and October's timebox from it. */
+async function retainerOctober(projectId: string) {
+  const schedule = crypto.randomUUID()
+  await insertAppRow(db as never, "invoicing", "recurring_schedules", {
+    id: schedule,
+    org_id: orgId,
+    issuer_profile_id: issuerId,
+    company_id: delorme,
+    status: "active",
+    repeats: "month",
+    billing_day: "last",
+    lines: jsonCell([
+      { description: "Monthly retainer", qty: 1, unit_price_minor: 450000, vat_bp: 2000 },
+    ]),
+    created_by: owner.userId,
+    retainer_project_id: projectId,
+    retainer_minutes: 2400,
+    retainer_overage_rate_minor: 12000,
+    retainer_from: "2026-01",
+  })
+  await insertAppRow(db as never, "projects", "project_timeboxes", {
+    id: crypto.randomUUID(),
+    org_id: orgId,
+    project_id: projectId,
+    period_start: "2026-10-01",
+    period_end: "2026-10-31",
+    minutes: 2400,
+    source: "retainer",
+    source_ref: schedule,
+    created_by: owner.userId,
+  })
 }
 
 const attachmentsOf = (documentId: string) =>
@@ -246,9 +284,8 @@ beforeAll(async () => {
     threadId: thread,
     origin: "human-ui",
   })
-  if (!(issuer.data as { id?: string } | undefined)?.id) {
-    throw new Error(`no issuer profile: ${JSON.stringify(issuer)}`)
-  }
+  issuerId = String((issuer.data as { id?: string } | undefined)?.id ?? "")
+  if (!issuerId) throw new Error(`no issuer profile: ${JSON.stringify(issuer)}`)
 }, 300_000)
 
 afterAll(async () => {
@@ -274,6 +311,34 @@ describe("the month's timesheet on the draft", () => {
     const source = await purposeOf(files[0]!.source)
     expect(source?.by).toBe(owner.userId)
     expect(source?.filename).toContain("dated-hours-2026-10")
+
+    // Create pressed again on the same card: the same draft, and still one sheet on it.
+    const again = await run(reconcileCreateInvoice, {
+      reconciliationId: p.card.reconciliationId,
+      revision: p.card.revision,
+    })
+    expect(again.error).toBeUndefined()
+    expect(again.documentId).toBe(created.documentId)
+    expect(await attachmentsOf(created.documentId)).toHaveLength(1)
+  })
+
+  it("a card billed by the day gets its report and no timesheet", async () => {
+    const p = await datedOctober("daily")
+    const exported: string[] = []
+    const created = await run(
+      reconcileCreateInvoice,
+      { reconciliationId: p.card.reconciliationId, revision: p.card.revision },
+      (bridge) => ({
+        projects_timesheetExport: async (json: string) => {
+          exported.push(json)
+          return bridge.projects_timesheetExport(json)
+        },
+      }),
+    )
+    expect(created.error).toBeUndefined()
+    expect(String(created.message)).not.toContain("timesheet")
+    expect(exported).toHaveLength(0)
+    expect(await attachmentsOf(created.documentId)).toHaveLength(0)
   })
 
   it("only the sheet the same call exported is handed to invoicing", async () => {

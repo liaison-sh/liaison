@@ -146,6 +146,51 @@ describe("Create invoice's handler", () => {
     expect(String(plain.summary)).not.toContain("Waived")
   })
 
+  it("the month's timesheet goes on a dated-hours retainer's draft only, never on a card billed by the day", async () => {
+    const draft = {
+      status: "completed",
+      draftId: "44444444-4444-4444-8444-444444444444",
+      approvalId: "66666666-6666-4666-8666-666666666666",
+      approved: true,
+      created: true,
+      totals: { excl: 450000, vat: 90000, incl: 540000, currency: "EUR" },
+    }
+    const withSheet = (prepared: Record<string, unknown>) => {
+      const made = ctxWith(draft, { datedHours: true, month: "2026-11", ...prepared })
+      const exports: string[] = []
+      const ctx = {
+        ...made.ctx,
+        projects_timesheetExport: async (json: string) => {
+          exports.push(json)
+          return JSON.stringify({ fileId: "77777777-7777-4777-8777-777777777777" })
+        },
+      }
+      return { ...made, ctx, exports }
+    }
+    const retainer = withSheet({ basis: "retainer" })
+    const filed = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1 },
+      retainer.ctx as never,
+    )) as Record<string, unknown>
+    expect(filed.error).toBeUndefined()
+    expect(retainer.exports).toHaveLength(1)
+    expect(retainer.bodies["invoicing:document_attachment_add"]).toMatchObject({
+      documentId: "44444444-4444-4444-8444-444444444444",
+      kind: "timesheet",
+    })
+    expect(String(filed.message)).toContain("The month's timesheet is filed on it.")
+
+    const daily = withSheet({ basis: "daily" })
+    const plain = (await reconcileCreateInvoice(
+      { reconciliationId: ID, revision: 1 },
+      daily.ctx as never,
+    )) as Record<string, unknown>
+    expect(plain.error).toBeUndefined()
+    expect(daily.exports).toHaveLength(0)
+    expect(daily.calls).not.toContain("invoicing:document_attachment_add")
+    expect(String(plain.message)).not.toContain("timesheet")
+  })
+
   it("a company with no billing contact refuses Create before anything is reserved and says to set one", async () => {
     const { ctx, steps, calls } = ctxWith({ status: "completed" }, { contactId: null })
     const out = (await reconcileCreateInvoice(

@@ -36,6 +36,8 @@ export type DocumentAttachmentAddResult =
       fileId: string
       kind: "activity_report" | "timesheet"
       partial: boolean
+      /** True when this kind was already filed on the document: the earlier annex stands, nothing new was filed. */
+      alreadyFiled?: true
       message: string
     }
   | { status: "error"; error: { code: string; message: string; retryable: false } }
@@ -95,6 +97,26 @@ export async function documentAttachmentAdd(
   if (!ctx.files?.attachToParent) {
     return refuse("files_unavailable", "Files cannot be attached here. Nothing was filed.")
   }
+  const what = kind === "timesheet" ? "timesheet" : "activity report"
+  const where = doc.number ? `invoice ${String(doc.number)}` : `draft ${documentId}`
+  // One annex of a kind per document: a second Create, a retry or a double click files nothing
+  // new, so the customer's mail never carries the same sheet twice.
+  const [filed] = (await ctx.db.findMany("document_attachments", {
+    where: { document_id: documentId, kind },
+    limit: 1,
+  })) as Array<Record<string, unknown>>
+  if (filed) {
+    return {
+      status: "completed",
+      attachmentId: String(filed.id),
+      documentId,
+      fileId: String(filed.file_id),
+      kind: kind as "activity_report" | "timesheet",
+      partial: filed.partial === true,
+      alreadyFiled: true,
+      message: `A ${what} is already filed on ${where}, so nothing new was filed. It goes out with the invoice when it is sent.`,
+    }
+  }
   const partial = input.partial === true
   const row = (await ctx.db.insert("document_attachments", {
     document_id: documentId,
@@ -127,7 +149,6 @@ export async function documentAttachmentAdd(
   }
   // The send's approval card lists the annex by this name, so nothing is mailed unseen.
   await ctx.db.update("document_attachments", row.id, { file_id: copied, filename })
-  const what = kind === "timesheet" ? "timesheet" : "activity report"
   return {
     status: "completed",
     attachmentId: row.id,
@@ -135,6 +156,6 @@ export async function documentAttachmentAdd(
     fileId: copied,
     kind: kind as "activity_report" | "timesheet",
     partial,
-    message: `Filed the ${partial ? "partial " : ""}${what} on ${doc.number ? `invoice ${String(doc.number)}` : `draft ${documentId}`}. It goes out with the invoice when it is sent.`,
+    message: `Filed the ${partial ? "partial " : ""}${what} on ${where}. It goes out with the invoice when it is sent.`,
   }
 }

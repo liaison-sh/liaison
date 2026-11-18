@@ -1781,6 +1781,8 @@ describe("invoicing manifest", () => {
     //   whose event was lost); the line of a step it cannot draft goes to who bills the project.
     // 0.35.1: an annex kind already filed on a document is not filed again (a second Create on
     //   a card adds no second timesheet).
+    // 0.35.2: projects and agreements are named as optional dependencies, so the milestone-done
+    //   and agreement-signed subscriptions are registered (they were skipped without them).
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

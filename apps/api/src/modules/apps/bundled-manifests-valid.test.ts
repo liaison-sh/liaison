@@ -207,6 +207,26 @@ describe("bundled app manifests", () => {
     })
   }
 
+  // Registration skips a cross-app subscription whose source app the manifest does not name in
+  // `dependencies` (runtime.ts, a warn line in the boot log and no handler). The handler's unit
+  // tests call it directly and pass, so only a later sweep or nothing at all does the work: a
+  // milestone moved to done was drafted hours later by the hourly sweep, never by its event.
+  for (const app of apps) {
+    it(`${app}: every cross-app event it subscribes to names its source app as a dependency`, () => {
+      const manifest = JSON.parse(readFileSync(join(BUNDLED_DIR, app, "app.manifest.json"), "utf8"))
+      const deps = new Set<string>([
+        ...((manifest.dependencies?.required ?? []) as string[]),
+        ...((manifest.dependencies?.optional ?? []) as string[]),
+      ])
+      const subscribes = Object.keys(manifest.events?.subscribes ?? {})
+      const skipped = subscribes.filter((event) => {
+        const source = event.includes("/") ? event.split("/")[0] : null
+        return source !== null && source !== "kernel" && !deps.has(source)
+      })
+      expect(skipped).toEqual([])
+    })
+  }
+
   it("the enqueue scan sees social's enqueue calls (the guard is not vacuous)", () => {
     const names = enqueuedJobArgs("social").map((c) => c.arg)
     expect(names).toContain('"parse-webhook"')

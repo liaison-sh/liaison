@@ -1360,6 +1360,47 @@
         "body": "You, Sara in finance and any agent either of you asks can read the refund policy. Clémence in support, and any agent she asks, cannot.",
         "role": "An agent reads with the access of the person asking it. That's why you can give agents the whole company's knowledge: nobody gets more through an agent than they could open themselves."
       }
+    },
+    "studioClient": {
+      "title": "Client work",
+      "summary": "A client asks for more than you signed: your agent checks the agreement, then drafts the reply and a change request. You approve it.",
+      "moreThanSigned": {
+        "title": "Pauline asked for more than you signed",
+        "role": "You run Halden Studio. Pauline Gros wants single sign-on added to the partner portal. Your agent read the signed agreement: section 3 leaves it out.",
+        "body": "It drafted a reply and Change request 1, for €6,600. Nothing has gone out. Read the row, then press Next."
+      },
+      "readScope": {
+        "title": "See what the agreement says",
+        "role": "Before you approve, you want to read the passage yourself, and see the reply Pauline would get.",
+        "body": "Ask your agent from Chats. It answers with the passage, the reply and Change request 1 on one approval card.",
+        "say": "Ask your agent:",
+        "text": "Is single sign-on in Marlin's scope?",
+        "way1": "Open Chats at the bottom of the screen"
+      },
+      "openAgreement": {
+        "title": "The passage, and the same card",
+        "role": "Section 3 of the signed statement of work, word for word, and the card that was already waiting: no second approval.",
+        "body": "Read your agent's answer. Its passage opens the agreement at section 3. Then press Next.",
+        "way3": "Read the answer, then open the passage"
+      },
+      "approveCr": {
+        "title": "Approve the change request",
+        "role": "The reply and Change request 1 go to Pauline together, with a link to approve it.",
+        "body": "Open the highlighted row on Home and press Approve on its card. Pauline is a stand-in: no mail leaves this demo.",
+        "way2": "Open the highlighted row"
+      },
+      "clientDecides": {
+        "title": "Pauline approves the change request",
+        "role": "Pauline approves it on her link. Her approval is a stand-in for the demo: no signature took place, and nothing is sealed.",
+        "body": "Nothing to do: Agreements records the approval and updates the project. Press Next once it has.",
+        "way1": "Agreements"
+      },
+      "whatMoved": {
+        "title": "What moved",
+        "role": "The contract total rose, the project's timebox grew, and a task and a billing line for the new work are planned. Nothing was invoiced.",
+        "body": "The timebox is now {{timebox}}, with {{left}} left. Both read from the project's budget, as this page reads them.",
+        "way1": "Open the partner portal project"
+      }
     }
   }
 }

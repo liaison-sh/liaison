@@ -7,9 +7,12 @@
 // transaction, within its budget), the proof spent, then a guarded UPDATE whose
 // WHERE repeats every condition. A second decide finds the row decided and
 // gets 409 with the state. Imported only by the public routes and the portal's.
+// The one other writer of a decision is `demo-decide.ts`: a demo workspace's
+// stand-in for a fictional client, which shares this file's checks and its
+// decided event (`queueDecidedEvent`) and nothing else.
 
 import { sql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { type PortalCaller, portalActionSight } from "~/modules/portal/decide-gate"
@@ -61,7 +64,7 @@ export interface ActionRow {
   now: Date
 }
 
-const ROW_COLUMNS = sql`
+export const ROW_COLUMNS = sql`
   a.id, a.org_id, o.name AS org_name, a.kind, a.target_app, a.target_type, a.target_id,
   a.target_sha256, a.target_blocks_sha256, a.company_id, a.signer_user_id, a.invited_email, a.invited_name, a.expires_at,
   a.first_opened_at, a.document_shown_at, a.code_wrong_total, a.code_locked_at, a.code_verified_at,
@@ -72,7 +75,7 @@ const ROW_COLUMNS = sql`
   (c.id IS NOT NULL AND (c.closed_at IS NOT NULL OR c.portal_ended_at IS NOT NULL)) AS company_ended,
   now() AS now`
 
-function fromRows(rows: ActionRow[]): ActionRow | null {
+export function fromRows(rows: ActionRow[]): ActionRow | null {
   const r = rows[0]
   if (!r) return null
   const d = (v: unknown) => (v ? new Date(v as string) : null)
@@ -364,6 +367,43 @@ export async function portalDecideGate(
   return { ok: true, row }
 }
 
+/**
+ * `kernel/client_action:decided`, queued in the transaction that recorded the decision: the
+ * target's app hears it once that transaction commits. Writes nothing itself.
+ */
+export async function queueDecidedEvent(
+  tx: PrivilegedDb,
+  row: ActionRow,
+  d: {
+    decision: "signed" | "accepted" | "approved" | "declined"
+    via: "link" | "portal"
+    title: string
+  },
+): Promise<void> {
+  await tx.queueEvent({
+    app: "kernel",
+    entity: "client_action",
+    action: "decided",
+    entityId: row.id,
+    data: {
+      id: row.id,
+      kind: row.kind,
+      target: { app: row.target_app, type: row.target_type, id: row.target_id },
+      decision: d.decision,
+      decided_via: d.via,
+      companyId: row.company_id,
+      title: d.title,
+      invitedName: row.invited_name,
+      senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
+      // A restricted document's decision reaches its list only, the manager included.
+      ...(row.visible_to ? { visibleTo: row.visible_to } : {}),
+    },
+    actorId: SYSTEM_ACTOR_ID,
+    actorType: "system",
+    orgId: row.org_id,
+  })
+}
+
 /** The one decide. See the file's head for the order of the checks. */
 export async function decideClientAction(input: DecideInput): Promise<DecideOutcome> {
   let pre: (ActionRow & { portal_stale?: boolean }) | null
@@ -525,28 +565,7 @@ export async function decideClientAction(input: DecideInput): Promise<DecideOutc
       ip: input.ip,
       userAgent: input.userAgent,
     })
-    await tx.queueEvent({
-      app: "kernel",
-      entity: "client_action",
-      action: "decided",
-      entityId: actionId,
-      data: {
-        id: actionId,
-        kind: row.kind,
-        target: { app: row.target_app, type: row.target_type, id: row.target_id },
-        decision: wanted,
-        decided_via: input.via,
-        companyId: row.company_id,
-        title: view.title,
-        invitedName: row.invited_name,
-        senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
-        // A restricted document's decision reaches its list only, the manager included.
-        ...(row.visible_to ? { visibleTo: row.visible_to } : {}),
-      },
-      actorId: SYSTEM_ACTOR_ID,
-      actorType: "system",
-      orgId,
-    })
+    await queueDecidedEvent(tx, row, { decision: wanted, via: input.via, title: view.title })
     return { ok: true as const, state: wanted, copyTo: maskEmail(row.invited_email) }
   })
 }

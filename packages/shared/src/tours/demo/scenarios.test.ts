@@ -50,6 +50,7 @@ const INJECTORS: Record<string, string | undefined> = {
   "kernel.scenario-saas-money": "saas-payment-recovered",
   "kernel.scenario-saas-dev": undefined,
   "kernel.scenario-saas-knowledge": "saas-knowledge-asks",
+  "kernel.scenario-studio-client": "studio-cr-accepted",
 }
 
 function lookup(dict: unknown, key: string): unknown {
@@ -231,11 +232,14 @@ describe("demo scenarios", () => {
       e?.sameEntityAs !== undefined ||
       Object.values(e?.match ?? {}).some((v) => typeof v === "string" && /^\{.+\}$/.test(v))
     // A scenario played once may approve what its world seeded for it: one
-    // request, named by its recipient and what it is about.
+    // request, named by its recipient and what it is about, or by its tool and
+    // its title.
     const seededForRun = (tour: Tour, e: TourEventBinding | undefined) =>
       tour.singleRun === true &&
-      typeof e?.match?.["currentPayload.to.0"] === "string" &&
-      typeof e?.match?.["currentPayload.followUp.refs.0.kind"] === "string"
+      ((typeof e?.match?.["currentPayload.to.0"] === "string" &&
+        typeof e?.match?.["currentPayload.followUp.refs.0.kind"] === "string") ||
+        (typeof e?.match?.toolName === "string" &&
+          typeof e?.match?.["currentPayload.title"] === "string"))
     for (const tour of DEMO_SCENARIO_TOURS) {
       for (const beat of tour.beats.filter((b) => b.kind === "do")) {
         const e = beat.event

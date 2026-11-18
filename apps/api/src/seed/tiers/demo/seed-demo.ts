@@ -87,6 +87,7 @@ import {
   reservedOwner,
 } from "~/modules/demo/demo-seeder"
 import { saasScenarioStart } from "~/modules/demo/worlds/saas/scenario-start"
+import { studioScenarioStart } from "~/modules/demo/worlds/studio/scenario-start"
 import { runAsSeed } from "~/modules/notifications/seeded"
 import { joinPendingApprovals } from "~/seed/factories/people/membership"
 import { demoWorldPack, findDemoWorldPack } from "~/seed/worlds"
@@ -563,7 +564,8 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
  *   need when they start (`modules/demo/worlds/saas/scenario-start.ts`: the
  *   support routine, the visitor's task, the sales routine); the others bring
  *   nothing. None seeds an approval.
- * - `studio`: no scenario yet.
+ * - `studio`: the client scenario's card is seeded with the workspace, so its
+ *   start brings nothing more (`modules/demo/worlds/studio/scenario-start.ts`).
  *
  * A world never writes another world's approvals.
  */
@@ -579,7 +581,7 @@ async function startWorldScenario(
     case "saas":
       return saasScenarioStart(orgId, need, ownerUserId)
     case "studio":
-      return []
+      return studioScenarioStart(orgId, need, ownerUserId)
   }
 }
 

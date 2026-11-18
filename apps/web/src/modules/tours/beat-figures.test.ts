@@ -37,6 +37,12 @@ describe("a step's figures", () => {
     expect(formatTourFigure(fig, "fr").replace(/\s/g, " ")).toBe("1 917,00 €")
   })
 
+  it("formats a number of minutes in hours, in the person's language", () => {
+    expect(formatTourFigure({ kind: "hours", minutes: 28_800 }, "en")).toBe("480 h")
+    expect(formatTourFigure({ kind: "hours", minutes: 90 }, "en")).toBe("1.5 h")
+    expect(formatTourFigure({ kind: "hours", minutes: 90 }, "fr")).toBe("1,5 h")
+  })
+
   it("the last money step names what the MRR query answers now", async () => {
     const calls: string[] = []
     withAnswer(

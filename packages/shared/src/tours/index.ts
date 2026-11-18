@@ -46,11 +46,22 @@ export {
   SAAS_SALES_EMAIL_INJECTOR,
   SAAS_SUPPORT_TICKET_INJECTOR,
 } from "./demo"
+export {
+  CLIENT_CARD_ROW,
+  CLIENT_CARD_TOOL,
+  CLIENT_FIGURES_TOOL,
+} from "./demo/client"
 export { DEV_BUGS_CHANNEL_TITLE } from "./demo/dev"
 export { KNOWLEDGE_SCENARIO_PL_TITLE } from "./demo/knowledge"
 export { MONEY_FIGURES_TOOL, MONEY_REMINDER_ROW } from "./demo/money"
 export { PROSPECT_ROUTINE_NAME } from "./demo/sales"
 export { SAAS_PAYMENT_RECOVERED_INJECTOR } from "./demo/worlds/saas/money"
+export {
+  STUDIO_CLIENT_CFG,
+  STUDIO_CLIENT_PROJECT_NAME,
+  STUDIO_CR_ACCEPTED_INJECTOR,
+  scenarioStudioClientTour,
+} from "./demo/worlds/studio/client"
 /** The demo scenarios (`demoOnly`: offered in demo orgs only), the products world's and the others'. */
 export { DEMO_SCENARIO_TOURS, SCENARIO_TOURS, WORLD_SCENARIO_TOURS }
 

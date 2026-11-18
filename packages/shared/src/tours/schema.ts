@@ -376,7 +376,8 @@ export const TOUR_PATH_MAX = 4
  */
 const TourFigurePickSchema = z
   .object({
-    kind: z.enum(["money", "count"]),
+    /** `hours`: a number of minutes, shown in hours. */
+    kind: z.enum(["money", "count", "hours"]),
     path: z.string().regex(/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)*$/, "a dotted path"),
     currency: z
       .string()
@@ -387,8 +388,8 @@ const TourFigurePickSchema = z
   .superRefine((pick, ctx) => {
     if (pick.kind === "money" && !pick.currency)
       ctx.addIssue({ code: "custom", message: "a money figure names where its currency is" })
-    if (pick.kind === "count" && pick.currency)
-      ctx.addIssue({ code: "custom", message: "a count has no currency" })
+    if (pick.kind !== "money" && pick.currency)
+      ctx.addIssue({ code: "custom", message: `a ${pick.kind} figure has no currency` })
   })
 
 export const TourBeatFiguresSchema = z
@@ -408,6 +409,7 @@ export type TourBeatFigures = z.infer<typeof TourBeatFiguresSchema>
 export type TourFigure =
   | { kind: "money"; minor: number; currency: string }
   | { kind: "count"; n: number }
+  | { kind: "hours"; minutes: number }
 
 function atPath(value: unknown, path: string): unknown {
   return path
@@ -437,6 +439,10 @@ export function pickTourFigures(
     if (typeof n !== "number" || !Number.isFinite(n)) return null
     if (pick.kind === "count") {
       out[name] = { kind: "count", n }
+      continue
+    }
+    if (pick.kind === "hours") {
+      out[name] = { kind: "hours", minutes: n }
       continue
     }
     const currency = atPath(result, pick.currency ?? "")

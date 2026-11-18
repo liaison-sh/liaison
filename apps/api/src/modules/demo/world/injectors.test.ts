@@ -4,7 +4,7 @@
 // event once (a second run adds nothing) through the product path, whose event
 // reaches the outbox for that org only; the fixture site makes no network call.
 import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
-import { SCENARIO_TOURS } from "@liaison/shared"
+import { SCENARIO_TOURS, scenarioStudioClientTour } from "@liaison/shared"
 import { sql } from "~/db"
 import { KERNEL_DECLARED_EMITS } from "~/infra/events/event-bus"
 import { declaredEmits } from "~/modules/apps/app-registries"
@@ -19,7 +19,7 @@ import {
   worldOrder,
   worldOrderPayload,
 } from "~/modules/demo/world/commerce-order"
-import { runWorldBeatOnce } from "~/modules/demo/world/registry"
+import { runWorldBeatOnce, worldInjectors } from "~/modules/demo/world/registry"
 import { salesEmailInjector } from "~/modules/demo/world/sales-email"
 import { SUPPORT_WORLD_SUBJECT, supportTicketInjector } from "~/modules/demo/world/support-ticket"
 import { demoWebFetchFixture } from "~/modules/demo/world/web-fetch-fixture"
@@ -325,5 +325,30 @@ describe("demoWebFetchFixture", () => {
     } finally {
       fetchSpy.mockRestore()
     }
+  })
+})
+
+describe("the services world's acceptance step", () => {
+  it("is registered for its world only, spends nothing, and refuses a demo workspace of another world", async () => {
+    const injector = worldInjectors().get("studio-cr-accepted")
+    expect(injector?.world).toBe("studio")
+    expect(injector?.spends).toBe(false)
+    const tour = scenarioStudioClientTour
+    const world = tour.beats.find((b) => b.kind === "world")
+    if (!world) throw new Error("the client tour has no world beat")
+    expect(world.injector).toBe("studio-cr-accepted")
+    // This file's demo workspace is of the product world: the scenario is not offered there,
+    // so its world beat is no beat of that workspace, and the step runs nothing (were it one,
+    // the registry's world guard refuses it: `registry.test.ts`).
+    await sql`INSERT INTO kernel.tour_progress (org_id, user_id, tour_id, status, beat_id, beat_index, beat_states, source)
+      VALUES (${demoOrg}, ${owner}, ${tour.id}, 'active', ${world.id}, 4, '{}'::jsonb, 'demo')
+      ON CONFLICT (org_id, user_id, tour_id) DO UPDATE SET beat_id = ${world.id}, status = 'active'`
+    const before = await counts(demoOrg)
+    expect(await runWorldBeatOnce(demoOrg, owner, tour.id)).toBe("no_world_beat")
+    expect(await counts(demoOrg)).toEqual(before)
+    const decided = await sql`SELECT count(*)::int AS n FROM kernel.client_actions
+      WHERE org_id = ${demoOrg} AND decided_at IS NOT NULL`
+    expect(decided[0]?.n).toBe(0)
+    await sql`DELETE FROM kernel.tour_progress WHERE org_id = ${demoOrg} AND tour_id = ${tour.id}`
   })
 })

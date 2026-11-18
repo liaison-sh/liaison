@@ -13,6 +13,7 @@ import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { rootLogger } from "~/lib/logger"
 import { orgAppBaseUrl } from "~/lib/org-public-url"
+import { isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
 import type { ClientActionKind } from "./targets"
@@ -66,6 +67,16 @@ async function send(
     | "client-action.staff",
   replyTo: string | null,
 ): Promise<void> {
+  // A demo workspace's clients are fictional, on reserved domains no mailbox can own: a mail
+  // whose every recipient (the reply-to included) is on one is recorded as sent, with no network
+  // and no provider. One real address and the send goes the usual way, and a demo box refuses it.
+  if (await isDemoFixtureDelivery(orgId, [msg.to, replyTo])) {
+    log.info(
+      { orgId, template, mailId: msg.mailId },
+      "client action mail recorded as delivered to a fictional recipient (demo)",
+    )
+    return
+  }
   const cfg = await getOrgEmailConfig(orgId)
   await sendSystemEmailObserved({
     to: msg.to,

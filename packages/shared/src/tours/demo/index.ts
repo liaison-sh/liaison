@@ -18,6 +18,7 @@ import { scenarioSaasMoneyTour } from "./worlds/saas/money"
 import { scenarioSaasProjectsTour } from "./worlds/saas/projects"
 import { scenarioSaasSalesTour } from "./worlds/saas/sales"
 import { scenarioSaasSupportTour } from "./worlds/saas/support"
+import { scenarioStudioClientTour } from "./worlds/studio/client"
 
 /** In `DEMO_NEEDS` order (support, projects, chat, sales, commerce, dev, knowledge). */
 export const SCENARIO_TOURS = [
@@ -42,6 +43,7 @@ export const WORLD_SCENARIO_TOURS = [
   scenarioSaasMoneyTour,
   scenarioSaasDevTour,
   scenarioSaasKnowledgeTour,
+  scenarioStudioClientTour,
 ] as const
 
 /** Every demo scenario, of every world. */
@@ -49,6 +51,13 @@ export const DEMO_SCENARIO_TOURS = [...SCENARIO_TOURS, ...WORLD_SCENARIO_TOURS] 
 
 /** The builders a world's configuration is built on (`PRODUCTS_CFG` is the products world's). */
 export { buildChatTour } from "./chat"
+export {
+  buildClientTour,
+  CLIENT_CARD_ROW,
+  CLIENT_CARD_TOOL,
+  CLIENT_FIGURES_TOOL,
+  type ClientScenarioCfg,
+} from "./client"
 export { buildCommerceTour } from "./commerce"
 export { buildDevTour, type DevScenarioCfg, PRODUCTS_DEV_CFG } from "./dev"
 export {
@@ -106,3 +115,9 @@ export {
   SAAS_SUPPORT_TICKET_INJECTOR,
   scenarioSaasSupportTour,
 } from "./worlds/saas/support"
+export {
+  STUDIO_CLIENT_CFG,
+  STUDIO_CLIENT_PROJECT_NAME,
+  STUDIO_CR_ACCEPTED_INJECTOR,
+  scenarioStudioClientTour,
+} from "./worlds/studio/client"

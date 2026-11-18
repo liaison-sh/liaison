@@ -83,6 +83,12 @@ export type StudioDeliveryKey = (typeof STUDIO_DELIVERY_KEYS)[number]
  * door names: the owner, Léa, the ten of delivery and finance are the 13 a
  * board names; the other 11 hold no planned work this period. Order is the
  * directory's.
+ *
+ * Developers, designers and the data engineer hold the `engineering` role:
+ * projects, tasks, tickets and the knowledge base, and no invoicing write. An
+ * invoice's issue approval goes to whoever holds its scope, so it reaches
+ * finance, sales, the project lead and the admins, never the people who
+ * deliver the work.
  */
 export const STUDIO_TEAM: DemoPerson[] = [
   person(
@@ -103,63 +109,63 @@ export const STUDIO_TEAM: DemoPerson[] = [
     "clara",
     "Clara Meunier",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Builds back ends and exports for insurance and logistics clients.",
   ),
   person(
     "emma",
     "Emma Giraud",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Works on route planning and keeps the publisher's reader site running.",
   ),
   person(
     "hugo",
     "Hugo Tran",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Builds data feeds and the integrations around them.",
   ),
   person(
     "lina",
     "Lina Besson",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Builds member portals and their sign-in.",
   ),
   person(
     "mathis",
     "Mathis Aubry",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Works on connectors, test data and the cooperative's stock exports.",
   ),
   person(
     "nadia",
     "Nadia Kerroum",
     "Lead Developer",
-    "fulfillment",
+    "engineering",
     "Leads the developers on the partner portal and reviews most pull requests.",
   ),
   person(
     "paul",
     "Paul Arnaud",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Works on rollouts and member sign-in.",
   ),
   person(
     "sofia",
     "Sofia Lind",
     "Data Engineer",
-    "fulfillment",
+    "engineering",
     "Designs data models, imports and dashboards.",
   ),
   person(
     "yanis",
     "Yanis Belkacem",
     "Developer",
-    "fulfillment",
+    "engineering",
     "Writes business rules and the checks on the data behind them.",
   ),
   person(
@@ -187,14 +193,14 @@ export const STUDIO_TEAM: DemoPerson[] = [
     "manon",
     "Manon Leclerc",
     "Designer",
-    "fulfillment",
+    "engineering",
     "Designs interfaces and the screens clients sign off.",
   ),
   person(
     "victor",
     "Victor Hamon",
     "Designer",
-    "fulfillment",
+    "engineering",
     "Designs interfaces and covers for Manon when she is away.",
   ),
   person(
@@ -229,21 +235,21 @@ export const STUDIO_TEAM: DemoPerson[] = [
     "julien",
     "Julien Marchetti",
     "Junior Developer",
-    "fulfillment",
+    "engineering",
     "Joined delivery recently and pairs with the developers.",
   ),
   person(
     "tristan",
     "Tristan Bard",
     "Junior Developer",
-    "fulfillment",
+    "engineering",
     "Joined delivery recently and pairs with the developers.",
   ),
   person(
     "maelle",
     "Maëlle Lopez",
     "Junior Developer",
-    "fulfillment",
+    "engineering",
     "Joined delivery recently and pairs with the data engineer.",
   ),
 ]

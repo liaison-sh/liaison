@@ -234,4 +234,36 @@ describe("money on Home on the services world", () => {
       "2026-12-31": { ...nov, ...dec },
     })
   })
+
+  it("an invoice's issue approval reaches the people who hold its scope, not delivery", async () => {
+    // The approvals the month ends above parked, as invoicing parks them.
+    const rows = rowsOf<{ email: string }>(
+      await db.execute(sql`
+        SELECT DISTINCT u.email
+          FROM kernel.approval_requests a
+          CROSS JOIN LATERAL unnest(a.notify_user_ids) AS n(user_id)
+          JOIN kernel.users u ON u.id = n.user_id
+         WHERE a.org_id = ${orgId}::uuid AND a.tool_name = 'invoicing:invoice_issue'`),
+    )
+    const reached = rows.map((r) => r.email.split("@")[0]).sort()
+    // Finance, the two sales people, the project lead, the co-founder and the owner's seat:
+    // the holders of the issue's scope. No developer, designer, data engineer or QA.
+    expect(reached).toEqual(["anais", "bastien", "lea", "owner", "romain", "sarah"])
+    // A developer's Home holds no issue approval.
+    const people = await withPrivilegedDb(orgId, "studio-money:delivery", async (tx) =>
+      rowsOf<{ id: string }>(
+        await tx.execute(
+          sql`SELECT id::text AS id FROM kernel.users
+               WHERE org_id = ${orgId}::uuid AND email LIKE 'clara@%'`,
+        ),
+      ),
+    )
+    const clara = people[0]?.id ?? ""
+    expect(clara).not.toBe("")
+    const actor = await actorFor(seedContext({ orgId, now: BOARD_DATE, log: () => {} }), clara)
+    const items = await withRlsContext(actor, (tx) =>
+      computeApprovalAttentionItems(tx, orgId, clara, [], noon(DAYS[0])),
+    )
+    expect(items.filter((i) => i.metadata?.toolName === "invoicing:invoice_issue")).toEqual([])
+  })
 })

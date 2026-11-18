@@ -153,7 +153,7 @@
   },
   "kernel.agents": {
     "rows": 25,
-    "digest": "68f4e10a401f81c3"
+    "digest": "e7c34226eaf84ea5"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -189,7 +189,7 @@
   },
   "kernel.config_applied_fields": {
     "rows": 8,
-    "digest": "a1ac404aad12146f"
+    "digest": "c631fa31a5505dad"
   },
   "kernel.contact_addresses": {
     "rows": 6,
@@ -217,7 +217,7 @@
   },
   "kernel.pending_events": {
     "rows": 388,
-    "digest": "b8a664169c9839f8"
+    "digest": "a53a6eaf5516a82d"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -229,7 +229,7 @@
   },
   "kernel.roles": {
     "rows": 35,
-    "digest": "f94b91304a18738a"
+    "digest": "114b98ebb4706c7f"
   },
   "kernel.saved_views": {
     "rows": 8,

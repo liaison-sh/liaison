@@ -1,9 +1,27 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { RlsClient } from "~/db"
 import type { RlsSession } from "~/db/rls"
-import type { ActorType } from "~/modules/apps/sandbox/bridge/context"
+import type { ActorType, RpcBridgeOptions } from "~/modules/apps/sandbox/bridge/context"
 import type { AppManifestForBridge } from "~/modules/apps/sandbox/bridge/shared"
 import { createSandboxRpcBridge, createSessionRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
+
+/**
+ * `ctx.requestApproval` for an event handler: the app may ASK a person to approve one of its own
+ * tools (a milestone's draft parks for its issue approval), exactly as its jobs do, so an event
+ * and the app's sweep job file the same request (runtime.ts, appRequestApprovalImpl). It never
+ * decides. Without it the handler's request failed with "not available in this execution
+ * context", and a draft the event made waited for nobody.
+ */
+function eventRequestApproval(
+  appName: string,
+  orgId: string,
+): NonNullable<RpcBridgeOptions["requestApprovalImpl"]> {
+  return async (input) => {
+    // Lazy: runtime.ts imports this module.
+    const { appRequestApprovalImpl } = await import("~/modules/apps/runtime")
+    return appRequestApprovalImpl(appName, orgId)(input)
+  }
+}
 
 /**
  * The bridge a manifest EVENT handler runs with. The handler holds its own
@@ -37,6 +55,7 @@ export function createEventHandlerBridge(args: {
     undefined,
     {
       jobsAttributedToSystem: true,
+      requestApprovalImpl: eventRequestApproval(args.appName, args.orgId),
       ...(args.decidedActionId ? { decidedActionId: args.decidedActionId } : {}),
     },
   )
@@ -69,6 +88,7 @@ export function createEventHandlerSessionBridge(args: {
     undefined,
     {
       jobsAttributedToSystem: true,
+      requestApprovalImpl: eventRequestApproval(args.appName, args.orgId),
       ...(args.decidedActionId ? { decidedActionId: args.decidedActionId } : {}),
     },
   )

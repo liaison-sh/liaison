@@ -356,6 +356,48 @@ function decidedOf(eventType: string, event: unknown): { decidedActionId?: strin
   return typeof id === "string" && /^[0-9a-f-]{36}$/i.test(id) ? { decidedActionId: id } : {}
 }
 
+/**
+ * `ctx.requestApproval` for a run no person's turn drives: a manifest job, and a manifest event
+ * subscriber (a milestone moved to done, an agreement signed). The app may only ASK: an approval
+ * request for one of its own app's tools, filed under the person it names (`on_behalf_of`) or the
+ * org's first active member, re-run with the payload once a person approves. It never decides.
+ * One implementation for both, so an event's approval is the one the app's sweep job files.
+ */
+export function appRequestApprovalImpl(appName: string, orgId: string) {
+  return async (input: {
+    tool_name: string
+    summary: string
+    summary_detail?: {
+      subtitle?: string
+      lines?: string[]
+      links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+    }
+    current_payload: unknown
+    editable_fields?: string[]
+  }) => {
+    const colon = input.tool_name.indexOf(":")
+    const target = colon === -1 ? appName : input.tool_name.slice(0, colon)
+    if (target !== appName) {
+      throw new Error(
+        "a job or an event handler may only request approval for one of its own app's tools",
+      )
+    }
+    const requestedBy = await resolveJobApprovalRequester(
+      orgId,
+      (input as { on_behalf_of?: unknown }).on_behalf_of,
+    )
+    const { createHandlerApprovalRequest } = await import("~/modules/apps/execute-tool")
+    return createHandlerApprovalRequest({
+      orgId,
+      requestedBy,
+      actorScopes: [],
+      defaultAppName: appName,
+      origin: "system",
+      input,
+    })
+  }
+}
+
 /** Bridge for a manifest job run: session-owned per-call transactions when the
  *  worker handed over `_session`, else the legacy ambient `_tx` bridge. */
 export function buildJobBridge(
@@ -371,36 +413,7 @@ export function buildJobBridge(
   // `ctx.requestApproval` from a job: a scheduled job may only ASK (an approval request for one
   // of its own app's tools, re-run with the payload once a person approves); it never decides.
   const bridgeOptions = {
-    requestApprovalImpl: async (input: {
-      tool_name: string
-      summary: string
-      summary_detail?: {
-        subtitle?: string
-        lines?: string[]
-        links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
-      }
-      current_payload: unknown
-      editable_fields?: string[]
-    }) => {
-      const colon = input.tool_name.indexOf(":")
-      const target = colon === -1 ? appName : input.tool_name.slice(0, colon)
-      if (target !== appName) {
-        throw new Error("a job may only request approval for one of its own app's tools")
-      }
-      const requestedBy = await resolveJobApprovalRequester(
-        jobOrgId,
-        (input as { on_behalf_of?: unknown }).on_behalf_of,
-      )
-      const { createHandlerApprovalRequest } = await import("~/modules/apps/execute-tool")
-      return createHandlerApprovalRequest({
-        orgId: jobOrgId,
-        requestedBy,
-        actorScopes: [],
-        defaultAppName: appName,
-        origin: "system",
-        input,
-      })
-    },
+    requestApprovalImpl: appRequestApprovalImpl(appName, jobOrgId),
     ...(job
       ? {
           currentJob: {

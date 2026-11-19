@@ -183,7 +183,7 @@ import {
   isPersonClientFrame,
   isPersonExternalClientCall,
   type RunContext,
-  runHasPerson,
+  runAnswersPerson,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { hostRequiresApproval } from "~/modules/agent/scopes/host-approval-gates"
@@ -1536,7 +1536,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // act, such as a report only its reporter can send, reads it back when the
   // approval runs it). Only recorded when a frame says so: no frame is a direct
   // call of a person's own.
-  if (liveFrame) routineMeta.originHasPerson = runHasPerson(liveFrame)
+  if (liveFrame) routineMeta.originHasPerson = runAnswersPerson(liveFrame)
   const originRun: OriginRun | null =
     opts.originRun !== undefined
       ? opts.originRun

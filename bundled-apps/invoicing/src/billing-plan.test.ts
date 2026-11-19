@@ -148,6 +148,20 @@ describe("a milestone's invoice", () => {
     expect(h.approvals).toHaveLength(0)
   })
 
+  test("the plan's total is what is invoiced in all: the advance is deducted at the final, never added", async () => {
+    const h = harness()
+    await withPlan(h)
+    const plan = await billingPlanGet(h.ctx, { projectId: PROJECT })
+    if (plan.status !== "completed") throw new Error("no plan")
+    const total = plan.milestonesMinor
+    const advance = plan.advancesMinor
+    expect(advance).toBeGreaterThan(0)
+    // Summing every step's amount counts the advance twice; the answer says so.
+    expect(plan.invoicedInAll).toEqual({ minor: total, currency: plan.currency })
+    expect(plan.message).toContain("in all")
+    expect(plan.message).toContain("deducted at the final, so the steps do not add up to it")
+  })
+
   test("the plan says which milestones are not done yet, from their task's done state only", async () => {
     const h = harness()
     await withPlan(h)

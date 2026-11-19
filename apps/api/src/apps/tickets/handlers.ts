@@ -1248,7 +1248,11 @@ export async function companyTickets(params: unknown, ctx: TicketsCtx): Promise<
       typeof p?.id === "string" && COMPANY_TICKETS_UUID_RE.test(p.id),
   )
   if (people.length === 0)
-    return { items: [], message: "No open ticket from this company's people." }
+    return {
+      items: [],
+      message:
+        "No open ticket you can read from this company's people; a team you do not work is not listed.",
+    }
   const names = new Map(people.map((p) => [p.id, typeof p.name === "string" ? p.name : null]))
   const rows = JSON.parse(
     await ctx.db_findMany(
@@ -1284,7 +1288,7 @@ export async function companyTickets(params: unknown, ctx: TicketsCtx): Promise<
     items,
     message:
       items.length === 0
-        ? "No open ticket from this company's people."
+        ? "No open ticket you can read from this company's people; a team you do not work is not listed."
         : `${items.length}${more ? "+" : ""} open ticket${items.length === 1 ? "" : "s"} from this company's people.`,
   }
 }

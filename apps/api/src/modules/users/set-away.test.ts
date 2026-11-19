@@ -443,6 +443,51 @@ describe("set_away", () => {
     expect(await approvals()).toHaveLength(0)
   })
 
+  it("a parked call holds the range and the stand-in in one card, named and dated", async () => {
+    await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}`
+    const from = futureMonday()
+    const to = addDays(from, 11)
+    const res = await setAwayAs(elodie, OWN_SCOPES, { from, to, nextInLineId: tom.userId })
+    expect(res).toMatchObject({ blocked: { reason: "taint_escalation" } })
+    const [card] = await sql<Array<{ summary: { title: string; lines: string[] } }>>`
+      SELECT summary FROM kernel.approval_requests
+      WHERE org_id = ${orgId} AND tool_name = 'kernel:set_away'`
+    expect(card?.summary.title).toBe("Mark yourself away")
+    expect(card?.summary.lines).toEqual([
+      `From ${dayLabel(from)} to ${dayLabel(to)}.`,
+      "Next in line: Tom Reyes.",
+    ])
+  })
+
+  it("an incomplete call is refused with what it lacks, before any card", async () => {
+    await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}`
+    const from = futureMonday()
+    const half = await setAwayAs(elodie, OWN_SCOPES, { from, nextInLineId: tom.userId })
+    expect(half).toMatchObject({ ok: false, code: "bad_dates" })
+    expect(half.message).toContain("A range needs both from and to")
+    const nothing = await setAwayAs(elodie, OWN_SCOPES, {})
+    expect(nothing).toMatchObject({ ok: false, code: "bad_dates" })
+    const over = await setAwayAs(elodie, OWN_SCOPES, { from: "2020-01-06", to: "2020-01-10" })
+    expect(over).toMatchObject({ ok: false, code: "past_dates" })
+    expect(await approvals()).toHaveLength(0)
+  })
+
+  it("a parked card the person rejects leaves their approvals list", async () => {
+    await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}`
+    await setAwayAs(elodie, OWN_SCOPES, { on: futureMonday() })
+    const [row] = await approvals()
+    expect(await decide(row?.id as string, elodie, OWN_SCOPES)).toBeNull()
+    const { listApprovals } = await import("~/modules/approvals/list")
+    const { withRlsContext } = await import("~/db/rls")
+    const listed = await withRlsContext(actor(elodie, OWN_SCOPES), (tx) =>
+      listApprovals(tx, { orgId, userId: elodie.userId, scopes: OWN_SCOPES }),
+    )
+    expect(listed.map((i) => i.id)).not.toContain(row?.id)
+    const [after] = await sql<Array<{ status: string }>>`
+      SELECT status FROM kernel.approval_requests WHERE id = ${row?.id as string}`
+    expect(after?.status).toBe("denied")
+  })
+
   it("on a parked row a colleague's and an admin's decide are refused as not found", async () => {
     await sql`UPDATE kernel.threads SET tainted = true WHERE id = ${threadId}`
     await setAwayAs(elodie, OWN_SCOPES, { on: futureMonday() })

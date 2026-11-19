@@ -647,3 +647,45 @@ describe("an approved call keeps the place it was asked from", () => {
     await allOff()
   })
 })
+
+describe("a project an agent creates with planned time, approved by the person", () => {
+  it("is created with its timebox when the person approves the card their own turn raised", async () => {
+    await allOff()
+    const { decideApproval } = await import("~/modules/approvals/decide")
+    const id = crypto.randomUUID()
+    const threadId = await minimal.thread(orgId, owner.userId)
+    const payload = JSON.stringify({
+      name: "Planned studio site",
+      timeBudgets: true,
+      tasks: [{ title: "Design", timebox: "16 h" }],
+    })
+    await sql.unsafe(
+      insertSql("kernel.approval_requests", {
+        id,
+        org_id: orgId,
+        handle: `ap-${id.slice(0, 8)}`,
+        thread_id: threadId,
+        originating_thread_id: threadId,
+        tool_name: "projects:createProject",
+        tool_params: { raw: `'${payload}'::jsonb` },
+        current_payload: { raw: `'${payload}'::jsonb` },
+        expires_at: { raw: "now() + interval '1 day'" },
+        requested_by: owner.userId,
+        notify_user_ids: { raw: `ARRAY['${owner.userId}']::uuid[]` },
+        status: "pending",
+        reason: "gated",
+        summary: { raw: `'{"kind":"createProject","title":"Create project","lines":[]}'::jsonb` },
+        metadata: { raw: `'{"origin":"in-app-agent","originHasPerson":true}'::jsonb` },
+      }),
+    )
+    await decideApproval({ orgId, requestId: id, actor: actor(), decision: "approve" })
+    const [made] = extractRows<{ on: boolean; status: string }>(
+      await db.execute(drizzleSql`
+        SELECT p.time_budgets_on AS on, r.status FROM app_projects.projects p
+        JOIN kernel.approval_requests r ON r.id = ${id}::uuid
+        WHERE p.org_id = ${orgId}::uuid AND p.name = 'Planned studio site'`),
+    )
+    expect(made).toEqual({ on: true, status: "approved" })
+    await allOff()
+  })
+})

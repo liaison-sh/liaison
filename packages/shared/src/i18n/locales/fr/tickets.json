@@ -405,7 +405,7 @@
     "runningBacklog": "Comptage des tickets ouverts"
   },
   "companySupport": {
-    "empty": "Aucun ticket ouvert par les personnes de cette entreprise.",
+    "empty": "Aucun ticket ouvert que vous pouvez lire, par les personnes de cette entreprise ; une équipe dont vous ne faites pas partie n'est pas listée.",
     "error": "Impossible de lire les tickets de cette entreprise."
   }
 }

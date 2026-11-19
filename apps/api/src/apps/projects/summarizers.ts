@@ -397,13 +397,23 @@ export async function summarizeCreateProject(
   params: {
     name: string
     description?: string | null
-    tasks?: Array<{ title?: string; assigneeName?: string | null }> | null
+    tasks?: Array<{ title?: string; assigneeName?: string | null; timebox?: unknown }> | null
+    timeBudgets?: boolean
   },
   _ctx: { tx: RlsClient; orgId: string; userId: string },
 ): Promise<ApprovalSummary> {
   const lines: string[] = []
   if (params.description?.trim()) lines.push(clip(params.description.trim(), 200))
   const tasks = Array.isArray(params.tasks) ? params.tasks : []
+  // Approving the card is the person turning time and budgets on: the card says so.
+  if (params.timeBudgets === true) {
+    const planned = tasks.filter((t) => typeof t.timebox === "string").length
+    lines.push(
+      planned > 0
+        ? `Turns time and budgets on, with planned time on ${planned === 1 ? "1 task" : `${planned} tasks`}`
+        : "Turns time and budgets on",
+    )
+  }
   if (tasks.length === 0) {
     lines.push("No tasks yet")
   } else {

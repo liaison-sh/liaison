@@ -46,6 +46,7 @@ import {
   isPersonClientFrame,
   type RunContext,
 } from "~/modules/agent/runtime/run-context"
+import { sharedAgentAttachmentRefusal } from "~/modules/mail/shared-agent-mailbox"
 import { isMailAttachmentMailboxPrivate } from "~/modules/mailbox-crypto/content-suppression"
 
 const K = sql.raw(schemaRef("kernel"))
@@ -80,6 +81,12 @@ export interface MailAttachmentReadDeps {
   isPrivateMailbox(orgId: string, entityType: string, entityId: string): Promise<boolean>
   currentRun(): RunContext | undefined
   injectContext(runId: string, block: string): void
+  /** The refusal a SHARED agent gets for an attachment of the person's own mailbox, else null. */
+  sharedAgentRefusal(a: {
+    orgId: string
+    userId: string | null
+    fileId: string
+  }): Promise<{ code: string; message: string } | null>
 }
 
 export const defaultMailAttachmentReadDeps: MailAttachmentReadDeps = {
@@ -90,6 +97,7 @@ export const defaultMailAttachmentReadDeps: MailAttachmentReadDeps = {
     ).catch(() => true),
   currentRun: currentRunContext,
   injectContext: addEphemeralMailboxContext,
+  sharedAgentRefusal: sharedAgentAttachmentRefusal,
 }
 
 export const MAIL_ATTACHMENT_DELIVERED_MESSAGE =
@@ -138,6 +146,9 @@ export async function handleMailAttachmentRead(
     ),
   )[0]
   if (!file) {
+    // A shared agent is told who can read it when the file is in the person's own mailbox.
+    const refusal = await deps.sharedAgentRefusal({ orgId: ctx.orgId, userId: ctx.userId, fileId })
+    if (refusal) return { error: { code: refusal.code, message: refusal.message } }
     return err(
       "not_found",
       `No mail attachment ${fileId} you can read. Take the id from the attachments of mail__read.`,

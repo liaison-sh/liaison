@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
-import { generateRlsPolicySql } from "~/modules/permissions/rls-generator"
+import { generateRlsPolicySql, SHARED_AGENT_EXCLUSION } from "~/modules/permissions/rls-generator"
 
 const dims = {
   inbox: { type: "membership" as const, column: "accountId" },
@@ -96,5 +96,28 @@ describe("generateRlsPolicySql personalScope", () => {
       { accountId: "uuid", ownerType: "string", ownerId: "uuid?" },
     )
     expect(sql).not.toContain("personal_owner")
+  })
+
+  it("personalAgentOnly keeps a shared agent's turn out of the owner's branch", () => {
+    const gen = (personalAgentOnly?: boolean) =>
+      generateRlsPolicySql(
+        "app_mail",
+        "conversations",
+        dims as any,
+        "mail",
+        "conversations",
+        { accountId: "uuid", ownerType: "string", ownerId: "uuid?" },
+        undefined,
+        { via: { table: "accounts", localColumn: "accountId" }, personalAgentOnly },
+      )
+    const on = gen(true)
+    // Select, insert, update USING + WITH CHECK, delete: every policy carries it.
+    expect(on.split(SHARED_AGENT_EXCLUSION).length - 1).toBeGreaterThanOrEqual(4)
+    // Only in the owner's branch: the system exemption and a non-personal row are untouched.
+    expect(on).toMatch(
+      /accounts_personal_owner"\("account_id"\) = NULLIF\(.*user_id\(\).*\)::uuid\s+AND COALESCE\(current_setting\('app\.current_agent_shared'/,
+    )
+    expect(gen()).not.toContain("app.current_agent_shared")
+    expect(gen(false)).not.toContain("app.current_agent_shared")
   })
 })

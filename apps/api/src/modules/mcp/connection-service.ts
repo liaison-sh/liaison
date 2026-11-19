@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto"
 import { and, eq, isNull } from "drizzle-orm"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { agents, mcpConnections } from "~/db/schema/kernel"
+import type { AgentKind } from "~/db/schema/kernel/agents"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { redis } from "~/lib/redis"
@@ -57,10 +58,10 @@ function secretMatches(presented: string, storedHash: string): boolean {
 export async function loadLiveAgent(
   orgId: string,
   agentId: string,
-): Promise<{ id: string; scopeCeiling: string[] } | null> {
+): Promise<{ id: string; scopeCeiling: string[]; kind: AgentKind } | null> {
   const [row] = await withSystemDb("mcp-conn-agent-load", (db) =>
     db
-      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
+      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling, kind: agents.kind })
       .from(agents)
       .where(and(eq(agents.id, agentId), eq(agents.orgId, orgId), isNull(agents.archivedAt))),
   )

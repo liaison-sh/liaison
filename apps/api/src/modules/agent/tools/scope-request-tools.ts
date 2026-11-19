@@ -1,9 +1,18 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { RlsClient } from "~/db"
-import { captureActingAgentId, currentRunContext } from "~/modules/agent/runtime/run-context"
+import {
+  captureActingAgentId,
+  currentRunContext,
+  isSharedAgentFrame,
+} from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { listLockedCapabilities } from "~/modules/agent/tools/tool-bridge"
 import { toolSynopsis } from "~/modules/agent/tools/tool-search"
+import {
+  type PERSONAL_MAILBOX_SHARED_AGENT_CODE,
+  personalMailboxRefusal,
+  requestsMailScope,
+} from "~/modules/mail/shared-agent-mailbox"
 import { createScopeRequest } from "~/modules/scope-requests/service"
 
 /**
@@ -85,11 +94,32 @@ export async function handleListLockedCapabilities(
   }
 }
 
+/** What `request_scope` answers when it files nothing, and what the agent must tell the user. */
+export interface ScopeRequestRefused {
+  requested: false
+  code: typeof PERSONAL_MAILBOX_SHARED_AGENT_CODE
+  reason: string
+  personalAgentHandle: string | null
+}
+
 /** `request_scope` — file a pending, agent-typed scope request for the actor's identity. */
 export async function handleRequestScope(
   params: { scopes: string[]; reason?: string },
   ctx: ScopeToolCtx,
-): Promise<{ requested: boolean; requestId: string; scopes: string[] }> {
+): Promise<{ requested: true; requestId: string; scopes: string[] } | ScopeRequestRefused> {
+  // A SHARED agent (role or system) never gets mail access by request: a person's own mailbox
+  // is their personal agent's alone, and an approval would only widen this agent for everyone.
+  // Refused before any row exists, with the agent the user should ask instead. The service
+  // refuses the same (SharedAgentMailScopeError) for a frame that did not say its kind.
+  if (isSharedAgentFrame() && requestsMailScope(params.scopes)) {
+    const refusal = await personalMailboxRefusal(ctx.orgId, ctx.userId)
+    return {
+      requested: false,
+      code: refusal.code,
+      reason: refusal.message,
+      personalAgentHandle: refusal.details.personalAgentHandle,
+    }
+  }
   // WHO asked. `ctx.userId` is the human whose turn it is and stays the row's
   // identity for RLS; the acting agent is the speaker, and without it the admin
   // row credited the person and named no agent. Same fact, same capture, as the

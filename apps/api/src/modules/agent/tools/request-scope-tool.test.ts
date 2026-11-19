@@ -106,7 +106,7 @@ describe("request_scope kernel tool", () => {
           },
         ),
     )
-    expect(res.requested).toBe(true)
+    if (!res.requested) throw new Error(`refused: ${res.reason}`)
     expect(res.requestId).toBeTruthy()
 
     const rows =
@@ -114,5 +114,103 @@ describe("request_scope kernel tool", () => {
     expect(rows[0].requested_by_type).toBe("agent")
     expect(rows[0].requested_scopes).toEqual(["mail:conversations:write"])
     expect(rows[0].status).toBe("pending")
+  })
+
+  describe("a shared agent asking for mail access", () => {
+    const ROLE = "00000000-0000-0000-0000-0000008c0041"
+    const PERSONAL = "00000000-0000-0000-0000-0000008c0042"
+    const THREAD = "00000000-0000-0000-0000-0000008c0032"
+    const actor: ActorContext = {
+      actorType: "user",
+      userId: AGENT_USER,
+      orgId: ORG,
+      scopes: ["*"],
+      dimensionGrants: {},
+    }
+
+    beforeAll(async () => {
+      await sql`INSERT INTO kernel.agents (id, org_id, kind, handle, display_name, scope_ceiling, system_prompt)
+        VALUES (${ROLE}, ${ORG}, 'role', '@rs-commerce', 'Commerce', '["tickets:*"]'::jsonb, 'You help.')`
+      await sql`INSERT INTO kernel.agents (id, org_id, kind, owner_user_id, handle, display_name, scope_ceiling, system_prompt)
+        VALUES (${PERSONAL}, ${ORG}, 'personal', ${AGENT_USER}, '@agent-rs-agent', 'Personal agent', '["*"]'::jsonb, 'You help.')`
+      await sql`INSERT INTO kernel.threads (id, org_id, handle, type, created_by)
+        VALUES (${THREAD}, ${ORG}, 'rs-thread-mail', 'agent_chat', ${AGENT_USER})`
+      await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
+        VALUES (${THREAD}, ${AGENT_USER}, ${ORG})`
+      await registerKernelAgentTools(ORG)
+    })
+
+    afterAll(async () => {
+      await sql`DELETE FROM kernel.scope_requests WHERE org_id = ${ORG}`
+      await sql`DELETE FROM kernel.thread_participants WHERE thread_id = ${THREAD}`
+      await sql`DELETE FROM kernel.threads WHERE id = ${THREAD}`
+      await sql`DELETE FROM kernel.agents WHERE id IN (${ROLE}, ${PERSONAL})`
+    })
+
+    function toolsFor(agentId: string, agentKind?: "role" | "personal") {
+      const runFrame = {
+        runId: `run-${agentId}`,
+        parentRunId: null,
+        rootRunId: `run-${agentId}`,
+        nestingDepth: 0,
+        agentId,
+        ...(agentKind ? { agentKind } : {}),
+        effectiveScope: ["*"],
+        turnScopeAccumulator: createTurnScopeAccumulator(),
+      }
+      return buildToolSet(
+        ORG,
+        actor,
+        THREAD,
+        ALL_DEFERRED_TOOLS_UNLOCKED,
+        "agent",
+        runFrame as never,
+      )
+    }
+
+    async function pendingRows() {
+      return sql`SELECT id FROM kernel.scope_requests WHERE org_id = ${ORG} AND agent_id = ${ROLE}`
+    }
+
+    it("files nothing and names the user's personal agent instead", async () => {
+      const result = (await toolsFor(ROLE, "role").kernel__request_scope.execute(
+        {
+          scopes: ["mail:conversations:read", "mail:accounts:read"],
+          reason: "reply from my email",
+        },
+        {},
+      )) as { requested?: boolean; code?: string; reason?: string; personalAgentHandle?: string }
+      expect(result.requested).toBe(false)
+      expect(result.code).toBe("personal_mailbox_shared_agent")
+      expect(result.personalAgentHandle).toBe("@agent-rs-agent")
+      expect(result.reason).toContain("only their personal agent @agent-rs-agent can")
+      expect(await pendingRows()).toHaveLength(0)
+    })
+
+    it("refuses at the service too when the frame does not carry the agent's kind", async () => {
+      const result = JSON.stringify(
+        await toolsFor(ROLE).kernel__request_scope.execute({ scopes: ["mail:*"] }, {}),
+      )
+      expect(result).toContain("@agent-rs-agent")
+      expect(await pendingRows()).toHaveLength(0)
+    })
+
+    it("still files a non-mail request from a shared agent", async () => {
+      const result = (await toolsFor(ROLE, "role").kernel__request_scope.execute(
+        { scopes: ["ads:insights:read"] },
+        {},
+      )) as { requested?: boolean }
+      expect(result.requested).toBe(true)
+      await sql`DELETE FROM kernel.scope_requests WHERE org_id = ${ORG}`
+    })
+
+    it("still files a mail request from the person's own personal agent", async () => {
+      const result = (await toolsFor(PERSONAL, "personal").kernel__request_scope.execute(
+        { scopes: ["mail:conversations:read"] },
+        {},
+      )) as { requested?: boolean }
+      expect(result.requested).toBe(true)
+      await sql`DELETE FROM kernel.scope_requests WHERE org_id = ${ORG}`
+    })
   })
 })

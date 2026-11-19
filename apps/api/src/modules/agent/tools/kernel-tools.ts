@@ -2821,7 +2821,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     // instead of being refused with "undeclared" (spec-security.md, "Scope taint on writes").
     writesToTable: SINK_KERNEL_SCOPE_REQUESTS,
     description:
-      "File a request asking your admin to grant scopes you currently lack. Pass the precise scope strings (from kernel__list_locked_capabilities) and a short reason. Idempotent: re-requesting the same scopes returns the existing pending request.",
+      "File a request asking your admin to grant scopes you currently lack. Pass the precise scope strings (from kernel__list_locked_capabilities) and a short reason. Idempotent: re-requesting the same scopes returns the existing pending request. A shared agent (not a person's own personal agent) never asks for mail scopes: a person's own mailbox is read only by their personal agent, so tell the user that and name it; access to a shared org mailbox is set by an admin in your agent settings. Such a request is refused and files nothing.",
     requiredScopes: ["kernel:threads:read"], // baseline — any agent user holds it
     params: z.object({
       scopes: z

@@ -2838,7 +2838,12 @@ async function registerSingleApp(
                     // writable ONLY by the account owner — broad scopes and dimension
                     // wildcards no longer pierce them (mail privacy, tier 2).
                     const personalScope = (entityDef as { personalScope?: unknown })
-                      .personalScope as { via?: { table: string; localColumn: string } } | undefined
+                      .personalScope as
+                      | {
+                          via?: { table: string; localColumn: string }
+                          personalAgentOnly?: boolean
+                        }
+                      | undefined
                     const policySql = generateRlsPolicySql(
                       schemaName,
                       entityName,

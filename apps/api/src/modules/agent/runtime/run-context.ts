@@ -293,6 +293,14 @@ export interface RunContext {
    */
   agentCeiling?: string[]
   /**
+   * The acting agent's kind, set beside `agentId` where the agent row is
+   * resolved. A SHARED agent (`role` or `system`) never reaches a person's own
+   * mailbox: `withRlsContext` reads it (`isSharedAgentFrame`) and marks the
+   * transaction, and the mail tables' personal-agent-only policies hide every
+   * user-owned mailbox from it. Absent: not known to be shared.
+   */
+  agentKind?: "personal" | "role" | "system"
+  /**
    * This turn's D2 effective scope, computed once via
    * `computeEffectiveScopeForTurn` before the tool catalog is built; when
    * present it, not `actorScopes` alone, is the scope set `buildToolSet`
@@ -451,6 +459,16 @@ export function runHasPerson(frame: RunContext): boolean {
  * connection's reads taint its writes; for every "is this the person's own
  * request" check it reads exactly as no frame at all did before it existed.
  */
+/**
+ * True when the acting agent of this frame is a SHARED agent (kind `role` or
+ * `system`), never a person's own. A person's own mailbox is for their
+ * personal agent alone; a shared agent works for everyone in a room, so
+ * whatever it reads there is not the owner's to keep.
+ */
+export function isSharedAgentFrame(frame: RunContext | undefined = currentRunContext()): boolean {
+  return frame?.agentKind === "role" || frame?.agentKind === "system"
+}
+
 export function isPersonClientFrame(frame: RunContext | undefined): boolean {
   return frame?.mcpGateway === true && frame.agentId === undefined
 }

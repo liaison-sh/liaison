@@ -16,6 +16,7 @@ import {
 import { attachQueueEvent, type QueuedEventsMark, wakeOutboxAfterCommit } from "~/db/queue-event"
 import { PRIVILEGED_ROLE_REACH_SQL } from "~/db/role-reach"
 import { env } from "~/lib/env"
+import { isSharedAgentFrame } from "~/modules/agent/runtime/run-context"
 import {
   type DbPool,
   __request_pool_db__ as db,
@@ -335,6 +336,15 @@ export async function withRlsContext<T>(
     // round trip. It comes after enter(), so enter() still runs before the
     // transaction becomes liaison_rls, as it did with a separate statement.
     if (opts?.signal?.aborted) throw opts.signal.reason ?? new Error("transaction aborted")
+    // A SHARED agent's turn (kind role or system, `isSharedAgentFrame`) marks
+    // the transaction so the personal-agent-only policies (manifest
+    // `personalScope.personalAgentOnly`, the mail tables) hide every
+    // user-owned mailbox from it, whoever the person is. Read from the turn's
+    // frame, so every RLS transaction of the turn carries it: app tool runs,
+    // kernel tools, sessions. Untagged on purpose: the mark only ever NARROWS
+    // what the person's own context may see, so clearing it can give back no
+    // more than that person's own access.
+    const sharedAgent = isSharedAgentFrame()
     const setJit = !env.DB_RLS_JIT_ENABLED
     const statementTimeoutMs = opts?.statementTimeoutMs ?? env.DB_STATEMENT_TIMEOUT_MS
     const setTimeout = statementTimeoutMs > 0
@@ -348,7 +358,8 @@ export async function withRlsContext<T>(
       set_config('app.current_dimensions', ${dimensionsValue}, true),
       set_config('app.current_dimensions_tag', ${dimensionsTag}, true),
       set_config('app.current_roles', ${rolesValue}, true),
-      set_config('app.current_roles_tag', ${rolesTag}, true)
+      set_config('app.current_roles_tag', ${rolesTag}, true),
+      set_config('app.current_agent_shared', ${sharedAgent ? "on" : ""}, true)
       ${setJit ? drizzleSql`, set_config('jit', 'off', true)` : drizzleSql``}
       ${setTimeout ? drizzleSql`, set_config('statement_timeout', ${String(statementTimeoutMs)}, true)` : drizzleSql``},
       rls_ctx.enter(),

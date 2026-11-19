@@ -67,7 +67,7 @@
       }
     ]
   },
-  "version": "1.8.6",
+  "version": "1.8.7",
   "description": "Email integration: Gmail and IMAP/SMTP",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -261,7 +261,9 @@
         },
         "encryptionConversion": "string?"
       },
-      "personalScope": {},
+      "personalScope": {
+        "personalAgentOnly": true
+      },
       "dimensions": {
         "inbox": {
           "type": "membership",
@@ -362,7 +364,8 @@
         "via": {
           "table": "accounts",
           "localColumn": "accountId"
-        }
+        },
+        "personalAgentOnly": true
       },
       "constraints": {
         "unique": [
@@ -470,7 +473,8 @@
         "via": {
           "table": "accounts",
           "localColumn": "accountId"
-        }
+        },
+        "personalAgentOnly": true
       },
       "constraints": {
         "unique": [
@@ -515,7 +519,8 @@
         "via": {
           "table": "accounts",
           "localColumn": "accountId"
-        }
+        },
+        "personalAgentOnly": true
       },
       "fields": {
         "accountId": "uuid",

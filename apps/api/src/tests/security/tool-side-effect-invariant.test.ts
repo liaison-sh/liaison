@@ -197,6 +197,7 @@ const REVIEWED_NOT_REFUSED: Record<string, string> = {
   projects_clientReportGet: "read",
   projects_clientReportSources: "read",
   projects_clientReportSendPreflight: "read (checks a send before its card; stores nothing)",
+  projects_timePlanSetPreflight: "read (checks a plan change before its card; stores nothing)",
   projects_milestoneClientActionView: "read",
   projects_tasksByAssignee: "read",
   projects_tasksByProject: "read",

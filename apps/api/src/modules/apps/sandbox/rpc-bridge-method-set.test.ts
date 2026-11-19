@@ -284,6 +284,7 @@ const EXPECTED_METHODS: ReadonlyArray<readonly [string, "sync" | "async"]> = [
   ["projects_tasksByAssignee", "async"],
   ["projects_tasksByProject", "async"],
   ["projects_timePlanSet", "async"],
+  ["projects_timePlanSetPreflight", "async"],
   ["projects_timeSettingsGet", "async"],
   ["projects_timeSettingsSet", "async"],
   ["projects_timesheetExport", "async"],

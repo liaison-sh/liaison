@@ -47,6 +47,7 @@ export interface ProjectsMethods {
   projects_taskTimeGet: (paramsJson: string) => Promise<string>
   projects_taskTimeCorrect: (paramsJson: string) => Promise<string>
   projects_timePlanSet: (paramsJson: string) => Promise<string>
+  projects_timePlanSetPreflight: (paramsJson: string) => Promise<string>
   projects_billingTermsSet: (paramsJson: string) => Promise<string>
   projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
   projects_budgetGet: (paramsJson: string) => Promise<string>
@@ -1246,6 +1247,15 @@ export async function taskTimeGet(params: unknown, ctx: ProjectsCtx): Promise<un
 
 export async function taskTimeCorrect(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
   return JSON.parse(await ctx.projects_taskTimeCorrect(JSON.stringify(params ?? {})))
+}
+
+/** `time_plan_set`'s card: a call that sets nothing, or a basis the terms contradict, is refused before it. */
+export async function timePlanSetPreflight(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const out = JSON.parse(await ctx.projects_timePlanSetPreflight(JSON.stringify(params ?? {}))) as {
+    error?: { code: string; message: string }
+  }
+  if (out.error) return { error: { ...out.error, retryable: false } }
+  return { ok: true }
 }
 
 export async function timePlanSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {

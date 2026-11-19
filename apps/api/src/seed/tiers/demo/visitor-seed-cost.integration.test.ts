@@ -124,13 +124,23 @@ const CATALOG_DEMO_APPS = [
  * registration events and the Full Member grant (+4); round trips 6 744 in 655, pin unchanged.
  * 369 outbox events once the code host app is installed on the instance as on a demo box (its
  * role registration events, +3); round trips 6 785 in 659, inside the margin, pin unchanged.
+ * Re-pinned 2026-11-19 (a working day) to the runner's figure, 6 820 round trips in 659
+ * transactions, 369 outbox events. The climb from 6 748 is the agreements roles (+21) and the
+ * code host app (+41) above, each inside the margin on this Mac but not on the runner, plus,
+ * measured statement by statement on this Mac between two heads of the branch (6 776 to 6 788):
+ * each seeded ticket's sent reply stamps the ticket's first response, as the reply service does
+ * (+4, one update per reply, kept), and the projects Home answer read the org's time zone twice,
+ * once for its due rows and again for its month-close line (+8, one per person). The second read
+ * is gone: the month-close line takes the answer's today, so this Mac counts 6 780 in 658. The
+ * runner counted 6 808-6 828 on the branch (6 800-6 820 without that read), about half a percent
+ * over this Mac, with a spread of about 20 between runs; the pin is the top of that range.
  */
 const PRODUCTS_BASELINE = {
   outboxEvents: 369,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 6_748,
+  statements: 6_820,
   transactions: 659,
 }
 /**

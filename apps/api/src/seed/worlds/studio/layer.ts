@@ -101,6 +101,9 @@ export const STUDIO_PIPELINE_KEY = "SALES"
 const STUDIO_APP_ROLES: ReadonlyArray<{ person: string; role: string }> = [
   { person: "bastien", role: "projects.lead" },
   { person: "anais", role: "projects.finance" },
+  // The owner is a co-founder and reads the studio's margins: an admin's `*` does not read cost,
+  // so the finance role says it.
+  { person: "owner", role: "projects.finance" },
 ]
 
 /** Who drafts and sends the studio's agreements beside the founders: its project lead. */
@@ -1320,5 +1323,27 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
          SET updated_at = completed_at, created_at = least(created_at, completed_at)
        WHERE org_id = ${ctx.orgId}::uuid AND completed_at IS NOT NULL
          AND external_ref LIKE ${`${studioTaskRef("")}%`}`),
+  )
+  // Nor was a task created the day the world was seeded: it was opened when its work began, so
+  // a project of four months does not read as created this morning on its company's timeline.
+  // That day is its first hour taken, else a week before it closed, else its project's first
+  // hour, else a week before the seed; never after it closed.
+  await withPrivilegedDb(ctx.orgId, "seed-studio:task-opened-at", (tx) =>
+    tx.execute(sql`
+      UPDATE ${sql.raw(schemaRef("app_projects"))}.tasks t
+         SET created_at = least(
+               t.created_at,
+               COALESCE(t.completed_at, t.created_at),
+               COALESCE(
+                 (SELECT min(tt.work_date)::timestamp AT TIME ZONE 'Europe/Paris' + interval '9 hours'
+                    FROM ${sql.raw(schemaRef("app_projects"))}.task_time tt
+                   WHERE tt.task_id = t.id AND tt.org_id = t.org_id),
+                 t.completed_at - interval '7 days',
+                 (SELECT min(tt.work_date)::timestamp AT TIME ZONE 'Europe/Paris' + interval '9 hours'
+                    FROM ${sql.raw(schemaRef("app_projects"))}.task_time tt
+                   WHERE tt.project_id = t.project_id AND tt.org_id = t.org_id),
+                 t.created_at - interval '7 days'))
+       WHERE t.org_id = ${ctx.orgId}::uuid
+         AND t.external_ref LIKE ${`${studioTaskRef("")}%`}`),
   )
 }

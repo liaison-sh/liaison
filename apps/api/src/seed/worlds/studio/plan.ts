@@ -14,8 +14,9 @@
 // literal date.
 //
 // Which time lands where:
-// - The fixed-price portal project: 346 h on 41 tasks under four milestones
-//   whose own timeboxes are 52, 78, 200 and 90 h, all before this month.
+// - The fixed-price portal project (dated hours on): 346 h on 41 tasks under four milestones
+//   whose own timeboxes are 52, 78, 200 and 90 h; Beta's three open tasks took their 17 h this
+//   month, each on a day not after today, the rest before this month.
 // - The retainer project (dated hours on): last month's fourteen lines on the
 //   same ordinal weekdays as the board, 46 h on six tasks, and this month's
 //   18 h, each on a day of this month that is not after today.
@@ -371,7 +372,7 @@ export function studioPlan(anchor: Date): StudioPlan {
       timeboxMinutes: planned * H,
       ...dueNextWeek,
     })
-    took("MARLIN", key, who, cal.monthDate(1, 6 + i * 5), real)
+    took("MARLIN", key, who, cal.thisMonthUpTo(3 + i * 2), real)
   })
 
   milestone("MARLIN-36", "Launch", "todo", 90, due(addCalendarDays(today, 25)))
@@ -691,7 +692,7 @@ export function studioPlan(anchor: Date): StudioPlan {
       fixedPriceMinor: 6_400_000,
       currency: "EUR",
       biller: "anais",
-      datedHours: false,
+      datedHours: true,
       sourceRepos: ["haldenstudio/partner-portal"],
       periods: [],
       tasks: marlin,

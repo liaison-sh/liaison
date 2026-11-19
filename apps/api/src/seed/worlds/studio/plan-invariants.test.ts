@@ -170,6 +170,11 @@ describe("services world plan", () => {
       expect(beta.length).toBe(20)
       expect(beta.filter((t) => t.status === "done").length).toBe(16)
       expect(project(plan, "MARLIN").fixedPriceMinor).toBe(4 * 1_600_000)
+      // This month's dated hours: Beta's three open tasks, 17 h, on days not after today.
+      const month = plan.today.slice(0, 7)
+      const thisMonth = time.filter((r) => r.workDate.startsWith(month))
+      expect(hoursOf(thisMonth)).toBe(17)
+      expect(thisMonth.every((r) => r.workDate <= plan.today)).toBe(true)
     })
 
     it(`the dated lines sum to 46 on working days at ${at}`, () => {
@@ -431,7 +436,8 @@ describe("services world plan", () => {
       "BRUME",
       "OSIER",
     ])
-    expect(plan.projects.filter((p) => p.datedHours).map((p) => p.key)).toEqual(["SOREL"])
+    // The portal keeps dated hours too, so "how much time went on it this month" has an answer.
+    expect(plan.projects.filter((p) => p.datedHours).map((p) => p.key)).toEqual(["MARLIN", "SOREL"])
     expect(project(plan, "STUDIO").tasks.some((t) => t.timeboxMinutes)).toBe(false)
     expect(plan.taskTime.some((r) => r.project === "STUDIO" || r.project === "SALES")).toBe(false)
     expect(plan.hoursPerDayMinutes).toBe(7 * 60)

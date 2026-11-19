@@ -274,8 +274,27 @@ describe("services world plan", () => {
       expect([excl, excl / 5, excl + excl / 5]).toEqual([651_000, 130_200, 781_200])
     })
 
+    it(`a past client's audit is closed after its three tasks, billed 18,500 in two halves, at ${at}`, () => {
+      const audit = project(plan, "VALLEE")
+      const closedAt = audit.closedAt as Date
+      expect(closedAt.getTime()).toBeLessThan(anchor.getTime())
+      expect(audit.tasks.map((t) => t.status)).toEqual(["done", "done", "done"])
+      for (const t of audit.tasks) {
+        expect((t.completedAt as Date).getTime()).toBeLessThanOrEqual(closedAt.getTime())
+      }
+      expect(audit.client).toBe("vallee")
+      const m = studioMoney(anchor)
+      const billed = m.invoices.filter((i) => i.projectKey === "VALLEE")
+      expect(billed.map((i) => i.client)).toEqual(["vallee", "vallee"])
+      expect(billed.reduce((n, i) => n + invoiceTotals(i.lines).exclMinor, 0)).toBe(1_850_000)
+      expect(
+        (billed[1] as { issuedOn: string }).issuedOn >=
+          parisCivil(audit.tasks[2]!.completedAt as Date),
+      ).toBe(true)
+    })
+
     it(`two past projects are closed, each holding its sign-on task with the hours its Knowledge note gives, at ${at}`, () => {
-      const closed = plan.projects.filter((p) => p.closedAt)
+      const closed = plan.projects.filter((p) => p.closedAt && p.key !== "VALLEE")
       expect(closed.map((p) => p.key)).toEqual(["BRUME", "OSIER"])
       for (const p of closed) {
         const closedAt = p.closedAt as Date
@@ -399,6 +418,7 @@ describe("services world plan", () => {
     expect(closed.map((p) => [p.key, p.tasks.length])).toEqual([
       ["BRUME", 1],
       ["OSIER", 1],
+      ["VALLEE", 3],
     ])
     const active = plan.projects.filter((p) => !p.closedAt)
     expect(
@@ -406,7 +426,7 @@ describe("services world plan", () => {
         (n, p) => n + (p.key === plan.pipeline.key ? plan.pipeline.deals.length : p.tasks.length),
         0,
       ) + closed.reduce((n, p) => n + p.tasks.length, 0),
-    ).toBe(122)
+    ).toBe(125)
     const total = (k: string) => Object.values(counts[k] ?? {}).reduce((n, v) => n + v, 0)
     expect(Object.keys(counts)).toEqual([
       "MARLIN",

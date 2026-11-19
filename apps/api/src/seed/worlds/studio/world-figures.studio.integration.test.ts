@@ -128,10 +128,12 @@ describe("the services world's figures at the board date", () => {
         ),
       ),
     )
-    // The closed past projects used time while they ran; the rest are the active ones.
+    // The closed past projects used time while they ran (the past client's audit did not); the
+    // rest are the active ones.
     expect(all.filter((r) => r.archived).map((r) => [r.key, r.on])).toEqual([
       ["BRUME", true],
       ["OSIER", true],
+      ["VALLEE", false],
     ])
     const rows = all.filter((r) => !r.archived)
     expect(rows.filter((r) => r.on).map((r) => r.key)).toEqual([
@@ -718,6 +720,34 @@ describe("the services world's month and history at the board date", () => {
       ),
     )
     expect(late[0]?.n).toBe(0)
+  })
+
+  it("the past client has its person, its closed audit and the audit's two invoices", async () => {
+    const [row] = await withPrivilegedDb(orgId, "studio-figures:past-client", async (tx) =>
+      rowsOf<{ people: number; closed: string[]; invoiced: number; to_person: number }>(
+        await tx.execute(
+          sql`WITH c AS (SELECT id FROM kernel.companies
+                          WHERE org_id = ${orgId}::uuid AND name = 'Vallée Énergie')
+              SELECT (SELECT count(*)::int FROM kernel.contacts k, c
+                       WHERE k.org_id = ${orgId}::uuid AND k.company_id = c.id) AS people,
+                     (SELECT array_agg(p.name) FROM app_projects.projects p, c
+                       WHERE p.org_id = ${orgId}::uuid AND p.company_id = c.id
+                         AND p.archived_at IS NOT NULL) AS closed,
+                     (SELECT COALESCE(sum(d.subtotal_minor), 0)::int FROM app_invoicing.documents d
+                       JOIN app_projects.projects p ON p.id = d.billing_project_id
+                       WHERE d.org_id = ${orgId}::uuid AND p.key = 'VALLEE') AS invoiced,
+                     (SELECT count(*)::int FROM app_invoicing.documents d
+                       JOIN kernel.contacts k ON k.id = d.counterparty_contact_id, c
+                       WHERE d.org_id = ${orgId}::uuid AND k.company_id = c.id) AS to_person`,
+        ),
+      ),
+    )
+    expect(row).toEqual({
+      people: 1,
+      closed: ["Data pipeline audit"],
+      invoiced: 1_850_000,
+      to_person: 2,
+    })
   })
 
   it("the team calendar holds the standing meetings of the delivery cadence", async () => {

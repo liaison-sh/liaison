@@ -625,6 +625,19 @@ export function studioPlan(anchor: Date): StudioPlan {
   const brume = pastSignOn("BRUME", 5, "hugo", 8)
   const osier = pastSignOn("OSIER", 4, "yanis", 6)
 
+  // --- A past client's audit, closed two months ago with its report --------
+  const valleeAudit: StudioTaskPlan[] = [
+    ["VALLEE-1", "Pipeline inventory", "sofia", closed(4, 24)],
+    ["VALLEE-2", "Data quality checks", "sofia", closed(3, 18)],
+    ["VALLEE-3", "Audit report", "nadia", closed(2, 20)],
+  ].map(([key, title, who, at]) => ({
+    key: key as string,
+    title: title as string,
+    assignee: who as string,
+    status: "done" as const,
+    completedAt: at as Date,
+  }))
+
   // --- The studio's own work: time and budgets off, no timebox -------------
   const studio: StudioTaskPlan[] = [
     { key: "STUDIO-8", title: "Laptop refresh", assignee: "paul", status: "todo" },
@@ -813,6 +826,25 @@ export function studioPlan(anchor: Date): StudioPlan {
       periods: [],
       tasks: osier.tasks,
       closedAt: osier.closedAt,
+    },
+    {
+      key: "VALLEE",
+      name: "Data pipeline audit",
+      description:
+        "An audit of Vallée Énergie's data pipeline and a written report, at a fixed price. Closed.",
+      icon: "search",
+      client: "vallee",
+      owner: "bastien",
+      timeBudgets: false,
+      basis: "fixed",
+      fixedPriceMinor: 1_850_000,
+      currency: "EUR",
+      biller: "anais",
+      datedHours: false,
+      sourceRepos: [],
+      periods: [],
+      tasks: valleeAudit,
+      closedAt: closed(2, 27),
     },
     {
       key: "STUDIO",

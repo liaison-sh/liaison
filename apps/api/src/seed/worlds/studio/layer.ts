@@ -655,6 +655,7 @@ async function seedStudioMoney(
     marlin: "pauline-gros",
     sorel: "thomas-blanc",
     verdier: "marc-verdier",
+    vallee: "camille-roux",
   }
 
   // Each client's invoiced contact holds its billing address, and its registry identity: the

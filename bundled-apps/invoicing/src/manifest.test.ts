@@ -1793,6 +1793,8 @@ describe("invoicing manifest", () => {
     //   invoice keeps it and is stamped with the contact's company, else the project's; the
     //   Documents list has a Drafts entry.
     // 0.37.3: an unused import of the reads module removed (lint only).
+    // 0.37.4: a services document shows no incoterm or ship-to, and the Documents list draws
+    //   no order or channel column, and offers no shop filter, when no document came from a shop.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

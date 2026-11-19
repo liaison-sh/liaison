@@ -67,6 +67,7 @@ import {
   replaceLineAt,
   rollupTotals,
   rollupTotalsInclusive,
+  shipsGoods,
   shouldReseedPriceText,
   showCustomsColumns,
   statedIssuedAt,
@@ -1347,5 +1348,23 @@ describe("the VAT rate is typed and read as a percent", () => {
     expect(showCustomsColumns([line], "domestic")).toBe(false)
     expect(showCustomsColumns([line], "eu_export_non_eu")).toBe(true)
     expect(showCustomsColumns([{ ...line, hs_code: "8518" }], "domestic")).toBe(true)
+  })
+})
+
+describe("goods fields on a services document", () => {
+  it("a services invoice ships nothing: no incoterm and no ship-to", () => {
+    expect(shipsGoods({ operation_category: "services" })).toBe(false)
+    // Goods, mixed, or not said yet: the parcel fields stay.
+    expect(shipsGoods({ operation_category: "goods" })).toBe(true)
+    expect(shipsGoods({ operation_category: "mixed" })).toBe(true)
+    expect(shipsGoods({ operation_category: null })).toBe(true)
+  })
+
+  it("the editor and the document hold the incoterm and the ship-to behind it", () => {
+    const editor = readFileSync(join(import.meta.dir, "Editor.tsx"), "utf8")
+    expect(editor).toMatch(/when=\{shipsGoods\(draft\(\)\)\}>\s*<Field label=\{tr\("Incoterm"\)\}/)
+    expect(editor).toMatch(/when=\{!props\.compact && shipsGoods\(draft\(\)\)\}>/)
+    const detail = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf8")
+    expect(detail).toMatch(/shipsGoods\(p\.doc\)/)
   })
 })

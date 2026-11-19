@@ -45,6 +45,7 @@ import { formatMoneyMinor } from "../money"
 import { type DocumentType, transition } from "../state"
 import { AdvanceLedgerPanel } from "./AdvanceLedger"
 import { loadViewerAccess } from "./access"
+import { shipsGoods } from "./Editor"
 import { RegimeLine } from "./einvoicing/RegimeLine"
 import { TransmissionPanel } from "./einvoicing/TransmissionPanel"
 import { tr } from "./i18n"
@@ -918,12 +919,14 @@ function CustomsBody(p: { doc: DocumentSummary; lines: DocumentLine[] }): JSX.El
         </div>
         <div class="font-medium text-text">{p.doc.tax_treatment ?? "-"}</div>
       </div>
-      <div>
-        <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
-          {tr("Incoterm")}
+      <Show when={shipsGoods(p.doc)}>
+        <div>
+          <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">
+            {tr("Incoterm")}
+          </div>
+          <div class="font-mono text-text">{p.doc.incoterm ?? "DAP"}</div>
         </div>
-        <div class="font-mono text-text">{p.doc.incoterm ?? "DAP"}</div>
-      </div>
+      </Show>
 
       <div>
         <div class="mb-1 text-text-secondary text-[11px] uppercase tracking-wider">

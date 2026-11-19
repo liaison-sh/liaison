@@ -158,6 +158,28 @@ export function listColumnsForWidth(viewportWidth: number): DashboardColumn[] {
   return LIST_COLUMNS.filter((c) => c.key !== NARROWED_LIST_COLUMN_KEY)
 }
 
+/** The columns only a shop's orders fill: the order it bills and its channel. */
+const SHOP_COLUMN_KEYS = new Set(["order", "channel"])
+
+/** Whether any document came from a shop order: only then do the shop's columns and filter mean anything. */
+export function shopColumnsShown(
+  rows: ReadonlyArray<{
+    channel?: string | null
+    shopify_order_id?: string | null
+    shopify_order_number?: string | null
+  }>,
+): boolean {
+  return rows.some(
+    (r) => r.channel === "shopify" || !!r.shopify_order_id || !!r.shopify_order_number,
+  )
+}
+
+/** The list's columns at a width, without the shop's when no document came from a shop. */
+export function listColumnsFor(viewportWidth: number, shop: boolean): DashboardColumn[] {
+  const cols = listColumnsForWidth(viewportWidth)
+  return shop ? cols : cols.filter((c) => !SHOP_COLUMN_KEYS.has(c.key))
+}
+
 /** Reactive `true` while `query` matches; `false` with no `matchMedia`, so a
  *  non-DOM render is the full table. */
 function createMediaMatch(query: string): () => boolean {
@@ -252,14 +274,17 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
   const pairLabel = (r: DocumentRow) =>
     group() === "flat" ? (pairLabelOf(paired(), r.id) ?? creditedIndicatorOf(r)) : null
   const belowFullList = createMediaMatch(`(max-width: ${FULL_LIST_MIN_VIEWPORT - 1}px)`)
+  /** A shop's order behind any document: a services firm's list has no order or channel. */
+  const shop = createMemo(() => shopColumnsShown(data() ?? []))
   /** What the TABLE draws. */
   const columns = createMemo<DashboardColumn[]>(() =>
     group() === "customer"
       ? B2B_COLUMNS
       : group() === "market"
         ? BY_MARKET_COLUMNS
-        : listColumnsForWidth(
+        : listColumnsFor(
             belowFullList() ? FULL_LIST_MIN_VIEWPORT - 1 : FULL_LIST_MIN_VIEWPORT,
+            shop(),
           ),
   )
   /** What the CSV carries: every column, whatever the window is doing. A
@@ -328,6 +353,7 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
     <div data-testid="invoicing-documents-list" class="flex h-full min-h-0 flex-col">
       <Toolbar
         filter={filter()}
+        channels={shop()}
         onChange={onFilterChange}
         onExportCsv={exportCsv}
         trailing={

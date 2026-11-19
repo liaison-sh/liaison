@@ -1309,4 +1309,55 @@ describe("issuing the card's draft", () => {
     const card = await run(reconcileGet, { reconciliationId: p.card.reconciliationId })
     expect(card.undo).toBeNull()
   }, 120_000)
+  it("a retainer month with no time logged issues its fee from the approval and the card is invoiced", async () => {
+    keys++
+    const key = `INV${keys}`
+    const made = await call<{ id: string }>("projects_createProject", {
+      name: `Maison Delorme ${key}`,
+      key,
+      companyId: delorme,
+      timeBudgets: true,
+    })
+    await awaitTimeFeatureSync(orgId)
+    await call("projects_timePlanSet", { projectId: made.id, basis: "retainer" })
+    const schedule = await retainerSchedule(made.id)
+    await retainerTimebox(made.id, schedule, "2026-10-01", "2026-10-31")
+    const card = await run(reconcilePropose, { project: key, month: "2026-10", lines: [] })
+    expect(card.error).toBeUndefined()
+    const out = await create(card)
+    expect(out.error).toBeUndefined()
+    expect(out.state).toBe("drafted")
+    expect(await claimsOf(card.reconciliationId)).toEqual([])
+    const pending = extractRows<{ id: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+           AND status = 'pending' AND current_payload->>'draft_id' = ${out.documentId}`),
+    )
+    expect(pending).toHaveLength(1)
+    const decided = await decideApproval({
+      orgId,
+      requestId: pending[0]!.id,
+      actor: actorOf(owner.userId, FINANCE),
+      decision: "approve",
+    })
+    expect(decided.status).toBe("approved")
+    const docs = await docsOf(made.id)
+    expect(docs).toHaveLength(1)
+    expect(docs[0]).toMatchObject({
+      status: "issued",
+      external_ref: `retainer:${schedule}:2026-10`,
+    })
+    expect(docs[0]?.number).toBeTruthy()
+    const items = extractRows<{ quantity: string; unit_price_minor: string }>(
+      await db.execute(drizzleSql`
+        SELECT quantity::text AS quantity, unit_price_minor::text AS unit_price_minor
+          FROM app_invoicing.document_lines
+         WHERE document_id = ${docs[0]?.id}::uuid ORDER BY position`),
+    )
+    expect(items.map((l) => [Number(l.quantity), Number(l.unit_price_minor)])).toEqual([
+      [1, 450000],
+    ])
+    expect((await stateOf(card.reconciliationId))?.state).toBe("invoiced")
+  }, 120_000)
 })

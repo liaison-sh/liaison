@@ -86,6 +86,8 @@ export interface MailboxHandoff {
 }
 
 export interface RunContext {
+  /** The zone the model reads tool results' times in (tools/model-times.ts). Absent: UTC. */
+  modelTimeZone?: string
   runId: string
   parentRunId: string | null
   rootRunId: string

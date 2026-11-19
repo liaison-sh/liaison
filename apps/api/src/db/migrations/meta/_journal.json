@@ -2157,6 +2157,13 @@
       "when": 1900003398001,
       "tag": "0306_projects_task_last_writer",
       "breakpoints": true
+    },
+    {
+      "idx": 308,
+      "version": "7",
+      "when": 1900003399001,
+      "tag": "0307_mail_personal_agent_only",
+      "breakpoints": true
     }
   ]
 }

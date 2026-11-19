@@ -929,6 +929,10 @@ export const appManifestJsonSchema = {
                 required: ["table", "localColumn"],
                 additionalProperties: false,
               },
+              // The owner reaches these personal rows through their own context
+              // only, never through a SHARED agent's turn (kind role or system):
+              // a person's mailbox is for them and their personal agent alone.
+              personalAgentOnly: { type: "boolean" },
             },
             additionalProperties: false,
           },

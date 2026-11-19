@@ -116,6 +116,7 @@ function harness(opts: { privateMailbox?: boolean; frame?: RunContext | undefine
   const deps: MailAttachmentReadDeps = {
     media,
     isPrivateMailbox: async () => opts.privateMailbox ?? false,
+    sharedAgentRefusal: async () => null,
     currentRun: () => ("frame" in opts ? opts.frame : FRAME),
     injectContext: (runId, block) => {
       contexts.push({ runId, block })

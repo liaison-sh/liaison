@@ -171,6 +171,8 @@ See the [scope reference](../reference/scopes.md) and [roles](../admin/roles.md)
 | `setLabels` | Add or replace labels on conversations | No |
 | `convertToTicket` | Turn a conversation into a ticket | No |
 
+Your own mailbox is read only by you and your personal agent. A shared agent, such as a role agent like `@support` or the system agent, never sees it, even when you ask it in your own conversation and even when it holds every mail scope: your mailbox is left out of its lists and searches, and a call aimed at it is refused. The agent then tells you it cannot open your mailbox and names your personal agent to ask instead. It does not ask an administrator for mail access either, because no grant changes this. A shared team mailbox is different: an administrator gives a role agent access to it in that agent's **Settings**.
+
 To read an attachment, the agent calls `kernel__mail_attachment_read` with the attachment's id from `read`. It returns the text of a PDF, Word, Excel or PowerPoint file, or a description of an image or a video. In a private mailbox, your unlocked Liaison window opens the attachment for that turn only and nothing about it is stored on the server; attachments over 25 MB are refused, a video can't be analysed yet, and a locked mailbox makes the agent ask you to unlock it.
 
 See the [agent tool reference](../reference/agent-tools.md).

@@ -36,7 +36,7 @@ import {
   threadParticipants,
   threads,
 } from "~/db/schema/kernel"
-import { agents } from "~/db/schema/kernel/agents"
+import { type AgentKind, agents } from "~/db/schema/kernel/agents"
 import { broadcastEphemeral } from "~/infra/events/event-bus"
 import { INSTANCE_ID } from "~/infra/instance-id"
 import { nextJobTurnOriginRef } from "~/infra/jobs/job-origin"
@@ -1440,7 +1440,7 @@ export async function resolveActingAgent(
   routineId: string | undefined,
   /** The agent an `@mention` addressed, when the turn names one (P4b-T16). */
   actingAgentId?: string,
-): Promise<{ id: string; scopeCeiling: string[] } | null> {
+): Promise<{ id: string; scopeCeiling: string[]; kind: AgentKind } | null> {
   const live = and(eq(agents.orgId, orgId), isNull(agents.archivedAt))
   if (actingAgentId) {
     // A NAMED agent, resolved as a LIVE agent of THIS org and nothing else. An
@@ -1449,7 +1449,7 @@ export async function resolveActingAgent(
     // a room the named agent never joined (S12). The caller decides what an
     // unaddressed turn means; it is never a different agent.
     const [mentioned] = await tx
-      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
+      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling, kind: agents.kind })
       .from(agents)
       .where(and(live, eq(agents.id, actingAgentId)))
       .limit(1)
@@ -1457,7 +1457,7 @@ export async function resolveActingAgent(
   }
   if (routineId) {
     const [routineAgent] = await tx
-      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
+      .select({ id: agents.id, scopeCeiling: agents.scopeCeiling, kind: agents.kind })
       .from(routines)
       .innerJoin(agents, eq(agents.id, routines.ownerAgentId))
       .where(and(eq(routines.id, routineId), eq(routines.orgId, orgId), live))
@@ -1465,7 +1465,7 @@ export async function resolveActingAgent(
     if (routineAgent) return routineAgent
   }
   const [personal] = await tx
-    .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
+    .select({ id: agents.id, scopeCeiling: agents.scopeCeiling, kind: agents.kind })
     .from(agents)
     .where(and(live, eq(agents.ownerUserId, requesterUserId), eq(agents.kind, "personal")))
     .orderBy(asc(agents.createdAt), asc(agents.id))
@@ -1491,6 +1491,7 @@ export async function resolveTurnScope(
 ): Promise<{
   agentId: string
   agentCeiling: string[]
+  agentKind: AgentKind
   effectiveScope: string[]
   withheld: string[]
   /** Who the room floor counts (scope-taint.ts, rule 15e); absent for a routine tick. */
@@ -1508,6 +1509,7 @@ export async function resolveTurnScope(
   return {
     agentId: agent.id,
     agentCeiling: agent.scopeCeiling,
+    agentKind: agent.kind,
     effectiveScope: intersectScopes(effectiveScope, actor.scopes),
     withheld,
     ...(roomPeople ? { roomPeople } : {}),
@@ -1528,13 +1530,14 @@ async function resolveScopeOverride(
 ): Promise<{
   agentId: string
   agentCeiling: string[]
+  agentKind: AgentKind
   effectiveScope: string[]
   withheld: string[]
   /** Never set: the override bypasses the room floor, its people included (rule 15e). */
   roomPeople?: string[]
 }> {
   const [agent] = await tx
-    .select({ id: agents.id, scopeCeiling: agents.scopeCeiling })
+    .select({ id: agents.id, scopeCeiling: agents.scopeCeiling, kind: agents.kind })
     .from(agents)
     .where(and(eq(agents.id, override.agentId), eq(agents.orgId, orgId), isNull(agents.archivedAt)))
     .limit(1)
@@ -1554,6 +1557,7 @@ async function resolveScopeOverride(
   return {
     agentId: agent.id,
     agentCeiling: agent.scopeCeiling,
+    agentKind: agent.kind,
     effectiveScope,
     withheld: withheldByRoom(agent.scopeCeiling, grants, effectiveScope),
   }

@@ -599,7 +599,11 @@ export async function handleToolCall(
       mcpGateway: true,
       // Both present or both absent (run-context.ts): agentless carries neither.
       ...(ctx.agentId
-        ? { agentId: ctx.agentId, agentCeiling: actingAgent?.scopeCeiling ?? [] }
+        ? {
+            agentId: ctx.agentId,
+            agentCeiling: actingAgent?.scopeCeiling ?? [],
+            ...(actingAgent?.kind ? { agentKind: actingAgent.kind } : {}),
+          }
         : {}),
       effectiveScope: connectionScopes,
       turnScopeAccumulator: ctx.turnScopeAccumulator,

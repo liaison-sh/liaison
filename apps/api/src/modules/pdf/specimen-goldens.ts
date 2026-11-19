@@ -5,7 +5,7 @@
 // identity takes two footer lines). The goldens beside them were written from
 // the templates as they were before the demo footer existed, so a change that
 // moves one command or one word of a real document fails the comparison.
-// `SPECIMEN_GOLDEN_WRITE=1` rewrites them, on purpose only.
+// `writeGoldens()` rewrites them, on purpose only (then `biome format --write` them).
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import type { DrawCommand } from "@liaison/app-sdk"

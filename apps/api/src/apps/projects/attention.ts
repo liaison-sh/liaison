@@ -164,7 +164,7 @@ export async function computeAttentionItems(
   }
 
   // The month-close line, on its one day of the month, to the biller.
-  items.push(...(await monthCloseItems(tx, orgId, callerUserId, forUserIds, now)))
+  items.push(...(await monthCloseItems(tx, orgId, callerUserId, forUserIds, now, today)))
 
   // A client report draft waiting for a person to send it, to the project's lead. Only a
   // reader of client reports sees one (the table's own row security).

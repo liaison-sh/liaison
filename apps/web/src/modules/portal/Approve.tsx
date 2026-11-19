@@ -51,6 +51,11 @@ const Decide: Component<{
       setStep("code")
       return
     }
+    // A demo box sends no code mail: say so in words.
+    if ((out.body?.error as { code?: unknown } | undefined)?.code === "NO_MAIL_ON_DEMO") {
+      setNote(i18n.t("portal.approve.codeNotOnDemo"))
+      return
+    }
     // Asked too soon or paused: say when a code can be asked again.
     const retryAt = (out.body?.error as { retry_at?: unknown } | undefined)?.retry_at
     setNote(

@@ -70,7 +70,12 @@ async function send(
   // A demo workspace's clients are fictional, on reserved domains no mailbox can own: a mail
   // whose every recipient (the reply-to included) is on one is recorded as sent, with no network
   // and no provider. One real address and the send goes the usual way, and a demo box refuses it.
-  if (await isDemoFixtureDelivery(orgId, [msg.to, replyTo])) {
+  // Never the code mail: a person waits for that code, so a demo box refuses it in words (as the
+  // code request does) rather than saying a code went out that nobody can read.
+  if (
+    template !== "client-action.code" &&
+    (await isDemoFixtureDelivery(orgId, [msg.to, replyTo]))
+  ) {
     log.info(
       { orgId, template, mailId: msg.mailId },
       "client action mail recorded as delivered to a fictional recipient (demo)",

@@ -131,6 +131,7 @@
       "wrongCode": "That code is not right. Tries left with this code: {{left}}.",
       "codeEnded": "This code has ended. Send a new code.",
       "sendFailed": "We could not send the code. Please try again in a minute.",
+      "noMailOnDemo": "This is a demo: no code mail is sent here, so this step cannot be finished. Nothing was signed or decided.",
       "invalidText": "Your name or role holds characters we cannot keep. Please type them again.",
       "nameNotDrawable": "Your name holds characters the signature page cannot show. Please type it in Latin letters.",
       "notShown": "Open the document first, then ask for a code."

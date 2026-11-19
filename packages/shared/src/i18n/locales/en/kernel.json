@@ -1260,7 +1260,7 @@
       "studio": {
         "companyFacts": "Fictional company · Lyon · 24 people",
         "companyExample": "This is an example company: Halden Studio, which builds software and data systems for its clients. Your own workspace would hold your data.",
-        "companyAbout": "Halden Studio builds software and data systems for mid-size companies. It bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer. Clients follow their project on a portal of their own, and every piece of work starts from a signed agreement.",
+        "companyAbout": "Halden Studio builds software and data systems for mid-size companies. It bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer. Clients follow their project on a portal of their own.",
         "companyOps": {
           "agreements": {
             "title": "Agreements",

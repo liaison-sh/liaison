@@ -1260,7 +1260,7 @@
       "studio": {
         "companyFacts": "Entreprise fictive · Lyon · 24 personnes",
         "companyExample": "Ceci est une entreprise d'exemple : Halden Studio, qui conçoit des logiciels et des systèmes de données pour ses clients. Votre propre espace contiendrait vos données.",
-        "companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne. Il facture à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel. Les clients suivent leur projet sur un portail à eux, et chaque travail part d'un contrat signé.",
+        "companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne. Il facture à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel. Les clients suivent leur projet sur un portail à eux.",
         "companyOps": {
           "agreements": {
             "title": "Contrats",

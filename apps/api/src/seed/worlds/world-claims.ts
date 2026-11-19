@@ -179,12 +179,6 @@ export const WORLD_CLAIMS: Readonly<Partial<Record<DemoWorldId, readonly WorldCl
       provenBy: [STUDIO_AGREEMENTS, STUDIO_FIGURES],
     },
     {
-      key: "companyAbout",
-      claim: "every piece of work starts from a signed agreement",
-      mustBeTrue: "each active client project has its signed agreement, at the stand-in level",
-      provenBy: [STUDIO_AGREEMENTS],
-    },
-    {
       key: "companyOps.agreements.*",
       claim:
         "proposals and contracts, signed in Liaison; the agent checks them when a client asks for more",

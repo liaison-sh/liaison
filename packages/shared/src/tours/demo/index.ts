@@ -18,7 +18,13 @@ import { scenarioSaasMoneyTour } from "./worlds/saas/money"
 import { scenarioSaasProjectsTour } from "./worlds/saas/projects"
 import { scenarioSaasSalesTour } from "./worlds/saas/sales"
 import { scenarioSaasSupportTour } from "./worlds/saas/support"
-import { scenarioStudioClientTour } from "./worlds/studio/client"
+import { STUDIO_CHAT_CFG, scenarioStudioChatTour } from "./worlds/studio/chat"
+import { STUDIO_CLIENT_CFG, scenarioStudioClientTour } from "./worlds/studio/client"
+import { STUDIO_DEV_CFG, scenarioStudioDevTour } from "./worlds/studio/dev"
+import { STUDIO_KNOWLEDGE_CFG, scenarioStudioKnowledgeTour } from "./worlds/studio/knowledge"
+import { STUDIO_PROJECTS_CFG, scenarioStudioProjectsTour } from "./worlds/studio/projects"
+import { STUDIO_SALES_CFG, scenarioStudioSalesTour } from "./worlds/studio/sales"
+import { STUDIO_SUPPORT_CFG, scenarioStudioSupportTour } from "./worlds/studio/support"
 
 /** In `DEMO_NEEDS` order (support, projects, chat, sales, commerce, dev, knowledge). */
 export const SCENARIO_TOURS = [
@@ -43,8 +49,28 @@ export const WORLD_SCENARIO_TOURS = [
   scenarioSaasMoneyTour,
   scenarioSaasDevTour,
   scenarioSaasKnowledgeTour,
+  scenarioStudioSupportTour,
+  scenarioStudioProjectsTour,
+  scenarioStudioChatTour,
+  scenarioStudioSalesTour,
   scenarioStudioClientTour,
+  scenarioStudioDevTour,
+  scenarioStudioKnowledgeTour,
 ] as const
+
+/**
+ * About how long each services-world scenario takes, in minutes, from its
+ * configuration: what the door's tile for that need says in that world.
+ */
+export const STUDIO_SCENARIO_MINUTES = {
+  support: STUDIO_SUPPORT_CFG.minutes,
+  projects: STUDIO_PROJECTS_CFG.minutes,
+  chat: STUDIO_CHAT_CFG.minutes,
+  sales: STUDIO_SALES_CFG.minutes,
+  client: STUDIO_CLIENT_CFG.minutes,
+  dev: STUDIO_DEV_CFG.minutes,
+  knowledge: STUDIO_KNOWLEDGE_CFG.minutes,
+} as const
 
 /** Every demo scenario, of every world. */
 export const DEMO_SCENARIO_TOURS = [...SCENARIO_TOURS, ...WORLD_SCENARIO_TOURS] as const
@@ -116,8 +142,47 @@ export {
   scenarioSaasSupportTour,
 } from "./worlds/saas/support"
 export {
+  STUDIO_CHAT_CFG,
+  STUDIO_CHAT_QUESTION_INJECTOR,
+  scenarioStudioChatTour,
+} from "./worlds/studio/chat"
+export {
   STUDIO_CLIENT_CFG,
   STUDIO_CLIENT_PROJECT_NAME,
   STUDIO_CR_ACCEPTED_INJECTOR,
   scenarioStudioClientTour,
 } from "./worlds/studio/client"
+export {
+  STUDIO_BUGS_CHANNEL_TITLE,
+  STUDIO_DEV_CFG,
+  STUDIO_TELL_TOOL,
+  scenarioStudioDevTour,
+} from "./worlds/studio/dev"
+export {
+  STUDIO_KNOWLEDGE_ASKS_INJECTOR,
+  STUDIO_KNOWLEDGE_CFG,
+  STUDIO_KNOWLEDGE_DOC_TITLE,
+  scenarioStudioKnowledgeTour,
+} from "./worlds/studio/knowledge"
+export {
+  STUDIO_PROJECT_NAME,
+  STUDIO_PROJECTS_CFG,
+  STUDIO_PROJECTS_COMMENT_INJECTOR,
+  STUDIO_REPORT_HOURS_SECTION,
+  STUDIO_REPORT_PROJECT_NAME,
+  scenarioStudioProjectsTour,
+} from "./worlds/studio/projects"
+export {
+  STUDIO_COMPANY_WRITE_TOOL,
+  STUDIO_PRICE_SET,
+  STUDIO_PROPOSAL_TOOL,
+  STUDIO_PROSPECT_ROUTINE_NAME,
+  STUDIO_SALES_CFG,
+  STUDIO_SALES_EMAIL_INJECTOR,
+  scenarioStudioSalesTour,
+} from "./worlds/studio/sales"
+export {
+  STUDIO_SUPPORT_CFG,
+  STUDIO_SUPPORT_TICKET_INJECTOR,
+  scenarioStudioSupportTour,
+} from "./worlds/studio/support"

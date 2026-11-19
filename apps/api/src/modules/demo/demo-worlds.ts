@@ -25,12 +25,21 @@ let seedableOverride: readonly DemoWorldId[] | null = null
 const warned = new Set<string>()
 
 /**
- * Whether a visitor entering the world has its scenarios to follow: a world whose pack can be
- * seeded (by the CLI, by a test) but has no door tour yet is never offered at the door.
+ * The worlds whose door is built: the company the entry shows, its limits and its example line
+ * (the web's door for that world). A world joins this list in the change that builds its door.
+ */
+const WORLDS_WITH_DOOR: ReadonlySet<DemoWorldId> = new Set<DemoWorldId>(["products", "saas"])
+
+/**
+ * Whether a visitor entering the world has its door and its scenarios to follow: every need the
+ * world shows has its tour, and the world's door is built. A world whose pack can be seeded (by
+ * the CLI, by a test) but lacks either is never offered at the door, so a visitor never meets a
+ * door that shows another world's company or a tile with no tour behind it.
  */
 export function hasDoorTours(world: DemoWorldId): boolean {
+  if (!WORLDS_WITH_DOOR.has(world)) return false
   const ids = new Set<string>(DEMO_SCENARIO_TOURS.map((t) => t.id))
-  return DEMO_WORLD_NEEDS[world].some((need) => ids.has(demoScenarioTourId(world, need)))
+  return DEMO_WORLD_NEEDS[world].every((need) => ids.has(demoScenarioTourId(world, need)))
 }
 
 /** The worlds this deployment runs, in `DEMO_WORLDS` order. Never empty: `products` at worst. */

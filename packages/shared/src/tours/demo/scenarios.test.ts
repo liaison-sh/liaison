@@ -50,7 +50,13 @@ const INJECTORS: Record<string, string | undefined> = {
   "kernel.scenario-saas-money": "saas-payment-recovered",
   "kernel.scenario-saas-dev": undefined,
   "kernel.scenario-saas-knowledge": "saas-knowledge-asks",
+  "kernel.scenario-studio-support": "studio-support-ticket",
+  "kernel.scenario-studio-projects": "studio-projects-comment",
+  "kernel.scenario-studio-chat": "studio-chat-question",
+  "kernel.scenario-studio-sales": "studio-sales-email",
   "kernel.scenario-studio-client": "studio-cr-accepted",
+  "kernel.scenario-studio-dev": undefined,
+  "kernel.scenario-studio-knowledge": "studio-knowledge-asks",
 }
 
 function lookup(dict: unknown, key: string): unknown {

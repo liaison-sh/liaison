@@ -43,6 +43,7 @@ import { rootLogger } from "~/lib/logger"
 import { redis } from "~/lib/redis"
 import { demoWorldOf, isDemoOrgId, loadDemoMarker } from "~/modules/demo/demo-org"
 import saasRecordingJson from "~/modules/demo/worlds/saas/recording.saas.json"
+import studioRecordingJson from "~/modules/demo/worlds/studio/recording.studio.json"
 import {
   type Appended,
   appendReplayEvents,
@@ -120,12 +121,18 @@ export const RECORDING: Recording = recordingSchema.parse(recordingJson)
 /** The software world's recording: a fix to a customer's reported bug. */
 const SAAS_RECORDING: Recording = recordingSchema.parse(saasRecordingJson)
 
+/** The services world's recording: a fix in a client's repository to the bug that client reported. */
+const STUDIO_RECORDING: Recording = recordingSchema.parse(studioRecordingJson)
+
 /**
  * The recording the org's world plays: each world's developer scenario has its
  * own. A world without one plays the products world's.
  */
 export async function recordingOf(orgId: string): Promise<Recording> {
-  return demoWorldOf(await loadDemoMarker(orgId)) === "saas" ? SAAS_RECORDING : RECORDING
+  const world = demoWorldOf(await loadDemoMarker(orgId))
+  if (world === "saas") return SAAS_RECORDING
+  if (world === "studio") return STUDIO_RECORDING
+  return RECORDING
 }
 
 /** Event types the server (or the replay's decision step) writes; never a recorded one. */

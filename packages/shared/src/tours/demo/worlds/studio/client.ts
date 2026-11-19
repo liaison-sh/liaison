@@ -19,6 +19,7 @@ export const STUDIO_CLIENT_CFG: ClientScenarioCfg = {
   injector: STUDIO_CR_ACCEPTED_INJECTOR,
   cardTitle: "Single sign-on for partners",
   projectName: STUDIO_CLIENT_PROJECT_NAME,
+  minutes: 4,
 }
 
 export const scenarioStudioClientTour = buildClientTour(STUDIO_CLIENT_CFG)

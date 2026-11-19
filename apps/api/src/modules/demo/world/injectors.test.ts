@@ -352,3 +352,38 @@ describe("the services world's acceptance step", () => {
     await sql`DELETE FROM kernel.tour_progress WHERE org_id = ${demoOrg} AND tour_id = ${tour.id}`
   })
 })
+
+describe("the services world's live events", () => {
+  it("every one is registered once, bound to its world, and the agent-turn ones wait for a confirmed email", () => {
+    const registry = worldInjectors()
+    const ids = [
+      "studio-support-ticket",
+      "studio-projects-comment",
+      "studio-chat-question",
+      "studio-sales-email",
+      "studio-knowledge-asks",
+    ]
+    for (const id of ids) expect(registry.get(id)?.world, id).toBe("studio")
+    // A routine drafts the reply, a routine reads up on the prospect, a desk answers in a
+    // channel: each spends on the box key. The comment and the question run no model.
+    expect(registry.get("studio-support-ticket")?.spends).toBe(true)
+    expect(registry.get("studio-sales-email")?.spends).toBe(true)
+    expect(registry.get("studio-knowledge-asks")?.spends).toBe(true)
+    expect(registry.get("studio-projects-comment")?.spends).toBeFalsy()
+    expect(registry.get("studio-chat-question")?.spends).toBeFalsy()
+  })
+
+  it("in a demo workspace of another world, none of them runs and nothing is written", async () => {
+    // This file's demo workspace is of the product world: a services tour is no tour of it.
+    const before = await counts(demoOrg)
+    for (const need of ["support", "projects", "chat", "sales", "knowledge"]) {
+      const tourId = `kernel.scenario-studio-${need}`
+      await sql`INSERT INTO kernel.tour_progress (org_id, user_id, tour_id, status, beat_id, beat_index, beat_states, source)
+        VALUES (${demoOrg}, ${owner}, ${tourId}, 'active', 'x', 1, '{}'::jsonb, 'demo')
+        ON CONFLICT (org_id, user_id, tour_id) DO UPDATE SET status = 'active'`
+      expect(await runWorldBeatOnce(demoOrg, owner, tourId)).toBe("no_world_beat")
+      await sql`DELETE FROM kernel.tour_progress WHERE org_id = ${demoOrg} AND tour_id = ${tourId}`
+    }
+    expect(await counts(demoOrg)).toEqual(before)
+  })
+})

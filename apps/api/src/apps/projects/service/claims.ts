@@ -668,7 +668,7 @@ export async function reconcileLinesRead(args: {
 
 /**
  * Whether named tasks of a project are done, for a billing plan's milestones: the project's
- * basis and, per task, its title, done state, milestone mark and completion day. Nothing about
+ * basis and client company and, per task, its title, done state, milestone mark and completion day. Nothing about
  * who did it, how long it took or what happened on it.
  */
 export async function milestoneStatusRead(args: {
@@ -680,9 +680,10 @@ export async function milestoneStatusRead(args: {
   const ids = (args.input.taskIds ?? []).filter((t) =>
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t),
   )
-  const project = extractRows<{ id: string; basis: string }>(
+  const project = extractRows<{ id: string; basis: string; company_id: string | null }>(
     await tx.execute(drizzleSql`
-      SELECT p.id::text AS id, coalesce(tp.basis, 'none') AS basis
+      SELECT p.id::text AS id, coalesce(tp.basis, 'none') AS basis,
+             p.company_id::text AS company_id
         FROM ${projectsRel("projects")} p
         LEFT JOIN ${projectsRel("project_time_plan")} tp ON tp.project_id = p.id AND tp.org_id = p.org_id
        WHERE p.id = ${args.input.projectId}::uuid AND p.org_id = ${orgId}::uuid`),
@@ -721,6 +722,9 @@ export async function milestoneStatusRead(args: {
         )
   return {
     basis: project.basis,
+    // The client company the project is for: an invoice billing the project is made out to it
+    // when its contact has no company on file.
+    companyId: project.company_id,
     // No title: the read runs in another app's call with that app's wide row access, so a title
     // would name work in a project the person may not open. The step's own label names it.
     tasks: tasks.map((t) => ({

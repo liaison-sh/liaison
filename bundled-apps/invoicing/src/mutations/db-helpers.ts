@@ -509,6 +509,7 @@ export async function insertDraftRow(db: MutationsDb, row: DraftInsert): Promise
     pdf_file_id: null,
     pdf_status: null,
     tax_treatment: row.tax_treatment ?? null,
+    ...(row.billing_project_id ? { billing_project_id: row.billing_project_id } : {}),
     ...draftEinvoiceWrite(row, "insert"),
   })) as Record<string, unknown>
   const id = String(inserted.id)

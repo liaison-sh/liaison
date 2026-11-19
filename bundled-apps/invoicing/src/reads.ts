@@ -816,7 +816,8 @@ export async function documentsSearch(
       // each whitespace-separated term case-insensitively in any field; line descriptions and the
       // order number kept only in `external_refs` are matched below, and every hit is ranked.
       search: q ? { fields: DOCUMENT_SEARCH_FIELDS, query: q } : undefined,
-      orderBy: { issued_at: dir, number_int: dir },
+      // Drafts have no issue day or number yet: they list by when they were made.
+      orderBy: where.status === "draft" ? { createdAt: dir } : { issued_at: dir, number_int: dir },
       limit: pageLimit,
       offset: pageOffset,
     })

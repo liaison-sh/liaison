@@ -194,6 +194,8 @@ interface NavLink {
   icon?: (p: IconProps) => JSX.Element
 }
 
+const DRAFTS_HREF = "/invoicing/documents/drafts"
+
 // Documents is the primary view — the unified, filterable, group-able table.
 // The `:typeFilter` segment scopes it to a document type.
 const DOCUMENTS: NavLink[] = [
@@ -203,6 +205,9 @@ const DOCUMENTS: NavLink[] = [
   { href: "/invoicing/documents/proformas", label: "Proformas" },
   { href: "/invoicing/documents/purchase-orders", label: "Purchase Orders" },
   { href: "/invoicing/documents/credit-notes", label: "Credit notes" },
+  // Unissued drafts (an agent's, a milestone's, a month-end run's): their own list, so the other
+  // entries keep issued documents only and their totals stay true.
+  { href: DRAFTS_HREF, label: "Drafts" },
   // Supplier e-invoices received through the e-invoicing platform (not documents this app issued).
   { href: "/invoicing/received", label: "Received" },
 ]
@@ -250,6 +255,19 @@ async function loadCounts(): Promise<{ pendingApproval: number; deferred: number
     return { pendingApproval: pendingCount, deferred: deferredCount }
   } catch {
     return { pendingApproval: 0, deferred: 0 }
+  }
+}
+
+/** Unissued drafts, counted by the app's own documents_search, the same the agent reads. */
+async function loadDraftCount(): Promise<number> {
+  try {
+    const r = await app.invokeTool<{ totalCount?: number }>("documents_search", {
+      status: "draft",
+      countOnly: true,
+    })
+    return typeof r?.totalCount === "number" ? r.totalCount : 0
+  } catch {
+    return 0
   }
 }
 
@@ -391,6 +409,7 @@ export const InvoicingSidebar: Component = () => {
   const [pendingApproval, setPendingApproval] = createSignal(0)
   const [deferredCount, setDeferredCount] = createSignal(0)
   const [scheduleCount, setScheduleCount] = createSignal(0)
+  const [draftCount, setDraftCount] = createSignal(0)
   // Writes (a new document, the approval queue, the readiness fixes) are offered
   // only to a viewer holding invoicing:documents:write; a read-only member sees
   // the documents and nothing it would be refused.
@@ -406,6 +425,7 @@ export const InvoicingSidebar: Component = () => {
     setPendingApproval(p)
     setDeferredCount(d)
     setScheduleCount(await loadScheduleCount())
+    setDraftCount(await loadDraftCount())
   }
   onMount(() => {
     void refresh()
@@ -462,7 +482,12 @@ export const InvoicingSidebar: Component = () => {
         <SectionHeader label={tr("Documents")} icon={FileIcon} />
         <ul class="flex flex-col gap-0.5">
           {DOCUMENTS.map((l) => (
-            <Row href={l.href} label={l.label} pathname={pathname()} />
+            <Row
+              href={l.href}
+              label={l.label}
+              pathname={pathname()}
+              badge={l.href === DRAFTS_HREF ? draftCount() : undefined}
+            />
           ))}
         </ul>
 

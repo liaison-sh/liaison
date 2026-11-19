@@ -78,7 +78,10 @@ describe("fixture connections off the demo instance", () => {
     // What `liaison seed --tier lively` leaves on a self-hosted box: the demo world's org.
     await markOrgAsDemo(worldOrgId, visitorMarker(24))
     studioOrgId = (await ensureOrg({ slug: "fixture-conn-studio", name: "Fixture Studio" })).orgId
-    await markOrgAsDemo(studioOrgId, visitorMarker(24, new Date(), undefined, { worldId: "studio" }))
+    await markOrgAsDemo(
+      studioOrgId,
+      visitorMarker(24, new Date(), undefined, { worldId: "studio" }),
+    )
     invalidateDemoMarker()
     SandboxBridgeTestAccess.setFetch((async (url: string | URL) => {
       onTheWire.push(String(url))

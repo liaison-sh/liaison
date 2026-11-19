@@ -154,3 +154,31 @@ describe("attention overdue still excludes blocked tasks (blocked is a feed poli
     expect(overdueSummaries.some((i) => i.summary === title)).toBe(false)
   })
 })
+
+describe("the feed reads one clock: the moment it is asked for, not the database's date", () => {
+  it("a task due in three days is due this week now, and overdue when the feed is asked ten days on", async () => {
+    const title = `one-clock-${Math.random()}`
+    await withRlsContext(actor, async (tx) => {
+      await createTask({
+        tx,
+        orgId,
+        actor,
+        input: {
+          projectId,
+          statusId: openStatusId,
+          title,
+          assigneeId: meId,
+          dueDate: addDays(today, 3),
+        },
+      })
+    })
+    const kindAt = async (day: string) => {
+      const items = await withRlsContext(actor, async (tx) =>
+        computeAttentionItems(tx, orgId, meId, [], new Date(`${day}T12:00:00.000Z`)),
+      )
+      return items.filter((i) => i.summary === title).map((i) => [i.kind, i.metadata?.daysOver])
+    }
+    expect(await kindAt(today)).toEqual([["task_due_this_week", undefined]])
+    expect(await kindAt(addDays(today, 10))).toEqual([["task_overdue", 7]])
+  })
+})

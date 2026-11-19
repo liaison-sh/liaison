@@ -19,7 +19,11 @@ import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, rowsOf } from "~/seed/factories/people/actors"
 import { DEMO_APPS, DEMO_WORLD_APPS } from "~/seed/tiers/demo/demo-apps"
-import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
+import {
+  refreshSeededAttention,
+  type SeedDemoWorldResult,
+  seedDemoWorld,
+} from "~/seed/tiers/demo/seed-demo"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import {
   activeAppNames,
@@ -50,11 +54,21 @@ function userIdOf(key: string): string {
   return id
 }
 
-/** One person's Home feed at the board date. */
-async function homeOf(key: string): Promise<AttentionItem[]> {
-  const actor = await actorFor(seedContext({ orgId: world.orgId, now: BOARD_DATE }), userIdOf(key))
-  setSystemTime(BOARD_DATE)
+/**
+ * One person's Home feed at a moment (the board date unless named). Home serves the apps' lists as
+ * last stored, and the seed stored them when it ran (today's clock), so the person's lists are
+ * first recomputed at that moment, as the minute tick stores them then.
+ */
+async function homeOf(key: string, at: Date = BOARD_DATE): Promise<AttentionItem[]> {
+  const userId = userIdOf(key)
+  const actor = await actorFor(seedContext({ orgId: world.orgId, now: at }), userId)
+  // A list stored later wins over one computed at an earlier time: the seed's lists go first.
+  await rows(sql`
+    DELETE FROM kernel.app_attention_items
+     WHERE org_id = ${world.orgId}::uuid AND user_id = ${userId}::uuid`)
+  setSystemTime(at)
   try {
+    await refreshSeededAttention(world.orgId, [userId])
     const feed = await aggregateAttentionItems({ orgId: world.orgId, actor })
     expect(feed.errors ?? []).toEqual([])
     return feed.items
@@ -187,10 +201,16 @@ describe("the services world's desks, queues and Home at the board date", () => 
     ])
     // No other row asks the owner for a decision: tickets are queue volume, nothing is urgent.
     expect(owner.filter((i) => i.kind === "sla_risk")).toEqual([])
-    // The lead holds the week's due tasks; finance has nothing of money at the board date.
+    // The lead's open work is due next Wednesday, nine days on: past the due-soon window, so
+    // Home has no task row for it at the board date. A week on, the same three tasks are due
+    // this week. Finance has nothing of money at the board date.
     const bastien = await homeOf("bastien")
     expect(counted(bastien)).toEqual([])
-    expect(bastien.filter((i) => i.app === "projects").map((i) => i.kind)).toEqual([
+    const tasks = (items: AttentionItem[]) =>
+      items.filter((i) => i.app === "projects" && i.kind.startsWith("task_")).map((i) => i.kind)
+    expect(tasks(bastien)).toEqual([])
+    const nextMonday = new Date(BOARD_DATE.getTime() + 7 * 86_400_000)
+    expect(tasks(await homeOf("bastien", nextMonday))).toEqual([
       "task_due_this_week",
       "task_due_this_week",
       "task_due_this_week",

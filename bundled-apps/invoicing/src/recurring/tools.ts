@@ -10,7 +10,12 @@ import { civilDateOf, type TimeSurface } from "../issue-date"
 import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
 import { formatMoneyMinor } from "../money"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
-import { SCHEDULE_ENDED, SCHEDULE_PAUSED } from "./end-schedule"
+import {
+  billsDeliveredPeriod,
+  KEPT_AFTER_STOP,
+  SCHEDULE_ENDED,
+  SCHEDULE_PAUSED,
+} from "./end-schedule"
 import { type EditCtx, logRunEdit, stageRunCardAfterRemoval } from "./restage"
 import {
   hoursText,
@@ -684,9 +689,17 @@ export async function recurringScheduleUpdate(
     if (status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead")
       retainerNote += ` ${PREPAID_WARNING}`
   }
-  // Ending reaches the month-end run already drafted exactly as a pause does: its rows not issued
-  // yet are left out, so approving the run issues nothing more for it.
-  const leftOut = status === "ended" ? await leaveOutOpenRows(ctx, current.id, SCHEDULE_ENDED) : 0
+  // Ending reaches the month-end run already drafted as a pause does: its rows not issued yet are
+  // left out, so approving the run issues nothing more for it. A row billing a period whose work
+  // was already delivered (billsDeliveredPeriod) stays in the run: ending stops what comes next.
+  const ending =
+    status === "ended"
+      ? await leaveOutOpenRows(ctx, current.id, SCHEDULE_ENDED, {
+          keep: (item) =>
+            billsDeliveredPeriod(current as unknown as Record<string, unknown>, item, now.date),
+        })
+      : { leftOut: 0, kept: 0 }
+  const leftOut = ending.leftOut
   const issueMode = String(data.issue_mode ?? current.issue_mode)
   const nextIssueOn =
     (data.next_issue_on as string | null | undefined) ??
@@ -702,8 +715,11 @@ export async function recurringScheduleUpdate(
       `Schedule ${current.id} changed to version ${current.version + 1}. ` +
       (status === "ended"
         ? "It has ended and bills nothing more." +
+          (ending.kept > 0
+            ? ` Its row in the open month-end run bills a period already under way, so it stays in the run and issues with it; take it out with drafts_discard if it should not.`
+            : "") +
           (leftOut > 0
-            ? ` Its row in the open month-end run is left out (note "${SCHEDULE_ENDED}"), so approving the run does not issue it; drafts_update with put_back puts it back.`
+            ? ` Its row in the open month-end run is left out (note "${SCHEDULE_ENDED}"), so approving the run does not issue it; drafts_update with put_back puts it back, and it then issues with the run.`
             : "")
         : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`) +
       retainerNote,
@@ -938,10 +954,10 @@ export async function recurringSchedulePause(
     const now = await today(ctx, issuer)
     if (now?.ok) await writeRetainerTimeboxes(ctx, current, [nextMonth(monthOf(now.date))], null)
   }
-  const leftOut = await leaveOutOpenRows(ctx, current.id, SCHEDULE_PAUSED)
+  const { leftOut } = await leaveOutOpenRows(ctx, current.id, SCHEDULE_PAUSED)
   const runNote =
     leftOut > 0
-      ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`
+      ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does, and the row then issues with the run even while the schedule is paused).`
       : ""
   return {
     status: "completed",
@@ -962,19 +978,22 @@ const OPEN_ROW_STATES = new Set(["ready", "needs_fix", "approved", "waiting_reap
 /**
  * A pause or an end reaches the month-end run already drafted: the schedule's rows that are not
  * issued yet are left out with `note` (their drafts kept, so a person can put one back), and each
- * run's card follows. Returns how many rows were left out.
+ * run's card follows. A row `keep` answers true for stays in the run. Returns how many rows were
+ * left out and how many kept.
  */
 async function leaveOutOpenRows(
   ctx: RecurringCtx,
   scheduleId: string,
   note: string,
-): Promise<number> {
+  opts: { keep?: (item: Record<string, unknown>) => boolean } = {},
+): Promise<{ leftOut: number; kept: number }> {
   const items = (await ctx.db.findMany("recurring_run_items", {
     where: { schedule_id: scheduleId },
     limit: 500,
   })) as Array<Record<string, unknown>>
   const runs = new Set<string>()
   let leftOut = 0
+  let kept = 0
   for (const item of items) {
     if (!OPEN_ROW_STATES.has(String(item.state))) continue
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Record<
@@ -982,7 +1001,14 @@ async function leaveOutOpenRows(
       unknown
     > | null
     if (draft && draft.status !== "draft") continue
-    const notes = typeof item.note === "string" && item.note ? item.note.split(" · ") : []
+    if (opts.keep?.(item)) {
+      kept += 1
+      continue
+    }
+    // A new pause or end is a new decision: a row put back after an earlier one is taken out too.
+    const notes = (typeof item.note === "string" && item.note ? item.note.split(" · ") : []).filter(
+      (n) => n !== KEPT_AFTER_STOP,
+    )
     if (!notes.includes(note)) notes.push(note)
     await ctx.db.update("recurring_run_items", String(item.id), {
       state: "left_out",
@@ -1005,7 +1031,7 @@ async function leaveOutOpenRows(
   if ("requestApproval" in ctx && typeof (ctx as Partial<EditCtx>).requestApproval === "function") {
     for (const runId of runs) await stageRunCardAfterRemoval(ctx as EditCtx, runId)
   }
-  return leftOut
+  return { leftOut, kept }
 }
 
 /**

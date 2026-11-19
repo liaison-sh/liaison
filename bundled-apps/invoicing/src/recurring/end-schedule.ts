@@ -23,6 +23,43 @@ export const LAST_INVOICE = "Last invoice"
 export const SCHEDULE_PAUSED = "Schedule paused"
 /** The note on a row left out because its schedule was ended while the run was open. */
 export const SCHEDULE_ENDED = "Schedule ended"
+/** The note on a row a person put back into the run while its schedule is paused or ended: it
+ *  issues with the run all the same. */
+export const KEPT_AFTER_STOP = "Kept after its schedule stopped"
+
+/**
+ * A row billing work already delivered: its schedule bills each period once it has ended
+ * (`covers: "period_ended"`, the default) and the row's period has begun by `today`. Ending the
+ * schedule stops what comes next, never the month whose work was done.
+ */
+export function billsDeliveredPeriod(
+  schedule: Row | null | undefined,
+  item: Row,
+  today: string,
+): boolean {
+  const covers = schedule?.covers ?? "period_ended"
+  const start = dayOf(item.period_start)
+  return covers === "period_ended" && start !== null && start <= today
+}
+
+/**
+ * Why a row of a stopped schedule does not issue with its run, or null when it does. A paused
+ * schedule's row and an ended schedule's row for a period not delivered yet stay out, unless a
+ * person put the row back (`KEPT_AFTER_STOP`). The run's issue and the pause or end that takes
+ * rows out both ask this, so a row put back is never taken out again by the issue.
+ */
+export function stoppedScheduleNote(
+  schedule: Row | null | undefined,
+  item: Row,
+  today: string,
+): string | null {
+  const notes = typeof item.note === "string" && item.note ? item.note.split(" · ") : []
+  if (notes.includes(KEPT_AFTER_STOP)) return null
+  if (schedule?.status === "paused") return SCHEDULE_PAUSED
+  if (schedule?.status === "ended")
+    return billsDeliveredPeriod(schedule, item, today) ? null : SCHEDULE_ENDED
+  return null
+}
 
 export interface DiscardResult {
   ok: true

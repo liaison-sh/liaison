@@ -518,6 +518,39 @@ describe("editing a month-end run on the real kernel", () => {
     expect(refused.error).toContain(String(after[0]?.issued_number))
   }, 120_000)
 
+  it("a row put back while its schedule is paused issues with the run, and ending a schedule keeps its delivered month in it", async () => {
+    const fx = await drafted(2)
+    const [pausedSchedule, endedSchedule] = [String(fx.schedules[0]), String(fx.schedules[1])]
+    const rowOf = async (schedule: string) =>
+      (await itemsOf(fx.runId)).find((i) => i.schedule_id === schedule) as Row
+    // Paused: its row is left out; put back, it carries the note that keeps it in the run.
+    const paused = await call("recurring_schedule_pause", { id: pausedSchedule })
+    expect(paused.error).toBeUndefined()
+    expect((await rowOf(pausedSchedule)).state).toBe("left_out")
+    const pausedDraft = String((await rowOf(pausedSchedule)).document_id)
+    const back = await call("drafts_update", { ...(await asRead(pausedDraft)), put_back: true })
+    expect(back.error).toBeUndefined()
+    expect(String((await rowOf(pausedSchedule)).note)).toContain("Kept after its schedule stopped")
+    // Ended: November's work is delivered, so its row stays in the run.
+    const ended = await call("recurring_schedule_update", { id: endedSchedule, status: "ended" })
+    expect(ended.error).toBeUndefined()
+    expect((await rowOf(endedSchedule)).state).not.toBe("left_out")
+    for (const card of (await pendingApprovals()).filter(
+      (a) =>
+        a.tool_name === "invoicing:recurring_run_issue" &&
+        (a.current_payload as Row).run_id === fx.runId,
+    ))
+      await approve(String(card.id))
+    setSystemTime(new Date("2026-11-30T07:30:00Z"))
+    await runJob("recurring-issue")
+    const after = await itemsOf(fx.runId)
+    expect(after.map((i) => [i.state, i.failure])).toEqual([
+      ["issued", null],
+      ["issued", null],
+    ])
+    expect(await sequenceOf(fx.issuer)).toBe(2)
+  }, 120_000)
+
   it("undo keeps every edit and the written patches", async () => {
     const fx = await drafted(2)
     const rows = await itemsOf(fx.runId)

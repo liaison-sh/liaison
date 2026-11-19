@@ -11,6 +11,7 @@ import {
   type DiscardParked,
   type DiscardResult,
   discardRunDraft,
+  KEPT_AFTER_STOP,
   LAST_INVOICE,
   putBack,
   SCHEDULE_ENDED,
@@ -1001,7 +1002,15 @@ async function updateRunDraft(
   const r = await afterRunWrite(ectx, String(rd.item.id), {
     putBack: input.put_back === true,
     extraNotes: notes,
-    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED, SCHEDULE_ENDED] } : {}),
+    ...(input.put_back
+      ? {
+          noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED, SCHEDULE_ENDED],
+          // Put back while its schedule is paused or ended: the row issues with the run anyway.
+          ...(rd.schedule?.status === "paused" || rd.schedule?.status === "ended"
+            ? { noteAdd: [KEPT_AFTER_STOP] }
+            : {}),
+        }
+      : {}),
   })
   const draft = await getDraft(ctx.db, draftId)
   if (!draft) throw new Error(`not_found: draft ${draftId}`)

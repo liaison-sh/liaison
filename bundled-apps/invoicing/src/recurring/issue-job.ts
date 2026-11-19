@@ -19,7 +19,7 @@ import type { IssueBatchOp } from "../issue"
 import { BILLED_BY_STRIPE } from "../issuer-guard"
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
-import { SCHEDULE_ENDED, SCHEDULE_PAUSED } from "./end-schedule"
+import { KEPT_AFTER_STOP, stoppedScheduleNote } from "./end-schedule"
 import { rowIssuerHold } from "./item-state"
 import {
   currentItemHash,
@@ -85,15 +85,13 @@ export async function recurringItemIssue(
       ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null)
       : null
     // A schedule paused or ended after its row was approved bills nothing more: the row is left
-    // out as the pause or the end does, and no number is taken.
-    const stopped =
-      schedule?.status === "ended"
-        ? SCHEDULE_ENDED
-        : schedule?.status === "paused"
-          ? SCHEDULE_PAUSED
-          : null
+    // out as the pause or the end does, and no number is taken. The same rule as theirs: a row a
+    // person put back, and an ended schedule's row for a period already delivered, still issue.
+    const stopped = stoppedScheduleNote(schedule, before, window.today)
     if (stopped && draftBefore && draftBefore.status === "draft") {
-      const notes = typeof before.note === "string" && before.note ? before.note.split(" · ") : []
+      const notes = (
+        typeof before.note === "string" && before.note ? before.note.split(" · ") : []
+      ).filter((n) => n !== KEPT_AFTER_STOP)
       if (!notes.includes(stopped)) notes.push(stopped)
       await ctx.db.update("recurring_run_items", input.item_id, {
         state: "left_out",

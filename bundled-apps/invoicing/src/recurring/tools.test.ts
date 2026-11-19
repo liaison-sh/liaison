@@ -517,39 +517,63 @@ describe("pausing", () => {
     })
   })
 
-  test("ending a schedule takes its row out of the open run, as a pause does, and says so", async () => {
+  function openRun(item: Record<string, unknown> = {}) {
+    return {
+      recurring_runs: [
+        {
+          id: "run-dec",
+          issuer_profile_id: ISSUER,
+          issue_on: "2026-12-31",
+          status: "approved",
+          period_label: "December 2026",
+        },
+      ],
+      recurring_run_items: [
+        {
+          id: "item-dec",
+          run_id: "run-dec",
+          source: "schedule",
+          schedule_id: "sched-1",
+          period_key: "2026-12",
+          period_start: "2026-12-01",
+          period_end: "2026-12-31",
+          document_id: "doc-dec",
+          position: 0,
+          state: "approved",
+          approved_hash: "h1",
+          send_grant: "g1",
+          ...item,
+        },
+      ],
+      documents: [
+        { id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Studio Sud" },
+      ],
+    }
+  }
+
+  test("ending a schedule keeps the open run's row for a month whose work is already delivered, and says so", async () => {
+    const { ctx, db } = makeCtx("2026-12-30", { extra: [active()], seed: openRun() })
+    const res = await recurringScheduleUpdate(ctx, { id: "sched-1", status: "ended" })
+    expect(res).toMatchObject({ status: "completed", scheduleStatus: "ended" })
+    expect(db.__all("recurring_run_items")[0]).toMatchObject({
+      state: "approved",
+      approved_hash: "h1",
+      send_grant: "g1",
+    })
+    const message = res.status === "completed" ? String(res.message) : ""
+    expect(message).toContain("bills nothing more")
+    expect(message).toContain("stays in the run")
+    expect(message).not.toContain("left out")
+  })
+
+  test("ending a schedule takes out the open run's row for a period not begun yet, and says how to keep it", async () => {
     const { ctx, db } = makeCtx("2026-12-30", {
-      extra: [active()],
-      seed: {
-        recurring_runs: [
-          {
-            id: "run-dec",
-            issuer_profile_id: ISSUER,
-            issue_on: "2026-12-31",
-            status: "approved",
-            period_label: "December 2026",
-          },
-        ],
-        recurring_run_items: [
-          {
-            id: "item-dec",
-            run_id: "run-dec",
-            source: "schedule",
-            schedule_id: "sched-1",
-            period_key: "2026-12",
-            period_start: "2026-12-01",
-            period_end: "2026-12-31",
-            document_id: "doc-dec",
-            position: 0,
-            state: "approved",
-            approved_hash: "h1",
-            send_grant: "g1",
-          },
-        ],
-        documents: [
-          { id: "doc-dec", type: "invoice", status: "draft", counterparty_name: "Studio Sud" },
-        ],
-      },
+      extra: [active({ covers: "period_ahead" })],
+      seed: openRun({
+        period_key: "2027-01",
+        period_start: "2027-01-01",
+        period_end: "2027-01-31",
+      }),
     })
     const res = await recurringScheduleUpdate(ctx, { id: "sched-1", status: "ended" })
     expect(res).toMatchObject({ status: "completed", scheduleStatus: "ended" })
@@ -560,8 +584,8 @@ describe("pausing", () => {
       note: "Schedule ended",
     })
     const message = res.status === "completed" ? String(res.message) : ""
-    expect(message).toContain("bills nothing more")
     expect(message).toContain("left out")
+    expect(message).toContain("put_back")
   })
 
   test("a paused schedule checked before the pause writes nothing to its run", async () => {

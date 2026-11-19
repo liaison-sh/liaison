@@ -709,7 +709,7 @@ export function taintSourceApps(taintScopes: readonly string[]): string[] {
   for (const scope of taintScopes) {
     if (UNKNOWN_TURN_TAINT.includes(scope)) continue
     // A restricted record's scope names its app in its kind (`restricted:agreements.agreement:<id>`).
-    if (isRestrictedScope(scope)) {
+    if (scope.startsWith(RESTRICTED_SCOPE_PREFIX)) {
       const app = scope.slice(RESTRICTED_SCOPE_PREFIX.length).split(".")[0]
       if (app) apps.add(app)
       continue

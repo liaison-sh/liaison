@@ -95,10 +95,9 @@ export async function handleListLockedCapabilities(
  * scores its catalog (tool-rank.ts): the name and app weigh most, the scope's words and the
  * description count too.
  */
-function rankLockedByWords<T extends { name: string; app: string; scope: string; description: string }>(
-  locked: readonly T[],
-  query: string,
-): T[] {
+function rankLockedByWords<
+  T extends { name: string; app: string; scope: string; description: string },
+>(locked: readonly T[], query: string): T[] {
   const scorable = locked.map((t) => ({
     entry: t,
     toolName: t.name.startsWith(`${t.app}__`) ? t.name.slice(t.app.length + 2) : t.name,

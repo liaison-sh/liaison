@@ -141,8 +141,13 @@ describe("tool_search surfaces scope-locked tools", () => {
         handler: async () => ({ ok: true }),
         deferLoading: true,
       } as any)
-    for (let i = 0; i < 6; i++) reg(`plan_step_${i}`, "Set a project's plan step.", "works:plan:write")
-    reg("billing_terms_set", "Set how a project is billed: rate per hour or a fixed price.", "works:money:write")
+    for (let i = 0; i < 6; i++)
+      reg(`plan_step_${i}`, "Set a project's plan step.", "works:plan:write")
+    reg(
+      "billing_terms_set",
+      "Set how a project is billed: rate per hour or a fixed price.",
+      "works:money:write",
+    )
     try {
       const res = await handleToolSearch(
         { query: "set project billing rate" },

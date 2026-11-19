@@ -297,14 +297,14 @@ import {
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { filterResponse, returnsDimensionDefs } from "~/modules/permissions/response-filter"
 import {
+  restrictedListNotice,
+  restrictedListsBefore,
+} from "~/modules/permissions/restricted-list-notice"
+import {
   isRestrictedScope,
   restrictedAsReadScopes,
   restrictedScope,
 } from "~/modules/permissions/restricted-scope"
-import {
-  restrictedListNotice,
-  restrictedListsBefore,
-} from "~/modules/permissions/restricted-list-notice"
 import { sendMessage } from "~/modules/threads/message"
 import { insertThreadWithParticipants } from "~/modules/threads/thread"
 import {

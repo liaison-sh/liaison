@@ -326,9 +326,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const v = props.item.metadata?.summaryLines
     const consent = consentLineRaw()
     return Array.isArray(v)
-      ? readableSummaryLines(
-          v.filter((l): l is string => typeof l === "string" && l !== consent),
-        )
+      ? readableSummaryLines(v.filter((l): l is string => typeof l === "string" && l !== consent))
           .slice(0, 3)
           .map((line) => localizeApprovalText(line, copyCtx()))
       : []

@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { SAAS_PLANS, SAAS_TEAM } from "./saas/fiction"
 import { saasMoneyPlan } from "./saas/plan"
+import { STUDIO_TEAM } from "./studio/fiction"
 import { DOOR_FRAME_KEYS, WORLD_CLAIMS, type WorldClaim } from "./world-claims"
 
 const KERNEL_EN = path.join(
@@ -95,5 +96,40 @@ describe("the software world's door claims", () => {
       `from ${euros(SAAS_PLANS.starter.monthlyMinor)} to ${euros(SAAS_PLANS.group.monthlyMinor)} a month`,
     )
     expect(door["companyOps.payments.body"]).toContain(`${counted} customers pay by card`)
+  })
+})
+
+describe("the services world's door claims", () => {
+  const door = doorStrings("studio")
+  const claims = WORLD_CLAIMS.studio ?? []
+  const frame = DOOR_FRAME_KEYS.studio ?? []
+
+  it("every services claim key has its criterion: a door string, a claim and the tests that prove it", () => {
+    expect(Object.keys(door).length).toBeGreaterThan(10)
+    expect(unmapped(door, claims, frame)).toEqual([])
+  })
+
+  it("a services door string added with no claim is refused", () => {
+    expect(unmapped({ ...door, newLine: "A new claim" }, claims, frame)).toEqual([
+      "door string with no claim: newLine",
+    ])
+  })
+
+  it("the door names people of the pack, and its head count is the pack's", () => {
+    const named = Object.keys(door)
+      .filter((k) => k.startsWith("teamRole."))
+      .map((k) => k.slice("teamRole.".length))
+    const keys = STUDIO_TEAM.map((p) => p.key)
+    expect(named.filter((k) => !keys.includes(k))).toEqual([])
+    // The visitor's own seat beside the pack's people.
+    const people = STUDIO_TEAM.length + 1
+    expect(door.companyFacts).toContain(`${people} people`)
+    expect(door["teamOthers.name"]).toBe(`${people - 1 - named.length} others`)
+  })
+
+  it("the card that checks planned against done promises no proof link", () => {
+    const delivery = claims.find((c) => c.key === "companyOps.delivery.*")
+    expect(delivery?.mustBeTrue).toContain("without links")
+    expect(Object.values(door).join(" ")).not.toMatch(/proof|link to (the )?commit/i)
   })
 })

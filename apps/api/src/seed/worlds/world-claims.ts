@@ -25,12 +25,24 @@ export interface WorldClaim {
  */
 export const DOOR_FRAME_KEYS: Readonly<Partial<Record<DemoWorldId, readonly string[]>>> = {
   saas: ["companyFacts", "companyExample", "companyYou"],
+  studio: ["companyExample", "companyYou", "teamYouRole"],
 }
 
 /** The software world seeded once and read through the product's tools. */
 const READS = "saas/stripe-world-reads.saas.integration.test.ts"
 /** The card-payments stand-in: answers, refusals and writes kept at the stand-in. */
 const STAND_IN = "modules/demo/worlds/saas/payments/stripe-standin.integration.test.ts"
+
+/** The services world seeded once: desks, members, apps, queues, Home and routines. */
+const STUDIO_DESK = "studio/world-desk.studio.integration.test.ts"
+/** Its figures read through the product's own tools: time, budgets, margin, reconcile, invoices. */
+const STUDIO_FIGURES = "studio/world-figures.studio.integration.test.ts"
+/** Its agreements, change request card, stand-in signatures and the client portal's preview. */
+const STUDIO_AGREEMENTS = "studio/agreements-layer.studio.integration.test.ts"
+/** The services world's repository stand-in. */
+const STUDIO_REPOS = "modules/demo/worlds/studio/github/github-standin.integration.test.ts"
+/** The client's acceptance in the tour, a stand-in that is never sealed. */
+const STUDIO_ACCEPTANCE = "modules/demo/worlds/studio/cr-accepted.integration.test.ts"
 
 export const WORLD_CLAIMS: Readonly<Partial<Record<DemoWorldId, readonly WorldClaim[]>>> = {
   saas: [
@@ -143,6 +155,104 @@ export const WORLD_CLAIMS: Readonly<Partial<Record<DemoWorldId, readonly WorldCl
       claim: "no mail leaves, and the payments account and its payments are stand-ins",
       mustBeTrue: "the payments stand-in answers and mail is held",
       provenBy: [STAND_IN],
+    },
+  ],
+  studio: [
+    {
+      key: "companyFacts",
+      claim: "a fictional company in Lyon with 24 people",
+      mustBeTrue: "the company's city is Lyon and 24 people are active members",
+      provenBy: [STUDIO_DESK, "studio/plan-invariants.test.ts"],
+    },
+    {
+      key: "companyAbout",
+      claim:
+        "it bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer",
+      mustBeTrue:
+        "the active projects hold a by-the-day, a fixed-price with milestones and a retainer basis",
+      provenBy: [STUDIO_FIGURES, "studio/plan-invariants.test.ts"],
+    },
+    {
+      key: "companyAbout",
+      claim: "clients follow their project on a portal of their own",
+      mustBeTrue: "the client access preview reads what the portal shows the fixed-price client",
+      provenBy: [STUDIO_AGREEMENTS, STUDIO_FIGURES],
+    },
+    {
+      key: "companyAbout",
+      claim: "every piece of work starts from a signed agreement",
+      mustBeTrue: "each active client project has its signed agreement, at the stand-in level",
+      provenBy: [STUDIO_AGREEMENTS],
+    },
+    {
+      key: "companyOps.agreements.*",
+      claim:
+        "proposals and contracts, signed in Liaison; the agent checks them when a client asks for more",
+      mustBeTrue:
+        "the agreements list, and a scope question reaching the signed passage with one card",
+      provenBy: [STUDIO_AGREEMENTS, "studio/client-scope-question.studio.integration.test.ts"],
+    },
+    {
+      key: "companyOps.delivery.*",
+      claim:
+        "each task has a planned time and whoever did it enters how long it took; an agent checks planned against done",
+      mustBeTrue:
+        "time and budgets are on for the client projects, and reconcile on last month gives the card of the board. The card shows the proofs from the repository stand-in without links: it promises no proof link",
+      provenBy: [STUDIO_FIGURES, STUDIO_REPOS],
+    },
+    {
+      key: "companyOps.billing.*",
+      claim: "invoices from milestones, retainers and checked work; Anaïs issues them",
+      mustBeTrue:
+        "invoice numbers run with no gap, and finance sends an issued invoice with its timesheet",
+      provenBy: [STUDIO_FIGURES, "studio/money-sends.studio.integration.test.ts"],
+    },
+    {
+      key: "companyOps.clients.*",
+      claim:
+        "each company holds its people, deals, money and work; client reports are drafted on Fridays",
+      mustBeTrue: "the clients and their people, the pipeline, and the client reports routine",
+      provenBy: [STUDIO_DESK],
+    },
+    {
+      key: "companyOps.portal.*",
+      claim: "clients see their progress, reports, invoices and requests: only what was shared",
+      mustBeTrue: "the client access preview reads only the shared rows",
+      provenBy: [STUDIO_AGREEMENTS],
+    },
+    {
+      key: "companyOps.knowledge.*",
+      claim:
+        "a wiki of past projects and playbooks; each agent reads only what its person may open",
+      mustBeTrue: "the past projects' notes and the desks' reach",
+      provenBy: [STUDIO_DESK, STUDIO_FIGURES],
+    },
+    {
+      key: "companySimulated",
+      claim: "no mail leaves; the clients and their replies are stand-ins",
+      mustBeTrue:
+        "the client's acceptance is a stand-in that is never sealed, and its link mail is recorded, not sent",
+      provenBy: [STUDIO_ACCEPTANCE],
+    },
+    {
+      key: "teamOthers.*",
+      claim: "18 others, in delivery and sales",
+      mustBeTrue: "24 members: the owner, the five the door names and 18 others",
+      provenBy: [STUDIO_DESK],
+    },
+    {
+      key: "teamRole.*",
+      claim: "the team the door names, each with a role",
+      mustBeTrue: "each named person is a member of the pack's team",
+      provenBy: [STUDIO_DESK, "world-claims.test.ts"],
+    },
+    {
+      key: "limitConnectors",
+      claim:
+        "repositories and clients are stand-ins; client sign-in and signing links do not work; agreements shown as signed were not signed",
+      mustBeTrue:
+        "the repository stand-in answers and nothing leaves, and every signed row is a stand-in level",
+      provenBy: [STUDIO_REPOS, STUDIO_AGREEMENTS],
     },
   ],
 }

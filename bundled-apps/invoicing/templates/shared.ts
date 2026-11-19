@@ -973,7 +973,10 @@ function drawHeader(state: LayoutState, input: DocumentRenderInput): void {
   if (customerRef) metaLines.push(["Customer ref", customerRef])
   for (const [label, value] of metaLines) {
     const ctxLabel = ctxOf(state)
-    drawRight(ctxLabel, `${label}:`, rightX - 70, { y: ry, size: 8.5, color: GRAY_LABEL })
+    // Labels share a column 70 pt left of the margin; a value wider than that pushes its own
+    // label left so the two never run into each other ("Provision of services").
+    const labelRight = Math.min(rightX - 70, rightX - textWidth(value, 8.5) - 6)
+    drawRight(ctxLabel, `${label}:`, labelRight, { y: ry, size: 8.5, color: GRAY_LABEL })
     const ctxVal = ctxOf(state)
     drawRight(ctxVal, value, rightX, { y: ry, size: 8.5, color: GRAY_DARK })
     ry -= 13
@@ -1033,6 +1036,17 @@ function sameAddress(a: string | null | undefined, b: string | null | undefined)
   const norm = (v: string | null | undefined) =>
     (v ?? "").replace(/\s+/g, " ").trim().toLocaleLowerCase()
   return norm(a) === norm(b)
+}
+
+/** True when an address's last line is already the country ("...\n69001 Lyon\nFR"), so the
+ *  block does not print it a second time. */
+function addressEndsWith(address: string | null | undefined, country: string): boolean {
+  const last = (address ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .at(-1)
+  return !!last && last.toLocaleLowerCase() === country.trim().toLocaleLowerCase()
 }
 
 function drawParties(state: LayoutState, input: DocumentRenderInput): void {
@@ -1100,7 +1114,7 @@ function drawParties(state: LayoutState, input: DocumentRenderInput): void {
         y -= 12
       }
     }
-    if (party.country) {
+    if (party.country && !addressEndsWith(party.address, party.country)) {
       const c1: DrawCtx = { ...ctxLabel, cursor: { y } }
       draw(c1, party.country, { x, y, size: 9, color: GRAY_MUTED })
       y -= 12

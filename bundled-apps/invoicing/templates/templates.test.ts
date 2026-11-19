@@ -1152,6 +1152,56 @@ describe("S25 identity blocks and mentions", () => {
     expect(all(invoiceTemplate(shortInput()))).not.toContain("Operation:")
   })
 
+  test("a long operation label never runs into its own label", () => {
+    const cmds = textCmds(
+      invoiceTemplate(
+        shortInput({
+          document: { ...shortInput().document, operation_label: "Provision of services" },
+        }),
+      ),
+    )
+    const label = cmds.find((c) => c.text === "Operation:")
+    const value = cmds.find((c) => c.text === "Provision of services")
+    expect(label && value).toBeTruthy()
+    if (!label || !value) return
+    expect(label.y).toBe(value.y)
+    expect(label.x + textWidth(label.text, label.size)).toBeLessThan(value.x)
+    // Short values keep the labels' shared column; only the long one's label moves left.
+    const right = (text: string) => {
+      const c = cmds.find((x) => x.text === text)
+      return c ? c.x + textWidth(c.text, c.size) : Number.NaN
+    }
+    expect(right("Issued:")).toBeCloseTo(right("Due:"), 3)
+    expect(right("Operation:")).toBeLessThan(right("Issued:"))
+  })
+
+  test("a party whose address already ends with its country prints the country once", () => {
+    const cmds = invoiceTemplate(
+      shortInput({
+        counterparty: {
+          legal_name: "Acheteur SA",
+          country: "FR",
+          vat_id: null,
+          address: "2 rue B\n69001 Lyon\nFR",
+        },
+      }),
+    )
+    // An address without it still gets the country line: the same count, issuer's line included.
+    const plain = invoiceTemplate(
+      shortInput({
+        counterparty: {
+          legal_name: "Acheteur SA",
+          country: "FR",
+          vat_id: null,
+          address: "2 rue B, 69001 Lyon",
+        },
+      }),
+    )
+    const fr = (c: DrawCommand[]) => texts(c).filter((t) => t === "FR").length
+    expect(fr(plain)).toBe(2)
+    expect(fr(cmds)).toBe(fr(plain))
+  })
+
   test("VAT-on-debits literal prints under the mention only when set", () => {
     const on = invoiceTemplate(
       shortInput({

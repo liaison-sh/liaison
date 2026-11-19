@@ -580,6 +580,37 @@ export const OutboxWorkerTestAccess = {
     lastTickAt = null
   },
   /**
+   * What the outbox still holds for delivery (not processed, not dead-lettered):
+   * the total, and the largest groups by `app:entity:action` with how many orgs
+   * each spans. Test drains report it when the outbox does not settle.
+   */
+  async pendingSummary(limit = 10): Promise<{
+    total: number
+    groups: Array<{ kind: string; count: number; orgs: number; retrying: number }>
+  }> {
+    const table = `${schemaRef("kernel")}.pending_events`
+    const [totals] = await adminExec(
+      `SELECT count(*)::int AS total FROM ${table} WHERE processed_at IS NULL AND failed_at IS NULL`,
+    )
+    const groups = await adminExec(
+      `SELECT concat_ws(':', payload->>'app', payload->>'entity', payload->>'action') AS kind,
+              count(*)::int AS count, count(DISTINCT org_id)::int AS orgs,
+              count(*) FILTER (WHERE attempts > 0)::int AS retrying
+         FROM ${table} WHERE processed_at IS NULL AND failed_at IS NULL
+        GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT $1`,
+      [limit],
+    )
+    return {
+      total: Number(totals?.total ?? 0),
+      groups: groups.map((g) => ({
+        kind: String(g.kind),
+        count: Number(g.count),
+        orgs: Number(g.orgs),
+        retrying: Number(g.retrying),
+      })),
+    }
+  },
+  /**
    * Test-only: deliver a single pending event by id, exercising the durable
    * consumer + publish + processed_at path. Returns true if the event ended up
    * marked processed.

@@ -597,6 +597,12 @@ const SCOPE_READ_ALLOWLIST_LITERAL: ReadonlyArray<
   ],
   ["apps/api/src/modules/agent/tools/scope-request-tools.ts", "scope: t.scope,", REASONS.LOCKED],
   [
+    "apps/api/src/modules/agent/tools/scope-request-tools.ts",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the exact text of a source line
+    'description: `${t.description} ${t.scope.replace(/[,:_]+/g, " ")}`,',
+    REASONS.LOCKED,
+  ],
+  [
     "apps/api/src/modules/agent/skills/skills-routes.ts",
     'const { scope } = c.req.valid("json")',
     REASONS.SKILL,

@@ -110,10 +110,27 @@ describe("exact-only scopes cross no wildcard", () => {
     expect(effectiveScopeDm(financeDesk, ["projects:*"])).not.toContain(MARGIN)
   })
 
-  test("the person who holds the margin scope exactly keeps it, through a desk or an agent with *", () => {
+  test("the person who holds the margin scope exactly keeps it through a desk that names it", () => {
     const finance = ["invoicing:documents:read", MARGIN]
     expect(effectiveScopeDelegation(finance, financeDesk)).toContain(MARGIN)
-    expect(effectiveScopeDm(["*"], finance)).toContain(MARGIN)
+    expect(effectiveScopeDm(financeDesk, finance)).toContain(MARGIN)
+  })
+
+  test("a ceiling holds an exact-only scope only by naming it: * or a glob carries none", () => {
+    const finance = ["invoicing:documents:read", MARGIN]
+    expect(effectiveScopeDm(["*"], finance)).toEqual(["invoicing:documents:read"])
+    expect(effectiveScopeDm(["projects:*"], finance)).toEqual([])
+  })
+
+  test("a room with a member holding * floors the margin scope out, even when another member holds it exactly", () => {
+    const finance = ["invoicing:documents:read", MARGIN]
+    expect(effectiveScopeChannel(financeDesk, [finance, ["*"]])).toEqual([
+      "invoicing:documents:read",
+    ])
+    expect(effectiveScopeChannel(financeDesk, [["*"], finance])).toEqual([
+      "invoicing:documents:read",
+    ])
+    expect(effectiveScopeChannel(financeDesk, [finance, finance])).toEqual(financeDesk)
   })
 
   test("a bare marker scope such as a document's edit scope is held exactly too", () => {

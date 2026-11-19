@@ -7,6 +7,16 @@ export {
   SENSITIVITY_ORDER,
 } from "./knowledge-sensitivity"
 
+/**
+ * A document's edit scope: row security checks it EXACTLY (no `*`, glob or parent holds it), so
+ * it is always a bare marker scope with no `app:` part (`clevel`). The agent side treats exactly
+ * those as exact-only (`isExactOnlyScope`), so no wildcard carries one into an agent's turn.
+ */
+export const knowledgeEditScopeSchema = z
+  .string()
+  .max(128)
+  .regex(/^[a-z0-9_-]+$/, "an edit scope is one bare word such as clevel: no ':' and no '*'")
+
 export const knowledgeSensitivitySchema = z.enum([
   "public",
   "internal",
@@ -60,7 +70,7 @@ const knowledgeDocumentBaseSchema = z.object({
   // this EXACT scope (e.g. "clevel") — see has_exact_scope in the 0003 migration and
   // assertCanWriteDocumentRow. `null` clears the gate; `undefined`/omitted leaves it
   // untouched on update.
-  editScope: z.string().max(128).nullable().optional(),
+  editScope: knowledgeEditScopeSchema.nullable().optional(),
   verifyNow: z.boolean().default(false),
   reviewDueAt: z.string().datetime().optional().nullable(),
 })
@@ -121,7 +131,7 @@ export const knowledgeDocumentSharingSchema = z
     orgAccess: knowledgeOrgAccessSchema,
     // Scoped edit gate (nullable): null = no scoped-edit restriction on this doc.
     // Superseded by role shares for new UI, kept for backward-compat.
-    editScope: z.string().max(128).nullable(),
+    editScope: knowledgeEditScopeSchema.nullable(),
     shares: z
       .array(z.object({ userId: uuidStringSchema, role: z.enum(["viewer", "editor"]) }))
       .max(200),

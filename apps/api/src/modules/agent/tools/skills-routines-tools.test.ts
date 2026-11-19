@@ -3796,6 +3796,16 @@ describe("skills-routines-tools — authoring handlers (gated)", () => {
       granted: ["anything:at:all"],
       omitted: [],
     })
+    // ...except an exact-only scope, which only its exact grant holds: a routine authored by a
+    // person holding * never runs with it.
+    expect(grantableScopes(["projects:margin:read", "anything:at:all"], ["*"])).toEqual({
+      granted: ["anything:at:all"],
+      omitted: ["projects:margin:read"],
+    })
+    expect(grantableScopes(["projects:margin:read"], ["*", "projects:margin:read"])).toEqual({
+      granted: ["projects:margin:read"],
+      omitted: [],
+    })
   })
 
   it("grantableScopes (BL-150) normalises a 2-part abbreviation to the UNIQUE held 3-part scope", async () => {

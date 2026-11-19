@@ -15,13 +15,21 @@
 // `isScopeCovered` is the single source of truth: a granted scope covers a
 // required scope when it is the full wildcard `*`, an exact match, a `:*`
 // glob whose prefix matches, OR a bare ancestor prefix on a `:` boundary.
+//
+// An exact-only scope (`isExactOnlyScope`) is the one exception: only its exact
+// grant covers it, as row security checks it. Every caller inherits that: the
+// intersection of two scope sets (`intersectScopes`) keeps an exact-only scope
+// only when both sides name it, and a person holding `*` cannot author a
+// routine, an agent ceiling or a token that names one.
 
 /** True when `granted` (one scope) covers `required` (one scope). */
 function scopeCovers(granted: string, required: string): boolean {
-  // Full wildcard.
-  if (granted === "*") return true
   // Exact match.
   if (granted === required) return true
+  // No wildcard, glob or parent stands for an exact-only scope.
+  if (isExactOnlyScope(required)) return false
+  // Full wildcard.
+  if (granted === "*") return true
   // Trailing `:*` glob — `mcp:jira:*` covers `mcp:jira:read` (and deeper).
   if (granted.endsWith(":*")) {
     const prefix = granted.slice(0, -1) // keep the trailing colon
@@ -55,8 +63,9 @@ export const EXACT_ONLY_SCOPES: ReadonlySet<string> = new Set([
 
 /**
  * True for a scope that only its exact grant holds: one of `EXACT_ONLY_SCOPES`, or a bare
- * marker scope with no `app:` part (a document's edit scope such as `clevel`), which no app
- * wildcard names.
+ * marker scope with no `app:` part, which no app wildcard names. A knowledge document's edit
+ * scope (checked exactly by row security) is always such a marker: the document schemas refuse
+ * any other text (`knowledgeEditScopeSchema`).
  */
 export function isExactOnlyScope(scope: string): boolean {
   return EXACT_ONLY_SCOPES.has(scope) || (scope !== "*" && !scope.includes(":"))

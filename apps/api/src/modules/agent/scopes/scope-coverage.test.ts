@@ -2,6 +2,8 @@
 import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import { knowledgeDocumentSharingSchema, knowledgeEditScopeSchema } from "@liaison/shared"
+import { intersectScopes } from "~/modules/agent/subruns/spawn-agent"
 import { EXACT_ONLY_SCOPES, isExactOnlyScope, isScopeCovered } from "./scope-coverage"
 
 describe("isScopeCovered", () => {
@@ -67,5 +69,46 @@ describe("exact-only scopes", () => {
     expect(isExactOnlyScope("projects:margin:read")).toBe(true)
     expect(isExactOnlyScope("*")).toBe(false)
     expect(isExactOnlyScope("tickets:tickets:read")).toBe(false)
+  })
+
+  it("no wildcard, glob or parent covers an exact-only scope; its exact grant does", () => {
+    for (const scope of [...EXACT_ONLY_SCOPES, "clevel"]) {
+      expect(isScopeCovered([scope], ["*"])).toBe(false)
+      expect(isScopeCovered([scope], [`${scope.split(":")[0]}:*`])).toBe(false)
+      expect(isScopeCovered([scope], [scope])).toBe(true)
+      expect(isScopeCovered([scope], ["*", scope])).toBe(true)
+    }
+    expect(isScopeCovered(["projects:margin:read"], ["projects:margin"])).toBe(false)
+    // The wildcard still covers every other scope.
+    expect(isScopeCovered(["projects:projects:read", "kernel:agents:admin"], ["*"])).toBe(true)
+  })
+
+  it("an intersection keeps an exact-only scope only when both sides name it", () => {
+    const margin = "projects:margin:read"
+    expect(intersectScopes(["*"], ["tickets:tickets:read", margin])).toEqual([
+      "tickets:tickets:read",
+    ])
+    expect(intersectScopes(["tickets:tickets:read", margin], ["*"])).toEqual([
+      "tickets:tickets:read",
+    ])
+    expect(intersectScopes([margin, "x:y:read"], ["*", margin])).toEqual([margin, "x:y:read"])
+  })
+
+  it("a knowledge edit scope, checked exactly by row security, can only be an exact-only scope", () => {
+    for (const ok of ["clevel", "board_only", "finance-leads"]) {
+      expect(knowledgeEditScopeSchema.safeParse(ok).success).toBe(true)
+      expect(isExactOnlyScope(ok)).toBe(true)
+    }
+    for (const refused of ["finance:docs:edit", "*", "knowledge:*", "a,b", "", "Board"]) {
+      expect(knowledgeEditScopeSchema.safeParse(refused).success).toBe(false)
+    }
+    const sharing = { orgAccess: "viewer", shares: [] }
+    expect(
+      knowledgeDocumentSharingSchema.safeParse({ ...sharing, editScope: "finance:docs:edit" })
+        .success,
+    ).toBe(false)
+    expect(knowledgeDocumentSharingSchema.safeParse({ ...sharing, editScope: null }).success).toBe(
+      true,
+    )
   })
 })

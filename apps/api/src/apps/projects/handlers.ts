@@ -879,9 +879,11 @@ export async function companyWork(
     items?: CompanyWorkProject[]
   }
   const projects = Array.isArray(listed?.items) ? listed.items : []
-  const live = projects.filter((p) => !p.closed).length
+  const liveProjects = projects.filter((p) => !p.closed)
+  const live = liveProjects.length
   const closed = projects.length - live
-  const open = projects.reduce((sum, p) => sum + (p.openTasks ?? 0), 0)
+  // The count reads with the live projects: a closed project's leftover tasks are not open work.
+  const open = liveProjects.reduce((sum, p) => sum + (p.openTasks ?? 0), 0)
   return {
     projects,
     message: `${live} project${live === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company${closed > 0 ? `, and ${closed} closed` : ""}.`,

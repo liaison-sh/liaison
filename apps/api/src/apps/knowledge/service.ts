@@ -6,6 +6,7 @@ import {
   type KnowledgeCreateDocument,
   type KnowledgeUpdateDocument,
   knowledgeCreateDocumentSchema,
+  knowledgeEditScopeSchema,
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -1461,6 +1462,11 @@ export async function setDocumentSharing(
   input: DocumentSharingState,
   actor: KnowledgeActor,
 ): Promise<DocumentSharingState> {
+  // Row security checks the edit scope exactly: it must be a bare marker (`clevel`), the only
+  // text the agent side also treats as exact-only, whichever caller sets it.
+  if (input.editScope !== null && !knowledgeEditScopeSchema.safeParse(input.editScope).success) {
+    validation("an edit scope is one bare word such as clevel: no ':' and no '*'")
+  }
   const row = await loadKnowledgeDocument(tx, documentId, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   const shareRole = await loadDocumentShareRole(tx, documentId, actor)

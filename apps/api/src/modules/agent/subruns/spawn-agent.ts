@@ -43,7 +43,7 @@ import { enqueueAppJob, isJobWorkerRegistered, registerJobWorker } from "~/infra
 import { rootLogger } from "~/lib/logger"
 import { captureSpawnParentFrame, type SpawnParentFrame } from "~/modules/agent/runtime/run-context"
 import type { SubRunTokenLimit } from "~/modules/agent/runtime/run-token-limit"
-import { isExactOnlyScope, isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
+import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import { projectTaintScopesForOrg } from "~/modules/agent/scopes/taint-read-scopes"
 import { resolveActingAgentIdForWrite, resolveAgentAuthorName } from "~/modules/threads/message"
 import { messageVisibilityFacts } from "~/services/security/visibility"
@@ -198,26 +198,15 @@ export function isScopeSubset(child: string[], parent: string[]): boolean {
   return isScopeCovered(child, parent)
 }
 
+/**
+ * Symmetric concrete-scope intersection with glob support: each side's scopes the other side
+ * covers. Coverage is `isScopeCovered`'s, so an exact-only scope survives only when BOTH sides
+ * name it exactly: a person's `*` does not read cost, and neither does a ceiling's `*`.
+ */
 export function intersectScopes(a: string[], b: string[]): string[] {
-  // Symmetric concrete-scope intersection with glob support.
-  // Strategy: take each side's scopes that pass subset against the other.
   const fromA = a.filter((s) => isScopeSubset([s], b))
   const fromB = b.filter((s) => isScopeSubset([s], a) && !fromA.includes(s))
   return [...fromA, ...fromB]
-}
-
-/**
- * `intersectScopes(scopes, personScopes)` for a turn that acts for a PERSON: an exact-only scope
- * (`isExactOnlyScope`) stays only when the person holds it exactly. Their `*` does not read cost,
- * so an agent ceiling that names the exact scope must not hand it to their turn either.
- */
-export function intersectWithPerson(scopes: string[], personScopes: string[]): string[] {
-  return exactHeldBy(intersectScopes(scopes, personScopes), personScopes)
-}
-
-/** `scopes` without the exact-only ones the person does not hold exactly. */
-export function exactHeldBy(scopes: string[], personScopes: string[]): string[] {
-  return scopes.filter((s) => !isExactOnlyScope(s) || personScopes.includes(s))
 }
 
 type LimitKey = "maxSteps" | "timeoutMs" | "schemaRetryBudget"

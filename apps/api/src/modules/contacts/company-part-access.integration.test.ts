@@ -269,6 +269,8 @@ describe("a company page's parts by the reader's access", () => {
       const { createProject } = await import("~/apps/projects/service/create-project")
       return createProject({ tx, orgId: w.orgId, actor: w.actor, input: { name: "Lumen audit" } })
     })
+    // A task left open on the closed project is not counted as open work.
+    await makeTask(w, past.id, "Leftover follow-up")
     await db.execute(drizzleSql`
       UPDATE app_projects.projects SET company_id = ${lumen}::uuid, archived_at = now() - interval '60 days'
        WHERE id = ${past.id}::uuid`)

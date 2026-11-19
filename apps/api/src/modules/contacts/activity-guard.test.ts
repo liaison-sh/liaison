@@ -6,6 +6,7 @@
 import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
+import contactsEn from "../../../../../packages/shared/src/i18n/locales/en/contacts.json"
 
 const ROOTS = [
   join(import.meta.dir, "../../apps"),
@@ -56,5 +57,18 @@ describe("timeline sources", () => {
         })
       }
     }
+  })
+
+  it("the timeline's chip for the projects rows names tasks and projects, not deals alone", () => {
+    // The projects source reads tasks and projects as well as deals: a task row is no deal.
+    const chips = contactsEn.activity.sources as Record<string, string>
+    const projects = manifests()
+      .flatMap(
+        ({ manifest }) =>
+          (manifest.activitySources ?? []) as Array<{ filterKey: string; label: string }>,
+      )
+      .find((s) => s.filterKey === "projects")
+    expect(projects?.label).toBe("Deals and projects")
+    expect(chips.projects).toBe(projects?.label)
   })
 })

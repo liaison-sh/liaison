@@ -30,7 +30,7 @@ import { uninstallApp } from "~/modules/apps/install-service"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
-import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
+import { demoWorldOf, loadDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { runWorldBeatOnce } from "~/modules/demo/world/registry"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import * as sealModule from "~/modules/signing/seal"
@@ -41,7 +41,7 @@ import { STAND_IN_CONSENT_WORDS, studioAgreements } from "~/seed/worlds/studio/a
 import { studioPlan } from "~/seed/worlds/studio/plan"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import { installFromDist } from "../../../../../test-support/seed/install-dist-apps"
-import { worldChangeRequestAction } from "./cr-accepted"
+import { acceptWorldChangeRequest, worldChangeRequestAction } from "./cr-accepted"
 
 const DB_URL = process.env.DATABASE_URL ?? ""
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -54,6 +54,33 @@ let orgId = ""
 let ownerId = ""
 let installedAgreements = false
 let outcomes: string[] = []
+/** The world the seed recorded on the workspace's marker, before the door's own marking. */
+let seededWorld = ""
+/** What a refused world beat left behind: its error and the stand-in events it wrote. */
+const refusals: Record<string, { error: string; standIns: number; decided: boolean }> = {}
+
+/** The `demo` signature events on the change request's sent version. */
+async function standInsOf(versionId: string): Promise<number> {
+  const [n] = await rows<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM app_agreements.signature_events
+     WHERE version_id = ${versionId}::uuid AND level = 'demo'`)
+  return n?.n ?? 0
+}
+
+/** Run the world's acceptance, expecting a refusal; record what it left. */
+async function refusedAcceptance(name: string, versionId: string): Promise<void> {
+  let error = ""
+  try {
+    await acceptWorldChangeRequest(orgId)
+  } catch (err) {
+    error = err instanceof Error ? err.message : String(err)
+  }
+  refusals[name] = {
+    error,
+    standIns: await standInsOf(versionId),
+    decided: (await worldChangeRequestAction(orgId))?.decided ?? true,
+  }
+}
 const spies: Array<ReturnType<typeof spyOn>> = []
 
 async function rows<T>(query: ReturnType<typeof sql>): Promise<T[]> {
@@ -104,6 +131,9 @@ beforeAll(async () => {
   expect(result.failures).toEqual([])
   orgId = result.orgId
   ownerId = result.org.ownerUserId ?? result.org.adminUserId
+  seededWorld = demoWorldOf(
+    await withPrivilegedDb(orgId, "test-studio-cr-marker", (tx) => loadDemoMarker(orgId, tx)),
+  )
   // As the door marks a visitor's workspace: of the services world.
   await markOrgAsDemo(
     orgId,
@@ -127,6 +157,27 @@ beforeAll(async () => {
   // The link mail is sent without being awaited by the mint: give it its moment.
   await new Promise((r) => setTimeout(r, 500))
   await drainOutbox()
+
+  // Before the beat: refused acceptances leave no stand-in on the open action.
+  const open = await worldChangeRequestAction(orgId)
+  if (!open) throw new Error("the change request was not sent")
+  DemoModeTestAccess.set(false)
+  try {
+    await refusedAcceptance("notDemoBox", open.versionId)
+  } finally {
+    DemoModeTestAccess.set(true)
+  }
+  // An expired link: the demo decide refuses it as not open.
+  const [{ expires } = { expires: "" }] = await rows<{ expires: string }>(sql`
+    SELECT expires_at::text AS expires FROM kernel.client_actions WHERE id = ${open.actionId}::uuid`)
+  await rows(sql`UPDATE kernel.client_actions SET expires_at = now() - interval '1 minute'
+                  WHERE id = ${open.actionId}::uuid`)
+  try {
+    await refusedAcceptance("expired", open.versionId)
+  } finally {
+    await rows(sql`UPDATE kernel.client_actions SET expires_at = ${expires}::timestamptz
+                    WHERE id = ${open.actionId}::uuid`)
+  }
 
   // Nothing below may seal with the key or ask a timestamp authority.
   spies.push(
@@ -178,6 +229,26 @@ describe("the client's acceptance in the services world", () => {
   it("the tour's card and project are the world's", () => {
     expect(STUDIO_CLIENT_CFG.cardTitle).toBe(CR.title)
     expect(studioPlan(BOARD_DATE).projects.map((p) => p.name)).toContain(STUDIO_CLIENT_PROJECT_NAME)
+  })
+
+  it("the services world's seed records its world on the workspace's demo marker", () => {
+    expect(seededWorld).toBe("studio")
+  })
+
+  it("off a demo box the world beat refuses and leaves no stand-in signature on the open action", () => {
+    expect(refusals.notDemoBox).toEqual({
+      error: expect.stringMatching(/not a demo server.*Nothing was accepted/),
+      standIns: 0,
+      decided: false,
+    })
+  })
+
+  it("a world beat the demo decide refuses leaves no stand-in signature on the action", () => {
+    expect(refusals.expired).toEqual({
+      error: expect.stringMatching(/not open|nothing more was decided/),
+      standIns: 0,
+      decided: false,
+    })
   })
 
   it("on a demo box the approved card's link to the client is recorded sent, and the sender is told nothing failed", async () => {

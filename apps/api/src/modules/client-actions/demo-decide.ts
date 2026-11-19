@@ -18,11 +18,13 @@
 // in the caller's own workspace. No tool, route or app reaches it: its one
 // importer is a demo world's step (`no-agent-sign.guard.test.ts`).
 //
-// It signs nothing and seals nothing. The caller writes the stand-in signature
-// event first, so the app's handler finds a `demo` record and seals none.
+// It signs nothing and seals nothing. The caller hands it the stand-in record
+// (`standIn`), written in the decision's transaction once every guard passed, so
+// the app's handler finds a `demo` record and seals none, and a refused decide
+// leaves no stand-in behind.
 
 import { sql } from "drizzle-orm"
-import { extractRows } from "~/db"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
@@ -44,6 +46,13 @@ export interface DemoDecideInput {
   actionId: string
   /** The app and type the caller expects the action to be about: anything else is refused. */
   target: { app: string; type: string }
+  /**
+   * The caller's stand-in record of the answer (a demo signature event, say). Run under the
+   * row's lock, in the decision's own transaction, only once every guard has passed and the
+   * row reads decided: a refusal writes no stand-in, and a stand-in that fails rolls the
+   * decision back.
+   */
+  standIn?: (tx: PrivilegedDb) => Promise<void>
 }
 
 export type DemoDecideRefusal =
@@ -170,6 +179,7 @@ export async function decideDemoClientAction(input: DemoDecideInput): Promise<De
         `Client action ${actionId} was decided or closed meanwhile: nothing more was decided.`,
       )
     }
+    if (input.standIn) await input.standIn(tx)
     await writeClientActionEvent(tx, {
       orgId,
       actionId,

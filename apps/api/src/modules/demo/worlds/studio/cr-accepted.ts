@@ -6,9 +6,11 @@
 //
 // The client is fictional, so nobody opens the link. As the app would hear a
 // real answer: the action is resolved from the world's named change request in
-// this workspace (never an id from a request), its signature event is written
-// first as a stand-in (level `demo`, "no signature took place"), then the demo
-// decide records the decision and queues the decided event. The agreements
+// this workspace (never an id from a request), and the demo decide records the
+// decision with its signature event as a stand-in (level `demo`, "no signature
+// took place"), written in the decision's transaction once the decide's guards
+// passed, and queues the decided event. A demo box only: elsewhere the beat
+// refuses, and a refused decide leaves no stand-in behind. The agreements
 // app's own handler hears it, finds the stand-in event, accepts the change
 // request and runs its effects (the contract total, the timebox, the task, the
 // planned billing line); the seal records a stand-in and nothing else: no seal
@@ -22,6 +24,7 @@ import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { decideDemoClientAction } from "~/modules/client-actions/demo-decide"
+import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import type { WorldInjector, WorldInjectorContext } from "~/modules/demo/world/registry"
 import { seedContext } from "~/seed/context"
 import { studioAgreements, writeStandInSignatureEvent } from "~/seed/worlds/studio/agreements"
@@ -96,8 +99,17 @@ export async function worldChangeRequestAction(orgId: string): Promise<ChangeReq
   }
 }
 
-/** The client's answer: the stand-in signature event first, then the demo decide. */
+/**
+ * The client's answer: the demo decide, which writes the stand-in signature event in the
+ * decision's own transaction once every guard has passed. A refused decide leaves no stand-in.
+ */
 export async function acceptWorldChangeRequest(orgId: string): Promise<ChangeRequestAction> {
+  // A stand-in answer is a demo box's only: a year or self-hosted box seeds this world too.
+  if (!isDemoModeEnabled()) {
+    throw new Error(
+      "This server is not a demo server: the client's answer is not played here. Nothing was accepted.",
+    )
+  }
   const action = await worldChangeRequestAction(orgId)
   if (!action) {
     throw new Error(
@@ -107,27 +119,26 @@ export async function acceptWorldChangeRequest(orgId: string): Promise<ChangeReq
   // Answered already (a replay of this run): nothing more to write.
   if (action.decided) return action
   const ctx = seedContext({ orgId, now: new Date() })
-  await withPrivilegedDb(orgId, "demo-studio-cr-stand-in", (tx) =>
-    writeStandInSignatureEvent(tx, {
-      id: ctx.id("signature_event", `studio:cr-accepted:${action.actionId}`),
-      orgId,
-      versionId: action.versionId,
-      clientActionId: action.actionId,
-      signerOrder: action.signOrder,
-      signerContactId: action.contactId,
-      signerUserId: null,
-      invitedEmail: action.invitedEmail,
-      invitedBy: action.senderName,
-      typedName: action.invitedName,
-      capacity: "",
-      documentSha256: action.documentSha256,
-      at: new Date(),
-    }),
-  )
   const decided = await decideDemoClientAction({
     orgId,
     actionId: action.actionId,
     target: { app: "agreements", type: "agreement_version" },
+    standIn: (tx) =>
+      writeStandInSignatureEvent(tx, {
+        id: ctx.id("signature_event", `studio:cr-accepted:${action.actionId}`),
+        orgId,
+        versionId: action.versionId,
+        clientActionId: action.actionId,
+        signerOrder: action.signOrder,
+        signerContactId: action.contactId,
+        signerUserId: null,
+        invitedEmail: action.invitedEmail,
+        invitedBy: action.senderName,
+        typedName: action.invitedName,
+        capacity: "",
+        documentSha256: action.documentSha256,
+        at: new Date(),
+      }),
   })
   if (!decided.ok) {
     // Decided meanwhile by another pass: the decision stands, once.

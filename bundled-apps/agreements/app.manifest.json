@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -2618,6 +2618,7 @@
   },
   "routines": {
     "scope-check": {
+      "title": "Scope check",
       "description": "When a client under a signed agreement writes, check the request against the signed text.",
       "kind": "event",
       "event": "mail:message:create",

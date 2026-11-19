@@ -717,6 +717,8 @@ export const routineTemplateRegistry = createTypedRegistry<
   [orgId: string, appName: string, templateKey: string],
   {
     description: string
+    /** The name people read, copied to the routine's title when enabled; absent = its key. */
+    title?: string
     kind: "recurring" | "scheduled" | "event"
     cron?: string
     timezone?: string

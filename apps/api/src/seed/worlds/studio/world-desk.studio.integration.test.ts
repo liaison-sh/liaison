@@ -261,7 +261,7 @@ describe("the services world's desks, queues and Home at the board date", () => 
     )
     const requester = requesters.get(String(card?.id))
     expect(requester?.kind).toBe("agent")
-    expect(requester?.name).toMatch(/^Routine /)
+    expect(requester?.name).toBe("Routine Scope check")
     expect(requester?.name).not.toContain("Studio Owner")
   })
 

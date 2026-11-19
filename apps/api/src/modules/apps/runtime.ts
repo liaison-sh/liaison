@@ -3759,6 +3759,7 @@ async function registerSingleApp(
         )) {
           routineTemplateRegistry.set([orgId, desc.name, key], {
             description: t.description,
+            ...(t.title ? { title: t.title } : {}),
             kind: t.kind,
             cron: t.cron,
             timezone: t.timezone,

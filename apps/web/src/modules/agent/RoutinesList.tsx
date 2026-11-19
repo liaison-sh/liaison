@@ -396,7 +396,7 @@ const RoutinesList: Component<Props> = (props) => {
                 >
                   <div class="min-w-0 flex-1">
                     <div class="flex items-center gap-2">
-                      <span class="text-[13px] font-medium text-text">{t.templateKey}</span>
+                      <span class="text-[13px] font-medium text-text">{t.title ?? t.templateKey}</span>
                       {/* A kernel template is the platform's own, not an app's (S28). */}
                       <Chip>
                         {t.appName === "kernel"

@@ -255,6 +255,8 @@ const agentDeclSchema = z.object({
 
 const routineTemplateSchema = z.object({
   description: z.string().min(1),
+  /** The name people read ("Scope check"), copied to the routine's title when enabled. */
+  title: z.string().min(1).max(80).optional(),
   kind: z.enum(["recurring", "scheduled", "event"]),
   cron: z.string().optional(),
   timezone: z.string().optional(),

@@ -4995,6 +4995,8 @@ export async function handleEnableRoutineTemplate(
         ownerUserId,
         ownerAgentId,
         name,
+        // The name people read (a card's "Routine Scope check"); the name stays the key.
+        ...(tpl.title ? { title: tpl.title } : {}),
         description: tpl.description,
         kind: tpl.kind,
         cron: tpl.kind === "recurring" ? cron : null,

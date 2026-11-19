@@ -516,6 +516,7 @@ routinesRoutes.get("/templates", async (c) => {
   const templates: Array<{
     appName: string
     templateKey: string
+    title?: string
     description: string
     kind: string
     enabled: boolean
@@ -530,6 +531,7 @@ routinesRoutes.get("/templates", async (c) => {
     templates.push({
       appName,
       templateKey,
+      ...(tpl.title ? { title: tpl.title } : {}),
       description: tpl.description,
       kind: tpl.kind,
       enabled: false,

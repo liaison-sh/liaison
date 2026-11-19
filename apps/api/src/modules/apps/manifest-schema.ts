@@ -1992,6 +1992,8 @@ export const appManifestJsonSchema = {
         type: "object",
         properties: {
           description: { type: "string", minLength: 1, maxLength: 200 },
+          // The name people read ("Scope check"); the template key stays the identifier.
+          title: { type: "string", minLength: 1, maxLength: 80 },
           kind: { type: "string", enum: ["recurring", "scheduled", "event"] },
           cron: { type: "string" },
           timezone: { type: "string" },

@@ -112,11 +112,14 @@ describe("the Scope check's group of clients", () => {
     groupId = groups[0]?.id ?? ""
     routineId = String(res.routine?.id ?? "")
     const [routine] = (await sql`
-      SELECT event, event_filter FROM ${kernel("routines")} WHERE id = ${routineId}`) as unknown as Array<{
+      SELECT event, event_filter, title FROM ${kernel("routines")} WHERE id = ${routineId}`) as unknown as Array<{
       event: string
       event_filter: { fromGroupIds?: string[] } | null
+      title: string | null
     }>
     expect(routine?.event).toBe("mail:message:create")
+    // People read the template's own name ("Routine Scope check" on a card), never its key.
+    expect(routine?.title).toBe("Scope check")
     expect(routine?.event_filter).toEqual({ fromGroupIds: [groupId] })
     // Enabled again (another person, or the same after a reset): still one group.
     await handleEnableRoutineTemplate(

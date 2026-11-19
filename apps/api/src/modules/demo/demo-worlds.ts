@@ -28,7 +28,11 @@ const warned = new Set<string>()
  * The worlds whose door is built: the company the entry shows, its limits and its example line
  * (the web's door for that world). A world joins this list in the change that builds its door.
  */
-const WORLDS_WITH_DOOR: ReadonlySet<DemoWorldId> = new Set<DemoWorldId>(["products", "saas"])
+const WORLDS_WITH_DOOR: ReadonlySet<DemoWorldId> = new Set<DemoWorldId>([
+  "products",
+  "saas",
+  "studio",
+])
 
 /**
  * Whether a visitor entering the world has its door and its scenarios to follow: every need the

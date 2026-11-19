@@ -23,25 +23,32 @@ afterEach(() => {
 })
 
 describe("enabled demo worlds", () => {
-  it("a studio entry in the env is dropped while the studio has a seed pack but no door tour", () => {
+  it("a studio entry in the env opens the services world once its door and every tour exist", () => {
     expect(seedableDemoWorlds()).toContain("studio")
-    expect(hasDoorTours("studio")).toBe(false)
+    expect(hasDoorTours("studio")).toBe(true)
     expect(hasDoorTours("saas")).toBe(true)
     env.LIAISON_DEMO_WORLDS = "products,studio"
-    expect(enabledDemoWorlds()).toEqual(["products"])
-    // Once its door is there, the same env runs it.
-    DemoWorldsTestAccess.setSeedable(["products", "saas", "studio"])
     expect(enabledDemoWorlds()).toEqual(["products", "studio"])
+    // A pack that cannot be seeded is still never offered.
+    DemoWorldsTestAccess.setSeedable(["products", "saas"])
+    expect(enabledDemoWorlds()).toEqual(["products"])
   })
 
-  it("a world with every tour but no door yet is not offered at the door", () => {
-    // Every services scenario has its tour now; its door is what it still lacks.
+  it("a world is offered at the door only when every need it shows has its tour", () => {
     const ids = new Set<string>(DEMO_SCENARIO_TOURS.map((t) => t.id))
+    for (const world of ["products", "saas", "studio"] as const) {
+      const complete = DEMO_WORLD_NEEDS[world].every((need) =>
+        ids.has(demoScenarioTourId(world, need)),
+      )
+      expect(complete, world).toBe(true)
+      expect(hasDoorTours(world), world).toBe(complete)
+    }
+    // Without a tour for one need the same check refuses the world.
     expect(
-      DEMO_WORLD_NEEDS.studio.every((need) => ids.has(demoScenarioTourId("studio", need))),
-    ).toBe(true)
-    expect(hasDoorTours("studio")).toBe(false)
-    expect(hasDoorTours("products")).toBe(true)
+      DEMO_WORLD_NEEDS.studio.every((need) =>
+        ids.has(`${demoScenarioTourId("studio", need)}-gone`),
+      ),
+    ).toBe(false)
   })
 
   it("unset runs the default world only, and the worlds come back in their fixed order", () => {

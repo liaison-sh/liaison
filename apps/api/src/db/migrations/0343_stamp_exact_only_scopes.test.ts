@@ -10,6 +10,12 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { extractRows, sql } from "~/db"
 import { type UserContext, withRlsContext } from "~/db/rls"
 import { EXACT_ONLY_SCOPES, isExactOnlyScope } from "~/modules/agent/scopes/scope-coverage"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import {
+  seedMessageRow,
+  seedThreadParticipantRow,
+  seedThreadRow,
+} from "~/seed/factories/threads/rows"
 
 const ORG_ID = crypto.randomUUID()
 const THREAD_ID = crypto.randomUUID()
@@ -47,20 +53,29 @@ const STAMPS: Record<string, string[]> = {
 }
 
 beforeAll(async () => {
-  await sql`INSERT INTO kernel.organizations (id, name, slug)
-    VALUES (${ORG_ID}, 'ExactStampOrg', ${`exact-stamp-${tag}`})`
-  await sql`INSERT INTO kernel.users (id, org_id, email, name, password_hash)
-    VALUES (${VIEWER}, ${ORG_ID}, ${`exact-stamp-${tag}@test.com`}, 'viewer', 'x')`
-  await sql`INSERT INTO kernel.threads (id, org_id, handle, created_by)
-    VALUES (${THREAD_ID}, ${ORG_ID}, ${`exact-stamp-${tag}`}, ${VIEWER})`
-  await sql`INSERT INTO kernel.thread_participants (thread_id, user_id, org_id)
-    VALUES (${THREAD_ID}, ${VIEWER}, ${ORG_ID})`
+  await seedOrgRow({ id: ORG_ID, name: "ExactStampOrg", slug: `exact-stamp-${tag}` })
+  await seedUserRow({
+    id: VIEWER,
+    orgId: ORG_ID,
+    email: `exact-stamp-${tag}@test.com`,
+    name: "viewer",
+    passwordHash: "x",
+  })
+  await seedThreadRow({
+    id: THREAD_ID,
+    orgId: ORG_ID,
+    handle: `exact-stamp-${tag}`,
+    createdBy: VIEWER,
+  })
+  await seedThreadParticipantRow({ threadId: THREAD_ID, userId: VIEWER, orgId: ORG_ID })
   for (const [content, required] of Object.entries(STAMPS)) {
-    const [row] = await sql<{ id: string }[]>`
-      INSERT INTO kernel.messages (thread_id, org_id, author_id, content, required_scopes)
-      VALUES (${THREAD_ID}, ${ORG_ID}, ${VIEWER}, ${content}, ${required}::text[])
-      RETURNING id`
-    ids[content] = row?.id ?? ""
+    ids[content] = await seedMessageRow({
+      threadId: THREAD_ID,
+      orgId: ORG_ID,
+      authorId: VIEWER,
+      content,
+      requiredScopes: required,
+    })
   }
 })
 

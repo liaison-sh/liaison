@@ -4,8 +4,8 @@
 // not hold it (row security checks it with its exact grant), so a person holding only `*` is a
 // gap in the post's audience, and an exact holder is not.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql } from "~/db"
 import { decidePostDisclosure } from "~/modules/agent/scopes/post-disclosure"
+import { seedUserScopeGrantRow } from "~/seed/factories/org/rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -26,8 +26,7 @@ describe("post audience on an exact-only stamp", () => {
     starOnly = (await minimal.session(orgId, { role: "admin" })).userId
     exactHolder = (await minimal.session(orgId, { role: "member" })).userId
     for (const userId of [requester, exactHolder]) {
-      await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
-        VALUES (${userId}, ${orgId}, ${MARGIN})`
+      await seedUserScopeGrantRow({ userId, orgId, scope: MARGIN })
     }
   })
 

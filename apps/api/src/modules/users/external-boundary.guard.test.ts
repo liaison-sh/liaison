@@ -117,6 +117,7 @@ const TREATED: Record<string, [Treatment, string]> = {
     "message authors and a thread's participants",
   ],
   "modules/agent/tools/connection-tools.ts": ["one-row", "the actor's name"],
+  "modules/agent/tools/model-times.ts": ["one-row", "the acting person's own time zone"],
   "modules/agent/tools/kernel-tools.ts": ["one-row", "the merge tool's declared write table"],
   "modules/agent/tools/setup-guide-tools.ts": ["one-row", "the caller's locale"],
   "modules/agent/tools/skills-routines-tools.ts": ["one-row", "a routine's own actor"],

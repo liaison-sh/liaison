@@ -2409,6 +2409,13 @@
       "when": 1900003430014,
       "tag": "0342_portal_projects_hours_share",
       "breakpoints": true
+    },
+    {
+      "idx": 344,
+      "version": "7",
+      "when": 1900003430015,
+      "tag": "0343_stamp_exact_only_scopes",
+      "breakpoints": true
     }
   ]
 }

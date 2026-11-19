@@ -73,6 +73,24 @@ describe("exact-only scopes", () => {
     expect([...EXACT_ONLY_SCOPES].sort()).toEqual([...checked].sort())
   })
 
+  it("the database's kernel.scope_is_exact_only lists the same scopes and the bare-marker rule", () => {
+    const dir = join(import.meta.dir, "..", "..", "..", "db", "migrations")
+    const defining = readdirSync(dir)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()
+      .map((f) => readFileSync(join(dir, f), "utf8"))
+      .filter((t) => t.includes("FUNCTION kernel.scope_is_exact_only("))
+    const text = defining.at(-1) ?? ""
+    const body = text.slice(text.indexOf("FUNCTION kernel.scope_is_exact_only("))
+    const fn = body.slice(0, body.indexOf("$fn$;"))
+    const list = fn.match(/ANY \(ARRAY\[([^\]]*)\]/)?.[1] ?? ""
+    const listed = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1] as string)
+    expect([...listed].sort()).toEqual([...EXACT_ONLY_SCOPES].sort())
+    // A bare marker (no `:`) is exact-only there too, the wildcard excepted.
+    expect(fn).toContain("pg_catalog.strpos(scope, ':') OPERATOR(pg_catalog.=) 0")
+    expect(fn).toContain("scope OPERATOR(pg_catalog.<>) '*'")
+  })
+
   it("a bare marker scope is exact-only, the wildcard and app scopes are not", () => {
     expect(isExactOnlyScope("clevel")).toBe(true)
     expect(isExactOnlyScope("projects:margin:read")).toBe(true)

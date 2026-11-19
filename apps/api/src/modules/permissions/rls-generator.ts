@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import type { DimensionDefinition } from "~/modules/permissions/dimensions"
 
@@ -291,7 +292,8 @@ export interface RequiredScopesVisibility {
  * coverage following `hasScope` (permissions.ts) rule for rule:
  * - an empty or NULL required entry is never covered, and a NULL column never
  *   satisfies the scope branch; an empty column is covered by anyone;
- * - grant `*` covers everything;
+ * - grant `*` covers everything, but an exact-only scope (`isExactOnlyScope`,
+ *   `kernel.scope_is_exact_only`): only its exact grant covers that one;
  * - a grant with more segments than the required scope never covers it;
  * - a `*` segment is honoured only as the LAST segment of the grant (a
  *   mid-segment wildcard makes the grant cover nothing);
@@ -311,6 +313,7 @@ export interface RequiredScopesVisibility {
 export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisibility): string {
   const required = quoteIdent(snake(opts.requiredScopesColumn))
   const disclosure = quoteIdent(snake(opts.disclosureListColumn))
+  const exactOnly = `${quoteIdent(schemaRef("kernel"))}.scope_is_exact_only`
   return `(
       (
         ${required} IS NOT NULL
@@ -328,15 +331,18 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
                 regexp_split_to_array(grant_row.scope, ':') AS gp,
                 regexp_split_to_array(req.scope, ':') AS rp
               ) AS parts
-              WHERE grant_row.scope = '*'
-                OR (
-                  cardinality(parts.gp) <= cardinality(parts.rp)
-                  AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
-                  AND NOT EXISTS (
-                    SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
-                    WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+              WHERE CASE WHEN ${exactOnly}(req.scope)
+                THEN grant_row.scope = req.scope
+                ELSE grant_row.scope = '*'
+                  OR (
+                    cardinality(parts.gp) <= cardinality(parts.rp)
+                    AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
+                    AND NOT EXISTS (
+                      SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
+                      WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                    )
                   )
-                )
+              END
             )
           ) IS NOT TRUE
         )
@@ -364,15 +370,18 @@ export function generateRequiredScopesVisibilityClause(opts: RequiredScopesVisib
                   regexp_split_to_array(grant_row.scope, ':') AS gp,
                   regexp_split_to_array(req.scope, ':') AS rp
                 ) AS parts
-                WHERE grant_row.scope = '*'
-                  OR (
-                    cardinality(parts.gp) <= cardinality(parts.rp)
-                    AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
-                    AND NOT EXISTS (
-                      SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
-                      WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                WHERE CASE WHEN ${exactOnly}(req.scope)
+                  THEN grant_row.scope = req.scope
+                  ELSE grant_row.scope = '*'
+                    OR (
+                      cardinality(parts.gp) <= cardinality(parts.rp)
+                      AND COALESCE(array_position(parts.gp, '*'), cardinality(parts.gp)) = cardinality(parts.gp)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM generate_subscripts(parts.gp, 1) AS i
+                        WHERE parts.gp[i] <> '*' AND parts.gp[i] IS DISTINCT FROM parts.rp[i]
+                      )
                     )
-                  )
+                END
               )
             ) IS NOT TRUE
         )

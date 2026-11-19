@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.7.5",
+  "version": "0.7.7",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1096,6 +1096,14 @@
                         },
                         "text": {
                           "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "A list's written items, each a text like a paragraph's (or from and line for one line per row of a record list)."
                         }
                       },
                       "allOf": [
@@ -1353,6 +1361,14 @@
                         },
                         "text": {
                           "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "A list's written items, each a text like a paragraph's (or from and line for one line per row of a record list)."
                         }
                       },
                       "allOf": [
@@ -1501,7 +1517,8 @@
         "required": [
           "id"
         ]
-      }
+      },
+      "preflight": "agreementPreparePreflightHandler"
     },
     "agreement_price_set": {
       "description": "Set the price of an agreement. A person's own action only.",

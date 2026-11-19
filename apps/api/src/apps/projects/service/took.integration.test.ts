@@ -648,6 +648,8 @@ describe("plan, terms and period timeboxes", () => {
   })
 
   it("the plan stores its basis and timebox and refuses on a project without time and budgets", async () => {
+    // A fixed basis needs the project billed at a fixed price (the test above left it on a rate).
+    await call("projects_billingTermsSet", { projectId: on, fixedPrice: 4000 })
     const plan = await call("projects_timePlanSet", {
       projectId: on,
       basis: "fixed",

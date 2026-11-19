@@ -809,7 +809,7 @@
     },
     "createProject": {
       "focusCore": true,
-      "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id.",
+      "description": "Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description, an assignee, a timebox (planned hours) and a milestone flag) in `tasks`, in this ONE call. Never create the project first and its tasks afterwards when you already know them: if this call waits for approval, the tasks are approved and created with it, and a task created before the project exists has nowhere to go. More than 20 tasks: pass the first 20 here, then add the rest with `create` and the returned project id.",
       "searchKeywords": ["project", "projet", "nouveau", "créer", "new"],
       "requiredScopes": ["projects:projects:write"],
       "trustBoundary": "user",
@@ -849,7 +849,7 @@
           "tasks": {
             "type": "array",
             "maxItems": 20,
-            "description": "Optional: the project's tasks, created WITH it in this one call (at most 20), in board order. Each takes the same title, description and assignee fields as `create`. Pass the whole plan here rather than calling `create` per task afterwards: when this call waits for approval, the project and every task are approved and created together.",
+            "description": "Optional: the project's tasks, created WITH it in this one call (at most 20), in board order. Each takes the same title, description, assignee, timebox and isMilestone fields as `create`; a task timebox needs the project to use time and budgets (`timeBudgets`: true). Pass the whole plan here rather than calling `create` per task afterwards: when this call waits for approval, the project and every task are approved and created together.",
             "items": {
               "type": "object",
               "properties": {
@@ -873,6 +873,16 @@
                     "string",
                     "null"
                   ]
+                },
+                "timebox": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Planned size, e.g. \"3 days\"."
+                },
+                "isMilestone": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -4362,7 +4372,7 @@
       }
     },
     "milestone_status_read": {
-      "description": "Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and, per task, its done state, milestone mark and completion day. No title, assignee, time or activity. Called by the invoicing app only.",
+      "description": "Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and client company and, per task, its done state, milestone mark and completion day. No title, assignee, time or activity. Called by the invoicing app only.",
       "readOnly": true,
       "agentVisible": false,
       "trustBoundary": "internal",
@@ -4424,7 +4434,7 @@
       }
     },
     "time_plan_set": {
-      "description": "Set a project's plan: basis (none, hourly, daily, fixed, retainer), whole-project timebox (\"40 days\"; null clears), biller, source repositories, and datedHours (on: its lead and finance see dated entries made from now on).",
+      "description": "Set a project's plan: basis (none, hourly, daily, fixed, retainer), whole-project timebox (\"40 days\"; null clears), biller, source repositories, and datedHours (on: its lead and finance see dated entries made from now on). Send at least one of these: a call that sets nothing is refused. The basis follows the project's billing terms: omitted on a project with a fixed price, it becomes fixed; one that contradicts the terms is refused.",
       "searchKeywords": [
         "budget",
         "plan",
@@ -4440,6 +4450,7 @@
       ],
       "trustBoundary": "user",
       "handler": "timePlanSet",
+      "preflight": "timePlanSetPreflight",
       "feature": "time_budgets",
       "params": {
         "type": "object",
@@ -4466,7 +4477,8 @@
               "daily",
               "fixed",
               "retainer"
-            ]
+            ],
+            "description": "How the project is billed. A fixed price takes fixed; a rate takes hourly or daily."
           },
           "timebox": {
             "type": [

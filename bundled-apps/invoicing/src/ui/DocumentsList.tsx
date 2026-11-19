@@ -64,10 +64,11 @@ const TYPE_FOR_FILTER: Record<string, DocType | undefined> = {
   proformas: "proforma",
   "purchase-orders": "purchase_order",
   "credit-notes": "credit_note",
-  // "all" (and anything unrecognised) → no type filter. There is no drafts
-  // segment any more: draft is not a user-facing document category, so draft
-  // rows are stripped from every tab client-side.
+  // "all", "drafts" (and anything unrecognised) → no type filter.
 }
+
+/** The sidebar's Drafts entry: unissued drafts of every type, and nothing else. */
+const DRAFTS_KEY = "drafts"
 
 const TYPE_NOUN: Record<string, { one: string; other: string }> = {
   invoices: { one: "invoice", other: "invoices" },
@@ -75,6 +76,7 @@ const TYPE_NOUN: Record<string, { one: string; other: string }> = {
   proformas: { one: "proforma", other: "proformas" },
   "purchase-orders": { one: "purchase order", other: "purchase orders" },
   "credit-notes": { one: "credit note", other: "credit notes" },
+  drafts: { one: "draft", other: "drafts" },
 }
 const DEFAULT_NOUN = { one: "document", other: "documents" }
 
@@ -204,16 +206,23 @@ export const InvoicingDocumentsList: Component<{ entityId?: string }> = (props) 
 
   const [capped, setCapped] = createSignal(false)
   const [data, { refetch }] = createResource(
-    () => ({ f: filter(), type: TYPE_FOR_FILTER[typeKey()] }),
-    async ({ f, type }): Promise<DocumentRow[]> => {
-      // Every tab shows issued-and-later documents. Draft is not a user-facing
-      // category, so draft rows are stripped client-side (the status filter is
-      // single-value equality server-side, so "not draft" cannot be expressed
-      // there). Legacy draft rows stay reachable by direct link only.
-      const rows = await searchDocuments({ ...searchParamsFromFilter(f), type })
+    () => ({ f: filter(), type: TYPE_FOR_FILTER[typeKey()], drafts: typeKey() === DRAFTS_KEY }),
+    async ({ f, type, drafts }): Promise<DocumentRow[]> => {
+      // The Drafts entry asks the server for drafts only (newest first), so issued documents
+      // never crowd them out of the page; it ignores the status filter, which is about issued
+      // documents. Every other entry shows issued-and-later documents: drafts are stripped
+      // client-side, as "not draft" cannot be expressed in the single-value status filter.
+      const shown: DashboardFilter = drafts
+        ? { ...f, status: "all", date_from: null, date_to: null }
+        : f
+      const rows = await searchDocuments({
+        ...searchParamsFromFilter(shown),
+        type,
+        ...(drafts ? { status: "draft" } : {}),
+      })
       // A full page means more documents may exist than were loaded: the footer says so.
       setCapped(rows.length >= LIST_PAGE_LIMIT)
-      return filterRowsForTab(applyFilter(rows, f), false)
+      return filterRowsForTab(applyFilter(rows, shown), drafts)
     },
   )
 

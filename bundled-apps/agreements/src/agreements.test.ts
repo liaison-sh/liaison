@@ -13,11 +13,13 @@ import {
   agreementCreate,
   agreementGet,
   agreementPrepare,
+  agreementPreparePreflight,
   agreementPriceSet,
   agreementsSearch,
   agreementUpdate,
   orderByNeed,
 } from "./agreements"
+import { agentDraftSentence } from "./checks"
 import type { AgreementsCtx } from "./ctx"
 import { agreementPriceSetHandler, agreementUpdateHandler } from "./handlers"
 import { memoryDb, type Row } from "./memory-db.testutil"
@@ -625,6 +627,52 @@ describe("documents this signature does not fit", () => {
     expect(created.error.message).toContain('"source.body.blocks.0.level" must be 1, 2 or 3.')
   })
 
+  it("a list of written items is kept as sent; a list of any other shape is refused, naming it", async () => {
+    const db = memoryDb()
+    const id = okId(await agreementCreate(ctxFor(db), { kind: "nda", title: "NDA" }))
+    const ctx = ctxFor(db, { agent: AGENT })
+    const bad = (await agreementUpdate(ctx, {
+      id,
+      source: {
+        body: {
+          blocks: [
+            { type: "list", text: "Scope" },
+            { type: "list", items: ["Design", 2] },
+            { type: "list", items: ["Design"], from: "lines", line: "{{sku}}" },
+            { type: "list", from: "lines", line: "{{sku}}" },
+          ],
+        },
+      },
+    })) as { error: { code: string; message: string } }
+    expect(bad.error.code).toBe("INVALID_SOURCE")
+    expect(bad.error.message).toContain(
+      '"source.body.blocks.0.text" is not a recognised field of a list',
+    )
+    expect(bad.error.message).toContain(
+      '"source.body.blocks.0" takes its written items (items), or from and line.',
+    )
+    expect(bad.error.message).toContain('"source.body.blocks.1.items" must be a list of texts.')
+    expect(bad.error.message).toContain(
+      '"source.body.blocks.2" takes its written items (items), or from and line, never both.',
+    )
+    expect(bad.error.message).not.toContain("blocks.3")
+    const blocks = [
+      { type: "heading", level: 1, text: "Scope" },
+      { type: "list", items: ["Design", "Build", "Launch"] },
+    ]
+    const out = await agreementUpdate(ctx, { id, source: { body: { blocks } } })
+    expect((out as { status: string }).status).not.toBe("error")
+    const stored = db.tables.get("agreement_drafts")?.find((r) => r.agreement_id === id)?.source
+    const source = (typeof stored === "string" ? JSON.parse(stored) : stored) as {
+      body: { blocks: unknown[] }
+    }
+    expect(source.body.blocks[1]).toMatchObject({
+      type: "list",
+      items: ["Design", "Build", "Launch"],
+      agent_draft: true,
+    })
+  })
+
   it("a document of kind other needs a person to say what it is", async () => {
     const db = memoryDb()
     const id = okId(await agreementCreate(ctxFor(db), { kind: "other", title: "Scan" }))
@@ -663,11 +711,66 @@ describe("documents this signature does not fit", () => {
       code: "AGENT_TEXT_UNREAD",
     })
     expect((out as { error: { message: string } }).error.message).toContain(
-      'clause 1 "The work is a website."',
+      "A person must read the clause an agent wrote (1) in the agreement's editor and clear it.",
     )
     await agreementUpdate(ctxFor(db), { id, source })
     const freezing = { ...ctxFor(db), ...fakeRenderer() }
     expect(((await agreementPrepare(freezing, { id })) as { status: string }).status).toBe("ok")
+  })
+
+  it("the refusal counts the agent's clauses and names their places as ranges, quoting none", async () => {
+    const db = memoryDb()
+    const blocks = Array.from({ length: 16 }, (_, i) => ({
+      type: "paragraph",
+      text: `Clause number ${i + 1} of the proposal, long enough to be cut short in a quote.`,
+    }))
+    const id = okId(
+      await agreementCreate(ctxFor(db, { agent: AGENT }), {
+        kind: "nda",
+        title: "NDA",
+        source: { body: { blocks } },
+      }),
+    )
+    const out = (await agreementPrepare(ctxFor(db), { id })) as {
+      error: { code: string; message: string }
+      checks: Array<{ code: string; message: string }>
+    }
+    expect(out.error.message).toContain(
+      "A person must read the 16 clauses an agent wrote (1-16) in the agreement's editor and clear them.",
+    )
+    expect(out.error.message).not.toContain("Clause number")
+    // A person cleared some: the rest are named as ranges.
+    const some = {
+      body: { blocks: blocks.map((b, i) => ({ ...b, agent_draft: ![2, 3, 9].includes(i) })) },
+    }
+    expect(agentDraftSentence(some)).toBe(
+      "A person must read the 13 clauses an agent wrote (1-2, 5-9, 11-16) in the agreement's editor and clear them.",
+    )
+  })
+
+  it("prepare's preflight refuses a call prepare would refuse, before any approval, and passes a ready one", async () => {
+    const db = memoryDb()
+    const source = { body: { blocks: [{ type: "paragraph", text: "The work is a website." }] } }
+    const id = okId(
+      await agreementCreate(ctxFor(db, { agent: AGENT }), { kind: "sow", title: "Site", source }),
+    )
+    const before = JSON.stringify([...db.tables.entries()])
+    const ctx = ctxFor(db, { agent: AGENT })
+    const out = (await agreementPreparePreflight(ctx, { id })) as {
+      error: { code: string; message: string }
+    }
+    expect(out.error.code).toBe("PRICE_NOT_SET")
+    expect(out.error.message).toContain("No price yet")
+    expect(out.error.message).toContain("A person must read the clause an agent wrote (1)")
+    expect(ctx.approvals).toEqual([])
+    expect(JSON.stringify([...db.tables.entries()])).toBe(before)
+    expect(
+      ((await agreementPreparePreflight(ctx, { id: "nope" })) as { error: { code: string } }).error
+        .code,
+    ).toBe("NOT_FOUND")
+    await agreementPriceSet(ctxFor(db), { id, price_minor: "640000", currency: "EUR" })
+    await agreementUpdate(ctxFor(db), { id, source })
+    expect(await agreementPreparePreflight(ctx, { id })).toEqual({ ok: true })
   })
 })
 

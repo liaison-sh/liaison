@@ -4132,7 +4132,9 @@
   },
   "approvalDecisionLine": {
     "withdrawn": "Retirée par le demandeur.",
-    "withdrawnReason": "Retirée par le demandeur. Motif : {{reason}}."
+    "withdrawnReason": "Retirée par le demandeur. Motif : {{reason}}.",
+    "withdrawnByAgent": "{{agent}} l'a retirée.",
+    "withdrawnByAgentReason": "{{agent}} l'a retirée. Motif : {{reason}}."
   },
   "roleNames": {
     "fullMember": "Membre à part entière",

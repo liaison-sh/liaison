@@ -9,6 +9,7 @@ import { createResource } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { STAND_IN_SENTENCE } from "./stand-in"
 import { AgreementDetailView } from "./ui/Detail"
+import { DocumentText } from "./ui/DocumentText"
 import { AgreementEditor } from "./ui/Editor"
 import { AgreementsList } from "./ui/List"
 import { AgreementNew } from "./ui/New"
@@ -526,5 +527,25 @@ describe("the proof of signature on the agreement's page", () => {
     fireEvent.click(await screen.findByTestId("agreement-pane-evidence"))
     expect(await screen.findByTestId("agreement-download-signed")).toBeTruthy()
     expect(screen.queryByTestId("agreement-download-evidence")).toBeNull()
+  })
+})
+
+describe("the document text", () => {
+  it("shows every written item of a list, and names a list read from the record", () => {
+    render(() => (
+      <DocumentText
+        source={{
+          body: {
+            blocks: [
+              { type: "list", items: ["Design", "Build", "Launch"] },
+              { type: "list", from: "lines", line: "{{sku}}" },
+            ],
+          },
+        }}
+      />
+    ))
+    const items = screen.getAllByTestId("agreement-list-item").map((el) => el.textContent)
+    expect(items).toEqual(["Design", "Build", "Launch"])
+    expect(screen.getByTestId("agreement-document-text").textContent).toContain("A list")
   })
 })

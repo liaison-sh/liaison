@@ -204,6 +204,36 @@ export async function writeTaskPlan(args: {
   return taskTimeKeys(tx, orgId, taskId, project)
 }
 
+/**
+ * The timebox and milestone flag of tasks created with their project, in the creating
+ * transaction. The caller has checked that the project turns time and budgets on in that
+ * call, so the org's switch (recomputed only after the commit) is not asked here.
+ */
+export async function writeInitialTaskPlans(args: {
+  tx: Tx
+  orgId: string
+  tasks: Array<{ taskId: string } & TaskPlanPatch>
+}): Promise<Map<string, number | null>> {
+  const { tx, orgId, tasks } = args
+  const hpd = await hoursPerDayMinutes(tx, orgId)
+  const out = new Map<string, number | null>()
+  for (const task of tasks) {
+    if (task.timebox === undefined && task.isMilestone === undefined) continue
+    const minutes =
+      task.timebox === undefined || task.timebox === null
+        ? null
+        : readDuration(task.timebox, hpd, "timebox")
+    await tx.execute(drizzleSql`
+      UPDATE ${projectsRel("tasks")} SET
+        timebox_minutes = ${minutes},
+        is_milestone = ${task.isMilestone ?? false},
+        updated_at = now()
+       WHERE id = ${task.taskId}::uuid AND org_id = ${orgId}::uuid`)
+    out.set(task.taskId, minutes)
+  }
+  return out
+}
+
 /** A task's time keys when its project uses time and budgets, else null (no key at all). */
 export async function taskTimeKeys(
   tx: Tx,
@@ -618,6 +648,82 @@ export interface TimePlan {
  * on reaches forward only (the row policy reads the change date). Answers whether dated hours
  * were turned on now, so the caller tells everyone with entries.
  */
+/** What `time_plan_set` can set beyond the project it names. */
+const SETTABLE_PLAN_FIELDS = ["basis", "timebox", "billerId", "sourceRepos", "datedHours"] as const
+
+/**
+ * Checks a `time_plan_set` call without writing anything: the project uses time and budgets,
+ * the call sets at least one field, the basis is known and agrees with the project's billing
+ * terms (a fixed price is billed on a fixed basis, a rate on any basis but fixed). An omitted
+ * basis on a project with a fixed price and no basis yet becomes `fixed`. Runs at staging (the
+ * tool's preflight, before any approval) and again in the write.
+ */
+export async function checkTimePlanInput(args: {
+  tx: Tx
+  orgId: string
+  scopes: readonly string[]
+  input: TimePlanInput
+}): Promise<{ project: PlanningProject; basis: Basis | undefined; derivedBasis: boolean }> {
+  const { tx, orgId, scopes, input } = args
+  const project = await loadPlanningProject(tx, orgId, input.projectId)
+  requirePlanning(orgId, project, scopes)
+  if (!SETTABLE_PLAN_FIELDS.some((field) => input[field] !== undefined)) {
+    throw new ProjectsServiceError(
+      400,
+      "nothing_to_set",
+      `Nothing changed: this call sets nothing on ${project.name}'s plan. Send at least one of ${SETTABLE_PLAN_FIELDS.join(", ")}.`,
+      { settableFields: [...SETTABLE_PLAN_FIELDS] },
+    )
+  }
+  if (input.basis !== undefined && !BASES.includes(input.basis)) {
+    throw new ProjectsServiceError(
+      400,
+      "invalid_basis",
+      `Nothing changed: basis is one of ${BASES.join(", ")}.`,
+    )
+  }
+  const terms = extractRows<{
+    rate_minor: string | number | null
+    fixed_price_minor: string | number | null
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT rate_minor, fixed_price_minor FROM ${projectsRel("project_billing_terms")}
+       WHERE project_id = ${project.id}::uuid AND org_id = ${orgId}::uuid`),
+  )[0]
+  const fixedPrice = terms?.fixed_price_minor != null
+  const rate = terms?.rate_minor != null
+  if (input.basis !== undefined) {
+    if (fixedPrice && (input.basis === "hourly" || input.basis === "daily")) {
+      throw new ProjectsServiceError(
+        400,
+        "basis_conflicts_terms",
+        `Nothing changed: ${project.name} is billed at a fixed price, so its basis is fixed, not ${input.basis}. Send basis fixed, or change its billing terms to a rate first (billing_terms_set).`,
+        { terms: "fixed_price", basis: input.basis },
+      )
+    }
+    if (rate && input.basis === "fixed") {
+      throw new ProjectsServiceError(
+        400,
+        "basis_conflicts_terms",
+        `Nothing changed: ${project.name} is billed by a rate, so its basis is hourly or daily, not fixed. Send basis hourly or daily, or change its billing terms to a fixed price first (billing_terms_set).`,
+        { terms: "rate", basis: input.basis },
+      )
+    }
+    return { project, basis: input.basis, derivedBasis: false }
+  }
+  if (fixedPrice) {
+    const current = extractRows<{ basis: Basis }>(
+      await tx.execute(drizzleSql`
+        SELECT basis FROM ${projectsRel("project_time_plan")}
+         WHERE project_id = ${project.id}::uuid AND org_id = ${orgId}::uuid`),
+    )[0]?.basis
+    if (current === undefined || current === "none") {
+      return { project, basis: "fixed", derivedBasis: true }
+    }
+  }
+  return { project, basis: undefined, derivedBasis: false }
+}
+
 export async function setTimePlan(args: {
   tx: Tx
   orgId: string
@@ -625,15 +731,12 @@ export async function setTimePlan(args: {
   scopes: readonly string[]
   input: TimePlanInput
 }): Promise<{ plan: TimePlan; datedTurnedOn: boolean; message: string }> {
-  const { tx, orgId, actorId, scopes, input } = args
-  const project = await loadPlanningProject(tx, orgId, input.projectId)
-  requirePlanning(orgId, project, scopes)
-  if (input.basis !== undefined && !BASES.includes(input.basis)) {
-    throw new ProjectsServiceError(
-      400,
-      "invalid_basis",
-      `Nothing changed: basis is one of ${BASES.join(", ")}.`,
-    )
+  const { tx, orgId, actorId, scopes } = args
+  const checked = await checkTimePlanInput({ tx, orgId, scopes, input: args.input })
+  const project = checked.project
+  const input: TimePlanInput = {
+    ...args.input,
+    ...(checked.basis !== undefined ? { basis: checked.basis } : {}),
   }
   const timebox =
     input.timebox === undefined || input.timebox === null
@@ -692,6 +795,7 @@ export async function setTimePlan(args: {
   if (row.timebox_minutes) parts.push(`timebox ${formatDuration(row.timebox_minutes, "h")}`)
   parts.push(`dated hours ${row.dated_hours ? "on" : "off"}`)
   let message = `${parts.join(", ")}.`
+  if (checked.derivedBasis) message += " The basis is fixed because the project has a fixed price."
   if (datedTurnedOn) {
     message +=
       " From now on its lead and finance see each person's dated entries made on it; entries made before stay private to their authors. Everyone with entries is told on Home."

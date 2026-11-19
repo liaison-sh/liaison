@@ -111,6 +111,7 @@ const PLAN: RecordingStep[] = [
     entry: "tool:agreement_price_set",
     input: (s) => params({ id: s.values.proposal, price_minor: "1200000", currency: "EUR" }),
   },
+  { entry: "preflight:agreement_prepare", input: (s) => params({ id: s.values.nda }) },
   {
     entry: "tool:agreement_prepare",
     input: (s) => params({ id: s.values.nda }),

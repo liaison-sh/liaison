@@ -35,13 +35,15 @@ describe("DocumentsList rowHref (Phase 17 — list → detail navigation)", () =
     expect(source).not.toMatch(/rowHref=\{\(r\) => `\/invoicing\/document/)
   })
 
-  it("has no drafts filter key or noun, and always strips draft rows client-side", () => {
-    // Draft is not a user-facing document category: no Drafts tab, no
-    // draftsOnly resource key, and every tab hides draft rows.
-    expect(source).not.toContain("draftsOnly")
-    expect(source).not.toMatch(/drafts:\s*"drafts"/)
-    expect(source).not.toContain('status: "draft"')
-    expect(source).toContain("filterRowsForTab(applyFilter(rows, f), false)")
+  it("lists drafts under their own Drafts entry and keeps them out of every other entry", () => {
+    // Drafts are first-class (an agent's draft, a milestone's, a month-end run's): the Drafts
+    // entry asks the server for status=draft only and keeps just those rows, so an approved
+    // draft is found from the list; the other entries still hide drafts, so their totals
+    // count issued documents only.
+    expect(source).toContain('const DRAFTS_KEY = "drafts"')
+    expect(source).toMatch(/drafts:\s*\{\s*one:\s*"draft",\s*other:\s*"drafts"\s*\}/)
+    expect(source).toContain('...(drafts ? { status: "draft" } : {})')
+    expect(source).toContain("filterRowsForTab(applyFilter(rows, shown), drafts)")
   })
 
   it("wires the credit-notes sidebar segment to type='credit_note' (0.5.0)", () => {

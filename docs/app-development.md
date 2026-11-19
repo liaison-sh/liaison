@@ -188,6 +188,13 @@ handlers teaches exactly one thing.
   listed values (columns combined with AND); `{ "parent": { "table":
   "documents", "column": "document_id" } }` keeps the rows whose parent, in
   another marked table of the app, is kept.
+- **Personal rows.** A table declaring `personalScope` (`{}` when the table is
+  the account, or `{ "via": { "table", "localColumn" } }` one hop to it) shows
+  a row of a personal account (`owner_type = 'user'`) to its owner only, never
+  through a broad scope. Add `"personalAgentOnly": true` to keep a shared
+  agent (a role or system agent) out as well, even on its owner's turn: the
+  owner and their personal agent reach those rows, nobody else does. Mail
+  declares it on its accounts, conversations, messages and drafts.
 
 ### Frontend (`apps/web/src/modules/<name>/`)
 

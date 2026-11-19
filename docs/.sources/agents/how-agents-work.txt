@@ -177,3 +177,4 @@ company knowledge goes to the skill covering the task or a Knowledge document, n
 memory is read by that agent only -> apps/api/src/modules/agent/prompts/agent-charter.md:15
 skill and knowledge writes wait for approval -> apps/api/src/modules/agent/prompts/agent-charter.md:15
 agent asks where first when it could go in more than one place -> apps/api/src/modules/agent/prompts/agent-charter.md:15
+A shared agent never reads a person's own mailbox -> apps/api/src/modules/agent/runtime/run-context.ts:302 ; apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:324 ; apps/api/src/modules/agent/media/mail-attachment-read.ts:150

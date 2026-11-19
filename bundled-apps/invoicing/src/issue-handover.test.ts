@@ -16,9 +16,9 @@ import { issueTogether } from "./issue"
 import { issueDateParts } from "./issue-date"
 import {
   documentsConvertLocal,
+  documentsUpdate,
   draftsCreate,
   draftsDiscard,
-  documentsUpdate,
   draftsUpdate,
   invoiceIssue,
   type MutationsCtx,
@@ -630,7 +630,10 @@ describe("the company a draft was made for", () => {
     const h = harness()
     const draftId = await draftWith(h, null)
     const company = "5c0a1b2c-0000-4000-8000-000000000001"
-    await h.db.update("documents", draftId, { company_id: company, counterparty_contact_id: CONTACT })
+    await h.db.update("documents", draftId, {
+      company_id: company,
+      counterparty_contact_id: CONTACT,
+    })
     contactIn(h, null)
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
     expect(res.status).toBe("completed")
@@ -642,7 +645,10 @@ describe("the company a draft was made for", () => {
     const draftId = await draftWith(h, null)
     const stamped = "5c0a1b2c-0000-4000-8000-000000000001"
     const contactsOwn = "5c0a1b2c-0000-4000-8000-000000000003"
-    await h.db.update("documents", draftId, { company_id: stamped, counterparty_contact_id: CONTACT })
+    await h.db.update("documents", draftId, {
+      company_id: stamped,
+      counterparty_contact_id: CONTACT,
+    })
     contactIn(h, contactsOwn)
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
     expect(res.status).toBe("completed")

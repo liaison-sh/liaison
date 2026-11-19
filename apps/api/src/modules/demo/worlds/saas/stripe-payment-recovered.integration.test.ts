@@ -106,8 +106,8 @@ async function drain(): Promise<void> {
   await settleDemoPaymentsDeliveries()
   await flushEventHandlers()
   // Until the outbox is empty: run beside other seeded files in one process,
-  // their events sit ahead of this org's, far more than a few batches' worth.
-  await drainOutbox({ maxRounds: 2000 })
+  // their events sit ahead of this org's (the drain is bounded by progress).
+  await drainOutbox()
 }
 
 const pastDueCount = async () =>

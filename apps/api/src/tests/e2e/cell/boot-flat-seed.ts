@@ -175,7 +175,8 @@ async function main(): Promise<void> {
     setUp.push(...(await Promise.all(batch.map((i) => seedOne(i, runTag)))))
   }
   registerEventSubscribers()
-  await drainOutbox({ maxRounds: 10_000 })
+  // Every org seeded above queued its events: a large backlog, so a longer budget.
+  await drainOutbox({ timeoutMs: 30 * 60_000 })
   const seeded: SeededOrg[] = []
   for (const org of setUp) seeded.push(await mintToken(org))
   writeFileSync(out, JSON.stringify(seeded))

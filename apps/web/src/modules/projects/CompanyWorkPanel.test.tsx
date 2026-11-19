@@ -56,6 +56,41 @@ describe("CompanyWorkPanel", () => {
     )
   })
 
+  it("shows a seeded status in the app's words, not its stored token", async () => {
+    mocks.post.mockResolvedValueOnce({
+      projects: [
+        {
+          id: "p9",
+          name: "Lumen fit-out",
+          key: "LUM",
+          openTasks: 2,
+          tasks: [
+            { id: "t4", key: "LUM-4", title: "Install the lamps", status: "in_progress" },
+            { id: "t5", key: "LUM-5", title: "Order the cables", status: "todo" },
+          ],
+        },
+      ],
+    })
+    const view = render(() => <CompanyWorkPanel entityId="co-lumen" />)
+    const task = await view.findByTestId("company-work-panel.task-t4")
+    expect(task.textContent).toContain("In progress")
+    expect(task.textContent).not.toContain("in_progress")
+    expect(view.getByTestId("company-work-panel.task-t5").textContent).toContain("Todo")
+  })
+
+  it("a closed project reads Closed, not an open count", async () => {
+    mocks.post.mockResolvedValueOnce({
+      projects: [
+        { id: "p2", name: "Lumen audit", key: "AUD", closed: true, openTasks: 0, tasks: [] },
+      ],
+    })
+    const view = render(() => <CompanyWorkPanel entityId="co-lumen" />)
+    expect((await view.findByTestId("company-work-panel.project-p2.closed")).textContent).toBe(
+      "Closed",
+    )
+    expect(view.queryByTestId("company-work-panel.project-p2.open")).toBeNull()
+  })
+
   it("says so when there is nothing, and has its own line when the read fails", async () => {
     mocks.post.mockResolvedValueOnce({ projects: [] })
     const empty = render(() => <CompanyWorkPanel entityId="co-quiet" />)

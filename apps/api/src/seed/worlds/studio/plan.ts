@@ -14,8 +14,9 @@
 // literal date.
 //
 // Which time lands where:
-// - The fixed-price portal project: 346 h on 41 tasks under four milestones
-//   whose own timeboxes are 52, 78, 200 and 90 h, all before this month.
+// - The fixed-price portal project (dated hours on): 346 h on 41 tasks under four milestones
+//   whose own timeboxes are 52, 78, 200 and 90 h; Beta's three open tasks took their 17 h this
+//   month, each on a day not after today, the rest before this month.
 // - The retainer project (dated hours on): last month's fourteen lines on the
 //   same ordinal weekdays as the board, 46 h on six tasks, and this month's
 //   18 h, each on a day of this month that is not after today.
@@ -371,7 +372,7 @@ export function studioPlan(anchor: Date): StudioPlan {
       timeboxMinutes: planned * H,
       ...dueNextWeek,
     })
-    took("MARLIN", key, who, cal.monthDate(1, 6 + i * 5), real)
+    took("MARLIN", key, who, cal.thisMonthUpTo(3 + i * 2), real)
   })
 
   milestone("MARLIN-36", "Launch", "todo", 90, due(addCalendarDays(today, 25)))
@@ -624,6 +625,19 @@ export function studioPlan(anchor: Date): StudioPlan {
   const brume = pastSignOn("BRUME", 5, "hugo", 8)
   const osier = pastSignOn("OSIER", 4, "yanis", 6)
 
+  // --- A past client's audit, closed two months ago with its report --------
+  const valleeAudit: StudioTaskPlan[] = [
+    ["VALLEE-1", "Pipeline inventory", "sofia", closed(4, 24)],
+    ["VALLEE-2", "Data quality checks", "sofia", closed(3, 18)],
+    ["VALLEE-3", "Audit report", "nadia", closed(2, 20)],
+  ].map(([key, title, who, at]) => ({
+    key: key as string,
+    title: title as string,
+    assignee: who as string,
+    status: "done" as const,
+    completedAt: at as Date,
+  }))
+
   // --- The studio's own work: time and budgets off, no timebox -------------
   const studio: StudioTaskPlan[] = [
     { key: "STUDIO-8", title: "Laptop refresh", assignee: "paul", status: "todo" },
@@ -691,7 +705,7 @@ export function studioPlan(anchor: Date): StudioPlan {
       fixedPriceMinor: 6_400_000,
       currency: "EUR",
       biller: "anais",
-      datedHours: false,
+      datedHours: true,
       sourceRepos: ["haldenstudio/partner-portal"],
       periods: [],
       tasks: marlin,
@@ -812,6 +826,25 @@ export function studioPlan(anchor: Date): StudioPlan {
       periods: [],
       tasks: osier.tasks,
       closedAt: osier.closedAt,
+    },
+    {
+      key: "VALLEE",
+      name: "Data pipeline audit",
+      description:
+        "An audit of Vallée Énergie's data pipeline and a written report, at a fixed price. Closed.",
+      icon: "search",
+      client: "vallee",
+      owner: "bastien",
+      timeBudgets: false,
+      basis: "fixed",
+      fixedPriceMinor: 1_850_000,
+      currency: "EUR",
+      biller: "anais",
+      datedHours: false,
+      sourceRepos: [],
+      periods: [],
+      tasks: valleeAudit,
+      closedAt: closed(2, 27),
     },
     {
       key: "STUDIO",

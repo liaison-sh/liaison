@@ -329,7 +329,7 @@ On a project that uses time and budgets, ask the agent for its budget ("how are 
 
 ## Read a project's margin (finance)
 
-Finance asks the agent in a DM ("what margin are we making on the portal project", or for one month). The answer is one figure: what the project is invoiced, excluding VAT and net of credit notes, minus each hour taken at the cost rate in force on that day. It needs the exact `projects:margin:read` scope, which the `finance` role holds; anyone else gets no margin, and a wildcard grant does not read it either.
+Finance asks the agent in a DM ("what margin are we making on the portal project", or for one month). The answer is one figure: what the project is invoiced, excluding VAT and net of credit notes, minus each hour taken at the cost rate in force on that day. It needs the exact `projects:margin:read` scope, which the `finance` role holds; anyone else gets no margin, and a wildcard grant does not read it either. The refusal names the members who hold the scope, so the agent can tell you whom to ask; an agent asked on your behalf cannot read it for you.
 
 - **For one month.** A month's margin counts the invoices for the work of that month: an invoice counts in the month its service period starts (the card's month), not the month it was issued, and its credit notes count with it. An invoice that bills no period counts in its issue month.
 - **Partial.** Margin reads partial while some started or done tasks have no time entered, like the budget.

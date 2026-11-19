@@ -322,6 +322,16 @@ export const STUDIO_CLIENTS: StudioClient[] = [
     city: "Vénissieux",
   },
   {
+    // A past client: its audit closed two months ago and its retainer offer expired unsigned.
+    key: "vallee",
+    name: "Vallée Énergie",
+    domain: "vallee-energie.example",
+    contactKeys: ["camille-roux"],
+    street: "17 quai Perrache",
+    postcode: "69002",
+    city: "Lyon",
+  },
+  {
     key: "rhone",
     name: "Rhône Mutuelle",
     domain: "rhone-mutuelle.example",
@@ -362,6 +372,7 @@ export const STUDIO_CONTACTS: DemoCustomer[] = [
   contact("jean-tessier", "Jean Tessier", "tessier", "jean"),
   contact("marc-verdier", "Marc Verdier", "verdier", "marc"),
   contact("helene-faure", "Hélène Faure", "rhone", "helene.faure"),
+  contact("camille-roux", "Camille Roux", "vallee", "camille.roux"),
 ]
 
 export const STUDIO_WORLD: DemoWorld = {

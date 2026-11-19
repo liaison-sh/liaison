@@ -10,6 +10,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openEntity } from "~/modules/shell/entity-opener"
+import { prettyStatus } from "./status-label"
 
 export interface CompanyWorkTask {
   id: string
@@ -22,6 +23,8 @@ export interface CompanyWorkProject {
   id: string
   name: string
   key: string | null
+  /** A closed project: the company's past work. */
+  closed?: boolean
   openTasks: number
   tasks: CompanyWorkTask[]
 }
@@ -94,12 +97,24 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
                     <Show when={p.key}>
                       <span class="shrink-0 font-mono text-[12px] text-text-tertiary">{p.key}</span>
                     </Show>
-                    <span
-                      class="shrink-0 text-[12px] text-text-secondary"
-                      data-testid={`company-work-panel.project-${p.id}.open`}
+                    <Show
+                      when={!p.closed}
+                      fallback={
+                        <span
+                          class="shrink-0 text-[12px] text-text-tertiary"
+                          data-testid={`company-work-panel.project-${p.id}.closed`}
+                        >
+                          {i18n.t("projects.companyWork.closed")}
+                        </span>
+                      }
                     >
-                      {i18n.t("projects.companyWork.openTasks", { count: p.openTasks })}
-                    </span>
+                      <span
+                        class="shrink-0 text-[12px] text-text-secondary"
+                        data-testid={`company-work-panel.project-${p.id}.open`}
+                      >
+                        {i18n.t("projects.companyWork.openTasks", { count: p.openTasks })}
+                      </span>
+                    </Show>
                   </button>
                   <Show when={p.tasks.length > 0}>
                     <ul class="pl-3" data-testid={`company-work-panel.project-${p.id}.tasks`}>
@@ -130,7 +145,7 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
                               </span>
                               <Show when={t.status}>
                                 <span class="shrink-0 text-[12px] text-text-tertiary">
-                                  {t.status}
+                                  {prettyStatus(t.status ?? "")}
                                 </span>
                               </Show>
                             </button>

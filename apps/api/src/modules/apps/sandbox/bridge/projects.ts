@@ -1720,11 +1720,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
         id: string
         name: string
         key: string | null
+        closed: boolean
         open_tasks: number
         tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
       }>(
         await txDb.execute(drizzleSql`
-          SELECT p.id::text AS id, p.name, p.key,
+          SELECT p.id::text AS id, p.name, p.key, p.archived_at IS NOT NULL AS closed,
                  (SELECT count(*)::int FROM ${schema}.tasks t
                     JOIN ${schema}.project_statuses s ON s.id = t.status_id
                    WHERE t.project_id = p.id AND t.archived_at IS NULL AND NOT s.terminal) AS open_tasks,
@@ -1744,8 +1745,9 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
                  ), '[]'::json) AS tasks
             FROM ${schema}.projects p
            WHERE p.org_id = ${orgId}::uuid AND p.company_id = ${companyId}::uuid
-             AND p.kind = 'work' AND p.archived_at IS NULL
-           ORDER BY p.updated_at DESC, p.id
+             AND p.kind = 'work'
+           -- A closed (archived) project stays the company's history: listed after the live ones.
+           ORDER BY p.archived_at IS NOT NULL, p.updated_at DESC, p.id
            LIMIT 50`),
       )
       return JSON.stringify({
@@ -1753,6 +1755,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
           id: r.id,
           name: r.name,
           key: r.key,
+          ...(r.closed ? { closed: true } : {}),
           openTasks: r.open_tasks,
           tasks: r.tasks,
         })),

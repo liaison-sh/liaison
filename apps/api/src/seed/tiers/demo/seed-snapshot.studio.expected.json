@@ -23,25 +23,29 @@
     "rows": 1,
     "digest": "5d2710ebe85bc3e5"
   },
+  "app_calendar.events": {
+    "rows": 3,
+    "digest": "42aa5d2ac3bf97ba"
+  },
   "app_invoicing.billing_steps": {
     "rows": 5,
     "digest": "e699da19765646f7"
   },
   "app_invoicing.contact_relationships": {
-    "rows": 3,
-    "digest": "cfd0c487c554e7f6"
+    "rows": 4,
+    "digest": "c30ccbde6e29b2b7"
   },
   "app_invoicing.counterparty_identities": {
-    "rows": 6,
-    "digest": "1ca15ac3b01fa2a2"
+    "rows": 7,
+    "digest": "d79f0ffa43380d0a"
   },
   "app_invoicing.document_lines": {
     "rows": 518,
-    "digest": "a0202a1bb5379531"
+    "digest": "40d3cfb22635ba73"
   },
   "app_invoicing.documents": {
     "rows": 514,
-    "digest": "c88333616862f1e2"
+    "digest": "2a2ced354c0893ce"
   },
   "app_invoicing.issuer_profiles": {
     "rows": 1,
@@ -108,20 +112,20 @@
     "digest": "4d39d0748c09f53e"
   },
   "app_projects.project_statuses": {
-    "rows": 46,
-    "digest": "32cb56467a34fbf4"
+    "rows": 51,
+    "digest": "443f5ca1c2bc824b"
   },
   "app_projects.project_time_plan": {
     "rows": 7,
-    "digest": "04f0a5f3476ac4e1"
+    "digest": "0d5e3f2e59a25bc7"
   },
   "app_projects.project_timeboxes": {
     "rows": 7,
     "digest": "605ff2dbf4feb194"
   },
   "app_projects.projects": {
-    "rows": 9,
-    "digest": "76003992f8b8c61e"
+    "rows": 10,
+    "digest": "1cd0885030633c31"
   },
   "app_projects.reconciliation_lines": {
     "rows": 5,
@@ -133,15 +137,15 @@
   },
   "app_projects.task_time": {
     "rows": 81,
-    "digest": "7bdc060e5e1ba877"
+    "digest": "d4c95cb1fb844a7b"
   },
   "app_projects.task_transitions": {
-    "rows": 122,
-    "digest": "3604f8cf3f1d2ecd"
+    "rows": 125,
+    "digest": "d64be7ab0bf31ddf"
   },
   "app_projects.tasks": {
-    "rows": 122,
-    "digest": "29a93ed1ad1fadda"
+    "rows": 125,
+    "digest": "9c6c24b1180fb8d3"
   },
   "app_projects.time_settings": {
     "rows": 1,
@@ -169,7 +173,7 @@
   },
   "kernel.agents": {
     "rows": 29,
-    "digest": "bc8104403ad1de0a"
+    "digest": "d3ce43889dd4a1a2"
   },
   "kernel.app_seeded_assets": {
     "rows": 9,
@@ -201,7 +205,7 @@
   },
   "kernel.companies": {
     "rows": 8,
-    "digest": "606025fa5f1c4caf"
+    "digest": "cbcf4ed96a304e93"
   },
   "kernel.config_applied_fields": {
     "rows": 8,
@@ -212,16 +216,16 @@
     "digest": "1bf469e435dad0d1"
   },
   "kernel.contact_addresses": {
-    "rows": 6,
-    "digest": "296190b3a03adc92"
+    "rows": 7,
+    "digest": "b0dc2b4d50e633f5"
   },
   "kernel.contact_segments": {
     "rows": 1,
     "digest": "1d23ff3f2c5297d0"
   },
   "kernel.contacts": {
-    "rows": 7,
-    "digest": "357467897b38fbf6"
+    "rows": 8,
+    "digest": "a6b2273b46a79ea8"
   },
   "kernel.credit_balances": {
     "rows": 1,
@@ -244,8 +248,8 @@
     "digest": "38dce2dbee08f02e"
   },
   "kernel.pending_events": {
-    "rows": 454,
-    "digest": "ba778bf9437fe29a"
+    "rows": 467,
+    "digest": "a590fd60b3484ee6"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -272,27 +276,27 @@
     "digest": "52b5dce6e8ef1bde"
   },
   "kernel.thread_participants": {
-    "rows": 268,
-    "digest": "7a75d481b1f7008f"
+    "rows": 274,
+    "digest": "93a8e28a1976f2f9"
   },
   "kernel.threads": {
-    "rows": 128,
-    "digest": "6d3758b09c00526f"
+    "rows": 131,
+    "digest": "de2d5452df6f45fe"
   },
   "kernel.user_dimension_grants": {
     "rows": 24,
     "digest": "eec6a21c9a7518fb"
   },
   "kernel.user_roles": {
-    "rows": 27,
-    "digest": "5c85c7f5b2dc043a"
+    "rows": 28,
+    "digest": "808314c5d8fcbd4f"
   },
   "kernel.user_thread_state": {
-    "rows": 143,
-    "digest": "25f8296de1fe3ff4"
+    "rows": 146,
+    "digest": "9f963e59c6e2a8e0"
   },
   "kernel.users": {
     "rows": 26,
-    "digest": "65ebe4819ffb9061"
+    "digest": "b2c47668e061ac34"
   }
 }

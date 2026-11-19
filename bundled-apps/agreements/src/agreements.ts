@@ -198,10 +198,17 @@ export async function agreementsSearch(ctx: AgreementsCtx, p: SearchParams) {
     const before = p.renews_before
     rows = rows.filter((r) => !!r.renews_on && r.renews_on < before)
   }
-  if (p.query) {
-    const q = p.query.toLowerCase()
+  const query = p.query?.trim()
+  if (query) {
+    const q = query.toLowerCase()
+    // A client's name reaches its agreements too: people ask for "Marlin's contract", and an
+    // agreement's title names the work, not the client.
+    const clients = await companiesNamed(ctx, query)
     rows = rows.filter(
-      (r) => r.title.toLowerCase().includes(q) || r.number.toLowerCase().includes(q),
+      (r) =>
+        r.title.toLowerCase().includes(q) ||
+        r.number.toLowerCase().includes(q) ||
+        (!!r.company_id && clients.has(r.company_id)),
     )
   }
   const today = todayOf(ctx)
@@ -214,8 +221,25 @@ export async function agreementsSearch(ctx: AgreementsCtx, p: SearchParams) {
     total: ordered.length,
     message:
       items.length === 0
-        ? "No agreement matches. Create one with agreement_create."
+        ? query
+          ? `No agreement's title, number or client matches "${query}". Search again without query, or with the client's company_id, to see every agreement you can read.`
+          : "No agreement matches. Create one with agreement_create."
         : `${ordered.length} agreement(s), what needs someone first${ordered.length > items.length ? `; the first ${items.length} shown` : ""}. Open one with agreement_get.`,
+  }
+}
+
+/** The ids of the companies the caller can read whose name matches `query`; none without a host. */
+async function companiesNamed(ctx: AgreementsCtx, query: string): Promise<Set<string>> {
+  if (!ctx.executeTool) return new Set()
+  try {
+    const env = await ctx.executeTool("kernel:companies_search", { query, limit: 20 })
+    if (env.status !== "completed") return new Set()
+    const items = ((env.result as { items?: unknown } | null)?.items ?? []) as Array<{
+      id?: unknown
+    }>
+    return new Set(items.map((c) => c.id).filter((id): id is string => typeof id === "string"))
+  } catch {
+    return new Set()
   }
 }
 

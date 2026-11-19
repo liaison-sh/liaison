@@ -39,7 +39,13 @@ export interface StudioInvoiceLine {
   externalId?: string
 }
 
-export type StudioInvoiceKind = "filler" | "advance" | "milestone" | "retainer" | "schedule"
+export type StudioInvoiceKind =
+  | "filler"
+  | "project"
+  | "advance"
+  | "milestone"
+  | "retainer"
+  | "schedule"
 
 export interface StudioInvoice {
   key: string
@@ -341,6 +347,33 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
     loop.push(n)
     from = n.issuedOn
   })
+
+  // The past client's audit, at a fixed price of 18,500: half when it started, the balance
+  // once its report was delivered. Each takes the place of the studio's other work on its day,
+  // so the numbering and the dates stay as they were.
+  const audit: Array<{ key: string; on: string; label: string }> = [
+    { key: "vallee-audit-start", on: monthOf(today, 4).date(6), label: "50% at the start" },
+    {
+      key: "vallee-audit-balance",
+      on: monthOf(today, 2).date(21),
+      label: "balance, report delivered",
+    },
+  ]
+  for (const a of audit) {
+    const at = loop.findIndex((inv) => inv.kind === "filler" && inv.issuedOn >= a.on)
+    const filler = loop[at]
+    if (!filler) throw new Error(`studio money: no invoice day for ${a.key}`)
+    loop[at] = {
+      ...filler,
+      key: a.key,
+      kind: "project",
+      client: "vallee",
+      projectKey: "VALLEE",
+      lines: [
+        { description: `Data pipeline audit, ${a.label}`, quantity: 1, unitPriceMinor: 925_000 },
+      ],
+    }
+  }
 
   // The upkeep's latest run: the last billing day before today, billing the month that holds it.
   const upkeep = UPKEEP_SCHEDULE

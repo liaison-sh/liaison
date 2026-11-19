@@ -4,7 +4,12 @@
 // slot for a reader of documents, and reading only the company's documents.
 import { afterEach, beforeEach, describe, expect, it } from "bun:test"
 import manifest from "../../app.manifest.json"
-import { COMPANY_MONEY_LIMIT, loadCompanyMoney } from "./CompanyMoneyPanel"
+import {
+  COMPANY_MONEY_LIMIT,
+  companyMoneyDate,
+  companyMoneyTotal,
+  loadCompanyMoney,
+} from "./CompanyMoneyPanel"
 
 const LUMEN = "44444444-4444-4444-8444-444444444444"
 const OTHER = "55555555-5555-4555-8555-555555555555"
@@ -61,6 +66,23 @@ describe("the company page's Money section", () => {
     const rows = await loadCompanyMoney(LUMEN)
     expect(rows.map((r) => r.id)).toEqual(["inv-lumen"])
     expect(calls).toEqual([{ company_id: LUMEN, limit: COMPANY_MONEY_LIMIT }])
+  })
+
+  it("writes dates and totals the way the rest of the page does, not as stored", () => {
+    expect(companyMoneyDate("2026-06-29", "en-GB")).toBe("29 Jun 2026")
+    expect(companyMoneyDate("2026-06-29T22:30:00.000Z", "en-GB")).toBe("29 Jun 2026")
+    expect(companyMoneyDate(null, "en-GB")).toBe("-")
+    const issued = { id: "i", type: "invoice", status: "issued", currency: "EUR" }
+    expect(companyMoneyTotal({ ...issued, grand_total_minor: "1920000" }, "en-US")).toBe(
+      "€19,200.00",
+    )
+    expect(companyMoneyTotal({ ...issued, grand_total_minor: "1920000" }, "fr-FR")).toContain("19")
+    expect(companyMoneyTotal({ ...issued, grand_total_minor: "1920000" }, "en-US")).not.toContain(
+      "EUR",
+    )
+    expect(
+      companyMoneyTotal({ ...issued, currency: "JPY", grand_total_minor: 5000 }, "en-US"),
+    ).toBe("¥5,000")
   })
 
   it("a failed read shows the empty section rather than breaking the page", async () => {

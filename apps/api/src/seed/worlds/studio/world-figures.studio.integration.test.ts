@@ -128,10 +128,12 @@ describe("the services world's figures at the board date", () => {
         ),
       ),
     )
-    // The closed past projects used time while they ran; the rest are the active ones.
+    // The closed past projects used time while they ran (the past client's audit did not); the
+    // rest are the active ones.
     expect(all.filter((r) => r.archived).map((r) => [r.key, r.on])).toEqual([
       ["BRUME", true],
       ["OSIER", true],
+      ["VALLEE", false],
     ])
     const rows = all.filter((r) => !r.archived)
     expect(rows.filter((r) => r.on).map((r) => r.key)).toEqual([
@@ -548,6 +550,16 @@ describe("the services world's money at the board date", () => {
     expect(JSON.stringify(daily)).toMatch(/No issued invoice bills [A-Z][a-z]+ \d{4} yet/)
   })
 
+  it("the owner, a co-founder, reads the portal's margin; the other co-founder is told who can", async () => {
+    const owner = await handler("owner", marginGet, { projectName: "Partner portal rebuild" })
+    expect([owner.invoiced, owner.invoiced - owner.cost]).toEqual([44_800, 25_106])
+    const lea = await handler("lea", marginGet, { projectName: "Partner portal rebuild" })
+    expect(lea.error?.code).toBe("finance_only")
+    expect(lea.error?.message).toContain("Anaïs Colin")
+    expect(lea.error?.message).toContain("Studio Owner")
+    expect(JSON.stringify(lea)).not.toMatch(/25,?106|19,?694/)
+  })
+
   it("invoice numbers run from 0001 with no gap to the last seeded one, and dates never decrease", async () => {
     const rows = await withPrivilegedDb(orgId, "studio-figures:numbers", async (tx) =>
       rowsOf<{ number: string | null; n: number | null; issued: string | null; status: string }>(
@@ -673,5 +685,84 @@ describe("the services world's money at the board date", () => {
       ["Incl. VAT", 7_812],
     ])
     expect(card.createInvoice).toBe("yes")
+  })
+})
+
+describe("the services world's month and history at the board date", () => {
+  it("the portal keeps dated hours, and this month holds Beta's 17 h", async () => {
+    const [row] = await withPrivilegedDb(orgId, "studio-figures:portal-month", async (tx) =>
+      rowsOf<{ dated: boolean; minutes: number }>(
+        await tx.execute(
+          sql`SELECT tp.dated_hours AS dated,
+                     (SELECT COALESCE(sum(tt.minutes), 0)::int FROM app_projects.task_time tt
+                       WHERE tt.project_id = p.id
+                         AND tt.work_date >= date_trunc('month', ${BOARD_DATE.toISOString()}::timestamptz AT TIME ZONE 'Europe/Paris')::date
+                         AND tt.work_date <= (${BOARD_DATE.toISOString()}::timestamptz AT TIME ZONE 'Europe/Paris')::date
+                     ) AS minutes
+                FROM app_projects.projects p
+                JOIN app_projects.project_time_plan tp ON tp.project_id = p.id
+               WHERE p.org_id = ${orgId}::uuid AND p.key = 'MARLIN'`,
+        ),
+      ),
+    )
+    expect(row).toEqual({ dated: true, minutes: 17 * 60 })
+  })
+
+  it("no seeded task reads as created on the day the world was seeded", async () => {
+    const late = await withPrivilegedDb(orgId, "studio-figures:opened", async (tx) =>
+      rowsOf<{ n: number }>(
+        await tx.execute(
+          sql`SELECT count(*)::int AS n FROM app_projects.tasks t
+                JOIN app_projects.projects p ON p.id = t.project_id
+               WHERE t.org_id = ${orgId}::uuid AND p.key IN ('MARLIN', 'SOREL', 'ALPINE')
+                 AND t.created_at >= ${BOARD_DATE.toISOString()}::timestamptz`,
+        ),
+      ),
+    )
+    expect(late[0]?.n).toBe(0)
+  })
+
+  it("the past client has its person, its closed audit and the audit's two invoices", async () => {
+    const [row] = await withPrivilegedDb(orgId, "studio-figures:past-client", async (tx) =>
+      rowsOf<{ people: number; closed: string[]; invoiced: number; to_person: number }>(
+        await tx.execute(
+          sql`WITH c AS (SELECT id FROM kernel.companies
+                          WHERE org_id = ${orgId}::uuid AND name = 'Vallée Énergie')
+              SELECT (SELECT count(*)::int FROM kernel.contacts k, c
+                       WHERE k.org_id = ${orgId}::uuid AND k.company_id = c.id) AS people,
+                     (SELECT array_agg(p.name) FROM app_projects.projects p, c
+                       WHERE p.org_id = ${orgId}::uuid AND p.company_id = c.id
+                         AND p.archived_at IS NOT NULL) AS closed,
+                     (SELECT COALESCE(sum(d.subtotal_minor), 0)::int FROM app_invoicing.documents d
+                       JOIN app_projects.projects p ON p.id = d.billing_project_id
+                       WHERE d.org_id = ${orgId}::uuid AND p.key = 'VALLEE') AS invoiced,
+                     (SELECT count(*)::int FROM app_invoicing.documents d
+                       JOIN kernel.contacts k ON k.id = d.counterparty_contact_id, c
+                       WHERE d.org_id = ${orgId}::uuid AND k.company_id = c.id) AS to_person`,
+        ),
+      ),
+    )
+    expect(row).toEqual({
+      people: 1,
+      closed: ["Data pipeline audit"],
+      invoiced: 1_850_000,
+      to_person: 2,
+    })
+  })
+
+  it("the team calendar holds the standing meetings of the delivery cadence", async () => {
+    const events = await withPrivilegedDb(orgId, "studio-figures:calendar", async (tx) =>
+      rowsOf<{ title: string; recurring: boolean }>(
+        await tx.execute(
+          sql`SELECT title, recurrence IS NOT NULL AS recurring FROM app_calendar.events
+               WHERE org_id = ${orgId}::uuid ORDER BY title`,
+        ),
+      ),
+    )
+    expect(events).toEqual([
+      { title: "Delivery review", recurring: true },
+      { title: "Partner portal check-in", recurring: true },
+      { title: "Publishing retainer review", recurring: true },
+    ])
   })
 })

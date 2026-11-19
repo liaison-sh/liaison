@@ -18,6 +18,17 @@ interface TicketRow {
   updated_at: string | Date
   /** Selected by the awaiting-a-reply rule only. */
   assigned_to?: string | null
+  subject?: string | null
+}
+
+/** At most this many characters of a subject in a summary. */
+const SUMMARY_SUBJECT_MAX = 80
+
+/** ": <subject>" for a summary, shortened, or nothing for a ticket with none. */
+function subjectSuffix(subject: string | null | undefined): string {
+  const text = (subject ?? "").replace(/\s+/g, " ").trim()
+  if (!text) return ""
+  return `: ${text.length > SUMMARY_SUBJECT_MAX ? `${text.slice(0, SUMMARY_SUBJECT_MAX - 1)}…` : text}`
 }
 
 function toIso(value: string | Date | null | undefined): string {
@@ -112,7 +123,7 @@ export async function computeAttentionItems(
   const awaiting = await tx.execute(drizzleSql`
     SELECT id, handle, sla_deadline, sla_target_seconds, last_inbound_at, last_outbound_at, followup_at, updated_at,
            audience, team, category_id::text AS category_id, source_inbox_id::text AS source_inbox_id,
-           assigned_to::text AS assigned_to
+           assigned_to::text AS assigned_to, subject
     FROM ${ticketsRel("tickets")}
     WHERE org_id = ${orgId}
       AND merged_into_ticket_id IS NULL
@@ -130,7 +141,9 @@ export async function computeAttentionItems(
       entity: "ticket",
       entityId: row.id,
       kind: "awaiting_agent",
-      summary: `Awaiting agent reply on ${h(row)}`,
+      // The subject beside the handle: a row of handles alone says nothing about which client
+      // or question waits (the ticket's page leads with its subject too).
+      summary: `Awaiting agent reply on ${h(row)}${subjectSuffix(row.subject)}`,
       urgency: 60,
       occurredAt: toIso(row.last_inbound_at),
       action: { type: "open_entity", tabType: "tickets:ticket", entityId: row.id },

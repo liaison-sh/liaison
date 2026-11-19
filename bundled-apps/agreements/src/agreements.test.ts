@@ -128,6 +128,50 @@ describe("the list of agreements", () => {
     ])
   })
 
+  it("a query finds a client's agreements by the client's name, not only by title or number", async () => {
+    const db = memoryDb()
+    const MARLIN = "44444444-4444-4444-8444-444444444444"
+    const calls: Array<[string, Record<string, unknown>]> = []
+    const ctx = {
+      ...ctxFor(db),
+      executeTool: async (name: string, params: Record<string, unknown>) => {
+        calls.push([name, params])
+        const q = String(params.query ?? "").toLowerCase()
+        const companies = [{ id: MARLIN, name: "Groupe Marlin" }]
+        return {
+          status: "completed",
+          result: { items: companies.filter((c) => c.name.toLowerCase().includes(q)) },
+        } as never
+      },
+    }
+    const sow = await agreementCreate(ctx, { kind: "sow", title: "Partner portal rebuild" })
+    await db.update("agreements", okId(sow), { status: "signed", company_id: MARLIN })
+    await agreementCreate(ctx, { kind: "nda", title: "Mutual NDA" })
+    const out = (await agreementsSearch(ctx, { query: "Marlin" })) as {
+      items: Array<{ title: string }>
+    }
+    expect(out.items.map((i) => i.title)).toEqual(["Partner portal rebuild"])
+    expect(calls[0]?.[0]).toBe("kernel:companies_search")
+    // A title still matches as before.
+    const byTitle = (await agreementsSearch(ctx, { query: "portal" })) as {
+      items: Array<{ title: string }>
+    }
+    expect(byTitle.items.map((i) => i.title)).toEqual(["Partner portal rebuild"])
+  })
+
+  it("a query that matches nothing says what it was matched against, not that nothing is on file", async () => {
+    const db = memoryDb()
+    const ctx = ctxFor(db)
+    await agreementCreate(ctx, { kind: "sow", title: "Partner portal rebuild" })
+    const out = (await agreementsSearch(ctx, { query: "single sign-on" })) as {
+      items: unknown[]
+      message: string
+    }
+    expect(out.items).toEqual([])
+    expect(out.message).toContain("single sign-on")
+    expect(out.message).not.toContain("Create one")
+  })
+
   it("the search's status filter offers accepted, and it finds an accepted change request", async () => {
     const statuses = (
       manifest.tools as unknown as Record<

@@ -9,8 +9,9 @@
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
 import { app, navigate } from "@liaison/host"
 import { type Component, createResource, Show } from "solid-js"
+import { currencyExponent } from "../money"
 import { type DocumentRow, displayTotal } from "./ContactDocumentsPanel"
-import { tr } from "./i18n"
+import { tr, uiLocale } from "./i18n"
 
 export interface CompanyMoneyPanelProps {
   /** The company id: the slot host mounts every panel with it as `entityId`. */
@@ -30,8 +31,29 @@ export async function loadCompanyMoney(companyId: string): Promise<DocumentRow[]
   return Array.isArray(rows) ? rows : []
 }
 
-function fmtDate(iso: string | null | undefined): string {
-  return iso ? iso.slice(0, 10) : "-"
+/** A document's date in the reader's words ("29 Jun 2026"); a date-only value is read as UTC. */
+export function companyMoneyDate(iso: string | null | undefined, locale = uiLocale()): string {
+  if (!iso) return "-"
+  const at = new Date(iso.length === 10 ? `${iso}T00:00:00Z` : iso)
+  if (Number.isNaN(at.getTime())) return iso.slice(0, 10)
+  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "UTC" }).format(at)
+}
+
+/**
+ * A document's total as the rest of the company page writes money ("€19,200.00"). A draft keeps
+ * the total its lines give (`displayTotal`), since its stored total is 0 until it is issued.
+ */
+export function companyMoneyTotal(row: DocumentRow, locale = uiLocale()): string {
+  if (row.status === "draft" || row.grand_total_minor == null) return displayTotal(row)
+  const minor = Number(row.grand_total_minor)
+  if (!Number.isFinite(minor)) return displayTotal(row)
+  try {
+    return new Intl.NumberFormat(locale, { style: "currency", currency: row.currency }).format(
+      minor / 10 ** currencyExponent(row.currency),
+    )
+  } catch {
+    return displayTotal(row)
+  }
 }
 
 export const CompanyMoneyPanel: Component<CompanyMoneyPanelProps> = (props) => {
@@ -64,7 +86,7 @@ export const CompanyMoneyPanel: Component<CompanyMoneyPanelProps> = (props) => {
                 key: "date",
                 header: tr("Date"),
                 role: "meta",
-                cell: (row) => fmtDate(row.issued_at),
+                cell: (row) => companyMoneyDate(row.issued_at),
               },
               { key: "status", header: tr("Status"), role: "meta", cell: (row) => row.status },
               {
@@ -73,7 +95,7 @@ export const CompanyMoneyPanel: Component<CompanyMoneyPanelProps> = (props) => {
                 role: "meta",
                 numeric: true,
                 align: "right",
-                cell: (row) => displayTotal(row),
+                cell: (row) => companyMoneyTotal(row),
               },
             ] as Array<CardTableColumn<DocumentRow>>
           }

@@ -7,6 +7,7 @@
 // layer seeds none of them.
 //
 // Every age is an offset in hours from the anchor; no string names a date.
+import type { EventSpec } from "~/seed/factories/calendar/events"
 import type { TicketSpec } from "~/seed/factories/support/tickets"
 import type { DemoSupportSpecs } from "~/seed/tiers/demo/seed-support"
 import { STUDIO_CLIENTS } from "./fiction"
@@ -160,6 +161,46 @@ export const STUDIO_TICKETS: readonly TicketSpec[] = [
   },
 ]
 
+/**
+ * The team calendar's standing meetings, weekly or monthly from three weeks before the board's
+ * week, so any month the visitor opens holds the delivery cadence the brief describes. No
+ * one-off date: a due date lives on its task, where it moves with the plan.
+ */
+export const STUDIO_EVENTS: EventSpec[] = [
+  {
+    key: "delivery-review",
+    title: "Delivery review",
+    description:
+      "Every project in a quarter of an hour each: what moved, what is due, who has room.",
+    location: "Lyon, meeting room",
+    day: -21,
+    startHour: 10,
+    durationMinutes: 60,
+    attendees: ["lea", "bastien", "nadia", "mathis", "sofia", "emma", "anais"],
+    recurrence: ["RRULE:FREQ=WEEKLY;COUNT=12"],
+  },
+  {
+    key: "portal-check-in",
+    title: "Partner portal check-in",
+    description: "The portal's week with Groupe Marlin: the Beta's open items and the launch plan.",
+    day: -18,
+    startHour: 14,
+    durationMinutes: 45,
+    attendees: ["bastien", "nadia", "mathis"],
+    recurrence: ["RRULE:FREQ=WEEKLY;COUNT=10"],
+  },
+  {
+    key: "retainer-review",
+    title: "Publishing retainer review",
+    description: "The month's hours on the Éditions Sorel retainer, before the invoice goes out.",
+    day: -20,
+    startHour: 11,
+    durationMinutes: 30,
+    attendees: ["bastien", "anais", "emma"],
+    recurrence: ["RRULE:FREQ=MONTHLY;COUNT=6"],
+  },
+]
+
 export const STUDIO_SUPPORT_SPECS: DemoSupportSpecs = {
   customerCompanies: Object.fromEntries(
     STUDIO_CLIENTS.flatMap((c) => c.contactKeys.map((k) => [k, c.name])),
@@ -171,7 +212,7 @@ export const STUDIO_SUPPORT_SPECS: DemoSupportSpecs = {
   ticketMerges: [],
   projects: [],
   calendarName: "Halden team",
-  events: [],
+  events: STUDIO_EVENTS,
   mail: [],
   mailTourConversation: null,
   companies: STUDIO_CLIENTS.map((c) => ({

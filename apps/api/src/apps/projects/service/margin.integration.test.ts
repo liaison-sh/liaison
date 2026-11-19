@@ -20,8 +20,10 @@ import {
 import { projectsAppManifest } from "~/apps/projects/manifest-descriptor"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
 import { createRlsSession, withRlsContext } from "~/db/rls"
+import { userScopeGrants } from "~/db/schema/kernel"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { dashboardSourceRefusal, executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
@@ -651,6 +653,33 @@ describe("who reads margin and cost", () => {
       const rates = await run(costRatesList, {}, { scopes })
       expect(rates.error.code).toBe("finance_only")
     }
+  })
+
+  it("a refusal names the people who hold the margin scope exactly, and only them", async () => {
+    const before = await run(marginGet, { projectId: portal }, { scopes: ["*"] })
+    expect(before.error.code).toBe("finance_only")
+    expect(before.error.message).toContain("No one here holds that access yet")
+
+    // One person holds it exactly; another holds only the projects wildcard, which does not read cost.
+    const [reader, wildcard] = [people[2], people[3]] as [minimal.Session, minimal.Session]
+    await withPrivilegedDb(orgId, "test-margin-reader", (tx) =>
+      tx.insert(userScopeGrants).values([
+        { orgId, userId: reader.userId, scope: "projects:margin:read" },
+        { orgId, userId: wildcard.userId, scope: "projects:*" },
+      ]),
+    )
+    await db.execute(
+      drizzleSql`UPDATE kernel.users SET name = 'Rita Reader' WHERE id = ${reader.userId}::uuid`,
+    )
+    await db.execute(
+      drizzleSql`UPDATE kernel.users SET name = 'Will Wildcard' WHERE id = ${wildcard.userId}::uuid`,
+    )
+    const names = { reader: "Rita Reader", wildcard: "Will Wildcard" }
+    const out = await run(marginGet, { projectId: portal }, { scopes: ["*"] })
+    expect(out.error.code).toBe("finance_only")
+    expect(out.error.message).toContain(`${names.reader} can`)
+    expect(out.error.message).not.toContain(names.wildcard)
+    expect(JSON.stringify(out)).not.toMatch(/25,?106|19,?694|44,?800/)
   })
 
   it("margin has no person parameter or breakdown", async () => {

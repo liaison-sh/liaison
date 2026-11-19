@@ -33,7 +33,7 @@ export const DEMO_DOOR_OPS = [
 ] as const
 
 /** The worlds whose company the door describes (a world with no entry here reads as `products`). */
-export type DoorWorldId = "products" | "saas"
+export type DoorWorldId = "products" | "saas" | "studio"
 
 /** One part of a company's operations: its row key and the app whose colour it wears. */
 export interface DoorOp {
@@ -62,6 +62,13 @@ export interface DoorCompany {
   /** The teammates listed under "The team", after the visitor's own line. */
   team: readonly DoorPerson[]
   copyKey: string
+  /**
+   * A line after the listed teammates counting the rest (`<copy>.<key>.name` and `.role`);
+   * absent when the door lists everyone.
+   */
+  othersKey?: string
+  /** The visitor's own title, `<copy>.<key>`; absent where the visitor is the CEO. */
+  youRoleKey?: string
 }
 
 /** The software company: Tideform, whose seat of CEO the visitor takes. */
@@ -82,6 +89,18 @@ export const DEMO_SAAS_DOOR_TEAM = [
   { key: "nolan", name: "Nolan Faure" },
   { key: "maxime", name: "Maxime Aubert" },
   { key: "rose", name: "Rose Delmas" },
+] as const
+
+/** The services company: Halden Studio, whose seat of co-founder the visitor takes. */
+export const DEMO_STUDIO_COMPANY_NAME = "Halden Studio"
+
+/** The five teammates the door lists beside the visitor, in the board's order; the other 18 are counted. */
+export const DEMO_STUDIO_DOOR_TEAM = [
+  { key: "bastien", name: "Bastien Morel" },
+  { key: "nadia", name: "Nadia Kerroum" },
+  { key: "mathis", name: "Mathis Aubry" },
+  { key: "sofia", name: "Sofia Lind" },
+  { key: "anais", name: "Anaïs Colin" },
 ] as const
 
 export const DEMO_DOOR: Readonly<Record<DoorWorldId, DoorCompany>> = {
@@ -106,9 +125,25 @@ export const DEMO_DOOR: Readonly<Record<DoorWorldId, DoorCompany>> = {
     team: DEMO_SAAS_DOOR_TEAM,
     copyKey: "kernel.demo.world.saas",
   },
+  studio: {
+    name: DEMO_STUDIO_COMPANY_NAME,
+    initials: "HS",
+    opsList: [
+      { key: "agreements", app: "agreements" },
+      { key: "delivery", app: "projects" },
+      { key: "billing", app: "invoicing" },
+      { key: "clients", app: "contacts" },
+      { key: "portal", app: "tickets" },
+      { key: "knowledge", app: "knowledge" },
+    ],
+    team: DEMO_STUDIO_DOOR_TEAM,
+    copyKey: "kernel.demo.world.studio",
+    othersKey: "teamOthers",
+    youRoleKey: "teamYouRole",
+  },
 }
 
 /** The company the door describes for `world`: `products` for a world it has no page for. */
 export function doorCompanyOf(world: string | null | undefined): DoorCompany {
-  return world === "saas" ? DEMO_DOOR.saas : DEMO_DOOR.products
+  return world === "saas" || world === "studio" ? DEMO_DOOR[world] : DEMO_DOOR.products
 }

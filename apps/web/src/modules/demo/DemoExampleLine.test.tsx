@@ -30,6 +30,21 @@ describe("the example line", () => {
     expect(screen.getByTestId("demo-example-line").textContent).toBe(
       kernelEn.demo.world.saas.companyExample,
     )
+    cleanup()
+    _setDemoWorld("studio")
+    mount()
+    expect(screen.getByTestId("demo-example-line").textContent).toBe(
+      kernelEn.demo.world.studio.companyExample,
+    )
+  })
+
+  it("names the services company for a services visitor, in the one line the company step, welcome and Home all mount", () => {
+    _setDemoWorld("studio")
+    mount()
+    const line = screen.getByTestId("demo-example-line").textContent ?? ""
+    expect(line).toBe(kernelEn.demo.world.studio.companyExample)
+    expect(line).toContain("Halden Studio")
+    expect(line).not.toMatch(/Resonant|Tideform/)
   })
 
   it("is absent while the world is unknown: a failed read, or an org that is not a visitor's", () => {

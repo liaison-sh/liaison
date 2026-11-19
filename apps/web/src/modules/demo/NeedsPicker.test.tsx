@@ -8,6 +8,7 @@ import { DEMO_WORLD_NEEDS, type DemoNeed, type DemoWorldId } from "@liaison/shar
 import { cleanup, fireEvent, render, screen } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it } from "vitest"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
+import kernelEn from "../../../../../packages/shared/src/i18n/locales/en/kernel.json"
 import { NeedsPicker, needsMinutes } from "./NeedsPicker"
 
 afterEach(() => cleanup())
@@ -115,7 +116,7 @@ describe("NeedsPicker by world", () => {
         if (foreign !== seat) expect(screen.queryByTestId(`demo-needs-${foreign}`)).toBeNull()
       }
       expect(screen.getByTestId("demo-needs-all").textContent).toContain(
-        `about ${needsMinutes(DEMO_WORLD_NEEDS[world])} min`,
+        `about ${needsMinutes(DEMO_WORLD_NEEDS[world], world)} min`,
       )
       fireEvent.click(screen.getByTestId("demo-needs-all"))
       expect(seen).toEqual([[...DEMO_WORLD_NEEDS[world]]])
@@ -131,5 +132,22 @@ describe("NeedsPicker by world", () => {
     ))
     expect(screen.getByTestId("demo-needs-name-money").textContent).toBe("Subscriptions & payments")
     expect(screen.getByTestId("demo-needs-money").getAttribute("aria-pressed")).toBe("true")
+  })
+
+  it("the services world lists client work in the commerce seat, with its own minutes", () => {
+    render(() => (
+      <I18nProvider initialLocale="en">
+        <NeedsPicker world="studio" value={["client"]} onChange={() => {}} />
+      </I18nProvider>
+    ))
+    expect(screen.getByTestId("demo-needs-name-client").textContent).toBe("Client work")
+    expect(screen.getByTestId("demo-needs-desc-client").textContent).toBe(
+      kernelEn.demo.needDesc.client,
+    )
+    expect(screen.getByTestId("demo-needs-client").getAttribute("aria-pressed")).toBe("true")
+    expect(screen.getByTestId("demo-needs-client").textContent).toContain("about 4 min")
+    expect(screen.getByTestId("demo-needs-projects").textContent).toContain("about 4 min")
+    expect(screen.queryByTestId("demo-needs-commerce")).toBeNull()
+    expect(screen.queryByTestId("demo-needs-money")).toBeNull()
   })
 })

@@ -35,13 +35,15 @@ import { Dialog } from "~/ui/Dialog"
 
 /**
  * The connectors line is the one that depends on the company: the products
- * world's own fixtures, the software world's payments stand-in. A world with no
+ * world's own fixtures, the software world's payments stand-in, the services world's repositories,
+ * clients and signing links. A world with no
  * line of its own, or one that is not known yet, states the generic limits
  * only, never another world's.
  */
 const CONNECTORS_KEY: Readonly<Partial<Record<DemoWorldId, string>>> = {
   products: "kernel.demo.limitConnectors",
   saas: "kernel.demo.world.saas.limitConnectors",
+  studio: "kernel.demo.world.studio.limitConnectors",
 }
 
 export function limitKeys(world: DemoWorldId | null): string[] {

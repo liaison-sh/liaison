@@ -1045,7 +1045,7 @@
       "knowledge": "Manuals, finance and playbooks in one place: each agent reads only what the person asking may open.",
       "everything": "All seven, one after the other.",
       "money": "A card payment fails: a routine drafts the note to the customer, you approve it.",
-      "client": "A client asks for more: your agent checks the agreement, then drafts the answer."
+      "client": "A client asks for more than you signed: your agent checks the agreement, then drafts the reply and a change request. You approve it."
     },
     "needEverything": "Everything",
     "errTurnstile": "We could not confirm this browser. Reload the page and try again.",
@@ -1255,6 +1255,52 @@
           "rose": "Office Manager"
         },
         "limitConnectors": "The Stripe account and its payments are stand-ins. Connecting a real account is refused. Refunds and cancellations act on the stand-in only."
+      },
+      "studio": {
+        "companyFacts": "Fictional company · Lyon · 24 people",
+        "companyExample": "This is an example company: Halden Studio, which builds software and data systems for its clients. Your own workspace would hold your data.",
+        "companyAbout": "Halden Studio builds software and data systems for mid-size companies. It bills by the hour or the day, at a fixed price with milestones, or on a monthly retainer. Clients follow their project on a portal of their own, and every piece of work starts from a signed agreement.",
+        "companyOps": {
+          "agreements": {
+            "title": "Agreements",
+            "body": "Proposals and contracts, signed in Liaison. Your agent checks them when a client asks for more."
+          },
+          "delivery": {
+            "title": "Delivery",
+            "body": "Each task has a planned time, and whoever did it can enter how long it took. Whoever bills asks an agent to check planned vs done."
+          },
+          "billing": {
+            "title": "Billing",
+            "body": "Invoices from milestones, retainers and checked work. Anaïs issues them."
+          },
+          "clients": {
+            "title": "Clients",
+            "body": "Each company holds its people, deals, money and work. Bastien's client reports are drafted on Fridays."
+          },
+          "portal": {
+            "title": "Client portal",
+            "body": "Clients sign in to see their progress, reports, invoices and requests. Only what was shared, nothing else."
+          },
+          "knowledge": {
+            "title": "Studio knowledge",
+            "body": "A wiki of past projects and playbooks. Each agent reads only what its person may open."
+          }
+        },
+        "companyYou": "You run it as a co-founder, with your own agent. Ask it what you'd ask to run the studio, and watch it check the agreement before anyone answers a client.",
+        "companySimulated": "Only the outside world is simulated: no mail leaves, and the clients and their replies are stand-ins.",
+        "teamYouRole": "Co-founder",
+        "teamOthers": {
+          "name": "18 others",
+          "role": "Delivery, sales"
+        },
+        "teamRole": {
+          "bastien": "Project lead",
+          "nadia": "Lead developer",
+          "mathis": "Developer",
+          "sofia": "Data engineer",
+          "anais": "Finance"
+        },
+        "limitConnectors": "Repositories and clients are stand-ins. Client sign-in and signing links do not work here, since no mail leaves. Agreements shown as signed were not really signed. See what a client sees in a company's Client portal, under What they see."
       }
     }
   },

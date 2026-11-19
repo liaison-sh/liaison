@@ -673,6 +673,62 @@ describe("the door in a world", () => {
     expect(screen.getByTestId("demo-company-step").textContent).not.toContain("Resonant")
   })
 
+  it("the company step of the services world equals the board's strings", () => {
+    const worlds = ["products", "saas", "studio"] as const
+    _setDoorWorlds([...worlds])
+    serve(door([...worlds]))
+    window.history.replaceState(null, "", "/demo")
+    renderEntry()
+    fireEvent.click(screen.getByTestId("demo-entry-expertise"))
+    fireEvent.click(screen.getByTestId("demo-continue"))
+    const copy = kernelEn.demo.world.studio
+    const company = DEMO_DOOR.studio
+    expect(screen.getByTestId("demo-company-step").textContent).toContain(company.name)
+    expect(screen.getByText(copy.companyFacts)).toBeTruthy()
+    expect(screen.getByTestId("demo-example-line").textContent).toBe(copy.companyExample)
+    expect(screen.getByText(copy.companyAbout)).toBeTruthy()
+    for (const op of company.opsList) {
+      const row = screen.getByTestId(`demo-company-op-${op.key}`).textContent ?? ""
+      const entry = copy.companyOps[op.key as keyof typeof copy.companyOps]
+      expect(row).toContain(entry.title)
+      expect(row).toContain(entry.body)
+    }
+    expect(screen.getByText(copy.companyYou)).toBeTruthy()
+    const team = screen.getByTestId("demo-team").textContent ?? ""
+    for (const person of company.team) {
+      expect(team).toContain(person.name)
+      expect(team).toContain(copy.teamRole[person.key as keyof typeof copy.teamRole])
+    }
+    expect(team).toContain(copy.teamYouRole)
+    expect(team).not.toContain(kernelEn.demo.teamCeo)
+    expect(team).toContain(copy.teamOthers.name)
+    expect(team).toContain(copy.teamOthers.role)
+    expect(screen.getByTestId("demo-company-simulated").textContent).toBe(copy.companySimulated)
+    expect(screen.getByTestId("demo-company-step").textContent).not.toMatch(
+      /Resonant|Tideform|Shopify|Stripe/,
+    )
+    _setDoorWorlds(["products"])
+  })
+
+  it("no answer, Just explore and Other open the product world with today's flow, three worlds on", () => {
+    const worlds = ["products", "saas", "studio"] as const
+    _setDoorWorlds([...worlds])
+    serve(door([...worlds]))
+    window.history.replaceState(null, "", "/demo")
+    renderEntry()
+    // No answer: the products tiles and company.
+    expect(screen.getByTestId("demo-needs-commerce")).toBeTruthy()
+    expect(screen.queryByTestId("demo-needs-client")).toBeNull()
+    fireEvent.click(screen.getByTestId("demo-entry-other"))
+    fireEvent.input(screen.getByTestId("demo-entry-other-text"), { target: { value: "free text" } })
+    expect(screen.getByTestId("demo-needs-commerce")).toBeTruthy()
+    expect(screen.queryByTestId("demo-needs-client")).toBeNull()
+    fireEvent.click(screen.getByTestId("demo-explore"))
+    expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
+    expect(screen.getByTestId("demo-company-step").textContent).not.toContain("Halden")
+    _setDoorWorlds(["products"])
+  })
+
   it("a door whose config changed before Start returns to the company step", async () => {
     let doorWorlds = both
     const calls: string[] = []

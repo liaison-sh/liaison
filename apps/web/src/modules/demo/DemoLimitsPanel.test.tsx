@@ -8,7 +8,9 @@ import { DemoLimitsPanel } from "~/modules/demo/DemoLimitsPanel"
 import { _resetDemoWorld, _setDemoWorld } from "~/modules/demo/demo-world"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import kernelEn from "../../../../../packages/shared/src/i18n/locales/en/kernel.json"
+import portalEn from "../../../../../packages/shared/src/i18n/locales/en/portal.json"
 import kernelFr from "../../../../../packages/shared/src/i18n/locales/fr/kernel.json"
+import portalFr from "../../../../../packages/shared/src/i18n/locales/fr/portal.json"
 
 const open = (locale: "en" | "fr" = "en") =>
   render(() => (
@@ -54,5 +56,30 @@ describe("the limits panel", () => {
     expect(text).toContain(kernelEn.demo.limitAgents)
     expect(text).not.toContain(kernelEn.demo.limitConnectors)
     expect(text).not.toContain(kernelEn.demo.world.saas.limitConnectors)
+  })
+
+  it("the services world names sign-in and signing links and never the payments stand-in or the store", () => {
+    _setDemoWorld("studio")
+    open()
+    const text = screen.getByTestId("demo-limits").textContent ?? ""
+    expect(text).toContain(kernelEn.demo.world.studio.limitConnectors)
+    expect(text).toContain("Client sign-in and signing links do not work here")
+    expect(text).not.toContain(kernelEn.demo.limitConnectors)
+    expect(text).not.toContain(kernelEn.demo.world.saas.limitConnectors)
+    expect(text).not.toMatch(/Stripe|Shopify|store/i)
+    expect(text).toContain(kernelEn.demo.limitMail)
+    expect(text).toContain(kernelEn.demo.limitExpiry)
+  })
+
+  it("the services limit points at the labels the company page shows, in both languages", () => {
+    expect(kernelEn.demo.world.studio.limitConnectors).toContain(portalEn.staff.title)
+    expect(kernelEn.demo.world.studio.limitConnectors).toContain(portalEn.staff.viewPreview)
+    expect(kernelFr.demo.world.studio.limitConnectors).toContain(portalFr.staff.title)
+    expect(kernelFr.demo.world.studio.limitConnectors).toContain(portalFr.staff.viewPreview)
+    _setDemoWorld("studio")
+    open("fr")
+    expect(screen.getByTestId("demo-limits").textContent).toContain(
+      kernelFr.demo.world.studio.limitConnectors,
+    )
   })
 })

@@ -69,8 +69,10 @@ export async function scopeHoldersInTx(
   tx: PrivilegedDb,
   orgId: string,
   scope: string,
+  /** `exact`: only a grant of `scope` itself counts, for the scopes no wildcard holds. */
+  opts: { exact?: boolean } = {},
 ): Promise<string[]> {
-  const satisfying = scopeAncestors(scope)
+  const satisfying = opts.exact ? [scope] : scopeAncestors(scope)
   {
     // Role-granted holders.
     const viaRoles = await tx

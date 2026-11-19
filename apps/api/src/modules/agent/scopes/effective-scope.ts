@@ -22,7 +22,12 @@ import { and, eq, isNull } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { agents } from "~/db/schema/kernel/agents"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
-import { intersectScopes, isScopeSubset } from "~/modules/agent/subruns/spawn-agent"
+import {
+  exactHeldBy,
+  intersectScopes,
+  intersectWithPerson,
+  isScopeSubset,
+} from "~/modules/agent/subruns/spawn-agent"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -71,7 +76,7 @@ export function effectiveScopeChannel(ceiling: string[], memberGrants: string[][
 
 /** DM with one human: the agent ceiling intersected with the requester alone. */
 export function effectiveScopeDm(ceiling: string[], requesterGrants: string[]): string[] {
-  return intersectScopes(ceiling, requesterGrants)
+  return intersectWithPerson(ceiling, requesterGrants)
 }
 
 /**
@@ -94,7 +99,7 @@ export function effectiveScopeDelegation(
   callerEffectiveScope: string[],
   calleeCeiling: string[],
 ): string[] {
-  return intersectScopes(callerEffectiveScope, calleeCeiling)
+  return exactHeldBy(intersectScopes(callerEffectiveScope, calleeCeiling), callerEffectiveScope)
 }
 
 /**

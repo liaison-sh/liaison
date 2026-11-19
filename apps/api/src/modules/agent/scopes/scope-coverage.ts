@@ -41,3 +41,23 @@ export function isScopeCovered(required: string[], granted: string[]): boolean {
   if (required.length === 0) return true
   return required.every((req) => granted.some((g) => scopeCovers(g, req)))
 }
+
+/**
+ * Scopes only an EXACT grant holds: no wildcard, glob or parent covers them, in row security
+ * (`app_projects.app_has_exact_scope`) or in the services. `scope-coverage.test.ts` keeps this
+ * list equal to the scopes the migrations check that way.
+ */
+export const EXACT_ONLY_SCOPES: ReadonlySet<string> = new Set([
+  "projects:cost_rates:write",
+  "projects:margin:read",
+  "projects:timesheet:read",
+])
+
+/**
+ * True for a scope that only its exact grant holds: one of `EXACT_ONLY_SCOPES`, or a bare
+ * marker scope with no `app:` part (a document's edit scope such as `clevel`), which no app
+ * wildcard names.
+ */
+export function isExactOnlyScope(scope: string): boolean {
+  return EXACT_ONLY_SCOPES.has(scope) || (scope !== "*" && !scope.includes(":"))
+}

@@ -287,7 +287,12 @@ import {
   renderMidTurnSkills,
   takeMidTurnSkills,
 } from "~/modules/agent/skills/mid-turn-skills"
-import { clamp, intersectScopes, isScopeSubset } from "~/modules/agent/subruns/spawn-agent"
+import {
+  clamp,
+  intersectScopes,
+  intersectWithPerson,
+  isScopeSubset,
+} from "~/modules/agent/subruns/spawn-agent"
 import { resultHintsShownIn } from "~/modules/agent/tools/kernel-result-hints"
 import { modelTimeZoneOf } from "~/modules/agent/tools/model-times"
 import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
@@ -1546,7 +1551,7 @@ export async function resolveTurnScope(
   return {
     agentId: agent.id,
     agentCeiling: agent.scopeCeiling,
-    effectiveScope: intersectScopes(effectiveScope, actor.scopes),
+    effectiveScope: intersectWithPerson(effectiveScope, actor.scopes),
     withheld,
     ...(roomPeople ? { roomPeople } : {}),
   }
@@ -1582,7 +1587,7 @@ async function resolveScopeOverride(
     })
   }
   const grants = (await loadEffectivePermissions(tx, actor.userId, orgId)).scopes
-  const bound = intersectScopes(effectiveScopeDm(agent.scopeCeiling, grants), actor.scopes)
+  const bound = intersectWithPerson(effectiveScopeDm(agent.scopeCeiling, grants), actor.scopes)
   if (!override.effectiveScope.every((s) => isScopeSubset([s], bound))) {
     throw new HTTPException(403, {
       message: "E_SCOPE_OVERRIDE_REFUSED: the override is wider than ceiling and requester",
@@ -2063,7 +2068,7 @@ async function runAgentChatTurn(
   const delegatedScope = params.coordination?.delegatedScope
   if (actingAgent && delegatedScope) {
     actingAgent.effectiveScope = intersectScopes(
-      intersectScopes(delegatedScope, actor.scopes),
+      intersectWithPerson(delegatedScope, actor.scopes),
       actingAgent.effectiveScope,
     )
     actingAgent.withheld = withheldByRoom(

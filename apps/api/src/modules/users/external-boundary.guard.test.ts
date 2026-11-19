@@ -45,6 +45,10 @@ const TREATED: Record<string, [Treatment, string]> = {
     "member-filter",
     "a capacity line's leads: the project's owner or a person with a live task on it, members only",
   ],
+  "apps/projects/service/margin.ts": [
+    "member-filter",
+    "the names of the members who hold the margin scope, for a refusal",
+  ],
   "apps/projects/service/time-plan.ts": [
     "stored-ids",
     "the names of a project's owner, its biller and who changed a time entry",

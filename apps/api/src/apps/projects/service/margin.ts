@@ -10,6 +10,8 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
+import { scopeHoldersInTx } from "~/modules/permissions/scope-holders"
 import { type BudgetTask, type Coverage, coverageOf, liveTasks } from "./coverage"
 import { mixedCurrencies, parseCurrency } from "./currency"
 import { ProjectsServiceError } from "./statuses"
@@ -35,14 +37,61 @@ const MONTHS = [
   "December",
 ]
 
-/** Exact scopes only: a wildcard grant does not read cost (row security uses the same rule). */
-function requireExact(scopes: readonly string[], scope: string, what: string): void {
+/** At most this many names in a refusal: enough to say who to ask. */
+const READER_NAMES_MAX = 5
+
+/**
+ * The active members who hold `scope` exactly, by name: whom a refused person can ask instead.
+ * A privileged read, since the asker cannot see who holds what; names only, members only.
+ */
+async function exactHolderNames(orgId: string, scope: string): Promise<string[]> {
+  return withPrivilegedDb(orgId, "projects-finance-readers", async (tx) => {
+    const ids = await scopeHoldersInTx(tx, orgId, scope, { exact: true })
+    if (ids.length === 0) return []
+    return extractRows<{ name: string }>(
+      await tx.execute(drizzleSql`
+        SELECT u.name FROM ${kernelRel("users")} u
+         WHERE u.org_id = ${orgId}::uuid AND u.status = 'active' AND u.user_type = 'member'
+           AND u.name IS NOT NULL AND u.name <> ''
+           AND u.id IN (${drizzleSql.join(
+             ids.map((id) => drizzleSql`${id}::uuid`),
+             drizzleSql`, `,
+           )})
+         ORDER BY u.name
+         LIMIT ${READER_NAMES_MAX}`),
+    ).map((r) => r.name)
+  })
+}
+
+const listNames = (names: string[]): string =>
+  names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`
+
+/**
+ * Exact scopes only: a wildcard grant does not read cost (row security uses the same rule), and
+ * no agent asked on the person's behalf holds more than the person (agent scopes bound an
+ * exact-only scope by the person's exact grant). The refusal names who can read it, so the
+ * person is told whom to ask.
+ */
+async function requireExact(
+  orgId: string,
+  scopes: readonly string[],
+  scope: string,
+  what: string,
+): Promise<void> {
   if (scopes.includes(scope)) return
+  const readers = await exactHolderNames(orgId, scope)
+  const who =
+    readers.length > 0
+      ? `${listNames(readers)} can: tell the person to ask ${readers.length === 1 ? "them" : "one of them"} directly.`
+      : "No one here holds that access yet: an admin gives it with the projects app's Finance role."
   throw new ProjectsServiceError(
     403,
     "finance_only",
-    `Cost rates are visible to finance only, so I cannot work out ${what} for you. Nothing was read.`,
+    `Cost rates are visible to finance only, so I cannot work out ${what} for you, and no agent asked for you can either. ${who} Nothing was read.`,
     {
+      askInstead: readers,
       next: "budget_get gives the project's hours, coverage and, with the money scope, its price and what is invoiced.",
     },
   )
@@ -152,7 +201,7 @@ export async function getMarginCost(args: {
   const { tx, orgId, scopes, projectId } = args
   const project = await loadPlanningProject(tx, orgId, projectId)
   requirePlanning(orgId, project, scopes)
-  requireExact(scopes, MARGIN_READ_SCOPE, "margin")
+  await requireExact(orgId, scopes, MARGIN_READ_SCOPE, "margin")
   const period = args.month ? monthRange(args.month) : null
   const from = period ? drizzleSql`${period.from}::date` : drizzleSql`NULL::date`
   const to = period ? drizzleSql`${period.to}::date` : drizzleSql`NULL::date`
@@ -373,7 +422,7 @@ export async function listCostRates(args: {
   orgId: string
   scopes: readonly string[]
 }): Promise<{ rates: CostRateRow[]; message: string }> {
-  requireExact(args.scopes, MARGIN_READ_SCOPE, "cost rates")
+  await requireExact(args.orgId, args.scopes, MARGIN_READ_SCOPE, "cost rates")
   const rows = extractRows<Parameters<typeof toRow>[0]>(
     await args.tx.execute(drizzleSql`
       SELECT c.id::text AS id, c.user_id::text AS user_id, u.name, c.rate_minor, c.currency,
@@ -400,7 +449,7 @@ export async function setCostRate(args: {
   input: { userId?: string; rate?: number; from?: string; currency?: string }
 }): Promise<CostRateRow & { message: string }> {
   const { tx, orgId, input } = args
-  requireExact(args.scopes, COST_RATES_WRITE_SCOPE, "or change cost rates")
+  await requireExact(orgId, args.scopes, COST_RATES_WRITE_SCOPE, "or change cost rates")
   const userId = typeof input.userId === "string" ? input.userId.trim() : ""
   if (!/^[0-9a-f-]{36}$/i.test(userId)) {
     throw new ProjectsServiceError(

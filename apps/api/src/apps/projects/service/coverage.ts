@@ -91,9 +91,13 @@ export function realByTask(
   return out
 }
 
-/** Leaf tasks, started or closed, archived excluded: N of them hold at least one entry. */
+/** Leaf tasks begun, closed or holding time, archived excluded: N of them hold at least one entry. */
 export function coverageOf(live: readonly BudgetTask[], hasEntries: ReadonlySet<string>): Coverage {
   const parents = new Set(live.map((t) => t.parentId).filter((p): p is string => p !== null))
-  const scope = live.filter((t) => !parents.has(t.id) && (t.started || t.closed))
+  // A leaf counts once begun or closed, and whenever it holds real time: the real figure
+  // counts that time, so the coverage beside it must count its task.
+  const scope = live.filter(
+    (t) => !parents.has(t.id) && (t.started || t.closed || hasEntries.has(t.id)),
+  )
   return { withEntries: scope.filter((t) => hasEntries.has(t.id)).length, total: scope.length }
 }

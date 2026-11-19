@@ -28,8 +28,6 @@ import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-s
 import { scopeHoldersInTx } from "~/modules/permissions/scope-holders"
 import { awayDays, nextInLineOn } from "~/modules/users/away"
 import { getCapacity } from "./capacity"
-import { orgTimezone } from "./time-plan"
-import { todayIn } from "./took"
 
 const log = rootLogger.child({ module: "projects/home-lines" })
 
@@ -186,10 +184,11 @@ export async function monthCloseItems(
   tx: SqlClient,
   orgId: string,
   callerUserId: string,
-  forUserIds: readonly string[] = [],
-  now: Date = new Date(),
+  forUserIds: readonly string[],
+  now: Date,
+  /** The org's today at `now` (`orgToday`), read once by the caller for its whole answer. */
+  today: string,
 ): Promise<AttentionItem[]> {
-  const today = todayIn(await orgTimezone(tx as RlsClient | PrivilegedDb, orgId), now)
   const m = monthOf(today)
   // The feed polls often: only the month's last two weeks can hold its one day.
   if (today >= addCalendarDays(m.end, -14) && today < m.end) {

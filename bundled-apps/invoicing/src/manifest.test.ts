@@ -1789,6 +1789,9 @@ describe("invoicing manifest", () => {
     //   page, above the identity text; elsewhere nothing of the footer changes.
     // 0.37.1: the issuer guard reads the Stripe app turned off for the org as absent, so it no
     //   longer refuses schedules and drafts there; any other failed check still refuses.
+    // 0.37.2: drafts_create takes the project a draft bills (checked readable), the issued
+    //   invoice keeps it and is stamped with the contact's company, else the project's; the
+    //   Documents list has a Drafts entry.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

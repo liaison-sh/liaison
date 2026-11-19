@@ -39,15 +39,17 @@ describe("InvoicingSidebar (Phase 17 F1)", () => {
     expect(sidebarSource).not.toContain("dashboards/customs")
   })
 
-  it("declares the Documents-list items and NO Drafts tab (draft is not a user-facing category)", () => {
+  it("declares the Documents-list items, with a Drafts entry counted by documents_search", () => {
     expect(sidebarSource).toContain("Invoices")
     expect(sidebarSource).toContain("Quotes")
     expect(sidebarSource).toContain("Proformas")
     expect(sidebarSource).toContain("Purchase Orders")
     expect(sidebarSource).toContain("Credit notes")
-    // The Drafts tab is gone: drafts never surface as their own category.
-    expect(sidebarSource).not.toContain("/invoicing/documents/drafts")
-    expect(sidebarSource).not.toContain('label: "Drafts"')
+    // Drafts made by an agent, a milestone or a month-end run are reached from the list, not
+    // only by a direct link: their own entry, with the count the agent's own read gives.
+    expect(sidebarSource).toContain('"/invoicing/documents/drafts"')
+    expect(sidebarSource).toContain('label: "Drafts"')
+    expect(sidebarSource).toMatch(/status: "draft",\s*countOnly: true/)
   })
 
   it("wires the sidebar search box to the shared document-search signal (no longer a dead input)", () => {

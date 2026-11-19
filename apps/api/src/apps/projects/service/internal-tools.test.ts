@@ -116,7 +116,7 @@ describe("the internal reads for invoicing", () => {
     expectNothingPersonal(out, [517, 503, 489, 211])
   })
 
-  it("the milestone status read carries no task title, assignee, time or activity", async () => {
+  it("the milestone status read carries the project's company and no task title, assignee, time or activity", async () => {
     const out = await asPerson(w, (tx) =>
       milestoneStatusRead({
         tx,
@@ -131,7 +131,14 @@ describe("the internal reads for invoicing", () => {
     for (const t of out.tasks) {
       expect(Object.keys(t).sort()).toEqual(["completedOn", "id", "isMilestone", "terminal"])
     }
-    expect(Object.keys(out).sort()).toEqual(["basis", "tasks"])
+    // The project's client company, so an invoice billing the project is made out to it.
+    expect(Object.keys(out).sort()).toEqual(["basis", "companyId", "tasks"])
+    const stored = extractRows<{ company_id: string | null }>(
+      await db.execute(
+        drizzleSql`SELECT company_id::text AS company_id FROM app_projects.projects WHERE id = ${w.projectId}::uuid`,
+      ),
+    )[0]
+    expect(out.companyId).toBe(stored?.company_id ?? null)
     // Read in another app's call with that app's wide row access: a title would name work in a
     // project the person may not open.
     expect(JSON.stringify(out)).not.toContain("Work item")

@@ -4362,7 +4362,7 @@
       }
     },
     "milestone_status_read": {
-      "description": "Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and, per task, its done state, milestone mark and completion day. No title, assignee, time or activity. Called by the invoicing app only.",
+      "description": "Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and client company and, per task, its done state, milestone mark and completion day. No title, assignee, time or activity. Called by the invoicing app only.",
       "readOnly": true,
       "agentVisible": false,
       "trustBoundary": "internal",

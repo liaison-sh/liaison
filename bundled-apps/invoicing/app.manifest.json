@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.37.1",
+  "version": "0.37.2",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -3579,6 +3579,10 @@
           "allow_duplicate": {
             "type": "boolean",
             "description": "Add even if the run bills the same."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "The client project this document bills. The issued invoice stays on the project and is made out to its company when the contact has none. A billing plan's milestones use milestone_draft_create instead."
           },
           "buyer_is_consumer": {
             "type": "boolean",
@@ -7457,7 +7461,7 @@
     },
     {
       "target": "projects:milestone_status_read",
-      "reason": "a milestone's invoice is drafted only once its task is done: read whether the plan's tasks are done and flagged milestones, and the project's billing basis (no assignee, time or activity)"
+      "reason": "a milestone's invoice is drafted only once its task is done: read whether the plan's tasks are done and flagged milestones, and the project's billing basis; a draft that bills a project checks it is readable, and its invoice takes the project's client company when the contact has none (no assignee, time or activity)"
     },
     {
       "target": "projects:period_timebox_set",

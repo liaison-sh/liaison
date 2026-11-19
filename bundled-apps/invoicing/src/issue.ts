@@ -784,6 +784,9 @@ function serialiseDocumentInsert(row: DocumentInsert): Record<string, unknown> {
     year_of_issue: row.year_of_issue,
     issuer_profile_id: row.issuer_profile_id,
     counterparty_contact_id: row.counterparty_contact_id,
+    // The client company stamped at issue: written whenever it is known, so the company's money
+    // and its portal see the document. Omitted, the column keeps its NULL default.
+    ...(row.company_id ? { company_id: row.company_id } : {}),
     counterparty_name: row.counterparty_name,
     counterparty_address: row.counterparty_address,
     counterparty_shipping_address: row.counterparty_shipping_address,
@@ -1139,6 +1142,26 @@ export async function companyOfContact(
   }
 }
 
+/**
+ * The client company of the project a document bills, through projects' own read (the project's
+ * basis and company, nothing about its work). Null when there is no project, no company, or the
+ * read is refused.
+ */
+export async function companyOfProject(
+  ctx: Pick<IssueCtx, "executeTool">,
+  projectId: string | null | undefined,
+): Promise<string | null> {
+  if (!projectId || !CONTACT_ID.test(projectId) || !ctx.executeTool) return null
+  try {
+    const env = await ctx.executeTool("projects:milestone_status_read", { projectId, taskIds: [] })
+    if (env.status !== "completed") return null
+    const id = (env.result as { companyId?: unknown } | null)?.companyId
+    return typeof id === "string" && CONTACT_ID.test(id) ? id : null
+  } catch {
+    return null
+  }
+}
+
 export async function issueDocument(
   ctx: IssueCtx,
   input: IssueInput,
@@ -1386,7 +1409,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
-  const companyId = await companyOfContact(ctx, counterparty.contact_id)
+  // The contact's company first; a contact with none on file bills the client of the project
+  // the document is for, so the company's money still shows it.
+  const companyId =
+    (await companyOfContact(ctx, counterparty.contact_id)) ??
+    (await companyOfProject(ctx, draft.source?.billing_project_id))
   const documentInsert: DocumentInsert = {
     type,
     scope: input.scope ?? null,

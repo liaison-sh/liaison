@@ -32,6 +32,7 @@ import {
 } from "../recurring/restage"
 import { dayOf, type Row, draftLines as runDraftLines } from "../recurring/run-card"
 import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
+import { readMilestones } from "./billing-plan"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   deleteDraftRow,
@@ -148,6 +149,9 @@ export interface DraftsCreateInput extends DraftEinvoiceInput {
   run_id?: string | null
   /** Add it even when the run already bills the same customer the same lines. */
   allow_duplicate?: boolean | null
+  /** The client project this document bills. Kept on the issued document, so the project and
+   *  its company show the money; checked readable before anything is drafted. */
+  project_id?: string | null
 }
 
 /**
@@ -422,6 +426,34 @@ async function withContactRecipient(
   }
 }
 
+const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * The project a draft bills, when the caller names one: a project the person can read through
+ * projects' own read, else a typed refusal before anything is drafted or an approval parked.
+ * A purchase order bills a supplier, never a client project.
+ */
+async function billedProjectOrRefuse(
+  ctx: MutationsCtx,
+  input: { type: DocumentType; project_id?: string | null },
+): Promise<string | null> {
+  const raw = input.project_id
+  if (raw === undefined || raw === null || raw === "") return null
+  if (input.type === "purchase_order")
+    refuse(
+      "invalid_project",
+      "A purchase order bills a supplier, not a client project. Nothing was drafted.",
+    )
+  if (typeof raw !== "string" || !PROJECT_ID.test(raw))
+    refuse("invalid_project", `project_id ${String(raw)} is not a project id. Nothing was drafted.`)
+  if (!(await readMilestones(ctx, raw, [])))
+    refuse(
+      "project_unreadable",
+      `Project ${raw} could not be read: check the id with the projects search. Nothing was drafted.`,
+    )
+  return raw
+}
+
 async function createDraft(
   ctx: MutationsCtx,
   given: DraftsCreateInput,
@@ -431,6 +463,7 @@ async function createDraft(
     throw new Error(`invalid_type: ${given.type}`)
   }
   const input = await withContactRecipient(ctx, given)
+  const projectId = await billedProjectOrRefuse(ctx, input)
   // Resolve the issuer profile up front — `documents.issuer_profile_id` is NOT
   // NULL, so an absent id must be defaulted (single-issuer org) or turned into a
   // TYPED error BEFORE the insert, never let through as a raw 23502 the agent
@@ -607,6 +640,7 @@ async function createDraft(
     billing_city: input.billing_city ?? null,
     billing_country_code: input.billing_country_code ?? null,
     lines: draftLines,
+    billing_project_id: projectId,
   })
   // Kernel audit trail — a brand new draft entering the document lifecycle.
   await ctx.emit({

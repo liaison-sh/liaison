@@ -27,6 +27,9 @@ export const VALID_TYPES: ReadonlyArray<DocumentType> = [
 export interface DraftInsert {
   type: DocumentType
   counterparty_contact_id: string | null
+  /** The client project the draft bills (`documents.billing_project_id`), handed to the issued
+   *  document through its source columns. Written only when given. */
+  billing_project_id?: string | null
   /** Counterparty snapshot fields — freeform, editable from the UI's new "Customer" section, and
    *  persisted onto the draft `documents` row (the columns exist on the table since the
    *  counterparty-snapshot migration). Carried through to the issued document by issueDocument's

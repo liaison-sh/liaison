@@ -648,7 +648,13 @@ describe("documents this signature does not fit", () => {
     )
     expect(out.error.message).toContain('"source.body.blocks.1.level" must be 1 to 5.')
     expect(out.error.message).not.toContain("blocks.2")
-    expect(out.error.message).not.toContain("blocks.3")
+    // A signature block the layout cannot print is refused here, not when the draft is prepared.
+    expect(out.error.message).toContain(
+      '"source.body.blocks.3" is a signature_block without place and lines; a signature_block takes place, lines.',
+    )
+    expect(out.error.message).toContain(
+      '"source.body.blocks.3.parties" is not a recognised field of a signature_block',
+    )
     expect(ctx.approvals).toEqual([])
     expect(JSON.stringify([...db.tables.entries()])).toBe(before)
     const created = (await agreementCreate(ctxFor(db), {
@@ -847,6 +853,41 @@ describe("templates", () => {
       body: { blocks: [{ type: "paragraph", text: "x", when: { path: "a", atLeast: 3 } }] },
     })
     expect((bad as { error: { code: string } }).error.code).toBe("TEMPLATE_INVALID")
+  })
+})
+
+describe("a templated document's blocks", () => {
+  const unsigned = { type: "signature_block", text: "Signed in Annecy" }
+
+  it("a template whose signature block the layout cannot print is refused, naming the block", async () => {
+    const db = memoryDb()
+    const out = (await templateSave(ctxFor(db), {
+      name: "Proposal",
+      kind: "proposal",
+      body: { blocks: [{ type: "paragraph", text: "Scope" }, unsigned] },
+    })) as { error: { code: string; message: string } }
+    expect(out.error.code).toBe("TEMPLATE_INVALID")
+    expect(out.error.message).toContain(
+      '"body.blocks.1" is a signature_block without place and lines',
+    )
+    expect(db.tables.get("agreement_template_meta") ?? []).toEqual([])
+  })
+
+  it("prepare's preflight names a stored block the layout cannot print, before any approval", async () => {
+    const db = memoryDb()
+    const source = { body: { blocks: [{ type: "paragraph", text: "The work is a website." }] } }
+    const id = okId(await agreementCreate(ctxFor(db), { kind: "sow", title: "Site", source }))
+    await agreementPriceSet(ctxFor(db), { id, price_minor: "640000", currency: "EUR" })
+    // A draft saved before the boundary checked every block.
+    const draft = db.tables.get("agreement_drafts")?.find((r) => r.agreement_id === id) as Row
+    draft.source = { body: { blocks: [...source.body.blocks, unsigned] } }
+    const out = (await agreementPreparePreflight(ctxFor(db), { id })) as {
+      error: { code: string; message: string }
+    }
+    expect(out.error.code).toBe("INVALID_SOURCE")
+    expect(out.error.message).toContain(
+      '"source.body.blocks.1" is a signature_block without place and lines',
+    )
   })
 })
 

@@ -5,6 +5,7 @@
 // was made from, so a later save never moves it. Conditions on an agreement template take one
 // field's equality only (`equals`); the other condition forms of rich text are refused here.
 
+import { sourceBlockProblems } from "./checks"
 import { type AgreementsCtx, actingAgentId, callerUserId, type ErrorEnvelope, refusal } from "./ctx"
 
 interface MetaRow {
@@ -141,6 +142,9 @@ export async function templateSave(
       "TEMPLATE_INVALID",
       "A template body is an object with a list of blocks. Nothing was saved.",
     )
+  const shapes = sourceBlockProblems({ body: p.body }, "body")
+  if (shapes.length > 0)
+    return refusal("TEMPLATE_INVALID", `${shapes.join(" ")} Nothing was saved.`)
   const cond = unsupportedCondition(p.body)
   if (cond)
     return refusal(

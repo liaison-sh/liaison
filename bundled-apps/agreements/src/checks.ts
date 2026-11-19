@@ -161,6 +161,75 @@ const LIST_FIELDS: Record<string, FieldRule> = {
   agent_draft: isBoolean,
 }
 
+const isText = (v: unknown) => typeof v === "string"
+const isTexts = (v: unknown) => Array.isArray(v) && v.length > 0 && v.every(isText)
+const isObjects = (v: unknown) =>
+  Array.isArray(v) && v.length > 0 && v.every((x) => !!x && typeof x === "object")
+const isNumber = (v: unknown) => typeof v === "number" && Number.isFinite(v)
+const any: FieldRule = [() => true, ""]
+/**
+ * The other blocks the renderer prints, by their fields, and the fields each one needs. Checked
+ * here, at the tool boundary, so a block the layout would refuse is refused when it is written,
+ * naming its path, instead of when the document is prepared.
+ */
+const OTHER_BLOCKS: Record<string, { fields: Record<string, FieldRule>; needs: string[] }> = {
+  signature_block: {
+    fields: {
+      place: isString,
+      lines: [
+        (v) =>
+          isObjects(v) &&
+          (v as Record<string, unknown>[]).every(
+            (l) => isText(l.party) && isText(l.name) && isText(l.capacity),
+          ),
+        "a list of { party, name, capacity } texts",
+      ],
+    },
+    needs: ["place", "lines"],
+  },
+  parties: {
+    fields: {
+      lead: isString,
+      groups: [isObjects, "a list of { items: [parties] } groups"],
+      in_presence: isString,
+    },
+    needs: ["groups"],
+  },
+  recitals: {
+    fields: { items: [isTexts, "a list of texts"], closing: isString },
+    needs: ["items"],
+  },
+  definitions: {
+    fields: { items: [isObjects, "a list of { term, text }"] },
+    needs: ["items"],
+  },
+  annex: {
+    fields: { id: isString, title: isString, blocks: [isObjects, "a list of blocks"] },
+    needs: ["title", "blocks"],
+  },
+  toc: { fields: {}, needs: [] },
+  table: {
+    fields: {
+      columns: [isObjects, "a list of columns"],
+      from: isString,
+      where: any,
+      rows: [Array.isArray, "a list of rows"],
+      size: [isNumber, "a number"],
+      total: any,
+    },
+    needs: ["columns"],
+  },
+  image: {
+    fields: { fileId: isString, width: [isNumber, "a number"], align: isString },
+    needs: ["fileId"],
+  },
+  spacer: { fields: { height: [isNumber, "a number"] }, needs: ["height"] },
+  repeat: {
+    fields: { from: isString, where: any, blocks: [isObjects, "a list of blocks"] },
+    needs: ["from", "blocks"],
+  },
+}
+
 function listShapeProblem(b: SourceBlock, at: string): string | null {
   const items = b.items !== undefined
   const fromLine = b.from !== undefined || b.line !== undefined || b.where !== undefined
@@ -176,7 +245,7 @@ function listShapeProblem(b: SourceBlock, at: string): string | null {
  * per field, each naming its path (`source.body.blocks.0.content`); empty when the editor can
  * show them all.
  */
-export function sourceBlockProblems(source: unknown): string[] {
+export function sourceBlockProblems(source: unknown, root = "source.body"): string[] {
   const blocks = (source as AgreementSource | undefined)?.body?.blocks
   if (!Array.isArray(blocks)) return []
   const out: string[] = []
@@ -184,9 +253,19 @@ export function sourceBlockProblems(source: unknown): string[] {
     if (!b || typeof b !== "object") return
     const type = String((b as SourceBlock).type)
     const own = TEXT_BLOCK_FIELDS[type]
-    if (!own && type !== "list") return
-    const fields = own ? { ...ANY_TEXT_BLOCK, ...own } : LIST_FIELDS
-    const at = `source.body.blocks.${i}`
+    const other = OTHER_BLOCKS[type]
+    if (!own && !other && type !== "list") return
+    const fields = own
+      ? { ...ANY_TEXT_BLOCK, ...own }
+      : other
+        ? { type: any, when: any, agent_draft: isBoolean, ...other.fields }
+        : LIST_FIELDS
+    const at = `${root}.blocks.${i}`
+    const missing = (other?.needs ?? []).filter((k) => (b as SourceBlock)[k] === undefined)
+    if (missing.length > 0)
+      out.push(
+        `"${at}" is a ${type} without ${missing.join(" and ")}; a ${type} takes ${Object.keys(other?.fields ?? {}).join(", ")}.`,
+      )
     for (const [k, v] of Object.entries(b)) {
       const rule = fields[k]
       if (!rule)
@@ -379,6 +458,17 @@ export function prepareChecks(
           : `This retainer renews an existing one: once signed, its terms replace the retainer's from its first day, so it needs ${renewalMissing.join(", ")}.`,
     })
   }
+  // A draft saved before its blocks were checked at the tool boundary is refused here, by path.
+  const shapes = sourceBlockProblems(source)
+  checks.push({
+    code: "INVALID_SOURCE",
+    ok: shapes.length === 0,
+    blocking: true,
+    message:
+      shapes.length === 0
+        ? "Every block can be laid out."
+        : `${shapes.join(" ")} Fix it with agreement_update.`,
+  })
   const unread = agentDraftSentence(source)
   checks.push({
     code: "AGENT_TEXT_UNREAD",

@@ -175,7 +175,12 @@ describe("billing claims at Create", () => {
   })
 
   it("a drafted card that bills no line and claimed nothing still counts as reserved, so a fee-only month can issue", async () => {
-    const r = await storedReconciliation(w, { month: "2025-11", state: "drafted", lines: [] })
+    const r = await storedReconciliation(w, {
+      month: "2025-11",
+      state: "drafted",
+      basis: "retainer",
+      lines: [],
+    })
     const read = await asPerson(w, (tx) =>
       reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: r.id } }),
     )
@@ -194,6 +199,26 @@ describe("billing claims at Create", () => {
       reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: billed.id } }),
     )
     expect(moved.claimsReserved).toBe(false)
+  })
+
+  it("only a retainer month's card still drafted bills its fee with nothing reserved", async () => {
+    const read = async (id: string) =>
+      (
+        await asPerson(w, (tx) =>
+          reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: id } }),
+        )
+      ).claimsReserved
+    // A time and materials card with nothing billable has no fee to bill: not reserved.
+    const plain = await storedReconciliation(w, { month: "2025-09", state: "drafted", lines: [] })
+    expect(await read(plain.id)).toBe(false)
+    // A retainer month already invoiced is no longer waiting for its draft to issue.
+    const invoiced = await storedReconciliation(w, {
+      month: "2025-10",
+      state: "invoiced",
+      basis: "retainer",
+      lines: [],
+    })
+    expect(await read(invoiced.id)).toBe(false)
   })
 
   it("a released draft whose period has a newer card of the same person is set aside, never shown again, and swept", async () => {

@@ -623,9 +623,12 @@ export async function reconcileLinesRead(args: {
         FROM ${projectsRel("billing_claims")}
        WHERE org_id = ${orgId}::uuid AND reconciliation_id = ${r.id}::uuid`),
   )[0] ?? { reserved: 0, total: 0 }
-  // The work the draft bills must still be reserved for it. A card that bills no line and never
-  // claimed anything (a retainer month with no time logged bills its fee only) has nothing to hold.
-  const claimsReserved = claims.reserved > 0 || (lines.length === 0 && claims.total === 0)
+  // The work the draft bills must still be reserved for it. A retainer month's card still drafted
+  // that bills no line and never claimed anything (no time logged: its fee only) has nothing to
+  // hold. Any other card with nothing reserved does not issue.
+  const feeOnlyRetainer =
+    basis === "retainer" && r.state === "drafted" && lines.length === 0 && claims.total === 0
+  const claimsReserved = claims.reserved > 0 || feeOnlyRetainer
   const per = basis === "daily" ? hpd : 60
   const unit = basis === "daily" ? "day" : "hour"
   const retainer =

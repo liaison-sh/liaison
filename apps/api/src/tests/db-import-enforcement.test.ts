@@ -243,6 +243,10 @@ describe("db import enforcement", () => {
     // hold a given scope (role grants + direct grants) org-wide, with no
     // per-request RLS context; system-db read.
     "modules/permissions/scope-holders.ts",
+    // the finance refusal names who can read margins: the asker cannot see who
+    // holds what, so the active members holding the scope exactly are read
+    // privileged, names only, members only, at most five.
+    "apps/projects/service/margin.ts",
     // auto-approve policy load — reads instance/org-wide auto-approve policy
     // rows via withSystemDb (system-wide config, outside any per-request RLS).
     "modules/approvals/auto-approve.ts",

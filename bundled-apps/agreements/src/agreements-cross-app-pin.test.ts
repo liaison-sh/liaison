@@ -17,6 +17,7 @@ const manifest = JSON.parse(
 const DECLARED = [
   "invoicing:billing_step_add",
   "invoicing:retainer_terms_renew",
+  "kernel:companies_search",
   "kernel:contacts_group_add",
   "knowledge:archive",
   "knowledge:create",

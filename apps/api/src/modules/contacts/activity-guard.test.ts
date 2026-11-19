@@ -69,6 +69,6 @@ describe("timeline sources", () => {
       )
       .find((s) => s.filterKey === "projects")
     expect(projects?.label).toBe("Deals and projects")
-    expect(chips.projects).toBe(projects?.label)
+    expect(chips.projects).toBe(projects?.label ?? "")
   })
 })

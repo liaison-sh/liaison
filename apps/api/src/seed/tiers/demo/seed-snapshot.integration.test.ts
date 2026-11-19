@@ -28,6 +28,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
 import { APPROVAL_EXPIRY_HOURS } from "~/seed/factories/approvals/requests"
+import { foreignLiterals } from "~/seed/worlds/literals"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { seedDemoWorld } from "./seed-demo"
 
@@ -180,6 +181,13 @@ function normalise(
   return value
 }
 
+/**
+ * The normalised rows of the snapshot being taken, by table: read once by the
+ * honesty check (no literal of another world in a world's rows) and cleared
+ * before each seed.
+ */
+let rawLines = new Map<string, string[]>()
+
 async function snapshotOrg(
   orgId: string,
   slug: string,
@@ -224,6 +232,7 @@ async function snapshotOrg(
         })
         .sort()
       if (lines.some((line) => days.some((day) => line.includes(day)))) wallClockLeaks.add(name)
+      rawLines.set(name, [...(rawLines.get(name) ?? []), ...lines])
       snapshot[name] = {
         rows: lines.length,
         digest: createHash("sha256").update(lines.join("\n")).digest("hex").slice(0, 16),
@@ -260,11 +269,15 @@ async function seedAndSnapshot(
   const root = process.env.SEED_SNAPSHOT_DUMP
   const dumpDir = root ? path.join(root, tag) : null
   if (dumpDir) mkdirSync(dumpDir, { recursive: true })
+  rawLines = new Map()
   const snapshot = await snapshotOrg(result.orgId, slug, written, dumpDir)
   slugs.set(snapshot, slug)
+  rowsOfSnapshot.set(snapshot, rawLines)
   return snapshot
 }
 
+/** The normalised rows of each snapshot, by table. */
+const rowsOfSnapshot = new WeakMap<Snapshot, Map<string, string[]>>()
 /** The slug each snapshot was seeded under, for a re-seed of the same org. */
 const slugs = new WeakMap<Snapshot, string>()
 /** When each org's first seed started. */
@@ -384,6 +397,15 @@ describe("the services world's output at the board date and on a month's first d
 
   it("seeding the same org again changes no row count and no digest", () => {
     expect(diff(first, reseeded)).toEqual([])
+  })
+
+  it("the services world's rows hold no literal of another world", () => {
+    const rows = rowsOfSnapshot.get(first)
+    expect(rows?.size ?? 0).toBeGreaterThan(20)
+    const hits: string[] = []
+    for (const [table, lines] of rows ?? [])
+      for (const hit of foreignLiterals("studio", lines.join("\n"))) hits.push(`${table}: ${hit}`)
+    expect(hits).toEqual([])
   })
 
   it("a month's first day seeds as many rows of time as the board date", () => {

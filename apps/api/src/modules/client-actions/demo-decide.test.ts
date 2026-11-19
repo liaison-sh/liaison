@@ -7,7 +7,8 @@
 // invited name, its event is the system's and says demo, and the decided event
 // is queued once.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
-import { sql } from "~/db"
+import { sql as dsql } from "drizzle-orm"
+import { extractRows, sql } from "~/db"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { markOrgAsDemo, reservedMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { k, useClientActionWorld } from "../../../test-support/client-actions-kit"
@@ -77,6 +78,69 @@ describe("the demo decide", () => {
       decided_via: "link",
       target: { app: TARGET.app, type: TARGET.type },
     })
+  })
+
+  it("writes the caller's stand-in record once, in the decision's transaction, only when it decides", async () => {
+    const id = await mint()
+    const seen: string[] = []
+    const out = await decideDemoClientAction({
+      orgId: kit.w.orgId,
+      actionId: id,
+      target: TARGET,
+      standIn: async (tx) => {
+        // Inside the decision's transaction: the row is already decided there.
+        const [row] = extractRows<{ decided: boolean }>(
+          await tx.execute(
+            dsql`SELECT (decided_at IS NOT NULL) AS decided FROM kernel.client_actions WHERE id = ${id}`,
+          ),
+        )
+        seen.push(row?.decided ? "decided" : "open")
+      },
+    })
+    expect(out.ok).toBe(true)
+    expect(seen).toEqual(["decided"])
+    // Refused (decided already, a box that is no demo): the stand-in writer never runs.
+    const again = await decideDemoClientAction({
+      orgId: kit.w.orgId,
+      actionId: id,
+      target: TARGET,
+      standIn: async () => {
+        seen.push("again")
+      },
+    })
+    expect(again).toMatchObject({ ok: false, code: "DEMO_DECIDE_NOT_OPEN" })
+    const other = await mint()
+    DemoModeTestAccess.set(false)
+    try {
+      const off = await decideDemoClientAction({
+        orgId: kit.w.orgId,
+        actionId: other,
+        target: TARGET,
+        standIn: async () => {
+          seen.push("off")
+        },
+      })
+      expect(off).toMatchObject({ ok: false, code: "DEMO_DECIDE_NOT_DEMO_BOX" })
+    } finally {
+      DemoModeTestAccess.set(true)
+    }
+    expect(seen).toEqual(["decided"])
+  })
+
+  it("a stand-in record that fails leaves the action undecided, with no decided event", async () => {
+    const id = await mint()
+    await expect(
+      decideDemoClientAction({
+        orgId: kit.w.orgId,
+        actionId: id,
+        target: TARGET,
+        standIn: async () => {
+          throw new Error("the stand-in record could not be written")
+        },
+      }),
+    ).rejects.toThrow("the stand-in record could not be written")
+    expect((await rowOf(id))?.decided_at).toBeNull()
+    expect(await decidedEvents(id)).toHaveLength(0)
   })
 
   it("refuses an action already decided", async () => {

@@ -67,7 +67,7 @@
 //  * `ads` and `calls` are deliberately not part of the demo surface.
 
 import { randomBytes } from "node:crypto"
-import type { CommercialIdentity } from "@liaison/shared"
+import { type CommercialIdentity, DEMO_DEFAULT_WORLD, type DemoWorldId } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { writeApproveRepliesFromHome } from "~/cli/provisioners/ticket-inboxes"
@@ -216,6 +216,11 @@ export interface SeedDemoOrgOptions {
    * seed, one field apart.
    */
   variant: DemoOrgVariant
+  /**
+   * The demo world this org holds, recorded on its marker (`demoWorldOf` reads it back) when it
+   * is not the default world: a marker naming none holds the default world. Defaults to that.
+   */
+  worldId?: DemoWorldId
   /**
    * THE ONE ACCOUNT THAT CAN SIGN IN. The person this org belongs to: for a
    * visitor org the caller who registered, for the reserved org the App Review
@@ -867,12 +872,19 @@ async function markNewDemoOrg(
     createdThisRun: orgShell.created,
   })
   if (markRefusal) throw new Error(markRefusal)
-  const marker =
+  const variantMarker =
     existingMarker?.variant === opts.variant
       ? existingMarker
       : opts.variant === "reserved"
         ? reservedMarker()
         : visitorMarker(opts.visitorTtlHours ?? env.LIAISON_DEMO_VISITOR_TTL_HOURS)
+  // The world the org holds is on its marker, as the door writes it: a stand-in that answers
+  // for one world reads it there (year and self-hosted boxes seed a world with no door).
+  const worldId = opts.worldId ?? DEMO_DEFAULT_WORLD
+  const marker =
+    worldId === DEMO_DEFAULT_WORLD || variantMarker.worldId === worldId
+      ? variantMarker
+      : { ...variantMarker, worldId }
   await markOrgAsDemo(markedOrgId, marker)
   await releaseOrgSlugClaim(opts.orgSlug)
   log(`org '${opts.orgSlug}': marked as a ${opts.variant} demo org`)

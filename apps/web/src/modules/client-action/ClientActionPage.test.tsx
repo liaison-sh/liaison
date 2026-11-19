@@ -215,6 +215,18 @@ describe("the token page", () => {
     })
   })
 
+  it("identity: on a demo box the code step says plainly that no code mail is sent there, and stays on the step", async () => {
+    serve({ code: () => ({ status: 403, body: { error: { code: "NO_MAIL_ON_DEMO" } } }) })
+    renderAt(`#t=${TOKEN}`)
+    await readToEnd()
+    fireEvent.click(screen.getByTestId("read-continue"))
+    await screen.findByTestId("step-identity-panel")
+    expect((await screen.findByTestId("client-action-note")).textContent).toContain(
+      "This is a demo: no code mail is sent here",
+    )
+    expect(screen.getByTestId("step-identity-panel")).toBeTruthy()
+  })
+
   it("identity: a wrong code says how many tries are left and stays on the step", async () => {
     serve({ verify: () => ({ status: 401, body: { error: { code: "wrong_code", left: 3 } } }) })
     renderAt(`#t=${TOKEN}`)

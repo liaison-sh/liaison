@@ -269,6 +269,11 @@ const ClientActionPage: Component<ClientActionPageProps> = (props) => {
       set("note", i18n.t("client-action.page.identity.sendFailed"))
       return
     }
+    // A demo box sends no code mail: say so in words, not as a page that is down.
+    if (code === "NO_MAIL_ON_DEMO") {
+      set("note", i18n.t("client-action.page.identity.noMailOnDemo"))
+      return
+    }
     frameIfDead(a)
   }
 

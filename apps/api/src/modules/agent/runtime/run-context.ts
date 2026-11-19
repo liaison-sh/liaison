@@ -505,6 +505,17 @@ export function currentToolCallScopesBefore(): string[] | undefined {
 }
 
 /**
+ * Run `fn` outside any run's frame. For a callback a long-lived resource fires (a sandbox
+ * worker's IPC messages): it runs in the async context the resource was CREATED in, which is
+ * whatever run happened to create it (a pool grown during an approved action), never the run
+ * the callback serves. Without this, a later event handler's bridge call read that run's frame
+ * and its turn's taint, and an ungated write parked for a turn it was never part of.
+ */
+export function outsideAnyRun<T>(fn: () => T): T {
+  return runContextStore.exit(() => toolCallScopesBeforeStore.exit(fn))
+}
+
+/**
  * Is the run that owns the CURRENT frame read-only (spec-security.md D4)?
  *
  * Captured where the frame is still live, exactly as `captureSpawnParentFrame`

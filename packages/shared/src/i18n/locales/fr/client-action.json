@@ -131,6 +131,7 @@
       "wrongCode": "Ce code n'est pas le bon. Essais restants avec ce code : {{left}}.",
       "codeEnded": "Ce code a expiré. Envoyez un nouveau code.",
       "sendFailed": "Nous n'avons pas pu envoyer le code. Réessayez dans une minute.",
+      "noMailOnDemo": "Ceci est une démo : aucun e-mail de code n'est envoyé ici, cette étape ne peut donc pas être terminée. Rien n'a été signé ni décidé.",
       "invalidText": "Votre nom ou votre fonction contient des caractères que nous ne pouvons pas garder. Tapez-les à nouveau.",
       "nameNotDrawable": "Votre nom contient des caractères que la page de signature ne peut pas afficher. Tapez-le en lettres latines.",
       "notShown": "Ouvrez d'abord le document, puis demandez un code."

@@ -4,13 +4,15 @@
 // on one is recorded as sent, with no provider and no network, so the sender is
 // told nothing failed. A link to a real address keeps the demo box's refusal:
 // the link is rotated dead and the sender told. Outside demo mode nothing
-// changes: the link leaves through the system channel.
+// changes: the link leaves through the system channel. The code mail is never
+// recorded sent: a demo box refuses it, as it refuses a code request.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
 import { demoProvider } from "~/infra/email"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { k, useClientActionWorld, waitForMail } from "../../../test-support/client-actions-kit"
+import { newActionMailId, sendCodeMail } from "./mail"
 import { mintClientAction } from "./mint"
 
 const kit = useClientActionWorld("demolinkmail", "contract")
@@ -112,5 +114,28 @@ describe("a client action's link mail in a demo workspace", () => {
     const s = await settled(id, (x) => x.rotated && x.toldSender)
     expect(s).toEqual({ sent: false, rotated: true, toldSender: true })
     expect(demoProvider().refused.length).toBe(refusedBefore + 1)
+  })
+
+  it("in a demo workspace the code mail is never recorded sent to a reserved address: a demo box refuses it, and elsewhere it leaves as before", async () => {
+    expect(demoOrgMarked).toBe(true)
+    const code = {
+      orgId: kit.w.orgId,
+      to: "pauline@client.example",
+      title: "Change request",
+      kind: "accept" as const,
+      code: "123456",
+      orgName: "Demo",
+    }
+    // On a demo box: refused in words, never swallowed as delivered.
+    DemoModeTestAccess.set(true)
+    const refusedBefore = demoProvider().refused.length
+    await expect(sendCodeMail({ ...code, mailId: newActionMailId() })).rejects.toThrow()
+    expect(demoProvider().refused.length).toBe(refusedBefore + 1)
+    // Off a demo box (a year box seeds demo workspaces too): the system channel sends it.
+    DemoModeTestAccess.set(false)
+    const capturedBefore = kit.capture.sent.length
+    await sendCodeMail({ ...code, mailId: newActionMailId() })
+    const sent = kit.capture.sent.slice(capturedBefore)
+    expect(sent.map((m) => [m.template, m.to])).toEqual([["client-action.code", code.to]])
   })
 })

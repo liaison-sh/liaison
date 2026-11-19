@@ -590,6 +590,35 @@ describe("approve", () => {
     await waitFor(() => expect(r.getByTestId("portal-decide-note").textContent).toContain(time))
   })
 
+  it("on a demo box asking the code says plainly that no code mail is sent there", async () => {
+    setPortalAccessToken("acc")
+    serve({
+      "GET /documents/a1": () =>
+        DOC([
+          {
+            id: "x1",
+            kind: "sign",
+            invitedName: "Paul",
+            mine: true,
+            decidedAt: null,
+            revokedAt: null,
+            expiresAt: null,
+          },
+        ]),
+      "POST /actions/x1/code": () => ({
+        status: 403,
+        body: { error: { code: "NO_MAIL_ON_DEMO" } },
+      }),
+    })
+    const r = wrap(() => <DocumentPage id="a1" />)
+    fireEvent.click(await r.findByTestId("portal-decide-yes"))
+    await waitFor(() =>
+      expect(r.getByTestId("portal-decide-note").textContent).toContain(
+        "This is a demo: no code mail is sent here",
+      ),
+    )
+  })
+
   it("an approval in an old session asks the code when the server says so", async () => {
     setPortalAccessToken("acc")
     let decides = 0

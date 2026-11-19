@@ -123,6 +123,7 @@
     "typedName": "Votre nom complet",
     "codeSent": "Nous avons envoyé un code à {{to}}.",
     "codeNotSent": "Le code n'a pas pu être envoyé. Réessayez dans un instant.",
+    "codeNotOnDemo": "Ceci est une démo : aucun e-mail de code n'est envoyé ici, cette étape ne peut donc pas être terminée. Rien n'a été signé ni décidé.",
     "codeNotSentUntil": "Le code n'a pas encore pu être envoyé. Vous pourrez le redemander à {{time}}.",
     "waitsOn": "En attente de {{name}}",
     "until": "Ouvert jusqu'au {{date}}",

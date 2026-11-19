@@ -27,8 +27,10 @@ import { executeTool } from "~/modules/apps/execute-tool"
 import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
 import { registerTemplate } from "~/modules/pdf/registry"
 import { getFileBytes } from "~/modules/pdf/render"
+import { specimenNoteText } from "~/modules/pdf/specimen"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { validateFacturxXml } from "../../../../../tools/schematron/validate"
 import { failing, structuralAsserts } from "../../../test-support/pdfa/structural-asserts"
@@ -459,4 +461,28 @@ describe("Factur-X legal original at issue (real Postgres, sandbox, kernel rende
     expect(v.xsd.errors).toEqual([])
     expect(v.blocking.map((b) => `${b.schematron}:${b.id}`)).toEqual([])
   }, 240_000)
+
+  // Last in the file: it turns the org into a demo workspace.
+  it("in a demo workspace the stored invoice data carries the same specimen note as the copy inside the PDF", async () => {
+    await markOrgAsDemo(ORG, visitorMarker(1))
+    await invalidateDemoMarker(ORG)
+    const id = await issue()
+    const d = await doc(id)
+    expect(d.pdf_status).toBe("ready")
+    const [lo] = await sql<
+      Array<Record<string, unknown>>
+    >`SELECT * FROM app_invoicing.legal_originals WHERE document_id = ${id}`
+    const pdf = await getFileBytes(null, String(lo!.file_id))
+    const embedded = embeddedXml(await PDFDocument.load(pdf, { updateMetadata: false }))
+    const note = `<ram:IncludedNote><ram:Content>${specimenNoteText()}</ram:Content><ram:SubjectCode>AAI</ram:SubjectCode></ram:IncludedNote>`
+    expect(embedded.split(note).length - 1).toBe(1)
+    const [fx] = await sql<
+      Array<Record<string, unknown>>
+    >`SELECT * FROM app_invoicing.facturx_files WHERE document_id = ${id}`
+    const stored = new TextDecoder().decode(await getFileBytes(null, String(fx!.file_id)))
+    expect(stored).toBe(embedded)
+    const v = validateFacturxXml(stored)
+    expect(v.xsd.errors).toEqual([])
+    expect(v.blocking.map((b) => `${b.schematron}:${b.id}`)).toEqual([])
+  }, 120_000)
 })

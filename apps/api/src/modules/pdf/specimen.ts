@@ -10,7 +10,9 @@
 //
 // The same text goes into an embedded structured invoice (a CII XML attachment
 // of a PDF/A-3) as an included note, so software reading the attachment sees
-// the specimen too.
+// the specimen too, and into the standalone copy of that XML an app stores as
+// its own file. In a demo the app's own record of that copy (its fingerprint)
+// describes the data it built, before the host's note.
 import { SHIPPED_LOCALES, type ShippedLocale } from "@liaison/shared"
 import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { serverT } from "~/modules/i18n/server-i18n"
@@ -79,6 +81,26 @@ export function attachmentsWithSpecimen(attachments: PdfAAttachment[]): PdfAAtta
     const stamped = ciiWithSpecimenNote(xml, text)
     return stamped === xml ? a : { ...a, bytes: new TextEncoder().encode(stamped) }
   })
+}
+
+/**
+ * The bytes an app stores as a file of its own (`files_importAttachment`). In a
+ * demo workspace a CII invoice the app made carries the specimen note, so the
+ * standalone copy of an invoice's data says specimen as the copy embedded in its
+ * PDF does (the two stay the same bytes). Everywhere else, and for any other
+ * file or one fetched from a provider, the bytes are the app's own, unchanged.
+ * The host decides from the org alone: the app has nothing to pass for it.
+ */
+export async function storedBytesWithSpecimen(
+  orgId: string,
+  file: { mimeType: string; bytes: Uint8Array; fromNetwork: boolean },
+): Promise<Uint8Array> {
+  if (file.fromNetwork || !/xml/i.test(file.mimeType)) return file.bytes
+  const xml = new TextDecoder().decode(file.bytes)
+  if (!CII_ROOT.test(xml)) return file.bytes
+  if (!(await renderIsDemo(orgId))) return file.bytes
+  const stamped = ciiWithSpecimenNote(xml, specimenNoteText())
+  return stamped === xml ? file.bytes : new TextEncoder().encode(stamped)
 }
 
 const pendingDemoLookups = new Map<string, Promise<boolean>>()

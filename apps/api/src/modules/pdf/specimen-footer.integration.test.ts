@@ -18,7 +18,13 @@ import { fxDocument } from "../../../../../bundled-apps/invoicing/src/facturx/fi
 import { extractPdfText } from "./pdf-text"
 import { PdfRegistryTestAccess, registerTemplate } from "./registry"
 import { getFileBytes, renderPdf } from "./render"
-import { ciiWithSpecimenNote, specimenNoteText, specimenTexts, withSpecimen } from "./specimen"
+import {
+  ciiWithSpecimenNote,
+  specimenNoteText,
+  specimenTexts,
+  storedBytesWithSpecimen,
+  withSpecimen,
+} from "./specimen"
 import {
   commandsJson,
   documentInput,
@@ -231,5 +237,26 @@ describe("rendering through the host", () => {
     expect(text).not.toContain("app-made")
     // A demo invoice's embedded invoice data says specimen.
     expect(await embeddedText(demo)).toContain(`<ram:Content>${EN} / ${FR}</ram:Content>`)
+  }, 60_000)
+
+  test("an invoice's data stored as a file says specimen only in a demo, and only for invoice data the app made", async () => {
+    const { id: orgId } = await createTestOrg()
+    const cii = new TextEncoder().encode(buildCii(fxDocument()))
+    const other = new TextEncoder().encode("<note>Specimen?</note>")
+    const store = (bytes: Uint8Array, mimeType = "text/xml", fromNetwork = false) =>
+      storedBytesWithSpecimen(orgId, { mimeType, bytes, fromNetwork })
+
+    // Outside a demo every file is stored as the app handed it.
+    expect(await store(cii)).toEqual(cii)
+    expect(await store(other)).toEqual(other)
+
+    await markOrgAsDemo(orgId, visitorMarker(1))
+    await invalidateDemoMarker(orgId)
+    const stamped = new TextDecoder().decode(await store(cii))
+    expect(stamped).toBe(ciiWithSpecimenNote(buildCii(fxDocument()), specimenNoteText()))
+    // Other XML, another kind of file and a file fetched from a provider are left alone.
+    expect(await store(other)).toEqual(other)
+    expect(await store(cii, "application/pdf")).toEqual(cii)
+    expect(await store(cii, "text/xml", true)).toEqual(cii)
   }, 60_000)
 })

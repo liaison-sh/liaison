@@ -232,10 +232,18 @@ export function createFilesMethods(ctx: BridgeContext): Record<string, any> {
         const { cutSigningLinksInMailFile, isMailFile } = await import(
           "~/modules/client-actions/quoted-link"
         )
+        // A demo workspace's invoice data says specimen (modules/pdf/specimen.ts).
+        const { storedBytesWithSpecimen } = await import("~/modules/pdf/specimen")
         const bytes = Buffer.from(
           !scan.quarantined && isMailFile(mimeType, scan.attachment.filename)
             ? cutSigningLinksInMailFile(scan.attachment.bytes)
-            : scan.attachment.bytes,
+            : scan.quarantined
+              ? scan.attachment.bytes
+              : await storedBytesWithSpecimen(orgId, {
+                  mimeType,
+                  bytes: scan.attachment.bytes,
+                  fromNetwork: p.fromNetwork === true,
+                }),
         )
         const disposition = scan.quarantined ? "attachment" : (p.disposition ?? "attachment")
         const safeName = sanitizeFilename(scan.attachment.filename)

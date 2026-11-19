@@ -49,6 +49,7 @@ import {
   cardLinesLockedError,
   deductionLinesLockedError,
   markReconciliation,
+  restageIssueApprovals,
   withdrawIssueApprovals,
 } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
@@ -1104,7 +1105,17 @@ async function updateDraft(
   }
   const rd = await runDraftOf(ctx, input.draft_id)
   if (rd) return updateRunDraft(ctx, input, mode, rd)
-  return updatePlainDraft(ctx, { draft_id: input.draft_id, patch: input.patch ?? {} }, mode)
+  const out = await updatePlainDraft(
+    ctx,
+    { draft_id: input.draft_id, patch: input.patch ?? {} },
+    mode,
+  )
+  // The edit is in: an issue card still waiting on this draft is redrawn from it.
+  if (!("preflight" in out) && !("approval_id" in out)) {
+    const fresh = await getDraft(ctx.db, input.draft_id)
+    if (fresh) await restageIssueApprovals(ctx, fresh)
+  }
+  return out
 }
 
 async function updatePlainDraft(

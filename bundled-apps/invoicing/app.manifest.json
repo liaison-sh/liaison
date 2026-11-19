@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.37.6",
+  "version": "0.38.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -4162,6 +4162,10 @@
         "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "draft_id": {
             "type": "string"
+          },
+          "draft_hash": {
+            "type": "string",
+            "description": "Set by the app when the draft is edited while this request waits; leave it out."
           },
           "due_at": {
             "type": "string",

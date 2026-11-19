@@ -183,9 +183,8 @@ async function embeddedText(bytes: Uint8Array): Promise<string> {
   const out: string[] = []
   for (let i = 0; list && i + 1 < list.size(); i += 2) {
     const spec = list.lookup(i + 1, PDFDict)
-    const stream = spec
-      .lookup(PDFName.of("EF"), PDFDict)
-      .lookup(PDFName.of("F"), PDFRawStream) as PDFRawStream
+    const stream = spec.lookup(PDFName.of("EF"), PDFDict).lookup(PDFName.of("F"))
+    if (!(stream instanceof PDFRawStream)) continue
     out.push(String(list.lookup(i)), new TextDecoder().decode(decodePDFRawStream(stream).decode()))
   }
   return out.join("\n")

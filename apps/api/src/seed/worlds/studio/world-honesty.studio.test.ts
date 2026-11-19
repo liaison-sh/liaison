@@ -28,7 +28,7 @@ function read(locale: string, ns: string): Record<string, unknown> {
 /** The services world's served copy in one language: its tours, door and the limits panel. */
 function studioCopy(locale: string): Record<string, string> {
   const tours = (read(locale, "tours").scenarios ?? {}) as Record<string, unknown>
-  const demo = ((read(locale, "kernel").demo ?? {}) as Record<string, unknown>) ?? {}
+  const demo = (read(locale, "kernel").demo ?? {}) as Record<string, unknown>
   const out: Record<string, string> = {}
   for (const [key, value] of Object.entries(tours))
     if (key.startsWith("studio")) out[`tours.${key}`] = JSON.stringify(value)

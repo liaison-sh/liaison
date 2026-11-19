@@ -8,6 +8,12 @@
 import { describe, expect, it } from "bun:test"
 import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { scanWorldPackDir } from "~/seed/worlds/prose-guard"
+import { periodLabel } from "../../../../../../bundled-apps/invoicing/src/recurring/flags"
+// The invoicing app's own date rules, so the world's schedules are held to what the app does.
+import {
+  datesFrom,
+  periodKey,
+} from "../../../../../../bundled-apps/invoicing/src/recurring/schedule"
 import { STUDIO_SOW_EXCLUSIONS, studioAgreements } from "./agreements"
 import { STUDIO_DELIVERY_KEYS, STUDIO_TEAM } from "./fiction"
 import { STUDIO_PAST_SIGN_ON_HOURS } from "./knowledge"
@@ -493,7 +499,7 @@ describe("services world money plan", () => {
     ])
   })
 
-  it("the portal is invoiced 44,800, paid 53,760 with VAT, and the last seeded number is 0512", () => {
+  it("the portal is invoiced 44,800, paid 53,760 with VAT, and the last seeded number is 0513", () => {
     const m = studioMoney(BOARD_DATE)
     const portal = m.invoices.filter((i) => i.projectKey === "MARLIN")
     expect(portal.map((i) => i.number)).toEqual(["F-2026-0201", "F-2026-0263", "F-2026-0397"])
@@ -502,7 +508,9 @@ describe("services world money plan", () => {
     const paid = portal.filter((i) => i.paidOn !== null)
     expect(paid.reduce((n, i) => n + euros(invoiceTotals(i.lines).inclMinor), 0)).toBe(53_760)
     expect(portal[0]?.paidOn).toBe(portal[0]?.issuedOn as string)
-    expect(m.invoices.at(-1)?.number).toBe("F-2026-0512")
+    // The upkeep's run on the 1st issued after last month's retainer invoice.
+    expect(m.invoices.at(-1)?.number).toBe("F-2026-0513")
+    expect(m.invoices.at(-1)?.key).toBe("verdier-upkeep-last-run")
   })
 
   it("last month's retainer invoice is 4,500 plus 6 h at 120, 6,264.00 with VAT", () => {
@@ -522,7 +530,7 @@ describe("services world money plan", () => {
     for (const at of anchors()) {
       const m = studioMoney(at)
       const tag = at.getTime()
-      expect([tag, m.invoices.length]).toEqual([tag, 512])
+      expect([tag, m.invoices.length]).toEqual([tag, 513])
       const next = new Map<number, number>()
       let last = ""
       for (const inv of m.invoices) {
@@ -531,9 +539,46 @@ describe("services world money plan", () => {
         expect([tag, inv.key, inv.numberInt]).toEqual([tag, inv.key, want])
         expect([tag, inv.key, inv.issuedOn >= last]).toEqual([tag, inv.key, true])
         expect([tag, inv.key, inv.issuedOn < m.today]).toEqual([tag, inv.key, true])
-        expect(isoWeekdayOf(inv.issuedOn)).toBeLessThanOrEqual(5)
+        // A schedule's issue day never moves, so its run may issue on a weekend.
+        if (inv.kind !== "schedule") expect(isoWeekdayOf(inv.issuedOn)).toBeLessThanOrEqual(5)
         if (inv.paidOn !== null) expect(inv.paidOn < m.today).toBe(true)
         last = inv.issuedOn
+      }
+    }
+  })
+
+  it("each monthly schedule's next dates are the invoicing app's, and the upkeep's last billing day is invoiced", () => {
+    for (const at of anchors()) {
+      const tag = at.getTime()
+      const m = studioMoney(at)
+      for (const r of m.retainers) {
+        const cadence = { repeats: "month" as const, billing_day: r.billingDay }
+        const billed = m.invoices.filter((i) => i.kind === "schedule" && i.scheduleKey === r.key)
+        const last = billed.at(-1)
+        // The app's rule: after a run, the next billing day after the one it issued; with
+        // none issued yet, the next one from today.
+        const from = last ? addCalendarDays(last.issuedOn, 1) : m.today
+        expect([tag, r.key, { issue: r.nextIssueOn, draft: r.nextDraftOn }]).toEqual([
+          tag,
+          r.key,
+          (() => {
+            const d = datesFrom(cadence, from)
+            return { issue: d.next_issue_on, draft: d.next_draft_on }
+          })(),
+        ])
+        expect([tag, r.key, r.nextIssueOn >= m.today]).toEqual([tag, r.key, true])
+        if (r.includedMinutes !== null) continue
+        // A plain schedule bills on each billing day the period that holds it: the last one
+        // before today is issued, for its own month.
+        expect([tag, r.key, billed.length]).toEqual([tag, r.key, 1])
+        if (!last) continue
+        expect(datesFrom(cadence, last.issuedOn).next_issue_on).toBe(last.issuedOn)
+        expect(last.issuedOn < m.today).toBe(true)
+        const key = periodKey("month", last.issuedOn)
+        expect(last.servicePeriod?.start.slice(0, 7)).toBe(key)
+        expect(last.lines.map((l) => l.description)).toEqual([
+          r.feeLabel.split("{period}").join(periodLabel(key)),
+        ])
       }
     }
   })

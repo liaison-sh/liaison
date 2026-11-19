@@ -560,9 +560,10 @@ describe("the services world's money at the board date", () => {
       ),
     )
     const issued = rows.filter((r) => r.status !== "draft")
-    expect(issued.map((r) => r.n)).toEqual(Array.from({ length: 512 }, (_, i) => i + 1))
+    expect(issued.map((r) => r.n)).toEqual(Array.from({ length: 513 }, (_, i) => i + 1))
     expect(issued[0]?.number).toBe("F-2026-0001")
-    expect(issued.at(-1)?.number).toBe("F-2026-0512")
+    // The upkeep schedule's run on the 1st, after last month's retainer invoice (0512).
+    expect(issued.at(-1)?.number).toBe("F-2026-0513")
     for (let i = 1; i < issued.length; i++) {
       expect([issued[i]?.n, (issued[i]?.issued ?? "") >= (issued[i - 1]?.issued ?? "")]).toEqual([
         issued[i]?.n,
@@ -579,7 +580,7 @@ describe("the services world's money at the board date", () => {
         ),
       ),
     )
-    expect(seq.map((r) => Number(r.value))).toEqual([512])
+    expect(seq.map((r) => Number(r.value))).toEqual([513])
   })
 
   it("the retainer's schedule is 4,500 for 40 h, 120 an hour above, and last month's invoice is 6,264.00 with its claims billed", async () => {

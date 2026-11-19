@@ -741,6 +741,15 @@ async function seedStudioMoney(
   if (!sorel) throw new Error("studio money: no publishing retainer")
   const sorelScheduleId = studioScheduleId(ctx, "SOREL")
   const retainerKey = `retainer:${sorelScheduleId}:${money.retainerLastMonth.month}`
+  /** A schedule's project, by schedule key. */
+  const scheduleProject = (key: string): string => {
+    const r = money.retainers.find((x) => x.key === key)
+    if (!r) throw new Error(`studio money: no schedule ${key}`)
+    return r.project
+  }
+  /** The invoice a schedule's latest run issued, by schedule key. */
+  const lastRunOf = (key: string): string | undefined =>
+    money.invoices.filter((i) => i.kind === "schedule" && i.scheduleKey === key).at(-1)?.key
 
   // The retainer's last month on its card, as the biller reconciled it on the day it was issued:
   // the card, then Create's reservation under the month's key, through the projects writers.
@@ -851,6 +860,15 @@ async function seedStudioMoney(
     const key = docKey(inv.key)
     const retainer = inv.kind === "retainer"
     const step = inv.stepKey ? stepId(inv.stepKey) : null
+    // A schedule's run: keyed and referenced as invoicing's month-end run writes its draft.
+    const run =
+      inv.kind === "schedule" && inv.scheduleKey && inv.servicePeriod
+        ? {
+            scheduleId: studioScheduleId(ctx, scheduleProject(inv.scheduleKey)),
+            period: inv.servicePeriod,
+            key: inv.servicePeriod.start.slice(0, 7),
+          }
+        : null
     specs.push({
       key,
       type: "invoice",
@@ -877,11 +895,13 @@ async function seedStudioMoney(
       ...(inv.projectKey ? { billingProjectId: projectId(inv.projectKey) } : {}),
       ...(retainer
         ? { externalRef: retainerKey }
-        : inv.kind === "milestone" && step
-          ? { externalRef: `milestone:${step}` }
-          : inv.kind === "advance" && step
-            ? { externalRef: `advance:${step}` }
-            : {}),
+        : run
+          ? { externalRef: `recurring:${run.scheduleId}:${run.key}` }
+          : inv.kind === "milestone" && step
+            ? { externalRef: `milestone:${step}` }
+            : inv.kind === "advance" && step
+              ? { externalRef: `advance:${step}` }
+              : {}),
       ...(retainer
         ? {
             externalRefs: {
@@ -890,9 +910,18 @@ async function seedStudioMoney(
               reconciliation_revision: String(card.revision),
             },
           }
-        : step
-          ? { externalRefs: { billing_step_id: step } }
-          : {}),
+        : run
+          ? {
+              externalRefs: {
+                recurring_schedule_id: run.scheduleId,
+                period_key: run.key,
+                period_start: run.period.start,
+                period_end: run.period.end,
+              },
+            }
+          : step
+            ? { externalRefs: { billing_step_id: step } }
+            : {}),
       columns: {
         invoice_role: inv.invoiceRole,
         operation_category: "services",
@@ -1020,7 +1049,7 @@ async function seedStudioMoney(
         contact_id: contact.id,
         status: "active",
         repeats: "month",
-        billing_day: "last",
+        billing_day: r.billingDay,
         ends_on: null,
         covers: r.covers,
         issue_mode: "review",
@@ -1038,6 +1067,8 @@ async function seedStudioMoney(
         ]),
         next_issue_on: r.nextIssueOn,
         next_draft_on: r.nextDraftOn,
+        // The invoice its latest run issued, as the issue job records it.
+        last_document_id: lastRunOf(r.key) ? docId(lastRunOf(r.key) as string) : null,
         version: 1,
         created_by: "seed",
         ...(isRetainer

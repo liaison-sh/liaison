@@ -10,6 +10,13 @@ import type { DemoWorldId } from "@liaison/shared"
 import { DEMO_WORLD } from "~/seed/world/fiction"
 import { SAAS_TEAM, SAAS_WORLD } from "./saas/fiction"
 import { saasPlan } from "./saas/plan"
+import {
+  STUDIO_CLIENTS,
+  STUDIO_COMPANY,
+  STUDIO_CONTACTS,
+  STUDIO_PAST_CLIENTS,
+  STUDIO_TEAM,
+} from "./studio/fiction"
 
 /** Shorter than this, a name could be a common word: it is not a literal of the world. */
 const MIN_LITERAL_LENGTH = 6
@@ -40,6 +47,15 @@ export const WORLD_LITERALS: Readonly<Partial<Record<DemoWorldId, readonly strin
     ...SAAS_WORLD.customers.map((c) => c.name),
     // Every company of the plan: its customers, prospects and past customers.
     ...saasPlan(BOARD_DATE).companies.map((c) => c.name),
+  ]),
+  studio: listOf([
+    STUDIO_COMPANY.name,
+    STUDIO_COMPANY.legalName,
+    ...STUDIO_TEAM.map((p) => p.name),
+    // Its clients, their people, and the clients whose work is done.
+    ...STUDIO_CLIENTS.map((c) => c.name),
+    ...STUDIO_CONTACTS.map((c) => c.name),
+    ...STUDIO_PAST_CLIENTS.map((c) => c.name),
   ]),
 }
 

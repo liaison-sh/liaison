@@ -940,6 +940,7 @@
     "upstreamFailed": "Transcription failed (HTTP {{status}}). Try again in a moment."
   },
   "demo": {
+    "specimenFooter": "Specimen, fictional company",
     "mailBlocked": "This is a demo instance, so it cannot send mail to a real recipient. The message was composed and refused at the point of sending.",
     "connectorBlocked": "This is a demo instance, so it cannot store real connector credentials. Use the demo data that is already loaded.",
     "apiConnectorBlocked": "This is a demo workspace: connections are pre-configured and cannot be changed.",

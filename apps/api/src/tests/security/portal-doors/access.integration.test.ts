@@ -6,6 +6,7 @@
 // on the real roles.
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, setSystemTime } from "bun:test"
+import { DEMO_WORLDS } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { app } from "~/app"
 import { extractRows, sql } from "~/db"
@@ -24,6 +25,7 @@ import { createPortalSession, createSession } from "~/modules/auth/auth"
 import { SessionRevocationTestAccess } from "~/modules/auth/session-revocation"
 import { generateTotpSecret } from "~/modules/auth/totp"
 import { deleteContact, updateContact } from "~/modules/contacts/service"
+import { DemoOrgTestAccess, invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import {
   endPortalAccess,
   invitePortalPerson,
@@ -394,6 +396,45 @@ describe("inviting a client", () => {
       ;(env as { LIAISON_DEMO_MODE: boolean }).LIAISON_DEMO_MODE = was
     }
   })
+})
+
+describe("a client's portal in each demo world's workspace on a demo box", () => {
+  for (const world of DEMO_WORLDS) {
+    it(`a ${world} workspace refuses an invitation, and its staff preview of the portal still works`, async () => {
+      const was = env.LIAISON_DEMO_MODE
+      ;(env as { LIAISON_DEMO_MODE: boolean }).LIAISON_DEMO_MODE = true
+      DemoOrgTestAccess.prime(w.orgId, visitorMarker(1, new Date(), undefined, { worldId: world }))
+      try {
+        expect(
+          await refusalCode(
+            asAdmin((tx) =>
+              invitePortalPerson({
+                orgId: w.orgId,
+                actorId: w.admin.userId,
+                db: tx,
+                companyId: w.companyB,
+                email: `demo-${world}-${w.orgId.slice(0, 8)}@doors.example.com`,
+                name: "Demo",
+              }),
+            ),
+          ),
+        ).toBe("NO_MAIL_ON_DEMO")
+        const res = await get(
+          `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`,
+          adminToken,
+        )
+        expect(res.status).toBe(200)
+        const body = (await res.json()) as {
+          data: { signedInWouldSee: Record<string, unknown> | null }
+        }
+        expect(body.data.signedInWouldSee?.me).toBeDefined()
+      } finally {
+        ;(env as { LIAISON_DEMO_MODE: boolean }).LIAISON_DEMO_MODE = was
+        DemoOrgTestAccess.prime(w.orgId, null)
+        await invalidateDemoMarker(w.orgId)
+      }
+    })
+  }
 })
 
 describe("what a share may point at", () => {

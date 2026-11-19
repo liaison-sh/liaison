@@ -10,6 +10,7 @@ import path from "node:path"
 import { findDemoWorldPack, seedableDemoWorlds } from "./index"
 import { foreignLiterals, WORLD_LITERALS } from "./literals"
 import { saasMorningBrief } from "./saas/brief"
+import { studioMorningBrief } from "./studio/brief"
 
 const LOCALES = path.join(import.meta.dir, "../../../../../packages/shared/src/i18n/locales")
 const BOARD_DATE = new Date("2026-11-09T08:30:00Z")
@@ -24,9 +25,14 @@ describe("world literals", () => {
   it("each world has a list, and the lists do not share a name", () => {
     const products = WORLD_LITERALS.products ?? []
     const saas = WORLD_LITERALS.saas ?? []
+    const studio = WORLD_LITERALS.studio ?? []
     expect(products.length).toBeGreaterThan(10)
     expect(saas.length).toBeGreaterThan(200)
-    expect(products.filter((l) => saas.includes(l))).toEqual([])
+    expect(studio.length).toBeGreaterThan(30)
+    const shared = (a: readonly string[], b: readonly string[]) => a.filter((l) => b.includes(l))
+    expect(shared(products, saas)).toEqual([])
+    expect(shared(products, studio)).toEqual([])
+    expect(shared(saas, studio)).toEqual([])
   })
 
   for (const world of seedableDemoWorlds()) {
@@ -39,25 +45,33 @@ describe("world literals", () => {
     expect(foreignLiterals("saas", saasMorningBrief(BOARD_DATE))).toEqual([])
   })
 
-  it("the door strings for the software world hold no other world's literal, in every language", () => {
-    const locales = readdirSync(LOCALES, { withFileTypes: true }).filter((d) => d.isDirectory())
-    expect(locales.length).toBeGreaterThan(1)
-    for (const { name: locale } of locales) {
-      const file = path.join(LOCALES, locale, "kernel.json")
-      const kernel = JSON.parse(readFileSync(file, "utf8")) as {
-        demo?: { world?: Record<string, unknown> }
+  for (const world of ["saas", "studio"] as const) {
+    it(`the door strings for the ${world} world hold no other world's literal, in every language`, () => {
+      const locales = readdirSync(LOCALES, { withFileTypes: true }).filter((d) => d.isDirectory())
+      expect(locales.length).toBeGreaterThan(1)
+      for (const { name: locale } of locales) {
+        const file = path.join(LOCALES, locale, "kernel.json")
+        const kernel = JSON.parse(readFileSync(file, "utf8")) as {
+          demo?: { world?: Record<string, unknown> }
+        }
+        const door = kernel.demo?.world?.[world]
+        if (!door) continue
+        expect({ locale, hits: foreignLiterals(world, JSON.stringify(door)) }).toEqual({
+          locale,
+          hits: [],
+        })
       }
-      const door = kernel.demo?.world?.saas
-      if (!door) continue
-      expect({ locale, hits: foreignLiterals("saas", JSON.stringify(door)) }).toEqual({
-        locale,
-        hits: [],
-      })
-    }
+    })
+  }
+
+  it("the services world's brief holds no other world's literal", () => {
+    expect(foreignLiterals("studio", studioMorningBrief(BOARD_DATE))).toEqual([])
   })
 
   it("a planted literal of the other world is found", () => {
     const planted = `${saasMorningBrief(BOARD_DATE)} ${(WORLD_LITERALS.products ?? [])[0]}`
     expect(foreignLiterals("saas", planted)).toHaveLength(1)
+    const inStudio = `${studioMorningBrief(BOARD_DATE)} ${(WORLD_LITERALS.saas ?? [])[0]}`
+    expect(foreignLiterals("studio", inStudio)).toHaveLength(1)
   })
 })

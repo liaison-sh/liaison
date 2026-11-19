@@ -6,17 +6,22 @@
 // mail is refused by the box so it reaches nobody, and the link is not withdrawn.
 
 import { afterEach, beforeAll, describe, expect, it } from "bun:test"
+import { DEMO_WORLDS } from "@liaison/shared"
 import type { RlsClient } from "~/db"
 import { demoProvider } from "~/infra/email"
 import { env } from "~/lib/env"
 import { mintClientAction } from "~/modules/client-actions/mint"
 import { ClientActionTargetsTestAccess } from "~/modules/client-actions/targets"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
+import { DemoOrgTestAccess, invalidateDemoMarker, visitorMarker } from "~/modules/demo/demo-org"
 import { invitePortalPerson, PortalAccessError } from "~/modules/portal/access"
 import {
   actionRow,
   baseView,
+  call,
   eventsOf,
+  mintTo,
+  nextIp,
   useClientActionWorld,
 } from "../../../test-support/client-actions-kit"
 
@@ -99,4 +104,49 @@ describe("a change request sent on a demo box", () => {
       DemoModeTestAccess.set(null)
     }
   }, 60_000)
+})
+
+describe("each demo world's workspace on a demo box", () => {
+  for (const world of DEMO_WORLDS) {
+    it(`a ${world} workspace refuses a portal invitation and a sign-in code with no mail on demo`, async () => {
+      // The link is made on a box that mails, so its token can be read; the door is then
+      // tried in a visitor workspace of this world on a demo box.
+      const { token, id } = await mintTo(kit, kit.w.clientA, { kind: "approve" })
+      const ip = nextIp()
+      await call("open", { t: token }, { "x-bun-socket-ip": ip })
+      await call("document", { t: token, format: "blocks" }, { "x-bun-socket-ip": ip })
+      DemoOrgTestAccess.prime(
+        kit.w.orgId,
+        visitorMarker(1, new Date(), undefined, { worldId: world }),
+      )
+      setDemo(true)
+      try {
+        const invite = await invitePortalPerson({
+          orgId: kit.w.orgId,
+          actorId: kit.w.admin.userId,
+          db: untouched,
+          companyId: kit.w.companyA,
+          email: `invite-${world}@example.com`,
+          name: "Someone",
+        }).catch((e: unknown) => e)
+        expect((invite as PortalAccessError).code).toBe("NO_MAIL_ON_DEMO")
+
+        const sentBefore = kit.capture.sent.length
+        const code = await call("code", { t: token }, { "x-bun-socket-ip": ip })
+        expect(code.status).toBe(403)
+        expect(((await code.json()) as { error: { code: string } }).error.code).toBe(
+          "NO_MAIL_ON_DEMO",
+        )
+        // No code went anywhere, and the link is still open.
+        expect(
+          kit.capture.sent.slice(sentBefore).filter((m) => m.template === "client-action.code"),
+        ).toEqual([])
+        expect((await actionRow(id)).decided_at).toBeNull()
+      } finally {
+        setDemo(was)
+        DemoOrgTestAccess.prime(kit.w.orgId, null)
+        await invalidateDemoMarker(kit.w.orgId)
+      }
+    }, 60_000)
+  }
 })

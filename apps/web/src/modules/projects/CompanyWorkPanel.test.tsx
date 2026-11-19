@@ -78,6 +78,19 @@ describe("CompanyWorkPanel", () => {
     expect(view.getByTestId("company-work-panel.task-t5").textContent).toContain("Todo")
   })
 
+  it("a closed project reads Closed, not an open count", async () => {
+    mocks.post.mockResolvedValueOnce({
+      projects: [
+        { id: "p2", name: "Lumen audit", key: "AUD", closed: true, openTasks: 0, tasks: [] },
+      ],
+    })
+    const view = render(() => <CompanyWorkPanel entityId="co-lumen" />)
+    expect((await view.findByTestId("company-work-panel.project-p2.closed")).textContent).toBe(
+      "Closed",
+    )
+    expect(view.queryByTestId("company-work-panel.project-p2.open")).toBeNull()
+  })
+
   it("says so when there is nothing, and has its own line when the read fails", async () => {
     mocks.post.mockResolvedValueOnce({ projects: [] })
     const empty = render(() => <CompanyWorkPanel entityId="co-quiet" />)

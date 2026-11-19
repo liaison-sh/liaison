@@ -362,7 +362,8 @@
   "companyWork": {
     "empty": "Aucun projet pour cette entreprise pour l'instant.",
     "error": "Impossible de lire les projets de cette entreprise.",
-    "openTasks": "Ouvertes : {{count}}"
+    "openTasks": "Ouvertes : {{count}}",
+    "closed": "Terminé"
   },
   "timeBudgets": {
     "label": "Temps et budgets",

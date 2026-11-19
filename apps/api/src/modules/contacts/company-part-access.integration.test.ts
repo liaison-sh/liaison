@@ -264,12 +264,27 @@ describe("a company page's parts by the reader's access", () => {
     await db.execute(drizzleSql`
       UPDATE app_projects.projects SET company_id = ${lumen}::uuid WHERE id = ${sales.projectId}::uuid`)
     await deal(sales.projectId, sales.stage.Proposal as string, lumen, 90_000)
+    // A closed (archived) project is the company's past work: listed after, marked closed.
+    const past = await withRlsContext(w.actor, async (tx) => {
+      const { createProject } = await import("~/apps/projects/service/create-project")
+      return createProject({ tx, orgId: w.orgId, actor: w.actor, input: { name: "Lumen audit" } })
+    })
+    await db.execute(drizzleSql`
+      UPDATE app_projects.projects SET company_id = ${lumen}::uuid, archived_at = now() - interval '60 days'
+       WHERE id = ${past.id}::uuid`)
     const work = await call("projects:company_work", DEAL_ACCESS, { companyId: lumen })
-    const projects = work.projects as Array<{ id: string; tasks: Array<{ id: string }> }>
-    expect(projects.map((p) => p.id)).toEqual([project.id])
+    const projects = work.projects as Array<{
+      id: string
+      closed?: boolean
+      tasks: Array<{ id: string }>
+    }>
+    expect(projects.map((p) => [p.id, p.closed ?? false])).toEqual([
+      [project.id, false],
+      [past.id, true],
+    ])
     expect(projects[0]?.tasks.map((t) => t.id)).toEqual([openTask])
     expect(work.deals).toBeUndefined()
-    expect(work.message).toBe("1 project with 1 open task for this company.")
+    expect(work.message).toBe("1 project with 1 open task for this company, and 1 closed.")
   })
 
   it("a provider's failure leaves the page's other panels", async () => {

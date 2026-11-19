@@ -362,7 +362,8 @@
   "companyWork": {
     "empty": "No project for this company yet.",
     "error": "Could not read this company's projects.",
-    "openTasks": "Open: {{count}}"
+    "openTasks": "Open: {{count}}",
+    "closed": "Closed"
   },
   "timeBudgets": {
     "label": "Time and budgets",

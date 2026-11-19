@@ -861,6 +861,8 @@ interface CompanyWorkProject {
   id: string
   name: string
   key: string | null
+  /** Archived: the company's past work, listed after the live projects. */
+  closed?: boolean
   openTasks: number
   tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
 }
@@ -877,10 +879,12 @@ export async function companyWork(
     items?: CompanyWorkProject[]
   }
   const projects = Array.isArray(listed?.items) ? listed.items : []
+  const live = projects.filter((p) => !p.closed).length
+  const closed = projects.length - live
   const open = projects.reduce((sum, p) => sum + (p.openTasks ?? 0), 0)
   return {
     projects,
-    message: `${projects.length} project${projects.length === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company.`,
+    message: `${live} project${live === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company${closed > 0 ? `, and ${closed} closed` : ""}.`,
   }
 }
 

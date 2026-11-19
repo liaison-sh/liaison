@@ -36,6 +36,12 @@ Every variable the server reads at boot is a key of its environment schema. A mi
 | `TRUSTED_PROXY_CIDRS` | `string` | `""` | no | Extra networks (comma-separated CIDRs) whose direct connections may carry X-Forwarded-For, beyond loopback and the private ranges that are always trusted (lib/request-context.ts). Only needed when a proxy reaches the app from a public address, e.g. a CDN connecting straight to the app port. |
 | `LIAISON_EDGE_MODE` | `"direct" \| "signed"` |  | no | How the request's host and client address are read when an edge proxy sits in front (lib/request-context.ts `effectiveRequest`). Unset: the Host header and X-Forwarded-For per TRUSTED_PROXY_HOPS, as always. `direct`: the edge preserves the Host, and the client address is CF-Connecting-IP when the connection comes from a tunnel connector on loopback. `signed`: the edge rewrites the host and passes the original host and client address in signed `x-liaison-*` headers (LIAISON_EDGE_SECRET); unsigned or stale ones are ignored. |
 | `LIAISON_EDGE_SECRET` | `string` |  | no | The secret the edge signs `x-liaison-host` / `x-liaison-client-ip` with (LIAISON_EDGE_MODE=signed). At least 32 characters. |
+| `LIAISON_TSA_URL` | `string (URL)` |  | no | RFC 3161 timestamp authority for signed agreements (modules/signing/timestamp.ts). Unset: a send that needs a stamp refuses TIMESTAMP_NOT_CONFIGURED. Instance-level; an org cannot change it. |
+| `LIAISON_TSA_CHAIN_FILE` | `string` |  | no | The authority's certificate chain, the only trust anchors of a timestamp: a PEM file path (preferred) or the PEM bundle inline. Never the certificates a token carries. |
+| `LIAISON_TSA_CHAIN_PEM` | `string` |  | no |  |
+| `LIAISON_TSA_ALLOW_PRIVATE` | `boolean` | `false` | no | Reach a timestamp authority on a private or loopback address (a fixture authority on a labelled walk or year box only). Off by default. |
+| `LIAISON_MANAGED_SIGNING_ENABLED` | `boolean` | `false` | no | The hosted edition asks for agreement signatures only when its operator sets this to 1; a self-hosted server ignores it (bundled agreements, `agreement_send`). |
+| `LIAISON_PDF_RENDER_SOCKET` | `string` |  | no | The render service's Unix socket (deploy service `pdf-render`): uploaded PDFs are checked and pictured there, with no network and no secret. Unset in production: uploads are refused PDF_RENDER_UNAVAILABLE; outside production a local child process stands in, logged as not isolated. |
 | `DEVICE_FLOW_CLIENTS` | `string` | `""` | no |  |
 | `DEVICE_FLOW_ALLOW_UNSCOPED` | `boolean` | `false` | no | Accept /api/auth/device-flow/initiate requests that declare no scopes. Off by default: an unscoped device session is a full session as whoever approves it. Turn on only for a first-party client that needs everything; the approver must then confirm "full access" explicitly. |
 | `EXPOSE_REFRESH_TOKEN_IN_BODY` | `boolean` | `false` | no |  |
@@ -280,10 +286,10 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | --- | --- |
 | `ALLOW_PRIVATE_MAIL_HOSTS` | `apps/api/src/modules/apps/sandbox/host-validation.ts:20`, `apps/api/src/modules/apps/sandbox/smtp-bridge.ts:158` |
 | `APP_REGISTRATION_CONCURRENCY` | `apps/api/src/modules/apps/init.ts:772` |
-| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:76` |
-| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:75` |
-| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:33`, `apps/api/src/modules/apps/workers/admission.ts:55`, `apps/api/src/modules/apps/workers/admission.ts:61` |
-| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:65`, `apps/api/src/modules/apps/workers/admission.ts:49` |
+| `APP_WORKER_MAX_EXECS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:77` |
+| `APP_WORKER_MAX_RSS_MB` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:76` |
+| `APP_WORKER_POOL_MAX` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:34`, `apps/api/src/modules/apps/workers/admission.ts:55`, `apps/api/src/modules/apps/workers/admission.ts:61` |
+| `APP_WORKER_POOL_RESERVED_INTERACTIVE` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:66`, `apps/api/src/modules/apps/workers/admission.ts:49` |
 | `BULK_BLOB_DIR` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:169` |
 | `BULK_BLOB_QUOTA_BYTES` | `apps/api/src/modules/apps/sandbox/bulk-blob.ts:162` |
 | `BUN_INSTALL` | `apps/desktop/sidecar/build.ts:193` |
@@ -292,14 +298,14 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:271` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5598` |
-| `GS_BIN` | `apps/api/src/modules/pdf/render.ts:379` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5731` |
+| `GS_BIN` | `apps/api/src/modules/pdf/render.ts:388` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/modules/apps/connections/api/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
 | `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:77`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
-| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:223` |
+| `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:224` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:75` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:172` |
 | `LIAISON_DATABASE_ADAPTER` | `apps/api/src/modules/apps/connections/sql/catalog.ts:187` |
@@ -309,9 +315,9 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_DB_ALLOW_PLAINTEXT_LOCAL` | `apps/api/src/modules/apps/connections/sql/credentials.ts:145`, `apps/api/src/modules/apps/connections/sql/credentials.ts:165` |
 | `LIAISON_DB_ALLOW_PRIVILEGED_SESSION` | `apps/api/src/modules/apps/connections/sql/credentials.ts:154` |
 | `LIAISON_DEBUG_GEMINI_REQ` | `apps/api/src/modules/agent/providers/provider.ts:157` |
-| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1840` |
+| `LIAISON_OFFLINE_SIDE_CALLS` | `apps/api/src/lib/env.ts:1859` |
 | `LIAISON_ONESHOT` | `apps/api/src/db/process-pool-plan.ts:17` |
-| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:517`, `apps/api/src/modules/apps/app-frame.ts:35` |
+| `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:307` |
 | `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:106` |
@@ -334,16 +340,16 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `ORG_MAINTENANCE_FLAG_PATH` | `apps/api/src/middleware/org-maintenance.ts:25` |
 | `QA_DRIVE_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/knowledge.ts:79` |
 | `QA_GMAIL_REFRESH_TOKEN` | `apps/api/src/seed/tiers/standard/rows.ts:473` |
-| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:582`, `apps/api/src/middleware/public-surface-limits.ts:144`, `apps/api/src/middleware/rate-limiter.ts:261` and 1 more |
+| `RATE_LIMIT_FORCE_ENABLED` | `apps/api/src/app.ts:590`, `apps/api/src/middleware/public-surface-limits.ts:144`, `apps/api/src/middleware/rate-limiter.ts:261` and 1 more |
 | `RECHECK_SYNC_BACKEND` | `apps/api/src/lib/manifest-regex.ts:33` |
 | `ROUTINE_EVENT_RECONCILE_LOOKBACK_DAYS` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:71` |
 | `ROUTINE_EVENT_RECONCILE_MAX_RETRIES` | `apps/api/src/modules/agent/routines/routine-event-reconciler.ts:74` |
 | `ROUTINE_OVERLAP_DEFER_DELAY_MS` | `apps/api/src/infra/jobs/kernel-jobs.ts:71` |
 | `ROUTINE_OVERLAP_MAX_DEFERRALS` | `apps/api/src/infra/jobs/kernel-jobs.ts:75` |
 | `SANDBOX_BOOT_RAMP_MS` | `apps/api/src/index.ts:452` |
-| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:99` |
-| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:96` |
-| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:97` |
+| `SANDBOX_POOL_REPORT_INTERVAL_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:100` |
+| `SANDBOX_QUEUE_WAIT_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:97` |
+| `SANDBOX_WORKER_HOLD_WARN_MS` | `apps/api/src/modules/apps/sandbox/worker-pool.ts:98` |
 | `TICKETS_GMAIL_PUSH_ISSUER` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1357`, `apps/api/src/modules/webhooks/routes.ts:168`, `apps/api/src/modules/webhooks/verify-bridge.ts:150` |
 | `TICKETS_GMAIL_PUSH_JWKS_URL` | `apps/api/src/modules/apps/sandbox/bridge/tickets.ts:1358`, `apps/api/src/modules/webhooks/routes.ts:169`, `apps/api/src/modules/webhooks/verify-bridge.ts:149` |
 | `TICKETS_GMAIL_SYNC_SINCE` | `apps/api/src/apps/tickets/sync.ts:310` |

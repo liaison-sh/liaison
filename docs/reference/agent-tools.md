@@ -38,7 +38,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `audit_search` | Search the org audit log by action + optional date window (since/until ISO dates). |  | `kernel:audit:read` |
 | `call_tool` | Call a loaded tool that is not in your tool list (one a "tools just loaded" note describes). |  | `kernel:threads:read` |
 | `capture_business_knowledge` | Capture a piece of company knowledge (a policy, a process, a shared fact) as an ORGANIZATION scoped Knowledge document every member can find, auto-enabling the Knowledge app if needed. | yes | `knowledge:documents:create` |
-| `client_action_create` | Send a person outside the organization a link to sign, accept or approve one document an app offers for it, with the target's own hash. | yes | `kernel:client_actions:write` |
+| `client_action_create` | Send a person outside the organization a link to sign, accept or approve one document an app offers for it. | yes | `kernel:client_actions:write` |
 | `client_action_revoke` | Withdraw an open request to sign, accept or approve: its link and codes stop working at once. |  | `kernel:client_actions:write` |
 | `client_actions_list` | List requests sent outside the organization to sign, accept or approve, with their state (open, signed, declined, expired, withdrawn). |  | `kernel:client_actions:read` |
 | `clone_repo_on_my_computer` | Clone a git repository onto the person's own computer, into its Liaison folder (&lt;node root&gt;/repos/&lt;name&gt;), and share it with Liaison so kernel__run_on_my_computer can work in it later. | yes | `kernel:threads:write` |
@@ -186,6 +186,11 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `outside_text_sources` | Say why actions in this conversation wait for a person because of OUTSIDE TEXT: lists what marked it (the tool that read text written outside the organisation, its identifying arguments, when, and a short fenced excerpt to recognise it). |  | `kernel:threads:read` |
 | `policy_get` | List the org's auto-approve policies (tool + conditions + thresholds + limits). |  | `kernel:policies:read` |
 | `policy_set` | Create or update an AUTO-APPROVE policy for a gated tool: it LOOSENS a gate, letting the tool skip the human approver while your conditions and spend limits hold. | yes | `kernel:policies:admin` |
+| `portal_access_log` | Read a client company's portal access log: sign-ins, views, downloads, approvals and failures, newest first. |  | `kernel:portal:logs` |
+| `portal_end_access` | End a client company's portal access at once: its people are signed out, open links withdrawn, shares closed. | yes | `kernel:portal:admin` |
+| `portal_invite` | Give a client's contact access to their company's portal: makes their portal account and mails them how to sign in. | yes | `kernel:portal:admin` |
+| `portal_remove_person` | Remove one person from their company's portal, and with erase: true erase their account (invoices and signed agreements are kept). |  | `kernel:portal:admin` |
+| `portal_share_set` | Show or hide one thing on a client company's portal: a project's progress, reports or hours, invoices, requests, an agreement, a file or one ticket. | yes | `kernel:portal:share` |
 | `product_attributes_list` | List the organisation's product attributes: small facts kept per product SKU, whichever store or shipping app sells or ships it. |  | `kernel:products:read` |
 | `product_attributes_upsert` | Set or remove product attributes by SKU: each item is { sku, key, value }, and a null or empty value removes that attribute. | yes | `kernel:products:write` |
 | `remove_user_from_role` | Remove a team member FROM a role they currently hold — the inverse of kernel__assign_role. | yes | `kernel:users:admin` |
@@ -297,6 +302,35 @@ Manage Meta and Google ad campaigns, with every spending change approved by a pe
 | `update_budget` | Update the daily or lifetime budget on a campaign or ad set. | yes | `ads:campaigns:write` |
 | `upload_image` | Upload an image to the ad account image library. | yes | `ads:ads:write` |
 
+## agreements
+
+Agreements: drafts, versions, templates and simple electronic signatures.
+
+| Tool | Description | Approval-gated | Required scopes |
+| --- | --- | --- | --- |
+| `activity_read` | The agreements of a company or of its people, one row each at its latest status, newest first, for their timeline. |  | `agreements:agreements:read` |
+| `agreement_create` | Create an agreement draft from a template or a brief, or from an uploaded PDF (kind other). |  | `agreements:agreements:write` |
+| `agreement_evidence_get` | Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent. |  | `agreements:evidence:read` |
+| `agreement_get` | Read one agreement: its parties, status, price, dates, versions and who can see it. |  | `agreements:agreements:read` |
+| `agreement_import` | File a contract signed before Liaison from its PDF: imported, with no evidence and no signature level. |  | `agreements:agreements:write` |
+| `agreement_new_link` | Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code. | yes | `agreements:agreements:write` |
+| `agreement_passage_get` | Quote one numbered section of a signed or sent agreement version, cut from its own text. |  | `agreements:agreements:read` |
+| `agreement_prepare` | Check an agreement draft before sending: blanks, price, fit for this kind of signature, clauses an agent wrote. |  | `agreements:agreements:write` |
+| `agreement_price_set` | Set the price of an agreement. |  | `agreements:agreements:write` |
+| `agreement_reminder_send` | Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working. | yes | `agreements:agreements:write` |
+| `agreement_send` | Send a frozen agreement version for signature or acceptance to its signers, in order or all at once. | yes | `agreements:agreements:write` |
+| `agreement_update` | Change an agreement draft: its text, dates or who can see it. |  | `agreements:agreements:write` |
+| `agreement_verify` | Check a signed agreement's evidence: re-hash the stored files and recompute the seal. |  | `agreements:evidence:read` |
+| `agreement_void` | Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay. | yes | `agreements:agreements:write` |
+| `agreements_search` | Find agreements by status, company, kind or renewal date, ordered by what needs someone first. |  | `agreements:agreements:read` |
+| `approval_route_read` | Who an agreement concerns, for routing its approvals. |  | `agreements:agreements:read` |
+| `change_request_send` | Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on. | yes | `agreements:agreements:write` |
+| `client_action_view_get` | What a person outside is shown for one agreement version, with its fingerprint (internal: the kernel's client action page). |  | `agreements:internal` |
+| `home_load` | Load the agreements list for the app's home page, in the order of what needs someone first. |  | `agreements:agreements:read` |
+| `template_get` | Read one agreement template at its current or a given version. |  | `agreements:agreements:read` |
+| `template_save` | Save an agreement template as a new version; agreements made from earlier versions keep their text. |  | `agreements:templates:write` |
+| `templates_list` | List the agreement templates with their kind, language and current version. |  | `agreements:agreements:read` |
+
 ## api-connector
 
 Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools and a customer card.
@@ -389,6 +423,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `shipment_draft_set_package` | Replace the draft's auto-resolved parcel set with an explicit carton set: ONE carton, OR an ARRAY of cartons for a MIXED multi-carton shipment (e.g. |  | `boxtal:shipments:read` |
 | `stuck_list` | The SINGLE needs-attention queue: every shipment in a STUCK state, across ALL families, in ONE call — so you do NOT have to enumerate the whole fleet with search and classify each tracking_status enum yourself. |  | `boxtal:shipments:read` |
 | `to_prepare_list` | Exact counts of what is left to ship, ready against needs a fix: a WORKLIST of issued invoices with shippable goods that have NO live shipment yet, returned as a SERVER-SIDE AUTHORITATIVE PARTITION (not a bounded sample): `total` + `ready_count` + `needs_fix_count` are the exact denominators, and the rows come PRE-SPLIT into `ready_to_prepare` (render THESE as the trustworthy ready-to-pack list) and `needs_fix` (each carries its blocking `reason`). |  | `boxtal:shipments:read` |
+| `to_ship_by_product` | UNITS STILL TO SHIP PER PRODUCT: how many units of each product the To prepare worklist still needs, as one row per short product code. |  | `boxtal:shipments:read` |
 | `track` | Where a parcel is now, for the person: live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). |  | `boxtal:shipments:read` |
 | `webhooks_repair` | Re-register the Boxtal v3 webhook subscriptions (tracking-changed, document-created) with the CURRENT kernel webhook secret, reusing each stored subscription's callback URL. |  | `boxtal:catalog:write` |
 
@@ -505,7 +540,9 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `approval_route_read` | Who a month-end run's card is for: its account manager when every row has the same one. |  | `invoicing:documents:read` |
 | `billing_plan_get` | A project's billing plan: the steps its quote is invoiced in (advances, milestones, the final), each with its amount, its task and the invoice it made. |  | `invoicing:documents:read` |
 | `billing_plan_set` | Save a fixed-price project's billing plan from its quote: advances, milestones (each tied to its task) and the final. |  | `invoicing:documents:write` |
+| `billing_step_add` | Add one milestone to a project's billing plan for a change request the client accepted, billed when its task is done; once per change request. |  | `invoicing:documents:write` |
 | `card_stream_issuer` | Who issues the invoices of card payments on Stripe for the org. |  | `invoicing:internal` |
+| `client_action_view_get` | What a client is shown on a quote's acceptance link: its title, summary and issued PDF (internal: the kernel's client action page, which fingerprints the PDF itself). |  | `invoicing:documents:read` |
 | `contact_relationships_get` | Get a contact's invoicing relationship classification (customer/vendor). |  | `invoicing:contacts:read` |
 | `contact_relationships_set` | Set a contact's relationship classification (customer/vendor/both/other). |  | `invoicing:contacts:write` |
 | `counterparty_identity_get` | The e-invoicing identity of a counterparty: customer kind, SIREN / SIRET and whether the SIREN is confirmed against the business registry, registry name and head office, territory treatment. |  | `invoicing:contacts:read` |
@@ -580,6 +617,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `project_invoiced_get` | What one project has been invoiced, excluding VAT and net of credit notes, and the paid part, in minor units. |  | `invoicing:documents:read` |
 | `quote_create_and_issue` | Create a quote and issue it in one call. |  | `invoicing:documents:write` |
 | `quote_issue` | Issue a quote from a legacy unnumbered draft row (gated). | yes | `invoicing:documents:write` |
+| `quote_set_outcome` | Record a sent quote's outcome once: accepted, rejected or expired. | yes | `invoicing:documents:write` |
 | `received_einvoice_action_request` | Ask for the approval to refuse, dispute, or withdraw the dispute on ONE received supplier e-invoice. |  | `invoicing:received:write` |
 | `received_einvoice_set_status` | Refuse, dispute or withdraw the dispute on one received supplier e-invoice at the supplier's e-invoicing platform. | yes | `invoicing:received:write` |
 | `received_einvoices_get` | One received supplier e-invoice: supplier, number, dates, totals (the platform's, and the original file's own figures when they differ), status with its official code and history, its files (the original as received, the platform's PDF), and the actions possible now with their reasons. |  | `invoicing:received:read` |
@@ -596,6 +634,7 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `recurring_schedule_pause` | Pause a recurring schedule: it drafts nothing while paused, and its row in a run not yet issued is left out. |  | `invoicing:documents:write` |
 | `recurring_schedule_update` | Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. | yes | `invoicing:documents:write` |
 | `retainer_draft_from_reconcile` | Make the invoice draft of one retainer month from its planned vs done card: the fee, any hours above the retainer, the activity report, and its issue approval. |  | `invoicing:documents:write` |
+| `retainer_terms_renew` | Renew a project's retainer from a signed agreement: its included hours, monthly fee and overage rate apply from the agreement's first month (at the earliest the next), the months before keep the old terms. |  | `invoicing:documents:write` |
 | `settings_hs_code_list` | List the org's HS-code library entries. |  | `invoicing:settings:read` |
 | `settings_issuer_profile_create` | Create an issuer profile. | yes | `invoicing:settings:write` |
 | `settings_issuer_profile_delete` | Delete an issuer profile by id. | yes | `invoicing:settings:write` |
@@ -735,6 +774,11 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `checklist_remove_item` | Remove one checklist item and its validation states. | yes | `projects:tasks:write` |
 | `checklist_set_validation` | Record validation states on checklist items: one `{itemId, level, state, note, source}`, or a batch of up to 50 in `entries` so one pass over many items is one call. |  | `projects:tasks:write` |
 | `checklist_update_item` | Edit one checklist item: its title, its details, or its position (place it before or after a sibling item of the same task). |  | `projects:tasks:write` |
+| `client_report_get` | Read one client report as staff see it: its sections, what was left out and why, and the sources it was written from. |  | `projects:reports:read` |
+| `client_report_save_draft` | Save the draft of a project's client report for one week: its sections (each in a share the client has open), what was left out and why, and its sources. |  | `projects:reports:write` |
+| `client_report_send` | Send a project's client report to the client, by mail and on their portal, once a person approves it. | yes | `projects:reports:write` |
+| `client_report_sources_get` | What a project's client report is written from, for one week (without a projectId: the projects whose reports are shared): task titles and statuses, pull request titles and the messages of threads linked to the project. |  | `projects:reports:read` |
+| `client_reports_list` | List the client reports of the projects you can read (drafts, waiting, sent), newest week first; optionally for one project or one status. |  | `projects:reports:read` |
 | `comment` | Write a comment on a task — the task's own discussion thread, the same one the task detail pane shows. |  | `projects:tasks:write` |
 | `comments` | Read a task's discussion — the comments on its own thread, newest last. |  | `projects:tasks:read` |
 | `company_context` | The open deals of the company in view, by stage, with amounts only under deal access, for the agent's context. |  | `projects:projects:read` |
@@ -742,7 +786,7 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `cost_rate_set` | Set a person's cost per hour from a date on; hours before that date keep their old cost. |  | `projects:cost_rates:write`, `projects:margin:read` |
 | `cost_rates_list` | The org's cost rates: each person's cost per hour and the day it applies from. |  | `projects:margin:read` |
 | `create` | Create a TASK inside an existing project (NOT a project — use `createProject` for that). |  | `projects:tasks:write` |
-| `createProject` | Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title, and optionally a description and an assignee) in `tasks`, in this ONE call. |  | `projects:projects:write` |
+| `createProject` | Create a PROJECT (the container/board) TOGETHER WITH ITS TASKS: pass the tasks you plan (up to 20, each with a title and any other field `create` takes) in `tasks`, in this ONE call. |  | `projects:projects:write` |
 | `days_off_list` | The company days off, each with its dates, label, yearly and fromCalendar (a day read from the shared calendar, shown without its title). |  | `projects:projects:read` |
 | `days_off_remove` | Remove company days off by id, or every typed row covering a day (on). |  | `projects:settings:admin` |
 | `days_off_set` | Record a company day off for everyone: one day (on), a range (from, to) or an ISO week, with an optional label and yearly. |  | `projects:settings:admin` |
@@ -764,7 +808,8 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `labels.update` | Rename or reorder a label group or value. |  | `projects:labels:admin` |
 | `margin_get` | One project's margin: what is invoiced (excl. |  | `projects:margin:read` |
 | `merge` | Merge one task into another: the source task's subtasks and dependencies move to the target, then the source is archived. | yes | `projects:tasks:write` |
-| `milestone_status_read` | Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and, per task, its done state, milestone mark and completion day. |  | `projects:tasks:read` |
+| `milestone_client_action_view` | What a client is shown on a milestone's approval link: its title, project and due day (internal: the kernel's client action page). |  | `projects:tasks:read` |
+| `milestone_status_read` | Whether named tasks of one project are done, for a billing plan's milestones: the project's basis and client company and, per task, its done state, milestone mark and completion day. |  | `projects:tasks:read` |
 | `move` | Move a task: reposition / re-parent / restatus WITHIN its project, OR relocate it to ANOTHER project by passing the destination `projectId`. |  | `projects:tasks:write` |
 | `period_timebox_set` | Set a project's timebox for one month (YYYY-MM) or a from-to period, e.g. |  | `projects:projects:write` |
 | `portfolio_rollup` | Cross-project PORTFOLIO ROLLUP for a board/leadership one-screen view: in ONE call it returns, per ACTIVE project, the authoritative {totalTasks, doneTasks, remainingTasks, overdueTasks, percentDone (0-100), and the single biggestAtRisk task}. |  | `projects:tasks:read` |

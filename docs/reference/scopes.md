@@ -100,6 +100,20 @@ Manage Meta and Google ad campaigns, with every spending change approved by a pe
 | `ads:internal` | manifest scopes; roles admin, member; tools audience_erasure_sweep, dealer_profile_upsert, dealer_profiles_list, experiment_close, experiment_list, experiment_open and 7 more |  |
 | `ads:merchant:read` | manifest scopes; roles admin, member; tools merchant_feed_status, merchant_product_issues |  |
 
+## agreements
+
+Agreements: drafts, versions, templates and simple electronic signatures.
+
+| Scope | Declared by | Description |
+| --- | --- | --- |
+| `agreements:agreements:read` | manifest scopes; entity agreement; role member; tools activity_read, agreement_get, agreement_passage_get, agreements_search, approval_route_read, home_load and 2 more |  |
+| `agreements:agreements:write` | manifest scopes; role lead; tools agreement_create, agreement_import, agreement_new_link, agreement_prepare, agreement_price_set, agreement_reminder_send and 4 more |  |
+| `agreements:approve` | approver scope | Decide (approve, edit, or deny) agreements approvals raised by its gated tools |
+| `agreements:evidence:devices` | manifest scopes; role admin |  |
+| `agreements:evidence:read` | manifest scopes; role lead; tools agreement_evidence_get, agreement_verify |  |
+| `agreements:internal` | manifest scopes; tool client_action_view_get |  |
+| `agreements:templates:write` | manifest scopes; role lead; tool template_save |  |
+
 ## api-connector
 
 Connect an ERP, CRM or any HTTP API from an adapter document, with agent tools and a customer card.
@@ -125,7 +139,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `boxtal:documents:read` | manifest scopes; tool get_documents |  |
 | `boxtal:internal` | manifest scopes |  |
 | `boxtal:quotes:read` | manifest scopes; tools create_shipment, list_content_categories, quote, quote_batch |  |
-| `boxtal:shipments:read` | manifest scopes; entities order, shipment; tools attention_rules_list, exceptions_list, get_shipment, order_print_record_get, prep_document_pdf, prep_list and 16 more |  |
+| `boxtal:shipments:read` | manifest scopes; entities order, shipment; tools attention_rules_list, exceptions_list, get_shipment, order_print_record_get, prep_document_pdf, prep_list and 17 more |  |
 | `boxtal:shipments:write` | manifest scopes; tools attention_rule_delete, attention_rule_upsert, cancel_shipment, claim_open, create_shipment, import_label_document and 13 more |  |
 | `invoicing:documents:write` | manifest scopes |  |
 
@@ -206,8 +220,8 @@ Invoices, quotes, proformas, purchase orders and credit notes.
 | `invoicing:approve` | approver scope | Decide (approve, edit, or deny) invoicing approvals raised by its gated tools |
 | `invoicing:contacts:read` | manifest scopes; tools contact_relationships_get, counterparty_identity_get, counterparty_identity_lookup, vat_lookup, vat_validate |  |
 | `invoicing:contacts:write` | manifest scopes; tools contact_relationships_set, counterparty_identity_set, counterparty_territory_set, einvoicing_backfill_identities |  |
-| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, customer_history, deferred_list, document_send_state and 21 more |  |
-| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, credit_note_create_and_issue, credit_note_from_reconcile, credit_note_issue and 41 more |  |
+| `invoicing:documents:read` | manifest scopes; entities document, recurring_run, recurring_schedule; tools activity_read, approval_route_read, billing_plan_get, client_action_view_get, customer_history, deferred_list and 22 more |  |
+| `invoicing:documents:write` | manifest scopes; tools advance_draft_create, advance_refund_prepare, billing_plan_set, billing_step_add, credit_note_create_and_issue, credit_note_from_reconcile and 44 more |  |
 | `invoicing:internal` | manifest scopes; tool card_stream_issuer |  |
 | `invoicing:issuer:admin` | manifest scopes |  |
 | `invoicing:received:read` | manifest scopes; entity received_einvoice; tools received_einvoices_get, received_einvoices_list |  |
@@ -316,8 +330,10 @@ Projects and tasks with owners, statuses, due dates and discussions.
 | `projects:projects:write` | role lead; tools createProject, deals_pipeline_create, fields_set, instantiate_template, period_timebox_set, status_add and 5 more |  |
 | `projects:reconcile:read` | roles finance, lead; tools reconcile_facts, reconcile_get, reconcile_line_update, reconcile_lines_read, reconcile_propose |  |
 | `projects:reconcile:write` | roles finance, lead; tools reconcile_create_invoice, reconcile_mark, reconcile_undo |  |
+| `projects:reports:read` | role lead; tools client_report_get, client_report_sources_get, client_reports_list |  |
+| `projects:reports:write` | role lead; tools client_report_save_draft, client_report_send |  |
 | `projects:settings:admin` | role admin; settings sections ci, time; tools days_off_remove, days_off_set, webhook_info |  |
-| `projects:tasks:read` | role member; tools activity_read, approval_route_read, attentionItems, checklist_get, comments, milestone_status_read and 4 more |  |
+| `projects:tasks:read` | role member; tools activity_read, approval_route_read, attentionItems, checklist_get, comments, milestone_client_action_view and 5 more |  |
 | `projects:tasks:write` | role member; tools add_dependency, capacity_move, checklist_add_items, checklist_remove_item, checklist_set_validation, checklist_update_item and 9 more |  |
 | `projects:timesheet:read` | role finance |  |
 

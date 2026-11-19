@@ -1344,7 +1344,10 @@ describe("processTranslationEvent — a row held for a colleague away", () => {
       ...data,
     },
   })
-  const run = async (event: AppEvent, managers: string[]) => {
+  const run = async (
+    event: AppEvent,
+    managers: string[],
+  ): Promise<Record<string, string | null>> => {
     const { inserted, deps } = makeDeps()
     await mod.processTranslationEvent(event, {
       ...deps,

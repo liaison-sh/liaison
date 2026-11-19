@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { foreignLiterals, WORLD_LITERALS } from "../literals"
-import { claimHits, scanWorldPackClaims } from "../prose-guard"
+import { type ClaimKind, claimHits, scanWorldPackClaims } from "../prose-guard"
 
 const LOCALES = path.join(import.meta.dir, "../../../../../../packages/shared/src/i18n/locales")
 
@@ -74,13 +74,13 @@ describe("the services world makes no legal or market claim", () => {
   it("a compliance promise, an outside statistic or a named product planted in the copy is found", () => {
     const copy = studioCopy("en").door ?? ""
     expect(claimHits(copy)).toEqual([])
-    const planted = {
+    const planted: Record<ClaimKind, string> = {
       compliance: "Every signature is legally binding and GDPR-compliant.",
       statistic: "According to a survey, 73% of agencies lose a day a week.",
       comparison: "Faster than Jira for client work.",
     }
     for (const [kind, text] of Object.entries(planted)) {
-      expect(claimHits(`${copy} ${text}`).map((h) => h.kind)).toContain(kind)
+      expect(claimHits(`${copy} ${text}`).map((h): string => h.kind)).toContain(kind)
     }
     expect(
       claimHits("Une étude dit que 40 % des agences perdent du temps, selon une étude.").map(

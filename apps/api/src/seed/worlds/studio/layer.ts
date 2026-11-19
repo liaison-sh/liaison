@@ -68,7 +68,7 @@ import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
 import { studioTaskRef } from "~/seed/worlds/studio/refs"
 import type { DemoWorldLayerInput } from "../index"
 import { STUDIO_MORNING_BRIEF, STUDIO_ROUTINES } from "./agent-native"
-import { seedStudioAgreements } from "./agreements"
+import { seedStudioAgreements, studioAgreements } from "./agreements"
 import { studioMorningBrief } from "./brief"
 import {
   STUDIO_CLIENT_SIREN,
@@ -327,6 +327,29 @@ async function seedStudioRoutines(
     on++
   }
   ctx.log(`routines: ${on} on`)
+}
+
+/** The seeded change request card, marked as staged by the Scope check routine. */
+async function attributeChangeRequestCard(ctx: SeedContext): Promise<void> {
+  const cardId = ctx.id("approval", `studio:${studioAgreements(ctx.now).changeRequest.key}`)
+  await withPrivilegedDb(ctx.orgId, "seed-studio:cr-card-routine", async (tx) => {
+    const [routine] = await tx
+      .select({ id: routines.id })
+      .from(routines)
+      .where(
+        and(
+          eq(routines.orgId, ctx.orgId),
+          eq(routines.appName, "agreements"),
+          eq(routines.templateKey, "scope-check"),
+        ),
+      )
+      .limit(1)
+    if (!routine) throw new Error("studio layer: the Scope check routine was not written")
+    await tx.execute(sql`
+      UPDATE ${sql.raw(schemaRef("kernel"))}.approval_requests
+         SET metadata = metadata || ${JSON.stringify({ originRoutineId: routine.id })}::jsonb
+       WHERE org_id = ${ctx.orgId}::uuid AND id = ${cardId}::uuid`)
+  })
 }
 
 /** The app roles (lead, finance), given by the owner through the role writer. */
@@ -1251,6 +1274,11 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   await seedStudioRoutines(ctx, org, (app) =>
     app === "agreements" ? agreementsOn : org.appsByName[app]?.enabled === true,
   )
+
+  // The change request card is Scope check's: the routine read the client's mail against the
+  // signed agreement and staged it, before any visitor held the owner's seat. The card names the
+  // routine, never the person who now holds that seat.
+  if (agreementsOn) await attributeChangeRequestCard(ctx)
 
   // The product writes each task now, at the seed's run, and setting its timebox touches it
   // again; a task the plan closed weeks ago was last changed when it closed. Its row says so,

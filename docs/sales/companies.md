@@ -23,7 +23,7 @@ A company is visible to everyone, to some people, or only to you. The page says 
 - **Waiting**: the approvals about this company that wait for someone, shown as on **Home**.
 - **People**: everyone linked to the company, with its **Main contact**. Eight are shown; **Show all** lists the rest. With no people yet, **Ask the agent to find people here** and **Link past mail from this domain** ask the agent to link them.
 - **Deals**: its newest open deal, with its stage and amount. Click it to open the deal. With none the page says **No open deal.**
-- **Money**, **Support** and **Work**: its documents, its open tickets and its projects with their open tasks, each shown only to people who can read that app (see [Invoicing](../apps/invoicing.md), [Tickets](../apps/tickets.md) and [Projects](../apps/projects.md)).
+- **Money**, **Support** and **Work**: its documents, its open tickets and its projects with their open tasks, each shown only to people who can read that app (see [Invoicing](../apps/invoicing.md), [Tickets](../apps/tickets.md) and [Projects](../apps/projects.md)). **Work** lists a closed project after the live ones, marked **Closed**.
 - **Timeline**: see below.
 - **Discussion**: a conversation about the company. An agent you mention reads the page first.
 

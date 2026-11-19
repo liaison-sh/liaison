@@ -1,0 +1,1 @@
+Agreements search matches the title, the number, or the client company's name among the companies the person can read -> bundled-apps/agreements/src/agreements.ts (agreementsSearch) ; bundled-apps/agreements/src/agreements.ts (companiesNamed)

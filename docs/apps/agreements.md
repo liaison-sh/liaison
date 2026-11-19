@@ -46,7 +46,7 @@ Clauses an agent wrote are marked as drafts. They block the checks until a perso
 
 ## Work in the app
 
-**Agreements** in the sidebar opens the list: **Needs you** first (drafts and documents waiting for a signature), then every agreement you may see, in the order of what needs someone first. The rail groups them by kind and under **Follow up** (**Waiting on a signature**, **Ending or renewing soon**). **New agreement** starts a draft for the client company you pick (so it reaches that company's portal and its signers), from a template or a blank document.
+**Agreements** in the sidebar opens the list: **Needs you** first (drafts and documents waiting for a signature), then every agreement you may see, in the order of what needs someone first. The rail groups them by kind and under **Follow up** (**Waiting on a signature**, **Ending or renewing soon**). **New agreement** starts a draft for the client company you pick (so it reaches that company's portal and its signers), from a template or a blank document. An agent asked for a client's agreements finds them by the agreement's title or number, or by the client company's name among the companies you can read.
 
 An agreement's page has its actions on top and three parts: **Overview** (signers in order, dates, price, versions with their fingerprints), **Document** (the draft's text, or **Open the PDF** for the frozen file) and **Proof of signature** (the evidence, **Check the stored files**, **Download signed PDF**, **Download proof of signature** for the people who hold `agreements:evidence:devices`, and what the proof shows and does not, how long it is kept and what leaving Liaison changes). A link to an agreement in a conversation opens this page.
 

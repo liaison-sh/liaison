@@ -19,6 +19,8 @@ Each agent also has a ceiling: the most it may ever do. On every turn the agent 
 | Delegation to another agent | The requester's permissions intersected with the other agent's ceiling, then the room's limit. |
 | Sub-agent | What the agent that started it had, intersected with the sub-agent role's ceiling and any narrower scopes requested. |
 
+A few scopes are held only by their exact grant: `*` or a shorter scope does not hold them. They are `projects:margin:read`, `projects:cost_rates:write` and `projects:timesheet:read`, and a document's own edit scope with no `app:` part (such as `clevel`). An agent works with one of them only when the person it acts for holds it exactly: an admin holding `*` who asks an agent whose ceiling lists `projects:margin:read` gets no margin through it.
+
 Because of this, adding a colleague with fewer permissions to a conversation can reduce what an agent can do there. When that happens the agent says **Some capabilities are unavailable here** and the message offers **Continue in a DM**, where only your own permissions count.
 
 ### The ceiling by agent kind

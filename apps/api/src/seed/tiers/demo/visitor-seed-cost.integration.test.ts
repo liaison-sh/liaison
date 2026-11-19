@@ -256,14 +256,19 @@ const SAAS_BASELINE = {
  * plan written, its one sign-on task with its comment thread, that task's time entered by its
  * person, and the project archived on the day it closed (created, switched and archived events,
  * and the task's).
+ * Re-pinned 2026-11-19 at 14 682 round trips in 1 335 transactions, 467 outbox events: the pin
+ * above plus what this change adds, measured here (14 543 in 1 310, +156 in 13, +13 events): the
+ * past client's contact with its address and billing identity, its closed audit project with its
+ * statuses, three tasks and their threads, archived; the owner's finance role; three standing
+ * events on the team calendar; and one update dating the seeded tasks from their first hour.
  */
 const STUDIO_BASELINE = {
-  outboxEvents: 454,
+  outboxEvents: 467,
   queuedJobs: 0,
   attentionEvents: 0,
   notificationDeliveries: 0,
-  statements: 14_526,
-  transactions: 1_322,
+  statements: 14_682,
+  transactions: 1_335,
 }
 const BASELINE = {
   products: PRODUCTS_BASELINE,

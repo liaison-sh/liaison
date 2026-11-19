@@ -1328,7 +1328,8 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
   // Nor was a task created the day the world was seeded: it was opened when its work began, so
   // a project of four months does not read as created this morning on its company's timeline.
   // That day is its first hour taken, else a week before it closed, else its project's first
-  // hour, else a week before the seed; never after it closed.
+  // hour, else a week before the world's day (never the write clock, so a re-run moves nothing);
+  // never after it closed.
   await withPrivilegedDb(ctx.orgId, "seed-studio:task-opened-at", (tx) =>
     tx.execute(sql`
       UPDATE ${sql.raw(schemaRef("app_projects"))}.tasks t
@@ -1343,7 +1344,7 @@ export async function seedStudioLayer(input: DemoWorldLayerInput): Promise<void>
                  (SELECT min(tt.work_date)::timestamp AT TIME ZONE 'Europe/Paris' + interval '9 hours'
                     FROM ${sql.raw(schemaRef("app_projects"))}.task_time tt
                    WHERE tt.project_id = t.project_id AND tt.org_id = t.org_id),
-                 t.created_at - interval '7 days'))
+                 ${ctx.now.toISOString()}::timestamptz - interval '7 days'))
        WHERE t.org_id = ${ctx.orgId}::uuid
          AND t.external_ref LIKE ${`${studioTaskRef("")}%`}`),
   )

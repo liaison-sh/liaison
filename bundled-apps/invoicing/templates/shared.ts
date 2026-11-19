@@ -144,6 +144,12 @@ export interface DocumentRenderInput {
   line_items: LineItem[]
   legal_mention: string
   requires_hs_code: boolean
+  /**
+   * Set by the host, never by the app: the Specimen line of a document rendered in a demo
+   * workspace, in each language the host ships. Absent everywhere else, and then nothing of
+   * the footer changes.
+   */
+  specimen?: Partial<Record<string, string>> | null
 }
 
 // ── Currency exponents (ISO 4217 minor-unit digits) ──────────────────────
@@ -1490,10 +1496,25 @@ const FOOTER_GAP = 12
 /** Lines the footer identity may take before it shrinks: they stay under MARGIN_BOTTOM (70pt). */
 const FOOTER_MAX_LINES = 2
 const FOOTER_MIN_SIZE = 5.5
+/**
+ * Baseline of the Specimen line: above the identity text's top line (two lines at most, from
+ * the footer baseline at 40pt) and below the body, which never runs under MARGIN_BOTTOM (70pt).
+ */
+const SPECIMEN_Y = 58
+const SPECIMEN_SIZE = 7.5
+
+/** The Specimen line in the issuer's language (English when that one is missing), or null. */
+function specimenLine(input: DocumentRenderInput): string | null {
+  const s = input.specimen
+  if (!s || typeof s !== "object") return null
+  const text = s[input.issuer.default_language] ?? s.en
+  return typeof text === "string" && text.trim() ? text.trim() : null
+}
 
 function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
   const total = state.pages.length
   const footerY = 40
+  const specimen = specimenLine(input)
   for (const [i, page] of state.pages.entries()) {
     const ctx: DrawCtx = {
       pdf: state.pdf,
@@ -1536,5 +1557,14 @@ function drawFooters(state: LayoutState, input: DocumentRenderInput): void {
       size: 7.5,
       color: GRAY_LABEL,
     })
+    if (specimen) {
+      draw({ ...ctx, cursor: { y: SPECIMEN_Y } }, specimen, {
+        x: MARGIN_X,
+        y: SPECIMEN_Y,
+        size: SPECIMEN_SIZE,
+        bold: true,
+        color: GRAY_DARK,
+      })
+    }
   }
 }

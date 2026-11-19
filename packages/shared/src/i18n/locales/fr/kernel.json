@@ -940,6 +940,7 @@
     "upstreamFailed": "La transcription a échoué (HTTP {{status}}). Réessayez dans un instant."
   },
   "demo": {
+    "specimenFooter": "Spécimen, entreprise fictive",
     "mailBlocked": "Ceci est une instance de démonstration : elle ne peut pas envoyer de mail à un destinataire réel. Le message a été rédigé puis refusé au moment de l'envoi.",
     "connectorBlocked": "Ceci est une instance de démonstration : elle ne peut pas enregistrer de véritables identifiants de connecteur. Utilisez les données de démonstration déjà chargées.",
     "apiConnectorBlocked": "Ceci est un espace de démonstration : les connexions sont préconfigurées et ne peuvent pas être modifiées.",

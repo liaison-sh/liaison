@@ -12,13 +12,16 @@ import type { AppEnv } from "~/app"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
+import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { rotateClientActionToken } from "./mint"
-import { signingState } from "./signing-state"
+import { signingState, signingStateShown } from "./signing-state"
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export const clientActionRoutes = new Hono<AppEnv>()
-  .get("/signing", (c) => c.json({ data: signingState() }))
+  .get("/signing", async (c) =>
+    c.json({ data: signingStateShown(signingState(), await isDemoOrgId(c.get("orgId"))) }),
+  )
   .post("/:id/my-link", async (c) => {
     const userId = c.get("userId")
     const orgId = c.get("orgId")

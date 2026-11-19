@@ -13,7 +13,7 @@ const log = rootLogger.child({ module: "client-action-signing" })
 
 export type SigningState =
   | { available: true }
-  | { available: false; reason: "not_offered" | "no_timestamp" }
+  | { available: false; reason: "not_offered" | "no_timestamp" | "demo" }
 
 export function signingState(): SigningState {
   if (isManagedEdition() && !env.LIAISON_MANAGED_SIGNING_ENABLED) {
@@ -21,6 +21,14 @@ export function signingState(): SigningState {
   }
   if (!env.LIAISON_TSA_URL) return { available: false, reason: "no_timestamp" }
   return { available: true }
+}
+
+/**
+ * What a workspace's screens are told: a demo workspace's visitor runs no server, so signatures
+ * off there read as part of the demo, never as something to ask whoever runs the server.
+ */
+export function signingStateShown(state: SigningState, demo: boolean): SigningState {
+  return demo && !state.available ? { available: false, reason: "demo" } : state
 }
 
 /** Why a signature cannot be asked on this server, or null. Only `sign` needs one. */

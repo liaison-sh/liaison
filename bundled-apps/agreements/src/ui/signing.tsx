@@ -9,7 +9,7 @@ import { tr } from "./i18n"
 
 export type SigningState =
   | { available: true }
-  | { available: false; reason: "not_offered" | "no_timestamp" | string }
+  | { available: false; reason: "not_offered" | "no_timestamp" | "demo" | string }
 
 let cached: Promise<SigningState> | null = null
 
@@ -30,6 +30,11 @@ export function resetSigningState(): void {
 /** The words for a server where signatures are off, or null when they are on. */
 export function signingOffText(state: SigningState | undefined): string | null {
   if (!state || state.available) return null
+  // A demo's visitor runs no server: the demo says what it does instead.
+  if (state.reason === "demo")
+    return tr(
+      "In this demo, nothing is sent for signature: a client's approval you see is a stand-in, and nothing is sealed. You can still write and prepare documents.",
+    )
   return state.reason === "not_offered"
     ? tr(
         "Signatures are not offered on this hosted service, so nothing can be sent for signature. You can still write and prepare documents.",

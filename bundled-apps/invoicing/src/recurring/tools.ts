@@ -10,7 +10,7 @@ import { civilDateOf, type TimeSurface } from "../issue-date"
 import { billsOtherOf, checkIssuerGuard } from "../issuer-guard"
 import { formatMoneyMinor } from "../money"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
-import { SCHEDULE_PAUSED } from "./end-schedule"
+import { SCHEDULE_ENDED, SCHEDULE_PAUSED } from "./end-schedule"
 import { type EditCtx, logRunEdit, stageRunCardAfterRemoval } from "./restage"
 import {
   hoursText,
@@ -684,6 +684,9 @@ export async function recurringScheduleUpdate(
     if (status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead")
       retainerNote += ` ${PREPAID_WARNING}`
   }
+  // Ending reaches the month-end run already drafted exactly as a pause does: its rows not issued
+  // yet are left out, so approving the run issues nothing more for it.
+  const leftOut = status === "ended" ? await leaveOutOpenRows(ctx, current.id, SCHEDULE_ENDED) : 0
   const issueMode = String(data.issue_mode ?? current.issue_mode)
   const nextIssueOn =
     (data.next_issue_on as string | null | undefined) ??
@@ -698,7 +701,10 @@ export async function recurringScheduleUpdate(
     message:
       `Schedule ${current.id} changed to version ${current.version + 1}. ` +
       (status === "ended"
-        ? "It has ended and bills nothing more."
+        ? "It has ended and bills nothing more." +
+          (leftOut > 0
+            ? ` Its row in the open month-end run is left out (note "${SCHEDULE_ENDED}"), so approving the run does not issue it; drafts_update with put_back puts it back.`
+            : "")
         : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`) +
       retainerNote,
     ...(status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead"
@@ -932,7 +938,7 @@ export async function recurringSchedulePause(
     const now = await today(ctx, issuer)
     if (now?.ok) await writeRetainerTimeboxes(ctx, current, [nextMonth(monthOf(now.date))], null)
   }
-  const leftOut = await leaveOutOpenRows(ctx, current.id)
+  const leftOut = await leaveOutOpenRows(ctx, current.id, SCHEDULE_PAUSED)
   const runNote =
     leftOut > 0
       ? ` Its row in the open month-end run is left out (note "${SCHEDULE_PAUSED}"), so approving the run does not issue it; resuming does not put it back (drafts_update with put_back does).`
@@ -954,11 +960,15 @@ export async function recurringSchedulePause(
 const OPEN_ROW_STATES = new Set(["ready", "needs_fix", "approved", "waiting_reapproval"])
 
 /**
- * A pause reaches the month-end run already drafted: the schedule's rows that are not issued yet
- * are left out (their drafts kept, so a person can put one back), and each run's card follows.
- * Returns how many rows were left out.
+ * A pause or an end reaches the month-end run already drafted: the schedule's rows that are not
+ * issued yet are left out with `note` (their drafts kept, so a person can put one back), and each
+ * run's card follows. Returns how many rows were left out.
  */
-async function leaveOutOpenRows(ctx: RecurringCtx, scheduleId: string): Promise<number> {
+async function leaveOutOpenRows(
+  ctx: RecurringCtx,
+  scheduleId: string,
+  note: string,
+): Promise<number> {
   const items = (await ctx.db.findMany("recurring_run_items", {
     where: { schedule_id: scheduleId },
     limit: 500,
@@ -973,7 +983,7 @@ async function leaveOutOpenRows(ctx: RecurringCtx, scheduleId: string): Promise<
     > | null
     if (draft && draft.status !== "draft") continue
     const notes = typeof item.note === "string" && item.note ? item.note.split(" · ") : []
-    if (!notes.includes(SCHEDULE_PAUSED)) notes.push(SCHEDULE_PAUSED)
+    if (!notes.includes(note)) notes.push(note)
     await ctx.db.update("recurring_run_items", String(item.id), {
       state: "left_out",
       approved_hash: null,

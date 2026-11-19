@@ -13,6 +13,7 @@ import {
   discardRunDraft,
   LAST_INVOICE,
   putBack,
+  SCHEDULE_ENDED,
   SCHEDULE_PAUSED,
 } from "../recurring/end-schedule"
 import {
@@ -1000,7 +1001,7 @@ async function updateRunDraft(
   const r = await afterRunWrite(ectx, String(rd.item.id), {
     putBack: input.put_back === true,
     extraNotes: notes,
-    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED] } : {}),
+    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED, SCHEDULE_ENDED] } : {}),
   })
   const draft = await getDraft(ctx.db, draftId)
   if (!draft) throw new Error(`not_found: draft ${draftId}`)

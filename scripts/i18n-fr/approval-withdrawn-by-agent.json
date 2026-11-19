@@ -1,0 +1,6 @@
+{
+  "key": {
+    "kernel.approvalDecisionLine.withdrawnByAgent": "{{agent}} l'a retirée.",
+    "kernel.approvalDecisionLine.withdrawnByAgentReason": "{{agent}} l'a retirée. Motif : {{reason}}."
+  }
+}

@@ -179,6 +179,7 @@ export const FR: Record<string, string> = {
     "Préparer vérifie le document et fige cette version. Rien n'est encore envoyé.",
   "Prepare for signature": "Préparer pour signature",
   "Price excl. VAT": "Prix HT",
+  "Total with change requests": "Total avec les avenants",
   "Proof of signature": "Preuve de signature",
   Proposal: "Proposition",
   Proposals: "Propositions",

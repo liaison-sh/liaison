@@ -487,6 +487,17 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                                 v={formatMoney(a().price_minor, a().currency, uiLocale())}
                               />
                             </Show>
+                            <Show when={a().amended_total_minor}>
+                              <Line
+                                testid="agreement-amended-total"
+                                k={tr("Total with change requests")}
+                                v={formatMoney(
+                                  a().amended_total_minor ?? null,
+                                  a().currency,
+                                  uiLocale(),
+                                )}
+                              />
+                            </Show>
                             <Show when={a().starts_on}>
                               <Line k={tr("Starts")} v={dateText(a().starts_on)} />
                             </Show>

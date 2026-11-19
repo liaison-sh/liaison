@@ -49,6 +49,8 @@ export interface AgreementRow {
   language?: string | null
   fit_tag?: string | null
   price_minor?: string | number | null
+  /** The contract total once an accepted change request moved it (the price plus theirs). */
+  amended_total_minor?: string | number | null
   currency?: string | null
   priced_by_user_id?: string | null
   renews_on?: string | null
@@ -150,6 +152,15 @@ const NEED_WORDS = [
   "other",
 ]
 
+/** The contract total an accepted change request moved, or null when it is the price itself. */
+function amendedTotal(row: AgreementRow): string | null {
+  const total = row.amended_total_minor
+  if (total === null || total === undefined) return null
+  const price =
+    row.price_minor === null || row.price_minor === undefined ? null : String(row.price_minor)
+  return String(total) === price ? null : String(total)
+}
+
 function brief(row: AgreementRow, today: string) {
   return {
     id: row.id,
@@ -162,6 +173,7 @@ function brief(row: AgreementRow, today: string) {
     renews_on: row.renews_on ?? null,
     price_minor:
       row.price_minor === null || row.price_minor === undefined ? null : String(row.price_minor),
+    amended_total_minor: amendedTotal(row),
     currency: row.currency ?? null,
     org_access: row.org_access ?? "editor",
   }

@@ -51,6 +51,35 @@ describe("test map: the demo worlds", () => {
   })
 })
 
+describe("test map: the services world", () => {
+  it("the services world's beats, scenarios and tours map to the world suites", () => {
+    for (const file of [
+      "apps/api/src/modules/demo/worlds/studio/scenarios.ts",
+      "apps/api/src/modules/demo/worlds/studio/injectors/cr-accepted.ts",
+      "packages/shared/src/tours/demo/worlds/studio/client-tour.ts",
+    ]) {
+      expect(suitesFor(file), file).toEqual(WORLD_SUITES)
+    }
+  })
+
+  it("the demo decide runs the world suites and the door's security tests", () => {
+    for (const file of [
+      "apps/api/src/modules/client-actions/demo-decide.ts",
+      "apps/api/src/modules/client-actions/demo-decide.test.ts",
+    ]) {
+      const suites = suitesFor(file)
+      for (const suite of [...WORLD_SUITES, "security"]) expect(suites, file).toContain(suite)
+      expect(suites, file).not.toContain("e2e-parallel")
+    }
+  })
+
+  it("the rest of the client-facing door keeps its own mapping", () => {
+    const suites = suitesFor("apps/api/src/modules/client-actions/decide.ts")
+    expect(suites).toContain("security")
+    expect(suites).not.toContain("demo-seed")
+  })
+})
+
 describe("test map: the time and budgets screens", () => {
   it("the projects web module runs web-unit and playwright", () => {
     for (const file of [

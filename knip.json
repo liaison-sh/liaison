@@ -78,6 +78,8 @@
         "src/tests/e2e/helpers/timeline-interleave-stub.ts",
         "src/tests/e2e/helpers/mailbox-harness.ts",
         "src/tests/e2e/cell/boot-flat-seed.ts",
+        "src/seed/worlds/studio/index.ts",
+        "src/modules/demo/worlds/studio/github/fixture.ts",
         "src/modules/imports/reference/*.js",
         "scripts/*.ts"
       ]

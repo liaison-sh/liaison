@@ -35,24 +35,36 @@ export function dueBucket(dueDate: string | null, terminal: boolean, today: stri
 }
 
 /**
- * SQL fragment computing the SAME bucket in Postgres (using CURRENT_DATE for
- * "today"), for use in a WHERE clause or SELECT list. `taskAlias` and
- * `statusAlias` are table aliases already in scope in the caller's query
- * (fixed identifiers from source, never user input) — e.g.
- * `dueBucketSql("t", "s")` against `... tasks t JOIN project_statuses s ...`.
+ * "Today" as a SQL date: the given ISO date when the caller already decided
+ * what today is, else the database's CURRENT_DATE.
+ */
+export function todaySql(today?: string): ReturnType<typeof drizzleSql> {
+  return today ? drizzleSql`${toIsoDate(today)}::date` : drizzleSql`CURRENT_DATE`
+}
+
+/**
+ * SQL fragment computing the SAME bucket in Postgres, for use in a WHERE
+ * clause or SELECT list. `taskAlias` and `statusAlias` are table aliases
+ * already in scope in the caller's query (fixed identifiers from source,
+ * never user input) — e.g. `dueBucketSql("t", "s")` against
+ * `... tasks t JOIN project_statuses s ...`. `today` is an ISO date; a caller
+ * that reads the date elsewhere in the same answer passes it, so one answer
+ * never reads two clocks. Without it, the database's CURRENT_DATE.
  */
 export function dueBucketSql(
   taskAlias: string,
   statusAlias: string,
+  today?: string,
 ): ReturnType<typeof drizzleSql> {
   const dueDateCol = drizzleSql.raw(`${taskAlias}.due_date`)
   const terminalCol = drizzleSql.raw(`${statusAlias}.terminal`)
   const soonInterval = drizzleSql.raw(`INTERVAL '${DUE_SOON_DAYS} days'`)
+  const day = todaySql(today)
   return drizzleSql`(CASE
     WHEN ${terminalCol} IS TRUE THEN 'done'
     WHEN ${dueDateCol} IS NULL THEN 'none'
-    WHEN ${dueDateCol} < CURRENT_DATE THEN 'overdue'
-    WHEN ${dueDateCol} <= CURRENT_DATE + ${soonInterval} THEN 'due_soon'
+    WHEN ${dueDateCol} < ${day} THEN 'overdue'
+    WHEN ${dueDateCol} <= ${day} + ${soonInterval} THEN 'due_soon'
     ELSE 'later'
   END)`
 }

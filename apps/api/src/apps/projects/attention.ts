@@ -2,8 +2,10 @@
 import type { AttentionItem } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
-import { dueBucketSql } from "~/apps/projects/service/due-status"
+import { dueBucketSql, todaySql } from "~/apps/projects/service/due-status"
 import { monthCloseItems } from "~/apps/projects/service/home-lines"
+import { orgTimezone } from "~/apps/projects/service/time-plan"
+import { todayIn } from "~/apps/projects/service/took"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
@@ -35,10 +37,14 @@ export async function computeAttentionItems(
   callerUserId: string,
   /** People away today who name the caller next in line: their tasks come too, tagged. */
   forUserIds: readonly string[] = [],
-  /** Test seam for the month-close day; the feed passes nothing. */
-  now?: Date,
+  /** The moment the answer is for; the feed passes nothing (the process clock). */
+  now: Date = new Date(),
 ): Promise<AttentionItem[]> {
   const items: AttentionItem[] = []
+  // One clock for the whole answer: the overdue and due-soon rows and the month-close line
+  // all read today in the org's time zone from `now`, never the database's own CURRENT_DATE.
+  const today = todayIn(await orgTimezone(tx as RlsClient | PrivilegedDb, orgId), now)
+  const day = todaySql(today)
   const people = [callerUserId, ...forUserIds.filter((id) => id !== callerUserId)]
   const assignees = drizzleSql`t.assignee_id IN (${drizzleSql.join(
     people.map((id) => drizzleSql`${id}::uuid`),
@@ -54,7 +60,7 @@ export async function computeAttentionItems(
   const overdue = await tx.execute(drizzleSql`
     SELECT t.id, t.title, t.project_id, p.name AS project_name, t.assignee_id::text AS assignee_id,
            t.updated_at, t.due_date, t.blocked,
-           (CURRENT_DATE - t.due_date) AS days_over,
+           (${day} - t.due_date) AS days_over,
            NULL::int AS days_remaining
     FROM ${projectsRel("tasks")} t
     JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
@@ -63,7 +69,7 @@ export async function computeAttentionItems(
       AND ${assignees}
       AND ${live}
       AND NOT t.blocked
-      AND ${dueBucketSql("t", "s")} = 'overdue'
+      AND ${dueBucketSql("t", "s", today)} = 'overdue'
     LIMIT 200
   `)
   for (const r of extractRows<TaskAttentionRow>(overdue)) {
@@ -94,7 +100,7 @@ export async function computeAttentionItems(
     SELECT t.id, t.title, t.project_id, p.name AS project_name, t.assignee_id::text AS assignee_id,
            t.updated_at, t.due_date, t.blocked,
            NULL::int AS days_over,
-           (t.due_date - CURRENT_DATE) AS days_remaining
+           (t.due_date - ${day}) AS days_remaining
     FROM ${projectsRel("tasks")} t
     JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
     JOIN ${projectsRel("projects")} p ON p.id = t.project_id
@@ -102,7 +108,7 @@ export async function computeAttentionItems(
       AND ${assignees}
       AND ${live}
       AND NOT t.blocked
-      AND ${dueBucketSql("t", "s")} = 'due_soon'
+      AND ${dueBucketSql("t", "s", today)} = 'due_soon'
     LIMIT 200
   `)
   for (const r of extractRows<TaskAttentionRow>(dueSoon)) {

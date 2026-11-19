@@ -768,7 +768,11 @@ export function withDisclosureLine(
 ): ApprovalSummary {
   if (!disclosureLine) return summary
   const keep = approvalSummaryLinesMax(summary.kind) - 1
-  return { ...summary, lines: [...summary.lines.slice(0, keep), disclosureLine] }
+  return {
+    ...summary,
+    lines: [...summary.lines.slice(0, keep), disclosureLine],
+    consent: disclosureLine,
+  }
 }
 
 /**

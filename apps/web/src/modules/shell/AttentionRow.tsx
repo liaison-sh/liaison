@@ -310,11 +310,25 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
     const h = props.item.metadata?.requestHandle
     return typeof h === "string" && h.length > 0 ? h : shortApprovalId(props.item.entityId)
   }
+  /** The consent line of a request whose approval shares data some readers cannot see. It is
+   *  shown on the row's face, on every tier: approving is that decision, so it never waits
+   *  behind Details. */
+  const consentLineRaw = (): string | null => {
+    const v = props.item.metadata?.consentLine
+    return isApproval() && typeof v === "string" && v.length > 0 ? v : null
+  }
+  const consentLine = (): string | null => {
+    const raw = consentLineRaw()
+    return raw ? localizeApprovalText(raw, copyCtx()) : null
+  }
   /** The summarizer's WHAT-changes lines ("Label -> Idea"), when carried. */
   const summaryLines = (): string[] => {
     const v = props.item.metadata?.summaryLines
+    const consent = consentLineRaw()
     return Array.isArray(v)
-      ? readableSummaryLines(v.filter((l): l is string => typeof l === "string"))
+      ? readableSummaryLines(
+          v.filter((l): l is string => typeof l === "string" && l !== consent),
+        )
           .slice(0, 3)
           .map((line) => localizeApprovalText(line, copyCtx()))
       : []
@@ -809,6 +823,16 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
           <GuardLine item={props.item} testId={testId()} />
           <RouteWhyLine item={props.item} testId={testId()} />
           <AwayRecapLines item={props.item} testId={testId()} />
+          <Show when={consentLine()}>
+            {(text) => (
+              <span
+                data-testid={`${testId()}-consent`}
+                class="text-[12px] leading-snug text-text-secondary"
+              >
+                {text()}
+              </span>
+            )}
+          </Show>
           <Show
             when={
               hasInlineActions() ||
@@ -1052,6 +1076,16 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
             <GuardLine item={props.item} testId={testId()} />
             <RouteWhyLine item={props.item} testId={testId()} />
             <AwayRecapLines item={props.item} testId={testId()} />
+            <Show when={consentLine()}>
+              {(text) => (
+                <span
+                  data-testid={`${testId()}-consent`}
+                  class="text-[12px] leading-snug text-text-secondary"
+                >
+                  {text()}
+                </span>
+              )}
+            </Show>
             <span class="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] leading-snug text-text-tertiary">
               <Show
                 when={isApproval()}

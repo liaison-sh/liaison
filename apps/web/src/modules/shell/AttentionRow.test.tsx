@@ -409,6 +409,65 @@ describe("AttentionRow", () => {
     )
   })
 
+  it("attention-row.approval shows the consent line on its face, desktop and phone, never only in Details", () => {
+    const consent =
+      "Drafted after reading agreements data that some people who can read days off in projects cannot see: approving shares it with them."
+    const item: AttentionItem = {
+      id: "kernel:approval_pending:cs1",
+      app: "kernel",
+      entity: "approval_request",
+      entityId: "cs1",
+      kind: "approval_pending",
+      summary: "Projects: days off set",
+      urgency: 60,
+      occurredAt: "2026-09-09T00:00:00Z",
+      action: { type: "decide_approval", approvalId: "cs1" },
+      metadata: {
+        requestHandle: "request-29",
+        // Three lines of its own fill the row's quota; the consent line is the fourth.
+        summaryLines: ["On: 12-25", "Label: Christmas Day", "Yearly: yes", consent],
+        consentLine: consent,
+        actionLabel: "Projects: days off set",
+      },
+    }
+    const tid = "attention-row-kernel-approval_request-cs1"
+    const desktop = render(() => (
+      <ApiContext.Provider value={makeApi(vi.fn())}>
+        <AttentionRow item={item} />
+      </ApiContext.Provider>
+    ))
+    expect(desktop.getByTestId(`${tid}-consent`).textContent).toBe(consent)
+    // Once, as its own line: not repeated among the summary lines.
+    const lines = desktop.getByTestId(`${tid}-lines`)
+    expect(Array.from(lines.querySelectorAll("li")).map((li) => li.textContent)).toEqual([
+      "On: 12-25",
+      "Label: Christmas Day",
+      "Yearly: yes",
+    ])
+    desktop.unmount()
+
+    const realMatchMedia = window.matchMedia
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: query === PHONE_QUERY,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }) as unknown as MediaQueryList) as typeof window.matchMedia
+    syncShellTier()
+    try {
+      const phone = render(() => (
+        <ApiContext.Provider value={makeApi(vi.fn())}>
+          <AttentionRow item={item} />
+        </ApiContext.Provider>
+      ))
+      expect(phone.getByTestId(`${tid}-consent`).textContent).toBe(consent)
+    } finally {
+      window.matchMedia = realMatchMedia
+      syncShellTier()
+    }
+  })
+
   it("attention-row.approval lists a sequence's steps in order, in place of the outcome's lines", () => {
     const item: AttentionItem = {
       id: "kernel:approval_pending:s1",

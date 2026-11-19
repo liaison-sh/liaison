@@ -69,6 +69,7 @@ interface PendingApprovalRow {
     ref?: string
     links?: unknown
     latestOn?: string
+    consent?: string
   } | null
   tool_name: string
   status: string
@@ -849,6 +850,11 @@ export async function computeApprovalAttentionItems(
                 .filter((l): l is string => typeof l === "string" && l.length > 0)
                 .slice(0, 8),
             }
+          : {}),
+        // The consent line of a request whose approval shares data some readers cannot see:
+        // the row shows it on its face, since approving IS that decision.
+        ...(typeof shown.summary?.consent === "string" && shown.summary.consent.length > 0
+          ? { consentLine: shown.summary.consent }
           : {}),
         // WHERE the item lives (the ticket, the mail thread, the invoice):
         // the summary's first in-app link, so the row offers "Open" next to

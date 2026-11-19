@@ -5632,21 +5632,17 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     ? ((await tool.taintCardPlace?.(validatedParams, { orgId: opts.orgId }).catch(() => null)) ??
       taintSurfaceLabelForTool(opts.orgId, opts.toolName, tool.writesToTable))
     : ""
-  const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary =>
-    taintDisclosedToReaders
-      ? {
-          ...s,
-          lines: [
-            ...s.lines.slice(0, 7),
-            taintPostHiddenFrom !== undefined
-              ? taintPostDisclosureLine(
-                  taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
-                  taintPostHiddenFrom,
-                )
-              : taintDisclosureLine(taintForcedApprovalScopes ?? [], taintSurface),
-          ],
-        }
-      : s
+  const withTaintDisclosure = (s: ApprovalSummary): ApprovalSummary => {
+    if (!taintDisclosedToReaders) return s
+    const consent =
+      taintPostHiddenFrom !== undefined
+        ? taintPostDisclosureLine(
+            taintPostMissingScopes ?? taintForcedApprovalScopes ?? [],
+            taintPostHiddenFrom,
+          )
+        : taintDisclosureLine(taintForcedApprovalScopes ?? [], taintSurface)
+    return { ...s, lines: [...s.lines.slice(0, 7), consent], consent }
+  }
   // A tainted proposal nobody may decide (no holder of the deciding scope also holds what the
   // turn read) is refused now, naming the remedy: parking it would wait for a decider who
   // cannot exist (rule 8). Checked before either parking path (taint escalation, the gate)

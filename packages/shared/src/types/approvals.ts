@@ -106,6 +106,10 @@ export const approvalSummarySchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional(),
+    // The consent line of a request whose approval shares data some of its readers cannot see
+    // ("approving shares it with them"). It is also the last of `lines`, for a reader of the lines
+    // alone; a card shows it on its face, never only behind its details.
+    consent: z.string().max(300).optional(),
   })
   .refine((s) => s.lines.length <= approvalSummaryLinesMax(s.kind), {
     path: ["lines"],
@@ -127,6 +131,7 @@ export function truncateApprovalSummary(s: ApprovalSummary): ApprovalSummary {
     impact: s.impact,
     ref: s.ref !== undefined ? s.ref.slice(0, 40) : undefined,
     latestOn: s.latestOn,
+    consent: s.consent !== undefined ? s.consent.slice(0, 300) : undefined,
     // A line past the cap ends on "…" so a reviewer can tell it was cut (the
     // full value stays in the card's exact payload).
     lines: s.lines.slice(0, approvalSummaryLinesMax(s.kind)).map((line) => {

@@ -54,7 +54,7 @@ describe("CompanySupportPanel", () => {
     mocks.post.mockResolvedValueOnce({ items: [] })
     const empty = render(() => <CompanySupportPanel entityId="co-quiet" />)
     expect((await empty.findByTestId("company-support-panel.empty")).textContent).toBe(
-      "No open ticket from this company's people.",
+      "No open ticket you can read from this company's people; a team you do not work is not listed.",
     )
     empty.unmount()
     mocks.post.mockRejectedValueOnce(new Error("down"))

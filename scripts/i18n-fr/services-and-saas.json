@@ -236,7 +236,7 @@
     "contacts.companies.money": "Finances",
     "contacts.companies.support": "Support",
     "contacts.companies.work": "Travail",
-    "tickets.companySupport.empty": "Aucun ticket ouvert par les personnes de cette entreprise.",
+    "tickets.companySupport.empty": "Aucun ticket ouvert que vous pouvez lire, par les personnes de cette entreprise ; une équipe dont vous ne faites pas partie n'est pas listée.",
     "tickets.companySupport.error": "Impossible de lire les tickets de cette entreprise.",
     "projects.companyWork.empty": "Aucun projet pour cette entreprise pour l'instant.",
     "projects.companyWork.error": "Impossible de lire les projets de cette entreprise.",

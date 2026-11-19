@@ -38,6 +38,7 @@ import {
 } from "../../../../../../../../bundled-apps/github/src/provisioning"
 import { githubListCommits } from "../../../../../../../../bundled-apps/github/src/tools"
 import { demoGithubCredentials, installDemoGithubConnection } from "./connection"
+import { maybeDemoGithubResponse } from "./provider"
 import { buildStandInHistory } from "./fixture"
 import { DEMO_GITHUB_OWNER, DEMO_GITHUB_SENTINEL_TOKEN, GITHUB_STANDIN_HOST } from "./sentinel"
 
@@ -58,6 +59,7 @@ let worldOrg = ""
 let worldAdmin = ""
 let plainOrg = ""
 let otherWorldOrg = ""
+let defaultWorldOrg = ""
 let onTheWire: string[] = []
 
 function githubCtx(orgId: string, credentials: Record<string, string> | null): GithubCtx {
@@ -110,6 +112,10 @@ beforeAll(async () => {
   otherWorldOrg = (await ensureOrg({ slug: "github-standin-other", name: "Other World" })).orgId
   await markOrgAsDemo(worldOrg, visitorMarker(24, new Date(), undefined, { worldId: "studio" }))
   await markOrgAsDemo(otherWorldOrg, visitorMarker(24, new Date(), undefined, { worldId: "saas" }))
+  // A marker naming no world: the kernel reads it as the default world, never as this one.
+  defaultWorldOrg = (await ensureOrg({ slug: "github-standin-default", name: "Default World" }))
+    .orgId
+  await markOrgAsDemo(defaultWorldOrg, visitorMarker(24))
   invalidateDemoMarker()
   await ensureAppsForOrg(worldOrg)
   await initSandboxPool()
@@ -221,6 +227,20 @@ describe("the services world's GitHub stand-in", () => {
     expect(((await githubListCommits({ repo: REPO }, other)) as Listed).error?.code).toBe(
       "not_connected",
     )
+    expect(onTheWire).toEqual([])
+  })
+
+  it("a demo workspace whose marker names no world is of the default world: the sentinel is refused in words before any answer", async () => {
+    DemoModeTestAccess.set(true)
+    const asked = maybeDemoGithubResponse({
+      orgId: defaultWorldOrg,
+      url: "https://api.github.com/user",
+      method: "GET",
+      headers: { authorization: `Bearer ${DEMO_GITHUB_SENTINEL_TOKEN}` },
+    })
+    await expect(asked).rejects.toBeInstanceOf(DemoRestrictionError)
+    const sentinel = (await githubListCommits({ repo: REPO }, standIn(defaultWorldOrg))) as Listed
+    expect(sentinel.commits).toBeUndefined()
     expect(onTheWire).toEqual([])
   })
 

@@ -12,15 +12,16 @@
 //
 // Gate two, the org, read on every box whatever its demo mode (a year box or
 // a self-hosted install seeds the services world with demo mode off): an org
-// without the demo marker gets `fixtureRefusal("github")`, a demo org that
-// names another world is refused in words, and neither request is forwarded.
+// without the demo marker gets `fixtureRefusal("github")`, a demo org of
+// another world (a marker naming no world holds the default world, as the kernel
+// reads it: `demoWorldOf`) is refused in words, and neither request is forwarded.
 // A sentinel request is never put on the wire.
 //
 // Past both, the stand-in answers in GitHub's own response shape from the
 // world's history (fixture.ts), dated from the anchor the seed stored with the
 // connection: reads only, the world's owner only, with GitHub's pagination.
 import { DemoRestrictionError, demoRestrictionMessage } from "~/modules/demo/demo-egress"
-import { loadDemoOrg } from "~/modules/demo/demo-org"
+import { demoWorldOf, loadDemoOrg } from "~/modules/demo/demo-org"
 import { fixtureConnectionOf, fixtureRefusal } from "~/modules/demo/fixture-credential"
 import { GITHUB_APP } from "./sentinel"
 
@@ -45,8 +46,8 @@ export async function maybeDemoGithubResponse(
   // Gate two: the org.
   const { marker, locale } = await loadDemoOrg(request.orgId)
   if (!marker) return fixtureRefusal(GITHUB_APP)
-  const worldId = (marker as { worldId?: unknown }).worldId
-  if (worldId !== undefined && worldId !== "studio") {
+  // The kernel's reading of the marker: one that names no world holds the default world.
+  if (demoWorldOf(marker) !== "studio") {
     throw new DemoRestrictionError(demoRestrictionMessage("app_fetch", locale), "app_fetch")
   }
   const { answerDemoGithub } = await import("./answer")

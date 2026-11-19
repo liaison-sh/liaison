@@ -428,7 +428,9 @@ describe("the services world's client portal at the board date", () => {
 
   it("the client access preview reads the paid invoices and the milestones still to bill, as the portal does", async () => {
     const [pauline] = await people()
-    const seen = await preview(pauline?.user_id as string)
+    // As at the board date: what is coming up for billing depends on today.
+    setSystemTime(BOARD_DATE)
+    const seen = await preview(pauline?.user_id as string).finally(() => setSystemTime())
     const paid = (seen.invoices ?? [])
       .filter((i) => i.payment_status === "paid")
       .reduce((sum, i) => sum + Number(i.grand_total_minor), 0)

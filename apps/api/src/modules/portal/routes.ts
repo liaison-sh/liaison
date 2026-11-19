@@ -140,20 +140,28 @@ const INVOICES = drizzleSql`SELECT id, type, number, status, payment_status, cur
   label, pdf_file_id IS NOT NULL AS has_pdf
   FROM portal.invoices ORDER BY issued_at DESC, id`
 // Coming up means ahead: a step whose date has passed unbilled is not offered as coming up.
-const UPCOMING = drizzleSql`SELECT id, label, amount_minor::text AS amount_minor, currency, due_on
-  FROM portal.billing_upcoming WHERE due_on IS NULL OR due_on >= current_date
+// Today is the app's clock, the one every other date rule reads, not the database's.
+const upcomingRead = (): SQL => drizzleSql`SELECT id, label, amount_minor::text AS amount_minor,
+  currency, due_on FROM portal.billing_upcoming
+  WHERE due_on IS NULL OR due_on >= ${new Date().toISOString().slice(0, 10)}::date
   ORDER BY due_on NULLS LAST, label, id`
 const TICKETS = drizzleSql`SELECT id, subject, status, channel, created_at, last_message_at
   FROM portal.tickets ORDER BY COALESCE(last_message_at, created_at) DESC, id LIMIT 100`
 
-/** The portal's own home reads, by part: staff's preview (admin-routes.ts) runs these same ones. */
-export const PORTAL_HOME_READS = {
-  me: ME,
-  projects: PROJECTS,
-  invoices: INVOICES,
-  upcoming: UPCOMING,
-  requests: TICKETS,
-} as const
+/**
+ * The portal's own home reads, by part: staff's preview (admin-routes.ts) runs these same ones.
+ * Each is built at the moment it runs, so a read that depends on today sees today.
+ */
+export const PORTAL_HOME_READS: Record<
+  "me" | "projects" | "invoices" | "upcoming" | "requests",
+  () => SQL
+> = {
+  me: () => ME,
+  projects: () => PROJECTS,
+  invoices: () => INVOICES,
+  upcoming: upcomingRead,
+  requests: () => TICKETS,
+}
 
 /** The routes this file serves; the rest of PORTAL_ROUTES answer 404 until built. */
 const BUILT = new Set([
@@ -319,7 +327,7 @@ export const portalRoutes = new Hono<AppEnv>()
       )
       const projects = rows(await part(tx, "projects", PROJECTS))
       const invoices = rows(await part(tx, "invoices", INVOICES))
-      const upcoming = rows(await part(tx, "billing_upcoming", UPCOMING))
+      const upcoming = rows(await part(tx, "billing_upcoming", upcomingRead()))
       const requests = await ticketsWithMessages(tx)
       // Whether the company may send requests here: the page offers a new request only then.
       const who = await tx.transaction((sp) => requesterOf(sp)).catch(() => null)

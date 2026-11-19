@@ -399,7 +399,7 @@ export const portalAdminRoutes = new Hono<AppEnv>()
           }
           parts[name] = await tx
             .transaction(async (sp) =>
-              extractRows<Record<string, unknown>>(await sp.execute(query)),
+              extractRows<Record<string, unknown>>(await sp.execute(query())),
             )
             .catch(() => null)
         }

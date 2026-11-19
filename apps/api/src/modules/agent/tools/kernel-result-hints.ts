@@ -100,7 +100,7 @@ export const KERNEL_RESULT_HINTS: Record<string, string> = {
   request_scope:
     "The request lands in the admin's inbox and attention feed. Its decision is posted in this conversation as an [Event: Access request ...] line, and you get a turn to tell the person: until that line appears the request is still pending, and once it says approved the access is yours.",
   list_locked_capabilities:
-    "This is intra-org only and never reveals another organization's capabilities. Tell the person in ordinary words which access is missing (never a scope string or a tool name), then offer to ask for it with kernel__request_scope, which takes the exact scope.",
+    "This is intra-org only and never reveals another organization's capabilities. A tool listed here exists and holds its data: never say the data or the capability does not exist. Tell the person in ordinary words which access is missing (never a scope string or a tool name) and that the organization's admins grant it, then offer to ask for it with kernel__request_scope, which takes the exact scope and goes to them.",
   setup_state:
     "Follow the setup-guide skill (kernel__skill_read setup-guide). Propose one step at a time; never call a step done unless this result shows it done. canConfigure false: say what is left, propose nothing.",
   google_setup:

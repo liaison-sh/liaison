@@ -2825,7 +2825,16 @@
       "dueLine": "Due: {{date}}",
       "noDescription": "(no description)",
       "attachedAfterStep": "📎 {{file}} (attached once that step has run)",
-      "agentWantsToAdd": "{{caller}} wants to add {{agent}} to this discussion"
+      "agentWantsToAdd": "{{caller}} wants to add {{agent}} to this discussion",
+      "changeRequestTitle": "Reply to the client and send a change request",
+      "changeRequestGuard": "Nothing is sent if the client wrote after this card",
+      "changeRequestLine": "Change request: {{title}}",
+      "workLine": "Work: {{item}}",
+      "hoursFromLine": "Hours: {{hours}} (from {{source}})",
+      "ratePerHourLine": "Rate: {{rate}} per hour",
+      "priceLine": "Price: {{price}}",
+      "changeRequestClientApproves": "The client approves it on a link with an emailed code: a recorded approval, not a signature.",
+      "replyBody": "Reply:\n{{body}}"
     },
     "refFromStep": "the {{what}} from step {{n}}",
     "refFromEarlierStep": "the {{what}} from an earlier step",
@@ -4026,6 +4035,14 @@
       "reply_to_finding": "reply to post",
       "send_dm": "send direct message",
       "like_item": "like post"
+    },
+    "agreements": {
+      "agreement_update": "update an agreement",
+      "agreement_send": "send an agreement for signature",
+      "change_request_send": "send a change request",
+      "agreement_reminder_send": "remind the signers",
+      "agreement_new_link": "send a new signing link",
+      "agreement_void": "void an agreement"
     }
   },
   "agentNotice": {

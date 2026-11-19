@@ -2822,7 +2822,16 @@
       "dueLine": "Échéance : {{date}}",
       "noDescription": "(aucune description)",
       "attachedAfterStep": "📎 {{file}} (joint une fois cette étape exécutée)",
-      "agentWantsToAdd": "{{caller}} souhaite ajouter {{agent}} à cette discussion"
+      "agentWantsToAdd": "{{caller}} souhaite ajouter {{agent}} à cette discussion",
+      "changeRequestTitle": "Répondre au client et envoyer une demande de modification",
+      "changeRequestGuard": "Rien n'est envoyé si le client a écrit après cette carte",
+      "changeRequestLine": "Demande de modification : {{title}}",
+      "workLine": "Travail : {{item}}",
+      "hoursFromLine": "Heures : {{hours}} (source : {{source}})",
+      "ratePerHourLine": "Taux : {{rate}} de l'heure",
+      "priceLine": "Prix : {{price}}",
+      "changeRequestClientApproves": "Le client l'approuve sur un lien avec un code envoyé par e-mail : une approbation enregistrée, pas une signature.",
+      "replyBody": "Réponse :\n{{body}}"
     },
     "refFromStep": "{{what}} de l'étape {{n}}",
     "refFromEarlierStep": "{{what}} d'une étape précédente",
@@ -4023,6 +4032,14 @@
       "reply_to_finding": "répondre à une publication",
       "send_dm": "envoyer un message privé",
       "like_item": "aimer une publication"
+    },
+    "agreements": {
+      "agreement_update": "modifier un contrat",
+      "agreement_send": "envoyer un contrat à signer",
+      "change_request_send": "envoyer une demande de modification",
+      "agreement_reminder_send": "relancer les signataires",
+      "agreement_new_link": "envoyer un nouveau lien de signature",
+      "agreement_void": "annuler un contrat"
     }
   },
   "agentNotice": {

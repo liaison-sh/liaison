@@ -13,6 +13,7 @@ import { sendSystemEmailObserved } from "~/infra/email"
 import { renderBrandedEmail } from "~/infra/email-layout"
 import { rootLogger } from "~/lib/logger"
 import { orgAppBaseUrl } from "~/lib/org-public-url"
+import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { isDemoFixtureDelivery } from "~/modules/demo/fixture-delivery"
 import { serverT } from "~/modules/i18n/server-i18n"
 import { getOrgEmailConfig } from "~/modules/org/email-from"
@@ -67,13 +68,15 @@ async function send(
     | "client-action.staff",
   replyTo: string | null,
 ): Promise<void> {
-  // A demo workspace's clients are fictional, on reserved domains no mailbox can own: a mail
-  // whose every recipient (the reply-to included) is on one is recorded as sent, with no network
-  // and no provider. One real address and the send goes the usual way, and a demo box refuses it.
-  // Never the code mail: a person waits for that code, so a demo box refuses it in words (as the
-  // code request does) rather than saying a code went out that nobody can read.
+  // On a demo box, a demo workspace's clients are fictional, on reserved domains no mailbox can
+  // own: a mail whose every recipient (the reply-to included) is on one is recorded as sent, with
+  // no network and no provider. One real address and the send goes the usual way, and a demo box
+  // refuses it. Never the code mail: a person waits for that code, so a demo box refuses it in
+  // words (as the code request does) rather than saying a code went out that nobody can read.
+  // With demo mode off (a self-hosted box that seeded a demo workspace) every mail is sent.
   if (
     template !== "client-action.code" &&
+    isDemoModeEnabled() &&
     (await isDemoFixtureDelivery(orgId, [msg.to, replyTo]))
   ) {
     log.info(

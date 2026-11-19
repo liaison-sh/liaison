@@ -4,7 +4,9 @@
 // on one is recorded as sent, with no provider and no network, so the sender is
 // told nothing failed. A link to a real address keeps the demo box's refusal:
 // the link is rotated dead and the sender told. Outside demo mode nothing
-// changes: the link leaves through the system channel. The code mail is never
+// changes: the link leaves through the system channel, also for a workspace
+// marked as a demo (a self-hosted box may seed one) whose client is on a
+// reserved domain. That rule is a demo box's only. The code mail is never
 // recorded sent: a demo box refuses it, as it refuses a code request.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "~/db"
@@ -104,6 +106,37 @@ describe("a client action's link mail in a demo workspace", () => {
     const [event] = await sql`SELECT mail_id FROM ${k("client_action_events")}
       WHERE action_id = ${id} AND event = 'sent'`
     expect(event?.mail_id).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it("a demo workspace on a box with demo mode off sends the link to a reserved-domain client for real; with demo mode on it is only recorded sent", async () => {
+    expect(demoOrgMarked).toBe(true)
+    // Demo mode off: the system channel sends it, as for any workspace.
+    DemoModeTestAccess.set(false)
+    const before = kit.capture.sent.length
+    const offId = await mintTo("thomas@publisher.example")
+    const mail = await waitForMail(
+      kit,
+      (m) =>
+        kit.capture.sent.indexOf(m) >= before &&
+        m.template === "client-action.link" &&
+        m.to === "thomas@publisher.example",
+    )
+    expect(mail.replyTo).toBe(kit.w.admin.email)
+    expect(await settled(offId, (s) => s.sent)).toEqual({
+      sent: true,
+      rotated: false,
+      toldSender: false,
+    })
+
+    // Demo mode on, same workspace and the same kind of recipient: recorded sent, nothing captured.
+    DemoModeTestAccess.set(true)
+    const capturedBefore = kit.capture.sent.length
+    const onId = await mintTo("thomas@publisher.example")
+    await new Promise((r) => setTimeout(r, 300))
+    expect(await stateOf(onId)).toEqual({ sent: true, rotated: false, toldSender: false })
+    expect(
+      kit.capture.sent.slice(capturedBefore).filter((m) => m.template === "client-action.link"),
+    ).toEqual([])
   })
 
   it("in a demo workspace a link to a real address still fails, rotates and tells the sender", async () => {

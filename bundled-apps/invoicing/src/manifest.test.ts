@@ -1787,6 +1787,8 @@ describe("invoicing manifest", () => {
     //   the final that took it, and money received first gives the person two choices.
     // 0.37.0: a document rendered in a demo workspace draws the host's Specimen line on every
     //   page, above the identity text; elsewhere nothing of the footer changes.
+    // 0.37.1: the issuer guard reads the Stripe app turned off for the org as absent, so it no
+    //   longer refuses schedules and drafts there; any other failed check still refuses.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

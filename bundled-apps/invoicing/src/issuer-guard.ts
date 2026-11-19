@@ -52,6 +52,13 @@ export type GuardVerdict =
 export const BILLED_BY_STRIPE = "Billed by Stripe"
 export const STRIPE_UNREACHABLE = "Stripe could not be checked"
 
+/**
+ * The kernel's typed answers that mean the Stripe app bills nothing for this org: absent
+ * (`tool_not_found`) or turned Off by an admin (`app_disabled`). Any other refusal, including
+ * an app state that could not be read, is a check that failed.
+ */
+const STRIPE_NOT_BILLING = new Set(["tool_not_found", "app_disabled"])
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const refusal = (code: string, message: string): ErrorEnvelope => ({
@@ -137,8 +144,8 @@ export async function checkIssuerGuard(ctx: GuardCtx, input: GuardInput): Promis
       ...(emails.length ? { emails: emails.slice(0, 20) } : {}),
     })
     if (env.status === "completed") status = (env.result ?? null) as BillingStatus | null
-    // The Stripe app is absent or turned off: nothing bills from it.
-    else if (env.status === "error" && env.error.code === "tool_not_found")
+    // The Stripe app is absent, or installed and turned off for this org: nothing bills from it.
+    else if (env.status === "error" && STRIPE_NOT_BILLING.has(env.error.code))
       return { ok: true, calls: 1, billsOther: null }
     else failure = env.status === "error" ? env.error.message : "it asked for an approval"
   } catch (err) {

@@ -85,6 +85,8 @@ interface WorldOpts {
   agent?: boolean
   approved?: boolean
   stripeOff?: boolean
+  /** The Stripe app installed but turned Off for this org: the kernel's refusal of every call to it. */
+  stripeDisabled?: boolean
   contactEmail?: string
 }
 
@@ -144,6 +146,11 @@ function world(opts: WorldOpts = {}) {
           return {
             status: "error",
             error: { code: "tool_not_found", message: "tool not registered" },
+          }
+        if (opts.stripeDisabled)
+          return {
+            status: "error",
+            error: { code: "app_disabled", message: "This app is turned off by your admin." },
           }
         return {
           status: "completed",
@@ -327,7 +334,7 @@ describe("the issuer guard on every path that invoices a named customer", () => 
       )
       expect(off.stripeCalls()).toBe(1)
     }
-    // The Stripe app turned off answers as absent: the guard passes.
+    // The Stripe app absent: the guard passes.
     const appOff = world({ stripeOff: true })
     expect(
       (await checkIssuerGuard(appOff.ctx as never, { contactId: PAYER, stage: "handler" })).ok,
@@ -359,6 +366,52 @@ describe("the issuer guard on every path that invoices a named customer", () => 
       )
     }
     expect(w.stripeCalls()).toBe(0)
+  })
+
+  test("with the Stripe app installed but turned off for the org, a schedule and a draft are made, and an app state that cannot be read still refuses", async () => {
+    const off = world({ stripeDisabled: true })
+    const schedule = {
+      issuer_profile_id: ISSUER,
+      contact_id: PAYER,
+      repeats: "month",
+      billing_day: "last",
+      lines: [{ description: "Retainer", qty: 1, unit_price_minor: 1000, vat_bp: 2000 }],
+    } as never
+    expect(await checkScheduleCreate(off.ctx as never, schedule)).toBeNull()
+    expect(code(await recurringScheduleCreate(off.ctx as never, schedule))).toBeUndefined()
+    expect((await off.db.findMany("recurring_schedules", { limit: 5 })) as Obj[]).toHaveLength(1)
+    const draft = {
+      type: "invoice",
+      counterparty_contact_id: PAYER,
+      counterparty_name: "Jordan Payer",
+      counterparty_email: "accounts@payer.example",
+      counterparty_country: "DE",
+      items,
+    } as never
+    expect(code(await draftsCreatePreflight(off.ctx as never, draft))).not.toBe(
+      "subscription_check_unavailable",
+    )
+    const made = (await draftsCreateTool(off.ctx as never, draft)) as Obj
+    expect(code(made)).toBeUndefined()
+    expect(
+      (await checkIssuerGuard(off.ctx as never, { contactId: PAYER, stage: "handler" })).ok,
+    ).toBe(true)
+
+    // The app state that cannot be read is not "turned off": the guard refuses as before.
+    const unknown = world()
+    unknown.ctx.executeTool = async (tool: string) =>
+      tool.startsWith("stripe:")
+        ? {
+            status: "error",
+            error: { code: "app_state_unavailable", message: "state could not be read" },
+          }
+        : { status: "completed", result: {} }
+    const verdict = await checkIssuerGuard(unknown.ctx as never, {
+      contactId: PAYER,
+      stage: "handler",
+    })
+    expect(verdict.ok).toBe(false)
+    expect(verdict.ok ? null : verdict.error.error.code).toBe("subscription_check_unavailable")
   })
 
   test("with no card stream row while Stripe is connected, a Stripe-billed customer is refused as if the row existed, and the row is made", async () => {

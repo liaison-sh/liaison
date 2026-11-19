@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.7.10",
+  "version": "0.8.0",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -2635,6 +2635,20 @@
         "projects:projects:read"
       ],
       "enabledByDefault": false
+    }
+  },
+  "slots": {
+    "company_detail": {
+      "panels": [
+        {
+          "id": "agreements-company",
+          "label": "Agreements",
+          "component": "CompanyAgreementsPanel",
+          "group": "agreements",
+          "order": 20,
+          "visibility_scope": "agreements:agreements:read"
+        }
+      ]
     }
   },
   "views": {

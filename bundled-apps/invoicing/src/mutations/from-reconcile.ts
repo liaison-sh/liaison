@@ -294,6 +294,8 @@ export async function draftFromReconcile(
     await ctx.db.update("documents", draftId, {
       external_ref: key,
       billing_project_id: read.projectId,
+      // The project's client company: the invoice is the company's.
+      ...(read.companyId ? { company_id: read.companyId } : {}),
       service_period_start: read.period.from,
       service_period_end: read.period.to,
       latest_issue_on: monthEnd(read.period.to),

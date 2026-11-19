@@ -7,3 +7,5 @@ Read and sign for the reader's own open link only -> bundled-apps/agreements/src
 The editor of an uploaded PDF offers no Layout -> bundled-apps/agreements/src/ui/Editor.tsx (AgreementEditor, isUpload)
 The legal layout prints its own words in the agreement's language -> bundled-apps/agreements/src/checks.ts (inDocumentLanguage) ; bundled-apps/agreements/src/agreements.ts (freezeDraft)
 An agent's text goes in source.body.blocks; another shape is refused at staging, naming the field -> bundled-apps/agreements/app.manifest.json (tools.agreement_update.params.source) ; apps/api/src/modules/apps/execute-tool-params.ts (formatAjvParamError) ; bundled-apps/agreements/src/checks.ts (sourceBlockProblems) ; bundled-apps/agreements/src/agreements.ts (badBlocks)
+Overview's Linked to opens the company, contact, deal, project and quote -> bundled-apps/agreements/src/ui/Detail.tsx (linkedTargets) ; bundled-apps/agreements/src/agreements.ts (agreementGet)
+A company's page has an Agreements section -> bundled-apps/agreements/src/ui/CompanyAgreementsPanel.tsx (CompanyAgreementsPanel) ; bundled-apps/agreements/app.manifest.json (slots.company_detail)

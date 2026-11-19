@@ -18,13 +18,14 @@ import {
   documentsConvertLocal,
   draftsCreate,
   draftsDiscard,
+  draftsUpdate,
   invoiceIssue,
   type MutationsCtx,
   quoteIssue,
 } from "./mutations"
 import { getDraft } from "./mutations/db-helpers"
 import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
-import { DRAFT_DEPENDENTS, handOverDraft } from "./mutations/issue-handover"
+import { DRAFT_DEPENDENTS, draftContentHash, handOverDraft } from "./mutations/issue-handover"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
 import { documentsSendToCustomer } from "./mutations/send-to-customer"
 import { documentsGet, documentsSearch } from "./reads"
@@ -582,6 +583,10 @@ describe("a draft from a planned vs done card", () => {
     expect(JSON.stringify(pre)).toContain("reconcile_changed")
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
     expect(res).toMatchObject({ status: "error", error: { code: "reconcile_changed" } })
+    // The refusal names the document by whom it bills, never by its id.
+    const message = (res as { error: { message: string } }).error.message
+    expect(message).toContain("The invoice draft for Klangwerk GmbH was not issued")
+    expect(message).not.toContain(draftId)
     expect(sequenceTotal(h.db)).toBe(0)
     expect(docById(h.db, draftId)).toBeDefined()
   })
@@ -606,6 +611,83 @@ describe("a draft from a planned vs done card", () => {
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
     expect(res.status).toBe("completed")
     expect(issuedDocs(h.db)[0]?.external_ref).toBe(`reconcile:${RECONCILIATION}:9`)
+  })
+})
+
+describe("the company a draft was made for", () => {
+  test("an invoice issued from a draft stamped for a company keeps that company", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const company = "5c0a1b2c-0000-4000-8000-000000000001"
+    await h.db.update("documents", draftId, { company_id: company })
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(res.status).toBe("completed")
+    expect(issuedDocs(h.db)[0]?.company_id).toBe(company)
+  })
+
+  test("changing the draft's customer drops the company stamped for the old one", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    await h.db.update("documents", draftId, { company_id: "5c0a1b2c-0000-4000-8000-000000000002" })
+    await draftsUpdate(h.ctx, {
+      draft_id: draftId,
+      patch: { counterparty_contact_id: "contact-2" },
+    } as never)
+    expect(docById(h.db, draftId)?.company_id ?? null).toBeNull()
+  })
+})
+
+describe("a draft edited while its issue card waits", () => {
+  function withPendingCard(h: Harness, draftId: string) {
+    const card = { id: crypto.randomUUID(), payload: { draft_id: draftId } as Row }
+    const restaged: Array<{ id: string; fields: Row; note?: string }> = []
+    h.ctx.approvals = {
+      pendingFor: async () => [{ id: card.id, target_id: draftId, payload: card.payload }],
+      withdraw: async () => ({ ok: true }),
+      restagePayload: async (id: string, fields: Row, note?: string) => {
+        restaged.push({ id, fields, note })
+        card.payload = { ...card.payload, ...fields }
+        return { ok: true, approval_id: id, payload_hash: "h", changed: true }
+      },
+    }
+    return { card, restaged }
+  }
+
+  test("an edit redraws the waiting card with the draft's new fingerprint, and a second identical one does not", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
+    const { card, restaged } = withPendingCard(h, draftId)
+    await draftsUpdate(h.ctx, {
+      draft_id: draftId,
+      patch: { counterparty_name: "Northwind Publishing", notes: "December fee" },
+    } as never)
+    const edited = await getDraft(h.db, draftId)
+    expect(restaged).toHaveLength(1)
+    expect(restaged[0]?.id).toBe(card.id)
+    expect(restaged[0]?.fields).toEqual({ draft_hash: draftContentHash(edited!) })
+    expect(restaged[0]?.note).toBe("The invoice draft for Northwind Publishing was edited.")
+    await draftsUpdate(h.ctx, {
+      draft_id: draftId,
+      patch: { notes: "December fee" },
+    } as never)
+    expect(restaged).toHaveLength(1)
+  })
+
+  test("a card drawn from the draft as it was does not issue it once it changed", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const shown = draftContentHash((await getDraft(h.db, draftId))!)
+    await h.db.update("documents", draftId, { notes: "changed behind the card" })
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: shown })
+    expect(res).toMatchObject({ status: "error", error: { code: "draft_changed" } })
+    expect((res as { error: { message: string } }).error.message).toContain(
+      "The invoice draft for Klangwerk GmbH was not issued: it changed after this request was made",
+    )
+    expect(sequenceTotal(h.db)).toBe(0)
+    // The fingerprint of the draft as it is now issues it.
+    const now = draftContentHash((await getDraft(h.db, draftId))!)
+    const ok = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: now })
+    expect(ok.status).toBe("completed")
   })
 })
 

@@ -311,4 +311,10 @@ export const FR: Record<string, string> = {
   "{{n}} clause(s) written by an agent still to read.":
     "{{n}} clause(s) écrite(s) par un agent encore à lire.",
   "{{n}} days": "{{n}} jours",
+  "Linked to": "Lié à",
+  Contact: "Contact",
+  Deal: "Affaire",
+  Project: "Projet",
+  Quote: "Devis",
+  "No agreements with this company yet.": "Aucun contrat avec cette société pour l'instant.",
 }

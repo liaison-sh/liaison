@@ -174,6 +174,28 @@ describe("billing claims at Create", () => {
     expect((again as ProjectsServiceError).message).toContain('"Line 1"')
   })
 
+  it("a drafted card that bills no line and claimed nothing still counts as reserved, so a fee-only month can issue", async () => {
+    const r = await storedReconciliation(w, { month: "2025-11", state: "drafted", lines: [] })
+    const read = await asPerson(w, (tx) =>
+      reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: r.id } }),
+    )
+    expect(read.lines).toHaveLength(0)
+    expect(read.claimsReserved).toBe(true)
+    // Once a claim of it is no longer reserved, the card has moved on: no longer reserved.
+    const billed = await storedReconciliation(w, {
+      month: "2025-12",
+      lines: [{ tasks: [], bill: 60 }],
+    })
+    await reserve(billed.id)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'released'
+       WHERE reconciliation_id = ${billed.id}::uuid`)
+    const moved = await asPerson(w, (tx) =>
+      reconcileLinesRead({ tx, orgId: w.orgId, input: { reconciliationId: billed.id } }),
+    )
+    expect(moved.claimsReserved).toBe(false)
+  })
+
   it("a released draft whose period has a newer card of the same person is set aside, never shown again, and swept", async () => {
     const r = await storedReconciliation(w, {
       month: "2026-02",

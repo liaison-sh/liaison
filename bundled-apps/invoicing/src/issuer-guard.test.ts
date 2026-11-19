@@ -573,6 +573,46 @@ describe("the issuer guard on every path that invoices a named customer", () => 
     expect(await rowIssuerHold(importing.ctx as never, draft, schedule)).toBe(STRIPE_UNREACHABLE)
   })
 
+  test("an approved row whose schedule ended since is left out at issue, and no number is taken", async () => {
+    const { db, ctx } = world()
+    await db.insert("recurring_schedules", {
+      id: SCHEDULE,
+      issuer_profile_id: ISSUER,
+      contact_id: OTHER,
+      status: "ended",
+      repeats: "month",
+      billing_day: "last",
+      lines: [],
+      version: 2,
+      created_by: "person-1",
+    })
+    await db.insert("recurring_runs", {
+      id: RUN,
+      issuer_profile_id: ISSUER,
+      issue_on: "2026-11-30",
+      latest_issue_on: "2026-11-30",
+      status: "issuing",
+    })
+    await seedDraft(db, { external_ref: `recurring:${SCHEDULE}:2026-11` })
+    await db.insert("recurring_run_items", {
+      id: ITEM,
+      run_id: RUN,
+      schedule_id: SCHEDULE,
+      document_id: DRAFT,
+      period_key: "2026-11",
+      state: "approved",
+      approved_hash: "h",
+    })
+    const r = (await recurringItemIssue(ctx as never, { item_id: ITEM })) as Obj
+    expect(r.error.code).toBe("schedule_stopped")
+    expect((await db.findOne("recurring_run_items", ITEM)) as Obj).toMatchObject({
+      state: "left_out",
+      approved_hash: null,
+      note: "Schedule ended",
+    })
+    expect((await db.findOne("documents", DRAFT)) as Obj).toMatchObject({ status: "draft" })
+  })
+
   test("a charge with an invoice is keyed by that invoice, so a payment invoiced by hand and the finalized invoice share one external_ref", () => {
     expect(stripeDocumentRef({ id: "ch_1", invoice: "in_1" })).toBe("stripe:in_1")
     expect(stripeDocumentRef({ id: "ch_1", invoice: null })).toBe("stripe:ch_1")

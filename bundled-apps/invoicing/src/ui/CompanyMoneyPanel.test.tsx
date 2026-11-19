@@ -9,6 +9,7 @@ import {
   companyMoneyDate,
   companyMoneyTotal,
   loadCompanyMoney,
+  loadCompanySchedules,
 } from "./CompanyMoneyPanel"
 
 const LUMEN = "44444444-4444-4444-8444-444444444444"
@@ -83,6 +84,26 @@ describe("the company page's Money section", () => {
     expect(
       companyMoneyTotal({ ...issued, currency: "JPY", grand_total_minor: 5000 }, "en-US"),
     ).toBe("¥5,000")
+  })
+
+  it("lists the schedules that bill this company, ended ones left out", async () => {
+    const asked: Array<Record<string, unknown>> = []
+    // biome-ignore lint/suspicious/noExplicitAny: global host slot the @liaison/host shim reads.
+    ;(globalThis as any).__liaisonHost = {
+      invokeTool: async (_app: string, tool: string, args: Record<string, unknown>) => {
+        if (tool !== "recurring_list") throw new Error(`unexpected tool: ${tool}`)
+        asked.push(args)
+        return {
+          rows: [
+            { id: "s-live", status: "active", lines: [], next_issue_on: "2027-01-31" },
+            { id: "s-ended", status: "ended", lines: [], next_issue_on: null },
+          ],
+        }
+      },
+    }
+    const rows = await loadCompanySchedules(LUMEN)
+    expect(rows.map((r) => r.id)).toEqual(["s-live"])
+    expect(asked).toEqual([{ company_id: LUMEN, limit: COMPANY_MONEY_LIMIT }])
   })
 
   it("a failed read shows the empty section rather than breaking the page", async () => {

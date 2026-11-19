@@ -2416,6 +2416,13 @@
       "when": 1900003430015,
       "tag": "0343_stamp_exact_only_scopes",
       "breakpoints": true
+    },
+    {
+      "idx": 345,
+      "version": "7",
+      "when": 1900003430016,
+      "tag": "0344_invoicing_documents_company_backfill",
+      "breakpoints": true
     }
   ]
 }

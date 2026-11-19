@@ -13,7 +13,9 @@
 // fails and no number is used).
 
 import type { CrossAppExecuteTool } from "../cross-app"
+import { sha256Hex } from "../einvoicing/backfill-sha256"
 import type { IssueBatchOp, IssueInput, SourceColumns } from "../issue"
+import { utf8Bytes } from "../legal-originals/bytes"
 import type { ErrorEnvelope } from "./shared"
 
 /** The keys a billing source gives its draft (`documents.external_ref`). */
@@ -252,12 +254,25 @@ interface MarkCtx {
 export interface OwnApprovals {
   pendingFor?: (payloadKey: string, toolNames?: string[]) => Promise<unknown>
   withdraw?: (approvalId: string, reason?: string) => Promise<unknown>
+  restagePayload?: (
+    approvalId: string,
+    fields: Record<string, unknown>,
+    note?: string,
+  ) => Promise<unknown>
 }
 
 interface WithdrawCtx extends MarkCtx {
   approvals?: OwnApprovals
   approval?: { approvalRequestId: string } | null
 }
+
+/** A draft named for a person: whom it bills, never its id. */
+export function draftInWords(draft: { counterparty_name?: string | null }): string {
+  const name = typeof draft.counterparty_name === "string" ? draft.counterparty_name.trim() : ""
+  return name ? `the invoice draft for ${name}` : "this invoice draft"
+}
+
+const upperFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
 const asJson = (v: unknown): unknown => {
   if (typeof v !== "string") return v
@@ -371,7 +386,12 @@ export async function markReconciliation(
  */
 export async function reconcileStillReserved(
   ctx: MarkCtx,
-  draft: { id: string; external_ref?: string | null; external_refs?: unknown },
+  draft: {
+    id: string
+    external_ref?: string | null
+    external_refs?: unknown
+    counterparty_name?: string | null
+  },
 ): Promise<ErrorEnvelope | null> {
   const ref = draft.external_ref
   if (typeof ref !== "string" || !(ref.startsWith("reconcile:") || ref.startsWith("retainer:")))
@@ -392,7 +412,7 @@ export async function reconcileStillReserved(
     status: "error",
     error: {
       code: "reconcile_changed",
-      message: `Draft ${draft.id} was not issued: ${why}. Nothing was numbered. Open the project's planned vs done card again and create the invoice from it.`,
+      message: `${upperFirst(draftInWords(draft))} was not issued: ${why}. Nothing was numbered. Open the project's planned vs done card again and create the invoice from it.`,
     },
   })
   if (!rec || !ctx.executeTool) return refused("its planned vs done card could not be read")
@@ -415,4 +435,120 @@ export async function reconcileStillReserved(
     return refused("the work it bills is no longer reserved for it")
   }
   return null
+}
+
+/**
+ * The fingerprint of what an invoice draft bills: its customer, currency, terms, notes, PO
+ * reference and lines. An issue approval carries it as `draft_hash` once the draft is edited while
+ * the approval waits, so the card is redrawn from the edited draft (and a decision on the old card
+ * is refused by its payload hash), and the issue refuses a draft changed since the card was drawn.
+ */
+export interface HashableDraft {
+  id: string
+  counterparty_contact_id?: string | null
+  counterparty_name?: string | null
+  counterparty_address?: string | null
+  counterparty_country?: string | null
+  counterparty_vat_id?: string | null
+  counterparty_email?: string | null
+  currency?: string | null
+  notes?: string | null
+  po_number?: string | null
+  due_at?: string | Date | null
+  lines?: ReadonlyArray<{
+    description?: unknown
+    quantity?: unknown
+    unit_price_minor?: unknown
+    discount_minor?: unknown
+    tax_rate_bp?: unknown
+    line_kind?: unknown
+  }>
+}
+
+export function draftContentHash(draft: HashableDraft): string {
+  const text = (v: unknown): string | null => (v === null || v === undefined ? null : String(v))
+  const due = draft.due_at
+  const canonical = JSON.stringify({
+    draft: [
+      draft.counterparty_contact_id,
+      draft.counterparty_name,
+      draft.counterparty_address,
+      draft.counterparty_country,
+      draft.counterparty_vat_id,
+      draft.counterparty_email,
+      draft.currency,
+      draft.notes,
+      draft.po_number,
+    ].map(text),
+    due:
+      due === null || due === undefined || due === ""
+        ? null
+        : due instanceof Date
+          ? due.toISOString().slice(0, 10)
+          : String(due).slice(0, 10),
+    lines: (draft.lines ?? []).map((l) => [
+      String(l.description ?? ""),
+      String(l.quantity ?? ""),
+      String(l.unit_price_minor ?? ""),
+      String(l.discount_minor ?? "0"),
+      text(l.tax_rate_bp),
+      text(l.line_kind),
+    ]),
+  })
+  return sha256Hex(utf8Bytes(canonical))
+}
+
+/**
+ * After a draft is edited, its issue approvals still waiting are redrawn: each gets the draft's new
+ * fingerprint, so the kernel rebuilds its card from the edited draft and a decision taken on the
+ * card as it was is refused. Best effort: the issue itself checks the fingerprint again.
+ */
+export async function restageIssueApprovals(
+  ctx: WithdrawCtx,
+  draft: HashableDraft,
+): Promise<string[]> {
+  const pendingFor = ctx.approvals?.pendingFor
+  const restage = ctx.approvals?.restagePayload
+  if (!pendingFor || !restage) return []
+  const hash = draftContentHash(draft)
+  const done: string[] = []
+  try {
+    const raw = asJson(await pendingFor("draft_id", ["invoicing:invoice_issue"]))
+    const rows = (Array.isArray(raw) ? raw : []) as Array<{
+      id?: unknown
+      target_id?: unknown
+      payload?: unknown
+    }>
+    for (const r of rows) {
+      if (r.target_id !== draft.id || typeof r.id !== "string") continue
+      const payload = asJson(r.payload) as { draft_hash?: unknown } | null
+      if (payload?.draft_hash === hash) continue
+      const res = asJson(
+        await restage(r.id, { draft_hash: hash }, `${upperFirst(draftInWords(draft))} was edited.`),
+      ) as { ok?: unknown } | null
+      if (res?.ok === true) done.push(r.id)
+    }
+  } catch (err) {
+    ctx.logger?.warn?.("redrawing the draft's issue approval failed", {
+      draftId: draft.id,
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+  return done
+}
+
+/** The issue's own check: a draft changed since its card was drawn is not issued from that card. */
+export function draftChangedSinceCard(
+  draft: HashableDraft,
+  shownHash: string | null | undefined,
+): ErrorEnvelope | null {
+  if (typeof shownHash !== "string" || shownHash === "") return null
+  if (draftContentHash(draft) === shownHash) return null
+  return {
+    status: "error",
+    error: {
+      code: "draft_changed",
+      message: `${upperFirst(draftInWords(draft))} was not issued: it changed after this request was made. Nothing was numbered. Ask for its issue again so the card shows what will be issued.`,
+    },
+  }
 }

@@ -19,6 +19,7 @@ import type { IssueBatchOp } from "../issue"
 import { BILLED_BY_STRIPE } from "../issuer-guard"
 import { issueRunDraft } from "../mutations/invoice-issue"
 import type { ErrorEnvelope } from "../mutations/shared"
+import { SCHEDULE_ENDED, SCHEDULE_PAUSED } from "./end-schedule"
 import { rowIssuerHold } from "./item-state"
 import {
   currentItemHash,
@@ -83,6 +84,28 @@ export async function recurringItemIssue(
     const schedule = before.schedule_id
       ? ((await ctx.db.findOne("recurring_schedules", String(before.schedule_id))) as Row | null)
       : null
+    // A schedule paused or ended after its row was approved bills nothing more: the row is left
+    // out as the pause or the end does, and no number is taken.
+    const stopped =
+      schedule?.status === "ended"
+        ? SCHEDULE_ENDED
+        : schedule?.status === "paused"
+          ? SCHEDULE_PAUSED
+          : null
+    if (stopped && draftBefore && draftBefore.status === "draft") {
+      const notes = typeof before.note === "string" && before.note ? before.note.split(" · ") : []
+      if (!notes.includes(stopped)) notes.push(stopped)
+      await ctx.db.update("recurring_run_items", input.item_id, {
+        state: "left_out",
+        approved_hash: null,
+        send_grant: null,
+        note: notes.join(" · "),
+      })
+      return fail(
+        "schedule_stopped",
+        `Item ${input.item_id} was not issued and no number was used: its schedule is ${String(schedule?.status)}. It is left out of the run and its draft kept; drafts_update with put_back puts it back.`,
+      )
+    }
     const hold =
       draftBefore && draftBefore.status === "draft"
         ? await rowIssuerHold(ctx, draftBefore, schedule)

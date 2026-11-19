@@ -167,6 +167,8 @@ describe("the month-end draft job", () => {
     })
     await recurringDraftJob(h.ctx)
     const [draft] = h.db.__all("documents").filter((d) => d.status === "draft")
+    // The draft is the company's: its page and its portal find it.
+    expect(draft?.company_id).toBe(company)
     expect(draft).toMatchObject({
       counterparty_name: "Maison Brume SAS",
       counterparty_address: "12 quai Perrache, 69002 Lyon",

@@ -69,6 +69,10 @@ export interface DraftInsert {
   /** Free-text notes printed on the document face. A plain column with NO external_refs
    *  mirror (nothing ever wrote notes anywhere else), unlike po_number. */
   notes?: string | null
+  /** The client company the draft is made for, stamped from its billing source (a schedule, a
+   *  billing plan's quote, a project); the issued document keeps it. Cleared when the draft's
+   *  contact changes, so the issue reads the new contact's company. */
+  company_id?: string | null
   /** E-invoicing: the buyer's kind, stated on the draft (an identity row on the contact wins). */
   customer_kind?: CustomerKind | null
   /** E-invoicing: the goods / services category of the operation, stated on the draft. */

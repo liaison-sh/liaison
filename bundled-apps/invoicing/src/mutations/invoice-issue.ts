@@ -36,6 +36,7 @@ import {
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
 import {
+  draftChangedSinceCard,
   handOverDraft,
   markReconciliation,
   reconcileStillReserved,
@@ -71,7 +72,7 @@ import {
  */
 async function preflightInvoiceIssueParams(
   ctx: MutationsCtx,
-  input: { draft_id: string; billsOtherThanStripe?: string | null },
+  input: { draft_id: string; billsOtherThanStripe?: string | null; draft_hash?: string | null },
   forRun = false,
   stage: "preflight" | "handler" = "handler",
 ): Promise<
@@ -172,6 +173,9 @@ async function preflightInvoiceIssueParams(
   // the work under this draft's key: before any card is parked or any number taken.
   const changed = await reconcileStillReserved(ctx, draft)
   if (changed) return { ok: false, error: changed }
+  // The card was drawn from the draft as it was: a draft edited since is not issued from it.
+  const edited = draftChangedSinceCard(draft, input.draft_hash)
+  if (edited) return { ok: false, error: edited }
   // E-invoicing gate, same rule: a French business buyer without the data its e-invoice needs is
   // refused here (enforce) with the fields and the tools that fix them.
   const gate = await checkEinvoiceGate(ctx, {
@@ -200,13 +204,15 @@ async function preflightInvoiceIssueParams(
  */
 export async function invoiceIssuePreflight(
   ctx: MutationsCtx,
-  input: { draft_id: string; billsOtherThanStripe?: string | null },
+  input: { draft_id: string; billsOtherThanStripe?: string | null; draft_hash?: string | null },
 ): Promise<PreflightResult> {
   return toPreflightResult(await preflightInvoiceIssueParams(ctx, input, false, "preflight"))
 }
 
 type InvoiceIssueInput = {
   draft_id: string
+  /** The draft's fingerprint the card was drawn from (set by the app when the draft is edited). */
+  draft_hash?: string | null
   due_at?: string | null
   billsOtherThanStripe?: string | null
 }

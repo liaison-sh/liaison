@@ -277,6 +277,8 @@ async function draftSchedule(
     status: "draft",
     counterparty_contact_id: s.contact_id,
     ...counterparty,
+    // The schedule's company: its drafts and invoices are the company's, on its page and portal.
+    ...(s.company_id ? { company_id: s.company_id } : {}),
     issuer_profile_id: s.issuer_profile_id,
     currency: String(issuer.default_currency ?? "EUR"),
     incoterm: "DAP",

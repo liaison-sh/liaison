@@ -2,6 +2,7 @@
 //
 // UI barrel: every component the manifest's views name, re-exported by name so the freeze
 // tool's UI bundling resolves them.
+export { CompanyAgreementsPanel } from "./CompanyAgreementsPanel"
 export { AgreementDetailView } from "./Detail"
 export { AgreementEditor } from "./Editor"
 export { AgreementsAppIcon } from "./icon"

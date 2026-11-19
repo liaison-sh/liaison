@@ -11,7 +11,7 @@ import { Badge, Button, Segmented } from "@liaison/app-ui/kit"
 import { onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Match, Show, Switch } from "solid-js"
 import { DocumentText } from "./DocumentText"
-import { call, go, openPdfFile, openStoredFile, paths } from "./host"
+import { call, go, loadCompanyNames, openPdfFile, openStoredFile, paths } from "./host"
 import { tr, uiLocale } from "./i18n"
 import { StatusBadge } from "./List"
 import {
@@ -134,6 +134,71 @@ const Note: Component<{ testid: string; title: string; children: string }> = (pr
     <p class="mt-1 text-text-secondary">{props.children}</p>
   </div>
 )
+
+/** What the agreement is linked to, each opening its own page: company, contact, deal, project, quote. */
+export function linkedTargets(a: AgreementDetail["agreement"]): Array<{
+  key: "company" | "contact" | "deal" | "project" | "quote"
+  id: string
+  path: string
+}> {
+  const out: ReturnType<typeof linkedTargets> = []
+  if (a.company_id)
+    out.push({ key: "company", id: a.company_id, path: paths.company(a.company_id) })
+  if (a.contact_id)
+    out.push({ key: "contact", id: a.contact_id, path: paths.contact(a.contact_id) })
+  if (a.deal_task_id)
+    out.push({ key: "deal", id: a.deal_task_id, path: paths.deal(a.deal_task_id) })
+  if (a.project_id)
+    out.push({ key: "project", id: a.project_id, path: paths.project(a.project_id) })
+  if (a.quote_document_id)
+    out.push({ key: "quote", id: a.quote_document_id, path: paths.quote(a.quote_document_id) })
+  return out
+}
+
+const LINKED_LABEL: Record<string, string> = {
+  company: "Company",
+  contact: "Contact",
+  deal: "Deal",
+  project: "Project",
+  quote: "Quote",
+}
+
+const LinkedTo: Component<{ agreement: AgreementDetail["agreement"] }> = (props) => {
+  const targets = () => linkedTargets(props.agreement)
+  const [companies] = createResource(
+    () => props.agreement.company_id || undefined,
+    () => loadCompanyNames(),
+  )
+  return (
+    <Show when={targets().length > 0}>
+      <div data-testid="agreement-linked">
+        <h2 class="mb-2 text-[12px] font-medium text-text-secondary">{tr("Linked to")}</h2>
+        <ul class="flex flex-wrap gap-x-4 gap-y-1 text-[12.5px]">
+          <For each={targets()}>
+            {(t) => (
+              <li>
+                <a
+                  href={t.path}
+                  data-testid={`agreement-linked-${t.key}`}
+                  class="inline-flex min-h-11 items-center gap-1 underline-offset-2 hover:underline md:min-h-0"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    go(t.path)
+                  }}
+                >
+                  <span class="text-text-tertiary">{tr(LINKED_LABEL[t.key] ?? "Open")}</span>
+                  <Show when={t.key === "company" && companies()?.get(t.id)}>
+                    {(name) => <span class="text-text">{name()}</span>}
+                  </Show>
+                </a>
+              </li>
+            )}
+          </For>
+        </ul>
+      </div>
+    </Show>
+  )
+}
 
 export const AgreementDetailView: Component<{ entityId?: string; id?: string }> = (props) => {
   const id = () => props.entityId ?? props.id ?? ""
@@ -406,6 +471,7 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                     <Switch>
                       <Match when={pane() === "overview"}>
                         <section data-testid="agreement-overview" class="flex flex-col gap-5">
+                          <LinkedTo agreement={a()} />
                           <Show when={evidence()?.level === "demo"}>
                             <p
                               data-testid="agreement-stand-in"

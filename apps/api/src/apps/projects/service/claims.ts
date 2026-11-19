@@ -617,12 +617,15 @@ export async function reconcileLinesRead(args: {
        WHERE l.reconciliation_id = ${r.id}::uuid AND pr.org_id = ${orgId}::uuid
        ORDER BY pr.created_at, pr.id`),
   )
-  const reserved =
-    extractRows<{ n: number }>(
-      await tx.execute(drizzleSql`
-        SELECT count(*)::int AS n FROM ${projectsRel("billing_claims")}
-         WHERE org_id = ${orgId}::uuid AND reconciliation_id = ${r.id}::uuid AND state = 'reserved'`),
-    )[0]?.n ?? 0
+  const claims = extractRows<{ reserved: number; total: number }>(
+    await tx.execute(drizzleSql`
+      SELECT count(*) FILTER (WHERE state = 'reserved')::int AS reserved, count(*)::int AS total
+        FROM ${projectsRel("billing_claims")}
+       WHERE org_id = ${orgId}::uuid AND reconciliation_id = ${r.id}::uuid`),
+  )[0] ?? { reserved: 0, total: 0 }
+  // The work the draft bills must still be reserved for it. A card that bills no line and never
+  // claimed anything (a retainer month with no time logged bills its fee only) has nothing to hold.
+  const claimsReserved = claims.reserved > 0 || (lines.length === 0 && claims.total === 0)
   const per = basis === "daily" ? hpd : 60
   const unit = basis === "daily" ? "day" : "hour"
   const retainer =
@@ -638,7 +641,7 @@ export async function reconcileLinesRead(args: {
     state: r.state,
     revision: r.revision,
     documentRef: r.document_ref,
-    claimsReserved: reserved > 0,
+    claimsReserved,
     period: { from: r.period_start, to: r.period_end },
     ...(retainer ? { timeboxMinutes: retainer.timeboxMinutes } : {}),
     rate: {

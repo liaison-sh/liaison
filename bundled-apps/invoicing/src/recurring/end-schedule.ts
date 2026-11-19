@@ -21,6 +21,8 @@ import { dayOf, jsonOf } from "./run-card"
 export const LAST_INVOICE = "Last invoice"
 /** The note on a row left out because its schedule was paused while the run was open. */
 export const SCHEDULE_PAUSED = "Schedule paused"
+/** The note on a row left out because its schedule was ended while the run was open. */
+export const SCHEDULE_ENDED = "Schedule ended"
 
 export interface DiscardResult {
   ok: true

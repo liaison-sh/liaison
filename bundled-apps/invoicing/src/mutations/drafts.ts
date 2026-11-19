@@ -13,6 +13,7 @@ import {
   discardRunDraft,
   LAST_INVOICE,
   putBack,
+  SCHEDULE_ENDED,
   SCHEDULE_PAUSED,
 } from "../recurring/end-schedule"
 import {
@@ -49,6 +50,7 @@ import {
   cardLinesLockedError,
   deductionLinesLockedError,
   markReconciliation,
+  restageIssueApprovals,
   withdrawIssueApprovals,
 } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
@@ -999,7 +1001,7 @@ async function updateRunDraft(
   const r = await afterRunWrite(ectx, String(rd.item.id), {
     putBack: input.put_back === true,
     extraNotes: notes,
-    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED] } : {}),
+    ...(input.put_back ? { noteRemove: [LAST_INVOICE, SCHEDULE_PAUSED, SCHEDULE_ENDED] } : {}),
   })
   const draft = await getDraft(ctx.db, draftId)
   if (!draft) throw new Error(`not_found: draft ${draftId}`)
@@ -1104,7 +1106,17 @@ async function updateDraft(
   }
   const rd = await runDraftOf(ctx, input.draft_id)
   if (rd) return updateRunDraft(ctx, input, mode, rd)
-  return updatePlainDraft(ctx, { draft_id: input.draft_id, patch: input.patch ?? {} }, mode)
+  const out = await updatePlainDraft(
+    ctx,
+    { draft_id: input.draft_id, patch: input.patch ?? {} },
+    mode,
+  )
+  // The edit is in: an issue card still waiting on this draft is redrawn from it.
+  if (!("preflight" in out) && !("approval_id" in out)) {
+    const fresh = await getDraft(ctx.db, input.draft_id)
+    if (fresh) await restageIssueApprovals(ctx, fresh)
+  }
+  return out
 }
 
 async function updatePlainDraft(

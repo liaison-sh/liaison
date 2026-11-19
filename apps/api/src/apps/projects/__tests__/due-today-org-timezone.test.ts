@@ -16,6 +16,7 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import { withRlsContext } from "~/db/rls"
+import { seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 // One "today" per org: Home and every task-list due filter read the org's own
@@ -41,21 +42,14 @@ let taskId: string
 beforeAll(async () => {
   await acquireTestLock()
   const slug = `projects-org-today-${Date.now()}`
-  const [org] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.organizations (id, name, slug, timezone)
-      VALUES (gen_random_uuid(), 'Org Today', ${slug}, 'America/Los_Angeles') RETURNING id
-    `),
-  )
-  orgId = org!.id
-  const [me] = extractRows<{ id: string }>(
-    await db.execute(drizzleSql`
-      INSERT INTO kernel.users (id, org_id, email, name, status, password_hash, auth_version, permission_version)
-      VALUES (gen_random_uuid(), ${orgId}::uuid, ${`me-${Date.now()}@test.com`}, 'Me', 'active', 'hash', 1, 1)
-      RETURNING id
-    `),
-  )
-  meId = me!.id
+  orgId = await seedOrgRow({ name: "Org Today", slug, timezone: "America/Los_Angeles" })
+  meId = await seedUserRow({
+    orgId,
+    email: `me-${Date.now()}@test.com`,
+    name: "Me",
+    status: "active",
+    passwordHash: "hash",
+  })
   actor = {
     actorType: "user",
     userId: meId,

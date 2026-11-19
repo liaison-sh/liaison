@@ -114,7 +114,7 @@ describe("dueBucket / dueBucketSql agreement", () => {
         const sqlRows = extractRows<{ bucket: string }>(
           await withRlsContext(actor, async (tx) =>
             tx.execute(drizzleSql`
-              SELECT ${dueBucketSql("t", "s")} AS bucket
+              SELECT ${dueBucketSql("t", "s", today)} AS bucket
               FROM ${projectsRel("tasks")} t
               JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
               WHERE t.org_id = ${orgId}::uuid AND t.title = ${title}

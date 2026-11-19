@@ -14,7 +14,7 @@ import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklis
 import { checklistStatus } from "./checklist-status"
 import { refuseClaimedTasks } from "./claim-holds"
 import { explainClosingStages, mergeDealRows, syncDealOutcome } from "./deals"
-import { dueBucketSql } from "./due-status"
+import { dueBucketSql, orgToday, todaySql } from "./due-status"
 import {
   fieldFilterConditions,
   lockProjectFields,
@@ -608,6 +608,8 @@ export interface ListTasksArgs {
   orgId: string
   projectId: string
   filters?: ListTasksFilters
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
 }
 
 export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSummary[] }> {
@@ -631,7 +633,8 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
   }
   if (filters.due) {
     const bucket = filters.due === "this_week" ? "due_soon" : filters.due
-    conditions.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    const today = await orgToday(args.tx, args.orgId, args.now)
+    conditions.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, filters.release)
   if (releaseCond) conditions.push(releaseCond)
@@ -959,7 +962,7 @@ export interface CrossProjectTask extends Task {
    *  alone is an opaque uuid; the name is what a human-facing readout needs. */
   assigneeName: string | null
   /** SERVER-computed overdue flag: TRUE iff the task has a non-null `due_date`
-   *  strictly in the PAST (due_date < CURRENT_DATE) AND its status is NON-terminal
+   *  strictly before the org's today (`orgToday`) AND its status is NON-terminal
    *  (an unfinished task only — a done/cancelled task is never "overdue" however
    *  old its due date). This is the launch/board-digest discrimination computed in
    *  SQL so a routine tick RENDERS the overdue set instead of re-deriving
@@ -984,6 +987,8 @@ export interface ListTasksAcrossProjectsArgs {
   terminal?: boolean
   /** Effective-release filter (see ListTasksFilters.release). */
   release?: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
 }
 
 /**
@@ -1008,9 +1013,11 @@ export async function listTasksAcrossProjects(
   // (the open-tasks sweep predicate); a NULL status (no column) counts as not-terminal.
   if (args.terminal === true) conds.push(drizzleSql`s.terminal IS TRUE`)
   else if (args.terminal === false) conds.push(drizzleSql`s.terminal IS NOT TRUE`)
+  // One today for the filter and the `overdue` column: the org's, never CURRENT_DATE.
+  const today = await orgToday(args.tx, args.orgId, args.now)
   if (args.due) {
     const bucket = args.due === "this_week" ? "due_soon" : args.due
-    conds.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    conds.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, args.release)
   if (releaseCond) conds.push(releaseCond)
@@ -1038,7 +1045,7 @@ export async function listTasksAcrossProjects(
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
-        (t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE AND s.terminal IS NOT TRUE) AS overdue
+        (${dueBucketSql("t", "s", today)} = 'overdue') AS overdue
       FROM ${projectsRel("tasks")} t
       JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
       LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
@@ -1076,6 +1083,8 @@ export interface ListProjectTasksArgs {
   tx: RlsClient
   orgId: string
   projectId: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
   statusId?: string
   /** Filter by whether the task's status is terminal/done. `false` = only
    *  UNFINISHED tasks (the canonical "process every open task" sweep predicate);
@@ -1144,9 +1153,11 @@ export async function listProjectTasks(
   // (the sweep predicate); a NULL status (no column) counts as not-terminal.
   if (args.terminal === true) conds.push(drizzleSql`s.terminal IS TRUE`)
   else if (args.terminal === false) conds.push(drizzleSql`s.terminal IS NOT TRUE`)
+  // One today for the filter and the `overdue` column: the org's, never CURRENT_DATE.
+  const today = await orgToday(args.tx, args.orgId, args.now)
   if (args.due) {
     const bucket = args.due === "this_week" ? "due_soon" : args.due
-    conds.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    conds.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, args.release)
   if (releaseCond) conds.push(releaseCond)
@@ -1212,7 +1223,7 @@ export async function listProjectTasks(
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
-        (t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE AND s.terminal IS NOT TRUE) AS overdue
+        (${dueBucketSql("t", "s", today)} = 'overdue') AS overdue
       FROM ${projectsRel("tasks")} t
       JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
       LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
@@ -1241,6 +1252,8 @@ export async function listProjectTasks(
 export interface PortfolioRollupArgs {
   tx: RlsClient
   orgId: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
   /** Cap on the number of (most-recently-updated) active projects to roll up.
    *  Default 25, max 50 — keeps the single aggregate query bounded for a board
    *  digest without ever paging. */
@@ -1325,6 +1338,8 @@ const PRIORITY_RANK_SQL = drizzleSql`CASE t.priority
 export async function portfolioRollup(args: PortfolioRollupArgs): Promise<PortfolioRollupResult> {
   const limit = Math.max(1, Math.min(args.limit ?? 25, 50))
   const archivedClause = args.includeArchived ? drizzleSql`` : drizzleSql`AND p.archived_at IS NULL`
+  // Overdue counts against the org's today, the same date Home and the task lists use.
+  const day = todaySql(await orgToday(args.tx, args.orgId, args.now))
 
   // Total active (or all) projects in the org — drives truncation disclosure.
   const totalRows = extractRows<{ total: number }>(
@@ -1368,7 +1383,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
           s.label AS status_label,
           (s.terminal IS NOT TRUE
             AND t.due_date IS NOT NULL
-            AND t.due_date < CURRENT_DATE) AS is_overdue
+            AND t.due_date < ${day}) AS is_overdue
         FROM ${projectsRel("tasks")} t
         JOIN candidate_projects cp ON cp.id = t.project_id
         LEFT JOIN ${projectsRel("project_statuses")} s
@@ -1402,7 +1417,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
           t.id, t.title, t.priority, t.due_date, t.assignee_id,
           pt2.status_label,
           CASE WHEN pt2.is_overdue
-            THEN (CURRENT_DATE - t.due_date)::int ELSE 0 END AS days_overdue
+            THEN (${day} - t.due_date)::int ELSE 0 END AS days_overdue
         FROM project_tasks pt2
         JOIN ${projectsRel("tasks")} t ON t.id = pt2.id
         WHERE pt2.project_id = cp.id

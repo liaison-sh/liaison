@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { sql as drizzleSql } from "drizzle-orm"
+import type { PrivilegedDb, RlsClient, RlsTx } from "~/db"
+import { orgTimezone } from "./time-plan"
+import { todayIn } from "./took"
 
 /** Width of the "due soon" window, in days from today (inclusive). */
 export const DUE_SOON_DAYS = 7
@@ -35,26 +38,37 @@ export function dueBucket(dueDate: string | null, terminal: boolean, today: stri
 }
 
 /**
- * "Today" as a SQL date: the given ISO date when the caller already decided
- * what today is, else the database's CURRENT_DATE.
+ * The org's today: the calendar date in the org's time zone at `now`. Every
+ * due-bucket reader (Home, the task lists, the agent's task filters, the
+ * aggregate and the portfolio rollup) takes today from here, so one task never
+ * lands in two buckets because two readers used two clocks. Never the
+ * database's CURRENT_DATE, which is the session's (UTC) date.
  */
-export function todaySql(today?: string): ReturnType<typeof drizzleSql> {
-  return today ? drizzleSql`${toIsoDate(today)}::date` : drizzleSql`CURRENT_DATE`
+export async function orgToday(
+  tx: RlsClient | RlsTx | PrivilegedDb,
+  orgId: string,
+  now: Date = new Date(),
+): Promise<string> {
+  return todayIn(await orgTimezone(tx as RlsClient | PrivilegedDb, orgId), now)
+}
+
+/** "Today" as a SQL date, from the ISO date `orgToday` gave. */
+export function todaySql(today: string): ReturnType<typeof drizzleSql> {
+  return drizzleSql`${toIsoDate(today)}::date`
 }
 
 /**
  * SQL fragment computing the SAME bucket in Postgres, for use in a WHERE
  * clause or SELECT list. `taskAlias` and `statusAlias` are table aliases
  * already in scope in the caller's query (fixed identifiers from source,
- * never user input) — e.g. `dueBucketSql("t", "s")` against
- * `... tasks t JOIN project_statuses s ...`. `today` is an ISO date; a caller
- * that reads the date elsewhere in the same answer passes it, so one answer
- * never reads two clocks. Without it, the database's CURRENT_DATE.
+ * never user input) — e.g. `dueBucketSql("t", "s", today)` against
+ * `... tasks t JOIN project_statuses s ...`. `today` is the org's today
+ * from `orgToday`, required: every reader classifies against the same date.
  */
 export function dueBucketSql(
   taskAlias: string,
   statusAlias: string,
-  today?: string,
+  today: string,
 ): ReturnType<typeof drizzleSql> {
   const dueDateCol = drizzleSql.raw(`${taskAlias}.due_date`)
   const terminalCol = drizzleSql.raw(`${statusAlias}.terminal`)

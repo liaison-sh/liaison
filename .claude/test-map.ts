@@ -72,6 +72,14 @@ export const TEST_MAP: { glob: string; suites: string[] }[] = [
   // The owner's question played through the agent loop on the seeded world: seeded, so demo-seed only.
   { glob: "apps/api/src/seed/worlds/saas/owner-question-reach.saas.integration.test.ts", suites: ["demo-seed"] },
   { glob: "apps/api/src/seed/worlds/saas/seed-without-owner.saas.integration.test.ts", suites: ["demo-seed"] },
+  // The services world: its pack, its beats and scenarios, its tours. The demo
+  // decide is the one writer of a client's decision in a demo org, so its door
+  // tests (security) run with it, ahead of the broader client-facing door entry below.
+  { glob: "apps/api/src/seed/worlds/studio/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "apps/api/src/modules/demo/worlds/studio/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "packages/shared/src/tours/demo/worlds/studio/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
+  { glob: "apps/api/src/modules/client-actions/demo-decide.ts", suites: ["demo-seed", "unit", "web-unit", "guards", "security"] },
+  { glob: "apps/api/src/modules/client-actions/demo-decide.test.ts", suites: ["demo-seed", "unit", "web-unit", "guards", "security"] },
   { glob: "apps/api/src/modules/demo/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
   { glob: "apps/api/src/seed/worlds/**", suites: ["demo-seed", "unit", "web-unit", "guards"] },
   { glob: "apps/api/src/seed/factories/payments/**", suites: ["demo-seed", "integration", "unit"] },

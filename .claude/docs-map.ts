@@ -186,6 +186,9 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
 
   // Getting started
   { glob: "apps/api/src/modules/demo/**", pages: ["getting-started/demo"] },
+  // The services demo company: its pack, beats, scenarios and tours name what the demo page lists.
+  { glob: "apps/api/src/seed/worlds/studio/**", pages: ["getting-started/demo"] },
+  { glob: "packages/shared/src/tours/demo/worlds/studio/**", pages: ["getting-started/demo"] },
   // The Playwright suite's config: snapshot update mode, baselines per platform.
   { glob: "apps/web/playwright.config.ts", pages: ["testing"] },
   // Seed tiers before the catch-all below (the first matching entry wins).

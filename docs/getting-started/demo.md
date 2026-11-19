@@ -3,15 +3,15 @@ title: Try the demo
 description: Open your own temporary copy of a sample company at demo.liaison.sh and watch its agents work, without installing anything.
 ---
 
-The live demo at [demo.liaison.sh](https://demo.liaison.sh) gives you your own copy of **Resonant Audio Labs**, a fictional company that makes portable field recorders. You sign in as its CEO. The support queue, dealer orders, shipping and books are already filled in, so you can watch agents work without installing anything. Each dealer and customer contact has its country recorded, which the check on commercial mail reads.
+The live demo at [demo.liaison.sh](https://demo.liaison.sh) gives you your own copy of a fictional company: **Resonant Audio Labs**, which makes portable field recorders, or one of two others you pick with your answer to the first question (see [Three example companies](#three-example-companies)). You sign in as its CEO, or as a co-founder in the studio. The support queue, orders, books and the rest are already filled in, so you can watch agents work without installing anything. Each dealer and customer contact has its country recorded, which the check on commercial mail reads.
 
 ## Start a demo workspace
 
 1. Open [demo.liaison.sh](https://demo.liaison.sh). The counter at the top shows the three pages: **Scenarios**, **The company** and **Your details**.
-2. **Which looks most like your company?** is optional. Click **We sell products**, **We sell software** or **We sell our expertise to clients** and the scenarios that fit are picked for you below; change them as you like. **Other, or just show me** picks nothing and takes a few words about your company if you want to give them; **Continue** then opens the whole company unless you pick scenarios. Click your answer again to take it back. Every answer opens the same example company.
+2. **Which looks most like your company?** is optional. Click **We sell products**, **We sell software** or **We sell our expertise to clients** and the scenarios that fit are picked for you below; change them as you like. **Other, or just show me** picks nothing and takes a few words about your company if you want to give them; **Continue** then opens the whole company unless you pick scenarios. Click your answer again to take it back. Your answer picks the example company (see [Three example companies](#three-example-companies)).
 3. Under **What do you want to see agents do?**, pick one or more scenarios, or **Everything** (its **Select all** pill reads **All selected** once every scenario is picked). They play in the order you pick them; the bar at the bottom shows your picks and about how many minutes they take.
 4. Click **Continue**. It stays off until you pick at least one scenario, unless you answered **Other, or just show me**.
-5. The company page shows what Resonant Audio Labs makes and sells, **How it runs on Liaison** (support, orders and shipping, invoicing, sales, projects and chat, company knowledge), **The team** you run as CEO, and under **You'll see** the scenarios you picked. Only the outside world is simulated. Click **Continue**.
+5. The company page shows what the company makes and sells, **How it runs on Liaison** (support, orders and shipping, invoicing, sales, projects and chat, company knowledge), **The team** you run as CEO, and under **You'll see** the scenarios you picked. Only the outside world is simulated. Click **Continue**.
 6. Enter **Your name** and **Email**, then click **Start the demo**.
 
 To look around without a guided scenario, click **Or just explore on your own** instead of **Continue**: the whole company is loaded and you go on to the company page. **Change what you'll see** takes you from the company page back to the scenarios, and **Back** takes you from your details back to the company page.
@@ -28,11 +28,29 @@ The demo uses your email to send your confirmation code. You join no list by sig
 | **Project management** | A teammate asks for help on a task. From **Chats** at the bottom of the screen, beside the task, you ask your agent; it breaks the task into subtasks and answers the teammate in the task's discussion. Back on the project, the new subtasks are ringed in its list. |
 | **Team chat** | A teammate asks a question in a channel. You read it, then from **Chats** at the bottom of the screen, beside the channel, you ask your agent; it searches the web, cites its sources, turns the answer into a task, then answers your teammate in the channel with its sources and the task. |
 | **Sales & CRM** | A prospect emails and a routine works in order: it checks your CRM, reads up on a new company, then prepares one request with three steps: their CRM record, a quote at your dealer price that carries the record's id, and the reply with the quote's PDF attached. You approve once and the steps run in that order. |
-| **Orders & shipping** | An order arrives and its invoice is issued. From **Chats** at the bottom of the screen, beside the orders, you ask the **Operations Desk** (the agent that holds the shipping, shop and invoicing tools); it prepares the shipment for your approval. |
+| **Orders & shipping** | In Resonant Audio Labs only. An order arrives and its invoice is issued. From **Chats** at the bottom of the screen, beside the orders, you ask the **Operations Desk** (the agent that holds the shipping, shop and invoicing tools); it prepares the shipment for your approval. |
+| **Subscriptions & payments** | In the software company only. A card payment fails, a routine drafts the note to the customer, you approve it. |
+| **Client work** | In the studio only. A client asks for more than you signed: your agent checks the agreement, then drafts the reply and a change request. You approve it. |
 | **Dev sessions** | A coding agent works on a laptop, and you approve what it asks. |
 | **Company knowledge** | Manuals from GitLab, finance from Google Drive and a playbook written in Liaison, in one knowledge base. Asked from **Chats** at the bottom of the screen, beside the P&L, your agent answers from all three; when a support teammate asks the same question, the agent reads with their access and finds no finance figures. |
 
 The company's warehouse reports on revenue, dealers and customers are confidential: they run for you, the finance and operations teams, and not for support, fulfillment or sales (**Settings › Connectors › Database › Report access**).
+
+## Three example companies
+
+The company you open depends on your answer to **Which looks most like your company?**
+
+| Your answer | The example company | Scenarios you can pick |
+|---|---|---|
+| **We sell products** | Resonant Audio Labs, a maker of portable field recorders in Paris with 7 people. | Customer support, Project management, Team chat, Sales & CRM, Orders & shipping, Dev sessions, Company knowledge |
+| **We sell software** | A Paris maker of rota software for hotels, restaurants and canteens, with 14 people. Its customers pay by subscription, mostly by card through Stripe. | The same, with **Subscriptions & payments** in place of **Orders & shipping** |
+| **We sell our expertise to clients** | A Lyon studio of 24 people that builds software and data systems for its clients. It bills by the hour or the day, at a fixed price, or on a monthly retainer. | The same, with **Client work** in place of **Orders & shipping** |
+
+**Other, or just show me**, and no answer, open Resonant Audio Labs. So does an answer whose company this server does not run: the server runs the companies listed in `LIAISON_DEMO_WORLDS`, and `products` alone by default.
+
+In the studio, clients follow their project on a **Client portal** of their own, and every piece of work starts from a signed agreement. In **Client work**, a client asks for more than the agreement covers. Your agent checks the agreement, then drafts the reply and a change request, and you approve it. The repositories and clients are stand-ins, and an agreement shown as signed was not really signed. Client sign-in and signing links do not work here, since no mail leaves. To see what a client sees, open a company's **Client portal**, under **What they see**.
+
+In the software company, **Subscriptions & payments** starts when a card payment fails: a routine drafts the note to the customer, and you approve it. The Stripe account and its payments are stand-ins, and connecting a real account is refused.
 
 ## Let the agents run
 

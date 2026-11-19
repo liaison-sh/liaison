@@ -19,6 +19,7 @@ import {
   DEMO_WORLD_NEEDS,
   type DemoNeed,
   type DemoWorldId,
+  STUDIO_SCENARIO_MINUTES,
 } from "@liaison/shared"
 import {
   BookOpen,
@@ -71,13 +72,23 @@ export const NEED_MINUTES: Readonly<Record<DemoNeed, number>> = {
   knowledge: 3,
 }
 
+const STUDIO_MINUTES: Readonly<Partial<Record<DemoNeed, number>>> = STUDIO_SCENARIO_MINUTES
+
 /**
- * The minutes a set of picks takes, end to end. A world's own scenario can run
- * longer than the products one it replaces; today only the two world-specific
- * needs differ from the rest, and they carry their own figure above.
+ * The minutes one need's scenario takes in a world: the services world's come from its tour
+ * configurations (its projects scenario runs longer than the others'), every other world's from
+ * the table above.
  */
-export function needsMinutes(needs: readonly DemoNeed[]): number {
-  return needs.reduce((total, need) => total + NEED_MINUTES[need], 0)
+export function needMinutes(world: DemoWorldId, need: DemoNeed): number {
+  return (world === "studio" ? STUDIO_MINUTES[need] : undefined) ?? NEED_MINUTES[need]
+}
+
+/** The minutes a set of picks takes in a world, end to end. */
+export function needsMinutes(
+  needs: readonly DemoNeed[],
+  world: DemoWorldId = DEMO_DEFAULT_WORLD,
+): number {
+  return needs.reduce((total, need) => total + needMinutes(world, need), 0)
 }
 
 /** The app whose icon and colour a need's tile wears, so the door reads like the product. */
@@ -172,7 +183,7 @@ export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
               onPress={() => props.onChange(toggleNeed(props.value, need))}
               name={i18n.t(`kernel.demo.needShort.${need}`)}
               desc={i18n.t(`kernel.demo.needDesc.${need}`)}
-              minutes={i18n.t("kernel.demo.pickMinutes", { minutes: NEED_MINUTES[need] })}
+              minutes={i18n.t("kernel.demo.pickMinutes", { minutes: needMinutes(world(), need) })}
               // Picked, the tile takes its app's pill colours (theme-aware via .app-pill).
               class={rank(need) > 0 ? "app-pill" : `${tileOff} text-text`}
               style={rank(need) > 0 ? appPillVars(look.app) : undefined}
@@ -208,7 +219,7 @@ export const NeedsPicker: Component<NeedsPickerProps> = (props) => {
         name={i18n.t("kernel.demo.needEverything")}
         desc={i18n.t("kernel.demo.needDesc.everything")}
         minutes={i18n.t("kernel.demo.pickMinutes", {
-          minutes: needsMinutes(needs()),
+          minutes: needsMinutes(needs(), world()),
         })}
         class={
           everything()

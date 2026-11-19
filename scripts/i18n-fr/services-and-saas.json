@@ -87,7 +87,7 @@
     "kernel.demo.needShort.money": "Abonnements et paiements",
     "kernel.demo.needShort.client": "Travail client",
     "kernel.demo.needDesc.money": "Un paiement par carte échoue : une routine rédige la note au client, vous l'approuvez.",
-    "kernel.demo.needDesc.client": "Un client demande plus : votre agent vérifie le contrat, puis rédige la réponse.",
+    "kernel.demo.needDesc.client": "Un client demande plus que ce que vous avez signé : votre agent vérifie le contrat, puis rédige la réponse et une demande de modification. Vous approuvez.",
     "kernel.demo.needsNotInWorld": "Aucun des sujets choisis ne fait partie de la démo de cette entreprise. Choisissez au moins un des sujets proposés.",
     "kernel.demo.world.saas.companyFacts": "Entreprise fictive · Paris · 14 personnes",
     "kernel.demo.world.saas.companyExample": "Ceci est une entreprise d'exemple : Tideform, qui édite un logiciel de planning pour les groupes d'hôtellerie-restauration. Votre propre espace contiendrait vos données.",

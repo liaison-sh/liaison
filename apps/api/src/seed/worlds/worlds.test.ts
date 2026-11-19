@@ -52,7 +52,7 @@ describe("demo world packs", () => {
     expect(seedableDemoWorlds().every((id) => DEMO_WORLDS.includes(id))).toBe(true)
   })
 
-  it("studio is seedable and never enabled for the door before it has tours", () => {
+  it("studio is seedable and enabled for the door only where the box names it", () => {
     expect(seedableDemoWorlds()).toContain("studio")
     const pack = demoWorldPack("studio")
     expect(pack.layer).toBeDefined()
@@ -60,8 +60,10 @@ describe("demo world packs", () => {
     const saved = env.LIAISON_DEMO_WORLDS
     try {
       env.LIAISON_DEMO_WORLDS = "studio"
-      expect(enabledDemoWorlds()).toEqual(["products"])
+      expect(enabledDemoWorlds()).toEqual(["studio"])
       env.LIAISON_DEMO_WORLDS = "products,saas,studio"
+      expect(enabledDemoWorlds()).toEqual(["products", "saas", "studio"])
+      env.LIAISON_DEMO_WORLDS = "products,saas"
       expect(enabledDemoWorlds()).toEqual(["products", "saas"])
     } finally {
       env.LIAISON_DEMO_WORLDS = saved

@@ -1,0 +1,30 @@
+{
+  "key": {
+    "kernel.demo.world.studio.companyFacts": "Entreprise fictive · Lyon · 24 personnes",
+    "kernel.demo.world.studio.companyExample": "Ceci est une entreprise d'exemple : Halden Studio, qui conçoit des logiciels et des systèmes de données pour ses clients. Votre propre espace contiendrait vos données.",
+    "kernel.demo.world.studio.companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne. Il facture à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel. Les clients suivent leur projet sur un portail à eux, et chaque travail part d'un contrat signé.",
+    "kernel.demo.world.studio.companyOps.agreements.title": "Contrats",
+    "kernel.demo.world.studio.companyOps.agreements.body": "Propositions et contrats, signés dans Liaison. Votre agent les vérifie quand un client demande plus.",
+    "kernel.demo.world.studio.companyOps.delivery.title": "Production",
+    "kernel.demo.world.studio.companyOps.delivery.body": "Chaque tâche a un temps prévu, et la personne qui l'a faite peut saisir le temps qu'elle a pris. Qui facture demande à un agent de comparer le prévu et le fait.",
+    "kernel.demo.world.studio.companyOps.billing.title": "Facturation",
+    "kernel.demo.world.studio.companyOps.billing.body": "Des factures issues des jalons, des abonnements et du travail vérifié. Anaïs les émet.",
+    "kernel.demo.world.studio.companyOps.clients.title": "Clients",
+    "kernel.demo.world.studio.companyOps.clients.body": "Chaque entreprise réunit ses personnes, ses affaires, son argent et son travail. Les rapports clients de Bastien sont rédigés le vendredi.",
+    "kernel.demo.world.studio.companyOps.portal.title": "Portail client",
+    "kernel.demo.world.studio.companyOps.portal.body": "Les clients se connectent pour voir leur avancement, leurs rapports, leurs factures et leurs demandes. Seulement ce qui a été partagé, rien d'autre.",
+    "kernel.demo.world.studio.companyOps.knowledge.title": "Connaissances du studio",
+    "kernel.demo.world.studio.companyOps.knowledge.body": "Un wiki des projets passés et des méthodes. Chaque agent ne lit que ce que sa personne peut ouvrir.",
+    "kernel.demo.world.studio.companyYou": "Vous le dirigez en tant que cofondateur, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger le studio, et regardez-le vérifier le contrat avant que quiconque réponde à un client.",
+    "kernel.demo.world.studio.companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et les clients et leurs réponses sont fictifs.",
+    "kernel.demo.world.studio.teamYouRole": "Cofondateur",
+    "kernel.demo.world.studio.teamOthers.name": "18 autres",
+    "kernel.demo.world.studio.teamOthers.role": "Production, ventes",
+    "kernel.demo.world.studio.teamRole.bastien": "Chef de projet",
+    "kernel.demo.world.studio.teamRole.nadia": "Développeuse principale",
+    "kernel.demo.world.studio.teamRole.mathis": "Développeur",
+    "kernel.demo.world.studio.teamRole.sofia": "Ingénieure data",
+    "kernel.demo.world.studio.teamRole.anais": "Finances",
+    "kernel.demo.world.studio.limitConnectors": "Les dépôts et les clients sont fictifs. La connexion des clients et les liens de signature ne fonctionnent pas ici, car aucun e-mail ne part. Les contrats affichés comme signés n'ont pas vraiment été signés. Voyez ce que voit un client dans le Portail client d'une entreprise, sous Ce qu'ils voient."
+  }
+}

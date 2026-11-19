@@ -16,6 +16,7 @@ import {
   DEMO_TEAM,
 } from "../../../../api/src/seed/world/fiction"
 import { SAAS_COMPANY, SAAS_PLANS, SAAS_TEAM } from "../../../../api/src/seed/worlds/saas/fiction"
+import { STUDIO_COMPANY, STUDIO_TEAM } from "../../../../api/src/seed/worlds/studio/fiction"
 import { DEMO_COMPANY_NAME, DEMO_DOOR, DEMO_DOOR_TEAM, doorCompanyOf } from "./door-company"
 
 const copy = en.demo
@@ -127,7 +128,84 @@ describe("the software company's page states its pack's facts", () => {
         fr.demo.world.saas.companyOps[op.key as keyof typeof saas.companyOps].body,
       ).toBeTruthy()
     }
-    expect(doorCompanyOf("studio")).toBe(DEMO_DOOR.products)
+    expect(doorCompanyOf("saas")).toBe(DEMO_DOOR.saas)
+    expect(doorCompanyOf("studio")).toBe(DEMO_DOOR.studio)
+    expect(doorCompanyOf("unknown")).toBe(DEMO_DOOR.products)
     expect(doorCompanyOf(null)).toBe(DEMO_DOOR.products)
+  })
+})
+
+describe("the services door matches its pack's people and counts", () => {
+  const studio = en.demo.world.studio
+
+  it("names the pack's company, its city and its headcount, the visitor's seat included", () => {
+    expect(DEMO_DOOR.studio.name).toBe(STUDIO_COMPANY.name)
+    expect(DEMO_DOOR.studio.initials).toBe("HS")
+    expect(studio.companyExample).toContain(STUDIO_COMPANY.name)
+    expect(fr.demo.world.studio.companyExample).toContain(STUDIO_COMPANY.name)
+    expect(studio.companyAbout.startsWith(STUDIO_COMPANY.name)).toBe(true)
+    expect(studio.companyFacts).toBe(
+      `Fictional company · ${STUDIO_COMPANY.city} · ${STUDIO_TEAM.length + 1} people`,
+    )
+    expect(fr.demo.world.studio.companyFacts).toContain(String(STUDIO_TEAM.length + 1))
+  })
+
+  it("lists the five people the board names, with titles from theirs, and counts the others", () => {
+    const listed = DEMO_DOOR.studio.team
+    const seeded = new Map(STUDIO_TEAM.map((p) => [p.key, p]))
+    for (const person of listed) {
+      const seededPerson = seeded.get(person.key)
+      expect(seededPerson?.name, person.key).toBe(person.name)
+      const role = (studio.teamRole as Record<string, string>)[person.key]
+      expect(role, person.key).toBeTruthy()
+      expect(seededPerson?.jobTitle.toLowerCase(), person.key).toContain(role.toLowerCase())
+    }
+    expect(listed.map((p) => p.key)).toEqual(["bastien", "nadia", "mathis", "sofia", "anais"])
+    // The others are every seeded person the door does not list.
+    expect(studio.teamOthers.name).toBe(`${STUDIO_TEAM.length - listed.length} others`)
+    expect(fr.demo.world.studio.teamOthers.name).toBe(
+      `${STUDIO_TEAM.length - listed.length} autres`,
+    )
+    expect(DEMO_DOOR.studio.othersKey).toBe("teamOthers")
+  })
+
+  it("says the visitor takes a co-founder's seat, not the products company's CEO", () => {
+    expect(studio.teamYouRole).toBe("Co-founder")
+    expect(DEMO_DOOR.studio.youRoleKey).toBe("teamYouRole")
+    expect(studio.companyYou).toContain("co-founder")
+  })
+
+  it("bills in the three ways the pack's agreements do", () => {
+    const source = readFileSync(
+      join(process.cwd(), "../api/src/seed/worlds/studio/agreements.ts"),
+      "utf8",
+    )
+    for (const mode of ["fixed", "retainer", "tm"]) {
+      expect(source, mode).toContain(`pricingMode: "${mode}"`)
+    }
+    expect(studio.companyAbout).toContain("by the hour or the day")
+    expect(studio.companyAbout).toContain("fixed price with milestones")
+    expect(studio.companyAbout).toContain("monthly retainer")
+  })
+
+  it("has a title and a body for every operations row, in both languages", () => {
+    expect(DEMO_DOOR.studio.opsList).toHaveLength(6)
+    for (const op of DEMO_DOOR.studio.opsList) {
+      const en_ = (studio.companyOps as Record<string, { title: string; body: string }>)[op.key]
+      const fr_ = (
+        fr.demo.world.studio.companyOps as Record<string, { title: string; body: string }>
+      )[op.key]
+      expect(en_?.title, op.key).toBeTruthy()
+      expect(en_?.body, op.key).toBeTruthy()
+      expect(fr_?.title, op.key).toBeTruthy()
+      expect(fr_?.body, op.key).toBeTruthy()
+    }
+  })
+
+  it("names no other world's company", () => {
+    const all = JSON.stringify([studio, fr.demo.world.studio])
+    for (const other of [DEMO_COMPANY_NAME, DEMO_DOOR.saas.name, "Kestrel", "Stripe", "Shopify"]) {
+      expect(all).not.toContain(other)
+    }
   })
 })

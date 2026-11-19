@@ -42,10 +42,12 @@ import {
 import { useNavigate, useSearchParams } from "@solidjs/router"
 import {
   BookOpen,
+  Building2,
   CreditCard,
   FileText,
   FolderKanban,
   Mail,
+  Receipt,
   ShoppingBag,
   Ticket,
 } from "lucide-solid"
@@ -81,6 +83,11 @@ const OPS_ICON: Readonly<Record<string, Component<{ size?: number }>>> = {
   sales: Mail,
   projects: FolderKanban,
   knowledge: BookOpen,
+  agreements: FileText,
+  delivery: FolderKanban,
+  billing: Receipt,
+  clients: Building2,
+  portal: Ticket,
 }
 
 const STEPS = ["scenarios", "company", "details"] as const
@@ -295,7 +302,8 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
       : needs()
           .map((need) => i18n.t(`kernel.demo.needShort.${need}`))
           .join(" → ")
-  const minutes = () => i18n.t("kernel.demo.pickMinutes", { minutes: needsMinutes(needs()) })
+  const minutes = () =>
+    i18n.t("kernel.demo.pickMinutes", { minutes: needsMinutes(needs(), world()) })
 
   function chooseEntry(next: DemoEntryId | null): void {
     touched = true
@@ -578,7 +586,9 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
                     <li class="flex justify-between gap-2.5 font-semibold text-text">
                       {i18n.t("kernel.demo.teamYou")}
                       <span class="text-right text-text-tertiary">
-                        {i18n.t("kernel.demo.teamCeo")}
+                        {company().youRoleKey
+                          ? i18n.t(`${copy()}.${company().youRoleKey}`)
+                          : i18n.t("kernel.demo.teamCeo")}
                       </span>
                     </li>
                     <For each={company().team}>
@@ -591,6 +601,19 @@ export const DemoEntry: Component<DemoEntryProps> = (props) => {
                         </li>
                       )}
                     </For>
+                    <Show when={company().othersKey}>
+                      {(key) => (
+                        <li
+                          data-testid="demo-team-others"
+                          class="flex justify-between gap-2.5 text-text"
+                        >
+                          {i18n.t(`${copy()}.${key()}.name`)}
+                          <span class="text-right text-text-tertiary">
+                            {i18n.t(`${copy()}.${key()}.role`)}
+                          </span>
+                        </li>
+                      )}
+                    </Show>
                   </ul>
                   <div>
                     <p class="mb-1.5 text-[12px] text-text-tertiary">

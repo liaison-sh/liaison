@@ -1045,7 +1045,7 @@
       "knowledge": "Manuels, finances et procédures au même endroit : chaque agent ne lit que ce que la personne qui le sollicite peut ouvrir.",
       "everything": "Les sept, l'un après l'autre.",
       "money": "Un paiement par carte échoue : une routine rédige la note au client, vous l'approuvez.",
-      "client": "Un client demande plus : votre agent vérifie le contrat, puis rédige la réponse."
+      "client": "Un client demande plus que ce que vous avez signé : votre agent vérifie le contrat, puis rédige la réponse et une demande de modification. Vous approuvez."
     },
     "needEverything": "Tout",
     "errTurnstile": "Nous n'avons pas pu vérifier ce navigateur. Rechargez la page et réessayez.",
@@ -1255,6 +1255,52 @@
           "rose": "Responsable du bureau"
         },
         "limitConnectors": "Le compte Stripe et ses paiements sont fictifs. Connecter un vrai compte est refusé. Les remboursements et les résiliations ne touchent que ce compte fictif."
+      },
+      "studio": {
+        "companyFacts": "Entreprise fictive · Lyon · 24 personnes",
+        "companyExample": "Ceci est une entreprise d'exemple : Halden Studio, qui conçoit des logiciels et des systèmes de données pour ses clients. Votre propre espace contiendrait vos données.",
+        "companyAbout": "Halden Studio conçoit des logiciels et des systèmes de données pour des entreprises de taille moyenne. Il facture à l'heure ou à la journée, au forfait avec des jalons, ou par un abonnement mensuel. Les clients suivent leur projet sur un portail à eux, et chaque travail part d'un contrat signé.",
+        "companyOps": {
+          "agreements": {
+            "title": "Contrats",
+            "body": "Propositions et contrats, signés dans Liaison. Votre agent les vérifie quand un client demande plus."
+          },
+          "delivery": {
+            "title": "Production",
+            "body": "Chaque tâche a un temps prévu, et la personne qui l'a faite peut saisir le temps qu'elle a pris. Qui facture demande à un agent de comparer le prévu et le fait."
+          },
+          "billing": {
+            "title": "Facturation",
+            "body": "Des factures issues des jalons, des abonnements et du travail vérifié. Anaïs les émet."
+          },
+          "clients": {
+            "title": "Clients",
+            "body": "Chaque entreprise réunit ses personnes, ses affaires, son argent et son travail. Les rapports clients de Bastien sont rédigés le vendredi."
+          },
+          "portal": {
+            "title": "Portail client",
+            "body": "Les clients se connectent pour voir leur avancement, leurs rapports, leurs factures et leurs demandes. Seulement ce qui a été partagé, rien d'autre."
+          },
+          "knowledge": {
+            "title": "Connaissances du studio",
+            "body": "Un wiki des projets passés et des méthodes. Chaque agent ne lit que ce que sa personne peut ouvrir."
+          }
+        },
+        "companyYou": "Vous le dirigez en tant que cofondateur, avec votre propre agent. Demandez-lui ce que vous demanderiez pour diriger le studio, et regardez-le vérifier le contrat avant que quiconque réponde à un client.",
+        "companySimulated": "Seul le monde extérieur est simulé : aucun mail ne part, et les clients et leurs réponses sont fictifs.",
+        "teamYouRole": "Cofondateur",
+        "teamOthers": {
+          "name": "18 autres",
+          "role": "Production, ventes"
+        },
+        "teamRole": {
+          "bastien": "Chef de projet",
+          "nadia": "Développeuse principale",
+          "mathis": "Développeur",
+          "sofia": "Ingénieure data",
+          "anais": "Finances"
+        },
+        "limitConnectors": "Les dépôts et les clients sont fictifs. La connexion des clients et les liens de signature ne fonctionnent pas ici, car aucun e-mail ne part. Les contrats affichés comme signés n'ont pas vraiment été signés. Voyez ce que voit un client dans le Portail client d'une entreprise, sous Ce qu'ils voient."
       }
     }
   },

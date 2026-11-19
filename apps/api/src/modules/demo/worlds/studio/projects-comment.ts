@@ -13,7 +13,7 @@ import { withRlsContext } from "~/db/rls"
 import { messages } from "~/db/schema/kernel"
 import type { WorldInjector } from "~/modules/demo/world/registry"
 import { worldActor, worldPersonId } from "~/seed/world/people"
-import { studioTaskRef } from "~/seed/worlds/studio/layer"
+import { studioTaskRef } from "~/seed/worlds/studio/refs"
 
 /** The task the lead asks about: the pack seeds it (`seed/worlds/studio/plan.ts`), with no subtask. */
 export const STUDIO_PROJECTS_TASK_REF = studioTaskRef("MARLIN-41")

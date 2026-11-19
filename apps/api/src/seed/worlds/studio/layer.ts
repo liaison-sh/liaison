@@ -65,6 +65,7 @@ import { seedProject, type TaskSpec } from "~/seed/factories/projects/projects"
 import { seedTimePlan, seedTimeSettings } from "~/seed/factories/projects/time"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
+import { studioTaskRef } from "~/seed/worlds/studio/refs"
 import type { DemoWorldLayerInput } from "../index"
 import { STUDIO_MORNING_BRIEF, STUDIO_ROUTINES } from "./agent-native"
 import { seedStudioAgreements } from "./agreements"
@@ -95,9 +96,6 @@ type ExecTx = { execute: (q: unknown) => Promise<unknown> }
 
 /** The pipeline's project key. */
 export const STUDIO_PIPELINE_KEY = "SALES"
-
-/** A task's or a deal's idempotency key. */
-export const studioTaskRef = (key: string) => `demo:studio:task:${key}`
 
 /** Who gets which role of the projects app, beside their demo role. */
 const STUDIO_APP_ROLES: ReadonlyArray<{ person: string; role: string }> = [

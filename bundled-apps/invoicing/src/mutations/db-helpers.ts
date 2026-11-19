@@ -452,6 +452,7 @@ export async function getDraft(db: MutationsDb, draftId: string): Promise<DraftR
     external_refs: (doc.external_refs as Record<string, unknown> | undefined) ?? {},
     po_number: (doc.po_number as string | null) ?? null,
     notes: (doc.notes as string | null) ?? null,
+    company_id: (doc.company_id as string | null) ?? null,
     ...draftEinvoiceFieldsOf(doc),
     external_ref: (doc.external_ref as string | null) ?? null,
     source: sourceColumnsOf(doc),
@@ -510,6 +511,7 @@ export async function insertDraftRow(db: MutationsDb, row: DraftInsert): Promise
     pdf_status: null,
     tax_treatment: row.tax_treatment ?? null,
     ...(row.billing_project_id ? { billing_project_id: row.billing_project_id } : {}),
+    ...(row.company_id ? { company_id: row.company_id } : {}),
     ...draftEinvoiceWrite(row, "insert"),
   })) as Record<string, unknown>
   const id = String(inserted.id)
@@ -560,8 +562,13 @@ export async function updateDraftRow(
   const lifted = liftMisplacedCountry(patch)
   const update: Record<string, unknown> = {}
   if (lifted.type) update.type = lifted.type
-  if ("counterparty_contact_id" in lifted)
+  if ("counterparty_contact_id" in lifted) {
     update.counterparty_contact_id = lifted.counterparty_contact_id
+    // Another customer: the company stamped for the old one no longer holds; the issue reads the
+    // new contact's company.
+    if ((lifted.counterparty_contact_id ?? null) !== existing.counterparty_contact_id)
+      update.company_id = null
+  }
   if ("counterparty_name" in lifted) update.counterparty_name = lifted.counterparty_name
   if ("counterparty_address" in lifted) update.counterparty_address = lifted.counterparty_address
   if ("counterparty_shipping_address" in lifted)

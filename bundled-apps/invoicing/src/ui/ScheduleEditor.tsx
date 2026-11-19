@@ -43,6 +43,8 @@ export interface ScheduleDraft {
   status: string
   issuer_profile_id: string | null
   contact_id: string | null
+  /** The client company the schedule bills, when it names one (read only here). */
+  company_id: string | null
   repeats: Repeats
   billing_day: string
   ends_on: string | null
@@ -71,6 +73,7 @@ export function defaultSchedule(): ScheduleDraft {
     status: "draft",
     issuer_profile_id: null,
     contact_id: null,
+    company_id: null,
     repeats: "month",
     billing_day: "last",
     ends_on: null,
@@ -306,6 +309,7 @@ export function draftFromRow(id: string, row: Record<string, unknown>): Schedule
     status: String(row.status ?? "active"),
     issuer_profile_id: (row.issuer_profile_id as string) ?? null,
     contact_id: (row.contact_id as string) ?? null,
+    company_id: (row.company_id as string | null) ?? null,
     repeats: (row.repeats as Repeats) ?? "month",
     billing_day: String(row.billing_day ?? "last"),
     ends_on: (row.ends_on as string | null) ?? null,
@@ -762,6 +766,21 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
                 }}
                 onClear={() => patch({ contact_id: null })}
               />
+              <Show when={d().company_id}>
+                {(companyId) => (
+                  <a
+                    href={`/contacts/companies/${companyId()}`}
+                    data-testid="schedule-company-link"
+                    class="inline-flex min-h-11 items-center text-[12.5px] underline-offset-2 hover:underline md:min-h-0"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      navigate(`/contacts/companies/${companyId()}`)
+                    }}
+                  >
+                    {tr("Open the company")}
+                  </a>
+                )}
+              </Show>
             </div>
             <Show when={conflict()}>
               {(c) => (

@@ -294,6 +294,9 @@ export interface ReadsCtx {
 
 /** Hard upper bound applied to every read tool's `limit` arg. */
 export const READS_MAX_LIMIT = 100
+/** How many of a company's documents a company-wide search unions when some are stamped for the
+ *  company outside its people (a schedule's contact that is not one of them). */
+const COMPANY_STAMPED_MAX = 500
 /** Page size and ceiling of the date-range walk in documentsSearch. */
 const RANGE_SCAN_PAGE = 100
 const MAX_RANGE_SCAN = 5000
@@ -767,15 +770,46 @@ export async function documentsSearch(
     where.billing_project_id = projectId
   }
   if (input.company_id?.trim() && !contactFilter) {
-    const people = await companyPeople(ctx, input.company_id.trim())
-    if (people.length === 0) return input.countOnly ? { totalCount: 0 } : []
-    where.counterparty_contact_id = { in: people }
+    const companyId = input.company_id.trim()
+    const people = await companyPeople(ctx, companyId)
+    // The documents made out to the company's people, and those stamped for the company itself
+    // (a schedule's or a billing plan's invoice to a contact outside its people).
+    const own = UUID_RE.test(companyId)
+      ? ((await ctx.db.findMany("documents", {
+          where: { ...where, company_id: companyId },
+          limit: COMPANY_STAMPED_MAX,
+        })) as Array<{ id?: unknown; counterparty_contact_id?: unknown }>)
+      : []
+    const peopleSet = new Set(people)
+    const outside = own
+      .filter((d) => !peopleSet.has(String(d.counterparty_contact_id ?? "")))
+      .map((d) => String(d.id))
+    if (people.length === 0 && outside.length === 0) return input.countOnly ? { totalCount: 0 } : []
+    if (outside.length === 0) where.counterparty_contact_id = { in: people }
+    else {
+      const ofPeople =
+        people.length === 0
+          ? []
+          : ((await ctx.db.findMany("documents", {
+              where: { ...where, counterparty_contact_id: { in: people } },
+              limit: COMPANY_STAMPED_MAX,
+            })) as Array<{ id?: unknown }>)
+      const ids = [...new Set([...ofPeople.map((d) => String(d.id)), ...outside])]
+      if (input.countOnly) return { totalCount: ids.length }
+      where.id = { in: ids }
+    }
   }
   if (Array.isArray(input.ids)) {
     // Only well-formed ids reach the IN list: a malformed one would fail the whole read
     // ("invalid input syntax for type uuid") instead of matching nothing.
+    // Inside a company's documents when both are asked.
+    const within = (where.id as { in?: string[] } | undefined)?.in
     const ids = [
-      ...new Set(input.ids.filter((id) => typeof id === "string" && UUID_RE.test(id))),
+      ...new Set(
+        input.ids.filter(
+          (id) => typeof id === "string" && UUID_RE.test(id) && (!within || within.includes(id)),
+        ),
+      ),
     ].slice(0, READS_MAX_LIMIT)
     if (ids.length === 0) return input.countOnly ? { totalCount: 0 } : []
     where.id = { in: ids }

@@ -614,6 +614,29 @@ describe("a draft from a planned vs done card", () => {
   })
 })
 
+describe("the company a draft was made for", () => {
+  test("an invoice issued from a draft stamped for a company keeps that company", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const company = "5c0a1b2c-0000-4000-8000-000000000001"
+    await h.db.update("documents", draftId, { company_id: company })
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(res.status).toBe("completed")
+    expect(issuedDocs(h.db)[0]?.company_id).toBe(company)
+  })
+
+  test("changing the draft's customer drops the company stamped for the old one", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    await h.db.update("documents", draftId, { company_id: "5c0a1b2c-0000-4000-8000-000000000002" })
+    await draftsUpdate(h.ctx, {
+      draft_id: draftId,
+      patch: { counterparty_contact_id: "contact-2" },
+    } as never)
+    expect(docById(h.db, draftId)?.company_id ?? null).toBeNull()
+  })
+})
+
 describe("a draft edited while its issue card waits", () => {
   function withPendingCard(h: Harness, draftId: string) {
     const card = { id: crypto.randomUUID(), payload: { draft_id: draftId } as Row }

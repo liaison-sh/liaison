@@ -301,6 +301,7 @@ export function buildIssueInputFromDraft(
     notes: string | null
     lines: DraftLine[]
     source: SourceColumns
+    company_id: string | null
   }
 } {
   return {
@@ -326,6 +327,8 @@ export function buildIssueInputFromDraft(
       // What the invoice bills (project, plan role, service period, approval, last issue day):
       // the issued document keeps it, so margin and claims still find their project.
       source: draft.source ?? {},
+      // The client company the draft was made for (its schedule's, its plan's, its project's).
+      company_id: draft.company_id ?? null,
     },
   }
 }

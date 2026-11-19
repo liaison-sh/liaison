@@ -3542,7 +3542,7 @@
       "approvalCard": { "summary": "Link this Stripe payment to an invoice" }
     },
     "recurring_list": {
-      "description": "List recurring schedules with their next issue day and draft day. Filter by status; page with cursor.",
+      "description": "List recurring schedules with their next issue day and draft day. Filter by status or client company; page with cursor.",
       "searchKeywords": ["récurrent", "abonnements", "échéancier", "recurring"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "recurringListHandler",
@@ -3551,6 +3551,7 @@
         "type": "object",
         "properties": {
           "status": { "type": "string", "enum": ["draft", "active", "paused", "ended"] },
+          "company_id": { "type": "string", "description": "Only the schedules that bill this client company." },
           "limit": { "type": "integer" },
           "cursor": { "type": "string" }
         }

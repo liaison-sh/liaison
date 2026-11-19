@@ -777,6 +777,7 @@ export const FR: Record<string, string> = {
     "Les clients qui paient par carte via Stripe n'apparaissent pas ici : leurs factures suivent Qui facture quoi dans les réglages de l'émetteur.",
   "Nothing was saved.": "Rien n'a été enregistré.",
   "Recurring schedule": "Échéancier",
+  "Open the company": "Ouvrir la société",
   New: "Nouveau",
   Pause: "Mettre en pause",
   "Preview next invoice": "Aperçu de la prochaine facture",

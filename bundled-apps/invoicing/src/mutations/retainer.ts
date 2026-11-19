@@ -472,6 +472,8 @@ export async function retainerDraftFromReconcile(
     await ctx.db.update("documents", draftId, {
       external_ref: key,
       billing_project_id: read.projectId,
+      // The client company the retainer bills: the month's invoice is the company's.
+      ...(billTo.companyId ? { company_id: billTo.companyId } : {}),
       service_period_start: read.period.from,
       service_period_end: read.period.to,
       latest_issue_on: monthEnd(read.period.to),

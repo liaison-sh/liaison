@@ -223,6 +223,35 @@ describe("invoicing timeline source", () => {
   })
 })
 
+describe("documents of a company outside its people", () => {
+  test("a document stamped for the company is listed beside those made out to its people", async () => {
+    const company = "44444444-4444-4444-8444-444444444444"
+    const mine = doc({ counterparty_contact_id: BOB })
+    // A schedule's invoice to an accounts contact that is not one of the company's people.
+    const stamped = doc({
+      counterparty_contact_id: "55555555-5555-4555-8555-555555555555",
+      company_id: company,
+    })
+    const other = doc({ counterparty_contact_id: "33333333-3333-4333-8333-333333333333" })
+    const ctx = {
+      db: store([mine, stamped, other]),
+      kernel: {},
+      executeTool: async () => ({ status: "completed", result: { people: [{ id: BOB }] } }),
+    } as unknown as ReadsCtx
+    const rows = await documentsSearch(ctx, { company_id: company })
+    expect(rows.map((r) => r.id).sort()).toEqual([String(mine.id), String(stamped.id)].sort())
+    // A company with no people still lists what is stamped for it.
+    const alone = {
+      db: store([stamped, other]),
+      kernel: {},
+      executeTool: async () => ({ status: "completed", result: { people: [] } }),
+    } as unknown as ReadsCtx
+    expect((await documentsSearch(alone, { company_id: company })).map((r) => r.id)).toEqual([
+      String(stamped.id),
+    ])
+  })
+})
+
 describe("timeline amounts", () => {
   test("group thousands like the rest of the product", async () => {
     const { groupedMinor } = await import("./activity")

@@ -325,6 +325,9 @@ export interface Draft {
    *  billing plan, the service period, the approval, the last issue day). Only set values are
    *  written, so a plain draft issues exactly as before. */
   source?: SourceColumns
+  /** The client company the draft was made for, stamped from its billing source (a schedule, a
+   *  billing plan's quote, a project). It wins over the contact's company at issue. */
+  company_id?: string | null
 }
 
 /**
@@ -1411,7 +1414,9 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   const userId = await ctx.getUserId()
   // The contact's company first; a contact with none on file bills the client of the project
   // the document is for, so the company's money still shows it.
+  const stamped = draft.company_id
   const companyId =
+    (typeof stamped === "string" && CONTACT_ID.test(stamped) ? stamped : null) ??
     (await companyOfContact(ctx, counterparty.contact_id)) ??
     (await companyOfProject(ctx, draft.source?.billing_project_id))
   const documentInsert: DocumentInsert = {

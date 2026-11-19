@@ -85,6 +85,8 @@ export function stepState(step: Row, doc: Row | null): string {
 
 interface MilestoneRead {
   basis: string
+  /** The project's client company, when it has one. */
+  companyId?: string | null
   tasks: Array<{
     id: string
     terminal: boolean
@@ -94,6 +96,12 @@ interface MilestoneRead {
 }
 
 /** The project's billing basis and the named tasks' done state, through projects' milestone read. */
+/** A document row's client company, when it names one. */
+function companyOf(doc: Row | null): string | null {
+  const id = doc?.company_id
+  return typeof id === "string" && UUID.test(id) ? id : null
+}
+
 export async function readMilestones(
   ctx: MutationsCtx,
   projectId: string,
@@ -106,6 +114,7 @@ export async function readMilestones(
     return {
       basis: typeof r.basis === "string" ? r.basis : "none",
       tasks: Array.isArray(r.tasks) ? r.tasks : [],
+      companyId: typeof r.companyId === "string" && r.companyId !== "" ? r.companyId : null,
     }
   } catch {
     return null
@@ -920,6 +929,7 @@ export async function milestoneDraftCreate(
   if (!quote)
     return refuse("quote_not_found", `The plan's quote could not be read. Nothing was drafted.`)
   const recipient = await recipientOfQuoteCompleted(ctx, quote)
+  const companyId = companyOf(quote) ?? read.companyId ?? null
   const currency = String(step.currency ?? quote.currency ?? "EUR")
   const amount = asBig(step.amount_minor)
   const isFinal = step.kind === "final"
@@ -974,6 +984,8 @@ export async function milestoneDraftCreate(
     await ctx.db.update("documents", draftId, {
       external_ref: key,
       billing_project_id: projectId,
+      // The plan's client company (its quote's, else its project's): the invoice is the company's.
+      ...(companyId ? { company_id: companyId } : {}),
       invoice_role: deductions.length > 0 ? "final" : "standard",
       ...(deductions.length > 0 ? { payment_state: "final_after_deposit" } : {}),
       service_period_end: completedOn,

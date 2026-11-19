@@ -1036,12 +1036,18 @@ export async function draftCandidates(
 
 export async function recurringList(
   ctx: RecurringCtx,
-  input: { status?: string; limit?: number; cursor?: string },
+  input: { status?: string; company_id?: string; limit?: number; cursor?: string },
 ): Promise<{ rows: ScheduleRow[]; nextCursor: string | null; nextRun: string | null }> {
   const limit = Math.min(Math.max(Math.trunc(input.limit ?? 50), 1), 200)
   const offset = input.cursor && /^\d+$/.test(input.cursor) ? Number(input.cursor) : 0
+  const companyId = input.company_id?.trim()
+  // A malformed company id matches nothing rather than failing the read on the uuid column.
+  if (companyId && !UUID.test(companyId)) return { rows: [], nextCursor: null, nextRun: null }
   const found = (await ctx.db.findMany(ENTITY, {
-    where: input.status ? { status: input.status } : {},
+    where: {
+      ...(input.status ? { status: input.status } : {}),
+      ...(companyId ? { company_id: companyId } : {}),
+    },
     orderBy: { next_issue_on: "asc" },
     limit: limit + 1,
     offset,

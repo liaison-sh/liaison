@@ -8,10 +8,11 @@
 
 import { CardTable, type CardTableColumn } from "@liaison/app-ui/card-table"
 import { app, navigate } from "@liaison/host"
-import { type Component, createResource, Show } from "solid-js"
+import { type Component, createResource, For, Show } from "solid-js"
 import { currencyExponent } from "../money"
 import { type DocumentRow, displayTotal } from "./ContactDocumentsPanel"
 import { tr, uiLocale } from "./i18n"
+import { billsText, type ListRow } from "./RecurringList"
 
 export interface CompanyMoneyPanelProps {
   /** The company id: the slot host mounts every panel with it as `entityId`. */
@@ -29,6 +30,17 @@ export async function loadCompanyMoney(companyId: string): Promise<DocumentRow[]
     })
     .catch(() => [] as DocumentRow[])
   return Array.isArray(rows) ? rows : []
+}
+
+/** The recurring schedules that bill the company, soonest first; none when the read fails. */
+export async function loadCompanySchedules(companyId: string): Promise<ListRow[]> {
+  const out = await app
+    .invokeTool<{ rows?: ListRow[] }>("recurring_list", {
+      company_id: companyId,
+      limit: COMPANY_MONEY_LIMIT,
+    })
+    .catch(() => null)
+  return Array.isArray(out?.rows) ? out.rows.filter((r) => r.status !== "ended") : []
 }
 
 /** A document's date in the reader's words ("29 Jun 2026"); a date-only value is read as UTC. */
@@ -58,8 +70,38 @@ export function companyMoneyTotal(row: DocumentRow, locale = uiLocale()): string
 
 export const CompanyMoneyPanel: Component<CompanyMoneyPanelProps> = (props) => {
   const [docs] = createResource(() => props.entityId || undefined, loadCompanyMoney)
+  const [schedules] = createResource(() => props.entityId || undefined, loadCompanySchedules)
   return (
     <section data-testid="company-money-panel" class="flex flex-col gap-2 text-[12.5px]">
+      <Show when={(schedules()?.length ?? 0) > 0}>
+        <ul data-testid="company-money-schedules" class="flex flex-col">
+          <For each={schedules() ?? []}>
+            {(r) => (
+              <li>
+                <a
+                  href={`/invoicing/schedule/${r.id}`}
+                  data-testid={`company-money-schedule-${r.id}`}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigate(`/invoicing/schedule/${r.id}`)
+                  }}
+                  class="flex flex-wrap gap-x-2 py-1 hover:bg-surface-hover"
+                >
+                  <span class="font-medium text-text">{tr("Recurring schedule")}</span>
+                  <span class="text-text-secondary">{billsText(r)}</span>
+                  <Show when={r.next_issue_on}>
+                    {(day) => (
+                      <span class="text-text-tertiary">
+                        {tr("Next invoice")} {companyMoneyDate(day())}
+                      </span>
+                    )}
+                  </Show>
+                </a>
+              </li>
+            )}
+          </For>
+        </ul>
+      </Show>
       <Show
         when={(docs()?.length ?? 0) > 0}
         fallback={

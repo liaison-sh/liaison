@@ -92,6 +92,17 @@ describe("a billing plan", () => {
 })
 
 describe("a milestone's invoice", () => {
+  test("the milestone's draft is the plan's client company's, from its quote", async () => {
+    const h = harness()
+    await withPlan(h)
+    const company = "5b1d2c3e-0000-4000-8000-0000000000c1"
+    await h.db.update("documents", QUOTE, { company_id: company })
+    done(h, T_BETA)
+    await milestoneDraftCreate(h.ctx, { taskId: T_BETA })
+    const draft = h.db.__all("documents").find((d) => d.id !== QUOTE && d.status === "draft")
+    expect(draft?.company_id).toBe(company)
+  })
+
   test("moving Beta to done gives one draft of 16,000.00 and 19,200.00 whatever the time spent", async () => {
     const amounts: unknown[] = []
     for (const real of [0, 600, 9_000]) {

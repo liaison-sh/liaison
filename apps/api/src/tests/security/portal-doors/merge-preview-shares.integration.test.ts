@@ -271,6 +271,44 @@ describe("portal doors: the panel's preview", () => {
     expect((asAdmin.signedInWouldSee.upcoming ?? []).map((r) => r.id)).toEqual([stepId])
   })
 
+  it("a step whose date has passed unbilled is not offered as coming up for billing", async () => {
+    const project = await insertProject(w, { company_id: w.companyB, name: "Past step probe" })
+    await sql.unsafe("UPDATE app_projects.tasks SET due_date = '2000-01-04' WHERE id = $1", [
+      project.milestoneId,
+    ])
+    await sql.unsafe("UPDATE app_projects.tasks SET due_date = '2999-01-04' WHERE id = $1", [
+      project.childOpenId,
+    ])
+    const past = crypto.randomUUID()
+    const ahead = crypto.randomUUID()
+    for (const [id, taskId, label] of [
+      [past, project.milestoneId, "Past step probe"],
+      [ahead, project.childOpenId, "Ahead step probe"],
+    ] as const) {
+      await sql.unsafe(
+        insertSql("app_invoicing.billing_steps", {
+          id,
+          org_id: w.orgId,
+          billing_project_id: project.id,
+          task_id: taskId,
+          position: id === past ? 1 : 2,
+          kind: "milestone",
+          label,
+          amount_minor: 100_000,
+          currency: "EUR",
+          state: "planned",
+        }),
+      )
+    }
+    // The company's invoices share is open (an earlier case opened it).
+    const path = `/api/contacts/companies/${w.companyB}/portal/preview/${w.clientB.userId}`
+    type Body = { data: { signedInWouldSee: Record<string, Array<{ id: string }> | null> } }
+    const seen = ((await (await get(path, adminToken)).json()) as Body).data
+    const ids = (seen.signedInWouldSee.upcoming ?? []).map((r) => r.id)
+    expect(ids).toContain(ahead)
+    expect(ids).not.toContain(past)
+  })
+
   it("the portal preview shows a project whose hours alone are open, with its hours as the portal does", async () => {
     const project = await insertProject(w, {
       company_id: w.companyB,

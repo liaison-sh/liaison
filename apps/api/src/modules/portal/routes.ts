@@ -139,8 +139,10 @@ const INVOICES = drizzleSql`SELECT id, type, number, status, payment_status, cur
   grand_total_minor::text AS grand_total_minor, issued_at, due_at, paid_at, original_document_id,
   label, pdf_file_id IS NOT NULL AS has_pdf
   FROM portal.invoices ORDER BY issued_at DESC, id`
+// Coming up means ahead: a step whose date has passed unbilled is not offered as coming up.
 const UPCOMING = drizzleSql`SELECT id, label, amount_minor::text AS amount_minor, currency, due_on
-  FROM portal.billing_upcoming ORDER BY due_on NULLS LAST, label, id`
+  FROM portal.billing_upcoming WHERE due_on IS NULL OR due_on >= current_date
+  ORDER BY due_on NULLS LAST, label, id`
 const TICKETS = drizzleSql`SELECT id, subject, status, channel, created_at, last_message_at
   FROM portal.tickets ORDER BY COALESCE(last_message_at, created_at) DESC, id LIMIT 100`
 

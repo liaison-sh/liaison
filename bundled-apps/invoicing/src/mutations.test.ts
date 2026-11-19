@@ -1793,7 +1793,12 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
     // due_at is the editable field exposed on the approval (so a human/agent can correct the terms).
     expect(req.editable_fields).toEqual(["due_at"])
     // The current terms are carried on the payload so the approver SEES them before editing.
-    expect(req.current_payload).toEqual({ draft_id, due_at: "2026-07-20" })
+    // With the fingerprint of the draft the card shows, so an edited draft is refused at issue.
+    expect(req.current_payload).toEqual({
+      draft_id,
+      due_at: "2026-07-20",
+      draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })
     // Nothing issued yet.
     expect(issuedDocs(db)).toHaveLength(0)
   })
@@ -10356,7 +10361,16 @@ describe("intra-EU business buyer guard", () => {
         type === "invoice"
           ? await invoiceIssuePreflight(m.ctx, { draft_id: d.draft_id })
           : await quoteIssuePreflight(m.ctx, { draft_id: d.draft_id })
-      expect(pre).toEqual({ ok: true, noAutoApprove: true })
+      // An invoice's issue card also pins the fingerprint of the draft it shows.
+      expect(pre).toEqual(
+        type === "invoice"
+          ? {
+              ok: true,
+              noAutoApprove: true,
+              pinnedParams: { draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+            }
+          : { ok: true, noAutoApprove: true },
+      )
     }
   })
 

@@ -308,8 +308,12 @@ export async function updatePayload(input: UpdatePayloadArgs): Promise<UpdatePay
   // A pinned param is the server's to set: its preflight pinned it and the
   // execution checks it. No edit may reach it, whatever editable field claims
   // to cover the path (the prefix match below would let a nested field
-  // authorise overwriting its pinned parent).
-  const pinned = toolRegistry.get([args.orgId, appName, toolShortName])?.pinnedParams ?? []
+  // authorise overwriting its pinned parent). The one exception is the app that owns the tool
+  // restaging its own request (`appRestage`): it is the server that pinned the value, and it
+  // re-pins it after the records the value was taken from changed.
+  const pinned = restage
+    ? []
+    : (toolRegistry.get([args.orgId, appName, toolShortName])?.pinnedParams ?? [])
   for (const k of Object.keys(args.fields)) {
     const hit = pinnedOverlap(pinned, k)
     if (hit !== null) {

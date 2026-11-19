@@ -37,6 +37,7 @@ import {
 import { issueWithFxRate } from "./fx-issue"
 import {
   draftChangedSinceCard,
+  draftContentHash,
   handOverDraft,
   markReconciliation,
   reconcileStillReserved,
@@ -206,12 +207,18 @@ export async function invoiceIssuePreflight(
   ctx: MutationsCtx,
   input: { draft_id: string; billsOtherThanStripe?: string | null; draft_hash?: string | null },
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightInvoiceIssueParams(ctx, input, false, "preflight"))
+  const pre = await preflightInvoiceIssueParams(ctx, input, false, "preflight")
+  const result = toPreflightResult(pre)
+  // The approval carries the fingerprint of the draft its card is drawn from, from the moment it
+  // is made (a pinned param: a caller's own value is dropped), so the issue refuses the draft once
+  // anything edits it, whichever path did.
+  if (!pre.ok || !("ok" in result)) return result
+  return { ...result, pinnedParams: { draft_hash: draftContentHash(pre.draft) } }
 }
 
 type InvoiceIssueInput = {
   draft_id: string
-  /** The draft's fingerprint the card was drawn from (set by the app when the draft is edited). */
+  /** The fingerprint of the draft the card was drawn from (pinned by the preflight). */
   draft_hash?: string | null
   due_at?: string | null
   billsOtherThanStripe?: string | null
@@ -288,9 +295,12 @@ async function issueDraftInvoice(
       // (manifest editableFields); the re-entry above applies the corrected value.
       // Only include due_at when set — the schema types it as a string, so a null
       // would fail re-entry param validation; an unset due date is simply omitted.
-      current_payload: draft.due_at
-        ? { draft_id: input.draft_id, due_at: draft.due_at }
-        : { draft_id: input.draft_id },
+      // The fingerprint of the draft this card shows, so the issue refuses it once edited.
+      current_payload: {
+        draft_id: input.draft_id,
+        draft_hash: draftContentHash(draft),
+        ...(draft.due_at ? { due_at: draft.due_at } : {}),
+      },
       editable_fields: ["due_at"],
     })
     // Granted inline (a person's own call holding the deciding scope): issue now.

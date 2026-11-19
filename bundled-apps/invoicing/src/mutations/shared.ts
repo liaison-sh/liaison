@@ -173,7 +173,7 @@ export type ErrorEnvelope = {
  */
 export type PreflightResult =
   /** `noAutoApprove`: this call must be decided by a person (no auto-approve policy answers it). */
-  | { ok: true; noAutoApprove?: true }
+  | { ok: true; noAutoApprove?: true; pinnedParams?: Record<string, unknown> }
   | {
       error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown }
     }

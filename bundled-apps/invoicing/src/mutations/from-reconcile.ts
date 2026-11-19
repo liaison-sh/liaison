@@ -20,7 +20,9 @@ import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL } from "../recipient-gaps"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
+import { getDraft } from "./db-helpers"
 import { draftsCreate } from "./drafts"
+import { draftContentHash } from "./issue-handover"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -28,6 +30,18 @@ type Row = Record<string, unknown>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 /** An issue approval waits up to 30 days. */
+
+/**
+ * The payload of an issue approval a handler parks for a draft: the draft and the fingerprint of
+ * it as the card shows it, so the issue refuses the draft once anything edits it.
+ */
+export async function issuePayloadFor(
+  ctx: MutationsCtx,
+  draftId: string,
+): Promise<{ draft_id: string; draft_hash?: string }> {
+  const draft = await getDraft(ctx.db, draftId)
+  return draft ? { draft_id: draftId, draft_hash: draftContentHash(draft) } : { draft_id: draftId }
+}
 
 /** The card line naming a draft's customer, or none when the draft names nobody. */
 export async function customerLine(ctx: MutationsCtx, draftId: string): Promise<string[]> {
@@ -347,7 +361,7 @@ export async function draftFromReconcile(
         ],
         latest_on: monthEnd(read.period.to),
       },
-      current_payload: { draft_id: draftId },
+      current_payload: await issuePayloadFor(ctx, draftId),
       approve_scope: "invoicing:documents:write",
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
     })

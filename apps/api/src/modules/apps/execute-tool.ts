@@ -2927,8 +2927,12 @@ export async function createHandlerApprovalRequest(args: {
   }
   // A tool whose approval binds pinned params gets them from its preflight only
   // (executeTool's stage path). A handler-built payload would put the
-  // handler's own values in their place, unchecked: refused.
-  if ((toolRegistry.get([args.orgId, appName, toolShortName])?.pinnedParams ?? []).length > 0) {
+  // handler's own values in their place, unchecked: refused. The exception is a
+  // tool whose own handler builds its pinned value (`pinnedOptionalOnRefs`): its
+  // app parks its own request with the value it computed, as its handler builds
+  // it at execute for a call chaining `@ref` tokens.
+  const parkedTool = toolRegistry.get([args.orgId, appName, toolShortName])
+  if ((parkedTool?.pinnedParams ?? []).length > 0 && parkedTool?.pinnedOptionalOnRefs !== true) {
     throw new Error(
       `ctx.requestApproval: '${input.tool_name}' declares pinned params, which only its preflight sets; call the tool itself so its preflight pins them`,
     )

@@ -460,7 +460,8 @@ export const toolRegistry = createTypedRegistry<
     /** Manifest `runningLabel` / `runningLabelKey`: the line shown while the tool runs. */
     runningLabel?: string
     runningLabelKey?: string
-    /** A call chaining `@ref` tokens to a tool with `pinnedParams` stages unpinned. */
+    /** The tool's own handler builds its pinned values: a call chaining `@ref` tokens stages
+     *  unpinned, and its app may park its own request carrying values it computed. */
     pinnedOptionalOnRefs?: boolean
     /** Manifest `feature`: the app feature this tool belongs to. */
     feature?: string

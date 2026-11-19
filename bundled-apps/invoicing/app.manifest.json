@@ -4155,6 +4155,8 @@
       "ownsTransactions": true,
       "timeoutMs": 60000,
       "preflight": "invoiceIssuePreflightHandler",
+      "pinnedParams": ["draft_hash"],
+      "pinnedOptionalOnRefs": true,
       "gated": true,
       "noAutoApprove": true,
       "approvalImpact": "external",
@@ -4166,7 +4168,7 @@
           },
           "draft_hash": {
             "type": "string",
-            "description": "Set by the app when the draft is edited while this request waits; leave it out."
+            "description": "Set by the app: the fingerprint of the draft this request was made for. Leave it out."
           },
           "due_at": {
             "type": "string",

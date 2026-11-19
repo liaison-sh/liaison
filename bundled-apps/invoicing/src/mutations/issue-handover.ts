@@ -438,13 +438,24 @@ export async function reconcileStillReserved(
 }
 
 /**
- * The fingerprint of what an invoice draft bills: its customer, currency, terms, notes, PO
- * reference and lines. An issue approval carries it as `draft_hash` once the draft is edited while
- * the approval waits, so the card is redrawn from the edited draft (and a decision on the old card
- * is refused by its payload hash), and the issue refuses a draft changed since the card was drawn.
+ * The fingerprint of what an invoice draft bills: its type, issuer, customer, tax treatment and
+ * e-invoicing facts, currency, terms, notes, PO reference, shipping and lines. An issue approval
+ * carries it as `draft_hash` from the moment it is made (the preflight pins it on a call, and a
+ * handler that parks the card states it). When the draft is edited through drafts_update while the
+ * approval waits, the card is redrawn with the new fingerprint (a decision on the old card is
+ * refused by its payload hash). Whatever path edited the draft, the issue refuses a draft whose
+ * fingerprint is not the one on the approval.
  */
 export interface HashableDraft {
   id: string
+  type?: string | null
+  issuer_profile_id?: string | null
+  tax_treatment?: string | null
+  customer_kind?: string | null
+  operation_category?: string | null
+  incoterm?: string | null
+  counterparty_shipping_name?: string | null
+  counterparty_shipping_address?: string | null
   counterparty_contact_id?: string | null
   counterparty_name?: string | null
   counterparty_address?: string | null
@@ -479,6 +490,14 @@ export function draftContentHash(draft: HashableDraft): string {
       draft.currency,
       draft.notes,
       draft.po_number,
+      draft.type,
+      draft.issuer_profile_id,
+      draft.tax_treatment,
+      draft.customer_kind,
+      draft.operation_category,
+      draft.incoterm,
+      draft.counterparty_shipping_name,
+      draft.counterparty_shipping_address,
     ].map(text),
     due:
       due === null || due === undefined || due === ""
@@ -537,7 +556,13 @@ export async function restageIssueApprovals(
   return done
 }
 
-/** The issue's own check: a draft changed since its card was drawn is not issued from that card. */
+/**
+ * The issue's own check, the one every edit path meets: a draft whose fingerprint is not the one
+ * its approval carries is not issued from that card, whether it was edited through drafts_update,
+ * documents_update, a Shopify sync or anything else. An approval with no fingerprint (one asked
+ * for by chaining a draft that did not exist yet, or made before approvals carried one) is not
+ * checked.
+ */
 export function draftChangedSinceCard(
   draft: HashableDraft,
   shownHash: string | null | undefined,

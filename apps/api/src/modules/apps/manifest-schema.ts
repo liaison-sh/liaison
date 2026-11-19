@@ -709,8 +709,10 @@ const toolSchema = {
     // The line shown while the tool runs ("Reading subscriptions"), and its catalog key.
     runningLabel: { type: "string", minLength: 1 },
     runningLabelKey: { type: "string", minLength: 1 },
-    // A call that chains `@ref` tokens stages unpinned and the handler builds the pinned
-    // value at execute. Needs `pinnedParams` (checked by the `then` below).
+    // The tool's handler owns its pinned values: a call that chains `@ref` tokens stages
+    // unpinned and the handler builds the value at execute, and the app's own handler may park
+    // the tool's request with the value it computed (ctx.requestApproval). Needs `pinnedParams`
+    // (checked by the `then` below).
     pinnedOptionalOnRefs: { type: "boolean" },
     // First-party only (the runtime copies them for a vouched app alone): what the tool writes
     // is read only by the person writing it, and the params through which a call carries the turn.

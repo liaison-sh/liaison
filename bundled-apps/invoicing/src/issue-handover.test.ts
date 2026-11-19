@@ -18,6 +18,7 @@ import {
   documentsConvertLocal,
   draftsCreate,
   draftsDiscard,
+  documentsUpdate,
   draftsUpdate,
   invoiceIssue,
   type MutationsCtx,
@@ -615,14 +616,37 @@ describe("a draft from a planned vs done card", () => {
 })
 
 describe("the company a draft was made for", () => {
-  test("an invoice issued from a draft stamped for a company keeps that company", async () => {
+  const CONTACT = "5c0a1b2c-0000-4000-8000-0000000000aa"
+  /** The draft's contact, as the kernel's identifiers read answers it. */
+  function contactIn(h: Harness, companyId: string | null): void {
+    const base = h.ctx.executeTool
+    h.ctx.executeTool = async (target, args) =>
+      target === "kernel:contacts_identity"
+        ? { status: "completed" as const, result: { contact: { id: CONTACT, companyId } } }
+        : base(target, args)
+  }
+
+  test("an invoice issued from a draft stamped for a company keeps that company when its contact has none", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)
     const company = "5c0a1b2c-0000-4000-8000-000000000001"
-    await h.db.update("documents", draftId, { company_id: company })
+    await h.db.update("documents", draftId, { company_id: company, counterparty_contact_id: CONTACT })
+    contactIn(h, null)
     const res = await invoiceIssue(h.ctx, { draft_id: draftId })
     expect(res.status).toBe("completed")
     expect(issuedDocs(h.db)[0]?.company_id).toBe(company)
+  })
+
+  test("an invoice made out to a contact of another company goes to the contact's company, never the stamped one", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const stamped = "5c0a1b2c-0000-4000-8000-000000000001"
+    const contactsOwn = "5c0a1b2c-0000-4000-8000-000000000003"
+    await h.db.update("documents", draftId, { company_id: stamped, counterparty_contact_id: CONTACT })
+    contactIn(h, contactsOwn)
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(res.status).toBe("completed")
+    expect(issuedDocs(h.db)[0]?.company_id).toBe(contactsOwn)
   })
 
   test("changing the draft's customer drops the company stamped for the old one", async () => {
@@ -688,6 +712,76 @@ describe("a draft edited while its issue card waits", () => {
     const now = draftContentHash((await getDraft(h.db, draftId))!)
     const ok = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: now })
     expect(ok.status).toBe("completed")
+  })
+})
+
+describe("an issue card carries the draft's fingerprint from the moment it is made", () => {
+  async function pinned(h: Harness, draftId: string): Promise<string> {
+    const pre = (await invoiceIssuePreflight(h.ctx, { draft_id: draftId })) as {
+      ok?: boolean
+      pinnedParams?: { draft_hash?: string }
+    }
+    expect(pre.ok).toBe(true)
+    return pre.pinnedParams?.draft_hash as string
+  }
+
+  test("the preflight pins the fingerprint of the draft as the card shows it", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    expect(await pinned(h, draftId)).toBe(draftContentHash((await getDraft(h.db, draftId))!))
+  })
+
+  test("a card made before any edit does not issue a draft edited through documents_update", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const shown = await pinned(h, draftId)
+    const edit = await documentsUpdate(h.ctx, { id: draftId, notes: "a note added later" } as never)
+    expect((edit as { status?: string }).status).not.toBe("error")
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: shown })
+    expect(res).toMatchObject({ status: "error", error: { code: "draft_changed" } })
+    expect(sequenceTotal(h.db)).toBe(0)
+  })
+
+  test("a draft changed by any other write (a sync) is refused the same way", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const shown = await pinned(h, draftId)
+    await h.db.update("documents", draftId, { counterparty_shipping_name: "Warehouse 2" })
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: shown })
+    expect(res).toMatchObject({ status: "error", error: { code: "draft_changed" } })
+    expect(sequenceTotal(h.db)).toBe(0)
+  })
+
+  test("the fingerprint changes with the tax treatment, the issuer, the type and the e-invoicing facts", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const draft = (await getDraft(h.db, draftId))!
+    const base = draftContentHash(draft)
+    for (const change of [
+      { tax_treatment: "reverse_charge_eu" },
+      { issuer_profile_id: crypto.randomUUID() },
+      { type: "proforma" },
+      { customer_kind: "consumer" },
+      { operation_category: "services" },
+      { incoterm: "EXW" },
+    ]) {
+      expect(draftContentHash({ ...draft, ...change } as never)).not.toBe(base)
+    }
+  })
+
+  test("a card a handler parks carries the fingerprint too", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const parked: Array<Record<string, unknown>> = []
+    h.ctx.requestApproval = (async (input: { current_payload?: Record<string, unknown> }) => {
+      parked.push(input.current_payload ?? {})
+      return { approval_id: crypto.randomUUID(), auto_approved: false }
+    }) as never
+    const { raiseIssueApproval } = await import("./mutations/billing-plan")
+    await raiseIssueApproval(h.ctx, draftId, "the milestone", [])
+    expect(parked).toEqual([
+      { draft_id: draftId, draft_hash: draftContentHash((await getDraft(h.db, draftId))!) },
+    ])
   })
 })
 

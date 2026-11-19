@@ -26,7 +26,12 @@ import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import { customerLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import {
+  customerLine,
+  ISSUE_APPROVAL_EXPIRY_HOURS,
+  issuePayloadFor,
+  monthEnd,
+} from "./from-reconcile"
 import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
 
@@ -766,7 +771,7 @@ export async function raiseIssueApproval(
       summary_detail: latest
         ? { lines: [...shown.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
         : { lines: shown },
-      current_payload: { draft_id: draftId },
+      current_payload: await issuePayloadFor(ctx, draftId),
       approve_scope: "invoicing:documents:write",
       expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
     })

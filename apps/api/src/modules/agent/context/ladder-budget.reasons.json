@@ -22,5 +22,13 @@
   {
     "key": "time-and-budgets:projects",
     "capability": "client reports: listing, reading, the week's sources, a draft and a person's approved send (client_reports_list, client_report_get, client_report_sources_get, client_report_save_draft, client_report_send), deferred-loaded: their 829 schema tokens are paid only once loaded (16741 once two descriptions that repeated their results were cut)"
+  },
+  {
+    "key": "studio:announcementTokens",
+    "capability": "agreements (seventeen tools: drafting, sending, following up, verifying and reading a signed agreement's evidence), the client portal and client-action kernel tools (eight), the projects client-report tools (five) and recording a quote's outcome (invoicing quote_set_outcome): 2,267 measured against a 2,200 projection set before these apps existed, 2,112 without them"
+  },
+  {
+    "key": "saas:announcementTokens",
+    "capability": "the same agreements, client portal and client-action tools in the software world's catalog: 2,208 measured against a 2,050 projection set before these apps existed"
   }
 ]

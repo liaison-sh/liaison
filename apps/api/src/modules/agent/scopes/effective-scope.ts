@@ -12,7 +12,9 @@
 // Every intersection goes through `intersectScopes` from spawn-agent so the
 // turn path agrees with the spawn path on `*`, `:*` globs and bare-prefix
 // grants. The result is always an intersection, never a union: an agent can
-// never lower the floor of the room it is speaking in.
+// never lower the floor of the room it is speaking in. An exact-only scope
+// (`isExactOnlyScope`) survives only where every side names it exactly, so a
+// member holding `*` floors it out of a room exactly as the app refuses them.
 //
 // `withheldCapabilities` is the set of ceiling entries the room narrowed away.
 // Those names are private to the requester; callers must never place them in
@@ -22,12 +24,7 @@ import { and, eq, isNull } from "drizzle-orm"
 import type { PrivilegedDb, RlsClient } from "~/db"
 import { agents } from "~/db/schema/kernel/agents"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
-import {
-  exactHeldBy,
-  intersectScopes,
-  intersectWithPerson,
-  isScopeSubset,
-} from "~/modules/agent/subruns/spawn-agent"
+import { intersectScopes, isScopeSubset } from "~/modules/agent/subruns/spawn-agent"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { hasScope } from "~/modules/permissions/permissions"
 
@@ -76,7 +73,7 @@ export function effectiveScopeChannel(ceiling: string[], memberGrants: string[][
 
 /** DM with one human: the agent ceiling intersected with the requester alone. */
 export function effectiveScopeDm(ceiling: string[], requesterGrants: string[]): string[] {
-  return intersectWithPerson(ceiling, requesterGrants)
+  return intersectScopes(ceiling, requesterGrants)
 }
 
 /**
@@ -99,7 +96,7 @@ export function effectiveScopeDelegation(
   callerEffectiveScope: string[],
   calleeCeiling: string[],
 ): string[] {
-  return exactHeldBy(intersectScopes(callerEffectiveScope, calleeCeiling), callerEffectiveScope)
+  return intersectScopes(callerEffectiveScope, calleeCeiling)
 }
 
 /**

@@ -224,6 +224,28 @@ describe("createSubAgentDefinition", () => {
     ).rejects.toBeInstanceOf(ScopeOutsideCreatorError)
   })
 
+  it("a creator holding * cannot put an exact-only scope in a ceiling; one holding it exactly can", async () => {
+    await expect(
+      createSubAgentDefinition({
+        orgId,
+        creatorScopes: ["*"],
+        agentType: "margin-wildcard",
+        whenToUse: "x",
+        scopeCeiling: ["kernel:agent:web", "projects:margin:read"],
+        systemPrompt: "x",
+      }),
+    ).rejects.toBeInstanceOf(ScopeOutsideCreatorError)
+    const def = await createSubAgentDefinition({
+      orgId,
+      creatorScopes: ["*", "projects:margin:read"],
+      agentType: "margin-exact",
+      whenToUse: "x",
+      scopeCeiling: ["kernel:agent:web", "projects:margin:read"],
+      systemPrompt: "x",
+    })
+    expect(def.scopeCeiling).toEqual(["kernel:agent:web", "projects:margin:read"])
+  })
+
   it("a kernel-owned role with a glob creator scope covers concrete ceiling entries", async () => {
     const def = await createSubAgentDefinition({
       orgId,

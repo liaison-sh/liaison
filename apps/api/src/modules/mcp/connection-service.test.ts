@@ -403,6 +403,49 @@ describe("mcp connection service", () => {
     expect(row.mintScopeSnapshot).toEqual(["finance:read"])
   })
 
+  it("an agent bound token carries an exact-only scope only for a grantor who holds it exactly", async () => {
+    const margin = "projects:margin:read"
+    const wildcard = await seedOrgWithUser()
+    orgs.push(wildcard.orgId)
+    await grantScope(wildcard.orgId, wildcard.userId, "*")
+    const desk = await seedAgentForOrg(wildcard.orgId, {
+      scopeCeiling: ["finance:read", margin],
+    })
+    const asWildcard = await createMcpConnection({
+      orgId: wildcard.orgId,
+      userId: wildcard.userId,
+      clientId: "c",
+      label: "L",
+      agentId: desk.agentId,
+    })
+    const minted = await verifyAccessToken(
+      (await mintAccessToken(asWildcard.connection.id)).token,
+      env.JWT_SECRET,
+    )
+    expect(minted.scopes).toEqual(["finance:read"])
+    const resolved = await resolveConnectionFromToken(
+      (await mintAccessToken(asWildcard.connection.id)).token,
+    )
+    expect(resolved.scopes).not.toContain(margin)
+
+    const exact = await seedGrantor()
+    orgs.push(exact.orgId)
+    await grantScope(exact.orgId, exact.userId, margin)
+    const exactDesk = await seedAgentForOrg(exact.orgId, { scopeCeiling: ["finance:read", margin] })
+    const asExact = await createMcpConnection({
+      orgId: exact.orgId,
+      userId: exact.userId,
+      clientId: "c",
+      label: "L",
+      agentId: exactDesk.agentId,
+    })
+    const exactToken = await verifyAccessToken(
+      (await mintAccessToken(asExact.connection.id)).token,
+      env.JWT_SECRET,
+    )
+    expect([...(exactToken.scopes ?? [])].sort()).toEqual(["finance:read", margin])
+  })
+
   it("mintAccessToken does not narrow a connection with no agentId", async () => {
     const { orgId, userId } = await seedGrantor()
     orgs.push(orgId)

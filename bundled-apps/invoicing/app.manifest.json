@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.37.3",
+  "version": "0.37.4",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -3582,7 +3582,7 @@
           },
           "project_id": {
             "type": "string",
-            "description": "The client project this document bills. The issued invoice stays on the project and is made out to its company when the contact has none. A billing plan's milestones use milestone_draft_create instead."
+            "description": "The client project it bills; the invoice goes to its company if the contact has none. Milestones: milestone_draft_create."
           },
           "buyer_is_consumer": {
             "type": "boolean",
@@ -3823,14 +3823,14 @@
               "string",
               "null"
             ],
-            "description": "The customer's purchase order number, when they gave you one. Printed as a \"PO number\" line on the document PDF (quote, invoice, proforma, credit note) and indexed for documents_search. Carried forward automatically when a quote converts to an invoice."
+            "description": "The customer's purchase order number, if given. Printed on the PDF, searchable, kept when a quote converts."
           },
           "notes": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Non financial metadata, max 2000 characters, editable at any status (on a draft and on an already issued, sent or paid document alike). Null or an empty string clears it."
+            "description": "Non-financial metadata, max 2000 characters, editable at any status. Null or empty clears it."
           }
         },
         "required": [

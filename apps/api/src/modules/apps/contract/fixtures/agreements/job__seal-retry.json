@@ -5,7 +5,10 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": ["agreement_versions", "{\"where\":{\"status\":\"signed\"},\"limit\":500}"],
+      "args": [
+        "agreement_versions",
+        "{\"where\":{\"status\":\"signed\"},\"limit\":500}"
+      ],
       "reply": "[]"
     }
   ]

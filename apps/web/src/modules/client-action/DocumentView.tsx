@@ -83,7 +83,15 @@ const BlockView: Component<{ block: Block }> = (props) => {
         </p>
       </Match>
       <Match when={b().type === "list"}>
-        <p class="whitespace-pre-wrap">{str(b().line)}</p>
+        <ul data-testid="doc-list" class="list-disc space-y-1 pl-5">
+          <For each={Array.isArray(b().items) ? (b().items as unknown[]) : [b().line]}>
+            {(item) => (
+              <li data-testid="doc-list-item" class="whitespace-pre-wrap">
+                {str(item)}
+              </li>
+            )}
+          </For>
+        </ul>
       </Match>
       <Match when={b().type === "table"}>
         <div class="overflow-x-auto">

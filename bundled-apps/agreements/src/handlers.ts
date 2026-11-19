@@ -7,6 +7,7 @@ import {
   agreementCreate,
   agreementGet,
   agreementPrepare,
+  agreementPreparePreflight,
   agreementPriceSet,
   agreementsSearch,
   agreementUpdate,
@@ -82,6 +83,8 @@ async function announced<T>(ctx: Ctx, id: unknown, out: Promise<T>): Promise<T> 
 export const agreementUpdateHandler = (p: UpdateParams, ctx: Ctx) =>
   announced(ctx, p?.id, agreementUpdate(ctx, p))
 export const agreementPrepareHandler = (p: { id: string }, ctx: Ctx) => agreementPrepare(ctx, p)
+export const agreementPreparePreflightHandler = (p: { id: string }, ctx: Ctx) =>
+  agreementPreparePreflight(ctx, p)
 export const agreementPriceSetHandler = (
   p: { id: string; price_minor: string; currency: string; rate_minor?: string },
   ctx: Ctx,

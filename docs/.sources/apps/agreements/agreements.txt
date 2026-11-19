@@ -7,3 +7,6 @@ Organization access none hides every table from anyone off the list -> apps/api/
 The list is never empty, creator editor, viewer cannot change it, agent's change waits -> bundled-apps/agreements/src/access.ts (accessOps, mayChangeAccess) ; bundled-apps/agreements/src/agreements.ts (agreementUpdate)
 Scopes -> bundled-apps/agreements/app.manifest.json (scopes)
 The approve scope decides an agent's parked change -> bundled-apps/agreements/app.manifest.json (agreement_update conditionalGate)
+Prepare's refusal counts the agent's clauses and names their places as ranges -> bundled-apps/agreements/src/checks.ts (agentDraftSentence, positionRanges)
+An agent's prepare is refused before anything waits for approval -> bundled-apps/agreements/src/agreements.ts (agreementPreparePreflight) ; bundled-apps/agreements/app.manifest.json (agreement_prepare preflight) ; apps/api/src/modules/apps/execute-tool.ts (a declared preflight runs on every call)
+A list of written items is accepted, any other list shape refused naming the field -> bundled-apps/agreements/src/checks.ts (LIST_FIELDS, listShapeProblem)

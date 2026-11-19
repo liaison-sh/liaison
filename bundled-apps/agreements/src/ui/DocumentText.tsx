@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // A draft's text as the reader will read it: headings, paragraphs, articles with their
-// computed numbers, and the other blocks (parties, recitals, tables, the signature block)
-// named, never dropped. Read only: the editor writes, this shows.
+// computed numbers, lists of written items, and the other blocks (parties, recitals, tables,
+// the signature block) named, never dropped. Read only: the editor writes, this shows.
 import { type Component, For, Match, Show, Switch } from "solid-js"
 import { tr } from "./i18n"
 import { type AgreementSource, articleNumbers, blocksOf, layoutOf, type SourceBlock } from "./model"
@@ -68,6 +68,17 @@ export const DocumentText: Component<{ source: AgreementSource | null }> = (prop
                 </p>
                 <p class="whitespace-pre-wrap">{str(b.text)}</p>
               </div>
+            </Match>
+            <Match when={b.type === "list" && Array.isArray(b.items)}>
+              <ul class="list-disc pl-5">
+                <For each={b.items as unknown[]}>
+                  {(item) => (
+                    <li data-testid="agreement-list-item" class="whitespace-pre-wrap">
+                      {str(item)}
+                    </li>
+                  )}
+                </For>
+              </ul>
             </Match>
             <Match when={true}>
               <p class="text-[12px] italic text-text-tertiary">

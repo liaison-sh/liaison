@@ -234,6 +234,39 @@ describe("list blocks", () => {
     const { commands } = layoutRichText(body, {}, labelOf)
     expect(texts(commands).map((c) => c.text)).toEqual(["[lines]"])
   })
+
+  it("a list of written items prints each item, filled like a paragraph", () => {
+    const body = parseRichTextBody({
+      blocks: [{ type: "list", items: ["Design for {{name}}", "Build", "Launch"] }],
+    })
+    const { commands } = layoutRichText(body, { name: "the client" }, labelOf)
+    expect(texts(commands).map((c) => c.text)).toEqual(["Design for the client", "Build", "Launch"])
+    expect(richTextPlaceholderPaths(body)).toEqual(["name"])
+  })
+
+  it("a list takes written items or from and line, never both or neither", () => {
+    for (const block of [
+      { type: "list", items: ["a"], from: "lines", line: "x" },
+      { type: "list" },
+      { type: "list", from: "lines" },
+      { type: "list", items: [] },
+      { type: "list", items: ["a"], line: "x" },
+    ]) {
+      let caught: unknown
+      try {
+        parseRichTextBody({ blocks: [block] })
+      } catch (err) {
+        caught = err
+      }
+      expect(caught).toBeInstanceOf(RichTextError)
+      expect((caught as Error).message).toContain("blocks.0")
+    }
+    expect(() =>
+      parseRichTextBody({
+        blocks: [{ type: "repeat", from: "lines", blocks: [{ type: "list", line: "x" }] }],
+      }),
+    ).toThrow(RichTextError)
+  })
 })
 
 describe("images", () => {

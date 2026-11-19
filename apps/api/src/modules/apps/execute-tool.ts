@@ -301,6 +301,10 @@ import {
   restrictedAsReadScopes,
   restrictedScope,
 } from "~/modules/permissions/restricted-scope"
+import {
+  restrictedListNotice,
+  restrictedListsBefore,
+} from "~/modules/permissions/restricted-list-notice"
 import { sendMessage } from "~/modules/threads/message"
 import { insertThreadWithParticipants } from "~/modules/threads/thread"
 import {
@@ -6324,6 +6328,24 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     return envelope
   }
 
+  // A write on a restricted record (`restrictedRows` with the record's id in its params): its
+  // list as it stood, so the result can name the people the write adds who cannot open the app.
+  const restrictedListBefore =
+    tool.restrictedRows?.paramPath && !isReadOnlyTool(tool)
+      ? await restrictedListsBefore(
+          opts.orgId,
+          idsAtPath(validatedParams, tool.restrictedRows.paramPath).map((id) => {
+            const [app, entity] = (tool.restrictedRows?.kind ?? "").split(".") as [string, string]
+            return restrictedScope(app, entity, id)
+          }),
+        ).catch((err: unknown) => {
+          log.warn({ err, toolName: opts.toolName }, "restricted list before a write: not read")
+          return null
+        })
+      : tool.restrictedRows && !isReadOnlyTool(tool)
+        ? new Map()
+        : null
+
   try {
     // Bridge-owned transactions: the handler gets a SESSION, not a live
     // transaction. Sandboxed handlers open a short RLS tx per bridge call
@@ -6941,6 +6963,36 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
           message: `${opts.toolName}: the result was withheld because the kernel could not check whether it holds a record closed to the organization (${err instanceof Error ? err.message : String(err)}). Nothing was shown. Retry the same call.`,
           retryable: true,
         },
+      }
+    }
+  }
+
+  // People a write put on a restricted record's list who cannot open its app: the share stands,
+  // and the result says so, with who can give the access. Any surface (an agent turn, a person's
+  // click in the app), so it does not wait on a turn's taint store.
+  if ("data" in envelope && tool.restrictedRows && restrictedListBefore) {
+    const written = envelope.data
+    if (written !== null && typeof written === "object" && !Array.isArray(written)) {
+      const notice = await restrictedStampOf(
+        opts.orgId,
+        tool.restrictedRows,
+        written,
+        validatedParams,
+      )
+        .then((scopes) =>
+          restrictedListNotice(
+            opts.orgId,
+            userId === "system" ? null : userId,
+            scopes,
+            restrictedListBefore,
+          ),
+        )
+        .catch((err: unknown) => {
+          log.warn({ err, toolName: opts.toolName }, "restricted list notice: not computed")
+          return null
+        })
+      if (notice) {
+        envelope = { data: { ...(written as Record<string, unknown>), access_notice: notice } }
       }
     }
   }

@@ -390,6 +390,56 @@ describe("a task written after a restricted read stays with the list", () => {
   })
 })
 
+describe("sharing a restricted agreement with someone who cannot open the app", () => {
+  it("the share is saved and its result names who cannot open it yet; a later save without a change says nothing", async () => {
+    const sharedId = crypto.randomUUID()
+    await withPrivilegedDb(orgId, "test:share-notice", (tx) =>
+      Promise.all([
+        insertAppRow(tx, "agreements", "agreements", {
+          org_id: orgId,
+          id: sharedId,
+          number: "AG-2026-103",
+          kind: "nda",
+          title: "Shared supplier terms",
+          org_access: "none",
+        }),
+        insertAppRow(tx, "agreements", "agreement_shares", {
+          org_id: orgId,
+          agreement_id: sharedId,
+          user_id: listedId,
+          role: "editor",
+        }),
+      ]),
+    )
+    const outsider = await minimal.person(orgId, { role: "member", name: "Noor Haddad" })
+    const perms = await held(outsider.id)
+    expect(perms.scopes.some((s) => s === "*" || s.startsWith("agreements:"))).toBe(false)
+    const dm = await minimal.agentDm(orgId, listedId)
+    const shares = [
+      { user_id: listedId, role: "editor" },
+      { user_id: outsider.id, role: "viewer" },
+    ]
+    const out = await turn(listedId, dm, (call) =>
+      call("agreements:agreement_update", { id: sharedId, org_access: "none", shares }),
+    )
+    expect(out.error).toBeUndefined()
+    const notice = String(out.data?.access_notice ?? "")
+    expect(notice).toContain("Noor Haddad")
+    expect(notice).toContain("cannot open it yet")
+    expect(notice).toContain("agreements")
+    // The share stands.
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM app_agreements.agreement_shares
+       WHERE agreement_id = ${sharedId}::uuid AND user_id = ${outsider.id}::uuid AND removed_at IS NULL`
+    expect(row?.n).toBe(1)
+    // Saving the same list again adds nobody, so it says nothing.
+    const again = await turn(listedId, dm, (call) =>
+      call("agreements:agreement_update", { id: sharedId, org_access: "none", shares }),
+    )
+    expect(again.data?.access_notice).toBeUndefined()
+  })
+})
+
 describe("what is derived from a restricted agreement follows its list", () => {
   const signed = () => ({
     app: "agreements",

@@ -7,7 +7,6 @@ import {
   recordAgentKnowledgePointers,
   recordAgentKnowledgePointersForDocument,
 } from "~/modules/agent/knowledge/knowledge-pointers"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   bridgeKnowledgeActorInput,
@@ -28,15 +27,15 @@ async function findRoutineBoundRunningDoc(
   orgId: string,
   actor: unknown,
   /**
-   * The routine-tick id, CAPTURED at bridge construction (in-frame). Prefer this over `currentRunContext()`
-   * — an untrusted sandbox app (knowledge) calls this redirect from a WORKER-POOL callback where the
-   * routine-tick ALS frame is LOST, so reading `currentRunContext()` here returns undefined and the redirect
-   * bypasses → a duplicate watch doc lands (the forensic-confirmed competitor-firmware-news-watch root
-   * cause). Falls back to the ALS frame for host-side callers that still run in-frame.
+   * The routine-tick id, CAPTURED at bridge construction (in-frame), and the only source: an untrusted
+   * sandbox app (knowledge) calls this redirect from a WORKER-POOL callback where the routine-tick ALS
+   * frame is LOST, so reading `currentRunContext()` here returns undefined and the redirect bypasses → a
+   * duplicate watch doc lands (the forensic-confirmed competitor-firmware-news-watch root cause). A
+   * bridge built in frame already captured the frame's id, so nothing reads the ALS store late.
    */
   capturedRoutineId?: string,
 ): Promise<{ id: string; title: string; revision: number } | null> {
-  const routineId = capturedRoutineId ?? currentRunContext()?.routineId
+  const routineId = capturedRoutineId
   if (!routineId) return null
   try {
     // ⛔ SCHEMA-PREFIX (BL-275, competitor-firmware-news-watch run-2 fail). Use schemaRef("kernel") — NOT a
@@ -87,7 +86,7 @@ async function maybePrependPeriodSnapshotDisclaimer(
   capturedRoutineId: string | undefined,
   body: string | null | undefined,
 ): Promise<string | null | undefined> {
-  const routineId = capturedRoutineId ?? currentRunContext()?.routineId
+  const routineId = capturedRoutineId
   if (!routineId) return body
   try {
     const {

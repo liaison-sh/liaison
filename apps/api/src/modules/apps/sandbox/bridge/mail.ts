@@ -6,7 +6,6 @@ import { withReleasedSavepoint } from "~/db/savepoint"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import { snakeCase } from "~/modules/apps/sandbox/bridge/shared"
 import {
@@ -87,6 +86,7 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     approvalContext,
     assertMailboxNotResetMidRun,
     bridgeOptions,
+    bridgeRunFrame,
     callerScopes,
     coerceByteaRowFields,
     coerceNumericRowFields,
@@ -102,8 +102,8 @@ export function createMailMethods(ctx: BridgeContext): Record<string, any> {
     validateEntity,
     validateFields,
   } = ctx
-  // Captured here, in the run's frame: a callback from the sandbox has lost it.
-  const followUpRun = currentRunContext()?.routineFollowUp === true
+  // From the run frame captured with the bridge: a callback from the sandbox has lost it.
+  const followUpRun = bridgeRunFrame?.routineFollowUp === true
   // A person's own click decides for itself. Their request approved by someone
   // else later has `approvalContext`, and is checked like any other.
   const directHumanCall = () =>

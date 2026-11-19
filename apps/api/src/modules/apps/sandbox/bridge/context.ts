@@ -14,6 +14,7 @@ import {
   captureReadOnlyRun,
   captureSpawnParentFrame,
   currentRunContext,
+  type RunContext,
   type SpawnParentFrame,
 } from "~/modules/agent/runtime/run-context"
 import { projectTaintScopes } from "~/modules/agent/scopes/taint-read-scopes"
@@ -325,6 +326,16 @@ export type RpcBridgeOptions = {
    * it would hide every agent-authored doc from readers who may not create.
    */
   writeParentFrameOverride?: SpawnParentFrame | null
+  /**
+   * createSessionRpcBridge internals: the calling run's frame itself, captured at
+   * session-bridge construction (in the run's frame) for the values a bridge
+   * method reads from the run rather than from a snapshot: the turn's live taint
+   * store (origin rows and restricted-row stamps filed by a nested read), the
+   * follow-up mark, the background/agent marks. A worker's IPC message runs
+   * outside every run, so a per-call rebuild that read the async-local store
+   * would see no run at all. `null` records that there was no frame.
+   */
+  runFrameOverride?: RunContext | null
   bulkCursorStore?: Map<string, { iterator: AsyncIterator<unknown[]> | null; done: boolean }>
   /**
    * Shared cumulative attachment-bytes ledger for files_importAttachment /
@@ -409,6 +420,14 @@ export function createBridgeContext(
   // and threading it into the redirect makes the lookup independent of the lost ALS frame. Undefined for
   // non-routine bridges (foreground chat / sub-runs) — exactly as before.
   const bridgeRoutineId = bridgeOptions?.routineIdOverride ?? currentRunContext()?.routineId
+  // The calling run's frame, by the same rule: the session bridge's capture when it
+  // gave one (a per-call rebuild runs outside the frame), else the live frame of a
+  // bridge built in it. Every bridge method reads the run from HERE, never from the
+  // async-local store at call time.
+  const bridgeRunFrame: RunContext | undefined =
+    bridgeOptions?.runFrameOverride !== undefined
+      ? (bridgeOptions.runFrameOverride ?? undefined)
+      : currentRunContext()
   // Captured here for exactly the same reason (spec-security.md D4, FX10a): the
   // Share anyway rerun answers a withheld turn from READS alone, and a write
   // reaching this bridge through a sandboxed app arrives in a callback that has
@@ -531,7 +550,7 @@ export function createBridgeContext(
    * through this same object, and the write that follows it in the same hop sees it.
    * It is the kernel's own accumulator; the sandbox never supplies a row list.
    */
-  const bridgeTaintOriginStore = currentRunContext()?.turnScopeAccumulator
+  const bridgeTaintOriginStore = bridgeRunFrame?.turnScopeAccumulator
   /**
    * The requiredScopes a knowledge document written through this bridge
    * carries. No frame at all means no turn called it (a human request, a job):
@@ -1453,6 +1472,7 @@ export function createBridgeContext(
     logger,
     appLogSink,
     bridgeRoutineId,
+    bridgeRunFrame,
     bridgeReadOnlyRun,
     refuseWriteOnReadOnlyRun,
     writeTarget,

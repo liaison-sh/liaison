@@ -62,4 +62,10 @@ describe("formatDuration", () => {
     expect(formatDuration(90, "h")).toBe("1 h 30")
     expect(formatDuration(45, "h")).toBe("45 m")
   })
+
+  it("writes nothing yet in hours, so it reads in the unit of the figure beside it", () => {
+    // "0 h / 60 h", never "0 m / 60 h".
+    expect(formatDuration(0, "h")).toBe("0 h")
+    expect(formatDuration(0.2, "h")).toBe("0 h")
+  })
 })

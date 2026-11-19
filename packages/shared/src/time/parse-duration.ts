@@ -72,6 +72,8 @@ export function formatDuration(
     return `~${trim(Math.max(0.5, Math.round(halves) / 2))} d`
   }
   const whole = Math.round(minutes)
+  // Nothing yet reads in hours: it sits beside an hour figure ("0 h / 60 h"), never "0 m".
+  if (whole === 0) return "0 h"
   const h = Math.floor(whole / 60)
   const m = whole % 60
   if (h === 0) return `${m} m`

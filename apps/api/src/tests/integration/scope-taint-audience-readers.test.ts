@@ -259,7 +259,7 @@ describe("scope taint: one audience rule, judged by who can read what the write 
       // reader lacking one scope.
       expect([...(row?.notify_user_ids ?? [])].sort()).toEqual([REQUESTER, READER].sort())
       const note = row?.summary.lines.at(-1) ?? ""
-      expect(note).toContain(`some people who can read ${DRAFT_TABLE} cannot see`)
+      expect(note).toContain("some people who can read app config in boxtal cannot see")
       expect(note).toContain("approving shares it with them")
 
       // The reader's feed folds it as peer noise: its requester can decide it herself.

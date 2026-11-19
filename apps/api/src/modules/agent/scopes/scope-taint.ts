@@ -469,8 +469,10 @@
 import { isAnnotatedReadOnly } from "~/apps/mcp-manager/default-policy"
 import type { McpToolAnnotations } from "~/apps/mcp-manager/types"
 import { resolveRequiredScopes } from "~/modules/agent/scopes/required-scopes"
+import { isExactOnlyScope } from "~/modules/agent/scopes/scope-coverage"
 import { approvalResourceOwnerRegistry, entityRegistry } from "~/modules/apps/app-registries"
 import { connectionToolNamespace, isValidSlug } from "~/modules/mcp-client/naming"
+import { isRestrictedScope, RESTRICTED_SCOPE_PREFIX } from "~/modules/permissions/restricted-scope"
 
 // The three enforcing sinks, named so a tool registration's `writesToTable` imports the exact
 // string instead of retyping it.
@@ -552,6 +554,22 @@ export const TAINT_LOW_SENSITIVITY_SINKS: ReadonlySet<string> = new Set([
   SINK_APP_PROJECTS_TASK_CHECKLIST_ITEMS,
   SINK_APP_PROJECTS_TASK_DEPENDENCIES,
 ])
+
+/**
+ * A taint narrower than any role: it holds a restricted record's scope (`restricted:`, a record
+ * closed to the organization, read only by its list) or an exact-only scope (a margin, a cost
+ * rate, a timesheet, a bare marker such as `clevel`: held only by its exact grant, never by a
+ * wildcard). The low-sensitivity allowance above was decided for ordinary work data that most of
+ * the org reads anyway; it never covers such a taint, since a task title or checklist line copied
+ * from a record shared with two people is read by everyone on the project (2026-11-19). The write
+ * is then judged by its readers like every other sink: it runs when they all hold the taint, and
+ * parks for the requester otherwise (rule 8b).
+ */
+export function taintNarrowerThanRoles(taintScopes: readonly string[]): boolean {
+  return taintScopes.some(
+    (s) => isRestrictedScope(s) || (!UNKNOWN_TURN_TAINT.includes(s) && isExactOnlyScope(s)),
+  )
+}
 
 // What a tool call refused by scope taint returns in place of the tool's normal result. The
 // call was admitted to the catalog and refused mid-execution, so it is a runtime error shape of
@@ -690,6 +708,12 @@ export function taintSourceApps(taintScopes: readonly string[]): string[] {
   const apps = new Set<string>()
   for (const scope of taintScopes) {
     if (UNKNOWN_TURN_TAINT.includes(scope)) continue
+    // A restricted record's scope names its app in its kind (`restricted:agreements.agreement:<id>`).
+    if (isRestrictedScope(scope)) {
+      const app = scope.slice(RESTRICTED_SCOPE_PREFIX.length).split(".")[0]
+      if (app) apps.add(app)
+      continue
+    }
     const [app, resource] = scope.split(":")
     // A kernel scope names its resource (contacts, agent memory), which is what a person reads.
     const name = app === "kernel" ? resource : app
@@ -723,7 +747,21 @@ export function taintSurfaceLabel(
     const entity = onTable.find((e) => e.name === bare || `${e.name}s` === bare) ?? onTable[0]
     if (entity) return `this ${entity.name.replace(/_/g, " ")}`
   }
-  return targetTables.find((t): t is string => !!t) ?? "where it is written"
+  const table = targetTables.find((t): t is string => !!t)
+  return table ? tableInWords(table) : "where it is written"
+}
+
+/**
+ * A table no manifest entity names, in the words a person reads: its record kind and its app
+ * (`app_projects.days_off` is "days off in projects"), never the table's own name.
+ */
+function tableInWords(table: string): string {
+  const dot = table.lastIndexOf(".")
+  const schema = dot === -1 ? "" : table.slice(0, dot)
+  const kind = (dot === -1 ? table : table.slice(dot + 1)).replace(/_/g, " ").trim()
+  const app = schema.startsWith("app_") ? schema.slice(4).replace(/_/g, " ") : ""
+  if (!kind) return "where it is written"
+  return app ? `${kind} in ${app}` : kind
 }
 
 /** {@link taintSurfaceLabel} for a registered tool, from the live registry of its org. */
@@ -927,7 +965,8 @@ export function checkScopeTaint(
     accumulatedRequiredScopes.length === 0 ||
     TAINT_ENFORCING_SINKS.has(writeTargetTable) ||
     TAINT_CONTROL_PLANE_SINKS.has(writeTargetTable) ||
-    TAINT_LOW_SENSITIVITY_SINKS.has(writeTargetTable)
+    (TAINT_LOW_SENSITIVITY_SINKS.has(writeTargetTable) &&
+      !taintNarrowerThanRoles(accumulatedRequiredScopes))
   ) {
     return { allowed: true }
   }

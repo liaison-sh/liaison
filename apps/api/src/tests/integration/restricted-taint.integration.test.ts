@@ -329,6 +329,67 @@ describe("what the turn writes next stays with the list", () => {
   })
 })
 
+describe("a task written after a restricted read stays with the list", () => {
+  let projectId = ""
+
+  beforeAll(async () => {
+    const dm = await minimal.agentDm(orgId, listedId)
+    const out = await turn(listedId, dm, (call) =>
+      call("projects:createProject", { name: "Supplier follow-ups" }),
+    )
+    projectId = String(out.data?.project?.id ?? out.data?.id ?? "")
+    expect(projectId).not.toBe("")
+  })
+
+  async function tasksTitled(title: string): Promise<number> {
+    const [row] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM app_projects.tasks
+       WHERE org_id = ${orgId}::uuid AND title = ${title}`
+    return row?.n ?? 0
+  }
+
+  it("a task titled from a closed agreement parks for the person who asked, and no task is written", async () => {
+    const dm = await minimal.agentDm(orgId, listedId)
+    const out = await turn(listedId, dm, async (call, taint) => {
+      await call("agreements:agreement_get", { id: closedId })
+      expect(taint()).toContain(scope)
+      return call("projects:create", { title: "Chase: Closed supplier terms", projectId })
+    })
+    expect(out.data).toBeUndefined()
+    expect(await tasksTitled("Chase: Closed supplier terms")).toBe(0)
+    const approvalId = out.blocked?.approvalRequestId as string | undefined
+    expect(typeof approvalId).toBe("string")
+    const [row] = await sql<
+      { resource_owner_id: string | null; status: string; summary: unknown }[]
+    >`SELECT resource_owner_id, status, summary FROM kernel.approval_requests
+       WHERE id = ${approvalId as string}::uuid`
+    expect(row?.status).toBe("pending")
+    expect(row?.resource_owner_id).toBe(listedId)
+    // The card says approving shares it, in the app's words, never a table name.
+    const card = JSON.stringify(row?.summary ?? "")
+    expect(card).toContain("approving shares it with them")
+    expect(card).toContain("agreements data")
+    expect(card).not.toContain("app_projects")
+    expect(card).not.toContain("restricted")
+    // The same line rides on its own, so a card shows it on its face.
+    expect((row?.summary as { consent?: string } | null)?.consent).toContain(
+      "approving shares it with them",
+    )
+  })
+
+  it("the same task after reading an agreement open to the organization runs", async () => {
+    const dm = await minimal.agentDm(orgId, listedId)
+    const out = await turn(listedId, dm, async (call, taint) => {
+      await call("agreements:agreement_get", { id: openId })
+      expect(taint().some((s) => s.startsWith("restricted:"))).toBe(false)
+      return call("projects:create", { title: "Chase: Open supplier terms", projectId })
+    })
+    expect(out.error).toBeUndefined()
+    expect(out.blocked).toBeUndefined()
+    expect(await tasksTitled("Chase: Open supplier terms")).toBe(1)
+  })
+})
+
 describe("what is derived from a restricted agreement follows its list", () => {
   const signed = () => ({
     app: "agreements",

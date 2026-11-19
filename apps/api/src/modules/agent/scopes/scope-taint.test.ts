@@ -175,6 +175,24 @@ describe("checkScopeTaint", () => {
     })
   }
 
+  it("the low-sensitivity allowance never covers a taint narrower than any role", () => {
+    const restricted = "restricted:agreements.agreement:5b0c3f0e-8d1f-4a51-9a0e-2f3c8e1d7a10"
+    for (const sink of [
+      SINK_APP_PROJECTS_TASKS,
+      SINK_APP_PROJECTS_TASK_CHECKLIST_ITEMS,
+      SINK_APP_PROJECTS_TASK_DEPENDENCIES,
+    ]) {
+      // A record closed to the organization, an exact-only scope, a bare marker scope.
+      expect(checkScopeTaint(["a:b:read", restricted], sink)).toEqual(BLOCKED)
+      expect(checkScopeTaint(["projects:margin:read"], sink)).toEqual(BLOCKED)
+      expect(checkScopeTaint(["clevel"], sink)).toEqual(BLOCKED)
+      // The unknown sentinel alone keeps the allowance as before.
+      expect(checkScopeTaint([...UNKNOWN_TURN_TAINT], sink)).toEqual({ allowed: true })
+    }
+    // The enforcing sinks still take it: their readers are filtered per row.
+    expect(checkScopeTaint([restricted], "kernel.messages")).toEqual({ allowed: true })
+  })
+
   it("the low-sensitivity allowance is closed to project task tables", () => {
     for (const table of [
       "app_projects.projects",
@@ -677,6 +695,15 @@ describe("rule 8: the card line and the no-decider refusal of a parked tainted w
     expect(taintSourceApps([...TAINT, "*"])).toEqual(["boxtal", "contacts", "shopify", "tickets"])
   })
 
+  it("names a restricted record's app, never the word restricted", () => {
+    expect(
+      taintSourceApps([
+        "restricted:agreements.agreement:5b0c3f0e-8d1f-4a51-9a0e-2f3c8e1d7a10",
+        "projects:tasks:read",
+      ]),
+    ).toEqual(["agreements", "projects"])
+  })
+
   it("says where it would be shown and that approving discloses it, within the card's line cap", () => {
     const tickets = [
       { name: "ticket", tableName: "tickets" },
@@ -694,7 +721,10 @@ describe("rule 8: the card line and the no-decider refusal of a parked tainted w
     expect(taintSurfaceLabel([undefined, "conversations"], mail)).toBe("this conversation")
     expect(
       taintSurfaceLabel(["app_boxtal.app_config"], [{ name: "shipment", tableName: "shipments" }]),
-    ).toBe("app_boxtal.app_config")
+    ).toBe("app config in boxtal")
+    // A table no entity names reads as its record kind and its app, never as the table.
+    expect(taintSurfaceLabel(["app_projects.days_off"], [])).toBe("days off in projects")
+    expect(taintSurfaceLabel(["kernel.away_ranges"], [])).toBe("away ranges")
     expect(taintSurfaceLabel([undefined], [])).toBe("where it is written")
     // Two entities over one table: the one named for the table, whatever the manifest order.
     expect(

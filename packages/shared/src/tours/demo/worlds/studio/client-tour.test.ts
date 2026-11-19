@@ -34,6 +34,29 @@ const beat = (id: string) => {
 const copy = (key: string) => lookup(en, key)
 
 describe("the client scenario", () => {
+  it("the passage step promises only what is on screen: no page to open, no quote it cannot hold", () => {
+    // A show step has no action the tour can wait on, and the signed version is a frozen file
+    // with no section to open: the step points at the answer, which quotes the passage.
+    expect(beat("open-agreement").kind).toBe("show")
+    for (const dict of [en, fr]) {
+      const text = ["title", "role", "body", "way3"]
+        .map((k) => String(lookup(dict, `tours.scenarios.studioClient.openAgreement.${k}`)))
+        .join(" ")
+        .toLowerCase()
+      for (const word of ["open", "ouvr", "word for word", "mot pour mot"])
+        expect(text).not.toContain(word)
+    }
+  })
+
+  it("the moved contract total is claimed on the step whose page shows the agreement's amount", () => {
+    // The agreements list shows a contract's total with its accepted change requests; the
+    // project's page shows its own price. Each claim sits where its figure is on screen.
+    expect(beat("client-decides").anchor).toBe("agreements-list")
+    expect(String(copy("tours.scenarios.studioClient.clientDecides.body"))).toContain("amount")
+    expect(String(copy("tours.scenarios.studioClient.whatMoved.role"))).not.toContain("total")
+    expect(String(lookup(fr, "tours.scenarios.studioClient.whatMoved.role"))).not.toContain("total")
+  })
+
   it("the client tour has six beats, plays once and needs agreements, mail and projects", () => {
     expect(tour.id).toBe("kernel.scenario-studio-client")
     expect(findTour(tour.id)).toBe(tour)

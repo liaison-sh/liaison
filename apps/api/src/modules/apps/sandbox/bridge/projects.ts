@@ -660,6 +660,18 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
       const levels = Array.isArray(validationLevels) ? validationLevels : []
       // Checked before anything is written: a bad list creates no project.
       const initialTasks = normalizeInitialTasks(rawTasks)
+      // A task's planned hours live on a project that uses time and budgets, turned on here.
+      if (timeBudgets !== true && initialTasks.some((t) => typeof t.timebox === "string")) {
+        return JSON.stringify({
+          error: {
+            code: "planning_off",
+            message:
+              "Nothing was created: a task timebox needs the project to use time and budgets. Call again with timeBudgets: true, or without the timeboxes.",
+            status: 409,
+            retryable: false,
+          },
+        })
+      }
       // A client company the caller cannot read answers its code; nothing is created.
       if (companyId) {
         const { assertVisibleCompany } = await import("~/apps/projects/service/deals")
@@ -689,7 +701,15 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
                   projectId: project.id,
                   levels,
                 })
-          const tasks: Array<{ id: string; key: string | null; title: string }> = []
+          const tasks: Array<{
+            id: string
+            key: string | null
+            title: string
+            timeboxMinutes?: number | null
+            isMilestone?: boolean
+          }> = []
+          const plans: Array<{ taskId: string; timebox?: string | null; isMilestone?: boolean }> =
+            []
           if (initialTasks.length > 0) {
             const { createTask } = await import("~/apps/projects/service/tasks")
             const { resolveAssignee } = await import("~/apps/projects/service/resolve")
@@ -709,6 +729,13 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
                 },
               })
               tasks.push({ id: row.id, key: row.key ?? null, title: row.title })
+              if (task.timebox !== undefined || task.isMilestone !== undefined) {
+                plans.push({
+                  taskId: row.id,
+                  ...(task.timebox !== undefined ? { timebox: task.timebox } : {}),
+                  ...(task.isMilestone !== undefined ? { isMilestone: task.isMilestone } : {}),
+                })
+              }
             }
           }
           let timeBudgetsFlipped: "on" | "off" | undefined
@@ -736,6 +763,22 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
                 ...(d.timeBudgetsChangedAt ? { timeBudgetsChangedAt: d.timeBudgetsChangedAt } : {}),
                 ...(d.timeBudgetsChangedBy ? { timeBudgetsChangedBy: d.timeBudgetsChangedBy } : {}),
               }
+            }
+          }
+          if (plans.length > 0) {
+            const { writeInitialTaskPlans } = await import("~/apps/projects/service/time-plan")
+            const written = await writeInitialTaskPlans({
+              tx: stepTx as never,
+              orgId,
+              tasks: plans,
+            })
+            for (const entry of tasks) {
+              const plan = plans.find((p) => p.taskId === entry.id)
+              if (!plan) continue
+              if (written.has(entry.id) && plan.timebox !== undefined) {
+                entry.timeboxMinutes = written.get(entry.id) ?? null
+              }
+              if (plan.isMilestone !== undefined) entry.isMilestone = plan.isMilestone
             }
           }
           return withTimeBudgetsNote(
@@ -2222,6 +2265,26 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
             },
           }),
         )
+      })
+    },
+    /** `time_plan_set`'s card: the write's refusals (nothing to set, a basis the terms contradict). */
+    projects_timePlanSetPreflight: async (paramsJson: string): Promise<string> => {
+      const params = JSON.parse(paramsJson || "{}") as Record<string, unknown> & {
+        projectId?: string
+        projectName?: string
+      }
+      return typedServiceCall(async () => {
+        const { checkTimePlanInput } = await import("~/apps/projects/service/time-plan")
+        const { resolveProjectId } = await import("~/apps/projects/service/resolve")
+        const projectId = await resolveProjectId(txDb as never, orgId, params as never)
+        const { projectId: _p, projectName: _n, ...rest } = params
+        await checkTimePlanInput({
+          tx: txDb,
+          orgId,
+          scopes: callerScopes ?? [],
+          input: { ...(rest as object), projectId },
+        })
+        return JSON.stringify({ ok: true })
       })
     },
     /** A project's plan: basis, timebox, biller, repositories and dated hours. */

@@ -610,8 +610,9 @@ export const MAX_INITIAL_TASKS = 20
 
 /**
  * One task created with its project: the task-create tool's own title,
- * description and assignee fields (the manifest declares them identically),
- * nothing else. Status, dates and order are set afterwards with `update`.
+ * description, assignee, timebox and milestone fields (the manifest declares
+ * them identically), nothing else. Status, dates and order are set afterwards
+ * with `update`. A timebox needs the project to use time and budgets.
  */
 const initialTaskSchema = z
   .object({
@@ -619,6 +620,8 @@ const initialTaskSchema = z
     description: z.string().optional(),
     assigneeId: z.string().nullable().optional(),
     assigneeName: z.string().nullable().optional(),
+    timebox: z.string().nullable().optional(),
+    isMilestone: z.boolean().optional(),
   })
   .strict()
 

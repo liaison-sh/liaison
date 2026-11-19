@@ -1134,15 +1134,56 @@ export async function companyOfContact(
   ctx: Pick<IssueCtx, "executeTool">,
   contactId: string | null | undefined,
 ): Promise<string | null> {
-  if (!contactId || !CONTACT_ID.test(contactId) || !ctx.executeTool) return null
+  return (await readContactCompany(ctx, contactId)) ?? null
+}
+
+/**
+ * The contact's company, told apart from not knowing it: a company id, null when the kernel says
+ * the contact has none (or there is no contact), undefined when the read failed or was refused.
+ */
+async function readContactCompany(
+  ctx: Pick<IssueCtx, "executeTool">,
+  contactId: string | null | undefined,
+): Promise<string | null | undefined> {
+  if (!contactId) return null
+  if (!CONTACT_ID.test(contactId) || !ctx.executeTool) return undefined
   try {
     const env = await ctx.executeTool("kernel:contacts_identity", { contactId })
-    if (env.status !== "completed") return null
-    const id = (env.result as { contact?: { companyId?: unknown } } | null)?.contact?.companyId
-    return typeof id === "string" && CONTACT_ID.test(id) ? id : null
+    if (env.status !== "completed") return undefined
+    const contact = (env.result as { contact?: { companyId?: unknown } } | null)?.contact
+    if (!contact) return undefined
+    const id = contact.companyId
+    if (id === null || id === undefined || id === "") return null
+    return typeof id === "string" && CONTACT_ID.test(id) ? id : undefined
   } catch {
-    return null
+    return undefined
   }
+}
+
+/**
+ * The client company an issued document is made out to, which is what the client portal and the
+ * company page read. The counterparty contact's own company decides: the document carries the
+ * name, address and VAT id of that contact, so it belongs to that contact's company whatever the
+ * schedule, quote or project it came from says. The company stamped on the draft from its source,
+ * else the project's client company, is used only when the contact has no company, or when it
+ * agrees. When the contact's company cannot be read, no source company is used. A purchase order
+ * is made out to a supplier: it never takes a client company from its source.
+ */
+export async function documentCompany(
+  ctx: Pick<IssueCtx, "executeTool">,
+  doc: {
+    type: DocumentType
+    contactId: string | null | undefined
+    stamped?: unknown
+    billingProjectId?: string | null
+  },
+): Promise<string | null> {
+  const ofContact = await readContactCompany(ctx, doc.contactId)
+  if (ofContact) return ofContact
+  if (ofContact === undefined || doc.type === "purchase_order") return null
+  const stamped =
+    typeof doc.stamped === "string" && CONTACT_ID.test(doc.stamped) ? doc.stamped : null
+  return stamped ?? (await companyOfProject(ctx, doc.billingProjectId))
 }
 
 /**
@@ -1412,13 +1453,12 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
-  // The contact's company first; a contact with none on file bills the client of the project
-  // the document is for, so the company's money still shows it.
-  const stamped = draft.company_id
-  const companyId =
-    (typeof stamped === "string" && CONTACT_ID.test(stamped) ? stamped : null) ??
-    (await companyOfContact(ctx, counterparty.contact_id)) ??
-    (await companyOfProject(ctx, draft.source?.billing_project_id))
+  const companyId = await documentCompany(ctx, {
+    type,
+    contactId: counterparty.contact_id,
+    stamped: draft.company_id,
+    billingProjectId: draft.source?.billing_project_id,
+  })
   const documentInsert: DocumentInsert = {
     type,
     scope: input.scope ?? null,

@@ -10,7 +10,7 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { invoiceIssue } from "./mutations"
 import { retainerPlan } from "./mutations/retainer"
 import { termsForMonth } from "./recurring/retainer"
-import { type RecurringCtx, retainerTermsRenew } from "./recurring/tools"
+import { type RecurringCtx, recurringScheduleUpdate, retainerTermsRenew } from "./recurring/tools"
 import { retainerTimeboxRoll } from "./retainer-timebox-roll"
 import { createMockDb } from "./test-db"
 import { testTime } from "./test-time"
@@ -168,6 +168,56 @@ describe("a retainer renewed by a signed agreement", () => {
     setSystemTime(new Date(Date.UTC(2026, 11, 2, 12)))
     await retainerTimeboxRoll(h.ctx as never)
     expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "44h"])
+  })
+
+  test("terms changed after a renewal in force apply from the next month, and the daily roll keeps them", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 19, 12)))
+    const h = harness()
+    await retainerTermsRenew(h.ctx, RENEWAL)
+    // 15 Dec: the lead raises the included hours to 45 from January.
+    setSystemTime(new Date(Date.UTC(2026, 11, 15, 12)))
+    const up = await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 45 * H })
+    expect(up).toMatchObject({ status: "completed" })
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "45h"])
+    // The daily roll the next day, and in January for February, keeps the change.
+    setSystemTime(new Date(Date.UTC(2026, 11, 16, 12)))
+    await retainerTimeboxRoll(h.ctx as never)
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "45h"])
+    setSystemTime(new Date(Date.UTC(2027, 0, 5, 12)))
+    await retainerTimeboxRoll(h.ctx as never)
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-02", "45h"])
+    const [row] = h.db.__all("recurring_schedules") as Row[]
+    // The months before the renewal keep the old terms; the renewed fee is not lost.
+    expect(termsForMonth(row as Row, "2026-11").retainer_minutes).toBe(40 * H)
+    expect(termsForMonth(row as Row, "2027-01").retainer_minutes).toBe(45 * H)
+    expect(Number((termsForMonth(row as Row, "2027-01").lines as Row[])[0]?.unit_price_minor)).toBe(
+      495_000,
+    )
+  })
+
+  test("a renewal signed after a change of terms applies from its own first month", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 10, 12)))
+    const h = harness()
+    await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 42 * H })
+    setSystemTime(new Date(Date.UTC(2026, 10, 19, 12)))
+    await retainerTermsRenew(h.ctx, RENEWAL)
+    setSystemTime(new Date(Date.UTC(2026, 10, 20, 12)))
+    await retainerTimeboxRoll(h.ctx as never)
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2026-12", "44h"])
+  })
+
+  test("a change of terms before a renewal that starts later holds until the renewal starts", async () => {
+    setSystemTime(new Date(Date.UTC(2026, 10, 19, 12)))
+    const h = harness()
+    await retainerTermsRenew(h.ctx, { ...RENEWAL, startsOn: "2027-02-01" })
+    setSystemTime(new Date(Date.UTC(2026, 11, 15, 12)))
+    await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 45 * H })
+    setSystemTime(new Date(Date.UTC(2026, 11, 16, 12)))
+    await retainerTimeboxRoll(h.ctx as never)
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "45h"])
+    setSystemTime(new Date(Date.UTC(2027, 0, 5, 12)))
+    await retainerTimeboxRoll(h.ctx as never)
+    expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-02", "44h"])
   })
 
   test("no retainer on the project, or a person without the projects money scope: nothing changes", async () => {

@@ -25,6 +25,7 @@ import {
   PREPAID_WARNING,
   type RetainerRenewal,
   renewalOf,
+  termsForMonth,
 } from "./retainer"
 import {
   type Cadence,
@@ -625,6 +626,28 @@ export async function recurringScheduleUpdate(
   if (isRetainerSchedule(becomes) && !isRetainerSchedule(current))
     data.retainer_from = nextMonth(monthOf(now.date))
   else if (!isRetainerSchedule(becomes) && isRetainerSchedule(current)) data.retainer_from = null
+  // New terms apply from the next month. When a signed renewal already governs that month, they
+  // are written into the renewal's terms: the later act wins from its first month, so the daily
+  // roll and the month's invoice read the change instead of the earlier renewal. A renewal that
+  // starts after the next month is kept and applies from its own start; the months before it take
+  // the schedule's own terms.
+  const renewal = renewalOf(current)
+  if (renewal && isRetainerSchedule(becomes) && renewal.from <= nextMonth(monthOf(now.date))) {
+    const terms = ["retainer_minutes", "retainer_overage_rate_minor", "lines"] as const
+    if (terms.some((k) => data[k] !== undefined)) {
+      const renewed: RetainerRenewal = { ...renewal }
+      if (data.retainer_minutes !== undefined)
+        renewed.retainer_minutes = Number(data.retainer_minutes)
+      if (data.retainer_overage_rate_minor !== undefined)
+        renewed.retainer_overage_rate_minor =
+          data.retainer_overage_rate_minor === null
+            ? null
+            : String(data.retainer_overage_rate_minor)
+      if (data.lines !== undefined) renewed.lines = data.lines as unknown[]
+      for (const k of terms) delete data[k]
+      data.retainer_renewal = renewed
+    }
+  }
 
   // Who turned automatic issuing on is the person who decided it: the approver of an agent's
   // request, or the person who clicked.
@@ -679,7 +702,9 @@ export async function recurringScheduleUpdate(
         ctx,
         target,
         [nextM],
-        Number(after.retainer_minutes),
+        Number(
+          termsForMonth({ ...current, ...data } as Record<string, unknown>, nextM).retainer_minutes,
+        ),
       )
       retainerNote =
         wrote.length > 0

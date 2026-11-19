@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "evidence_packages",
-        "{\"limit\":1000}"
-      ],
+      "args": ["evidence_packages", "{\"limit\":1000}"],
       "reply": "[]"
     }
   ]

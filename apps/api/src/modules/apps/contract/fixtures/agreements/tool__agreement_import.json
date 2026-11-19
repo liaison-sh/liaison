@@ -41,11 +41,7 @@
     },
     {
       "method": "db_update",
-      "args": [
-        "agreements",
-        "4a3f9bcf-e2f2-4e22-b397-71f6d2d86ac8",
-        "{\"status\":\"withdrawn\"}"
-      ]
+      "args": ["agreements", "4a3f9bcf-e2f2-4e22-b397-71f6d2d86ac8", "{\"status\":\"withdrawn\"}"]
     }
   ]
 }

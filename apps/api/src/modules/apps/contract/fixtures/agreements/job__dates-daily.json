@@ -5,18 +5,12 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "agreements",
-        "{\"where\":{\"status\":\"signed\"},\"limit\":2000}"
-      ],
+      "args": ["agreements", "{\"where\":{\"status\":\"signed\"},\"limit\":2000}"],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": [
-        "agreements",
-        "{\"where\":{\"status\":\"sent\"},\"limit\":2000}"
-      ],
+      "args": ["agreements", "{\"where\":{\"status\":\"sent\"},\"limit\":2000}"],
       "reply": "[]"
     }
   ]

@@ -5,10 +5,7 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": [
-        "agreement_drafts",
-        "{\"where\":{\"upload_state\":\"checking\"},\"limit\":20}"
-      ],
+      "args": ["agreement_drafts", "{\"where\":{\"upload_state\":\"checking\"},\"limit\":20}"],
       "reply": "[]"
     }
   ]

@@ -24,6 +24,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
+import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { readerScopesOf } from "~/modules/agent/scopes/taint-read-scopes"
 import { appScopeAliasProviders } from "~/modules/apps/runtime-helpers"
@@ -81,9 +82,11 @@ function onRestrictedList(scope: string, reader: RestrictedReader | undefined): 
 }
 
 /**
- * True when `grants` cover every scope in `taintScopes` (hierarchical `hasScope` matching). A
- * restricted record's scope is covered by no grant, `*` included: only by the reader's place on
- * that record's list (`reader`, resolved by `restrictedListsFor`). Without a reader it is never held.
+ * True when `grants` cover every scope in `taintScopes`, by the agent-side coverage rule
+ * (`isScopeCovered`: `*`, `:*` globs and parents, but an exact-only scope only by its exact
+ * grant, as row security checks it). A restricted record's scope is covered by no grant, `*`
+ * included: only by the reader's place on that record's list (`reader`, resolved by
+ * `restrictedListsFor`). Without a reader it is never held.
  */
 export function holdsEveryScope(
   grants: readonly string[],
@@ -92,7 +95,7 @@ export function holdsEveryScope(
 ): boolean {
   const granted = [...grants]
   return taintScopes.every((scope) =>
-    isRestrictedScope(scope) ? onRestrictedList(scope, reader) : hasScope(scope, granted),
+    isRestrictedScope(scope) ? onRestrictedList(scope, reader) : isScopeCovered([scope], granted),
   )
 }
 

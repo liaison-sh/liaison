@@ -16,6 +16,7 @@ import { describe, expect, test } from "bun:test"
 import { summaryRequiredScopes } from "~/modules/agent/context/compaction"
 import { turnEndRequiredScopes } from "~/modules/agent/runtime/agent-service"
 import { failureContextRequiredScopes } from "~/modules/agent/runtime/reinvoke"
+import { isExactOnlyScope } from "~/modules/agent/scopes/scope-coverage"
 import { SCOPE_TAINT_BLOCKED_MESSAGE, UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import {
   expandWildcardStamp,
@@ -114,9 +115,14 @@ describe("scope taint holds no write or action scope", () => {
     const taint = acc.snapshot()
     expect(taint.filter(isWildcardScope)).toEqual([])
     expect(taint).toContain("clevel")
-    // `*` covers every catalogued read scope, so the widening is as wide as before in what it
-    // classifies: it never fails open.
-    for (const read of taintReadCatalog()) expect(taint).toContain(read)
+    // `*` covers every catalogued read scope but an exact-only one, which a `*` grant cannot read
+    // (row security wants its exact grant, and a scope set keeps it only where it is named), so
+    // the widening classifies everything the grant could have read: it never fails open.
+    // Every catalogued read but an exact-only one, which no wildcard holds.
+    for (const read of taintReadCatalog()) {
+      if (isExactOnlyScope(read)) expect(taint).not.toContain(read)
+      else expect(taint).toContain(read)
+    }
     const scoped = createTurnScopeAccumulator()
     scoped.recordInjected(["tickets:*", "*:read"])
     // `p:*` covers the read scopes under `p:`; a `*` anywhere but last covers nothing.
@@ -144,7 +150,11 @@ describe("scope taint holds no write or action scope", () => {
     const lost = turnEndRequiredScopes({ fullEffectiveScope: ceiling, requesterScopes: ["*"] })
     expect(lost.filter(isWildcardScope)).toEqual([])
     expect(lost).toContain("clevel")
-    for (const read of taintReadCatalog()) expect(lost).toContain(read)
+    // Every catalogued read but an exact-only one, which no wildcard holds.
+    for (const read of taintReadCatalog()) {
+      if (isExactOnlyScope(read)) expect(lost).not.toContain(read)
+      else expect(lost).toContain(read)
+    }
     const failure = turnEndRequiredScopes({ requesterScopes: ["*", "clevel"] })
     expect(failure.filter(isWildcardScope)).toEqual([])
     expect(failure).toContain("clevel")
@@ -171,7 +181,11 @@ describe("a failure notice's stamp holds no grant wildcard (rule 10b)", () => {
   test("the requester's `*` is expanded onto the read scopes it covers, never stamped as is", () => {
     const stamp = failureContextRequiredScopes(["*", "kernel:threads:read"])
     expect(stamp.filter(isWildcardScope)).toEqual([])
-    for (const read of taintReadCatalog()) expect(stamp).toContain(read)
+    // Every catalogued read but an exact-only one, which no wildcard holds.
+    for (const read of taintReadCatalog()) {
+      if (isExactOnlyScope(read)) expect(stamp).not.toContain(read)
+      else expect(stamp).toContain(read)
+    }
     expect(stamp).toEqual([...stamp].sort())
     expect(failureContextRequiredScopes(["b:c:read", "a:b:read", "b:c:read"])).toEqual([
       "a:b:read",

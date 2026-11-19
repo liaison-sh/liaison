@@ -471,7 +471,7 @@ describe("routing sorts the feed's audience and never widens it", () => {
       .filter((f) => f.endsWith(".sql"))
       .sort()
       .filter((f) => readFileSync(`${dir}${f}`, "utf8").includes("approval_requests_select"))
-    expect(touching.at(-1)).toBe("0261_every_member_scope_approvers.sql")
+    expect(touching.at(-1)).toBe("0343_stamp_exact_only_scopes.sql")
     const [policy] = (await sql`
       SELECT qual FROM pg_policies
       WHERE schemaname = 'kernel' AND tablename = 'approval_requests'

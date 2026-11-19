@@ -18,6 +18,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
 import { isSharedAgentFrame } from "~/modules/agent/runtime/run-context"
+import type { BridgeManifest } from "~/modules/apps/app-registries"
 
 /** The error code of every refusal below. */
 export const PERSONAL_MAILBOX_SHARED_AGENT_CODE = "personal_mailbox_shared_agent"
@@ -137,6 +138,19 @@ export async function aimsAtOwnPersonalMailbox(
        LIMIT 1`),
   )
   return extractRows(rows).length > 0
+}
+
+/**
+ * Does this app's manifest (the live registry's snapshot) declare personal-agent-only rows
+ * (`personalScope.personalAgentOnly` on a table)? Those are the apps whose calls a shared agent may
+ * aim at a person's own mailbox, so the refusal below is worded for them.
+ */
+export function declaresPersonalAgentOnlyRows(manifest: BridgeManifest | undefined): boolean {
+  return Object.values(manifest?.schema ?? {}).some((table) => {
+    const personalScope = (table as { personalScope?: { personalAgentOnly?: unknown } })
+      .personalScope
+    return personalScope?.personalAgentOnly === true
+  })
 }
 
 /**

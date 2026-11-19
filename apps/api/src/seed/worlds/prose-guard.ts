@@ -196,3 +196,129 @@ export async function scanWorldPackDir(
   }
   return out
 }
+
+// ── Claims a demo's prose never makes ─────────────────────────────────────────
+//
+// A world's prose says what the product does in that world, nothing more: no
+// legal or market claim. A short denylist catches the usual three (a reviewer
+// reads the rest): a compliance promise, a statistic from outside the world, and
+// a comparison with a named product. English and French.
+
+export type ClaimKind = "compliance" | "statistic" | "comparison"
+
+export interface ClaimHit {
+  kind: ClaimKind
+  /** The text that matched. */
+  match: string
+}
+
+/** Products a demo's copy never compares itself with. */
+const NAMED_PRODUCTS =
+  "salesforce|hubspot|zendesk|freshdesk|intercom|pipedrive|odoo|jira|asana|trello|clickup|basecamp|monday\\.com|toggl|quickbooks|xero|chatgpt"
+
+/** Checked in this order; a string reports every rule it breaks, once each. */
+export const CLAIM_DENYLIST: ReadonlyArray<{ kind: ClaimKind; pattern: RegExp }> = [
+  {
+    kind: "compliance",
+    pattern: word(
+      [
+        "gdpr[- ]compliant",
+        "rgpd[- ]compliant",
+        "conforme (?:au|à la|aux) (?:rgpd|gdpr|règlement|loi)",
+        "compliant with",
+        "fully compliant",
+        "certified",
+        "certifiée?s?",
+        "soc ?2",
+        "iso ?27001",
+        "hipaa",
+        "legally binding",
+        "juridiquement contraignante?",
+        "guaranteed?",
+        "garantie?s?",
+        "100 ?% (?:secure|sécurisée?|compliant|conforme)",
+      ].join("|"),
+    ),
+  },
+  {
+    kind: "statistic",
+    pattern: new RegExp(
+      [
+        `${W_START}\\d+(?:[.,]\\d+)?\\s?%\\s+(?:of|des|de)\\s+(?:companies|businesses|teams|agencies|studios|firms|people|users|entreprises|équipes|agences|studios|sociétés|utilisateurs)${W_END}`,
+        `${W_START}(?:according to (?:a|an|the|recent|one) (?:\\w+ )?(?:study|studies|survey|surveys|report|research|poll)|studies show|research shows|surveys show|selon (?:une|les|des|la) (?:\\p{L}+ )?(?:étude|études|enquête|enquêtes|sondage))${W_END}`,
+        `${W_START}\\d+(?:[.,]\\d+)?\\s?(?:x|times|fois) (?:faster|more|less|cheaper|plus|moins)${W_END}`,
+      ].join("|"),
+      "iu",
+    ),
+  },
+  {
+    kind: "comparison",
+    pattern: new RegExp(
+      [
+        `${W_START}(?:better than|faster than|cheaper than|unlike|instead of|replaces?|versus|vs\\.?|mieux que|plus (?:rapide|simple) que|contrairement à|au lieu de|remplace)\\s+(?:${NAMED_PRODUCTS})${W_END}`,
+        `${W_START}(?:${NAMED_PRODUCTS})${W_END}`,
+      ].join("|"),
+      "iu",
+    ),
+  },
+]
+
+/** Every claim a demo's prose must not make, found in `text`. */
+export function claimHits(text: string): ClaimHit[] {
+  const out: ClaimHit[] = []
+  for (const rule of CLAIM_DENYLIST) {
+    const m = rule.pattern.exec(text)
+    if (m) out.push({ kind: rule.kind, match: m[0] })
+  }
+  return out
+}
+
+/** Every string value under `value`, with its path, skipping functions and identifier fields. */
+export function packStrings(
+  value: unknown,
+  opts: { allowFields?: readonly string[]; root?: string } = {},
+): Array<{ field: string; value: string }> {
+  const allow = new Set(opts.allowFields ?? PROSE_GUARD_ALLOWED_FIELDS)
+  const seen = new Set<object>()
+  const out: Array<{ field: string; value: string }> = []
+  const walk = (node: unknown, field: string, name: string | null) => {
+    if (typeof node === "string") {
+      if (name === null || !allow.has(name)) out.push({ field, value: node })
+      return
+    }
+    if (node === null || typeof node !== "object" || seen.has(node)) return
+    seen.add(node)
+    if (Array.isArray(node)) {
+      for (const [i, item] of node.entries()) walk(item, `${field}[${i}]`, name)
+      return
+    }
+    if (node instanceof Map) {
+      for (const [k, v] of node) walk(v, field ? `${field}.${String(k)}` : String(k), String(k))
+      return
+    }
+    if (node instanceof Set) {
+      let i = 0
+      for (const v of node) walk(v, `${field}[${i++}]`, name)
+      return
+    }
+    for (const [k, v] of Object.entries(node)) walk(v, field ? `${field}.${k}` : k, k)
+  }
+  walk(value, opts.root ?? "", null)
+  return out
+}
+
+/** The claims denylist over one world pack directory: every module except tests, every string. */
+export async function scanWorldPackClaims(
+  dir: string,
+): Promise<Array<{ file: string; field: string; kind: ClaimKind; match: string }>> {
+  const out: Array<{ file: string; field: string; kind: ClaimKind; match: string }> = []
+  for (const file of moduleFiles(dir)) {
+    const mod = (await import(pathToFileURL(path.join(dir, file)).href)) as Record<string, unknown>
+    for (const name of Object.keys(mod).sort()) {
+      for (const s of packStrings(mod[name], { root: name })) {
+        for (const hit of claimHits(s.value)) out.push({ file, field: s.field, ...hit })
+      }
+    }
+  }
+  return out
+}

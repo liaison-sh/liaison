@@ -9,6 +9,7 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { foreignLiterals, WORLD_LITERALS } from "../literals"
+import { claimHits, scanWorldPackClaims } from "../prose-guard"
 
 const LOCALES = path.join(import.meta.dir, "../../../../../../packages/shared/src/i18n/locales")
 
@@ -56,5 +57,35 @@ describe("the services world's copy", () => {
     const tour = Object.keys(copy).find((k) => k.startsWith("tours.")) ?? ""
     const planted = `${copy[tour]} ${(WORLD_LITERALS.products ?? [])[0]}`
     expect(foreignLiterals("studio", planted)).toHaveLength(1)
+  })
+})
+
+describe("the services world makes no legal or market claim", () => {
+  it("its pack, tour copy, door and limits promise no compliance, cite no outside statistic and compare with no named product, in every language", async () => {
+    expect(await scanWorldPackClaims(import.meta.dir)).toEqual([])
+    for (const locale of locales()) {
+      const hits = Object.entries(studioCopy(locale)).flatMap(([where, text]) =>
+        claimHits(text).map((h) => `${locale} ${where}: ${h.kind} ${h.match}`),
+      )
+      expect(hits).toEqual([])
+    }
+  })
+
+  it("a compliance promise, an outside statistic or a named product planted in the copy is found", () => {
+    const copy = studioCopy("en").door ?? ""
+    expect(claimHits(copy)).toEqual([])
+    const planted = {
+      compliance: "Every signature is legally binding and GDPR-compliant.",
+      statistic: "According to a survey, 73% of agencies lose a day a week.",
+      comparison: "Faster than Jira for client work.",
+    }
+    for (const [kind, text] of Object.entries(planted)) {
+      expect(claimHits(`${copy} ${text}`).map((h) => h.kind)).toContain(kind)
+    }
+    expect(
+      claimHits("Une étude dit que 40 % des agences perdent du temps, selon une étude.").map(
+        (h) => h.kind,
+      ),
+    ).toEqual(["statistic"])
   })
 })

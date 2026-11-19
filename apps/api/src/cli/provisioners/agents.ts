@@ -41,8 +41,8 @@ import { pickAgentAvatarColor } from "~/modules/agent/directory/avatar-color"
 import { assertNoAdminScopesInRoleCeiling } from "~/modules/agent/directory/ceiling-guard"
 import { COMMON_AGENT_BASE_SCOPES } from "~/modules/agent/directory/common-base-scopes"
 import { installedAppScopes } from "~/modules/agent/directory/installed-scopes"
+import { exactGrantNote, ungrantableCeilingScopes } from "~/modules/agent/scopes/scope-coverage"
 import { writeAuditLog } from "~/modules/audit/service"
-import { hasScope } from "~/modules/permissions/permissions"
 
 /** The same handle grammar as the agent create route. */
 const HANDLE_RE = /^@[a-z0-9][a-z0-9_-]{0,30}$/
@@ -87,18 +87,22 @@ interface DesiredRoleAgent {
 /**
  * A person configuring an agent through a tool can only hand it scopes they
  * hold themselves (the agent's ceiling is a cap on what it may ever do for
- * anyone). The common base every agent carries is not theirs to grant or
+ * anyone), judged on what the entry ADDS to the agent's stored ceiling
+ * (`ungrantableCeilingScopes`; `[]` for an agent being created): a scope the
+ * agent already carries is kept, an exact-only one is added only by its exact
+ * grant. The common base every agent carries is not theirs to grant or
  * withhold, so only the declared scopes are checked.
  */
 function assertActorHoldsAgentScopes(
   actorScopes: string[],
   handle: string,
   scopes: readonly string[],
+  stored: readonly string[],
 ): void {
-  const missing = scopes.filter((s) => !hasScope(s, actorScopes))
+  const missing = ungrantableCeilingScopes(scopes, stored, actorScopes)
   if (missing.length > 0) {
     throw new ConfigError(
-      `agents: '${handle}': you cannot give an agent scopes you do not hold (${missing.join(", ")})`,
+      `agents: '${handle}': you cannot give an agent scopes you do not hold (${missing.join(", ")})${exactGrantNote(missing)}`,
     )
   }
 }
@@ -124,7 +128,6 @@ async function desiredRoleAgent(
   installed: Awaited<ReturnType<typeof installedAppScopes>>,
 ): Promise<DesiredRoleAgent> {
   const handle = normalizeAgentHandle(a.handle)
-  if (ctx.toolPath) assertActorHoldsAgentScopes(ctx.actor.scopes, handle, a.scopes ?? [])
   const scopeCeiling = composeRoleAgentCeiling(a.scopes)
   try {
     assertNoAdminScopesInRoleCeiling("role", scopeCeiling, installed)
@@ -208,6 +211,12 @@ export const agentsProvisioner: Provisioner<ProvisioningConfig> = {
           .where(and(eq(agents.orgId, ctx.orgId), eq(agents.handle, handle)))
           .limit(1),
       )
+      assertActorHoldsAgentScopes(
+        ctx.actor.scopes,
+        handle,
+        a.scopes ?? [],
+        existing?.kind === "role" ? (existing.scopeCeiling ?? []) : [],
+      )
       if (!existing) {
         changes++
         actions.push(`create role agent '${handle}'`)
@@ -248,6 +257,14 @@ export const agentsProvisioner: Provisioner<ProvisioningConfig> = {
           .from(agents)
           .where(and(eq(agents.orgId, ctx.orgId), eq(agents.handle, handle)))
           .limit(1)
+        if (ctx.toolPath) {
+          assertActorHoldsAgentScopes(
+            ctx.actor.scopes,
+            handle,
+            a.scopes ?? [],
+            existing?.kind === "role" ? (existing.scopeCeiling ?? []) : [],
+          )
+        }
 
         if (!existing) {
           const [row] = await tx

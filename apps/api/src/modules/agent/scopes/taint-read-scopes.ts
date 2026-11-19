@@ -35,6 +35,7 @@
 // manifest of the build, and, when the org is known, that org's runtime catalog. The
 // unknown-taint sentinel is not a scope and is always kept: unknown stays held by nobody.
 
+import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { KERNEL_EVERY_MEMBER_SCOPES } from "~/modules/permissions/every-member-scopes"
 import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
@@ -111,19 +112,19 @@ export function isWildcardScope(scope: string): boolean {
 }
 
 /**
- * The catalogued read scopes a grant wildcard covers, by hasScope's rule (permissions.ts,
- * mirrored by migration 0249): `*` covers every one, `p:*` every one under `p:`, and a pattern
- * with a `*` segment anywhere but last covers nothing.
+ * The catalogued read scopes a grant wildcard covers, by the agent-side coverage rule
+ * (`isScopeCovered`): `*` covers every one, `p:*` every one under `p:`, a pattern with a `*`
+ * segment anywhere but last covers nothing, and no wildcard covers an exact-only scope, which
+ * only its exact grant holds (as row security checks it), so a grant set of `*` reads no data
+ * classified by one.
  */
 export function readScopesCoveredByWildcard(
   pattern: string,
   readCatalog: readonly string[],
 ): string[] {
-  if (pattern === "*") return [...readCatalog]
   const parts = pattern.split(":")
   if (parts.indexOf("*") !== parts.length - 1) return []
-  const prefix = pattern.slice(0, -1)
-  return readCatalog.filter((s) => s.startsWith(prefix))
+  return readCatalog.filter((s) => isScopeCovered([s], [pattern]))
 }
 
 export function readScopesImpliedBy(scope: string, readCatalog: readonly string[]): string[] {

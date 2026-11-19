@@ -3,8 +3,17 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { knowledgeDocumentSharingSchema, knowledgeEditScopeSchema } from "@liaison/shared"
+import { personalRestriction } from "~/modules/agent/directory/personal-agent"
+import { holdsEveryScope } from "~/modules/agent/scopes/taint-approval-audience"
+import { readScopesCoveredByWildcard } from "~/modules/agent/scopes/taint-read-scopes"
 import { intersectScopes } from "~/modules/agent/subruns/spawn-agent"
-import { EXACT_ONLY_SCOPES, isExactOnlyScope, isScopeCovered } from "./scope-coverage"
+import {
+  ceilingRefusalMessage,
+  EXACT_ONLY_SCOPES,
+  isExactOnlyScope,
+  isScopeCovered,
+  ungrantableCeilingScopes,
+} from "./scope-coverage"
 
 describe("isScopeCovered", () => {
   it("treats an empty required set as covered", () => {
@@ -110,5 +119,94 @@ describe("exact-only scopes", () => {
     expect(knowledgeDocumentSharingSchema.safeParse({ ...sharing, editScope: null }).success).toBe(
       true,
     )
+  })
+})
+
+describe("ceiling writes are judged on what they add", () => {
+  const margin = "projects:margin:read"
+
+  it("an unchanged or narrowed ceiling holding exact-only scopes saves under `*`", () => {
+    const stored = ["*", "clevel", margin]
+    expect(ungrantableCeilingScopes(stored, stored, ["*"])).toEqual([])
+    expect(ungrantableCeilingScopes(["tickets:tickets:read", "clevel"], stored, ["*"])).toEqual([])
+  })
+
+  it("`*` never newly grants an exact-only scope; its exact grant does", () => {
+    expect(
+      ungrantableCeilingScopes(["kernel:threads:read", margin], ["kernel:threads:read"], ["*"]),
+    ).toEqual([margin])
+    expect(ungrantableCeilingScopes([margin], [], ["*"])).toEqual([margin])
+    expect(ungrantableCeilingScopes(["clevel"], [], ["*"])).toEqual(["clevel"])
+    expect(ungrantableCeilingScopes([margin], [], ["*", margin])).toEqual([])
+    // A stored `*` does not hold it either.
+    expect(ungrantableCeilingScopes(["*", margin], ["*"], ["*"])).toEqual([margin])
+  })
+
+  it("an ordinary scope beyond the stored ceiling needs the writer's own cover", () => {
+    expect(
+      ungrantableCeilingScopes(["tickets:tickets:write"], [], ["kernel:threads:read"]),
+    ).toEqual(["tickets:tickets:write"])
+    expect(ungrantableCeilingScopes(["tickets:tickets:write"], ["tickets:*"], [])).toEqual([])
+  })
+
+  it("the refusal names the scope and says it must be granted exactly", () => {
+    const message = ceilingRefusalMessage([margin])
+    expect(message).toContain(margin)
+    expect(message).toContain("exactly")
+    expect(ceilingRefusalMessage(["tickets:tickets:write"])).not.toContain("exactly")
+  })
+})
+
+describe("a personal agent's restriction records only what was removed", () => {
+  const owner = ["*", "clevel"]
+
+  it("resending the ceiling an owner's scopes make narrows nothing", () => {
+    expect(personalRestriction(owner, owner, owner, null)).toBeNull()
+  })
+
+  it("narrowing keeps clevel when the written ceiling keeps it", () => {
+    const r = personalRestriction(owner, ["kernel:threads:read", "clevel"], owner, null)
+    expect(r).toEqual(["kernel:threads:read", "clevel"])
+  })
+
+  it("clevel removed from the ceiling the admin was shown is dropped", () => {
+    expect(personalRestriction(owner, ["kernel:threads:read"], owner, null)).toEqual([
+      "kernel:threads:read",
+    ])
+    expect(personalRestriction(owner, ["*"], owner, null)).toEqual(["*"])
+  })
+
+  it("an owner's exact-only scope the shown ceiling did not carry is kept, not silently dropped", () => {
+    // The ceiling had not caught up with the owner's clevel grant: the admin could not name it.
+    expect(personalRestriction(owner, ["*"], ["*"], null)).toBeNull()
+    expect(personalRestriction(owner, ["kernel:threads:read"], ["*"], null)).toEqual([
+      "kernel:threads:read",
+      "clevel",
+    ])
+    // Under an earlier restriction it was left out on purpose and stays out.
+    expect(personalRestriction(owner, ["kernel:threads:read"], ["*"], ["*"])).toEqual([
+      "kernel:threads:read",
+    ])
+  })
+})
+
+describe("taint audiences and wildcard reads use exact-aware coverage", () => {
+  const margin = "projects:margin:read"
+
+  it("a `*`-only holder does not hold an exact-only taint scope; its exact holder does", () => {
+    expect(holdsEveryScope(["*"], [margin])).toBe(false)
+    expect(holdsEveryScope(["projects:*"], [margin])).toBe(false)
+    expect(holdsEveryScope(["*", margin], [margin, "tickets:tickets:read"])).toBe(true)
+    expect(holdsEveryScope(["*"], ["tickets:tickets:read"])).toBe(true)
+  })
+
+  it("a grant wildcard expands onto no exact-only read", () => {
+    const catalog = ["tickets:tickets:read", margin, "projects:tasks:read"]
+    expect(readScopesCoveredByWildcard("*", catalog)).toEqual([
+      "tickets:tickets:read",
+      "projects:tasks:read",
+    ])
+    expect(readScopesCoveredByWildcard("projects:*", catalog)).toEqual(["projects:tasks:read"])
+    expect(readScopesCoveredByWildcard("*:read", catalog)).toEqual([])
   })
 })

@@ -70,3 +70,39 @@ export const EXACT_ONLY_SCOPES: ReadonlySet<string> = new Set([
 export function isExactOnlyScope(scope: string): boolean {
   return EXACT_ONLY_SCOPES.has(scope) || (scope !== "*" && !scope.includes(":"))
 }
+
+/**
+ * The scopes of a ceiling write (`written`) that a granter holding `granted` may not put on an
+ * agent whose stored ceiling is `stored` (`[]` for an agent being created or imported). A write is
+ * judged on what it ADDS: a scope the stored ceiling already covers is kept, whoever writes it, so
+ * resending a ceiling unchanged (as a settings form does) or narrowing it is always allowed. Every
+ * other scope must be covered by the granter, an exact-only one by its exact grant, so `*` never
+ * newly hands out a scope row security checks exactly.
+ */
+export function ungrantableCeilingScopes(
+  written: readonly string[],
+  stored: readonly string[],
+  granted: readonly string[],
+): string[] {
+  const storedList = [...stored]
+  const grantedList = [...granted]
+  return [...new Set(written)].filter(
+    (s) => !isScopeCovered([s], storedList) && !isScopeCovered([s], grantedList),
+  )
+}
+
+/**
+ * For a refusal naming `scopes` a writer may not grant: which of them only an exact grant holds
+ * (a `*`, a glob or a parent scope does not), as a clause to append, or nothing.
+ */
+export function exactGrantNote(scopes: readonly string[]): string {
+  const exact = scopes.filter(isExactOnlyScope)
+  return exact.length > 0
+    ? `; ${exact.join(", ")} must be granted to you exactly (a wildcard, a glob or a parent scope does not hold it)`
+    : ""
+}
+
+/** Why a ceiling write was refused, from `ungrantableCeilingScopes`' answer. */
+export function ceilingRefusalMessage(ungrantable: readonly string[]): string {
+  return `that ceiling is wider than what you may grant: ${ungrantable.join(", ")}${exactGrantNote(ungrantable)}`
+}

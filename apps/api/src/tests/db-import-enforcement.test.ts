@@ -989,11 +989,13 @@ describe("db import enforcement", () => {
     "seed/factories/people/people.ts",
     // Bare rows for tests (an org, a user, a role, an audit entry; a connected
     // account, an MCP connection, a pending event; an org's billing state and
-    // credit rows) written over the system connection as the provisioning and
-    // billing paths write them, each bound to the org the test names.
+    // credit rows; a thread, a participant, a message with a known stamp)
+    // written over the system connection as the provisioning, billing and
+    // thread paths write them, each bound to the org the test names.
     "seed/factories/org/rows.ts",
     "seed/factories/org/platform-rows.ts",
     "seed/factories/billing/billing.ts",
+    "seed/factories/threads/rows.ts",
     // A kernel.files row with no object behind it, written as the upload and mail import
     // paths write it (privileged), for tests that fake the storage read.
     "seed/factories/files/file-row.ts",

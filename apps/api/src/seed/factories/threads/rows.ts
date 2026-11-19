@@ -28,10 +28,13 @@ export async function seedThreadParticipantRow(row: ThreadParticipantRowSeed): P
   )
 }
 
-/** One message row; its id. */
+/** One message row; its id. The stamp of required scopes is the caller's, always explicit. */
 export async function seedMessageRow(row: MessageRowSeed): Promise<string> {
   const [created] = await withSystemDb("seed-message-row", (db) =>
-    db.insert(messages).values(row).returning({ id: messages.id }),
+    db
+      .insert(messages)
+      .values({ ...row, requiredScopes: row.requiredScopes })
+      .returning({ id: messages.id }),
   )
   return created?.id as string
 }

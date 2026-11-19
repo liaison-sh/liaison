@@ -183,6 +183,13 @@ export interface RunContext {
    */
   humanTurn?: boolean
   /**
+   * The background turn an approved call hands back to its agent (approval-result-turn.ts): it
+   * answers the person's own message (`askId`) right after the person approved a call of it.
+   * Not a typed turn (no code on the person's machine without approval), but a card it parks
+   * counts as asked by that person (`runAnswersPerson`), so the person's approval decides it.
+   */
+  answersApprovedCall?: true
+  /**
    * A demo visitor's turn (box key or the visitor's own key): its tool results
    * reach the model at the visitor limits (result-truncation.ts).
    */
@@ -457,6 +464,21 @@ export function inheritedRunFields(
 export function runHasPerson(frame: RunContext): boolean {
   if (frame.routineId || frame.background || frame.coordinated) return false
   return frame.humanTurn === true || frame.gatewayTurn !== undefined || isPersonClientFrame(frame)
+}
+
+/**
+ * Whether a call parked from this turn was asked by a person (`metadata.originHasPerson`): a
+ * person's own turn, or the turn an approved call hands back to its agent, which answers that
+ * person's own message. Never a routine tick, a sub-run or an agent's ask.
+ */
+export function runAnswersPerson(frame: RunContext): boolean {
+  if (runHasPerson(frame)) return true
+  return (
+    frame.answersApprovedCall === true &&
+    !frame.routineId &&
+    !frame.coordinated &&
+    frame.nestingDepth === 0
+  )
 }
 
 /**

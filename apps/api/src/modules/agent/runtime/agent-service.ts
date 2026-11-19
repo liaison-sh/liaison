@@ -1287,6 +1287,8 @@ interface RunAgentChatParams {
    * and push like a routine's post (`SendMessageParams.unprompted`).
    */
   unprompted?: boolean
+  /** The turn an approved call hands back to its agent: see RunContext.answersApprovedCall. */
+  answersApprovedCall?: true
   /**
    * Where the turn came from, for its durable record (turn-ledger.ts). Absent:
    * "chat" for a person's turn, "thread" for one that answers an existing message.
@@ -2390,6 +2392,9 @@ async function runAgentChatTurn(
             ? ("agent" as const)
             : ("external-app" as const),
         }
+      : {}),
+    ...(params.answersApprovedCall && params.background
+      ? { answersApprovedCall: true as const }
       : {}),
     // See humanTypedTurn above.
     // Code on the person's own machine (run_on_my_computer) runs without an approval only here.
@@ -5013,6 +5018,8 @@ async function runThreadTurn(
     askId?: string
     /** A turn nobody asked for, whose reply is news to the person: see RunAgentChatParams.unprompted. */
     unprompted?: boolean
+    /** The turn an approved call hands back: see RunContext.answersApprovedCall. */
+    answersApprovedCall?: true
     /** Continue a claimed turn (turn-resume.ts): see RunAgentChatParams.resume. */
     resume?: { turn: AgentTurnRow; steps: JournalStep[] }
     /** The turn's durable origin; absent inside a job: the job's (job-origin.ts). */
@@ -5283,6 +5290,7 @@ async function runThreadTurn(
     ...(turnContext?.sessionRestricted ? { sessionRestricted: true } : {}),
     ...(turnContext?.askId ? { askId: turnContext.askId } : {}),
     ...(turnContext?.unprompted ? { unprompted: true } : {}),
+    ...(turnContext?.answersApprovedCall ? { answersApprovedCall: true as const } : {}),
     ...(turnContext?.replyRootId !== undefined ? { replyRootId: turnContext.replyRootId } : {}),
     ...(resume ? { resume } : {}),
     ...(retryTurn ? { retryTurn } : {}),

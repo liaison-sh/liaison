@@ -8,6 +8,7 @@
 // regular org, gets `null` and the fetch goes ahead as usual.
 import { isDemoOrgId } from "~/modules/demo/demo-org"
 import { SAAS_FIXTURE_PAGES } from "~/modules/demo/worlds/saas/web-fixture"
+import { STUDIO_FIXTURE_PAGES } from "~/modules/demo/worlds/studio/web-fixture"
 
 export interface DemoWebFetchFixture {
   status: number
@@ -70,10 +71,10 @@ export async function demoWebFetchFixture(
   const target = hostOf(url)
   if (!target) return null
   const host = target.host.replace(/^www\./, "")
-  const saasPages = SAAS_FIXTURE_PAGES[host]
-  if (host !== PROSPECT_SITE_HOST && !saasPages) return null
+  const worldPages = SAAS_FIXTURE_PAGES[host] ?? STUDIO_FIXTURE_PAGES[host]
+  if (host !== PROSPECT_SITE_HOST && !worldPages) return null
   if (!(await isDemoOrgId(orgId))) return null
-  const page = (saasPages ?? PROSPECT_PAGES)[target.path]
+  const page = (worldPages ?? PROSPECT_PAGES)[target.path]
   return page
     ? { status: 200, body: page, contentType: "text/html; charset=utf-8" }
     : {

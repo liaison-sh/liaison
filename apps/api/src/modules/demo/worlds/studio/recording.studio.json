@@ -1,0 +1,333 @@
+{
+  "version": 1,
+  "title": "Fix the nightly stock export that is empty since the last release",
+  "prompt": "The nightly stock export of the client's warehouse is empty since the last release, so their suppliers get no file. Find out why in stock-data, fix it with a test, and open a pull request. This session is recorded for the demo.",
+  "repo": "stock-data",
+  "model": "claude-sonnet-4-5",
+  "branch": "fix/stock-export-filter",
+  "events": [
+    {
+      "delayMs": 400,
+      "type": "system",
+      "payload": {
+        "subtype": "start",
+        "text": "Recorded session started",
+        "data": {
+          "sessionId": "recorded-stock-data-0001",
+          "claudeCode": "recorded session",
+          "branch": "fix/stock-export-filter"
+        }
+      }
+    },
+    {
+      "delayMs": 600,
+      "type": "user_message",
+      "payload": {
+        "text": "The nightly stock export of the client's warehouse is empty since the last release, so their suppliers get no file. Find out why in stock-data, fix it with a test, and open a pull request. This session is recorded for the demo."
+      }
+    },
+    {
+      "delayMs": 2200,
+      "type": "thinking",
+      "payload": {
+        "text": "An export that runs but writes no lines usually filters every row out. Start at the export query, then look at what the last release changed in the stock table."
+      }
+    },
+    {
+      "delayMs": 1500,
+      "type": "assistant_text",
+      "payload": {
+        "text": "I'll start by finding where the nightly export selects the stock lines."
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_01",
+        "name": "Grep",
+        "input": {
+          "pattern": "stockLinesFor",
+          "path": "src"
+        }
+      }
+    },
+    {
+      "delayMs": 700,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_01",
+        "isError": false,
+        "output": "src/export/nightly.ts:18:  const lines = await stockLinesFor(warehouse.id)\nsrc/stock/repository.ts:9:export async function stockLinesFor(warehouseId: string) {"
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_02",
+        "name": "Read",
+        "input": {
+          "file_path": "src/stock/repository.ts"
+        }
+      }
+    },
+    {
+      "delayMs": 700,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_02",
+        "isError": false,
+        "output": "9   export async function stockLinesFor(warehouseId: string) {\n10    return db.stock.findMany({\n11      where: { warehouseId, status: \"active\" },\n12    })\n13  }"
+      }
+    },
+    {
+      "delayMs": 1200,
+      "type": "assistant_text",
+      "payload": {
+        "text": "The export keeps lines whose status is \"active\". Let me check what the last release did to that column."
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_03",
+        "name": "Bash",
+        "input": {
+          "command": "git log -1 --stat -- migrations",
+          "description": "Show the last change to the stock table"
+        }
+      }
+    },
+    {
+      "delayMs": 800,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_03",
+        "isError": false,
+        "output": "migrations/0042_stock_status.sql | 3 +++\n    stock: rename status \"active\" to \"in_stock\""
+      }
+    },
+    {
+      "delayMs": 1300,
+      "type": "assistant_text",
+      "payload": {
+        "text": "Found it. The release renamed the status \"active\" to \"in_stock\", and the export still filters on the old value, so every line is left out. I'll filter on the new value and add a test."
+      }
+    },
+    {
+      "delayMs": 600,
+      "type": "todo",
+      "payload": {
+        "from": "TodoWrite",
+        "items": [
+          {
+            "content": "Filter the nightly export on the renamed stock status",
+            "status": "in_progress",
+            "activeForm": "Filtering the nightly export on the renamed stock status"
+          },
+          {
+            "content": "Add a test for the export",
+            "status": "pending",
+            "activeForm": "Adding a test for the export"
+          }
+        ]
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_04",
+        "name": "Edit",
+        "input": {
+          "file_path": "src/stock/repository.ts",
+          "old_string": "where: { warehouseId, status: \"active\" },",
+          "new_string": "where: { warehouseId, status: \"in_stock\" },"
+        }
+      }
+    },
+    {
+      "delayMs": 500,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_04",
+        "isError": false,
+        "output": "The file src/stock/repository.ts has been updated."
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_05",
+        "name": "Write",
+        "input": {
+          "file_path": "tests/nightly-export.test.ts",
+          "content": "import { expect, test } from \"bun:test\"\nimport { nightlyRows } from \"../src/export/nightly\"\n\ntest(\"the nightly export carries every line in stock\", async () => {\n  const rows = await nightlyRows(fixtureWarehouse({ inStock: 3 }))\n  expect(rows).toHaveLength(3)\n})\n"
+        }
+      }
+    },
+    {
+      "delayMs": 500,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_05",
+        "isError": false,
+        "output": "File created successfully at: tests/nightly-export.test.ts"
+      }
+    },
+    {
+      "delayMs": 600,
+      "type": "todo",
+      "payload": {
+        "from": "TodoWrite",
+        "items": [
+          {
+            "content": "Filter the nightly export on the renamed stock status",
+            "status": "completed",
+            "activeForm": "Filtering the nightly export on the renamed stock status"
+          },
+          {
+            "content": "Add a test for the export",
+            "status": "completed",
+            "activeForm": "Adding a test for the export"
+          }
+        ]
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_06",
+        "name": "Bash",
+        "input": {
+          "command": "bun test",
+          "description": "Run the stock data tests"
+        }
+      }
+    },
+    {
+      "delayMs": 1400,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_06",
+        "isError": false,
+        "output": "nightly-export.test.ts: 1 pass\nrepository.test.ts: 6 pass\nsuppliers.test.ts: 4 pass\n\n11 pass, 0 fail"
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_07",
+        "name": "Bash",
+        "input": {
+          "command": "git checkout -b fix/stock-export-filter && git commit -am \"export: filter stock lines on the renamed status\"",
+          "description": "Commit the fix on a branch"
+        }
+      }
+    },
+    {
+      "delayMs": 700,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_07",
+        "isError": false,
+        "output": "Switched to a new branch 'fix/stock-export-filter'\n[fix/stock-export-filter 3c9e5b1] export: filter stock lines on the renamed status\n 2 files changed, 8 insertions(+), 1 deletion(-)"
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "assistant_text",
+      "payload": {
+        "text": "All 11 tests pass and the fix is committed. Pushing the branch needs your permission."
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "permission_request",
+      "payload": {
+        "requestId": "recorded-permission-1",
+        "tool": "Bash",
+        "input": {
+          "command": "git push -u origin fix/stock-export-filter && gh pr create --fill",
+          "description": "Push the branch and open a pull request"
+        },
+        "reason": "Push the branch to the shared repository and open a pull request."
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "tool_call",
+      "payload": {
+        "id": "toolu_08",
+        "name": "Bash",
+        "input": {
+          "command": "git push -u origin fix/stock-export-filter && gh pr create --fill",
+          "description": "Push the branch and open a pull request"
+        }
+      }
+    },
+    {
+      "delayMs": 1200,
+      "type": "tool_result",
+      "payload": {
+        "id": "toolu_08",
+        "isError": false,
+        "output": "branch 'fix/stock-export-filter' set up to track 'origin/fix/stock-export-filter'.\nCreating pull request for fix/stock-export-filter into main\nhttps://github-standin.example/haldenstudio/stock-data/pull/31"
+      }
+    },
+    {
+      "delayMs": 600,
+      "type": "usage",
+      "payload": {
+        "tokensIn": 36210,
+        "tokensOut": 2840,
+        "model": "claude-sonnet-4-5",
+        "cacheRead": 24100
+      }
+    },
+    {
+      "delayMs": 900,
+      "type": "assistant_text",
+      "payload": {
+        "text": "Done. The release renamed the stock status and the nightly export still filtered on the old one, so it wrote no lines. It now filters on the new status, a test covers it, and the pull request is open: https://github-standin.example/haldenstudio/stock-data/pull/31"
+      }
+    },
+    {
+      "delayMs": 500,
+      "type": "result",
+      "payload": {
+        "text": "Fixed the nightly stock export that was empty since the last release: it filters on the renamed stock status. Added tests/nightly-export.test.ts; all 11 tests pass. Pull request: https://github-standin.example/haldenstudio/stock-data/pull/31 (recorded session).",
+        "isError": false,
+        "subtype": "success",
+        "branch": "fix/stock-export-filter",
+        "pushed": true,
+        "prUrl": "https://github-standin.example/haldenstudio/stock-data/pull/31"
+      }
+    }
+  ],
+  "denied": [
+    {
+      "delayMs": 1000,
+      "type": "assistant_text",
+      "payload": {
+        "text": "Understood, I won't push. The fix and its test are committed on the local branch fix/stock-export-filter, so you can review them and push when you are ready."
+      }
+    },
+    {
+      "delayMs": 500,
+      "type": "result",
+      "payload": {
+        "text": "Stopped by you before pushing. The fix is committed on the local branch fix/stock-export-filter; nothing left this computer (recorded session).",
+        "isError": false,
+        "subtype": "success",
+        "branch": "fix/stock-export-filter",
+        "pushed": false
+      }
+    }
+  ]
+}

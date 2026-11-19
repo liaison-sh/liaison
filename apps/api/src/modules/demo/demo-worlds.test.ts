@@ -4,6 +4,7 @@
 // intersected with the worlds that have a seed pack, and how the two pool
 // variables are read and refused.
 import { afterEach, describe, expect, it } from "bun:test"
+import { DEMO_SCENARIO_TOURS, DEMO_WORLD_NEEDS, demoScenarioTourId } from "@liaison/shared"
 import { env, envSchema, parseDemoPoolSizes, parseDemoWorldList } from "~/lib/env"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
 import {
@@ -31,6 +32,16 @@ describe("enabled demo worlds", () => {
     // Once its door is there, the same env runs it.
     DemoWorldsTestAccess.setSeedable(["products", "saas", "studio"])
     expect(enabledDemoWorlds()).toEqual(["products", "studio"])
+  })
+
+  it("a world with every tour but no door yet is not offered at the door", () => {
+    // Every services scenario has its tour now; its door is what it still lacks.
+    const ids = new Set<string>(DEMO_SCENARIO_TOURS.map((t) => t.id))
+    expect(
+      DEMO_WORLD_NEEDS.studio.every((need) => ids.has(demoScenarioTourId("studio", need))),
+    ).toBe(true)
+    expect(hasDoorTours("studio")).toBe(false)
+    expect(hasDoorTours("products")).toBe(true)
   })
 
   it("unset runs the default world only, and the worlds come back in their fixed order", () => {

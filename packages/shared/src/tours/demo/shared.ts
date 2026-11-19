@@ -41,6 +41,12 @@ export interface ScenarioCfg {
   copy?: string
   /** The injector of the scenario's world beat (default: the products world's). */
   injector?: string
+  /**
+   * About how long the scenario takes, in minutes, as its tile on the door
+   * says it (default: the need's usual figure). Set where a world's scenario
+   * runs longer than the need's others.
+   */
+  minutes?: number
 }
 
 /** The configuration every scenario shipped before there were several worlds is built from. */

@@ -215,6 +215,10 @@ const TREATED: Record<string, [Treatment, string]> = {
   ],
   "modules/demo/demo-pool.ts": ["one-row", "a demo org's own owner"],
   "modules/demo/demo-verification.ts": ["one-row", "a demo org's own visitor"],
+  "modules/demo/worlds/studio/scenario-start.ts": [
+    "member-filter",
+    "the world's own teammate a guided tour starts a routine for, by name, members only",
+  ],
   "modules/demo/worlds/saas/scenario-start.ts": [
     "member-filter",
     "the world's own teammate a guided tour starts a routine for, by name, members only",

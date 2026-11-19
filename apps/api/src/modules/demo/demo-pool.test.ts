@@ -1043,10 +1043,11 @@ describe("demo warm pool", () => {
     expect(demoPoolTargets()).toEqual({ products: 2, saas: 2, studio: 0 })
     env.LIAISON_DEMO_POOL_SIZES = ""
     expect(demoPoolTargets()).toEqual({ products: 3, saas: 2, studio: 0 })
-    // Without the packs, only the default world runs and takes the whole size.
+    // From the packs this build ships: the services world has its pack and its door, so it
+    // shares the size with the default world.
     DemoWorldsTestAccess.setSeedable(null)
     env.LIAISON_DEMO_WORLDS = "products,studio"
-    expect(demoPoolTargets()).toEqual({ products: 5, saas: 0, studio: 0 })
+    expect(demoPoolTargets()).toEqual({ products: 3, saas: 0, studio: 2 })
   })
 
   it("refill seeds the world missing the most first", async () => {

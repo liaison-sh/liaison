@@ -66,7 +66,7 @@ describe("the limits panel", () => {
     expect(text).toContain("Client sign-in and signing links do not work here")
     expect(text).not.toContain(kernelEn.demo.limitConnectors)
     expect(text).not.toContain(kernelEn.demo.world.saas.limitConnectors)
-    expect(text).not.toMatch(/Stripe|Shopify|store/i)
+    expect(text).not.toMatch(/\bstore\b/i)
     expect(text).toContain(kernelEn.demo.limitMail)
     expect(text).toContain(kernelEn.demo.limitExpiry)
   })

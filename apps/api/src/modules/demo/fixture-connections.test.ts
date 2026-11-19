@@ -68,6 +68,7 @@ async function appFetch(
 
 describe("fixture connections off the demo instance", () => {
   let worldOrgId: string
+  let studioOrgId: string
   let plainOrgId: string
 
   beforeAll(async () => {
@@ -76,6 +77,8 @@ describe("fixture connections off the demo instance", () => {
     plainOrgId = (await ensureOrg({ slug: "fixture-conn-plain", name: "Fixture Plain" })).orgId
     // What `liaison seed --tier lively` leaves on a self-hosted box: the demo world's org.
     await markOrgAsDemo(worldOrgId, visitorMarker(24))
+    studioOrgId = (await ensureOrg({ slug: "fixture-conn-studio", name: "Fixture Studio" })).orgId
+    await markOrgAsDemo(studioOrgId, visitorMarker(24, new Date(), undefined, { worldId: "studio" }))
     invalidateDemoMarker()
     SandboxBridgeTestAccess.setFetch((async (url: string | URL) => {
       onTheWire.push(String(url))
@@ -143,7 +146,7 @@ describe("fixture connections off the demo instance", () => {
   it("answers the services world's GitHub sentinel in-process with demo mode off, and refuses it from an org without the world", async () => {
     const auth = { Authorization: `Bearer ${DEMO_GITHUB_SENTINEL_TOKEN}` }
     // The world's org holds no stand-in connection here: the stand-in itself says so, in-process.
-    const world = await appFetch(worldOrgId, "github", GITHUB_USER, { headers: auth })
+    const world = await appFetch(studioOrgId, "github", GITHUB_USER, { headers: auth })
     expect(world.status).toBe(403)
     expect(world.body).toContain("stand-in")
     const plain = await appFetch(plainOrgId, "github", GITHUB_USER, { headers: auth })

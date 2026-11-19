@@ -24,6 +24,7 @@ import {
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { users } from "~/db/schema/kernel"
+import { schemaRef } from "~/db/schema-ref"
 import { agents } from "~/db/schema/kernel/agents"
 import { setPortalShare } from "~/modules/portal/access"
 import { seedContext } from "~/seed/context"
@@ -142,7 +143,7 @@ async function startProjects(orgId: string): Promise<void> {
         drizzleSql`SELECT p.id::text AS project_id, p.company_id::text AS company_id,
                           c.id::text AS contact_id
                      FROM app_projects.projects p
-                     JOIN kernel.contacts c ON c.org_id = p.org_id
+                     JOIN ${drizzleSql.raw(schemaRef("kernel"))}.contacts c ON c.org_id = p.org_id
                                            AND lower(c.email) = ${STUDIO_REPORT_CLIENT_EMAIL}
                     WHERE p.org_id = ${orgId}::uuid AND p.name = ${STUDIO_REPORT_PROJECT_NAME}
                       AND p.company_id IS NOT NULL

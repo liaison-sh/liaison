@@ -942,15 +942,27 @@ export async function processTranslationEvent(
     )
     for (const id of missing) anchorByUser.set(id, found.get(id) ?? null)
   }
+  // A recipient who holds the row for a colleague away gets `metadata.forUserId`, so Home lists
+  // it under what they cover: named by the event (`data.standingInFor`, recipient id to the
+  // absent person's id), or found by an `account_manager` recipient that added a stand-in.
+  const standingInFor: Record<string, unknown> = (() => {
+    const map = (event.data as { standingInFor?: unknown } | undefined)?.standingInFor
+    return map && typeof map === "object" && !Array.isArray(map)
+      ? { ...(map as Record<string, unknown>) }
+      : {}
+  })()
   /** A row's metadata for one recipient: the anchor only when they may see it. */
   function metadataFor(
     userId: string,
     metadata: Record<string, unknown> | null,
   ): Record<string, unknown> | null {
     const threadAnchor = anchorByUser.get(userId) ?? null
-    return threadAnchor && metadata?.messageId !== undefined
-      ? { ...metadata, threadAnchor }
-      : metadata
+    const anchored =
+      threadAnchor && metadata?.messageId !== undefined ? { ...metadata, threadAnchor } : metadata
+    const forUserId = standingInFor[userId]
+    return typeof forUserId === "string" && forUserId !== userId
+      ? { ...(anchored ?? {}), forUserId }
+      : anchored
   }
   // Phase 16 Task A2 — derive axes from event.metadata once per event; passed
   // into the subscription evaluator alongside the translation's kind. Keys in
@@ -971,7 +983,15 @@ export async function processTranslationEvent(
     // Repairs the Shopify/invoicing manifests too. `perTranslationCtx` below
     // spreads `recipientCtx`, so this default propagates automatically.
     loadScopeHolders: deps.recipientContext?.loadScopeHolders ?? defaultLoadScopeHolders,
-    loadAccountManager: deps.recipientContext?.loadAccountManager ?? loadAccountManager,
+    loadAccountManager: async (orgId, companyId, opts) => {
+      const found = await (deps.recipientContext?.loadAccountManager ?? loadAccountManager)(
+        orgId,
+        companyId,
+        opts,
+      )
+      if (Array.isArray(found)) Object.assign(standingInFor, standInMark(found).standingInFor)
+      return found
+    },
     // Members only, and for a record closed to the organization its list only (a derived
     // copy: recipients follow the list whatever the manifest's recipient kind).
     keepMembers:
@@ -1450,6 +1470,17 @@ function keepListed(event: { data?: unknown }, ids: string[]): string[] {
   if (!Array.isArray(list)) return ids
   const named = new Set(list.filter((x): x is string => typeof x === "string"))
   return ids.filter((id) => named.has(id))
+}
+
+/**
+ * The `data.standingInFor` mark for a list `loadAccountManager` returned: its second id
+ * holds the rows for the first, who is away.
+ */
+export function standInMark(ids: readonly string[] | null): {
+  standingInFor?: Record<string, string>
+} {
+  const [manager, next] = ids ?? []
+  return manager && next ? { standingInFor: { [next]: manager } } : {}
 }
 
 /**

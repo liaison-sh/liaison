@@ -289,6 +289,7 @@ import {
 } from "~/modules/agent/skills/mid-turn-skills"
 import { clamp, intersectScopes, isScopeSubset } from "~/modules/agent/subruns/spawn-agent"
 import { resultHintsShownIn } from "~/modules/agent/tools/kernel-result-hints"
+import { modelTimeZoneOf } from "~/modules/agent/tools/model-times"
 import { uiEffectRequester } from "~/modules/agent/tools/open-targets"
 import {
   ALL_DEFERRED_TOOLS_UNLOCKED,
@@ -2334,6 +2335,8 @@ async function runAgentChatTurn(
   const inherited = inheritedRunFields(currentRunContext())
   const tokenAccount = inherited.tokenAccount
   const runFrame = {
+    // The zone the model reads tool results' times in: the person's, else the org's.
+    modelTimeZone: await modelTimeZoneOf(orgId, actor.userId),
     runId: rootRunId,
     parentRunId: null,
     rootRunId,

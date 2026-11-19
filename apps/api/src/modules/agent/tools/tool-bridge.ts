@@ -34,6 +34,7 @@ import {
 } from "~/modules/agent/scopes/scope-taint"
 import { watchTaintMarks } from "~/modules/agent/scopes/taint"
 import { isHostOnlyParam, stripHostOnlyParams } from "~/modules/agent/tools/host-only-params"
+import { timesForModel } from "~/modules/agent/tools/model-times"
 import { toJsonValue, toolFailureModelOutput } from "~/modules/agent/tools/tool-failure-output"
 import { rememberHeldToolSet } from "~/modules/agent/tools/tool-name-resolve"
 import { hiddenToolAliases } from "~/modules/agent/tools/tool-rank"
@@ -937,11 +938,15 @@ export function buildToolSet(
       // A failed call goes to the model as an error output (`status: "failed"`), never as a
       // plain JSON result it could read as success or as pending (tool-failure-output.ts).
       // Everything else gets the SDK's own default: text for a string, JSON otherwise.
-      toModelOutput: ({ output }: { output: unknown }) =>
-        toolFailureModelOutput(output) ??
-        (typeof output === "string"
-          ? { type: "text" as const, value: output }
-          : { type: "json" as const, value: toJsonValue(output) }),
+      // Its times are in the reader's zone (model-times.ts); the stored result keeps UTC.
+      toModelOutput: ({ output }: { output: unknown }) => {
+        const zone = runFrame?.modelTimeZone
+        const failed = toolFailureModelOutput(output)
+        if (failed) return { ...failed, value: timesForModel(failed.value, zone) }
+        return typeof output === "string"
+          ? { type: "text" as const, value: timesForModel(output, zone) }
+          : { type: "json" as const, value: timesForModel(toJsonValue(output), zone) }
+      },
       // The AI SDK passes an options object carrying `abortSignal` as the second
       // argument. It used to be ignored; the mailbox decrypt wait below needs it,
       // because a turn that dies mid-wait must settle its promise and evict its

@@ -32,6 +32,8 @@ The agent knows the page you send from. When a record is open there, whether the
 
 A file you attach reaches the agent with your message, whether you type text with it or not, so you can attach an export and write "please import this".
 
+The agent reads and tells times in your timezone (the one in your profile, else the workspace's): what its tools return is stored in UTC, and the agent gets each time converted, with its offset, so it never quotes a time an hour off your screen.
+
 The agent answers in the language you write in. When one message does not tell (an address, a company name, a one-word reply), it keeps the language of your earlier messages, then the language set in your settings (or the workspace's). What you paste and what its tools read never change it.
 
 You can follow a turn while it runs from any open page. It shows as soon as the server takes your message on, before the agent writes anything, and a newer request to the same agent shows beside a turn still answering. A page you open or reload mid-turn shows what the agent has written and the tools it has called so far, then keeps up. A turn's activity stays readable for ten minutes after it ends. Several reads of apps in a row show as one line ("Read 3 apps"); an app reads as not answering only when none of its calls got an answer, so a call the agent made again and that then answered does not count. Its thinking, tool calls and text show in the order the agent wrote them, also after the connection drops and comes back mid-turn, and the saved message keeps that order when the turn ends.

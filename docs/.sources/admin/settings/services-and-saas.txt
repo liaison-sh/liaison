@@ -3,3 +3,4 @@ Profile Away: what the next in line gets, no new rights, private mail and conver
 Next in line's Home says who is away and until when -> apps/web/src/modules/shell/route-line.tsx (StandingInLine) ; apps/web/src/modules/shell/route-line.tsx (standingInText) ; apps/api/src/modules/users/away.ts (standingInForNames)
 Profile Away: From your calendar, Yes and No questions -> apps/web/src/modules/settings/ProfileSettings.tsx (AwaySection) ; apps/api/src/modules/users/away.ts (answerCalendarAway)
 Users: deactivation asks who takes over a manager's companies -> apps/web/src/modules/settings/AdminUsers.tsx (AdminUsers)
+Show what you cover lists approvals held and work passed on, such as a portal request -> apps/web/src/modules/shell/route-line.tsx (coversFor) ; apps/api/src/apps/tickets/create.ts (portalRequestRecipient) ; apps/api/src/modules/attention/translator.ts (standInMark)

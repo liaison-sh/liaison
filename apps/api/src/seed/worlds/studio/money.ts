@@ -17,7 +17,9 @@
 //   16,000, and Launch at 16,000 less the advance (3,200); invoiced 12,800 + 16,000 + 16,000;
 // - the publishing retainer: 4,500 a month for 40 h, 120 an hour above; last month 46 h, so
 //   6 h above: 4,500 + 720 = 5,220 excluding VAT, 6,264.00 with it;
-// - the smaller retainer: 1,200 a month for 10 h, billed before the month.
+// - the smaller retainer: 1,200 a month for 10 h, billed before the month: a plain monthly
+//   schedule on the 1st, as the invoicing app runs one (each run bills the month that holds its
+//   billing day), so the month that started is invoiced and the next date is the app's.
 import { addCalendarDays, isoWeekdayOf } from "@liaison/shared"
 import { STUDIO_PAST_CLIENTS } from "./fiction"
 import { parisCivil } from "./plan"
@@ -37,7 +39,7 @@ export interface StudioInvoiceLine {
   externalId?: string
 }
 
-export type StudioInvoiceKind = "filler" | "advance" | "milestone" | "retainer"
+export type StudioInvoiceKind = "filler" | "advance" | "milestone" | "retainer" | "schedule"
 
 export interface StudioInvoice {
   key: string
@@ -56,6 +58,8 @@ export interface StudioInvoice {
   projectKey?: string
   /** Its billing step (`StudioBillingStep.key`), for the plan's invoices. */
   stepKey?: string
+  /** The plain monthly schedule (`StudioRetainerPlan.key`) whose run issued it. */
+  scheduleKey?: string
   invoiceRole: "standard" | "advance"
   servicePeriod?: { start: string; end: string }
   lines: StudioInvoiceLine[]
@@ -81,7 +85,10 @@ export interface StudioRetainerPlan {
   /** Customer key of the contact the invoices go to. */
   contactKey: string
   feeMinor: number
+  /** The schedule's line; the app fills `{period}` with the month a run bills. */
   feeLabel: string
+  /** The schedule's billing day: `last`, or a day of the month. */
+  billingDay: string
   includedMinutes: number | null
   overageRateMinor: number | null
   /** Billed after the month, or before it (prepaid). */
@@ -151,6 +158,50 @@ function lastWeekday(end: string): string {
   let d = end
   while (isoWeekdayOf(d) > 5) d = addCalendarDays(d, -1)
   return d
+}
+
+/**
+ * A monthly schedule's billing day in a month, as invoicing works it out: `last`, or the day
+ * (a day past the month's end is its last). An issue day never moves, even onto a weekend.
+ */
+function billingDayIn(billingDay: string, month: ReturnType<typeof monthOf>): string {
+  return billingDay === "last" ? month.end : month.date(Number(billingDay))
+}
+
+/** The first billing day on or after `onOrAfter`, as invoicing's `nextIssueOn` (monthly). */
+function nextBillingDay(billingDay: string, onOrAfter: string): string {
+  for (let ahead = 0; ; ahead--) {
+    const day = billingDayIn(billingDay, monthOf(onOrAfter, ahead))
+    if (day >= onOrAfter) return day
+  }
+}
+
+/** The last billing day before `today`: the day the latest run issued. */
+function lastBillingDayBefore(billingDay: string, today: string): string {
+  for (let back = 0; ; back++) {
+    const day = billingDayIn(billingDay, monthOf(today, back))
+    if (day < today) return day
+  }
+}
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+]
+
+/** How invoicing fills a line's `{period}` for a month: `November 2026`. */
+function periodLabel(day: string): string {
+  return `${MONTH_NAMES[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}`
 }
 
 /** The day a schedule drafts the invoice it issues on `issueOn`, as invoicing works it out:
@@ -291,6 +342,31 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
     from = n.issuedOn
   })
 
+  // The upkeep's latest run: the last billing day before today, billing the month that holds it.
+  const upkeep = UPKEEP_SCHEDULE
+  const upkeepOn = lastBillingDayBefore(upkeep.billingDay, today)
+  const upkeepMonth = monthOf(upkeepOn, 0)
+  const upkeepInvoice: Omit<StudioInvoice, "year" | "numberInt" | "number"> = {
+    key: "verdier-upkeep-last-run",
+    kind: "schedule",
+    issuedOn: upkeepOn,
+    paidOn: paidAfter(upkeepOn),
+    client: upkeep.client,
+    scheduleKey: upkeep.key,
+    invoiceRole: "standard",
+    servicePeriod: { start: upkeepMonth.start, end: upkeepMonth.end },
+    lines: [
+      {
+        description: upkeep.feeLabel.split("{period}").join(periodLabel(upkeepOn)),
+        quantity: 1,
+        unitPriceMinor: upkeep.feeMinor,
+      },
+    ],
+  }
+  // After every invoice issued on or before its day: invoicing numbers in issue order.
+  const at = loop.findIndex((inv) => inv.issuedOn > upkeepOn)
+  loop.splice(at === -1 ? loop.length : at, 0, upkeepInvoice)
+
   // Numbered in issue order, per year of issue, as the app numbers them.
   const counters = new Map<number, number>()
   const invoices: StudioInvoice[] = loop.map((inv) => {
@@ -352,8 +428,6 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
     },
   ]
 
-  const thisMonth = monthOf(today, 0)
-  const nextMonth = monthOf(today, -1)
   return {
     today,
     invoices,
@@ -382,25 +456,22 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
         feeLabel: "Publishing retainer, 40 hours included",
         includedMinutes: 40 * 60,
         overageRateMinor: 12_000,
+        billingDay: "last",
         covers: "period_ended",
         from: monthOf(today, 3).key,
-        nextIssueOn: thisMonth.end,
-        nextDraftOn: draftDayOf(thisMonth.end),
+        // Billed from its planned vs done card, never by a run: the next billing day from today.
+        nextIssueOn: nextBillingDay("last", today),
+        nextDraftOn: draftDayOf(nextBillingDay("last", today)),
       },
       {
-        // The smaller retainer is a plain monthly schedule: its project is at a fixed price.
-        key: "verdier",
-        project: "VERD",
-        client: "verdier",
-        contactKey: "marc-verdier",
-        feeMinor: 120_000,
-        feeLabel: "Route planning upkeep, monthly",
-        includedMinutes: null,
-        overageRateMinor: null,
+        ...UPKEEP_SCHEDULE,
         covers: "period_ahead",
-        from: thisMonth.key,
-        nextIssueOn: nextMonth.start,
-        nextDraftOn: draftDayOf(nextMonth.start),
+        from: monthOf(upkeepOn, 0).key,
+        // The app's rule after a run: the next billing day after the one it issued.
+        nextIssueOn: nextBillingDay(UPKEEP_SCHEDULE.billingDay, addCalendarDays(upkeepOn, 1)),
+        nextDraftOn: draftDayOf(
+          nextBillingDay(UPKEEP_SCHEDULE.billingDay, addCalendarDays(upkeepOn, 1)),
+        ),
       },
     ],
     retainerLastMonth: {
@@ -411,6 +482,22 @@ export function studioMoney(anchor: Date): StudioMoneyPlan {
     },
   }
 }
+
+/**
+ * The smaller retainer, a plain monthly schedule (its project is at a fixed price): billed on
+ * the 1st, before the month it bills is worked.
+ */
+const UPKEEP_SCHEDULE = {
+  key: "verdier",
+  project: "VERD",
+  client: "verdier",
+  contactKey: "marc-verdier",
+  feeMinor: 120_000,
+  feeLabel: "Route planning upkeep, {period}",
+  billingDay: "1",
+  includedMinutes: null,
+  overageRateMinor: null,
+} as const
 
 /** Excluding VAT and with it, in minor units, as the app rounds a line's tax (half to even). */
 export function invoiceTotals(lines: readonly StudioInvoiceLine[]): {

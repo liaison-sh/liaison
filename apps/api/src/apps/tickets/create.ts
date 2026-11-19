@@ -321,15 +321,20 @@ async function nextTicketHandle(
  * Who a client's portal request goes to on Home: the company's account manager while
  * they are an active member, and their next in line while they are away today; with
  * none, the inbox admins (`noAccountManager`). The ticket has no assignee yet, so nobody
- * is on it before the manager.
+ * is on it before the manager. The next in line's row says whom they hold it for.
  */
 async function portalRequestRecipient(
   orgId: string,
   companyId: string,
-): Promise<{ portalRecipientIds: string[] } | { noAccountManager: true }> {
-  const { loadAccountManager } = await import("~/modules/attention/translator")
+): Promise<
+  | { portalRecipientIds: string[]; standingInFor?: Record<string, string> }
+  | { noAccountManager: true }
+> {
+  const { loadAccountManager, standInMark } = await import("~/modules/attention/translator")
   const ids = await loadAccountManager(orgId, companyId)
-  return ids && ids.length > 0 ? { portalRecipientIds: ids } : { noAccountManager: true }
+  return ids && ids.length > 0
+    ? { portalRecipientIds: ids, ...standInMark(ids) }
+    : { noAccountManager: true }
 }
 
 /** What a new-ticket notice calls the person who asked: name and address, whichever exist. */

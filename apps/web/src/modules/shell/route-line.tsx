@@ -101,10 +101,14 @@ export function coveringOf(filter: string): string | null {
   return filter.startsWith(COVERING_PREFIX) ? filter.slice(COVERING_PREFIX.length) || null : null
 }
 
-/** A row the viewer has because `userId` is away and named them next in line. */
+/**
+ * A row the viewer has because `userId` is away and named them next in line: an approval held
+ * for them (`placement: standing_in`), or any row passed on from them (`metadata.forUserId`).
+ */
 export function coversFor(item: AttentionItem, userId: string): boolean {
+  if (item.metadata?.forUserId === userId) return true
   if (item.metadata?.placement !== "standing_in") return false
-  return item.metadata?.forUserId === userId || personRoute(item)?.userId === userId
+  return personRoute(item)?.userId === userId
 }
 
 /** A row passed on from someone away (`metadata.forUserId`): never set aside by the stand-in. */

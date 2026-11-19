@@ -140,6 +140,7 @@ import {
   selectAutoSurfacedSkills,
 } from "~/modules/agent/skills/skill-autosurface"
 import { parseSkillFile } from "~/modules/agent/skills/skill-loader"
+import { timesForModel } from "~/modules/agent/tools/model-times"
 import { resolveAllSkills } from "~/modules/agent/tools/skills-routines-tools"
 import {
   ALL_DEFERRED_TOOLS_UNLOCKED,
@@ -1444,13 +1445,15 @@ export async function assembleContext(
         // their org's default (reply-language.ts).
         language: userPreferences.language,
         orgLocale: organizations.defaultLocale,
+        orgTz: organizations.timezone,
       })
       .from(users)
       .leftJoin(userPreferences, eq(userPreferences.userId, users.id))
       .leftJoin(organizations, eq(organizations.id, users.orgId))
       .where(eq(users.id, actor.userId))
     return {
-      tz: row?.tz || "UTC",
+      // The person's zone, else their organization's: never UTC for someone in Paris.
+      tz: row?.tz || row?.orgTz || "UTC",
       name: row?.name ?? "",
       email: row?.email ?? "",
       locale: row?.language ?? row?.orgLocale ?? null,
@@ -1963,7 +1966,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
 
   const now = new Date()
   tailLines.push(
-    `The current time is ${now.toISOString()} (UTC). The user's timezone is ${userTimezone}.${localDateSentence(now, userTimezone)}`,
+    `The current time is ${timesForModel(now.toISOString(), userTimezone)} (${userTimezone}). The user's timezone is ${userTimezone}: times in tool results carry their zone, so tell them in ${userTimezone}.${localDateSentence(now, userTimezone)}`,
   )
   // Where the person is, per turn, and whether they have a node: which way
   // to their computer applies.
@@ -2585,6 +2588,7 @@ Write numbers, amounts and dates the way that language writes them, never as a r
     attachmentsByMessageId,
     {
       dropRetrievalToolParts: coldResume,
+      timeZone: userTimezone,
       ...(keepToolCallIds ? { keepToolCallIds } : {}),
       // Who this prompt belongs to, and the labels its colleagues are known by.
       // Both come from the ONE agent read this assembly already made.
@@ -3066,14 +3070,18 @@ function replayedToolCallPart(tc: ToolCallMetadata, replayId: (id: string) => st
  * saw the (live-capped) full result; later turns get a clipped replay and can
  * re-run the tool if they genuinely need the data again.
  */
-function replayedToolResultPart(tc: ToolCallMetadata, replayId: (id: string) => string) {
+function replayedToolResultPart(
+  tc: ToolCallMetadata,
+  replayId: (id: string) => string,
+  timeZone?: string,
+) {
   // A failed call replays as the failure it was (tool-failure-output.ts), the same
   // error output the model got live, never as a plain result.
   // It carries the whole result (structured error fields, partial data), so it gets the
   // same replay cap; clipped past recognition, the failure still reads as one.
   const failed = toolFailureModelOutput(tc.result ?? null, tc)
   if (failed) {
-    const clipped = truncateReplayedToolResult(failed.value)
+    const clipped = timesForModel(truncateReplayedToolResult(failed.value), timeZone)
     return {
       type: "tool-result" as const,
       toolCallId: replayId(tc.toolCallId),
@@ -3084,7 +3092,7 @@ function replayedToolResultPart(tc: ToolCallMetadata, replayId: (id: string) => 
           : { ...failed, value: { status: "failed" as const, error: String(clipped) } },
     }
   }
-  const replayed = truncateReplayedToolResult(tc.result ?? null)
+  const replayed = timesForModel(truncateReplayedToolResult(tc.result ?? null), timeZone)
   return {
     type: "tool-result" as const,
     toolCallId: replayId(tc.toolCallId),
@@ -3194,6 +3202,11 @@ function normalizeToolCallId(id: string, idMap: Map<string, string>): string {
 }
 
 export interface ConvertToCoreMessagesOptions {
+  /**
+   * The zone the model reads times in (model-times.ts): replayed tool results give their
+   * instants in it, as the live results did. Absent: as stored, in UTC.
+   */
+  timeZone?: string
   /**
    * A50: this turn is a COLD RESUME, so the retrieval tool parts of earlier
    * agent rows (memory_search and friends) are not replayed. A retrieval result
@@ -3461,7 +3474,9 @@ export function convertToCoreMessages(
           })
           result.push({
             role: "tool",
-            content: step.calls.map((tc) => replayedToolResultPart(tc, replayId)),
+            content: step.calls.map((tc) =>
+              replayedToolResultPart(tc, replayId, options?.timeZone),
+            ),
           })
           const ids = new Set(step.calls.map((tc) => tc.toolCallId))
           for (const note of afterCalls) {
@@ -3488,7 +3503,7 @@ export function convertToCoreMessages(
         // Results replay clipped (replayedToolResultPart).
         result.push({
           role: "tool",
-          content: toolCalls.map((tc) => replayedToolResultPart(tc, replayId)),
+          content: toolCalls.map((tc) => replayedToolResultPart(tc, replayId, options?.timeZone)),
         })
         for (const note of afterCalls) pushNote(note)
         if (superseded) result.push({ role: "assistant", content: SUPERSEDED_TURN_TEXT })

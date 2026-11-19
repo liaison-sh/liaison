@@ -1379,9 +1379,9 @@
       },
       "openAgreement": {
         "title": "Le passage, et la même carte",
-        "role": "La section 3 de l'énoncé des travaux signé, mot pour mot, et la carte qui attendait déjà : pas de seconde approbation.",
-        "body": "Lisez la réponse de votre agent. Son passage ouvre l'accord à la section 3. Puis appuyez sur Suivant.",
-        "way3": "Lisez la réponse, puis ouvrez le passage"
+        "role": "Votre agent a lu la section 3 dans l'énoncé des travaux signé et la cite dans sa réponse, à côté de la carte qui attendait déjà : pas de seconde approbation.",
+        "body": "Lisez la réponse de votre agent : le passage qu'elle cite, et la carte qu'elle nomme. Puis appuyez sur Suivant.",
+        "way3": "Lisez la réponse"
       },
       "approveCr": {
         "title": "Approuvez la demande de modification",
@@ -1392,12 +1392,12 @@
       "clientDecides": {
         "title": "Pauline approuve la demande de modification",
         "role": "Pauline l'approuve sur son lien. Son approbation est fictive, pour la démo : aucune signature n'a eu lieu, et rien n'est scellé.",
-        "body": "Rien à faire : Accords enregistre l'approbation et met le projet à jour. Appuyez sur Suivant une fois que c'est fait.",
+        "body": "Rien à faire : Accords enregistre l'approbation, et le montant de l'accord du portail partenaires comprend maintenant la demande de modification. Appuyez sur Suivant une fois que c'est fait.",
         "way1": "Accords"
       },
       "whatMoved": {
         "title": "Ce qui a bougé",
-        "role": "Le total du contrat a augmenté, l'enveloppe d'heures du projet a grandi, et une tâche et une ligne de facturation pour le nouveau travail sont prévues. Rien n'a été facturé.",
+        "role": "L'enveloppe d'heures du projet a grandi, et une tâche et une ligne de facturation pour le nouveau travail sont prévues. Rien n'a été facturé.",
         "body": "L'enveloppe est maintenant de {{timebox}}, dont {{left}} restantes. Les deux sont lues dans le budget du projet, comme cette page les lit.",
         "way1": "Ouvrez le projet du portail partenaires"
       }

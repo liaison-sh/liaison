@@ -7,7 +7,7 @@
 // the software world's pipeline, is a seam the visitor sees. The lists are read
 // from the packs themselves, so a name added to a pack is checked from then on.
 import type { DemoWorldId } from "@liaison/shared"
-import { DEMO_WORLD } from "~/seed/world/fiction"
+import { DEMO_SUPPLIERS, DEMO_WORLD } from "~/seed/world/fiction"
 import { SAAS_TEAM, SAAS_WORLD } from "./saas/fiction"
 import { saasPlan } from "./saas/plan"
 import {
@@ -38,6 +38,8 @@ export const WORLD_LITERALS: Readonly<Partial<Record<DemoWorldId, readonly strin
     ...DEMO_WORLD.customers.map((c) => c.name),
     ...DEMO_WORLD.dealers.map((d) => d.name),
     ...DEMO_WORLD.catalog.map((s) => s.title),
+    // Who it buys from: its purchase orders name them.
+    ...DEMO_SUPPLIERS.map((s) => s.name),
     "Kestrel",
   ]),
   saas: listOf([

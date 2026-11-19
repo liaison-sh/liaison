@@ -25,6 +25,8 @@ export interface AgreementBrief {
   company_id: string | null
   renews_on: string | null
   price_minor: string | null
+  /** The contract total once an accepted change request moved it; absent or null otherwise. */
+  amended_total_minor?: string | null
   currency: string | null
   org_access: string
 }

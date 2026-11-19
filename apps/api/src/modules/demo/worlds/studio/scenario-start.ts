@@ -227,7 +227,7 @@ async function startSales(orgId: string, ownerUserId: string): Promise<void> {
     routine: {
       name: STUDIO_PROSPECT_SCENARIO_ROUTINE_NAME,
       description:
-        "When a prospect sends a project brief: check Liaison, read up on a new firm, then prepare its company, a deal, a proposal on the statement of work template with no price, and the reply, as one request I approve once.",
+        "When a prospect sends a brief: check Liaison, read up on a new firm, then prepare its company, a deal, a proposal with no price and the reply, as one request I approve once.",
       kind: "event",
       event: "mail:message:create",
       eventFilter: null,

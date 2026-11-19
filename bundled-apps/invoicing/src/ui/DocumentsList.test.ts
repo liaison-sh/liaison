@@ -12,8 +12,10 @@ import { join } from "node:path"
 import {
   FULL_LIST_MIN_VIEWPORT,
   LIST_COLUMNS,
+  listColumnsFor,
   listColumnsForWidth,
   listFooter,
+  shopColumnsShown,
 } from "./DocumentsList"
 import { searchPlaceholder } from "./dashboards/Toolbar"
 
@@ -144,5 +146,22 @@ describe("the list footer", () => {
     )
     expect(listFooter("12 invoices: 9 000.00 EUR", false)).toBe("12 invoices: 9 000.00 EUR")
     expect(listFooter("", true)).toBe("")
+  })
+})
+
+describe("a workspace with no shop orders", () => {
+  it("draws no order or channel column and offers no shop filter", () => {
+    const manual = [{ channel: "manual" as const }, { channel: undefined }]
+    expect(shopColumnsShown(manual)).toBe(false)
+    const keys = listColumnsFor(1920, false).map((c) => c.key)
+    expect(keys).not.toContain("order")
+    expect(keys).not.toContain("channel")
+    expect(keys).toContain("po_number")
+    // One shop order brings them back.
+    expect(shopColumnsShown([...manual, { channel: "shopify" as const }])).toBe(true)
+    expect(listColumnsFor(1920, true)).toEqual(listColumnsForWidth(1920))
+    expect(source).toMatch(/channels=\{shop\(\)\}/)
+    const toolbar = readFileSync(join(import.meta.dir, "dashboards", "Toolbar.tsx"), "utf-8")
+    expect(toolbar).toMatch(/<Show when=\{props\.channels !== false\}>/)
   })
 })

@@ -104,7 +104,10 @@ export const AgreementsList: Component<{ entityId?: string }> = (props) => {
       role: "meta",
       numeric: true,
       align: "right",
-      cell: (r) => <span>{formatMoney(r.price_minor, r.currency, uiLocale())}</span>,
+      // The contract total: an accepted change request's price is part of it.
+      cell: (r) => (
+        <span>{formatMoney(r.amended_total_minor ?? r.price_minor, r.currency, uiLocale())}</span>
+      ),
     },
   ]
 

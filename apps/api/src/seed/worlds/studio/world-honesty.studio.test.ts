@@ -10,6 +10,8 @@ import { readdirSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { foreignLiterals, WORLD_LITERALS } from "../literals"
 import { type ClaimKind, claimHits, scanWorldPackClaims } from "../prose-guard"
+import { studioAgreements } from "./agreements"
+import { studioPlan } from "./plan"
 
 const LOCALES = path.join(import.meta.dir, "../../../../../../packages/shared/src/i18n/locales")
 
@@ -52,6 +54,13 @@ describe("the services world's copy", () => {
     }
   })
 
+  it("the products world's suppliers are its literals: a purchase order to one is found", () => {
+    for (const supplier of ["Nordkrets Assembly AB", "Cartonnerie du Rhone SAS"])
+      expect(foreignLiterals("studio", `Purchase order to ${supplier}`)).toEqual([
+        `products: ${supplier}`,
+      ])
+  })
+
   it("a literal of another world planted in the tour copy is found", () => {
     const copy = studioCopy("en")
     const tour = Object.keys(copy).find((k) => k.startsWith("tours.")) ?? ""
@@ -87,5 +96,32 @@ describe("the services world makes no legal or market claim", () => {
         (h) => h.kind,
       ),
     ).toEqual(["statistic"])
+  })
+})
+
+describe("the services world's door says only what its rows hold", () => {
+  it("it claims an agreement behind every piece of work only when every client project has one", () => {
+    const anchor = new Date("2026-11-09T08:30:00.000Z")
+    const withAgreement = new Set(
+      studioAgreements(anchor)
+        .agreements.map((a) => a.project)
+        .filter(Boolean),
+    )
+    const without = studioPlan(anchor)
+      .projects.filter((p) => p.client && !p.closedAt && p.key !== "SALES")
+      .map((p) => p.key)
+      .filter((k) => !withAgreement.has(k))
+    for (const locale of locales()) {
+      const door = studioCopy(locale).door ?? ""
+      const claims =
+        /every piece of work starts from a signed agreement|chaque travail part d'un contrat/i.test(
+          door,
+        )
+      expect({ locale, claims, without: claims ? without : [] }).toEqual({
+        locale,
+        claims,
+        without: [],
+      })
+    }
   })
 })

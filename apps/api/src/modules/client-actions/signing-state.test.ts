@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, describe, expect, it } from "bun:test"
 import { env } from "~/lib/env"
-import { signingState, signingUnavailable } from "./signing-state"
+import { signingState, signingStateShown, signingUnavailable } from "./signing-state"
 
 const was = env.LIAISON_TSA_URL
 const set = (url: string | undefined) => {
@@ -21,6 +21,18 @@ describe("whether this server can ask for a signature", () => {
     // An approval or an acceptance needs no stamp.
     expect(signingUnavailable("approve")).toBeNull()
     expect(signingUnavailable("accept")).toBeNull()
+  })
+
+  it("a demo workspace hears it is a demo, never to ask whoever runs the server", () => {
+    set(undefined)
+    expect(signingStateShown(signingState(), true)).toEqual({ available: false, reason: "demo" })
+    // Off a demo, the server's own answer.
+    expect(signingStateShown(signingState(), false)).toEqual({
+      available: false,
+      reason: "no_timestamp",
+    })
+    set("https://tsa.example.com")
+    expect(signingStateShown(signingState(), true)).toEqual({ available: true })
   })
 
   it("with an authority, signatures are on", () => {

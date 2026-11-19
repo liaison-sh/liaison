@@ -119,6 +119,26 @@ describe("the list", () => {
     expect(screen.getByTestId("agreements-sort-sentence")).toBeTruthy()
   })
 
+  it("shows the contract total a change request moved, on the row and on the agreement", async () => {
+    const amended = {
+      ...agreement().agreement,
+      id: "m",
+      number: "AG-2026-011",
+      status: "signed",
+      price_minor: "6400000",
+      amended_total_minor: "7060000",
+      currency: "EUR",
+    }
+    answers.home_load = () => ({ status: "ok", items: [amended] })
+    render(() => <AgreementsList entityId="all" />)
+    expect((await screen.findByTestId("agreements-row-m")).textContent).toContain("€70,600.00")
+    cleanup()
+    answers.agreement_get = () => ({ ...agreement(), agreement: { ...amended, id: ID } })
+    render(() => <AgreementDetailView entityId={ID} />)
+    expect((await screen.findByTestId("agreement-price")).textContent).toContain("€64,000.00")
+    expect(screen.getByTestId("agreement-amended-total").textContent).toContain("€70,600.00")
+  })
+
   it("says so when there is none, and when the list cannot load", async () => {
     answers.home_load = () => ({ status: "ok", items: [] })
     render(() => <AgreementsList entityId="all" />)

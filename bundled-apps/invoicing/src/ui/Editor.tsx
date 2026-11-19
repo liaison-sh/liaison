@@ -927,6 +927,14 @@ export function issueDateNotice(
     : null
 }
 
+/**
+ * Whether the document can ship a parcel: the incoterm and the ship-to belong to goods. A
+ * services document (its operation type says so) ships nothing, so it shows neither.
+ */
+export function shipsGoods(d: { operation_category?: OperationCategory | null }): boolean {
+  return d.operation_category !== "services"
+}
+
 export function defaultDraft(type: DocType = "invoice"): DraftDocument {
   return {
     type,
@@ -1699,16 +1707,18 @@ export const Editor: Component<EditorProps> = (props) => {
                   <For each={LANGUAGES}>{(l) => <option value={l}>{l.toUpperCase()}</option>}</For>
                 </Select>
               </Field>
-              <Field label={tr("Incoterm")}>
-                <Select
-                  testid="editor-field-incoterm"
-                  disabled={ro()}
-                  value={draft().incoterm}
-                  onChange={(v) => update({ incoterm: v as Incoterm })}
-                >
-                  <For each={INCOTERMS}>{(i) => <option value={i}>{i}</option>}</For>
-                </Select>
-              </Field>
+              <Show when={shipsGoods(draft())}>
+                <Field label={tr("Incoterm")}>
+                  <Select
+                    testid="editor-field-incoterm"
+                    disabled={ro()}
+                    value={draft().incoterm}
+                    onChange={(v) => update({ incoterm: v as Incoterm })}
+                  >
+                    <For each={INCOTERMS}>{(i) => <option value={i}>{i}</option>}</For>
+                  </Select>
+                </Field>
+              </Show>
             </Show>
           </header>
 
@@ -1799,8 +1809,9 @@ export const Editor: Component<EditorProps> = (props) => {
               />
             </Field>
             {/* Ship to: filled only when the parcel goes somewhere other than the billing
-                address. Left empty, the document prints the BILL TO block alone. */}
-            <Show when={!props.compact}>
+                address. Left empty, the document prints the BILL TO block alone. A services
+                document ships nothing. */}
+            <Show when={!props.compact && shipsGoods(draft())}>
               <Field label={tr("Shipping address (if different)")} class="col-span-2 lg:col-span-3">
                 <textarea
                   data-testid="editor-field-shipping-address"

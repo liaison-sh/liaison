@@ -29,6 +29,13 @@ describe("signatures off on this server", () => {
     expect(text).not.toMatch(/LIAISON_|TSA|operator/)
   })
 
+  it("in a demo workspace, it says the demo signs nothing and sends no one to whoever runs the server", async () => {
+    host({ available: false, reason: "demo" })
+    const text = signingOffText(await loadSigningState())
+    expect(text).toContain("In this demo")
+    expect(text).not.toContain("whoever runs this server")
+  })
+
   it("on a hosted service without signatures, it says they are not offered", async () => {
     host({ available: false, reason: "not_offered" })
     expect(signingOffText(await loadSigningState())).toContain("not offered")

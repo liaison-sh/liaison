@@ -93,6 +93,7 @@ import { AwayRecapLines, RouteWhyLine } from "~/modules/shell/route-line"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { addToast } from "~/modules/shell/toast-store"
 import { openReplyPanel } from "~/modules/threads/reply-panel-store"
+import { createNow } from "~/primitives/createNow"
 
 interface AttentionRowProps {
   item: AttentionItem
@@ -128,6 +129,10 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
   }
   const i18n = useI18n()
   const rowLocale = () => rowLocaleFrom(i18n)
+  // The row's age keeps time, as the open card's does: one age per request, never two.
+  const now = createNow(30_000)
+  const age = () =>
+    formatRelativeTime(props.item.occurredAt, { now: new Date(now()), i18n: rowLocale() })
   // The phone tier gets a genuinely compact row. The desktop row's 40px icon
   // rail plus its `min-w-[300px]` body cannot share a 390px line, so the kind
   // glyph wrapped onto a line of its OWN above the title, the metric and the
@@ -679,7 +684,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
       // reader looks for who asked. It stays citable on the desktop row and in the card's chip.
       const by = requesterName()
       if (by) parts.push(i18n.t("kernel.shellUi.byName", { name: by }))
-      parts.push(formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() }))
+      parts.push(age())
     } else {
       parts.push(formatMetaLine(props.item, rowLocale()))
     }
@@ -1064,7 +1069,7 @@ const AttentionRowBody: Component<AttentionRowProps> = (props) => {
                     </span>
                   )}
                 </Show>
-                <span>{formatRelativeTime(props.item.occurredAt, { i18n: rowLocale() })}</span>
+                <span data-testid={`${testId()}-age`}>{age()}</span>
                 <Show when={approvalRef()}>
                   {(ref) => (
                     <span>

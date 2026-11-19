@@ -11,18 +11,21 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import type { AttentionItem } from "@liaison/shared"
-import { DEMO_WORLD_NEEDS } from "@liaison/shared"
+import { DEMO_WORLD_NEEDS, STUDIO_PROSPECT_ROUTINE_NAME } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import { withPrivilegedDb } from "~/db/privileged"
+import { readApprovalRequesters } from "~/modules/approvals/requester"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
+import { personalAgentOf } from "~/seed/factories/agent/presence"
 import { actorFor, rowsOf } from "~/seed/factories/people/actors"
 import { DEMO_APPS, DEMO_WORLD_APPS } from "~/seed/tiers/demo/demo-apps"
 import {
   refreshSeededAttention,
   type SeedDemoWorldResult,
   seedDemoWorld,
+  seedScenarioStart,
 } from "~/seed/tiers/demo/seed-demo"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import {
@@ -31,7 +34,7 @@ import {
   uninstallAppsSince,
 } from "../../../../test-support/seed/install-dist-apps"
 import { studioMorningBrief } from "./brief"
-import { STUDIO_DELIVERY_KEYS, STUDIO_TEAM } from "./fiction"
+import { STUDIO_CLIENTS, STUDIO_DELIVERY_KEYS, STUDIO_PAST_CLIENTS, STUDIO_TEAM } from "./fiction"
 import { STUDIO_CHANNEL_TITLES } from "./threads-specs"
 
 /** The board date: Monday 9 November 2026, 09:30 in Paris. */
@@ -247,5 +250,45 @@ describe("the services world's desks, queues and Home at the board date", () => 
         JOIN kernel.messages m ON m.thread_id = r.output_thread_id AND m.author_type = 'agent'
        WHERE r.org_id = ${world.orgId}::uuid AND r.name = 'Morning brief'`)
     expect(brief?.content).toBe(studioMorningBrief(BOARD_DATE))
+  })
+
+  it("the change request card names the Scope check routine that staged it, never the visitor", async () => {
+    const [card] = await rows(sql`
+      SELECT id::text AS id FROM kernel.approval_requests
+       WHERE org_id = ${world.orgId}::uuid AND tool_name = 'agreements:change_request_send'`)
+    const requesters = await withPrivilegedDb(world.orgId, "studio-desk-requester", (tx) =>
+      readApprovalRequesters(tx, world.orgId, [String(card?.id)]),
+    )
+    const requester = requesters.get(String(card?.id))
+    expect(requester?.kind).toBe("agent")
+    expect(requester?.name).toMatch(/^Routine /)
+    expect(requester?.name).not.toContain("Studio Owner")
+  })
+
+  it("the studio's invoicing documents name only the studio's own clients and ship nothing", async () => {
+    const docs = await rows(sql`
+      SELECT type, counterparty_name AS name,
+             counterparty_shipping_address AS ship_to, counterparty_shipping_name AS ship_name
+        FROM app_invoicing.documents WHERE org_id = ${world.orgId}::uuid`)
+    expect(docs.length).toBeGreaterThan(0)
+    // Its clients now and its clients of earlier work: no other world's customer or supplier.
+    const own = new Set<string>([
+      ...STUDIO_CLIENTS.map((c) => c.name),
+      ...STUDIO_PAST_CLIENTS.map((c) => c.name),
+    ])
+    expect([...new Set(docs.map((d) => String(d.name)))].filter((n) => !own.has(n))).toEqual([])
+    // A services firm buys nothing on purchase orders here and ships no parcel.
+    expect(docs.filter((d) => d.type === "purchase_order")).toEqual([])
+    expect(docs.filter((d) => d.ship_to !== null || d.ship_name !== null)).toEqual([])
+  })
+
+  it("the sales scenario's start brings its routine, off, on the owner's own agent", async () => {
+    const owner = userIdOf("owner")
+    await seedScenarioStart(world.orgId, owner, "sales", "studio")
+    const agent = await personalAgentOf(seedContext({ orgId: world.orgId, now: new Date() }), owner)
+    const found = await rows(sql`
+      SELECT enabled, owner_agent_id::text AS agent FROM kernel.routines
+       WHERE org_id = ${world.orgId}::uuid AND name = ${STUDIO_PROSPECT_ROUTINE_NAME}`)
+    expect(found.map((r) => [r.enabled, r.agent])).toEqual([[false, agent]])
   })
 })

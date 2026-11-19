@@ -1685,3 +1685,35 @@ describe("AttentionRow: a staff signer's own turn", () => {
     expect(queryByTestId(`${tid}-ask-draft`)).toBeNull()
   })
 })
+
+describe("AttentionRow: an approval's age", () => {
+  it("keeps time with the clock, so the row and its open card say one age", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-11-19T12:00:00.000Z"))
+      const item: AttentionItem = {
+        id: "kernel:approval_pending:r-age",
+        app: "kernel",
+        entity: "approval_request",
+        entityId: "r-age",
+        kind: "approval_pending",
+        summary: "Reply to the client and send a change request",
+        urgency: 60,
+        occurredAt: "2026-11-19T11:47:00.000Z",
+        action: { type: "decide_approval", approvalId: "r-age" },
+        metadata: { toolName: "agreements:change_request_send", subtitle: "Pending approval" },
+      }
+      const { getByTestId } = render(() => (
+        <ApiContext.Provider value={makeApi(vi.fn())}>
+          <AttentionRow item={item} />
+        </ApiContext.Provider>
+      ))
+      const age = () => getByTestId("attention-row-kernel-approval_request-r-age-age").textContent
+      expect(age()).toBe("13m ago")
+      vi.advanceTimersByTime(6 * 60_000)
+      expect(age()).toBe("19m ago")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

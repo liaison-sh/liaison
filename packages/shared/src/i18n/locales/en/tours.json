@@ -1379,9 +1379,9 @@
       },
       "openAgreement": {
         "title": "The passage, and the same card",
-        "role": "Section 3 of the signed statement of work, word for word, and the card that was already waiting: no second approval.",
-        "body": "Read your agent's answer. Its passage opens the agreement at section 3. Then press Next.",
-        "way3": "Read the answer, then open the passage"
+        "role": "Your agent read section 3 from the signed statement of work and quotes it in its answer, beside the card that was already waiting: no second approval.",
+        "body": "Read your agent's answer: the passage it quotes, and the card it names. Then press Next.",
+        "way3": "Read the answer"
       },
       "approveCr": {
         "title": "Approve the change request",
@@ -1392,12 +1392,12 @@
       "clientDecides": {
         "title": "Pauline approves the change request",
         "role": "Pauline approves it on her link. Her approval is a stand-in for the demo: no signature took place, and nothing is sealed.",
-        "body": "Nothing to do: Agreements records the approval and updates the project. Press Next once it has.",
+        "body": "Nothing to do: Agreements records the approval, and the partner portal agreement's amount now includes the change request. Press Next once it has.",
         "way1": "Agreements"
       },
       "whatMoved": {
         "title": "What moved",
-        "role": "The contract total rose, the project's timebox grew, and a task and a billing line for the new work are planned. Nothing was invoiced.",
+        "role": "The project's timebox grew, and a task and a billing line for the new work are planned. Nothing was invoiced.",
         "body": "The timebox is now {{timebox}}, with {{left}} left. Both read from the project's budget, as this page reads them.",
         "way1": "Open the partner portal project"
       }

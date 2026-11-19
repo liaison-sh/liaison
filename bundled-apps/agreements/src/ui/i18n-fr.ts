@@ -179,6 +179,9 @@ export const FR: Record<string, string> = {
     "Préparer vérifie le document et fige cette version. Rien n'est encore envoyé.",
   "Prepare for signature": "Préparer pour signature",
   "Price excl. VAT": "Prix HT",
+  "Total with change requests": "Total avec les avenants",
+  "In this demo, nothing is sent for signature: a client's approval you see is a stand-in, and nothing is sealed. You can still write and prepare documents.":
+    "Dans cette démo, rien n'est envoyé à la signature : l'approbation d'un client que vous voyez est fictive, et rien n'est scellé. Vous pouvez toujours rédiger et préparer des documents.",
   "Proof of signature": "Preuve de signature",
   Proposal: "Proposition",
   Proposals: "Propositions",

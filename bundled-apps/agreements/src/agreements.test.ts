@@ -150,6 +150,39 @@ describe("the list of agreements", () => {
     }
     expect(out.items.map((i) => i.title)).toEqual(["Booking page"])
   })
+
+  it("the search names the contract total once an accepted change request amended it", async () => {
+    const db = memoryDb()
+    const ctx = ctxFor(db)
+    const signed = await agreementCreate(ctx, { kind: "sow", title: "Portal" })
+    await db.update("agreements", okId(signed), {
+      status: "signed",
+      price_minor: "6400000",
+      currency: "EUR",
+      amended_total_minor: "7060000",
+    })
+    const plain = await agreementCreate(ctx, { kind: "msa", title: "Master" })
+    await db.update("agreements", okId(plain), {
+      status: "signed",
+      price_minor: "450000",
+      currency: "EUR",
+      amended_total_minor: "450000",
+    })
+    const out = (await agreementsSearch(ctx, {})) as {
+      items: Array<{
+        title: string
+        price_minor: string | null
+        amended_total_minor: string | null
+      }>
+    }
+    const by = (t: string) => out.items.find((i) => i.title === t)
+    expect([by("Portal")?.price_minor, by("Portal")?.amended_total_minor]).toEqual([
+      "6400000",
+      "7060000",
+    ])
+    // A total no change request moved is the price itself: nothing second to show.
+    expect(by("Master")?.amended_total_minor).toBeNull()
+  })
 })
 
 describe("a proposal's price", () => {

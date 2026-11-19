@@ -719,6 +719,7 @@
       }
     },
     "search": {
+      "focusCore": true,
       "restrictedRows": { "entity": "document", "idPath": "hits[].id" },
       "description": "Federated search across Knowledge and enabled remote sources",
       "searchKeywords": ["politique", "procédure", "doc", "documentation", "chercher", "rechercher", "connaissances", "policy", "article", "find", "trouver", "retrouver"],
@@ -886,6 +887,7 @@
       }
     },
     "get": {
+      "focusCore": true,
       "restrictedRows": { "entity": "document", "idPath": "document.id" },
       "description": "Fetch the full content of a Knowledge document OR a remote connected-source item. Pass `id` for a local Knowledge document. To read a file that lives in a connected source (e.g. a Google Doc found via google-drive__search), pass `source` (the connector id, e.g. 'google-drive') + `sourceEntityId` (the file id from the search hit) — this returns the file's REAL text content (Google Docs/Sheets are exported to text), so you can ground a new Knowledge document's body in it instead of inventing one. Remote content reads require the knowledge:sources:read scope.",
       "searchKeywords": ["lire", "ouvrir", "doc", "document", "read"],

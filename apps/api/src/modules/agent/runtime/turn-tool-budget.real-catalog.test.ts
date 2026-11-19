@@ -712,3 +712,64 @@ describe("a hard focus on a payments customer tab", () => {
     }
   })
 })
+
+describe("a hard focus on a knowledge document tab", () => {
+  const manifest = "apps/api/src/apps/knowledge/app.manifest.json"
+  /** A visitor's open document tab: the view names the document, the server read none. */
+  const viewFocus: TurnFocus = new Map([
+    [
+      "knowledge",
+      {
+        hard: true,
+        verifiedEntityTypes: new Set<string>(),
+        viewEntityTypes: new Set(["document"]),
+      },
+    ],
+  ])
+  const turn = (focus: TurnFocus) => {
+    const appTools = manifestTools(manifest)
+    const names = Object.keys(appTools)
+    const tools = { ...kernelTools, ...appTools }
+    const { preload, indexOnly } = focusCorePreload({ candidates: names, tools, focus })
+    const plan = planTurnToolBudget({
+      visible: [...coreTools, ...preload],
+      tools,
+      droppable: (n) => n in appTools,
+      preloaded: new Set(preload),
+      hardFocusApps: new Set(["knowledge"]),
+      focus,
+      recency: new Map(),
+      cap: TURN_TOOL_SCHEMA_TOKEN_CAP,
+    })
+    return { preload, indexOnly, plan }
+  }
+  const survivors = ["knowledge__get", "knowledge__search"]
+
+  it("declares the document read and the search as the app's core list", () => {
+    const tools = manifestTools(manifest)
+    for (const name of survivors) expect(tools[name]?.focusCore).toBe(true)
+  })
+
+  for (const [label, focus] of [
+    ["the visitor's view", viewFocus],
+    ["a thread made for the document", hardFocus("knowledge", "document")],
+  ] as const) {
+    it(`loads the document read and the search from the first step on ${label}`, () => {
+      const t = turn(focus)
+      for (const name of survivors) {
+        expect(t.preload).toContain(name)
+        expect(t.indexOnly).not.toContain(name)
+        expect(t.plan.drop).not.toContain(name)
+      }
+    })
+
+    it(`lists the app's other tools by name only on ${label}`, () => {
+      const t = turn(focus)
+      expect(t.preload.every((n) => n.startsWith("knowledge__"))).toBe(true)
+      expect(t.indexOnly).toContain("knowledge__create")
+      expect(t.indexOnly.length + t.preload.length).toBe(
+        Object.keys(manifestTools(manifest)).length,
+      )
+    })
+  }
+})

@@ -272,7 +272,8 @@ async function portalReplyRecipient(
   orgId: string,
   ticketId: string,
 ): Promise<
-  { subject: string; portalRecipientIds: string[] } | { subject: string; noAccountManager: true }
+  | { subject: string; portalRecipientIds: string[]; standingInFor?: Record<string, string> }
+  | { subject: string; noAccountManager: true }
 > {
   const [t] = extractRows<{
     subject: string | null
@@ -290,9 +291,9 @@ async function portalReplyRecipient(
   const subject = t?.subject ?? ""
   if (t?.assignee) return { subject, portalRecipientIds: [t.assignee] }
   if (t?.company_id) {
-    const { loadAccountManager } = await import("~/modules/attention/translator")
+    const { loadAccountManager, standInMark } = await import("~/modules/attention/translator")
     const ids = await loadAccountManager(orgId, t.company_id)
-    if (ids && ids.length > 0) return { subject, portalRecipientIds: ids }
+    if (ids && ids.length > 0) return { subject, portalRecipientIds: ids, ...standInMark(ids) }
   }
   return { subject, noAccountManager: true }
 }

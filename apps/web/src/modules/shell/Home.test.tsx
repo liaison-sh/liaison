@@ -1200,6 +1200,37 @@ describe("home decisions", () => {
     }
   })
 
+  // A client's request handed to the stand-in is activity, not an approval: it is still covered.
+  it("what the reader covers counts activity passed on from the colleague away", async () => {
+    apiGet.mockImplementation(async (path: string) =>
+      path === "/user/preferences/away/standing-in"
+        ? [{ id: "u-amina", name: "Amina Cherif", until: "2026-11-20" }]
+        : [],
+    )
+    const request = makeOpenEntityItem({
+      id: "ev-portal",
+      app: "tickets",
+      entity: "ticket",
+      entityId: "tk-1",
+      kind: "tickets:portal_request" as AttentionItem["kind"],
+      summary: "Client request on the portal: Beta date",
+      urgency: 50,
+      metadata: { forUserId: "u-amina" },
+    })
+    const ownTask = makeOpenEntityItem({ id: "ev-own", entityId: "T-own" })
+    attentionStore._setForTest({ items: [request, ownTask], errors: [] })
+    render(() => <Home entityId="home" />)
+    fireEvent.click(await screen.findByTestId("home-standing-in-show"))
+    try {
+      const slice = await screen.findByTestId("home-slice")
+      expect(screen.getByTestId("home-slice-title").textContent).toBe("What you cover 1")
+      expect(slice.querySelector(`[data-testid="${row(request)}"]`)).not.toBeNull()
+      expect(slice.querySelector(`[data-testid="${row(ownTask)}"]`)).toBeNull()
+    } finally {
+      setHomeFilter(OVERVIEW)
+    }
+  })
+
   it("no stand-in line when nobody away names the reader", async () => {
     attentionStore._setForTest({ items: [], errors: [] })
     render(() => <Home entityId="home" />)

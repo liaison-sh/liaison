@@ -134,6 +134,28 @@ describe("portal request routing", () => {
     }
   })
 
+  it("the next in line's row says whom they hold it for; the manager's row says nothing", async () => {
+    await setManager(w.companyA, w.member.userId)
+    const range = await away(w.member.userId, standIn)
+    try {
+      const id = await request("Covered while she is out")
+      await homeOf("ticket", id)
+      const msg = await reply(id)
+      await homeOf("message", msg)
+      for (const entityId of [id, msg]) {
+        const rows = await sql<{ user_id: string; for_user: string | null }[]>`
+          SELECT user_id::text AS user_id, metadata->>'forUserId' AS for_user
+            FROM kernel.attention_events
+           WHERE org_id = ${w.orgId} AND app = 'tickets' AND kind = 'tickets:portal_request'
+             AND (entity_id = ${entityId} OR metadata->>'messageId' = ${entityId})`
+        const byUser = Object.fromEntries(rows.map((r) => [r.user_id, r.for_user]))
+        expect(byUser).toEqual({ [w.member.userId]: null, [standIn]: w.member.userId })
+      }
+    } finally {
+      await sql`DELETE FROM kernel.away_ranges WHERE id = ${range}`
+    }
+  })
+
   it("a reply reaches the manager as they are now, the person assigned once someone is, and the inbox admins with neither", async () => {
     await setManager(w.companyA, w.member.userId)
     const id = await request("Invoice question")

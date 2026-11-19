@@ -1064,14 +1064,27 @@ const HomeSlice: Component<{ filter: HomeFilter; sections: HomeSections; phone: 
       : s().needs.approvals.filter((i) => approvalActionKey(i) === f)
   }
   const waiting = waitingOnOthers
-  // Covering for a colleague who is away: what the viewer now decides for them, nothing else.
+  // Covering for a colleague who is away: what the viewer now decides or handles for them (an
+  // approval held for them, or activity passed on from them), nothing else.
   const coveringId = () => coveringOf(props.filter)
   const covering = (): AttentionItem[] => {
     const id = coveringId()
     if (!id) return []
-    return [...s().needs.approvals, ...s().needs.others, ...s().needs.alerts].filter((i) =>
-      coversFor(i, id),
-    )
+    const n = s().needs
+    const all = [
+      ...n.timeLimited,
+      ...n.approvals,
+      ...n.others,
+      ...n.alerts,
+      ...n.uncounted,
+      ...s().queues.flatMap((g) => g.items),
+    ]
+    const seen = new Set<string>()
+    return all.filter((i) => {
+      if (seen.has(i.id) || !coversFor(i, id)) return false
+      seen.add(i.id)
+      return true
+    })
   }
 
   const title = (): string => {

@@ -213,9 +213,12 @@ describe("the services world's tours", () => {
   })
 
   it("tile minutes match the board with projects at four minutes", () => {
-    expect(
-      DEMO_WORLD_NEEDS.studio.map((need) => [need, STUDIO_SCENARIO_MINUTES[need as never]]),
-    ).toEqual([
+    const minutes: Record<string, number | undefined> = STUDIO_SCENARIO_MINUTES
+    const tiles: [string, number | undefined][] = DEMO_WORLD_NEEDS.studio.map((need) => [
+      need,
+      minutes[need],
+    ])
+    expect(tiles).toEqual([
       ["support", 3],
       ["projects", 4],
       ["chat", 3],
@@ -224,6 +227,6 @@ describe("the services world's tours", () => {
       ["dev", 3],
       ["knowledge", 3],
     ])
-    expect(Object.values(STUDIO_SCENARIO_MINUTES).reduce((a, b) => a + (b ?? 0), 0)).toBe(24)
+    expect(tiles.reduce((sum, [, m]) => sum + (m ?? 0), 0)).toBe(24)
   })
 })

@@ -130,14 +130,14 @@ describe("the list of agreements", () => {
 
   it("a query finds a client's agreements by the client's name, not only by title or number", async () => {
     const db = memoryDb()
-    const MARLIN = "44444444-4444-4444-8444-444444444444"
+    const NORTHWIND = "44444444-4444-4444-8444-444444444444"
     const calls: Array<[string, Record<string, unknown>]> = []
     const ctx = {
       ...ctxFor(db),
       executeTool: async (name: string, params: Record<string, unknown>) => {
         calls.push([name, params])
         const q = String(params.query ?? "").toLowerCase()
-        const companies = [{ id: MARLIN, name: "Groupe Marlin" }]
+        const companies = [{ id: NORTHWIND, name: "Northwind Group" }]
         return {
           status: "completed",
           result: { items: companies.filter((c) => c.name.toLowerCase().includes(q)) },
@@ -145,9 +145,9 @@ describe("the list of agreements", () => {
       },
     }
     const sow = await agreementCreate(ctx, { kind: "sow", title: "Partner portal rebuild" })
-    await db.update("agreements", okId(sow), { status: "signed", company_id: MARLIN })
+    await db.update("agreements", okId(sow), { status: "signed", company_id: NORTHWIND })
     await agreementCreate(ctx, { kind: "nda", title: "Mutual NDA" })
-    const out = (await agreementsSearch(ctx, { query: "Marlin" })) as {
+    const out = (await agreementsSearch(ctx, { query: "Northwind" })) as {
       items: Array<{ title: string }>
     }
     expect(out.items.map((i) => i.title)).toEqual(["Partner portal rebuild"])

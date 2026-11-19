@@ -285,6 +285,9 @@ describe("portal doors: the client action page", () => {
     expect(listed).toEqual([
       "modules/client-actions/code-attempt.ts",
       "modules/client-actions/decide.ts",
+      // The demo decide: a demo workspace's stand-in decision, read and written under the
+      // row's lock as the one decide does; its one caller is a demo world's step.
+      "modules/client-actions/demo-decide.ts",
       "modules/client-actions/document-files.ts",
       "modules/client-actions/mint.ts",
       "modules/client-actions/portal-code.ts",

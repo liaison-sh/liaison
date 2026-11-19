@@ -50,6 +50,8 @@ const REVIEWED: Record<string, string> = {
   "modules/demo/warehouse/connection.ts#*": "demo org seeding",
   "modules/demo/worlds/saas/payments/connection.ts#*":
     "demo org seeding: a card-payments sentinel connection, not a mailbox",
+  "modules/demo/worlds/studio/github/connection.ts#*":
+    "demo org seeding: the services world's GitHub sentinel connection, not a mailbox",
   // The sign-up that CREATES an org: its first admin is the first seat of an
   // org that has no caps yet (caps are set by the operator afterwards).
   "modules/auth/auth.ts#bootstrapRegister":

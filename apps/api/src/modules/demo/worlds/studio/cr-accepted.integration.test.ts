@@ -315,7 +315,7 @@ describe("the client's acceptance in the services world", () => {
     for (const s of spies) expect(s).not.toHaveBeenCalled()
   })
 
-  it("after the client's acceptance the contract reads 70,600, the timebox 480 h with 134 left, a new unassigned task exists and the 6,600 billing line waits on a person's approval, and nothing is issued", async () => {
+  it("after the client's acceptance the contract reads 70,600, the timebox 480 h with 134 left, a new unassigned task exists and a 6,600 line is planned on the billing plan, and nothing is issued", async () => {
     const action = await worldChangeRequestAction(orgId)
     const [cr] = await rows<{
       parent: string
@@ -329,15 +329,15 @@ describe("the client's acceptance in the services world", () => {
              effects_billing AS billing, (effects_done_at IS NOT NULL) AS done,
              effects_time_plan AS time_plan, effects_note AS note
         FROM app_agreements.agreements WHERE id = ${action?.agreementId}::uuid`)
-    // The task is added; the billing step is a money write, so it waits on a person's approval.
-    expect(cr?.done).toBe(false)
+    // The task and the billing step are the consequence of the send the owner approved: both
+    // run on that act (a call no agent turn made, so no turn's taint parks it), once.
+    expect(cr?.done).toBe(true)
     expect(cr?.task).not.toBeNull()
-    expect(cr?.note ?? "").toMatch(/billing step was not \(waiting on a person\)/)
-    const pending = await rows<{ amount: string | null }>(sql`
-      SELECT current_payload->>'amountMinor' AS amount FROM kernel.approval_requests
-       WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:billing_step_add'
-         AND status = 'pending'`)
-    expect(pending.map((p) => String(p.amount))).toEqual(["660000"])
+    expect(cr?.billing).toBe("added")
+    const pending = await rows<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM kernel.approval_requests
+       WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:billing_step_add'`)
+    expect(pending[0]?.n).toBe(0)
     const [parent] = await rows<{ total: string }>(sql`
       SELECT amended_total_minor::text AS total FROM app_agreements.agreements
        WHERE id = ${cr?.parent}::uuid`)
@@ -355,11 +355,11 @@ describe("the client's acceptance in the services world", () => {
     const tasks = await rows<{ assignee: string | null }>(sql`
       SELECT assignee_id::text AS assignee FROM app_projects.tasks WHERE id = ${cr?.task}::uuid`)
     expect(tasks).toEqual([{ assignee: null }])
-    // Not on the plan until that approval: nothing is billed or issued meanwhile.
-    const steps = await rows<{ n: number }>(sql`
-      SELECT count(*)::int AS n FROM app_invoicing.billing_steps
+    // On the plan once, billed when its task is done: nothing is invoiced meanwhile.
+    const steps = await rows<{ amount: string; task: string | null }>(sql`
+      SELECT amount_minor::text AS amount, task_id::text AS task FROM app_invoicing.billing_steps
        WHERE org_id = ${orgId}::uuid AND change_request_ref = ${action?.agreementId}`)
-    expect(steps[0]?.n).toBe(0)
+    expect(steps).toEqual([{ amount: "660000", task: cr?.task ?? null }])
     const issued = await rows<{ n: number }>(sql`
       SELECT count(*)::int AS n FROM app_invoicing.documents
        WHERE org_id = ${orgId}::uuid AND issued_at > ${BOARD_DATE.toISOString()}::timestamptz`)

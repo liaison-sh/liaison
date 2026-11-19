@@ -286,7 +286,12 @@ describe("the client scenario's questions, with a scripted model", () => {
 
     const outcome = await ask("Is single sign-on in the fixed-price client's scope?", {
       steps: [
-        [{ tool: "kernel__tool_search", args: () => ({ query: "quote a section of an agreement" }) }],
+        [
+          {
+            tool: "kernel__tool_search",
+            args: () => ({ query: "quote a section of an agreement" }),
+          },
+        ],
         [
           {
             tool: "agreements__agreement_passage_get",

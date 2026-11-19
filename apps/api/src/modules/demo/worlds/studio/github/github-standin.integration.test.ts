@@ -38,8 +38,8 @@ import {
 } from "../../../../../../../../bundled-apps/github/src/provisioning"
 import { githubListCommits } from "../../../../../../../../bundled-apps/github/src/tools"
 import { demoGithubCredentials, installDemoGithubConnection } from "./connection"
-import { maybeDemoGithubResponse } from "./provider"
 import { buildStandInHistory } from "./fixture"
+import { maybeDemoGithubResponse } from "./provider"
 import { DEMO_GITHUB_OWNER, DEMO_GITHUB_SENTINEL_TOKEN, GITHUB_STANDIN_HOST } from "./sentinel"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..", "..", "..")

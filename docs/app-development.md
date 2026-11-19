@@ -1076,7 +1076,7 @@ An item raised this way is stored for each person, so on **Home** it offers **No
 
 ### Ship a routine template
 
-An app ships routine templates in `routines` of the manifest, keyed by template id: `description`, `kind` (`event` or a schedule), `event`, `promptTemplate` and `scopes`. A template can also be a flow: `flow` holds its steps and `eventFilter` its trigger filter, with `{{projectId}}` and `{{status:<label>}}` placeholders filled for the project chosen when the template is enabled. The filled flow is checked against the flow schema then. The Projects app's templates are the worked example; [Routines](agents/routines.md) describes flows, waits and outcomes.
+An app ships routine templates in `routines` of the manifest, keyed by template id: `description`, `kind` (`event` or a schedule), `event`, `promptTemplate` and `scopes`. An optional `title` is the name people read ("Scope check"): enabling the template copies it to the routine, so lists and approval cards show it instead of the template id. A template can also be a flow: `flow` holds its steps and `eventFilter` its trigger filter, with `{{projectId}}` and `{{status:<label>}}` placeholders filled for the project chosen when the template is enabled. The filled flow is checked against the flow schema then. The Projects app's templates are the worked example; [Routines](agents/routines.md) describes flows, waits and outcomes.
 
 A flow acts on the record that triggered it only when the record's entity declares itself a flow record, in `entities.<entity>.routineFlow`:
 

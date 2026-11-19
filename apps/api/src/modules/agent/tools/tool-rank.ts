@@ -1047,7 +1047,7 @@ function appActionMatches<T extends ScorableDeferredTool>(
 
 /**
  * One keyword search over a catalog: the tools to list, best first, and which of
- * them the search LOADS. A usable tool always ranks above a locked one. `appNames`
+ * them the search LOADS. A usable tool ranks above a locked one of the same score. `appNames`
  * is the org's apps (On or Off, without the kernel); `cap` the hits to list.
  */
 export function rankDeferredTools<
@@ -1080,7 +1080,7 @@ interface RankedTools<T> {
  * The keyword ranking with meaning added (tool-meaning.ts): each tool's score
  * gains its meaning points, and a tool no word matched joins when it stands
  * out by meaning. What the keywords load keeps its place ahead, a usable tool
- * still ranks above a locked one, and a bare app name keeps its app listing.
+ * ranks above a locked one of the same score, and a bare app name keeps its app listing.
  * Only tools of `catalog` can rank.
  */
 function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?: boolean }>(
@@ -1105,14 +1105,17 @@ function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?:
     .map((tool) => ({ tool, score: 0, termsMatched: 0, termCount: 0 }))
   const fused = (s: { tool: T; score: number }) => s.score + (points.get(s.tool.sdkName) ?? 0)
   const lead = (s: { tool: T }) => (byWords.strongNames.has(s.tool.sdkName) ? 0 : 1)
+  // Meaning alone never lifts a locked tool: only its words do, as in the keyword ranking.
+  const joins = lockedJoins([...byWords.all, ...joined], cap, (s) => s.score)
   const all = [...byWords.all, ...joined]
     .map((s) => ({ s, f: fused(s) }))
     .sort((a, b) => {
-      const al = a.s.tool.locked ? 1 : 0
-      const bl = b.s.tool.locked ? 1 : 0
-      if (al !== bl) return al - bl
+      const ag = a.s.tool.locked && !joins(a.s) ? 1 : 0
+      const bg = b.s.tool.locked && !joins(b.s) ? 1 : 0
+      if (ag !== bg) return ag - bg
       if (lead(a.s) !== lead(b.s)) return lead(a.s) - lead(b.s)
-      return b.f - a.f
+      if (a.f !== b.f) return b.f - a.f
+      return (a.s.tool.locked ? 1 : 0) - (b.s.tool.locked ? 1 : 0)
     })
     .map(({ s, f }) => ({ ...s, score: f }))
   const listed = Math.max(
@@ -1120,6 +1123,28 @@ function addMeaning<T extends ScorableDeferredTool & { sdkName: string; locked?:
     byWords.ranked.filter((s) => byWords.strongNames.has(s.tool.sdkName)).length,
   )
   return { ...byWords, all, ranked: all.slice(0, listed) }
+}
+
+/**
+ * Which locked tools rank among the usable ones. Usable tools rank first, so a locked match
+ * never crowds a usable one out of the list, EXCEPT a locked tool whose words match better than
+ * the usable tool that would close the list (the `cap`-th best usable by `wordScore`): it ranks
+ * by its score with them. Ranking every usable tool ahead let five weak usable matches crowd out
+ * the one locked tool the query named ("set project billing rate"), and the agent then said the
+ * capability did not exist instead of offering to request it. A locked tool is never loaded,
+ * whatever its rank. Judged on the words only, never on meaning.
+ */
+function lockedJoins<S extends { tool: { locked?: boolean } }>(
+  entries: readonly S[],
+  cap: number,
+  wordScore: (s: S) => number,
+): (s: S) => boolean {
+  const usable = entries
+    .filter((s) => !s.tool.locked)
+    .map(wordScore)
+    .sort((a, b) => b - a)
+  const bar = usable.length >= cap && cap > 0 ? (usable[cap - 1] ?? 0) : 0
+  return (s) => wordScore(s) > bar
 }
 
 function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; locked?: boolean }>(
@@ -1169,16 +1194,15 @@ function rankByKeywords<T extends ScorableDeferredTool & { sdkName: string; lock
       )
     : scoreDeferredTools(catalog, query, { appNames: opts.appNames })
 
-  const all = scored
-    .filter((s) => s.score > 0)
-    // Available tools first, then locked ones (so a usable tool is never crowded out of
-    // the cap by a locked one), each group by descending score.
-    .sort((a, b) => {
-      const al = a.tool.locked ? 1 : 0
-      const bl = b.tool.locked ? 1 : 0
-      if (al !== bl) return al - bl
-      return b.score - a.score
-    })
+  const all = scored.filter((s) => s.score > 0)
+  const joins = lockedJoins(scored, effectiveCap, (s) => s.score)
+  all.sort((a, b) => {
+    const ag = a.tool.locked && !joins(a) ? 1 : 0
+    const bg = b.tool.locked && !joins(b) ? 1 : 0
+    if (ag !== bg) return ag - bg
+    if (a.score !== b.score) return b.score - a.score
+    return (a.tool.locked ? 1 : 0) - (b.tool.locked ? 1 : 0)
+  })
   // Words that name no capability ("what can you do") load nothing, however many
   // descriptions happen to contain them. They still list.
   const namesNothing = terms.every((term) => FILLER_WORDS.has(term))

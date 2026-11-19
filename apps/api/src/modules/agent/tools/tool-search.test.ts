@@ -130,6 +130,32 @@ describe("tool_search surfaces scope-locked tools", () => {
     expect(res.matches[0]?.locked).toBeUndefined()
   })
 
+  it("a locked tool that matches better than every usable one is listed within the cap", async () => {
+    const BILL_ORG = "00000000-0000-0000-0000-000000000a1b"
+    const reg = (name: string, description: string, scope: string) =>
+      toolRegistry.set([BILL_ORG, "works", name], {
+        appName: "works",
+        name,
+        description,
+        requiredScopes: [scope],
+        handler: async () => ({ ok: true }),
+        deferLoading: true,
+      } as any)
+    for (let i = 0; i < 6; i++) reg(`plan_step_${i}`, "Set a project's plan step.", "works:plan:write")
+    reg("billing_terms_set", "Set how a project is billed: rate per hour or a fixed price.", "works:money:write")
+    try {
+      const res = await handleToolSearch(
+        { query: "set project billing rate" },
+        { orgId: BILL_ORG, userId: ACTOR.userId, scopes: ["works:plan:write"] },
+      )
+      const billing = res.matches.find((m) => m.name === "works__billing_terms_set")
+      expect(billing?.locked).toBe(true)
+      expect(billing?.requiredScope).toBe("works:money:write")
+    } finally {
+      toolRegistry.deleteByPrefix([BILL_ORG])
+    }
+  })
+
   it("select: also surfaces a locked tool by exact name (so the agent can't miss it)", async () => {
     const res = await handleToolSearch(
       { query: "select:widgets__create" },

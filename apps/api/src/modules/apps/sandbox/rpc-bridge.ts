@@ -653,6 +653,13 @@ export function createSessionRpcBridge(
       bridgeOptions?.writeParentFrameOverride !== undefined
         ? bridgeOptions.writeParentFrameOverride
         : captureSpawnParentFrame(),
+    // The run itself, for what a method reads from it at call time (the turn's
+    // live taint store above all): captured here, bound to this bridge only.
+    // Never the IPC callback's ambient context, which belongs to no run.
+    runFrameOverride:
+      bridgeOptions?.runFrameOverride !== undefined
+        ? bridgeOptions.runFrameOverride
+        : (currentRunContext() ?? null),
     bulkCursorStore:
       bridgeOptions?.bulkCursorStore ??
       new Map<string, { iterator: AsyncIterator<unknown[]> | null; done: boolean }>(),

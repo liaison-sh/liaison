@@ -67,6 +67,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     approvalContext,
     bridgeActingAgentId,
     bridgeRoutineId,
+    bridgeRunFrame,
     bridgeOptions,
     callerScopes,
     inheritedActor,
@@ -247,13 +248,12 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
     const { HUMAN_TURN_ONLY_CODE, humanTurnOnlyAllows } = await import(
       "~/modules/apps/execute-tool"
     )
-    const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
     const origin = (bridgeOptions?.origin ?? "system") as Parameters<typeof humanTurnOnlyAllows>[0]
     const fromRoutine = Boolean(bridgeRoutineId ?? approvalContext?.originRoutineId)
     if (
       !fromRoutine &&
       !(await approvedWithoutPerson()) &&
-      humanTurnOnlyAllows(origin, currentRunContext())
+      humanTurnOnlyAllows(origin, bridgeRunFrame)
     )
       return null
     return JSON.stringify({
@@ -339,8 +339,7 @@ export function createProjectsMethods(ctx: BridgeContext): Record<string, any> {
   }
   /** Where a Took call comes from, for the person-statement rule. */
   const tookPlace = async () => {
-    const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
-    const frame = currentRunContext()
+    const frame = bridgeRunFrame
     const origin = (bridgeOptions?.origin ??
       "system") as import("~/apps/projects/service/took").TookOrigin
     const routineId = bridgeRoutineId ?? approvalContext?.originRoutineId

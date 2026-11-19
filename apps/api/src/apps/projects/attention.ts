@@ -2,10 +2,8 @@
 import type { AttentionItem } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
-import { dueBucketSql, todaySql } from "~/apps/projects/service/due-status"
+import { dueBucketSql, orgToday, todaySql } from "~/apps/projects/service/due-status"
 import { monthCloseItems } from "~/apps/projects/service/home-lines"
-import { orgTimezone } from "~/apps/projects/service/time-plan"
-import { todayIn } from "~/apps/projects/service/took"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
@@ -43,7 +41,7 @@ export async function computeAttentionItems(
   const items: AttentionItem[] = []
   // One clock for the whole answer: the overdue and due-soon rows and the month-close line
   // all read today in the org's time zone from `now`, never the database's own CURRENT_DATE.
-  const today = todayIn(await orgTimezone(tx as RlsClient | PrivilegedDb, orgId), now)
+  const today = await orgToday(tx, orgId, now)
   const day = todaySql(today)
   const people = [callerUserId, ...forUserIds.filter((id) => id !== callerUserId)]
   const assignees = drizzleSql`t.assignee_id IN (${drizzleSql.join(

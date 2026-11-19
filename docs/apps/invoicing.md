@@ -149,6 +149,10 @@ The **PDF** tab shows the document in the page, in browsers with a PDF viewer. A
 
 Issued documents are never deleted. A correction is a credit note, with its own `CN-` number series. The date of an issued document stays in its number's year: a date in another year is refused, and the correction is a credit note and a new invoice (for a quote, proforma or purchase order, a new one). The date of an issued invoice or credit note also stays between the numbers just before and just after it, and is never after today. A refund or cancellation taken in Shopify issues the matching credit note automatically.
 
+A draft's invoice keeps the client company it was made for: a schedule's, a billing plan's quote's or a project's. Changing the draft's customer drops it, and the invoice then takes the new customer's company. The company's page and its client portal list the invoice.
+
+When a draft is edited while its issue approval waits, the card is redrawn from the edited draft, and a decision taken on the card as it was is refused. A draft changed by any other way since its card was drawn is not issued from that card: ask for its issue again. A refusal names the draft by its customer ("The invoice draft for Northwind"), never by its id.
+
 **Pending Approval** in the sidebar opens a tab listing the invoicing approvals waiting for a decision, oldest first; **Open** on a row opens the document it acts on, where a draft from a card, a milestone or a retainer month is issued. Deciding them needs `invoicing:approve`; the row is shown to people who hold it or `invoicing:documents:write`. See [Approve what agents do](../agents/approvals.md).
 
 ## Handle e-invoicing

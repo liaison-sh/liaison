@@ -6,3 +6,4 @@ The activity report gets a corrected version linked to the credit note -> bundle
 The project's billed figure moves only when the credit note issues; a full credit frees the card's work -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile) ; apps/api/src/apps/projects/service/claims.ts (reconcileMark)
 A correction that would bill more is refused, and so is one above what remains of the invoice -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess) ; bundled-apps/invoicing/src/mutations/credit-notes.ts (preflightCreditNoteCreateAndIssueParams)
 Time entered after the issue changes the margin only: the correction starts from the issued line -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (assess)
+A fee-only retainer month (no line, no claim) counts as reserved and issues -> apps/api/src/apps/projects/service/claims.ts (reconcileLinesRead)

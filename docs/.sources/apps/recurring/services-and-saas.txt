@@ -27,3 +27,7 @@ Check the amount flag names last time's amount, never on a first invoice -> bund
 Amount check follows an edit of the row -> bundled-apps/invoicing/src/recurring/restage.ts (afterRunWrite)
 Run read names rows billing far from their last invoice -> bundled-apps/invoicing/src/recurring/run-get.ts (recurringRunGet)
 Card line carries the row's note -> bundled-apps/invoicing/src/recurring/run-card.ts (cardItems)
+Ending a schedule leaves its open run rows out with the note Schedule ended, and the card drops them -> bundled-apps/invoicing/src/recurring/tools.ts (recurringScheduleUpdate) ; bundled-apps/invoicing/src/recurring/tools.ts (leaveOutOpenRows) ; bundled-apps/invoicing/src/recurring/end-schedule.ts (SCHEDULE_ENDED)
+An approved row of a paused or ended schedule is left out at issue and takes no number -> bundled-apps/invoicing/src/recurring/issue-job.ts (recurringItemIssue)
+A schedule's drafts carry its company -> bundled-apps/invoicing/src/recurring/draft-job.ts (company_id)
+The company page lists the schedules that bill it; a schedule opens its company -> bundled-apps/invoicing/src/ui/CompanyMoneyPanel.tsx (loadCompanySchedules) ; bundled-apps/invoicing/src/recurring/tools.ts (recurringList) ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (schedule-company-link)

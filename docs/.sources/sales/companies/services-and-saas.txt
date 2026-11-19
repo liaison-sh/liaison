@@ -42,3 +42,5 @@ A company nobody created stays visible to the organisation -> apps/api/src/db/mi
 merge moves recurring schedules and linked billing customers -> apps/api/src/modules/contacts/companies.ts (APP_COMPANY_LINKS)
 Delete refused while a recurring invoice schedule not ended bills the company; Stripe customers and ended schedules lose the link -> apps/api/src/modules/contacts/companies.ts (updateCompany)
 Invoicing timeline rows include the recurring schedules that bill the people -> bundled-apps/invoicing/src/activity.ts (activityRead)
+Money lists the recurring schedules that bill the company -> bundled-apps/invoicing/src/ui/CompanyMoneyPanel.tsx (loadCompanySchedules)
+Agreements section on the company page, for readers of agreements -> bundled-apps/agreements/src/ui/CompanyAgreementsPanel.tsx (CompanyAgreementsPanel) ; bundled-apps/agreements/app.manifest.json (slots.company_detail)

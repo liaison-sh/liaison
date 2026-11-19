@@ -14,6 +14,7 @@ import {
   summarizeContactsMerge,
   summarizeContactsWrite,
 } from "~/modules/agent/tools/contact-tools"
+import { createCompanies } from "~/modules/contacts/companies"
 import { armAfterContactMergeFailpoint } from "~/modules/contacts/merge-failpoint"
 import { getContact, mergeContactsWithMailReferences } from "~/modules/contacts/service"
 import { acquireAppSchemaLock, releaseAppSchemaLock } from "~/tests/helpers/app-schema-lock"
@@ -760,6 +761,72 @@ describe("contacts_write: its approval card and preflight", () => {
     expect(
       await contactsWritePreflight({ contactId: aliceContactId, email: "alice@x.com" }, ctx),
     ).toEqual({ ok: true })
+  })
+})
+
+describe("contacts_write: a company named by its name links the contact", () => {
+  async function companyNamed(name: string): Promise<string> {
+    const [company] = await withAgentContext((ctx) =>
+      createCompanies(ctx.db, { orgId, userId, inputs: [{ name }] }),
+    )
+    if (!company) throw new Error("no company created")
+    return company.id
+  }
+
+  afterAll(async () => {
+    await sql`DELETE FROM kernel.contacts WHERE org_id = ${orgId}`
+    await sql`DELETE FROM kernel.companies WHERE org_id = ${orgId}`
+  })
+
+  it("links a new contact to the one company of that name", async () => {
+    const companyId = await companyNamed("Harbour Works")
+    const result = (await withAgentContext((ctx) =>
+      handleContactsWrite(
+        { name: "Nina Field", email: "nina@harbour.example", company: "harbour works " },
+        ctx,
+      ),
+    )) as { contact: { id: string; companyId: string | null; company: string | null } }
+    expect(result.contact.companyId).toBe(companyId)
+    expect(result.contact.company).toBe("Harbour Works")
+  })
+
+  it("links an existing contact when its company text names a company", async () => {
+    const companyId = await companyNamed("Quarry Lane")
+    const result = (await withAgentContext((ctx) =>
+      handleContactsWrite({ contactId: aliceContactId, company: "Quarry Lane" }, ctx),
+    )) as { contact: { companyId: string | null } }
+    expect(result.contact.companyId).toBe(companyId)
+  })
+
+  it("keeps only the text when no company, or more than one, has that name", async () => {
+    const none = (await withAgentContext((ctx) =>
+      handleContactsWrite(
+        { name: "Omar Vale", email: "omar@nowhere.example", company: "Nowhere Ltd" },
+        ctx,
+      ),
+    )) as { contact: { companyId: string | null; company: string | null } }
+    expect(none.contact.companyId).toBeNull()
+    expect(none.contact.company).toBe("Nowhere Ltd")
+  })
+
+  it("names the company, not its id, on the approval card", async () => {
+    const companyId = await companyNamed("Lantern Studio")
+    const card = await withAgentContext((ctx) =>
+      summarizeContactsWrite(
+        { contactId: aliceContactId, companyId },
+        { tx: ctx.db, orgId, userId },
+      ),
+    )
+    expect(card.lines).toEqual(["Company → Lantern Studio"])
+    const unknown = await withAgentContext((ctx) =>
+      summarizeContactsWrite(
+        { contactId: aliceContactId, companyId: "00000000-0000-0000-0000-000000e10fff" },
+        { tx: ctx.db, orgId, userId },
+      ),
+    )
+    expect(unknown.lines).toEqual([
+      "Company → an unknown company (00000000-0000-0000-0000-000000e10fff)",
+    ])
   })
 })
 

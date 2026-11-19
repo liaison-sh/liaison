@@ -411,6 +411,23 @@ export function liftMisplacedPhone(
   }
 }
 
+/** The org's companies whose name is `name` (trimmed, case-insensitive), at most two. */
+async function companiesNamed(
+  ctx: Pick<ContactToolContext, "db" | "orgId">,
+  name: string,
+): Promise<Array<{ id: string; name: string }>> {
+  return ctx.db
+    .select({ id: companiesTable.id, name: companiesTable.name })
+    .from(companiesTable)
+    .where(
+      and(
+        eq(companiesTable.orgId, ctx.orgId),
+        drizzleSql`lower(${companiesTable.name}) = ${name.trim().toLowerCase()}`,
+      ),
+    )
+    .limit(2)
+}
+
 /** The company and legal-record fields of a contacts_write, resolved for `updateContact`. */
 async function contactCompanyAndBasis(
   params: ContactsWriteParams,
@@ -444,6 +461,15 @@ async function contactCompanyAndBasis(
       fields.companyId = company.id
       // The person carries the company's name as their company text.
       fields.company = company.name
+    }
+  } else if (typeof params.company === "string" && params.company.trim() !== "") {
+    // A company named only by its text is the org's company of that name when exactly one
+    // has it, so the person is linked to it, not merely labelled with it. Resolved when the
+    // write runs (after its approval), so a company approved first is found.
+    const named = await companiesNamed(ctx, params.company)
+    if (named.length === 1 && named[0]) {
+      fields.companyId = named[0].id
+      fields.company = named[0].name
     }
   }
   if (params.lawfulBasis !== undefined) fields.lawfulBasis = params.lawfulBasis
@@ -1222,7 +1248,11 @@ function summaryValue(v: unknown): string {
 
 /** Each field the write sets, as "field → new value", after the same lifts the
  *  handler applies (a VAT id or a phone nested in metadata lands on its field). */
-export function contactsWriteChanges(params: ContactsWriteParams): string[] {
+export function contactsWriteChanges(
+  params: ContactsWriteParams,
+  /** The name of the company `companyId` names, as the card shows it; null when none has it. */
+  companyName?: string | null,
+): string[] {
   const { externalIds, metadata: afterVat } = liftMisplacedVatId(
     params.externalIds,
     params.metadata,
@@ -1232,11 +1262,19 @@ export function contactsWriteChanges(params: ContactsWriteParams): string[] {
   if (params.name !== undefined) lines.push(`Name → ${params.name}`)
   if (params.email !== undefined) lines.push(`Email → ${params.email}`)
   if (phone !== undefined) lines.push(`Phone → ${phone}`)
-  if (params.company !== undefined) lines.push(`Company → ${params.company}`)
+  // A company named by id is shown by its name (the handler takes the text from it too).
+  if (params.companyId !== undefined) {
+    lines.push(
+      `Company → ${
+        params.companyId === null
+          ? "(none)"
+          : (companyName ?? `an unknown company (${params.companyId})`)
+      }`,
+    )
+  } else if (params.company !== undefined) lines.push(`Company → ${params.company}`)
   if (params.tags !== undefined) {
     lines.push(`Tags → ${params.tags.length > 0 ? params.tags.join(", ") : "(none)"}`)
   }
-  if (params.companyId !== undefined) lines.push(`Company id → ${params.companyId ?? "(none)"}`)
   if (params.lawfulBasis !== undefined) {
     lines.push(
       `Lawful basis → ${params.lawfulBasis}${params.lawfulBasisSource ? ` (${params.lawfulBasisSource})` : ""}`,
@@ -1258,7 +1296,16 @@ export async function summarizeContactsWrite(
   ctx: { tx: RlsClient; orgId: string; userId: string },
 ): Promise<ApprovalSummary> {
   const p = (params ?? {}) as ContactsWriteParams
-  const changes = contactsWriteChanges(p)
+  let companyName: string | null = null
+  if (typeof p.companyId === "string" && UUID_RE.test(p.companyId)) {
+    const [company] = await ctx.tx
+      .select({ name: companiesTable.name })
+      .from(companiesTable)
+      .where(and(eq(companiesTable.id, p.companyId), eq(companiesTable.orgId, ctx.orgId)))
+      .limit(1)
+    companyName = company?.name ?? null
+  }
+  const changes = contactsWriteChanges(p, companyName)
   // The card holds 8 lines: past that, the last one says how many more the payload carries.
   const lines =
     changes.length === 0

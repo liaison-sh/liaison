@@ -10,6 +10,7 @@ import type { ApiClient } from "~/lib/api-client"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openEntity } from "~/modules/shell/entity-opener"
+import { prettyStatus } from "./status-label"
 
 export interface CompanyWorkTask {
   id: string
@@ -130,7 +131,7 @@ export const CompanyWorkPanel: Component<{ entityId?: string }> = (props) => {
                               </span>
                               <Show when={t.status}>
                                 <span class="shrink-0 text-[12px] text-text-tertiary">
-                                  {t.status}
+                                  {prettyStatus(t.status ?? "")}
                                 </span>
                               </Show>
                             </button>

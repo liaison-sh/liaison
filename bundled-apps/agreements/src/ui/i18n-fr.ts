@@ -3,6 +3,10 @@
 // French for this app's UI, keyed by the English source text (see i18n.ts).
 // Formal "vous", no dash punctuation (the repo's lint:copy rule).
 export const FR: Record<string, string> = {
+  "In this demo the signature, seal and timestamp are stand-ins. No signature took place.":
+    "Dans cette démo, la signature, le sceau et l'horodatage sont simulés. Aucune signature n'a eu lieu.",
+  "There is no evidence file to download or check.":
+    "Il n'y a pas de fichier de preuve à télécharger ni à vérifier.",
   "Waiting for the client's approval": "En attente de l'approbation du client",
   "Save your changes first: then it can be prepared for signature.":
     "Enregistrez d'abord vos modifications : le document pourra ensuite être préparé pour signature.",

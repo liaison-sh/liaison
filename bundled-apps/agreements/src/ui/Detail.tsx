@@ -44,6 +44,8 @@ interface Evidence {
   signed_pdf_file_id?: string | null
   /** Only for a holder of the devices permission: the evidence file holds each device. */
   evidence_file_id?: string | null
+  /** The signature's level: `demo` is a stand-in, with no evidence behind it. */
+  level?: string | null
   signers: Array<{
     name: string
     capacity: string | null
@@ -156,7 +158,9 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
     if (ours) void refetch()
   })
   const [evidence, { refetch: refetchEvidence }] = createResource(
-    () => (pane() === "evidence" && loaded()?.agreement.status === "signed" ? id() : null),
+    // Read for a signed agreement on any pane: the overview says when its signature is a
+    // demo stand-in, before anyone opens the proof.
+    () => (loaded()?.agreement.status === "signed" ? id() : null),
     async (agreementId) => {
       const out = await call<Evidence>("agreement_evidence_get", { id: agreementId })
       return out.ok ? out.data : null
@@ -402,6 +406,16 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                     <Switch>
                       <Match when={pane() === "overview"}>
                         <section data-testid="agreement-overview" class="flex flex-col gap-5">
+                          <Show when={evidence()?.level === "demo"}>
+                            <p
+                              data-testid="agreement-stand-in"
+                              class="rounded-md border border-border-default px-3 py-2 text-[12.5px] text-text"
+                            >
+                              {tr(
+                                "In this demo the signature, seal and timestamp are stand-ins. No signature took place.",
+                              )}
+                            </p>
+                          </Show>
                           <div>
                             <h2 class="mb-2 text-[12px] font-medium text-text-secondary">
                               {tr("Signers, in order")}
@@ -586,151 +600,170 @@ export const AgreementDetailView: Component<{ entityId?: string; id?: string }> 
                             }
                           >
                             {(e) => (
-                              <>
-                                <div class="flex flex-wrap items-center gap-2">
-                                  <Button
-                                    testid="agreement-verify"
-                                    disabled={busy()}
-                                    onClick={() => void verify()}
-                                  >
-                                    {tr("Check the stored files")}
-                                  </Button>
-                                  <Show when={e().signed_pdf_file_id}>
-                                    {(f) => (
-                                      <Button
-                                        testid="agreement-download-signed"
-                                        onClick={() =>
-                                          void openPdf(f(), `${a().number}-signed.pdf`)
-                                        }
-                                      >
-                                        {tr("Download signed PDF")}
-                                      </Button>
-                                    )}
-                                  </Show>
-                                  <Show when={e().evidence_file_id}>
-                                    {(f) => (
-                                      <Button
-                                        testid="agreement-download-evidence"
-                                        onClick={() =>
-                                          void openStoredFile(
-                                            f(),
-                                            `${a().number}-proof-of-signature.zip`,
-                                            "application/zip",
-                                          ).then(
-                                            (ok) =>
-                                              ok ||
-                                              setNote({
-                                                text: tr("The file could not be opened."),
-                                                error: true,
-                                              }),
-                                          )
-                                        }
-                                      >
-                                        {tr("Download proof of signature")}
-                                      </Button>
-                                    )}
-                                  </Show>
-                                  <Show when={check() === "matches"}>
-                                    <span
-                                      data-testid="agreement-verify-matches"
-                                      class="text-[12.5px] text-text"
-                                    >
-                                      {tr("The stored files match what was signed.")}
-                                    </span>
-                                  </Show>
-                                  <Show when={check() === "changed"}>
-                                    <span
-                                      data-testid="agreement-verify-changed"
-                                      class="text-[12.5px] text-text"
-                                    >
-                                      {tr(
-                                        "This stored file no longer matches what was signed. Use the copy each signer received. Liaison cannot repair this.",
-                                      )}
-                                    </span>
-                                  </Show>
-                                </div>
-                                <Line
-                                  k={tr("Document fingerprint (SHA-256)")}
-                                  v={e().document_sha256}
-                                />
-                                <Show when={e().signed_pdf_sha256}>
-                                  <Line
-                                    k={tr("Signed copy fingerprint")}
-                                    v={e().signed_pdf_sha256 ?? ""}
-                                  />
-                                </Show>
-                                <Line
-                                  k={tr("Seal")}
-                                  v={
-                                    e().sealed_at
-                                      ? tr(
-                                          "Sealed on {{date}}. The seal locks the file; it is not a signature.",
-                                          {
-                                            date: dateText(e().sealed_at),
-                                          },
-                                        )
-                                      : tr("Not sealed yet. The seal is retried every 10 minutes.")
-                                  }
-                                />
-                                <Line
-                                  testid="agreement-timestamp"
-                                  k={tr("Independent timestamp")}
-                                  v={
-                                    e().timestamped_at
-                                      ? tr("Stamped on {{date}}", {
-                                          date: dateText(e().timestamped_at),
-                                        })
-                                      : tr(
-                                          "No independent timestamp yet. Trying again every 10 minutes.",
-                                        )
-                                  }
-                                />
-                                <Show when={e().retention_until}>
-                                  <Line k={tr("Kept until")} v={dateText(e().retention_until)} />
-                                </Show>
-                                <h2 class="mt-2 text-[12px] font-medium text-text-secondary">
-                                  {tr("Each signature")}
-                                </h2>
-                                <For each={e().signers}>
-                                  {(s) => (
-                                    <div class="rounded-md border border-border-subtle bg-surface px-3 py-2">
-                                      <Line
-                                        k={tr("Signer")}
-                                        v={s.capacity ? `${s.name}, ${s.capacity}` : s.name}
-                                      />
-                                      <Line k={tr("Signed on")} v={dateText(s.signed_at)} />
-                                      <Line
-                                        k={tr("Code sent by email")}
-                                        v={
-                                          s.code_verified_at ? tr("Confirmed") : tr("Not confirmed")
-                                        }
-                                      />
-                                      <Show when={s.typed_phrase}>
-                                        <Line k={tr("Words typed")} v={s.typed_phrase ?? ""} />
-                                      </Show>
-                                      <Line
-                                        k={tr("Their signed copy")}
-                                        v={s.copy === "sent" ? tr("Sent") : tr("Not sent yet")}
-                                      />
-                                      <Show when={e().devices === "shown"}>
-                                        <Line k={tr("IP address")} v={s.ip ?? ""} />
-                                        <Line k={tr("Browser")} v={s.user_agent ?? ""} />
-                                      </Show>
-                                    </div>
-                                  )}
-                                </For>
-                                <Show when={e().devices === "withheld"}>
+                              <Show
+                                when={e().level !== "demo"}
+                                fallback={
                                   <p
-                                    data-testid="agreement-devices-withheld"
-                                    class="text-[12px] text-text-tertiary"
+                                    data-testid="agreement-evidence-stand-in"
+                                    class="text-[12.5px] text-text"
                                   >
                                     {tr(
-                                      "IP addresses and browsers are hidden from you. They are for the people who hold the devices permission.",
-                                    )}
+                                      "In this demo the signature, seal and timestamp are stand-ins. No signature took place.",
+                                    )}{" "}
+                                    {tr("There is no evidence file to download or check.")}
                                   </p>
-                                </Show>
-                                <ProofNotes keptUntil={e().retention_until} />
-                              </>
+                                }
+                              >
+                                <>
+                                  <div class="flex flex-wrap items-center gap-2">
+                                    <Button
+                                      testid="agreement-verify"
+                                      disabled={busy()}
+                                      onClick={() => void verify()}
+                                    >
+                                      {tr("Check the stored files")}
+                                    </Button>
+                                    <Show when={e().signed_pdf_file_id}>
+                                      {(f) => (
+                                        <Button
+                                          testid="agreement-download-signed"
+                                          onClick={() =>
+                                            void openPdf(f(), `${a().number}-signed.pdf`)
+                                          }
+                                        >
+                                          {tr("Download signed PDF")}
+                                        </Button>
+                                      )}
+                                    </Show>
+                                    <Show when={e().evidence_file_id}>
+                                      {(f) => (
+                                        <Button
+                                          testid="agreement-download-evidence"
+                                          onClick={() =>
+                                            void openStoredFile(
+                                              f(),
+                                              `${a().number}-proof-of-signature.zip`,
+                                              "application/zip",
+                                            ).then(
+                                              (ok) =>
+                                                ok ||
+                                                setNote({
+                                                  text: tr("The file could not be opened."),
+                                                  error: true,
+                                                }),
+                                            )
+                                          }
+                                        >
+                                          {tr("Download proof of signature")}
+                                        </Button>
+                                      )}
+                                    </Show>
+                                    <Show when={check() === "matches"}>
+                                      <span
+                                        data-testid="agreement-verify-matches"
+                                        class="text-[12.5px] text-text"
+                                      >
+                                        {tr("The stored files match what was signed.")}
+                                      </span>
+                                    </Show>
+                                    <Show when={check() === "changed"}>
+                                      <span
+                                        data-testid="agreement-verify-changed"
+                                        class="text-[12.5px] text-text"
+                                      >
+                                        {tr(
+                                          "This stored file no longer matches what was signed. Use the copy each signer received. Liaison cannot repair this.",
+                                        )}
+                                      </span>
+                                    </Show>
+                                  </div>
+                                  <Line
+                                    k={tr("Document fingerprint (SHA-256)")}
+                                    v={e().document_sha256}
+                                  />
+                                  <Show when={e().signed_pdf_sha256}>
+                                    <Line
+                                      k={tr("Signed copy fingerprint")}
+                                      v={e().signed_pdf_sha256 ?? ""}
+                                    />
+                                  </Show>
+                                  <Line
+                                    k={tr("Seal")}
+                                    v={
+                                      e().sealed_at
+                                        ? tr(
+                                            "Sealed on {{date}}. The seal locks the file; it is not a signature.",
+                                            {
+                                              date: dateText(e().sealed_at),
+                                            },
+                                          )
+                                        : tr(
+                                            "Not sealed yet. The seal is retried every 10 minutes.",
+                                          )
+                                    }
+                                  />
+                                  <Line
+                                    testid="agreement-timestamp"
+                                    k={tr("Independent timestamp")}
+                                    v={
+                                      e().timestamped_at
+                                        ? tr("Stamped on {{date}}", {
+                                            date: dateText(e().timestamped_at),
+                                          })
+                                        : tr(
+                                            "No independent timestamp yet. Trying again every 10 minutes.",
+                                          )
+                                    }
+                                  />
+                                  <Show when={e().retention_until}>
+                                    <Line k={tr("Kept until")} v={dateText(e().retention_until)} />
+                                  </Show>
+                                  <h2 class="mt-2 text-[12px] font-medium text-text-secondary">
+                                    {tr("Each signature")}
+                                  </h2>
+                                  <For each={e().signers}>
+                                    {(s) => (
+                                      <div class="rounded-md border border-border-subtle bg-surface px-3 py-2">
+                                        <Line
+                                          k={tr("Signer")}
+                                          v={s.capacity ? `${s.name}, ${s.capacity}` : s.name}
+                                        />
+                                        <Line k={tr("Signed on")} v={dateText(s.signed_at)} />
+                                        <Line
+                                          k={tr("Code sent by email")}
+                                          v={
+                                            s.code_verified_at
+                                              ? tr("Confirmed")
+                                              : tr("Not confirmed")
+                                          }
+                                        />
+                                        <Show when={s.typed_phrase}>
+                                          <Line k={tr("Words typed")} v={s.typed_phrase ?? ""} />
+                                        </Show>
+                                        <Line
+                                          k={tr("Their signed copy")}
+                                          v={s.copy === "sent" ? tr("Sent") : tr("Not sent yet")}
+                                        />
+                                        <Show when={e().devices === "shown"}>
+                                          <Line k={tr("IP address")} v={s.ip ?? ""} />
+                                          <Line k={tr("Browser")} v={s.user_agent ?? ""} />
+                                        </Show>
+                                      </div>
+                                    )}
+                                  </For>
+                                  <Show when={e().devices === "withheld"}>
+                                    <p
+                                      data-testid="agreement-devices-withheld"
+                                      class="text-[12px] text-text-tertiary"
+                                    >
+                                      {tr(
+                                        "IP addresses and browsers are hidden from you. They are for the people who hold the devices permission.",
+                                      )}
+                                    </p>
+                                  </Show>
+                                  <ProofNotes keptUntil={e().retention_until} />
+                                </>
+                              </Show>
                             )}
                           </Show>
                         </section>

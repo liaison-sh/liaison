@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { createResource } from "solid-js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { STAND_IN_SENTENCE } from "./stand-in"
 import { AgreementDetailView } from "./ui/Detail"
 import { AgreementEditor } from "./ui/Editor"
 import { AgreementsList } from "./ui/List"
@@ -479,6 +480,42 @@ describe("the proof of signature on the agreement's page", () => {
     expect(text).toContain("What this proves, and what it does not")
     expect(text).toContain("How long it is kept")
     expect(text).toContain("If you leave Liaison")
+  })
+
+  it("a seeded agreement's detail and evidence say the signature is a stand-in and offer no download or offline check", async () => {
+    answers.agreement_get = () => agreement({ status: "signed" })
+    // What agreement_evidence_get answers on a stand-in signature: no fingerprint, no file.
+    answers.agreement_evidence_get = () => ({
+      status: "ok",
+      agreement: { id: ID, number: "AG-2026-014" },
+      version: 1,
+      level: "demo",
+      result: "stand-in",
+      message: `AG-2026-014 version 1: stand-in. ${STAND_IN_SENTENCE}`,
+    })
+    render(() => <AgreementDetailView entityId={ID} />)
+    expect((await screen.findByTestId("agreement-stand-in")).textContent).toBe(STAND_IN_SENTENCE)
+    fireEvent.click(await screen.findByTestId("agreement-pane-evidence"))
+    const frame = await screen.findByTestId("agreement-evidence-stand-in")
+    expect(frame.textContent).toContain(STAND_IN_SENTENCE)
+    expect(frame.textContent).toContain("There is no evidence file to download or check.")
+    for (const testid of [
+      "agreement-verify",
+      "agreement-download-signed",
+      "agreement-download-evidence",
+    ])
+      expect(screen.queryByTestId(testid)).toBeNull()
+  })
+
+  it("a really signed agreement's page says nothing of a stand-in", async () => {
+    answers.agreement_get = () => agreement({ status: "signed" })
+    answers.agreement_evidence_get = () => evidence({ level: "simple" })
+    render(() => <AgreementDetailView entityId={ID} />)
+    await screen.findByTestId("agreement-overview")
+    fireEvent.click(await screen.findByTestId("agreement-pane-evidence"))
+    expect(await screen.findByTestId("agreement-verify")).toBeTruthy()
+    expect(screen.queryByTestId("agreement-stand-in")).toBeNull()
+    expect(screen.queryByTestId("agreement-evidence-stand-in")).toBeNull()
   })
 
   it("offers no evidence file to someone without the devices permission", async () => {

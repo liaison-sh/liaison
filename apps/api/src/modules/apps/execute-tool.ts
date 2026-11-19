@@ -5211,7 +5211,9 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   // org-scoped knowledge doc, an invoice over the issuer threshold) — and a
   // gated call must never be queued for a human when the data it needs is
   // missing. Requiring `tool.gated` here left every such tool validating only
-  // AFTER the approver clicked approve.
+  // AFTER the approver clicked approve. The same holds for a tool that declares a preflight
+  // but no gate: an org policy or a turn's outside text can still park its call, so a declared
+  // preflight runs on every call (it is read-only and refuses only what the handler would).
   // A host tool's outright refusal of its caller comes before every gate below: a caller that may
   // never run the tool must not leave an approval behind for a human to decide in vain.
   if (tool.refuseBeforeGate && !approvalExecutingNestedCall && opts.origin !== "human-ui") {
@@ -5353,7 +5355,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
   }
   // Set when the preflight says THIS call must be decided by a person (preflightRequiresPerson).
   let preflightForcesPerson = false
-  if ((tool.gated || tool.conditionalGate) && tool.preflight && !paramsCarryRefTokens) {
+  if (tool.preflight && !paramsCarryRefTokens) {
     // A tool that owns its transactions gets a session for its preflight too.
     const inPreflightTx = <T>(fn: (tx: any) => Promise<T>): Promise<T> =>
       tool.ownsTransactions === true

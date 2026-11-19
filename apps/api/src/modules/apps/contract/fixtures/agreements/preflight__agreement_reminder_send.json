@@ -1,7 +1,9 @@
 {
   "entry": "preflight:agreement_reminder_send",
   "params": {
-    "client_action_ids": ["00000000-0000-4000-8000-0000000000a1"]
+    "client_action_ids": [
+      "00000000-0000-4000-8000-0000000000a1"
+    ]
   },
   "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
   "expectError": {
@@ -10,7 +12,9 @@
   "calls": [
     {
       "method": "client_actions_record",
-      "args": ["{\"id\":\"00000000-0000-4000-8000-0000000000a1\"}"],
+      "args": [
+        "{\"id\":\"00000000-0000-4000-8000-0000000000a1\"}"
+      ],
       "reply": "{\"status\":\"error\",\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"No client action 00000000-0000-4000-8000-0000000000a1 of agreements.\"}}"
     }
   ]

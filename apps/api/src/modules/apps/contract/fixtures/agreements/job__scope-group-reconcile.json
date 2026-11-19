@@ -5,7 +5,9 @@
   "calls": [
     {
       "method": "client_actions_own_group",
-      "args": ["{\"key\":\"clients-signed\"}"],
+      "args": [
+        "{\"key\":\"clients-signed\"}"
+      ],
       "reply": "{\"status\":\"ok\",\"group_id\":null}"
     }
   ]

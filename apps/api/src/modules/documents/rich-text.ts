@@ -221,15 +221,31 @@ const paragraphBlock = z
   })
   .strict()
 
+/**
+ * A list prints either one line per row of the record list `from` (`line`, read relative to
+ * the row), or the written `items`, each a text like a paragraph's; never both.
+ */
 const listBlock = z
   .object({
     type: z.literal("list"),
-    from: listPath,
-    line: templateText,
+    from: listPath.optional(),
+    line: templateText.optional(),
+    items: z.array(templateText).min(1).max(RICH_TEXT_MAX_BLOCKS).optional(),
     where: conditionsSchema.optional(),
     ...when,
   })
   .strict()
+
+/** A list's shape rules (kept out of the object so the block union stays discriminated). */
+function listProblem(l: z.infer<typeof listBlock>): string | null {
+  if (l.items !== undefined)
+    return l.from !== undefined || l.line !== undefined || l.where !== undefined
+      ? "a list takes its written items, or from and line, never both"
+      : null
+  if (l.from === undefined || l.line === undefined)
+    return "a list takes its written items, or from (a record list) and line"
+  return null
+}
 
 const columnSchema = z
   .object({
@@ -532,8 +548,8 @@ export const richTextBodySchema = z
       }
       const inner = block.type === "repeat" ? block.blocks : [block]
       inner.forEach((x, j) => {
-        if (x.type !== "table") return
-        const problem = tableProblem(x)
+        if (x.type !== "table" && x.type !== "list") return
+        const problem = x.type === "table" ? tableProblem(x) : listProblem(x)
         if (problem)
           ctx.addIssue({
             code: "custom",
@@ -612,6 +628,8 @@ export function richTextPlaceholderPaths(body: RichTextBody): string[] {
     conditions(block.when, prefix)
     if (block.type === "heading" || block.type === "paragraph") each(block.text, prefix)
     else if (block.type === "list") {
+      for (const item of block.items ?? []) each(item, prefix)
+      if (block.from === undefined) return
       const from = prefix ? `${prefix}.${block.from}` : block.from
       out.add(from)
       conditions(block.where, from)
@@ -1532,6 +1550,12 @@ export function layoutRichText(
         break
       }
       case "list": {
+        if (block.from === undefined || block.line === undefined) {
+          for (const item of block.items ?? [])
+            layout.text(layout.runs(item, base, false), size, size * 1.4)
+          layout.gap(size * 0.6)
+          break
+        }
         const rows = keptRows(record, base, block.from, block.where)
         if (rows === null) {
           const path = scopedPath(record, base, block.from)

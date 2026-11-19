@@ -339,7 +339,7 @@ function badHours(v: unknown, what: string): ErrorEnvelope | null {
   )
 }
 
-/** A refusal for headings, paragraphs or clauses the editor cannot show, naming each field. */
+/** A refusal for headings, paragraphs, clauses or lists the editor cannot show, naming each field. */
 function badBlocks(source: unknown, what: string): ErrorEnvelope | null {
   const problems = sourceBlockProblems(source)
   if (problems.length === 0) return null
@@ -855,7 +855,18 @@ export async function agreementPriceSet(
   }
 }
 
-export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
+/**
+ * The agreement, its draft and prepare's checks, or prepare's refusal: what prepare and its
+ * preflight both decide on, read only.
+ */
+async function prepareReading(
+  ctx: AgreementsCtx,
+  p: { id: string },
+): Promise<
+  | ErrorEnvelope
+  | { status: "error"; error: { code: string; message: string }; checks: Check[] }
+  | { row: AgreementRow; draft: DraftRow | null; checks: Check[] }
+> {
   const row = await loadAgreement(ctx, p.id)
   if (isError(row)) return row
   if (row.status !== "draft")
@@ -879,7 +890,26 @@ export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
       checks,
     }
   }
-  return freezeDraft(ctx, row, draft, checks)
+  return { row, draft, checks }
+}
+
+export async function agreementPrepare(ctx: AgreementsCtx, p: { id: string }) {
+  const read = await prepareReading(ctx, p)
+  if (!("row" in read)) return read
+  return freezeDraft(ctx, read.row, read.draft, read.checks)
+}
+
+/**
+ * `agreement_prepare`'s preflight: the same checks, read only, before a call is parked for a
+ * person to approve, so a draft prepare would refuse is refused to the caller at once.
+ */
+export async function agreementPreparePreflight(
+  ctx: AgreementsCtx,
+  p: { id: string },
+): Promise<{ ok: true } | { error: { code: string; message: string } }> {
+  const read = await prepareReading(ctx, p)
+  if ("row" in read) return { ok: true }
+  return { error: read.error }
 }
 
 interface RenderAnswer {

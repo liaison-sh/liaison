@@ -144,9 +144,35 @@ const ANY_TEXT_BLOCK: Record<string, FieldRule> = {
   when: [() => true, ""],
   agent_draft: isBoolean,
 }
+/**
+ * A list prints its written `items` (each a text like a paragraph's), or one `line` per row
+ * of the record list `from`: one shape or the other, never both.
+ */
+const LIST_FIELDS: Record<string, FieldRule> = {
+  type: [() => true, ""],
+  items: [
+    (v) => Array.isArray(v) && v.length > 0 && v.every((x) => typeof x === "string"),
+    "a list of texts",
+  ],
+  from: isString,
+  line: isString,
+  where: [() => true, ""],
+  when: [() => true, ""],
+  agent_draft: isBoolean,
+}
+
+function listShapeProblem(b: SourceBlock, at: string): string | null {
+  const items = b.items !== undefined
+  const fromLine = b.from !== undefined || b.line !== undefined || b.where !== undefined
+  if (items && fromLine)
+    return `"${at}" takes its written items (items), or from and line, never both.`
+  if (!items && (b.from === undefined || b.line === undefined))
+    return `"${at}" takes its written items (items), or from and line.`
+  return null
+}
 
 /**
- * What is wrong with the headings, paragraphs and clauses of a source an agent sent, one line
+ * What is wrong with the headings, paragraphs, clauses and lists of a source an agent sent, one line
  * per field, each naming its path (`source.body.blocks.0.content`); empty when the editor can
  * show them all.
  */
@@ -156,9 +182,10 @@ export function sourceBlockProblems(source: unknown): string[] {
   const out: string[] = []
   blocks.forEach((b, i) => {
     if (!b || typeof b !== "object") return
-    const own = TEXT_BLOCK_FIELDS[String((b as SourceBlock).type)]
-    if (!own) return
-    const fields = { ...ANY_TEXT_BLOCK, ...own }
+    const type = String((b as SourceBlock).type)
+    const own = TEXT_BLOCK_FIELDS[type]
+    if (!own && type !== "list") return
+    const fields = own ? { ...ANY_TEXT_BLOCK, ...own } : LIST_FIELDS
     const at = `source.body.blocks.${i}`
     for (const [k, v] of Object.entries(b)) {
       const rule = fields[k]
@@ -168,6 +195,8 @@ export function sourceBlockProblems(source: unknown): string[] {
         )
       else if (!rule[0](v)) out.push(`"${at}.${k}" must be ${rule[1]}.`)
     }
+    const shape = type === "list" ? listShapeProblem(b as SourceBlock, at) : null
+    if (shape) out.push(shape)
   })
   return out
 }
@@ -242,14 +271,39 @@ export function renewalTermsMissing(row: AgreementRowLike): string[] {
   return missing
 }
 
-/** The clauses an agent wrote that no person has read yet: their positions (1-based) and first words. */
-export function agentDraftClauses(source: AgreementSource | null | undefined): string[] {
+/** The clauses an agent wrote that no person has read yet: their positions (1-based). */
+export function agentDraftClauses(source: AgreementSource | null | undefined): number[] {
   const blocks = source?.body?.blocks ?? []
-  return blocks.flatMap((b, i) =>
-    b.agent_draft === true
-      ? [`clause ${i + 1} "${String(b.text ?? b.type ?? "").slice(0, 40)}"`]
-      : [],
-  )
+  return blocks.flatMap((b, i) => (b.agent_draft === true ? [i + 1] : []))
+}
+
+/** Positions as ranges: [1, 2, 3, 5] reads "1-3, 5". */
+export function positionRanges(positions: readonly number[]): string {
+  const out: string[] = []
+  let start: number | null = null
+  let prev: number | null = null
+  for (const n of [...positions, Number.NaN]) {
+    if (start !== null && prev !== null && n === prev + 1) {
+      prev = n
+      continue
+    }
+    if (start !== null && prev !== null) out.push(start === prev ? `${start}` : `${start}-${prev}`)
+    start = n
+    prev = n
+  }
+  return out.join(", ")
+}
+
+/**
+ * What a person must do about the clauses an agent wrote, in one short sentence: how many,
+ * where, and where to read them. Null when every clause was read by a person.
+ */
+export function agentDraftSentence(source: AgreementSource | null | undefined): string | null {
+  const at = agentDraftClauses(source)
+  if (at.length === 0) return null
+  return at.length === 1
+    ? `A person must read the clause an agent wrote (${positionRanges(at)}) in the agreement's editor and clear it.`
+    : `A person must read the ${at.length} clauses an agent wrote (${positionRanges(at)}) in the agreement's editor and clear them.`
 }
 
 /** The checks prepare runs, in order. A failed blocking check refuses the freeze. */
@@ -325,15 +379,12 @@ export function prepareChecks(
           : `This retainer renews an existing one: once signed, its terms replace the retainer's from its first day, so it needs ${renewalMissing.join(", ")}.`,
     })
   }
-  const drafts = agentDraftClauses(source)
+  const unread = agentDraftSentence(source)
   checks.push({
     code: "AGENT_TEXT_UNREAD",
-    ok: drafts.length === 0,
+    ok: unread === null,
     blocking: true,
-    message:
-      drafts.length === 0
-        ? "Every clause was read by a person."
-        : `A person must read and clear the clauses an agent wrote: ${drafts.join(", ")}.`,
+    message: unread ?? "Every clause was read by a person.",
   })
   if (!opts.upload) {
     // Only source.body.blocks is printed: a document with no text there is never frozen.

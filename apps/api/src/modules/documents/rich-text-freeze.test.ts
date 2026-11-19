@@ -42,6 +42,21 @@ describe("freezing a rich-text source", () => {
     expect(freezeTextMatches(out.sourceText, out.layoutText)).toBe(true)
   })
 
+  it("a list of written items is drawn and its text checked like a paragraph's", async () => {
+    const out = await renderRichTextForFreeze({
+      body: {
+        blocks: [
+          { type: "heading", text: "Scope" },
+          { type: "list", items: ["Design for {{client.name}}", "Build", "Launch"] },
+        ],
+      },
+      record,
+    })
+    expect(out.sourceText).toContain("Design for Maison Morel")
+    expect(out.sourceText).toContain("Launch")
+    expect(freezeTextMatches(out.sourceText, out.layoutText)).toBe(true)
+  })
+
   it("a text run that differs from the source refuses the freeze", async () => {
     const out = await renderRichTextForFreeze({ body, record })
     const dropped = out.layoutText.replace("Build", "")

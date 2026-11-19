@@ -11,9 +11,7 @@ import type { AgreementDetail } from "./model"
 const COMPANY = "44444444-4444-4444-8444-444444444444"
 
 afterEach(() => {
-  // biome-ignore lint/suspicious/noExplicitAny: clear the global host slot.
   ;(globalThis as any).__liaisonHost = undefined
-  // biome-ignore lint/suspicious/noExplicitAny: clear the bound app name.
   ;(globalThis as any).__LIAISON_TEST_APP_NAME = undefined
 })
 
@@ -40,7 +38,6 @@ describe("what an agreement is linked to", () => {
 describe("the company page's Agreements section", () => {
   it("lists the company's agreements, and none when the read fails", async () => {
     const asked: Array<Record<string, unknown>> = []
-    // biome-ignore lint/suspicious/noExplicitAny: global host slot the @liaison/host shim reads.
     ;(globalThis as any).__liaisonHost = {
       invokeTool: async (_app: string, tool: string, args: Record<string, unknown>) => {
         if (tool !== "agreements_search") throw new Error(`unexpected tool: ${tool}`)
@@ -48,11 +45,9 @@ describe("the company page's Agreements section", () => {
         return { status: "ok", items: [{ id: "a1", number: "AG-1", title: "Support" }] }
       },
     }
-    // biome-ignore lint/suspicious/noExplicitAny: test-bound app name for the `app` namespace.
     ;(globalThis as any).__LIAISON_TEST_APP_NAME = "agreements"
     expect((await loadCompanyAgreements(COMPANY)).map((r) => r.id)).toEqual(["a1"])
     expect(asked).toEqual([{ company_id: COMPANY, limit: COMPANY_AGREEMENTS_LIMIT }])
-    // biome-ignore lint/suspicious/noExplicitAny: global host slot the @liaison/host shim reads.
     ;(globalThis as any).__liaisonHost = {
       invokeTool: async () => {
         throw new Error("boom")

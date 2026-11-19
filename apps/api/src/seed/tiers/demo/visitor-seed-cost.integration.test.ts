@@ -134,6 +134,8 @@ const CATALOG_DEMO_APPS = [
  * is gone: the month-close line takes the answer's today, so this Mac counts 6 780 in 658. The
  * runner counted 6 808-6 828 on the branch (6 800-6 820 without that read), about half a percent
  * over this Mac, with a spread of about 20 between runs; the pin is the top of that range.
+ * Transactions re-pinned the same day on the same ground: this Mac counts 658-659, the runner
+ * 662-666 warm across three runs of the branch (the same half percent), so the pin is 666.
  */
 const PRODUCTS_BASELINE = {
   outboxEvents: 369,
@@ -141,7 +143,7 @@ const PRODUCTS_BASELINE = {
   attentionEvents: 0,
   notificationDeliveries: 0,
   statements: 6_820,
-  transactions: 659,
+  transactions: 666,
 }
 /**
  * Round trips are deterministic up to a few cache reads (5 251-5 262 across

@@ -63,6 +63,9 @@ export interface AgreementDetail {
     starts_on: string | null
     ends_on: string | null
     project_id?: string | null
+    contact_id?: string | null
+    deal_task_id?: string | null
+    quote_document_id?: string | null
     hours_minutes?: number | null
     /** The document's language: the legal layout prints its own words in it. */
     language?: string | null

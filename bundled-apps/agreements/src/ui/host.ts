@@ -33,6 +33,12 @@ export const paths = {
   create: () => "/agreements/new",
   /** The kernel's own Read and sign tab for a staff signer's link. */
   sign: (clientActionId: string) => `/sign/${clientActionId}`,
+  /** What an agreement is linked to, on the pages that own them. */
+  company: (id: string) => `/contacts/companies/${id}`,
+  contact: (id: string) => `/contacts/${id}`,
+  deal: (taskId: string) => `/projects/tasks/${taskId}`,
+  project: (id: string) => `/projects/${id}`,
+  quote: (documentId: string) => `/invoicing/document/${documentId}`,
 }
 
 export function go(path: string): void {

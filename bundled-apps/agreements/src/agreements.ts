@@ -59,6 +59,9 @@ export interface AgreementRow {
   starts_on?: string | null
   ends_on?: string | null
   project_id?: string | null
+  /** The deal (a sales task) and the quote the agreement came from, when it names them. */
+  deal_task_id?: string | null
+  quote_document_id?: string | null
   hours_minutes?: number | null
   what_it_is?: string | null
   what_it_is_by_user_id?: string | null
@@ -298,6 +301,11 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       starts_on: row.starts_on ?? null,
       ends_on: row.ends_on ?? null,
       project_id: row.project_id ?? null,
+      // What the agreement is linked to, for its page to open: the client's contact, the deal
+      // and the quote it came from (the company is in the brief).
+      contact_id: row.contact_id ?? null,
+      deal_task_id: row.deal_task_id ?? null,
+      quote_document_id: row.quote_document_id ?? null,
       hours_minutes: row.hours_minutes ?? null,
       language: row.language ?? null,
       template_id: row.template_id ?? null,

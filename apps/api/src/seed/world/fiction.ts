@@ -337,6 +337,22 @@ export interface DemoDealer {
   isVip: boolean
 }
 
+/**
+ * The three suppliers the purchase orders are raised against. Nothing else buys anything: the
+ * world describes who the company sells to. Every address is on a reserved `.example` domain and
+ * every VAT body is all zeroes. They are this world's names, so no other world may show them.
+ */
+export const DEMO_SUPPLIERS: ReadonlyArray<{
+  key: string
+  name: string
+  country: string
+  vat: string | null
+}> = [
+  { key: "sup-chassis", name: "Atelier Mecanique Duval SARL", country: "FR", vat: "FR00000000000" },
+  { key: "sup-boards", name: "Nordkrets Assembly AB", country: "SE", vat: "SE000000000000" },
+  { key: "sup-cartons", name: "Cartonnerie du Rhone SAS", country: "FR", vat: "FR00000000000" },
+]
+
 /** The dealer network: six territories across the EU, the UK, the US and Japan. */
 export const DEMO_DEALERS: DemoDealer[] = [
   { key: "eu-de", name: "Klangwerk GmbH", country: "DE", vat: "DE000000000", isVip: true },

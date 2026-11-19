@@ -52,6 +52,13 @@ describe("the services world's copy", () => {
     }
   })
 
+  it("the products world's suppliers are its literals: a purchase order to one is found", () => {
+    for (const supplier of ["Nordkrets Assembly AB", "Cartonnerie du Rhone SAS"])
+      expect(foreignLiterals("studio", `Purchase order to ${supplier}`)).toEqual([
+        `products: ${supplier}`,
+      ])
+  })
+
   it("a literal of another world planted in the tour copy is found", () => {
     const copy = studioCopy("en")
     const tour = Object.keys(copy).find((k) => k.startsWith("tours.")) ?? ""

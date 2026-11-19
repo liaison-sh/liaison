@@ -83,7 +83,7 @@ import {
 import { actorFor } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
-import { DEMO_COMPANY, type DemoSku } from "~/seed/world/fiction"
+import { DEMO_COMPANY, DEMO_SUPPLIERS, type DemoSku } from "~/seed/world/fiction"
 import {
   DEMO_CONTENT_CATEGORY,
   demoBoxtalSender,
@@ -141,19 +141,6 @@ export type PartyKind = "dealer" | "customer" | "supplier"
 export interface DemoParty extends InvoicingParty {
   kind: PartyKind
 }
-
-/**
- * The three suppliers the purchase orders are raised against. They live here
- * rather than in `world.ts` because nothing outside this file buys anything:
- * the world bible describes who the company SELLS to. Every address is on a
- * reserved `.example` domain and every VAT body is all zeroes, the same rules
- * the rest of the demo world follows.
- */
-const DEMO_SUPPLIERS: { key: string; name: string; country: string; vat: string | null }[] = [
-  { key: "sup-chassis", name: "Atelier Mecanique Duval SARL", country: "FR", vat: "FR00000000000" },
-  { key: "sup-boards", name: "Nordkrets Assembly AB", country: "SE", vat: "SE000000000000" },
-  { key: "sup-cartons", name: "Cartonnerie du Rhone SAS", country: "FR", vat: "FR00000000000" },
-]
 
 function buildParties(world: SeedDemoOrgResult["world"]): DemoParty[] {
   const out: DemoParty[] = []

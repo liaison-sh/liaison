@@ -381,8 +381,9 @@ export function mayActForOthers(scopes: readonly string[]): boolean {
  * Null lets the call through.
  */
 export async function setAwayRefusal(
-  params: { userId?: string; nextInLineId?: string },
+  params: AwayForm & { userId?: string; nextInLineId?: string; end?: boolean },
   ctx: { orgId: string; userId: string; scopes: readonly string[] },
+  now: Date = new Date(),
 ): Promise<{ ok: false; code: AwayRefusalCode; message: string } | null> {
   const targetId = params.userId ?? ctx.userId
   if (targetId !== ctx.userId && !mayActForOthers(ctx.scopes)) {
@@ -393,7 +394,6 @@ export async function setAwayRefusal(
         "Only a person with kernel:users:admin or projects:capacity:write can set or end someone else's away days. Nothing was recorded; the person can say it themselves, in their chat or in their profile settings.",
     }
   }
-  if (params.nextInLineId === undefined && targetId === ctx.userId) return null
   try {
     return await withPrivilegedDb(ctx.orgId, "away-refusal-check", async (tx) => {
       const people = await readPeople(tx, ctx.orgId, [targetId, params.nextInLineId ?? targetId])
@@ -401,6 +401,19 @@ export async function setAwayRefusal(
       if (params.nextInLineId !== undefined) {
         checkNextInLine(people.get(params.nextInLineId), target.id, target.name)
       }
+      // The dates are read now, as the write reads them, so a call the write would refuse (half
+      // a range, no dates, days already over) never parks a card a person approves in vain.
+      const { userId: _u, nextInLineId, end, ...form } = params
+      const hasDates = Object.values(form).some((v) => v !== undefined)
+      if (end === true) {
+        if (hasDates || nextInLineId !== undefined) throw endTakesNothing()
+        return null
+      }
+      if (!hasDates) {
+        if (nextInLineId === undefined) throw noDates()
+        return null
+      }
+      resolveAwayDates(form, await todayOf(tx, ctx.orgId, target, now))
       return null
     })
   } catch (err) {
@@ -408,6 +421,14 @@ export async function setAwayRefusal(
     throw err
   }
 }
+
+const endTakesNothing = () =>
+  new AwayRefusal("bad_dates", "end: true takes no dates and no next in line. Nothing was changed.")
+const noDates = () =>
+  new AwayRefusal(
+    "bad_dates",
+    "Give the dates (on, from and to, week, or everyWeekday), end: true, or a nextInLineId to name the standing next in line. Nothing was changed.",
+  )
 
 // ---------------------------------------------------------------------------------------------
 // What changes for the person while away
@@ -855,12 +876,7 @@ export async function setAway(input: SetAwayInput): Promise<SetAwayResult> {
     const today = await todayOf(tx, input.orgId, target, now)
 
     if (input.end === true) {
-      if (hasDates || next) {
-        throw new AwayRefusal(
-          "bad_dates",
-          "end: true takes no dates and no next in line. Nothing was changed.",
-        )
-      }
+      if (hasDates || next) throw endTakesNothing()
       const rows = extractRows<RangeRow>(
         await tx.execute(drizzleSql`
           SELECT ${RANGE_COLUMNS} FROM ${K}.away_ranges
@@ -895,12 +911,7 @@ export async function setAway(input: SetAwayInput): Promise<SetAwayResult> {
     }
 
     if (!hasDates) {
-      if (!next) {
-        throw new AwayRefusal(
-          "bad_dates",
-          "Give the dates (on, from and to, week, or everyWeekday), end: true, or a nextInLineId to name the standing next in line. Nothing was changed.",
-        )
-      }
+      if (!next) throw noDates()
       await tx.execute(drizzleSql`
         INSERT INTO ${K}.user_preferences (user_id, digest_cadence, timezone, next_in_line_id)
         VALUES (${target.id}::uuid, 'daily', ${target.timezone ?? (await orgTimezone(tx, input.orgId)) ?? "UTC"}, ${next.id}::uuid)

@@ -180,7 +180,7 @@ const awayDay = (v: unknown): string | null => {
 }
 
 /** kernel:set_away: parked when the call came from outside text, a routine or an MCP client. */
-export const summarizeSetAway: ApprovalSummarizer = async (raw) => {
+export const summarizeSetAway: ApprovalSummarizer = async (raw, ctx) => {
   const p = asParams(raw)
   const other = text(p.userId) !== null
   const lines: string[] = []
@@ -188,7 +188,9 @@ export const summarizeSetAway: ApprovalSummarizer = async (raw) => {
   const from = awayDay(p.from)
   const to = awayDay(p.to)
   if (on) lines.push(`On ${on}.`)
-  if (from || to) lines.push(`From ${from ?? "today"} to ${to ?? "the same day"}.`)
+  if (from && to) lines.push(`From ${from} to ${to}.`)
+  else if (from) lines.push(`From ${from}.`)
+  else if (to) lines.push(`Until ${to}.`)
   if (typeof p.week === "number")
     lines.push(`ISO week ${p.week}${typeof p.weekYear === "number" ? ` of ${p.weekYear}` : ""}.`)
   if (Array.isArray(p.everyWeekday) && p.everyWeekday.length > 0) {
@@ -197,7 +199,12 @@ export const summarizeSetAway: ApprovalSummarizer = async (raw) => {
       .filter((d): d is string => d !== undefined)
     lines.push(`Every week on ${days.join(", ")}.`)
   }
-  if (text(p.nextInLineId)) lines.push("Names a next in line.")
+  const nextId = text(p.nextInLineId)
+  // The stand-in by name: the card is what the person approves.
+  if (nextId) {
+    const name = await loadUserName(ctx.tx, nextId).catch(() => "Unknown")
+    lines.push(name !== "Unknown" ? `Next in line: ${name}.` : "Names a next in line.")
+  }
   if (p.end === true) {
     return {
       kind: "set_away",
@@ -207,7 +214,7 @@ export const summarizeSetAway: ApprovalSummarizer = async (raw) => {
       lines,
     }
   }
-  if (lines.length === 1 && text(p.nextInLineId)) {
+  if (lines.length === 1 && nextId) {
     return {
       kind: "set_away",
       title: other ? "Set someone else's standing next in line" : "Set your standing next in line",

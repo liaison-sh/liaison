@@ -3848,7 +3848,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
         .string()
         .uuid()
         .optional()
-        .describe("Who stands in. With no dates: the standing next in line."),
+        .describe("Who stands in for these dates; with no dates, by default."),
       end: z.boolean().optional().describe("true: end what is running today."),
     }),
     handler: handleSetAwayTool as (params: unknown, ctx: any) => Promise<unknown>,
@@ -3859,7 +3859,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
     noAutoApprove: true,
     approvalImpact: "internal",
     refuseBeforeGate: (params, ctx) =>
-      setAwayRefusal(params as { userId?: string; nextInLineId?: string }, ctx),
+      setAwayRefusal(params as Parameters<typeof setAwayRefusal>[0], ctx),
   })
   // A parked call is decided by the person who asked (a routine's card by its author), whatever
   // the tool's own scope, so a colleague or an admin can never decide it (SEC-18).

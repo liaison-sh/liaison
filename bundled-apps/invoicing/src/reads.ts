@@ -25,7 +25,6 @@ import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
 import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
 import { type AnnexListing, annexListing } from "./mutations/send-annexes"
-import { toBigInt } from "./mutations/shared"
 import { netLinesTotals } from "./tax-plan"
 
 export interface DocumentHeader {

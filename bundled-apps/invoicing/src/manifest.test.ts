@@ -1792,6 +1792,7 @@ describe("invoicing manifest", () => {
     // 0.37.2: drafts_create takes the project a draft bills (checked readable), the issued
     //   invoice keeps it and is stamped with the contact's company, else the project's; the
     //   Documents list has a Drafts entry.
+    // 0.37.3: an unused import of the reads module removed (lint only).
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

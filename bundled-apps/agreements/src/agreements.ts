@@ -1210,7 +1210,7 @@ export async function uploadFreezeJob(ctx: AgreementsCtx) {
   for (const draft of drafts) {
     if (!draft.upload_file_id) continue
     const row = (await ctx.db.findOne("agreements", draft.agreement_id)) as AgreementRow | null
-    if (!row || row.status !== "draft") {
+    if (row?.status !== "draft") {
       await ctx.db.update("agreement_drafts", draft.id, { upload_state: null })
       continue
     }

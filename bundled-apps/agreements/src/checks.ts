@@ -102,7 +102,7 @@ export function inDocumentLanguage(
   source: AgreementSource,
 ): AgreementSource {
   const page = (source.body as { page?: Record<string, unknown> } | undefined)?.page
-  if (!page || page.layout !== "legal") return source
+  if (page?.layout !== "legal") return source
   const lang = row.language === "fr" ? "fr" : "en"
   if (page.lang === lang) return source
   return { ...source, body: { ...source.body, page: { ...page, lang } } }

@@ -167,10 +167,17 @@ async function planView(ctx: MutationsCtx, projectId: string) {
     advancesMinor: advances,
     milestonesTotal: { minor: billed, currency },
     advancesTotal: { minor: advances, currency },
+    // What the client is invoiced in all: an advance is deducted at the final, so adding every
+    // step's amount counts it twice.
+    invoicedInAll: { minor: billed, currency },
     title:
       view.length === 0
         ? "No billing plan"
-        : `Billing plan, ${view.length} step${view.length === 1 ? "" : "s"}, ${formatMoneyMinor(BigInt(billed), currency)} excl. VAT`,
+        : `Billing plan, ${view.length} step${view.length === 1 ? "" : "s"}, ${formatMoneyMinor(BigInt(billed), currency)} excl. VAT in all${
+            advances > 0
+              ? ` (the advance of ${formatMoneyMinor(BigInt(advances), currency)} is deducted at the final, so the steps do not add up to it)`
+              : ""
+          }`,
   }
 }
 

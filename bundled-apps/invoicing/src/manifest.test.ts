@@ -1796,6 +1796,8 @@ describe("invoicing manifest", () => {
     // 0.37.4: three drafts_create parameter descriptions said more briefly; a services document
     //   shows no incoterm or ship-to, and the Documents list draws no order or channel column,
     //   and offers no shop filter, when no document came from a shop.
+    // 0.37.5: billing_plan_get says what is invoiced in all, and that an advance is deducted at
+    //   the final rather than added to the steps.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
     const subscribes = (manifest as unknown as { events: { subscribes: Record<string, string> } })
       .events.subscribes

@@ -704,9 +704,10 @@ describe("the door in a world", () => {
     expect(team).toContain(copy.teamOthers.name)
     expect(team).toContain(copy.teamOthers.role)
     expect(screen.getByTestId("demo-company-simulated").textContent).toBe(copy.companySimulated)
-    expect(screen.getByTestId("demo-company-step").textContent).not.toMatch(
-      /Resonant|Tideform|Shopify|Stripe/,
-    )
+    const step = screen.getByTestId("demo-company-step").textContent ?? ""
+    for (const other of [DEMO_DOOR.products.name, DEMO_DOOR.saas.name, "Shopify", "Stripe"]) {
+      expect(step).not.toContain(other)
+    }
     _setDoorWorlds(["products"])
   })
 
@@ -725,7 +726,7 @@ describe("the door in a world", () => {
     expect(screen.queryByTestId("demo-needs-client")).toBeNull()
     fireEvent.click(screen.getByTestId("demo-explore"))
     expect(screen.getByTestId("demo-example-line").textContent).toContain("Resonant Audio Labs")
-    expect(screen.getByTestId("demo-company-step").textContent).not.toContain("Halden")
+    expect(screen.getByTestId("demo-company-step").textContent).not.toContain(DEMO_DOOR.studio.name)
     _setDoorWorlds(["products"])
   })
 

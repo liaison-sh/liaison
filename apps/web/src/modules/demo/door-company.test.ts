@@ -204,6 +204,8 @@ describe("the services door matches its pack's people and counts", () => {
 
   it("names no other world's company", () => {
     const all = JSON.stringify([studio, fr.demo.world.studio])
-    expect(all).not.toMatch(/Resonant|Tideform|Kestrel|Stripe|Shopify/)
+    for (const other of [DEMO_COMPANY_NAME, DEMO_DOOR.saas.name, "Kestrel", "Stripe", "Shopify"]) {
+      expect(all).not.toContain(other)
+    }
   })
 })

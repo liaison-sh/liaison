@@ -6,6 +6,7 @@ import { cleanup, render, screen } from "@solidjs/testing-library"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { DemoExampleLine } from "~/modules/demo/DemoExampleLine"
 import { _resetDemoWorld, _setDemoWorld } from "~/modules/demo/demo-world"
+import { DEMO_DOOR } from "~/modules/demo/door-company"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import kernelEn from "../../../../../packages/shared/src/i18n/locales/en/kernel.json"
 
@@ -43,8 +44,9 @@ describe("the example line", () => {
     mount()
     const line = screen.getByTestId("demo-example-line").textContent ?? ""
     expect(line).toBe(kernelEn.demo.world.studio.companyExample)
-    expect(line).toContain("Halden Studio")
-    expect(line).not.toMatch(/Resonant|Tideform/)
+    expect(line).toContain(DEMO_DOOR.studio.name)
+    expect(line).not.toContain(DEMO_DOOR.products.name)
+    expect(line).not.toContain(DEMO_DOOR.saas.name)
   })
 
   it("is absent while the world is unknown: a failed read, or an org that is not a visitor's", () => {

@@ -288,6 +288,43 @@ describe("FX24: an approval lifecycle row names who actually acted", () => {
     for (const row of posts) expect(row.agent_id).toBe(OWN_AGENT)
   })
 
+  it("an agent's withdraw notice names the agent, never the person it acts for", async () => {
+    const id = "00000000-0000-4000-8000-000000f24107"
+    await seedPending(id, "fx24-withdraw-notice")
+
+    await runContextStore.run(turnFrame(OWN_AGENT), () =>
+      handleApprovalWithdraw({ requestId: id, reason: "stale" }, agentCtx),
+    )
+
+    const notices = extractRows<{ content: string; metadata: Record<string, unknown> }>(
+      await sql`SELECT content, metadata FROM kernel.messages
+        WHERE org_id = ${ORG} AND metadata->>'decision' = 'withdrawn'`,
+    )
+    expect(notices.length).toBeGreaterThan(0)
+    for (const n of notices) {
+      // No person decided it: a person's id here draws the row under that person's name.
+      expect(n.metadata.actorId).toBeUndefined()
+      expect(n.metadata.actorAgentId).toBe(OWN_AGENT)
+      expect(n.metadata.actorAgentName).toBe("Operator's agent")
+      expect(n.content).toBe("Withdrawn by Operator's agent. Reason: stale.")
+    }
+  })
+
+  it("a person's own withdraw still names the person", async () => {
+    const id = "00000000-0000-4000-8000-000000f24108"
+    await seedPending(id, "fx24-withdraw-person")
+
+    await handleApprovalWithdraw({ requestId: id }, agentCtx)
+
+    const [notice] = extractRows<{ content: string; metadata: Record<string, unknown> }>(
+      await sql`SELECT content, metadata FROM kernel.messages
+        WHERE org_id = ${ORG} AND metadata->>'decision' = 'withdrawn'`,
+    )
+    expect(notice?.metadata.actorId).toBe(USER)
+    expect(notice?.metadata.actorAgentId).toBeUndefined()
+    expect(notice?.content).toBe("Withdrawn by the requester.")
+  })
+
   // ---- system/worker: the approving reaper -----------------------------------
 
   it("the reaper terminalizing a wedged row names no agent", async () => {

@@ -4135,7 +4135,9 @@
   },
   "approvalDecisionLine": {
     "withdrawn": "Withdrawn by the requester.",
-    "withdrawnReason": "Withdrawn by the requester. Reason: {{reason}}."
+    "withdrawnReason": "Withdrawn by the requester. Reason: {{reason}}.",
+    "withdrawnByAgent": "Withdrawn by {{agent}}.",
+    "withdrawnByAgentReason": "Withdrawn by {{agent}}. Reason: {{reason}}."
   },
   "roleNames": {
     "fullMember": "Full Member",

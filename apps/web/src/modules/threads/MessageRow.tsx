@@ -941,6 +941,14 @@ const MessageRow: Component<MessageRowProps> = (props) => {
       if (props.message.metadata?.decision === "expired" && typeof h === "string" && h !== "") {
         return i18n.t("kernel.approvalExpiredLine", { handle: h })
       }
+      // A withdraw an agent made reads in the reader's language and names that agent.
+      if (props.message.metadata?.decision === "withdrawn") {
+        return localizeSystemLine(
+          props.message.content ?? "",
+          i18n.t,
+          props.message.metadata as Record<string, unknown> | undefined,
+        )
+      }
       // Older rows predating the stamp keep their stored sentence.
       return props.message.content ?? ""
     }

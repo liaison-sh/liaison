@@ -197,6 +197,10 @@ export interface MessageMetadata {
    *  nobody decided (an expiry, a cancellation), which is exactly the notice
    *  that renders as a muted system line rather than a decision row. */
   actorId?: string
+  /** `approval-decision` only: the agent that acted on its own request (a withdraw), and
+   *  the name it signs with. Such a notice carries no `actorId`: no person decided it. */
+  actorAgentId?: string
+  actorAgentName?: string
   /** What the room floor made this turn leave out, for the requester only. The
    *  server projects it per viewer on both the read path and the socket, so a
    *  copy that carries it is a copy meant for this reader. */

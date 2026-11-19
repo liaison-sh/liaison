@@ -252,6 +252,25 @@ describe("documents of a company outside its people", () => {
   })
 })
 
+describe("a company with many documents", () => {
+  test("a company-wide search keeps every document past the first page and counts them all", async () => {
+    const company = "44444444-4444-4444-8444-444444444444"
+    const many = Array.from({ length: 1205 }, () => doc({ counterparty_contact_id: BOB }))
+    const stamped = doc({
+      counterparty_contact_id: "55555555-5555-4555-8555-555555555555",
+      company_id: company,
+    })
+    const ctx = {
+      db: store([...many, stamped]),
+      kernel: {},
+      executeTool: async () => ({ status: "completed", result: { people: [{ id: BOB }] } }),
+    } as unknown as ReadsCtx
+    expect(await documentsSearch(ctx, { company_id: company, countOnly: true })).toEqual({
+      totalCount: 1206,
+    })
+  })
+})
+
 describe("timeline amounts", () => {
   test("group thousands like the rest of the product", async () => {
     const { groupedMinor } = await import("./activity")

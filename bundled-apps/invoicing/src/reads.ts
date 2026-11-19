@@ -294,9 +294,28 @@ export interface ReadsCtx {
 
 /** Hard upper bound applied to every read tool's `limit` arg. */
 export const READS_MAX_LIMIT = 100
-/** How many of a company's documents a company-wide search unions when some are stamped for the
- *  company outside its people (a schedule's contact that is not one of them). */
-const COMPANY_STAMPED_MAX = 500
+/** The page in which a company-wide search reads the ids of a company's documents: every page is
+ *  read, so a company with many documents loses none. */
+const COMPANY_IDS_PAGE = 1000
+
+/** The id and contact of every document matching `where`, read page by page in a stable order. */
+async function allDocumentRefs(
+  ctx: ReadsCtx,
+  where: Record<string, unknown>,
+): Promise<Array<{ id?: unknown; counterparty_contact_id?: unknown }>> {
+  const out: Array<{ id?: unknown; counterparty_contact_id?: unknown }> = []
+  for (let offset = 0; ; offset += COMPANY_IDS_PAGE) {
+    const page = (await ctx.db.findMany("documents", {
+      where,
+      orderBy: { id: "asc" },
+      limit: COMPANY_IDS_PAGE,
+      offset,
+    })) as Array<{ id?: unknown; counterparty_contact_id?: unknown }>
+    for (const d of page) out.push({ id: d.id, counterparty_contact_id: d.counterparty_contact_id })
+    if (page.length < COMPANY_IDS_PAGE) return out
+  }
+}
+
 /** Page size and ceiling of the date-range walk in documentsSearch. */
 const RANGE_SCAN_PAGE = 100
 const MAX_RANGE_SCAN = 5000
@@ -775,10 +794,7 @@ export async function documentsSearch(
     // The documents made out to the company's people, and those stamped for the company itself
     // (a schedule's or a billing plan's invoice to a contact outside its people).
     const own = UUID_RE.test(companyId)
-      ? ((await ctx.db.findMany("documents", {
-          where: { ...where, company_id: companyId },
-          limit: COMPANY_STAMPED_MAX,
-        })) as Array<{ id?: unknown; counterparty_contact_id?: unknown }>)
+      ? await allDocumentRefs(ctx, { ...where, company_id: companyId })
       : []
     const peopleSet = new Set(people)
     const outside = own
@@ -790,10 +806,7 @@ export async function documentsSearch(
       const ofPeople =
         people.length === 0
           ? []
-          : ((await ctx.db.findMany("documents", {
-              where: { ...where, counterparty_contact_id: { in: people } },
-              limit: COMPANY_STAMPED_MAX,
-            })) as Array<{ id?: unknown }>)
+          : await allDocumentRefs(ctx, { ...where, counterparty_contact_id: { in: people } })
       const ids = [...new Set([...ofPeople.map((d) => String(d.id)), ...outside])]
       if (input.countOnly) return { totalCount: ids.length }
       where.id = { in: ids }

@@ -151,6 +151,8 @@ interface FlowRun {
   actor: UserContext
   agentId: string | null
   agentCeiling: string[] | null
+  /** The acting agent's kind; null with no acting agent. */
+  agentKind: "personal" | "role" | "system" | null
   hop: number
   triggerEvent?: RoutineTriggerEvent
   deps: FlowDeps
@@ -242,7 +244,7 @@ export function flowHash(flow: RoutineFlow): string {
 }
 
 /** A run as far as ending it goes: no scope resolved, no tool call possible. */
-function bareRun(a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling">): FlowRun {
+function bareRun(a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling" | "agentKind">): FlowRun {
   return {
     ...a,
     actor: {
@@ -254,6 +256,7 @@ function bareRun(a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling">): FlowRu
     },
     agentId: null,
     agentCeiling: null,
+    agentKind: null,
   }
 }
 
@@ -278,7 +281,7 @@ async function failRun(run: FlowRun, err: unknown): Promise<RoutineTickResult> {
 }
 
 async function buildRun(
-  a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling"> & { runScopes: string[] },
+  a: Omit<FlowRun, "actor" | "agentId" | "agentCeiling" | "agentKind"> & { runScopes: string[] },
 ): Promise<FlowRun> {
   // The scope the run's tool calls hold: resolved as a tick's turn resolves it (the routine's
   // owner agent, its ceiling on the routine thread, bounded by the routine's scopes).
@@ -306,6 +309,7 @@ async function buildRun(
     },
     agentId: turn?.agentId ?? null,
     agentCeiling: turn?.agentCeiling ?? null,
+    agentKind: turn?.agentKind ?? null,
   }
 }
 
@@ -322,7 +326,11 @@ function inRunFrame<T>(run: FlowRun, fn: () => Promise<T>): Promise<T> {
       routineRunId: run.runId,
       ...(run.hop > 0 ? { eventHop: run.hop } : {}),
       ...(run.agentId && run.agentCeiling
-        ? { agentId: run.agentId, agentCeiling: run.agentCeiling }
+        ? {
+            agentId: run.agentId,
+            agentCeiling: run.agentCeiling,
+            ...(run.agentKind ? { agentKind: run.agentKind } : {}),
+          }
         : {}),
     },
     fn,
@@ -1029,6 +1037,7 @@ function claimedRun(
     },
     agentId: null,
     agentCeiling: null,
+    agentKind: null,
     context,
   }
 }

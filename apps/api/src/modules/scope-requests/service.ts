@@ -19,6 +19,12 @@ import {
   peekOrgAppState,
   primeOrgApps,
 } from "~/modules/apps/org-apps"
+import {
+  PERSONAL_MAILBOX_SHARED_AGENT_CODE,
+  personalAgentHandleOf,
+  personalMailboxRefusalMessage,
+  requestsMailScope,
+} from "~/modules/mail/shared-agent-mailbox"
 import { PermissionDeniedError } from "~/modules/permissions/errors"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { grantUserScope } from "~/modules/permissions/roles"
@@ -32,6 +38,23 @@ export class AlreadyDecidedError extends Error {
     super(`This request has already been decided (${currentStatus}).`)
     this.name = "AlreadyDecidedError"
     this.details = { currentStatus }
+  }
+}
+
+/**
+ * A SHARED agent (kind role or system) asked for mail access. A person's own mailbox is read by
+ * their personal agent alone, and an approval would widen the shared agent for the whole
+ * organization while still never opening that mailbox; a shared org mailbox is given to an agent
+ * by an admin in its settings. So the request is refused before any row is filed.
+ */
+export class SharedAgentMailScopeError extends Error {
+  readonly status = 403
+  readonly code = PERSONAL_MAILBOX_SHARED_AGENT_CODE
+  readonly details: { personalAgentHandle: string | null; scopes: string[] }
+  constructor(handle: string | null, scopes: string[]) {
+    super(personalMailboxRefusalMessage(handle))
+    this.name = "SharedAgentMailScopeError"
+    this.details = { personalAgentHandle: handle, scopes }
   }
 }
 
@@ -81,6 +104,20 @@ async function readRequesterName(db: RlsClient | RlsTx, userId: string): Promise
   return row?.name ?? null
 }
 
+/** The kind of the agent that asked, or null when it does not resolve in this org. */
+async function readAgentKind(
+  db: RlsClient | RlsTx,
+  orgId: string,
+  agentId: string,
+): Promise<AgentKind | null> {
+  const [row] = await db
+    .select({ kind: agents.kind })
+    .from(agents)
+    .where(and(eq(agents.id, agentId), eq(agents.orgId, orgId)))
+    .limit(1)
+  return row?.kind ?? null
+}
+
 /** The display name of the agent that asked, for the admin row and the feed. */
 async function readAgentName(
   db: RlsClient | RlsTx,
@@ -115,6 +152,16 @@ export async function createScopeRequest(db: RlsClient | RlsTx, args: CreateScop
   const requestedScopes = [...new Set(args.requestedScopes)].filter((s) => s.length > 0).sort()
   if (requestedScopes.length === 0) {
     throw new HTTPException(400, { message: "At least one scope is required" })
+  }
+  // A shared agent never gets mail access through a request (SharedAgentMailScopeError).
+  if (args.requestedByType === "agent" && args.agentId && requestsMailScope(requestedScopes)) {
+    const kind = await readAgentKind(db, args.orgId, args.agentId)
+    if (kind !== null && kind !== "personal") {
+      throw new SharedAgentMailScopeError(
+        await personalAgentHandleOf(args.orgId, args.requestedBy),
+        requestedScopes.filter((s) => s === "mail" || s.startsWith("mail:")),
+      )
+    }
   }
   // No grant brings back an app turned Off for the workspace, or one restricted
   // away from this person (S19, S20, A12): the request is refused in words

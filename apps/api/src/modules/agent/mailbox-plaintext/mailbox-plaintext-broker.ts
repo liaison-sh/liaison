@@ -67,6 +67,7 @@ import {
 } from "~/modules/agent/mailbox-plaintext/mailbox-plaintext-registry"
 import {
   isPersonClientFrame,
+  isSharedAgentFrame,
   type MailboxTurnState,
   type RunContext,
 } from "~/modules/agent/runtime/run-context"
@@ -319,6 +320,9 @@ function turnState(frame: RunContext): MailboxTurnState {
  * re-invocation and a sub-run never read a mailbox server-side.
  */
 export function isOwnMailboxTurn(frame: RunContext, reader: string): boolean {
+  // A SHARED agent's turn (role or system) is never the owner's own, whoever typed it: a person's
+  // mailbox is read by them and their personal agent alone (shared-agent-mailbox.ts).
+  if (isSharedAgentFrame(frame)) return false
   // No browser nonce is asked for: a transparent mailbox needs no browser, and
   // requiring one locked every question asked outside the web app.
   if (frame.humanTurn === true && frame.visitorTurn !== true && frame.mcpGateway !== true) {

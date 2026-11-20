@@ -158,6 +158,15 @@ function buildInheritFromExists(
  * `documents`, `issuer_profiles` → `settings`). This decouples the physical
  * table vocabulary from the app's declared grantable scope vocabulary.
  */
+
+/**
+ * The condition a personal-agent-only row adds to its owner's branch: the
+ * transaction is not a shared agent's turn (rls.ts sets the mark). Exported
+ * for the migration-owned policies that must say the same (mail drafts).
+ */
+export const SHARED_AGENT_EXCLUSION =
+  "COALESCE(current_setting('app.current_agent_shared', true), '') <> 'on'"
+
 export function rlsScopeEntityForTable(
   tableName: string,
   table: { rlsScope?: unknown } | undefined,
@@ -546,8 +555,13 @@ export function generateRlsPolicySql(
    * SECURITY DEFINER helper (owner = the BYPASSRLS registration role) so the
    * check is NOT filtered by the account table's own RLS — an inline subquery
    * would return no rows for a hidden account and fail OPEN.
+   *
+   * `personalAgentOnly`: the owner reaches a personal row only through their
+   * own context, never through a SHARED agent's turn (an agent of kind role
+   * or system marks its transactions with `app.current_agent_shared`, rls.ts).
+   * A person's mailbox is read by that person and their personal agent alone.
    */
-  personalScope?: { via?: { table: string; localColumn: string } },
+  personalScope?: { via?: { table: string; localColumn: string }; personalAgentOnly?: boolean },
   /**
    * OPTIONAL read-time visibility (see `generateRequiredScopesVisibilityClause`).
    * When set, the SELECT policy gains an extra AND-condition: the viewer holds
@@ -673,10 +687,17 @@ export function generateRlsPolicySql(
       personalScope.via && localType !== undefined && localType !== "uuid"
         ? `(CASE WHEN ${quotedCol} ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN ${quotedCol}::uuid END)`
         : quotedCol
+    // personalAgentOnly: the owner's branch also needs the turn not to be a shared agent's.
+    // Without it the condition stays byte-identical to what it always was.
+    const ownerMatch = `${fnName}(${accountArg}) = NULLIF(rls_ctx.user_id(), '')::uuid`
+    const ownerBranch =
+      personalScope.personalAgentOnly === true
+        ? `(\n        ${ownerMatch}\n        AND ${SHARED_AGENT_EXCLUSION}\n      )`
+        : ownerMatch
     personalCondition = `(
       COALESCE(NULLIF(rls_ctx.user_id(), ''), '00000000-0000-0000-0000-000000000000') = '00000000-0000-0000-0000-000000000000'
       OR ${fnName}(${accountArg}) IS NULL
-      OR ${fnName}(${accountArg}) = NULLIF(rls_ctx.user_id(), '')::uuid
+      OR ${ownerBranch}
     )`
   }
 

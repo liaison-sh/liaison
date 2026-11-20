@@ -2912,7 +2912,7 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
         .array(z.string().min(1))
         .min(1)
         .describe(
-          "The exact scope strings you need, taken from kernel__list_locked_capabilities. File this only after the user has confirmed they want you to ask for access.",
+          "The exact scope strings you need, taken from kernel__list_locked_capabilities. File this only after the user has confirmed they want you to ask for access. A shared agent never asks for mail scopes: a person's own mailbox is read only by their personal agent (the refusal names it), and a shared org mailbox is opened by an admin in your agent settings.",
         ),
       reason: z.string().optional(),
     }),

@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/mail/shared-agent-mailbox.ts": "Words the refusal a shared agent gets for a person's own mailbox: whether the ids a mail call aims at belong to the caller's own user-owned mailbox, and the handle of the caller's personal agent. Must read past RLS, under which those rows are hidden from the shared agent's turn. Reads ids and ownership only, scoped to the caller's org."
+  }
+}

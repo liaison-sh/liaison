@@ -200,6 +200,13 @@ handlers teaches exactly one thing.
   listed values (columns combined with AND); `{ "parent": { "table":
   "documents", "column": "document_id" } }` keeps the rows whose parent, in
   another marked table of the app, is kept.
+- **Personal rows.** A table declaring `personalScope` (`{}` when the table is
+  the account, or `{ "via": { "table", "localColumn" } }` one hop to it) shows
+  a row of a personal account (`owner_type = 'user'`) to its owner only, never
+  through a broad scope. Add `"personalAgentOnly": true` to keep a shared
+  agent (a role or system agent) out as well, even on its owner's turn: the
+  owner and their personal agent reach those rows, nobody else does. Mail
+  declares it on its accounts, conversations, messages and drafts.
 
 **Every table needs a scope that reaches it.** A table's rows are read with `<app>:<rlsScope or table name>:read`, so a scope your app declares (in `scopes`, a role or a tool) must cover that name. Give a table an `rlsScope` that one of your scopes covers, for example `"rlsScope": "items"` on a table read with `myapp:items:read`. An app with a table no declared scope reaches is refused at registration: on a development or test server registration stops with an error naming the table, and on a production server the app is not loaded and shows as needing attention, with the table named.
 

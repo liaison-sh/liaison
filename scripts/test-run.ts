@@ -459,6 +459,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/integration/mail-agent-search.test.ts",
             "src/tests/integration/mail-conversation-search.test.ts",
             "src/tests/integration/mail-backfill.test.ts",
+            "src/tests/integration/mail-shared-agent-personal-mailbox.test.ts",
             // The Shopify fixture provider driven through the REAL app runtime:
             // home_load, orders_search, products_search and boxtal's
             // to_prepare_list all answered from fixtures for a demo org, and the

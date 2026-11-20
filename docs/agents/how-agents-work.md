@@ -17,6 +17,8 @@ Every agent has a name, a handle that people type in a mention (for example `@su
 | Role agent | **Role agent** | A shared agent for a job, such as support or logistics. An administrator creates it and sets what it may do. See [Create an agent](../agents/create-an-agent.md). |
 | System agent | **System agent** | The workspace's base agent (`@base`): the permissions and skills every agent starts from. It is a template, so it has no **Message** button and cannot be archived. |
 
+A shared agent (a role or system agent) never reads a person's own mailbox, even in that person's conversation: ask your personal agent for your email. See [Mail](../apps/mail.md#what-agents-can-do).
+
 To see them all, open **Agents**. Your own agent is marked **Your agent** in the list. Search finds agents, their skills, routines and memory.
 
 ## Talk to an agent

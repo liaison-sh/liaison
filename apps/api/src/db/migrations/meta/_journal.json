@@ -2162,263 +2162,270 @@
       "idx": 308,
       "version": "7",
       "when": 1900003399001,
-      "tag": "0307_mail_inbound_sender_index",
+      "tag": "0307_mail_personal_agent_only",
       "breakpoints": true
     },
     {
       "idx": 309,
+      "version": "7",
+      "when": 1900003399001,
+      "tag": "0307_mail_inbound_sender_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
       "version": "7",
       "when": 1900003400001,
       "tag": "0308_routines_follow_up",
       "breakpoints": true
     },
     {
-      "idx": 310,
+      "idx": 311,
       "version": "7",
       "when": 1900003401001,
       "tag": "0309_attention_set_aside",
       "breakpoints": true
     },
     {
-      "idx": 311,
+      "idx": 312,
       "version": "7",
       "when": 1900003402001,
       "tag": "0310_org_app_features",
       "breakpoints": true
     },
     {
-      "idx": 312,
+      "idx": 313,
       "version": "7",
       "when": 1900003403001,
       "tag": "0311_approval_routing_and_away",
       "breakpoints": true
     },
     {
-      "idx": 313,
+      "idx": 314,
       "version": "7",
       "when": 1900003404001,
       "tag": "0312_external_user_type",
       "breakpoints": true
     },
     {
-      "idx": 314,
+      "idx": 315,
       "version": "7",
       "when": 1900003405001,
       "tag": "0313_portal_role_and_schema",
       "breakpoints": true
     },
     {
-      "idx": 315,
+      "idx": 316,
       "version": "7",
       "when": 1900003406001,
       "tag": "0314_companies",
       "breakpoints": true
     },
     {
-      "idx": 316,
+      "idx": 317,
       "version": "7",
       "when": 1900003407001,
       "tag": "0315_suppressions",
       "breakpoints": true
     },
     {
-      "idx": 317,
+      "idx": 318,
       "version": "7",
       "when": 1900003408001,
       "tag": "0316_project_kind_and_deals",
       "breakpoints": true
     },
     {
-      "idx": 318,
+      "idx": 319,
       "version": "7",
       "when": 1900003409001,
       "tag": "0317_contact_company_and_lawful_basis",
       "breakpoints": true
     },
     {
-      "idx": 319,
+      "idx": 320,
       "version": "7",
       "when": 1900003410001,
       "tag": "0318_deal_value_for_imports",
       "breakpoints": true
     },
     {
-      "idx": 320,
+      "idx": 321,
       "version": "7",
       "when": 1900003411001,
       "tag": "0319_suppressions_read_for_conversation_readers",
       "breakpoints": true
     },
     {
-      "idx": 321,
+      "idx": 322,
       "version": "7",
       "when": 1900003412001,
       "tag": "0320_definer_executes_has_scope",
       "breakpoints": true
     },
     {
-      "idx": 322,
+      "idx": 323,
       "version": "7",
       "when": 1900003413001,
       "tag": "0321_projects_time_plan",
       "breakpoints": true
     },
     {
-      "idx": 323,
+      "idx": 324,
       "version": "7",
       "when": 1900003414001,
       "tag": "0322_projects_reconcile",
       "breakpoints": true
     },
     {
-      "idx": 324,
+      "idx": 325,
       "version": "7",
       "when": 1900003415001,
       "tag": "0323_projects_time_rows_entered_dated",
       "breakpoints": true
     },
     {
-      "idx": 325,
+      "idx": 326,
       "version": "7",
       "when": 1900003416001,
       "tag": "0324_projects_reconcile_line_other_project",
       "breakpoints": true
     },
     {
-      "idx": 326,
+      "idx": 327,
       "version": "7",
       "when": 1900003417001,
       "tag": "0325_projects_time_cost_rates_missing",
       "breakpoints": true
     },
     {
-      "idx": 327,
+      "idx": 328,
       "version": "7",
       "when": 1900003418001,
       "tag": "0326_projects_time_cost_currency",
       "breakpoints": true
     },
     {
-      "idx": 328,
+      "idx": 329,
       "version": "7",
       "when": 1900003419001,
       "tag": "0327_projects_currency_labels",
       "breakpoints": true
     },
     {
-      "idx": 329,
+      "idx": 330,
       "version": "7",
       "when": 1900003420001,
       "tag": "0328_projects_reconcile_invoice",
       "breakpoints": true
     },
     {
-      "idx": 330,
+      "idx": 331,
       "version": "7",
       "when": 1900003420002,
       "tag": "0329_client_actions_portal",
       "breakpoints": true
     },
     {
-      "idx": 331,
+      "idx": 332,
       "version": "7",
       "when": 1900003420003,
       "tag": "0330_portal_project_ticket_views",
       "breakpoints": true
     },
     {
-      "idx": 332,
+      "idx": 333,
       "version": "7",
       "when": 1900003420004,
       "tag": "0331_restricted_disclosure",
       "breakpoints": true
     },
     {
-      "idx": 333,
+      "idx": 334,
       "version": "7",
       "when": 1900003420005,
       "tag": "0332_restricted_stamp_live_list",
       "breakpoints": true
     },
     {
-      "idx": 334,
+      "idx": 335,
       "version": "7",
       "when": 1900003420006,
       "tag": "0333_restricted_follow_knowledge_copy",
       "breakpoints": true
     },
     {
-      "idx": 335,
+      "idx": 336,
       "version": "7",
       "when": 1900003420007,
       "tag": "0334_knowledge_copy_authorship",
       "breakpoints": true
     },
     {
-      "idx": 336,
+      "idx": 337,
       "version": "7",
       "when": 1900003420008,
       "tag": "0335_contact_group_system_key",
       "breakpoints": true
     },
     {
-      "idx": 337,
+      "idx": 338,
       "version": "7",
       "when": 1900003430008,
       "tag": "0336_projects_external_ref",
       "breakpoints": true
     },
     {
-      "idx": 338,
+      "idx": 339,
       "version": "7",
       "when": 1900003430009,
       "tag": "0337_portal_agreement_files",
       "breakpoints": true
     },
     {
-      "idx": 339,
+      "idx": 340,
       "version": "7",
       "when": 1900003430010,
       "tag": "0338_projects_client_reports",
       "breakpoints": true
     },
     {
-      "idx": 340,
+      "idx": 341,
       "version": "7",
       "when": 1900003430011,
       "tag": "0339_client_action_approved_by",
       "breakpoints": true
     },
     {
-      "idx": 341,
+      "idx": 342,
       "version": "7",
       "when": 1900003430012,
       "tag": "0340_client_action_blocks_fingerprint",
       "breakpoints": true
     },
     {
-      "idx": 342,
+      "idx": 343,
       "version": "7",
       "when": 1900003430013,
       "tag": "0341_portal_project_hours_basis",
       "breakpoints": true
     },
     {
-      "idx": 343,
+      "idx": 344,
       "version": "7",
       "when": 1900003430014,
       "tag": "0342_portal_projects_hours_share",
       "breakpoints": true
     },
     {
-      "idx": 344,
+      "idx": 345,
       "version": "7",
       "when": 1900003430015,
       "tag": "0343_stamp_exact_only_scopes",
       "breakpoints": true
     },
     {
-      "idx": 345,
+      "idx": 346,
       "version": "7",
       "when": 1900003430016,
       "tag": "0344_invoicing_documents_company_backfill",

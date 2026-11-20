@@ -33,6 +33,8 @@ Because of this, adding a colleague with fewer permissions to a conversation can
 
 Administration scopes are meant for people: every scope that asks a person for a second factor when the organization requires one. That is `*`, any scope whose last part is `admin` (such as `kernel:org:admin`, `kernel:apps:admin`, `kernel:agents:admin` or an app's `tickets:settings:admin`), and a wildcard over a kernel one (`kernel:*`, `kernel:users:*`). Keep them out of a role agent's ceiling: `liaison config apply` refuses a role agent that lists one, and an approved access request never adds one.
 
+A person's own mailbox is the exception to every ceiling: only that person and their personal agent read it. A role or system agent never does, whatever its ceiling, even on that person's turn. See [Mail](../apps/mail.md#what-agents-can-do).
+
 ### Data limits
 
 Scopes say what a person can do. Data dimensions say which records they see, for example one territory or one team. Agents see exactly the records the person would see, because the limit is applied by the database and the response filter, not by the agent's judgment. See [Data dimensions](../admin/dimensions.md).
@@ -68,6 +70,7 @@ When you try something in the app and are refused, the toast reads **Permission 
 1. Tell the agent what you want to do.
 2. When it explains that it lacks a scope, confirm that you want it to ask.
 3. The agent calls `request_scope` with the exact scope strings and a reason. It should file the request only after you confirmed.
+   A role or system agent never files a request for mail access: it tells you it cannot open your mailbox and names your personal agent instead, and the request is refused without reaching an administrator.
 4. You get a notification when the request is decided. The agent also speaks first in the conversation, to say what it can now do or that it still cannot.
 
 ## Decide access requests

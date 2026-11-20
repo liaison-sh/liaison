@@ -37,6 +37,7 @@ import {
 } from "~/modules/approvals/approval-policy"
 import { evaluateAutoApprove } from "~/modules/approvals/auto-approve"
 import {
+  appBridgeManifest,
   appCrossAppCallsRegistry,
   appDependenciesRegistry,
   isManifestHandler,
@@ -286,6 +287,10 @@ import {
 } from "~/modules/apps/org-apps"
 import { featureOffAnswer, settleFeatureRecomputes } from "~/modules/apps/org-features"
 import type { CandidateCredentials } from "~/modules/apps/sandbox/bridge/context"
+import {
+  declaresPersonalAgentOnlyRows,
+  sharedAgentMailToolRefusal,
+} from "~/modules/mail/shared-agent-mailbox"
 import { sealMailApprovalPayload } from "~/modules/mailbox-crypto/approval-payload"
 import { CapLimitError } from "~/modules/org/caps"
 import {
@@ -4163,6 +4168,25 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
     }
     if (!active) {
       return { error: { code: APP_DISABLED_CODE, message: APP_DISABLED_MESSAGE, retryable: false } }
+    }
+  }
+
+  // A person's own mailbox is for them and their personal agent (shared-agent-mailbox.ts). Row
+  // level security already hides it from a SHARED agent's turn; a call aimed at it gets told so,
+  // with the agent that can do it, instead of a bare "not found". Which apps hold such rows is
+  // the manifest's to say (`personalScope.personalAgentOnly`), read from the live registry.
+  if (declaresPersonalAgentOnlyRows(appBridgeManifest(opts.orgId, appName))) {
+    const refusal = await sharedAgentMailToolRefusal({
+      orgId: opts.orgId,
+      userId: callerUserId,
+      params: opts.params,
+    })
+    if (refusal) {
+      log.info(
+        { orgId: opts.orgId, tool: opts.toolName, code: refusal.code },
+        "mail call refused: a shared agent aimed at a personal mailbox",
+      )
+      return { error: refusal }
     }
   }
 

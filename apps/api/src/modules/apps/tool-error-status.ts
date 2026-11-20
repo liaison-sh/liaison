@@ -394,6 +394,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // A change made from an older version than the schedule now holds is refused, never written over.
   schedule_not_found: 404,
   schedule_ended: 409,
+  // An item of a month-end run whose schedule was paused or ended before it issued: left out, no number used.
+  schedule_stopped: 409,
   schedule_changed: 409,
   schedule_not_started: 409,
   invalid_schedule: 422,

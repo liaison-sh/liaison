@@ -145,7 +145,7 @@ describe("kernel.messages SELECT policy: requiredScopes visibility", () => {
 
   it("the last migration that sets the policy embeds the installed clause, and the generator's clause answers alike", async () => {
     const migration = readFileSync(
-      join(import.meta.dir, "../../migrations/0331_restricted_disclosure.sql"),
+      join(import.meta.dir, "../../migrations/0332_restricted_disclosure.sql"),
       "utf8",
     )
     const squash = (t: string) => t.replace(/\s+/g, " ").trim()

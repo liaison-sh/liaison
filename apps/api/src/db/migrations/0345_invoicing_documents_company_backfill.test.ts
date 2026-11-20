@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import postgres from "postgres"
 
-const FILE = new URL("./0344_invoicing_documents_company_backfill.sql", import.meta.url).pathname
+const FILE = new URL("./0345_invoicing_documents_company_backfill.sql", import.meta.url).pathname
 const INV = "mig0344_invoicing"
 const PROJ = "mig0344_projects"
 const KERN = "mig0344_kernel"

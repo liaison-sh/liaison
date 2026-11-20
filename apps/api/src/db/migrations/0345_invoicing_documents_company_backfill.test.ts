@@ -78,7 +78,9 @@ describe("0344 invoicing documents company backfill", () => {
       billing_project_id uuid, counterparty_contact_id uuid)`)
     await sql.unsafe(`CREATE TABLE ${KERN}.contacts (
       id uuid PRIMARY KEY, org_id uuid NOT NULL, company_id uuid)`)
-    await sql.unsafe(`INSERT INTO ${KERN}.contacts VALUES
+    // The rows go into this file's scratch copies, found by name on the search path.
+    await sql.unsafe(`SET search_path TO ${INV}, ${PROJ}, ${KERN}`)
+    await sql.unsafe(`INSERT INTO contacts VALUES
       ('${CONTACT_B}', '${ORG}', '${COMPANY_B}'), ('${CONTACT_NONE}', '${ORG}', NULL)`)
     await sql.unsafe(`CREATE TABLE ${INV}.recurring_schedules (
       id uuid PRIMARY KEY, org_id uuid NOT NULL, company_id uuid)`)
@@ -87,11 +89,11 @@ describe("0344 invoicing documents company backfill", () => {
       schedule_id uuid, document_id uuid)`)
     await sql.unsafe(`CREATE TABLE ${PROJ}.projects (
       id uuid PRIMARY KEY, org_id uuid NOT NULL, company_id uuid)`)
-    await sql.unsafe(`INSERT INTO ${INV}.recurring_schedules VALUES
+    await sql.unsafe(`INSERT INTO recurring_schedules VALUES
       ('${SCHEDULE}', '${ORG}', '${COMPANY_S}')`)
-    await sql.unsafe(`INSERT INTO ${PROJ}.projects VALUES
+    await sql.unsafe(`INSERT INTO projects VALUES
       ('${PROJECT}', '${ORG}', '${COMPANY_P}'), ('${LONE_PROJECT}', '${ORG}', NULL)`)
-    await sql.unsafe(`INSERT INTO ${INV}.documents VALUES
+    await sql.unsafe(`INSERT INTO documents VALUES
       ('${DOC_RUN}', '${ORG}', 'invoice', NULL, NULL, NULL),
       ('${DOC_PROJECT}', '${ORG}', 'invoice', NULL, '${PROJECT}', '${CONTACT_NONE}'),
       ('${DOC_KEPT}', '${ORG}', 'invoice', '${COMPANY_KEPT}', '${PROJECT}', '${CONTACT_B}'),
@@ -103,7 +105,7 @@ describe("0344 invoicing documents company backfill", () => {
       ('${DOC_PO}', '${ORG}', 'purchase_order', NULL, '${PROJECT}', '${CONTACT_NONE}'),
       ('${DOC_UNKNOWN_CONTACT}', '${ORG}', 'invoice', NULL, '${PROJECT}', '${CONTACT_GONE}'),
       ('${DOC_QUOTE}', '${ORG}', 'quote', NULL, '${PROJECT}', NULL)`)
-    await sql.unsafe(`INSERT INTO ${INV}.recurring_run_items (org_id, schedule_id, document_id)
+    await sql.unsafe(`INSERT INTO recurring_run_items (org_id, schedule_id, document_id)
       VALUES ('${ORG}', '${SCHEDULE}', '${DOC_RUN}'), ('${ORG}', '${SCHEDULE}', '${DOC_RUN_OTHER}'),
         ('${ORG}', '${SCHEDULE}', '${DOC_RUN_NO_COMPANY}')`)
   })

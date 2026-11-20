@@ -56,8 +56,7 @@ export function journalOrderProblems(
   }
   const sql = new Set(files.filter((f) => f.endsWith(".sql")).map((f) => f.slice(0, -4)))
   for (const t of tags) if (!sql.has(t)) out.push(`${t}: the journal lists it but no .sql exists`)
-  for (const f of [...sql].sort())
-    if (!tags.has(f)) out.push(`${f}.sql: no journal entry lists it`)
+  for (const f of [...sql].sort()) if (!tags.has(f)) out.push(`${f}.sql: no journal entry lists it`)
   for (const f of files.sort()) {
     const paired = /^(\d{4}_[a-z0-9_]+)\.test\.ts$/.exec(f)
     if (paired && !tags.has(paired[1]))

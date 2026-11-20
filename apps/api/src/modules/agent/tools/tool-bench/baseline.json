@@ -1682,7 +1682,7 @@
     },
     "kernel__request_scope": {
       "desc": 239,
-      "schema": 80
+      "schema": 130
     },
     "kernel__request_secret": {
       "desc": 593,

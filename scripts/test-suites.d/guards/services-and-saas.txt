@@ -7,3 +7,6 @@ apps/api/src/modules/agent/tools/tool-bench/bench.test.ts
 # each app's schema total) against their targets, from source with no
 # server; a number over target needs a reason line. About 3 s.
 apps/api/src/modules/agent/context/ladder-budget.guard.test.ts
+# The drizzle journal climbs in when, idx and number, and a branch merging
+# main dates its own migrations above main's newest. Pure file reads and git show.
+scripts/check-migration-safety-journal.test.ts

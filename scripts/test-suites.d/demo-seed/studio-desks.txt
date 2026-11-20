@@ -1,0 +1,6 @@
+# The services world's desks, support queue, channels, routines, brief and
+# Home, and the demo app lists per world.
+src/seed/worlds/studio/brief.test.ts
+src/seed/worlds/studio/desk-prompts.test.ts
+src/seed/tiers/demo/demo-apps.test.ts
+src/seed/worlds/studio/world-desk.studio.integration.test.ts

@@ -19,6 +19,8 @@ import {
   ACTION_NOTE_DISMISS_MS,
   BUILT_IN_TABS,
   canConvertToInvoice,
+  canMarkPaid,
+  canSendToCustomer,
   convertConfirmBody,
   convertResultNote,
   DocumentDetail,
@@ -26,13 +28,19 @@ import {
   FOOTER_ACTIONS,
   footerActionResultNote,
   isEditableDocumentStatus,
+  lifecycleFacts,
   mergeTabs,
+  moneyChips,
+  pdfFailureReason,
   pdfNotReadyNote,
   pdfStatusAffordance,
   shopifyOrderUrl,
+  showsPaymentChip,
+  stripeCollection,
   toLoadedDocument,
 } from "./DocumentDetail"
 import { FR as fr } from "./i18n-fr"
+import { einvoiceStatusWord } from "./RecurringStates"
 
 const source = readFileSync(join(import.meta.dir, "DocumentDetail.tsx"), "utf-8")
 
@@ -200,6 +208,41 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     const none = pdfStatusAffordance(undefined)
     expect(none.showRetry).toBe(false)
     expect(none.downloadEnabled).toBe(false)
+
+    // An issued document whose PDF was never made: made on request.
+    const never = pdfStatusAffordance(null, { issued: true })
+    expect(never).toMatchObject({ showRetry: true, downloadEnabled: false })
+    expect(never.statusLabel).toBe("Not made yet")
+  })
+
+  it("an e-invoice that could not be made says so, with its reason, a retry and nothing to download", () => {
+    const fx = pdfStatusAffordance("facturx_failed")
+    expect(fx).toMatchObject({ showRetry: true, downloadEnabled: false })
+    expect(fx.statusLabel).toBe("The e-invoice could not be made")
+    const reason = pdfFailureReason({
+      lifecycle_log: [
+        { event: "issued", at: "2026-11-16T09:00:00.000Z" },
+        {
+          event: "pdf_render_failed",
+          at: "2026-11-16T09:00:01.000Z",
+          detail: "The seller (issuer profile) is missing: SIREN",
+        } as never,
+      ],
+    } as never)
+    expect(reason).toBe("The seller (issuer profile) is missing: SIREN")
+  })
+
+  it("a lifecycle entry as the issue writes it gives its time and who acted", () => {
+    expect(
+      lifecycleFacts({ event: "issued", ts: "2026-11-16T09:00:00.000Z", actor: "u-1" } as never),
+    ).toEqual({ at: "2026-11-16T09:00:00.000Z", actorId: "u-1" })
+    expect(
+      lifecycleFacts({
+        event: "sent",
+        at: "2026-11-17T09:00:00.000Z",
+        actor: { type: "user", id: "u-2" },
+      }),
+    ).toEqual({ at: "2026-11-17T09:00:00.000Z", actorId: "u-2" })
   })
 
   it("source emits a slot-mount call for invoicing.document_detail.tabs", () => {
@@ -220,6 +263,29 @@ describe("DocumentDetail (Phase 17 F3)", () => {
     expect(invoicingSlot).toBeDefined()
     expect(invoicingSlot?.document_detail).toBeDefined()
     expect(Array.isArray(invoicingSlot?.document_detail?.tabs)).toBe(true)
+  })
+
+  it("an invoice Stripe collects names its Stripe invoice and customer, and offers no Mark paid", () => {
+    expect(stripeCollection({ stripe_invoice_id: "in_1", stripe_customer_id: "cus_1" })).toEqual({
+      invoiceId: "in_1",
+      customerId: "cus_1",
+    })
+    expect(stripeCollection({ stripe_invoice_id: "in_1" })).toEqual({
+      invoiceId: "in_1",
+      customerId: null,
+    })
+    expect(stripeCollection({})).toBeNull()
+    expect(stripeCollection(undefined)).toBeNull()
+    expect(
+      canMarkPaid({
+        type: "invoice",
+        status: "issued",
+        payment_status: "unpaid",
+        external_refs: { stripe_invoice_id: "in_1" },
+      }),
+    ).toBe(false)
+    expect(source).toContain("document-detail-open-stripe")
+    expect(source).toContain("document-detail-open-contact")
   })
 
   it("renders footer-action testids in source for E2E pickup", () => {
@@ -427,6 +493,31 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   // Converting is irreversible and, for a Shopify-linked quote, reaches into
   // Shopify and creates a real order, so the click must open a dialog and the
   // tool must fire only after the human confirms.
+  it("line totals read excluding VAT on drafts and issued documents alike", () => {
+    expect(source).toContain('header: tr("Total excl. VAT")')
+    expect(source).toContain("<Money minor={l.subtotal_minor}")
+    expect(source).not.toContain("<Money minor={l.total_minor}")
+  })
+
+  describe("send and mark paid", () => {
+    it("are not offered on a draft, and mark paid is not offered once paid", () => {
+      const doc = (status: string, payment_status = "unpaid", type = "invoice") =>
+        ({ type, status, payment_status, external_refs: {} }) as never
+      expect(canSendToCustomer(doc("draft"))).toBe(false)
+      expect(canMarkPaid(doc("draft"))).toBe(false)
+      expect(canSendToCustomer(doc("issued"))).toBe(true)
+      expect(canMarkPaid(doc("issued"))).toBe(true)
+      expect(canMarkPaid(doc("paid", "paid"))).toBe(false)
+      expect(canMarkPaid(doc("issued", "unpaid", "credit_note"))).toBe(false)
+      expect(canMarkPaid(doc("cancelled"))).toBe(false)
+      expect(canMarkPaid(doc("credited"))).toBe(false)
+      expect(canMarkPaid(doc("issued", "unpaid", "quote"))).toBe(false)
+      expect(canMarkPaid(doc("issued", "unpaid", "proforma"))).toBe(false)
+      expect(source).toContain("<Show when={canSendToCustomer(doc())}>")
+      expect(source).toContain("<Show when={canMarkPaid(doc())}>")
+    })
+  })
+
   describe("convert to invoice", () => {
     it("offers the action only for a quote in sent/accepted and a proforma in sent", () => {
       expect(canConvertToInvoice({ type: "quote", status: "sent" })).toBe(true)
@@ -574,9 +665,13 @@ describe("DocumentDetail (Phase 17 F3)", () => {
   describe("payment-status badge", () => {
     it("source renders document-detail-payment-chip gated on payment_status, excluding credit notes", () => {
       expect(source).toContain("document-detail-payment-chip")
-      expect(source).toMatch(
-        /Show when=\{doc\(\)\.type !== "credit_note" && doc\(\)\.payment_status\}/,
-      )
+      expect(source).toMatch(/Show when=\{showsPaymentChip\(doc\(\)\) && doc\(\)\.payment_status\}/)
+      const at = (type: string, status: string, payment_status: string | null) =>
+        showsPaymentChip({ type, status, payment_status } as never)
+      expect(at("invoice", "issued", "unpaid")).toBe(true)
+      expect(at("credit_note", "issued", "unpaid")).toBe(false)
+      expect(at("invoice", "draft", "unpaid")).toBe(false)
+      expect(at("invoice", "paid", "paid")).toBe(false)
     })
 
     it("PAYMENT_LABEL / PAYMENT_TONE cover paid, partial, refunded, unpaid", () => {
@@ -673,5 +768,42 @@ describe("toLoadedDocument: an id that resolves to nothing", () => {
 
   it("renders a not-found state when the resource resolves to nothing", () => {
     expect(source).toContain('data-testid="document-detail-not-found"')
+  })
+})
+
+describe("an invoice issued by Liaison and collected elsewhere", () => {
+  const base = {
+    status: "issued",
+    type: "invoice",
+    stream: "card" as const,
+    payment_status: "unpaid",
+    einvoice_state: "sent",
+    collection_state: null,
+  }
+
+  it("Collected shows only after an accepted report", () => {
+    // Paid, but nothing reported yet, or the report failed: never Collected.
+    expect(einvoiceStatusWord({ ...base, payment_status: "paid" })).not.toBe("Collected")
+    expect(
+      einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "failed" }),
+    ).not.toBe("Collected")
+    expect(
+      einvoiceStatusWord({ ...base, payment_status: "paid", collection_state: "reported" }),
+    ).toBe("Collected")
+  })
+
+  it("chips say who issued and who took the payment, and the payment only once it is in", () => {
+    expect(moneyChips(base)).toEqual(["Issued by Liaison"])
+    expect(moneyChips({ ...base, payment_status: "paid" })).toEqual([
+      "Issued by Liaison",
+      "Collected by Stripe",
+    ])
+    expect(moneyChips({ ...base, stream: "transfer", payment_status: "paid" })).toEqual([
+      "Issued by Liaison",
+    ])
+    // A draft, a quote, or a document from no stream gets no chip.
+    expect(moneyChips({ ...base, status: "draft" })).toEqual([])
+    expect(moneyChips({ ...base, type: "quote" })).toEqual([])
+    expect(moneyChips({ ...base, stream: null })).toEqual([])
   })
 })

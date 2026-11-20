@@ -1,0 +1,5 @@
+What an agent reads from a closed record stays with its list -> apps/api/src/modules/apps/execute-tool.ts (restrictedStampOf) ; apps/api/src/modules/permissions/restricted-scope.ts (restrictedScope)
+A reply or note written afterwards is read only by the list -> apps/api/src/modules/threads/message.ts (withRestrictedDisclosure) ; apps/api/src/services/security/visibility.ts (isMessageVisible)
+A post to others waits for the person who asked, seen by nobody else -> apps/api/src/modules/apps/execute-tool.ts (executeToolCore) ; apps/api/src/modules/agent/scopes/taint-approval-audience.ts (holdsEveryScope)
+No grant holds a closed record's mark -> apps/api/src/modules/permissions/permissions.ts (hasScope) ; apps/api/src/modules/permissions/rls-generator.ts (generateRequiredScopesVisibilityClause)
+The same for restricted Knowledge documents -> apps/api/src/apps/knowledge/app.manifest.json (restrictedRows)

@@ -8,7 +8,7 @@ import { type Agent, agents, type NewAgent } from "~/db/schema/kernel/agents"
 import { users } from "~/db/schema/kernel/users"
 import { rootLogger } from "~/lib/logger"
 import { AGENT_HANDLE_UNIQUE_INDEX, isUniqueViolationOn } from "~/lib/unique-violation"
-import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
+import { isExactOnlyScope, isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import {
   computeEffectivePermissions,
   dropAppScopes,
@@ -41,6 +41,31 @@ export function personalCeiling(
     (s) => isScopeCovered([s], [...ownerScopes]) && !fromOwner.includes(s),
   )
   return [...fromOwner, ...fromRestriction]
+}
+
+/**
+ * The restriction an administrator's ceiling write (`written`) records on a personal agent, or
+ * null when it narrows nothing. It records only what the administrator removed from the ceiling
+ * they were shown (`stored`): an exact-only scope of the owner the stored ceiling did not carry
+ * (a grant the ceiling has not caught up with yet) is one they could not name, since naming it
+ * takes its exact grant, so it is kept rather than silently dropped on every recompute. Under an
+ * earlier restriction (`previous`), a scope absent from the stored ceiling was left out by that
+ * restriction and stays out.
+ */
+export function personalRestriction(
+  ownerScopes: readonly string[],
+  written: readonly string[],
+  stored: readonly string[],
+  previous: readonly string[] | null,
+): string[] | null {
+  const unnamed =
+    previous === null
+      ? ownerScopes.filter(
+          (s) => isExactOnlyScope(s) && !written.includes(s) && !stored.includes(s),
+        )
+      : []
+  const restriction = [...new Set([...written, ...unnamed])]
+  return isScopeCovered([...ownerScopes], restriction) ? null : restriction
 }
 
 export interface CreatePersonalAgentInput {

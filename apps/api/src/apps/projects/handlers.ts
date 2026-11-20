@@ -7,8 +7,11 @@
 
 import { csvCell } from "@liaison/shared"
 import type { CoreCtx } from "~/modules/apps/core/ctx"
+import { mixedCurrencies } from "./service/currency"
+import { composeMargin, type InvoicedRead, type MarginCost } from "./service/margin"
 
 export interface ProjectsMethods {
+  projects_activityRead(paramsJson: string): Promise<string>
   projects_search: (paramsJson: string) => Promise<string>
   projects_get: (paramsJson: string) => Promise<string>
   projects_createProject: (paramsJson: string) => Promise<string>
@@ -22,6 +25,13 @@ export interface ProjectsMethods {
   projects_tasksByAssignee: (paramsJson: string) => Promise<string>
   projects_tasksByProject: (paramsJson: string) => Promise<string>
   projects_portfolioRollup: (paramsJson: string) => Promise<string>
+  projects_dealsPipelineCreate: (paramsJson: string) => Promise<string>
+  projects_dealsUpdate: (paramsJson: string) => Promise<string>
+  projects_dealsSearch: (paramsJson: string) => Promise<string>
+  projects_dealsRollup: (paramsJson: string) => Promise<string>
+  projects_dealsFollowupCandidates: (paramsJson: string) => Promise<string>
+  projects_dealSendState: (paramsJson: string) => Promise<string>
+  projects_companyProjects: (paramsJson: string) => Promise<string>
   projects_tasksAggregate: (paramsJson: string) => Promise<string>
   projects_deleteTask: (paramsJson: string) => Promise<string>
   projects_addComment: (paramsJson: string) => Promise<string>
@@ -33,6 +43,46 @@ export interface ProjectsMethods {
   projects_listTemplates: (paramsJson: string) => Promise<string>
   projects_addDependency: (paramsJson: string) => Promise<string>
   projects_attentionItems: (paramsJson: string) => Promise<string>
+  projects_taskTimeSet: (paramsJson: string) => Promise<string>
+  projects_taskTimeGet: (paramsJson: string) => Promise<string>
+  projects_taskTimeCorrect: (paramsJson: string) => Promise<string>
+  projects_timePlanSet: (paramsJson: string) => Promise<string>
+  projects_timePlanSetPreflight: (paramsJson: string) => Promise<string>
+  projects_billingTermsSet: (paramsJson: string) => Promise<string>
+  projects_periodTimeboxSet: (paramsJson: string) => Promise<string>
+  projects_budgetGet: (paramsJson: string) => Promise<string>
+  projects_marginCost: (paramsJson: string) => Promise<string>
+  projects_costRatesList: (paramsJson: string) => Promise<string>
+  projects_costRateSet: (paramsJson: string) => Promise<string>
+  /** A declared cross-app call (manifest `cross_app_calls`), answered in the K4 envelope. */
+  executeTool: (toolName: string, paramsJson: string) => Promise<string>
+  projects_capacityGet: (paramsJson: string) => Promise<string>
+  projects_capacityMove: (paramsJson: string) => Promise<string>
+  projects_timesheetGet: (paramsJson: string) => Promise<string>
+  projects_timesheetExport: (paramsJson: string) => Promise<string>
+  projects_daysOffSet: (paramsJson: string) => Promise<string>
+  projects_daysOffList: (paramsJson: string) => Promise<string>
+  projects_daysOffRemove: (paramsJson: string) => Promise<string>
+  projects_timeSettingsGet: (paramsJson: string) => Promise<string>
+  projects_timeSettingsSet: (paramsJson: string) => Promise<string>
+  projects_reconcileFacts: (paramsJson: string) => Promise<string>
+  projects_reconcilePropose: (paramsJson: string) => Promise<string>
+  projects_reconcileLineUpdate: (paramsJson: string) => Promise<string>
+  projects_reconcileGet: (paramsJson: string) => Promise<string>
+  projects_reconcileCreate: (paramsJson: string) => Promise<string>
+  projects_reconcileUndo: (paramsJson: string) => Promise<string>
+  projects_reconcileLinesRead: (paramsJson: string) => Promise<string>
+  projects_reconcileMark: (paramsJson: string) => Promise<string>
+  projects_milestoneStatusRead: (paramsJson: string) => Promise<string>
+  projects_clientReportsList: (paramsJson: string) => Promise<string>
+  projects_clientReportGet: (paramsJson: string) => Promise<string>
+  projects_clientReportSources: (paramsJson: string) => Promise<string>
+  projects_clientReportSaveDraft: (paramsJson: string) => Promise<string>
+  projects_clientReportSendPreflight: (paramsJson: string) => Promise<string>
+  projects_clientReportSend: (paramsJson: string) => Promise<string>
+  projects_milestoneClientActionView: (paramsJson: string) => Promise<string>
+  projects_clientReportCardClosed: (paramsJson: string) => Promise<string>
+  projects_clientReportsRoutineOn: (paramsJson: string) => Promise<string>
   db_findMany: (entity: string, optsJson: string) => Promise<string>
   kernel_findOne?: (entity: string, id: string) => Promise<string>
   projects_resolveAssignee?: (paramsJson: string) => Promise<string>
@@ -84,6 +134,31 @@ export async function get(
   ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_get(JSON.stringify(params ?? {})))
+}
+
+/**
+ * Who a pending approval about a task is for: the task's assignee. A deal's task also names the
+ * deal's company, whose account manager comes next when the owner cannot decide.
+ */
+export async function approvalRouteRead(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  if (params?.entityType !== "task" || typeof params.entityId !== "string")
+    return { personId: null, companyId: null }
+  const data = JSON.parse(await ctx.projects_get(JSON.stringify({ taskId: params.entityId })))
+  const assignee = data?.task?.assigneeId ?? data?.assigneeId
+  let companyId: string | null = null
+  try {
+    const deals = JSON.parse(
+      await ctx.projects_dealsSearch(JSON.stringify({ taskId: params.entityId, limit: 1 })),
+    )
+    const found = deals?.items?.[0]?.deal?.companyId
+    companyId = typeof found === "string" ? found : null
+  } catch {
+    // Not a deal the asker can see: no company, the assignee alone.
+  }
+  return { personId: typeof assignee === "string" ? assignee : null, companyId }
 }
 
 // task label taxonomy: pass-throughs to the projects_labels* bridge methods.
@@ -168,7 +243,37 @@ export async function updateProject(
   params: Record<string, unknown> | undefined,
   ctx: ProjectsCtx,
 ): Promise<unknown> {
-  return JSON.parse(await ctx.projects_updateProject(JSON.stringify(params ?? {})))
+  const out = JSON.parse(await ctx.projects_updateProject(JSON.stringify(params ?? {})))
+  // A retainer holds time on: name its schedule, read once from invoicing.
+  const err = out?.error as
+    | { code?: string; message?: string; details?: Record<string, unknown> }
+    | undefined
+  const scheduleId = err?.details?.scheduleId
+  if (err?.code !== "retainer_needs_reconcile" || typeof scheduleId !== "string") return out
+  const list = await invoicingCall(() =>
+    ctx.executeTool("invoicing:recurring_list", JSON.stringify({ status: "active", limit: 200 })),
+  )
+  const rows =
+    list.ok && Array.isArray(list.body.rows)
+      ? (list.body.rows as Array<Record<string, unknown>>)
+      : []
+  const s = rows.find((r) => r.id === scheduleId)
+  const scheduleLines = s?.lines
+  const first = (
+    Array.isArray(scheduleLines) ? (scheduleLines as Array<Record<string, unknown>>) : []
+  )[0]
+  const name = typeof first?.description === "string" ? first.description : null
+  const named = name
+    ? `the retainer schedule "${name}" (${scheduleId})`
+    : `retainer schedule ${scheduleId}`
+  return {
+    ...out,
+    error: {
+      ...err,
+      message: `${err.message} It is billed by ${named}.`,
+      details: { ...err.details, scheduleName: name },
+    },
+  }
 }
 
 export async function updateStatus(
@@ -600,10 +705,12 @@ export async function checklistRemoveItem(
 }
 
 export async function computeAttentionItems(
-  _params: Record<string, unknown> | undefined,
+  params: Record<string, unknown> | undefined,
   ctx: ProjectsCtx,
 ): Promise<unknown> {
-  return JSON.parse(await ctx.projects_attentionItems("{}"))
+  // Home passes on the people the caller stands in for; the bridge checks them again.
+  const forUserIds = Array.isArray(params?.forUserIds) ? params.forUserIds : []
+  return JSON.parse(await ctx.projects_attentionItems(JSON.stringify({ forUserIds })))
 }
 
 // tasks_byAssignee — cross-project task list for one assignee (J1).
@@ -629,6 +736,158 @@ export async function portfolioRollup(
   ctx: ProjectsCtx,
 ): Promise<unknown> {
   return JSON.parse(await ctx.projects_portfolioRollup(JSON.stringify(params ?? {})))
+}
+
+// Deals: a pipeline's top-level tasks with their company, contact and amount.
+export async function dealsPipelineCreate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsPipelineCreate(JSON.stringify(params ?? {})))
+}
+
+export async function dealsUpdate(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsUpdate(JSON.stringify(params ?? {})))
+}
+
+export async function dealsSearch(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsSearch(JSON.stringify(params ?? {})))
+}
+
+export async function dealsRollup(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsRollup(JSON.stringify(params ?? {})))
+}
+
+export async function dealsFollowupCandidates(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealsFollowupCandidates(JSON.stringify(params ?? {})))
+}
+
+export async function dealSendState(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_dealSendState(JSON.stringify(params ?? {})))
+}
+
+// company_context — the agent's few lines about the company in view (a company
+// tab or its discussion): its open deals by stage, amounts only under deal
+// access (the deal read leaves them out otherwise).
+const COMPANY_CONTEXT_KINDS = new Set(["kernel:company", "contacts:company-detail"])
+const COMPANY_CONTEXT_STAGE_LINES = 4
+
+interface CompanyContextDeal {
+  task?: { key?: string; stage?: string | null }
+  values?: { amountMinor?: number | null; currency?: string | null; amountPeriod?: string }
+}
+
+function formatMinor(minor: number): string {
+  return minor % 100 === 0 ? String(minor / 100) : (minor / 100).toFixed(2)
+}
+
+export async function companyContext(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  const subject = (params?.subject ?? {}) as {
+    app?: string
+    entityType?: string
+    entityId?: string
+  }
+  const companyId = String(subject.entityId ?? "")
+  if (
+    !COMPANY_CONTEXT_KINDS.has(`${subject.app}:${subject.entityType}`) ||
+    !projectsPreflightIsUuid(companyId)
+  ) {
+    return { lines: [] }
+  }
+  const read = JSON.parse(
+    await ctx.projects_dealsSearch(JSON.stringify({ companyId, outcome: "open", limit: 100 })),
+  ) as { items?: CompanyContextDeal[] }
+  const deals = Array.isArray(read?.items) ? read.items : []
+  if (deals.length === 0) return { lines: [] }
+  const withAmounts = deals.some((d) => d.values)
+  const stages = new Map<string, CompanyContextDeal[]>()
+  for (const d of deals) {
+    const stage = d.task?.stage ?? "No stage"
+    stages.set(stage, [...(stages.get(stage) ?? []), d])
+  }
+  const stageLine = (stage: string, list: CompanyContextDeal[]): string => {
+    const keys = list.map((d) => d.task?.key).filter((k): k is string => !!k)
+    const shown = keys.slice(0, 3).join(", ") + (keys.length > 3 ? ` +${keys.length - 3}` : "")
+    const sums = new Map<string, number>()
+    for (const d of list) {
+      const v = d.values
+      if (!v?.currency || typeof v.amountMinor !== "number") continue
+      const unit = `${v.currency}${v.amountPeriod && v.amountPeriod !== "once" ? `/${v.amountPeriod}` : ""}`
+      sums.set(unit, (sums.get(unit) ?? 0) + v.amountMinor)
+    }
+    const money = [...sums.entries()]
+      .map(([unit, minor]) => {
+        const [currency, period] = unit.split("/")
+        return `${currency} ${formatMinor(minor)}${period ? `/${period}` : ""}`
+      })
+      .join(", ")
+    return `${stage}: ${shown}${money ? `, ${money}` : ""}`
+  }
+  const ordered = [...stages.entries()].sort((a, b) => b[1].length - a[1].length)
+  const lines = [
+    `${deals.length} open deal${deals.length === 1 ? "" : "s"}${withAmounts ? "" : ", amounts need deal access"}.`,
+    ...ordered.slice(0, COMPANY_CONTEXT_STAGE_LINES).map(([stage, list]) => stageLine(stage, list)),
+  ]
+  const rest = ordered.slice(COMPANY_CONTEXT_STAGE_LINES)
+  if (rest.length > 0) {
+    const n = rest.reduce((sum, [, list]) => sum + list.length, 0)
+    lines.push(`${n} more in ${rest.length} other stage${rest.length === 1 ? "" : "s"}.`)
+  }
+  return { lines, source: { label: "Deals" } }
+}
+
+// company_work — the Work section of a company's page: the work projects whose
+// client is the company and their open tasks. Deals are not work: the page's
+// Deals section shows them, so pipelines and their deals stay out of this read.
+interface CompanyWorkProject {
+  id: string
+  name: string
+  key: string | null
+  /** Archived: the company's past work, listed after the live projects. */
+  closed?: boolean
+  openTasks: number
+  tasks: Array<{ id: string; key: string | null; title: string; status: string | null }>
+}
+
+export async function companyWork(
+  params: Record<string, unknown> | undefined,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  const companyId = String(params?.companyId ?? "")
+  if (!projectsPreflightIsUuid(companyId)) {
+    return { projects: [], message: "companyId is not a company id. Nothing was read." }
+  }
+  const listed = JSON.parse(await ctx.projects_companyProjects(JSON.stringify({ companyId }))) as {
+    items?: CompanyWorkProject[]
+  }
+  const projects = Array.isArray(listed?.items) ? listed.items : []
+  const liveProjects = projects.filter((p) => !p.closed)
+  const live = liveProjects.length
+  const closed = projects.length - live
+  // The count reads with the live projects: a closed project's leftover tasks are not open work.
+  const open = liveProjects.reduce((sum, p) => sum + (p.openTasks ?? 0), 0)
+  return {
+    projects,
+    message: `${live} project${live === 1 ? "" : "s"} with ${open} open task${open === 1 ? "" : "s"} for this company${closed > 0 ? `, and ${closed} closed` : ""}.`,
+  }
 }
 
 // A dashboard table backed by a project's tasks (manifest entities.task.tableBacking).
@@ -978,6 +1237,771 @@ export async function webhookInfoHandler(
   }
 }
 
+/** Timeline rows for the kernel's activity read (activitySources), host-side. */
+export async function activityRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_activityRead(JSON.stringify(params ?? {})))
+}
+
+// Time and budgets: Took, the plan, billing terms and period timeboxes.
+export async function taskTimeSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeSet(JSON.stringify(params ?? {})))
+}
+
+export async function taskTimeGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeGet(JSON.stringify(params ?? {})))
+}
+
+export async function taskTimeCorrect(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_taskTimeCorrect(JSON.stringify(params ?? {})))
+}
+
+/** `time_plan_set`'s card: a call that sets nothing, or a basis the terms contradict, is refused before it. */
+export async function timePlanSetPreflight(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const out = JSON.parse(await ctx.projects_timePlanSetPreflight(JSON.stringify(params ?? {}))) as {
+    error?: { code: string; message: string }
+  }
+  if (out.error) return { error: { ...out.error, retryable: false } }
+  return { ok: true }
+}
+
+export async function timePlanSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timePlanSet(JSON.stringify(params ?? {})))
+}
+
+export async function billingTermsSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  // A project billed from a plan keeps that route while a step of it is not invoiced yet: a rate
+  // would bill the same work again from planned vs done.
+  if (typeof p.rate === "number" && p.rate > 0) {
+    const project = await preflightResolveProject(p, ctx)
+    if (project.kind === "resolved") {
+      const preview = await invoicingCall(() =>
+        ctx.executeTool(
+          "invoicing:preview_totals",
+          JSON.stringify({ projectId: project.projectId, basis: "hourly" }),
+        ),
+      )
+      const open = preview.ok ? Number(preview.body.openPlanSteps ?? 0) : 0
+      if (open > 0) {
+        return {
+          error: {
+            code: "plan_steps_open",
+            status: 409,
+            retryable: false,
+            message: `This project is billed from its billing plan, and ${open} step${open === 1 ? " is" : "s are"} not invoiced yet, so it cannot switch to a rate. Nothing changed.`,
+            details: {
+              openPlanSteps: open,
+              next: "Invoice or remove the open plan steps first, then set the rate.",
+            },
+          },
+        }
+      }
+    }
+  }
+  return JSON.parse(await ctx.projects_billingTermsSet(JSON.stringify(params ?? {})))
+}
+
+export async function periodTimeboxSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_periodTimeboxSet(JSON.stringify(params ?? {})))
+}
+
+export async function budgetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const out = JSON.parse(await ctx.projects_budgetGet(JSON.stringify(params ?? {}))) as {
+    projectId?: string
+    money?:
+      | { price: number; currency: string | null }
+      | { rate: number; per: string; currency: string | null }
+      | { retainer: true; currency: string | null }
+    totals?: Array<{ k: string; text: string }>
+  }
+  // The money half: a holder of the money scope also reads what is invoiced and what is left.
+  if (out?.money && out.projectId) {
+    const read = await readProjectInvoiced(ctx, out.projectId)
+    const price = out.money.currency?.trim() || null
+    if (read.ok && read.documents > 0 && !price) {
+      // A price with no currency cannot be set against invoices that have one.
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = {
+        code: "currency_missing",
+        message:
+          "This project's price has no currency, so what is invoiced and left to invoice are not shown.",
+        next: "Set the price again with its currency in billing_terms_set.",
+        retryable: false,
+      }
+    } else if (read.ok && read.documents > 0 && price && read.currency && price !== read.currency) {
+      // The price and the invoices are in two currencies: no subtraction means anything.
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = mixedCurrencies(
+        [price, read.currency],
+        "This project's price and its invoices",
+      ).error
+    } else if (read.ok && read.documents === 0) {
+      ;(out.money as Record<string, unknown>).invoicedUnavailable =
+        "No issued invoice is linked to this project, so what is invoiced and left to invoice are not shown."
+    } else if (read.ok) {
+      const invoiced = read.invoicedMinor / 100
+      const fmt = (v: number) => formatMoney(v, out.money?.currency ?? read.currency)
+      if ("price" in out.money) {
+        const left = Math.round((out.money.price - invoiced) * 100) / 100
+        out.money = { ...out.money, invoiced, leftToInvoice: left } as typeof out.money
+        out.totals?.push(
+          { k: "Invoiced", text: fmt(invoiced) },
+          { k: "Left to invoice", text: fmt(left) },
+        )
+      } else {
+        // A project billed by the day or the hour has no total to subtract from: what is
+        // invoiced stands alone.
+        out.money = { ...out.money, invoiced } as NonNullable<typeof out.money> & {
+          invoiced: number
+        }
+        out.totals?.push({ k: "Invoiced", text: fmt(invoiced) })
+      }
+    } else {
+      ;(out.money as Record<string, unknown>).invoicedUnavailable = read.refusal
+        ? read.refusal
+        : read.off
+          ? "Invoicing is not on in this workspace, so what is invoiced is not shown."
+          : "I cannot read invoices right now, so what is invoiced is not shown."
+    }
+  }
+  return out
+}
+
+function formatMoney(amount: number, currency: string | null): string {
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: currency ?? "EUR",
+    }).format(amount)
+  } catch {
+    return `${amount} ${currency ?? ""}`.trim()
+  }
+}
+
+/** Error codes that mean the invoicing app is not there to ask, rather than failing. */
+const INVOICING_ABSENT = new Set([
+  "tool_not_found",
+  "unknown_tool",
+  "app_disabled",
+  "app_not_enabled",
+  "not_found",
+])
+
+/**
+ * A project's invoiced amount, from invoicing's internal `project_invoiced_get` through the
+ * declared cross-app call. Any failure is reported as such, never as zero.
+ */
+async function readProjectInvoiced(
+  ctx: ProjectsCtx,
+  projectId: string,
+  range?: { from: string; to: string },
+): Promise<InvoicedRead> {
+  let env: {
+    status?: string
+    result?: unknown
+    data?: unknown
+    error?: { code?: string } | string
+    blocked?: unknown
+  }
+  try {
+    env = JSON.parse(
+      await ctx.executeTool(
+        "invoicing:project_invoiced_get",
+        JSON.stringify({ projectId, ...(range ? { from: range.from, to: range.to } : {}) }),
+      ),
+    )
+  } catch {
+    return { ok: false, off: false }
+  }
+  const body = (env.status === "completed" ? env.result : env.data) as
+    | { invoicedExcl?: unknown; currency?: unknown; documents?: unknown[]; error?: unknown }
+    | undefined
+  if (body && typeof body.invoicedExcl === "number" && !body.error) {
+    return {
+      ok: true,
+      invoicedMinor: body.invoicedExcl,
+      currency: typeof body.currency === "string" ? body.currency : null,
+      documents: Array.isArray(body.documents) ? body.documents.length : 0,
+    }
+  }
+  const code = typeof env.error === "object" && env.error ? env.error.code : undefined
+  // Invoicing refused for good (two currencies, too many documents): its own words, not
+  // "cannot read", which says to retry.
+  const own = body?.error as
+    | { code?: unknown; message?: unknown; next?: unknown; retryable?: unknown }
+    | undefined
+  if (
+    own &&
+    own.retryable === false &&
+    typeof own.code === "string" &&
+    typeof own.message === "string"
+  ) {
+    return {
+      ok: false,
+      off: false,
+      refusal: {
+        code: own.code,
+        message: own.message,
+        ...(typeof own.next === "string" ? { next: own.next } : {}),
+      },
+    }
+  }
+  return { ok: false, off: typeof code === "string" && INVOICING_ABSENT.has(code) }
+}
+
+// Margin and cost rates: finance only, chat only, one figure per project.
+export async function marginGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const cost = JSON.parse(await ctx.projects_marginCost(JSON.stringify(params ?? {}))) as
+    | MarginCost
+    | { error: unknown }
+  if ("error" in cost) return cost
+  const read = await readProjectInvoiced(
+    ctx,
+    cost.projectId,
+    cost.period ? { from: cost.period.from, to: cost.period.to } : undefined,
+  )
+  return composeMargin(cost, read)
+}
+
+export async function costRatesList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_costRatesList(JSON.stringify(params ?? {})))
+}
+
+export async function costRateSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_costRateSet(JSON.stringify(params ?? {})))
+}
+
+// The dated sheet of one project and month, and its export.
+export async function timesheetGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timesheetGet(JSON.stringify(params ?? {})))
+}
+
+export async function timesheetExport(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timesheetExport(JSON.stringify(params ?? {})))
+}
+
+// Capacity, company days off and time settings.
+export async function capacityGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_capacityGet(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffSet(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffList(JSON.stringify(params ?? {})))
+}
+
+export async function capacityMove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_capacityMove(JSON.stringify(params ?? {})))
+}
+
+export async function daysOffRemove(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_daysOffRemove(JSON.stringify(params ?? {})))
+}
+
+export async function timeSettingsGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timeSettingsGet(JSON.stringify(params ?? {})))
+}
+
+export async function timeSettingsSet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_timeSettingsSet(JSON.stringify(params ?? {})))
+}
+
+// Reconcile: the period's facts, then the proposal the agent groups from its traces.
+export async function reconcileFacts(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileFacts(JSON.stringify(params ?? {})))
+}
+
+export async function reconcilePropose(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return priced(JSON.parse(await ctx.projects_reconcilePropose(JSON.stringify(params ?? {}))), ctx)
+}
+
+export async function reconcileLineUpdate(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return priced(
+    JSON.parse(await ctx.projects_reconcileLineUpdate(JSON.stringify(params ?? {}))),
+    ctx,
+  )
+}
+
+export async function reconcileGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return priced(JSON.parse(await ctx.projects_reconcileGet(JSON.stringify(params ?? {}))), ctx)
+}
+
+// ── Create invoice and Undo ─────────────────────────────────────────────────
+
+type InvoicingAnswer =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; off: boolean; code: string; message: string; approvalId?: string | null }
+
+/** A declared call into invoicing, its K4 envelope read once: the body, or why there is none. */
+async function invoicingCall(sent: () => Promise<string>): Promise<InvoicingAnswer> {
+  let env: {
+    status?: string
+    result?: unknown
+    approval_id?: string | null
+    error?: { code?: string; message?: string }
+  }
+  try {
+    env = JSON.parse(await sent())
+  } catch (err) {
+    return { ok: false, off: false, code: "invoicing_failed", message: String(err) }
+  }
+  if (env.status === "completed") {
+    const body = (env.result ?? {}) as Record<string, unknown>
+    const own = body.error as { code?: unknown; message?: unknown } | undefined
+    if (body.status === "error" || own) {
+      return {
+        ok: false,
+        off: false,
+        code: String(own?.code ?? "invoicing_refused"),
+        message: String(own?.message ?? "Invoicing refused."),
+      }
+    }
+    return { ok: true, body }
+  }
+  if (env.status === "pending_approval") {
+    return {
+      ok: false,
+      off: false,
+      code: "pending_approval",
+      message: "It waits for an approval.",
+      approvalId: typeof env.approval_id === "string" ? env.approval_id : null,
+    }
+  }
+  const code = String(env.error?.code ?? env.status ?? "invoicing_failed")
+  return {
+    ok: false,
+    off: INVOICING_ABSENT.has(code),
+    code,
+    message: String(env.error?.message ?? "Invoicing did not answer."),
+  }
+}
+
+/** What to set before a card can make an invoice, said in the person's words. */
+const MISSING_SAID: Record<string, string> = {
+  issuer_profile: "the issuer profile in Invoicing settings",
+  company: "the project's company",
+  rate: "the project's rate",
+  currency: "the project's currency",
+  counterparty_mismatch: "a contact of the project's own company",
+  billing_contact: "a billing contact on the project's company",
+  retainer: "the project's retainer on its recurring schedule in Invoicing",
+  billing_address: "the customer's billing address",
+  email: "the customer's email address",
+  siren: "the customer's SIREN",
+}
+
+/** The refusal code Create answers for the first thing missing. */
+const MISSING_CODE: Record<string, string> = {
+  issuer_profile: "no_issuer_profile",
+  company: "company_missing",
+  rate: "rate_missing",
+  currency: "currency_missing",
+  counterparty_mismatch: "counterparty_mismatch",
+  billing_contact: "billing_contact_missing",
+  basis: "basis_not_billable",
+  retainer: "no_retainer_schedule",
+  billing_address: "billing_address_missing",
+  email: "customer_email_missing",
+  siren: "siren_missing",
+}
+
+type CardResult = Record<string, unknown> & {
+  reconciliationId?: string
+  state?: string
+  fit?: string
+  error?: unknown
+}
+
+/**
+ * What invoicing finds missing, plus the company's billing contact: a card's invoice goes to the
+ * project company's billing contact (else its main contact), so a company with neither cannot
+ * have a draft that issues. A retainer month's invoice goes to its schedule's contact instead.
+ */
+function missingWithContact(found: unknown, from: Record<string, unknown>): string[] {
+  const missing = (Array.isArray(found) ? found : []).map(String)
+  const needsContact =
+    from.basis !== "retainer" &&
+    typeof from.companyId === "string" &&
+    from.companyId !== "" &&
+    !(typeof from.contactId === "string" && from.contactId !== "")
+  if (!needsContact) return missing
+  // With no contact, what the customer lacks (an address, an email) follows from it: setting the
+  // billing contact comes first, and the preview reads that contact's records once it is set.
+  const RECIPIENT_GAPS = new Set(["billing_address", "email", "siren"])
+  return [
+    "billing_contact",
+    ...missing.filter((m) => m !== "billing_contact" && !RECIPIENT_GAPS.has(m)),
+  ]
+}
+
+function money(minor: number, currency: string): { minor: number; currency: string } {
+  return { minor, currency }
+}
+
+/** "€7,812.00": an amount as the card's summary line says it. */
+function moneyText(minor: number, currency: string): string {
+  try {
+    return new Intl.NumberFormat("en", { style: "currency", currency }).format(minor / 100)
+  } catch {
+    return `${(minor / 100).toFixed(2)} ${currency}`
+  }
+}
+
+/** The step answer of the bridge, or its typed error as the tool's own answer. */
+async function step(
+  call: (json: string) => Promise<string>,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  return JSON.parse(await call(JSON.stringify(input))) as Record<string, unknown>
+}
+
+/**
+ * A proposed card, priced by invoicing: the VAT and the total including it, and Create invoice
+ * when invoicing finds nothing missing. Invoicing off or unable to answer: the card compares
+ * planned and done as before, with no Create.
+ */
+async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
+  if (!card || card.error || card.state !== "proposed" || !card.reconciliationId) return card
+  const facts = await step(ctx.projects_reconcileCreate, {
+    step: "facts",
+    reconciliationId: card.reconciliationId,
+  })
+  if (facts.error) return card
+  const preview = await invoicingCall(() =>
+    ctx.executeTool("invoicing:preview_totals", JSON.stringify(facts)),
+  )
+  if (!preview.ok) return card
+  const p = preview.body
+  const currency = typeof p.currency === "string" ? p.currency : null
+  const out: CardResult = { ...card }
+  if (
+    currency &&
+    typeof p.excl === "number" &&
+    typeof p.vat === "number" &&
+    typeof p.incl === "number"
+  ) {
+    out.tot = [
+      { k: "Excl. VAT", v: money(p.excl, currency) },
+      { k: "VAT", v: money(p.vat, currency) },
+      { k: "Incl. VAT", v: money(p.incl, currency) },
+    ]
+  }
+  const missing = missingWithContact(p.missing, facts)
+  const retainer = retainerFacts(p.retainer)
+  if (retainer && currency) {
+    // The fee and the hours it includes, against the month's time lines.
+    const fee = moneyText(retainer.feeExclMinor, currency)
+    const rate = moneyText(retainer.overageRateMinor, currency)
+    const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used. The month is billed once, from this card or by its schedule in Invoicing.`
+    out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
+  }
+  if (retainer?.billedBySchedule) {
+    // A month is billed once: its schedule's month-end run holds it.
+    out.notice = {
+      title: "Billed by its schedule",
+      text: "This month is billed by the retainer's schedule in Invoicing, so it has no Create invoice here.",
+    }
+    return out
+  }
+  if (p.ready === true && missing.length === 0 && card.fit !== "nothing") {
+    out.createInvoice = "yes"
+    // A retainer month above its hours: the card also offers to leave this month's overage off.
+    if (typeof p.overageMinutes === "number" && p.overageMinutes > 0) out.waiveOverage = true
+    return out
+  }
+  const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
+  if (toSet.length > 0 && card.fit !== "nothing") {
+    const text = `To create the invoice from this card, set ${toSet.join(", ")}.`
+    if (!out.notice) out.notice = { title: "Before Create invoice", text }
+    else out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
+  }
+  return out
+}
+
+/** A retainer month's facts as invoicing's preview gives them, or null on any other basis. */
+function retainerFacts(v: unknown): {
+  feeExclMinor: number
+  includedMinutes: number
+  usedMinutes: number
+  overageRateMinor: number
+  billedBySchedule: boolean
+} | null {
+  if (!v || typeof v !== "object") return null
+  const r = v as Record<string, unknown>
+  const n = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : 0)
+  return {
+    feeExclMinor: n(r.feeExclMinor),
+    includedMinutes: n(r.includedMinutes),
+    usedMinutes: n(r.usedMinutes),
+    overageRateMinor: n(r.overageRateMinor),
+    billedBySchedule: r.billedBySchedule === true,
+  }
+}
+
+/** "40 h", "17.5 h": minutes as hours. */
+function hoursText(minutes: number): string {
+  return `${Math.round((minutes / 60) * 100) / 100} h`
+}
+
+/** A refusal of Create, in the tool's error shape. */
+function refusal(code: string, message: string, details: Record<string, unknown> = {}) {
+  return { error: { code, status: 409, retryable: false, message, details } }
+}
+
+export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const base = { reconciliationId: p.reconciliationId, revision: p.revision }
+  const prep = await step(ctx.projects_reconcileCreate, {
+    ...base,
+    step: "prepare",
+    ...(typeof p.contactId === "string" ? { contactId: p.contactId } : {}),
+  })
+  if (prep.error) return prep
+  const name = String(prep.projectName ?? "the project")
+  // The contact named on the card, else the company's billing contact (prepare resolves it).
+  const contactId = typeof prep.contactId === "string" && prep.contactId ? prep.contactId : null
+
+  // Priced and checked before anything is written.
+  const preview = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:preview_totals",
+      JSON.stringify({
+        projectId: prep.projectId,
+        basis: prep.basis,
+        companyId: prep.companyId ?? null,
+        contactId,
+        currency: prep.currency ?? null,
+        rateMinor: prep.rateMinor ?? null,
+        hoursPerDayMinutes: prep.hoursPerDayMinutes ?? null,
+        lines: prep.lines ?? [],
+        ...(prep.basis === "retainer"
+          ? {
+              periodFrom: prep.periodFrom ?? null,
+              timeboxMinutes: prep.timeboxMinutes ?? null,
+              waiveOverage: p.waiveOverage === true,
+            }
+          : {}),
+      }),
+    ),
+  )
+  if (!preview.ok) {
+    return preview.off
+      ? refusal(
+          "invoicing_off",
+          `Invoicing is not on, so no invoice can be made for ${name}. Nothing was created.`,
+          {
+            next: "Turn the Invoicing app on to invoice from the card.",
+          },
+        )
+      : refusal(preview.code, `${preview.message} Nothing was created.`)
+  }
+  const missing = missingWithContact(preview.body.missing, prep)
+  if (preview.body.ready !== true || missing.length > 0) {
+    const first = missing[0] ?? "basis"
+    const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
+    return refusal(
+      MISSING_CODE[first] ?? "not_ready",
+      first === "basis"
+        ? `${name} is billed by a fixed price or a billing plan, not from planned vs done. Nothing was created.`
+        : `No invoice can be made for ${name} yet: set ${toSet.join(", ")}. Nothing was created.`,
+      { missing, next: "Set what is missing, then press Create invoice again." },
+    )
+  }
+
+  const reserved = await step(ctx.projects_reconcileCreate, { ...base, step: "reserve" })
+  if (reserved.error) return reserved
+
+  // A retainer month drafts its fee and overage; any other card its billed lines.
+  const draft = await invoicingCall(() =>
+    prep.basis === "retainer"
+      ? ctx.executeTool(
+          "invoicing:retainer_draft_from_reconcile",
+          JSON.stringify({
+            reconciliationId: prep.reconciliationId,
+            revision: prep.revision,
+            ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+            ...(contactId ? { contactId } : {}),
+          }),
+        )
+      : ctx.executeTool(
+          "invoicing:draft_from_reconcile",
+          JSON.stringify({
+            reconciliationId: prep.reconciliationId,
+            revision: prep.revision,
+            ...(contactId ? { contactId } : {}),
+          }),
+        ),
+  )
+  if (!draft.ok) {
+    // No draft: the reservation is given back (kept only if a document carries the key).
+    await step(ctx.projects_reconcileCreate, { ...base, step: "release" })
+    return refusal(
+      draft.code,
+      `${draft.message} The card's work was released, so it can be billed again.`,
+      { next: "Fix what is said, then press Create invoice again." },
+    )
+  }
+  const d = draft.body
+  const documentId = String(d.draftId ?? "")
+  const finished = await step(ctx.projects_reconcileCreate, {
+    ...base,
+    step: "finish",
+    documentId,
+    ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+  })
+  if (finished.error) return finished
+
+  // A retainer month on a project with dated hours: the month's sheet goes on the draft with the
+  // report. A card billed by the day or the hour carries its report only. Invoicing files one
+  // sheet per draft, so a second Create on the same card adds none.
+  const sheet =
+    prep.basis === "retainer" && prep.datedHours === true && typeof prep.month === "string"
+      ? await fileMonthSheet(ctx, String(prep.projectId), prep.month, documentId)
+      : null
+
+  const totals = (d.totals ?? {}) as { incl?: number; currency?: string }
+  const approved = d.approved === true
+  const approvalId = typeof d.approvalId === "string" ? d.approvalId : null
+  const incl =
+    typeof totals.incl === "number" && totals.currency
+      ? moneyText(totals.incl, totals.currency)
+      : null
+  // A retainer month made without its overage says so on the card, for that month only.
+  const waived = prep.basis === "retainer" && p.waiveOverage === true
+  const summary = `${
+    approved
+      ? `Draft made, not issued yet${incl ? `, ${incl} incl. VAT` : ""}`
+      : "Draft made, waiting for finance to issue it"
+  }${waived ? ". Waived by you this month" : ""}`
+  const title = String(d.draftTitle ?? finished.title ?? "")
+  const pending =
+    approvalId === null
+      ? "Its issue approval could not be raised: issue it from the pending list."
+      : approved
+        ? `Issuing it waits on approval ${approvalId}.`
+        : `Issuing it waits for someone who can issue invoices (approval ${approvalId}); you cannot issue it.`
+  const createdText = `${summary}. ${title} has no number until a person issues it.`
+  return {
+    ...finished,
+    summary: approvalId === null ? `${summary}; issue it from the pending list` : summary,
+    undo: "yes",
+    createInvoice: null,
+    waiveOverage: null,
+    documentId,
+    approved,
+    approvalId,
+    title,
+    createdText,
+    message: `${createdText} ${pending}${sheet ? ` ${sheet.text}` : ""}`,
+    next: "Tell the person the draft is made. Undo on the card discards it; a person issues it.",
+  }
+}
+
+/**
+ * The month's timesheet filed on a card's draft: exported for the person, then that file, the one
+ * this call just made and no other, handed to invoicing's `document_attachment_add`. A partial
+ * sheet is filed marked partial with its coverage line. Never fails Create: what did not happen
+ * is said.
+ */
+async function fileMonthSheet(
+  ctx: ProjectsCtx,
+  projectId: string,
+  month: string,
+  documentId: string,
+): Promise<{ filed: boolean; partial: boolean; text: string }> {
+  let exported: Record<string, unknown>
+  try {
+    exported = JSON.parse(
+      await ctx.projects_timesheetExport(
+        JSON.stringify({ projectId, month, format: "pdf", acceptPartial: true }),
+      ),
+    ) as Record<string, unknown>
+  } catch {
+    return {
+      filed: false,
+      partial: false,
+      text: "The month's timesheet was not filed on it: it could not be exported.",
+    }
+  }
+  const err = exported.error as { message?: string } | undefined
+  const fileId = typeof exported.fileId === "string" ? exported.fileId : ""
+  if (err || !fileId) {
+    return {
+      filed: false,
+      partial: false,
+      text: `The month's timesheet was not filed on it${err?.message ? `: ${err.message}` : "."}`,
+    }
+  }
+  const partial = exported.partial === true
+  const filed = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:document_attachment_add",
+      JSON.stringify({ documentId, fileId, kind: "timesheet", partial }),
+    ),
+  )
+  if (!filed.ok) {
+    return {
+      filed: false,
+      partial,
+      text: `The month's timesheet was exported for you but not filed on it: ${filed.message}`,
+    }
+  }
+  return {
+    filed: true,
+    partial,
+    text: partial
+      ? `The month's timesheet is filed on it, marked partial: ${String(exported.coverageLine ?? "")}`.trim()
+      : "The month's timesheet is filed on it.",
+  }
+}
+
+export async function reconcileUndo(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const p = (params ?? {}) as Record<string, unknown>
+  const base = { reconciliationId: p.reconciliationId }
+  const prep = await step(ctx.projects_reconcileUndo, { ...base, step: "undo_prepare" })
+  if (prep.error) return prep
+  if (prep.undone === false) {
+    const card = prep.card as Record<string, unknown>
+    return { ...card, undone: false, message: `${String(card.message ?? "")}` }
+  }
+  const discard = await invoicingCall(() =>
+    ctx.executeTool(
+      "invoicing:reconcile_draft_discard",
+      JSON.stringify({
+        draft_id: String(prep.documentId ?? ""),
+        reconciliationId: String(p.reconciliationId ?? ""),
+      }),
+    ),
+  )
+  // A conversation that read outside text holds the discard for the person's own approval;
+  // once approved, the draft goes and the card comes back on its own.
+  if (!discard.ok && discard.code === "pending_approval") {
+    const card = (await step(ctx.projects_reconcileGet, {
+      reconciliationId: p.reconciliationId,
+    })) as CardResult
+    return {
+      ...card,
+      undone: false,
+      approvalId: discard.approvalId ?? null,
+      message: `Discarding the draft waits for your approval${discard.approvalId ? ` (approval ${discard.approvalId})` : ""}, because this conversation read outside text. Nothing was discarded yet; once approved, the card comes back.`,
+      next: "Tell the person to approve the discard; the card comes back once it runs.",
+    }
+  }
+  const finished = await step(ctx.projects_reconcileUndo, { ...base, step: "undo_finish" })
+  if (finished.error) {
+    if (!discard.ok) {
+      return refusal(
+        discard.code,
+        `${discard.message} The draft was not discarded; nothing was undone.`,
+      )
+    }
+    return finished
+  }
+  const card = finished.card as CardResult
+  return priced({ ...card, undone: true }, ctx)
+}
+
 // Task field definitions and project templates: pass-throughs to their bridge methods.
 export async function setFields(
   params: Record<string, unknown> | undefined,
@@ -1002,3 +2026,97 @@ export async function listTemplates(
 
 // The routine flow record readers (entities.task.routineFlow), server code the kernel calls in process.
 export { routineFlowLeastLoaded, routineFlowReadRecords } from "./routine-flow-record"
+
+// Internal reads and marks for the invoicing app's declared calls: never agent-visible.
+export async function reconcileLinesRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileLinesRead(JSON.stringify(params ?? {})))
+}
+
+export async function reconcileMark(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_reconcileMark(JSON.stringify(params ?? {})))
+}
+
+export async function milestoneStatusRead(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_milestoneStatusRead(JSON.stringify(params ?? {})))
+}
+
+// ── Client reports ──────────────────────────────────────────────────────────
+
+export async function clientReportsList(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportsList(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportGet(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportSourcesGet(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSources(JSON.stringify(params ?? {})))
+}
+
+export async function clientReportSaveDraft(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSaveDraft(JSON.stringify(params ?? {})))
+}
+
+/** `client_report_send`'s card: the same refusals as the send, the pinned check and key. */
+export async function clientReportSendPreflight(
+  params: unknown,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  const out = JSON.parse(
+    await ctx.projects_clientReportSendPreflight(JSON.stringify(params ?? {})),
+  ) as { ok?: boolean; pinnedParams?: unknown; error?: { code: string; message: string } }
+  if (out.error) return { error: { ...out.error, retryable: false } }
+  return { ok: true, pinnedParams: out.pinnedParams }
+}
+
+export async function clientReportSend(params: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  return JSON.parse(await ctx.projects_clientReportSend(JSON.stringify(params ?? {})))
+}
+
+/** What a client is shown on a milestone's approval link (internal: the kernel's page). */
+export async function milestoneClientActionView(
+  params: unknown,
+  ctx: ProjectsCtx,
+): Promise<unknown> {
+  return JSON.parse(await ctx.projects_milestoneClientActionView(JSON.stringify(params ?? {})))
+}
+
+const CLOSED_CARD = new Set(["denied", "expired"])
+
+/**
+ * `kernel/approval_request:update`: a client report's send card a person rejected, or that
+ * expired, closes its draft. Any other card returns at once; the bridge re-reads the card.
+ */
+export async function onClientReportCardClosed(event: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const d = (event as { data?: { id?: unknown; toolName?: unknown; status?: unknown } })?.data
+  if (d?.toolName !== "projects:client_report_send" || !CLOSED_CARD.has(String(d.status)))
+    return { status: "ignored" }
+  if (typeof d.id !== "string") return { status: "ignored" }
+  return JSON.parse(await ctx.projects_clientReportCardClosed(JSON.stringify({ approvalId: d.id })))
+}
+
+/** `kernel/portal_share:opened`: a project's reports share turns the report routine on. */
+export async function onReportsShareOpened(event: unknown, ctx: ProjectsCtx): Promise<unknown> {
+  const d = (event as { data?: { shareId?: unknown; kind?: unknown } })?.data
+  if (d?.kind !== "project_reports" || typeof d.shareId !== "string") return { status: "ignored" }
+  return JSON.parse(
+    await ctx.projects_clientReportsRoutineOn(JSON.stringify({ shareId: d.shareId })),
+  )
+}
+
+/**
+ * `kernel/client_action:decided` for a milestone: the client's answer is the kernel's record
+ * (its sender and the company's manager are told). It moves nothing by itself: no task status,
+ * timebox, billing step or invoice changes, and an invoice never waits on it. Another app's
+ * target, or another type, returns at once.
+ */
+export async function onMilestoneClientActionDecided(
+  event: unknown,
+  _ctx: ProjectsCtx,
+): Promise<unknown> {
+  const d = (event as { data?: { decision?: unknown; target?: { app?: unknown; type?: unknown } } })
+    ?.data
+  if (d?.target?.app !== "projects" || d.target.type !== "milestone") return { status: "ignored" }
+  return { status: "recorded", decision: typeof d.decision === "string" ? d.decision : null }
+}

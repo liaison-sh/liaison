@@ -397,13 +397,23 @@ export async function summarizeCreateProject(
   params: {
     name: string
     description?: string | null
-    tasks?: Array<{ title?: string; assigneeName?: string | null }> | null
+    tasks?: Array<{ title?: string; assigneeName?: string | null; timebox?: unknown }> | null
+    timeBudgets?: boolean
   },
   _ctx: { tx: RlsClient; orgId: string; userId: string },
 ): Promise<ApprovalSummary> {
   const lines: string[] = []
   if (params.description?.trim()) lines.push(clip(params.description.trim(), 200))
   const tasks = Array.isArray(params.tasks) ? params.tasks : []
+  // Approving the card is the person turning time and budgets on: the card says so.
+  if (params.timeBudgets === true) {
+    const planned = tasks.filter((t) => typeof t.timebox === "string").length
+    lines.push(
+      planned > 0
+        ? `Turns time and budgets on, with planned time on ${planned === 1 ? "1 task" : `${planned} tasks`}`
+        : "Turns time and budgets on",
+    )
+  }
   if (tasks.length === 0) {
     lines.push("No tasks yet")
   } else {
@@ -437,5 +447,46 @@ export async function summarizeCreateProject(
     subtitle: tasks.length > 0 ? "A new project with its tasks" : "A new project",
     lines,
     impact: "internal",
+  }
+}
+
+/**
+ * Approval summary for the gated `client_report_send`: what goes out, to whom, and,
+ * before Approve, a warning on any text that matches an internal note of the project or
+ * an active member's name (deterministic, no model). The warning never blocks.
+ */
+export async function summarizeClientReportSend(
+  params: { reportId?: string },
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const { clientReportReadyToSend } = await import("~/apps/projects/service/client-reports")
+  try {
+    const ready = await clientReportReadyToSend({
+      tx: ctx.tx,
+      orgId: ctx.orgId,
+      input: { reportId: params.reportId },
+    })
+    const r = ready.report
+    return {
+      kind: "projects.client_report_send",
+      title: `Send the client report: ${clip(r.project_name, 80)}, week ending ${r.period_end}`,
+      subtitle: `To ${ready.recipient.name ? `${ready.recipient.name} <${ready.recipient.email}>` : ready.recipient.email}`,
+      lines: [
+        ...ready.warnings.map((w) =>
+          w.kind === "internal_note"
+            ? `Warning: matches an internal note of the project: "${clip(w.words, 80)}"`
+            : `Warning: names a member of your team: ${clip(w.words, 80)}`,
+        ),
+        ...r.sections.map((s) => `${clip(s.heading, 80)}: ${clip(s.text, 160)}`),
+        ...(r.left_out.length > 0 ? [`Left out on purpose: ${r.left_out.length} item(s)`] : []),
+      ],
+    }
+  } catch (err) {
+    return {
+      kind: "projects.client_report_send",
+      title: "Send a client report",
+      subtitle: "Send a client report",
+      lines: [err instanceof Error ? err.message : "The report could not be read."],
+    }
   }
 }

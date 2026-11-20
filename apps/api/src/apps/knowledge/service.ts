@@ -6,6 +6,7 @@ import {
   type KnowledgeCreateDocument,
   type KnowledgeUpdateDocument,
   knowledgeCreateDocumentSchema,
+  knowledgeEditScopeSchema,
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
@@ -182,6 +183,7 @@ interface DocumentDbRow {
   last_synced_at?: Date | string | null
   org_access: "none" | "viewer" | "editor"
   edit_scope: string | null
+  author_reads?: boolean
 }
 
 export interface KnowledgeDocumentRow {
@@ -212,6 +214,8 @@ export interface KnowledgeDocumentRow {
   lastSyncedAt?: string | null
   orgAccess: "none" | "viewer" | "editor"
   editScope: string | null
+  /** False on a closed agreement's copy: its author and owner read it only through a grant. */
+  authorReads?: boolean
 }
 
 function toIso(value: Date | string | null): string | null {
@@ -253,6 +257,7 @@ function rowFromDb(r: DocumentDbRow): KnowledgeDocumentRow {
     lastSyncedAt: r.last_synced_at != null ? toIso(r.last_synced_at) : null,
     orgAccess: r.org_access,
     editScope: r.edit_scope ?? null,
+    authorReads: r.author_reads !== false,
   }
 }
 
@@ -303,7 +308,8 @@ export function assertCanReadDocumentRow(
   row: Pick<
     KnowledgeDocumentRow,
     "orgId" | "documentScope" | "ownerUserId" | "createdBy" | "orgAccess" | "archivedAt"
-  >,
+  > &
+    Partial<Pick<KnowledgeDocumentRow, "authorReads">>,
   actor: KnowledgeActor,
   shareRole: "viewer" | "editor" | null = null,
 ): void {
@@ -323,7 +329,12 @@ export function assertCanReadDocumentRow(
   // The creator or current owner may always read their own document, exactly
   // as the RLS SELECT policy's `created_by = me OR owner_user_id = me` branch
   // allows.
-  if (row.createdBy === actor.userId || row.ownerUserId === actor.userId) return
+  // (Not on a closed agreement's copy, `author_reads` false: its list alone reads it.)
+  if (
+    row.authorReads !== false &&
+    (row.createdBy === actor.userId || row.ownerUserId === actor.userId)
+  )
+    return
 
   // A broad org-wide audience (viewer or editor) may read.
   if (row.orgAccess === "viewer" || row.orgAccess === "editor") return
@@ -349,7 +360,8 @@ export function assertCanWriteDocumentRow(
     | "orgAccess"
     | "archivedAt"
     | "editScope"
-  >,
+  > &
+    Partial<Pick<KnowledgeDocumentRow, "authorReads">>,
   actor: KnowledgeActor,
   shareRole: "viewer" | "editor" | null = null,
 ): void {
@@ -1450,6 +1462,11 @@ export async function setDocumentSharing(
   input: DocumentSharingState,
   actor: KnowledgeActor,
 ): Promise<DocumentSharingState> {
+  // Row security checks the edit scope exactly: it must be a bare marker (`clevel`), the only
+  // text the agent side also treats as exact-only, whichever caller sets it.
+  if (input.editScope !== null && !knowledgeEditScopeSchema.safeParse(input.editScope).success) {
+    validation("an edit scope is one bare word such as clevel: no ':' and no '*'")
+  }
   const row = await loadKnowledgeDocument(tx, documentId, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   const shareRole = await loadDocumentShareRole(tx, documentId, actor)

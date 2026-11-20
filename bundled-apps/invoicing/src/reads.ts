@@ -24,7 +24,8 @@ import { needsHumanReview } from "./deferred"
 import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
 import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
-import { toBigInt } from "./mutations/shared"
+import { type AnnexListing, annexListing } from "./mutations/send-annexes"
+import { netLinesTotals } from "./tax-plan"
 
 export interface DocumentHeader {
   id: string
@@ -48,6 +49,15 @@ export interface DocumentHeader {
   grand_total_minor: bigint
   issued_at: string | null
   due_at: string | null
+  /** A draft's latest issue day (the end of its service month); null when it has none. */
+  latest_issue_on: string | null
+  /** The source a draft was made from (`reconcile:`, `milestone:`, `retainer:`, `advance:` and the
+   *  like), carried to the invoice at issue; null for a document typed by hand. */
+  external_ref: string | null
+  /** Who approved a draft for issue (a person holding the deciding scope); null when nobody has. */
+  approved_by: string | null
+  /** `advance`, `final` or `standard` for an invoice; null when unset. */
+  invoice_role: string | null
   /** Sales channel for the documents-list "Channel" column + Shopify/Manual
    *  filter: "shopify" when the document was reconciled from a Shopify order
    *  (top-level shopify_order_id set), else "manual". */
@@ -127,6 +137,8 @@ export interface DocumentLine {
 }
 
 export interface DocumentFull extends DocumentHeader {
+  /** The project this document bills (its billing plan, card or retainer); null for none. */
+  billing_project_id: string | null
   subtotal_minor: bigint
   tax_total_minor: bigint
   tax_treatment: string | null
@@ -151,6 +163,8 @@ export interface DocumentFull extends DocumentHeader {
   /** The Boxtal shipment(s) created against this document, written back by the link-shipments
    *  job (empty until a parcel exists). Invoice to parcel in one hop. */
   shipments: LinkedShipment[]
+  /** The files a send to the customer mails beside the PDF (activity report, timesheet). */
+  annexes: AnnexListing[]
 }
 
 export interface HsCodeEntry {
@@ -165,6 +179,9 @@ export interface PendingApproval {
   summary: string
   created_at: Date | string
   requested_by_user_id: string
+  /** The document the request acts on (its draft, or the invoice a credit note reverses), so a
+   *  list row opens it; null when the request makes a new document from typed lines. */
+  document_id: string | null
 }
 
 export interface DocumentsSearchInput {
@@ -178,6 +195,10 @@ export interface DocumentsSearchInput {
    *  form field) and the legacy `contact` alias are accepted. */
   contact_id?: string
   contact?: string
+  /** Only documents made out to the people of this company (kernel:companies_read). */
+  company_id?: string
+  /** Only documents that bill this project (`billing_project_id`). */
+  project_id?: string
   date_range?: { from?: string | null; to?: string | null }
   treatment?: string
   /** "newest" (default) or "oldest" first, by issue date. */
@@ -273,6 +294,28 @@ export interface ReadsCtx {
 
 /** Hard upper bound applied to every read tool's `limit` arg. */
 export const READS_MAX_LIMIT = 100
+/** The page in which a company-wide search reads the ids of a company's documents: every page is
+ *  read, so a company with many documents loses none. */
+const COMPANY_IDS_PAGE = 1000
+
+/** The id and contact of every document matching `where`, read page by page in a stable order. */
+async function allDocumentRefs(
+  ctx: ReadsCtx,
+  where: Record<string, unknown>,
+): Promise<Array<{ id?: unknown; counterparty_contact_id?: unknown }>> {
+  const out: Array<{ id?: unknown; counterparty_contact_id?: unknown }> = []
+  for (let offset = 0; ; offset += COMPANY_IDS_PAGE) {
+    const page = (await ctx.db.findMany("documents", {
+      where,
+      orderBy: { id: "asc" },
+      limit: COMPANY_IDS_PAGE,
+      offset,
+    })) as Array<{ id?: unknown; counterparty_contact_id?: unknown }>
+    for (const d of page) out.push({ id: d.id, counterparty_contact_id: d.counterparty_contact_id })
+    if (page.length < COMPANY_IDS_PAGE) return out
+  }
+}
+
 /** Page size and ceiling of the date-range walk in documentsSearch. */
 const RANGE_SCAN_PAGE = 100
 const MAX_RANGE_SCAN = 5000
@@ -351,6 +394,15 @@ function toDocumentHeader(row: unknown): DocumentHeader {
     grand_total_minor: String(r.grand_total_minor ?? "0") as unknown as bigint,
     issued_at: (r.issued_at as string | null) ?? null,
     due_at: (r.due_at as string | null) ?? null,
+    latest_issue_on:
+      typeof r.latest_issue_on === "string" && r.latest_issue_on !== ""
+        ? r.latest_issue_on.slice(0, 10)
+        : r.latest_issue_on instanceof Date
+          ? r.latest_issue_on.toISOString().slice(0, 10)
+          : null,
+    external_ref: textOrNull(r.external_ref),
+    approved_by: textOrNull(r.approved_by),
+    invoice_role: textOrNull(r.invoice_role),
     // A Shopify-reconciled document carries a top-level shopify_order_id; surface
     // it as the sales channel so the documents list + Shopify/Manual filter bucket
     // it correctly (was always "manual" because this field was never derived).
@@ -564,6 +616,22 @@ function contactAddressLine(a: Record<string, unknown>): string {
  * of its addresses (same house number and street, compared by `addressMatch`). Needs the kernel
  * contact reads; without them (or for a malformed id) it finds nothing extra.
  */
+/** The ids of a company's people the caller can see; none when it is not visible. */
+async function companyPeople(ctx: ReadsCtx, companyId: string): Promise<string[]> {
+  const exec = ctx.executeTool
+  if (!exec || !UUID_RE.test(companyId)) return []
+  try {
+    const env = await exec("kernel:companies_read", { companyId })
+    if (env.status !== "completed") return []
+    const people = (env.result as { people?: unknown } | null)?.people
+    return (Array.isArray(people) ? people : [])
+      .map((p) => (p as { id?: unknown })?.id)
+      .filter((id): id is string => typeof id === "string" && UUID_RE.test(id))
+  } catch {
+    return []
+  }
+}
+
 async function contactMatchedRows(
   ctx: ReadsCtx,
   contactId: string,
@@ -714,11 +782,47 @@ export async function documentsSearch(
   if (input.treatment) where.tax_treatment = input.treatment
   const contactFilter = input.contact_id?.trim() || input.contact?.trim()
   if (contactFilter) where.counterparty_contact_id = contactFilter
+  const projectId = input.project_id?.trim()
+  if (projectId) {
+    // A malformed id matches nothing rather than failing the read on the uuid column.
+    if (!UUID_RE.test(projectId)) return input.countOnly ? { totalCount: 0 } : []
+    where.billing_project_id = projectId
+  }
+  if (input.company_id?.trim() && !contactFilter) {
+    const companyId = input.company_id.trim()
+    const people = await companyPeople(ctx, companyId)
+    // The documents made out to the company's people, and those stamped for the company itself
+    // (a schedule's or a billing plan's invoice to a contact outside its people).
+    const own = UUID_RE.test(companyId)
+      ? await allDocumentRefs(ctx, { ...where, company_id: companyId })
+      : []
+    const peopleSet = new Set(people)
+    const outside = own
+      .filter((d) => !peopleSet.has(String(d.counterparty_contact_id ?? "")))
+      .map((d) => String(d.id))
+    if (people.length === 0 && outside.length === 0) return input.countOnly ? { totalCount: 0 } : []
+    if (outside.length === 0) where.counterparty_contact_id = { in: people }
+    else {
+      const ofPeople =
+        people.length === 0
+          ? []
+          : await allDocumentRefs(ctx, { ...where, counterparty_contact_id: { in: people } })
+      const ids = [...new Set([...ofPeople.map((d) => String(d.id)), ...outside])]
+      if (input.countOnly) return { totalCount: ids.length }
+      where.id = { in: ids }
+    }
+  }
   if (Array.isArray(input.ids)) {
     // Only well-formed ids reach the IN list: a malformed one would fail the whole read
     // ("invalid input syntax for type uuid") instead of matching nothing.
+    // Inside a company's documents when both are asked.
+    const within = (where.id as { in?: string[] } | undefined)?.in
     const ids = [
-      ...new Set(input.ids.filter((id) => typeof id === "string" && UUID_RE.test(id))),
+      ...new Set(
+        input.ids.filter(
+          (id) => typeof id === "string" && UUID_RE.test(id) && (!within || within.includes(id)),
+        ),
+      ),
     ].slice(0, READS_MAX_LIMIT)
     if (ids.length === 0) return input.countOnly ? { totalCount: 0 } : []
     where.id = { in: ids }
@@ -758,7 +862,8 @@ export async function documentsSearch(
       // each whitespace-separated term case-insensitively in any field; line descriptions and the
       // order number kept only in `external_refs` are matched below, and every hit is ranked.
       search: q ? { fields: DOCUMENT_SEARCH_FIELDS, query: q } : undefined,
-      orderBy: { issued_at: dir, number_int: dir },
+      // Drafts have no issue day or number yet: they list by when they were made.
+      orderBy: where.status === "draft" ? { createdAt: dir } : { issued_at: dir, number_int: dir },
       limit: pageLimit,
       offset: pageOffset,
     })
@@ -929,6 +1034,44 @@ function textOrNull(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null
 }
 
+/**
+ * A draft's totals: it stores none until it issues, so its page shows what its lines would charge,
+ * priced as preview_totals prices a card. Any other document, or a draft that stores its totals,
+ * keeps its own. Null when there is nothing to work out.
+ */
+async function draftTotals(
+  db: ReadsDb,
+  doc: Record<string, unknown>,
+  lines: Array<Record<string, unknown>>,
+): Promise<{ subtotal_minor: string; tax_total_minor: string; grand_total_minor: string } | null> {
+  if (doc.status !== "draft" || lines.length === 0) return null
+  if (String(doc.grand_total_minor ?? "0") !== "0") return null
+  // The draft's issuer, else the org's only one (as a draft without one issues).
+  const id = textOrNull(doc.issuer_profile_id)
+  const profiles = (await db.findMany("issuer_profiles", {
+    ...(id ? { where: { id } } : {}),
+    limit: 2,
+  })) as Array<Record<string, unknown>>
+  const country = profiles.length === 1 ? textOrNull(profiles[0]?.country) : null
+  if (!country) return null
+  const plan = netLinesTotals({
+    issuerCountry: country,
+    taxCountry: textOrNull(doc.counterparty_country),
+    hasVatId: !!textOrNull(doc.counterparty_vat_id),
+    lines: lines.map((l) => ({
+      quantity: l.quantity,
+      unit_price_minor: l.unit_price_minor,
+      discount_minor: l.discount_minor,
+      ...(l.tax_rate_bp != null ? { tax_rate_bp_override: Number(l.tax_rate_bp) } : {}),
+    })),
+  })
+  return {
+    subtotal_minor: String(plan.subtotal_minor),
+    tax_total_minor: String(plan.tax_minor),
+    grand_total_minor: String(plan.total_minor),
+  }
+}
+
 export async function documentsGet(
   ctx: ReadsCtx,
   input: { id: string },
@@ -943,10 +1086,17 @@ export async function documentsGet(
     limit: 1000,
   })
   const header = toDocumentHeader(doc)
+  const drafted = await draftTotals(ctx.db, doc, lineRows as Array<Record<string, unknown>>)
   return {
     ...header,
-    subtotal_minor: String(doc.subtotal_minor ?? "0") as unknown as bigint,
-    tax_total_minor: String(doc.tax_total_minor ?? "0") as unknown as bigint,
+    ...(drafted ? { grand_total_minor: drafted.grand_total_minor as unknown as bigint } : {}),
+    billing_project_id: textOrNull(doc.billing_project_id),
+    subtotal_minor: String(
+      drafted?.subtotal_minor ?? doc.subtotal_minor ?? "0",
+    ) as unknown as bigint,
+    tax_total_minor: String(
+      drafted?.tax_total_minor ?? doc.tax_total_minor ?? "0",
+    ) as unknown as bigint,
     tax_treatment: (doc.tax_treatment as string | null) ?? null,
     incoterm: String(doc.incoterm ?? "DAP"),
     issuer_profile_id: String(doc.issuer_profile_id ?? ""),
@@ -965,6 +1115,7 @@ export async function documentsGet(
     billing_country_code: textOrNull(doc.billing_country_code),
     regime: textOrNull(doc.regime),
     regime_reasons: Array.isArray(doc.regime_reasons) ? (doc.regime_reasons as unknown[]) : [],
+    annexes: doc.type === "invoice" ? await annexListing(ctx.db, resolvedId) : [],
   }
 }
 
@@ -998,6 +1149,19 @@ function requesterIdOf(requestedBy: unknown): string {
   return ""
 }
 
+const DOCUMENT_KEYS = ["draft_id", "document_id", "original_document_id"] as const
+
+/** The document a request's payload names, by the keys the invoicing tools take. */
+function documentIdOf(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null
+  const p = payload as Record<string, unknown>
+  for (const key of DOCUMENT_KEYS) {
+    const v = p[key]
+    if (typeof v === "string" && v !== "") return v
+  }
+  return null
+}
+
 export async function pendingApprovalsList(
   ctx: ReadsCtx,
   input: { limit?: number } = {},
@@ -1016,6 +1180,7 @@ export async function pendingApprovalsList(
       summary: typeof title === "string" ? title : "",
       created_at: (r.createdAt as Date | string) ?? new Date(0).toISOString(),
       requested_by_user_id: requesterIdOf(r.requestedBy),
+      document_id: documentIdOf(r.currentPayload),
     }
   })
 }
@@ -1262,6 +1427,9 @@ export interface DeferredRow {
    *  park such as customer_email_missing says WHICH order is waiting and on what. */
   order_id: string | null
   order_number: string | null
+  /** A park about one of the app's own documents (a PDF to make again), not an order: its
+   *  number, so the row names the document. */
+  document_number?: string | null
   blocked_on: Record<string, unknown> | null
   created_at: string | null
   /** Set on an OPEN tax review park only: the tax sources an operator can issue it with through
@@ -1290,9 +1458,44 @@ export async function deferredList(
     const n = payloadOrderNumber(r)
     if (n && r.event_id != null) numberByOrder.set(String(r.event_id), n)
   }
+  // A park whose event IS one of the app's documents (a render owed after an interrupted issue)
+  // is about that document, not an order: read the numbers to name them.
+  const ownDocument = (r: Record<string, unknown>): string | null => {
+    const docId = (r.blocked_on as Record<string, unknown> | null)?.document_id
+    return typeof docId === "string" && docId !== "" && String(r.event_id ?? "") === docId
+      ? docId
+      : null
+  }
+  const docIds = [
+    ...new Set(rows.map((row) => ownDocument(row as Record<string, unknown>)).filter(Boolean)),
+  ] as string[]
+  const numberByDocument = new Map<string, string | null>()
+  if (docIds.length > 0) {
+    const docs = (await ctx.db.findMany("documents", {
+      where: { id: { in: docIds } },
+      limit: docIds.length,
+    })) as Array<Record<string, unknown>>
+    for (const d of docs) {
+      numberByDocument.set(String(d.id), typeof d.number === "string" ? d.number : null)
+    }
+  }
   return {
     items: rows.map((row) => {
       const r = row as Record<string, unknown>
+      const docId = ownDocument(r)
+      if (docId) {
+        return {
+          id: String(r.id ?? r.event_id ?? ""),
+          status: String(r.status ?? ""),
+          reason: (r.reason as string | null) ?? null,
+          retry_count: Number(r.retry_count ?? 0),
+          order_id: null,
+          order_number: null,
+          document_number: numberByDocument.get(docId) ?? null,
+          blocked_on: (r.blocked_on as Record<string, unknown> | null) ?? null,
+          created_at: r.created_at != null ? String(r.created_at) : null,
+        }
+      }
       const orderNumber =
         payloadOrderNumber(r) ?? (r.event_id != null ? numberByOrder.get(String(r.event_id)) : null)
       return {

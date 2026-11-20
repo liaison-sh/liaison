@@ -31,12 +31,15 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/health": "public route, see route-auth-invariant.test.ts",
   "GET /api/health/ready": "public route, see route-auth-invariant.test.ts",
   "GET /api/settings/branding": "public route, see route-auth-invariant.test.ts",
+  "GET /api/portal/auth/branding/:slug": "public route, see route-auth-invariant.test.ts",
   "GET /healthz": "public route, see route-auth-invariant.test.ts",
   "GET /api/client-policy":
     "public route: the minimum desktop and mobile client versions, read before sign-in",
   "GET /api/apps/host-api": "the app host API major versions this server supports, no org data",
   "GET /api/connections/oauth-done":
     "the static page an OAuth popup lands on; it carries no data and closes itself",
+  "GET /api/client-actions/signing":
+    "whether this server can ask for a signature (an instance setting), the same for every member, no org data",
   "GET /api/imports/uploads/config":
     "the instance's upload mode and size limits, the same for every member",
   "GET /api/auth/bootstrap-state": "public route, see route-auth-invariant.test.ts",
@@ -63,6 +66,16 @@ const ANY_MEMBER: Record<string, string> = {
   "GET /api/notifications/web-push/config": "the caller's own notification settings and devices",
   "GET /api/notifications/devices": "the caller's own notification settings and devices",
   "GET /api/user/preferences": "the caller's own notification settings and devices",
+  "GET /api/user/preferences/away":
+    "the caller's own away ranges and next in line, and who in the org is away (active ranges only, as the away_ranges select policy shows every member)",
+  "GET /api/user/preferences/away/standing-in":
+    "who names the caller as next in line today: the caller's own Home line",
+  "POST /api/user/preferences/away/:id/end": "ends one of the caller's own away ranges only",
+  "DELETE /api/user/preferences/away/:id": "undoes one of the caller's own away ranges only",
+  "GET /api/apps/features":
+    "the features switched on in the workspace, read with the shell's app list; names only, no org data",
+  "GET /api/home/brief":
+    "the caller's own morning brief, read from their own routine's thread under their RLS",
   "GET /api/nodes/me/attachments": "the caller's own computers",
   "GET /api/nodes/me": "the caller's own computers",
   "GET /api/nodes/me/jobs": "the caller's own computers",

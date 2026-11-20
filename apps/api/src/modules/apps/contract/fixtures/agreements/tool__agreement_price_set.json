@@ -1,0 +1,40 @@
+{
+  "entry": "tool:agreement_price_set",
+  "params": {
+    "id": "37ee1612-1031-45b9-9c45-89578b5e6d8f",
+    "price_minor": "1200000",
+    "currency": "EUR"
+  },
+  "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
+  "calls": [
+    {
+      "method": "turn_get",
+      "args": [],
+      "reply": "{\"agentId\":null,\"hasPerson\":false}"
+    },
+    {
+      "method": "kernel_caller",
+      "args": [],
+      "reply": "{\"kind\":\"person\",\"userId\":\"00000000-0000-4000-8000-00000000c0df\",\"roleIds\":[],\"holds\":{}}"
+    },
+    {
+      "method": "db_findOne",
+      "args": ["agreements", "37ee1612-1031-45b9-9c45-89578b5e6d8f"],
+      "reply": "{\"id\":\"37ee1612-1031-45b9-9c45-89578b5e6d8f\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-19 04:50:58.626796+00\",\"updated_at\":\"2026-11-19 04:50:58.626796+00\",\"number\":\"PR-2026-001\",\"kind\":\"proposal\",\"status\":\"draft\",\"title\":\"Website proposal\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":null,\"template_version\":null,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":null,\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null,\"project_time_budgets\":null,\"project_timebox_minutes\":null,\"effects_claim\":null,\"effects_claimed_at\":null,\"effects_task_id\":null,\"effects_timebox_minutes\":null,\"effects_time_plan\":null,\"effects_billing\":null,\"effects_done_at\":null,\"effects_note\":null,\"imported_text\":null}"
+    },
+    {
+      "method": "db_update",
+      "args": [
+        "agreements",
+        "37ee1612-1031-45b9-9c45-89578b5e6d8f",
+        "{\"price_minor\":\"1200000\",\"currency\":\"EUR\",\"priced_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\"}"
+      ]
+    },
+    {
+      "method": "emit",
+      "args": [
+        "{\"entity\":\"agreement\",\"action\":\"updated\",\"entityId\":\"37ee1612-1031-45b9-9c45-89578b5e6d8f\",\"data\":{\"agreement_id\":\"37ee1612-1031-45b9-9c45-89578b5e6d8f\"}}"
+      ]
+    }
+  ]
+}

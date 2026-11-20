@@ -1,0 +1,2729 @@
+{
+  "name": "agreements",
+  "version": "0.8.1",
+  "iconName": "file-text",
+  "kind": "app",
+  "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
+  "agentInstructions": "Agreements holds the organization's proposals, statements of work, contracts and NDAs, each with its own number, and the templates they are made from.",
+  "outsideTextFields": [
+    "signers",
+    "imported_text",
+    "source_text",
+    "pages"
+  ],
+  "listing": {
+    "publisher": "Liaison",
+    "category": "Operations",
+    "icon": "file-text",
+    "summary": "Agreements: drafts, versions, templates and simple electronic signatures.",
+    "sourceRepository": "https://github.com/liaison-sh/liaison/tree/main/bundled-apps/agreements"
+  },
+  "packageFormat": 1,
+  "license": "FSL-1.1-ALv2",
+  "host": "^1",
+  "capabilities": [
+    "sequences.allocate"
+  ],
+  "scopes": [
+    "agreements:agreements:read",
+    "agreements:agreements:write",
+    "agreements:evidence:read",
+    "agreements:evidence:devices",
+    "agreements:templates:write",
+    "agreements:internal"
+  ],
+  "roles": {
+    "member": {
+      "description": "Agreements reader: read agreements and their templates",
+      "scopes": [
+        "agreements:agreements:read"
+      ]
+    },
+    "lead": {
+      "description": "Agreements lead: draft, send and renew agreements and change requests, keep templates and read the evidence, in addition to member rights",
+      "extends": "member",
+      "scopes": [
+        "agreements:agreements:write",
+        "agreements:templates:write",
+        "agreements:evidence:read"
+      ]
+    },
+    "admin": {
+      "description": "Agreements administrator: lead rights plus the signers' device details in the evidence",
+      "extends": "lead",
+      "scopes": [
+        "agreements:evidence:devices"
+      ]
+    }
+  },
+  "legalStarterTemplates": {
+    "corporateFeature": "corporateTemplates"
+  },
+  "features": {
+    "corporateTemplates": {
+      "adminScope": "agreements:templates:write",
+      "labelKey": "agreements.features.corporateTemplates"
+    }
+  },
+  "entities": {
+    "agreement": {
+      "labelField": "title",
+      "searchable": false,
+      "tableName": "agreements",
+      "readScope": "agreements:agreements:read",
+      "fileParent": {
+        "tableName": "agreements",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:agreements:read",
+        "writeScope": "agreements:agreements:write"
+      }
+    },
+    "agreement_version": {
+      "labelField": "number",
+      "tableName": "agreement_versions",
+      "fileParent": {
+        "tableName": "agreement_versions",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:agreements:read",
+        "writeScope": "agreements:agreements:write"
+      }
+    },
+    "evidence_package": {
+      "labelField": "seal_version",
+      "tableName": "evidence_packages",
+      "fileParent": {
+        "tableName": "evidence_packages",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:evidence:read",
+        "writeScope": "agreements:internal"
+      }
+    },
+    "evidence_devices": {
+      "labelField": "seal_version",
+      "tableName": "evidence_packages",
+      "fileParent": {
+        "tableName": "evidence_packages",
+        "schemaRef": "app_agreements",
+        "joinOn": "id",
+        "readScope": "agreements:evidence:devices",
+        "writeScope": "agreements:internal"
+      }
+    }
+  },
+  "schema": {
+    "agreements": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "list": {
+          "table": "agreement_shares",
+          "column": "agreement_id"
+        }
+      },
+      "fields": {
+        "number": "text",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "sow",
+            "msa",
+            "nda",
+            "retainer",
+            "tm",
+            "dpa",
+            "change_request",
+            "other"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "sent",
+            "partly_signed",
+            "signed",
+            "ended",
+            "declined",
+            "expired",
+            "voided",
+            "withdrawn",
+            "imported",
+            "accepted"
+          ],
+          "default": "draft"
+        },
+        "title": "text",
+        "company_id": "uuid?",
+        "contact_id": "uuid?",
+        "deal_task_id": "uuid?",
+        "project_id": "uuid?",
+        "quote_document_id": "uuid?",
+        "parent_agreement_id": "uuid?",
+        "became_agreement_id": "uuid?",
+        "template_id": "uuid?",
+        "template_version": {
+          "type": "integer",
+          "required": false
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "fr"
+          ],
+          "default": "en"
+        },
+        "fit_tag": {
+          "type": "string",
+          "enum": [
+            "commercial",
+            "guarantee",
+            "real_estate",
+            "family",
+            "employment"
+          ],
+          "default": "commercial"
+        },
+        "pricing_mode": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "retainer",
+            "tm"
+          ],
+          "required": false
+        },
+        "price_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "currency": "text?",
+        "priced_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "amended_total_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "hours_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "rate_minor": {
+          "type": "bigint",
+          "required": false
+        },
+        "starts_on": "day?",
+        "ends_on": "day?",
+        "renews_on": "day?",
+        "notice_days": {
+          "type": "integer",
+          "required": false
+        },
+        "signed_at": "date?",
+        "expiring_notified_on": "day?",
+        "retention_until": "day?",
+        "void_reason": "text?",
+        "what_it_is": "text?",
+        "what_it_is_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "not_a_guarantee_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "org_access": {
+          "type": "string",
+          "enum": [
+            "none",
+            "viewer",
+            "editor"
+          ],
+          "default": "editor"
+        },
+        "acl_user_ids": {
+          "type": "json",
+          "default": []
+        },
+        "created_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "created_by_agent_id": "uuid?",
+        "seal_overdue_at": "date?",
+        "claimed_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "claimed_at": "date?",
+        "project_time_budgets": {
+          "type": "boolean",
+          "required": false,
+          "description": "Whether the project the signed agreement started uses time and budgets, as projects answered when it was made."
+        },
+        "project_timebox_minutes": {
+          "type": "integer",
+          "required": false,
+          "description": "The project's whole timebox in minutes, as last set from this agreement (its proposal, then each accepted change request)."
+        },
+        "effects_claim": "uuid?",
+        "effects_claimed_at": "date?",
+        "effects_task_id": "uuid?",
+        "effects_timebox_minutes": {
+          "type": "integer",
+          "required": false
+        },
+        "effects_time_plan": {
+          "type": "string",
+          "enum": [
+            "set",
+            "none"
+          ],
+          "required": false
+        },
+        "effects_billing": {
+          "type": "string",
+          "enum": [
+            "added",
+            "none"
+          ],
+          "required": false
+        },
+        "effects_done_at": "date?",
+        "effects_note": "text?",
+        "imported_text": {
+          "type": "string",
+          "required": false,
+          "description": "Text read from an imported PDF, kept as unverified: never the signed text."
+        }
+      }
+    },
+    "agreement_shares": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "user_id": {
+          "type": "uuid",
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "role": {
+          "type": "string",
+          "enum": [
+            "viewer",
+            "editor"
+          ]
+        },
+        "created_by": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "removed_at": "date?"
+      }
+    },
+    "agreement_drafts": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "next_number": {
+          "type": "integer",
+          "default": 1
+        },
+        "source": {
+          "type": "json",
+          "required": false
+        },
+        "lock_version": {
+          "type": "integer",
+          "default": 1
+        },
+        "updated_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "updated_by_agent_id": "uuid?",
+        "upload_file_id": "uuid?",
+        "upload_state": {
+          "type": "string",
+          "enum": [
+            "checking"
+          ],
+          "required": false
+        }
+      }
+    },
+    "agreement_versions": {
+      "rlsScope": "agreements",
+      "sharedRows": {
+        "via": {
+          "table": "agreements",
+          "localColumn": "agreement_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "frozen_at",
+        "writeOnceColumns": [
+          "agreement_id",
+          "number",
+          "source",
+          "source_text",
+          "file_id",
+          "sha256",
+          "byte_size",
+          "page_count",
+          "frozen_at",
+          "frozen_by_user_id",
+          "source_kind",
+          "source_text_origin",
+          "pages",
+          "pages_sha256",
+          "file_report"
+        ]
+      },
+      "fields": {
+        "agreement_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreements",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "number": "integer",
+        "source": {
+          "type": "json",
+          "required": false
+        },
+        "source_text": "text?",
+        "file_id": "uuid?",
+        "sha256": "text?",
+        "byte_size": {
+          "type": "integer",
+          "required": false
+        },
+        "page_count": {
+          "type": "integer",
+          "required": false
+        },
+        "frozen_at": "date",
+        "copy_differs_at": "date?",
+        "frozen_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "generated",
+            "uploaded"
+          ],
+          "default": "generated"
+        },
+        "source_text_origin": {
+          "type": "string",
+          "enum": [
+            "rendered",
+            "pdf_extract"
+          ],
+          "required": false
+        },
+        "pages": {
+          "type": "json",
+          "required": false
+        },
+        "pages_sha256": "text?",
+        "file_report": {
+          "type": "json",
+          "required": false
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "frozen",
+            "superseded",
+            "signed"
+          ],
+          "default": "frozen"
+        },
+        "change_note": "text?",
+        "knowledge_document_id": "uuid?",
+        "scan_state": {
+          "type": "string",
+          "enum": [
+            "not_run",
+            "clean",
+            "infected"
+          ],
+          "default": "not_run"
+        }
+      }
+    },
+    "signature_events": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "agreement_versions",
+          "localColumn": "version_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "signed_at",
+        "insertOnly": true
+      },
+      "fields": {
+        "version_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreement_versions",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "client_action_id": "uuid",
+        "required_phrase": "text?",
+        "typed_phrase": "text?",
+        "signer_order": {
+          "type": "integer",
+          "required": false
+        },
+        "signer_contact_id": "uuid?",
+        "signer_user_id": "uuid?",
+        "invited_email": "text",
+        "invited_by": "text",
+        "typed_name": "text",
+        "capacity": "text",
+        "consent_words": "text",
+        "consent_lang": "text",
+        "level": {
+          "type": "string",
+          "enum": [
+            "ses",
+            "recorded_approval",
+            "aes",
+            "qes",
+            "demo"
+          ]
+        },
+        "document_sha256": "text",
+        "signed_at": "date",
+        "ip": "text?",
+        "user_agent": "text?",
+        "code_verified_at": "date?",
+        "document_shown_at": "date?",
+        "reached_end_at": "date?"
+      }
+    },
+    "evidence_packages": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "agreement_versions",
+          "localColumn": "version_id"
+        }
+      },
+      "immutable": {
+        "retentionYears": 10,
+        "anchor": "sealed_at",
+        "writeOnceColumns": [
+          "version_id",
+          "level",
+          "hash_alg",
+          "seal_version",
+          "document_sha256",
+          "signed_pdf_file_id",
+          "signed_pdf_sha256",
+          "trail_sha256",
+          "trail",
+          "manifest",
+          "seal",
+          "sealed_at",
+          "evidence_file_id",
+          "signer_copy_file_ids",
+          "tsr_file_id",
+          "tsa_url",
+          "tsa_policy_oid",
+          "timestamped_at",
+          "stamped_evidence_file_id",
+          "stamped_signer_copy_file_ids"
+        ]
+      },
+      "fields": {
+        "version_id": {
+          "type": "uuid",
+          "references": {
+            "table": "agreement_versions",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "ses",
+            "recorded_approval",
+            "aes",
+            "qes",
+            "demo"
+          ]
+        },
+        "hash_alg": "text",
+        "seal_version": "integer",
+        "document_sha256": "text",
+        "signed_pdf_file_id": "uuid?",
+        "signed_pdf_sha256": "text?",
+        "trail_sha256": "text?",
+        "trail": {
+          "type": "json",
+          "required": false
+        },
+        "manifest": {
+          "type": "json",
+          "required": false
+        },
+        "seal": "text?",
+        "sealed_at": "date",
+        "evidence_file_id": "uuid?",
+        "signer_copy_file_ids": {
+          "type": "json",
+          "required": false
+        },
+        "tsr_file_id": "uuid?",
+        "tsa_url": "text?",
+        "tsa_policy_oid": "text?",
+        "timestamped_at": "date?",
+        "stamped_evidence_file_id": "uuid?",
+        "stamped_signer_copy_file_ids": {
+          "type": "json",
+          "required": false
+        },
+        "timestamp_status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "stamped"
+          ],
+          "default": "pending"
+        },
+        "last_verified_at": "date?",
+        "last_verify_ok": {
+          "type": "boolean",
+          "required": false
+        },
+        "timestamp_overdue_at": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "version_id"
+          ]
+        ]
+      }
+    },
+    "agreement_template_meta": {
+      "rlsScope": "agreements",
+      "internalWriteScope": "agreements:templates:write",
+      "fields": {
+        "template_id": "uuid?",
+        "name": "text",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "proposal",
+            "sow",
+            "msa",
+            "nda",
+            "retainer",
+            "tm",
+            "dpa",
+            "change_request",
+            "other"
+          ]
+        },
+        "fit_tag": {
+          "type": "string",
+          "enum": [
+            "commercial",
+            "guarantee",
+            "real_estate",
+            "family",
+            "employment"
+          ],
+          "default": "commercial"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "fr"
+          ],
+          "default": "en"
+        },
+        "version": {
+          "type": "integer",
+          "default": 1
+        },
+        "archived": {
+          "type": "boolean",
+          "default": false
+        },
+        "corporate": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "agreement_template_versions": {
+      "rlsScope": "agreements",
+      "internalWriteScope": "agreements:templates:write",
+      "fields": {
+        "template_id": "uuid",
+        "version": "integer",
+        "body": "json",
+        "saved_by_user_id": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize"
+        },
+        "saved_at": "date"
+      }
+    },
+    "agreements_settings": {
+      "rlsScope": "agreements",
+      "fields": {
+        "retention_years_after_end": {
+          "type": "integer",
+          "default": 5
+        },
+        "sow_reader_role_id": "uuid?",
+        "default_link_days": {
+          "type": "integer",
+          "default": 14
+        }
+      }
+    },
+    "copy_mails": {
+      "rlsScope": "evidence",
+      "sharedRows": {
+        "via": {
+          "table": "evidence_packages",
+          "localColumn": "package_id"
+        }
+      },
+      "fields": {
+        "package_id": {
+          "type": "uuid",
+          "references": {
+            "table": "evidence_packages",
+            "column": "id",
+            "onDelete": "restrict"
+          }
+        },
+        "client_action_id": "uuid",
+        "kind": {
+          "type": "string",
+          "enum": [
+            "signer",
+            "stamped"
+          ],
+          "default": "signer"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "sent",
+            "failed"
+          ],
+          "default": "pending"
+        },
+        "attempts": {
+          "type": "integer",
+          "default": 0
+        },
+        "sent_at": "date?",
+        "alerted_at": "date?"
+      },
+      "constraints": {
+        "unique": [
+          [
+            "package_id",
+            "client_action_id",
+            "kind"
+          ]
+        ]
+      }
+    }
+  },
+  "approvalRoute": {
+    "agreements:agreement": "approval_route_read"
+  },
+  "activitySources": [
+    {
+      "tool": "activity_read",
+      "scope": "agreements:agreements:read",
+      "label": "Agreements",
+      "filterKey": "agreements"
+    }
+  ],
+  "cross_app_calls": [
+    {
+      "target": "knowledge:create",
+      "reason": "one Knowledge document per signed version, closed to the organization and shared by name, from the version's frozen text"
+    },
+    {
+      "target": "knowledge:archive",
+      "reason": "a superseding signed version archives the Knowledge copy of the version before it"
+    },
+    {
+      "target": "invoicing:retainer_terms_renew",
+      "reason": "a signed retainer renewal rolls its included hours, monthly fee, overage rate and first day into the retainer of the project it names, once, as the person who approved its send; the months before keep the old terms"
+    },
+    {
+      "target": "projects:createProject",
+      "reason": "a signed proposal or statement of work starts its project once, named by the agreement so a replay finds it (no assignee, time or activity read)"
+    },
+    {
+      "target": "kernel:companies_search",
+      "reason": "a search by a client's name finds that client's agreements, among the companies the person can read"
+    },
+    {
+      "target": "mail:reply",
+      "reason": "the change request's reply leaves from the person's own mailbox, under the card's mail check"
+    },
+    {
+      "target": "projects:create",
+      "reason": "an accepted change request adds one milestone task to its parent's project, as the person who sent it"
+    },
+    {
+      "target": "projects:time_plan_set",
+      "reason": "an accepted change request grows its parent project's whole timebox by its hours, as the person who sent it; projects answers whether the project uses time and budgets"
+    },
+    {
+      "target": "invoicing:billing_step_add",
+      "reason": "an accepted change request adds one milestone for its price to its parent project's billing plan, once, as the person who sent it; a project without a plan gets none"
+    },
+    {
+      "target": "kernel:contacts_group_add",
+      "reason": "the clients under a signed agreement are kept in the app's own contact group, whose authenticated mail the Scope check reads, as the person who sent each agreement"
+    }
+  ],
+  "tools": {
+    "home_load": {
+      "description": "Load the agreements list for the app's home page, in the order of what needs someone first.",
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "homeLoadHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "useInstead": "agreements_search",
+      "params": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        }
+      }
+    },
+    "agreements_search": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "items[].id"
+      },
+      "description": "Find agreements by status, company, kind or renewal date, ordered by what needs someone first.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "agreement",
+        "avenant",
+        "proposition",
+        "proposal",
+        "renouvellement",
+        "renewal",
+        "nda",
+        "sow"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "agreementsSearchHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "sent",
+              "partly_signed",
+              "signed",
+              "ended",
+              "declined",
+              "expired",
+              "voided",
+              "withdrawn",
+              "imported",
+              "accepted"
+            ]
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "renews_before": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "query": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "agreement_get": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Read one agreement: its parties, status, price, dates, versions and who can see it.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "agreement",
+        "détail",
+        "voir",
+        "open"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "agreementGetHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_create": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Create an agreement draft from a template or a brief, or from an uploaded PDF (kind other). Never sets a price.",
+      "searchKeywords": [
+        "contrat",
+        "contract",
+        "rédiger",
+        "draft",
+        "proposition",
+        "proposal",
+        "créer",
+        "create"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementCreateHandler",
+      "writesToTable": "app_agreements.agreements",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The company's id (a uuid), as contacts answers it."
+          },
+          "contact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The contact's id (a uuid)."
+          },
+          "template_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The template's id (a uuid), from templates_list."
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "fit_tag": {
+            "type": "string",
+            "enum": [
+              "commercial",
+              "guarantee",
+              "real_estate",
+              "family",
+              "employment"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "description": "The document's whole text, as the agreement's editor shows it: body.blocks in reading order, a heading {type: heading, level 1-3, text}, a paragraph {type: paragraph, text} or a clause {type: article, level 1-5, heading, text}; body.page holds the layout. data holds the values of the template's fields. Nothing else is kept.",
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "blocks"
+                ],
+                "properties": {
+                  "page": {
+                    "type": "object"
+                  },
+                  "blocks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "heading",
+                            "paragraph",
+                            "article",
+                            "list",
+                            "table",
+                            "image",
+                            "spacer",
+                            "repeat",
+                            "parties",
+                            "recitals",
+                            "definitions",
+                            "annex",
+                            "toc",
+                            "signature_block"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "heading",
+                                  "paragraph",
+                                  "article"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "text"
+                            ]
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "const": "article"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "level"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "data": {
+                "type": "object"
+              }
+            }
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "what_it_is": {
+            "type": "string"
+          },
+          "org_access": {
+            "type": "string",
+            "enum": [
+              "none",
+              "viewer",
+              "editor"
+            ]
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "viewer",
+                    "editor"
+                  ]
+                }
+              },
+              "required": [
+                "user_id",
+                "role"
+              ]
+            },
+            "maxItems": 50
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Included minutes a month for a retainer, or the work's size."
+          },
+          "project_id": {
+            "type": "string",
+            "description": "The project it is for. A retainer for a company with a signed retainer renews that one's project.",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "kind",
+          "title"
+        ]
+      }
+    },
+    "agreement_import": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "File a contract signed before Liaison from its PDF: imported, with no evidence and no signature level. Its dates are set after with agreement_update.",
+      "searchKeywords": [
+        "importer",
+        "import",
+        "ancien",
+        "archive",
+        "signé",
+        "signed",
+        "contrat",
+        "contract",
+        "pdf"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementImportHandler",
+      "writesToTable": "app_agreements.agreements",
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "company_id": {
+            "type": "string"
+          },
+          "contact_id": {
+            "type": "string"
+          },
+          "signed_on": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "unverified_text": {
+            "type": "string",
+            "maxLength": 200000
+          }
+        },
+        "required": [
+          "kind",
+          "title",
+          "file_id"
+        ]
+      }
+    },
+    "agreement_update": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "paramPath": "id"
+      },
+      "description": "Change an agreement draft: its text, dates or who can see it. An agent's change to who can see it waits for a person.",
+      "searchKeywords": [
+        "edit",
+        "contrat",
+        "contract",
+        "partage",
+        "share"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementUpdateHandler",
+      "writesToTable": "app_agreements.agreements",
+      "conditionalGate": true,
+      "approvalImpact": "internal",
+      "summarizer": "summarizeAgreementUpdate",
+      "summarizerContext": {
+        "tool": "agreement_get",
+        "params": {
+          "id": "id"
+        }
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "lock_version": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "source": {
+            "type": "object",
+            "description": "The document's whole text, as the agreement's editor shows it: body.blocks in reading order, a heading {type: heading, level 1-3, text}, a paragraph {type: paragraph, text} or a clause {type: article, level 1-5, heading, text}; body.page holds the layout. data holds the values of the template's fields. Nothing else is kept, and it replaces the text the draft had.",
+            "additionalProperties": false,
+            "required": [
+              "body"
+            ],
+            "properties": {
+              "body": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "blocks"
+                ],
+                "properties": {
+                  "page": {
+                    "type": "object"
+                  },
+                  "blocks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type"
+                      ],
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "heading",
+                            "paragraph",
+                            "article",
+                            "list",
+                            "table",
+                            "image",
+                            "spacer",
+                            "repeat",
+                            "parties",
+                            "recitals",
+                            "definitions",
+                            "annex",
+                            "toc",
+                            "signature_block"
+                          ]
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "items": {
+                          "type": "array",
+                          "minItems": 1,
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "enum": [
+                                  "heading",
+                                  "paragraph",
+                                  "article"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "text"
+                            ]
+                          }
+                        },
+                        {
+                          "if": {
+                            "properties": {
+                              "type": {
+                                "const": "article"
+                              }
+                            },
+                            "required": [
+                              "type"
+                            ]
+                          },
+                          "then": {
+                            "required": [
+                              "level"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "data": {
+                "type": "object"
+              }
+            }
+          },
+          "file_id": {
+            "type": "string"
+          },
+          "starts_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "ends_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "renews_on": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "notice_days": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 3650
+          },
+          "what_it_is": {
+            "type": "string"
+          },
+          "not_a_guarantee": {
+            "type": "boolean"
+          },
+          "org_access": {
+            "type": "string",
+            "enum": [
+              "none",
+              "viewer",
+              "editor"
+            ]
+          },
+          "shares": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "user_id": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "viewer",
+                    "editor"
+                  ]
+                }
+              },
+              "required": [
+                "user_id",
+                "role"
+              ]
+            },
+            "maxItems": 50
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Included minutes a month for a retainer, or the work's size."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_prepare": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "paramPath": "id"
+      },
+      "description": "Check an agreement draft before sending: blanks, price, fit for this kind of signature, clauses an agent wrote.",
+      "searchKeywords": [
+        "préparer",
+        "prepare",
+        "vérifier",
+        "check",
+        "signature",
+        "envoyer"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementPrepareHandler",
+      "writesToTable": "app_agreements.agreement_versions",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "preflight": "agreementPreparePreflightHandler"
+    },
+    "agreement_price_set": {
+      "description": "Set the price of an agreement. A person's own action only.",
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementPriceSetHandler",
+      "writesToTable": "app_agreements.agreements",
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "price_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,18}$"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$"
+          },
+          "rate_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,18}$",
+            "description": "A retainer's hourly rate above its included hours, in minor units."
+          }
+        },
+        "required": [
+          "id",
+          "price_minor",
+          "currency"
+        ]
+      }
+    },
+    "agreement_passage_get": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Quote one numbered section of a signed or sent agreement version, cut from its own text.",
+      "searchKeywords": [
+        "passage",
+        "section",
+        "clause",
+        "article",
+        "citer",
+        "quote",
+        "texte",
+        "signé",
+        "scope",
+        "périmètre"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "agreementPassageGetHandler",
+      "readOnly": true,
+      "taintSource": true,
+      "taintSourceWhen": {
+        "field": "source_kind",
+        "equals": "uploaded"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "description": "The agreement version id (agreement_get lists them)."
+          },
+          "agreement_id": {
+            "type": "string",
+            "description": "Instead of version_id, an imported agreement (it has no version): quotes the text read from its PDF, unverified."
+          },
+          "section": {
+            "type": "string",
+            "description": "The section number, such as 8 or 8.2."
+          }
+        },
+        "required": [
+          "section"
+        ]
+      }
+    },
+    "activity_read": {
+      "description": "The agreements of a company or of its people, one row each at its latest status, newest first, for their timeline. Read by the kernel.",
+      "readOnly": true,
+      "agentVisible": false,
+      "timeoutMs": 2000,
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "trustBoundary": "user",
+      "handler": "activityReadHandler",
+      "params": {
+        "type": "object",
+        "properties": {
+          "contactIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "companyId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dealIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "before": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "prefix": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "templates_list": {
+      "description": "List the agreement templates with their kind, language and current version.",
+      "searchKeywords": [
+        "modèle",
+        "template",
+        "contrat",
+        "contract"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "templatesListHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "include_archived": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "template_get": {
+      "description": "Read one agreement template at its current or a given version.",
+      "searchKeywords": [
+        "modèle",
+        "template"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "templateGetHandler",
+      "readOnly": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "template_id"
+        ]
+      }
+    },
+    "template_save": {
+      "description": "Save an agreement template as a new version; agreements made from earlier versions keep their text.",
+      "searchKeywords": [
+        "modèle",
+        "template",
+        "enregistrer",
+        "save"
+      ],
+      "requiredScopes": [
+        "agreements:templates:write"
+      ],
+      "handler": "templateSaveHandler",
+      "writesToTable": "app_agreements.agreement_template_meta",
+      "conditionalGate": true,
+      "approvalImpact": "internal",
+      "approvalCard": {
+        "summary": "Save agreement template {{params.name}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "template_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "proposal",
+              "sow",
+              "msa",
+              "nda",
+              "retainer",
+              "tm",
+              "dpa",
+              "change_request",
+              "other"
+            ]
+          },
+          "language": {
+            "type": "string",
+            "enum": [
+              "en",
+              "fr"
+            ]
+          },
+          "fit_tag": {
+            "type": "string",
+            "enum": [
+              "commercial",
+              "guarantee",
+              "real_estate",
+              "family",
+              "employment"
+            ]
+          },
+          "body": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "body"
+        ]
+      }
+    },
+    "approval_route_read": {
+      "description": "Who an agreement concerns, for routing its approvals.",
+      "requiredScopes": [
+        "agreements:agreements:read"
+      ],
+      "handler": "approvalRouteReadHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityType",
+          "entityId"
+        ]
+      }
+    },
+    "agreement_send": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Send a frozen agreement version for signature or acceptance to its signers, in order or all at once.",
+      "searchKeywords": [
+        "signer",
+        "signature",
+        "électronique",
+        "envoyer",
+        "contrat"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementSendHandler",
+      "summarizer": "summarizeAgreementSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Send version {{params.version_id}} for signature"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "description": "The version_id agreement_prepare returned."
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "The fingerprint agreement_prepare returned for that version."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "sign",
+              "accept"
+            ]
+          },
+          "signers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "contact_id": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "maxItems": 40
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "sequential",
+              "any"
+            ]
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              14,
+              30
+            ]
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "required_phrase": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "version_id",
+          "sha256",
+          "signers"
+        ]
+      },
+      "preflight": "agreementSendPreflightHandler",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "guardKey"
+    },
+    "change_request_send": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "change_request.id"
+      },
+      "description": "Reply to a client's mail and send them a change request on a signed agreement, in one card: the work, its hours with their source, the rate from the signed text and the passage it rests on.",
+      "searchKeywords": [
+        "avenant",
+        "scope",
+        "périmètre",
+        "extra",
+        "supplémentaire"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "changeRequestSendHandler",
+      "summarizer": "summarizeChangeRequestSend",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Reply and change request on {{params.parent_agreement_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "parent_agreement_id": {
+            "type": "string",
+            "description": "The signed agreement the change request adds to."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "work": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "The work it adds, one line each."
+          },
+          "hours_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Its size in minutes."
+          },
+          "hours_source": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Where the hours come from, such as past similar work."
+          },
+          "rate_minor": {
+            "type": "string",
+            "pattern": "^[0-9]{1,15}$",
+            "description": "The hourly rate from the signed text, in minor units."
+          },
+          "reply": {
+            "type": "object",
+            "properties": {
+              "conversation_id": {
+                "type": "string"
+              },
+              "body": {
+                "type": "string",
+                "maxLength": 8000,
+                "description": "No hours or amounts: the reply that goes out adds them from this card."
+              }
+            },
+            "required": [
+              "conversation_id",
+              "body"
+            ],
+            "additionalProperties": false
+          },
+          "passage": {
+            "type": "object",
+            "properties": {
+              "version_id": {
+                "type": "string"
+              },
+              "section": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version_id",
+              "section"
+            ],
+            "additionalProperties": false,
+            "description": "The signed text's section, read with agreement_passage_get."
+          },
+          "mail_message_id": {
+            "type": "string",
+            "description": "The client's mail this answers."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "parent_agreement_id",
+          "title",
+          "work",
+          "hours_minutes",
+          "hours_source",
+          "rate_minor",
+          "reply",
+          "passage",
+          "mail_message_id"
+        ]
+      },
+      "preflight": "changeRequestSendPreflightHandler",
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey",
+        "currency"
+      ],
+      "approvalDedupeKeyParam": "mail_message_id",
+      "editableFields": [
+        {
+          "field": "hours_minutes",
+          "label": "Hours",
+          "widget": "number",
+          "unit": "hours"
+        },
+        {
+          "field": "rate_minor",
+          "label": "Hourly rate",
+          "widget": "text",
+          "unit": "money"
+        }
+      ],
+      "ownsTransactions": true
+    },
+    "agreement_reminder_send": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Remind signers of an agreement waiting for signatures: each named signer whose link is still open gets a fresh link by mail, and the link mailed before stops working.",
+      "searchKeywords": [
+        "remind",
+        "reminder",
+        "rappel",
+        "signer",
+        "contrat"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementReminderSendHandler",
+      "summarizer": "summarizeAgreementReminderSend",
+      "preflight": "agreementReminderSendPreflightHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Remind the signers of an agreement"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client_action_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "maxItems": 40,
+            "description": "The signers' links to remind, all of one agreement version (agreement_get lists them)."
+          },
+          "sendGuard": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "guardKey": {
+            "type": "string",
+            "description": "Set by the server; leave it out."
+          }
+        },
+        "required": [
+          "client_action_ids"
+        ],
+        "additionalProperties": false
+      },
+      "pinnedParams": [
+        "sendGuard",
+        "guardKey"
+      ],
+      "approvalDedupeKeyParam": "guardKey"
+    },
+    "agreement_new_link": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Give one signer a new signing link, at the same or a corrected address, in the same turn: after their link expired or was withdrawn, or after a decline made without the emailed code.",
+      "searchKeywords": [
+        "lien",
+        "link",
+        "expired",
+        "expiré",
+        "adresse",
+        "signer"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementNewLinkHandler",
+      "summarizer": "summarizeAgreementNewLink",
+      "preflight": "agreementNewLinkPreflightHandler",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "A new signing link for client action {{params.client_action_id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client_action_id": {
+            "type": "string",
+            "description": "The signer's link to replace, from agreement_get or agreement_send."
+          },
+          "email": {
+            "type": "string",
+            "description": "A corrected address; leave it out to use the one on file."
+          },
+          "expires_in_days": {
+            "type": "integer",
+            "enum": [
+              7,
+              14,
+              30
+            ]
+          }
+        },
+        "required": [
+          "client_action_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "agreement_void": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id",
+        "paramPath": "id"
+      },
+      "description": "Void an agreement waiting for signatures: every open signing link is withdrawn at once and signatures already given stay.",
+      "searchKeywords": [
+        "annuler",
+        "void",
+        "withdraw",
+        "retirer",
+        "contrat",
+        "contract"
+      ],
+      "requiredScopes": [
+        "agreements:agreements:write"
+      ],
+      "handler": "agreementVoidHandler",
+      "summarizer": "summarizeAgreementVoid",
+      "gated": true,
+      "noAutoApprove": true,
+      "approvalImpact": "external",
+      "writesToTable": "app_agreements.agreements",
+      "approvalCard": {
+        "summary": "Void agreement {{params.id}}"
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "id",
+          "reason"
+        ]
+      },
+      "preflight": "agreementVoidPreflightHandler"
+    },
+    "client_action_view_get": {
+      "description": "What a person outside is shown for one agreement version, with its fingerprint (internal: the kernel's client action page).",
+      "requiredScopes": [
+        "agreements:internal"
+      ],
+      "handler": "clientActionViewGetHandler",
+      "readOnly": true,
+      "agentVisible": false,
+      "params": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "targetType",
+          "targetId"
+        ]
+      }
+    },
+    "agreement_evidence_get": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "idPath": "agreement.id"
+      },
+      "description": "Read the evidence of a signed agreement: fingerprints, seal, timestamp, each signature and whether each signer's copy was sent.",
+      "searchKeywords": [
+        "preuve",
+        "evidence",
+        "sceau",
+        "seal",
+        "empreinte",
+        "fingerprint",
+        "horodatage",
+        "timestamp"
+      ],
+      "requiredScopes": [
+        "agreements:evidence:read"
+      ],
+      "handler": "agreementEvidenceGetHandler",
+      "readOnly": true,
+      "taintSource": true,
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agreement id or the signed version id."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    },
+    "agreement_verify": {
+      "restrictedRows": {
+        "entity": "agreement",
+        "paramPath": "id"
+      },
+      "description": "Check a signed agreement's evidence: re-hash the stored files and recompute the seal.",
+      "searchKeywords": [
+        "vérifier",
+        "verify",
+        "preuve",
+        "evidence",
+        "sceau",
+        "seal",
+        "empreinte",
+        "fingerprint",
+        "intégrité",
+        "integrity"
+      ],
+      "requiredScopes": [
+        "agreements:evidence:read"
+      ],
+      "handler": "agreementVerifyHandler",
+      "writesToTable": "app_agreements.evidence_packages",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The agreement id or the signed version id."
+          }
+        },
+        "required": [
+          "id"
+        ]
+      }
+    }
+  },
+  "clientActionTargets": [
+    {
+      "type": "agreement_version",
+      "kinds": [
+        "sign",
+        "accept",
+        "approve"
+      ],
+      "viewTool": "client_action_view_get",
+      "mintedBy": "app"
+    }
+  ],
+  "events": {
+    "subscribes": {
+      "kernel/client_action:decided": "onClientActionDecidedHandler",
+      "kernel/portal_user:access_ended": "onPortalAccessEndedHandler",
+      "kernel/routine:create": "onRoutineCreatedHandler"
+    },
+    "emits": [
+      "agreement:sent",
+      "agreement:updated",
+      "agreement:declined",
+      "agreement:expired",
+      "agreement:expiring",
+      "agreement:voided",
+      "agreement:signed",
+      "agreement:imported",
+      "agreement:access_changed",
+      "agreement:knowledge_copy_not_made",
+      "agreement:links_withdrawn",
+      "agreement:renewal_not_rolled",
+      "evidence:mismatch",
+      "evidence:timestamp_overdue",
+      "evidence:copy_failed",
+      "evidence:seal_overdue",
+      "change_request:accepted",
+      "change_request:declined"
+    ]
+  },
+  "jobs": {
+    "decided-reconcile": {
+      "handler": "decidedReconcileJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "sent",
+                "partly_signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    },
+    "dates-daily": {
+      "handler": "datesDailyJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "sent",
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "0 6 * * *",
+      "timeoutMs": 120000
+    },
+    "seal-retry": {
+      "handler": "sealRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_versions",
+          "where": {
+            "status": {
+              "in": [
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "timestamp-retry": {
+      "handler": "timestampRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "evidence_packages",
+          "where": {
+            "timestamp_status": {
+              "in": [
+                "pending"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "copies-retry": {
+      "handler": "copiesRetryJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "copy_mails",
+          "where": {
+            "status": {
+              "in": [
+                "failed",
+                "pending"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 300000
+    },
+    "evidence-verify": {
+      "handler": "evidenceVerifyJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "evidence_packages",
+          "where": {
+            "timestamp_status": {
+              "in": [
+                "pending",
+                "stamped"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "0 3 * * 1",
+      "timeoutMs": 600000
+    },
+    "upload-freeze": {
+      "handler": "uploadFreezeJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_drafts",
+          "where": {
+            "upload_state": {
+              "in": [
+                "checking"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "* * * * *",
+      "timeoutMs": 300000
+    },
+    "upload-rescan": {
+      "handler": "uploadRescanJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreement_versions",
+          "where": {
+            "scan_state": {
+              "in": [
+                "not_run"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "*/15 * * * *",
+      "timeoutMs": 300000
+    },
+    "change-request-effects": {
+      "handler": "changeRequestEffectsJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "kind": "change_request",
+            "status": "accepted"
+          }
+        }
+      },
+      "schedule": "*/10 * * * *",
+      "timeoutMs": 120000
+    },
+    "scope-group-reconcile": {
+      "handler": "scopeGroupReconcileJobHandler",
+      "atomic": false,
+      "runsFor": {
+        "rows": {
+          "entity": "agreements",
+          "where": {
+            "status": {
+              "in": [
+                "signed"
+              ]
+            }
+          }
+        }
+      },
+      "schedule": "30 5 * * *",
+      "timeoutMs": 120000
+    }
+  },
+  "attention": {
+    "translations": [
+      {
+        "event": "evidence:timestamp_overdue",
+        "kind": "agreements:evidence.timestamp_overdue",
+        "urgency": 50,
+        "summary": "{{data.number}} version {{data.version}} was sealed more than 24 hours ago and the outside timestamp has not arrived. The signers already have their copies; the stamped file follows when the authority answers.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:copy_failed",
+        "kind": "agreements:evidence.copy_failed",
+        "urgency": 60,
+        "summary": "The signed copy of {{data.number}} version {{data.version}} could not be mailed to {{data.signer}} after {{data.attempts}} tries. Send it from the evidence file.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:seal_overdue",
+        "kind": "agreements:evidence.seal_overdue",
+        "urgency": 60,
+        "summary": "{{data.number}} version {{data.version}} is signed but not sealed after an hour. The seal is retried every 10 minutes.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "evidence:mismatch",
+        "kind": "agreements:evidence.mismatch",
+        "urgency": 80,
+        "summary": "The seal of {{data.number}} version {{data.version}} does not match ({{data.what}}). Nothing was repaired; the signers' copies are the reference.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:evidence:read"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      },
+      {
+        "event": "agreement:renewal_not_rolled",
+        "kind": "agreements:agreement.renewal_not_rolled",
+        "urgency": 70,
+        "summary": "{{data.number}} is signed, but its retainer was not renewed: it lacks {{data.missing}}. The retainer keeps its old terms until a person sets the new ones.",
+        "recipients": {
+          "kind": "scope_holders",
+          "scope": "agreements:agreements:write"
+        },
+        "resolveWhen": {
+          "field": "resolved",
+          "equals": true
+        }
+      }
+    ]
+  },
+  "routines": {
+    "scope-check": {
+      "title": "Scope check",
+      "description": "When a client under a signed agreement writes, check the request against the signed text.",
+      "kind": "event",
+      "event": "mail:message:create",
+      "eventFilter": {
+        "fromGroupKeys": {
+          "clients-signed": "Clients under a signed agreement"
+        }
+      },
+      "promptTemplate": "A client under a signed agreement wrote (the new mail is in the event; its sender's address passed the receiving provider's authentication). Find the client's signed agreement with agreements_search, then read the signed text with agreement_passage_get: never quote it from memory. Decide one of four things. In scope: say which section covers it, quoting that passage, and change nothing. Out of scope and the signed text names a rate: propose one change request with change_request_send (mail_message_id is this mail's id, so one mail gets one card), its hours sized from past similar work found in knowledge and labelled with where they come from, and the rate from the signed text; a person approves the card, the reply and the price. Unclear: say what in the signed text is unclear, quoting it, and change nothing. Not a request: say nothing. Never reply to the client yourself and never send anything without the card.",
+      "scopes": [
+        "agreements:agreements:read",
+        "agreements:agreements:write",
+        "mail:conversations:read",
+        "knowledge:documents:read",
+        "projects:projects:read"
+      ],
+      "enabledByDefault": false
+    }
+  },
+  "slots": {
+    "company_detail": {
+      "panels": [
+        {
+          "id": "agreements-company",
+          "label": "Agreements",
+          "component": "CompanyAgreementsPanel",
+          "group": "agreements",
+          "order": 20,
+          "visibility_scope": "agreements:agreements:read"
+        }
+      ]
+    }
+  },
+  "views": {
+    "activityBar": {
+      "icon": "AgreementsAppIcon",
+      "label": "Agreements",
+      "order": 66,
+      "tabAction": {
+        "type": "home",
+        "entityId": "home",
+        "label": "Agreements"
+      }
+    },
+    "tabTypes": {
+      "home": {
+        "component": "AgreementsList",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreements",
+        "singleton": true,
+        "urlPattern": "/agreements",
+        "referenceable": false
+      },
+      "list": {
+        "component": "AgreementsList",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreements",
+        "singleton": false,
+        "urlPattern": "/agreements/list/:filter",
+        "referenceable": false
+      },
+      "agreement": {
+        "entity": "agreement",
+        "component": "AgreementDetailView",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Agreement",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/agreement/:id",
+        "referenceable": true
+      },
+      "editor": {
+        "entity": "agreement",
+        "component": "AgreementEditor",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Editor",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/editor/:id",
+        "referenceable": false
+      },
+      "send": {
+        "entity": "agreement",
+        "component": "AgreementSend",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "Send for signature",
+        "resolveLabel": "resolveAgreementTabLabel",
+        "singleton": false,
+        "urlPattern": "/agreements/send/:id",
+        "referenceable": false
+      },
+      "new": {
+        "component": "AgreementNew",
+        "sidebar": "AgreementsSidebar",
+        "icon": "AgreementsAppIcon",
+        "label": "New agreement",
+        "singleton": true,
+        "urlPattern": "/agreements/new",
+        "referenceable": false
+      }
+    }
+  }
+}

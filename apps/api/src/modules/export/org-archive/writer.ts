@@ -47,6 +47,7 @@ import {
   redactJsonPaths,
   scrubsCiphertext,
 } from "~/modules/export/org-archive/redaction"
+import { PARTIAL_ROWS, WITHHELD_ROWS } from "~/modules/export/org-archive/withheld"
 import {
   ExportTooLargeError,
   fileEntryName,
@@ -83,7 +84,25 @@ export interface OrgArchiveManifest {
     jsonPaths: Array<{ column: string; path: string; why: string }>
   }
   kept: Array<{ column: string; why: string }>
+  /** Tables whose rows the archive holds only in part (withheld.ts), with why. */
+  withheld: Array<{ table: string; why: string }>
+  /** The people outside the organization (client portal accounts), as their own section. */
+  external: {
+    people: number
+    users: { file: string; where: string }
+    tables: Array<{ table: string; file: string; rows: number }>
+    note: string
+  }
 }
+
+/** The tables that hold what the people outside are, may see and did (client portal). */
+export const EXTERNAL_TABLES = [
+  "kernel.portal_people",
+  "kernel.portal_shares",
+  "kernel.client_actions",
+  "kernel.client_action_events",
+  "kernel.client_action_devices",
+] as const
 
 export interface BuildOrgArchiveOptions {
   orgId: string
@@ -99,27 +118,40 @@ export interface BuildOrgArchiveOptions {
 }
 
 /** The SQL expression one column is written as. */
-function columnExpr(col: ExportColumn, redacted: boolean): string {
-  const ref = `t.${quoteIdent(col.name)}`
+function columnExpr(col: ExportColumn, redacted: boolean, hiddenWhen?: string): string {
   if (redacted) return `NULL AS ${quoteIdent(col.name)}`
+  const expr = columnValue(col)
+  return hiddenWhen
+    ? `CASE WHEN ${hiddenWhen} THEN NULL ELSE ${expr} END AS ${quoteIdent(col.name)}`
+    : `${expr} AS ${quoteIdent(col.name)}`
+}
+
+function columnValue(col: ExportColumn): string {
+  const ref = `t.${quoteIdent(col.name)}`
   switch (col.type) {
     case "bytea":
-      return `encode(${ref}, 'base64') AS ${quoteIdent(col.name)}`
+      return `encode(${ref}, 'base64')`
     case "bigint":
     case "bigint[]":
     case "money":
-      return `${ref}::text${col.type.endsWith("[]") ? "[]" : ""} AS ${quoteIdent(col.name)}`
+      return `${ref}::text${col.type.endsWith("[]") ? "[]" : ""}`
     case "timestamp with time zone":
-      return `to_char(${ref} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS ${quoteIdent(col.name)}`
+      return `to_char(${ref} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
     case "timestamp without time zone":
-      return `to_char(${ref}, 'YYYY-MM-DD"T"HH24:MI:SS.US') AS ${quoteIdent(col.name)}`
+      return `to_char(${ref}, 'YYYY-MM-DD"T"HH24:MI:SS.US')`
     default:
-      if (col.type.startsWith("numeric")) return `${ref}::text AS ${quoteIdent(col.name)}`
-      return `${ref} AS ${quoteIdent(col.name)}`
+      if (col.type.startsWith("numeric")) return `${ref}::text`
+      return ref
   }
 }
 
 function scopeWhere(t: ExportTable, orgId: string): SQL {
+  const withheld = WITHHELD_ROWS[`${t.logicalSchema}.${t.table}`]
+  const org = orgScopeWhere(t, orgId)
+  return withheld ? drizzleSql`${org} AND (${drizzleSql.raw(withheld.keep())})` : org
+}
+
+function orgScopeWhere(t: ExportTable, orgId: string): SQL {
   switch (t.reach.kind) {
     case "org":
       return drizzleSql`t.org_id = ${orgId}::uuid`
@@ -150,11 +182,13 @@ interface TablePlan {
 function planTable(t: ExportTable, redactedOut: Map<string, string>): TablePlan {
   const exprs: string[] = []
   const sealed: string[] = []
+  const partial = PARTIAL_ROWS[`${t.logicalSchema}.${t.table}`]
   for (const col of t.columns) {
     const key = columnKey(t, col.name)
     const d = decideColumn(key)
     if (d.action === "redact") redactedOut.set(key, d.why)
-    exprs.push(columnExpr(col, d.action === "redact"))
+    const hiddenWhen = partial && !partial.keep.includes(col.name) ? partial.when() : undefined
+    exprs.push(columnExpr(col, d.action === "redact", hiddenWhen))
     if (d.action === "keep" && isSealedColumn(key))
       sealed.push(`t.${quoteIdent(col.name)} IS NOT NULL`)
   }
@@ -350,6 +384,18 @@ function isMissingObject(err: unknown): boolean {
   return e?.name === "NoSuchKey" || e?.Code === "NoSuchKey" || e?.$metadata?.httpStatusCode === 404
 }
 
+async function countExternalPeople(orgId: string): Promise<number> {
+  const K = drizzleSql.raw(schemaRef("kernel"))
+  const [row] = await withSystemDb("org-export-external", async (tx) =>
+    extractRows<{ n: string }>(
+      await tx.execute(
+        drizzleSql`SELECT count(*)::text AS n FROM ${K}.users WHERE org_id = ${orgId}::uuid AND user_type = 'external'`,
+      ),
+    ),
+  )
+  return Number(row?.n ?? 0)
+}
+
 async function loadOrg(orgId: string): Promise<{ id: string; name: string; slug: string }> {
   const K = drizzleSql.raw(schemaRef("kernel"))
   const [org] = await withSystemDb("org-export-org", async (tx) =>
@@ -467,6 +513,16 @@ export async function buildOrgArchive(
       deflate: true,
     })
 
+    const externalTables = new Set<string>(EXTERNAL_TABLES)
+    const external: OrgArchiveManifest["external"] = {
+      people: await countExternalPeople(orgId),
+      users: { file: "data/kernel.users.ndjson", where: "user_type = 'external'" },
+      tables: tableStats
+        .filter((t) => externalTables.has(`${t.schema}.${t.table}`))
+        .map((t) => ({ table: `${t.schema}.${t.table}`, file: t.file, rows: t.rows })),
+      note: "People outside the organization who sign in to its client portal. Their accounts are the kernel.users rows with user_type 'external'; their company, what is shared with them, their requests and the trail of what they did are in the tables listed. Link tokens, session tokens, second-factor secrets and their hashes are written as null.",
+    }
+
     const manifest: OrgArchiveManifest = {
       formatVersion: ORG_ARCHIVE_FORMAT_VERSION,
       org,
@@ -502,6 +558,10 @@ export async function buildOrgArchive(
       kept: Object.entries(KEPT_COLUMNS)
         .map(([column, why]) => ({ column, why }))
         .sort(byColumn),
+      withheld: [...Object.entries(WITHHELD_ROWS), ...Object.entries(PARTIAL_ROWS)]
+        .map(([table, w]) => ({ table, why: w.why }))
+        .sort((a, b) => a.table.localeCompare(b.table)),
+      external,
     }
     await writer.addEntry("manifest.json", `${JSON.stringify(manifest, null, 2)}\n`, {
       deflate: true,

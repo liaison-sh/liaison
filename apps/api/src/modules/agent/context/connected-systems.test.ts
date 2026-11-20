@@ -83,8 +83,10 @@ let ORG = ""
 let USER = ""
 let THREAD = ""
 
-const FULL = ["kernel", "tickets", "api-connector"]
-const READ_ONLY = ["kernel", "tickets", "api-connector:read"]
+// A whole app is spelled `app:*`: a bare word is a marker scope only its exact grant holds
+// (isExactOnlyScope), so the actor's `*` would floor a bare `api-connector` out of the turn.
+const FULL = ["kernel:*", "tickets:*", "api-connector:*"]
+const READ_ONLY = ["kernel:*", "tickets:*", "api-connector:read"]
 
 beforeAll(async () => {
   await acquireTestLock()
@@ -203,7 +205,7 @@ describe("the prompt names the connected systems outside a ticket view", () => {
   })
 
   it("without the connector's read scope nothing is said", async () => {
-    const text = await prompt(["kernel", "tickets"])
+    const text = await prompt(["kernel:*", "tickets:*"])
     expect(text).not.toContain("## Connected business systems")
   })
 })

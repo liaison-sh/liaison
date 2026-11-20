@@ -571,6 +571,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "src/tests/parallel-isolation.test.ts",
             "src/tests/permission-propagation.test.ts",
             "src/tests/permission-version-bump.test.ts",
+            "src/tests/route-test-lock.test.ts",
             "src/tests/route-test-setup-lock.test.ts",
             "src/tests/sandbox-integration.test.ts",
             "src/tests/sandbox-worker-integration.test.ts",
@@ -658,6 +659,21 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
           ]),
     ],
     cwd: path.join(ROOT, "apps/api"),
+  },
+  // The relation cells (apps/api/src/tests/relations/links.yaml): each link between objects
+  // against every event that can break it, generated per kept cell, plus the class functions
+  // and the schema guard. A gate runs it when a change touches a link's paths (test-map.ts).
+  relations: {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/tests/relations"]),
+    ],
+    cwd: path.join(ROOT, "apps/api"),
+    // Nested privileged acquisitions throw here too (see the unit suite).
+    env: { NESTED_PRIVILEGED_STRICT: "1" },
   },
   // P8-FX10: the tests that talk to a REAL third party over the network with a
   // REAL credential. `real-gitlab.live.test.ts` sat in src/apps, which the
@@ -869,6 +885,7 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             path.join(ROOT, "packages/app-ui"),
             path.join(ROOT, "packages/control-plane-contract"),
             path.join(ROOT, "packages/db-core"),
+            path.join(ROOT, "packages/evidence-check"),
             path.join(ROOT, "packages/host-sdk"),
             path.join(ROOT, "packages/sandbox-supervisor"),
           ]),
@@ -1785,6 +1802,18 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/gitlab"),
   },
+  // GitHub bundled-app oracles: the client's single method and pinned host, the
+  // tools' answers and refusals over a fake ctx.fetch, redaction, verify (src/test-ctx.ts).
+  "bundled-github": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/github.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/github"),
+  },
   // API connector bundled-app oracles: the tools, the settings screen and card
   // tools, provisioning and verify over a fake ctx.api, the manifest, and the
   // params form. No Postgres needed: ctx.api is the platform's (connections/api).
@@ -1895,6 +1924,72 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
           ]),
     ],
     cwd: path.join(ROOT, "bundled-apps/pennylane"),
+  },
+  // Agreements bundled-app oracles: manifest, checks, the one access writer, templates, the
+  // no-delete guard. Mock-driven (in-memory db double), no Postgres. Further files go in
+  // scripts/test-suites.d/bundled-agreements/.
+  "bundled-agreements": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter ? fileArg : ["src/manifest.test.ts", "src/agreements.test.ts"]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/agreements"),
+  },
+  // Stripe connector oracles: manifest, schema allow-list and the HTTP door.
+  // Mock-driven, no Postgres or credentials.
+  "bundled-stripe": {
+    cmd: [
+      "bun",
+      "test",
+      ...bailBun,
+      ...bunTestFlags,
+      ...(fileFilter
+        ? fileArg
+        : [
+            "src/manifest.test.ts",
+            "src/schema-guard.test.ts",
+            "src/http.test.ts",
+            "src/connection.test.ts",
+            "src/verify.test.ts",
+            "src/dispatch.test.ts",
+            "src/pan-scan.parity.test.ts",
+            "src/sync.test.ts",
+            "src/match.test.ts",
+            "src/link.test.ts",
+            "src/readers.test.ts",
+            "src/context.test.ts",
+            "src/activity.test.ts",
+            "src/mrr.test.ts",
+            "src/mrr-query.test.ts",
+            "src/money.test.ts",
+            "src/money-events.test.ts",
+            // A business buyer: per-line tax inclusivity and the VAT id from the tax ids (pure).
+            "src/money-events-company.test.ts",
+            "src/money-logs.test.ts",
+            "src/card-link.test.ts",
+            // A stand-in install (the demo's): its links, its hidden dashboard, its unset-able mark.
+            "src/standin.test.ts",
+            "src/send-state.test.ts",
+            // Every tool answer is masked: no address, tax id, card number or metadata (pure).
+            "src/results.test.ts",
+            // The MRR rules against a real Stripe sandbox: skips without its keys, and fails
+            // with none when LIAISON_STRIPE_ORACLE_REQUIRED=1 (the file's own gate).
+            "src/mrr-oracle.sandbox.test.ts",
+            "src/ui/StripeHome.test.tsx",
+            "src/ui/HomeStates.test.tsx",
+            "src/ui/StripeSidebar.test.tsx",
+            // Customers list and detail, refund cards, the contact and company panels.
+            "src/ui/CustomersList.test.tsx",
+            "src/ui/CustomerDetail.test.tsx",
+            "src/ui/RefundCards.test.tsx",
+            "src/ui/panels.test.tsx",
+            "src/ui/i18n.test.ts",
+          ]),
+    ],
+    cwd: path.join(ROOT, "bundled-apps/stripe"),
   },
   // Calls bundled-app oracles -- same orphan class. The DB-backed webhook
   // counterpart under apps/api stays in the `integration` suite, which is where
@@ -2098,6 +2193,20 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
     ],
     cwd: path.join(ROOT, "bundled-apps/monitoring"),
   },
+  // The agreements app's staff screens (`*.vitest.tsx`), same toolchain as
+  // `bundled-ads-ui` (see bundled-apps/agreements/vitest.config.ts).
+  "bundled-agreements-ui": {
+    cmd: [
+      path.join(ROOT, "packages/app-ui/node_modules/.bin/vitest"),
+      "run",
+      "--config",
+      "vitest.config.ts",
+      ...bailBun,
+      ...vitestTestFlags,
+      ...fileArg,
+    ],
+    cwd: path.join(ROOT, "bundled-apps/agreements"),
+  },
   // The Capacitor shell. Discovery is bun's own rather than a hand written
   // list: apps/mobile has no JSX of its own (it wraps apps/web's build), so
   // every test here is a plain bun file and a new one must not be able to land
@@ -2227,10 +2336,12 @@ if (suite === "full") {
     "bundled-social-ui",
     "bundled-boxtal-ui",
     "bundled-monitoring-ui",
+    "bundled-agreements-ui",
     "mailbox-crypto",
     "integration",
     "integration-extra",
     "integration-mocked",
+    "relations",
     "e2e-parallel",
     "cell",
     "web-unit",
@@ -2249,8 +2360,11 @@ if (suite === "full") {
     "bundled-database",
     "bundled-google-drive",
     "bundled-gitlab",
+    "bundled-github",
     "bundled-api-connector",
     "bundled-pennylane",
+    "bundled-agreements",
+    "bundled-stripe",
     "bundled-calls",
     "bundled-social",
     "bundled-freeze",

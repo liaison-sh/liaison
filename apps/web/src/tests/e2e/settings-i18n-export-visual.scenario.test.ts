@@ -27,6 +27,30 @@ import { grantTicketsScopes, seedTicket } from "./helpers/seed"
 // when this flag is set.
 const DIFF = { maxDiffPixelRatio: 0.02, animations: "disabled" as const }
 
+/**
+ * The Settings content is taller than the window, so an element screenshot has to scroll the
+ * tab's scroller first. Once, the scroller was back at 0 when the picture was taken while the
+ * clip was measured at the scrolled position: every line sat one top padding (32 px) low.
+ * Scroll the content's top to the scroller's top here, and wait until two frames agree, so the
+ * screenshot measures and paints the same position.
+ */
+async function alignSettingsTop(page: Page): Promise<void> {
+  await expect
+    .poll(
+      () =>
+        page.getByTestId("settings-content").evaluate(async (el) => {
+          el.scrollIntoView({ block: "start" })
+          const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
+          await frame()
+          const a = el.getBoundingClientRect().top
+          await frame()
+          return a === el.getBoundingClientRect().top ? a : -1
+        }),
+      { timeout: 10_000 },
+    )
+    .toBeGreaterThan(0)
+}
+
 async function switchLanguage(page: Page, language: "en" | "fr"): Promise<void> {
   const saved = page.waitForResponse(
     (r) => r.request().method() === "PUT" && r.url().endsWith("/api/user/preferences/language"),
@@ -70,6 +94,7 @@ async function settingsLanguageWalk(page: Page, env: Parameters<typeof loginAs>[
 
   // English baseline. Functional: heading is the English kernel string.
   await expect(page.getByTestId("settings-content").locator("h1").first()).toHaveText("Profile")
+  await alignSettingsTop(page)
   await expect(page.getByTestId("settings-content")).toHaveScreenshot(
     "phase13-settings-language-en.png",
     DIFF,
@@ -83,6 +108,7 @@ async function settingsLanguageWalk(page: Page, env: Parameters<typeof loginAs>[
     timeout: 10000,
   })
   await expect(page.getByTestId("settings-content")).toContainText("Langue")
+  await alignSettingsTop(page)
   await expect(page.getByTestId("settings-content")).toHaveScreenshot(
     "phase13-settings-language-fr.png",
     DIFF,

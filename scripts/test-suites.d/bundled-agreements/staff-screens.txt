@@ -1,0 +1,5 @@
+# The staff screens: their pure rules and their copy.
+src/ui/model.test.ts
+src/ui/i18n.test.ts
+src/ui/signing.test.ts
+src/ui/CompanyAgreementsPanel.test.ts

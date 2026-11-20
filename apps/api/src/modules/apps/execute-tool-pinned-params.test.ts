@@ -37,7 +37,7 @@ beforeAll(async () => {
   threadId = await minimal.thread(orgId, a.userId)
   await ensureAppsForOrg(orgId)
   await registerApiConnectorApp(orgId)
-  const register = (name: string, pin: boolean) => {
+  const register = (name: string, pin: boolean, handlerBuildsPin = false) => {
     toolRegistry.set([orgId, "kernel", name], {
       appName: "kernel",
       name,
@@ -46,6 +46,7 @@ beforeAll(async () => {
       gated: true,
       approvalImpact: "internal",
       pinnedParams: ["target"],
+      ...(handlerBuildsPin ? { pinnedOptionalOnRefs: true } : {}),
       params: z.object({ note: z.string(), target: z.string().optional() }),
       preflight: async () =>
         pin ? { ok: true, pinnedParams: { target: "server" } } : { ok: true },
@@ -59,6 +60,7 @@ beforeAll(async () => {
   }
   register("pin_probe", true)
   register("pin_probe_silent", false)
+  register("pin_probe_owned", true, true)
   // Editable fields registered before their tool (so the registration guard,
   // which reads the tool's pins, cannot see them): the payload edit path must
   // still refuse an edit that reaches a pinned key.
@@ -174,6 +176,52 @@ describe("pins hold on handler-parked approvals and payload edits", () => {
     const [{ n: after }] = await sql<Array<{ n: number }>>`
       SELECT count(*)::int AS n FROM kernel.approval_requests WHERE org_id = ${orgId}`
     expect(after).toBe(before)
+  })
+
+  it("a tool whose own handler builds its pin may be parked by that handler with the value it computed", async () => {
+    const res = await createHandlerApprovalRequest({
+      orgId,
+      requestedBy: admin.actorType === "user" ? admin.userId : "",
+      actorScopes: admin.scopes,
+      defaultAppName: "kernel",
+      threadId,
+      origin: "in-app-agent",
+      input: {
+        tool_name: "kernel:pin_probe_owned",
+        summary: "parked by its own handler",
+        current_payload: { note: "x", target: "computed" },
+      },
+    })
+    const [row] = await sql<Array<{ current_payload: Record<string, unknown> }>>`
+      SELECT current_payload FROM kernel.approval_requests WHERE id = ${res.approval_id}`
+    expect(row?.current_payload.target).toBe("computed")
+  })
+
+  it("the app that owns the tool re-pins its own pending request; nobody else edits the pin", async () => {
+    const res = await call("pin_probe_owned", { note: "a" })
+    const id = res.blocked?.approvalRequestId as string
+    expect(id).toBeDefined()
+    await expect(
+      updatePayload({
+        orgId,
+        requestId: id,
+        actor: admin,
+        fields: { target: "elsewhere" },
+        actingAgentId: null,
+      }),
+    ).rejects.toThrow(/set by the server/)
+    await updatePayload({
+      orgId,
+      requestId: id,
+      actor: admin,
+      fields: { target: "re-pinned" },
+      actingAgentId: null,
+      turnTaintScopes: [],
+      appRestage: { appName: "kernel" },
+    })
+    const [row] = await sql<Array<{ current_payload: Record<string, unknown> }>>`
+      SELECT current_payload FROM kernel.approval_requests WHERE id = ${id}`
+    expect(row?.current_payload.target).toBe("re-pinned")
   })
 
   it("a payload edit of a pinned key, or of a field under it, is refused", async () => {

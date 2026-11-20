@@ -251,6 +251,11 @@ async function provisionUsers(ctx: ProvisionContext, list: UserEntry[]): Promise
       )
     }
     if ("error" in outcome) {
+      if (outcome.error === "EMAIL_IS_PORTAL_USER") {
+        throw new Error(
+          `users: invite for '${u.email}' rejected (EMAIL_IS_PORTAL_USER — the address belongs to a client of the portal)`,
+        )
+      }
       if (outcome.error === "SCOPE_ESCALATION" || outcome.error === "DIMENSION_ESCALATION") {
         throw new Error(
           `users: invite for '${u.email}' rejected (${outcome.error} — actor lacks a scope or data grant the role '${u.role}' grants)`,

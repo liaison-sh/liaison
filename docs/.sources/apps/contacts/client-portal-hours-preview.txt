@@ -1,0 +1,3 @@
+What they see shows each project's hours line, through the portal's own reads -> apps/api/src/modules/portal/admin-routes.ts (portalAdminRoutes) ; apps/web/src/modules/contacts/CompanyPortalSection.tsx (PreviewBody)
+Hours open on its own lists the project, its page shows the hours and no steps -> apps/api/src/db/migrations/0343_portal_projects_hours_share.sql ; apps/api/src/modules/portal/routes.ts (portalRoutes) ; apps/web/src/modules/portal/Pages.tsx (ProjectPage)
+An agent's invitation of someone already invited or signed in is answered and stages nothing -> apps/api/src/modules/portal/tools.ts (portalInvitePreflight) ; apps/api/src/modules/portal/access.ts (portalInviteStagingRefusal, inviteRefusal)

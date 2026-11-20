@@ -14,6 +14,30 @@ const EVENT_PATTERN = "^[a-z_]+:[a-z_]+$"
 const SLOT_KEY_PATTERN = "^[a-z0-9-]+:[a-z0-9-]+(:[a-z0-9-]+)*$"
 const WEBHOOK_NAME_PATTERN = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
 const TOOL_DEPENDENCY_PATTERN = "^[a-z][a-z0-9_-]*:[a-zA-Z][a-zA-Z0-9_]*$"
+// A visible name: the text, and optionally the catalog key that follows the reader's language.
+const LABEL_SCHEMA = {
+  type: "object",
+  properties: {
+    label: { type: "string", minLength: 1 },
+    labelKey: { type: "string", minLength: 1 },
+  },
+  required: ["label"],
+} as const
+// One panel or action an app contributes to a slot. `visibility_scope` hides it from people
+// without the scope, `order` sorts it, `group` is a label key for a host that sections its panels.
+const SLOT_CONTRIBUTION_SCHEMA = {
+  type: "object",
+  properties: {
+    id: { type: "string", minLength: 1 },
+    label: { type: "string" },
+    labelKey: { type: "string" },
+    component: { type: "string" },
+    visibility_scope: { type: "string", minLength: 1 },
+    order: { type: "integer" },
+    group: { type: "string", minLength: 1 },
+    feature: { type: "string", minLength: 1 },
+  },
+} as const
 const SCOPE_PATTERN = "^[a-z][a-z0-9_-]*:[a-zA-Z0-9_:-]+$"
 
 // Partial-index / partial-unique WHERE clauses are interpolated verbatim into
@@ -243,6 +267,21 @@ const credentialFieldSchema = {
     // (GET /api/connections/:id/settings). Default false: a field is
     // readable only when the manifest says it holds no secret.
     readable: { type: "boolean" },
+    // A value that must never be kept in this field (another kind of secret
+    // pasted by mistake, e.g. a full secret key where a restricted one is
+    // asked): refused before anything is encrypted or stored, and the person
+    // reads `message` (or the catalog's `messageKey`). Never echoes the value.
+    refusePattern: {
+      type: "object",
+      properties: {
+        pattern: { type: "string", minLength: 1 },
+        code: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        message: { type: "string", minLength: 1 },
+        messageKey: { type: "string", minLength: 1 },
+      },
+      required: ["pattern", "code", "message"],
+      additionalProperties: false,
+    },
   },
   required: ["name", "label", "type"],
 }
@@ -350,6 +389,10 @@ const connectionSchema = {
     refreshUsesAccessToken: { type: "boolean" },
     refreshWindowMs: { type: "number" },
     credentialFields: { type: "array", items: credentialFieldSchema },
+    // Credentials only: a read-only tool of the app run with the candidate key
+    // before it is stored; its refusal stops the save, so the stored key stays
+    // (connections/precheck.ts).
+    checkBeforeStore: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
     // A SQL database the platform holds the connection to (`ctx.sql.*`,
     // connections/sql/service.ts). Credentials only: `connectionString` (direct
     // Postgres or Redshift, optional `dialect`, `statementTimeoutMs`) or
@@ -637,6 +680,12 @@ const toolSchema = {
     instructions: { type: "string" },
     taintSource: { type: "boolean" },
     externalEffect: { type: "boolean" },
+    // First-party only (contract.ts, FIRST_PARTY_ONLY_TOOL_KEYS). Where a call may run, checked from
+    // its own run frame and refused there, never parked (execute-tool.ts): `humanTurnOnly` only on
+    // a person's own turn (a chat turn, the app, their own MCP client), never from a routine, a
+    // sub-run or a job; `dmOnly` for an agent only in its DM with the person, never a shared thread.
+    humanTurnOnly: { type: "boolean" },
+    dmOnly: { type: "boolean" },
     retryOnTransientDbError: { type: "boolean" },
     // Sandbox execution budget for one run of this tool handler (mirrors the
     // jobs-level timeoutMs). For read tools that fan out many cross-app calls
@@ -650,8 +699,102 @@ const toolSchema = {
     // contract) instead of per-call bridge transactions. See runtime.ts
     // (~line 1128) and executeToolHandler in execute-tool.ts.
     atomic: { type: "boolean" },
-    approvalCard: { type: "object" },
+    // The tool's approved run gets a session (one short transaction per bridge call), as its
+    // direct call does, instead of one transaction for the whole run: what it commits is seen
+    // at once by the other apps it calls next. See app-registries.ts.
+    ownsTransactions: { type: "boolean" },
+    approvalCard: { type: "object", properties: { pill: LABEL_SCHEMA } },
+    // Shape only here; the deep rules for a result card arrive with the card resolver.
+    resultCard: { type: "object" },
+    // The line shown while the tool runs ("Reading subscriptions"), and its catalog key.
+    runningLabel: { type: "string", minLength: 1 },
+    runningLabelKey: { type: "string", minLength: 1 },
+    // The tool's handler owns its pinned values: a call that chains `@ref` tokens stages
+    // unpinned and the handler builds the value at execute, and the app's own handler may park
+    // the tool's request with the value it computed (ctx.requestApproval). Needs `pinnedParams`
+    // (checked by the `then` below).
+    pinnedOptionalOnRefs: { type: "boolean" },
+    // First-party only (the runtime copies them for a vouched app alone): what the tool writes
+    // is read only by the person writing it, and the params through which a call carries the turn.
+    sinkReadersSelf: { type: "boolean" },
+    contentParams: { type: "array", items: { type: "string", minLength: 1 } },
+    // Names a feature the app declares under top-level `features`.
+    feature: { type: "string", minLength: 1 },
+    // Loaded with the app on a hard focus: always (`true`), or when the focus verified that
+    // entity type (a string).
+    focusCore: { oneOf: [{ type: "boolean" }, { type: "string", minLength: 1 }] },
+    // Narrows `taintSource` to the rows that match: a field of the row read and the value
+    // that makes it outside text.
+    taintSourceWhen: {
+      type: "object",
+      properties: {
+        field: { type: "string", minLength: 1 },
+        equals: { type: ["string", "number", "boolean"] },
+      },
+      required: ["field", "equals"],
+      additionalProperties: false,
+    },
+    // A read whose result may carry a part classified by a narrower read scope than the tool's
+    // own: a successful result holding one of `fields` (not null, at any depth) adds `scopes` to
+    // the turn's scope taint, so a later write is judged against them too (execute-tool.ts).
+    resultTaintWhen: {
+      type: "object",
+      properties: {
+        fields: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          minItems: 1,
+          maxItems: 8,
+          uniqueItems: true,
+        },
+        scopes: {
+          type: "array",
+          items: { type: "string", minLength: 1 },
+          minItems: 1,
+          maxItems: 4,
+          uniqueItems: true,
+        },
+      },
+      required: ["fields", "scopes"],
+      additionalProperties: false,
+    },
+    // A read that may return a row closed to the organization (`org_access = 'none'`): after a
+    // successful call the kernel looks up the org access of every id at `idPath` (dot path,
+    // `[]` for each element of an array: `items[].id`) and stamps the turn with
+    // `restricted:<app>.<entity>:<id>` for each restricted one (execute-tool.ts). Neither the
+    // handler nor the model decides.
+    restrictedRows: {
+      type: "object",
+      properties: {
+        entity: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+        idPath: {
+          type: "string",
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
+        },
+        // Where the record's id sits in the call's params, for a write whose result names the
+        // record without its id: the same lookup runs over those ids.
+        paramPath: {
+          type: "string",
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*(\\[\\])?(\\.[A-Za-z_][A-Za-z0-9_]*(\\[\\])?)*$",
+        },
+      },
+      required: ["entity"],
+      anyOf: [{ required: ["idPath"] }, { required: ["paramPath"] }],
+      additionalProperties: false,
+    },
+    // On a tool with `agentVisible: false`: the visible tool of the same app to use instead.
+    useInstead: { type: "string", minLength: 1 },
     approvalExpiryHours: { type: "integer", minimum: 1, maximum: 720 },
+    // The tools of the same app that change what this tool's approval carries, when the approval
+    // itself takes no edit (a month-end run card is changed through its drafts). An edit refused
+    // on its approval names them (approvals/edit.ts). app-registries.ts `editWith`.
+    editWith: {
+      type: "array",
+      items: { type: "string", minLength: 1, pattern: "^[a-z][a-z0-9_]*$" },
+      minItems: 1,
+      maxItems: 8,
+      uniqueItems: true,
+    },
     // Opt-in idempotency for a GATED tool: names a single param whose value
     // uniquely identifies the action being staged (e.g. boxtal:create_shipment's
     // `draft_id`). When set, staging a second approval for the SAME (org, tool,
@@ -754,6 +897,7 @@ const toolSchema = {
             enum: [
               "text",
               "richtext",
+              "number",
               "checkbox",
               "checkbox-per-line",
               "key-value-list",
@@ -761,6 +905,9 @@ const toolSchema = {
             ],
           },
           listSource: { type: "string" },
+          // The unit a person reads when the param is stored in another: `hours` over an
+          // integer of minutes, `money` over minor units by the payload's `currency`.
+          unit: { type: "string", enum: ["hours", "money"] },
           // Derived payload keys blanked when this field is edited (e.g. a
           // pre-rendered `htmlBody` derived from `textBody`) so the executed
           // handler regenerates them from the edited value instead of sending
@@ -786,6 +933,9 @@ const toolSchema = {
   required: ["description", "handler", "requiredScopes"],
   // The retired single `scope` key; validateAppManifest names it before this runs.
   not: { required: ["scope"] },
+  if: { required: ["pinnedOptionalOnRefs"] },
+  // biome-ignore lint/suspicious/noThenProperty: JSON Schema conditional keyword.
+  then: { required: ["pinnedParams"] },
 }
 
 export const appManifestJsonSchema = {
@@ -795,6 +945,104 @@ export const appManifestJsonSchema = {
     version: { type: "string", pattern: SEMVER_PATTERN },
     rlsManagedBy: { type: "string", enum: ["migration"] },
     description: { type: "string" },
+    // Tools that add a short block about the entity in view to the agent's context.
+    contextProviders: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          on: { type: "array", items: { type: "string", minLength: 1 }, minItems: 1 },
+          tool: { type: "string", minLength: 1 },
+          scope: { type: "string", minLength: 1 },
+          loadTools: { type: "array", items: { type: "string", minLength: 1 } },
+        },
+        required: ["on", "tool", "scope"],
+        additionalProperties: false,
+      },
+    },
+    // Per kind of outbound message, the read-only tool that can stop it before it leaves.
+    sendGuardProviders: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        properties: {
+          tool: { type: "string", minLength: 1 },
+          serviceMessage: { type: "boolean" },
+          pill: LABEL_SCHEMA,
+        },
+        required: ["tool"],
+        additionalProperties: false,
+      },
+    },
+    // Read-only tools that give a company's or a contact's timeline its rows, one per source.
+    activitySources: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          tool: { type: "string", minLength: 1 },
+          scope: { type: "string", minLength: 1 },
+          label: { type: "string", minLength: 1 },
+          labelKey: { type: "string", minLength: 1 },
+          filterKey: { type: "string", pattern: "^[a-z][a-z0-9_-]*$" },
+        },
+        required: ["tool", "scope", "label", "filterKey"],
+        additionalProperties: false,
+      },
+    },
+    // Per-org switchable features; a tool, slot panel or tab type names one with `feature`.
+    features: {
+      type: "object",
+      additionalProperties: {
+        type: "object",
+        properties: {
+          adminScope: { type: "string", minLength: 1 },
+          labelKey: { type: "string", minLength: 1 },
+          offMessageKey: { type: "string", minLength: 1 },
+          offNextKey: { type: "string", minLength: 1 },
+        },
+        required: ["adminScope", "labelKey"],
+        additionalProperties: false,
+      },
+    },
+    // The kernel's legal starter document templates this app's users get while it is on; the
+    // corporate ones only while the named feature is on (modules/documents/legal-templates).
+    legalStarterTemplates: {
+      type: "object",
+      properties: { corporateFeature: { type: "string", minLength: 1 } },
+      additionalProperties: false,
+    },
+    // Fields of this app's data that a person outside the org can set.
+    outsideTextFields: {
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      uniqueItems: true,
+    },
+    // Entity type to the read-only tool that says who an approval for it is for.
+    approvalRoute: { type: "object", additionalProperties: { type: "string", minLength: 1 } },
+    // What a person outside the org may sign, accept or approve through a client action: the
+    // record type, the decisions it takes, and the app's internal read tool that shows it.
+    clientActionTargets: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          type: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+          kinds: {
+            type: "array",
+            items: { type: "string", enum: ["sign", "accept", "approve"] },
+            minItems: 1,
+            uniqueItems: true,
+          },
+          viewTool: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
+          // "app": links to this target are made only by the app's own send (its checks run
+          // first); the kernel's generic client action tool refuses it.
+          mintedBy: { type: "string", enum: ["app", "any"] },
+        },
+        required: ["type", "kinds", "viewTool"],
+        additionalProperties: false,
+      },
+    },
     agentInstructions: {
       oneOf: [
         { type: "string" },
@@ -936,6 +1184,41 @@ export const appManifestJsonSchema = {
             },
             additionalProperties: false,
           },
+          // Who-can-see RLS restriction for documents a person can close to the org. Every
+          // generated policy gains an AND-condition: the row's root record has
+          // `org_access <> 'none'`, or the reading user is on the root's list. No grant
+          // satisfies it, `*` included; system contexts (no user) keep their access. Self
+          // form: { list: { table, column } } (the table holds `org_access`; `list.table` holds
+          // one row per named person, `user_id`, pointing back by `list.column`; a row whose
+          // `removed_at` is set no longer counts). Via form:
+          // { via: { table, localColumn } }, one hop to another sharedRows table, which may
+          // itself be a via table. The checks run in SECURITY DEFINER helpers, so the policy
+          // never joins back through a table's own RLS (no recursion, no fail-open).
+          sharedRows: {
+            type: "object",
+            properties: {
+              via: {
+                type: "object",
+                properties: {
+                  table: { type: "string", minLength: 1 },
+                  localColumn: { type: "string", minLength: 1 },
+                },
+                required: ["table", "localColumn"],
+                additionalProperties: false,
+              },
+              list: {
+                type: "object",
+                properties: {
+                  table: { type: "string", minLength: 1 },
+                  column: { type: "string", minLength: 1 },
+                },
+                required: ["table", "column"],
+                additionalProperties: false,
+              },
+            },
+            oneOf: [{ required: ["via"] }, { required: ["list"] }],
+            additionalProperties: false,
+          },
           dimensions: { type: "object", additionalProperties: dimensionDefSchema },
           triggers: triggerDefSchema,
           // Legal records: rows are write-once and neither they nor their files can be deleted
@@ -951,6 +1234,8 @@ export const appManifestJsonSchema = {
                 minItems: 1,
                 items: { type: "string", pattern: "^[a-z_][a-z0-9_]*$" },
               },
+              // No UPDATE at all: a column recorded empty stays empty.
+              insertOnly: { type: "boolean" },
             },
             required: ["retentionYears"],
             additionalProperties: false,
@@ -1086,6 +1371,10 @@ export const appManifestJsonSchema = {
             // Which orgs a scheduled run is for: { everyOrg } | { connection?, rows? }
             // (infra/jobs/fanout-runs-for.ts, which validates its shape).
             runsFor: { type: "object" },
+            // An event of the app's own (`entity:action`, declared in its emits) the kernel
+            // queues once when an app day cap holds a scheduled tick of this job, with
+            // `{job, until, resolved: false}`, so the hold is told rather than silent.
+            heldEvent: { type: "string", pattern: "^[a-z][a-z0-9_]*:[a-z][a-z0-9_]*$" },
             retry: {
               type: "object",
               properties: {
@@ -1201,6 +1490,9 @@ export const appManifestJsonSchema = {
           handlePrefix: { type: "string" },
           searchable: { type: "boolean" },
           mentionable: { type: "boolean" },
+          // One conversation per row, with visibility derived from the row. Needs a label
+          // field and a page.
+          discussion: { type: "boolean" },
           tableName: { type: "string" },
           readScope: { type: "string" },
           cardComponent: { type: "string" },
@@ -1451,11 +1743,16 @@ export const appManifestJsonSchema = {
           items: { type: "string", pattern: "^[a-z][a-z0-9_]*$" },
           uniqueItems: true,
         },
+        // The heading over this app's attention items.
+        groupLabel: LABEL_SCHEMA,
         translations: {
           type: "array",
           items: {
             type: "object",
             properties: {
+              // The words for the item, and their catalog key.
+              label: { type: "string", minLength: 1 },
+              labelKey: { type: "string", minLength: 1 },
               event: { type: "string", pattern: EVENT_PATTERN },
               // Phase 16 Task A3 — `kind` is either a core enum entry or an
               // `<appName>:<dotted.kind>` form (the app-namespaced extension).
@@ -1654,6 +1951,9 @@ export const appManifestJsonSchema = {
           },
           kind: { type: "string", enum: ["playbook", "guide"] },
           enabledByDefault: { type: "boolean" },
+          // A feature the app declares under top-level `features`: an org with it off
+          // is shown no listing of the skill and cannot read it.
+          feature: { type: "string", minLength: 1 },
           // Author-declared trigger vocabulary, same shape + normalization as
           // `kernel.skills.auto_attach` (DB skills). Optional: a skill that
           // declares nothing behaves exactly as before. See
@@ -1696,6 +1996,8 @@ export const appManifestJsonSchema = {
         type: "object",
         properties: {
           description: { type: "string", minLength: 1, maxLength: 200 },
+          // The name people read ("Scope check"); the template key stays the identifier.
+          title: { type: "string", minLength: 1, maxLength: 80 },
           kind: { type: "string", enum: ["recurring", "scheduled", "event"] },
           cron: { type: "string" },
           timezone: { type: "string" },
@@ -1708,6 +2010,8 @@ export const appManifestJsonSchema = {
           promptTemplate: { type: "string", minLength: 1 },
           scopes: { type: "array", items: { type: "string" } },
           enabledByDefault: { type: "boolean" },
+          // Copied to the routine when the template is enabled.
+          followUp: { type: "boolean" },
           // A flow template and its event filter (0303), with `{{projectId}}` and
           // `{{status:<label>}}` placeholders; checked against the flow schema once filled.
           flow: { type: "object" },
@@ -1884,6 +2188,7 @@ export const appManifestJsonSchema = {
               preserveSubRoutes: { type: "boolean" },
               referenceable: { type: "boolean" },
               resolveLabel: { type: "string" },
+              feature: { type: "string", minLength: 1 },
               // The entity this tab's id names, when the tab is not named for it:
               // `document`, or `kernel:contact` for another app's. It is how a turn
               // sent from the tab learns which record is open.
@@ -1902,6 +2207,7 @@ export const appManifestJsonSchema = {
               properties: {
                 handler: { type: "string" },
                 scope: { type: "string" },
+                passesOn: { type: "boolean" },
               },
               required: ["handler"],
               additionalProperties: false,
@@ -2061,9 +2367,13 @@ export const appManifestJsonSchema = {
         [SLOT_KEY_PATTERN]: {
           type: "object",
           properties: {
-            position: { type: "string", enum: ["tabs", "toolbar", "menu", "sidebar"] },
+            // A host declaring where its slot sits.
+            position: { type: "string", enum: ["tabs", "toolbar", "menu", "sidebar", "sections"] },
+            // An app contributing to a slot.
+            panels: { type: "array", items: SLOT_CONTRIBUTION_SCHEMA },
+            actions: { type: "array", items: SLOT_CONTRIBUTION_SCHEMA },
           },
-          required: ["position"],
+          anyOf: [{ required: ["position"] }, { required: ["panels"] }, { required: ["actions"] }],
         },
       },
     },
@@ -2071,7 +2381,16 @@ export const appManifestJsonSchema = {
       type: "object",
       additionalProperties: {
         type: "object",
-        properties: { label: { type: "string" }, component: { type: "string" } },
+        properties: {
+          label: { type: "string" },
+          component: { type: "string" },
+          visibility_scope: { type: "string", minLength: 1 },
+          order: { type: "integer" },
+          group: { type: "string", minLength: 1 },
+          feature: { type: "string", minLength: 1 },
+          // On `approval:detail:panel`: the one tool whose approval card shows it.
+          for_tool: { type: "string", pattern: "^[a-z][a-z0-9_-]*:[a-z][a-z0-9_]*$" },
+        },
         required: ["label", "component"],
       },
     },
@@ -2087,6 +2406,13 @@ export const appManifestJsonSchema = {
           selectionParam: { type: "string" },
           sharedFields: { type: "array", items: { type: "string" } },
           agentTool: { type: "string" },
+          // The derived agent tool's search words, as a tool's own `searchKeywords`;
+          // a grouped agent tool answers to the words of each of its actions.
+          searchKeywords: {
+            type: "array",
+            items: { type: "string", minLength: 1, maxLength: 40, pattern: "^\\S+$" },
+            maxItems: 30,
+          },
           icon: { type: "string" },
           customForm: { type: "string" },
           minSelection: { type: "integer", minimum: 1 },

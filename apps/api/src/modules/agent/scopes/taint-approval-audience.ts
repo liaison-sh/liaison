@@ -24,19 +24,79 @@ import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import { resolveRoomFloor } from "~/modules/agent/scopes/room-floor"
+import { isScopeCovered } from "~/modules/agent/scopes/scope-coverage"
 import { UNKNOWN_TURN_TAINT } from "~/modules/agent/scopes/scope-taint"
 import { readerScopesOf } from "~/modules/agent/scopes/taint-read-scopes"
 import { appScopeAliasProviders } from "~/modules/apps/runtime-helpers"
 import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { isRestrictedScope } from "~/modules/permissions/restricted-scope"
 import { SHAREABLE_RESOURCES } from "~/modules/sharing/service"
 
-/** True when `grants` cover every scope in `taintScopes` (hierarchical `hasScope` matching). */
+/**
+ * The lists behind the restricted scopes of a taint (`restricted:<app>.<entity>:<id>`): the ids
+ * of the people who may read that record, or null when the record is no longer restricted (the
+ * scope then asks nothing of anyone). A record that cannot be found has an empty list.
+ */
+export type RestrictedLists = ReadonlyMap<string, ReadonlySet<string> | null>
+
+/** Who is judged, for the restricted scopes of a taint: their id and the resolved lists. */
+export interface RestrictedReader {
+  userId: string
+  lists: RestrictedLists
+}
+
+const NO_LISTS: RestrictedLists = new Map()
+
+/**
+ * Reads the list of each restricted scope in `taintScopes` through the one SECURITY DEFINER
+ * function (`kernel.restricted_readers`). No restricted scope, no query. A failed lookup throws:
+ * every caller judges inside its own fail-closed catch.
+ */
+export async function restrictedListsFor(
+  orgId: string,
+  taintScopes: readonly string[],
+): Promise<RestrictedLists> {
+  const wanted = [...new Set(taintScopes.filter(isRestrictedScope))]
+  if (wanted.length === 0) return NO_LISTS
+  return withPrivilegedDb(orgId, "restricted-scope-lists", async (db) => {
+    const out = new Map<string, ReadonlySet<string> | null>()
+    for (const scope of wanted) {
+      const rows = extractRows<{ readers: string[] | null }>(
+        await db.execute(
+          sql`SELECT ${sql.raw(quoteIdent(schemaRef("kernel")))}.restricted_readers(${orgId}::uuid, ${scope}) AS readers`,
+        ),
+      )
+      const readers = rows[0]?.readers
+      out.set(scope, readers == null ? null : new Set(readers.map(String)))
+    }
+    return out
+  })
+}
+
+/** Is `scope`, a restricted record's scope, held by this reader? Only through the list. */
+function onRestrictedList(scope: string, reader: RestrictedReader | undefined): boolean {
+  if (!reader?.userId) return false
+  if (!reader.lists.has(scope)) return false
+  const list = reader.lists.get(scope)
+  return list === null || (list?.has(reader.userId) ?? false)
+}
+
+/**
+ * True when `grants` cover every scope in `taintScopes`, by the agent-side coverage rule
+ * (`isScopeCovered`: `*`, `:*` globs and parents, but an exact-only scope only by its exact
+ * grant, as row security checks it). A restricted record's scope is covered by no grant, `*`
+ * included: only by the reader's place on that record's list (`reader`, resolved by
+ * `restrictedListsFor`). Without a reader it is never held.
+ */
 export function holdsEveryScope(
   grants: readonly string[],
   taintScopes: readonly string[],
+  reader?: RestrictedReader,
 ): boolean {
   const granted = [...grants]
-  return taintScopes.every((scope) => hasScope(scope, granted))
+  return taintScopes.every((scope) =>
+    isRestrictedScope(scope) ? onRestrictedList(scope, reader) : isScopeCovered([scope], granted),
+  )
 }
 
 /**
@@ -48,10 +108,13 @@ export type TaintAudienceGap = { missingScopes: string[]; lacking: number | null
 
 const UNCOUNTED_GAP: TaintAudienceGap = { missingScopes: [], lacking: null }
 
-/** The taint scopes `grants` do not cover. */
-function missingFrom(grants: readonly string[], taintScopes: readonly string[]): string[] {
-  const granted = [...grants]
-  return taintScopes.filter((scope) => !hasScope(scope, granted))
+/** The taint scopes `grants` (and, for restricted ones, the reader's list places) do not cover. */
+function missingFrom(
+  grants: readonly string[],
+  taintScopes: readonly string[],
+  reader?: RestrictedReader,
+): string[] {
+  return taintScopes.filter((scope) => !holdsEveryScope(grants, [scope], reader))
 }
 
 /** Accumulates the people lacking scopes into one gap (null while nobody lacks any). */
@@ -59,8 +122,12 @@ function gapCollector() {
   const missing = new Set<string>()
   let lacking = 0
   return {
-    add(grants: readonly string[], taintScopes: readonly string[]): void {
-      const lacks = missingFrom(grants, taintScopes)
+    add(
+      grants: readonly string[],
+      taintScopes: readonly string[],
+      reader?: RestrictedReader,
+    ): void {
+      const lacks = missingFrom(grants, taintScopes, reader)
       if (lacks.length === 0) return
       lacking += 1
       for (const scope of lacks) missing.add(scope)
@@ -94,7 +161,16 @@ export async function taintApprovalAudienceGapDetail(opts: {
       // Keep the turn's scopes: the stricter answer.
     }
   }
-  const requesterMissing = missingFrom(requesterScopes, opts.taintScopes)
+  let lists: RestrictedLists
+  try {
+    lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
+  } catch {
+    return { audience: "requester", ...UNCOUNTED_GAP }
+  }
+  const requesterMissing = missingFrom(requesterScopes, opts.taintScopes, {
+    userId: opts.requesterUserId,
+    lists,
+  })
   if (requesterMissing.length > 0) {
     return { audience: "requester", missingScopes: requesterMissing, lacking: 1 }
   }
@@ -106,7 +182,9 @@ export async function taintApprovalAudienceGapDetail(opts: {
     )
     if (floor.kind === "routine_tick") return null
     const collector = gapCollector()
-    for (const grants of floor.memberGrants) collector.add(grants, opts.taintScopes)
+    floor.memberGrants.forEach((grants, i) => {
+      collector.add(grants, opts.taintScopes, { userId: floor.memberIds[i] ?? "", lists })
+    })
     const gap = collector.gap()
     return gap ? { audience: "member", ...gap } : null
   } catch {
@@ -160,13 +238,14 @@ export async function readersTaintGap(opts: {
       const members = await db
         .select({ id: users.id })
         .from(users)
-        .where(eq(users.orgId, opts.orgId))
+        .where(and(eq(users.orgId, opts.orgId), eq(users.userType, "member")))
+      const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
       const collector = gapCollector()
       for (const member of members) {
         const { scopes } = await loadEffectivePermissions(db, member.id, opts.orgId)
         const asTheAppSeesThem = alias ? alias([...scopes]) : scopes
         const reads = opts.readerScopes.some((scope) => hasScope(scope, asTheAppSeesThem))
-        if (reads) collector.add(scopes, opts.taintScopes)
+        if (reads) collector.add(scopes, opts.taintScopes, { userId: member.id, lists })
       }
       return collector.gap()
     })
@@ -189,8 +268,9 @@ export async function selfReaderTaintGap(opts: {
   try {
     const [member] = await loadOrgMemberGrants(opts.orgId, { userIds: [opts.userId] })
     if (!member) return UNCOUNTED_GAP
+    const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
     const collector = gapCollector()
-    collector.add(member.scopes, opts.taintScopes)
+    collector.add(member.scopes, opts.taintScopes, { userId: opts.userId, lists })
     return collector.gap()
   } catch {
     return UNCOUNTED_GAP
@@ -239,8 +319,10 @@ export async function conversationReadersTaintGap(opts: {
     if (readerIds.length === 0) return null
     const members = await loadOrgMemberGrants(opts.orgId, { userIds: readerIds })
     if (members.length !== readerIds.length) return UNCOUNTED_GAP
+    const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
     const collector = gapCollector()
-    for (const member of members) collector.add(member.scopes, opts.taintScopes)
+    for (const member of members)
+      collector.add(member.scopes, opts.taintScopes, { userId: member.id, lists })
     return collector.gap()
   } catch {
     return UNCOUNTED_GAP
@@ -268,8 +350,10 @@ export async function resourceReadersTaintGap(opts: {
       readers === "everyone"
         ? await loadOrgMemberGrants(opts.orgId)
         : await loadOrgMemberGrants(opts.orgId, { userIds: readers })
+    const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
     const collector = gapCollector()
-    for (const member of members) collector.add(member.scopes, opts.taintScopes)
+    for (const member of members)
+      collector.add(member.scopes, opts.taintScopes, { userId: member.id, lists })
     return collector.gap()
   } catch {
     return UNCOUNTED_GAP
@@ -449,8 +533,10 @@ export async function peopleTaintGap(opts: {
   try {
     const members = await loadOrgMemberGrants(opts.orgId, { userIds: ids })
     if (members.length !== ids.length) return UNCOUNTED_GAP
+    const lists = await restrictedListsFor(opts.orgId, opts.taintScopes)
     const collector = gapCollector()
-    for (const member of members) collector.add(member.scopes, opts.taintScopes)
+    for (const member of members)
+      collector.add(member.scopes, opts.taintScopes, { userId: member.id, lists })
     return collector.gap()
   } catch {
     return UNCOUNTED_GAP
@@ -467,7 +553,7 @@ export async function loadOrgMemberGrants(
   opts: { userIds?: readonly string[] } = {},
 ): Promise<{ id: string; scopes: string[] }[]> {
   return withPrivilegedDb(orgId, "scope-taint-org-member-grants", async (db) => {
-    const conditions = [eq(users.orgId, orgId)]
+    const conditions = [eq(users.orgId, orgId), eq(users.userType, "member")]
     if (opts.userIds) {
       if (opts.userIds.length === 0) return []
       conditions.push(inArray(users.id, [...opts.userIds]))

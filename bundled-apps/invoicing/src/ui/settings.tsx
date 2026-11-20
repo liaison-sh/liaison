@@ -32,6 +32,13 @@ export interface IssuerProfileDraft {
   vat_id?: string | null
   tax_registration_id?: string | null
   address?: string | null
+  /** The company's SIREN and structured address: a French e-invoice states them. */
+  siren?: string | null
+  address_line1?: string | null
+  address_line2?: string | null
+  postcode?: string | null
+  city?: string | null
+  country_code?: string | null
   iban?: string | null
   swift_bic?: string | null
   bank_name?: string | null
@@ -47,6 +54,8 @@ export interface IssuerProfileDraft {
   po_approval_threshold_minor?: string | null
   require_two_eyes?: boolean
   auto_email_enabled?: boolean
+  /** The mailbox documents are emailed from (a mail account id); null when none is chosen. */
+  mail_account_id?: string | null
   /** Typed unit prices are gross (tax included). Mirrors the Shopify shop's
    *  "include tax in prices" setting for a profile mapped to a shop. */
   prices_include_tax?: boolean
@@ -124,6 +133,12 @@ const ISSUER_SAVE_FIELDS = [
   "timezone",
   "email_templates",
   "shopify_shop_id",
+  "siren",
+  "address_line1",
+  "address_line2",
+  "postcode",
+  "city",
+  "country_code",
 ] as const
 
 export function pickIssuerSaveFields(row: Record<string, unknown>): Record<string, unknown> {
@@ -272,8 +287,26 @@ async function loadIssuers(): Promise<IssuerProfileRow[]> {
 // ─────────────────────────────────────────────────────────────────────────
 // Component.
 // ─────────────────────────────────────────────────────────────────────────
+/** A mailbox the person can see, as the mail app lists it. */
+interface MailboxOption {
+  id: string
+  emailAddress?: string | null
+  displayName?: string | null
+}
+
+/** The mailboxes the person may choose to send documents from: the ones mail lets them see. */
+async function loadMailboxes(): Promise<MailboxOption[]> {
+  try {
+    const list = await hostFetch<MailboxOption[]>("/api/mail/accounts")
+    return Array.isArray(list) ? list.filter((m) => typeof m?.id === "string") : []
+  } catch {
+    return []
+  }
+}
+
 export const InvoicingIssuerProfiles: Component = () => {
   const [issuers, { refetch: refetchIssuers }] = app.createResource(loadIssuers)
+  const [mailboxes] = createResource(loadMailboxes)
 
   const [editing, setEditing] = createSignal<IssuerProfileDraft | null>(null)
   const [logoError, setLogoError] = createSignal<string | null>(null)
@@ -436,6 +469,69 @@ export const InvoicingIssuerProfiles: Component = () => {
                     />
                   </label>
                   <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("SIREN")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-siren"
+                      value={d().siren ?? ""}
+                      placeholder={tr("9 digits")}
+                      onInput={(e) => setEditing({ ...d(), siren: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Street address")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-address_line1"
+                      value={d().address_line1 ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), address_line1: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Address line 2")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-address_line2"
+                      value={d().address_line2 ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), address_line2: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Postcode")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-postcode"
+                      value={d().postcode ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), postcode: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("City")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-city"
+                      value={d().city ?? ""}
+                      onInput={(e) => setEditing({ ...d(), city: e.currentTarget.value || null })}
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Address country")}</span>
+                    <input
+                      data-testid="settings-issuer-profile-field-country_code"
+                      value={d().country_code ?? ""}
+                      onInput={(e) =>
+                        setEditing({ ...d(), country_code: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    />
+                  </label>
+                  <label class="flex items-center gap-2">
                     <span class="w-32 text-text-tertiary">{tr("IBAN")}</span>
                     <input
                       data-testid="settings-issuer-profile-field-iban"
@@ -495,6 +591,38 @@ export const InvoicingIssuerProfiles: Component = () => {
                       <option value="en">{tr("en")}</option>
                       <option value="fr">{tr("fr")}</option>
                       <option value="de">{tr("de")}</option>
+                    </select>
+                  </label>
+                  <label class="col-span-2 flex items-center gap-2">
+                    <span class="w-32 text-text-tertiary">{tr("Send invoices from")}</span>
+                    <select
+                      data-testid="settings-issuer-profile-field-mail_account_id"
+                      value={d().mail_account_id ?? ""}
+                      onChange={(e) =>
+                        setEditing({ ...d(), mail_account_id: e.currentTarget.value || null })
+                      }
+                      class={cx(inputClass, "flex-1 [color-scheme:dark]")}
+                    >
+                      <option value="">{tr("No mailbox chosen")}</option>
+                      <Show
+                        when={
+                          d().mail_account_id &&
+                          !(mailboxes() ?? []).some((m) => m.id === d().mail_account_id)
+                        }
+                      >
+                        <option value={d().mail_account_id ?? ""}>
+                          {tr("A mailbox you cannot see")}
+                        </option>
+                      </Show>
+                      <For each={mailboxes() ?? []}>
+                        {(m) => (
+                          <option value={m.id}>
+                            {m.displayName && m.emailAddress
+                              ? `${m.displayName} <${m.emailAddress}>`
+                              : (m.emailAddress ?? m.displayName ?? m.id)}
+                          </option>
+                        )}
+                      </For>
                     </select>
                   </label>
                 </div>

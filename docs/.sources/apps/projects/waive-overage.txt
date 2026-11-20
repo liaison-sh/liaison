@@ -1,0 +1,1 @@
+A retainer month above its hours shows Create invoice without this month's overage -> apps/api/src/apps/projects/handlers.ts (priced) ; apps/api/src/apps/projects/app.manifest.json (tools.reconcile_get.resultCard) ; bundled-apps/invoicing/src/tools/preview-totals.ts (retainerPreview)

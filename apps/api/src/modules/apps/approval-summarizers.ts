@@ -19,6 +19,8 @@ const rawApprovalSummarySchema = z.object({
   // The record's id shown first on the card (`ticket-B2B-123`); bounded to 40
   // by truncateApprovalSummary.
   ref: z.string().optional(),
+  // The last day it can be decided in time (`YYYY-MM-DD`): mirrors the shared schema.
+  latestOn: z.string().optional(),
   lines: z.array(z.string()).default([]),
   links: z
     .array(

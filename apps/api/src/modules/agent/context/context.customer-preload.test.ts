@@ -179,10 +179,12 @@ async function assemble(effectiveScope: string[], discoveredTools: Set<string> |
   return JSON.stringify(result)
 }
 
+// A whole app is spelled `app:*`: a bare word is a marker scope only its exact grant holds
+// (isExactOnlyScope), so the actor's `*` would floor a bare `api-connector` out of the turn.
 describe("customer block: the connector tools it loads", () => {
   it("read-only scopes load connector_read and connector_list_operations, not connector_write", async () => {
     const discovered = new Set<string>()
-    const text = await assemble(["api-connector:read", "tickets"], discovered)
+    const text = await assemble(["api-connector:read", "tickets:*"], discovered)
     expect(text).toContain("Customer record from Fixture CRM")
     expect(discovered.has(READ)).toBe(true)
     expect(discovered.has(LIST)).toBe(true)
@@ -191,20 +193,20 @@ describe("customer block: the connector tools it loads", () => {
 
   it("read and write scopes load connector_write too", async () => {
     const discovered = new Set<string>()
-    const text = await assemble(["api-connector", "tickets"], discovered)
+    const text = await assemble(["api-connector:*", "tickets:*"], discovered)
     expect(text).toContain(`${WRITE} with connection`)
     expect([...discovered].sort()).toEqual([LIST, READ, WRITE])
   })
 
   it("without the read scope there is no block and no connector tool", async () => {
     const discovered = new Set<string>()
-    const text = await assemble(["tickets"], discovered)
+    const text = await assemble(["tickets:*"], discovered)
     expect(text).not.toContain("Customer record from")
     expect([...discovered].filter((n) => n.startsWith("api-connector__"))).toEqual([])
   })
 
   it("a caller without a discovery set gets the record but no tool the turn does not load", async () => {
-    const text = await assemble(["api-connector", "tickets"], undefined)
+    const text = await assemble(["api-connector:*", "tickets:*"], undefined)
     expect(text).toContain("Customer record from Fixture CRM")
     // The guide's own phrasing: the block names no tool when none is loaded.
     expect(text).not.toContain(`${READ} with connection`)

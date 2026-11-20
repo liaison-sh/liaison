@@ -76,6 +76,21 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     }
   }
 
+  it("agreements: every refusal and blocking check code is a 4xx", () => {
+    const codes = new Set<string>()
+    for (const file of sourceFiles(join(REPO, "bundled-apps", "agreements", "src"))) {
+      const text = readFileSync(file, "utf8")
+      for (const m of text.matchAll(/\b(?:refusal\(|code:)\s*"([A-Z][A-Z_]+)"/g)) codes.add(m[1]!)
+    }
+    codes.delete("CHECK_WITH_LAWYER") // a note on a passing check, never an error
+    expect(codes.size).toBeGreaterThan(15)
+    const fives = [...codes].filter((c) => {
+      const s = statusForToolError(c)
+      return s < 400 || s >= 500
+    })
+    expect(fives).toEqual([])
+  })
+
   it("the buyer-VAT guard's refusals are 4xx, found by the positional refuse() scan", () => {
     const codes = declaredCodes(join(REPO, "bundled-apps", "invoicing", "src"))
     for (const code of ["vat_id_invalid", "buyer_vat_id_required", "buyer_is_consumer_refused"]) {
@@ -83,6 +98,31 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
       expect(statusForToolError(code)).toBe(422)
     }
     expect(statusForToolError("buyer_status_contradiction")).toBe(400)
+  })
+
+  it("a role, scope or dimension grant aimed at a client is a conflict, not a fault", () => {
+    expect(statusForToolError("USER_IS_EXTERNAL")).toBe(409)
+  })
+
+  it("a staff invitation for a client's address is a conflict, not a fault", () => {
+    expect(statusForToolError("EMAIL_IS_PORTAL_USER")).toBe(409)
+  })
+
+  it("a client action's refusals are 4xx, its unreadable target 503", () => {
+    for (const code of [
+      "TARGET_NOT_REGISTERED",
+      "KIND_NOT_ALLOWED",
+      "INVALID_EXPIRY",
+      "EMAIL_REQUIRED",
+    ]) {
+      expect({ code, status: statusForToolError(code) }).toEqual({ code, status: 400 })
+    }
+    expect(statusForToolError("VERSION_CHANGED")).toBe(409)
+    expect(statusForToolError("TARGET_UNAVAILABLE")).toBe(503)
+    for (const state of ["MISMATCH", "REPLIED", "BOUNCED", "HELD", "OPTED_OUT", "REF_STOP"]) {
+      expect(statusForToolError(`SEND_GUARD_${state}`)).toBe(409)
+    }
+    expect(statusForToolError("SEND_GUARD_UNAVAILABLE")).toBe(503)
   })
 
   it("tickets ref resolver codes are client errors", () => {
@@ -135,6 +175,15 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("unknown_read")).toBe(400)
     expect(statusForToolError("disabled")).toBe(403)
     expect(statusForToolError("NOT_FOUND")).toBe(404)
+  })
+
+  it("a company delete refused while accounts or a live recurring schedule hold it is 409", () => {
+    expect(statusForToolError("company_has_accounts")).toBe(409)
+    expect(statusForToolError("company_has_schedules")).toBe(409)
+  })
+
+  it("a person delete refused while a live recurring schedule bills them is 409", () => {
+    expect(statusForToolError("contact_has_schedules")).toBe(409)
   })
 
   it("still answers 500 for a code nobody declared", () => {

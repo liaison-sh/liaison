@@ -81,7 +81,7 @@ export async function bumpOrgPermissionVersions(
   const K = sql.raw(schemaRef("kernel"))
   const result = await tx.execute(sql`
     UPDATE ${K}.users SET permission_version = permission_version + 1
-    WHERE org_id = ${orgId}
+    WHERE org_id = ${orgId} AND user_type = 'member'
     RETURNING id
   `)
   const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])

@@ -9,9 +9,10 @@ import type { CrossAppExecuteTool } from "../cross-app"
 import type { CustomerKind } from "../einvoicing/classify"
 import type { OperationCategory } from "../einvoicing/classify-operation"
 import type { EinvoiceRowColumns } from "../einvoicing/issue-gate"
-import type { DraftLine, IssueCtx, IssueDb } from "../issue"
+import type { DraftLine, IssueCtx, IssueDb, SourceColumns } from "../issue"
 import { lineSubtotal } from "../money"
 import type { ReadsFetch } from "../reads"
+import type { OwnApprovals } from "./issue-handover"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
 
@@ -26,6 +27,9 @@ export const VALID_TYPES: ReadonlyArray<DocumentType> = [
 export interface DraftInsert {
   type: DocumentType
   counterparty_contact_id: string | null
+  /** The client project the draft bills (`documents.billing_project_id`), handed to the issued
+   *  document through its source columns. Written only when given. */
+  billing_project_id?: string | null
   /** Counterparty snapshot fields — freeform, editable from the UI's new "Customer" section, and
    *  persisted onto the draft `documents` row (the columns exist on the table since the
    *  counterparty-snapshot migration). Carried through to the issued document by issueDocument's
@@ -65,6 +69,10 @@ export interface DraftInsert {
   /** Free-text notes printed on the document face. A plain column with NO external_refs
    *  mirror (nothing ever wrote notes anywhere else), unlike po_number. */
   notes?: string | null
+  /** The client company the draft is made for, stamped from its billing source (a schedule, a
+   *  billing plan's quote, a project); the issued document keeps it. Cleared when the draft's
+   *  contact changes, so the issue reads the new contact's company. */
+  company_id?: string | null
   /** E-invoicing: the buyer's kind, stated on the draft (an identity row on the contact wins). */
   customer_kind?: CustomerKind | null
   /** E-invoicing: the goods / services category of the operation, stated on the draft. */
@@ -79,8 +87,15 @@ export interface DraftInsert {
   lines: DraftLine[]
 }
 
+export type { SourceColumns }
+
 export interface DraftRow extends DraftInsert {
   id: string
+  /** The draft's dedupe key (`documents.external_ref`): a billing source's key, handed to the
+   *  issued document at issue. */
+  external_ref?: string | null
+  /** The source columns the issued document keeps (see SourceColumns). */
+  source?: SourceColumns
   /** The draft's stored e-invoicing columns (read only: identity facts and confirmation are
    *  written by the identity tools, never by a draft patch). */
   einvoice?: EinvoiceRowColumns
@@ -93,6 +108,8 @@ export interface DraftRow extends DraftInsert {
 
 export interface DocumentRowSummary {
   id: string
+  /** What the document bills (project, period, ...), for the convert paths to carry. */
+  source?: SourceColumns
   type: DocumentType | string
   status?: string
   counterparty_contact_id: string | null
@@ -156,7 +173,7 @@ export type ErrorEnvelope = {
  */
 export type PreflightResult =
   /** `noAutoApprove`: this call must be decided by a person (no auto-approve policy answers it). */
-  | { ok: true; noAutoApprove?: true }
+  | { ok: true; noAutoApprove?: true; pinnedParams?: Record<string, unknown> }
   | {
       error: { code: string; message: string; retryable?: boolean; status?: number; body?: unknown }
     }
@@ -263,6 +280,11 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   // `AppContext.approval` contract (`@liaison/app-sdk` types.ts): the kernel
   // injects `{ approvalRequestId, approvalDeciderId, toolName }`, NOT snake_case.
   approval: { approvalRequestId: string; approvalDeciderId: string; toolName: string } | null
+  /** The kernel's handler protocol (approval-protocol.ts): no-ops outside an approval. */
+  approval_recordStarted?: (toolName: string) => Promise<void>
+  approval_recordEffectLanded?: (toolName: string, externalRefJson: string) => Promise<void>
+  approval_recordSucceeded?: (toolName: string, externalRefJson?: string) => Promise<void>
+  approval_recordFailedNoEffect?: (toolName: string, errJson: string) => Promise<void>
   db: MutationsDb
 
   requestApproval(input: {
@@ -276,12 +298,18 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
       subtitle?: string
       lines?: string[]
       links?: Array<{ label: string; app: string; entityType: string; entityId: string }>
+      /** The draft's latest issue day (`YYYY-MM-DD`): Home sorts the approval up from 4 days before. */
+      latest_on?: string
     }
     current_payload: unknown
     editable_fields?: string[]
     /** Carry on at once when the org's auto-approve policy for `tool_name` approves the call:
      *  the kernel then answers `auto_approved: true` and the handler proceeds as approved. */
     auto_approvable?: boolean
+    /** The scope whose holders decide it, when it is not the tool's own. */
+    approve_scope?: string
+    /** How long it waits for a decision. */
+    expiry_hours?: number
   }): Promise<RequestedApproval>
 
   decideApproval(input: {
@@ -290,6 +318,9 @@ export interface MutationsCtx extends Omit<IssueCtx, "db"> {
   }): Promise<{ status: "ok" } | ErrorEnvelope>
 
   executeTool: CrossAppExecuteTool
+
+  /** This app's own approvals (kernel bridge): list the pending ones, withdraw one. */
+  approvals?: OwnApprovals
 
   /** Kernel-mediated outbound HTTP (allowlisted hosts): the VIES check of a buyer VAT number.
    *  Optional: absent, a VAT number is reported "not verified (VIES unavailable)". */

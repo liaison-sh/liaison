@@ -3,6 +3,7 @@ import { and, count, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm"
 import type { StatusCode } from "hono/utils/http-status"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import {
+  companies,
   invitations,
   organizations,
   roleDimensionGrants,
@@ -23,7 +24,7 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { adminSecondFactorPending, holdsAdminScope } from "~/modules/auth/admin-second-factor"
 import { invalidateAuthCache } from "~/modules/auth/auth-state"
 import { ensureGoogleLoginProvider } from "~/modules/auth/google-login-provider"
-import { signAccessToken } from "~/modules/auth/jwt"
+import { signAccessToken, signPortalToken } from "~/modules/auth/jwt"
 import { applyScopeCeiling } from "~/modules/auth/session-ceiling"
 import { revokeSessions } from "~/modules/auth/session-revocation"
 import { assertOrgSessionAllowed, SUSPENDED_ADMIN_SCOPE } from "~/modules/cloud/suspension"
@@ -37,7 +38,7 @@ import { hasScope, loadEffectivePermissions } from "~/modules/permissions/permis
 import { startSetupKickoff } from "~/modules/provisioning/setup-kickoff"
 import { removeAllPushDeliveryForUser } from "~/modules/push/end-user-push"
 
-interface TokenPair {
+export interface TokenPair {
   accessToken: string
   refreshToken: string
   orgId: string
@@ -328,12 +329,23 @@ export async function login(
       db
         .select(loginCols)
         .from(users)
-        .where(and(eq(users.email, email.toLowerCase()), eq(users.orgId, orgRow[0].id)))
+        .where(
+          and(
+            eq(users.email, email.toLowerCase()),
+            eq(users.orgId, orgRow[0].id),
+            // A client's row never signs in here: the portal has its own sign-in.
+            eq(users.userType, "member"),
+          ),
+        )
         .limit(1),
     )
   } else {
     matches = await withSystemDb("login-email-lookup", (db) =>
-      db.select(loginCols).from(users).where(eq(users.email, email.toLowerCase())).limit(2),
+      db
+        .select(loginCols)
+        .from(users)
+        .where(and(eq(users.email, email.toLowerCase()), eq(users.userType, "member")))
+        .limit(2),
     )
     if (matches.length > 1) {
       // Uniform error + timing parity prevents multi-org email enumeration
@@ -390,21 +402,130 @@ export async function createSession(
   // A session row is a write of the org: counted, then refused while the org is
   // frozen or moved (503 `org_moving`; the client retries, and its token still
   // works on the new instance).
-  return withOrgWrite(orgId, () => createSessionUnder(userId, orgId, scopeCeiling, rotation))
+  return withOrgWrite(orgId, () =>
+    createSessionUnder(userId, orgId, scopeCeiling, rotation, "member"),
+  )
+}
+
+/**
+ * True when this org's address belongs to a client of the portal (an external
+ * row). A member invitation for it is refused: the same person cannot be both,
+ * and RLS hides a client's row from the inviter, so the check reads it here.
+ */
+export async function emailHeldByPortalUser(orgId: string, email: string): Promise<boolean> {
+  const [row] = await withPrivilegedDb(orgId, "invite-portal-address-check", (tx) =>
+    tx
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.orgId, orgId),
+          eq(users.email, email.toLowerCase()),
+          eq(users.userType, "external"),
+        ),
+      )
+      .limit(1),
+  )
+  return row !== undefined
+}
+
+/** Which door a session belongs to: the member product, or the client portal. */
+export type SessionKind = "member" | "portal"
+
+/** A portal session lives 7 days without use, and 30 days at most from its sign-in. */
+export const PORTAL_SESSION_IDLE_MS = 7 * 24 * 60 * 60_000
+export const PORTAL_SESSION_ABSOLUTE_MS = 30 * 24 * 60 * 60_000
+
+/** What a portal session row records about itself (kernel.sessions.device_info). */
+interface PortalSessionInfo {
+  kind: "portal"
+  absoluteExpiresAt: string
+  /** The sign-in passed a second factor (carried along the rotations). */
+  secondFactor?: boolean
+}
+
+interface PortalCompanyState {
+  closedAt: Date | null
+  portalEndedAt: Date | null
+  portalRequireTotp: boolean
+}
+
+/**
+ * Whether a client may hold a portal session: their company is open, its portal
+ * access has not ended, and the sign-in passed a second factor when the company
+ * requires one or the person set one up. Every portal session, fresh or rotated,
+ * is decided here.
+ */
+function portalAccessAdmits(
+  company: PortalCompanyState | undefined,
+  person: { totpEnabled: boolean },
+  secondFactor: boolean,
+): boolean {
+  if (!company || company.closedAt !== null || company.portalEndedAt !== null) return false
+  if ((company.portalRequireTotp || person.totpEnabled) && !secondFactor) return false
+  return true
+}
+
+const portalCompanyColumns = {
+  closedAt: companies.closedAt,
+  portalEndedAt: companies.portalEndedAt,
+  portalRequireTotp: companies.portalRequireTotp,
+}
+
+function portalSessionInfo(value: unknown): PortalSessionInfo | null {
+  const v = value as Partial<PortalSessionInfo> | null
+  return v?.kind === "portal" && typeof v.absoluteExpiresAt === "string"
+    ? (v as PortalSessionInfo)
+    : null
+}
+
+/**
+ * A session for an external user (the client portal): a portal token and a
+ * refresh token for the portal's own cookie. Refused for a member row, for a
+ * client whose company is closed or whose portal access ended, and without
+ * `secondFactor` when the company or the person requires one (a rotation carries
+ * its sign-in's). createSession refuses an external row.
+ */
+export async function createPortalSession(
+  userId: string,
+  orgId: string,
+  rotation?: SessionRotation,
+  secondFactor = false,
+): Promise<TokenPair> {
+  return withOrgWrite(orgId, () =>
+    createSessionUnder(
+      userId,
+      orgId,
+      undefined,
+      rotation,
+      "portal",
+      rotation ? rotation.portalSecondFactor === true : secondFactor,
+    ),
+  )
 }
 
 async function createSessionUnder(
   userId: string,
   orgId: string,
-  scopeCeiling?: string[],
-  rotation?: SessionRotation,
+  scopeCeiling: string[] | undefined,
+  rotation: SessionRotation | undefined,
+  kind: SessionKind,
+  secondFactor = false,
 ): Promise<TokenPair> {
   // The one door every login, token refresh, OAuth sign-in and magic link goes
   // through: an expired demo workspace mints no new credential (403).
   await assertDemoOrgActive(orgId)
   const refreshToken = generateToken()
   const refreshTokenHash = hashToken(refreshToken)
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+  // A portal session: 7 days idle, never past 30 days from its sign-in (the
+  // deadline rides along the rotations). A member session: 30 days.
+  const portalAbsolute =
+    kind === "portal"
+      ? (rotation?.portalAbsoluteExpiresAt ?? new Date(Date.now() + PORTAL_SESSION_ABSOLUTE_MS))
+      : null
+  const expiresAt = portalAbsolute
+    ? new Date(Math.min(Date.now() + PORTAL_SESSION_IDLE_MS, portalAbsolute.getTime()))
+    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
   // A fresh sign-in starts its own family; a rotation continues its
   // predecessor's (refreshSession).
   const sessionId = crypto.randomUUID()
@@ -428,11 +549,33 @@ async function createSessionUnder(
           status: users.status,
           authVersion: users.authVersion,
           permissionVersion: users.permissionVersion,
+          userType: users.userType,
+          companyId: users.companyId,
+          totpEnabled: users.totpEnabled,
         })
         .from(users)
         .where(and(eq(users.id, userId), eq(users.orgId, orgId)))
         .for("update")
       if (!u || u.status !== "active") throw new AuthServiceError("Invalid credentials", 401)
+      // Each door mints for its own kind of row only: a member sign-in path that
+      // reaches an external row (or the portal one a member row) mints nothing.
+      if ((u.userType === "external") !== (kind === "portal")) {
+        throw new AuthServiceError("Invalid credentials", 401)
+      }
+      if (kind === "portal") {
+        if (expiresAt.getTime() <= Date.now())
+          throw new AuthServiceError("Invalid credentials", 401)
+        const [company] = u.companyId
+          ? await tx
+              .select(portalCompanyColumns)
+              .from(companies)
+              .where(and(eq(companies.id, u.companyId), eq(companies.orgId, orgId)))
+              .limit(1)
+          : []
+        if (!portalAccessAdmits(company, u, secondFactor)) {
+          throw new AuthServiceError("Invalid credentials", 401)
+        }
+      }
 
       // A lost-response reissue replaces the successor its client never
       // received, in the same transaction that inserts the new one, and only
@@ -497,6 +640,15 @@ async function createSessionUnder(
         expiresAt,
         scopeCeiling: scopeCeiling ?? null,
         familyId: rotation?.familyId ?? sessionId,
+        ...(portalAbsolute
+          ? {
+              deviceInfo: {
+                kind: "portal",
+                absoluteExpiresAt: portalAbsolute.toISOString(),
+                ...(secondFactor ? { secondFactor: true } : {}),
+              } satisfies PortalSessionInfo,
+            }
+          : {}),
       })
       // Link the successor onto its predecessor, compare-and-set on the stamp
       // refreshSession wrote when it decided to issue: if anything re-decided
@@ -532,7 +684,7 @@ async function createSessionUnder(
         user: u,
         permissions: perms,
         secondFactorPending: pending,
-        admin: holdsAdminScope(orgId, perms.scopes),
+        admin: u.userType !== "external" && holdsAdminScope(orgId, perms.scopes),
       }
     },
   )
@@ -543,22 +695,13 @@ async function createSessionUnder(
   // session in that state gets nothing at all: enrollment is for a person at
   // a sign-in screen, not a headless client.
   if (secondFactorPending) {
-    const accessToken = await signAccessToken(
-      {
-        userId,
-        orgId,
-        name: user?.name ?? "Unknown",
-        authVersion: user?.authVersion ?? 1,
-        permissionVersion: user?.permissionVersion ?? 1,
-        roles: [],
-        scopes: [],
-        dimensionGrants: {},
-        restricted: true,
-        ...(scopeCeiling === undefined ? { secondFactorRequired: true } : {}),
-        sid: sessionId,
-      },
-      env.JWT_SECRET,
-    )
+    const accessToken = await signSessionToken({ userId, orgId, sid: sessionId }, user, {
+      roles: [],
+      scopes: [],
+      dimensionGrants: {},
+      restricted: true,
+      ...(scopeCeiling === undefined ? { secondFactorRequired: true } : {}),
+    })
     return { accessToken, refreshToken, orgId, userId, admin }
   }
 
@@ -566,22 +709,13 @@ async function createSessionUnder(
   // whatever the user's own permissions are now.
   const effectiveScopes = applyScopeCeiling(permissions.scopes, scopeCeiling)
 
-  const accessToken = await signAccessToken(
-    {
-      userId,
-      orgId,
-      name: user?.name ?? "Unknown",
-      authVersion: user?.authVersion ?? 1,
-      permissionVersion: user?.permissionVersion ?? 1,
-      roles: permissions.roles,
-      scopes: effectiveScopes,
-      dimensionGrants: permissions.dimensionGrants,
-      // A restricted session mints no further credential (session-ceiling.ts).
-      ...(scopeCeiling !== undefined ? { restricted: true } : {}),
-      sid: sessionId,
-    },
-    env.JWT_SECRET,
-  )
+  const accessToken = await signSessionToken({ userId, orgId, sid: sessionId }, user, {
+    roles: permissions.roles,
+    scopes: effectiveScopes,
+    dimensionGrants: permissions.dimensionGrants,
+    // A restricted session mints no further credential (session-ceiling.ts).
+    ...(scopeCeiling !== undefined ? { restricted: true } : {}),
+  })
 
   // A full administrator session may open a brand-new workspace's setup
   // conversation (provisioning/setup-kickoff.ts). Not awaited and never
@@ -589,6 +723,54 @@ async function createSessionUnder(
   if (admin && scopeCeiling === undefined) startSetupKickoff({ orgId, userId, admin })
 
   return { accessToken, refreshToken, orgId, userId, admin }
+}
+
+/**
+ * The token of a session, chosen by the row's type as this transaction read it,
+ * never by a prior token: an external user's is a portal token, which carries no
+ * grants whatever the row holds. Each mint site below goes through here.
+ */
+function signSessionToken(
+  session: { userId: string; orgId: string; sid?: string },
+  user:
+    | { name: string; authVersion: number; permissionVersion: number; userType: string }
+    | undefined,
+  grants: {
+    roles: string[]
+    scopes: string[]
+    dimensionGrants: Record<string, string[]>
+    restricted?: boolean
+    secondFactorRequired?: boolean
+  },
+  opts: { enrol?: boolean } = {},
+): Promise<string> {
+  const identity = {
+    ...session,
+    name: user?.name ?? "Unknown",
+    authVersion: user?.authVersion ?? 1,
+    permissionVersion: user?.permissionVersion ?? 1,
+  }
+  if (user?.userType === "external")
+    return signPortalToken({ ...identity, ...(opts.enrol && { enrol: true }) }, env.JWT_SECRET)
+  if (opts.enrol || !session.sid)
+    throw new Error("only a portal person gets a token without a session")
+  return signAccessToken({ ...identity, ...grants, userType: user?.userType }, env.JWT_SECRET)
+}
+
+/**
+ * The enrolment-only token of a portal person who must set up a second factor and
+ * has none yet: no session behind it, minted here like every other session token.
+ */
+export function signPortalEnrolmentToken(
+  person: { userId: string; orgId: string },
+  user: { name: string; authVersion: number; permissionVersion: number },
+): Promise<string> {
+  return signSessionToken(
+    person,
+    { ...user, userType: "external" },
+    { roles: [], scopes: [], dimensionGrants: {} },
+    { enrol: true },
+  )
 }
 
 /**
@@ -602,6 +784,10 @@ export interface SessionRotation {
   familyId: string
   stamp: Date
   replaceSuccessorId: string | null
+  /** A portal session's 30-day deadline, carried from its sign-in. */
+  portalAbsoluteExpiresAt?: Date
+  /** A portal session's sign-in passed a second factor. */
+  portalSecondFactor?: boolean
 }
 
 /**
@@ -693,6 +879,12 @@ export async function refreshSession(
     userAgent?: string | null
     /** Host binding: the org this host serves; a session of any other org is refused untouched. */
     expectedOrgId?: string | null
+    /**
+     * The route's door. Member (the default): a session of an external row is
+     * refused, nothing changes. Portal: a member's session is refused, and so is
+     * one whose company closed (that session is ended).
+     */
+    kind?: SessionKind
   } = {},
 ): Promise<TokenPair> {
   // The rotation writes the session rows of an org found by the token: counted
@@ -713,6 +905,7 @@ async function refreshSessionUnder(
   client: {
     userAgent?: string | null
     expectedOrgId?: string | null
+    kind?: SessionKind
   },
   gate: (orgId: string) => Promise<void>,
 ): Promise<TokenPair> {
@@ -745,7 +938,7 @@ async function refreshSessionUnder(
     // so whichever comes second waits instead.
     const [lockedUser] = gated
       ? await tx.execute(
-          sql`SELECT id, status FROM ${K}.users WHERE id = ${gated.userId} FOR UPDATE`,
+          sql`SELECT id, status, user_type, company_id, totp_enabled FROM ${K}.users WHERE id = ${gated.userId} FOR UPDATE`,
         )
       : []
     const [session] = await tx
@@ -766,6 +959,39 @@ async function refreshSessionUnder(
       await tx.delete(sessions).where(eq(sessions.id, session.id))
       return { kind: "invalid", reason: "expired" }
     }
+    // The door: a session of the other kind of row is refused here and left as
+    // it is (its own route may still rotate it).
+    const door = client.kind ?? "member"
+    const lockedRow = lockedUser as
+      | { user_type?: string; company_id?: string | null; totp_enabled?: boolean }
+      | undefined
+    if ((lockedRow?.user_type === "external") !== (door === "portal")) {
+      return { kind: "invalid", reason: "another door's session" }
+    }
+    const portalInfo = door === "portal" ? portalSessionInfo(session.deviceInfo) : null
+    if (door === "portal") {
+      const [company] = lockedRow?.company_id
+        ? await tx
+            .select(portalCompanyColumns)
+            .from(companies)
+            .where(eq(companies.id, lockedRow.company_id))
+            .limit(1)
+        : []
+      if (
+        !portalInfo ||
+        !portalAccessAdmits(
+          company,
+          { totpEnabled: lockedRow?.totp_enabled === true },
+          portalInfo.secondFactor === true,
+        )
+      ) {
+        await tx.delete(sessions).where(eq(sessions.id, session.id))
+        endedIds.push(session.id)
+        return { kind: "invalid", reason: "portal access closed" }
+      }
+    }
+    const portalAbsoluteExpiresAt = portalInfo ? new Date(portalInfo.absoluteExpiresAt) : undefined
+    const portalSecondFactor = portalInfo?.secondFactor === true ? { portalSecondFactor: true } : {}
     const familyId = session.familyId ?? session.id
 
     // Read under the user row's lock taken above, so a concurrent
@@ -823,7 +1049,14 @@ async function refreshSessionUnder(
         userId: session.userId,
         orgId: session.orgId,
         scopeCeiling: session.scopeCeiling,
-        rotation: { predecessorId: session.id, familyId, stamp: now, replaceSuccessorId: null },
+        rotation: {
+          predecessorId: session.id,
+          familyId,
+          stamp: now,
+          replaceSuccessorId: null,
+          ...(portalAbsoluteExpiresAt ? { portalAbsoluteExpiresAt } : {}),
+          ...portalSecondFactor,
+        },
       }
     }
 
@@ -898,6 +1131,8 @@ async function refreshSessionUnder(
         familyId,
         stamp: now,
         replaceSuccessorId: successor.id,
+        ...(portalAbsoluteExpiresAt ? { portalAbsoluteExpiresAt } : {}),
+        ...portalSecondFactor,
       },
     }
   })
@@ -910,6 +1145,9 @@ async function refreshSessionUnder(
     throw new InvalidSessionError()
   }
 
+  if (client.kind === "portal") {
+    return createPortalSession(decision.userId, decision.orgId, decision.rotation)
+  }
   // The rotated session inherits the ceiling. Reloading the user's effective
   // permissions here is right (a revoked role must shrink the token), but they
   // are intersected with the ceiling again: before migration 0114 this line
@@ -973,7 +1211,8 @@ export async function changePassword(
     db
       .select({ orgId: users.orgId, passwordHash: users.passwordHash })
       .from(users)
-      .where(eq(users.id, userId))
+      // A member door: a client's row has no password and changes none here.
+      .where(and(eq(users.id, userId), eq(users.userType, "member")))
       .limit(1),
   )
   if (!user) throw new AuthServiceError("User not found", 404)
@@ -1023,6 +1262,7 @@ export async function changePassword(
           name: users.name,
           authVersion: users.authVersion,
           permissionVersion: users.permissionVersion,
+          userType: users.userType,
         })
         .from(users)
         .where(eq(users.id, userId))
@@ -1038,31 +1278,24 @@ export async function changePassword(
   invalidateAuthCache(userId)
   revokeSessions(endedIds, "password-change")
 
-  const accessToken = await signAccessToken(
-    {
-      userId,
-      orgId: user.orgId,
-      name: updatedUser?.name ?? "Unknown",
-      authVersion: updatedUser?.authVersion ?? 1,
-      permissionVersion: updatedUser?.permissionVersion ?? 1,
-      sid: newSessionId,
-      // Same rule as createSession: an administrator still to enroll a second
-      // factor gets a session that can only enroll.
-      ...(secondFactorPending
-        ? {
-            roles: [],
-            scopes: [],
-            dimensionGrants: {},
-            restricted: true,
-            secondFactorRequired: true,
-          }
-        : {
-            roles: permissions.roles,
-            scopes: permissions.scopes,
-            dimensionGrants: permissions.dimensionGrants,
-          }),
-    },
-    env.JWT_SECRET,
+  const accessToken = await signSessionToken(
+    { userId, orgId: user.orgId, sid: newSessionId },
+    updatedUser,
+    // Same rule as createSession: an administrator still to enroll a second
+    // factor gets a session that can only enroll.
+    secondFactorPending
+      ? {
+          roles: [],
+          scopes: [],
+          dimensionGrants: {},
+          restricted: true,
+          secondFactorRequired: true,
+        }
+      : {
+          roles: permissions.roles,
+          scopes: permissions.scopes,
+          dimensionGrants: permissions.dimensionGrants,
+        },
   )
 
   return {
@@ -1070,7 +1303,7 @@ export async function changePassword(
     refreshToken: newRefreshToken,
     orgId: user.orgId,
     userId,
-    admin: holdsAdminScope(user.orgId, permissions.scopes),
+    admin: updatedUser?.userType !== "external" && holdsAdminScope(user.orgId, permissions.scopes),
   }
 }
 

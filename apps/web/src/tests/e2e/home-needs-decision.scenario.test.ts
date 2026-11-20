@@ -22,6 +22,24 @@ test("home needs decision shows live row, dot, and clears on approve", async ({
 
   await loginAs(page, env, approver.email, approver.password)
 
+  // Opens a thread and waits for its read mark to be stored. A thread marks
+  // itself read only while its window has focus (reading-focus.ts), and a
+  // headless page is not always focused after a navigation: bringToFront
+  // gives it the focus a reader's window has, which marks it read.
+  const openAndRead = async (threadId: string) => {
+    const readMark = page.waitForResponse(
+      (res) =>
+        res.request().method() === "PATCH" && res.url().endsWith(`/threads/${threadId}/read`),
+      { timeout: 15_000 },
+    )
+    await page.goto(`http://localhost:${env.ports[1]}/threads/${threadId}`)
+    await expect(
+      page.locator('[data-testid="tab-content-area"] > [data-tab-active="true"]'),
+    ).toBeVisible({ timeout: 10000 })
+    await page.bringToFront()
+    expect((await readMark).ok()).toBe(true)
+  }
+
   // Open Home and verify it starts empty + no activity-bar dot. Home lands on
   // the attention feed itself (no side pane any more).
   await page.getByTestId("activity-home").click()
@@ -76,12 +94,7 @@ test("home needs decision shows live row, dot, and clears on approve", async ({
   // content (D7), so a later reload would resurrect it and keep Home out of
   // the empty state. Visit it once to mark it read, same as the expiry case
   // below.
-  await page.goto(`http://localhost:${env.ports[1]}/threads/${firstCase.threadId}`)
-  await expect(
-    page.locator('[data-testid="tab-content-area"] > [data-tab-active="true"]'),
-  ).toBeVisible({
-    timeout: 10000,
-  })
+  await openAndRead(firstCase.threadId)
 
   // Back to Home, which lands on the feed: nothing waits any more.
   await page.getByTestId("activity-home").click()
@@ -100,7 +113,7 @@ test("home needs decision shows live row, dot, and clears on approve", async ({
   await expect(page.getByTestId("activity-bar-home-badge")).toHaveText("1")
 
   // Open the originating thread first so we can assert the Expired badge renders on a card.
-  await page.goto(`http://localhost:${env.ports[1]}/threads/${expiryCase.threadId}`)
+  await openAndRead(expiryCase.threadId)
   const tab = page.locator('[data-testid="tab-content-area"] > [data-tab-active="true"]')
   await tab.getByTestId("message-row-tools-toggle").first().click()
   const inlineCard = tab.locator(

@@ -13,6 +13,7 @@
 import { messagePlainText, relabelAgentMentions } from "@liaison/shared"
 import type { Translate } from "~/modules/i18n/i18n-context"
 import { currentAgentHandle } from "~/modules/threads/agent-directory"
+import { localizeAgentNameWith } from "~/modules/threads/agent-name"
 import { localizeAgentNotice } from "~/modules/threads/agent-notice"
 
 const WITHDRAWN = /^Withdrawn by the requester\.(?: Reason: ([\s\S]+)\.)?$/
@@ -24,6 +25,15 @@ export function localizeSystemLine(
 ): string {
   if (metadata?.type === "approval-decision" && metadata.decision === "withdrawn") {
     const reason = typeof metadata.reason === "string" ? metadata.reason.trim() : ""
+    // An agent retracting its own request is named as the agent, never as its person.
+    const agentName =
+      typeof metadata.actorAgentName === "string" ? metadata.actorAgentName.trim() : ""
+    if (agentName) {
+      const agent = localizeAgentNameWith(agentName, t)
+      return reason
+        ? t("kernel.approvalDecisionLine.withdrawnByAgentReason", { agent, reason })
+        : t("kernel.approvalDecisionLine.withdrawnByAgent", { agent })
+    }
     return reason
       ? t("kernel.approvalDecisionLine.withdrawnReason", { reason })
       : t("kernel.approvalDecisionLine.withdrawn")

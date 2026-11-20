@@ -12,7 +12,7 @@
  * mail and tickets have no reader yet and say so.
  */
 
-import { orgKernelSettingsSchema } from "@liaison/shared"
+import { commercialIdentitySchema, orgKernelSettingsSchema } from "@liaison/shared"
 import { and, sql as drizzleSql, eq, isNull } from "drizzle-orm"
 import { listKnowledgeCollections } from "~/apps/knowledge/collections"
 import { knowledgeActorFromContext } from "~/apps/knowledge/service"
@@ -116,9 +116,11 @@ export async function exportEmail(priv: Priv, orgId: string) {
   const settings = await priv("config-export-email", (tx) =>
     getOrgKernelSettings(tx, orgId, orgKernelSettingsSchema),
   )
+  const identity = commercialIdentitySchema.safeParse(settings.commercialIdentity)
   return {
     ...(settings.email?.from !== undefined ? { from: settings.email.from } : {}),
     ...(settings.email?.replyTo !== undefined ? { replyTo: settings.email.replyTo } : {}),
+    ...(identity.success ? { commercialIdentity: identity.data } : {}),
   }
 }
 
@@ -129,7 +131,7 @@ async function exportUsers(priv: Priv, orgId: string) {
       .from(users)
       .innerJoin(userRoles, and(eq(userRoles.userId, users.id), eq(userRoles.orgId, orgId)))
       .innerJoin(roles, eq(roles.id, userRoles.roleId))
-      .where(and(eq(users.orgId, orgId), eq(users.status, "active"))),
+      .where(and(eq(users.orgId, orgId), eq(users.status, "active"), eq(users.userType, "member"))),
   )
   const byEmail = new Map<string, { email: string; name: string; role: string }>()
   for (const r of rows) if (!byEmail.has(r.email)) byEmail.set(r.email, r)

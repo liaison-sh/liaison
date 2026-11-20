@@ -1,0 +1,352 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// An uploaded PDF frozen as is: the host's checks decide, the version holds the
+// fingerprints the host read, a refused file leaves no version, a long check
+// answers `checking` and the job finishes it. At seal, a signed copy that does
+// not read as the frozen file did writes no package and no seal.
+
+import { describe, expect, it } from "bun:test"
+import {
+  agreementCreate,
+  agreementGet,
+  agreementPrepare,
+  agreementUpdate,
+  uploadFreezeJob,
+  uploadRescanJob,
+} from "./agreements"
+import type { AgreementsCtx } from "./ctx"
+import { memoryDb, type Row } from "./memory-db.testutil"
+import { packageOf, sealRetry, sealVersion } from "./seal"
+import { signedWorld } from "./seal.testutil"
+import { agreementSend, agreementSendPreflight, agreementVoid } from "./send"
+
+const PERSON = "11111111-1111-4111-8111-111111111111"
+const UPLOAD = "44444444-4444-4444-8444-444444444444"
+/** The copy the host keeps on the agreement. */
+const KEPT_COPY = "55555555-5555-4555-8555-555555555555"
+const SHA = "c".repeat(64)
+const PAGES = "d".repeat(64)
+const AGENT = "33333333-3333-4333-8333-333333333333"
+const CONTACT = "aaaaaaaa-0000-4000-8000-000000000001"
+
+function world(check: () => unknown) {
+  const db = memoryDb()
+  const calls = {
+    freeze: [] as unknown[],
+    attach: [] as unknown[],
+    rescans: [] as unknown[],
+    approvals: [] as Array<{ summary_detail?: { lines?: string[] } }>,
+  }
+  const readable = { upload: true }
+  const scanner = { answer: "not_run" as string }
+  const acting = { agent: null as string | null }
+  const ctx: AgreementsCtx = {
+    orgId: "org",
+    userId: PERSON,
+    db,
+    turn: { get: async () => ({ agentId: acting.agent }) },
+    kernel: {
+      caller: async () => ({ kind: "person", userId: PERSON, roleIds: [], holds: {} }),
+      findByIds: async (_e: string, ids: string[]) =>
+        ids.includes(CONTACT)
+          ? [{ id: CONTACT, name: "Paul Morel", email: "paul@maison-morel.example" }]
+          : [],
+    } as unknown as AgreementsCtx["kernel"],
+    requestApproval: async (req) => {
+      calls.approvals.push(req as never)
+      return { approval_id: `card-${calls.approvals.length}` }
+    },
+    pdf_upload_rescan: async (p) => {
+      calls.rescans.push(p)
+      return { status: "ok", scanState: scanner.answer }
+    },
+    today: "2026-11-16",
+    files_attachToParent: async (p) => {
+      calls.attach.push(p)
+      if (!readable.upload) throw new Error("source file not found or not readable")
+      return { id: KEPT_COPY, filename: "upload.pdf", mimeType: "application/pdf", sizeBytes: 1200 }
+    },
+    pdf_upload_check: async () => check(),
+    pdf_upload_freeze: async (p) => {
+      calls.freeze.push(p)
+      return {
+        status: "ok",
+        fileId: "frozen-file",
+        pages: [
+          { n: 1, picture_file_id: "pic-1", sha256: "e".repeat(64), text: "PRICE EUR 10000" },
+        ],
+      }
+    },
+  }
+  return { db, ctx, calls, readable, scanner, acting }
+}
+
+const KEPT = {
+  status: "ok",
+  sha256: SHA,
+  byteSize: 1200,
+  pageCount: 1,
+  pagesSha256: PAGES,
+  scanState: "not_run",
+  scanned: false,
+  report: {
+    revisions: 0,
+    signed: true,
+    emptyFields: 12,
+    comments: 0,
+    fontsNotEmbedded: 0,
+    openGoTo: false,
+  },
+}
+
+async function draftWithUpload(ctx: AgreementsCtx): Promise<string> {
+  const created = (await agreementCreate(ctx, {
+    kind: "other",
+    title: "Supplier contract",
+    what_it_is: "The supplier's own contract",
+    file_id: UPLOAD,
+  })) as { id?: string; agreement?: { id: string } }
+  return (created.id ?? created.agreement?.id) as string
+}
+
+describe("an uploaded PDF frozen as is", () => {
+  it("the version holds the uploaded file's fingerprint and the reading's, and is marked uploaded", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    const out = (await agreementPrepare(w.ctx, { id })) as Record<string, unknown>
+    expect(out).toMatchObject({ status: "ok", sha256: SHA, page_count: 1 })
+    expect(String(out.message)).toContain("12 empty field(s) in this file will stay empty.")
+    expect(String(out.message)).toContain("digital signature")
+    const [v] = w.db.tables.get("agreement_versions") as Row[]
+    expect(v).toMatchObject({
+      source_kind: "uploaded",
+      sha256: SHA,
+      pages_sha256: PAGES,
+      file_id: "frozen-file",
+      scan_state: "not_run",
+      status: "frozen",
+    })
+    expect(w.calls.freeze[0]).toMatchObject({ fileId: KEPT_COPY, sha256: SHA, pagesSha256: PAGES })
+  })
+
+  it("a refused file leaves no version and says why", async () => {
+    const w = world(() => ({
+      status: "error",
+      error: {
+        code: "PDF_ACTIVE_CONTENT",
+        message: "the file holds /JavaScript. Nothing was frozen.",
+      },
+    }))
+    const id = await draftWithUpload(w.ctx)
+    expect(await agreementPrepare(w.ctx, { id })).toMatchObject({
+      status: "error",
+      error: { code: "PDF_ACTIVE_CONTENT" },
+    })
+    expect(w.db.tables.get("agreement_versions") ?? []).toHaveLength(0)
+    expect(w.calls.freeze).toHaveLength(0)
+  })
+
+  it("a long check answers checking, and the job freezes it", async () => {
+    let answer: unknown = { status: "checking" }
+    const w = world(() => answer)
+    const id = await draftWithUpload(w.ctx)
+    expect(await agreementPrepare(w.ctx, { id })).toMatchObject({
+      status: "checking",
+      version_id: null,
+    })
+    expect(w.db.tables.get("agreement_versions") ?? []).toHaveLength(0)
+    answer = KEPT
+    expect(await uploadFreezeJob(w.ctx)).toMatchObject({ frozen: 1 })
+    expect(w.db.tables.get("agreement_versions")).toHaveLength(1)
+    expect(await uploadFreezeJob(w.ctx)).toMatchObject({ frozen: 0 })
+  })
+
+  it("a later upload on a draft makes the next version an upload again", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    await agreementPrepare(w.ctx, { id })
+    const [d] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d?.upload_file_id).toBeNull()
+    expect(await agreementUpdate(w.ctx, { id, file_id: UPLOAD })).toMatchObject({ status: "ok" })
+    const [d2] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d2?.upload_file_id).toBe(KEPT_COPY)
+  })
+
+  it("the upload is kept as a copy on the agreement, so whoever reads the agreement reads it", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    expect(w.calls.attach[0]).toEqual({
+      sourceFileId: UPLOAD,
+      targetApp: "agreements",
+      targetEntityType: "agreement",
+      targetEntityId: id,
+    })
+    const [d] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d?.upload_file_id).toBe(KEPT_COPY)
+  })
+
+  it("an upload the person cannot read changes nothing on the draft", async () => {
+    const w = world(() => KEPT)
+    const id = await draftWithUpload(w.ctx)
+    await agreementPrepare(w.ctx, { id })
+    w.readable.upload = false
+    const out = await agreementUpdate(w.ctx, { id, file_id: UPLOAD })
+    expect(out).toMatchObject({ status: "error", error: { code: "NOT_READABLE" } })
+    const [d] = w.db.tables.get("agreement_drafts") as Row[]
+    expect(d?.upload_file_id).toBeNull()
+  })
+})
+
+async function frozenUpload() {
+  const w = world(() => KEPT)
+  const id = await draftWithUpload(w.ctx)
+  const out = (await agreementPrepare(w.ctx, { id })) as { version_id: string }
+  return { ...w, id, versionId: out.version_id }
+}
+
+const versionRow = (w: { db: ReturnType<typeof memoryDb> }) =>
+  (w.db.tables.get("agreement_versions") as Row[])[0]
+
+const sendParams = (versionId: string) => ({
+  version_id: versionId,
+  sha256: SHA,
+  signers: [{ contact_id: CONTACT }],
+})
+
+describe("a version the virus scanner did not check", () => {
+  it("the send's check scans it again, and a clean answer is recorded when the card is staged", async () => {
+    const w = await frozenUpload()
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    w.scanner.answer = "clean"
+    expect(await agreementSendPreflight(w.ctx, sendParams(w.versionId))).toMatchObject({ ok: true })
+    expect(w.calls.rescans).toEqual([{ versionId: w.versionId }])
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "pending_approval",
+    })
+    expect(versionRow(w)?.scan_state).toBe("clean")
+    expect(w.calls.approvals[0]?.summary_detail?.lines?.join("\n")).not.toContain(
+      "Not checked for viruses",
+    )
+  })
+
+  it("while the scanner still does not answer, the card alone says it is not checked, and nothing waits", async () => {
+    const w = await frozenUpload()
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "pending_approval",
+    })
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    expect(w.calls.approvals[0]?.summary_detail?.lines).toContain("Not checked for viruses.")
+  })
+
+  it("a later hit refuses the send, and the version is recorded infected", async () => {
+    const w = await frozenUpload()
+    w.scanner.answer = "infected"
+    expect(await agreementSendPreflight(w.ctx, sendParams(w.versionId))).toMatchObject({
+      error: { code: "PDF_INFECTED" },
+    })
+    w.acting.agent = AGENT
+    expect(await agreementSend(w.ctx, sendParams(w.versionId))).toMatchObject({
+      status: "error",
+      error: { code: "PDF_INFECTED" },
+    })
+    expect(versionRow(w)?.scan_state).toBe("infected")
+    expect(w.calls.approvals).toHaveLength(0)
+  })
+
+  it("the scan job records each version's scan once the scanner answers, and stops while it is down", async () => {
+    const w = await frozenUpload()
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 0 })
+    expect(versionRow(w)?.scan_state).toBe("not_run")
+    w.scanner.answer = "clean"
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 1 })
+    expect(versionRow(w)?.scan_state).toBe("clean")
+    expect(await uploadRescanJob(w.ctx)).toMatchObject({ status: "ok", scanned: 0 })
+    expect(w.calls.rescans).toHaveLength(2)
+  })
+})
+
+describe("the seal of an uploaded version", () => {
+  it("a signed copy that does not read as the frozen file writes no package and no seal", async () => {
+    const w = await signedWorld()
+    let sealed = 0
+    w.ctx.evidence_signed_pdf = async () => ({
+      status: "error",
+      error: {
+        code: "COPY_DIFFERS",
+        message: "The signed copy did not match what was read. Nothing was sealed. Send it again.",
+      },
+    })
+    const realSeal = w.ctx.signing_seal
+    w.ctx.signing_seal = async (p: unknown) => {
+      sealed++
+      return realSeal?.(p)
+    }
+    const out = await sealVersion(w.ctx, w.versionId)
+    expect(out).toMatchObject({ status: "error", error: { code: "COPY_DIFFERS" } })
+    expect(sealed).toBe(0)
+    expect(await packageOf(w.ctx, w.versionId)).toBeNull()
+    const mismatch = w.ctx.calls.emitted.filter((e) => e.action === "mismatch")
+    expect(mismatch[0]?.data).toMatchObject({ what: "signed_copy" })
+    expect(w.ctx.calls.mails).toHaveLength(0)
+  })
+
+  it("remembers the difference: the page says so, nothing retries it, and a person can void it", async () => {
+    const w = await signedWorld()
+    let merges = 0
+    w.ctx.evidence_signed_pdf = async () => {
+      merges++
+      return { status: "error", error: { code: "COPY_DIFFERS", message: "differs" } }
+    }
+    await sealVersion(w.ctx, w.versionId)
+    const row = (await w.db.findOne("agreement_versions", w.versionId)) as Row | null
+    expect(row?.copy_differs_at).toBeTruthy()
+    expect(row?.status).toBe("signed")
+    // No retry: neither the job nor a second seal builds the copy again or raises it again.
+    await sealRetry(w.ctx)
+    expect(await sealVersion(w.ctx, w.versionId)).toMatchObject({
+      status: "error",
+      error: { code: "COPY_DIFFERS" },
+    })
+    expect(merges).toBe(1)
+    expect(w.ctx.calls.emitted.filter((e) => e.action === "mismatch")).toHaveLength(1)
+    expect(w.ctx.calls.emitted.filter((e) => e.action === "seal_overdue")).toHaveLength(0)
+    const got = (await agreementGet(w.ctx as unknown as AgreementsCtx, { id: w.agreementId })) as {
+      versions: Array<{ copy_differs?: boolean }>
+    }
+    expect(got.versions[0]?.copy_differs).toBe(true)
+    // A person voids it, to send it again from a clean file.
+    const revoked: unknown[] = []
+    const vctx = {
+      ...w.ctx,
+      client_actions_revoke: async (x: unknown) => {
+        revoked.push(x)
+        return { status: "ok", revoked_ids: [] }
+      },
+    } as unknown as AgreementsCtx
+    expect(
+      await agreementVoid(vctx, { id: w.agreementId, reason: "print to a clean PDF" }),
+    ).toMatchObject({
+      status: "ok",
+      agreement: { status: "voided" },
+    })
+    expect(revoked).toHaveLength(1)
+  })
+
+  it("a sealed or plainly signed agreement is still never voided, and its page carries no mark", async () => {
+    const w = await signedWorld()
+    const vctx = {
+      ...w.ctx,
+      client_actions_revoke: async () => ({ status: "ok", revoked_ids: [] }),
+    } as unknown as AgreementsCtx
+    expect(await agreementVoid(vctx, { id: w.agreementId, reason: "r" })).toMatchObject({
+      status: "error",
+      error: { code: "NOT_SENT" },
+    })
+    const got = (await agreementGet(w.ctx as unknown as AgreementsCtx, { id: w.agreementId })) as {
+      versions: Array<Record<string, unknown>>
+    }
+    expect(got.versions[0]).not.toHaveProperty("copy_differs")
+  })
+})

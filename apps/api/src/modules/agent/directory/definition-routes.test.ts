@@ -951,6 +951,121 @@ describe("GET /api/agents/:agentId/definition", () => {
     }
   })
 
+  it("an admin holding `*` saves an agent whose ceiling holds exact-only scopes, and cannot add one", async () => {
+    const margin = "projects:margin:read"
+    const [held] =
+      await sql`INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling)
+      VALUES (${session.orgId}, 'role', '@exact-held', 'Exact Held',
+        ${JSON.stringify(["kernel:threads:read", "clevel", margin])}::jsonb) RETURNING id`
+    const starAdmin = await minimal.session(session.orgId, { role: "member" })
+    const starBearer = await bearerWithScopes(starAdmin.userId, session.orgId, ["*"])
+    const exactBearer = await bearerWithScopes(starAdmin.userId, session.orgId, ["*", margin])
+    try {
+      // The settings form resends the whole ceiling with every save.
+      const rename = await send("PATCH", `/api/agents/${held.id}`, starBearer, {
+        displayName: "Exact Held Renamed",
+        scopeCeiling: ["kernel:threads:read", "clevel", margin],
+      })
+      expect(rename.status).toBe(200)
+      const [row] = await sql`SELECT display_name, scope_ceiling FROM kernel.agents
+        WHERE id = ${held.id}`
+      expect(row.display_name).toBe("Exact Held Renamed")
+      expect(row.scope_ceiling).toEqual(["kernel:threads:read", "clevel", margin])
+
+      // Narrowing is a write that adds nothing.
+      const narrow = await send("PATCH", `/api/agents/${pageAgentId}`, starBearer, {
+        scopeCeiling: ["kernel:threads:read"],
+      })
+      expect(narrow.status).toBe(200)
+
+      await sql`UPDATE kernel.agents SET scope_ceiling = '["kernel:threads:read"]'::jsonb
+        WHERE id = ${held.id}`
+      const added = await send("PATCH", `/api/agents/${held.id}`, starBearer, {
+        scopeCeiling: ["kernel:threads:read", margin],
+      })
+      expect(added.status).toBe(403)
+      const refusal = (await added.json()) as { error: { code?: string; message: string } }
+      expect(refusal.error.code).toBe("scope_ceiling_exceeded")
+      expect(refusal.error.message).toContain(margin)
+      expect(refusal.error.message).toContain("exactly")
+      const [unchanged] = await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${held.id}`
+      expect(unchanged.scope_ceiling).toEqual(["kernel:threads:read"])
+
+      const exact = await send("PATCH", `/api/agents/${held.id}`, exactBearer, {
+        scopeCeiling: ["kernel:threads:read", margin],
+      })
+      expect(exact.status).toBe(200)
+      const [granted] = await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${held.id}`
+      expect(granted.scope_ceiling).toEqual(["kernel:threads:read", margin])
+
+      // A new agent has no stored ceiling: naming an exact-only scope takes its exact grant.
+      const create = await send("POST", "/api/agents", starBearer, {
+        handle: "@exact-new",
+        displayName: "Exact New",
+        scopeCeiling: ["clevel"],
+      })
+      expect(create.status).toBe(403)
+      expect(((await create.json()) as { error: { message: string } }).error.message).toContain(
+        "clevel",
+      )
+    } finally {
+      await sql`DELETE FROM kernel.agents WHERE id = ${held.id}`
+    }
+  })
+
+  it("an admin narrowing a clevel owner's own agent keeps clevel unless it is removed", async () => {
+    const owner = await minimal.session(session.orgId, { role: "member" })
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${owner.userId}, ${session.orgId}, 'clevel')`
+    const [ownerAgent] = await sql`SELECT id FROM kernel.agents WHERE org_id = ${session.orgId}
+        AND owner_user_id = ${owner.userId} AND kind = 'personal'`
+    let agentRowId: string
+    if (ownerAgent) agentRowId = ownerAgent.id
+    else {
+      const [inserted] =
+        await sql`INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling, owner_user_id)
+        VALUES (${session.orgId}, 'personal', '@clevel-owner-agent', 'Owner', '[]'::jsonb, ${owner.userId})
+        RETURNING id`
+      agentRowId = inserted.id
+    }
+    await syncPersonalAgentCeilingsForEvent({
+      app: "kernel",
+      entity: "user_scope",
+      orgId: session.orgId,
+      data: { targetUserIds: [owner.userId] },
+    })
+    const [start] = await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${agentRowId}`
+    expect(start.scope_ceiling).toContain("clevel")
+    const starBearer = await bearerWithScopes(session.userId, session.orgId, ["*"])
+
+    // The form resends the ceiling minus the scope the admin unticked; clevel stays.
+    const victim = (start.scope_ceiling as string[]).find((s) => s !== "clevel") ?? ""
+    expect(victim).not.toBe("")
+    const kept = (start.scope_ceiling as string[]).filter((s) => s !== victim)
+    const narrow = await send("PATCH", `/api/agents/${agentRowId}`, starBearer, {
+      scopeCeiling: kept,
+    })
+    expect(narrow.status).toBe(200)
+    await syncPersonalAgentCeilingsForEvent({
+      app: "kernel",
+      entity: "user_scope",
+      orgId: session.orgId,
+      data: { targetUserIds: [owner.userId] },
+    })
+    const [after] = await sql`SELECT scope_ceiling, ceiling_restriction FROM kernel.agents
+      WHERE id = ${agentRowId}`
+    expect(after.scope_ceiling).toContain("clevel")
+    expect(after.scope_ceiling).not.toContain(victim)
+
+    // Removing it explicitly is a narrowing like any other.
+    const removed = await send("PATCH", `/api/agents/${agentRowId}`, starBearer, {
+      scopeCeiling: kept.filter((s) => s !== "clevel"),
+    })
+    expect(removed.status).toBe(200)
+    const [dropped] = await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${agentRowId}`
+    expect(dropped.scope_ceiling).not.toContain("clevel")
+  })
+
   it("an owner may edit the personal agent's name and prompt but not its ceiling", async () => {
     const allowed = await send("PATCH", `/api/agents/${memberPersonalAgentId}`, member.bearer, {
       displayName: "My Liaison",

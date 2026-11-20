@@ -98,8 +98,6 @@ const HOST_ONLY_FIELDS: Record<string, string> = {
   mcpAnnotations: MCP_PROJECTOR,
   // The app builder's publish: its pending approval takes no edit, a change is a new request.
   payloadImmutable: APP_BUILDER_TOOLS,
-  // The app builder's build and publish run short transactions per step, never one whole-call tx.
-  ownsTransactions: APP_BUILDER_TOOLS,
 }
 
 /** Recursively list every non-test .ts source file under a directory. */

@@ -52,6 +52,8 @@ import { documentSearch, documentsSearchTarget, setDocumentSearch } from "./sear
 // monkey-patch once to fan a custom nav event).
 // ─────────────────────────────────────────────────────────────────────────
 const NAV_EVENT = "liaison:invoicing-sidebar:nav"
+/** This app's page in Settings (issuer profiles, numbering, defaults). */
+export const SETTINGS_PATH = "/settings/apps/invoicing"
 let patched = false
 function installHistoryPatch(): void {
   if (patched) return
@@ -192,6 +194,8 @@ interface NavLink {
   icon?: (p: IconProps) => JSX.Element
 }
 
+const DRAFTS_HREF = "/invoicing/documents/drafts"
+
 // Documents is the primary view — the unified, filterable, group-able table.
 // The `:typeFilter` segment scopes it to a document type.
 const DOCUMENTS: NavLink[] = [
@@ -201,6 +205,9 @@ const DOCUMENTS: NavLink[] = [
   { href: "/invoicing/documents/proformas", label: "Proformas" },
   { href: "/invoicing/documents/purchase-orders", label: "Purchase Orders" },
   { href: "/invoicing/documents/credit-notes", label: "Credit notes" },
+  // Unissued drafts (an agent's, a milestone's, a month-end run's): their own list, so the other
+  // entries keep issued documents only and their totals stay true.
+  { href: DRAFTS_HREF, label: "Drafts" },
   // Supplier e-invoices received through the e-invoicing platform (not documents this app issued).
   { href: "/invoicing/received", label: "Received" },
 ]
@@ -210,6 +217,9 @@ const DOCUMENTS: NavLink[] = [
 // There is no separate customs/export view: export documents are just invoices
 // that carry extra fields (HS codes, country of origin, incoterm), shown inside
 // the document itself (detail + editor), not split into their own surface.
+// Recurring invoicing: the schedules, with how many bill.
+const RECURRING: NavLink[] = [{ href: "/invoicing/recurring", label: "Schedules" }]
+
 const FOCUSED_VIEWS: NavLink[] = [
   { href: "/invoicing/dashboards/awaiting-payment", label: "Awaiting payment" },
 ]
@@ -224,7 +234,7 @@ function isActive(pathname: string, href: string): boolean {
 // Pulls badge counts from the app's own tools. The Pending-Approval count
 // MUST go through `invoicing:pending_approvals.list` (the same tool the
 // agent calls) — see file-level docstring. The Deferred count goes through
-// `invoicing:deferred.list`, filtered to status != 'permanent_failure'.
+// `invoicing:deferred.list`, open parks only (not resolved, not permanent_failure).
 // ─────────────────────────────────────────────────────────────────────────
 type PendingApprovalRow = { id: string; tool_name?: string }
 type DeferredRow = { id: string; status: string }
@@ -238,12 +248,39 @@ async function loadCounts(): Promise<{ pendingApproval: number; deferred: number
         .catch(() => ({ items: [] as DeferredRow[] })),
     ])
     const pendingCount = pending?.items?.length ?? 0
+    // The rows the Deferred tab lists: open parks only (a resolved one waits for nothing).
     const deferredCount = (deferred?.items ?? []).filter(
-      (r) => r.status !== "permanent_failure",
+      (r) => r.status !== "permanent_failure" && r.status !== "resolved",
     ).length
     return { pendingApproval: pendingCount, deferred: deferredCount }
   } catch {
     return { pendingApproval: 0, deferred: 0 }
+  }
+}
+
+/** Unissued drafts, counted by the app's own documents_search, the same the agent reads. */
+async function loadDraftCount(): Promise<number> {
+  try {
+    const r = await app.invokeTool<{ totalCount?: number }>("documents_search", {
+      status: "draft",
+      countOnly: true,
+    })
+    return typeof r?.totalCount === "number" ? r.totalCount : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Schedules that bill (active), through the app's own recurring_list, the same the agent reads. */
+async function loadScheduleCount(): Promise<number> {
+  try {
+    const r = await app.invokeTool<{ rows?: unknown[] }>("recurring_list", {
+      status: "active",
+      limit: 200,
+    })
+    return r?.rows?.length ?? 0
+  } catch {
+    return 0
   }
 }
 
@@ -371,6 +408,8 @@ export const InvoicingSidebar: Component = () => {
   const pathname = usePathname()
   const [pendingApproval, setPendingApproval] = createSignal(0)
   const [deferredCount, setDeferredCount] = createSignal(0)
+  const [scheduleCount, setScheduleCount] = createSignal(0)
+  const [draftCount, setDraftCount] = createSignal(0)
   // Writes (a new document, the approval queue, the readiness fixes) are offered
   // only to a viewer holding invoicing:documents:write; a read-only member sees
   // the documents and nothing it would be refused.
@@ -385,6 +424,8 @@ export const InvoicingSidebar: Component = () => {
     const { pendingApproval: p, deferred: d } = await loadCounts()
     setPendingApproval(p)
     setDeferredCount(d)
+    setScheduleCount(await loadScheduleCount())
+    setDraftCount(await loadDraftCount())
   }
   onMount(() => {
     void refresh()
@@ -441,7 +482,19 @@ export const InvoicingSidebar: Component = () => {
         <SectionHeader label={tr("Documents")} icon={FileIcon} />
         <ul class="flex flex-col gap-0.5">
           {DOCUMENTS.map((l) => (
-            <Row href={l.href} label={l.label} pathname={pathname()} />
+            <Row
+              href={l.href}
+              label={l.label}
+              pathname={pathname()}
+              badge={l.href === DRAFTS_HREF ? draftCount() : undefined}
+            />
+          ))}
+        </ul>
+
+        <SectionHeader label={tr("Recurring")} icon={ClockIcon} />
+        <ul class="flex flex-col gap-0.5">
+          {RECURRING.map((l) => (
+            <Row href={l.href} label={l.label} pathname={pathname()} badge={scheduleCount()} />
           ))}
         </ul>
 
@@ -488,12 +541,28 @@ export const InvoicingSidebar: Component = () => {
         </Show>
       </div>
 
-      {/* Footer — discrete identity strip */}
+      {/* Footer: the app's settings page (issuer profiles, numbering) for a viewer who may read
+          them; for anyone else a plain name, with no gear that looks like a link. */}
       <div class="mt-auto border-t border-border-subtle px-4 py-2">
-        <div class="flex items-center gap-1.5 text-[10.5px] text-text-tertiary">
-          <GearIcon />
-          <span>{tr("Invoicing v0.1")}</span>
-        </div>
+        <Show
+          when={access().settings_read}
+          fallback={
+            <div class="text-[10.5px] text-text-tertiary">
+              {/* No version number: a fixed one went stale as the app moved on. */}
+              <span>{tr("Invoicing")}</span>
+            </div>
+          }
+        >
+          <button
+            type="button"
+            data-testid="invoicing-sidebar-settings"
+            class="flex items-center gap-1.5 text-[10.5px] text-text-tertiary hover:text-text-secondary"
+            onClick={() => navigate(SETTINGS_PATH)}
+          >
+            <GearIcon />
+            <span>{tr("Invoicing settings")}</span>
+          </button>
+        </Show>
       </div>
     </nav>
   )

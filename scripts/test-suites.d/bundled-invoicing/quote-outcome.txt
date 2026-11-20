@@ -1,0 +1,4 @@
+# A quote outcome set once, by a person or by the client on its link.
+src/quote-accept.test.ts
+src/no-invoice-wait.test.ts
+src/signed-advance.test.ts

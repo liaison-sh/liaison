@@ -4,10 +4,17 @@
 // resolution, document summaries, draft rows and lines, prior refunds, line item details).
 
 import { readEinvoiceRowColumns } from "../einvoicing/issue-gate"
-import { type DraftLine, type IssueDb, type IssuerProfile, readRefString } from "../issue"
+import {
+  type DraftLine,
+  type IssueBatchOp,
+  type IssueDb,
+  type IssuerProfile,
+  readRefString,
+  taxCountryOf,
+} from "../issue"
 import { lineSubtotal } from "../money"
 import { isUuid } from "../reads"
-import { liftMisplacedCountry } from "./lines"
+import { computeLineFinancials, counterpartyFromRow, liftMisplacedCountry } from "./lines"
 import {
   type DocumentRowSummary,
   type DocumentType,
@@ -16,6 +23,7 @@ import {
   type ErrorEnvelope,
   type MutationsDb,
   normaliseNotesOrThrow,
+  type SourceColumns,
   toBigInt,
 } from "./shared"
 
@@ -288,6 +296,7 @@ export async function findDocumentSummary(
   if (!row) return null
   return {
     id: String(row.id),
+    source: sourceColumnsOf(row),
     type: (row.type as DocumentType | string) ?? "invoice",
     status: (row.status as string | undefined) ?? "draft",
     counterparty_contact_id: (row.counterparty_contact_id as string | null) ?? null,
@@ -351,9 +360,15 @@ export async function loadDraftLines(db: MutationsDb, documentId: string): Promi
       country_of_origin: (r.country_of_origin as string | null) ?? null,
       product_source: (r.product_source as string | null) ?? null,
       external_id: (r.external_id as string | null) ?? null,
+      // A service line stays a service from draft to issue (classification, the PDF's groups).
+      ...(isLineKind(r.line_kind) ? { line_kind: r.line_kind } : {}),
     }
   })
 }
+
+const LINE_KINDS: ReadonlySet<string> = new Set(["goods", "software", "service", "shipping"])
+const isLineKind = (v: unknown): v is NonNullable<DraftLine["line_kind"]> =>
+  typeof v === "string" && LINE_KINDS.has(v)
 
 async function insertDraftLines(
   db: MutationsDb,
@@ -395,6 +410,7 @@ async function insertDraftLines(
       customs_description: l.customs_description ?? null,
       product_source: l.product_source,
       external_id: l.external_id,
+      ...(isLineKind(l.line_kind) ? { line_kind: l.line_kind } : {}),
     })
   }
 }
@@ -436,9 +452,28 @@ export async function getDraft(db: MutationsDb, draftId: string): Promise<DraftR
     external_refs: (doc.external_refs as Record<string, unknown> | undefined) ?? {},
     po_number: (doc.po_number as string | null) ?? null,
     notes: (doc.notes as string | null) ?? null,
+    company_id: (doc.company_id as string | null) ?? null,
     ...draftEinvoiceFieldsOf(doc),
+    external_ref: (doc.external_ref as string | null) ?? null,
+    source: sourceColumnsOf(doc),
     lines,
     created_at: (doc.created_at as string | null) ?? null,
+  }
+}
+
+/** A document row's source columns (shared.ts SourceColumns), null when unset. */
+export function sourceColumnsOf(doc: Record<string, unknown>): SourceColumns {
+  const text = (v: unknown): string | null =>
+    typeof v === "string" && v !== "" ? v : v instanceof Date ? v.toISOString() : null
+  const role = doc.invoice_role
+  return {
+    billing_project_id: text(doc.billing_project_id),
+    invoice_role: role === "advance" || role === "final" || role === "standard" ? role : null,
+    service_period_start: text(doc.service_period_start),
+    service_period_end: text(doc.service_period_end),
+    approved_by: text(doc.approved_by),
+    approved_at: text(doc.approved_at),
+    latest_issue_on: text(doc.latest_issue_on),
   }
 }
 
@@ -475,11 +510,42 @@ export async function insertDraftRow(db: MutationsDb, row: DraftInsert): Promise
     pdf_file_id: null,
     pdf_status: null,
     tax_treatment: row.tax_treatment ?? null,
+    ...(row.billing_project_id ? { billing_project_id: row.billing_project_id } : {}),
+    ...(row.company_id ? { company_id: row.company_id } : {}),
     ...draftEinvoiceWrite(row, "insert"),
   })) as Record<string, unknown>
   const id = String(inserted.id)
   await insertDraftLines(db, id, row.lines)
-  return { ...row, id, created_at: (inserted.created_at as string | null) ?? null }
+  const created = { ...row, id, created_at: (inserted.created_at as string | null) ?? null }
+  await writeDraftTotals(db, created)
+  return created
+}
+
+/**
+ * A draft's stored totals, as its issue would price its lines today (the issuer's country, the
+ * recipient's tax country and VAT number). Written when the draft is made and on every update,
+ * so a list or a card that reads the row never shows 0.00 for a priced draft. A draft whose
+ * issuer or country cannot be classified keeps what it had.
+ */
+async function writeDraftTotals(db: MutationsDb, draft: DraftRow): Promise<void> {
+  const issuer = await findIssuerProfile(db, draft.issuer_profile_id)
+  if (!issuer) return
+  let totals: { subtotal: bigint; tax: bigint; grand: bigint }
+  try {
+    const counterparty = counterpartyFromRow(draft, issuer)
+    totals = computeLineFinancials(draft.lines, {
+      issuer_country: issuer.country,
+      counterparty_country: taxCountryOf(counterparty),
+      has_vat_id: !!counterparty.vat_id,
+    })
+  } catch {
+    return
+  }
+  await db.update("documents", draft.id, {
+    subtotal_minor: totals.subtotal.toString(),
+    tax_total_minor: totals.tax.toString(),
+    grand_total_minor: totals.grand.toString(),
+  })
 }
 
 export async function updateDraftRow(
@@ -496,8 +562,13 @@ export async function updateDraftRow(
   const lifted = liftMisplacedCountry(patch)
   const update: Record<string, unknown> = {}
   if (lifted.type) update.type = lifted.type
-  if ("counterparty_contact_id" in lifted)
+  if ("counterparty_contact_id" in lifted) {
     update.counterparty_contact_id = lifted.counterparty_contact_id
+    // Another customer: the company stamped for the old one no longer holds; the issue reads the
+    // new contact's company.
+    if ((lifted.counterparty_contact_id ?? null) !== existing.counterparty_contact_id)
+      update.company_id = null
+  }
   if ("counterparty_name" in lifted) update.counterparty_name = lifted.counterparty_name
   if ("counterparty_address" in lifted) update.counterparty_address = lifted.counterparty_address
   if ("counterparty_shipping_address" in lifted)
@@ -526,7 +597,8 @@ export async function updateDraftRow(
   }
   const refreshed = await getDraft(db, draftId)
   if (!refreshed) throw new Error(`draft ${draftId} disappeared after update`)
-  return refreshed
+  await writeDraftTotals(db, refreshed)
+  return (await getDraft(db, draftId)) ?? refreshed
 }
 
 const DRAFT_EINVOICE_ENUMS = {
@@ -602,6 +674,18 @@ function draftEinvoiceFieldsOf(doc: Record<string, unknown>): Partial<DraftRow> 
 export async function deleteDraftRow(db: MutationsDb, draftId: string): Promise<void> {
   await deleteAllLines(db, draftId)
   await db.delete("documents", draftId)
+}
+
+/** The writes that delete a draft (its lines, then the draft), for a caller's one `batch`. */
+export async function draftDeleteOps(db: MutationsDb, draftId: string): Promise<IssueBatchOp[]> {
+  const rows = (await db.findMany("document_lines", {
+    where: { document_id: draftId },
+    limit: 1000,
+  })) as Array<Record<string, unknown>>
+  return [
+    ...rows.map((r): IssueBatchOp => ({ delete: "document_lines", id: String(r.id) })),
+    { delete: "documents", id: draftId },
+  ]
 }
 
 /** The Shopify draft order a document mirrors, from the top-level column or the external_refs

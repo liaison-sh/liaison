@@ -23,6 +23,7 @@ import {
 import { type IssueDateParts, issueDateParts } from "../issue-date"
 import { formatMoneyMinor } from "../money"
 import type { ClassifyInput } from "../tax"
+import { advanceDeductedRefusal } from "./advance-guard"
 import { creditedTotalMinor, ISSUED_INVOICE_STATUSES } from "./credit-coverage"
 import type { IssuerProfileRow } from "./db-helpers"
 import {
@@ -72,9 +73,13 @@ export interface CreditNoteIssueOptions {
    *  The original's line kinds come from the Shopify adapter, so they state the operation
    *  category, and a buyer with no company and no VAT id is a checkout consumer. */
   source?: "shopify"
-  /** The note's dedup key, written to `documents.external_ref` (unique) in the issuing commit: an
-   *  automatic note re-run after its run died is found by it instead of issued twice. */
-  external_ref?: string
+  /** The note's dedup key, written to `documents.external_ref` (unique) in the issuing commit (a
+   *  Stripe refund's `stripe:re_...`): one refund never yields two credit notes, and an automatic
+   *  note re-run after its run died is found by it instead of issued twice. */
+  external_ref?: string | null
+  /** "batch": issued with no person (a Stripe refund's automatic credit note), so its e-invoice
+   *  goes out like every other no-person issue instead of asking for its own send card. */
+  einvoice_send?: "batch"
 }
 
 /** The gate inputs an automatic Shopify credit note carries (see `CreditNoteIssueOptions.source`). */
@@ -371,6 +376,12 @@ async function preflightCreditNoteCreateAndIssueParams(
     }
   }
 
+  // An advance a live final deducts is not credited: the final already takes it off the bill.
+  if (originalDocumentUuid) {
+    const deducted = await advanceDeductedRefusal(ctx.db, originalDocumentUuid)
+    if (deducted) return { ok: false, error: deducted }
+  }
+
   // E-invoicing gate: a credit note follows its original's regime and buyer snapshot; a legacy
   // original (no stored regime) is classified from the current data.
   const paramsErr = einvoiceParamsError(input.counterparty, input.operation_category)
@@ -573,6 +584,7 @@ export async function prepareCreditNoteCreateAndIssue(
     operation_category: input.operation_category ?? null,
     ...autoSourceGateFields(opts),
     ...(opts.external_ref ? { external_ref: opts.external_ref } : {}),
+    ...(opts.einvoice_send ? { einvoice_send: opts.einvoice_send } : {}),
     commit_with: original ? [await creditedOnOriginal(ctx, original)] : [],
   }
   const after = async (result: IssueResult): Promise<void> => {
@@ -714,6 +726,12 @@ async function preflightCreditNoteIssueParams(
     originalRef = originalRefOf(original)
     originalDocumentUuid = original.id
     originalTotal = original.grand_total_minor
+  }
+
+  // An advance a live final deducts is not credited from a draft either (the final takes it off).
+  if (originalDocumentUuid) {
+    const deducted = await advanceDeductedRefusal(ctx.db, originalDocumentUuid)
+    if (deducted) return { ok: false, error: deducted }
   }
 
   const counterparty = counterpartyFromRow(draft, issuer)

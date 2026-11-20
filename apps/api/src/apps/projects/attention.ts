@@ -2,13 +2,18 @@
 import type { AttentionItem } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { projectsRel } from "~/apps/projects/schema-refs"
-import { dueBucketSql } from "~/apps/projects/service/due-status"
+import { dueBucketSql, orgToday, todaySql } from "~/apps/projects/service/due-status"
+import { monthCloseItems } from "~/apps/projects/service/home-lines"
 import { extractRows, type PrivilegedDb, type RlsClient, type RlsTx } from "~/db"
 
 type SqlClient = RlsClient | RlsTx | PrivilegedDb
 
+/** The Home row of a client report draft waiting for a person to send it. */
+export const CLIENT_REPORT_WAITING_KIND = "projects:client_reports.report_waiting"
+
 interface TaskAttentionRow {
   id: string
+  assignee_id: string
   title: string
   project_id: string
   project_name: string
@@ -28,26 +33,41 @@ export async function computeAttentionItems(
   tx: SqlClient,
   orgId: string,
   callerUserId: string,
+  /** People away today who name the caller next in line: their tasks come too, tagged. */
+  forUserIds: readonly string[] = [],
+  /** The moment the answer is for; the feed passes nothing (the process clock). */
+  now: Date = new Date(),
 ): Promise<AttentionItem[]> {
   const items: AttentionItem[] = []
+  // One clock for the whole answer: the overdue and due-soon rows and the month-close line
+  // all read today in the org's time zone from `now`, never the database's own CURRENT_DATE.
+  const today = await orgToday(tx, orgId, now)
+  const day = todaySql(today)
+  const people = [callerUserId, ...forUserIds.filter((id) => id !== callerUserId)]
+  const assignees = drizzleSql`t.assignee_id IN (${drizzleSql.join(
+    people.map((id) => drizzleSql`${id}::uuid`),
+    drizzleSql`, `,
+  )})`
+  const forUser = (r: TaskAttentionRow) =>
+    r.assignee_id !== callerUserId ? { forUserId: r.assignee_id } : {}
   // A deleted task (in the bin) or a task of an archived project asks nothing
   // of anyone: neither can be worked on, so neither raises a row.
   const live = drizzleSql`t.archived_at IS NULL AND p.archived_at IS NULL`
 
   // Overdue: assigned to caller, non-terminal, not blocked, due_date < today.
   const overdue = await tx.execute(drizzleSql`
-    SELECT t.id, t.title, t.project_id, p.name AS project_name,
+    SELECT t.id, t.title, t.project_id, p.name AS project_name, t.assignee_id::text AS assignee_id,
            t.updated_at, t.due_date, t.blocked,
-           (CURRENT_DATE - t.due_date) AS days_over,
+           (${day} - t.due_date) AS days_over,
            NULL::int AS days_remaining
     FROM ${projectsRel("tasks")} t
     JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
     JOIN ${projectsRel("projects")} p ON p.id = t.project_id
     WHERE t.org_id = ${orgId}::uuid
-      AND t.assignee_id = ${callerUserId}::uuid
+      AND ${assignees}
       AND ${live}
       AND NOT t.blocked
-      AND ${dueBucketSql("t", "s")} = 'overdue'
+      AND ${dueBucketSql("t", "s", today)} = 'overdue'
     LIMIT 200
   `)
   for (const r of extractRows<TaskAttentionRow>(overdue)) {
@@ -68,24 +88,25 @@ export async function computeAttentionItems(
         projectName: r.project_name,
         daysOver,
         dueDate: toIso(r.due_date),
+        ...forUser(r),
       },
     })
   }
 
   // Due this week: due_date in [today, today + 7d], non-terminal, not blocked.
   const dueSoon = await tx.execute(drizzleSql`
-    SELECT t.id, t.title, t.project_id, p.name AS project_name,
+    SELECT t.id, t.title, t.project_id, p.name AS project_name, t.assignee_id::text AS assignee_id,
            t.updated_at, t.due_date, t.blocked,
            NULL::int AS days_over,
-           (t.due_date - CURRENT_DATE) AS days_remaining
+           (t.due_date - ${day}) AS days_remaining
     FROM ${projectsRel("tasks")} t
     JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
     JOIN ${projectsRel("projects")} p ON p.id = t.project_id
     WHERE t.org_id = ${orgId}::uuid
-      AND t.assignee_id = ${callerUserId}::uuid
+      AND ${assignees}
       AND ${live}
       AND NOT t.blocked
-      AND ${dueBucketSql("t", "s")} = 'due_soon'
+      AND ${dueBucketSql("t", "s", today)} = 'due_soon'
     LIMIT 200
   `)
   for (const r of extractRows<TaskAttentionRow>(dueSoon)) {
@@ -106,13 +127,14 @@ export async function computeAttentionItems(
         projectName: r.project_name,
         daysRemaining,
         dueDate: toIso(r.due_date),
+        ...forUser(r),
       },
     })
   }
 
   // Blocked: t.blocked = true, non-terminal, assigned to caller.
   const blocked = await tx.execute(drizzleSql`
-    SELECT t.id, t.title, t.project_id, p.name AS project_name,
+    SELECT t.id, t.title, t.project_id, p.name AS project_name, t.assignee_id::text AS assignee_id,
            t.updated_at, t.due_date, t.blocked,
            NULL::int AS days_over,
            NULL::int AS days_remaining
@@ -120,7 +142,7 @@ export async function computeAttentionItems(
     JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id
     JOIN ${projectsRel("projects")} p ON p.id = t.project_id
     WHERE t.org_id = ${orgId}::uuid
-      AND t.assignee_id = ${callerUserId}::uuid
+      AND ${assignees}
       AND ${live}
       AND NOT s.terminal
       AND t.blocked = true
@@ -137,7 +159,54 @@ export async function computeAttentionItems(
       urgency: 50,
       occurredAt: toIso(r.updated_at),
       action: { type: "open_entity", tabType: "projects:task", entityId: r.id },
-      metadata: { projectId: r.project_id, projectName: r.project_name },
+      metadata: { projectId: r.project_id, projectName: r.project_name, ...forUser(r) },
+    })
+  }
+
+  // The month-close line, on its one day of the month, to the biller.
+  items.push(...(await monthCloseItems(tx, orgId, callerUserId, forUserIds, now, today)))
+
+  // A client report draft waiting for a person to send it, to the project's lead. Only a
+  // reader of client reports sees one (the table's own row security).
+  const drafts = await tx.execute(drizzleSql`
+    SELECT r.id::text AS id, r.project_id::text AS project_id, p.name AS project_name,
+           r.period_end::text AS period_end, r.updated_at, p.owner_id::text AS owner_id
+      FROM ${projectsRel("client_reports")} r
+      JOIN ${projectsRel("projects")} p ON p.id = r.project_id AND p.org_id = r.org_id
+     WHERE r.org_id = ${orgId}::uuid AND r.status = 'draft' AND p.archived_at IS NULL
+       AND p.owner_id IN (${drizzleSql.join(
+         people.map((id) => drizzleSql`${id}::uuid`),
+         drizzleSql`, `,
+       )})
+     ORDER BY r.period_end DESC, p.name
+     LIMIT 50
+  `)
+  for (const r of extractRows<{
+    id: string
+    project_id: string
+    project_name: string
+    period_end: string
+    updated_at: Date | string
+    owner_id: string
+  }>(drafts)) {
+    items.push({
+      id: `projects:client_report:${r.id}`,
+      app: "projects",
+      entity: "client_report",
+      entityId: r.id,
+      // An app-qualified kind (as the month-close line is); its words are `homeKind.report_waiting`.
+      kind: CLIENT_REPORT_WAITING_KIND as AttentionItem["kind"],
+      summary: `${r.project_name}: the client report for the week ending ${r.period_end} waits for you to send it. Nothing has gone to the client.`,
+      urgency: 30,
+      occurredAt: toIso(r.updated_at),
+      action: { type: "open_entity", tabType: "projects:project", entityId: r.project_id },
+      metadata: {
+        projectId: r.project_id,
+        projectName: r.project_name,
+        reportId: r.id,
+        periodEnd: r.period_end,
+        ...(r.owner_id !== callerUserId ? { forUserId: r.owner_id } : {}),
+      },
     })
   }
 

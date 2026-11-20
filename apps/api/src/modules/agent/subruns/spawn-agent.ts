@@ -198,9 +198,12 @@ export function isScopeSubset(child: string[], parent: string[]): boolean {
   return isScopeCovered(child, parent)
 }
 
+/**
+ * Symmetric concrete-scope intersection with glob support: each side's scopes the other side
+ * covers. Coverage is `isScopeCovered`'s, so an exact-only scope survives only when BOTH sides
+ * name it exactly: a person's `*` does not read cost, and neither does a ceiling's `*`.
+ */
 export function intersectScopes(a: string[], b: string[]): string[] {
-  // Symmetric concrete-scope intersection with glob support.
-  // Strategy: take each side's scopes that pass subset against the other.
   const fromA = a.filter((s) => isScopeSubset([s], b))
   const fromB = b.filter((s) => isScopeSubset([s], a) && !fromA.includes(s))
   return [...fromA, ...fromB]
@@ -351,7 +354,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
       tx
         .select({ id: kernelUsers.id })
         .from(kernelUsers)
-        .where(eq(kernelUsers.orgId, orgId))
+        .where(and(eq(kernelUsers.orgId, orgId), eq(kernelUsers.userType, "member")))
         .limit(1),
     )
     if (!anyUser) {

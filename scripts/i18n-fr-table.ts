@@ -1741,6 +1741,13 @@ export const FR: Record<string, string> = {
   "access request": "demande d'accès",
   "access decision": "décision d'accès",
   "access decisions": "décisions d'accès",
+  "signed agreement waiting for its timestamp": "contrat signé en attente de son horodatage",
+  "signed agreements waiting for their timestamp": "contrats signés en attente de leur horodatage",
+  "signed copy not mailed": "exemplaire signé non envoyé",
+  "signed copies not mailed": "exemplaires signés non envoyés",
+  "signed agreement not sealed yet": "contrat signé pas encore scellé",
+  "signed agreements not sealed yet": "contrats signés pas encore scellés",
+  "agreement evidence that does not match": "preuve de contrat qui ne correspond pas",
   "reply window closing": "fenêtre de réponse bientôt close",
   "reply windows closing": "fenêtres de réponse bientôt closes",
   "critical incident": "incident critique",
@@ -2179,6 +2186,8 @@ export const FR: Record<string, string> = {
   "Stalled: {{title}}": "Bloquée : {{title}}",
   'Edit role "{{name}}" ({{changes}})': "Modifier le rôle « {{name}} » ({{changes}})",
   'Delete role "{{name}}"': "Supprimer le rôle « {{name}} »",
+  "A restricted document needs your decision":
+    "Un document à accès restreint attend votre décision",
   "Invite {{email}} as {{role}}": "Inviter {{email}} en tant que {{role}}",
   "Assign {{email}} to {{role}}": "Attribuer {{role}} à {{email}}",
   "Remove {{email}} from {{role}}": "Retirer {{email}} du rôle {{role}}",
@@ -3037,6 +3046,8 @@ export const FR: Record<string, string> = {
   "Access request denied": "Demande d'accès refusée",
   "{{name}} mentioned you": "{{name}} vous a mentionné",
   "{{name}} added a file to {{label}}": "{{name}} a ajouté un fichier dans {{label}}",
+  "Requests about a restricted document were withdrawn: the people who asked are not on its list":
+    "Des demandes sur un document à accès restreint ont été retirées : les personnes qui les ont faites ne sont pas sur sa liste",
   "{{name}} requested access: {{title}}": "{{name}} demande un accès : {{title}}",
   "Approval {{handle}} approved": "Demande {{handle}} approuvée",
   "Approval {{handle}} rejected": "Demande {{handle}} refusée",
@@ -4860,6 +4871,10 @@ export const FR: Record<string, string> = {
  * and "Désactivée" for a cadence. Keyed `namespace.key.path`.
  */
 export const FR_BY_KEY: Record<string, string> = {
+  // Projects time and capacity: the same English reads differently elsewhere.
+  "projects.settingsPage.time.daysOff": "Jours non travaillés de l'entreprise",
+  "projects.capacity.thisWeek": "Cette semaine",
+  "projects.capacity.nextWeek": "Semaine prochaine",
   "contacts.addresses.role.other": "Autre",
   "contacts.addresses.sourceOption.other": "Autre",
   // The main panel's answer to an address no page owns.
@@ -5059,6 +5074,15 @@ export const FR_BY_KEY: Record<string, string> = {
   "kernel.dock.unreadMany": "{{count}} non lus",
   "kernel.eGGoogle": "par ex. Google",
   "kernel.homeKind.admin_action.other": "actions admin",
+  "kernel.homeKind.issuer_incomplete.one":
+    "facture en attente du SIREN ou de l'adresse de votre société",
+  "kernel.homeKind.issuer_incomplete.other":
+    "factures en attente du SIREN ou de l'adresse de votre société",
+  "kernel.homeKind.milestone_no_invoice.one": "jalon terminé pas encore facturé",
+  "kernel.homeKind.milestone_no_invoice.other": "jalons terminés pas encore facturés",
+  "kernel.homeKind.renewal_not_rolled.one": "renouvellement signé resté aux anciennes conditions",
+  "kernel.homeKind.renewal_not_rolled.other":
+    "renouvellements signés restés aux anciennes conditions",
   "kernel.homeKind.cancelled.other": "annulées",
   "kernel.homeKind.created.other": "nouveaux",
   "kernel.homeKind.deferred.other": "différés",
@@ -6206,8 +6230,8 @@ export const FR_BY_KEY: Record<string, string> = {
     "événements de facturation électronique sans correspondance",
   "kernel.homeKind.binding_changed.one": "connexion de facturation électronique modifiée",
   "kernel.homeKind.binding_changed.other": "connexions de facturation électronique modifiées",
-  "kernel.homeKind.facturx_failed.one": "génération Factur-X échouée",
-  "kernel.homeKind.facturx_failed.other": "générations Factur-X échouées",
+  "kernel.homeKind.facturx_failed.one": "facture électronique non produite",
+  "kernel.homeKind.facturx_failed.other": "factures électroniques non produites",
   "kernel.nodeSessions.import.entry": "Importer",
   "kernel.nodeSessions.import.title": "Importer depuis {{node}}",
   "kernel.nodeSessions.import.node": "Ordinateur",
@@ -7464,6 +7488,13 @@ export const FR_BY_KEY: Record<string, string> = {
     "Votre boîte privée n'est pas encore prête dans cette fenêtre. Réessayez dans un instant.",
   "kernel.routineMailboxWait.failed": "Impossible de la lancer. Réessayez.",
   "kernel.homeCluster.routine_mailbox_wait": "exécutions de routine en attente de votre boîte",
+  "kernel.homeCluster.client_action": "demandes aux clients",
+  "kernel.notificationSettings.kinds.tickets_portal_request":
+    "Demandes des clients depuis le portail",
+  "kernel.homeKind.client_action.one": "demande au client",
+  "kernel.homeKind.client_action.other": "demandes aux clients",
+  "kernel.notificationSettings.kinds.client_action":
+    "Demandes aux clients : signées, ouvertes, questions, verrouillées",
   "kernel.homeKind.routine_mailbox_wait.one": "exécution de routine en attente de votre boîte",
   "kernel.homeKind.routine_mailbox_wait.other": "exécutions de routine en attente de votre boîte",
   "kernel.notificationSettings.kinds.routine_mailbox_wait":

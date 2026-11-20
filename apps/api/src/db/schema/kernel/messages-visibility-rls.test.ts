@@ -130,19 +130,59 @@ describe("kernel.messages SELECT policy: requiredScopes visibility", () => {
     expect(rows.map((r) => r.id).sort()).toEqual([scopedId, disclosedId, openId].sort())
   })
 
-  it("the migration embeds the generator's visibility clause verbatim", () => {
+  // The installed policy (0331) checks scopes through kernel.scopes_covered; the generator
+  // keeps the per-grant form for app tables. Both must answer alike, restricted entries included.
+  const INSTALLED_CLAUSE = `(
+    kernel.scopes_covered(required_scopes, (SELECT kernel.scope_cover_keys((SELECT rls_ctx.scopes()))))
+    OR (
+      COALESCE(NULLIF((SELECT rls_ctx.user_id()), '') = ANY (disclosure_list::text[]), false)
+      AND (
+        NOT EXISTS (SELECT 1 FROM pg_catalog.unnest(required_scopes) AS rq(s) WHERE pg_catalog.left(rq.s, 11) = 'restricted:')
+        OR kernel.scopes_covered(kernel.scopes_unrestricted(required_scopes), (SELECT kernel.scope_cover_keys((SELECT rls_ctx.scopes()))))
+      )
+    )
+  )`
+
+  it("the last migration that sets the policy embeds the installed clause, and the generator's clause answers alike", async () => {
     const migration = readFileSync(
-      join(import.meta.dir, "../../migrations/0060_messages_select_required_scopes.sql"),
+      join(import.meta.dir, "../../migrations/0332_restricted_disclosure.sql"),
       "utf8",
     )
-    // 0060 predates the rls_ctx readers (0184-0186 rewrote the installed
-    // policy to them), so it reads the variables directly.
-    const clause = generateRequiredScopesVisibilityClause({
+    const squash = (t: string) => t.replace(/\s+/g, " ").trim()
+    expect(squash(migration)).toContain(squash(INSTALLED_CLAUSE.slice(1, -1)))
+    const generated = generateRequiredScopesVisibilityClause({
       requiredScopesColumn: "required_scopes",
       disclosureListColumn: "disclosure_list",
     })
-      .replaceAll("rls_ctx.scopes()", "current_setting('app.current_scopes', true)")
-      .replaceAll("rls_ctx.user_id()", "current_setting('app.current_user_id', true)")
-    expect(migration).toContain(clause)
+    const R = "restricted:agreements.agreement:1"
+    const cases: Array<{ r: string[] | null; d: string[] | null }> = []
+    for (const r of [null, [], [SCOPE], [R], [SCOPE, R], ["other:x:read", R], [""]])
+      for (const d of [null, [DISCLOSED], [LACKER]]) cases.push({ r, d })
+    for (const grants of [[], [SCOPE], ["*"], ["crm:*"], ["other:x:read"]]) {
+      for (const user of [DISCLOSED, LACKER]) {
+        const rows = await withRlsContext(ctx(user, grants), async (tx) =>
+          extractRows<{ n: number; gen: boolean; inst: boolean }>(
+            await tx.execute(drizzleSql`
+              SELECT t.n::int AS n, COALESCE((${drizzleSql.raw(generated)}), false) AS gen,
+                     COALESCE((${drizzleSql.raw(INSTALLED_CLAUSE)}), false) AS inst
+              FROM (
+                SELECT x.n,
+                  CASE WHEN jsonb_typeof(x.e->'r') = 'null' THEN NULL
+                       ELSE ARRAY(SELECT jsonb_array_elements_text(x.e->'r')) END::text[] AS required_scopes,
+                  CASE WHEN jsonb_typeof(x.e->'d') = 'null' THEN NULL
+                       ELSE ARRAY(SELECT jsonb_array_elements_text(x.e->'d')) END::uuid[] AS disclosure_list
+                FROM jsonb_array_elements(${JSON.stringify(cases)}::jsonb) WITH ORDINALITY AS x(e, n)
+              ) AS t ORDER BY t.n`),
+          ),
+        )
+        for (const row of rows)
+          expect({ grants, user, ...row, gen: row.gen }).toEqual({
+            grants,
+            user,
+            ...row,
+            gen: row.inst,
+          })
+      }
+    }
   })
 })

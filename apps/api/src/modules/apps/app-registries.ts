@@ -87,6 +87,30 @@ export interface BridgeManifest {
    *  Phase-17+ app (invoicing, boxtal) that expects the K4 shape silently
    *  receives the legacy `{ data }` envelope and misreads every cross-app result. */
   cross_app_calls?: Array<{ target: string; reason: string }>
+  /** Per kind of record, the read-only tool that can stop a mail about it before it leaves. */
+  sendGuardProviders?: Record<
+    string,
+    { tool: string; serviceMessage?: boolean; pill?: { label: string; labelKey?: string } }
+  >
+  /** Per entity type, the read-only tool that says who an approval about such a record is for. */
+  approvalRoute?: Record<string, string>
+  /** What a person outside the org may sign, accept or approve, and the internal tool that shows it (client actions). */
+  clientActionTargets?: Array<{
+    type: string
+    kinds: string[]
+    viewTool: string
+    mintedBy?: "app" | "any"
+  }>
+  /** Read-only tools that add a few lines about the entity a turn is about (context-providers.ts). */
+  contextProviders?: Array<{ on: string[]; tool: string; scope: string; loadTools?: string[] }>
+  /** Read-only tools that give a company's or a contact's timeline its rows (one per source). */
+  activitySources?: Array<{
+    tool: string
+    scope: string
+    label: string
+    labelKey?: string
+    filterKey: string
+  }>
 }
 
 // Track registered orgId:appName to prevent duplicate registration
@@ -388,6 +412,9 @@ export const toolRegistry = createTypedRegistry<
      *  refuses every edit): what a person approves is the whole payload as staged, so a change
      *  means withdrawing the request and asking again (the app builder's publish). */
     payloadImmutable?: boolean
+    /** The tools of the same app that change what this tool's approval carries (manifest
+     *  `editWith`): an edit refused on its approval names them (approvals/edit.ts). */
+    editWith?: readonly string[]
     /** The params carrying text a person outside the org reads (an email body, a ticket reply,
      *  a DM). A call whose text there holds an unfilled placeholder ("[DATE]", "{{name}}", "TBD")
      *  is refused before any gate stages an approval (outbound-placeholders.ts). */
@@ -412,9 +439,48 @@ export const toolRegistry = createTypedRegistry<
      *  when it answers true for these params (analyze_media taints only for a file that came from
      *  outside the org). A throw counts as true (fail closed). Not settable from a manifest. */
     taintSourceWhen?: (params: unknown, ctx: { orgId: string }) => Promise<boolean>
+    /** The manifest's `taintSourceWhen`: a field of a row the tool read and the value that makes
+     *  that row outside text. Carried here; the function above stays host-only. */
+    taintSourceWhenRow?: {
+      field: string
+      equals: string | number | boolean
+      /** The app's `outsideTextFields`: where text beside the rows comes from outside. */
+      outsideFields?: readonly string[]
+    }
+    /** The manifest's `resultTaintWhen`: a successful result holding one of `fields` adds
+     *  `scopes` to the turn's scope taint (execute-tool.ts). */
+    resultTaintWhen?: { fields: readonly string[]; scopes: readonly string[] }
+    /** The manifest's `restrictedRows`: the record kind (`<app>.<entity>`) and where its ids sit
+     *  in a result, for the kernel's restricted stamp (execute-tool.ts). */
+    restrictedRows?: { kind: string; idPath?: string; paramPath?: string }
+    /** Manifest `approvalCard`: the summary template and the `pill` shown on the card. */
+    approvalCard?: { summary?: string; pill?: { label: string; labelKey?: string } }
+    /** Manifest `resultCard`: how the tool's result is drawn as a card. */
+    resultCard?: Record<string, unknown>
+    /** Manifest `runningLabel` / `runningLabelKey`: the line shown while the tool runs. */
+    runningLabel?: string
+    runningLabelKey?: string
+    /** The tool's own handler builds its pinned values: a call chaining `@ref` tokens stages
+     *  unpinned, and its app may park its own request carrying values it computed. */
+    pinnedOptionalOnRefs?: boolean
+    /** Manifest `feature`: the app feature this tool belongs to. */
+    feature?: string
+    /** Manifest `focusCore`: `true` loads the tool on its app's hard focus, a string only when the
+     *  focus verified that entity type. */
+    focusCore?: boolean | string
+    /** On a hidden tool: the visible tool of the same app to use instead. */
+    useInstead?: string
     /** The tool has an external side effect or an exfiltration channel. An ungated call after
      *  the turn read untrusted text parks as an approval (taint_escalation). */
     externalEffect?: boolean
+    /** Manifest `humanTurnOnly` (first-party apps only): the tool runs only on a person's own turn,
+     *  a chat turn they typed, the app, or their own MCP client. From a routine tick, a sub-run or a
+     *  job it is refused `human_turn_only` before any gate, never parked (execute-tool.ts). */
+    humanTurnOnly?: boolean
+    /** Manifest `dmOnly` (first-party apps only): an in-app agent runs it only in its DM with the
+     *  person (`resolveRoomFloor` kind `dm`); in a shared or approval thread it is refused `dm_only`
+     *  before any gate. A person in the app and an MCP client are not in a room and pass. */
+    dmOnly?: boolean
     /** Host-only. The param holding the URL an outward fetch goes to. A call whose URL there is
      *  exactly one this same turn's own `web_search` returned, while the turn has read nothing
      *  new since that search, once per URL and at most three per search (turn-scope-accumulator
@@ -454,12 +520,14 @@ export const toolRegistry = createTypedRegistry<
      *  no pre-commit external side-effect (an outbox `queueEvent` inside the same tx is fine —
      *  it rolls back too). Defaults off. (BL-180) */
     retryOnTransientDbError?: boolean
-    /** Host-only (kernel). The handler runs no whole-call transaction: it gets the call's
+    /** The handler runs no whole-call transaction. A host (kernel) handler gets the call's
      *  RlsSession as `ctx.rlsSession` (a short transaction per step) and `ctx.db` refuses
      *  every use, so a call that waits on long work (a build, an install's health gate)
-     *  never holds a connection idle in a transaction. Its preflight and its approved
-     *  execution get a session too. Without a session (a caller holding a live
-     *  transaction) the handler gets that transaction as usual. */
+     *  never holds a connection idle in a transaction. A manifest tool declares it so its
+     *  approved run commits each bridge call at once, as its direct call does: another app it
+     *  calls after a write (an issue, then the card it billed) sees that write. Its preflight
+     *  and its approved execution get a session too. Without a session (a caller holding a
+     *  live transaction) the handler gets that transaction as usual. */
     ownsTransactions?: boolean
     /** When true, this tool is deferred — the model sees only its name until it discovers
      *  it via the tool_search tool. App tools are deferred by default; kernel tools are not. */
@@ -499,6 +567,12 @@ export const toolRegistry = createTypedRegistry<
      *  folder, cloning or dispatching there are not the session's to do
      *  (modules/mcp/node-session-connection.ts). Defaults off. */
     notForNodeSessions?: boolean
+    /** When true, a person with no computer set up for Liaison is not offered
+     *  it (in-app agent turns): a tool that reads the person's own computer
+     *  (its repositories, what its signed-in gh and glab reach) has nothing to
+     *  read, and its description would read as a claim that a computer exists.
+     *  The turn sets `RunContext.noOwnComputer`; defaults off. */
+    needsOwnComputer?: boolean
     /** When true, this tool is hidden from the outbound MCP server projection
      *  (`listMcpTools` / `buildToolSet({audience: "gateway"})`). Inbound MCP
      *  tools whose connection has `expose_via_gateway=false` set this flag at
@@ -620,6 +694,8 @@ export const skillRegistry = createTypedRegistry<
     // enabledByDefault→true when absent.
     kind?: "playbook" | "guide"
     enabledByDefault?: boolean
+    /** The app feature the skill belongs to; absent for a skill of the whole app. */
+    feature?: string
     // Manifest-declared trigger vocabulary (`skills.<name>.autoAttach` in the
     // app manifest). Same shape as `kernel.skills.auto_attach` (DB skills):
     // parsed with parseAutoAttachKeywords/parseAutoAttachApps at resolve time
@@ -641,6 +717,8 @@ export const routineTemplateRegistry = createTypedRegistry<
   [orgId: string, appName: string, templateKey: string],
   {
     description: string
+    /** The name people read, copied to the routine's title when enabled; absent = its key. */
+    title?: string
     kind: "recurring" | "scheduled" | "event"
     cron?: string
     timezone?: string
@@ -649,6 +727,18 @@ export const routineTemplateRegistry = createTypedRegistry<
     promptTemplate: string
     scopes: string[]
     enabledByDefault: boolean
+    /** Copied to the routine when the template is enabled: its runs stage drafts and end. */
+    followUp?: boolean
+    /**
+     * Kernel templates with options (`enable_routine_template`'s `quietDays`,
+     * `pipelineId`): the prompt for the options chosen, or a plain error.
+     */
+    renderPrompt?: (options: {
+      quietDays?: unknown
+      pipelineId?: unknown
+    }) => { prompt: string } | { error: string }
+    /** The options a routine's prompt was rendered with, so a reset keeps them. */
+    optionsOf?: (prompt: string) => { quietDays?: unknown; pipelineId?: unknown } | undefined
     /** Pinned output visibility; absent = personal. */
     visibility?: "personal" | "shared"
     /**
@@ -714,8 +804,10 @@ export const approvalEditableFieldsRegistry = createTypedRegistry<
   Array<{
     field: string
     label: string
-    widget: "text" | "richtext" | "checkbox" | "checkbox-per-line" | "key-value-list"
+    widget: "text" | "richtext" | "number" | "checkbox" | "checkbox-per-line" | "key-value-list"
     listSource?: string
+    /** The unit a person reads (see ApprovalEditableField.unit in @liaison/shared). */
+    unit?: "hours" | "money"
     /** Derived payload keys blanked when this field is edited (see
      *  ApprovalEditableField.invalidates in @liaison/shared). */
     invalidates?: string[]
@@ -919,6 +1011,8 @@ export const attentionItemsRegistry = createTypedRegistry<
     scope?: string
     bundlePath: string
     core: boolean
+    /** Declared `passesOn`: also given the people away today who name the viewer next in line. */
+    passesOn?: boolean
   }
 >()
 
@@ -950,10 +1044,6 @@ export interface SlotRegistryEntry {
 export const slotRegistry = createTypedRegistry<
   [orgId: string, appName: string, slotName: string],
   SlotRegistryEntry
->()
-export const contributionRegistry = createTypedRegistry<
-  [orgId: string, slotTarget: string],
-  any[]
 >()
 /** One record path a template may map (manifest `entities.<e>.print.fields`). */
 export interface PrintFieldDeclaration {
@@ -1076,6 +1166,8 @@ export const manifestFileParentRegistry = createTypedRegistry<
     deleteScope?: string
     /** Set when the parent table is immutable with a legal retention period. */
     retention?: { retentionYears: number; anchor: string }
+    /** `readScope`, when the parent table's own row policy does not ask for it. */
+    requiredScope?: string
   }
 >({ orgScoped: true })
 
@@ -1347,6 +1439,13 @@ export const manifestRegistry = createTypedRegistry<
       { defaults: Array<{ key: string; name: string; payload: unknown }> }
     >
     entities?: Record<string, any>
+    /** Manifest `features`: the switches inside the app (org-features.ts reads them). */
+    features?: Record<
+      string,
+      { adminScope: string; labelKey: string; offMessageKey?: string; offNextKey?: string }
+    >
+    /** Manifest `legalStarterTemplates`: the app wants the kernel's legal starter templates. */
+    legalStarterTemplates?: { corporateFeature?: string }
     /** Widget hints for the bulk form: only the bulk underlying tools' shared
      *  fields (see bulk-field-schemas.ts), never the full tool catalog. */
     tools?: Record<string, BulkToolSchema>
@@ -1418,7 +1517,11 @@ export const connectionConfigRegistry = createTypedRegistry<
       type: string
       required?: boolean
       readable?: boolean
+      /** A value refused before storage (manifest-schema.ts); the message never holds the value. */
+      refusePattern?: { pattern: string; code: string; message: string; messageKey?: string }
     }>
+    /** A read-only tool run with the candidate key before it is stored (connections/precheck.ts). */
+    checkBeforeStore?: string
     allowedDomains: string[]
     templateVars?: Record<string, { lowercase?: boolean; pattern: string; appendSuffix?: string }>
     identifierVar?: string
@@ -1632,7 +1735,6 @@ export function resetAppRegistries(): void {
   slotRegistry.clear()
   timelineDeclarations.clear()
   dimensionDefRegistry.clear()
-  contributionRegistry.clear()
   entityRegistry.clear()
   manifestFileParentRegistry.clear()
   routineFlowRecordRegistry.clear()

@@ -8,10 +8,13 @@ import {
   cancelApprovalsForDeletedTasks,
   reopenApprovalsForRestoredTasks,
 } from "~/modules/approvals/cancel"
+import { updateItemRoutePerson } from "~/modules/approvals/route-world"
 import { applyCells, changedKeys } from "~/modules/dashboards/tables/columns"
 import { appendChecklistOnMerge, readItems, readProjectLevels } from "./checklist"
 import { checklistStatus } from "./checklist-status"
-import { dueBucketSql } from "./due-status"
+import { refuseClaimedTasks } from "./claim-holds"
+import { explainClosingStages, mergeDealRows, syncDealOutcome } from "./deals"
+import { dueBucketSql, orgToday, todaySql } from "./due-status"
 import {
   fieldFilterConditions,
   lockProjectFields,
@@ -25,6 +28,7 @@ import {
   MAX_TASK_DEPTH,
   statusIsTerminal,
 } from "./move-task"
+import { orgUsesTimeBudgets } from "./planning"
 import { normalizeRelease, releaseFilterSql } from "./release-filter"
 import { assertTaskPriority, resolveAssignee, resolveStatusRef } from "./resolve"
 import { ProjectsServiceError } from "./statuses"
@@ -47,6 +51,7 @@ import {
   labelFilterCondition,
   resolveLabelInput,
 } from "./task-labels"
+import { attachTaskTimeKeys } from "./task-time-keys"
 import { recordTransitions, type TransitionActor, transitionActorFor } from "./transitions"
 
 export type { AssigneeRef, Task, TaskSummary } from "./task-detail"
@@ -200,7 +205,12 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
   return tx.transaction(async (innerTx) => {
     await ensureProjectMutableForTasks(innerTx, orgId, input.projectId)
     const release = normalizeRelease(input.release) ?? null
-    const statusId = await resolveStatusId(innerTx as RlsClient, orgId, input.projectId, input)
+    const statusId = await resolveStatusId(
+      innerTx as RlsClient,
+      orgId,
+      input.projectId,
+      input,
+    ).catch((err) => explainClosingStages(innerTx, orgId, input.projectId, err))
     assertTaskPriority(input.priority)
     const labelAssignments = await resolveLabelInput(innerTx as RlsClient, orgId, input.labels)
     // Before the definitions are read: a concurrent fields_set waits for this create, or this
@@ -414,6 +424,9 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
     `)
 
     await applyTaskLabels(innerTx as RlsClient, orgId, taskId, labelAssignments)
+    // A root task of a pipeline is a deal: its rows, and its outcome when it
+    // is created straight into a closing stage.
+    await syncDealOutcome(innerTx, orgId, actor, [taskId])
 
     // The event carries the full row as written (key, number, position,
     // resolved status) so a live client can render it without a refetch.
@@ -439,7 +452,9 @@ export async function createTask(args: CreateTaskArgs): Promise<TaskDetail> {
       { at: createdAtIso },
     )
 
-    return detail
+    // The time keys go on the answer only, never on the event every member's socket receives.
+    const [answer] = await attachTaskTimeKeys(innerTx as RlsClient, orgId, [{ ...detail }])
+    return answer ?? detail
   })
 }
 
@@ -504,7 +519,8 @@ export async function getTask(args: GetTaskArgs): Promise<TaskDetail> {
   if (args.viewerId && detail.threadId) {
     await ensureThreadParticipant(args.tx, args.orgId, detail.threadId, args.viewerId)
   }
-  return detail
+  const [withTime] = await attachTaskTimeKeys(args.tx, args.orgId, [detail])
+  return withTime ?? detail
 }
 
 /**
@@ -592,6 +608,8 @@ export interface ListTasksArgs {
   orgId: string
   projectId: string
   filters?: ListTasksFilters
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
 }
 
 export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSummary[] }> {
@@ -615,7 +633,8 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
   }
   if (filters.due) {
     const bucket = filters.due === "this_week" ? "due_soon" : filters.due
-    conditions.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    const today = await orgToday(args.tx, args.orgId, args.now)
+    conditions.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, filters.release)
   if (releaseCond) conditions.push(releaseCond)
@@ -677,6 +696,7 @@ export async function listTasks(args: ListTasksArgs): Promise<{ items: TaskSumma
     task.checklist = taskItems && taskItems.length > 0 ? checklistStatus(levels, taskItems) : null
   }
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   await maskLinkFields(args.tx, items)
   if (view === "tree") {
     items.sort((a, b) => a.depth - b.depth || a.position - b.position)
@@ -745,7 +765,9 @@ function taskDiff(before: TaskDetail, after: TaskDetail): string[] {
 
 export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
   const { tx, orgId, actor, projectId, taskId, input } = args
-  return tx.transaction(async (innerTx) => {
+  const { detail: updated, assigned } = await tx.transaction(async (innerTx) => {
+    // The assignee this update set, if it set one: pending requests about the task follow it.
+    let assigned: { personId: string | null } | null = null
     const projectClause = projectId ? drizzleSql`AND project_id = ${projectId}::uuid` : drizzleSql``
     const taskRows = extractRows<{
       project_id: string
@@ -789,7 +811,12 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
       input.statusId !== undefined ||
       (input.statusLabel !== undefined && input.statusLabel !== null)
     ) {
-      nextStatusId = await resolveStatusRef(innerTx as RlsClient, orgId, existing.project_id, input)
+      nextStatusId = await resolveStatusRef(
+        innerTx as RlsClient,
+        orgId,
+        existing.project_id,
+        input,
+      ).catch((err) => explainClosingStages(innerTx, orgId, existing.project_id, err))
       sets.push(drizzleSql`status_id = ${nextStatusId}::uuid`)
       const completedAt = await computeNextCompletedAt(innerTx, orgId, {
         previousStatusId: existing.status_id,
@@ -812,6 +839,7 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
           ? drizzleSql`assignee_id = NULL`
           : drizzleSql`assignee_id = ${assigneeId}::uuid`,
       )
+      assigned = { personId: assigneeId }
     }
     if (input.priority !== undefined) {
       assertTaskPriority(input.priority)
@@ -848,12 +876,18 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
       WHERE id = ${taskId}::uuid AND org_id = ${orgId}::uuid ${projectClause}
     `)
     await applyTaskLabels(innerTx as RlsClient, orgId, taskId, labelAssignments)
+    const statusChanged = nextStatusId !== null && nextStatusId !== existing.status_id
+    // The deal's outcome follows its new stage, in this transaction.
+    if (statusChanged) {
+      await syncDealOutcome(innerTx, orgId, actor, [taskId], {
+        fromStatusIds: { [taskId]: existing.status_id },
+      })
+    }
 
     // The event carries what changed first (the names of the properties and
     // `fields.<key>` whose value differs, and the status left and entered),
     // then the full row AFTER the write, so a fenced copy keeps the change.
     const detail = await loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
-    const statusChanged = nextStatusId !== null && nextStatusId !== existing.status_id
     await innerTx.queueEvent({
       app: "projects",
       entity: "task",
@@ -882,11 +916,26 @@ export async function updateTask(args: UpdateTaskArgs): Promise<TaskDetail> {
         ],
         via,
       )
-      return loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
     }
-
-    return detail
+    // Read again after the transition, so the answer carries when the status was entered.
+    const after = statusChanged
+      ? await loadTaskDetail(innerTx as RlsClient, orgId, taskId, projectId)
+      : detail
+    // The time keys go on the answer only, never on the event every member's socket receives.
+    const [answer] = await attachTaskTimeKeys(innerTx as RlsClient, orgId, [{ ...after }])
+    return { detail: answer ?? after, assigned }
   })
+  if (assigned) {
+    // Its own transaction, after the write: a failure is logged and the assignment stands.
+    await updateItemRoutePerson({
+      orgId,
+      app: "projects",
+      entityType: "task",
+      entityId: taskId,
+      personId: assigned.personId,
+    })
+  }
+  return updated
 }
 
 // ---------------------------------------------------------------------------
@@ -908,13 +957,12 @@ export interface CrossProjectTask extends Task {
    *  this flag (or the `terminal` filter) a caller cannot tell open from done. */
   statusTerminal: boolean
   /** The assignee's display NAME (joined from kernel.users), or null when the
-   *  task is unassigned (or the user row is missing/anonymized). Lets a caller
-   *  tally a per-PERSON workload from a single project read and NAME the
-   *  most-loaded person — without a separate per-id user lookup. `assigneeId`
+   *  task is unassigned (or the user row is missing/anonymized). Lets a readout
+   *  say who holds each task without a separate per-id user lookup. `assigneeId`
    *  alone is an opaque uuid; the name is what a human-facing readout needs. */
   assigneeName: string | null
   /** SERVER-computed overdue flag: TRUE iff the task has a non-null `due_date`
-   *  strictly in the PAST (due_date < CURRENT_DATE) AND its status is NON-terminal
+   *  strictly before the org's today (`orgToday`) AND its status is NON-terminal
    *  (an unfinished task only — a done/cancelled task is never "overdue" however
    *  old its due date). This is the launch/board-digest discrimination computed in
    *  SQL so a routine tick RENDERS the overdue set instead of re-deriving
@@ -939,6 +987,8 @@ export interface ListTasksAcrossProjectsArgs {
   terminal?: boolean
   /** Effective-release filter (see ListTasksFilters.release). */
   release?: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
 }
 
 /**
@@ -963,9 +1013,11 @@ export async function listTasksAcrossProjects(
   // (the open-tasks sweep predicate); a NULL status (no column) counts as not-terminal.
   if (args.terminal === true) conds.push(drizzleSql`s.terminal IS TRUE`)
   else if (args.terminal === false) conds.push(drizzleSql`s.terminal IS NOT TRUE`)
+  // One today for the filter and the `overdue` column: the org's, never CURRENT_DATE.
+  const today = await orgToday(args.tx, args.orgId, args.now)
   if (args.due) {
     const bucket = args.due === "this_week" ? "due_soon" : args.due
-    conds.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    conds.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, args.release)
   if (releaseCond) conds.push(releaseCond)
@@ -993,7 +1045,7 @@ export async function listTasksAcrossProjects(
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
-        (t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE AND s.terminal IS NOT TRUE) AS overdue
+        (${dueBucketSql("t", "s", today)} = 'overdue') AS overdue
       FROM ${projectsRel("tasks")} t
       JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
       LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
@@ -1013,6 +1065,7 @@ export async function listTasksAcrossProjects(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   await maskLinkFields(args.tx, items)
   // Unpaginated (no LIMIT) — the result IS the full matching set, so the sweep
   // count is exactly items.length. Returned as `totalCount` for the uniform
@@ -1030,6 +1083,8 @@ export interface ListProjectTasksArgs {
   tx: RlsClient
   orgId: string
   projectId: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
   statusId?: string
   /** Filter by whether the task's status is terminal/done. `false` = only
    *  UNFINISHED tasks (the canonical "process every open task" sweep predicate);
@@ -1098,9 +1153,11 @@ export async function listProjectTasks(
   // (the sweep predicate); a NULL status (no column) counts as not-terminal.
   if (args.terminal === true) conds.push(drizzleSql`s.terminal IS TRUE`)
   else if (args.terminal === false) conds.push(drizzleSql`s.terminal IS NOT TRUE`)
+  // One today for the filter and the `overdue` column: the org's, never CURRENT_DATE.
+  const today = await orgToday(args.tx, args.orgId, args.now)
   if (args.due) {
     const bucket = args.due === "this_week" ? "due_soon" : args.due
-    conds.push(drizzleSql`${dueBucketSql("t", "s")} = ${bucket}`)
+    conds.push(drizzleSql`${dueBucketSql("t", "s", today)} = ${bucket}`)
   }
   const releaseCond = releaseFilterSql("t", args.orgId, args.release)
   if (releaseCond) conds.push(releaseCond)
@@ -1166,7 +1223,7 @@ export async function listProjectTasks(
         p.name AS project_name, p.key AS project_key,
         s.label AS status_label, s.terminal AS status_terminal,
         u.name AS assignee_name,
-        (t.due_date IS NOT NULL AND t.due_date < CURRENT_DATE AND s.terminal IS NOT TRUE) AS overdue
+        (${dueBucketSql("t", "s", today)} = 'overdue') AS overdue
       FROM ${projectsRel("tasks")} t
       JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
       LEFT JOIN ${projectsRel("project_statuses")} s ON s.id = t.status_id AND s.org_id = t.org_id
@@ -1187,6 +1244,7 @@ export async function listProjectTasks(
     overdue: r.overdue ?? false,
   }))
   await attachTaskLabels(args.tx, args.orgId, items)
+  await attachTaskTimeKeys(args.tx, args.orgId, items)
   await maskLinkFields(args.tx, items)
   return { items, totalCount }
 }
@@ -1194,6 +1252,8 @@ export async function listProjectTasks(
 export interface PortfolioRollupArgs {
   tx: RlsClient
   orgId: string
+  /** The moment the org's today (due buckets, overdue) is read at; tests pin it. */
+  now?: Date
   /** Cap on the number of (most-recently-updated) active projects to roll up.
    *  Default 25, max 50 — keeps the single aggregate query bounded for a board
    *  digest without ever paging. */
@@ -1225,6 +1285,8 @@ export interface PortfolioAtRiskTask {
 export interface PortfolioProjectRollup {
   projectId: string
   projectName: string
+  /** Time and budgets on this project: present only while the org uses it. */
+  timeBudgets?: boolean
   /** Total non-archived tasks in the project. */
   totalTasks: number
   /** Tasks in a terminal/done status. */
@@ -1276,6 +1338,8 @@ const PRIORITY_RANK_SQL = drizzleSql`CASE t.priority
 export async function portfolioRollup(args: PortfolioRollupArgs): Promise<PortfolioRollupResult> {
   const limit = Math.max(1, Math.min(args.limit ?? 25, 50))
   const archivedClause = args.includeArchived ? drizzleSql`` : drizzleSql`AND p.archived_at IS NULL`
+  // Overdue counts against the org's today, the same date Home and the task lists use.
+  const day = todaySql(await orgToday(args.tx, args.orgId, args.now))
 
   // Total active (or all) projects in the org — drives truncation disclosure.
   const totalRows = extractRows<{ total: number }>(
@@ -1302,10 +1366,11 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     risk_days_overdue: number | null
     risk_assignee_name: string | null
     risk_status_label: string | null
+    time_budgets_on: boolean
   }>(
     await args.tx.execute(drizzleSql`
       WITH candidate_projects AS (
-        SELECT p.id, p.name, p.updated_at
+        SELECT p.id, p.name, p.updated_at, p.time_budgets_on
         FROM ${projectsRel("projects")} p
         WHERE p.org_id = ${args.orgId}::uuid ${archivedClause}
         ORDER BY p.updated_at DESC, p.id DESC
@@ -1318,7 +1383,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
           s.label AS status_label,
           (s.terminal IS NOT TRUE
             AND t.due_date IS NOT NULL
-            AND t.due_date < CURRENT_DATE) AS is_overdue
+            AND t.due_date < ${day}) AS is_overdue
         FROM ${projectsRel("tasks")} t
         JOIN candidate_projects cp ON cp.id = t.project_id
         LEFT JOIN ${projectsRel("project_statuses")} s
@@ -1328,6 +1393,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
       SELECT
         cp.id AS project_id,
         cp.name AS project_name,
+        cp.time_budgets_on,
         COALESCE(agg.total_tasks, 0)::int AS total_tasks,
         COALESCE(agg.done_tasks, 0)::int AS done_tasks,
         COALESCE(agg.overdue_tasks, 0)::int AS overdue_tasks,
@@ -1351,7 +1417,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
           t.id, t.title, t.priority, t.due_date, t.assignee_id,
           pt2.status_label,
           CASE WHEN pt2.is_overdue
-            THEN (CURRENT_DATE - t.due_date)::int ELSE 0 END AS days_overdue
+            THEN (${day} - t.due_date)::int ELSE 0 END AS days_overdue
         FROM project_tasks pt2
         JOIN ${projectsRel("tasks")} t ON t.id = pt2.id
         WHERE pt2.project_id = cp.id
@@ -1370,6 +1436,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     `),
   )
 
+  const inUse = orgUsesTimeBudgets(args.orgId)
   const projects: PortfolioProjectRollup[] = rows.map((r) => {
     const total = r.total_tasks
     const done = r.done_tasks
@@ -1377,6 +1444,7 @@ export async function portfolioRollup(args: PortfolioRollupArgs): Promise<Portfo
     return {
       projectId: r.project_id,
       projectName: r.project_name,
+      ...(inUse ? { timeBudgets: r.time_budgets_on === true } : {}),
       totalTasks: total,
       doneTasks: done,
       remainingTasks: remaining,
@@ -1552,6 +1620,33 @@ export interface MergeTasksArgs {
  * the target, move any source-pointing dependencies to the target, then archive
  * the source. Modeled on contacts `mergeContacts` (reassign-then-archive).
  */
+/** Carry the source's time rows to the target (app_projects.merge_task_time). */
+async function mergeTaskTimeRows(
+  tx: RlsClient,
+  sourceId: string,
+  targetId: string,
+  checkOnly: boolean,
+) {
+  try {
+    await tx.transaction(async (sp) => {
+      await sp.execute(
+        drizzleSql`SELECT ${projectsRel("merge_task_time")}(${sourceId}::uuid, ${targetId}::uuid, ${checkOnly})`,
+      )
+    })
+  } catch (err) {
+    const e = err as { message?: string; cause?: { message?: string } }
+    if (`${e.cause?.message ?? ""} ${e.message ?? ""}`.includes("time_merge_over_limit")) {
+      throw new ProjectsServiceError(
+        409,
+        "time_over_limit",
+        "Nothing was merged: one person's time on the two tasks together would pass 744 h, the most one entry holds.",
+        { next: "That person corrects their time on one of the tasks, then merge again." },
+      )
+    }
+    throw err
+  }
+}
+
 export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   const { tx, orgId, sourceId, targetId } = args
   if (sourceId === targetId) {
@@ -1566,9 +1661,19 @@ export async function mergeTasks(args: MergeTasksArgs): Promise<void> {
   if (exists.length < 2) {
     throw new ProjectsServiceError(404, "not_found", "source or target task not found")
   }
+  // A source on a live billing claim is billed work: it is not merged away.
+  await refuseClaimedTasks(orgId, [sourceId], "merged", args.actor.scopes)
+  // A fold past what one time row holds refuses the merge before anything is written.
+  await mergeTaskTimeRows(tx, sourceId, targetId, true)
+  // Two deals naming different companies are refused before anything is
+  // written; otherwise the survivor keeps its deal rows and the source's go.
+  await mergeDealRows(tx, orgId, sourceId, targetId)
   // Append the source's checklist after the target's own (S11). First, so a
   // refusal (over the per-task limit) writes nothing.
   await appendChecklistOnMerge(tx, orgId, args.actor.userId, sourceId, targetId)
+  // The source's time rows join the target in this transaction, other people's
+  // included (a definer function), once nothing else refuses.
+  await mergeTaskTimeRows(tx, sourceId, targetId, false)
   // Reassign the source's direct children to the target.
   await tx.execute(drizzleSql`
     UPDATE ${projectsRel("tasks")}

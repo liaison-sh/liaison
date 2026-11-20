@@ -70,8 +70,12 @@ import {
 } from "~/modules/demo/demo-reset"
 import { DemoSeederTestAccess, setDemoSeeder } from "~/modules/demo/demo-seeder"
 import { DEMO_WAREHOUSE_DSN_ENV } from "~/modules/demo/warehouse"
+import { installDemoGithubConnection } from "~/modules/demo/worlds/studio/github/connection"
 import { OrgPurgeIncompleteError } from "~/modules/org/purge/rows"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
+import { seedContext } from "~/seed/context"
+import { upsertAppRow } from "~/seed/factories/app-tables"
+import { seedPortalPerson } from "~/seed/factories/people/portal-people"
 import { installFromDist } from "../../../../test-support/seed/install-dist-apps"
 import { seedDemoOrg } from "./seed-org"
 
@@ -278,6 +282,9 @@ beforeAll(async () => {
     process.env.LIAISON_APPS_DIR = ownAppsDir
   }
   await installFromDist("invoicing", crypto.randomUUID())
+  // Agreements, for the services world's signed records (versions and signature events are legal
+  // records, write-once like a legal original).
+  await installFromDist("agreements", crypto.randomUUID())
 
   const expiredVisitor = await makeOrg("expired-visitor")
   await populate(expiredVisitor.orgId)
@@ -682,5 +689,102 @@ describe("legal records and honest refusals", () => {
     }
     // With the refusing table gone, the next run collects the org.
     expect((await purgeDemoOrg(org.orgId, NOW)).purged).toBe(true)
+  }, 300_000)
+})
+
+/** Every table with an `org_id` column that still holds a row of `orgId`, with its count. */
+async function rowsLeftAnywhere(orgId: string): Promise<Record<string, number>> {
+  return withSystemDb("demo-reset-test-residue", async (tx) => {
+    const result = await tx.execute(sql`
+      SELECT c.table_schema || '.' || c.table_name AS t,
+        (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I.%I WHERE org_id = %L',
+          c.table_schema, c.table_name, ${orgId}::text), false, true, '')))[1]::text::int AS n
+      FROM information_schema.columns c
+      JOIN information_schema.tables t
+        ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+      WHERE c.column_name = 'org_id' AND (c.table_schema = 'kernel' OR c.table_schema LIKE 'app\\_%')
+    `)
+    const rows = (
+      Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])
+    ) as Array<{
+      t: string
+      n: number
+    }>
+    return Object.fromEntries(rows.filter((r) => r.n > 0).map((r) => [r.t, r.n]))
+  })
+}
+
+describe("a services world visitor org", () => {
+  it("the reaper leaves nothing of its agreements, its repository stand-in connection or its portal people", async () => {
+    const org = await makeOrg("services-visitor")
+    const userId = await someUserId(org.orgId)
+    const ctx = seedContext({ orgId: org.orgId, now: NOW })
+    const companyId = crypto.randomUUID()
+    const contactId = crypto.randomUUID()
+    const agreementId = crypto.randomUUID()
+    const versionId = crypto.randomUUID()
+    await withSystemDb("demo-reset-test-services", async (tx) => {
+      await tx.execute(sql`
+        INSERT INTO kernel.companies (id, org_id, handle, name) VALUES (${companyId}::uuid, ${org.orgId}::uuid, 'client-company', 'Client company')
+      `)
+      await tx.execute(sql`
+        INSERT INTO kernel.contacts (id, org_id, handle, name, company_id)
+        VALUES (${contactId}::uuid, ${org.orgId}::uuid, 'client-person', 'Client person', ${companyId}::uuid)
+      `)
+      await upsertAppRow(tx, "agreements", "agreements", {
+        id: agreementId,
+        org_id: org.orgId,
+        number: "AG-1",
+        kind: "change_request",
+        title: "Change request",
+        status: "accepted",
+      })
+      await upsertAppRow(tx, "agreements", "agreement_versions", {
+        id: versionId,
+        org_id: org.orgId,
+        agreement_id: agreementId,
+        number: 1,
+        frozen_at: NOW.toISOString(),
+      })
+      await upsertAppRow(tx, "agreements", "signature_events", {
+        id: crypto.randomUUID(),
+        org_id: org.orgId,
+        version_id: versionId,
+        client_action_id: crypto.randomUUID(),
+        invited_email: "client@example.com",
+        invited_by: "Owner",
+        typed_name: "Client person",
+        capacity: "client",
+        consent_words: "I accept",
+        consent_lang: "en",
+        level: "demo",
+        document_sha256: "0".repeat(64),
+        signed_at: NOW.toISOString(),
+      })
+    })
+    await installDemoGithubConnection({ orgId: org.orgId, createdByUserId: userId, anchor: NOW })
+    await seedPortalPerson(ctx, {
+      companyId,
+      contactId,
+      email: "client@example.com",
+      name: "Client person",
+      invitedByUserId: userId,
+    })
+    await markOrgAsDemo(
+      org.orgId,
+      visitorMarker(1, new Date(NOW.getTime() - 48 * 3600_000), undefined, { worldId: "studio" }),
+    )
+    const before = await rowsLeftAnywhere(org.orgId)
+    expect(before["app_agreements.signature_events"]).toBe(1)
+    expect(before["kernel.connected_accounts"]).toBe(1)
+    expect(before["kernel.portal_people"]).toBe(1)
+
+    const result = await purgeDemoOrg(org.orgId, NOW)
+
+    expect(result.purged).toBe(true)
+    expect(await orgExists(org.orgId)).toBe(false)
+    // No row of the ended org in any kernel or app table (the residue query's check, over every
+    // table rather than only the linked ones).
+    expect(await rowsLeftAnywhere(org.orgId)).toEqual({})
   }, 300_000)
 })

@@ -1,0 +1,283 @@
+{
+  "mail": {
+    "link": {
+      "subject": "{{sender}} de {{org}} vous a envoyé un document à {{verb}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{title}}",
+      "body": "{{sender}} de {{org}} vous demande de {{verb}} ce document. Ouvrez-le avec le bouton ci-dessous. Le lien fonctionne jusqu'au {{until}}.",
+      "message": "Message de {{sender}} : {{message}}",
+      "safety": "Avant de {{verb}}, nous vous envoyons un code par e-mail. Personne de {{org}} ne vous demandera ce code.",
+      "cta": "Ouvrir le document",
+      "footer": "Ce lien est réservé à {{email}}. S'il ne vous était pas destiné, ouvrez-le et choisissez « Ce n'est pas pour moi »."
+    },
+    "resend": {
+      "subject": "Votre nouveau lien de {{org}}",
+      "body": "Quelqu'un a demandé un nouveau lien pour « {{title}} ». Si ce n'était pas vous, utilisez celui-ci et ignorez l'autre.",
+      "cta": "Ouvrir le document"
+    },
+    "code": {
+      "subject": "Votre code pour {{org}}",
+      "eyebrow": "{{org}}",
+      "heading": "{{code}}",
+      "body": "Vous êtes sur le point de {{verb}} « {{title}} ». Saisissez ce code sur la page pour continuer. Il fonctionne 10 minutes.",
+      "safety": "Personne de {{org}} ne vous demandera ce code. Ne répondez pas à cet e-mail.",
+      "footer": "Si vous n'avez pas demandé de code, ignorez cet e-mail."
+    },
+    "copy": {
+      "subject": "Votre copie de {{org}}",
+      "body": "Voici la trace de ce que vous avez fait sur « {{title}} » : {{decision}} le {{at}}.",
+      "footer": "Cette copie part uniquement à l'adresse à laquelle le document a été envoyé."
+    },
+    "staff": {
+      "subject": "À vous de {{verb}} « {{title}} »",
+      "body": "Ouvrez Liaison, trouvez « {{title}} » sur votre accueil et choisissez Lire et signer. Cet e-mail ne contient volontairement aucun lien : vous le faites dans votre propre session connectée.",
+      "footer": "Aucun lien n'est envoyé par e-mail pour cela. Quand vous choisissez Lire et signer, un code de confirmation est envoyé à cette adresse."
+    }
+  },
+  "verb": {
+    "sign": "signer",
+    "accept": "accepter",
+    "approve": "approuver"
+  },
+  "decision": {
+    "signed": "signé",
+    "accepted": "accepté",
+    "approved": "approuvé",
+    "declined": "refusé"
+  },
+  "words": {
+    "sign": "En saisissant mon nom et le code, je signe « {{title}} » par une signature électronique simple.",
+    "accept": "En saisissant mon nom et le code, j'accepte « {{title}} ».",
+    "approve": "En saisissant mon nom et le code, j'approuve « {{title}} »."
+  },
+  "home": {
+    "decided": "{{name}} a {{decision}} « {{title}} »",
+    "opened": "{{name}} a ouvert « {{title}} »",
+    "requested": "{{name}} a écrit au sujet de « {{title}} » : {{what}}",
+    "codeLocked": "Le lien de « {{title}} » envoyé à {{name}} est bloqué après trop de codes erronés",
+    "sendFailed": "Le lien de « {{title}} » n'a pas atteint {{name}} : envoyez-en un nouveau",
+    "what": {
+      "new_link": "un nouveau lien",
+      "not_me": "ce n'est pas pour cette personne",
+      "invite_asked": "une autre personne devrait le recevoir",
+      "question": "une question"
+    }
+  },
+  "page": {
+    "language": "Langue",
+    "secureLink": "Lien sécurisé",
+    "ask": {
+      "sign": "{{sender}} de {{org}} vous demande de signer ce document.",
+      "accept": "{{sender}} de {{org}} vous demande d'accepter ce document.",
+      "approve": "{{sender}} de {{org}} vous demande d'approuver ce document."
+    },
+    "askOwn": {
+      "sign": "{{org}} : à vous de signer ce document.",
+      "accept": "{{org}} : à vous d'accepter ce document.",
+      "approve": "{{org}} : à vous d'approuver ce document."
+    },
+    "ref": "Référence {{ref}}",
+    "validUntil": "Ce lien est valable jusqu'au {{date}}",
+    "openUntil": "Ouvert pour vous jusqu'au {{date}}",
+    "closed": "Ce lien est fermé",
+    "levelLead": "Signature électronique simple :",
+    "levelBody": "vous lisez le document, confirmez avec un code envoyé par e-mail et tapez votre nom. Vous recevez une copie et la preuve.",
+    "stepsLabel": "Étapes",
+    "steps": {
+      "read": "1. Lire",
+      "review": "1. Examiner",
+      "identity": "2. Qui vous êtes",
+      "sign": "3. Signer",
+      "accept": "3. Accepter",
+      "approve": "3. Approuver"
+    },
+    "read": {
+      "heading": "Lisez le document",
+      "reviewHeading": "Votre décision",
+      "body": "Prenez votre temps. Un court résumé, qui ne fait pas partie du document :",
+      "continue": "Continuer vers la signature",
+      "continueOther": "Continuer",
+      "wait": "Faites défiler jusqu'à la fin du document pour continuer.",
+      "download": "Télécharger le PDF",
+      "noPdf": "Il n'y a pas de fichier PDF pour ce document.",
+      "decline": "Refuser",
+      "question": "Une question d'abord ? Répondez au message de {{sender}}. Ce lien reste valable jusqu'au {{date}}."
+    },
+    "doc": {
+      "loading": "Chargement du document…",
+      "failed": "Le document n'a pas pu être chargé. Réessayez dans quelques minutes.",
+      "retry": "Réessayer",
+      "asText": "Lire en texte",
+      "asPages": "Lire les pages",
+      "textLabel": "Texte tiré du fichier, pour lire plus facilement. Ce que vous signez, ce sont les pages.",
+      "textEnd": "Pour continuer, faites défiler les pages jusqu'à la fin.",
+      "page": "Page {{n}}",
+      "picture": "[Image]",
+      "end": "Fin du document",
+      "empty": "Ce document ne contient rien à lire : il ne peut donc pas être signé ni accepté ici. Demandez un nouveau lien à l'expéditeur."
+    },
+    "identity": {
+      "heading": "Confirmez qui vous êtes",
+      "sending": "Envoi d'un code à {{email}}…",
+      "sent": "Nous avons envoyé un code à 6 chiffres à {{email}}. Il montre que ce lien a atteint la bonne personne.",
+      "code": "Code reçu par e-mail",
+      "resend": "Envoyer un nouveau code",
+      "resendAt": "Vous pourrez demander un nouveau code à {{time}}.",
+      "name": "Votre nom complet",
+      "capacity": "Votre fonction ou qualité, pour cette signature",
+      "continue": "Continuer",
+      "back": "Revenir au document",
+      "notMe": "Ce n'est pas pour moi",
+      "wrongCode": "Ce code n'est pas le bon. Essais restants avec ce code : {{left}}.",
+      "codeEnded": "Ce code a expiré. Envoyez un nouveau code.",
+      "sendFailed": "Nous n'avons pas pu envoyer le code. Réessayez dans une minute.",
+      "noMailOnDemo": "Ceci est une démo : aucun e-mail de code n'est envoyé ici, cette étape ne peut donc pas être terminée. Rien n'a été signé ni décidé.",
+      "invalidText": "Votre nom ou votre fonction contient des caractères que nous ne pouvons pas garder. Tapez-les à nouveau.",
+      "nameNotDrawable": "Votre nom contient des caractères que la page de signature ne peut pas afficher. Tapez-le en lettres latines.",
+      "notShown": "Ouvrez d'abord le document, puis demandez un code."
+    },
+    "sign": {
+      "heading": "Signer",
+      "typePhrase": "Tapez ces mots : {{phrase}}",
+      "phraseHint": "{{sender}} a demandé ces mots. Ils sont gardés exactement comme vous les tapez.",
+      "typeName": "Tapez votre nom complet pour signer",
+      "nameHint": "Votre nom tapé est votre signature sur cette version exacte du document.",
+      "confirm": "Signer",
+      "decline": "Refuser",
+      "onlyYou": "Vous seul pouvez signer. Personne, et aucun logiciel, ne signe à votre place.",
+      "capacityNote": "En signant, vous indiquez vous-même votre fonction. Personne ne la vérifie, soyez-en sûr.",
+      "recorded": "Ceci est une signature électronique simple. Nous enregistrons l'heure, votre e-mail, votre nom et votre fonction, votre adresse IP et votre navigateur. Ils figurent dans un fichier de preuve de signature que vous recevez aussi.",
+      "nameMismatch": "Tapez votre nom exactement comme à l'étape précédente.",
+      "phraseMismatch": "Tapez les mots exactement comme demandé.",
+      "proofEnded": "Votre confirmation a expiré. Saisissez un nouveau code pour continuer.",
+      "versionChanged": "Le document a changé depuis l'ouverture de cette page. Rien n'a été signé."
+    },
+    "accept": {
+      "heading": "Accepter",
+      "typeName": "Tapez votre nom complet pour accepter",
+      "confirm": "Accepter",
+      "onlyYou": "Vous seul pouvez décider. Personne, et aucun logiciel, ne décide à votre place. C'est une acceptation enregistrée, pas une signature.",
+      "recorded": "Nous enregistrons l'heure, votre e-mail et votre nom, votre adresse IP et votre navigateur, et vous envoyons une copie."
+    },
+    "approve": {
+      "heading": "Approuver",
+      "typeName": "Tapez votre nom complet pour approuver",
+      "confirm": "Approuver",
+      "onlyYou": "Vous seul pouvez décider. Personne, et aucun logiciel, ne décide à votre place. C'est une approbation enregistrée, pas une signature.",
+      "recorded": "Nous enregistrons l'heure, votre e-mail et votre nom, votre adresse IP et votre navigateur, et vous envoyons une copie."
+    },
+    "decline": {
+      "heading": "Refuser",
+      "bodySign": "Rien ne sera signé. {{sender}} sera informé de votre refus, et ce lien sera fermé.",
+      "bodyOther": "Rien ne change. {{sender}} sera informé de votre refus, et ce lien sera fermé.",
+      "reason": "Dites à {{sender}} pourquoi, si vous le souhaitez (facultatif)",
+      "back": "Retour",
+      "confirm": "Refuser"
+    },
+    "done": {
+      "sign": "Vous avez signé",
+      "accept": "Vous avez accepté",
+      "approve": "Vous avez approuvé",
+      "signCopy": "Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
+      "otherCopy": "Une copie de votre décision est envoyée à {{email}}.",
+      "told": "{{sender}} a été informé. Ce lien est maintenant fermé.",
+      "toldOwn": "Ce tour est maintenant fermé."
+    },
+    "declined": {
+      "heading": "Vous avez refusé",
+      "bodySign": "Rien n'a été signé. {{sender}} a été informé, et ce lien est maintenant fermé.",
+      "bodyOther": "Rien ne change. {{sender}} a été informé, et ce lien est maintenant fermé.",
+      "bodyOwn": "Rien n'a été signé, et ce tour est maintenant fermé.",
+      "again": "Si vous changez d'avis, ou souhaitez en parler, répondez au message de {{sender}}. Un nouveau lien peut être envoyé."
+    },
+    "foot": "Aucun compte nécessaire. Aucun traceur. Envoyé avec Liaison, le logiciel qu'utilise {{org}}.",
+    "frame": {
+      "expired": {
+        "title": "Ce lien a expiré",
+        "why": "Sa date de fin est passée, rien ne peut donc être signé ici. Rien n'a été signé avec ce lien.",
+        "action": "Demander un nouveau lien à {{org}}",
+        "done": "Demande envoyée. {{sender}} enverra un nouveau lien à l'adresse d'origine."
+      },
+      "used": {
+        "title": "Ce lien a déjà servi",
+        "why": "Un lien comme celui-ci ne fonctionne qu'une fois. Si ce n'était pas vous, prévenez-nous tout de suite.",
+        "action": "Envoyer ma copie à l'adresse invitée",
+        "notMe": "Ce n'était pas moi",
+        "done": "Envoyé à l'adresse à laquelle ce lien était destiné. Consultez votre boîte de réception."
+      },
+      "revoked": {
+        "title": "{{org}} a retiré ce lien",
+        "why": "Le document a peut-être changé, ou n'est plus nécessaire. Rien n'a été signé avec ce lien.",
+        "action": "Demander à {{sender}}",
+        "done": "Envoyé. {{sender}} vous répondra par e-mail."
+      },
+      "wrong": {
+        "title": "Ce lien est destiné à quelqu'un d'autre",
+        "why": "Il a été envoyé à {{email}}, et le code ne part qu'à cette adresse. Si vous êtes la bonne personne, demandez à être invité. Votre demande ne signe rien.",
+        "email": "Votre e-mail professionnel",
+        "action": "Demander à être invité",
+        "done": "Demande envoyée. Si {{org}} est d'accord, vous recevrez votre propre lien."
+      },
+      "declined": {
+        "title": "Vous avez refusé ce document",
+        "why": "Rien n'a été signé, et {{sender}} a été informé. Si vous changez d'avis, un nouveau lien peut être envoyé.",
+        "action": "Demander un nouveau lien",
+        "done": "Demande envoyée. {{sender}} vous répondra par e-mail."
+      },
+      "signed": {
+        "title": "Vous avez déjà signé",
+        "why": "Il n'y a plus rien à faire ici. Le PDF signé et sa preuve de signature partent à l'adresse invitée une fois que tout le monde a signé.",
+        "action": "Renvoyer ma copie",
+        "done": "Renvoyé à l'adresse qui a signé, si la copie est prête."
+      },
+      "attempts": {
+        "title": "Trop de codes erronés : attendez 15 minutes",
+        "why": "Par sécurité, ce lien est en pause pendant 15 minutes. Vous pourrez réessayer à {{time}}. Rien n'a changé, et le lien reste valable.",
+        "action": "Réessayer",
+        "done": "Toujours en pause. Réessayez à {{time}}."
+      },
+      "locked": {
+        "title": "Trop de codes erronés : ce lien est arrêté",
+        "why": "Par sécurité, ce lien ne fonctionne plus. Rien n'a été signé avec ce lien. Seul un nouveau lien de {{org}} peut le remplacer.",
+        "action": "Demander un nouveau lien à {{org}}",
+        "done": "Demande envoyée. {{sender}} enverra un nouveau lien à l'adresse d'origine."
+      },
+      "replaced": {
+        "title": "Une version plus récente a remplacé celle-ci",
+        "why": "{{org}} a modifié le document, ce lien ne fonctionne donc plus. Votre nouveau lien est parti à la même adresse.",
+        "action": "Me renvoyer le nouveau lien",
+        "done": "Envoyé à la même adresse."
+      },
+      "replacedNoLink": {
+        "title": "Une version plus récente a remplacé celle-ci",
+        "why": "{{org}} a modifié le document, ce lien ne fonctionne donc plus. Aucun nouveau lien n'a encore été envoyé : demandez la nouvelle version à {{org}}.",
+        "action": "Demander la nouvelle version à {{org}}",
+        "done": "Demandé. {{sender}} a votre demande."
+      },
+      "ended": {
+        "title": "L'accès a pris fin",
+        "why": "{{org}} a mis fin à cet accès, ce lien ne s'ouvre donc plus. Les copies déjà reçues restent les vôtres.",
+        "action": "Contacter {{org}}",
+        "done": "Envoyé. {{org}} vous répondra par e-mail."
+      },
+      "notfound": {
+        "title": "Ce lien n'ouvre rien",
+        "why": "Une partie manque peut-être. Rouvrez-le depuis le message d'origine, sans le modifier. S'il ne fonctionne toujours pas, répondez à ce message.",
+        "action": "Réessayer",
+        "done": "Il ne s'ouvre toujours pas. Répondez au message d'origine."
+      },
+      "down": {
+        "title": "Impossible d'ouvrir pour le moment",
+        "why": "Le problème vient de chez nous, pas de vous, et votre lien reste valable. Rien n'est perdu. Réessayez dans quelques minutes.",
+        "action": "Réessayer",
+        "done": "Toujours pas prêt. Réessayez dans quelques minutes."
+      }
+    },
+    "copy": {
+      "waiting_for_others": "Votre copie attend les autres signataires. Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à {{email}}.",
+      "on_its_way": "Tout le monde a signé. Le PDF signé et sa preuve de signature sont en route vers {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
+      "sent": "Le PDF signé et sa preuve de signature ont été envoyés à {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
+      "not_sent": "Votre copie n'a pas pu être envoyée à {{email}}. {{org}} a été informé."
+    }
+  }
+}

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// The seeded Shopify and Boxtal fixture connections never reach a third party,
+// The seeded Shopify, Boxtal and GitHub fixture connections never reach a third party,
 // on a box that is NOT in demo mode (a self-hosted install seeded with the
 // lively world, a private walk box), proved at the transport.
 //
@@ -15,8 +15,14 @@ import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { DEMO_BOXTAL_SENTINEL_KEY } from "~/modules/demo/boxtal/sentinel"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
-import { DEMO_BOXTAL_TOKEN_PREFIX, fixtureConnectionOf } from "~/modules/demo/fixture-credential"
+import {
+  DEMO_BOXTAL_TOKEN_PREFIX,
+  fixtureConnectionOf,
+  fixtureRefusal,
+} from "~/modules/demo/fixture-credential"
 import { DEMO_SHOP_DOMAIN, DEMO_SHOPIFY_SENTINEL_TOKEN } from "~/modules/demo/shopify/sentinel"
+import { DEMO_PAYMENTS_SENTINEL_KEY } from "~/modules/demo/worlds/saas/payments/sentinel"
+import { DEMO_GITHUB_SENTINEL_TOKEN } from "~/modules/demo/worlds/studio/github/sentinel"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -24,7 +30,13 @@ const SHOPIFY = `https://${DEMO_SHOP_DOMAIN}/admin/api/2024-10/graphql.json`
 const BOXTAL_TOKEN = "https://api.boxtal.build/iam/account-app/token"
 const BOXTAL_QUOTE =
   "https://test.envoimoinscher.com/api/v1/cotation?colis_1.poids=1.8&destinataire.pays=DE&expediteur.pays=FR"
-const HOSTS = new Set([DEMO_SHOP_DOMAIN, "api.boxtal.build", "test.envoimoinscher.com"])
+const GITHUB_USER = "https://api.github.com/user"
+const HOSTS = new Set([
+  DEMO_SHOP_DOMAIN,
+  "api.boxtal.build",
+  "test.envoimoinscher.com",
+  "api.github.com",
+])
 const SENTINEL_BASIC = `Basic ${Buffer.from(`${DEMO_BOXTAL_SENTINEL_KEY}:${DEMO_BOXTAL_SENTINEL_KEY}`).toString("base64")}`
 
 let onTheWire: string[] = []
@@ -56,6 +68,7 @@ async function appFetch(
 
 describe("fixture connections off the demo instance", () => {
   let worldOrgId: string
+  let studioOrgId: string
   let plainOrgId: string
 
   beforeAll(async () => {
@@ -64,6 +77,11 @@ describe("fixture connections off the demo instance", () => {
     plainOrgId = (await ensureOrg({ slug: "fixture-conn-plain", name: "Fixture Plain" })).orgId
     // What `liaison seed --tier lively` leaves on a self-hosted box: the demo world's org.
     await markOrgAsDemo(worldOrgId, visitorMarker(24))
+    studioOrgId = (await ensureOrg({ slug: "fixture-conn-studio", name: "Fixture Studio" })).orgId
+    await markOrgAsDemo(
+      studioOrgId,
+      visitorMarker(24, new Date(), undefined, { worldId: "studio" }),
+    )
     invalidateDemoMarker()
     SandboxBridgeTestAccess.setFetch((async (url: string | URL) => {
       onTheWire.push(String(url))
@@ -128,6 +146,18 @@ describe("fixture connections off the demo instance", () => {
     expect(onTheWire).toEqual([])
   })
 
+  it("answers the services world's GitHub sentinel in-process with demo mode off, and refuses it from an org without the world", async () => {
+    const auth = { Authorization: `Bearer ${DEMO_GITHUB_SENTINEL_TOKEN}` }
+    // The world's org holds no stand-in connection here: the stand-in itself says so, in-process.
+    const world = await appFetch(studioOrgId, "github", GITHUB_USER, { headers: auth })
+    expect(world.status).toBe(403)
+    expect(world.body).toContain("stand-in")
+    const plain = await appFetch(plainOrgId, "github", GITHUB_USER, { headers: auth })
+    expect(plain.status).toBe(403)
+    expect(plain.body).toContain("demo fixture")
+    expect(onTheWire).toEqual([])
+  })
+
   it("a real credential goes out exactly as before", async () => {
     const res = await appFetch(plainOrgId, "boxtal", BOXTAL_TOKEN, {
       method: "POST",
@@ -150,6 +180,37 @@ describe("fixtureConnectionOf", () => {
     expect(
       fixtureConnectionOf(BOXTAL_QUOTE, { Authorization: `Bearer ${DEMO_BOXTAL_TOKEN_PREFIX}abc` }),
     ).toBe("boxtal")
+  })
+
+  it("recognises the card-payments stand-in by its sentinel key, on any host", () => {
+    const auth = { Authorization: `Bearer ${DEMO_PAYMENTS_SENTINEL_KEY}` }
+    expect(fixtureConnectionOf("https://payments.example/v1/customers", auth)).toBe("stripe")
+    expect(
+      fixtureConnectionOf("https://payments.example/v1/customers", {
+        Authorization: "Bearer rk_test_abc",
+      }),
+    ).toBeNull()
+  })
+
+  it("recognises the GitHub stand-in by its sentinel token, on any host", () => {
+    const auth = { Authorization: `Bearer ${DEMO_GITHUB_SENTINEL_TOKEN}` }
+    expect(fixtureConnectionOf(GITHUB_USER, auth)).toBe("github")
+    expect(fixtureConnectionOf("https://elsewhere.example/x", auth)).toBe("github")
+    expect(fixtureConnectionOf(GITHUB_USER, { Authorization: "Bearer github_pat_abc" })).toBeNull()
+  })
+
+  it("refuses a GitHub sentinel request in GitHub's own error shape", async () => {
+    const res = fixtureRefusal("github")
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { message: string }
+    expect(body.message).toContain("demo fixture")
+  })
+
+  it("refuses a payments sentinel request in the processor's own error shape", async () => {
+    const res = fixtureRefusal("stripe")
+    expect(res.status).toBe(403)
+    const body = (await res.json()) as { error: { message: string } }
+    expect(body.error.message).toContain("demo fixture")
   })
 
   it("is null for every other request", () => {

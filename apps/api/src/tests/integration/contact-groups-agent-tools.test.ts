@@ -321,8 +321,9 @@ describe("contact groups through the agent", () => {
     const added = await call(frame, "contacts_group_add", { groupId, contactIds: [CONTACT_A] })
     expect(refusedByTaint(added)).toBe(false)
     expect(added).toMatchObject({ blocked: true, status: "pending_approval" })
-    expect(JSON.stringify(added)).toContain(
-      "some people who can read kernel.contact_group_members cannot see",
+    // The consent line names the place in plain words, in its own field of the card.
+    expect((added as { summary?: { consent?: string } }).summary?.consent).toContain(
+      "some people who can read contact group members cannot see",
     )
     expect(await memberIds(groupId)).toEqual([])
 

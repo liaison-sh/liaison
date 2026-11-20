@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "modules/permissions/restricted-list-notice.ts": "After a write on a restricted record, the people the write added to its list who cannot open the app: their effective permissions and display names, read for the org the write ran in, to name them in the writer's own result."
+  }
+}

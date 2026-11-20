@@ -15,12 +15,16 @@ import {
   counterpartyCompletenessError,
   type DraftLine,
   type DraftLineInput,
+  type IssueBatchOp,
   type IssueInput,
   taxCountryOf,
 } from "../issue"
 import { issueDateParts } from "../issue-date"
+import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
+import { runItemDraftRefusal } from "../recurring/run-card"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
+import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   findIssuerProfile,
@@ -32,6 +36,14 @@ import {
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
 import {
+  draftChangedSinceCard,
+  draftContentHash,
+  handOverDraft,
+  markReconciliation,
+  reconcileStillReserved,
+  withdrawIssueApprovals,
+} from "./issue-handover"
+import {
   buildIssueInputFromDraft,
   checkTwoEyes,
   computeLineFinancials,
@@ -39,6 +51,7 @@ import {
   netLinesForIssuer,
   normaliseDraftLines,
 } from "./lines"
+import { raiseHeldApproval } from "./prepaid-hold"
 import { checkDraftBuyer } from "./quote-proforma-po"
 import {
   type DraftRow,
@@ -60,7 +73,9 @@ import {
  */
 async function preflightInvoiceIssueParams(
   ctx: MutationsCtx,
-  input: { draft_id: string },
+  input: { draft_id: string; billsOtherThanStripe?: string | null; draft_hash?: string | null },
+  forRun = false,
+  stage: "preflight" | "handler" = "handler",
 ): Promise<
   | {
       ok: true
@@ -82,6 +97,11 @@ async function preflightInvoiceIssueParams(
       },
     }
   }
+  // A month-end run's draft issues from its run's card only: never twice, never around it.
+  if (!forRun) {
+    const runRefusal = await runItemDraftRefusal(ctx, draft, "invoice_issue")
+    if (runRefusal) return { ok: false, error: runRefusal }
+  }
   if (draft.type !== "invoice") {
     return {
       ok: false,
@@ -93,6 +113,17 @@ async function preflightInvoiceIssueParams(
         },
       },
     }
+  }
+  // One customer, one issuer: a customer Stripe bills is not invoiced again by hand. A Shopify order
+  // is its own sale, and a month-end row is checked by its run (recurring_item_issue).
+  if (!forRun && !draft.shopify_order_id && !draft.external_refs?.shopify_order_id) {
+    const guard = await checkIssuerGuard(ctx as GuardCtx, {
+      contactId: draft.counterparty_contact_id,
+      emails: [draft.counterparty_email],
+      billsOtherThanStripe: input.billsOtherThanStripe,
+      stage,
+    })
+    if (!guard.ok) return { ok: false, error: guard.error }
   }
   if (!draft.lines || draft.lines.length === 0) {
     return {
@@ -139,6 +170,13 @@ async function preflightInvoiceIssueParams(
   const buyer = await checkDraftBuyer(ctx, draft, issuer, counterparty)
   if (!buyer.ok) return buyer
   const issuedCounterparty = buyer.counterparty
+  // A draft made from a planned vs done card issues only while its reconciliation still reserves
+  // the work under this draft's key: before any card is parked or any number taken.
+  const changed = await reconcileStillReserved(ctx, draft)
+  if (changed) return { ok: false, error: changed }
+  // The card was drawn from the draft as it was: a draft edited since is not issued from it.
+  const edited = draftChangedSinceCard(draft, input.draft_hash)
+  if (edited) return { ok: false, error: edited }
   // E-invoicing gate, same rule: a French business buyer without the data its e-invoice needs is
   // refused here (enforce) with the fields and the tools that fix them.
   const gate = await checkEinvoiceGate(ctx, {
@@ -167,17 +205,46 @@ async function preflightInvoiceIssueParams(
  */
 export async function invoiceIssuePreflight(
   ctx: MutationsCtx,
-  input: { draft_id: string },
+  input: { draft_id: string; billsOtherThanStripe?: string | null; draft_hash?: string | null },
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightInvoiceIssueParams(ctx, input))
+  const pre = await preflightInvoiceIssueParams(ctx, input, false, "preflight")
+  const result = toPreflightResult(pre)
+  // The approval carries the fingerprint of the draft its card is drawn from, from the moment it
+  // is made (a pinned param: a caller's own value is dropped), so the issue refuses the draft once
+  // anything edits it, whichever path did.
+  if (!pre.ok || !("ok" in result)) return result
+  return { ...result, pinnedParams: { draft_hash: draftContentHash(pre.draft) } }
 }
+
+type InvoiceIssueInput = {
+  draft_id: string
+  /** The fingerprint of the draft the card was drawn from (pinned by the preflight). */
+  draft_hash?: string | null
+  due_at?: string | null
+  billsOtherThanStripe?: string | null
+}
+type InvoiceIssueResult = MutationResult<{
+  document_id: string
+  number: string
+  einvoicing_warning?: EinvoicingWarning
+}>
 
 export async function invoiceIssue(
   ctx: MutationsCtx,
-  input: { draft_id: string; due_at?: string | null },
-): Promise<
-  MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
-> {
+  input: InvoiceIssueInput,
+): Promise<InvoiceIssueResult> {
+  // Its approved run commits more than once (ownsTransactions): the number is recorded as soon
+  // as it is committed, so a later failure leaves the approval executed, never unknown.
+  return underApprovalProtocol(ctx, "invoicing:invoice_issue", (landed) =>
+    issueDraftInvoice(ctx, input, landed),
+  )
+}
+
+async function issueDraftInvoice(
+  ctx: MutationsCtx,
+  input: InvoiceIssueInput,
+  landed: RecordLanded,
+): Promise<InvoiceIssueResult> {
   const pre = await preflightInvoiceIssueParams(ctx, input)
   if (!pre.ok) return pre.error
   let { draft } = pre
@@ -228,9 +295,12 @@ export async function invoiceIssue(
       // (manifest editableFields); the re-entry above applies the corrected value.
       // Only include due_at when set — the schema types it as a string, so a null
       // would fail re-entry param validation; an unset due date is simply omitted.
-      current_payload: draft.due_at
-        ? { draft_id: input.draft_id, due_at: draft.due_at }
-        : { draft_id: input.draft_id },
+      // The fingerprint of the draft this card shows, so the issue refuses it once edited.
+      current_payload: {
+        draft_id: input.draft_id,
+        draft_hash: draftContentHash(draft),
+        ...(draft.due_at ? { due_at: draft.due_at } : {}),
+      },
       editable_fields: ["due_at"],
     })
     // Granted inline (a person's own call holding the deciding scope): issue now.
@@ -241,19 +311,86 @@ export async function invoiceIssue(
   const when = await issueDateParts(ctx, issuer)
   if (!when.ok) return when.error
   // The draft is discarded in the same commit as the invoice that replaces it, so a
-  // re-invocation refuses with not_found rather than re-issuing.
-  const issueInput = {
-    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
-    commit_with: [{ delete: "documents", id: input.draft_id }],
-  }
-  const issued = await issueWithFxRate(ctx, issueInput)
+  // re-invocation refuses with not_found rather than re-issuing. Its key, project and period,
+  // and the rows that point at it, move to the invoice in that commit (issue-handover.ts).
+  const issueInput = handOverDraft(
+    draft,
+    buildIssueInputFromDraft(draft, issuer, counterparty, when),
+  )
+  const issued = await issueWithFxRate(ctx, issueInput, { onCommitted: landed })
   if (!issued.ok) return issued.error
   const result = issued.result
+  await withdrawIssueApprovals(ctx, draft, "issued")
+  await raiseHeldApproval(ctx, {
+    id: draft.id,
+    billing_project_id: draft.source?.billing_project_id,
+  })
+  await markReconciliation(ctx, draft, {
+    to: "billed",
+    documentId: result.document_id,
+    documentNumber: result.number,
+  })
   return {
     status: "completed",
     document_id: result.document_id,
     number: result.number,
     ...(result.einvoicing_warning ? { einvoicing_warning: result.einvoicing_warning } : {}),
+  }
+}
+
+/**
+ * Issue a month-end run's draft: the same checks and numbering as `invoice_issue`, with no card of
+ * its own (the run's approval is that card). In one commit the draft gives up its `external_ref`,
+ * the issued document takes it with the draft's change log, the draft is deleted and the caller's
+ * `commit_with` writes land (`{ $ref: "document" }`, `{ $seq: "formatted" }`): all or nothing.
+ */
+export async function issueRunDraft(
+  ctx: MutationsCtx,
+  input: {
+    draft_id: string
+    external_ref: string
+    lifecycle_log: Array<Record<string, unknown>>
+    einvoice_send?: "stage" | "batch" | "held"
+    commit_with?: IssueBatchOp[]
+  },
+): Promise<
+  MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
+> {
+  const pre = await preflightInvoiceIssueParams(ctx, input, true)
+  if (!pre.ok) return pre.error
+  const { draft, issuer, counterparty } = pre
+  const when = await issueDateParts(ctx, issuer)
+  if (!when.ok) return when.error
+  // The draft is discarded in the same commit as the invoice that replaces it, handing over the
+  // run's period key (cleared on the draft first) and whatever points at the draft.
+  const issueInput = handOverDraft(
+    draft,
+    {
+      ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+      lifecycle_carry: input.lifecycle_log,
+      ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
+    },
+    { externalRef: input.external_ref, commitWith: input.commit_with },
+  )
+  const issued = await issueWithFxRate(ctx, issueInput)
+  if (!issued.ok) return issued.error
+  await withdrawIssueApprovals(ctx, draft, "issued")
+  await raiseHeldApproval(ctx, {
+    id: draft.id,
+    billing_project_id: draft.source?.billing_project_id,
+  })
+  await markReconciliation(ctx, draft, {
+    to: "billed",
+    documentId: issued.result.document_id,
+    documentNumber: issued.result.number,
+  })
+  return {
+    status: "completed",
+    document_id: issued.result.document_id,
+    number: issued.result.number,
+    ...(issued.result.einvoicing_warning
+      ? { einvoicing_warning: issued.result.einvoicing_warning }
+      : {}),
   }
 }
 
@@ -284,6 +421,8 @@ export interface InvoiceCreateAndIssueInput {
   /** The intra-EU buyer is a private consumer although the org's data suggests a business
    *  (see QuoteCreateAndIssueInput.buyer_is_consumer). */
   buyer_is_consumer?: boolean | null
+  /** What this invoice bills when the customer also pays a live Stripe subscription (a person's statement). */
+  billsOtherThanStripe?: string | null
   items: DraftLineInput[]
 }
 
@@ -297,6 +436,7 @@ async function preflightInvoiceCreateAndIssueParams(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
   opts: InvoiceCreateAndIssueOptions = {},
+  stage: "preflight" | "handler" = "handler",
 ): Promise<
   | {
       ok: true
@@ -367,6 +507,17 @@ async function preflightInvoiceCreateAndIssueParams(
       }
     }
   }
+  // One customer, one issuer: a customer a live Stripe subscription bills is not invoiced again by
+  // hand. A Shopify order is its own sale.
+  if (!input.shopify_order_id) {
+    const guard = await checkIssuerGuard(ctx as GuardCtx, {
+      contactId: input.counterparty.contact_id ?? null,
+      emails: [input.counterparty.email],
+      billsOtherThanStripe: input.billsOtherThanStripe,
+      stage,
+    })
+    if (!guard.ok) return { ok: false, error: guard.error }
+  }
   // Threshold check happens BEFORE persisting any draft — keeps the "above
   // threshold → no draft persisted as document" invariant the tests pin.
   // Resolve the issuer safely: default to the sole profile, or return a typed
@@ -412,7 +563,9 @@ export async function invoiceCreateAndIssuePreflight(
   ctx: MutationsCtx,
   rawInput: InvoiceCreateAndIssueInput,
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightInvoiceCreateAndIssueParams(ctx, rawInput))
+  return toPreflightResult(
+    await preflightInvoiceCreateAndIssueParams(ctx, rawInput, {}, "preflight"),
+  )
 }
 
 type InvoiceCreateResult = MutationResult<{

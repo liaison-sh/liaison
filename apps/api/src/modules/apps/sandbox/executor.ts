@@ -321,17 +321,22 @@ const CTX_SHIM_SOURCE = `(function (dispatch, specJson) {
     var t = typeof a;
     return t === "string" || t === "number" || t === "boolean";
   }
+  function bigintAsString(k, v) {
+    return typeof v === "bigint" ? v.toString() : v;
+  }
   function callArgs(name, args, marshal) {
     var out = [name];
     for (var i = 0; i < args.length; i++) {
       var a = args[i];
-      out[i + 1] = !marshal || a === null || a === undefined || isPrimitive(a) ? a : stringify(a);
+      if (typeof a === "bigint") a = a.toString();
+      out[i + 1] = !marshal || a === null || a === undefined || isPrimitive(a) ? a : stringify(a, bigintAsString);
     }
     return out;
   }
   function sdkShape(args) {
     for (var i = 0; i < args.length; i++) {
       var a = args[i];
+      if (typeof a === "bigint") continue;
       if (a !== null && a !== undefined && !isPrimitive(a)) return true;
     }
     return false;

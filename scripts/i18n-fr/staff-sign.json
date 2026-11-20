@@ -1,0 +1,10 @@
+{
+  "text": {
+    "Read and sign": "Lire et signer",
+    "This document waits for the signer before you. You can sign it after them.": "Ce document attend le signataire qui vous précède. Vous pourrez signer après lui.",
+    "Sign in on this device to sign.": "Connectez-vous sur cet appareil pour signer.",
+    "There is nothing for you to sign here: the request is not yours, or it is no longer open.": "Il n'y a rien à signer pour vous ici : la demande ne vous est pas adressée, ou elle n'est plus ouverte.",
+    "You have already answered this request: there is nothing more to do here.": "Vous avez déjà répondu à cette demande : il n'y a plus rien à faire ici.",
+    "Open for you until {{date}}": "Ouvert pour vous jusqu'au {{date}}"
+  }
+}

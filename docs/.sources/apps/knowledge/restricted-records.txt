@@ -1,0 +1,1 @@
+After reading a restricted document, what an agent writes is read only by the people it is shared with -> apps/api/src/apps/knowledge/app.manifest.json (restrictedRows) ; apps/api/src/modules/agent/scopes/taint-approval-audience.ts (restrictedListsFor)

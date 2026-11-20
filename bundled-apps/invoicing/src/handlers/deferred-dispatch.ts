@@ -26,6 +26,12 @@ import {
   type OrderPaidPayload,
   onShopifyOrderPaid,
 } from "./shopify-order-paid"
+import {
+  currentStripeInvoice,
+  onStripeInvoiceFinalized,
+  STRIPE_PARK_PREFIX,
+} from "./stripe-invoice-finalized"
+import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-refund-created"
 
 // The cron ctx is the full bundled-app bridge, so it satisfies both the
 // order-handler surface (re-issue path) and the mutations surface (PDF retry).
@@ -145,6 +151,28 @@ function identityChangedAtLoader(ctx: DeferredDispatchCtx) {
 }
 
 /**
+ * `updated_at` of the issuer profiles the sweep's waiting issuer parks are blocked on, so an
+ * order or Stripe invoice waiting on the SIREN or address is issued on the sweep after the
+ * profile was completed rather than after its backoff.
+ */
+function issuerChangedAtLoader(ctx: DeferredDispatchCtx) {
+  return async (issuerIds: string[]): Promise<Map<string, Date>> => {
+    const out = new Map<string, Date>()
+    for (const id of issuerIds) {
+      const rows = (await ctx.db.findMany("issuer_profiles", {
+        where: { id },
+        limit: 1,
+      })) as Array<Record<string, unknown>>
+      const changed = rows[0]?.updated_at
+      if (changed == null || changed === "") continue
+      const at = changed instanceof Date ? changed : new Date(String(changed))
+      if (!Number.isNaN(at.getTime())) out.set(id, at)
+    }
+    return out
+  }
+}
+
+/**
  * Manifest `jobs.deferred-retry` handler (kernel `(payload, ctx)` shape). The
  * scheduled payload is unused — the job drains the whole org's deferred queue.
  */
@@ -160,6 +188,33 @@ export async function deferredRetryJobHandler(
     // that credit note alone, never the refund or cancellation handler (see parked-credit-note.ts).
     if (isParkedCreditNote(row.event_payload_json)) {
       return retryParkedCreditNote(ctx, row)
+    }
+
+    // Card payments on Stripe: a parked credit note re-runs the refund path by its refund id; a
+    // parked invoice re-runs its finalized handler (the undecided stream, an unmatched payment and
+    // the approval wait for a person, never this sweep). Never the Shopify order handler.
+    const payloadKind = String(
+      (row.event_payload_json as Record<string, unknown> | null)?.kind ?? "",
+    )
+    if (payloadKind === STRIPE_CREDIT_NOTE_PARK)
+      return retryParkedStripeCreditNote(ctx, row.event_payload_json)
+    if (payloadKind.startsWith(STRIPE_PARK_PREFIX) || kind.startsWith(STRIPE_PARK_PREFIX)) {
+      if (
+        payloadKind !== "stripe_invoice" ||
+        kind === "stripe_issuer_undecided" ||
+        kind === "stripe_invoice_approval"
+      ) {
+        return { status: "still_blocked", reason: row.reason ?? "waits_for_a_person" }
+      }
+      // The invoice as Stripe answers for it now, never the payload frozen at the park: a buyer
+      // completed in Stripe since (the address a park waited for) is what this retry issues with.
+      const r = await onStripeInvoiceFinalized(
+        await currentStripeInvoice(ctx, row.event_payload_json),
+        ctx,
+      )
+      return r.status === "deferred" || r.status === "error" || r.status === "pending_approval"
+        ? { status: "still_blocked", reason: r.status === "deferred" ? r.reason : r.status }
+        : { status: "ok" }
     }
 
     // A Shopify draft order's quote that waited for its issuer's time zone: make that quote, never
@@ -199,5 +254,6 @@ export async function deferredRetryJobHandler(
   return deferredRetryJob(ctx, dispatch, {
     ...opts,
     identityChangedAt: identityChangedAtLoader(ctx),
+    issuerChangedAt: issuerChangedAtLoader(ctx),
   })
 }

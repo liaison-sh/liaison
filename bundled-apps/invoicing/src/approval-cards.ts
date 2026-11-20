@@ -11,6 +11,7 @@
 
 import { readMinorAmount } from "@liaison/app-sdk"
 import type { BuyerVatFacts } from "./buyer-vat"
+import { issueLateness } from "./issue-date"
 import { formatMoneyMinor, lineAmounts } from "./money"
 import { type TaxPlan, treatmentWords } from "./tax-plan"
 
@@ -27,6 +28,8 @@ export interface ApprovalCard {
   subtitle?: string
   lines: string[]
   links?: CardLink[]
+  /** The draft's latest issue day: Home sorts the approval up from four days before it. */
+  latestOn?: string
 }
 
 /** The card holds 8 lines (kernel bound); facts first, so a long line list never pushes them off. */
@@ -221,6 +224,9 @@ export function finishCard(card: ApprovalCard): ApprovalCard {
       .slice(0, CARD_MAX_LINES)
       .map((l) => clip(l, 200)),
     ...(card.links && card.links.length > 0 ? { links: card.links.slice(0, 10) } : {}),
+    ...(card.latestOn && /^\d{4}-\d{2}-\d{2}$/.test(card.latestOn)
+      ? { latestOn: card.latestOn }
+      : {}),
   }
 }
 
@@ -263,6 +269,9 @@ export interface IssueCardFacts {
   customerReference?: string | null
   /** The issue date the caller stated. Nothing stated means the day the number is taken. */
   issuedAt?: string | null
+  /** A draft's latest issue day (the end of its service month), with the day the card is made. */
+  latestIssueOn?: string | null
+  today?: string | null
   dueAt?: string | null
   reason?: string | null
   declaredValueMinor?: unknown
@@ -348,6 +357,22 @@ export function consumerOverrideCardLines(
     "WARNING: the agent declared this buyer a private consumer, but the org's data says business. Approve only if you know it is a private person.",
     ...evidence.slice(0, 2).map((e) => `Evidence: ${e}`),
   ]
+}
+
+/**
+ * The card line of a draft's latest issue day: the day itself, or, once it is past, that the draft
+ * is late and issues with the day it is issued. Null with no latest day.
+ */
+export function latestIssueLine(
+  latestIssueOn: string | null | undefined,
+  today: string | null | undefined,
+): string | null {
+  const latest = day(latestIssueOn)
+  if (!latest) return null
+  const state = today ? issueLateness(latest, today) : null
+  return state === "late"
+    ? `Late: the latest issue date was ${latest}; it issues with the date of the day it is issued`
+    : `Latest issue date: ${latest}`
 }
 
 export function issueCard(f: IssueCardFacts): ApprovalCard {
@@ -437,6 +462,8 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
   const customerRef = text(f.customerReference, 120)
   if (customerRef) lines.push(`Customer ref: ${customerRef}`)
   if (issued && !isCredit) lines.push(`Issue date: ${issued}`)
+  const latestLine = latestIssueLine(f.latestIssueOn, f.today)
+  if (latestLine && !issued) lines.push(latestLine)
   const due = day(f.dueAt)
   // A quote's date is how long the offer holds, not a payment due date.
   if (due) lines.push(f.type === "quote" ? `Valid until: ${due}` : `Due date: ${due}`)
@@ -450,9 +477,15 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
     kind: f.kind,
     title,
     subtitle: f.fromDraft
-      ? `Turns the saved draft into a ${type} for ${customer}, with its next ${type} number`
-      : `Creates a ${type} for ${customer}, with its next ${type} number`,
+      ? `Turns the saved draft into ${article(type)} ${type} for ${customer}, with its next ${type} number`
+      : `Creates ${article(type)} ${type} for ${customer}, with its next ${type} number`,
     lines,
     links: f.fromDraft && f.draftId ? docLink(f.draftId, `Open the draft ${type}`) : [],
+    ...(latestLine && !issued ? { latestOn: day(f.latestIssueOn) ?? undefined } : {}),
   })
+}
+
+/** "a" or "an" before a document type's name. */
+function article(word: string): "a" | "an" {
+  return /^[aeiou]/i.test(word) ? "an" : "a"
 }

@@ -236,6 +236,46 @@ const ROWS: Row[] = [
     userId: "",
     expected: true,
   },
+  {
+    name: "bare * never covers a restricted record's scope",
+    required: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e"],
+    disclosure: null,
+    grants: ["*"],
+    userId: VIEWER,
+    expected: false,
+  },
+  {
+    name: "the exact restricted scope as a grant covers nothing",
+    required: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e"],
+    disclosure: null,
+    grants: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e"],
+    userId: VIEWER,
+    expected: false,
+  },
+  {
+    name: "a restricted stamp is read through the disclosure list holding the rest",
+    required: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e", "a:b:read"],
+    disclosure: [VIEWER],
+    grants: ["a:b"],
+    userId: VIEWER,
+    expected: true,
+  },
+  {
+    name: "a restricted stamp on the disclosure list still needs the rest of the stamp",
+    required: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e", "a:b:read"],
+    disclosure: [VIEWER],
+    grants: [],
+    userId: VIEWER,
+    expected: false,
+  },
+  {
+    name: "a restricted stamp off the disclosure list is hidden from *",
+    required: ["restricted:agreements.agreement:4b0f1f3e-8a51-4c43-9d35-7a6a7b1c2d3e", "a:b:read"],
+    disclosure: [OTHER],
+    grants: ["*"],
+    userId: VIEWER,
+    expected: false,
+  },
 ]
 
 function sqlText(value: string): string {

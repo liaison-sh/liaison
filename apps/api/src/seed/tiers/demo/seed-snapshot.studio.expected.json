@@ -1,0 +1,302 @@
+{
+  "app_agreements.agreement_drafts": {
+    "rows": 12,
+    "digest": "8e4153ff5212f606"
+  },
+  "app_agreements.agreement_versions": {
+    "rows": 12,
+    "digest": "e2a5b5b92f4ae154"
+  },
+  "app_agreements.agreements": {
+    "rows": 12,
+    "digest": "b9106970f0eaa0f6"
+  },
+  "app_agreements.signature_events": {
+    "rows": 14,
+    "digest": "7cdfb43e57b41d68"
+  },
+  "app_calendar.accounts": {
+    "rows": 1,
+    "digest": "8ead91950c03b545"
+  },
+  "app_calendar.calendars": {
+    "rows": 1,
+    "digest": "5d2710ebe85bc3e5"
+  },
+  "app_calendar.events": {
+    "rows": 3,
+    "digest": "42aa5d2ac3bf97ba"
+  },
+  "app_invoicing.billing_steps": {
+    "rows": 5,
+    "digest": "e699da19765646f7"
+  },
+  "app_invoicing.contact_relationships": {
+    "rows": 4,
+    "digest": "c30ccbde6e29b2b7"
+  },
+  "app_invoicing.counterparty_identities": {
+    "rows": 7,
+    "digest": "d79f0ffa43380d0a"
+  },
+  "app_invoicing.document_lines": {
+    "rows": 518,
+    "digest": "40d3cfb22635ba73"
+  },
+  "app_invoicing.documents": {
+    "rows": 514,
+    "digest": "2a2ced354c0893ce"
+  },
+  "app_invoicing.issuer_profiles": {
+    "rows": 1,
+    "digest": "435f2999a0d2b229"
+  },
+  "app_invoicing.recurring_schedules": {
+    "rows": 2,
+    "digest": "8489b572110c896e"
+  },
+  "app_invoicing.tax_regimes": {
+    "rows": 4,
+    "digest": "20a8b8ee5bfe5aed"
+  },
+  "app_knowledge.collection_memberships": {
+    "rows": 3,
+    "digest": "9bcdfea903392205"
+  },
+  "app_knowledge.collections": {
+    "rows": 2,
+    "digest": "39b07f685808f74e"
+  },
+  "app_knowledge.documents": {
+    "rows": 3,
+    "digest": "30af79d4f5152c6a"
+  },
+  "app_knowledge.taggings": {
+    "rows": 6,
+    "digest": "3e8b7de5410602e0"
+  },
+  "app_knowledge.tags": {
+    "rows": 4,
+    "digest": "53af96aa269a98fb"
+  },
+  "app_mail.accounts": {
+    "rows": 1,
+    "digest": "f56a60a92048de2d"
+  },
+  "app_mail.conversations": {
+    "rows": 1,
+    "digest": "06ff741d685f007b"
+  },
+  "app_mail.messages": {
+    "rows": 1,
+    "digest": "367d114520d51b46"
+  },
+  "app_projects.billing_claims": {
+    "rows": 6,
+    "digest": "ff8dafce7a3b81bf"
+  },
+  "app_projects.cost_rates": {
+    "rows": 10,
+    "digest": "0d62f563a3c3aab9"
+  },
+  "app_projects.deal_values": {
+    "rows": 9,
+    "digest": "1222c7c4babdf60f"
+  },
+  "app_projects.deals": {
+    "rows": 9,
+    "digest": "383440247ae7a15a"
+  },
+  "app_projects.project_billing_terms": {
+    "rows": 5,
+    "digest": "4d39d0748c09f53e"
+  },
+  "app_projects.project_statuses": {
+    "rows": 51,
+    "digest": "443f5ca1c2bc824b"
+  },
+  "app_projects.project_time_plan": {
+    "rows": 7,
+    "digest": "0d5e3f2e59a25bc7"
+  },
+  "app_projects.project_timeboxes": {
+    "rows": 7,
+    "digest": "605ff2dbf4feb194"
+  },
+  "app_projects.projects": {
+    "rows": 10,
+    "digest": "1cd0885030633c31"
+  },
+  "app_projects.reconciliation_lines": {
+    "rows": 5,
+    "digest": "21dc24ef284ab6bd"
+  },
+  "app_projects.reconciliations": {
+    "rows": 1,
+    "digest": "bde7c9fb5f530588"
+  },
+  "app_projects.task_time": {
+    "rows": 81,
+    "digest": "d4c95cb1fb844a7b"
+  },
+  "app_projects.task_transitions": {
+    "rows": 125,
+    "digest": "d64be7ab0bf31ddf"
+  },
+  "app_projects.tasks": {
+    "rows": 125,
+    "digest": "9c6c24b1180fb8d3"
+  },
+  "app_projects.time_settings": {
+    "rows": 1,
+    "digest": "12753614a46ae1d9"
+  },
+  "app_tickets.categories": {
+    "rows": 4,
+    "digest": "cdcb941e1f05b922"
+  },
+  "app_tickets.inboxes": {
+    "rows": 3,
+    "digest": "bdc159b87305c653"
+  },
+  "app_tickets.messages": {
+    "rows": 13,
+    "digest": "8068103a6d5c3693"
+  },
+  "app_tickets.ticket_reads": {
+    "rows": 5,
+    "digest": "0d9ec5e467756f71"
+  },
+  "app_tickets.tickets": {
+    "rows": 5,
+    "digest": "8b4a68283d57a946"
+  },
+  "kernel.agents": {
+    "rows": 29,
+    "digest": "d3ce43889dd4a1a2"
+  },
+  "kernel.app_seeded_assets": {
+    "rows": 9,
+    "digest": "524db101cc33e4a6"
+  },
+  "kernel.app_sequences": {
+    "rows": 4,
+    "digest": "a8e470c4f630cf8f"
+  },
+  "kernel.approval_requests": {
+    "rows": 1,
+    "digest": "ff02343ed5a7fca3"
+  },
+  "kernel.apps": {
+    "rows": 21,
+    "digest": "5cb13856940228c0"
+  },
+  "kernel.away_ranges": {
+    "rows": 1,
+    "digest": "f2f95245063203a2"
+  },
+  "kernel.client_action_events": {
+    "rows": 19,
+    "digest": "9aa2f0efd7d439b5"
+  },
+  "kernel.client_actions": {
+    "rows": 19,
+    "digest": "a5d76e80f766fca9"
+  },
+  "kernel.companies": {
+    "rows": 8,
+    "digest": "cbcf4ed96a304e93"
+  },
+  "kernel.config_applied_fields": {
+    "rows": 8,
+    "digest": "c631fa31a5505dad"
+  },
+  "kernel.connected_accounts": {
+    "rows": 1,
+    "digest": "1bf469e435dad0d1"
+  },
+  "kernel.contact_addresses": {
+    "rows": 7,
+    "digest": "b0dc2b4d50e633f5"
+  },
+  "kernel.contact_segments": {
+    "rows": 1,
+    "digest": "1d23ff3f2c5297d0"
+  },
+  "kernel.contacts": {
+    "rows": 8,
+    "digest": "a6b2273b46a79ea8"
+  },
+  "kernel.credit_balances": {
+    "rows": 1,
+    "digest": "3ccfcc1199e7c352"
+  },
+  "kernel.disabled_app_skills": {
+    "rows": 5,
+    "digest": "7ab21419f2813b9b"
+  },
+  "kernel.document_templates": {
+    "rows": 14,
+    "digest": "567d2789b6333c48"
+  },
+  "kernel.messages": {
+    "rows": 9,
+    "digest": "9456d4c1f7f091f7"
+  },
+  "kernel.org_app_features": {
+    "rows": 1,
+    "digest": "38dce2dbee08f02e"
+  },
+  "kernel.pending_events": {
+    "rows": 467,
+    "digest": "a590fd60b3484ee6"
+  },
+  "kernel.portal_people": {
+    "rows": 2,
+    "digest": "55c6c427d51c886d"
+  },
+  "kernel.portal_shares": {
+    "rows": 7,
+    "digest": "efe4c66973749d38"
+  },
+  "kernel.roles": {
+    "rows": 37,
+    "digest": "91f070ac1c48d2e6"
+  },
+  "kernel.routines": {
+    "rows": 3,
+    "digest": "d5a7e3fe01ed4a10"
+  },
+  "kernel.saved_views": {
+    "rows": 8,
+    "digest": "b4ec2e3fc5bae2c9"
+  },
+  "kernel.sub_agent_definitions": {
+    "rows": 1,
+    "digest": "52b5dce6e8ef1bde"
+  },
+  "kernel.thread_participants": {
+    "rows": 274,
+    "digest": "93a8e28a1976f2f9"
+  },
+  "kernel.threads": {
+    "rows": 131,
+    "digest": "de2d5452df6f45fe"
+  },
+  "kernel.user_dimension_grants": {
+    "rows": 24,
+    "digest": "eec6a21c9a7518fb"
+  },
+  "kernel.user_roles": {
+    "rows": 28,
+    "digest": "808314c5d8fcbd4f"
+  },
+  "kernel.user_thread_state": {
+    "rows": 146,
+    "digest": "9f963e59c6e2a8e0"
+  },
+  "kernel.users": {
+    "rows": 26,
+    "digest": "b2c47668e061ac34"
+  }
+}

@@ -24,6 +24,8 @@ export interface UserAuthState {
   authVersion: number
   permissionVersion: number
   status: string
+  /** `member` or `external` (a client of the portal). */
+  userType: string
 }
 
 interface GetUserAuthStateOptions {
@@ -129,6 +131,7 @@ async function fetchUserAuthState(userId: string, orgId: string): Promise<UserAu
         authVersion: users.authVersion,
         permissionVersion: users.permissionVersion,
         status: users.status,
+        userType: users.userType,
       })
       .from(users)
       .where(eq(users.id, userId))

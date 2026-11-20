@@ -1,0 +1,1 @@
+A proposed line not in the plan offers Offer it as a change request when Agreements is on; the click asks in fixed words naming only the line -> apps/api/src/apps/projects/service/reconcile-card.ts (reconcileCardFields) ; apps/api/src/apps/projects/service/reconcile.ts (cardData) ; apps/api/src/modules/apps/result-card.ts (action)

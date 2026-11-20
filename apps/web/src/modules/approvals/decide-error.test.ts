@@ -226,6 +226,9 @@ describe("the decision queue is the only way to send a decision", () => {
     const allowed = new Set([
       join("modules", "approvals", "decide-error.ts"),
       join("modules", "approvals", "decision-queue.ts"),
+      // A client's own decision on the portal (`/api/portal/actions/:id/decide`): not a member
+      // approval, so no Undo window; the server's single decide records it once.
+      join("modules", "portal", "Approve.tsx"),
     ])
     const offenders: string[] = []
     const walk = (dir: string) => {

@@ -1,0 +1,4 @@
+The access log names its readers -> apps/web/src/modules/contacts/CompanyPortalSection.tsx (logReaders) ; apps/api/src/modules/portal/access.ts (readPortalLogReaders)
+The current second step setting is marked -> apps/web/src/modules/contacts/CompanyPortalSection.tsx (signIn) ; apps/api/src/modules/portal/access.ts (readPortalRequireTotp)
+A milestone project says it has no billed hours -> apps/web/src/modules/portal/Pages.tsx (ProjectPage) ; apps/api/src/modules/portal/routes.ts (portalRoutes)
+The notice shows once per version, I have read it, read again when it changed -> apps/web/src/modules/portal/Notice.tsx (NoticeToRead) ; apps/api/src/modules/portal/auth-service.ts (ackPortalNotice)

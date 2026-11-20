@@ -86,6 +86,8 @@ export interface MailboxHandoff {
 }
 
 export interface RunContext {
+  /** The zone the model reads tool results' times in (tools/model-times.ts). Absent: UTC. */
+  modelTimeZone?: string
   runId: string
   parentRunId: string | null
   rootRunId: string
@@ -105,6 +107,8 @@ export interface RunContext {
    * chat, sub-runs). Undefined ⇒ not a routine tick.
    */
   routineId?: string
+  /** On a routine tick: this routine follows up, so its mail runs the send check as a follow-up. */
+  routineFollowUp?: boolean
   /**
    * On a routine tick (and the agent turn it starts for that same routine):
    * the person whose SERVER-MANAGED mailbox the tick may read, its owner, set
@@ -181,9 +185,22 @@ export interface RunContext {
    */
   humanTurn?: boolean
   /**
+   * The background turn an approved call hands back to its agent (approval-result-turn.ts): it
+   * answers the person's own message (`askId`) right after the person approved a call of it.
+   * Not a typed turn (no code on the person's machine without approval), but a card it parks
+   * counts as asked by that person (`runAnswersPerson`), so the person's approval decides it.
+   */
+  answersApprovedCall?: true
+  /**
    * A demo visitor's turn (box key or the visitor's own key): its tool results
    * reach the model at the visitor limits (result-truncation.ts).
    */
+  /**
+   * The person this turn answers has no computer set up for Liaison (no
+   * enabled node). Tools marked `needsOwnComputer` are then in no catalog and
+   * no tool set of the turn. Absent: offered as usual.
+   */
+  noOwnComputer?: boolean
   visitorTurn?: boolean
   /**
    * Mutable set of deferred-tool SDK names the model has unlocked in THIS run
@@ -272,6 +289,12 @@ export interface RunContext {
    * crash-loop-with-varied-args pattern that burns full-context steps.
    */
   toolTerminalFailures?: Map<string, Set<string>>
+  /**
+   * Lazily-created: this turn's requests by gated tool (execute-tool.ts `stageInTurnBundle`).
+   * The turn's first gated call of a tool is a request; each later call of the same tool joins
+   * it as a step, so one ask fanned over many records is one decision and one Home item.
+   */
+  turnToolBundles?: Map<string, Promise<{ headId: string; lastId: string } | null>>
   /**
    * The nonce the CLIENT minted when the user submitted this turn, forwarded by
    * `POST /api/agent/chat`. Its absence is meaningful: a turn with no nonce was
@@ -454,6 +477,21 @@ export function runHasPerson(frame: RunContext): boolean {
 }
 
 /**
+ * Whether a call parked from this turn was asked by a person (`metadata.originHasPerson`): a
+ * person's own turn, or the turn an approved call hands back to its agent, which answers that
+ * person's own message. Never a routine tick, a sub-run or an agent's ask.
+ */
+export function runAnswersPerson(frame: RunContext): boolean {
+  if (runHasPerson(frame)) return true
+  return (
+    frame.answersApprovedCall === true &&
+    !frame.routineId &&
+    !frame.coordinated &&
+    frame.nestingDepth === 0
+  )
+}
+
+/**
  * The gateway frame of a connection bound to no agent: a person calling from
  * their own external client (scope-taint.ts, rule 14). It exists so the
  * connection's reads taint its writes; for every "is this the person's own
@@ -506,6 +544,17 @@ export function runWithToolCallScopesBefore<T>(scopesBefore: string[], fn: () =>
 
 export function currentToolCallScopesBefore(): string[] | undefined {
   return toolCallScopesBeforeStore.getStore()
+}
+
+/**
+ * Run `fn` outside any run's frame. For a callback a long-lived resource fires (a sandbox
+ * worker's IPC messages): it runs in the async context the resource was CREATED in, which is
+ * whatever run happened to create it (a pool grown during an approved action), never the run
+ * the callback serves. Without this, a later event handler's bridge call read that run's frame
+ * and its turn's taint, and an ungated write parked for a turn it was never part of.
+ */
+export function outsideAnyRun<T>(fn: () => T): T {
+  return runContextStore.exit(() => toolCallScopesBeforeStore.exit(fn))
 }
 
 /**
@@ -575,6 +624,11 @@ export interface SpawnParentFrame {
    */
   run?: { runId: string; rootRunId: string; nestingDepth: number }
   /**
+   * Whether a person is behind the captured turn (`runHasPerson`), so an app handler reached
+   * after a hop that loses the frame can still tell a person's turn from a routine's (`ctx.turn`).
+   */
+  hasPerson?: boolean
+  /**
    * The message the captured turn answers (`RunContext.turnMessageId`), so an
    * event queued after a hop that loses the frame still says which request
    * caused it (a guided tour's `causedBy` binding reads it). Undefined when the
@@ -614,6 +668,7 @@ export function captureSpawnParentFrame(
     taintScopes,
     agentId: frame.agentId,
     run: { runId: frame.runId, rootRunId: frame.rootRunId, nestingDepth: frame.nestingDepth },
+    hasPerson: runHasPerson(frame),
     // An approved call's re-entry has no message of its own: the ask it continues.
     ...((frame.turnMessageId ?? frame.askId)
       ? { turnMessageId: frame.turnMessageId ?? frame.askId }

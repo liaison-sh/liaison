@@ -1,0 +1,18 @@
+{
+  "entry": "preflight:quote_set_outcome",
+  "params": {
+    "document_id": "6d484a21-3f96-434b-8faa-f1f466720db8",
+    "outcome": "accepted"
+  },
+  "recordedFrom": "the contract org's draft quote, written from quote_issue's recorded row",
+  "expectError": {
+    "reason": "the contract org's quote is a draft (never sent), so its outcome is refused before anything changes; the sent path runs in quote-accept.test.ts"
+  },
+  "calls": [
+    {
+      "method": "db_findOne",
+      "args": ["documents", "6d484a21-3f96-434b-8faa-f1f466720db8"],
+      "reply": "{\"id\":\"6d484a21-3f96-434b-8faa-f1f466720db8\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"type\":\"quote\",\"status\":\"draft\",\"number\":null,\"lifecycle_log\":[]}"
+    }
+  ]
+}

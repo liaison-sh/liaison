@@ -91,6 +91,10 @@ export interface Translation {
   resolveWhen?: AttentionResolveWhen
 }
 
+/** The Home line of `restricted_record:requests_withdrawn`, read back by the web's title. */
+export const RESTRICTED_REQUESTS_WITHDRAWN =
+  "Requests about a restricted document were withdrawn: the people who asked are not on its list"
+
 /**
  * An agent row that is news to the person it works for: a post nobody in the
  * conversation asked for (a routine's run, `SendMessageParams.unprompted`), or
@@ -241,7 +245,22 @@ export const kernelTranslations: Translation[] = [
     // row itself: Allow / Deny on what is asked, from which node.
     // `routineAlert` (D21): a routine that failed or paused, filed by Home
     // under Agents > "Routines failed or paused" (routine-alert.ts).
-    metadataFromData: ["link", "nodePermissionPromptId", "nodePermission", "routineAlert"],
+    // `awayNamed`: a colleague marked the person away (modules/users/away.ts).
+    // `awayCalendar`: the person's own calendar made, moved or asks about an away range.
+    metadataFromData: [
+      "link",
+      "nodePermissionPromptId",
+      "nodePermission",
+      "routineAlert",
+      "awayNamed",
+      "awayCalendar",
+      // `routedReminder`: a request waiting a day tells its deciders once
+      // (approvals/routed-reminders.ts); `link` opens the request's conversation.
+      "routedReminder",
+      // `capacityNamed`: a colleague set the person's days per week (projects time settings);
+      // the row offers "Back to 5 days" from it.
+      "capacityNamed",
+    ],
   },
   {
     // A routine run waiting for its owner's private mailbox
@@ -258,6 +277,17 @@ export const kernelTranslations: Translation[] = [
     when: { op: "exists", path: "data.routineMailboxWait" },
     recipients: { kind: "participants", path: "data.targetUserIds" },
     metadataFromData: ["link", "routineMailboxWait"],
+  },
+  {
+    // A restricted record closed while requests about it waited for people off its list: they
+    // were withdrawn (client-actions/restricted-follow.ts), and the list is told, naming nothing.
+    event: "restricted_record:requests_withdrawn",
+    app: "kernel",
+    kind: "system_alert",
+    urgency: 40,
+    isUrgent: false,
+    summary: RESTRICTED_REQUESTS_WITHDRAWN,
+    recipients: { kind: "participants", path: "data.targetUserIds" },
   },
   {
     // S17: an agent tool changed the user's own notification settings. The
@@ -443,5 +473,82 @@ export const kernelTranslations: Translation[] = [
     when: { op: "in", path: "data.status", values: ["approved", "denied"] },
     recipients: { kind: "field", path: "data.decidedBy" },
     resolveWhen: { always: true },
+  },
+  // Requests sent outside the organization to sign, accept or approve
+  // (modules/client-actions). Their sender hears what the person outside did;
+  // a member of the org who is a signer is told it is their turn, with no link.
+  {
+    event: "client_action:decided",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.title}}: {{payload.data.decision}} by {{payload.data.invitedName}}",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+    metadataFromData: ["decision", "companyId"],
+  },
+  {
+    // The client's company manager hears it too, and their next in line while they are
+    // away; on a restricted document only if the list names them (data.visibleTo).
+    event: "client_action:decided",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.title}}: {{payload.data.decision}} by {{payload.data.invitedName}}",
+    recipients: { kind: "account_manager", path: "data.companyId" },
+    metadataFromData: ["decision", "companyId"],
+  },
+  {
+    event: "client_action:opened",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 20,
+    summary: "{{payload.data.invitedName}} opened your request",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:requested",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary: "{{payload.data.invitedName}} asked something about your request",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+    metadataFromData: ["what"],
+  },
+  {
+    event: "client_action:code_locked",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 50,
+    summary: "The link sent to {{payload.data.invitedName}} is locked after too many wrong codes",
+    when: { op: "eq", path: "data.locked", value: true },
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:code_locked",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 40,
+    summary:
+      "{{payload.data.invitedName}} entered a wrong code on your request three times in a row",
+    when: { op: "eq", path: "data.locked", value: false },
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:send_failed",
+    app: "kernel",
+    kind: "client_action",
+    urgency: 50,
+    summary: "{{payload.data.title}}: the link to {{payload.data.invitedName}} did not send",
+    recipients: { kind: "participants", path: "data.senderUserIds" },
+  },
+  {
+    event: "client_action:staff_turn",
+    app: "kernel",
+    kind: "client_action",
+    // The signer's own decision: it needs them now (NOW_URGENCY), and the row offers Read and sign.
+    urgency: 70,
+    summary: "{{payload.data.title}}: open it in Liaison to read and sign",
+    recipients: { kind: "participants", path: "data.signerUserIds" },
+    metadataFromData: ["staffTurn"],
   },
 ]

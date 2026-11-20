@@ -94,6 +94,9 @@ describe("contact creation paths", () => {
       ],
       // contacts_write: the acting person's own (sharing is contacts_share).
       "modules/agent/tools/contact-tools.ts": ['{ audience: "owner", ownerUserId: ctx.userId }'],
+      // A client portal invite (kernel:portal_invite): the admin invites a person of a company,
+      // so the contact is the organisation's, under that company.
+      "modules/portal/access.ts": ['{ audience: "org" }'],
       // Ticket intake (inbound mail, public form): link only, never create.
       "apps/tickets/inbound.ts": ['{ audience: "none" }'],
       "modules/webhooks/tickets-public.ts": ['{ audience: "none" }'],
@@ -147,7 +150,7 @@ describe("contact creation paths", () => {
     expect(ensure).toMatch(/INSERT INTO kernel\.contacts[^;]*VALUES \([^;]*'none',/)
   })
 
-  it("only the store and invoicing apps may add their customers to the organisation", () => {
+  it("only the store, payments and invoicing apps may add their customers to the organisation", () => {
     const declaring = readdirSync(BUNDLED)
       .filter((app) => {
         try {
@@ -160,7 +163,7 @@ describe("contact creation paths", () => {
         }
       })
       .sort()
-    expect(declaring).toEqual(["invoicing", "shopify"])
+    expect(declaring).toEqual(["invoicing", "shopify", "stripe"])
     for (const app of ["mail", "tickets", "calendar"]) {
       const manifest = JSON.parse(
         readFileSync(path.join(SRC, "apps", app, "app.manifest.json"), "utf8"),

@@ -1,0 +1,26 @@
+[
+  {
+    "key": "all-apps:visibleTools",
+    "capability": "filing an activity report or a timesheet on an invoice (invoicing document_attachment_add), deferred-loaded: it costs its index line only"
+  },
+  {
+    "key": "phone:visibleTools",
+    "capability": "filing an activity report or a timesheet on an invoice (invoicing document_attachment_add), deferred-loaded: it costs its index line only"
+  },
+  {
+    "key": "time-and-budgets:announcementTokens",
+    "capability": "billing a fixed-price project by its plan: the plan read and set, milestone and advance invoices and an advance's refund (invoicing billing_plan_get, billing_plan_set, milestone_draft_create, advance_draft_create, advance_refund_prepare), deferred-loaded: they cost their index lines only"
+  },
+  {
+    "key": "all-apps:announcementTokens",
+    "capability": "agreements: drafting, sending, following up, verifying a signed agreement and reading its evidence (fourteen deferred agreements tools, 67 tokens of index lines, 3446 without the app), only in an org that installed agreements"
+  },
+  {
+    "key": "all-apps:agreements",
+    "capability": "agreements: drafting, sending, following up, quoting a signed section, answering with a change request, evidence and filing a contract signed before Liaison (agreement_passage_get, change_request_send, agreement_import), deferred-loaded: their schemas cost only once loaded, only in an org that installed agreements (2553 at the integration head, 2692 with the import tool, 2603 once the descriptions that repeated their results were cut)"
+  },
+  {
+    "key": "time-and-budgets:projects",
+    "capability": "client reports: listing, reading, the week's sources, a draft and a person's approved send (client_reports_list, client_report_get, client_report_sources_get, client_report_save_draft, client_report_send), deferred-loaded: their 829 schema tokens are paid only once loaded (16741 once two descriptions that repeated their results were cut)"
+  }
+]

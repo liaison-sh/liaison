@@ -1,0 +1,3 @@
+Projects files the month's timesheet on a card's draft when the project has dated hours, handing over only the sheet it just exported -> apps/api/src/apps/projects/handlers.ts (fileMonthSheet)
+An advance outside a billing plan is refused on a daily or hourly project -> bundled-apps/invoicing/src/mutations/advances.ts (advanceDraftCreate) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (readMilestones)
+A correction from its card issues its credit note like any other -> bundled-apps/invoicing/src/mutations/credit-from-reconcile.ts (creditFromReconcile)

@@ -622,6 +622,24 @@ export interface CivilTime {
   zone: string
 }
 
+/** What `ctx.turn.get()` answers: the turn a handler runs in. */
+export interface TurnInfo {
+  /** The acting agent, or null when no agent acts (a job, a webhook, a person's own click). */
+  agentId: string | null
+  /** A person is behind the turn. False for a routine tick, a background turn and a job. */
+  hasPerson: boolean
+}
+
+/** What `ctx.approvals.restagePayload` answers. */
+export type RestagePayloadResult =
+  | { ok: true; approval_id: string; payload_hash: string; changed: boolean }
+  | {
+      ok: false
+      /** `not_pending`: decided, expired or withdrawn, so stage a new approval for the change. */
+      code: "not_pending" | "forbidden" | "not_found" | "invalid_edit" | string
+      message: string
+    }
+
 export interface AppContext {
   userId: string
   orgId: string
@@ -960,9 +978,16 @@ export interface AppContext {
      * `timezone` is an IANA name. `UTC`, the column default of issuer and org zones, means "not
      * set": the organization's zone answers, and UTC when it has none. `Etc/UTC` is UTC, exactly.
      * `at` (ISO date-time or epoch milliseconds) defaults to now. An unknown zone rejects with
-     * `code: "invalid_timezone"`.
+     * `code: "invalid_timezone"`. `timezoneOf` instead of `timezone` answers in the zone a row of
+     * the app's own table holds in its `timezone` column (`UTC` there meaning "not set" again),
+     * whether or not the caller may read that row; it rejects with `code: "not_found"` when the
+     * row does not exist.
      */
-    civil(params: { timezone: string; at?: string | number }): Promise<CivilTime>
+    civil(
+      params:
+        | { timezone: string; at?: string | number }
+        | { timezoneOf: { table: string; id: string }; at?: string | number },
+    ): Promise<CivilTime>
   }
   /**
    * The effect ledger: an outside call claimed before it runs and stored after,
@@ -971,6 +996,34 @@ export interface AppContext {
    * to the app and the organization.
    */
   effects: EffectsBridge
+  /** The turn this handler runs in, read-only. No capability needed. */
+  turn: {
+    get(): Promise<TurnInfo>
+  }
+  /** This app's own approval requests. */
+  approvals: {
+    /**
+     * Rewrites fields of one of this app's approvals still awaiting a decision, after the records
+     * its payload describes changed. `fields` maps payload paths to new values. Recorded sign-offs
+     * reset and the approval's thread gets one note (`note`, or one naming the app and the fields).
+     * Another app's approval answers `forbidden`; a decided, expired or withdrawn one `not_pending`.
+     * The card is rebuilt from the new payload by the tool's own summarizer.
+     */
+    restagePayload(
+      approvalId: string,
+      fields: Record<string, unknown>,
+      note?: string,
+    ): Promise<RestagePayloadResult>
+    /**
+     * Withdraws one of this app's approvals still awaiting a decision, once the records it would
+     * act on made it pointless (a draft already issued by another path). It is cancelled with
+     * `reason`; a request being approved, decided, or another app's answers `not_pending`.
+     */
+    withdraw(
+      approvalId: string,
+      reason?: string,
+    ): Promise<{ ok: true; approval_id: string } | { ok: false; code: "not_pending" | "not_found" }>
+  }
   /**
    * K6 — Post-approval re-entry signal. `undefined` on first invocation;
    * populated on the kernel's re-invocation of a previously-gated tool

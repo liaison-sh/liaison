@@ -7,7 +7,6 @@ import {
   recordAgentKnowledgePointers,
   recordAgentKnowledgePointersForDocument,
 } from "~/modules/agent/knowledge/knowledge-pointers"
-import { currentRunContext } from "~/modules/agent/runtime/run-context"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
 import {
   bridgeKnowledgeActorInput,
@@ -28,15 +27,15 @@ async function findRoutineBoundRunningDoc(
   orgId: string,
   actor: unknown,
   /**
-   * The routine-tick id, CAPTURED at bridge construction (in-frame). Prefer this over `currentRunContext()`
-   * — an untrusted sandbox app (knowledge) calls this redirect from a WORKER-POOL callback where the
-   * routine-tick ALS frame is LOST, so reading `currentRunContext()` here returns undefined and the redirect
-   * bypasses → a duplicate watch doc lands (the forensic-confirmed competitor-firmware-news-watch root
-   * cause). Falls back to the ALS frame for host-side callers that still run in-frame.
+   * The routine-tick id, CAPTURED at bridge construction (in-frame), and the only source: an untrusted
+   * sandbox app (knowledge) calls this redirect from a WORKER-POOL callback where the routine-tick ALS
+   * frame is LOST, so reading `currentRunContext()` here returns undefined and the redirect bypasses → a
+   * duplicate watch doc lands (the forensic-confirmed competitor-firmware-news-watch root cause). A
+   * bridge built in frame already captured the frame's id, so nothing reads the ALS store late.
    */
   capturedRoutineId?: string,
 ): Promise<{ id: string; title: string; revision: number } | null> {
-  const routineId = capturedRoutineId ?? currentRunContext()?.routineId
+  const routineId = capturedRoutineId
   if (!routineId) return null
   try {
     // ⛔ SCHEMA-PREFIX (BL-275, competitor-firmware-news-watch run-2 fail). Use schemaRef("kernel") — NOT a
@@ -87,7 +86,7 @@ async function maybePrependPeriodSnapshotDisclaimer(
   capturedRoutineId: string | undefined,
   body: string | null | undefined,
 ): Promise<string | null | undefined> {
-  const routineId = capturedRoutineId ?? currentRunContext()?.routineId
+  const routineId = capturedRoutineId
   if (!routineId) return body
   try {
     const {
@@ -310,6 +309,75 @@ export async function validateKnowledgeCreatePlacement(args: {
     delete params.shareWithRoles
   }
   return { placement }
+}
+
+const SHARE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+type ConnectorSharing =
+  | {
+      orgAccess: "none" | "viewer" | "editor"
+      shares: Array<{ userId: string; role: "viewer" | "editor" }>
+      roleShares: Array<{ roleId: string; role: "viewer" | "editor" }>
+    }
+  | { error: { code: string; message: string } }
+  | Record<string, never>
+
+/**
+ * The sharing a connector's create names: `orgAccess`, `shareWithUsers` ({ userId, role }) and
+ * `shareWithRoles` ({ roleId, access }). Removed from `params` (the service schema does not know
+ * them). Empty when the create names none of them, so a connector's create without them takes
+ * the service defaults exactly as before.
+ */
+export function connectorSharingOf(params: Record<string, unknown>): ConnectorSharing {
+  const named =
+    params.shareWithUsers !== undefined ||
+    params.shareWithRoles !== undefined ||
+    params.orgAccess !== undefined
+  const users: unknown = params.shareWithUsers
+  const roles: unknown = params.shareWithRoles
+  const orgAccess: unknown = params.orgAccess
+  delete params.shareWithUsers
+  delete params.shareWithRoles
+  if (!named) return {}
+  const bad = (message: string) => ({ error: { code: "invalid_share", message } })
+  if (
+    orgAccess !== undefined &&
+    orgAccess !== "none" &&
+    orgAccess !== "viewer" &&
+    orgAccess !== "editor"
+  )
+    return bad("orgAccess must be 'none', 'viewer' or 'editor'. Nothing was created.")
+  const shares: Array<{ userId: string; role: "viewer" | "editor" }> = []
+  for (const e of Array.isArray(users) ? users : []) {
+    const u = e as { userId?: unknown; role?: unknown }
+    if (
+      typeof u.userId !== "string" ||
+      !SHARE_UUID.test(u.userId) ||
+      (u.role !== "viewer" && u.role !== "editor")
+    )
+      return bad(
+        "Each shareWithUsers entry is { userId: <uuid>, role: 'viewer' | 'editor' }. Nothing was created.",
+      )
+    shares.push({ userId: u.userId, role: u.role })
+  }
+  const roleShares: Array<{ roleId: string; role: "viewer" | "editor" }> = []
+  for (const e of Array.isArray(roles) ? roles : []) {
+    const r = e as { roleId?: unknown; access?: unknown }
+    if (
+      typeof r.roleId !== "string" ||
+      !SHARE_UUID.test(r.roleId) ||
+      (r.access !== "viewer" && r.access !== "editor")
+    )
+      return bad(
+        "Each shareWithRoles entry is { roleId: <uuid>, access: 'viewer' | 'editor' }. Nothing was created.",
+      )
+    roleShares.push({ roleId: r.roleId, role: r.access })
+  }
+  return {
+    orgAccess: (orgAccess as "none" | "viewer" | "editor" | undefined) ?? "none",
+    shares,
+    roleShares,
+  }
 }
 
 /** The knowledge app surface: search, read and document writes. */
@@ -783,6 +851,17 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
       // on whether it writes that caveat into the body, so PREPEND the verbatim disclaimer server-side when
       // it omitted it — the saved deliverable is always honest regardless of tick variance. No-op outside a
       // period-snapshot tick or when the body already carries a caveat.
+      // A connector's create may name who reads the document (an ingestion closed to the
+      // organization, shared by name: the agreements app's signed text). Bridge-level fields,
+      // applied after the create in the same transaction; an agent's create never carries them.
+      let connectorSharing: ConnectorSharing | null = null
+      if (isCrossAppConnectorCreate) connectorSharing = connectorSharingOf(params)
+      else {
+        delete params.orgAccess
+        delete params.shareWithUsers
+      }
+      if (connectorSharing && "error" in connectorSharing)
+        return JSON.stringify({ error: connectorSharing.error })
       const disclaimedBody = await maybePrependPeriodSnapshotDisclaimer(
         txDb as never,
         orgId,
@@ -829,6 +908,21 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
             actor,
           )
         }
+      }
+      if (connectorSharing && "shares" in connectorSharing) {
+        const createdRow = created as { id: string; editScope: string | null }
+        const { setDocumentSharing } = await import("~/apps/knowledge/service")
+        await setDocumentSharing(
+          txDb as never,
+          createdRow.id,
+          {
+            orgAccess: connectorSharing.orgAccess,
+            editScope: createdRow.editScope ?? null,
+            shares: connectorSharing.shares,
+            roleShares: connectorSharing.roleShares,
+          },
+          actor,
+        )
       }
       // CONNECTOR INGESTION LANDS IN THE REVIEW QUEUE. A cross-app connector
       // create skips knowledge's agent approval gate (handlers.ts: a webhook

@@ -213,6 +213,7 @@
     "apps/api/src/db/migrations/0221_agents_avatar_color.test.ts",
     "apps/api/src/db/migrations/0230_routines_edited_by.test.ts",
     "apps/api/src/db/migrations/0242_projects_task_labels.test.ts",
+    "apps/api/src/db/migrations/0345_invoicing_documents_company_backfill.test.ts",
     "apps/api/src/db/migrations/app-versions-rollback-migration.test.ts",
     "apps/api/src/db/migrations/push-tokens-environment.test.ts",
     "apps/api/src/db/migrations/thread-participants-agent-rls.test.ts",

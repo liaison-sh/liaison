@@ -9,6 +9,9 @@ import { sql as drizzleSql } from "drizzle-orm"
 import projectsManifest from "~/apps/projects/app.manifest.json"
 import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
+import type { UserContext } from "~/db/rls"
+import { seedContext } from "~/seed/context"
+import { seedCompanies } from "~/seed/factories/people/companies"
 import { seedReconciliationLine } from "~/seed/factories/projects/reconcile"
 import {
   asPerson,
@@ -19,6 +22,7 @@ import {
 } from "~/tests/helpers/projects-claims"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { milestoneStatusRead, reconcileLinesRead } from "./claims"
+import { updateProject } from "./update-project"
 
 let w: ClaimsWorld
 let ownerName = ""
@@ -117,6 +121,24 @@ describe("the internal reads for invoicing", () => {
   })
 
   it("the milestone status read carries the project's company and no task title, assignee, time or activity", async () => {
+    // The project bills a real client company, so the read must carry that company's id.
+    const actor = {
+      actorType: "user",
+      userId: w.owner.userId,
+      orgId: w.orgId,
+      scopes: ["*"],
+      dimensionGrants: { "*": ["*"] },
+    } as UserContext
+    const { client: companyId } = await seedCompanies(
+      seedContext({ orgId: w.orgId, now: new Date() }),
+      actor,
+      [{ key: "client", name: "Maison Delorme client" }],
+      {},
+    )
+    expect(companyId).toMatch(/^[0-9a-f-]{36}$/)
+    await asPerson(w, (tx) =>
+      updateProject({ tx, orgId: w.orgId, projectId: w.projectId, actor, patch: { companyId } }),
+    )
     const out = await asPerson(w, (tx) =>
       milestoneStatusRead({
         tx,
@@ -138,7 +160,8 @@ describe("the internal reads for invoicing", () => {
         drizzleSql`SELECT company_id::text AS company_id FROM app_projects.projects WHERE id = ${w.projectId}::uuid`,
       ),
     )[0]
-    expect(out.companyId).toBe(stored?.company_id ?? null)
+    expect(stored?.company_id).toBe(companyId)
+    expect(out.companyId).toBe(companyId!)
     // Read in another app's call with that app's wide row access: a title would name work in a
     // project the person may not open.
     expect(JSON.stringify(out)).not.toContain("Work item")

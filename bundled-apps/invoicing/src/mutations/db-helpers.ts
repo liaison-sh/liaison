@@ -569,6 +569,13 @@ export async function updateDraftRow(
     if ((lifted.counterparty_contact_id ?? null) !== existing.counterparty_contact_id)
       update.company_id = null
   }
+  if ("billing_project_id" in lifted) {
+    update.billing_project_id = lifted.billing_project_id ?? null
+    // Another project: a company stamped for the old one no longer holds; the issue reads the
+    // contact's company, else the new project's.
+    if ((lifted.billing_project_id ?? null) !== (existing.source?.billing_project_id ?? null))
+      update.company_id = null
+  }
   if ("counterparty_name" in lifted) update.counterparty_name = lifted.counterparty_name
   if ("counterparty_address" in lifted) update.counterparty_address = lifted.counterparty_address
   if ("counterparty_shipping_address" in lifted)

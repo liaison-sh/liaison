@@ -90,6 +90,7 @@ import {
 import { loadSubAgentDefinition } from "~/modules/agent/subruns/sub-agent-definitions"
 import { publishSubRunResult, shapeFromRow } from "~/modules/agent/subruns/subrun-await"
 import { assembleSubRunContext, subRunPrompt } from "~/modules/agent/subruns/subrun-context"
+import { modelTimeZoneOf } from "~/modules/agent/tools/model-times"
 import {
   admitLateTools,
   buildScopedToolSet,
@@ -363,6 +364,9 @@ export async function runSubRun(
     // provider SEES per step via activeTools, unlock via tool_search mid-run.
     const subrunDiscovered = new Set<string>()
     const subRunFrame = {
+      // The zone the model reads tool results' times in, as the main agent's: the person's,
+      // else the org's (model-times.ts).
+      modelTimeZone: await modelTimeZoneOf(orgId, actor.actorType === "user" ? actor.userId : null),
       turnScopeAccumulator,
       runId,
       parentRunId: run.parentRunId ?? null,

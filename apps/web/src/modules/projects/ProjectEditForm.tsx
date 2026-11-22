@@ -30,7 +30,7 @@ interface CompanyOption {
 type ClientApi = Partial<Pick<ApiClient, "get" | "getEnvelope">>
 
 /** The client's name; null when the editor cannot see that company. */
-async function clientName(api: ClientApi, id: string): Promise<string | null> {
+export async function clientName(api: ClientApi, id: string): Promise<string | null> {
   if (!api.get) return null
   try {
     const res = await api.get<CompanyOption | { data: CompanyOption }>(`/contacts/companies/${id}`)

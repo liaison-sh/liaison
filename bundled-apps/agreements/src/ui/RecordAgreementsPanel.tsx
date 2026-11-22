@@ -49,7 +49,7 @@ export async function loadRecordAgreements(
   const ids = listed.data.rows.map((r) => r.id).filter((id): id is string => typeof id === "string")
   const self = "dealId" in record ? record.dealId : record.projectId
   const read = await Promise.all(
-    ids.map(async (id) => {
+    ids.map(async (id): Promise<RecordAgreement | null> => {
       const out = await call<AgreementDetail>("agreement_get", { id })
       if (!out.ok || !out.data?.agreement) return null
       const a = out.data.agreement
@@ -63,7 +63,7 @@ export async function loadRecordAgreements(
         links: linkedTargets(a).filter(
           (t) => t.id !== self && (t.key === "company" || t.key === "quote"),
         ),
-      } satisfies RecordAgreement
+      }
     }),
   )
   const rows = read.filter((r): r is RecordAgreement => r !== null)

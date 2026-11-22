@@ -357,7 +357,8 @@
     "clientNone": "Aucun client",
     "clientClear": "Retirer le client",
     "clientNoMatch": "Aucune entreprise ne correspond.",
-    "clientUnavailable": "Une entreprise que vous ne voyez pas"
+    "clientUnavailable": "Une entreprise que vous ne voyez pas",
+    "clientLink": "Client"
   },
   "companyWork": {
     "empty": "Aucun projet pour cette entreprise pour l'instant.",

@@ -357,7 +357,8 @@
     "clientNone": "No client",
     "clientClear": "Clear the client",
     "clientNoMatch": "No company matches.",
-    "clientUnavailable": "A company you cannot see"
+    "clientUnavailable": "A company you cannot see",
+    "clientLink": "Client"
   },
   "companyWork": {
     "empty": "No project for this company yet.",

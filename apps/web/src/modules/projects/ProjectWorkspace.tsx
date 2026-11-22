@@ -54,6 +54,7 @@ import { fetchInvolvedTasks, type Involvement, involvementLine } from "~/modules
 import { LabelFilterChip, labelFilterHidden } from "~/modules/projects/LabelFilterChip"
 import { ensureLabelCatalog } from "~/modules/projects/label-catalog-store"
 import { NewTaskDialog } from "~/modules/projects/NewTaskDialog"
+import { ProjectClientLink } from "~/modules/projects/ProjectClientLink"
 import { ProjectEditForm } from "~/modules/projects/ProjectEditForm"
 import { ProjectKanbanView } from "~/modules/projects/ProjectKanbanView"
 import { archiveProject, restoreProject } from "~/modules/projects/project-archive"
@@ -847,6 +848,10 @@ export const ProjectWorkspace: Component<ProjectWorkspaceProps> = (props) => {
               </span>
             </Button>
           </div>
+        </Show>
+        {/* The project's client company, one click away. */}
+        <Show when={!isPipeline() && project()?.companyId}>
+          {(companyId) => <ProjectClientLink api={api} companyId={companyId()} />}
         </Show>
         {/* Panels other apps add to the project. */}
         <SlotPanels

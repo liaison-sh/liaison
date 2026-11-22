@@ -92,10 +92,14 @@ test("home-cards.reorder-collapse-persist-scroll", async ({ page, env, qa, world
   // 9 pending approvals -- over the fold threshold of 5 (Home.tsx
   // APPROVALS_FOLD_OVER), so the card shows the first 3 and folds the rest
   // behind a "Show N more" button rather than pushing Alerts/Activity below.
+  // Each is staged in its own agent turn: Home folds one run's cards, or a
+  // day of one action with no run behind it, into a single row (the next
+  // test), and this one needs 9 rows.
   await seedApprovalsForFacets(env, {
     orgId,
     userId: aminaId,
     toolNames: Array.from({ length: 9 }, () => "test:gatedEcho"),
+    runPerCard: true,
   })
   // A system alert gives the Alerts card (id "messages") content to drag.
   await seedAttentionRow(env, orgId, aminaId, {
@@ -244,4 +248,53 @@ test("home-cards.reorder-collapse-persist-scroll", async ({ page, env, qa, world
   await expect(page.getByTestId("home-card-body-approvals")).toHaveCount(0)
   // Collapsed cards still show their count pill / handle -- only the body is gone.
   await expect(page.getByTestId("home-card-approvals")).toBeVisible()
+})
+
+test("home-cards.same-day-same-action-approvals-group", async ({ page, env, qa, world }) => {
+  const orgId = world.org.id
+  const aminaId = qa.amina.id
+
+  await grantPhase8AttentionScopes(env, orgId, aminaId)
+  const aminaToken = await freshAccessToken(
+    env.serverUrl,
+    "amina@resonantaudiolabs.example",
+    "QaPass1!",
+  )
+  await resetAttentionForUser(env, orgId, aminaToken, qa.admin.token)
+  // The test above leaves Amina's Approvals card collapsed (server-side).
+  const layout = await api(env.serverUrl, "/api/user/preferences/home-cards", {
+    method: "PUT",
+    token: aminaToken,
+    body: { order: ["approvals", "messages", "feed"], collapsed: [] },
+  })
+  expect(layout.status).toBe(200)
+
+  // Three of one action for the same approver on one day, with no run behind
+  // them: Home shows them as ONE row that opens to the three cards, and the
+  // card counts that row once.
+  await seedApprovalsForFacets(env, {
+    orgId,
+    userId: aminaId,
+    toolNames: ["test:gatedEcho", "test:gatedEcho", "test:gatedEcho"],
+  })
+
+  await loginAs(page, env, "amina@resonantaudiolabs.example", "QaPass1!")
+  await page.getByTestId("activity-home").click()
+  await page.waitForSelector("[data-testid='home-feed']", { timeout: 10_000 })
+
+  const approvalsBody = page.getByTestId("home-card-body-approvals")
+  await expect(approvalsBody).toBeVisible({ timeout: 10_000 })
+  const group = approvalsBody.getByTestId("approval-run-group-row")
+  await expect(group).toHaveCount(1, { timeout: 10_000 })
+  await expect(group).toHaveAttribute("data-count", "3")
+  await expect(page.getByTestId("home-card-count-approvals")).toHaveText("1")
+  await expect(page.getByTestId("home-approvals-fold")).toHaveCount(0)
+
+  // Opening the row lists each card, still decided on its own.
+  await group.getByTestId("approval-run-group-toggle").click()
+  await expect(
+    group
+      .getByTestId("approval-run-group-list")
+      .locator('[data-testid^="attention-row-"][data-testid$="-details"]'),
+  ).toHaveCount(3)
 })

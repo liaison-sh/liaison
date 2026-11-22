@@ -187,6 +187,7 @@ export const SEED_FACTORIES: Record<string, SeedRouteFactory> = {
       approveScope: zod.string().min(1).optional(),
       toolCallMessage: zod.boolean().default(true),
       mention: zod.boolean().default(false),
+      runId: uuid.optional(),
     }),
     async (ctx, a, call) => {
       const admin = await orgAdmin(ctx.orgId)

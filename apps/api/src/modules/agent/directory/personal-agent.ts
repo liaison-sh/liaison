@@ -95,6 +95,8 @@ export function personalCeiling(
  * restriction and stays out. An exact-only scope the administrator removed is recorded as
  * removed (`!<scope>`), with the earlier restriction's removals they did not undo, so a later
  * grant of it stays off the agent while one they never removed reaches it (`personalCeiling`).
+ * An earlier restriction recorded without removals is converted as narrow as it was: every
+ * exact-only scope of the owner it left out is recorded as removed.
  */
 export function personalRestriction(
   ownerScopes: readonly string[],
@@ -111,8 +113,17 @@ export function personalRestriction(
         )
       : []
   const restriction = [...new Set([...written, ...unnamed])]
+  const earlier = previous ? splitRestriction(previous) : null
+  // A restriction recorded before removals were kept (no `!` entry) kept an exact-only scope off
+  // unless it named it. Saved again in this format, each one it left out is recorded as removed,
+  // so the save never widens it: the stored ceiling did not carry them, so nothing else would.
+  const legacyExcluded =
+    earlier && !earlier.marked
+      ? ownerScopes.filter((s) => isExactOnlyScope(s) && !isScopeCovered([s], earlier.kept))
+      : []
   const removed = new Set([
-    ...(previous ? splitRestriction(previous).removed : []),
+    ...(earlier ? earlier.removed : []),
+    ...legacyExcluded,
     ...stored.filter((s) => isExactOnlyScope(s)),
   ])
   for (const s of written) removed.delete(s)

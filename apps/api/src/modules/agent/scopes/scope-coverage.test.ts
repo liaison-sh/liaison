@@ -207,10 +207,11 @@ describe("a personal agent's restriction records only what was removed", () => {
       "clevel",
       "!",
     ])
-    // Under an earlier restriction it was left out on purpose and stays out.
+    // Under an earlier restriction it was left out on purpose: it stays out, recorded as removed.
     expect(personalRestriction(owner, ["kernel:threads:read"], ["*"], ["*"])).toEqual([
       "kernel:threads:read",
       "!",
+      "!clevel",
     ])
   })
 })
@@ -239,6 +240,31 @@ describe("an exact-only scope granted after a personal agent was narrowed", () =
     expect(personalCeiling(after, readded)).toEqual(["projects:*", margin])
     // A restriction recorded before removals were kept names its exact-only scopes, as before.
     expect(personalCeiling(after, ["projects:*"])).toEqual(["projects:*"])
+  })
+
+  it("an older restriction saved again in the removal format never widens", () => {
+    // Recorded before removals were kept: it names its exact-only scopes, so margin is off.
+    const legacy = ["projects:*"]
+    const stored = personalCeiling(after, legacy)
+    expect(stored).toEqual(["projects:*"])
+    // An admin saves the ceiling unchanged (the form resends it whole): margin stays off.
+    const resaved = personalRestriction(after, stored, stored, legacy)
+    expect(personalCeiling(after, resaved)).toEqual(["projects:*"])
+    // And on every later save and recompute.
+    const again = personalRestriction(after, ["projects:*"], ["projects:*"], resaved)
+    expect(personalCeiling(after, again)).toEqual(["projects:*"])
+    // An admin who holds margin exactly and names it puts it back.
+    const named = personalRestriction(after, ["projects:*", margin], stored, legacy)
+    expect(personalCeiling(after, named)).toEqual(["projects:*", margin])
+    // A legacy restriction that named the scope keeps it.
+    const kept = [...legacy, margin]
+    const keptResaved = personalRestriction(
+      after,
+      personalCeiling(after, kept),
+      personalCeiling(after, kept),
+      kept,
+    )
+    expect(personalCeiling(after, keptResaved)).toEqual(["projects:*", margin])
   })
 
   it("a wildcard holder still does not cover an exact-only scope", () => {

@@ -7,7 +7,7 @@ import { deliveryFileId } from "../legal-originals/delivery"
 import { recordSent } from "../sent-record"
 import { findDocumentSummary, findIssuerProfile } from "./db-helpers"
 import { ensureDocumentPdf } from "./pdf"
-import { annexMailText, sendAnnexes } from "./send-annexes"
+import { annexMailText, annexSetKey, sendAnnexes } from "./send-annexes"
 import {
   type DocumentRowSummary,
   type ErrorEnvelope,
@@ -141,7 +141,12 @@ export async function documentsSendToCustomerPreflight(
   ctx: MutationsCtx,
   input: { document_id: string; to?: string },
 ): Promise<PreflightResult> {
-  return toPreflightResult(await preflightSendToCustomerParams(ctx, input))
+  const pre = await preflightSendToCustomerParams(ctx, input)
+  const result = toPreflightResult(pre)
+  if (!pre.ok || !("ok" in result)) return result
+  // The card lists the annexes as they are now: the approval binds them (a pinned param, so a
+  // caller's own value is dropped), and the send refuses once they changed.
+  return { ...result, pinnedParams: { annex_set: await annexSetKey(ctx.db, pre.doc.id) } }
 }
 
 export async function documentsSendToCustomer(
@@ -151,6 +156,8 @@ export async function documentsSendToCustomer(
     to?: string
     subject?: string
     body?: string
+    /** The annexes the approval card listed (pinned by the preflight). */
+    annex_set?: string | null
   },
 ): Promise<MutationResult<{ dispatched: true }>> {
   // Recipient resolution ALSO runs at stage time (the preflight export above shares this exact
@@ -159,6 +166,19 @@ export async function documentsSendToCustomer(
   const pre = await preflightSendToCustomerParams(ctx, input)
   if (!pre.ok) return pre.error
   const { doc, mailAccountId, recipient, issuer } = pre
+  // A file filed on the invoice after the card was drawn would go out unseen: refused, before
+  // anything is rendered or sent. A request staged before the card bound its annexes has none.
+  if (
+    typeof input.annex_set === "string" &&
+    input.annex_set !== (await annexSetKey(ctx.db, doc.id))
+  )
+    return {
+      status: "error",
+      error: {
+        code: "card_changed",
+        message: `The files attached to ${doc.number ? `invoice ${doc.number}` : `document ${doc.id}`} changed after this send was proposed, so nothing was sent. Propose the send again: its card lists every file the mail carries.`,
+      },
+    }
 
   // Self-heal a missing PDF instead of refusing to send: an issued document whose issue-time render
   // never ran or failed (pdf_status null/pending/failed) is rendered on-demand here, then attached.

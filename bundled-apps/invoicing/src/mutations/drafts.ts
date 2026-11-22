@@ -1173,9 +1173,18 @@ async function updatePlainDraft(
   const {
     lines,
     buyer_is_consumer: buyerIsConsumerPatch,
-    project_id: projectPatch,
+    project_id: projectGiven,
+    // The column's own name is the same request as `project_id`: it gets the same check, never
+    // a raw write.
+    billing_project_id: columnGiven,
     ...header
   } = input.patch as typeof input.patch & { project_id?: string | null }
+  if (projectGiven !== undefined && columnGiven !== undefined && projectGiven !== columnGiven)
+    refuse(
+      "invalid_project",
+      `The patch names two different projects (project_id and billing_project_id). Draft ${input.draft_id} was not changed. Pass project_id alone.`,
+    )
+  const projectPatch = projectGiven !== undefined ? projectGiven : columnGiven
   let patch: Partial<DraftInsert> = header
   if (projectPatch !== undefined) {
     patch = {

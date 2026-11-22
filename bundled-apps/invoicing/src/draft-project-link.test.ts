@@ -136,4 +136,37 @@ describe("a plain draft that bills a project", () => {
     const draft = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
     expect(draft.billing_project_id ?? null).toBeNull()
   })
+
+  test("the raw billing_project_id key in a patch gets the same project check", async () => {
+    const h = setup(null)
+    const created = await draftsCreate(h.ctx, DRAFT as never)
+    await expect(
+      draftsUpdate(h.ctx, {
+        draft_id: created.draft_id,
+        patch: { billing_project_id: UNKNOWN_PROJECT } as never,
+      }),
+    ).rejects.toThrow(/project_unreadable/)
+    const draft = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(draft.billing_project_id ?? null).toBeNull()
+
+    await draftsUpdate(h.ctx, {
+      draft_id: created.draft_id,
+      patch: { billing_project_id: PROJECT } as never,
+    })
+    const linked = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(linked.billing_project_id).toBe(PROJECT)
+  })
+
+  test("a patch naming two different projects is refused", async () => {
+    const h = setup(null)
+    const created = await draftsCreate(h.ctx, DRAFT as never)
+    await expect(
+      draftsUpdate(h.ctx, {
+        draft_id: created.draft_id,
+        patch: { project_id: PROJECT, billing_project_id: UNKNOWN_PROJECT } as never,
+      }),
+    ).rejects.toThrow(/invalid_project/)
+    const draft = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(draft.billing_project_id ?? null).toBeNull()
+  })
 })

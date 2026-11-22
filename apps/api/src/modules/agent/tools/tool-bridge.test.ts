@@ -805,6 +805,7 @@ describe("tool bridge: scope taint in the execute path", () => {
       requiredScopes: real.requiredScopes,
       ...(real.writesToTable !== undefined ? { writesToTable: real.writesToTable } : {}),
       ...(real.readOnly !== undefined ? { readOnly: real.readOnly } : {}),
+      ...(real.taintFree !== undefined ? { taintFree: real.taintFree } : {}),
       params: anyParams,
       handler: spy(name),
     })
@@ -855,7 +856,14 @@ describe("tool bridge: scope taint in the execute path", () => {
       VALUES (${TAINT_USER}, ${TAINT_ORG}, 'taint@test.com', 'Taint User', 'x') ON CONFLICT DO NOTHING`
     const { registerKernelAgentTools } = await import("./kernel-tools")
     await registerKernelAgentTools(TAINT_ORG)
-    for (const name of ["contacts_write", "threads_reply", "user_memory_set"]) kernelSpy(name)
+    for (const name of [
+      "contacts_write",
+      "threads_reply",
+      "user_memory_set",
+      "request_scope",
+      "subagent_create",
+    ])
+      kernelSpy(name)
 
     const testTool = (name: string, extra: Record<string, unknown>) =>
       toolRegistry.set([TAINT_ORG, "taint_t", name], {
@@ -905,6 +913,37 @@ describe("tool bridge: scope taint in the execute path", () => {
     const result = await call(frame, "kernel__contacts_write")
     expectParkedUnrun(result)
     expect(ran).toEqual(["scoped_read"])
+  })
+
+  it("a result that only names a missing access leaves the turn untainted", async () => {
+    ran.length = 0
+    const frame = frameWith()
+    // Asking for an access reads no org record: its result names the scopes asked for.
+    await call(frame, "kernel__request_scope", { scopes: ["projects:margin:read"], reason: "x" })
+    expect(ran).toEqual(["request_scope"])
+    expect(frame.turnScopeAccumulator?.snapshot()).toEqual([])
+    // So the turn's next write is judged as an untainted one.
+    await call(frame, "kernel__contacts_write")
+    expect(ran).toEqual(["request_scope", "contacts_write"])
+  })
+
+  it("a request for access or a sub-agent role written after a read narrower than any role does not run unjudged", async () => {
+    // The request's reason and the role's text are free text read by admins who may not hold
+    // the record the turn read (an exact-only margin, a record closed to the organization).
+    for (const seed of [
+      ["projects:margin:read"],
+      ["a:b:read", "restricted:agreements.agreement:5b0c3f0e-8d1f-4a51-9a0e-2f3c8e1d7a10"],
+    ]) {
+      ran.length = 0
+      await call(frameWith(seed), "kernel__request_scope", { scopes: ["x:y:read"], reason: "r" })
+      await call(frameWith(seed), "kernel__subagent_create", { agentType: "r" })
+      expect(ran).toEqual([])
+    }
+    // An ordinary read still lets the turn ask for access and register a role.
+    ran.length = 0
+    await call(frameWith(["a:b:read"]), "kernel__request_scope", { scopes: ["x:y:read"] })
+    await call(frameWith(["a:b:read"]), "kernel__subagent_create", { agentType: "r" })
+    expect(ran).toEqual(["request_scope", "subagent_create"])
   })
 
   it("the same tool succeeds normally when the turn has touched no scoped data", async () => {

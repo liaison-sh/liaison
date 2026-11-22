@@ -78,10 +78,18 @@ export function timesForModel<T>(value: T, timeZone: string | undefined): T {
 
 /**
  * The zone a person's agent reads times in: their own, else their organization's, else UTC.
+ * With no person (a system actor's run), the organization's, else UTC.
  * Read privileged: the person's own row and their organization's zone only.
  */
-export async function modelTimeZoneOf(orgId: string, userId: string): Promise<string> {
+export async function modelTimeZoneOf(orgId: string, userId: string | null): Promise<string> {
   return withPrivilegedDb(orgId, "agent-model-time-zone", async (tx) => {
+    if (!userId) {
+      const [org] = await tx
+        .select({ tz: organizations.timezone })
+        .from(organizations)
+        .where(eq(organizations.id, orgId))
+      return org?.tz || "UTC"
+    }
     const [row] = await tx
       .select({ tz: users.timezone, orgTz: organizations.timezone })
       .from(users)

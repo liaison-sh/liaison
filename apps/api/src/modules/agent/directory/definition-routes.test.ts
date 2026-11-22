@@ -917,7 +917,8 @@ describe("GET /api/agents/:agentId/definition", () => {
       expect(res.status).toBe(200)
       const [narrowed] = await sql`SELECT scope_ceiling, ceiling_restriction FROM kernel.agents
         WHERE id = ${memberPersonalAgentId}`
-      expect(narrowed.ceiling_restriction).toEqual(["kernel:threads:read"])
+      // `!` marks a restriction that records the exact-only scopes it removed (none here).
+      expect(narrowed.ceiling_restriction).toEqual(["kernel:threads:read", "!"])
       expect(narrowed.scope_ceiling).toEqual(["kernel:threads:read"])
 
       // An app turned On or Off names every member (user_scope:org_app): the
@@ -1064,6 +1065,69 @@ describe("GET /api/agents/:agentId/definition", () => {
     expect(removed.status).toBe(200)
     const [dropped] = await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${agentRowId}`
     expect(dropped.scope_ceiling).not.toContain("clevel")
+  })
+
+  it("an exact-only scope granted after an admin narrowed a person's own agent reaches it unless removed", async () => {
+    const margin = "projects:margin:read"
+    const owner = await minimal.session(session.orgId, { role: "member" })
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${owner.userId}, ${session.orgId}, 'projects:*')`
+    const [ownerAgent] = await sql`SELECT id FROM kernel.agents WHERE org_id = ${session.orgId}
+        AND owner_user_id = ${owner.userId} AND kind = 'personal'`
+    let agentRowId: string
+    if (ownerAgent) agentRowId = ownerAgent.id
+    else {
+      const [inserted] =
+        await sql`INSERT INTO kernel.agents (org_id, kind, handle, display_name, scope_ceiling, owner_user_id)
+        VALUES (${session.orgId}, 'personal', '@margin-owner-agent', 'Owner', '[]'::jsonb, ${owner.userId})
+        RETURNING id`
+      agentRowId = inserted.id
+    }
+    const recompute = () =>
+      syncPersonalAgentCeilingsForEvent({
+        app: "kernel",
+        entity: "user_scope",
+        orgId: session.orgId,
+        data: { targetUserIds: [owner.userId] },
+      })
+    const ceiling = async () =>
+      ((await sql`SELECT scope_ceiling FROM kernel.agents WHERE id = ${agentRowId}`)[0]
+        ?.scope_ceiling ?? []) as string[]
+    await recompute()
+    const start = await ceiling()
+    expect(start).toContain("projects:*")
+    const starBearer = await bearerWithScopes(session.userId, session.orgId, ["*"])
+
+    // The admin unticks one scope and keeps the projects area.
+    const victim = start.find((s) => s !== "projects:*") ?? ""
+    expect(victim).not.toBe("")
+    const kept = start.filter((s) => s !== victim)
+    const narrow = await send("PATCH", `/api/agents/${agentRowId}`, starBearer, {
+      scopeCeiling: kept,
+    })
+    expect(narrow.status).toBe(200)
+
+    // The owner is granted margin exactly afterwards: the grant's recompute brings it in.
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${owner.userId}, ${session.orgId}, ${margin})`
+    await recompute()
+    const granted = await ceiling()
+    expect(granted).toContain(margin)
+    expect(granted).not.toContain(victim)
+
+    // Removed by name, it stays off, also when it is granted again.
+    const removed = await send("PATCH", `/api/agents/${agentRowId}`, starBearer, {
+      scopeCeiling: kept,
+    })
+    expect(removed.status).toBe(200)
+    expect(await ceiling()).not.toContain(margin)
+    await sql`DELETE FROM kernel.user_scope_grants
+      WHERE user_id = ${owner.userId} AND scope = ${margin}`
+    await recompute()
+    await sql`INSERT INTO kernel.user_scope_grants (user_id, org_id, scope)
+      VALUES (${owner.userId}, ${session.orgId}, ${margin})`
+    await recompute()
+    expect(await ceiling()).not.toContain(margin)
   })
 
   it("an owner may edit the personal agent's name and prompt but not its ceiling", async () => {

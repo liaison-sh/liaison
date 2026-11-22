@@ -555,6 +555,18 @@ export const TAINT_LOW_SENSITIVITY_SINKS: ReadonlySet<string> = new Set([
   SINK_APP_PROJECTS_TASK_DEPENDENCIES,
 ])
 
+// CONTROL-PLANE ROWS THAT CARRY FREE TEXT. A scope request's reason and a sub-agent role's text
+// (whenToUse, system prompt) are read by the admins who decide or edit them, and an admin holding
+// `*` does not hold an exact-only scope or a record closed to the organization. So the
+// control-plane allowance covers them only for a taint every role can share: after a read
+// narrower than any role (`taintNarrowerThanRoles`), the write is judged by its readers like any
+// other sink. An ordinary taint keeps the allowance, and a call refused before it ran (a missing
+// access) taints nothing, so asking for the access one lacks still works.
+export const TAINT_CONTROL_PLANE_TEXT_SINKS: ReadonlySet<string> = new Set([
+  SINK_KERNEL_SUB_AGENT_DEFINITIONS,
+  SINK_KERNEL_SCOPE_REQUESTS,
+])
+
 /**
  * A taint narrower than any role: it holds a restricted record's scope (`restricted:`, a record
  * closed to the organization, read only by its list) or an exact-only scope (a margin, a cost
@@ -964,7 +976,11 @@ export function checkScopeTaint(
   if (
     accumulatedRequiredScopes.length === 0 ||
     TAINT_ENFORCING_SINKS.has(writeTargetTable) ||
-    TAINT_CONTROL_PLANE_SINKS.has(writeTargetTable) ||
+    (TAINT_CONTROL_PLANE_SINKS.has(writeTargetTable) &&
+      !(
+        TAINT_CONTROL_PLANE_TEXT_SINKS.has(writeTargetTable) &&
+        taintNarrowerThanRoles(accumulatedRequiredScopes)
+      )) ||
     (TAINT_LOW_SENSITIVITY_SINKS.has(writeTargetTable) &&
       !taintNarrowerThanRoles(accumulatedRequiredScopes))
   ) {

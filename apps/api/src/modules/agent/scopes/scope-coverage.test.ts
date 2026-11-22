@@ -3,7 +3,7 @@ import { describe, expect, it } from "bun:test"
 import { readdirSync, readFileSync } from "node:fs"
 import { join } from "node:path"
 import { knowledgeDocumentSharingSchema, knowledgeEditScopeSchema } from "@liaison/shared"
-import { personalRestriction } from "~/modules/agent/directory/personal-agent"
+import { personalCeiling, personalRestriction } from "~/modules/agent/directory/personal-agent"
 import { holdsEveryScope } from "~/modules/agent/scopes/taint-approval-audience"
 import { readScopesCoveredByWildcard } from "~/modules/agent/scopes/taint-read-scopes"
 import { intersectScopes } from "~/modules/agent/subruns/spawn-agent"
@@ -184,14 +184,19 @@ describe("a personal agent's restriction records only what was removed", () => {
 
   it("narrowing keeps clevel when the written ceiling keeps it", () => {
     const r = personalRestriction(owner, ["kernel:threads:read", "clevel"], owner, null)
-    expect(r).toEqual(["kernel:threads:read", "clevel"])
+    // `!` marks a restriction that records removals; nothing was removed that is exact-only.
+    expect(r).toEqual(["kernel:threads:read", "clevel", "!"])
   })
 
   it("clevel removed from the ceiling the admin was shown is dropped", () => {
     expect(personalRestriction(owner, ["kernel:threads:read"], owner, null)).toEqual([
       "kernel:threads:read",
+      "!",
+      "!clevel",
     ])
-    expect(personalRestriction(owner, ["*"], owner, null)).toEqual(["*"])
+    expect(personalRestriction(owner, ["*"], owner, null)).toEqual(["*", "!", "!clevel"])
+    // And the ceiling it makes leaves it out.
+    expect(personalCeiling(owner, personalRestriction(owner, ["*"], owner, null))).toEqual(["*"])
   })
 
   it("an owner's exact-only scope the shown ceiling did not carry is kept, not silently dropped", () => {
@@ -200,11 +205,54 @@ describe("a personal agent's restriction records only what was removed", () => {
     expect(personalRestriction(owner, ["kernel:threads:read"], ["*"], null)).toEqual([
       "kernel:threads:read",
       "clevel",
+      "!",
     ])
     // Under an earlier restriction it was left out on purpose and stays out.
     expect(personalRestriction(owner, ["kernel:threads:read"], ["*"], ["*"])).toEqual([
       "kernel:threads:read",
+      "!",
     ])
+  })
+})
+
+describe("an exact-only scope granted after a personal agent was narrowed", () => {
+  const margin = "projects:margin:read"
+  const before = ["tickets:*", "projects:*"]
+  const after = [...before, margin]
+
+  it("an exact-only scope granted after a narrowing reaches the personal agent when the restriction does not remove it", () => {
+    // The admin removed tickets and kept projects; the owner is later granted margin exactly.
+    const narrowed = personalRestriction(before, ["projects:*"], before, null)
+    expect(personalCeiling(before, narrowed)).toEqual(["projects:*"])
+    expect(personalCeiling(after, narrowed)).toEqual(["projects:*", margin])
+    // A restriction that removed the scope's whole area keeps it off.
+    const noProjects = personalRestriction(before, ["tickets:*"], before, null)
+    expect(personalCeiling(after, noProjects)).toEqual(["tickets:*"])
+    // A scope the admin removed by name stays off when it is granted again.
+    const removed = personalRestriction(after, ["projects:*"], after, null)
+    expect(personalCeiling(before, removed)).toEqual(["projects:*"])
+    expect(personalCeiling(after, removed)).toEqual(["projects:*"])
+    // A later narrowing keeps that removal unless the admin names the scope again.
+    const later = personalRestriction(after, ["projects:*"], ["projects:*"], removed)
+    expect(personalCeiling(after, later)).toEqual(["projects:*"])
+    const readded = personalRestriction(after, ["projects:*", margin], ["projects:*"], removed)
+    expect(personalCeiling(after, readded)).toEqual(["projects:*", margin])
+    // A restriction recorded before removals were kept names its exact-only scopes, as before.
+    expect(personalCeiling(after, ["projects:*"])).toEqual(["projects:*"])
+  })
+
+  it("a wildcard holder still does not cover an exact-only scope", () => {
+    // A pin: the coverage primitives are unchanged; the restriction filters, it never grants.
+    expect(isScopeCovered([margin], ["*"])).toBe(false)
+    expect(isScopeCovered([margin], ["projects:*"])).toBe(false)
+    expect(isScopeCovered(["clevel"], ["*"])).toBe(false)
+    expect(intersectScopes(["*"], [margin])).toEqual([])
+    // An owner holding `*` but not margin gets no margin through a restriction keeping `*`.
+    const narrowed = personalRestriction(["*"], ["*"], ["*"], ["*", "!"])
+    expect(personalCeiling(["*"], narrowed)).toEqual(["*"])
+    expect(personalCeiling(["*"], ["*", "!"])).not.toContain(margin)
+    // An entry shaped like a removal is never written as a scope.
+    expect(personalRestriction(after, ["projects:*", "!"], after, null)).not.toContain(margin)
   })
 })
 

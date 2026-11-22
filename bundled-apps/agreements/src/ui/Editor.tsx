@@ -55,6 +55,26 @@ const INPUT =
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "CAD"]
 
+/**
+ * Saves who can see an agreement. Answers what the editor says: the server's notice when someone
+ * on the list cannot open the app yet (the share is saved all the same), the refusal's words, or
+ * nothing when the change needs no word.
+ */
+export async function saveAccess(
+  id: string,
+  orgAccess: string,
+  shares: Array<{ user_id: string; role: string }>,
+): Promise<{ text: string; error: boolean } | null> {
+  const out = await call<{ access_notice?: unknown }>("agreement_update", {
+    id,
+    org_access: orgAccess,
+    shares,
+  })
+  if (!out.ok) return { text: out.message || tr("Who can see it did not change."), error: true }
+  const notice = out.data?.access_notice
+  return typeof notice === "string" && notice.trim() !== "" ? { text: notice, error: false } : null
+}
+
 export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
   const id = () => props.entityId ?? ""
   const [detail, { refetch }] = createResource(id, async (agreementId) => {
@@ -153,9 +173,11 @@ export const AgreementEditor: Component<{ entityId?: string }> = (props) => {
 
   const setAccess = async (orgAccess: string, shares: Array<{ user_id: string; role: string }>) => {
     setBusy(true)
-    const out = await call("agreement_update", { id: id(), org_access: orgAccess, shares })
+    setNote(null)
+    const said = await saveAccess(id(), orgAccess, shares)
     setBusy(false)
-    if (!out.ok) return say(out.message || tr("Who can see it did not change."), true)
+    if (said) say(said.text, said.error)
+    if (said?.error) return
     void refetch()
   }
 

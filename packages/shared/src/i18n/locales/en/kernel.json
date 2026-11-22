@@ -7536,5 +7536,12 @@
     "session_restricted": "Sign in on this device to sign.",
     "gone": "There is nothing for you to sign here: the request is not yours, or it is no longer open.",
     "answered": "You have already answered this request: there is nothing more to do here."
+  },
+  "approvalRunGroup": {
+    "title": "{{count}} approvals from {{name}}",
+    "titleNoName": "{{count}} approvals from one run",
+    "why": "Staged together by one run. Each is its own decision.",
+    "show": "Show all",
+    "hide": "Hide"
   }
 }

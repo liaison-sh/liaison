@@ -53,6 +53,11 @@ import {
   isDecisionUndone,
   queueDecision,
 } from "~/modules/approvals/decision-queue"
+import {
+  type ApprovalRunGroup,
+  approvalRunGroupMembers,
+  approvalRunGroupOf,
+} from "~/modules/approvals/run-group"
 import { SummaryLineText } from "~/modules/approvals/SummaryLineText"
 import { openExternal } from "~/modules/desktop/external-links"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -1403,6 +1408,76 @@ const KbdHint: Component<{ k: string }> = (props) => (
 )
 
 /**
+ * The cards one run staged for this viewer, as one row (approvals/run-group.ts): who asked and
+ * how many, opening to the cards themselves, each decided on its own. Once one card is left
+ * (the others decided), the row is that card again.
+ */
+const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGroup }> = (
+  props,
+) => {
+  const i18n = useI18n()
+  const t = i18n.t
+  const [open, setOpen] = createSignal(false)
+  const members = (): AttentionItem[] =>
+    approvalRunGroupMembers(props.group.key, attentionStore.items).filter(
+      (m) =>
+        !(
+          m.action?.type === "decide_approval" &&
+          isDecisionInFlight("approval", m.action.approvalId)
+        ),
+    )
+  const title = (): string => {
+    const count = String(members().length)
+    return props.group.label
+      ? t("kernel.approvalRunGroup.title", { count, name: props.group.label })
+      : t("kernel.approvalRunGroup.titleNoName", { count })
+  }
+  return (
+    <Show
+      when={members().length > 1}
+      fallback={<AttentionRowBody item={members()[0] ?? props.item} />}
+    >
+      <li
+        class="group/row relative flex flex-col gap-1 px-3 py-2.5 transition-colors hover:bg-surface-hover/50"
+        data-testid="approval-run-group-row"
+        data-kind="approval_pending"
+        data-count={String(members().length)}
+      >
+        <div class="flex min-w-0 items-center gap-2">
+          <span
+            data-testid="approval-run-group-title"
+            class="min-w-0 flex-1 truncate text-[13px] font-medium text-text"
+          >
+            {title()}
+          </span>
+          <button
+            type="button"
+            data-testid="approval-run-group-toggle"
+            aria-expanded={open()}
+            class="shrink-0 rounded-md border border-border px-2.5 py-1 text-[12.5px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text"
+            onClick={(e) => {
+              e.stopPropagation()
+              setOpen((v) => !v)
+            }}
+          >
+            {open() ? t("kernel.approvalRunGroup.hide") : t("kernel.approvalRunGroup.show")}
+          </button>
+        </div>
+        <span class="text-[12px] text-text-tertiary">{t("kernel.approvalRunGroup.why")}</span>
+        <Show when={open()}>
+          <ul
+            data-testid="approval-run-group-list"
+            class="mt-1 divide-y divide-border-subtle rounded-lg border border-border-subtle"
+          >
+            <For each={members()}>{(member) => <AttentionRowBody item={member} />}</For>
+          </ul>
+        </Show>
+      </li>
+    </Show>
+  )
+}
+
+/**
  * One attention row. A computer chat's permission request is decided in its
  * chat (ThreadNodePermissions): here it is only a notification that the agent
  * needs you, which opens that chat.
@@ -1420,8 +1495,12 @@ const AttentionRow: Component<AttentionRowProps> = (props) => {
   // mailbox (Run now / Dismiss) and an access request (Grant / Deny).
   const wait = () => routineMailboxWaitOf(props.item)
   const access = () => accessRequestOf(props.item)
+  const runGroup = () => approvalRunGroupOf(props.item)
   return (
     <Switch fallback={<AttentionRowBody item={item()} />}>
+      <Match when={runGroup()}>
+        {(g) => <ApprovalRunGroupRow item={props.item} group={g()} />}
+      </Match>
       <Match when={wait()}>{(w) => <RoutineMailboxWaitsRow item={props.item} wait={w()} />}</Match>
       <Match when={access()}>{(a) => <AccessRequestRow item={props.item} facts={a()} />}</Match>
     </Switch>

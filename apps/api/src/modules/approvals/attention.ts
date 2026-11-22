@@ -77,6 +77,8 @@ interface PendingApprovalRow {
     ambiguousAt?: string
     ambiguousError?: string
     originRoutineId?: string
+    originRoutineRunId?: string
+    originRootRunId?: string
     minApprovers?: number
     approvedBy?: string[]
   } | null
@@ -732,6 +734,7 @@ export async function computeApprovalAttentionItems(
   const routeNames = await readRouteNames(tx, orgId, callerUserId, rows, routes)
 
   const items: AttentionItem[] = []
+  const runKeys = new Map<string, string>()
   let today: string | undefined
   for (const r of rows) {
     const { appName, toolShortName } = splitToolName(r.tool_name)
@@ -946,8 +949,58 @@ export async function computeApprovalAttentionItems(
           : {}),
       },
     })
+    const runKey = approvalRunKey(r)
+    if (runKey && !wedged) runKeys.set(`kernel:approval_pending:${r.id}`, runKey)
   }
+  annotateApprovalRunGroups(items, runKeys)
   return items
+}
+
+/**
+ * The run a request was staged by: the routine run, else the root of the agent run (a chat
+ * turn or a tick, with the sub-runs below it). Null for a call with no run behind it, and for a
+ * step of a bundle (its head stands for the bundle).
+ */
+function approvalRunKey(r: PendingApprovalRow): string | null {
+  if (r.bundle_id !== null && r.bundle_id !== r.id) return null
+  const key = r.metadata?.originRoutineRunId ?? r.metadata?.originRootRunId
+  return typeof key === "string" && key.length > 0 ? key : null
+}
+
+/**
+ * ONE RUN, ONE ROW. A run that stages several cards for the same person (a month-end pass:
+ * one issue card per client) put one Home row per card in front of them. The cards one run
+ * staged that sit in the same place on this viewer's Home carry `metadata.runGroup` (the run,
+ * how many, who asked), and Home shows them as one row that opens to the list. Each card stays
+ * its own decision; a run with a single card is left as it is. Order only follows urgency.
+ */
+export function annotateApprovalRunGroups(
+  items: AttentionItem[],
+  runKeys: ReadonlyMap<string, string>,
+): void {
+  const groups = new Map<string, AttentionItem[]>()
+  for (const item of items) {
+    const runKey = runKeys.get(item.id)
+    if (!runKey) continue
+    const placement = typeof item.metadata?.placement === "string" ? item.metadata.placement : ""
+    const key = `${runKey}:${placement}`
+    groups.set(key, [...(groups.get(key) ?? []), item])
+  }
+  for (const [key, members] of groups) {
+    if (members.length < 2) continue
+    const label = members.find((m) => typeof m.metadata?.requesterName === "string")?.metadata
+      ?.requesterName
+    for (const m of members) {
+      m.metadata = {
+        ...m.metadata,
+        runGroup: {
+          key,
+          count: members.length,
+          ...(typeof label === "string" ? { label } : {}),
+        },
+      }
+    }
+  }
 }
 
 /** The names a row's "why" line says (`metadata.routeLine`): who it is for, who stands in. */

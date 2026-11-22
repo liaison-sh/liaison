@@ -97,6 +97,36 @@ describe("agreements on the company timeline", () => {
     expect(next.rows.map((r) => r.title)).toEqual(["AG-2026-014 signed"])
   })
 
+  it("reads the agreements of a deal and of a project, never a draft", async () => {
+    const db = memoryDb()
+    const DEAL = "f0000000-0000-4000-8000-0000000000d1"
+    const PROJECT = "f0000000-0000-4000-8000-0000000000b1"
+    const a = await db.insert("agreements", {
+      number: "AG-2026-020",
+      status: "signed",
+      deal_task_id: DEAL,
+      project_id: PROJECT,
+      signed_at: "2026-11-02 10:00:00+00",
+    })
+    await db.insert("agreements", {
+      number: "AG-2026-021",
+      status: "draft",
+      deal_task_id: DEAL,
+      project_id: PROJECT,
+    })
+    await db.insert("agreements", {
+      number: "AG-2026-022",
+      status: "sent",
+      updated_at: "2026-11-03 10:00:00+00",
+    })
+    const ctx = { orgId: "o", userId: "u", db } as unknown as AgreementsCtx
+    for (const input of [{ dealIds: [DEAL] }, { projectIds: [PROJECT] }]) {
+      const out = await activityRead(ctx, input)
+      expect(out.rows.map((r) => r.id)).toEqual([a.id])
+    }
+    expect((await activityRead(ctx, { dealIds: ["not-an-id"] })).rows).toEqual([])
+  })
+
   it("never reads signature events, and is declared as the Agreements source under the read scope", async () => {
     expect(readFileSync(join(import.meta.dir, "activity.ts"), "utf8")).not.toContain(
       "signature_events",

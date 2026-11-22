@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test"
 import { harness, PROJECT } from "./__tests__/billing-plan-fixtures"
 import { invoiceIssue } from "./mutations"
-import { draftsCreate, draftsCreatePreflight } from "./mutations/drafts"
+import { draftsCreate, draftsCreatePreflight, draftsUpdate } from "./mutations/drafts"
 
 type Row = Record<string, unknown>
 
@@ -92,5 +92,48 @@ describe("a plain draft that bills a project", () => {
     ).rejects.toThrow(/project_unreadable/)
     expect(h.db.__all("documents").length).toBe(before)
     expect(h.approvals.length).toBe(0)
+  })
+
+  test("updating a draft's project sets its company from the contact, else the project", async () => {
+    // No company on the contact: the invoice is made out to the project's company.
+    const h = setup(null)
+    const created = await draftsCreate(h.ctx, DRAFT as never)
+    const plain = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(plain.billing_project_id ?? null).toBeNull()
+    await draftsUpdate(h.ctx, {
+      draft_id: created.draft_id,
+      patch: { project_id: PROJECT } as never,
+    })
+    const draft = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(draft.billing_project_id).toBe(PROJECT)
+    const issued = await invoiceIssue(h.ctx, { draft_id: created.draft_id })
+    const id = (issued as { document_id: string }).document_id
+    const doc = h.db.__all("documents").find((r) => r.id === id) as Row
+    expect(doc.billing_project_id).toBe(PROJECT)
+    expect(doc.company_id).toBe(PROJECT_COMPANY)
+
+    // The contact's own company wins over the project's.
+    const h2 = setup(CONTACT_COMPANY)
+    const c2 = await draftsCreate(h2.ctx, DRAFT as never)
+    await draftsUpdate(h2.ctx, { draft_id: c2.draft_id, patch: { project_id: PROJECT } as never })
+    const i2 = await invoiceIssue(h2.ctx, { draft_id: c2.draft_id })
+    const d2 = h2.db
+      .__all("documents")
+      .find((r) => r.id === (i2 as { document_id: string }).document_id) as Row
+    expect(d2.company_id).toBe(CONTACT_COMPANY)
+    expect(d2.billing_project_id).toBe(PROJECT)
+  })
+
+  test("a draft's project that cannot be read is refused and the draft is unchanged", async () => {
+    const h = setup(null)
+    const created = await draftsCreate(h.ctx, DRAFT as never)
+    await expect(
+      draftsUpdate(h.ctx, {
+        draft_id: created.draft_id,
+        patch: { project_id: UNKNOWN_PROJECT } as never,
+      }),
+    ).rejects.toThrow(/project_unreadable/)
+    const draft = h.db.__all("documents").find((r) => r.id === created.draft_id) as Row
+    expect(draft.billing_project_id ?? null).toBeNull()
   })
 })

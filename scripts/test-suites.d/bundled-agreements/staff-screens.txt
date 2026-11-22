@@ -3,3 +3,5 @@ src/ui/model.test.ts
 src/ui/i18n.test.ts
 src/ui/signing.test.ts
 src/ui/CompanyAgreementsPanel.test.ts
+src/ui/editor-access.test.ts
+src/ui/RecordAgreementsPanel.test.ts

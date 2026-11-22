@@ -6729,6 +6729,8 @@
     "level": "Niveau {{n}}",
     "listFrom": "Une ligne par élément de",
     "listLine": "Chaque ligne",
+    "listItems": "Éléments écrits",
+    "listAddItem": "Ajouter un élément",
     "loadFailed": "Impossible de charger les modèles.",
     "mappingIntro": "Chaque champ du PDF prend sa valeur d'un champ de la donnée, d'une valeur fixe ou d'une image. Un champ sans valeur imprime son texte indicatif en gris.",
     "moveDown": "Descendre",

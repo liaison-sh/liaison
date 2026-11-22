@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -1637,6 +1637,12 @@
               "type": "string"
             }
           },
+          "projectIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "before": {
             "type": [
               "object",
@@ -2646,6 +2652,28 @@
           "label": "Agreements",
           "component": "CompanyAgreementsPanel",
           "group": "agreements",
+          "order": 20,
+          "visibility_scope": "agreements:agreements:read"
+        }
+      ]
+    },
+    "project:detail:panel": {
+      "panels": [
+        {
+          "id": "agreements-project",
+          "label": "Agreements",
+          "component": "ProjectAgreementsPanel",
+          "order": 20,
+          "visibility_scope": "agreements:agreements:read"
+        }
+      ]
+    },
+    "project:task:actions": {
+      "actions": [
+        {
+          "id": "agreements-deal",
+          "label": "Agreements",
+          "component": "DealAgreementsCount",
           "order": 20,
           "visibility_scope": "agreements:agreements:read"
         }

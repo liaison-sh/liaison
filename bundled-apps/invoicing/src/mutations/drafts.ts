@@ -439,22 +439,49 @@ const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 async function billedProjectOrRefuse(
   ctx: MutationsCtx,
   input: { type: DocumentType; project_id?: string | null },
+  outcome = "Nothing was drafted.",
 ): Promise<string | null> {
   const raw = input.project_id
   if (raw === undefined || raw === null || raw === "") return null
   if (input.type === "purchase_order")
-    refuse(
-      "invalid_project",
-      "A purchase order bills a supplier, not a client project. Nothing was drafted.",
-    )
+    refuse("invalid_project", `A purchase order bills a supplier, not a client project. ${outcome}`)
   if (typeof raw !== "string" || !PROJECT_ID.test(raw))
-    refuse("invalid_project", `project_id ${String(raw)} is not a project id. Nothing was drafted.`)
+    refuse("invalid_project", `project_id ${String(raw)} is not a project id. ${outcome}`)
   if (!(await readMilestones(ctx, raw, [])))
     refuse(
       "project_unreadable",
-      `Project ${raw} could not be read: check the id with the projects search. Nothing was drafted.`,
+      `Project ${raw} could not be read: check the id with the projects search. ${outcome}`,
     )
   return raw
+}
+
+/**
+ * The project a drafts_update names: checked as drafts_create checks it, against the draft's own
+ * type. A draft that bills a billing plan step (an advance or the final invoice) keeps its
+ * project: the plan belongs to it. The company follows at issue (the contact's, else the
+ * project's), as for a new draft.
+ */
+async function draftProjectOrRefuse(
+  ctx: MutationsCtx,
+  draftId: string,
+  projectId: string | null,
+): Promise<string | null> {
+  const existing = await getDraft(ctx.db, draftId)
+  if (!existing) throw new Error(`not_found: draft ${draftId}`)
+  const current = existing.source?.billing_project_id ?? null
+  const next = projectId === "" ? null : projectId
+  if (next === current) return current
+  const role = existing.source?.invoice_role
+  if (current && (role === "advance" || role === "final"))
+    refuse(
+      "invalid_project",
+      `Draft ${draftId} is the ${role} invoice of project ${current}'s billing plan, so its project cannot change. Nothing was changed. Discard it and draft from the other project's plan instead.`,
+    )
+  return billedProjectOrRefuse(
+    ctx,
+    { type: existing.type, project_id: next },
+    `Draft ${draftId} was not changed.`,
+  )
 }
 
 async function createDraft(
@@ -1143,8 +1170,19 @@ async function updatePlainDraft(
   },
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed> {
-  const { lines, buyer_is_consumer: buyerIsConsumerPatch, ...header } = input.patch
+  const {
+    lines,
+    buyer_is_consumer: buyerIsConsumerPatch,
+    project_id: projectPatch,
+    ...header
+  } = input.patch as typeof input.patch & { project_id?: string | null }
   let patch: Partial<DraftInsert> = header
+  if (projectPatch !== undefined) {
+    patch = {
+      ...patch,
+      billing_project_id: await draftProjectOrRefuse(ctx, input.draft_id, projectPatch),
+    }
+  }
   let buyerFacts: BuyerVatFacts | null = null
   // Validated before any approval is parked (see createDraft).
   if ("notes" in header) normaliseNotesOrThrow(header.notes)

@@ -317,4 +317,6 @@ export const FR: Record<string, string> = {
   Project: "Projet",
   Quote: "Devis",
   "No agreements with this company yet.": "Aucun contrat avec cette société pour l'instant.",
+  "1 agreement": "1 contrat",
+  "{{n}} agreements": "{{n}} contrats",
 }

@@ -1038,25 +1038,45 @@ export async function setPeriodTimebox(args: {
     }
   }
   const minutes = readDuration(input.timebox, await hoursPerDayMinutes(tx, orgId), "timebox")
-  await tx.execute(drizzleSql`
+  const fromRetainer = input.source === "retainer"
+  // A person's hand edit of a retainer month is kept against the retainer's own writes until the
+  // retainer asks for a figure different from the one it last asked for (its terms changed: the
+  // newer act wins). The daily roll repeating the same figure never replaces the person's hours.
+  const replaces = drizzleSql`(tb.person_edited_at IS NULL
+      OR (tb.source_minutes IS NOT NULL AND tb.source_minutes <> EXCLUDED.minutes))`
+  const stored = await tx.execute(drizzleSql`
     INSERT INTO ${projectsRel("project_timeboxes")} AS tb
-      (org_id, project_id, period_start, period_end, minutes, source, source_ref, created_by)
+      (org_id, project_id, period_start, period_end, minutes, source, source_ref, created_by,
+       person_edited_at, source_minutes)
     VALUES (${orgId}::uuid, ${project.id}::uuid, ${from}::date, ${to}::date, ${minutes},
-            ${input.source === "retainer" ? "retainer" : "manual"},
-            ${input.source === "retainer" ? (input.sourceRef ?? null) : null}, ${actorId}::uuid)
+            ${fromRetainer ? "retainer" : "manual"},
+            ${fromRetainer ? (input.sourceRef ?? null) : null}, ${actorId}::uuid,
+            ${fromRetainer ? null : drizzleSql`now()`}, ${fromRetainer ? minutes : null})
     ON CONFLICT (org_id, project_id, period_start) DO UPDATE SET
-      period_end = EXCLUDED.period_end, minutes = EXCLUDED.minutes,
+      period_end = EXCLUDED.period_end,
+      minutes = CASE WHEN EXCLUDED.source = 'manual' OR ${replaces} THEN EXCLUDED.minutes
+                     ELSE tb.minutes END,
+      person_edited_at = CASE WHEN EXCLUDED.source = 'manual' THEN now()
+                              WHEN ${replaces} THEN NULL
+                              ELSE tb.person_edited_at END,
+      source_minutes = CASE WHEN EXCLUDED.source = 'manual' THEN tb.source_minutes
+                            ELSE EXCLUDED.minutes END,
       source = CASE WHEN EXCLUDED.source = 'manual' THEN tb.source
                     ELSE EXCLUDED.source END,
       source_ref = CASE WHEN EXCLUDED.source = 'manual' THEN tb.source_ref
                         ELSE EXCLUDED.source_ref END,
-      updated_at = now()`)
+      updated_at = now()
+    RETURNING minutes`)
+  const kept = extractRows<{ minutes: number }>(stored)[0]?.minutes ?? minutes
   return {
     projectId: project.id,
     from,
     to,
-    minutes,
+    minutes: kept,
     removed: false,
-    message: `${project.name} has a timebox of ${formatDuration(minutes, "h")} for ${from} to ${to}.`,
+    message:
+      kept === minutes
+        ? `${project.name} has a timebox of ${formatDuration(minutes, "h")} for ${from} to ${to}.`
+        : `${project.name} keeps the timebox of ${formatDuration(kept, "h")} a person set for ${from} to ${to}; the retainer's ${formatDuration(minutes, "h")} did not replace it.`,
   }
 }

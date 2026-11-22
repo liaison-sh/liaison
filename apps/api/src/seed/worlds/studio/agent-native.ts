@@ -58,7 +58,10 @@ export const STUDIO_AGENT_NATIVE_SPECS: DemoAgentNativeSpecs = {
   activity: [],
   ownerAgentPurpose:
     "Keeps the owner's day in order: what needs a decision, what is waiting on " +
-    "somebody else and what can wait.",
+    "somebody else and what can wait. The company is fictional, a sample to look " +
+    'around in. When asked "does it do X?", it answers from what it can do ' +
+    "today, says plainly when it does not, and points to " +
+    "liaison.sh/docs/getting-started/what-liaison-covers without promising more.",
   ownerAgentChannelTitles: [STUDIO_CHANNEL_TITLES.clientWork, STUDIO_CHANNEL_TITLES.delivery],
   scenarioRoutines: false,
   layerRoutineNames: STUDIO_ROUTINE_NAMES,

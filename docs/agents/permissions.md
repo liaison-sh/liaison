@@ -71,6 +71,8 @@ When you try something in the app and are refused, the toast reads **Permission 
 2. When it explains that it lacks a scope, confirm that you want it to ask.
 3. The agent calls `request_scope` with the exact scope strings and a reason. It should file the request only after you confirmed.
    A role or system agent never files a request for mail access: it tells you it cannot open your mailbox and names your personal agent instead, and the request is refused without reaching an administrator.
+   Asking for access does not mark the conversation. The request names only the scopes and a reason, so it does not make later actions wait (see [Hold actions after outside content](approvals.md#hold-actions-after-outside-content)).
+   After the agent has read a record only some people may open, such as an agreement closed to the organization, a request for access or a new sub-agent role that carries free text waits like any other write: the administrators who would read it may not be allowed to read that record, so the person who asked decides first.
 4. You get a notification when the request is decided. The agent also speaks first in the conversation, to say what it can now do or that it still cannot.
 
 ## Decide access requests

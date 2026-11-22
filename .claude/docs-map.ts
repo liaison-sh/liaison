@@ -70,7 +70,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/modules/mail/commercial-footer*", pages: ["sales/opt-outs", "apps/mail"] },
   { glob: "apps/api/src/modules/mail/opt-out*", pages: ["sales/opt-outs", "apps/mail"] },
   { glob: "apps/api/src/modules/mail/optout*", pages: ["sales/opt-outs", "apps/mail"] },
-  { glob: "apps/api/src/modules/mail/send-guard*", pages: ["sales/opt-outs", "sales/follow-ups", "apps/mail"] },
+  { glob: "apps/api/src/modules/mail/send-guard*", pages: ["sales/opt-outs", "sales/follow-ups", "apps/mail", "getting-started/what-liaison-covers"] },
   { glob: "apps/api/src/modules/contacts/prospect-retention*", pages: ["sales/opt-outs", "apps/mail"] },
   { glob: "apps/api/src/modules/contacts/compan*", pages: ["sales/companies", "apps/contacts"] },
   { glob: "apps/api/src/modules/contacts/activity*", pages: ["sales/companies", "apps/contacts"] },
@@ -111,6 +111,8 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/calendar/**", pages: ["apps/calendar"] },
   { glob: "apps/web/src/modules/calendar/**", pages: ["apps/calendar"] },
   { glob: "packages/shared/src/calendar-recurrence.ts", pages: ["apps/calendar"] },
+  // The answers on getting-started/what-liaison-covers read the time, budget and capacity code.
+  { glob: "apps/api/src/apps/projects/service/**", pages: ["apps/projects", "getting-started/what-liaison-covers"] },
   { glob: "apps/api/src/apps/projects/**", pages: ["apps/projects"] },
   { glob: "apps/web/src/modules/projects/**", pages: ["apps/projects"] },
   { glob: "apps/api/src/modules/files/**", pages: ["apps/files"] },
@@ -125,13 +127,14 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "apps/api/src/apps/example/**", pages: ["app-development"] },
 
   // Bundled apps
-  { glob: "bundled-apps/invoicing/src/recurring/**", pages: ["apps/recurring"] },
+  { glob: "bundled-apps/invoicing/src/recurring/**", pages: ["apps/recurring", "getting-started/what-liaison-covers"] },
   { glob: "bundled-apps/invoicing/src/{streams,ui/IssuerStreams}*", pages: ["money/who-issues-what", "money/turn-off-stripe-emails", "apps/invoicing"] },
   { glob: "bundled-apps/invoicing/**", pages: ["apps/invoicing", "sales/quotes"] },
   { glob: "bundled-apps/boxtal/**", pages: ["apps/boxtal"] },
   { glob: "bundled-apps/boxtal/src/{customs-documents,print-pack,needed-documents}.ts", pages: ["admin/shipping-documents"] },
   { glob: "bundled-apps/shopify/**", pages: ["apps/store"] },
   { glob: "bundled-apps/pennylane/**", pages: ["apps/pennylane"] },
+  { glob: "bundled-apps/agreements/src/{agreements,handlers,send,sow-knowledge}*", pages: ["apps/agreements", "sales/proposals", "getting-started/what-liaison-covers"] },
   { glob: "bundled-apps/agreements/**", pages: ["apps/agreements"] },
   { glob: "apps/api/src/modules/agreement-evidence/**", pages: ["apps/agreements"] },
   { glob: "apps/web/src/modules/staff-sign/**", pages: ["apps/agreements"] },
@@ -144,7 +147,7 @@ export const DOCS_MAP: { glob: string; pages: string[] }[] = [
   { glob: "bundled-apps/monitoring/**", pages: ["apps/monitoring"] },
   { glob: "bundled-apps/stripe/src/{mrr,mrr-events,mrr-rebuild,tools/mrr-query}*", pages: ["apps/stripe", "money/mrr-rules"] },
   { glob: "bundled-apps/stripe/src/tools/refunds*", pages: ["apps/stripe", "money/refunds-and-credit-notes"] },
-  { glob: "bundled-apps/stripe/**", pages: ["apps/stripe"] },
+  { glob: "bundled-apps/stripe/**", pages: ["apps/stripe", "getting-started/what-liaison-covers"] },
 
   // Admin
   { glob: "apps/api/src/modules/users/**", pages: ["admin/users"] },

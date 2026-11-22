@@ -152,6 +152,9 @@ services:
     environment:
       MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY:?MEILISEARCH_MASTER_KEY required}
       MEILI_ENV: production
+      # No usage reports to the search engine's vendor: a self-hosted box sends
+      # nothing to a third party it was not configured to talk to.
+      MEILI_NO_ANALYTICS: "true"
       # Meili sizes its indexing memory from the HOST's RAM (two thirds of it),
       # not from mem_limit below: a large batch (a bulk import, a reindex) then
       # outgrows the container, gets OOM-killed, and crash-loops re-running the

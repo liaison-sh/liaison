@@ -49,6 +49,7 @@ services:
     environment:
       MEILI_MASTER_KEY: dev-master-key
       MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
     ports: ["127.0.0.1:7700:7700"]
     volumes:
       - meili-data:/meili_data

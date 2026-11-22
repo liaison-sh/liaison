@@ -1070,6 +1070,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             // The compose-file image guard and the load-test scenario enumeration:
             // both are repo-root lints that ran in no suite at all.
             "scripts/compose-images.test.ts",
+            // Every bundled service that phones home by default has it switched off.
+            "scripts/compose-telemetry.test.ts",
             "scripts/load-test.test.ts",
             // A fresh clone runs only the root install, so every package the bundled
             // app UI modules that apps/web tests import name has to be declared

@@ -28,6 +28,11 @@ function scopeCovers(granted: string, required: string): boolean {
   if (granted === required) return true
   // No wildcard, glob or parent stands for an exact-only scope.
   if (isExactOnlyScope(required)) return false
+  return encloses(granted, required)
+}
+
+/** `granted` is a wildcard, glob or parent that encloses `required`, exact-only or not. */
+function encloses(granted: string, required: string): boolean {
   // Full wildcard.
   if (granted === "*") return true
   // Trailing `:*` glob — `mcp:jira:*` covers `mcp:jira:read` (and deeper).
@@ -48,6 +53,17 @@ function scopeCovers(granted: string, required: string): boolean {
 export function isScopeCovered(required: string[], granted: string[]): boolean {
   if (required.length === 0) return true
   return required.every((req) => granted.some((g) => scopeCovers(g, req)))
+}
+
+/**
+ * True when some entry of `bounds` names `scope` or encloses it (`*`, a `:*` glob, a parent),
+ * exact-only scopes included. NOT a coverage check: it grants nothing and no caller may use it to
+ * decide whether someone holds a scope. It answers one question only, for a filter over scopes
+ * already held exactly: does a narrowing that keeps `bounds` leave `scope`'s area in place
+ * (`personalCeiling`)? Holding is always `isScopeCovered`.
+ */
+export function withinBounds(scope: string, bounds: readonly string[]): boolean {
+  return bounds.some((b) => b === scope || encloses(b, scope))
 }
 
 /**

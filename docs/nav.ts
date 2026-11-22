@@ -27,6 +27,7 @@ export const NAV: NavSection[] = [
     pages: [
       { id: "getting-started/introduction", url: "getting-started/introduction" },
       { id: "getting-started/demo", url: "getting-started/demo" },
+      { id: "getting-started/what-liaison-covers", url: "getting-started/what-liaison-covers" },
       { id: "getting-started/install", url: "getting-started/install" },
       { id: "getting-started/first-org", url: "getting-started/first-org" },
       { id: "getting-started/desktop-and-phone", url: "getting-started/desktop-and-phone" },
@@ -118,6 +119,7 @@ export const NAV: NavSection[] = [
       { id: "sales/connect-your-crm", url: "sales/connect-your-crm" },
       { id: "sales/research-prospects", url: "sales/research-prospects" },
       { id: "sales/quotes", url: "sales/quotes" },
+      { id: "sales/proposals", url: "sales/proposals" },
       { id: "sales/sales-data", url: "sales/sales-data" },
     ],
   },

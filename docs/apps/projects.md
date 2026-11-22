@@ -57,7 +57,9 @@ A sales pipeline is a project whose board shows deals. Under its name, a line co
 
 Open a deal to see the **Deal** panel above its description: **Amount**, **Company**, **Contact** and **Next step**, with **Mark won**, **Mark lost** (with an optional reason) and **Reopen**. These buttons show only with `projects:deals:write`. If the deal cannot be read, the panel says **Could not read the deal. The task below is not affected.** and the task page works as usual.
 
-To name a project's client, open **Edit project**, search in **Client (optional)** and pick the company; **Clear the client** removes it.
+To name a project's client, open **Edit project**, search in **Client (optional)** and pick the company; **Clear the client** removes it. Once a project has a client, its page shows a **Client** line under the header that opens the company's page. A company you cannot see reads **A company you cannot see**.
+
+If you can read agreements (see [Agreements](agreements.md)), the project page also lists **Agreements**: each agreement that names the project, with its company and quote, and a deal's details say how many agreements name the deal ("1 agreement", "3 agreements"). You see only the agreements you may open, and drafts are not listed.
 
 ## Find tasks
 
@@ -312,6 +314,10 @@ On a project that uses time and budgets, a task takes a timebox ("3 days", "20 h
 - **On the task and in lists.** A task of a project that uses it shows its Timebox chip and your Took field in its details, and "N h so far", the task's total. Through the API, the task (`GET /api/projects/:projectId/tasks/:taskId`) and the task lists carry `timeboxMinutes`, `realTotalMinutes` (the total, never a person's part) and `isMilestone`; a task of any other project carries none of them. The cross-project task list shows "Planned" only on those tasks.
 - **Dated hours** are turned on in the project's plan. From that moment the project's lead and finance see each person's entries made on it and can correct one, to another day that is not in the future and has no entry of that person yet; the author then sees who changed it. Only entries on the dated sheet can be corrected, never a private one, your own included. Like Took, a correction is a person's own statement: the agent passes your words for the new figure, and a routine or a sub-run is refused. Entries made before, including earlier the same day, stay private to their authors, and so do they after dated hours are turned off and on again. Everyone with entries is told once on Home.
 - A task moved to another project takes its time with it at once, whatever moved it (the board, the API or an agent). A task moved to a project that does not use time and budgets keeps its timebox and time spent, which stop counting until it is back. A merge adds the source's time to the target, one entry per person (per day with dated hours); a merge that would put more than 744 h in one entry is refused. Entries made on a project without dated hours stay private to their authors after a move or a merge into one that uses them. A task on an invoice draft or an issued invoice made from a reconcile card cannot move to another project or be merged away: the refusal names the invoice or the draft, so Undo the card or correct the invoice first. A task left off the bill moves freely.
+
+### A month's timebox you edited
+
+A retainer sets each month's timebox for you when the month rolls over. If a person edits a month's timebox, for example to give next month fewer hours, that edit stays: the daily roll does not overwrite it, and the answer says that your hours were kept. A retainer write replaces your figure only when the retainer's terms changed and ask a different number, since the newer decision wins. A month you gave hours before the retainer's first write keeps them as well.
 
 ## Read a project's budget
 

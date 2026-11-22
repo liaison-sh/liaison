@@ -50,7 +50,7 @@ Clauses an agent wrote are marked as drafts. They block the checks until a perso
 
 An agreement's page has its actions on top and three parts: **Overview** (**Linked to**: its company, contact, deal, project and quote, each opening its own page; signers in order, dates, price, versions with their fingerprints), **Document** (the draft's text, or **Open the PDF** for the frozen file) and **Proof of signature** (the evidence, **Check the stored files**, **Download signed PDF**, **Download proof of signature** for the people who hold `agreements:evidence:devices`, and what the proof shows and does not, how long it is kept and what leaving Liaison changes). A link to an agreement in a conversation opens this page.
 
-A company's page has an **Agreements** section listing the company's agreements you may see; each opens its agreement.
+A company's page has an **Agreements** section listing the company's agreements you may see; each opens its agreement. A project's page lists its agreements the same way, with their company and quote, and a deal shows how many agreements name it. Drafts are not listed there.
 
 **Edit** opens the editor. A clause an agent wrote carries the mark "Draft, written by an agent. Read it to clear this mark." until you press **I read it** or write it yourself, then **Save**. The rail holds the price (**Set price**, a person's own field), **What it is** for an uploaded PDF, the **Layout** (**Classic legal layout** numbers articles and pages itself), **Who can see this** and the checks. **Prepare for signature** is offered once every blocking check passes and the text is saved. Editing a sent agreement says first that it makes a new version and withdraws its open links; those links' pages then say that the document changed and that no new link was sent yet, and offer to ask you for the new version. The editor of an uploaded PDF shows the file it is, with no **Layout** to choose: a change to it is a new upload. The classic legal layout prints its own words (clause, page numbers) in the agreement's language. An agent writes the text in `source.body.blocks`, one heading, paragraph, clause (`article`) or list of written `items` per block; any other shape is refused before anything waits for approval, naming the field. In the classic legal layout a heading or a clause that starts with a typed number is refused at Prepare: the layout numbers them.
 
@@ -79,6 +79,8 @@ Saving a template makes a new version. An agreement copies the text of the versi
 ## Decide who can see an agreement
 
 Each agreement has an organization access (none, viewer, editor) and a list of named people. With **none**, only the people on the list can read the agreement, its drafts, versions, signatures and evidence, whatever role or permission anyone else holds, administrators included. The person who creates an agreement starts on its list as an editor. The list is never empty, a viewer cannot change it, and an agent's change waits for a person.
+
+In the editor, adding someone who cannot open the Agreements app saves the share and shows a notice saying so, so you know to give them access. A change that is refused shows the reason instead of failing silently.
 
 What comes from a closed agreement follows its list: Home items and notifications about it reach only the people on the list, a routine whose owner is not on the list does not run on its events, and what an agent writes after reading it can be read only by the people on the list.
 

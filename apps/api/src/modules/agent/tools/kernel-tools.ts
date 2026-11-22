@@ -3813,9 +3813,11 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
   toolRegistry.set([orgId, "kernel", "set_away"], {
     appName: "kernel",
     name: "set_away",
-    deferLoading: true,
+    // Hot (loaded on every turn, kernel-hot-set.test.ts): a person's days off are set here,
+    // and the memory tools beside it are hot too, so the record that sets them away must be
+    // as close to hand as the note that would not (prompts/system.md, Memory).
     description:
-      "Record that a person is away (dates only, never a reason), end it, or name their standing next in line. Own range: no userId. Someone else's needs kernel:users:admin or projects:capacity:write. Dates are resolved on the server: give on, from and to, week (ISO number), or everyWeekday (ISO days 1-7, optional from/to); MM-DD means the next one. Say back the dates the result states, with weekdays.",
+      "Set a person away on their days off (dates only, never a reason), end it, or name who stands in. Own: omit userId. Give on, from and to, week, or everyWeekday; say back the dates the result states, with weekdays.",
     searchKeywords: [
       "absent",
       "absence",

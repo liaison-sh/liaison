@@ -52,6 +52,8 @@ const EXPECTED_HOT = [
   "kernel__notify_user",
   "kernel__open_app",
   "kernel__request_scope",
+  // A person's days off: as close to hand as the memory tools, so they are never kept as a note.
+  "kernel__set_away",
   "kernel__skill_read",
   "kernel__skill_search",
   "kernel__suggest_next_steps",
@@ -178,6 +180,10 @@ describe("kernel hot tool set budget", () => {
     expect(named.length, "the messaging paragraph names no kernel tool").toBeGreaterThan(0)
     for (const name of named)
       expect(hot, `${name} is named in the standing prompt but not hot`).toContain(name)
+    // The Memory section sends a person's days off to the record that sets them away.
+    const memory = prompt.slice(prompt.indexOf("## Memory"))
+    expect(memory.slice(0, memory.indexOf("\n## ", 4))).toContain("kernel__set_away")
+    expect(hot).toContain("kernel__set_away")
     expect(approvalActionRequiredClause(true)).toContain("kernel__approvals_list")
     expect(hot).toContain("kernel__approvals_list")
   })

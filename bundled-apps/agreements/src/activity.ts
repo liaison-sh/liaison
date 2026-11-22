@@ -2,7 +2,8 @@
 //
 // The company timeline's Agreements source (`activitySources`): one row per agreement of the
 // company, or of one of its people, change requests included, at its latest status and never
-// a draft. The row is the number and the status, with no price and no signer: it never reads
+// a draft. Asked with deals or projects, the agreements that name them (a deal's or a project's
+// own page lists them). The row is the number and the status, with no price and no signer: it never reads
 // signature events (another scope). Rows the caller cannot see never come back (row security).
 
 import type { AgreementsCtx } from "./ctx"
@@ -13,6 +14,10 @@ const LIMIT_MAX = 100
 interface ActivityInput {
   contactIds?: unknown
   companyId?: unknown
+  /** Deals (their task ids): the agreements whose deal is one of them. */
+  dealIds?: unknown
+  /** Projects: the agreements whose project is one of them. */
+  projectIds?: unknown
   before?: { at?: unknown; id?: unknown } | null
   limit?: unknown
   prefix?: unknown
@@ -49,17 +54,23 @@ function iso(v: unknown): string | null {
 
 export async function activityRead(ctx: AgreementsCtx, p: ActivityInput) {
   const companyId = typeof p?.companyId === "string" && UUID.test(p.companyId) ? p.companyId : null
-  const contactIds = Array.isArray(p?.contactIds)
-    ? p.contactIds.filter((x): x is string => typeof x === "string" && UUID.test(x)).slice(0, 200)
-    : []
+  const ids = (v: unknown) =>
+    Array.isArray(v)
+      ? v.filter((x): x is string => typeof x === "string" && UUID.test(x)).slice(0, 200)
+      : []
+  const contactIds = ids(p?.contactIds)
+  const dealIds = ids(p?.dealIds)
+  const projectIds = ids(p?.projectIds)
   const limit = Math.min(Math.max(Number(p?.limit) || 30, 1), LIMIT_MAX)
   const prefix = typeof p?.prefix === "string" ? p.prefix : "agreements:"
-  if (!companyId && contactIds.length === 0) return { rows: [] }
 
   const found = new Map<string, TimelineAgreement>()
   const reads: Array<Record<string, unknown>> = []
   if (companyId) reads.push({ company_id: companyId })
   if (contactIds.length > 0) reads.push({ contact_id: { in: contactIds } })
+  if (dealIds.length > 0) reads.push({ deal_task_id: { in: dealIds } })
+  if (projectIds.length > 0) reads.push({ project_id: { in: projectIds } })
+  if (reads.length === 0) return { rows: [] }
   for (const where of reads) {
     const rows = (await ctx.db.findMany("agreements", { where, limit: 500 })) as TimelineAgreement[]
     for (const r of rows) found.set(r.id, r)

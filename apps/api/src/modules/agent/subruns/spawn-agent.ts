@@ -103,6 +103,11 @@ export interface SubRunJobPayload {
    * spent. Absent when the spawning run has no hard limit.
    */
   tokenLimit?: SubRunTokenLimit
+  /**
+   * The spawning turn's agent kind: the sub-run acts for the same agent, so a
+   * shared agent's sub-run is marked shared too (`isSharedAgentFrame`).
+   */
+  agentKind?: "personal" | "role" | "system"
 }
 
 // ---------------------------------------------------------------------------
@@ -559,6 +564,7 @@ export async function spawnAgent(params: SpawnAgentParams): Promise<SpawnAgentHa
       runId: result.run.id,
       parentTaintScopes,
       ...(frame?.tokenLimit ? { tokenLimit: frame.tokenLimit } : {}),
+      ...(frame?.agentKind ? { agentKind: frame.agentKind } : {}),
     } satisfies SubRunJobPayload,
     { attempts: 1 },
   )

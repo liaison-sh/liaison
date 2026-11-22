@@ -120,7 +120,13 @@ const log = rootLogger.child({ module: "subrun-worker" })
  */
 export function registerSubrunWorker(): void {
   registerJobWorker<SubRunJobPayload>("kernel", AGENT_SUBRUN_JOB_NAME, async (payload) =>
-    runSubRun(payload.runId, payload.orgId, payload.parentTaintScopes, payload.tokenLimit),
+    runSubRun(
+      payload.runId,
+      payload.orgId,
+      payload.parentTaintScopes,
+      payload.tokenLimit,
+      payload.agentKind,
+    ),
   )
 }
 
@@ -140,6 +146,7 @@ export async function runSubRun(
   orgId: string,
   parentTaintScopes?: string[],
   tokenLimit?: SubRunTokenLimit,
+  agentKind?: SubRunJobPayload["agentKind"],
 ): Promise<void> {
   const [run] = await withPrivilegedDb(orgId, "subrun-load", (tx) =>
     tx.select().from(agentRuns).where(eq(agentRuns.id, runId)).limit(1),
@@ -369,6 +376,10 @@ export async function runSubRun(
       // Tags every tool this sub-run dispatches (buildScopedToolSet →
       // executeWrapper) "background" so it can't starve foreground tool calls.
       background: true,
+      // The spawning turn's agent kind: a shared agent's sub-run is still a
+      // shared agent's, so its transactions keep a person's own mailbox out
+      // of reach (`isSharedAgentFrame`, `withRlsContext`).
+      ...(agentKind ? { agentKind } : {}),
       ...(def.toolAllowlist == null ? { discoveredTools: subrunDiscovered } : {}),
       // Set below for a discovering sub-run (tool-search.ts calls it).
       admitTools: undefined as RunContext["admitTools"],

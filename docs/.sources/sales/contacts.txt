@@ -99,3 +99,5 @@ Verify form sources Purchase order, Email, Phone call, Other -> packages/shared/
 Mark verified, note, file from the contact's files -> apps/web/src/modules/contacts/ContactAddresses.tsx:432
 Edit, Mark stale, Archive -> packages/shared/src/i18n/locales/en/contacts.json:137
 Read-only rows for a reader who cannot edit (meta.canEdit) -> apps/api/src/modules/contacts/routes.ts:213
+A person's own create is the organization's, owned by them; agent, app, MCP, job create private -> apps/api/src/modules/agent/tools/contact-tools.ts:490 ; apps/api/src/modules/agent/tools/contact-tools.ts:600
+POST /api/contacts/resolve defaults to the organization, audience private keeps it; a restricted (device-flow) session's is private -> apps/api/src/modules/contacts/routes.ts:74

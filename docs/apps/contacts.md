@@ -43,7 +43,7 @@ Deleting a group keeps its contacts.
 1. Open the contact and click **Share**.
 2. Choose who can see it, for example everyone with access to a shared mailbox.
 
-A contact becomes the organization's only when it is shared.
+A contact you add yourself is the organization's from the start. One that arrives from your mail or an agent becomes the organization's only when it is shared.
 
 ## When an account manager changes
 

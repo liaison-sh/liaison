@@ -18,6 +18,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { quoteIdent } from "~/lib/sql-utils"
 import { UUID_RE } from "~/lib/uuid"
+import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import { linkedAppLine, readLinkedRecords } from "~/modules/contacts/activity"
 import {
   type AddressFields,
@@ -66,6 +67,8 @@ interface ContactToolContext {
   actingAgentId?: string | null
   /** The app that called app-to-app, when one did (execute-tool sets it). */
   callerApp?: string
+  /** Where the call came from (execute-tool sets it): "human-ui" is a person's own call. */
+  origin?: ToolOrigin
   dimensionGrants?: UserContext["dimensionGrants"]
   /** The person's roles: a record shared to one of them is theirs to read. */
   roles?: UserContext["roles"]
@@ -480,6 +483,14 @@ async function contactCompanyAndBasis(
   return { fields }
 }
 
+/**
+ * A person's own call in the product UI, with no agent and no app behind it. Anything else (an
+ * agent turn, an approved agent proposal, MCP, a job or webhook, an app's call) is not.
+ */
+function isPersonsOwnCall(ctx: ContactToolContext): boolean {
+  return ctx.origin === "human-ui" && !ctx.actingAgentId && !ctx.callerApp
+}
+
 export async function handleContactsWrite(params: ContactsWriteParams, ctx: ContactToolContext) {
   const extra = await contactCompanyAndBasis(params, ctx)
   if ("error" in extra) return extra
@@ -558,8 +569,9 @@ export async function handleContactsWrite(params: ContactsWriteParams, ctx: Cont
     }
   }
 
-  // An agent's new contact belongs to the person it acts for. Making it the
-  // organisation's is a separate, gated decision (contacts_share).
+  // A contact a person adds by their own action is the organisation's, as the contacts
+  // screen's own create is. An agent's new contact belongs to the person it acts for: making
+  // it the organisation's is a separate, gated decision (contacts_share).
   if (!UUID_RE.test(ctx.userId)) {
     return {
       error: {
@@ -585,7 +597,7 @@ export async function handleContactsWrite(params: ContactsWriteParams, ctx: Cont
       // used to drop it, so an address supplied when first creating a contact was silently lost.
       metadata,
     },
-    { audience: "owner", ownerUserId: ctx.userId },
+    isPersonsOwnCall(ctx) ? { audience: "org" } : { audience: "owner", ownerUserId: ctx.userId },
   )
   if (contact && Object.keys(extra.fields).length > 0) {
     const withExtra = await updateContact(ctx.db, {

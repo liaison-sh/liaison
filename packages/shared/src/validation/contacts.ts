@@ -11,9 +11,9 @@ export const resolveContactSchema = z
     // Free-form structured metadata (e.g. a captured postal address / source URL) — persisted on
     // create as well as update (the create path used to drop it). Mirrors updateContactSchema.metadata.
     metadata: z.record(z.string(), z.unknown()).optional(),
-    // Who the new contact is for: the caller alone ("private", the default)
-    // or the whole organisation ("org"). Adding a contact to the organisation
-    // is always this explicit choice.
+    // Who the new contact is for: the whole organisation ("org", the default
+    // for a person's own create) or the caller alone ("private"). A restricted
+    // session's create defaults to private.
     audience: z.enum(["private", "org"]).optional(),
   })
   .refine(

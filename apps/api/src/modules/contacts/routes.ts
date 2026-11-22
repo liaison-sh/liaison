@@ -67,16 +67,19 @@ contacts.post("/resolve", zValidator("json", resolveContactSchema), async (c) =>
   const orgId = c.get("orgId")
   const userId = c.get("userId")
 
-  // Creating a contact FOR THE ORGANISATION is an explicit choice; the
-  // default is the caller's own contact, which they can share later.
+  // A person adding a contact by their own action adds it to the organisation, unless
+  // they choose "private". A restricted session (a device-flow client: a program acting
+  // for them) keeps it theirs, as an agent's create does (contacts_write).
   const { audience, ...fields } = params
+  const forOrg =
+    audience === "org" || (audience === undefined && c.get("sessionRestricted") !== true)
   const { contact } = await withRequestRls(c, async (tx) => {
     return resolveContact(
       tx,
       orgId,
       userId,
       fields,
-      audience === "org" ? { audience: "org" } : { audience: "owner", ownerUserId: userId },
+      forOrg ? { audience: "org" } : { audience: "owner", ownerUserId: userId },
     )
   })
   return success(c, contact)

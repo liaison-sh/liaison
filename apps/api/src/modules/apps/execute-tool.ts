@@ -3602,6 +3602,9 @@ export async function executeToolHandler(
     // The app that dispatched this call app-to-app, when one did (a handler acting for its own app's
     // records with no person behind the call reads it: kernel:documents_print from a scheduled pass).
     ctx.callerApp = bridgeOptions?.callerApp
+    // Where the call came from (a person's own call, an agent, MCP, a job), for a handler whose
+    // default depends on it: a contact a person adds themselves is the organisation's.
+    ctx.origin = bridgeOptions?.origin
     // The routine this call came from, when it came from one. Handlers that
     // record an author use it to attribute the work to the ROUTINE rather than
     // to the human who happens to own it.

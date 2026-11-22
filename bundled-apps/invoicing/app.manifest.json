@@ -5150,6 +5150,7 @@
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "documentsSendToCustomerHandler",
       "preflight": "documentsSendToCustomerPreflightHandler",
+      "pinnedParams": ["annex_set"],
       "gated": true,
       "approvalImpact": "external",
       "trustBoundary": "user",
@@ -5168,6 +5169,10 @@
           },
           "body": {
             "type": "string"
+          },
+          "annex_set": {
+            "type": "string",
+            "description": "Set by the app: the files the approval card listed. Leave it out."
           }
         },
         "required": [

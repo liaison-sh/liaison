@@ -259,7 +259,7 @@ describe("invoicing manifest", () => {
       ])
       expectProps(t + "_issue", ["draft_id"])
     }
-    expectProps("documents_send_to_customer", ["document_id", "to", "subject", "body"])
+    expectProps("documents_send_to_customer", ["document_id", "to", "subject", "body", "annex_set"])
     // Nullability: the editor legitimately sends null for these (mutation
     // input types are string | null) — a plain "string" schema rejects them.
     const dc = propsOf("drafts_create")

@@ -28,7 +28,10 @@ import { getDraft } from "./mutations/db-helpers"
 import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
 import { DRAFT_DEPENDENTS, draftContentHash, handOverDraft } from "./mutations/issue-handover"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
-import { documentsSendToCustomer } from "./mutations/send-to-customer"
+import {
+  documentsSendToCustomer,
+  documentsSendToCustomerPreflight,
+} from "./mutations/send-to-customer"
 import { documentsGet, documentsSearch } from "./reads"
 import { summarizeDocumentSend } from "./summarizers"
 import { createMockDb, type MockDb } from "./test-db"
@@ -892,6 +895,51 @@ describe("the send's approval card", () => {
     expect(lines.find((l) => l.includes("hr-export.xlsx"))).toContain("partial")
     expect(lines).toContainEqual(expect.stringContaining("activity report"))
     expect(lines.join("\n")).not.toContain("The PDF is attached;")
+  })
+
+  test("an annex filed after the send was proposed is never mailed unseen", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:14`)
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    if (res.status !== "completed") throw new Error(JSON.stringify(res))
+    const annexCtx = {
+      db: h.db,
+      hasScope: async () => true,
+      files: { attachToParent: async () => ({ id: crypto.randomUUID() }) },
+    }
+    const add = (kind: string) =>
+      documentAttachmentAdd(annexCtx as never, {
+        documentId: res.document_id,
+        fileId: crypto.randomUUID(),
+        kind,
+      })
+    expect((await add("timesheet")).status).toBe("completed")
+    // The send is proposed: its approval binds the annexes the card lists.
+    const staged = await documentsSendToCustomerPreflight(h.ctx, { document_id: res.document_id })
+    if (!("ok" in staged)) throw new Error(JSON.stringify(staged))
+    const pinned = staged.pinnedParams ?? {}
+    expect(typeof pinned.annex_set).toBe("string")
+    // Another file is filed before the person approves.
+    expect((await add("activity_report")).status).toBe("completed")
+    const mails = () => h.calls.filter((c) => c.target === "mail:composeForApp")
+    const refused = await documentsSendToCustomer(h.ctx as never, {
+      document_id: res.document_id,
+      ...pinned,
+    })
+    expect(refused.status === "error" && refused.error.code).toBe("card_changed")
+    expect(mails()).toHaveLength(0)
+
+    // Proposed again, the card lists both, and the send goes out with both.
+    const again = await documentsSendToCustomerPreflight(h.ctx, { document_id: res.document_id })
+    if (!("ok" in again)) throw new Error(JSON.stringify(again))
+    expect(again.pinnedParams?.annex_set).not.toBe(pinned.annex_set)
+    const sent = await documentsSendToCustomer(h.ctx as never, {
+      document_id: res.document_id,
+      ...(again.pinnedParams ?? {}),
+    })
+    expect(sent).toMatchObject({ status: "completed" })
+    expect(mails()).toHaveLength(1)
+    expect(mails()[0]?.args.attachments).toHaveLength(3)
   })
 })
 

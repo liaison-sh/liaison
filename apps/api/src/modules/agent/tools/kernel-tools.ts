@@ -2904,6 +2904,9 @@ When NOT to use: to browse a conversation (kernel__memory_search finds the right
     // admins who decide it. Declared so a tainted turn can still ASK for the access it lacks
     // instead of being refused with "undeclared" (spec-security.md, "Scope taint on writes").
     writesToTable: SINK_KERNEL_SCOPE_REQUESTS,
+    // Its result names the scopes asked for and the request's id: no org record, so asking for
+    // an access taints nothing.
+    taintFree: true,
     description:
       "File a request asking your admin to grant scopes you currently lack. Pass the precise scope strings (from kernel__list_locked_capabilities) and a short reason. Idempotent: re-requesting the same scopes returns the existing pending request.",
     requiredScopes: ["kernel:threads:read"], // baseline — any agent user holds it

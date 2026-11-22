@@ -649,6 +649,8 @@ describe("kernel tool registration", () => {
       // Its answer is the report's own ticket or draft id. Still parks after outside
       // text (externalEffect); this only keeps its scope out of the turn's taint.
       "report_bug",
+      // Its answer names the scopes asked for and the request's id, never an org record.
+      "request_scope",
       // Reads the tool registry and the scope catalog, never an org record.
       "routine_tool_scopes",
       // Chips drawn on the requester's own screen; a chip only sends its label as their message.

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // The org runtime cap (org-runtime-release.ts `enforceOrgRuntimeCap`): past
 // LIAISON_ORG_RUNTIME_MAX_ORGS set-up orgs, the least recently touched ones
-// with no live work in the process are released, and the others stay.
+// with no live work in the process are released, and the others stay. The idle
+// sweep (`idleOrgRuntimes`) skips the same held orgs.
 import { afterEach, describe, expect, it } from "bun:test"
 import {
   holdOrgRuntime,
@@ -11,7 +12,11 @@ import {
   orgRuntimeLastTouch,
   registeredApps,
 } from "~/modules/apps/app-registries"
-import { enforceOrgRuntimeCap, orgRuntimesOverCap } from "~/modules/apps/org-runtime-release"
+import {
+  enforceOrgRuntimeCap,
+  idleOrgRuntimes,
+  orgRuntimesOverCap,
+} from "~/modules/apps/org-runtime-release"
 import { beginOrgActivity, orgTransferView } from "~/modules/org/transfer-state/state"
 
 const made: string[] = []
@@ -111,6 +116,26 @@ describe("org runtime cap", () => {
     } finally {
       unhold()
     }
+  })
+
+  it("the idle sweep never picks an org held by a request or with live work, however idle", () => {
+    const ours = setUpOrgs(4)
+    const unhold = holdOrgRuntime(ours[0])
+    const endTurn = beginOrgActivity(ours[1], "turns")
+    orgTransferView.peek = (orgId) =>
+      orgId === ours[2] ? { orgId, state: "draining", transferId: "t", at: Date.now() } : null
+    try {
+      // Every one of ours was last touched well past a one-minute window.
+      const idle = idleOrgRuntimes(60_000)
+      expect(idle).not.toContain(ours[0])
+      expect(idle).not.toContain(ours[1])
+      expect(idle).not.toContain(ours[2])
+      expect(idle).toContain(ours[3])
+    } finally {
+      unhold()
+      endTurn()
+    }
+    expect(idleOrgRuntimes(60_000)).toContain(ours[0])
   })
 
   it("a hold counts each holder until it ends, once", () => {

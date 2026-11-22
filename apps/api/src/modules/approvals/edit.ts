@@ -178,6 +178,8 @@ interface ApprovalEditRow {
     taintDisclosedToReaders?: unknown
     /** A post parked by rule 11: the people of its conversation when it parked. */
     taintDisclosureAudience?: unknown
+    /** The title an app gave the card when it asked for the approval (execute-tool.ts). */
+    cardTitle?: unknown
   } | null
 }
 
@@ -813,7 +815,13 @@ async function refreshSummaryAfterEdit(
     )
     // A sequenced step's payload still cites earlier steps with @ref tokens:
     // the rebuilt summary reads them as those steps, as at propose time.
-    const readable = await humanizeStepSummary(args.orgId, row.requested_by, payload, generated)
+    const humanized = await humanizeStepSummary(args.orgId, row.requested_by, payload, generated)
+    // A card an app raised under its own title keeps that title: the lines follow the new payload.
+    const ownTitle = row.metadata?.cardTitle
+    const readable =
+      typeof ownTitle === "string" && ownTitle.trim() !== ""
+        ? { ...humanized, title: ownTitle }
+        : humanized
     // Masked like the card written at propose time: a summarizer may read text the payload lacks.
     const summary = maskApprovalPayload(withDisclosureLine(readable, disclosureLine))
     await withPrivilegedDb(args.orgId, "approval-edit-summary", async (tx) => {

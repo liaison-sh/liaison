@@ -544,6 +544,16 @@ describe("FX18: gated calls and sandboxed app writes name the acting agent", () 
     return row?.metadata
   }
 
+  it("an approval an app raises under its own title keeps that title on the row", async () => {
+    const approvalId = await nestedIssueApproval(null)
+    const [row] = await sql<
+      Array<{ metadata: Record<string, unknown>; summary: { title: string } }>
+    >`
+      SELECT metadata, summary FROM kernel.approval_requests WHERE id = ${approvalId}`
+    expect(row?.summary.title).toBe("Issue the invoice draft")
+    expect(row?.metadata.cardTitle).toBe("Issue the invoice draft")
+  })
+
   it("the nested issue approval is posted as the thread's agent", async () => {
     const approvalId = await nestedIssueApproval(AGENT)
     const [row] = await sql<Array<{ agent_id: string | null; requested_by: string }>>`

@@ -740,6 +740,9 @@ interface CreateApprovalRequestOpts {
   /** A47b: the payload paths the manifest's schema supplied, marked on the card. The agent's
    *  own arguments are this payload minus these paths, which is how the row keeps them. */
   defaultedParams?: string[]
+  /** The card's title is the app's own (`ctx.requestApproval`): kept, masked, as
+   *  `metadata.cardTitle`, so a card rebuilt after an edit keeps it. */
+  ownTitle?: boolean
   requestedBy: string
   reason: string
   summary: ApprovalSummary
@@ -1858,6 +1861,7 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
             ...tightenMeta,
             ...routineMeta,
             ...defaultedMeta,
+            ...(opts.ownTitle ? { cardTitle: summary.title } : {}),
             // Rule 8: who may decide, edit or read the pending body of a tainted proposal,
             // kept on the row for the surfaces widened past `notify_user_ids` (shared-surface
             // drafts, whose readers are the surface's). Read by decide, edit and RLS (0167).
@@ -3154,6 +3158,7 @@ export async function createHandlerApprovalRequest(args: {
     requestedBy: args.requestedBy,
     reason: "gated",
     summary,
+    ...(input.summary ? { ownTitle: true } : {}),
     appName,
     toolShortName,
     requesterCanApprove,

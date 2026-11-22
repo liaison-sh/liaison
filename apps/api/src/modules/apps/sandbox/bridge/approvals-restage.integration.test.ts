@@ -55,16 +55,17 @@ async function restage(
 }
 
 async function stageRow(
-  opts: { status?: string; approvedBy?: string[]; total?: number } = {},
+  opts: { status?: string; approvedBy?: string[]; total?: number; cardTitle?: string } = {},
 ): Promise<string> {
   const id = randomUUID()
   const payload = JSON.stringify({
     run_id: "run-1",
     items: [{ item: "a", total: opts.total ?? 100 }],
   })
-  const metadata = JSON.stringify(
-    opts.approvedBy ? { minApprovers: 2, approvedBy: opts.approvedBy } : {},
-  )
+  const metadata = JSON.stringify({
+    ...(opts.approvedBy ? { minApprovers: 2, approvedBy: opts.approvedBy } : {}),
+    ...(opts.cardTitle ? { cardTitle: opts.cardTitle } : {}),
+  })
   await sql.unsafe(
     insertSql("kernel.approval_requests", {
       id,
@@ -256,6 +257,32 @@ describe("an app restages its own approval", () => {
       expect(row?.summary).toEqual({
         kind: "run_issue",
         title: "Issue 1 invoice",
+        lines: ["Total 250"],
+      })
+    } finally {
+      approvalSummarizerRegistry.delete([ORG, APP, "run_issue"])
+    }
+  })
+
+  it("a redrawn approval card keeps its custom title", async () => {
+    approvalSummarizerRegistry.set([ORG, APP, "run_issue"], async (params) => {
+      const items = (params as { items?: Array<{ total: number }> }).items ?? []
+      return {
+        kind: "run_issue",
+        title: "Issue an invoice",
+        lines: items.map((i) => `Total ${i.total}`),
+      }
+    })
+    try {
+      // The title the app gave when it asked for the approval, kept on the row.
+      const id = await stageRow({ cardTitle: "Issue the November retainer of Example Studio" })
+      const res = await restage(APP, id, { items: [{ item: "a", total: 250 }] })
+      expect(res.ok).toBe(true)
+      const [row] = await sql`SELECT summary FROM kernel.approval_requests WHERE id = ${id}`
+      // The lines describe the new payload; the title stays the one the card was raised with.
+      expect(row?.summary).toEqual({
+        kind: "run_issue",
+        title: "Issue the November retainer of Example Studio",
         lines: ["Total 250"],
       })
     } finally {

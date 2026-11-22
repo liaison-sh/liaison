@@ -7533,5 +7533,12 @@
     "session_restricted": "Connectez-vous sur cet appareil pour signer.",
     "gone": "Il n'y a rien à signer pour vous ici : la demande ne vous est pas adressée, ou elle n'est plus ouverte.",
     "answered": "Vous avez déjà répondu à cette demande : il n'y a plus rien à faire ici."
+  },
+  "approvalRunGroup": {
+    "title": "{{count}} validations de {{name}}",
+    "titleNoName": "{{count}} validations d'une même exécution",
+    "why": "Préparées ensemble par une même exécution. Chacune se décide à part.",
+    "show": "Tout afficher",
+    "hide": "Masquer"
   }
 }

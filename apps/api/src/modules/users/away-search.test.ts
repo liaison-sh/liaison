@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
-// Reach of the away tool through the real search path: an org's registered catalog (kernel and
-// in-tree apps), searched by tool_search with a project member's and a project lead's own scopes.
-// A plain "I'm off" request finds `set_away` usable (not locked), for the person's own days and for
-// a lead naming a colleague. A query whose every term matches loads it for the next step; one with
-// a term it does not hold ("Friday") lists it with the way to load it.
+// Reach of the away tool in an org's registered catalog (kernel and in-tree apps): `set_away` is
+// loaded with every turn's tools, as the memory tools are, so a person's days off are recorded
+// where they set them away rather than noted. A project member and a project lead hold what it
+// asks for (a colleague's days need the lead's projects:capacity:write, checked by the tool).
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
-import { runContextStore } from "~/modules/agent/runtime/run-context"
-import { handleToolSearch } from "~/modules/agent/tools/tool-search"
+import { isDeferredTool } from "~/modules/agent/tools/tool-bridge"
 import {
   agentInstructionsRegistry,
   skillRegistry,
@@ -41,26 +39,6 @@ const LEAD = ["kernel:threads:read", ...projectsRole("lead")]
 
 let orgId = ""
 
-async function search(query: string, scopes: string[]) {
-  const frame = {
-    runId: crypto.randomUUID(),
-    parentRunId: null,
-    rootRunId: crypto.randomUUID(),
-    nestingDepth: 0,
-    discoveredTools: new Set<string>(),
-  }
-  const res = await runContextStore.run(frame, () =>
-    handleToolSearch({ query }, { orgId, userId: crypto.randomUUID(), scopes }),
-  )
-  const hit = res.matches.find((m) => m.name === "kernel__set_away")
-  return { hit, loaded: frame.discoveredTools.has("kernel__set_away"), res }
-}
-
-/** Loaded for the next step, or listed by name with the way to load it. */
-function reachable(loaded: boolean, note: string | undefined): boolean {
-  return loaded || /Listed but NOT loaded: [^;]*kernel__set_away/.test(note ?? "")
-}
-
 beforeAll(async () => {
   orgId = (await createTestOrg()).id
   await ensureAppsForOrg(orgId)
@@ -74,28 +52,17 @@ afterAll(() => {
   agentInstructionsRegistry.deleteByPrefix([orgId])
 })
 
-describe("the away tool through tool search", () => {
-  it("a member saying they are off finds it usable and loaded", async () => {
-    for (const query of ["I'm off next Friday", "off next Friday", "away", "out of office"]) {
-      const { hit, loaded, res } = await search(query, MEMBER)
-      expect(hit, `${query}: ${res.matches.map((m) => m.name).join(", ")}`).toBeDefined()
-      expect(hit?.locked, query).toBeUndefined()
-      expect(reachable(loaded, res.note), query).toBe(true)
-    }
+describe("the away tool is at hand on every turn", () => {
+  it("set_away is loaded with the turn's tools, never behind a search", () => {
+    const def = toolRegistry.get([orgId, "kernel", "set_away"])
+    expect(def).toBeDefined()
+    expect(isDeferredTool("kernel", def as { deferLoading?: boolean })).toBe(false)
   })
 
-  it("a lead saying a colleague is off finds it usable and loaded, beside company days off", async () => {
-    for (const query of ["Nadia is off week 48", "off week 48", "Nadia is off next Friday"]) {
-      const { hit, loaded, res } = await search(query, LEAD)
-      expect(hit, `${query}: ${res.matches.map((m) => m.name).join(", ")}`).toBeDefined()
-      expect(hit?.locked, query).toBeUndefined()
-      expect(reachable(loaded, res.note), query).toBe(true)
-    }
-  })
-
-  it("a request that names a week or says away loads it at once", async () => {
-    for (const query of ["away", "off week 48", "Nadia is off week 48"]) {
-      expect((await search(query, LEAD)).loaded, query).toBe(true)
+  it("a member and a lead may call it: it asks only for what every member holds", () => {
+    const def = toolRegistry.get([orgId, "kernel", "set_away"]) as { requiredScopes?: string[] }
+    for (const scopes of [MEMBER, LEAD]) {
+      for (const s of def.requiredScopes ?? []) expect(scopes).toContain(s)
     }
   })
 

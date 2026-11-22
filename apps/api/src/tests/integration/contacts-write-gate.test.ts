@@ -21,6 +21,7 @@ import {
   skillRegistry,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -110,18 +111,27 @@ describe("contacts_write: gated for agents, switched off by an auto-approve poli
   })
 
   it("by default an agent's edit parks, with a card naming the contact and each new value", async () => {
-    const write = await agentCall("kernel__contacts_write", {
-      contactId: CONTACT,
-      company: "Moreau Audio",
-      metadata: { city: "Lyon" },
-    })
+    const frame = turnFrame()
+    const write = await agentCall(
+      "kernel__contacts_write",
+      {
+        contactId: CONTACT,
+        company: "Moreau Audio",
+        metadata: { city: "Lyon" },
+      },
+      frame,
+    )
     expect(write).toMatchObject({ blocked: true, status: "pending_approval" })
     expect(await company()).toBeNull()
-    const [req] = await sql<{ summary: { title: string; lines: string[] } }[]>`
-      SELECT summary FROM kernel.approval_requests
+    const [req] = await sql<
+      { summary: { title: string; lines: string[] }; metadata: { originRootRunId?: string } }[]
+    >`
+      SELECT summary, metadata FROM kernel.approval_requests
        WHERE org_id = ${ORG} AND tool_name = 'kernel:contacts_write' AND status = 'pending'`
     expect(req?.summary.title).toBe("Edit the contact Felix Moreau <felix@example.com>")
     expect(req?.summary.lines).toEqual(["Company → Moreau Audio", "city → Lyon"])
+    // The run that staged it, which Home groups a run's cards by.
+    expect(req?.metadata.originRootRunId).toBe(frame.rootRunId)
   })
 
   it("a write that names no contact the agent saw is refused before anything parks", async () => {
@@ -211,5 +221,51 @@ describe("contacts_write: gated for agents, switched off by an auto-approve poli
        ORDER BY created_at DESC LIMIT 1`
     // The thread stream draws the card inline where it was asked: the discussion.
     expect(req?.originating_thread_id).toBe(discussion!.id)
+  })
+
+  describe("who a new contact is for", () => {
+    const sharing = (email: string) =>
+      sql<{ org_access: string; owner_user_id: string | null; created_by: string | null }[]>`
+        SELECT org_access, owner_user_id::text, created_by::text FROM kernel.contacts
+         WHERE org_id = ${ORG} AND email = ${email}`
+
+    it("a person's own create in the product is shared with the organisation, and they own it", async () => {
+      const email = `own-${Date.now()}@example.com`
+      const res = await executeTool({
+        toolName: "kernel:contacts_write",
+        orgId: ORG,
+        actor,
+        params: { name: "Own Create", email },
+        origin: "human-ui",
+      })
+      expect(res.blocked).toBeUndefined()
+      expect((await sharing(email)).map((r) => ({ ...r }))).toEqual([
+        { org_access: "editor", owner_user_id: ADMIN, created_by: ADMIN },
+      ])
+    })
+
+    it("the agent's create for that person stays private to them", async () => {
+      await sql`INSERT INTO kernel.auto_approve_policies (org_id, tool_name, created_by)
+        VALUES (${ORG}, 'kernel:contacts_write', ${ADMIN}) ON CONFLICT DO NOTHING`
+      const email = `agent-${Date.now()}@example.com`
+      const write = await agentCall("kernel__contacts_write", { name: "Agent Create", email })
+      expect(write.blocked).toBeUndefined()
+      expect((await sharing(email)).map((r) => ({ ...r }))).toEqual([
+        { org_access: "none", owner_user_id: ADMIN, created_by: ADMIN },
+      ])
+    })
+
+    it("a call with no person behind it (a job) never creates for the organisation", async () => {
+      const email = `job-${Date.now()}@example.com`
+      await executeTool({
+        toolName: "kernel:contacts_write",
+        orgId: ORG,
+        actor,
+        params: { name: "Job Create", email },
+        origin: "system",
+      })
+      const rows = await sharing(email)
+      expect(rows.every((r) => r.org_access === "none")).toBe(true)
+    })
   })
 })

@@ -1564,6 +1564,9 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   // approval and resumes once it is decided (routine-run-resume.ts).
   const originRoutineRunId = originRoutineId ? liveFrame?.routineRunId : undefined
   if (originRoutineRunId) routineMeta.originRoutineRunId = originRoutineRunId
+  // The run that asked, by its root (a chat turn, a routine tick, the sub-runs below either):
+  // Home folds the cards one run staged for one person into one row (approvals/attention.ts).
+  if (liveFrame?.rootRunId) routineMeta.originRootRunId = liveFrame.rootRunId
   // A47b: which payload paths the schema filled, so the card marks them as defaults rather
   // than showing them as something the agent chose.
   const defaultedMeta: Record<string, unknown> =
@@ -3599,6 +3602,9 @@ export async function executeToolHandler(
     // The app that dispatched this call app-to-app, when one did (a handler acting for its own app's
     // records with no person behind the call reads it: kernel:documents_print from a scheduled pass).
     ctx.callerApp = bridgeOptions?.callerApp
+    // Where the call came from (a person's own call, an agent, MCP, a job), for a handler whose
+    // default depends on it: a contact a person adds themselves is the organisation's.
+    ctx.origin = bridgeOptions?.origin
     // The routine this call came from, when it came from one. Handlers that
     // record an author use it to attribute the work to the ROUTINE rather than
     // to the human who happens to own it.

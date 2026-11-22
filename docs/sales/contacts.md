@@ -23,6 +23,7 @@ There is no **New contact** button. Contacts appear on their own:
 - **Mail you receive.** A sender in your personal mailbox becomes a contact that belongs to you alone. A sender in a shared mailbox becomes a contact visible to the people who can open that mailbox. Newsletters and no-reply senders are linked to an existing contact, never created.
 - **Tickets.** A ticket's customer who is known only by an address becomes a contact shared with the ticket's team.
 - **Agents.** An agent creates or updates a contact with `contacts_write`. The change waits in **Approvals** until a person approves it, unless an admin turned that off (see [Let agents edit contacts without approval](#let-agents-edit-contacts-without-approval)). A contact an agent creates is private to the person it works for until someone shares it.
+- **You.** A contact you add yourself (through `contacts_write` from the product, or the API's `POST /api/contacts/resolve`) is the organization's at once, and you own it. Pass `audience: "private"` to the API to keep it yours. A program signed in for you through a device sign-in creates private contacts, as an agent does.
 
 A sender who already has a contact the whole organization can see is linked to it, never duplicated.
 
@@ -79,7 +80,7 @@ Or open one contact and click **Add to group**. The menu ticks the groups the co
 
 ## Share a contact with your team
 
-A contact you own is private until you share it. The contact page shows its visibility: **Private**, **Organisation** or **Shared with you**.
+A contact that came in privately (your mail, an agent) is private until you share it. The contact page shows its visibility: **Private**, **Organisation** or **Shared with you**.
 
 1. Open the contact and click **Share**.
 2. Under **General access**, choose one:

@@ -6,6 +6,7 @@ import type { AppEvent } from "~/infra/events/event-bus"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
 import { rootLogger } from "~/lib/logger"
 import { getDeclaredEmits } from "~/modules/apps/app-registries"
+import type { ToolOrigin } from "~/modules/apps/execute-tool"
 import { appContactAudience, resolveContact as resolve } from "~/modules/contacts/service"
 
 export interface AppContext {
@@ -27,6 +28,11 @@ export interface AppContext {
    * Handlers that record `createdByActorType` should read this. Defaults to `'user'`.
    */
   actorType: "user" | "agent" | "mcp"
+  /**
+   * The dispatch's origin as execute-tool resolved it: "human-ui" is a person's own call in the
+   * product UI. Unlike `actorType`, a webhook, job or dashboard run never reads as one.
+   */
+  origin?: ToolOrigin
   /**
    * The approver in a gated flow, OR the calling user in a direct flow.
    * Same as `userId` for non-gated tools; for gated tools, the approver's user id.

@@ -36,6 +36,7 @@ import {
   isExpiredMailboxWait,
 } from "~/modules/agent/routine-mailbox-wait-item"
 import { isDecisionInFlight } from "~/modules/approvals/decision-queue"
+import { collapseApprovalRunGroups } from "~/modules/approvals/run-group"
 import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { isApprovalItem, partitionOthersRows } from "~/modules/shell/approval-facets"
 import {
@@ -51,18 +52,21 @@ import { attentionStore } from "~/modules/shell/attention-store"
  *  waiting for a private mailbox, all of them as one row. A waiting run whose
  *  24 hours are over has left the list (its run history says it expired; the
  *  server's sweep marks its row read too). With `othersShown` false, a row
- *  for someone else ("For others, you can also approve") is left out. */
+ *  for someone else ("For others, you can also approve") is left out. The cards one run
+ *  staged together are one row too (approvals/run-group.ts). */
 export function homeApprovalItems(
   nowItems: AttentionItem[],
   othersShown: boolean,
   viewer: HomeViewer = { userId: "", canGrantAccess: true },
 ): AttentionItem[] {
-  const approvals = collapseMailboxWaits(
-    nowItems.filter(
-      (item) =>
-        isApprovalItem(item) &&
-        !isExpiredMailboxWait(item) &&
-        (item.kind !== "scope_request" || viewer.canGrantAccess),
+  const approvals = collapseApprovalRunGroups(
+    collapseMailboxWaits(
+      nowItems.filter(
+        (item) =>
+          isApprovalItem(item) &&
+          !isExpiredMailboxWait(item) &&
+          (item.kind !== "scope_request" || viewer.canGrantAccess),
+      ),
     ),
   )
   return othersShown ? approvals : partitionOthersRows(approvals).mine

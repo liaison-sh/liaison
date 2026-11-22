@@ -2,9 +2,10 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn } from "bun:test"
 import crypto from "node:crypto"
-import { eq } from "drizzle-orm"
+import { sql as drizzleSql, eq } from "drizzle-orm"
+import { extractRows } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
-import type { UserContext } from "~/db/rls"
+import { type UserContext, withRlsContext } from "~/db/rls"
 import {
   agentRuns,
   appsActiveVersion,
@@ -16,6 +17,12 @@ import {
 } from "~/db/schema/kernel"
 import * as agentServiceModule from "~/modules/agent/runtime/agent-service"
 import { AgentServiceTestAccess } from "~/modules/agent/runtime/agent-service"
+import {
+  captureSpawnParentFrame,
+  isSharedAgentFrame,
+  runContextStore,
+} from "~/modules/agent/runtime/run-context"
+import { createTurnScopeAccumulator } from "~/modules/agent/scopes/turn-scope-accumulator"
 import { spawnAgent } from "~/modules/agent/subruns/spawn-agent"
 import { createSubAgentDefinition } from "~/modules/agent/subruns/sub-agent-definitions"
 import * as subRunAwaitModule from "~/modules/agent/subruns/subrun-await"
@@ -708,6 +715,107 @@ describe("subrun worker — retry idempotency (I-REL-11)", () => {
     expect(row.status).toBe("failed")
     expect(row.errorCode).toBe("schema_failure")
     expect(row.attemptCount).toBe(0)
+  })
+})
+
+describe("subrun worker — the acting agent's kind reaches the sub-run", () => {
+  let orgId: string
+  let userId: string
+
+  beforeEach(async () => {
+    orgId = (await createTestOrg()).id
+    userId = (await minimal.person(orgId, { role: "admin" })).id
+    await seedPricingAndCredits(orgId)
+  })
+
+  /** Spawns one sub-run from a frame of the given agent kind and reports what
+   *  the sub-run's own frame and database transactions saw. */
+  async function spawnFromKind(kind: "role" | "personal" | undefined, viaLiveFrame: boolean) {
+    const appName = await installTestApp(["mcp:jira:read"])
+    const agentType = `kind-${crypto.randomUUID().slice(0, 6)}`
+    await createSubAgentDefinition({
+      orgId,
+      appName,
+      agentType,
+      whenToUse: "test",
+      scopeCeiling: ["mcp:jira:read"],
+      systemPrompt: "Investigate the ticket.",
+    })
+    const actor = userActor(orgId, userId, ["mcp:jira:*"])
+    const seen: { shared?: boolean; marker?: Promise<string>; nestedKind?: string } = {}
+    const finalize = stubStreamText.respondWithFinalize({ done: true })
+    AgentServiceTestAccess.setStreamText(((params: never) => {
+      // Runs inside the sub-run's frame, where its tools and their
+      // transactions run.
+      seen.shared = isSharedAgentFrame()
+      seen.nestedKind = captureSpawnParentFrame()?.agentKind
+      // The marker the mail tables' row security reads, as a tool's
+      // transaction in this sub-run sets it.
+      seen.marker = withRlsContext(actor, async (tx) => {
+        const rows = extractRows<{ v: string | null }>(
+          await tx.execute(
+            drizzleSql`SELECT current_setting('app.current_agent_shared', true) AS v`,
+          ),
+        )
+        return rows[0]?.v ?? ""
+      })
+      return finalize(params)
+    }) as never)
+    await startSubrunWorker()
+
+    const parentThreadId = await makeParentThread(orgId, userId)
+    const spawn = () =>
+      spawnAgent({
+        parentRun: { id: null, threadId: parentThreadId, actor, nestingDepth: 0 },
+        ...(viaLiveFrame
+          ? {}
+          : { parentFrame: { taintScopes: [], ...(kind ? { agentKind: kind } : {}) } }),
+        subagentType: agentType,
+        description: "kind",
+        prompt: "Investigate this ticket.",
+        outputSchema: {
+          type: "object",
+          required: ["done"],
+          properties: { done: { type: "boolean" } },
+        },
+      })
+    const handle = viaLiveFrame
+      ? await runContextStore.run(
+          {
+            runId: crypto.randomUUID(),
+            parentRunId: null,
+            rootRunId: crypto.randomUUID(),
+            nestingDepth: 0,
+            ...(kind ? { agentKind: kind } : {}),
+            turnScopeAccumulator: createTurnScopeAccumulator(),
+          },
+          spawn,
+        )
+      : await spawn()
+    const result = await awaitSubRunResult(handle.runId, orgId, { timeoutMs: 10_000 })
+    expect(result.ok).toBe(true)
+    return { shared: seen.shared, nestedKind: seen.nestedKind, marker: await seen.marker }
+  }
+
+  it("a shared agent's sub-agent is still a shared agent, so a person's own mailbox stays out of reach", async () => {
+    const seen = await spawnFromKind("role", true)
+    expect(seen.shared).toBe(true)
+    expect(seen.marker).toBe("on")
+    // A sub-agent it spawns in turn carries the same kind.
+    expect(seen.nestedKind).toBe("role")
+  })
+
+  it("a shared agent's sub-agent spawned through an app keeps the shared agent's kind", async () => {
+    const seen = await spawnFromKind("role", false)
+    expect(seen.shared).toBe(true)
+    expect(seen.marker).toBe("on")
+  })
+
+  it("a personal agent's sub-agent is not marked shared", async () => {
+    const seen = await spawnFromKind("personal", true)
+    expect(seen.shared).toBe(false)
+    expect(seen.marker).toBe("")
+    expect(seen.nestedKind).toBe("personal")
   })
 })
 

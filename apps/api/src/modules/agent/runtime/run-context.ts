@@ -562,6 +562,12 @@ export interface SpawnParentFrame {
    */
   agentId?: string
   /**
+   * The acting agent's kind (`RunContext.agentKind`), so a sub-run spawned
+   * from a shared agent's turn is still a shared agent's (`isSharedAgentFrame`)
+   * and never reaches a person's own mailbox. Absent: not known to be shared.
+   */
+  agentKind?: "personal" | "role" | "system"
+  /**
    * The calling run's hard token limit and shared counter id (S17, A34), so a
    * job-queue sub-run spawned from it counts toward the same limit. Absent when
    * the run has no hard limit.
@@ -613,6 +619,7 @@ export function captureSpawnParentFrame(
     effectiveScope: frame.effectiveScope,
     taintScopes,
     agentId: frame.agentId,
+    ...(frame.agentKind ? { agentKind: frame.agentKind } : {}),
     run: { runId: frame.runId, rootRunId: frame.rootRunId, nestingDepth: frame.nestingDepth },
     // An approved call's re-entry has no message of its own: the ask it continues.
     ...((frame.turnMessageId ?? frame.askId)

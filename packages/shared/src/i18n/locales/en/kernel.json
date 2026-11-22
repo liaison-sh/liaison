@@ -6732,6 +6732,8 @@
     "level": "Level {{n}}",
     "listFrom": "One line per item of",
     "listLine": "Each line",
+    "listItems": "Written items",
+    "listAddItem": "Add an item",
     "loadFailed": "Could not load the templates.",
     "mappingIntro": "Each field of the PDF takes its value from a record field, a fixed value or an image. A field with no value prints its placeholder in grey.",
     "moveDown": "Move down",

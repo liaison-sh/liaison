@@ -381,6 +381,43 @@ describe("a rich text template's Content tab", () => {
   })
 })
 
+describe("a rich text template's written lists", () => {
+  it("the template editor saves every list of the template", async () => {
+    const fn = mockFetch((url, init) => {
+      if (url.endsWith(`/document-templates/${RICH}`) && init?.method === "PATCH") {
+        const sent = JSON.parse(String(init.body)) as { body: { blocks: unknown[] } }
+        return json({ data: richTemplate(sent.body.blocks) })
+      }
+      if (url.endsWith(`/document-templates/${RICH}`) && (init?.method ?? "GET") === "GET")
+        return json({
+          data: richTemplate([
+            { type: "list", items: ["Kick-off", "Design"] },
+            { type: "list", from: "lines", line: "{{sku}}" },
+          ]),
+        })
+      return undefined
+    })
+    renderAt(`/settings/admin/documents/${RICH}`, DocumentTemplateDetail)
+    // A written list shows its items, not a record list to pick.
+    const second = (await screen.findByTestId("documents-block-0-item-1")) as HTMLTextAreaElement
+    expect(second.value).toBe("Design")
+    expect(screen.queryByTestId("documents-block-0-from")).toBeNull()
+    fireEvent.input(second, { target: { value: "Design, two rounds" } })
+    fireEvent.click(screen.getByTestId("documents-block-0-add-item"))
+    fireEvent.input(screen.getByTestId("documents-block-0-item-2"), {
+      target: { value: "Delivery" },
+    })
+    fireEvent.click(screen.getByTestId("documents-block-0-item-0-delete"))
+    fireEvent.click(screen.getByTestId("documents-content-save"))
+    await screen.findByTestId("documents-content-saved")
+    const [, init] = callsTo(fn, `/document-templates/${RICH}`, "PATCH")[0]!
+    expect(JSON.parse(String(init?.body)).body.blocks).toEqual([
+      { type: "list", items: ["Design, two rounds", "Delivery"] },
+      { type: "list", from: "lines", line: "{{sku}}" },
+    ])
+  })
+})
+
 describe("a rich text template's blocks and images", () => {
   it("deletes a block inline", async () => {
     mockFetch((url, init) =>

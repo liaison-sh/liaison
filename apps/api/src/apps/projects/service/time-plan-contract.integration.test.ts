@@ -211,3 +211,66 @@ describe("createProject plans its tasks' hours", () => {
     expect(left?.n).toBe(0)
   })
 })
+
+describe("a person's edit of a retainer month's timebox", () => {
+  const SCHEDULE = "schedule-of-the-retainer"
+  async function setBox(
+    projectId: string,
+    month: string,
+    timebox: string,
+    fromRetainer: boolean,
+  ): Promise<void> {
+    const { setPeriodTimebox } = await import("./time-plan")
+    await withRlsContext(actorOf(owner.userId, ["*"]), (tx) =>
+      setPeriodTimebox({
+        tx: tx as never,
+        orgId,
+        actorId: owner.userId,
+        scopes: ["*"],
+        input: {
+          projectId,
+          month,
+          timebox,
+          ...(fromRetainer ? { source: "retainer" as const, sourceRef: SCHEDULE } : {}),
+        },
+      }),
+    )
+  }
+  const minutesOf = async (projectId: string, month: string) =>
+    extractRows<{ minutes: number; source: string }>(
+      await db.execute(drizzleSql`
+        SELECT minutes, source FROM app_projects.project_timeboxes
+         WHERE project_id = ${projectId}::uuid AND period_start = ${`${month}-01`}::date`),
+    )[0] ?? null
+
+  it("a timebox edited for next month is not overwritten by the daily roll", async () => {
+    const id = await project()
+    await setBox(id, "2027-01", "40h", true)
+    expect(await minutesOf(id, "2027-01")).toEqual({ minutes: 2400, source: "retainer" })
+    await setBox(id, "2027-01", "30h", false)
+    // The next day's roll brings the same hours as before: the person's 30 h stay.
+    await setBox(id, "2027-01", "40h", true)
+    expect(await minutesOf(id, "2027-01")).toEqual({ minutes: 1800, source: "retainer" })
+    // A later change of the retainer's terms is a newer act: its hours win from then on.
+    await setBox(id, "2027-01", "44h", true)
+    expect((await minutesOf(id, "2027-01"))?.minutes).toBe(2640)
+    await setBox(id, "2027-01", "44h", true)
+    expect((await minutesOf(id, "2027-01"))?.minutes).toBe(2640)
+  })
+
+  it("a month a person timeboxed before the retainer's first write keeps the person's hours", async () => {
+    const id = await project()
+    await setBox(id, "2027-02", "20h", false)
+    await setBox(id, "2027-02", "40h", true)
+    expect(await minutesOf(id, "2027-02")).toEqual({ minutes: 1200, source: "retainer" })
+    await setBox(id, "2027-02", "40h", true)
+    expect((await minutesOf(id, "2027-02"))?.minutes).toBe(1200)
+  })
+
+  it("a retainer month nobody edited follows the retainer's hours", async () => {
+    const id = await project()
+    await setBox(id, "2027-03", "40h", true)
+    await setBox(id, "2027-03", "36h", true)
+    expect((await minutesOf(id, "2027-03"))?.minutes).toBe(2160)
+  })
+})

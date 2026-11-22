@@ -111,6 +111,10 @@ export const projectTimeboxes = appProjects.table(
     source: text("source", { enum: ["manual", "retainer"] }).notNull(),
     /** The retainer schedule a derived timebox comes from (migration 0328). */
     sourceRef: text("source_ref"),
+    /** When a person last set this period's timebox by hand (migration 0346). */
+    personEditedAt: timestamp("person_edited_at", { withTimezone: true }),
+    /** The minutes the retainer last asked for this period (migration 0346). */
+    sourceMinutes: integer("source_minutes"),
     createdBy: uuid("created_by"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

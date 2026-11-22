@@ -4112,8 +4112,11 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
 
   let tool = toolRegistry.get([opts.orgId, appName, name])
   if (!tool) {
-    const defaultApps = await getDefaultApps()
-    if (!defaultApps.some((app) => app.name === appName)) {
+    // Not registered in this process: the org's runtime may not be set up here
+    // yet, or it was released (org-runtime-release.ts). The kernel's own tools
+    // are registered with the org's runtime like any catalog app's, so a miss on
+    // either sets the org up and looks again; any other app name is unknown.
+    if (appName !== "kernel" && !(await getDefaultApps()).some((app) => app.name === appName)) {
       return {
         error: {
           code: "tool_not_found",

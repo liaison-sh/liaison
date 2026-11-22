@@ -16,6 +16,7 @@ import {
   registeredApps,
   toolRegistry,
 } from "~/modules/apps/app-registries"
+import { executeToolCore } from "~/modules/apps/execute-tool"
 import { awaitOrgApps, ensureAppsForOrg } from "~/modules/apps/init"
 import {
   idleOrgRuntimes,
@@ -145,5 +146,39 @@ describe("org runtime release", () => {
     expect(initializedOrgRuntimes.has(orgId)).toBe(true)
     expect(toolRegistry.get([orgId, "kernel", "user_memory_get"])).toBeDefined()
     expect([...registeredApps].some((k) => k.startsWith(`${orgId}:`))).toBe(true)
+  })
+
+  it("a kernel tool called while the org is not set up in this process sets it up and is found", async () => {
+    const orgId = await newOrg()
+    await awaitOrgApps(orgId)
+    expect(await releaseOrgRuntimes([orgId], { gone: false })).toEqual([orgId])
+    expect(toolRegistry.get([orgId, "kernel", "portal_invite"])).toBeUndefined()
+
+    const codeOf = (r: Awaited<ReturnType<typeof executeToolCore>>) =>
+      "error" in r ? r.error.code : null
+    const call = (toolName: string) =>
+      executeToolCore({
+        toolName,
+        orgId,
+        actor: {
+          actorType: "user",
+          userId: crypto.randomUUID(),
+          orgId,
+          scopes: ["*"],
+          dimensionGrants: {},
+        },
+        // Not valid for the tool: what is under test is that the tool is found.
+        params: {},
+        origin: "human-ui",
+      })
+
+    const found = codeOf(await call("kernel:portal_invite"))
+    expect(found).not.toBe("tool_not_found")
+    expect(found).toBe("invalid_params")
+    expect(initializedOrgRuntimes.has(orgId)).toBe(true)
+    expect(toolRegistry.get([orgId, "kernel", "portal_invite"])).toBeDefined()
+
+    // A kernel name that no runtime registers is still unknown.
+    expect(codeOf(await call("kernel:no_such_tool"))).toBe("tool_not_found")
   })
 })

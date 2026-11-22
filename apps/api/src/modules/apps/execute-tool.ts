@@ -1566,7 +1566,10 @@ async function createApprovalRequest(opts: CreateApprovalRequestOpts): Promise<s
   if (originRoutineRunId) routineMeta.originRoutineRunId = originRoutineRunId
   // The run that asked, by its root (a chat turn, a routine tick, the sub-runs below either):
   // Home folds the cards one run staged for one person into one row (approvals/attention.ts).
-  if (liveFrame?.rootRunId) routineMeta.originRootRunId = liveFrame.rootRunId
+  // A handler that parks its own card runs in a sandbox hop with no live frame: the run the
+  // bridge captured (`opts.originRun`) names it instead, so its card groups with the run's others.
+  const originRootRunId = liveFrame?.rootRunId ?? originRun?.rootRunId
+  if (originRootRunId) routineMeta.originRootRunId = originRootRunId
   // A47b: which payload paths the schema filled, so the card marks them as defaults rather
   // than showing them as something the agent chose.
   const defaultedMeta: Record<string, unknown> =

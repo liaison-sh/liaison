@@ -38,6 +38,7 @@ import RoutineMailboxWaitsRow from "~/modules/agent/RoutineMailboxWaitsRow"
 import ApprovalCard, { shortApprovalId } from "~/modules/approvals/ApprovalCard"
 import {
   approvalActionLabel,
+  approvalKindLabel,
   approvalRowTitle,
   localizeApprovalText,
 } from "~/modules/approvals/approval-copy"
@@ -1408,8 +1409,9 @@ const KbdHint: Component<{ k: string }> = (props) => (
 )
 
 /**
- * The cards one run staged for this viewer, as one row (approvals/run-group.ts): who asked and
- * how many, opening to the cards themselves, each decided on its own. Once one card is left
+ * The cards one run staged for this viewer, or one day's cards of the same action with no run,
+ * as one row (approvals/run-group.ts): who asked (or which action) and how many, opening to the
+ * cards themselves, each decided on its own. Once one card is left
  * (the others decided), the row is that card again.
  */
 const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGroup }> = (
@@ -1428,10 +1430,23 @@ const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGr
     )
   const title = (): string => {
     const count = String(members().length)
+    if (props.group.basis === "batch") {
+      const action = approvalKindLabel(props.group.toolName ?? null, null, {
+        t,
+        locale: i18n.locale(),
+      })
+      return action
+        ? t("kernel.approvalRunGroup.batchTitle", { count, action })
+        : t("kernel.approvalRunGroup.batchTitleNoAction", { count })
+    }
     return props.group.label
       ? t("kernel.approvalRunGroup.title", { count, name: props.group.label })
       : t("kernel.approvalRunGroup.titleNoName", { count })
   }
+  const why = (): string =>
+    props.group.basis === "batch"
+      ? t("kernel.approvalRunGroup.batchWhy")
+      : t("kernel.approvalRunGroup.why")
   return (
     <Show
       when={members().length > 1}
@@ -1463,7 +1478,7 @@ const ApprovalRunGroupRow: Component<{ item: AttentionItem; group: ApprovalRunGr
             {open() ? t("kernel.approvalRunGroup.hide") : t("kernel.approvalRunGroup.show")}
           </button>
         </div>
-        <span class="text-[12px] text-text-tertiary">{t("kernel.approvalRunGroup.why")}</span>
+        <span class="text-[12px] text-text-tertiary">{why()}</span>
         <Show when={open()}>
           <ul
             data-testid="approval-run-group-list"

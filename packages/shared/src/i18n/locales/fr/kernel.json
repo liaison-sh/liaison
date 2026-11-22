@@ -7539,6 +7539,9 @@
     "titleNoName": "{{count}} validations d'une même exécution",
     "why": "Préparées ensemble par une même exécution. Chacune se décide à part.",
     "show": "Tout afficher",
-    "hide": "Masquer"
+    "hide": "Masquer",
+    "batchTitle": "{{count}} validations : {{action}}",
+    "batchTitleNoAction": "{{count}} validations du même type",
+    "batchWhy": "La même action pour les mêmes personnes, préparées le même jour. Chacune se décide à part."
   }
 }

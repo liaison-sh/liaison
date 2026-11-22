@@ -17,6 +17,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { appsLogger as log } from "~/lib/logger"
 import { apiViewer, authorityFacts, canSeeInFeed } from "~/modules/approvals/authority"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/event-data"
+import { approvalGroupBasis, approvalRunKey, civilDayIn } from "~/modules/approvals/group-key"
 import { readApprovalLastFailures } from "~/modules/approvals/last-failure"
 import {
   isFinalSendGuardState,
@@ -515,14 +516,12 @@ export const LATEST_DAY_LEAD_DAYS = 4
 const LATEST_DAY_URGENCY = 90
 
 /**
- * The org's calendar day now: its own zone, UTC without one. The org row is closed to the caller's
- * RLS role, so its zone is read as a system read of that one row, as the approve-from-home
- * settings are.
+ * The org's time zone, UTC without one. The org row is closed to the caller's RLS role, so its
+ * zone is read as a system read of that one row, as the approve-from-home settings are.
  */
-async function orgToday(orgId: string, now: Date): Promise<string> {
-  let zone = "UTC"
+async function orgZone(orgId: string): Promise<string> {
   try {
-    zone =
+    return (
       (
         await withPrivilegedDb(orgId, "approval-attention-org-day", async (tx) =>
           extractRows<{ tz: string | null }>(
@@ -532,18 +531,10 @@ async function orgToday(orgId: string, now: Date): Promise<string> {
           ),
         )
       )[0]?.tz || "UTC"
+    )
   } catch (err) {
     log.warn({ err, orgId }, "could not read the org's time zone; using UTC")
-  }
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: zone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now)
-  } catch {
-    return now.toISOString().slice(0, 10)
+    return "UTC"
   }
 }
 
@@ -736,6 +727,9 @@ export async function computeApprovalAttentionItems(
   const items: AttentionItem[] = []
   const runKeys = new Map<string, string>()
   let today: string | undefined
+  // The org's zone sets a card's business day (its group when no run staged it, and the day a
+  // request's last day is measured from): one read per feed, only when there is a card.
+  const zone = rows.length > 0 ? await orgZone(orgId) : "UTC"
   for (const r of rows) {
     const { appName, toolShortName } = splitToolName(r.tool_name)
     // In the feed as THEIR decision (a two-approver request they already
@@ -781,7 +775,7 @@ export async function computeApprovalAttentionItems(
     // days before it, and stays there once late, whatever else holds it. Order only.
     const latestOn = typeof r.summary?.latestOn === "string" ? r.summary.latestOn : null
     if (!wedged && latestOn) {
-      today ??= await orgToday(orgId, now)
+      today ??= civilDayIn(now, zone)
       if (nearLatestDay(latestOn, today)) urgency = Math.max(urgency, LATEST_DAY_URGENCY)
     }
 
@@ -949,7 +943,7 @@ export async function computeApprovalAttentionItems(
           : {}),
       },
     })
-    const runKey = approvalRunKey(r)
+    const runKey = approvalRunKey(r, zone)
     if (runKey && !wedged) runKeys.set(`kernel:approval_pending:${r.id}`, runKey)
   }
   annotateApprovalRunGroups(items, runKeys)
@@ -957,22 +951,13 @@ export async function computeApprovalAttentionItems(
 }
 
 /**
- * The run a request was staged by: the routine run, else the root of the agent run (a chat
- * turn or a tick, with the sub-runs below it). Null for a call with no run behind it, and for a
- * step of a bundle (its head stands for the bundle).
- */
-function approvalRunKey(r: PendingApprovalRow): string | null {
-  if (r.bundle_id !== null && r.bundle_id !== r.id) return null
-  const key = r.metadata?.originRoutineRunId ?? r.metadata?.originRootRunId
-  return typeof key === "string" && key.length > 0 ? key : null
-}
-
-/**
- * ONE RUN, ONE ROW. A run that stages several cards for the same person (a month-end pass:
- * one issue card per client) put one Home row per card in front of them. The cards one run
- * staged that sit in the same place on this viewer's Home carry `metadata.runGroup` (the run,
- * how many, who asked), and Home shows them as one row that opens to the list. Each card stays
- * its own decision; a run with a single card is left as it is. Order only follows urgency.
+ * ONE BATCH, ONE ROW. A run that stages several cards for the same person (a month-end pass: one
+ * issue card per client), or a day of the same action with no run behind it (issue cards from a
+ * person's own reconcile calls, a job, milestones), put one Home row per card in front of them.
+ * The cards of one group (`approvalRunKey`, group-key.ts) that sit in the same place on this
+ * viewer's Home carry `metadata.runGroup` (the key, how many, how it was formed, who asked or which
+ * action), and Home shows them as one row that opens to the list. Each card stays its own
+ * decision; a group of one is left as it is. Order only follows urgency.
  */
 export function annotateApprovalRunGroups(
   items: AttentionItem[],
@@ -988,15 +973,23 @@ export function annotateApprovalRunGroups(
   }
   for (const [key, members] of groups) {
     if (members.length < 2) continue
-    const label = members.find((m) => typeof m.metadata?.requesterName === "string")?.metadata
-      ?.requesterName
+    const basis = approvalGroupBasis(key)
+    // A run's row names who asked; a batch's names the action its cards share.
+    const label =
+      basis === "run"
+        ? members.find((m) => typeof m.metadata?.requesterName === "string")?.metadata
+            ?.requesterName
+        : undefined
+    const action = basis === "batch" ? members[0]?.metadata?.toolName : undefined
     for (const m of members) {
       m.metadata = {
         ...m.metadata,
         runGroup: {
           key,
           count: members.length,
+          basis,
           ...(typeof label === "string" ? { label } : {}),
+          ...(typeof action === "string" ? { toolName: action } : {}),
         },
       }
     }

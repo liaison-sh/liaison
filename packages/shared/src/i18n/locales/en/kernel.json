@@ -7542,6 +7542,9 @@
     "titleNoName": "{{count}} approvals from one run",
     "why": "Staged together by one run. Each is its own decision.",
     "show": "Show all",
-    "hide": "Hide"
+    "hide": "Hide",
+    "batchTitle": "{{count}} approvals: {{action}}",
+    "batchTitleNoAction": "{{count}} approvals of the same kind",
+    "batchWhy": "The same action for the same people, staged the same day. Each is its own decision."
   }
 }

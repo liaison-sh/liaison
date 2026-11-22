@@ -68,11 +68,40 @@ describe("one run, one Home row", () => {
     expect(approvalRunGroupOf(items[0] as AttentionItem)).toEqual({
       key: "run-a:mine",
       count: 3,
+      basis: "run",
       label: "Monthly billing",
     })
     expect(approvalRunGroupOf(items[1] as AttentionItem)).toBeNull()
     expect(
       approvalRunGroupOf({ ...(items[0] as AttentionItem), kind: "mention" } as AttentionItem),
     ).toBeNull()
+  })
+})
+
+describe("one batch with no run, one Home row", () => {
+  const KEY = "batch:invoicing:documents:write||invoicing:invoice_issue|2026-11-30:mine"
+  const batch = {
+    placement: "mine",
+    runGroup: { key: KEY, count: 3, basis: "batch", toolName: "invoicing:invoice_issue" },
+  }
+  const items = [
+    approval("i1", batch),
+    approval("i2", batch),
+    approval("other", { placement: "mine" }),
+    approval("i3", batch),
+  ]
+
+  it("reads how the group was formed and the action it shares", () => {
+    expect(approvalRunGroupOf(items[0] as AttentionItem)).toEqual({
+      key: KEY,
+      count: 3,
+      basis: "batch",
+      toolName: "invoicing:invoice_issue",
+    })
+  })
+
+  it("Home's list and badge count the batch once", () => {
+    expect(homeApprovalItems(items, true, viewer).map((i) => i.entityId)).toEqual(["i1", "other"])
+    expect(homeActionItems(items, false, viewer)).toHaveLength(2)
   })
 })

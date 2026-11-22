@@ -20,7 +20,11 @@ import { ApiContext } from "~/modules/shell/ApiContext"
 import AttentionRow from "~/modules/shell/AttentionRow"
 import { attentionStore } from "~/modules/shell/attention-store"
 
-const card = (id: string, group?: { key: string; count: number }): AttentionItem => ({
+const card = (
+  id: string,
+  group?: { key: string; count: number },
+  runGroup?: Record<string, unknown>,
+): AttentionItem => ({
   id: `kernel:approval_pending:${id}`,
   app: "kernel",
   entity: "approval_request",
@@ -33,7 +37,7 @@ const card = (id: string, group?: { key: string; count: number }): AttentionItem
   metadata: {
     toolName: "invoicing:invoice_issue",
     placement: "mine",
-    ...(group ? { runGroup: { ...group, label: "Monthly billing" } } : {}),
+    ...(group ? { runGroup: runGroup ?? { ...group, label: "Monthly billing" } } : {}),
   },
 })
 
@@ -80,5 +84,25 @@ describe("one row for the cards of one run", () => {
     const { queryByTestId, getByTestId } = show(left)
     expect(queryByTestId("approval-run-group-row")).toBeNull()
     expect(getByTestId("attention-row-kernel-approval_request-d")).toBeDefined()
+  })
+})
+
+describe("one row for one day's cards of the same action, with no run", () => {
+  it("names the action and how many, and opens to every card", () => {
+    const group = { key: "batch:x|invoicing:invoice_issue|2026-11-30:mine", count: 2 }
+    const batch = { ...group, basis: "batch", toolName: "invoicing:invoice_issue" }
+    const items = [card("e", group, batch), card("f", group, batch)]
+    attentionStore._setForTest({ items, errors: [] })
+    const { getByTestId } = show(items[0] as AttentionItem)
+    expect(getByTestId("approval-run-group-title").textContent).toBe(
+      "2 approvals: Invoicing: issue invoice",
+    )
+    fireEvent.click(getByTestId("approval-run-group-toggle"))
+    const list = getByTestId("approval-run-group-list")
+    for (const id of ["e", "f"]) {
+      expect(
+        list.querySelector(`[data-testid="attention-row-kernel-approval_request-${id}"]`),
+      ).not.toBeNull()
+    }
   })
 })

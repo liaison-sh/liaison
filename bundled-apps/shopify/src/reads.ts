@@ -2720,7 +2720,25 @@ export async function refunds_get(
   return normalizeRefund(data.refund)
 }
 
-// — Discount codes (read) —
+// — Discounts (read): code discounts AND automatic discounts —
+//
+// Shopify keeps two discount families: CODE discounts (codeDiscountNodes, the customer types a code)
+// and AUTOMATIC discounts (automaticDiscountNodes, applied at checkout with no code). A store's
+// seasonal sale (Black Friday) is often automatic, so a search that lists only codes hides it: the
+// agent cannot see, deactivate or edit it. discounts_search lists both (`kind`), each hit carries its
+// `method` ("code" | "automatic"), and discounts_get reads one in full (value, scope by product
+// title, minimum requirement, window).
+
+/** Which discount family a hit belongs to. */
+export type DiscountMethod = "code" | "automatic"
+
+/** The family of a discount gid: DiscountCodeNode -> code, DiscountAutomaticNode -> automatic. */
+export function discountMethodOfId(id: unknown): DiscountMethod | null {
+  if (typeof id !== "string") return null
+  if (/^gid:\/\/shopify\/DiscountCodeNode\/\d+$/.test(id)) return "code"
+  if (/^gid:\/\/shopify\/DiscountAutomaticNode\/\d+$/.test(id)) return "automatic"
+  return null
+}
 
 interface DiscountCodeNodeShape {
   id: string
@@ -2746,10 +2764,42 @@ function normalizeDiscount(node: DiscountCodeNodeShape): NormalizedHit {
     market: null,
     currency: null,
     attributes: {
+      method: "code",
       status: cd.status ?? null,
       startsAt: cd.startsAt ?? null,
       endsAt: cd.endsAt ?? null,
       kind: cd.__typename ?? null,
+    },
+  }
+}
+
+interface DiscountAutomaticNodeShape {
+  id: string
+  automaticDiscount: {
+    __typename?: string
+    title?: string
+    status?: string
+    startsAt?: string | null
+    endsAt?: string | null
+    summary?: string | null
+  }
+}
+
+function normalizeAutomaticDiscount(node: DiscountAutomaticNodeShape): NormalizedHit {
+  const ad = node.automaticDiscount ?? {}
+  return {
+    id: node.id,
+    entity: "discount",
+    title: ad.title ?? node.id,
+    market: null,
+    currency: null,
+    attributes: {
+      method: "automatic",
+      status: ad.status ?? null,
+      startsAt: ad.startsAt ?? null,
+      endsAt: ad.endsAt ?? null,
+      kind: ad.__typename ?? null,
+      summary: ad.summary ?? null,
     },
   }
 }
@@ -2771,21 +2821,84 @@ const DISCOUNTS_SEARCH_QUERY = `
   }
 `
 
+const AUTOMATIC_DISCOUNTS_SEARCH_QUERY = `
+  query AutomaticDiscountsSearch($query: String, $first: Int!, $after: String) {
+    automaticDiscountNodes(first: $first, after: $after, query: $query) {
+      edges { node {
+        id
+        automaticDiscount {
+          __typename
+          ... on DiscountAutomaticBasic { title status startsAt endsAt summary }
+          ... on DiscountAutomaticBxgy { title status startsAt endsAt summary }
+          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt summary }
+          ... on DiscountAutomaticApp { title status startsAt endsAt }
+        }
+      } }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+`
+
+/** `kind` of discounts_search: both families by default; "code" or "automatic" narrows it. */
+function readDiscountKind(v: unknown): "all" | DiscountMethod {
+  if (v == null || v === "") return "all"
+  if (v === "all" || v === "code" || v === "automatic") return v
+  throw makeReadError("BAD_PARAM", `kind must be "all", "code" or "automatic" (got ${String(v)})`)
+}
+
 export async function discounts_search(
   params: Record<string, unknown>,
   ctx: AppContext,
-): Promise<{ results: NormalizedHit[]; nextCursor: string | null; keywordMatchNotice?: string }> {
+): Promise<{
+  results: NormalizedHit[]
+  nextCursor: string | null
+  automaticNextCursor?: string | null
+  keywordMatchNotice?: string
+}> {
   const limit = clampLimit(params.limit)
+  const kind = readDiscountKind(params.kind)
   const client = await getShopifyClient(ctx)
   const rawQuery =
     typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
-  const data = await client.query<{
-    codeDiscountNodes?: {
-      edges?: Array<{ node: DiscountCodeNodeShape }>
-      pageInfo?: { endCursor?: string | null }
-    }
-  }>(DISCOUNTS_SEARCH_QUERY, { query: rawQuery, first: limit, after: params.cursor ?? null })
-  const edges = data.codeDiscountNodes?.edges ?? []
+  const codeCursor = typeof params.cursor === "string" && params.cursor ? params.cursor : null
+  const autoCursor =
+    typeof params.automaticCursor === "string" && params.automaticCursor
+      ? params.automaticCursor
+      : null
+  // Paging: `cursor` continues the code list, `automaticCursor` the automatic one. On a "kind: all"
+  // follow-up page that carries only one of them, the other family was already listed in full on an
+  // earlier page and is not repeated.
+  const wantCodes =
+    kind === "code" || (kind === "all" && (codeCursor !== null || autoCursor === null))
+  const wantAuto =
+    kind === "automatic" || (kind === "all" && (autoCursor !== null || codeCursor === null))
+
+  const results: NormalizedHit[] = []
+  let nextCursor: string | null = null
+  let automaticNextCursor: string | null | undefined
+  if (wantCodes) {
+    const data = await client.query<{
+      codeDiscountNodes?: {
+        edges?: Array<{ node: DiscountCodeNodeShape }>
+        pageInfo?: { endCursor?: string | null }
+      }
+    }>(DISCOUNTS_SEARCH_QUERY, { query: rawQuery, first: limit, after: codeCursor })
+    results.push(...(data.codeDiscountNodes?.edges ?? []).map((e) => normalizeDiscount(e.node)))
+    nextCursor = data.codeDiscountNodes?.pageInfo?.endCursor ?? null
+  }
+  if (wantAuto) {
+    const data = await client.query<{
+      automaticDiscountNodes?: {
+        edges?: Array<{ node: DiscountAutomaticNodeShape }>
+        pageInfo?: { hasNextPage?: boolean; endCursor?: string | null }
+      }
+    }>(AUTOMATIC_DISCOUNTS_SEARCH_QUERY, { query: rawQuery, first: limit, after: autoCursor })
+    results.push(
+      ...(data.automaticDiscountNodes?.edges ?? []).map((e) => normalizeAutomaticDiscount(e.node)),
+    )
+    const page = data.automaticDiscountNodes?.pageInfo
+    automaticNextCursor = page?.hasNextPage ? (page.endCursor ?? null) : null
+  }
   // KEYWORD-MATCH NON-EXHAUSTIVENESS (deactivate-expired-synth-summit-press-discount-codes). discounts_search
   // matches ONLY on the code/title keyword — there is NO created-date filter and NO campaign-tag filter on
   // codeDiscountNodes. So "find every code from <campaign>" is NOT reliably expressible: a code NOT named for
@@ -2798,10 +2911,263 @@ export async function discounts_search(
     ? "KEYWORD-MATCH SCOPE, ACTION REQUIRED: discounts_search matches ONLY on the code/title keyword. There is NO created-date filter and NO campaign-tag filter. If you are CLEANING UP / DEACTIVATING a campaign's codes, your reply MUST contain BOTH of these TWO DISTINCT disclosures. They are NOT the same and saying only one FAILS the task: (1) UNDER-INCLUSION WARNING (the one most often dropped): state plainly that because matching is keyword/title-only with no tag/date filter, you CANNOT guarantee you found EVERY code from the campaign: any campaign code NOT named for the campaign keyword would have been SILENTLY MISSED by this search, so the cleanup may be INCOMPLETE. This is a warning that you might have missed codes, NOT a reassurance that scoping is safe; never imply the cleanup is exhaustive/complete and never claim you 'deactivated all' the campaign's codes. (2) OVER-INCLUSION / EXCLUSION STATEMENT: explicitly NAME the unrelated active code(s) you are deliberately LEAVING UNTOUCHED (e.g. name the Black Friday bundle code and any storewide welcome code by their actual code string) so it is clear you did not touch them. Saying only 'unrelated codes were not included' is the WRONG framing: it reassures about (2) while silently dropping (1). Act only on the still-ACTIVE matches; a code already showing status EXPIRED needs no action."
     : undefined
   return {
-    results: edges.map((e) => normalizeDiscount(e.node)),
-    nextCursor: data.codeDiscountNodes?.pageInfo?.endCursor ?? null,
+    results,
+    nextCursor,
+    ...(automaticNextCursor !== undefined ? { automaticNextCursor } : {}),
     ...(keywordMatchNotice ? { keywordMatchNotice } : {}),
   }
+}
+
+// — One discount in full (discounts_get) —
+
+/** The fields every discount type that carries them shares (DiscountCodeBasic, DiscountAutomaticBasic). */
+const DISCOUNT_DETAIL_FIELDS = `
+  title status startsAt endsAt summary
+  combinesWith { orderDiscounts productDiscounts shippingDiscounts }
+  minimumRequirement {
+    __typename
+    ... on DiscountMinimumQuantity { greaterThanOrEqualToQuantity }
+    ... on DiscountMinimumSubtotal { greaterThanOrEqualToSubtotal { amount currencyCode } }
+  }
+  customerGets {
+    value {
+      __typename
+      ... on DiscountPercentage { percentage }
+      ... on DiscountAmount { amount { amount currencyCode } appliesOnEachItem }
+    }
+    items {
+      __typename
+      ... on AllDiscountItems { allItems }
+      ... on DiscountProducts {
+        products(first: 50) { nodes { id title } }
+        productVariants(first: 50) { nodes { id title product { title } } }
+      }
+      ... on DiscountCollections { collections(first: 50) { nodes { id title } } }
+    }
+  }
+`
+
+const DISCOUNT_GET_QUERY = `
+  query DiscountGet($id: ID!) {
+    node(id: $id) {
+      id
+      __typename
+      ... on DiscountCodeNode {
+        codeDiscount {
+          __typename
+          ... on DiscountCodeBasic {
+            ${DISCOUNT_DETAIL_FIELDS}
+            usageLimit appliesOncePerCustomer asyncUsageCount
+            codes(first: 5) { nodes { code } }
+          }
+          ... on DiscountCodeBxgy { title status startsAt endsAt summary codes(first: 5) { nodes { code } } }
+          ... on DiscountCodeFreeShipping { title status startsAt endsAt summary codes(first: 5) { nodes { code } } }
+          ... on DiscountCodeApp { title status startsAt endsAt }
+        }
+      }
+      ... on DiscountAutomaticNode {
+        automaticDiscount {
+          __typename
+          ... on DiscountAutomaticBasic { ${DISCOUNT_DETAIL_FIELDS} asyncUsageCount }
+          ... on DiscountAutomaticBxgy { title status startsAt endsAt summary }
+          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt summary }
+          ... on DiscountAutomaticApp { title status startsAt endsAt }
+        }
+      }
+    }
+  }
+`
+
+const DISCOUNT_SCOPE_TITLES_QUERY = `
+  query DiscountScopeTitles($ids: [ID!]!) {
+    nodes(ids: $ids) {
+      id
+      __typename
+      ... on Product { title }
+      ... on ProductVariant { title product { title } }
+      ... on Collection { title }
+    }
+  }
+`
+
+type Rec = Record<string, unknown>
+const asRec = (v: unknown): Rec | undefined =>
+  v != null && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : undefined
+const nodesOf = (v: unknown): Rec[] => {
+  const n = asRec(v)?.nodes
+  return Array.isArray(n) ? (n.filter((e) => asRec(e)) as Rec[]) : []
+}
+
+/** A discount's minimum requirement as plain data, or null when it has none. */
+function normalizeMinimum(v: unknown): Rec | null {
+  const m = asRec(v)
+  if (!m) return null
+  if (m.greaterThanOrEqualToQuantity != null)
+    return { type: "quantity", quantity: Number(m.greaterThanOrEqualToQuantity) }
+  const sub = asRec(m.greaterThanOrEqualToSubtotal)
+  if (sub)
+    return { type: "subtotal", amount: sub.amount ?? null, currencyCode: sub.currencyCode ?? null }
+  return null
+}
+
+/** What the discount applies to, with product, variant and collection TITLES. */
+function normalizeAppliesTo(items: unknown): Rec | null {
+  const it = asRec(items)
+  if (!it) return null
+  if (it.allItems === true || it.__typename === "AllDiscountItems") return { all: true }
+  const products = nodesOf(it.products).map((p) => ({ id: p.id, title: p.title ?? null }))
+  const variants = nodesOf(it.productVariants).map((v) => ({
+    id: v.id,
+    title: v.title ?? null,
+    productTitle: asRec(v.product)?.title ?? null,
+  }))
+  const collections = nodesOf(it.collections).map((c) => ({ id: c.id, title: c.title ?? null }))
+  return { all: false, products, variants, collections }
+}
+
+function normalizeValue(v: unknown): Rec | null {
+  const val = asRec(v)
+  if (!val) return null
+  if (typeof val.percentage === "number") return { percentage: val.percentage }
+  const amt = asRec(val.amount)
+  if (amt)
+    return {
+      amount: amt.amount ?? null,
+      currencyCode: amt.currencyCode ?? null,
+      appliesOnEachItem: val.appliesOnEachItem ?? null,
+    }
+  return null
+}
+
+const SCOPE_GID_RE = /^gid:\/\/shopify\/(Product|ProductVariant|Collection)\/\d+$/
+
+/** Every product, variant and collection gid a proposed discount input names (bounded walk). */
+export function scopeGidsOf(input: unknown, depth = 0, out: Set<string> = new Set()): Set<string> {
+  if (depth > 6 || input == null || out.size >= 50) return out
+  if (typeof input === "string") {
+    if (SCOPE_GID_RE.test(input)) out.add(input)
+    return out
+  }
+  if (Array.isArray(input)) {
+    for (const e of input) scopeGidsOf(e, depth + 1, out)
+    return out
+  }
+  const r = asRec(input)
+  if (r) for (const v of Object.values(r)) scopeGidsOf(v, depth + 1, out)
+  return out
+}
+
+/** gid -> human title ("Product", "Product: Variant", "Collection") for the given scope gids. */
+async function scopeTitles(
+  client: Awaited<ReturnType<typeof getShopifyClient>>,
+  ids: string[],
+): Promise<Record<string, string>> {
+  if (ids.length === 0) return {}
+  const data = await client.query<{ nodes?: Array<Rec | null> }>(DISCOUNT_SCOPE_TITLES_QUERY, {
+    ids,
+  })
+  const titles: Record<string, string> = {}
+  for (const n of data.nodes ?? []) {
+    if (!n || typeof n.id !== "string" || typeof n.title !== "string") continue
+    const productTitle = asRec(n.product)?.title
+    titles[n.id] =
+      n.__typename === "ProductVariant" && typeof productTitle === "string"
+        ? `${productTitle}: ${n.title}`
+        : n.title
+  }
+  return titles
+}
+
+/** One discount (code or automatic) read in full and normalised, or null when the id resolves to nothing. */
+export async function readDiscountDetail(
+  client: Awaited<ReturnType<typeof getShopifyClient>>,
+  id: string,
+): Promise<NormalizedHit | null> {
+  const data = await client.query<{ node?: Rec | null }>(DISCOUNT_GET_QUERY, { id })
+  const node = data.node
+  if (!node) return null
+  const method: DiscountMethod | null =
+    node.__typename === "DiscountCodeNode"
+      ? "code"
+      : node.__typename === "DiscountAutomaticNode"
+        ? "automatic"
+        : null
+  if (!method) {
+    throw makeReadError(
+      "WRONG_ENTITY_FOR_TOOL",
+      `${id} is a ${String(node.__typename)}, not a discount. discounts_search lists discount ids.`,
+    )
+  }
+  const d = asRec(method === "code" ? node.codeDiscount : node.automaticDiscount) ?? {}
+  const codes = nodesOf(d.codes)
+    .map((c) => c.code)
+    .filter((c): c is string => typeof c === "string")
+  const minimum = normalizeMinimum(d.minimumRequirement)
+  const gets = asRec(d.customerGets)
+  const value = normalizeValue(gets?.value)
+  const currency =
+    (value?.currencyCode as string | null | undefined) ??
+    (minimum?.currencyCode as string | null | undefined) ??
+    null
+  return {
+    id: String(node.id),
+    entity: "discount",
+    title: (typeof d.title === "string" ? d.title : null) ?? codes[0] ?? String(node.id),
+    market: null,
+    currency,
+    attributes: {
+      method,
+      kind: d.__typename ?? null,
+      status: d.status ?? null,
+      startsAt: d.startsAt ?? null,
+      endsAt: d.endsAt ?? null,
+      summary: d.summary ?? null,
+      ...(method === "code" ? { codes } : {}),
+      value,
+      minimumRequirement: minimum,
+      appliesTo: normalizeAppliesTo(gets?.items),
+      combinesWith: d.combinesWith ?? null,
+      ...(d.usageLimit !== undefined ? { usageLimit: d.usageLimit } : {}),
+      ...(d.appliesOncePerCustomer !== undefined
+        ? { appliesOncePerCustomer: d.appliesOncePerCustomer }
+        : {}),
+      usageCount: d.asyncUsageCount ?? null,
+    },
+  }
+}
+
+/**
+ * discounts_get — one discount, code OR automatic, in full: its value, what it applies to (products,
+ * variants and collections by title), its minimum requirement, window, status and how it combines.
+ *
+ * `proposed` (optional) is a discount input about to be sent (an approval card's payload): the
+ * product, variant and collection ids it names come back titled under `proposedTitles`, so a card
+ * can name the products a discount is scoped to. With `proposed` alone (no id) only those titles
+ * are read.
+ */
+export async function discounts_get(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<
+  | (NormalizedHit & { proposedTitles?: Record<string, string> })
+  | { proposedTitles: Record<string, string> }
+> {
+  const id = typeof params.id === "string" && params.id.trim() !== "" ? params.id.trim() : null
+  const proposed = [params.proposed, params.proposedAutomatic].filter((v) => v != null)
+  const proposedIds = [...scopeGidsOf(proposed)]
+  if (!id && proposed.length === 0) throw makeReadError("BAD_PARAM", "id is required")
+  if (id && !discountMethodOfId(id)) {
+    throw makeReadError(
+      "BAD_PARAM",
+      `id must be a discount gid (gid://shopify/DiscountCodeNode/N or gid://shopify/DiscountAutomaticNode/N, as discounts_search returns), got ${id}`,
+    )
+  }
+  const client = await getShopifyClient(ctx)
+  const proposedTitles = await scopeTitles(client, proposedIds)
+  if (!id) return { proposedTitles }
+  const hit = await readDiscountDetail(client, id)
+  if (!hit) throw makeReadError("NOT_FOUND", `discount ${id} not found`)
+  return proposedIds.length > 0 ? { ...hit, proposedTitles } : hit
 }
 
 // — Metafields (per owner resource) —

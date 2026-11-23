@@ -4,6 +4,9 @@ import {
   summarizeCustomersEmailMarketingConsentUpdate,
   summarizeCustomersTag,
   summarizeCustomersUpdate,
+  summarizeDiscountsCreate,
+  summarizeDiscountsSetStatus,
+  summarizeDiscountsUpdate,
   summarizeDraftOrderCreate,
   summarizeFulfillmentsCreate,
   summarizeFulfillmentsUpdateTracking,
@@ -901,5 +904,144 @@ describe("fulfilment cards say exactly what the shipping email policy will do", 
     expect(await card({ number: "1Z" }, META(null))).toBe(
       "Notification decided at execution (store shipping email policy)",
     )
+  })
+})
+
+describe("discount approval cards: minimum and products by title", () => {
+  it("a code with a minimum subtotal shows the minimum, and its products by title", async () => {
+    const card = await summarizeDiscountsCreate(
+      {
+        basicCodeDiscount: {
+          code: "BF10",
+          customerGets: {
+            value: { percentage: 0.1 },
+            items: { products: { productsToAdd: ["gid://shopify/Product/11"] } },
+          },
+          minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: "1000" } },
+        },
+      },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: { proposedTitles: { "gid://shopify/Product/11": "Erae Sound" } },
+      },
+    )
+    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain(
+      "Minimum purchase: order subtotal of at least 1000 (store currency)",
+    )
+  })
+
+  it("a create without a minimum says so, and an untitled product falls back to its id", async () => {
+    const card = await summarizeDiscountsCreate({
+      basicCodeDiscount: {
+        code: "X",
+        percentage: 10,
+        productIds: ["gid://shopify/Product/12"],
+      },
+    })
+    expect(card.lines).toContain("Minimum purchase: none")
+    expect(card.lines).toContain("Applies to products: gid://shopify/Product/12")
+  })
+
+  it("an update adding and removing products names both, then the discount as it is today", async () => {
+    const card = await summarizeDiscountsUpdate(
+      {
+        id: "gid://shopify/DiscountCodeNode/9",
+        basicCodeDiscount: {
+          customerGets: {
+            items: {
+              products: {
+                productsToAdd: ["gid://shopify/Product/11"],
+                productsToRemove: ["gid://shopify/Product/12"],
+              },
+            },
+          },
+        },
+      },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: {
+          title: "BF10",
+          attributes: {
+            method: "code",
+            status: "ACTIVE",
+            appliesTo: {
+              all: false,
+              products: [{ id: "gid://shopify/Product/12", title: "Cable" }],
+            },
+          },
+          proposedTitles: {
+            "gid://shopify/Product/11": "Erae Sound",
+            "gid://shopify/Product/12": "Cable",
+          },
+        },
+      },
+    )
+    expect(card.title).toBe("Update discount BF10")
+    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Removes products: Cable")
+    expect(card.lines).toContain("Currently applies to: Cable")
+  })
+
+  it("deactivating an automatic discount names it and what it does today", async () => {
+    const card = await summarizeDiscountsSetStatus(
+      { id: "gid://shopify/DiscountAutomaticNode/7", action: "deactivate" },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: {
+          title: "Black Friday Erae Sound -30%",
+          attributes: {
+            method: "automatic",
+            status: "ACTIVE",
+            summary: "30% off Erae Sound",
+            minimumRequirement: { type: "subtotal", amount: "1000.0", currencyCode: "EUR" },
+          },
+        },
+      },
+    )
+    expect(card.title).toBe("Deactivate automatic discount: Black Friday Erae Sound -30%")
+    expect(card.lines).toContain("Today: 30% off Erae Sound")
+    expect(card.lines).toContain("Current minimum: subtotal of at least 1000.0 EUR")
+  })
+})
+
+describe("automatic discount approval cards", () => {
+  it("a create names the title, value, products by title, minimum and what it combines with", async () => {
+    const card = await summarizeDiscountsCreate(
+      {
+        automaticBasicDiscount: {
+          title: "Black Friday digital -30%",
+          startsAt: "2026-11-27T00:00:00Z",
+          customerGets: {
+            value: { percentage: 0.3 },
+            items: { products: { productsToAdd: ["gid://shopify/Product/11"] } },
+          },
+          combinesWith: { orderDiscounts: true, productDiscounts: false, shippingDiscounts: false },
+        },
+      },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: { proposedTitles: { "gid://shopify/Product/11": "Erae Sound" } },
+      },
+    )
+    expect(card.title).toBe("Create automatic discount: Black Friday digital -30%")
+    expect(card.lines).toContain("Discount: 30% off")
+    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Minimum purchase: none")
+    expect(card.lines).toContain(
+      "Combines with: order discounts (not product discounts, shipping discounts)",
+    )
+    expect(card.lines.some((l) => /Usage limit|Code:/.test(l))).toBe(false)
+  })
+
+  it("a code create with no combinesWith says it combines with nothing", async () => {
+    const card = await summarizeDiscountsCreate({
+      basicCodeDiscount: { code: "X", percentage: 10 },
+    })
+    expect(card.lines).toContain("Combines with: no other discounts")
   })
 })

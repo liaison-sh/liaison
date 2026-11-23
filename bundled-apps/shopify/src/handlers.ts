@@ -142,6 +142,7 @@ export const fulfillment_orders_get = withShopifyConnectionEnvelope(
 export const returns_search = withShopifyConnectionEnvelope(readHandlers.returns_search)
 export const refunds_get = withShopifyConnectionEnvelope(readHandlers.refunds_get)
 export const discounts_search = withShopifyConnectionEnvelope(readHandlers.discounts_search)
+export const discounts_get = withShopifyConnectionEnvelope(readHandlers.discounts_get)
 export const metafields_list = withShopifyConnectionEnvelope(readHandlers.metafields_list)
 // §3.2 read surface — draft-order list/get + locations list. These handlers
 // are declared in app.manifest.json#tools and implemented in reads.ts but
@@ -247,6 +248,9 @@ export const discounts_delete_preflight = withShopifyConnectionEnvelope(
 export const discounts_update_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.discounts_update_preflight,
 )
+export const discounts_set_status_preflight = withShopifyConnectionEnvelope(
+  mutationHandlers.discounts_set_status_preflight,
+)
 export const discounts_create_preflight = withShopifyConnectionEnvelope(
   mutationHandlers.discounts_create_preflight,
 )
@@ -301,6 +305,7 @@ export const discounts_bulk_create = gatedMutation(mutationHandlers.discounts_bu
 export const discounts_bulk_create_poll = mutationHandlers.discounts_bulk_create_poll
 export const discounts_update = gatedMutation(mutationHandlers.discounts_update)
 export const discounts_delete = gatedMutation(mutationHandlers.discounts_delete)
+export const discounts_set_status = gatedMutation(mutationHandlers.discounts_set_status)
 export const returns_request = gatedMutation(mutationHandlers.returns_request)
 export const returns_approve = gatedMutation(mutationHandlers.returns_approve)
 export const returns_decline = gatedMutation(mutationHandlers.returns_decline)

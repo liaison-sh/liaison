@@ -32,6 +32,7 @@ export {
   customers_update_preflight,
 } from "./mutations/customers"
 export {
+  canonicaliseAutomaticBasicDiscount,
   canonicaliseBasicCodeDiscount,
   canonicaliseBasicCodeDiscountPartial,
   discounts_bulk_create,
@@ -41,6 +42,8 @@ export {
   discounts_create_preflight,
   discounts_delete,
   discounts_delete_preflight,
+  discounts_set_status,
+  discounts_set_status_preflight,
   discounts_update,
   discounts_update_preflight,
 } from "./mutations/discounts"

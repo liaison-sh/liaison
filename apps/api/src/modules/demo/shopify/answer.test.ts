@@ -503,6 +503,22 @@ describe("the demo store takes the writes that tell a story", () => {
     ])
   })
 
+  it("answers the automatic-discount list (empty) and reads a created discount in full", async () => {
+    const auto = await call("AutomaticDiscountsSearch", { query: null, first: 5, after: null })
+    expect(auto.data.automaticDiscountNodes.edges).toEqual([])
+    const created = await call(
+      "DiscountCodeBasicCreate",
+      { basicCodeDiscount: { title: "Full read", code: "FULLREAD" } },
+      "mutation",
+    )
+    const id = created.data.discountCodeBasicCreate.codeDiscountNode.id as string
+    const got = await call("DiscountGet", { id })
+    expect(got.data.node.__typename).toBe("DiscountCodeNode")
+    expect(got.data.node.codeDiscount.title).toBe("Full read")
+    const none = await call("DiscountGet", { id: "gid://shopify/DiscountCodeNode/1" })
+    expect(none.data.node).toBeNull()
+  })
+
   it("reads a discount that starts later as SCHEDULED, as Shopify does", async () => {
     await call(
       "DiscountCodeBasicCreate",

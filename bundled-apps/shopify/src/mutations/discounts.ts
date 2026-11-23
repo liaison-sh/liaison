@@ -5,6 +5,7 @@
 
 import type { AppContext } from "@liaison/app-sdk"
 import { getShopifyClient } from "../lib/get-client"
+import { discountMethodOfId, readDiscountDetail } from "../reads"
 import {
   assertNoUserErrors,
   emitMutationEvent,
@@ -47,7 +48,68 @@ const DISCOUNT_BASIC_INPUT_FIELDS = new Set([
   "usageLimit",
   "combinesWith",
   "recurringCycleLimit",
+  "minimumRequirement",
 ])
+
+/** A positive decimal amount as Shopify's Decimal string ("1000", "49.90"), or BAD_PARAM. */
+function toPositiveAmount(v: unknown, field: string): string {
+  const n =
+    typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : Number.NaN
+  if (!Number.isFinite(n) || n <= 0) {
+    throw makeMutationError(
+      "BAD_PARAM",
+      `${field} must be a positive amount (got ${JSON.stringify(v)}).`,
+    )
+  }
+  return String(n)
+}
+
+/** Build Shopify's DiscountMinimumRequirementInput from the shapes a caller sends: the real
+ *  {subtotal:{greaterThanOrEqualToSubtotal}} | {quantity:{greaterThanOrEqualToQuantity}}, a bare
+ *  {subtotal: 1000} / {quantity: 2}, or a flat minimumSubtotal / minimumPurchaseAmount /
+ *  minimumOrderAmount / minimumQuantity. Undefined when none is given; BAD_PARAM when the value is
+ *  not positive or both a subtotal and a quantity are given (Shopify takes one). Before this, the
+ *  field was outside the allowlist and silently dropped: an approved code "for orders of 1000 or
+ *  more" was created with no minimum at all. */
+export function normaliseMinimumRequirement(
+  src: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const mr = isRec(src.minimumRequirement) ? src.minimumRequirement : {}
+  const subRaw = isRec(mr.subtotal)
+    ? mr.subtotal.greaterThanOrEqualToSubtotal
+    : (mr.subtotal ??
+      mr.greaterThanOrEqualToSubtotal ??
+      src.minimumSubtotal ??
+      src.minimumPurchaseAmount ??
+      src.minimumOrderAmount)
+  const qtyRaw = isRec(mr.quantity)
+    ? mr.quantity.greaterThanOrEqualToQuantity
+    : (mr.quantity ?? mr.greaterThanOrEqualToQuantity ?? src.minimumQuantity)
+  if (subRaw != null && qtyRaw != null) {
+    throw makeMutationError(
+      "BAD_PARAM",
+      "minimumRequirement takes a subtotal OR a quantity, not both.",
+    )
+  }
+  if (subRaw != null)
+    return {
+      subtotal: {
+        greaterThanOrEqualToSubtotal: toPositiveAmount(
+          isRec(subRaw) ? subRaw.amount : subRaw,
+          "minimumRequirement.subtotal",
+        ),
+      },
+    }
+  if (qtyRaw != null)
+    return {
+      quantity: {
+        greaterThanOrEqualToQuantity: String(
+          toPositiveIntLimit(qtyRaw, "minimumRequirement.quantity"),
+        ),
+      },
+    }
+  return undefined
+}
 
 /** Parse a percentage into Shopify's 0-1 fraction, or return an error: ambiguous input is REJECTED,
  *  never guessed. Accepted: a fraction 0 < p < 1 ("0.15"), a whole percent 1 < p <= 100 ("15", 100),
@@ -129,7 +191,10 @@ function deepFindPercent(node: unknown, depth = 0): number | undefined {
 }
 
 /** Build the nested `customerGets` from the flat/aliased shapes a weak model produces. */
-function normaliseCustomerGets(src: Record<string, unknown>): Record<string, unknown> | undefined {
+function normaliseCustomerGets(
+  src: Record<string, unknown>,
+  opts: { defaultAllItems: boolean } = { defaultAllItems: true },
+): Record<string, unknown> | undefined {
   const existing = isRec(src.customerGets) ? { ...src.customerGets } : {}
 
   // ── value (the discount amount) ──
@@ -217,16 +282,41 @@ function normaliseCustomerGets(src: Record<string, unknown>): Record<string, unk
     if (ei.all === true && productGids.length === 0 && variantGids.length === 0)
       items = { all: true }
   }
-  if (productGids.length > 0 || variantGids.length > 0) {
+  // An update may also take products OUT of the scope (productsToRemove / productVariantsToRemove).
+  const removeProductGids: string[] = []
+  const removeVariantGids: string[] = []
+  if (isRec(existing.items) && isRec(existing.items.products)) {
+    const p = existing.items.products as Record<string, unknown>
+    const take = (v: unknown, into: string[]): void => {
+      for (const e of Array.isArray(v) ? v : v != null ? [v] : []) {
+        const g = gidFrom(e)
+        if (g) into.push(g)
+      }
+    }
+    take(p.productsToRemove, removeProductGids)
+    take(p.productVariantsToRemove, removeVariantGids)
+  }
+  if (
+    productGids.length > 0 ||
+    variantGids.length > 0 ||
+    removeProductGids.length > 0 ||
+    removeVariantGids.length > 0
+  ) {
     const products: Record<string, unknown> = {}
     if (productGids.length > 0) products.productsToAdd = Array.from(new Set(productGids))
     if (variantGids.length > 0) products.productVariantsToAdd = Array.from(new Set(variantGids))
+    if (removeProductGids.length > 0)
+      products.productsToRemove = Array.from(new Set(removeProductGids))
+    if (removeVariantGids.length > 0)
+      products.productVariantsToRemove = Array.from(new Set(removeVariantGids))
     items = { products }
   } else if (!items) {
-    // Preserve an explicit collections scope if present; otherwise default to all.
+    // Preserve an explicit collections scope if present; otherwise default to all, but only on a
+    // create: an UPDATE that changes the value alone must leave the scope as it is, never widen a
+    // product-scoped discount to the whole store.
     if (isRec(existing.items) && (existing.items as Record<string, unknown>).collections) {
       items = existing.items
-    } else {
+    } else if (opts.defaultAllItems || isRec(existing.items)) {
       items = { all: true }
     }
   }
@@ -310,6 +400,8 @@ export function canonicaliseBasicCodeDiscount(input: unknown): Record<string, un
   out.customerSelection = normaliseCustomerSelection(src)
   const gets = normaliseCustomerGets(src)
   if (gets) out.customerGets = gets
+  const minimum = normaliseMinimumRequirement(src)
+  if (minimum) out.minimumRequirement = minimum
 
   // Final safety: drop anything still outside the allowlist (e.g. a leftover hallucinated key).
   for (const k of Object.keys(out)) {
@@ -324,25 +416,217 @@ export function validateDiscountInput(
   params: Record<string, unknown>,
   mode: "create" | "update",
 ): void {
+  if (isAutomaticCall(params)) {
+    canonicaliseAutomaticBasicDiscount(automaticInputOf(params), mode)
+    return
+  }
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   if (mode === "create") canonicaliseBasicCodeDiscount(raw)
   else canonicaliseBasicCodeDiscountPartial(raw)
 }
 
-/** Lines for the approval card: the NORMALISED discount, i.e. exactly what Shopify will be sent. */
+// ─────────────────────────────────────────────────────────────────────────
+//  Automatic discounts (DiscountAutomaticBasic): applied at checkout with no code
+// ─────────────────────────────────────────────────────────────────────────
+//
+// discounts_create takes `automaticBasicDiscount` to create one; discounts_update and
+// discounts_delete act on one when the id is a DiscountAutomaticNode. Shopify's
+// DiscountAutomaticBasicInput has no code, no customer selection, no usage limit and no
+// once-per-customer flag: those are stripped, never sent.
+
+const AUTOMATIC_BASIC_INPUT_FIELDS = new Set([
+  "title",
+  "startsAt",
+  "endsAt",
+  "combinesWith",
+  "minimumRequirement",
+  "customerGets",
+  "recurringCycleLimit",
+])
+
+/** True when this create/update/delete call targets an AUTOMATIC discount. */
+export function isAutomaticCall(params: Record<string, unknown>): boolean {
+  return isRec(params.automaticBasicDiscount) || discountMethodOfId(params.id) === "automatic"
+}
+
+/** The automatic discount input of a call: `automaticBasicDiscount`, else `basicCodeDiscount`
+ *  (a caller reusing the code field name on an automatic id), else the flat params. */
+export function automaticInputOf(params: Record<string, unknown>): Record<string, unknown> {
+  if (isRec(params.automaticBasicDiscount)) return params.automaticBasicDiscount
+  if (isRec(params.basicCodeDiscount)) return params.basicCodeDiscount
+  const { id: _id, ...rest } = params
+  return rest
+}
+
+/** combinesWith as Shopify takes it: booleans only, under the three known keys. */
+function normaliseCombinesWith(v: unknown): Record<string, boolean> | undefined {
+  if (v == null) return undefined
+  if (!isRec(v))
+    throw makeMutationError(
+      "BAD_PARAM",
+      "combinesWith must be {orderDiscounts, productDiscounts, shippingDiscounts} booleans.",
+    )
+  const out: Record<string, boolean> = {}
+  for (const k of ["orderDiscounts", "productDiscounts", "shippingDiscounts"]) {
+    if (v[k] == null) continue
+    if (typeof v[k] !== "boolean")
+      throw makeMutationError("BAD_PARAM", `combinesWith.${k} must be true or false.`)
+    out[k] = v[k] as boolean
+  }
+  return out
+}
+
+/** Canonicalise a DiscountAutomaticBasicInput. A create needs a title, a start and a value (an
+ *  automatic discount with none of them cannot run, so it is refused before the approval); an
+ *  update is a delta and only normalises what it carries, never widening the scope. */
+export function canonicaliseAutomaticBasicDiscount(
+  input: unknown,
+  mode: "create" | "update",
+): Record<string, unknown> {
+  const src = isRec(input) ? input : {}
+  const out: Record<string, unknown> = {}
+  for (const k of ["title", "startsAt", "endsAt"]) if (src[k] != null) out[k] = src[k]
+  if (src.recurringCycleLimit != null)
+    out.recurringCycleLimit = toPositiveIntLimit(src.recurringCycleLimit, "recurringCycleLimit")
+  const combines = normaliseCombinesWith(src.combinesWith)
+  if (combines) out.combinesWith = combines
+  const minimum = normaliseMinimumRequirement(src)
+  if (minimum) out.minimumRequirement = minimum
+  const touchesGets =
+    src.customerGets != null ||
+    src.value != null ||
+    src.percentage != null ||
+    src.percent != null ||
+    src.productIds != null ||
+    src.productId != null ||
+    src.products != null ||
+    src.variantIds != null ||
+    src.discountAmount != null
+  if (mode === "create" || touchesGets) {
+    const gets = normaliseCustomerGets(src, { defaultAllItems: mode === "create" })
+    if (gets) out.customerGets = gets
+  }
+  if (mode === "create") {
+    if (typeof out.title !== "string" || out.title.trim() === "")
+      throw makeMutationError(
+        "BAD_PARAM",
+        "An automatic discount needs a title (customers see it at checkout).",
+      )
+    if (typeof out.startsAt !== "string" || out.startsAt === "")
+      throw makeMutationError("BAD_PARAM", "An automatic discount needs startsAt (ISO-8601).")
+    const gets = isRec(out.customerGets) ? out.customerGets : {}
+    if (!isRec(gets.value))
+      throw makeMutationError(
+        "BAD_PARAM",
+        "An automatic discount needs a value: customerGets.value {percentage: 0.3} for 30% or {discountAmount: {amount, appliesOnEachItem}}.",
+      )
+  }
+  for (const k of Object.keys(out)) if (!AUTOMATIC_BASIC_INPUT_FIELDS.has(k)) delete out[k]
+  return out
+}
+
+const AUTOMATIC_BASIC_CREATE = `
+  mutation DiscountAutomaticBasicCreate($automaticBasicDiscount: DiscountAutomaticBasicInput!) {
+    discountAutomaticBasicCreate(automaticBasicDiscount: $automaticBasicDiscount) {
+      automaticDiscountNode { id }
+      userErrors { field message }
+    }
+  }
+`
+const AUTOMATIC_BASIC_UPDATE = `
+  mutation DiscountAutomaticBasicUpdate($id: ID!, $automaticBasicDiscount: DiscountAutomaticBasicInput!) {
+    discountAutomaticBasicUpdate(id: $id, automaticBasicDiscount: $automaticBasicDiscount) {
+      automaticDiscountNode { id }
+      userErrors { field message }
+    }
+  }
+`
+const AUTOMATIC_DELETE = `
+  mutation DiscountAutomaticDelete($id: ID!) {
+    discountAutomaticDelete(id: $id) { deletedAutomaticDiscountId userErrors { field message } }
+  }
+`
+
+/** "Erae Sound" for a gid the card context titled, else the gid itself (never a guessed name). */
+function scopeLabel(gid: unknown, titles: Record<string, string>): string {
+  const g = String(gid)
+  return titles[g] ?? g
+}
+
+/** The card line(s) for a discount's product/collection scope, naming each product by title. */
+function describeItems(items: Record<string, unknown>, titles: Record<string, string>): string[] {
+  if (items.all === true) return ["Applies to: everything (storewide)"]
+  const lines: string[] = []
+  const products = isRec(items.products) ? items.products : {}
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+  const add = [...list(products.productsToAdd), ...list(products.productVariantsToAdd)]
+  const remove = [...list(products.productsToRemove), ...list(products.productVariantsToRemove)]
+  const collections = isRec(items.collections) ? items.collections : {}
+  const addCollections = list(collections.add)
+  const removeCollections = list(collections.remove)
+  if (add.length > 0)
+    lines.push(`Applies to products: ${add.map((g) => scopeLabel(g, titles)).join(", ")}`)
+  if (remove.length > 0)
+    lines.push(`Removes products: ${remove.map((g) => scopeLabel(g, titles)).join(", ")}`)
+  if (addCollections.length > 0)
+    lines.push(
+      `Applies to collections: ${addCollections.map((g) => scopeLabel(g, titles)).join(", ")}`,
+    )
+  if (removeCollections.length > 0)
+    lines.push(
+      `Removes collections: ${removeCollections.map((g) => scopeLabel(g, titles)).join(", ")}`,
+    )
+  if (lines.length === 0) lines.push("Applies to: selected products or collections only")
+  return lines
+}
+
+/** The card line for combinesWith, or null when it is not given. */
+function describeCombinesWith(v: unknown): string | null {
+  if (!isRec(v)) return null
+  const names: Array<[string, string]> = [
+    ["orderDiscounts", "order discounts"],
+    ["productDiscounts", "product discounts"],
+    ["shippingDiscounts", "shipping discounts"],
+  ]
+  const yes = names.filter(([k]) => v[k] === true).map(([, n]) => n)
+  const no = names.filter(([k]) => v[k] === false).map(([, n]) => n)
+  if (yes.length === 0 && no.length === 0) return null
+  if (yes.length === 0) return `Combines with: none of ${no.join(", ")}`
+  return `Combines with: ${yes.join(", ")}${no.length > 0 ? ` (not ${no.join(", ")})` : ""}`
+}
+
+/** The card line for a minimum requirement (Shopify input shape), or null. */
+function describeMinimum(mr: unknown): string | null {
+  if (!isRec(mr)) return null
+  if (isRec(mr.subtotal) && mr.subtotal.greaterThanOrEqualToSubtotal != null)
+    return `Minimum purchase: order subtotal of at least ${String(mr.subtotal.greaterThanOrEqualToSubtotal)} (store currency)`
+  if (isRec(mr.quantity) && mr.quantity.greaterThanOrEqualToQuantity != null)
+    return `Minimum purchase: at least ${String(mr.quantity.greaterThanOrEqualToQuantity)} item(s)`
+  return null
+}
+
+/** Lines for the approval card: the NORMALISED discount, i.e. exactly what Shopify will be sent.
+ *  `titles` (gid -> title, from the card's discounts_get context) names the scoped products. */
 export function describeDiscountInput(
   params: Record<string, unknown>,
   mode: "create" | "bulk" | "update",
+  titles: Record<string, string> = {},
 ): string[] {
-  const raw0 = isRec(params.basicCodeDiscount) ? { ...params.basicCodeDiscount } : { ...params }
+  const automatic = mode !== "bulk" && isAutomaticCall(params)
+  const raw0 = automatic
+    ? { ...automaticInputOf(params) }
+    : isRec(params.basicCodeDiscount)
+      ? { ...params.basicCodeDiscount }
+      : { ...params }
   if (mode === "bulk") {
     if (raw0.usageLimit == null) raw0.usageLimit = 1
     if (raw0.appliesOncePerCustomer == null) raw0.appliesOncePerCustomer = true
   }
   let d: Record<string, unknown>
   try {
-    d =
-      mode === "update"
+    d = automatic
+      ? canonicaliseAutomaticBasicDiscount(raw0, mode === "update" ? "update" : "create")
+      : mode === "update"
         ? canonicaliseBasicCodeDiscountPartial(raw0)
         : canonicaliseBasicCodeDiscount(raw0)
   } catch (err) {
@@ -359,19 +643,26 @@ export function describeDiscountInput(
     lines.push(`Discount: fixed amount ${String(value.discountAmount.amount ?? "?")}`)
   }
   const items = gets && isRec(gets.items) ? gets.items : undefined
-  if (items)
-    lines.push(
-      items.all === true
-        ? "Applies to: everything (storewide)"
-        : "Applies to: selected products or collections only",
-    )
+  if (items) lines.push(...describeItems(items, titles))
+  const minimum = describeMinimum(d.minimumRequirement)
+  if (minimum) lines.push(minimum)
+  else if (mode !== "update") lines.push("Minimum purchase: none")
   if (isRec(d.customerSelection))
     lines.push(
       d.customerSelection.all === true
         ? "Available to: all customers"
         : "Available to: selected customers only",
     )
-  if (mode !== "update" || d.usageLimit != null) {
+  const combines = describeCombinesWith(d.combinesWith)
+  if (combines) lines.push(combines)
+  else if (mode !== "update") lines.push("Combines with: no other discounts")
+  if (automatic)
+    lines.push(
+      mode === "update"
+        ? "Type: automatic discount"
+        : "Type: automatic discount (applies at checkout, no code)",
+    )
+  if (!automatic && (mode !== "update" || d.usageLimit != null)) {
     lines.push(
       d.usageLimit != null
         ? `Usage limit: ${String(d.usageLimit)} use(s) per code`
@@ -407,6 +698,20 @@ export async function discounts_create(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<unknown> {
+  if (isRec(params.automaticBasicDiscount)) {
+    const automaticBasicDiscount = canonicaliseAutomaticBasicDiscount(
+      params.automaticBasicDiscount,
+      "create",
+    )
+    return runMutation(ctx, {
+      query: AUTOMATIC_BASIC_CREATE,
+      variables: { automaticBasicDiscount },
+      dataKey: "discountAutomaticBasicCreate",
+      eventEntity: "discount",
+      eventAction: "created",
+      entityIdPath: "automaticDiscountNode.id",
+    })
+  }
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscount(raw)
   return runMutation(ctx, {
@@ -461,9 +766,11 @@ export function canonicaliseBasicCodeDiscountPartial(input: unknown): Record<str
     src.variantConditions != null ||
     src.discountAmount != null
   ) {
-    const gets = normaliseCustomerGets(src)
+    const gets = normaliseCustomerGets(src, { defaultAllItems: false })
     if (gets) out.customerGets = gets
   }
+  const minimum = normaliseMinimumRequirement(src)
+  if (minimum) out.minimumRequirement = minimum
   for (const k of Object.keys(out)) {
     if (!DISCOUNT_BASIC_INPUT_FIELDS.has(k)) delete out[k]
   }
@@ -486,7 +793,19 @@ export async function discounts_update_preflight(
   try {
     const id = requireTargetId(params, "id")
     validateDiscountInput(params, "update")
-    await readGatedTarget(ctx, id, DISCOUNT_NODE_TYPE, "discounts_update")
+    if (discountMethodOfId(id) === "automatic") {
+      const hit = await readDiscountDetail(await getShopifyClient(ctx), id)
+      if (!hit)
+        throw makeMutationError(
+          "NOT_FOUND",
+          `discounts_update: no automatic discount found for ${id}.`,
+        )
+      if (hit.attributes.kind !== "DiscountAutomaticBasic")
+        throw makeMutationError(
+          "UNSUPPORTED_DISCOUNT_TYPE",
+          `discounts_update edits a basic automatic discount (an amount or percentage off); "${hit.title}" is a ${String(hit.attributes.kind)}. Change it in Shopify admin.`,
+        )
+    } else await readGatedTarget(ctx, id, DISCOUNT_NODE_TYPE, "discounts_update")
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -497,7 +816,21 @@ export async function discounts_update(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<unknown> {
-  requireTargetId(params, "id")
+  const targetId = requireTargetId(params, "id")
+  if (discountMethodOfId(targetId) === "automatic") {
+    const automaticBasicDiscount = canonicaliseAutomaticBasicDiscount(
+      automaticInputOf(params),
+      "update",
+    )
+    return runMutation(ctx, {
+      query: AUTOMATIC_BASIC_UPDATE,
+      variables: { id: targetId, automaticBasicDiscount },
+      dataKey: "discountAutomaticBasicUpdate",
+      eventEntity: "discount",
+      eventAction: "updated",
+      entityIdPath: "automaticDiscountNode.id",
+    })
+  }
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscountPartial(raw)
   return runMutation(ctx, {
@@ -526,7 +859,12 @@ export async function discounts_delete_preflight(
 ): Promise<PreflightResult> {
   try {
     const id = requireTargetId(params, "id")
-    await readGatedTarget(ctx, id, DISCOUNT_NODE_TYPE, "discounts_delete")
+    await readGatedTarget(
+      ctx,
+      id,
+      discountMethodOfId(id) === "automatic" ? "DiscountAutomaticNode" : DISCOUNT_NODE_TYPE,
+      "discounts_delete",
+    )
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -537,7 +875,17 @@ export async function discounts_delete(
   params: Record<string, unknown>,
   ctx: AppContext,
 ): Promise<unknown> {
-  requireTargetId(params, "id")
+  const targetId = requireTargetId(params, "id")
+  if (discountMethodOfId(targetId) === "automatic") {
+    return runMutation(ctx, {
+      query: AUTOMATIC_DELETE,
+      variables: { id: targetId },
+      dataKey: "discountAutomaticDelete",
+      eventEntity: "discount",
+      eventAction: "deleted",
+      entityIdPath: "deletedAutomaticDiscountId",
+    })
+  }
   return runMutation(ctx, {
     query: DISCOUNT_DELETE,
     variables: { id: params.id },
@@ -545,6 +893,142 @@ export async function discounts_delete(
     eventEntity: "discount",
     eventAction: "deleted",
     entityIdPath: "deletedCodeDiscountId",
+  })
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Discounts — activate / deactivate (code AND automatic)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// `discounts_set_status` turns a discount on or off, whichever family it belongs to: an automatic
+// discount (a seasonal sale applied at checkout with no code) is otherwise unreachable, and a code
+// is cleaner to deactivate this way than by back-dating its endsAt. Shopify's deactivate ends the
+// discount now (status EXPIRED); activate makes it active again from now.
+
+const DISCOUNT_STATUS_MUTATIONS = {
+  code: {
+    activate: {
+      dataKey: "discountCodeActivate",
+      query: `
+  mutation DiscountCodeActivate($id: ID!) {
+    discountCodeActivate(id: $id) {
+      codeDiscountNode { id codeDiscount { ... on DiscountCodeBasic { status } ... on DiscountCodeBxgy { status } ... on DiscountCodeFreeShipping { status } } }
+      userErrors { field message }
+    }
+  }
+`,
+      idPath: "codeDiscountNode.id",
+    },
+    deactivate: {
+      dataKey: "discountCodeDeactivate",
+      query: `
+  mutation DiscountCodeDeactivate($id: ID!) {
+    discountCodeDeactivate(id: $id) {
+      codeDiscountNode { id codeDiscount { ... on DiscountCodeBasic { status } ... on DiscountCodeBxgy { status } ... on DiscountCodeFreeShipping { status } } }
+      userErrors { field message }
+    }
+  }
+`,
+      idPath: "codeDiscountNode.id",
+    },
+  },
+  automatic: {
+    activate: {
+      dataKey: "discountAutomaticActivate",
+      query: `
+  mutation DiscountAutomaticActivate($id: ID!) {
+    discountAutomaticActivate(id: $id) {
+      automaticDiscountNode { id automaticDiscount { ... on DiscountAutomaticBasic { status } ... on DiscountAutomaticBxgy { status } ... on DiscountAutomaticFreeShipping { status } } }
+      userErrors { field message }
+    }
+  }
+`,
+      idPath: "automaticDiscountNode.id",
+    },
+    deactivate: {
+      dataKey: "discountAutomaticDeactivate",
+      query: `
+  mutation DiscountAutomaticDeactivate($id: ID!) {
+    discountAutomaticDeactivate(id: $id) {
+      automaticDiscountNode { id automaticDiscount { ... on DiscountAutomaticBasic { status } ... on DiscountAutomaticBxgy { status } ... on DiscountAutomaticFreeShipping { status } } }
+      userErrors { field message }
+    }
+  }
+`,
+      idPath: "automaticDiscountNode.id",
+    },
+  },
+} as const
+
+type DiscountStatusAction = "activate" | "deactivate"
+
+/** The id (a code or automatic discount gid) and the action, or BAD_PARAM. PURE: the handler and
+ *  its preflight read the params the same way. */
+export function readDiscountStatusParams(params: Record<string, unknown>): {
+  id: string
+  method: "code" | "automatic"
+  action: DiscountStatusAction
+} {
+  const id = requireTargetId(params, "id").trim()
+  const method = discountMethodOfId(id)
+  if (!method) {
+    throw makeMutationError(
+      "BAD_PARAM",
+      `id must be a discount gid as discounts_search returns it (gid://shopify/DiscountCodeNode/N or gid://shopify/DiscountAutomaticNode/N), got ${id}.`,
+    )
+  }
+  const action = params.action
+  if (action !== "activate" && action !== "deactivate") {
+    throw makeMutationError(
+      "BAD_PARAM",
+      `action must be "activate" or "deactivate" (got ${JSON.stringify(action)}).`,
+    )
+  }
+  return { id, method, action }
+}
+
+/** STAGE-TIME preflight: the discount exists, and is not already in the state asked for (an EXPIRED
+ *  discount needs no deactivation; an ACTIVE one no activation). */
+export async function discounts_set_status_preflight(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<PreflightResult> {
+  try {
+    const { id, action } = readDiscountStatusParams(params)
+    const client = await getShopifyClient(ctx)
+    const hit = await readDiscountDetail(client, id)
+    if (!hit)
+      throw makeMutationError("NOT_FOUND", `discounts_set_status: no discount found for ${id}.`)
+    const status = hit.attributes.status
+    if (action === "deactivate" && status === "EXPIRED")
+      throw makeMutationError(
+        "INVALID_STATE",
+        `discounts_set_status: "${hit.title}" is already EXPIRED, so there is nothing to deactivate.`,
+      )
+    if (action === "activate" && status === "ACTIVE")
+      throw makeMutationError(
+        "INVALID_STATE",
+        `discounts_set_status: "${hit.title}" is already ACTIVE.`,
+      )
+  } catch (err) {
+    return preflightRefusal(err, "BAD_PARAM")
+  }
+  return { ok: true }
+}
+
+export async function discounts_set_status(
+  params: Record<string, unknown>,
+  ctx: AppContext,
+): Promise<unknown> {
+  const { id, method, action } = readDiscountStatusParams(params)
+  const m = DISCOUNT_STATUS_MUTATIONS[method][action]
+  return runMutation(ctx, {
+    query: m.query,
+    variables: { id },
+    dataKey: m.dataKey,
+    eventEntity: "discount",
+    eventAction: action === "activate" ? "activated" : "deactivated",
+    entityIdPath: m.idPath,
   })
 }
 

@@ -249,6 +249,8 @@ export async function getShopifyClient(
   opts: {
     /** Per-request deadline (tightens the host's default); set, the client also fails fast on 429. */
     timeoutMs?: number
+    /** Admin API version of this client's calls (default: the client's own). */
+    apiVersion?: string
   } = {},
 ): Promise<ShopifyClient> {
   const row = await resolveInstallMetadata(ctx)
@@ -284,6 +286,7 @@ export async function getShopifyClient(
     shop: domain.replace(/\.myshopify\.com$/i, ""),
     fetch: fetchImpl,
     baseUrlOverride,
+    ...(opts.apiVersion ? { apiVersion: opts.apiVersion } : {}),
     failFast: !!opts.timeoutMs,
     onThrottle: limiter?.pause
       ? (ms) => limiter.pause!(SHOP_CONNECTION, ms, account.identifier)

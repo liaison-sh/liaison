@@ -1009,6 +1009,46 @@ describe("discount approval cards: minimum and products by title", () => {
 })
 
 describe("automatic discount approval cards", () => {
+  it("a create limited to markets names them, and an update says what it is limited to today", async () => {
+    const context = { proposedTitles: { "gid://shopify/Market/3": "USA" } }
+    const created = await summarizeDiscountsCreate(
+      {
+        automaticBasicDiscount: {
+          title: "10% off",
+          startsAt: "2026-11-27T00:00:00Z",
+          percentage: 10,
+          context: { markets: { add: ["gid://shopify/Market/3", "gid://shopify/Market/4"] } },
+        },
+      },
+      undefined,
+      { connectionIdentifier: null, context },
+    )
+    expect(created.lines).toContain("Available in markets: USA, gid://shopify/Market/4 only")
+    const updated = await summarizeDiscountsUpdate(
+      {
+        id: "gid://shopify/DiscountAutomaticNode/7",
+        automaticBasicDiscount: { context: { markets: { remove: ["gid://shopify/Market/3"] } } },
+      },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: {
+          ...context,
+          title: "10% off",
+          attributes: {
+            method: "automatic",
+            availableTo: {
+              type: "markets",
+              markets: [{ id: "gid://shopify/Market/3", name: "USA" }],
+            },
+          },
+        },
+      },
+    )
+    expect(updated.lines).toContain("Removes markets: USA")
+    expect(updated.lines).toContain("Currently limited to markets: USA")
+  })
+
   it("a create names the title, value, products by title, minimum and what it combines with", async () => {
     const card = await summarizeDiscountsCreate(
       {

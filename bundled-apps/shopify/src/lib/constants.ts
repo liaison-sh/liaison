@@ -19,6 +19,11 @@ export const API_VERSION: string = (() => {
   return v
 })()
 
+/** Admin API version of the discount calls (reads and writes). Market-limited discounts exist from
+ *  2026-07 only: an earlier version cannot set them and filters them out of every read, so a
+ *  discount limited to a market would be invisible. Every other call stays on `API_VERSION`. */
+export const DISCOUNTS_API_VERSION = "2026-07"
+
 /** Canonical `<store>.myshopify.com` shop-domain shape. */
 export const SHOPIFY_DOMAIN_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i
 

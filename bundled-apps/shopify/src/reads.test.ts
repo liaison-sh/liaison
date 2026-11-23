@@ -3034,6 +3034,18 @@ describe("discounts_search: automatic discounts are listed too", () => {
     expect(calls[0]!.body).toContain("codeDiscountNodes")
   })
 
+  it("marks a market-limited discount, and lists on API 2026-07 where it exists", async () => {
+    const limited = structuredClone(autoPage)
+    Object.assign(limited.data.automaticDiscountNodes.edges[0]!.node.automaticDiscount, {
+      context: { __typename: "DiscountMarkets", marketsCount: 2 },
+    })
+    const { ctx, calls } = makeCtx({ fetchResponses: [codePage, limited] })
+    const out = await discounts_search({}, ctx)
+    expect(calls.map((c) => c.url.includes("/admin/api/2026-07/"))).toEqual([true, true])
+    expect(out.results[1]!.attributes.availableTo).toEqual({ type: "markets", marketsCount: 2 })
+    expect("availableTo" in out.results[0]!.attributes).toBe(false)
+  })
+
   it("rejects an unknown kind", async () => {
     const { ctx } = makeCtx({ fetchResponses: [] })
     await expect(discounts_search({ kind: "coupons" }, ctx)).rejects.toThrow(/kind must be/)
@@ -3146,6 +3158,58 @@ describe("discounts_get: one discount in full", () => {
       "gid://shopify/Product/11": "Erae Sound",
       "gid://shopify/ProductVariant/5": "Cover: Black",
     })
+  })
+
+  it("names the markets a discount is limited to, read on API 2026-07", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            node: {
+              id: "gid://shopify/DiscountAutomaticNode/7",
+              __typename: "DiscountAutomaticNode",
+              automaticDiscount: {
+                __typename: "DiscountAutomaticBasic",
+                title: "10% off",
+                context: {
+                  __typename: "DiscountMarkets",
+                  marketsCount: 1,
+                  markets: { nodes: [{ id: "gid://shopify/Market/3", name: "USA" }] },
+                },
+              },
+            },
+          },
+        },
+      ],
+    })
+    const out = (await discounts_get({ id: "gid://shopify/DiscountAutomaticNode/7" }, ctx)) as {
+      attributes: Record<string, unknown>
+    }
+    expect(calls[0]!.url).toContain("/admin/api/2026-07/")
+    expect(out.attributes.availableTo).toEqual({
+      type: "markets",
+      marketsCount: 1,
+      markets: [{ id: "gid://shopify/Market/3", name: "USA" }],
+    })
+  })
+
+  it("names the markets a proposed discount input is limited to", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            nodes: [{ id: "gid://shopify/Market/3", __typename: "Market", name: "USA" }],
+          },
+        },
+      ],
+    })
+    const out = await discounts_get(
+      { proposedAutomatic: { context: { markets: { add: ["gid://shopify/Market/3"] } } } },
+      ctx,
+    )
+    expect(JSON.parse(calls[0]!.body).variables.ids).toEqual(["gid://shopify/Market/3"])
+    expect(JSON.parse(calls[0]!.body).query).toContain("... on Market { name }")
+    expect(out.proposedTitles).toEqual({ "gid://shopify/Market/3": "USA" })
   })
 
   it("refuses an id that is not a discount gid, before any call", async () => {

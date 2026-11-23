@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.30",
+  "version": "0.4.31",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -1956,7 +1956,7 @@
       "readOnly": true
     },
     "discounts_search": {
-      "description": "Search Shopify discounts: discount CODES and AUTOMATIC discounts (applied at checkout with no code, e.g. a Black Friday sale), both by default. Each hit has attributes.method (\"code\" | \"automatic\"), kind, status, window, and for automatic ones a summary. `kind` narrows to \"code\" or \"automatic\". `limit` applies per family; page codes with `cursor` (nextCursor) and automatic discounts with `automaticCursor` (automaticNextCursor). Read one in full (value, products by title, minimum) with discounts_get. Matching is by code/title KEYWORD only: there is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
+      "description": "Search Shopify discounts: discount CODES and AUTOMATIC discounts (applied at checkout with no code, e.g. a Black Friday sale), both by default. Each hit has attributes.method (\"code\" | \"automatic\"), kind, status, window, availableTo (all, or markets with their count: discounts_get names them), and for automatic ones a summary. `kind` narrows to \"code\" or \"automatic\". `limit` applies per family; page codes with `cursor` (nextCursor) and automatic discounts with `automaticCursor` (automaticNextCursor). Read one in full (value, products by title, minimum) with discounts_get. Matching is by code/title KEYWORD only: there is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
       "searchKeywords": ["remise", "réduction", "promo", "code", "coupon"],
       "requiredScopes": ["shopify:discounts:read"],
       "handler": "discounts_search",
@@ -1991,7 +1991,7 @@
       "readOnly": true
     },
     "discounts_get": {
-      "description": "Read ONE Shopify discount in full, a code or an automatic discount (id from discounts_search): title, method, status, window, summary, value (percentage as a 0-1 fraction or a fixed amount), what it applies to (all items, or products, variants and collections BY TITLE), its minimum requirement (subtotal or quantity), how it combines, codes and usage. `proposed` is internal: approval cards pass a discount input to have its product ids titled.",
+      "description": "Read ONE Shopify discount in full, a code or an automatic discount (id from discounts_search): title, method, status, window, summary, value (percentage as a 0-1 fraction or a fixed amount), what it applies to (all items, or products, variants and collections BY TITLE), its minimum requirement (subtotal or quantity), who it is available to (availableTo: all, or the markets by name), how it combines, codes and usage. `proposed` is internal: approval cards pass a discount input to have its product ids titled.",
       "searchKeywords": ["remise", "réduction", "promo", "automatique", "soldes", "blackfriday"],
       "requiredScopes": ["shopify:discounts:read"],
       "handler": "discounts_get",
@@ -3104,12 +3104,12 @@
           "automaticBasicDiscount": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer."
+            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer. context {markets:{add:[\"gid://shopify/Market/N\"]}} limits it to those markets (ids from markets_list; on an update remove:[gid] takes one out, {all:\"ALL\"} opens it to everyone); omit it for every market. The minimum subtotal is always in the STORE currency, also when the market sells in another one."
           },
           "basicCodeDiscount": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Shopify DiscountCodeBasicInput. customerSelection = who (e.g. {all:true}). customerGets = value + items: value is {percentage:0.15} for 15% (a 0-1 fraction, NOT 15). items is the SCOPE — {all:true} = storewide; to scope to ONE product set items:{products:{productsToAdd:[\"gid://shopify/Product/…\"]}} (or productVariantsToAdd for a variant id). When the user names a product, you MUST set items.products here — a storewide code for a product-specific ask is wrong. startsAt/endsAt are ISO-8601 datetimes for the active window.",
+            "description": "Shopify DiscountCodeBasicInput. customerSelection = who (e.g. {all:true}). customerGets = value + items: value is {percentage:0.15} for 15% (a 0-1 fraction, NOT 15). items is the SCOPE — {all:true} = storewide; to scope to ONE product set items:{products:{productsToAdd:[\"gid://shopify/Product/…\"]}} (or productVariantsToAdd for a variant id). When the user names a product, you MUST set items.products here — a storewide code for a product-specific ask is wrong. startsAt/endsAt are ISO-8601 datetimes for the active window. To limit the code to markets send context {markets:{add:[\"gid://shopify/Market/N\"]}} instead of customerSelection (ids from markets_list).",
             "properties": {
               "title": {
                 "type": "string"
@@ -3251,12 +3251,12 @@
           "automaticBasicDiscount": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer."
+            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer. context {markets:{add:[\"gid://shopify/Market/N\"]}} limits it to those markets (ids from markets_list; on an update remove:[gid] takes one out, {all:\"ALL\"} opens it to everyone); omit it for every market. The minimum subtotal is always in the STORE currency, also when the market sells in another one."
           },
           "basicCodeDiscount": {
             "type": "object",
             "additionalProperties": true,
-            "description": "Shopify DiscountCodeBasicInput. customerSelection picks who (e.g. {all:true}); customerGets picks the value + items (e.g. {value:{percentage:0.15}, items:{all:true}} for 15% off everything, or items:{products:{productsToAdd:[gid]}} to scope).",
+            "description": "Shopify DiscountCodeBasicInput. customerSelection picks who (e.g. {all:true}); customerGets picks the value + items (e.g. {value:{percentage:0.15}, items:{all:true}} for 15% off everything, or items:{products:{productsToAdd:[gid]}} to scope). To limit the code to markets send context {markets:{add:[\"gid://shopify/Market/N\"], remove:[gid]}} instead of customerSelection.",
             "properties": {
               "title": {
                 "type": "string"

@@ -1,0 +1,4 @@
+a discount can be limited to markets -> bundled-apps/shopify/src/mutations/discounts.ts (normaliseMarketContext)
+approval card names the markets -> bundled-apps/shopify/src/mutations/discounts.ts (describeContext)
+discounts_search and discounts_get say who a discount is available to -> bundled-apps/shopify/src/reads.ts (availableToOf)
+minimum purchase amount is in the store currency -> bundled-apps/shopify/src/mutations/discounts.ts (describeMinimum)

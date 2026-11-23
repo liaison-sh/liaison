@@ -7434,3 +7434,123 @@ describe("automatic discounts: create, update, delete", () => {
     expect(await discounts_delete_preflight({ id: AUTO }, ctx)).toEqual({ ok: true })
   })
 })
+
+describe("market-limited discounts (context.markets, API 2026-07)", () => {
+  const AUTO = "gid://shopify/DiscountAutomaticNode/7"
+  const USA = "gid://shopify/Market/38080446613"
+  const INTL = "gid://shopify/Market/78971029"
+  const usd = {
+    title: "10% off",
+    startsAt: "2026-11-27T00:00:00Z",
+    customerGets: { value: { percentage: 0.1 }, items: { all: true } },
+    minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: "900" } },
+    context: { markets: { add: [USA, INTL] } },
+  }
+  const created = {
+    data: { discountAutomaticBasicCreate: { automaticDiscountNode: { id: AUTO }, userErrors: [] } },
+  }
+
+  it("creates an automatic discount limited to its markets, on 2026-07", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [created] })
+    await discounts_create({ automaticBasicDiscount: usd }, ctx)
+    expect(calls[0]!.url).toContain("/admin/api/2026-07/graphql.json")
+    const sent = JSON.parse(calls[0]!.body).variables.automaticBasicDiscount
+    expect(sent.context).toEqual({ markets: { add: [USA, INTL] } })
+    expect(sent.minimumRequirement).toEqual({ subtotal: { greaterThanOrEqualToSubtotal: "900" } })
+  })
+
+  it("sends no context when no market is named", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [created] })
+    const { context: _c, ...everywhere } = usd
+    await discounts_create({ automaticBasicDiscount: everywhere }, ctx)
+    expect("context" in JSON.parse(calls[0]!.body).variables.automaticBasicDiscount).toBe(false)
+  })
+
+  it("takes the market list from its usual aliases and completes bare ids", () => {
+    for (const alias of [
+      { context: { markets: [USA] } },
+      { markets: ["38080446613"] },
+      { marketIds: [USA, USA] },
+      { customerSelection: { markets: { add: [USA] } } },
+    ]) {
+      const out = canonicaliseAutomaticBasicDiscount({ ...usd, context: null, ...alias }, "create")
+      expect(out.context).toEqual({ markets: { add: [USA] } })
+    }
+  })
+
+  it("the preflight refuses a limit it cannot send rather than widening the discount", async () => {
+    for (const bad of [
+      { context: "USA" },
+      { context: { markets: { add: ["USA"] } } },
+      { context: { markets: { add: [] } } },
+      { context: { markets: { add: [USA], remove: [INTL] } } },
+      { context: { all: "ALL", markets: { add: [USA] } } },
+      { context: { customers: { add: ["gid://shopify/Customer/1"] } } },
+      { customerSelection: { customers: { add: ["gid://shopify/Customer/1"] } } },
+    ]) {
+      const r = await discounts_create_preflight({ automaticBasicDiscount: { ...usd, ...bad } })
+      expect("error" in r).toBe(true)
+    }
+    expect(await discounts_create_preflight({ automaticBasicDiscount: usd })).toEqual({ ok: true })
+  })
+
+  it("an update adds and removes markets, or opens the discount to everyone", () => {
+    const update = (context: unknown) =>
+      canonicaliseAutomaticBasicDiscount({ context }, "update").context
+    expect(update({ markets: { add: [USA], remove: [INTL] } })).toEqual({
+      markets: { add: [USA], remove: [INTL] },
+    })
+    expect(update({ all: true })).toEqual({ all: "ALL" })
+    expect("context" in canonicaliseAutomaticBasicDiscount({ title: "T" }, "update")).toBe(false)
+  })
+
+  it("a code limited to markets sends context instead of customerSelection", () => {
+    const out = canonicaliseBasicCodeDiscount({
+      code: "USD10",
+      percentage: 10,
+      customerSelection: { all: true },
+      context: { markets: { add: [USA] } },
+    })
+    expect(out.context).toEqual({ markets: { add: [USA] } })
+    expect("customerSelection" in out).toBe(false)
+    const partial = canonicaliseBasicCodeDiscountPartial({ context: { markets: { add: [USA] } } })
+    expect(partial).toEqual({ context: { markets: { add: [USA] } } })
+    const everyone = canonicaliseBasicCodeDiscount({ code: "X", percentage: 10 })
+    expect(everyone.customerSelection).toEqual({ all: true })
+    expect("context" in everyone).toBe(false)
+  })
+
+  it("reads and changes a discount on 2026-07, where a market-limited one exists", async () => {
+    const node = {
+      data: {
+        node: {
+          id: AUTO,
+          __typename: "DiscountAutomaticNode",
+          automaticDiscount: { __typename: "DiscountAutomaticBasic", title: "T", status: "ACTIVE" },
+        },
+      },
+    }
+    const ok = { automaticDiscountNode: { id: AUTO }, userErrors: [] }
+    const runs = [
+      (c: AppContext) => discounts_update_preflight({ id: AUTO, title: "U" }, c),
+      (c: AppContext) => discounts_delete_preflight({ id: AUTO }, c),
+      (c: AppContext) => discounts_set_status_preflight({ id: AUTO, action: "deactivate" }, c),
+      (c: AppContext) => discounts_update({ id: AUTO, title: "U" }, c),
+      (c: AppContext) => discounts_set_status({ id: AUTO, action: "deactivate" }, c),
+      (c: AppContext) => discounts_delete({ id: AUTO }, c),
+    ]
+    const replies = [
+      node,
+      node,
+      node,
+      { data: { discountAutomaticBasicUpdate: ok } },
+      { data: { discountAutomaticDeactivate: ok } },
+      { data: { discountAutomaticDelete: { deletedAutomaticDiscountId: AUTO, userErrors: [] } } },
+    ]
+    for (const [i, run] of runs.entries()) {
+      const { ctx, calls } = makeCtx({ fetchResponses: [replies[i]] })
+      await run(ctx)
+      expect(calls[0]!.url).toContain("/admin/api/2026-07/")
+    }
+  })
+})

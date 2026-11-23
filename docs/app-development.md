@@ -897,7 +897,9 @@ refused with the catalog's app names.
 **Approved calls that fail**: an app tool approved by a person that answers
 with an error, either `{ error: { code, message } }` or `{ error: "..." }`, is
 recorded as failed with no effect. The approval goes back to pending with the
-reason on its card; it is never reported as executed. A tool declared
+reason on its card; it is never reported as executed. The same goes for a call
+whose stored parameters the tool refuses (its schema changed while the request
+waited): the handler never runs. A tool declared
 `readOnly` (no table written, no side effect) is the exception: its error is
 what the call returned, so the approval is done and the error goes to the agent
 as the call's result.

@@ -25,3 +25,4 @@ app.tabLabel names the tab after the record; null keeps the view's label -> pack
 humanTurnOnly and dmOnly are first-party only; any other app declaring either is not loaded -> apps/api/src/modules/apps/contract.ts (FIRST_PARTY_ONLY_TOOL_KEYS) ; apps/api/src/modules/apps/runtime.ts (registerSingleApp)
 humanTurnOnly: refused human_turn_only from a routine, a sub-run or a job; app and MCP pass -> apps/api/src/modules/apps/execute-tool.ts (HUMAN_TURN_ONLY_CODE) ; apps/api/src/modules/apps/execute-tool.ts (executeToolCore)
 dmOnly: refused dm_only outside a DM for an agent, next step Continue in a DM; both 409 -> apps/api/src/modules/apps/execute-tool.ts (dmOnlyRefusal) ; apps/api/src/modules/apps/execute-tool.ts (isAgentDm) ; apps/api/src/modules/apps/execute-tool.ts (DM_ONLY_CODE)
+An approved call refused on its stored parameters never runs its handler and goes back to pending -> apps/api/src/modules/apps/execute-tool.ts (executeApprovedToolHandlerInternal)

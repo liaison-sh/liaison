@@ -274,7 +274,7 @@
       }
     ]
   },
-  "version": "0.4.29",
+  "version": "0.4.30",
   "network": {
     "imageHosts": ["cdn.shopify.com"],
     "linkHosts": ["admin.shopify.com"]
@@ -800,6 +800,8 @@
       "discount:bulk_created",
       "discount:updated",
       "discount:deleted",
+      "discount:activated",
+      "discount:deactivated",
       "metafield:set",
       "metafield:deleted",
       "app:uninstalled",
@@ -1954,7 +1956,7 @@
       "readOnly": true
     },
     "discounts_search": {
-      "description": "Search Shopify discount-code nodes (basic / bxgy / free-shipping) by code/title KEYWORD. There is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
+      "description": "Search Shopify discounts: discount CODES and AUTOMATIC discounts (applied at checkout with no code, e.g. a Black Friday sale), both by default. Each hit has attributes.method (\"code\" | \"automatic\"), kind, status, window, and for automatic ones a summary. `kind` narrows to \"code\" or \"automatic\". `limit` applies per family; page codes with `cursor` (nextCursor) and automatic discounts with `automaticCursor` (automaticNextCursor). Read one in full (value, products by title, minimum) with discounts_get. Matching is by code/title KEYWORD only: there is NO created-date filter and NO campaign-tag filter — when you scope by a `query` keyword the result carries a `keywordMatchNotice`; relay its caveat (the match may miss codes not named for the campaign) to the user and never claim an exhaustive sweep.",
       "searchKeywords": ["remise", "réduction", "promo", "code", "coupon"],
       "requiredScopes": ["shopify:discounts:read"],
       "handler": "discounts_search",
@@ -1964,6 +1966,12 @@
           "query": {
             "type": "string"
           },
+          "kind": {
+            "type": "string",
+            "enum": ["all", "code", "automatic"],
+            "default": "all",
+            "description": "Which discounts: both families (default), codes only, or automatic discounts only."
+          },
           "limit": {
             "type": "integer",
             "minimum": 1,
@@ -1971,7 +1979,33 @@
             "default": 25
           },
           "cursor": {
-            "type": "string"
+            "type": "string",
+            "description": "nextCursor of a previous page: continues the code discounts."
+          },
+          "automaticCursor": {
+            "type": "string",
+            "description": "automaticNextCursor of a previous page: continues the automatic discounts."
+          }
+        }
+      },
+      "readOnly": true
+    },
+    "discounts_get": {
+      "description": "Read ONE Shopify discount in full, a code or an automatic discount (id from discounts_search): title, method, status, window, summary, value (percentage as a 0-1 fraction or a fixed amount), what it applies to (all items, or products, variants and collections BY TITLE), its minimum requirement (subtotal or quantity), how it combines, codes and usage. `proposed` is internal: approval cards pass a discount input to have its product ids titled.",
+      "searchKeywords": ["remise", "réduction", "promo", "automatique", "soldes", "blackfriday"],
+      "requiredScopes": ["shopify:discounts:read"],
+      "handler": "discounts_get",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "gid://shopify/DiscountCodeNode/N or gid://shopify/DiscountAutomaticNode/N."
+          },
+          "proposed": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "A discount input whose product, variant and collection ids come back titled under proposedTitles."
           }
         }
       },
@@ -3049,6 +3083,13 @@
       "handler": "discounts_create",
       "preflight": "discounts_create_preflight",
       "summarizer": "summarizeDiscountsCreate",
+      "summarizerContext": {
+        "tool": "discounts_get",
+        "params": {
+          "proposed": "basicCodeDiscount"
+        },
+        "when": "basicCodeDiscount"
+      },
       "gated": true,
       "approvalImpact": "external",
       "trustBoundary": "user",
@@ -3090,6 +3131,11 @@
               },
               "usageLimit": {
                 "type": "integer"
+              },
+              "minimumRequirement": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Minimum purchase, ONE of {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} (order subtotal in the store currency) or {quantity:{greaterThanOrEqualToQuantity:\"2\"}}. Omit for no minimum."
               }
             }
           }
@@ -3104,6 +3150,13 @@
       "preflight": "discounts_bulk_create_preflight",
       "pollHandler": "discounts_bulk_create_poll",
       "summarizer": "summarizeDiscountsBulkCreate",
+      "summarizerContext": {
+        "tool": "discounts_get",
+        "params": {
+          "proposed": "basicCodeDiscount"
+        },
+        "when": "basicCodeDiscount"
+      },
       "gated": true,
       "approvalImpact": "external",
       "trustBoundary": "user",
@@ -3149,6 +3202,11 @@
               },
               "usageLimit": {
                 "type": "integer"
+              },
+              "minimumRequirement": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Minimum purchase, ONE of {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} (order subtotal in the store currency) or {quantity:{greaterThanOrEqualToQuantity:\"2\"}}. Omit for no minimum."
               }
             }
           }
@@ -3156,12 +3214,20 @@
       }
     },
     "discounts_update": {
-      "description": "Update a Shopify discount code (gated). To DEACTIVATE/turn off an existing active code, set endsAt to a time in the past — that expires it so it can no longer be redeemed.",
+      "description": "Update a Shopify discount code (gated). Send only what changes. To add products to its scope use customerGets.items.products.productsToAdd, to take some out productsToRemove (product gids; productVariantsToAdd/Remove for variants); a value-only change keeps the scope. To DEACTIVATE/turn off a code (or an automatic discount) use discounts_set_status.",
       "searchKeywords": ["remise", "réduction", "promo", "modifier"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_update",
       "preflight": "discounts_update_preflight",
       "summarizer": "summarizeDiscountsUpdate",
+      "summarizerContext": {
+        "tool": "discounts_get",
+        "params": {
+          "id": "id",
+          "proposed": "basicCodeDiscount"
+        },
+        "when": "id"
+      },
       "gated": true,
       "approvalImpact": "external",
       "trustBoundary": "user",
@@ -3206,6 +3272,11 @@
               },
               "usageLimit": {
                 "type": "integer"
+              },
+              "minimumRequirement": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "Minimum purchase, ONE of {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} (order subtotal in the store currency) or {quantity:{greaterThanOrEqualToQuantity:\"2\"}}. Omit for no minimum."
               }
             }
           }
@@ -3222,6 +3293,13 @@
       "handler": "discounts_delete",
       "preflight": "discounts_delete_preflight",
       "summarizer": "summarizeDiscountsDelete",
+      "summarizerContext": {
+        "tool": "discounts_get",
+        "params": {
+          "id": "id"
+        },
+        "when": "id"
+      },
       "gated": true,
       "approvalImpact": "external",
       "trustBoundary": "user",
@@ -3234,6 +3312,41 @@
         },
         "required": [
           "id"
+        ]
+      }
+    },
+    "discounts_set_status": {
+      "description": "Activate or DEACTIVATE a Shopify discount, a code OR an AUTOMATIC discount (id from discounts_search, e.g. a Black Friday automatic sale). action \"deactivate\" ends it now (status EXPIRED: it stops applying at checkout, its settings are kept); \"activate\" makes it active again from now. This is the way to turn off an automatic discount; for a code it replaces back-dating endsAt with discounts_update.",
+      "searchKeywords": ["remise", "réduction", "promo", "désactiver", "activer", "automatique", "soldes", "blackfriday"],
+      "requiredScopes": ["shopify:discounts:write"],
+      "handler": "discounts_set_status",
+      "preflight": "discounts_set_status_preflight",
+      "summarizer": "summarizeDiscountsSetStatus",
+      "summarizerContext": {
+        "tool": "discounts_get",
+        "params": {
+          "id": "id"
+        },
+        "when": "id"
+      },
+      "gated": true,
+      "approvalImpact": "external",
+      "trustBoundary": "user",
+      "params": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "gid://shopify/DiscountCodeNode/N or gid://shopify/DiscountAutomaticNode/N."
+          },
+          "action": {
+            "type": "string",
+            "enum": ["activate", "deactivate"]
+          }
+        },
+        "required": [
+          "id",
+          "action"
         ]
       }
     },

@@ -276,6 +276,18 @@ const DISCOUNT_STEPS: PlanStep[] = [
       }),
   },
   {
+    entry: "tool:discounts_get",
+    input: (s) => params({ id: at(s, "newDiscount", "codeDiscountNode.id") }),
+  },
+  {
+    entry: "preflight:discounts_set_status",
+    input: (s) => params({ id: at(s, "newDiscount", "codeDiscountNode.id"), action: "deactivate" }),
+  },
+  {
+    entry: "tool:discounts_set_status",
+    input: (s) => params({ id: at(s, "newDiscount", "codeDiscountNode.id"), action: "deactivate" }),
+  },
+  {
     entry: "preflight:discounts_delete",
     input: (s) => params({ id: at(s, "newDiscount", "codeDiscountNode.id") }),
   },

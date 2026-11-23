@@ -1,0 +1,7 @@
+discounts_search lists codes and automatic discounts, each with its method -> bundled-apps/shopify/src/reads.ts (discounts_search)
+discounts_get reads value, scope by product and collection title, minimum -> bundled-apps/shopify/src/reads.ts (readDiscountDetail)
+discounts_set_status activates or deactivates a code or an automatic discount, gated -> bundled-apps/shopify/src/mutations/discounts.ts (discounts_set_status)
+discounts_set_status is a gated tool -> bundled-apps/shopify/app.manifest.json (discounts_set_status)
+approval card names scoped products and the minimum purchase -> bundled-apps/shopify/src/mutations/discounts.ts (describeDiscountInput)
+approval card shows the discount before the change -> bundled-apps/shopify/src/summarizers.ts (discountContextLines)
+automatic discount settings are not editable: discounts_update acts on a DiscountCodeNode -> bundled-apps/shopify/src/mutations/discounts.ts (DISCOUNT_NODE_TYPE)

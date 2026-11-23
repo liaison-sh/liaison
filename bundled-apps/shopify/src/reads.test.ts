@@ -14,6 +14,7 @@ import {
   customers_get_by_external_id,
   customers_search,
   customers_segment_search,
+  discounts_get,
   discounts_search,
   draft_orders_get,
   draft_orders_list,
@@ -2946,6 +2947,213 @@ describe("discounts_search", () => {
     })
     const out = await discounts_search({}, ctx)
     expect(out.keywordMatchNotice).toBeUndefined()
+  })
+})
+
+describe("discounts_search: automatic discounts are listed too", () => {
+  const codePage = {
+    data: {
+      codeDiscountNodes: {
+        edges: [
+          {
+            node: {
+              id: "gid://shopify/DiscountCodeNode/1",
+              codeDiscount: {
+                __typename: "DiscountCodeBasic",
+                title: "WELCOME10",
+                status: "ACTIVE",
+                codes: { edges: [{ node: { code: "WELCOME10" } }] },
+              },
+            },
+          },
+        ],
+        pageInfo: { endCursor: "c1", hasNextPage: false },
+      },
+    },
+  }
+  const autoPage = {
+    data: {
+      automaticDiscountNodes: {
+        edges: [
+          {
+            node: {
+              id: "gid://shopify/DiscountAutomaticNode/7",
+              automaticDiscount: {
+                __typename: "DiscountAutomaticBasic",
+                title: "Black Friday Erae Sound -30%",
+                status: "ACTIVE",
+                startsAt: "2026-11-20T00:00:00Z",
+                endsAt: "2026-12-01T00:00:00Z",
+                summary: "30% off Erae Sound",
+              },
+            },
+          },
+        ],
+        pageInfo: { endCursor: "a1", hasNextPage: true },
+      },
+    },
+  }
+
+  it("lists code AND automatic discounts by default, each with its method", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [codePage, autoPage] })
+    const out = await discounts_search({}, ctx)
+    expect(
+      calls.map((c) => (JSON.parse(c.body) as { query: string }).query.match(/query (\w+)/)?.[1]),
+    ).toEqual(["DiscountsSearch", "AutomaticDiscountsSearch"])
+    expect(out.results.map((r) => [r.id, r.title, r.attributes.method])).toEqual([
+      ["gid://shopify/DiscountCodeNode/1", "WELCOME10", "code"],
+      ["gid://shopify/DiscountAutomaticNode/7", "Black Friday Erae Sound -30%", "automatic"],
+    ])
+    expect(out.results[1]!.attributes.summary).toBe("30% off Erae Sound")
+    expect(out.results[1]!.attributes.kind).toBe("DiscountAutomaticBasic")
+    expect(out.nextCursor).toBe("c1")
+    expect(out.automaticNextCursor).toBe("a1")
+  })
+
+  it('kind "automatic" reads only automatic discounts and pages with automaticCursor', async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [autoPage] })
+    await discounts_search({ kind: "automatic", automaticCursor: "a0", query: "Black" }, ctx)
+    expect(calls).toHaveLength(1)
+    const body = JSON.parse(calls[0]!.body) as { query: string; variables: Record<string, unknown> }
+    expect(body.query).toContain("automaticDiscountNodes")
+    expect(body.variables).toEqual({ query: "Black", first: 25, after: "a0" })
+  })
+
+  it('kind "code" keeps the code-only read', async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [codePage] })
+    const out = await discounts_search({ kind: "code" }, ctx)
+    expect(calls).toHaveLength(1)
+    expect(out.results).toHaveLength(1)
+    expect("automaticNextCursor" in out).toBe(false)
+  })
+
+  it("a follow-up page of codes does not repeat the automatic discounts", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [codePage] })
+    await discounts_search({ cursor: "c0" }, ctx)
+    expect(calls).toHaveLength(1)
+    expect(calls[0]!.body).toContain("codeDiscountNodes")
+  })
+
+  it("rejects an unknown kind", async () => {
+    const { ctx } = makeCtx({ fetchResponses: [] })
+    await expect(discounts_search({ kind: "coupons" }, ctx)).rejects.toThrow(/kind must be/)
+  })
+})
+
+describe("discounts_get: one discount in full", () => {
+  it("reads an automatic discount with its products by title and its minimum", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            node: {
+              id: "gid://shopify/DiscountAutomaticNode/7",
+              __typename: "DiscountAutomaticNode",
+              automaticDiscount: {
+                __typename: "DiscountAutomaticBasic",
+                title: "Black Friday accessories -20%",
+                status: "ACTIVE",
+                startsAt: "2026-11-20T00:00:00Z",
+                endsAt: null,
+                summary: "20% off 2 products",
+                minimumRequirement: {
+                  __typename: "DiscountMinimumSubtotal",
+                  greaterThanOrEqualToSubtotal: { amount: "1000.0", currencyCode: "EUR" },
+                },
+                customerGets: {
+                  value: { __typename: "DiscountPercentage", percentage: 0.2 },
+                  items: {
+                    __typename: "DiscountProducts",
+                    products: { nodes: [{ id: "gid://shopify/Product/11", title: "Erae Sound" }] },
+                    productVariants: {
+                      nodes: [
+                        {
+                          id: "gid://shopify/ProductVariant/5",
+                          title: "Black",
+                          product: { title: "Cover" },
+                        },
+                      ],
+                    },
+                  },
+                },
+                asyncUsageCount: 3,
+              },
+            },
+          },
+        },
+      ],
+    })
+    const out = (await discounts_get({ id: "gid://shopify/DiscountAutomaticNode/7" }, ctx)) as {
+      title: string
+      attributes: Record<string, unknown>
+    }
+    expect(calls).toHaveLength(1)
+    expect(out.title).toBe("Black Friday accessories -20%")
+    expect(out.attributes.method).toBe("automatic")
+    expect(out.attributes.value).toEqual({ percentage: 0.2 })
+    expect(out.attributes.minimumRequirement).toEqual({
+      type: "subtotal",
+      amount: "1000.0",
+      currencyCode: "EUR",
+    })
+    expect(out.attributes.appliesTo).toEqual({
+      all: false,
+      products: [{ id: "gid://shopify/Product/11", title: "Erae Sound" }],
+      variants: [{ id: "gid://shopify/ProductVariant/5", title: "Black", productTitle: "Cover" }],
+      collections: [],
+    })
+    expect("codes" in out.attributes).toBe(false)
+  })
+
+  it("titles the products a proposed discount input names (approval card context)", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            nodes: [
+              { id: "gid://shopify/Product/11", __typename: "Product", title: "Erae Sound" },
+              {
+                id: "gid://shopify/ProductVariant/5",
+                __typename: "ProductVariant",
+                title: "Black",
+                product: { title: "Cover" },
+              },
+            ],
+          },
+        },
+      ],
+    })
+    const out = await discounts_get(
+      {
+        proposed: {
+          customerGets: {
+            items: {
+              products: {
+                productsToAdd: ["gid://shopify/Product/11"],
+                productVariantsToAdd: ["gid://shopify/ProductVariant/5"],
+              },
+            },
+          },
+        },
+      },
+      ctx,
+    )
+    expect(JSON.parse(calls[0]!.body).variables.ids).toEqual([
+      "gid://shopify/Product/11",
+      "gid://shopify/ProductVariant/5",
+    ])
+    expect(out.proposedTitles).toEqual({
+      "gid://shopify/Product/11": "Erae Sound",
+      "gid://shopify/ProductVariant/5": "Cover: Black",
+    })
+  })
+
+  it("refuses an id that is not a discount gid, before any call", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [] })
+    await expect(discounts_get({ id: "gid://shopify/Product/11" }, ctx)).rejects.toThrow(
+      /discount gid/,
+    )
+    expect(calls).toHaveLength(0)
   })
 })
 

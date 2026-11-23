@@ -13,10 +13,12 @@ import { lineTax, netOfIncludedTax } from "../money"
 import { toBigInt } from "../mutations/shared"
 import { isoOf, streamRows, stripeDocumentRef } from "../streams"
 import {
+  currentStripeInvoice,
   documentByRef,
   type FinalizedResult,
   onStripeInvoiceFinalized,
   payloadOf,
+  STRIPE_APPROVAL_PARK,
   type StripeCtx,
   type StripeInvoicePayload,
   stripeRef,
@@ -257,7 +259,12 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
   const stored = (found.row.event_payload_json ?? {}) as Row
   let outcome: FinalizedResult
   if (input.stripeInvoiceId) {
-    outcome = await onStripeInvoiceFinalized(stored, ctx, { byPerson: true })
+    // As Stripe holds it now (a buyer completed since the park). An invoice above the threshold
+    // is issued as its card showed it: that buyer was complete already.
+    const blocked = (found.row.blocked_on ?? {}) as Row
+    const invoice =
+      blocked.kind === STRIPE_APPROVAL_PARK ? stored : await currentStripeInvoice(ctx, stored)
+    outcome = await onStripeInvoiceFinalized(invoice, ctx, { byPerson: true })
   } else {
     const p = stored as unknown as StripePaymentPayload
     const gross = toBigInt(p.amount_minor)
@@ -300,9 +307,15 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
   if (outcome.status === "pending_approval")
     return { status: "pending_approval" as const, approval_id: outcome.approval_id }
   if (outcome.status === "error") return { status: "error" as const, error: outcome.error }
+  if (outcome.status === "skipped")
+    return fail(
+      "not_issued",
+      `${found.id} was not invoiced (${outcome.reason}); no number was taken.`,
+    )
+  const def = (await ctx.db.findOne("deferred_events", outcome.deferred_id)) as Row | null
   return fail(
     "not_issued",
-    `${found.id} was not invoiced (${outcome.reason}); no number was taken. It stays in the queue.`,
+    `${found.id} was not invoiced (${String(def?.reason ?? outcome.reason)}); no number was taken. It stays in the queue.`,
   )
 }
 

@@ -18,7 +18,7 @@
 //
 // The typed payload is the Stripe app's `invoice:finalized` (and `invoice:paid`): minor units as
 // strings across the JSON bridge, as the Shopify order payload is.
-import { park, resolveOpenParks } from "../deferred"
+import { closeParksOfKind, park, resolveOpenParks, STRIPE_INVOICE_PARK } from "../deferred"
 import {
   EINVOICE_IDENTITY_PARK_KIND,
   GATE_CODES,
@@ -94,7 +94,7 @@ export type FinalizedResult =
 
 /** Parks of this flow carry `blocked_on.kind` starting with this, so the retry sweep routes them here. */
 export const STRIPE_PARK_PREFIX = "stripe_"
-export const STRIPE_INVOICE_PARK = "stripe_invoice"
+export { STRIPE_INVOICE_PARK }
 export const STRIPE_UNDECIDED_PARK = "stripe_issuer_undecided"
 export const STRIPE_APPROVAL_PARK = "stripe_invoice_approval"
 export const STRIPE_TAX_PARK = "tax_check"
@@ -150,7 +150,7 @@ async function parkInvoice(
   kind: string,
   extra: Row = {},
 ): Promise<{ id: string; created: boolean }> {
-  return park(
+  const def = await park(
     { db: ctx.db },
     {
       event_id: stripeRef(p.stripe_invoice_id),
@@ -160,6 +160,35 @@ async function parkInvoice(
       blocked_on: { kind, stripe_invoice_id: p.stripe_invoice_id, ...extra },
     },
   )
+  if (kind !== STRIPE_INVOICE_PARK) await nowWaitsOn(ctx, p, def.id)
+  return def
+}
+
+/** The invoice got past what it first waited for and waits on park `id` instead. */
+const nowWaitsOn = (ctx: StripeCtx, p: StripeInvoicePayload, id: string) =>
+  closeParksOfKind(ctx, stripeRef(p.stripe_invoice_id), STRIPE_INVOICE_PARK, id)
+
+/** Park on a buyer Stripe does not hold completely, and tell the people who issue documents. */
+async function parkOnBuyer(
+  ctx: StripeCtx,
+  p: StripeInvoicePayload,
+  reason: "customer_email_missing" | "customer_address_missing",
+  missing: string,
+  extra: Row = {},
+): Promise<FinalizedResult> {
+  const def = await parkInvoice(ctx, p, "awaiting_data", reason, STRIPE_INVOICE_PARK, {
+    customer_id: p.customer_id ?? null,
+    ...extra,
+  })
+  // A payment with no Stripe invoice has its own line already (its amount and its customer).
+  if (def.created && p.stripe_invoice_id.startsWith("in_")) {
+    await raise(ctx, "needs_person", def.id, {
+      deferred_id: def.id,
+      stripe_invoice_id: p.stripe_invoice_id,
+      reason: `its customer has no ${missing} in Stripe. Add it there and the invoice is issued`,
+    })
+  }
+  return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
 }
 
 async function raise(ctx: StripeCtx, action: string, entityId: string, data: Row): Promise<void> {
@@ -311,6 +340,16 @@ export async function currentStripeInvoice(ctx: StripeCtx, stored: unknown): Pro
   }
 }
 
+/** A buyer an invoice can be made out to: an email, and an address (the name falls back on the email). */
+export function buyerIsComplete(c: StripeInvoicePayload["customer"]): boolean {
+  return (
+    typeof c?.email === "string" &&
+    c.email.includes("@") &&
+    typeof c.address === "string" &&
+    c.address.trim() !== ""
+  )
+}
+
 /** Why a park of an invoice Stripe no longer holds open (void, uncollectible) was dropped. */
 export const NOT_OPEN_IN_STRIPE = "not_open_in_stripe"
 
@@ -443,31 +482,12 @@ export async function onStripeInvoiceFinalized(
   }
   const counterparty = await counterpartyOf(ctx, p, issuer.country)
   if (!counterparty.email) {
-    const def = await parkInvoice(
-      ctx,
-      p,
-      "awaiting_data",
-      "customer_email_missing",
-      STRIPE_INVOICE_PARK,
-      {
-        customer_id: p.customer_id ?? null,
-      },
-    )
-    return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
+    return parkOnBuyer(ctx, p, "customer_email_missing", "email")
   }
   if (!counterparty.address || !counterparty.legal_name) {
-    const def = await parkInvoice(
-      ctx,
-      p,
-      "awaiting_data",
-      "customer_address_missing",
-      STRIPE_INVOICE_PARK,
-      {
-        customer_id: p.customer_id ?? null,
-        contact_id: counterparty.contact_id,
-      },
-    )
-    return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
+    return parkOnBuyer(ctx, p, "customer_address_missing", "billing address", {
+      contact_id: counterparty.contact_id,
+    })
   }
 
   // 6. Tax as charged, line by line.
@@ -560,6 +580,7 @@ export async function onStripeInvoiceFinalized(
         blocked_on: { ...issuerParkBlockedOn(gap), stripe_invoice_id: p.stripe_invoice_id },
       },
     )
+    await nowWaitsOn(ctx, p, def.id)
     await raiseIssuerAttention(ctx, {
       park: def,
       gap,

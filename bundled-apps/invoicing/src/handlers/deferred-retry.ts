@@ -24,9 +24,10 @@ import {
 
 export type DeferredRetryCtx = DeferredCtx
 
-export type DeferredDispatch = (
-  row: DeferredRow,
-) => Promise<{ status: "ok" } | { status: "still_blocked"; reason: string }>
+/** `still_blocked` with no reason: the handler parked the row again under its own reason. */
+export type DispatchOutcome = { status: "ok" } | { status: "still_blocked"; reason?: string }
+
+export type DeferredDispatch = (row: DeferredRow) => Promise<DispatchOutcome>
 
 export interface DeferredRetryResult {
   scanned: number
@@ -93,7 +94,7 @@ export async function deferredRetryJob(
     // aborted shared tx (25P02): every subsequent write would fail identically,
     // so stop the loop instead of hammering the poisoned tx (that cascade is
     // exactly what produced the flood of 25P02 UPDATE failures in prod).
-    let outcome: { status: "ok" } | { status: "still_blocked"; reason: string }
+    let outcome: DispatchOutcome
     try {
       outcome = await dispatch(row)
     } catch (err) {
@@ -135,13 +136,13 @@ export async function deferredRetryJob(
         await ctx.db.update("deferred_events", row.id, {
           retried_at: now.toISOString(),
           retry_count: row.retry_count + 1,
-          reason,
+          ...(reason === undefined ? {} : { reason }),
         })
         const updatedRow: DeferredRow = {
           ...row,
           retried_at: now,
           retry_count: row.retry_count + 1,
-          reason,
+          reason: reason ?? row.reason,
         }
         const after = await markPermanentFailure(ctx, updatedRow, { now })
         if (after.status === "permanent_failure") {

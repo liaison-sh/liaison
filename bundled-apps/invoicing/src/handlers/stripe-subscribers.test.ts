@@ -14,8 +14,16 @@ import {
   onStripeInvoicePaid,
   onStripeInvoicePaymentFailed,
 } from "./stripe-invoice-paid"
-import { CONTACT, finalized, invoices, parks, stripeCtx, stripeDb } from "./stripe-money.testkit"
-import { onStripePaymentUnmatched } from "./stripe-payment-unmatched"
+import {
+  CONTACT,
+  creditNotes,
+  finalized,
+  invoices,
+  parks,
+  stripeCtx,
+  stripeDb,
+} from "./stripe-money.testkit"
+import { invoiceFromStripePayment, onStripePaymentUnmatched } from "./stripe-payment-unmatched"
 import { onStripeRefundCreated } from "./stripe-refund-created"
 
 afterEach(() => setSystemTime())
@@ -159,6 +167,218 @@ describe("Stripe invoices handled by invoicing", () => {
     const park = parks(db)[0] as Record<string, unknown>
     expect(park.status).toBe("resolved")
     expect(park.reason).toBe("not_open_in_stripe")
+  })
+
+  describe("a parked invoice past its last automatic retry", () => {
+    const noAddress = () =>
+      finalized({
+        customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR" },
+      })
+    const buyer = finalized().customer
+    type Answers = { buyers?: unknown[]; invoice?: unknown }
+    /** The Stripe app: `reconcile_candidates` knows `buyers`, `invoice_payload` reads `invoice`. */
+    const stripeApp = (answers: Answers, calls: Array<{ tool: string; params: unknown }> = []) =>
+      (async (tool: string, params: unknown) => {
+        calls.push({ tool, params })
+        if (tool === "stripe:reconcile_candidates") {
+          const asked = ((params as { buyers?: string[] }).buyers ?? []) as string[]
+          return {
+            status: "completed",
+            result: {
+              invoices: [],
+              refunds: [],
+              buyers: (answers.buyers ?? []).filter((b) =>
+                asked.includes((b as { customer_id: string }).customer_id),
+              ),
+            },
+          }
+        }
+        if (tool === "stripe:invoice_payload" && answers.invoice)
+          return { status: "completed", result: { invoice: answers.invoice } }
+        return { status: "error", error: { code: "tool_not_found", message: "absent" } }
+      }) as never
+    const sweep = (ctx: unknown, hour: number) =>
+      deferredRetryJobHandler(
+        undefined,
+        ctx as unknown as Parameters<typeof deferredRetryJobHandler>[1],
+        { now: new Date(Date.UTC(2030, 0, 1, hour)) },
+      )
+    /** Park the invoice and let every automatic retry pass while Stripe still lacks the buyer. */
+    async function exhausted(db: ReturnType<typeof stripeDb>, payload = noAddress()) {
+      const ctx = stripeCtx(db, { executeTool: stripeApp({ invoice: noAddress() }) })
+      await onStripeInvoiceFinalized({ data: payload }, ctx)
+      for (let i = 0; i < 12; i++) await sweep(ctx, i * 2)
+      expect(parks(db)[0]?.retry_count).toBe(10)
+      return ctx
+    }
+
+    test("issues once, on its own, after the buyer's address is added in Stripe", async () => {
+      const db = stripeDb()
+      await exhausted(db)
+      expect(invoices(db)).toHaveLength(0)
+      // The reason a person reads stays the one it waits for.
+      expect(parks(db)[0]?.reason).toBe("customer_address_missing")
+
+      const calls: Array<{ tool: string; params: unknown }> = []
+      const ctx = stripeCtx(db, {
+        executeTool: stripeApp(
+          {
+            buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
+            invoice: finalized(),
+          },
+          calls,
+        ),
+      })
+      await reconcileStripePayments(ctx)
+      expect(calls.find((c) => c.tool === "stripe:reconcile_candidates")?.params).toEqual({
+        waiting: ["in_1"],
+        buyers: ["cus_1"],
+      })
+      await sweep(ctx, 48)
+      await reconcileStripePayments(ctx)
+      await sweep(ctx, 72)
+      expect(invoices(db)).toHaveLength(1)
+      expect(JSON.stringify(invoices(db)[0])).toContain("3 rue Neuve")
+      expect(parks(db)[0]?.status).toBe("resolved")
+    })
+
+    test("is not retried, and Stripe is not asked for it, while the buyer is still incomplete", async () => {
+      const db = stripeDb()
+      await exhausted(db)
+      const calls: Array<{ tool: string; params: unknown }> = []
+      const ctx = stripeCtx(db, {
+        executeTool: stripeApp(
+          { buyers: [{ customer_id: "cus_1", contact_id: null, customer: noAddress().customer }] },
+          calls,
+        ),
+      })
+      for (let i = 0; i < 5; i++) {
+        await reconcileStripePayments(ctx)
+        await sweep(ctx, 48 + 24 * i)
+      }
+      expect(calls.filter((c) => c.tool === "stripe:invoice_payload")).toHaveLength(0)
+      // Far past the dead-letter age: it still waits, it is never given up on.
+      await sweep(ctx, 24 * 60)
+      expect(parks(db)[0]?.status).toBe("awaiting_data")
+      expect(invoices(db)).toHaveLength(0)
+      expect(db.__all("__sequences")).toHaveLength(0)
+    })
+
+    test("an invoice of a payment Stripe holds no invoice for is issued with the completed buyer too", async () => {
+      const db = stripeDb()
+      await exhausted(db, { ...noAddress(), stripe_invoice_id: "ch_9", status: "paid" })
+      const ctx = stripeCtx(db, {
+        executeTool: stripeApp({
+          buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
+        }),
+      })
+      await reconcileStripePayments(ctx)
+      await sweep(ctx, 48)
+      expect(invoices(db).map((d) => d.external_ref)).toEqual(["stripe:ch_9"])
+    })
+
+    test("a credit note that waited for that invoice follows it, however late", async () => {
+      const db = stripeDb()
+      const waiting = await exhausted(db)
+      const refund = {
+        charge_id: "ch_1",
+        invoice_id: "in_1",
+        refunds: [{ id: "re_1", amount_minor: "12000", status: "succeeded" }],
+      }
+      await onStripeRefundCreated({ data: refund }, waiting)
+      for (let i = 0; i < 12; i++) await sweep(waiting, 100 + i * 2)
+      const refundPark = () => parks(db).find((p) => p.event_id === "stripe:re_1")
+      expect(refundPark()?.retry_count).toBe(10)
+      // What the job that tells a person about a long wait looks for.
+      expect(refundPark()?.reason).toBe("invoice_not_issued")
+
+      const ctx = stripeCtx(db, {
+        executeTool: stripeApp({
+          buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
+          invoice: finalized(),
+        }),
+      })
+      await reconcileStripePayments(ctx)
+      await sweep(ctx, 200)
+      expect(invoices(db)).toHaveLength(1)
+      await reconcileStripePayments(ctx)
+      await sweep(ctx, 210)
+      expect(creditNotes(db).map((d) => d.external_ref)).toEqual(["stripe:re_1"])
+      expect(refundPark()?.status).toBe("resolved")
+    })
+
+    test("a person's click issues it with the buyer as Stripe holds it now", async () => {
+      const db = stripeDb()
+      await exhausted(db)
+      const still = stripeCtx(db, { executeTool: stripeApp({ invoice: noAddress() }) })
+      const refused = await invoiceFromStripePayment(still, { stripeInvoiceId: "in_1" })
+      expect(refused).toMatchObject({ status: "error", error: { code: "not_issued" } })
+      expect(JSON.stringify(refused)).toContain("customer_address_missing")
+
+      const ctx = stripeCtx(db, { executeTool: stripeApp({ invoice: finalized() }) })
+      expect(await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })).toMatchObject({
+        status: "completed",
+      })
+      expect(invoices(db)).toHaveLength(1)
+      expect(parks(db)[0]?.status).toBe("resolved")
+    })
+
+    test("a person approving the invoice above the threshold issues what the card showed", async () => {
+      const db = stripeDb("liaison", { invoice_approval_threshold_minor: "100" })
+      const ctx = stripeCtx(db, {
+        requestApproval: (async () => ({ approval_id: "ap-1" })) as never,
+        executeTool: stripeApp({
+          invoice: finalized({ customer: { ...buyer, name: "Renamed since" } }),
+        }),
+      })
+      expect((await onStripeInvoiceFinalized({ data: finalized() }, ctx)).status).toBe(
+        "pending_approval",
+      )
+      expect(await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })).toMatchObject({
+        status: "completed",
+      })
+      expect(JSON.stringify(invoices(db)[0])).toContain("Lumen Studio")
+    })
+
+    test("a buyer completed into another wait leaves one open park, not two", async () => {
+      const db = stripeDb()
+      await exhausted(db)
+      const ctx = stripeCtx(db, {
+        executeTool: stripeApp({
+          buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
+          // Stripe's own total is far from what its lines come to: a person decides.
+          invoice: finalized({ total_minor: "99900" }),
+        }),
+      })
+      await reconcileStripePayments(ctx)
+      await sweep(ctx, 48)
+      const open = parks(db).filter((p) => p.status !== "resolved")
+      expect(open.map((p) => p.reason)).toEqual(["stripe_total_mismatch"])
+      expect(invoices(db)).toHaveLength(0)
+    })
+  })
+
+  test("a person is told which invoice waits for its buyer, until it no longer does", async () => {
+    const db = stripeDb()
+    const ctx = stripeCtx(db)
+    const payload = finalized({
+      customer: { name: "Lumen Studio", email: "billing@lumen.example", country: "FR" },
+    })
+    await onStripeInvoiceFinalized({ data: payload }, ctx)
+    await onStripeInvoiceFinalized({ data: payload }, ctx)
+    const items = () =>
+      ctx.emitted.filter((e) => e.entity === "stripe_invoice" && e.action === "needs_person")
+    expect(items()).toHaveLength(1)
+    const id = String(parks(db)[0]?.id)
+    expect(items()[0]).toMatchObject({
+      entityId: id,
+      data: { stripe_invoice_id: "in_1", resolved: false },
+    })
+    expect(JSON.stringify(items()[0])).toContain("no billing address in Stripe")
+
+    await onStripeInvoiceFinalized({ data: finalized() }, ctx)
+    expect(invoices(db)).toHaveLength(1)
+    expect(items().slice(1)).toMatchObject([{ entityId: id, data: { resolved: true } }])
   })
 
   test("a voided Stripe invoice resolves its park at once", async () => {

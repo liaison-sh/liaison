@@ -12,6 +12,8 @@
 //                        invoices of the last 3 days that name one (to mark them paid),
 //                        and succeeded refunds of the last 35 days with no credit note.
 //                        Invoicing's own handlers decide; each is idempotent by its key.
+//                        With `buyers`, those customers as the mirror holds them now (what
+//                        invoicing's parked invoices wait for); Stripe is not asked.
 //   invoice_payload      one Stripe invoice read again (`GET /v1/invoices/{id}`), in the
 //                        `invoice:finalized` shape, with the buyer the mirror holds now: the
 //                        retry of an invoice invoicing parked (a buyer's address added since).
@@ -19,6 +21,7 @@ import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
 import { type MirrorDb, newTally } from "../mirror"
 import {
+  buyerOf,
   chargedAt,
   invoiceEventPayload,
   invoiceOfCharge,
@@ -125,6 +128,19 @@ async function newestWhere(
   return out
 }
 
+/** The customers named, as invoicing reads a buyer, from the mirror only. */
+async function mirroredBuyers(ctx: MoneyReadCtx, ids: string[]): Promise<Obj[]> {
+  const rows = (await ctx.db.findMany("stripe_customers", {
+    where: { stripe_id: { in: ids }, deleted_at: null },
+    limit: ids.length,
+  })) as Obj[]
+  return rows.map((r) => ({
+    customer_id: String(r.stripe_id),
+    contact_id: typeof r.contact_id === "string" ? r.contact_id : null,
+    customer: buyerOf(r),
+  }))
+}
+
 export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyReadCtx) {
   const hold = await moneyActionHold(ctx.db)
   if (hold)
@@ -136,11 +152,10 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   const now = Date.now()
   const since = now - WINDOW_DAYS * DAY
   // Invoices and refunds invoicing holds parked: its retry sweep re-drives them, not this job.
-  const waiting = new Set(
-    Array.isArray(params?.waiting)
-      ? params.waiting.filter((x): x is string => typeof x === "string")
-      : [],
-  )
+  const ids = (v: unknown) =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+  const waiting = new Set(ids(params?.waiting))
+  const buyerIds = ids(params?.buyers)
 
   // Invoicing decides each finalized invoice once: a document (linked), or Stripe's own invoice
   // stands (issuer recorded). Only the undecided ones are candidates, and a zero total never is.
@@ -232,6 +247,7 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   return {
     invoices,
     refunds,
+    ...(buyerIds.length > 0 ? { buyers: await mirroredBuyers(ctx, buyerIds) } : {}),
     summary: `${missing.length} Stripe invoice(s) with no Liaison document${unread ? ` (${unread} not read from Stripe this time)` : ""}, ${paidRows.length} paid invoice(s) to check, ${refunds.length} succeeded refund(s) with no credit note recorded.`,
   }
 }

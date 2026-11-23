@@ -129,6 +129,52 @@ function waitsOnPerson(blocked_on: Record<string, unknown> | null | undefined): 
   return isIdentityWait(blocked_on) || isIssuerWait(blocked_on)
 }
 
+/** A Stripe invoice parked before its issue. */
+export const STRIPE_INVOICE_PARK = "stripe_invoice"
+/** A Stripe refund's credit note parked before its issue. */
+export const STRIPE_CREDIT_NOTE_PARK = "stripe_credit_note"
+
+/**
+ * Parks of card payments that wait on a record: a Stripe invoice on its buyer (an email or an
+ * address a person adds in Stripe) or on the issuer, a refund's credit note on its invoice. Days
+ * can pass before that record is there, and trying each of them again all that time would fill
+ * the sweep. So the ordinary retries stop at the cap, the park is never dead-lettered, and the
+ * Stripe safety job revives it once the record is there (`revive`).
+ */
+export function waitsOnRecord(blocked_on: Record<string, unknown> | null | undefined): boolean {
+  const kind = String(blocked_on?.kind ?? "")
+  return (
+    kind === STRIPE_INVOICE_PARK ||
+    (kind === STRIPE_CREDIT_NOTE_PARK && typeof blocked_on?.invoice_ref === "string")
+  )
+}
+
+/** A park whose record was not there through every ordinary retry: the sweep no longer tries it. */
+export function isStalled(r: DeferredRow): boolean {
+  return (
+    !TERMINAL_STATUSES.has(r.status) &&
+    r.retry_count >= DEAD_LETTER_CAP &&
+    waitsOnRecord(r.blocked_on)
+  )
+}
+
+/**
+ * What a stalled park waited on is there: the next sweep tries it, after the rows already due,
+ * with the ordinary retries again. `payload` replaces the stored payload when given.
+ */
+export async function revive(
+  ctx: { db: Pick<ParkDb, "update"> },
+  id: string,
+  payload?: unknown,
+  now: Date = new Date(),
+): Promise<void> {
+  await ctx.db.update("deferred_events", id, {
+    retry_count: 0,
+    retried_at: now.toISOString(),
+    ...(payload === undefined ? {} : { event_payload_json: payload }),
+  })
+}
+
 /** An automatic credit note refused for a reason other than the buyer's identity (an incomplete
  *  recipient, an over-credit…): parked with its own arguments and an attention item. */
 export const AUTO_CREDIT_NOTE_PARK_KIND = "auto_credit_note"
@@ -177,6 +223,16 @@ export async function resolveParkAttention(
     })
     return
   }
+  // A Stripe invoice's line goes with its park, whatever it waited for.
+  const stripeItem = stripeInvoiceItemOf(blocked)
+  if (stripeItem && ctx.emit) {
+    await ctx.emit({
+      ...stripeItem,
+      entityId: row.id,
+      data: { deferred_id: row.id, resolved: true },
+    })
+    return
+  }
   if (blocked.kind === AUTO_CREDIT_NOTE_PARK_KIND && ctx.emit) {
     await ctx.emit({
       entity: "deferred",
@@ -184,6 +240,40 @@ export async function resolveParkAttention(
       entityId: row.id,
       data: { deferred_id: row.id, resolved: true },
     })
+  }
+}
+
+/** The attention item a parked Stripe invoice raises under its park's id, by what it waits for. */
+function stripeInvoiceItemOf(
+  blocked: Record<string, unknown>,
+): { entity: string; action: string } | null {
+  if (typeof blocked.stripe_invoice_id !== "string") return null
+  if (blocked.kind === STRIPE_INVOICE_PARK)
+    return { entity: "stripe_invoice", action: "needs_person" }
+  if (blocked.kind === "stripe_issuer_undecided")
+    return { entity: "stripe_invoice", action: "issuer_undecided" }
+  if (blocked.kind === "tax_check") return { entity: "deferred", action: "stripe_tax_review" }
+  return null
+}
+
+/**
+ * The event now waits elsewhere: close its open parks of `kind` other than `keepId`, with their
+ * attention, so one event never waits (and is never tried again) twice.
+ */
+export async function closeParksOfKind(
+  ctx: { db: Pick<ParkDb, "findMany" | "update">; emit?: ParkAttentionCtx["emit"] },
+  event_id: string,
+  kind: string,
+  keepId: string,
+): Promise<void> {
+  const rows = (await ctx.db.findMany("deferred_events", {
+    where: { event_id },
+    limit: 50,
+  })) as unknown[]
+  for (const r of rows.map(toDeferredRow)) {
+    if (r.id === keepId || TERMINAL_STATUSES.has(r.status) || r.blocked_on.kind !== kind) continue
+    await ctx.db.update("deferred_events", r.id, { status: "resolved", reason: "waits_elsewhere" })
+    await resolveParkAttention(ctx, r)
   }
 }
 
@@ -558,7 +648,7 @@ export async function markPermanentFailure(
   const minAgeMs = opts?.minAgeMs ?? DEAD_LETTER_MIN_AGE_MS
   const cap = opts?.cap ?? DEAD_LETTER_CAP
   const ageMs = now.getTime() - row.created_at.getTime()
-  if (waitsOnPerson(row.blocked_on)) return row
+  if (waitsOnPerson(row.blocked_on) || waitsOnRecord(row.blocked_on)) return row
   if (row.retry_count < cap || ageMs < minAgeMs) return row
   await ctx.db.update("deferred_events", row.id, { status: "permanent_failure" })
   return { ...row, status: "permanent_failure" }

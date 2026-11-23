@@ -559,6 +559,52 @@ describe("the reads invoicing calls", () => {
     ])
   })
 
+  it("reconcile_candidates answers the customers asked for as the mirror holds them, without asking Stripe", async () => {
+    db.seed("stripe_customers", [
+      {
+        stripe_id: "cus_A",
+        name: "Lumen Studio",
+        email: "billing@lumen.example",
+        address: { line1: "3 rue Neuve", postal_code: "69001", city: "Lyon", country: "FR" },
+        contact_id: "7d4e3c1a-0000-4000-8000-00000000000a",
+        deleted_at: null,
+      },
+      { stripe_id: "cus_B", name: "No Address", email: "b@lumen.example", deleted_at: null },
+      { stripe_id: "cus_GONE", name: "Gone", deleted_at: new Date().toISOString() },
+      { stripe_id: "cus_OTHER", name: "Not asked", deleted_at: null },
+    ])
+    let asked = 0
+    const fetch = (async (...args: Parameters<typeof fetchStripe>) => {
+      asked++
+      return fetchStripe(...args)
+    }) as typeof fetchStripe
+    const ctx = { db: db as never, fetch }
+    const res = (await reconcileCandidates(
+      { buyers: ["cus_A", "cus_B", "cus_GONE", "cus_NEVER"] },
+      ctx,
+    )) as Obj
+    expect(res.buyers).toEqual([
+      {
+        customer_id: "cus_A",
+        contact_id: "7d4e3c1a-0000-4000-8000-00000000000a",
+        customer: {
+          name: "Lumen Studio",
+          email: "billing@lumen.example",
+          country: "FR",
+          address: "3 rue Neuve, 69001 Lyon",
+          vat_id: null,
+        },
+      },
+      {
+        customer_id: "cus_B",
+        contact_id: null,
+        customer: expect.objectContaining({ email: "b@lumen.example", address: null }),
+      },
+    ])
+    expect(asked).toBe(0)
+    expect(await reconcileCandidates({}, ctx)).not.toHaveProperty("buyers")
+  })
+
   it("reconcile_candidates walks past what invoicing decided or holds parked, however many come first", async () => {
     const day = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString()
     const inv = (stripe_id: string, finalized_at: string, extra: Obj = {}) => ({

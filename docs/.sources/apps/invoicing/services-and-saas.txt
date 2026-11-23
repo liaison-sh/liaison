@@ -19,6 +19,8 @@ A finalized Stripe invoice issues one Liaison invoice keyed by its id, due on th
 Issue date and year from the issuer's zone at issue, never finalized_at -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (onStripeInvoiceFinalized)
 Zero total makes nothing, negative total waits for a person -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (onStripeInvoiceFinalized)
 Tax more than 1 minor unit apart on a line parks, no number -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (TaxMismatch)
+A missing email or address is one Home line until the invoice is issued -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (parkOnBuyer) ; bundled-apps/invoicing/src/deferred.ts (resolveParkAttention)
+Issued after the buyer is completed in Stripe, however long it waited, with the credit note that waited -> bundled-apps/invoicing/src/handlers/reconcile-stripe-payments.ts (reviveStalled) ; bundled-apps/invoicing/src/handlers/deferred-dispatch.ts (deferredRetryJobHandler)
 Paid on the charge's date, PDF re-rendered -> bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts (onStripeInvoicePaid)
 Failed payment alerts only on no next attempt or an expired card -> bundled-apps/invoicing/src/handlers/stripe-invoice-paid.ts (onStripeInvoicePaymentFailed)
 One credit note per succeeded refund, pending waits, failed alerts -> bundled-apps/invoicing/src/handlers/stripe-refund-created.ts (refundsOf)

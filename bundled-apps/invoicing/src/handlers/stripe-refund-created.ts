@@ -17,7 +17,7 @@
 // (before a switch, or before Stripe was connected) has no Liaison invoice to credit: the refund is
 // recorded as Stripe's. One still waiting for its invoice after a day raises one Home item (the
 // safety job), closed once the refund gets its credit note or is skipped.
-import { park, resolveOpenParks } from "../deferred"
+import { park, resolveOpenParks, STRIPE_CREDIT_NOTE_PARK } from "../deferred"
 import { reportCollection } from "../einvoicing/collection"
 import { autoCreditNoteCounterparty } from "../einvoicing/parked-credit-note"
 import type { EinvCtx } from "../einvoicing/transmit"
@@ -25,6 +25,7 @@ import type { LineKind } from "../issue"
 import { creditedTotalMinor, creditNoteCreateAndIssue } from "../mutations"
 import { toBigInt } from "../mutations/shared"
 import { cardStreamIssuer, isoOf, stripeDocumentRef } from "../streams"
+import type { DispatchOutcome } from "./deferred-retry"
 import { buildAdjustmentReversalItems } from "./shopify-refund-created"
 import {
   cardStreamFor,
@@ -58,7 +59,7 @@ export interface StripeRefundPayload {
   charged_at?: string | null
 }
 
-export const STRIPE_CREDIT_NOTE_PARK = "stripe_credit_note"
+export { STRIPE_CREDIT_NOTE_PARK }
 
 export interface ParkedStripeCreditNote {
   kind: typeof STRIPE_CREDIT_NOTE_PARK
@@ -449,7 +450,7 @@ async function reportRefund(
 export async function retryParkedStripeCreditNote(
   ctx: StripeCtx,
   payload: unknown,
-): Promise<{ status: "ok" } | { status: "still_blocked"; reason: string }> {
+): Promise<DispatchOutcome> {
   const p = payload as ParkedStripeCreditNote & { refunds?: StripeRefund[] }
   if (!p || p.kind !== STRIPE_CREDIT_NOTE_PARK)
     return { status: "still_blocked", reason: "invalid_parked_credit_note" }
@@ -474,5 +475,8 @@ export async function retryParkedStripeCreditNote(
   ) {
     return { status: "ok" }
   }
+  // Parked again: the row keeps the reason it was parked with.
+  if (one && (one.outcome === "no_invoice" || one.outcome === "parked"))
+    return { status: "still_blocked" }
   return { status: "still_blocked", reason: one?.outcome ?? res.reason ?? "unknown" }
 }

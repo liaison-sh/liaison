@@ -18,7 +18,12 @@ import { type DeferredRow, EMAIL_OUTCOME_UNKNOWN } from "../deferred"
 import { isParkedCreditNote, retryParkedCreditNote } from "../einvoicing/parked-credit-note"
 import { deliveryFileId } from "../legal-originals/delivery"
 import { documentsRetryPdf, type MutationsCtx } from "../mutations"
-import { type DeferredDispatch, type DeferredRetryResult, deferredRetryJob } from "./deferred-retry"
+import {
+  type DeferredDispatch,
+  type DeferredRetryResult,
+  type DispatchOutcome,
+  deferredRetryJob,
+} from "./deferred-retry"
 import { isParkedDraftOrderQuote, retryParkedDraftOrderQuote } from "./shopify-draft-order"
 import {
   findIssuerByShopId,
@@ -37,8 +42,6 @@ import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-r
 // order-handler surface (re-issue path) and the mutations surface (PDF retry).
 // `effects` is the kernel's effect ledger; absent on an older kernel.
 type DeferredDispatchCtx = OrderPaidCtx & MutationsCtx & { effects?: EffectsBridge }
-
-type DispatchOutcome = { status: "ok" } | { status: "still_blocked"; reason: string }
 
 function blockedField(row: DeferredRow, key: string): string {
   return String((row.blocked_on as Record<string, unknown>)[key] ?? "")
@@ -212,8 +215,10 @@ export async function deferredRetryJobHandler(
         await currentStripeInvoice(ctx, row.event_payload_json),
         ctx,
       )
-      return r.status === "deferred" || r.status === "error" || r.status === "pending_approval"
-        ? { status: "still_blocked", reason: r.status === "deferred" ? r.reason : r.status }
+      // Parked again: the row keeps the reason the handler gave it, which a person reads.
+      if (r.status === "deferred") return { status: "still_blocked" }
+      return r.status === "error" || r.status === "pending_approval"
+        ? { status: "still_blocked", reason: r.status }
         : { status: "ok" }
     }
 

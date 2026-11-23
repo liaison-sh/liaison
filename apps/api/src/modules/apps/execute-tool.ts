@@ -11,6 +11,7 @@ import {
 } from "@liaison/shared"
 import type { SchemaObject } from "ajv"
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
+import { HTTPException } from "hono/http-exception"
 import { extractRows, type PrivilegedDb, type RlsClient } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { ActorContext, RlsSession } from "~/db/rls"
@@ -7320,13 +7321,24 @@ export async function executeApprovedToolHandlerInternal(args: {
     // The closing notice carries the message alone, so the next step travels in it.
     return { error: { code, message: `${message} ${next}`, feature, next, final: true } }
   }
-  const validated = validateParamsForTool(
-    args.tool,
-    args.orgId,
-    args.tool.appName,
-    args.tool.name,
-    args.payload,
-  )
+  // The tool refuses the stored parameters (its schema changed while the request waited, or the
+  // request was never made through the tool): its handler never ran, so nothing happened, whatever
+  // the tool's impact. Answered as the refusal it is, the request goes back to pending with the
+  // reason. Thrown, it would read as a handler of unknown outcome and hold an external tool's
+  // request at `approving` for good.
+  let validated: unknown
+  try {
+    validated = validateParamsForTool(
+      args.tool,
+      args.orgId,
+      args.tool.appName,
+      args.tool.name,
+      args.payload,
+    )
+  } catch (err) {
+    if (!(err instanceof HTTPException) || err.status !== 400) throw err
+    return { error: { code: "invalid_params", message: err.message } }
+  }
   // The approval-request-create event itself stays actorType:"user" (spec C7);
   // that is stamped at createApprovalRequest, not here. Here we only propagate
   // the recorded origin so the EXECUTED (post-approval) mutation — an

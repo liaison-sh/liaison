@@ -1126,6 +1126,8 @@ async function seedSaasMoneyDecisions(
       threadId: await threadOf(SAAS_CHANNEL_TITLES.handover),
       toolName: `${PAYMENTS_APP}:refunds_create`,
       payload: {
+        // As the tool stores it: the charge named, and the one its check pinned.
+        charge: ombreCharge.chargeId,
         chargeId: ombreCharge.chargeId,
         reason: `Charged two days after the cancellation; invoice ${ombreInvoice.number}`,
         ...(ticketId[0] ? { ticketId: ticketId[0].id } : {}),

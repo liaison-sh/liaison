@@ -20,8 +20,9 @@ import { messages, routines } from "~/db/schema/kernel"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
+import { toolRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
-import { executeTool } from "~/modules/apps/execute-tool"
+import { executeTool, validateParamsForTool } from "~/modules/apps/execute-tool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
@@ -655,6 +656,28 @@ describe("the software world's money, read through the apps", () => {
     } finally {
       setSystemTime()
     }
+  })
+
+  it("every seeded request waiting for a person carries parameters its tool accepts", async () => {
+    const waiting = await rows(
+      world.orgId,
+      sql`SELECT handle, tool_name, current_payload FROM kernel.approval_requests
+          WHERE org_id = ${world.orgId} AND status = 'pending' ORDER BY handle`,
+    )
+    expect(waiting.map((w) => w.handle)).toContain("demo-ombre-refund")
+    const refused: string[] = []
+    for (const w of waiting) {
+      const [app, name] = String(w.tool_name).split(":") as [string, string]
+      const tool = toolRegistry.get([world.orgId, app, name])
+      // An app this file does not install is checked by its own pack's test.
+      if (!tool) continue
+      try {
+        validateParamsForTool(tool, world.orgId, app, name, w.current_payload)
+      } catch (err) {
+        refused.push(`${String(w.handle)}: ${(err as Error).message}`)
+      }
+    }
+    expect(refused).toEqual([])
   })
 })
 

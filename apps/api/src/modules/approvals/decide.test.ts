@@ -3,6 +3,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { APPROVING_WEDGE_GRACE_MS } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import { z } from "zod"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -1023,6 +1024,65 @@ describe("decideApproval lifecycle", () => {
         expect(err).toMatchObject({ code: "handler_ambiguous" })
         expect(await statusOf(id)).toBe("approving")
       }
+    })
+
+    /** Stage a call of an external tool, then require a parameter its stored payload lacks (an app
+     *  upgraded while the request waited, a request written by a seed). */
+    async function stageThenRequireCharge() {
+      const register = (params: unknown) =>
+        toolRegistry.set([ORG, "decide_test", "externalNeedsCharge"], {
+          appName: "decide_test",
+          name: "externalNeedsCharge",
+          description: "External-impact tool with a required parameter",
+          requiredScopes: ["decide_test:gated:write"],
+          gated: true,
+          approvalImpact: "external",
+          params,
+          handler: async () => {
+            providerSends += 1
+            return { ok: true }
+          },
+        } as any)
+      await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+      register(z.object({ chargeId: z.string() }))
+      const id = await createRequest("externalNeedsCharge", { chargeId: "ch_1" })
+      register(z.object({ charge: z.string(), chargeId: z.string() }))
+      return id
+    }
+
+    it("an external tool refused on its parameters never ran: the request is pending again, with the reason", async () => {
+      const id = await stageThenRequireCharge()
+      const sendsBefore = providerSends
+      const decide = (decision: "approve" | "deny") =>
+        decideApproval({ orgId: ORG, requestId: id, actor, decision })
+      const err = await decide("approve").catch((e) => e)
+      expect(err).toMatchObject({ code: "handler_failed" })
+      expect(JSON.stringify(err)).toContain('\\"charge\\"')
+      expect(providerSends).toBe(sendsBefore)
+      const [row] =
+        await sql`SELECT status, metadata FROM kernel.approval_requests WHERE id = ${id}`
+      expect(row?.status).toBe("pending")
+      expect((row?.metadata as Record<string, unknown>)?.ambiguousError).toBeUndefined()
+      const [exec] = await sql`SELECT status FROM kernel.approved_handler_executions
+        WHERE approval_request_id = ${id}`
+      expect(exec?.status).toBe("failed_no_effect")
+      // A person can close it, as any pending request.
+      expect((await decide("deny")).status).toBe("denied")
+    })
+
+    it("a parameter refusal does not settle an earlier attempt whose outcome is unknown", async () => {
+      const id = await stageThenRequireCharge()
+      const started = {
+        ...(await latestApprovalCtx("decide_test:externalNeedsCharge")),
+        approvalDeciderId: actor.userId,
+      }
+      await withPrivilegedDb(ORG, "decide-test-earlier-start", (tx) =>
+        recordStarted(tx, started, started.toolName),
+      )
+      await expect(
+        decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" }),
+      ).rejects.toMatchObject({ code: "handler_ambiguous" })
+      expect(await statusOf(id)).toBe("approving")
     })
 
     it("an internal-impact failure can be re-approved once the input is fixed -- no wedge", async () => {

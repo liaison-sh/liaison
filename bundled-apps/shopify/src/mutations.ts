@@ -32,6 +32,7 @@ export {
   customers_update_preflight,
 } from "./mutations/customers"
 export {
+  canonicaliseAutomaticBasicDiscount,
   canonicaliseBasicCodeDiscount,
   canonicaliseBasicCodeDiscountPartial,
   discounts_bulk_create,

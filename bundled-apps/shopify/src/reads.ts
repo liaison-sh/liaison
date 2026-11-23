@@ -3153,8 +3153,9 @@ export async function discounts_get(
   | { proposedTitles: Record<string, string> }
 > {
   const id = typeof params.id === "string" && params.id.trim() !== "" ? params.id.trim() : null
-  const proposedIds = params.proposed != null ? [...scopeGidsOf(params.proposed)] : []
-  if (!id && params.proposed == null) throw makeReadError("BAD_PARAM", "id is required")
+  const proposed = [params.proposed, params.proposedAutomatic].filter((v) => v != null)
+  const proposedIds = [...scopeGidsOf(proposed)]
+  if (!id && proposed.length === 0) throw makeReadError("BAD_PARAM", "id is required")
   if (id && !discountMethodOfId(id)) {
     throw makeReadError(
       "BAD_PARAM",

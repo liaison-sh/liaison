@@ -4,4 +4,7 @@ discounts_set_status activates or deactivates a code or an automatic discount, g
 discounts_set_status is a gated tool -> bundled-apps/shopify/app.manifest.json (discounts_set_status)
 approval card names scoped products and the minimum purchase -> bundled-apps/shopify/src/mutations/discounts.ts (describeDiscountInput)
 approval card shows the discount before the change -> bundled-apps/shopify/src/summarizers.ts (discountContextLines)
-automatic discount settings are not editable: discounts_update acts on a DiscountCodeNode -> bundled-apps/shopify/src/mutations/discounts.ts (DISCOUNT_NODE_TYPE)
+discounts_create creates an automatic discount from automaticBasicDiscount -> bundled-apps/shopify/src/mutations/discounts.ts (discounts_create)
+automatic discount input: value, items, minimum, dates, combinesWith -> bundled-apps/shopify/src/mutations/discounts.ts (canonicaliseAutomaticBasicDiscount)
+discounts_update and discounts_delete act on an automatic discount id -> bundled-apps/shopify/src/mutations/discounts.ts (discounts_update)
+approval card shows what the discount combines with -> bundled-apps/shopify/src/mutations/discounts.ts (describeCombinesWith)

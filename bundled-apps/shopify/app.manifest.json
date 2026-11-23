@@ -2006,6 +2006,11 @@
             "type": "object",
             "additionalProperties": true,
             "description": "A discount input whose product, variant and collection ids come back titled under proposedTitles."
+          },
+          "proposedAutomatic": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Same as proposed, for an automatic discount input."
           }
         }
       },
@@ -3077,8 +3082,8 @@
       }
     },
     "discounts_create": {
-      "description": "Create a Shopify discount code. To make the code apply to a SPECIFIC product (not the whole store), you MUST set customerGets.items.products to that product's id in THIS call (products_search returns the id) — omitting it makes a STOREWIDE code. Provide the percent (customerGets.value.percentage as a 0-1 fraction) and the active window (startsAt/endsAt).",
-      "searchKeywords": ["remise", "réduction", "promo", "promotion", "code", "coupon"],
+      "description": "Create a Shopify discount: a CODE (basicCodeDiscount) or an AUTOMATIC discount applied at checkout with no code (automaticBasicDiscount, e.g. a Black Friday sale: title, startsAt, customerGets value and items, minimumRequirement, combinesWith). Send exactly one of the two. To make the code apply to a SPECIFIC product (not the whole store), you MUST set customerGets.items.products to that product's id in THIS call (products_search returns the id) — omitting it makes a STOREWIDE code. Provide the percent (customerGets.value.percentage as a 0-1 fraction) and the active window (startsAt/endsAt).",
+      "searchKeywords": ["remise", "réduction", "promo", "promotion", "code", "coupon", "automatique", "soldes", "blackfriday"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_create",
       "preflight": "discounts_create_preflight",
@@ -3086,9 +3091,9 @@
       "summarizerContext": {
         "tool": "discounts_get",
         "params": {
-          "proposed": "basicCodeDiscount"
-        },
-        "when": "basicCodeDiscount"
+          "proposed": "basicCodeDiscount",
+          "proposedAutomatic": "automaticBasicDiscount"
+        }
       },
       "gated": true,
       "approvalImpact": "external",
@@ -3096,6 +3101,11 @@
       "params": {
         "type": "object",
         "properties": {
+          "automaticBasicDiscount": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer."
+          },
           "basicCodeDiscount": {
             "type": "object",
             "additionalProperties": true,
@@ -3214,8 +3224,8 @@
       }
     },
     "discounts_update": {
-      "description": "Update a Shopify discount code (gated). Send only what changes. To add products to its scope use customerGets.items.products.productsToAdd, to take some out productsToRemove (product gids; productVariantsToAdd/Remove for variants); a value-only change keeps the scope. To DEACTIVATE/turn off a code (or an automatic discount) use discounts_set_status.",
-      "searchKeywords": ["remise", "réduction", "promo", "modifier"],
+      "description": "Update a Shopify discount (gated): a code (basicCodeDiscount) or, when id is a DiscountAutomaticNode, a basic AUTOMATIC discount (automaticBasicDiscount, same fields as on create). Send only what changes. To add products to its scope use customerGets.items.products.productsToAdd, to take some out productsToRemove (product gids; productVariantsToAdd/Remove for variants); a value-only change keeps the scope. To DEACTIVATE/turn off a code (or an automatic discount) use discounts_set_status.",
+      "searchKeywords": ["remise", "réduction", "promo", "modifier", "automatique", "soldes"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_update",
       "preflight": "discounts_update_preflight",
@@ -3224,7 +3234,8 @@
         "tool": "discounts_get",
         "params": {
           "id": "id",
-          "proposed": "basicCodeDiscount"
+          "proposed": "basicCodeDiscount",
+          "proposedAutomatic": "automaticBasicDiscount"
         },
         "when": "id"
       },
@@ -3236,6 +3247,11 @@
         "properties": {
           "id": {
             "type": "string"
+          },
+          "automaticBasicDiscount": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Shopify DiscountAutomaticBasicInput: an AUTOMATIC discount, applied at checkout with no code. title (customers see it), startsAt/endsAt (ISO-8601), customerGets {value:{percentage:0.3} for 30% (a 0-1 fraction) | {discountAmount:{amount,appliesOnEachItem}}, items:{all:true} | {products:{productsToAdd:[gid], productsToRemove:[gid], productVariantsToAdd:[gid]}} | {collections:{add:[gid]}}}, minimumRequirement {subtotal:{greaterThanOrEqualToSubtotal:\"1000\"}} | {quantity:{greaterThanOrEqualToQuantity:\"2\"}}, combinesWith {orderDiscounts, productDiscounts, shippingDiscounts} booleans (all false when omitted). No code, customerSelection, usageLimit or appliesOncePerCustomer."
           },
           "basicCodeDiscount": {
             "type": "object",
@@ -3287,7 +3303,7 @@
       }
     },
     "discounts_delete": {
-      "description": "Delete a Shopify discount code",
+      "description": "Delete a Shopify discount for good: a code, or an automatic discount (DiscountAutomaticNode id). To stop one but keep it, use discounts_set_status deactivate.",
       "searchKeywords": ["remise", "réduction", "promo", "supprimer"],
       "requiredScopes": ["shopify:discounts:write"],
       "handler": "discounts_delete",

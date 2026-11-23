@@ -1007,3 +1007,41 @@ describe("discount approval cards: minimum and products by title", () => {
     expect(card.lines).toContain("Current minimum: subtotal of at least 1000.0 EUR")
   })
 })
+
+describe("automatic discount approval cards", () => {
+  it("a create names the title, value, products by title, minimum and what it combines with", async () => {
+    const card = await summarizeDiscountsCreate(
+      {
+        automaticBasicDiscount: {
+          title: "Black Friday digital -30%",
+          startsAt: "2026-11-27T00:00:00Z",
+          customerGets: {
+            value: { percentage: 0.3 },
+            items: { products: { productsToAdd: ["gid://shopify/Product/11"] } },
+          },
+          combinesWith: { orderDiscounts: true, productDiscounts: false, shippingDiscounts: false },
+        },
+      },
+      undefined,
+      {
+        connectionIdentifier: null,
+        context: { proposedTitles: { "gid://shopify/Product/11": "Erae Sound" } },
+      },
+    )
+    expect(card.title).toBe("Create automatic discount: Black Friday digital -30%")
+    expect(card.lines).toContain("Discount: 30% off")
+    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Minimum purchase: none")
+    expect(card.lines).toContain(
+      "Combines with: order discounts (not product discounts, shipping discounts)",
+    )
+    expect(card.lines.some((l) => /Usage limit|Code:/.test(l))).toBe(false)
+  })
+
+  it("a code create with no combinesWith says it combines with nothing", async () => {
+    const card = await summarizeDiscountsCreate({
+      basicCodeDiscount: { code: "X", percentage: 10 },
+    })
+    expect(card.lines).toContain("Combines with: no other discounts")
+  })
+})

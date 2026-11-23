@@ -1490,12 +1490,15 @@ export function summarizeDiscountsCreate(
   meta?: SummarizerMeta,
 ): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
+  const automatic = isRec(p.automaticBasicDiscount) ? p.automaticBasicDiscount : null
   const d = isRec(p.basicCodeDiscount) ? p.basicCodeDiscount : p
   const code = str(d.code) ?? "(no code)"
   // The lines describe the NORMALISED discount the handler will send, not the raw payload.
   return Promise.resolve({
     kind: "discounts_create",
-    title: `Create discount code: ${code}`,
+    title: automatic
+      ? `Create automatic discount: ${str(automatic.title) ?? "(no title)"}`
+      : `Create discount code: ${code}`,
     lines: describeDiscountInput(p, "create", proposedTitlesFromContext(meta?.context)),
   })
 }
@@ -1526,7 +1529,11 @@ export function summarizeDiscountsUpdate(
 ): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
-  const d = isRec(p.basicCodeDiscount) ? p.basicCodeDiscount : {}
+  const d = isRec(p.automaticBasicDiscount)
+    ? p.automaticBasicDiscount
+    : isRec(p.basicCodeDiscount)
+      ? p.basicCodeDiscount
+      : {}
   const lines = describeDiscountInput(p, "update", proposedTitlesFromContext(meta?.context))
   if (lines.length === 0) lines.push(...describeRemainingFields(d, []))
   if (lines.length === 0) lines.push("Only the discount identifier is present in the payload")
@@ -1551,7 +1558,9 @@ export function summarizeDiscountsDelete(
   return Promise.resolve({
     kind: "discounts_delete",
     title: `Delete discount ${name ?? gidShort(p.id)}`,
-    subtitle: "The code stops working for future orders",
+    subtitle: /DiscountAutomaticNode/.test(String(p.id ?? ""))
+      ? "The automatic discount stops applying and is removed for good"
+      : "The code stops working for future orders",
     lines: current.length > 0 ? current : [`Discount: ${gidShort(p.id)}`],
   })
 }

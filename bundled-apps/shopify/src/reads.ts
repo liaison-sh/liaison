@@ -24,6 +24,7 @@ import {
   SHIPPING_EMAIL_POLICY_CONFIG_KEY,
   type ShippingEmailPolicy,
 } from "./lib/b2b"
+import { DISCOUNTS_API_VERSION } from "./lib/constants"
 import {
   type NormalizedDraftOrder,
   type NormalizedPurchasingCompany,
@@ -2749,6 +2750,31 @@ interface DiscountCodeNodeShape {
     codes?: { edges?: Array<{ node: { code: string } }> }
     startsAt?: string | null
     endsAt?: string | null
+    context?: unknown
+  }
+}
+
+const CONTEXT_TYPES: Record<string, string> = {
+  DiscountBuyerSelectionAll: "all",
+  DiscountCustomers: "customers",
+  DiscountCustomerSegments: "customerSegments",
+  DiscountMarkets: "markets",
+}
+
+/** Who a discount is available to ({type: "all" | "markets" | ...}, with its markets when read). */
+function availableToOf(v: unknown): { availableTo?: Record<string, unknown> } {
+  const c = asRec(v)
+  const type = CONTEXT_TYPES[String(c?.__typename)]
+  if (!c || !type) return {}
+  if (type !== "markets") return { availableTo: { type } }
+  return {
+    availableTo: {
+      type,
+      marketsCount: c.marketsCount ?? null,
+      ...(asRec(c.markets)
+        ? { markets: nodesOf(c.markets).map((m) => ({ id: m.id, name: m.name ?? null })) }
+        : {}),
+    },
   }
 }
 
@@ -2759,8 +2785,7 @@ function normalizeDiscount(node: DiscountCodeNodeShape): NormalizedHit {
     id: node.id,
     entity: "discount",
     title: firstCode,
-    // Discount codes are not market-scoped (they apply by code/eligibility,
-    // not by market), so market is genuinely null.
+    // A discount may be limited to SEVERAL markets (attributes.availableTo), never bound to one.
     market: null,
     currency: null,
     attributes: {
@@ -2769,6 +2794,7 @@ function normalizeDiscount(node: DiscountCodeNodeShape): NormalizedHit {
       startsAt: cd.startsAt ?? null,
       endsAt: cd.endsAt ?? null,
       kind: cd.__typename ?? null,
+      ...availableToOf(cd.context),
     },
   }
 }
@@ -2782,6 +2808,7 @@ interface DiscountAutomaticNodeShape {
     startsAt?: string | null
     endsAt?: string | null
     summary?: string | null
+    context?: unknown
   }
 }
 
@@ -2800,9 +2827,13 @@ function normalizeAutomaticDiscount(node: DiscountAutomaticNodeShape): Normalize
       endsAt: ad.endsAt ?? null,
       kind: ad.__typename ?? null,
       summary: ad.summary ?? null,
+      ...availableToOf(ad.context),
     },
   }
 }
+
+/** Who a discount is available to, light (a list row): the kind, and how many markets. */
+const DISCOUNT_SEARCH_CONTEXT = `context { __typename ... on DiscountMarkets { marketsCount } }`
 
 const DISCOUNTS_SEARCH_QUERY = `
   query DiscountsSearch($query: String, $first: Int!, $after: String) {
@@ -2811,9 +2842,9 @@ const DISCOUNTS_SEARCH_QUERY = `
         id
         codeDiscount {
           __typename
-          ... on DiscountCodeBasic { title status startsAt endsAt codes(first: 1) { edges { node { code } } } }
-          ... on DiscountCodeBxgy { title status startsAt endsAt codes(first: 1) { edges { node { code } } } }
-          ... on DiscountCodeFreeShipping { title status startsAt endsAt codes(first: 1) { edges { node { code } } } }
+          ... on DiscountCodeBasic { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} codes(first: 1) { edges { node { code } } } }
+          ... on DiscountCodeBxgy { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} codes(first: 1) { edges { node { code } } } }
+          ... on DiscountCodeFreeShipping { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} codes(first: 1) { edges { node { code } } } }
         }
       } }
       pageInfo { hasNextPage endCursor }
@@ -2828,10 +2859,10 @@ const AUTOMATIC_DISCOUNTS_SEARCH_QUERY = `
         id
         automaticDiscount {
           __typename
-          ... on DiscountAutomaticBasic { title status startsAt endsAt summary }
-          ... on DiscountAutomaticBxgy { title status startsAt endsAt summary }
-          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt summary }
-          ... on DiscountAutomaticApp { title status startsAt endsAt }
+          ... on DiscountAutomaticBasic { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} summary }
+          ... on DiscountAutomaticBxgy { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} summary }
+          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} summary }
+          ... on DiscountAutomaticApp { title status startsAt endsAt ${DISCOUNT_SEARCH_CONTEXT} }
         }
       } }
       pageInfo { hasNextPage endCursor }
@@ -2857,7 +2888,7 @@ export async function discounts_search(
 }> {
   const limit = clampLimit(params.limit)
   const kind = readDiscountKind(params.kind)
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION })
   const rawQuery =
     typeof params.query === "string" && params.query.trim().length > 0 ? params.query : null
   const codeCursor = typeof params.cursor === "string" && params.cursor ? params.cursor : null
@@ -2920,9 +2951,13 @@ export async function discounts_search(
 
 // — One discount in full (discounts_get) —
 
+/** Who a discount is available to, with the markets a limited one names. */
+const DISCOUNT_CONTEXT = `context { __typename ... on DiscountMarkets { marketsCount markets(first: 50) { nodes { id name } } } }`
+
 /** The fields every discount type that carries them shares (DiscountCodeBasic, DiscountAutomaticBasic). */
 const DISCOUNT_DETAIL_FIELDS = `
   title status startsAt endsAt summary
+  ${DISCOUNT_CONTEXT}
   combinesWith { orderDiscounts productDiscounts shippingDiscounts }
   minimumRequirement {
     __typename
@@ -2960,18 +2995,18 @@ const DISCOUNT_GET_QUERY = `
             usageLimit appliesOncePerCustomer asyncUsageCount
             codes(first: 5) { nodes { code } }
           }
-          ... on DiscountCodeBxgy { title status startsAt endsAt summary codes(first: 5) { nodes { code } } }
-          ... on DiscountCodeFreeShipping { title status startsAt endsAt summary codes(first: 5) { nodes { code } } }
-          ... on DiscountCodeApp { title status startsAt endsAt }
+          ... on DiscountCodeBxgy { title status startsAt endsAt ${DISCOUNT_CONTEXT} summary codes(first: 5) { nodes { code } } }
+          ... on DiscountCodeFreeShipping { title status startsAt endsAt ${DISCOUNT_CONTEXT} summary codes(first: 5) { nodes { code } } }
+          ... on DiscountCodeApp { title status startsAt endsAt ${DISCOUNT_CONTEXT} }
         }
       }
       ... on DiscountAutomaticNode {
         automaticDiscount {
           __typename
           ... on DiscountAutomaticBasic { ${DISCOUNT_DETAIL_FIELDS} asyncUsageCount }
-          ... on DiscountAutomaticBxgy { title status startsAt endsAt summary }
-          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt summary }
-          ... on DiscountAutomaticApp { title status startsAt endsAt }
+          ... on DiscountAutomaticBxgy { title status startsAt endsAt ${DISCOUNT_CONTEXT} summary }
+          ... on DiscountAutomaticFreeShipping { title status startsAt endsAt ${DISCOUNT_CONTEXT} summary }
+          ... on DiscountAutomaticApp { title status startsAt endsAt ${DISCOUNT_CONTEXT} }
         }
       }
     }
@@ -2986,6 +3021,7 @@ const DISCOUNT_SCOPE_TITLES_QUERY = `
       ... on Product { title }
       ... on ProductVariant { title product { title } }
       ... on Collection { title }
+      ... on Market { name }
     }
   }
 `
@@ -3039,9 +3075,9 @@ function normalizeValue(v: unknown): Rec | null {
   return null
 }
 
-const SCOPE_GID_RE = /^gid:\/\/shopify\/(Product|ProductVariant|Collection)\/\d+$/
+const SCOPE_GID_RE = /^gid:\/\/shopify\/(Product|ProductVariant|Collection|Market)\/\d+$/
 
-/** Every product, variant and collection gid a proposed discount input names (bounded walk). */
+/** Every product, variant, collection and market gid a proposed discount input names (bounded walk). */
 export function scopeGidsOf(input: unknown, depth = 0, out: Set<string> = new Set()): Set<string> {
   if (depth > 6 || input == null || out.size >= 50) return out
   if (typeof input === "string") {
@@ -3068,7 +3104,9 @@ async function scopeTitles(
   })
   const titles: Record<string, string> = {}
   for (const n of data.nodes ?? []) {
-    if (!n || typeof n.id !== "string" || typeof n.title !== "string") continue
+    if (!n || typeof n.id !== "string") continue
+    if (typeof n.name === "string") titles[n.id] = n.name
+    if (typeof n.title !== "string") continue
     const productTitle = asRec(n.product)?.title
     titles[n.id] =
       n.__typename === "ProductVariant" && typeof productTitle === "string"
@@ -3126,6 +3164,7 @@ export async function readDiscountDetail(
       value,
       minimumRequirement: minimum,
       appliesTo: normalizeAppliesTo(gets?.items),
+      ...availableToOf(d.context),
       combinesWith: d.combinesWith ?? null,
       ...(d.usageLimit !== undefined ? { usageLimit: d.usageLimit } : {}),
       ...(d.appliesOncePerCustomer !== undefined
@@ -3162,7 +3201,7 @@ export async function discounts_get(
       `id must be a discount gid (gid://shopify/DiscountCodeNode/N or gid://shopify/DiscountAutomaticNode/N, as discounts_search returns), got ${id}`,
     )
   }
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION })
   const proposedTitles = await scopeTitles(client, proposedIds)
   if (!id) return { proposedTitles }
   const hit = await readDiscountDetail(client, id)

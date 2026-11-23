@@ -4,7 +4,7 @@
     "id": "gid://shopify/DiscountCodeNode/2415682781350",
     "action": "deactivate"
   },
-  "recordedFrom": "hand-written from Shopify's documented Admin GraphQL answers for the development store's discounts (it holds no automatic discount), in the shape record-shopify.recorder.ts writes; re-record with CONTRACT_RECORD_ONLY",
+  "recordedFrom": "hand-written from Shopify's documented Admin GraphQL answers for the development store's discounts (it holds no automatic discount), in the shape record-shopify.recorder.ts writes; re-record with CONTRACT_RECORD_ONLY; API version 2026-07 set by hand, re-record with CONTRACT_RECORD_ONLY",
   "calls": [
     {
       "method": "db_findMany",
@@ -19,7 +19,7 @@
     {
       "method": "fetch",
       "args": [
-        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "https://contract-shop.myshopify.com/admin/api/2026-07/graphql.json",
         "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation DiscountCodeDeactivate($id: ID!) {\\\\n    discountCodeDeactivate(id: $id) {\\\\n      codeDiscountNode { id codeDiscount { ... on DiscountCodeBasic { status } ... on DiscountCodeBxgy { status } ... on DiscountCodeFreeShipping { status } } }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"id\\\":\\\"gid://shopify/DiscountCodeNode/2415682781350\\\"}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"discountCodeDeactivate\\\":{\\\"codeDiscountNode\\\":{\\\"id\\\":\\\"gid://shopify/DiscountCodeNode/2415682781350\\\",\\\"codeDiscount\\\":{\\\"status\\\":\\\"EXPIRED\\\"}},\\\"userErrors\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"

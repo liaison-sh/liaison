@@ -4,6 +4,7 @@
 // basic code discount canonicalisation.
 
 import type { AppContext } from "@liaison/app-sdk"
+import { DISCOUNTS_API_VERSION } from "../lib/constants"
 import { getShopifyClient } from "../lib/get-client"
 import { discountMethodOfId, readDiscountDetail } from "../reads"
 import {
@@ -43,6 +44,7 @@ const DISCOUNT_BASIC_INPUT_FIELDS = new Set([
   "startsAt",
   "endsAt",
   "customerSelection",
+  "context",
   "customerGets",
   "appliesOncePerCustomer",
   "usageLimit",
@@ -109,6 +111,67 @@ export function normaliseMinimumRequirement(
       },
     }
   return undefined
+}
+
+/** The market gids of one add/remove list, or BAD_PARAM: an entry that is not a market is refused,
+ *  never dropped (dropping it would widen the discount beyond what was asked). */
+function marketGids(v: unknown, field: string): string[] {
+  if (v == null) return []
+  const out = (Array.isArray(v) ? v : [v]).map((e) => {
+    const raw = gidFrom(e) ?? ""
+    const gid = /^\d+$/.test(raw) ? `gid://shopify/Market/${raw}` : raw
+    if (!/^gid:\/\/shopify\/Market\/\d+$/.test(gid))
+      throw makeMutationError(
+        "BAD_PARAM",
+        `${field} takes market gids (gid://shopify/Market/N, as markets_list returns), got ${JSON.stringify(e)}.`,
+      )
+    return gid
+  })
+  return Array.from(new Set(out))
+}
+
+/** Shopify's DiscountContextInput, limited to what these tools take: the markets a discount is
+ *  available in ({markets: {add, remove}}) or everyone ({all: "ALL"}). Undefined when the input names
+ *  neither. A create with a market list that adds none, markets together with another audience, or
+ *  any other context is BAD_PARAM: stripping it would create the discount for everyone. Shopify takes
+ *  markets OR customers, not both. */
+export function normaliseMarketContext(
+  src: Record<string, unknown>,
+  mode: "create" | "update",
+): { all: "ALL" } | { markets: { add?: string[]; remove?: string[] } } | undefined {
+  if (src.context != null && !isRec(src.context))
+    throw makeMutationError("BAD_PARAM", "context must be {markets: {add: [market gid]}}.")
+  const context = isRec(src.context) ? src.context : {}
+  const selection = isRec(src.customerSelection) ? src.customerSelection : {}
+  for (const k of Object.keys(context)) {
+    if (k !== "all" && k !== "markets" && context[k] != null)
+      throw makeMutationError(
+        "BAD_PARAM",
+        `context.${k} is not supported: context takes markets {add, remove} or all.`,
+      )
+  }
+  const all = context.all === true || context.all === "ALL"
+  if (context.all != null && context.all !== false && !all)
+    throw makeMutationError("BAD_PARAM", 'context.all must be "ALL".')
+  const raw = context.markets ?? src.markets ?? src.marketIds ?? selection.markets
+  if (raw == null) return all ? { all: "ALL" } : undefined
+  const add = marketGids(isRec(raw) ? raw.add : raw, "context.markets.add")
+  const remove = marketGids(isRec(raw) ? raw.remove : undefined, "context.markets.remove")
+  if (all || selection.customers != null || selection.customerSegments != null)
+    throw makeMutationError(
+      "BAD_PARAM",
+      "A discount is limited to markets OR available to all, customers or segments, not both.",
+    )
+  if (add.length === 0 && (mode === "create" || remove.length === 0))
+    throw makeMutationError("BAD_PARAM", "context.markets.add needs at least one market gid.")
+  if (mode === "create" && remove.length > 0)
+    throw makeMutationError("BAD_PARAM", "A new discount has no market to remove.")
+  return {
+    markets: {
+      ...(add.length > 0 ? { add } : {}),
+      ...(remove.length > 0 ? { remove } : {}),
+    },
+  }
 }
 
 /** Parse a percentage into Shopify's 0-1 fraction, or return an error: ambiguous input is REJECTED,
@@ -397,7 +460,10 @@ export function canonicaliseBasicCodeDiscount(input: unknown): Record<string, un
   // A title is required by Shopify for a basic code discount; default to the code.
   if (out.title == null && typeof out.code === "string") out.title = out.code
 
-  out.customerSelection = normaliseCustomerSelection(src)
+  // Markets go in `context`, which replaces customerSelection; a code for everyone keeps the latter.
+  const context = normaliseMarketContext(src, "create")
+  if (context && "markets" in context) out.context = context
+  else out.customerSelection = normaliseCustomerSelection(src)
   const gets = normaliseCustomerGets(src)
   if (gets) out.customerGets = gets
   const minimum = normaliseMinimumRequirement(src)
@@ -439,6 +505,7 @@ const AUTOMATIC_BASIC_INPUT_FIELDS = new Set([
   "startsAt",
   "endsAt",
   "combinesWith",
+  "context",
   "minimumRequirement",
   "customerGets",
   "recurringCycleLimit",
@@ -490,6 +557,8 @@ export function canonicaliseAutomaticBasicDiscount(
     out.recurringCycleLimit = toPositiveIntLimit(src.recurringCycleLimit, "recurringCycleLimit")
   const combines = normaliseCombinesWith(src.combinesWith)
   if (combines) out.combinesWith = combines
+  const context = normaliseMarketContext(src, mode)
+  if (context) out.context = context
   const minimum = normaliseMinimumRequirement(src)
   if (minimum) out.minimumRequirement = minimum
   const touchesGets =
@@ -595,6 +664,20 @@ function describeCombinesWith(v: unknown): string | null {
   return `Combines with: ${yes.join(", ")}${no.length > 0 ? ` (not ${no.join(", ")})` : ""}`
 }
 
+/** The card line(s) for the markets a discount is limited to, naming each by its title. */
+function describeContext(v: unknown, mode: string, titles: Record<string, string>): string[] {
+  if (!isRec(v)) return []
+  if (v.all != null) return ["Available to: all customers, in every market"]
+  if (!isRec(v.markets)) return []
+  const names = (l: unknown): string =>
+    (Array.isArray(l) ? l : []).map((g) => scopeLabel(g, titles)).join(", ")
+  if (mode !== "update") return [`Available in markets: ${names(v.markets.add)} only`]
+  return [
+    ...(v.markets.add ? [`Adds markets: ${names(v.markets.add)} (limited to its markets)`] : []),
+    ...(v.markets.remove ? [`Removes markets: ${names(v.markets.remove)}`] : []),
+  ]
+}
+
 /** The card line for a minimum requirement (Shopify input shape), or null. */
 function describeMinimum(mr: unknown): string | null {
   if (!isRec(mr)) return null
@@ -653,6 +736,7 @@ export function describeDiscountInput(
         ? "Available to: all customers"
         : "Available to: selected customers only",
     )
+  lines.push(...describeContext(d.context, mode, titles))
   const combines = describeCombinesWith(d.combinesWith)
   if (combines) lines.push(combines)
   else if (mode !== "update") lines.push("Combines with: no other discounts")
@@ -704,6 +788,7 @@ export async function discounts_create(
       "create",
     )
     return runMutation(ctx, {
+      apiVersion: DISCOUNTS_API_VERSION,
       query: AUTOMATIC_BASIC_CREATE,
       variables: { automaticBasicDiscount },
       dataKey: "discountAutomaticBasicCreate",
@@ -715,6 +800,7 @@ export async function discounts_create(
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscount(raw)
   return runMutation(ctx, {
+    apiVersion: DISCOUNTS_API_VERSION,
     query: DISCOUNT_CREATE,
     variables: { basicCodeDiscount },
     dataKey: "discountCodeBasicCreate",
@@ -752,7 +838,9 @@ export function canonicaliseBasicCodeDiscountPartial(input: unknown): Record<str
   for (const k of ["usageLimit", "recurringCycleLimit"]) {
     if (src[k] != null) out[k] = toPositiveIntLimit(src[k], k)
   }
-  if (src.customerSelection != null || src.allCustomers != null) {
+  const context = normaliseMarketContext(src, "update")
+  if (context) out.context = context
+  else if (src.customerSelection != null || src.allCustomers != null) {
     out.customerSelection = normaliseCustomerSelection(src)
   }
   if (
@@ -794,7 +882,10 @@ export async function discounts_update_preflight(
     const id = requireTargetId(params, "id")
     validateDiscountInput(params, "update")
     if (discountMethodOfId(id) === "automatic") {
-      const hit = await readDiscountDetail(await getShopifyClient(ctx), id)
+      const hit = await readDiscountDetail(
+        await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION }),
+        id,
+      )
       if (!hit)
         throw makeMutationError(
           "NOT_FOUND",
@@ -805,7 +896,10 @@ export async function discounts_update_preflight(
           "UNSUPPORTED_DISCOUNT_TYPE",
           `discounts_update edits a basic automatic discount (an amount or percentage off); "${hit.title}" is a ${String(hit.attributes.kind)}. Change it in Shopify admin.`,
         )
-    } else await readGatedTarget(ctx, id, DISCOUNT_NODE_TYPE, "discounts_update")
+    } else
+      await readGatedTarget(ctx, id, DISCOUNT_NODE_TYPE, "discounts_update", {
+        apiVersion: DISCOUNTS_API_VERSION,
+      })
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
   }
@@ -823,6 +917,7 @@ export async function discounts_update(
       "update",
     )
     return runMutation(ctx, {
+      apiVersion: DISCOUNTS_API_VERSION,
       query: AUTOMATIC_BASIC_UPDATE,
       variables: { id: targetId, automaticBasicDiscount },
       dataKey: "discountAutomaticBasicUpdate",
@@ -834,6 +929,7 @@ export async function discounts_update(
   const raw = isRec(params.basicCodeDiscount) ? params.basicCodeDiscount : params
   const basicCodeDiscount = canonicaliseBasicCodeDiscountPartial(raw)
   return runMutation(ctx, {
+    apiVersion: DISCOUNTS_API_VERSION,
     query: DISCOUNT_UPDATE,
     variables: { id: params.id, basicCodeDiscount },
     dataKey: "discountCodeBasicUpdate",
@@ -864,6 +960,7 @@ export async function discounts_delete_preflight(
       id,
       discountMethodOfId(id) === "automatic" ? "DiscountAutomaticNode" : DISCOUNT_NODE_TYPE,
       "discounts_delete",
+      { apiVersion: DISCOUNTS_API_VERSION },
     )
   } catch (err) {
     return preflightRefusal(err, "BAD_PARAM")
@@ -878,6 +975,7 @@ export async function discounts_delete(
   const targetId = requireTargetId(params, "id")
   if (discountMethodOfId(targetId) === "automatic") {
     return runMutation(ctx, {
+      apiVersion: DISCOUNTS_API_VERSION,
       query: AUTOMATIC_DELETE,
       variables: { id: targetId },
       dataKey: "discountAutomaticDelete",
@@ -887,6 +985,7 @@ export async function discounts_delete(
     })
   }
   return runMutation(ctx, {
+    apiVersion: DISCOUNTS_API_VERSION,
     query: DISCOUNT_DELETE,
     variables: { id: params.id },
     dataKey: "discountCodeDelete",
@@ -995,7 +1094,7 @@ export async function discounts_set_status_preflight(
 ): Promise<PreflightResult> {
   try {
     const { id, action } = readDiscountStatusParams(params)
-    const client = await getShopifyClient(ctx)
+    const client = await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION })
     const hit = await readDiscountDetail(client, id)
     if (!hit)
       throw makeMutationError("NOT_FOUND", `discounts_set_status: no discount found for ${id}.`)
@@ -1023,6 +1122,7 @@ export async function discounts_set_status(
   const { id, method, action } = readDiscountStatusParams(params)
   const m = DISCOUNT_STATUS_MUTATIONS[method][action]
   return runMutation(ctx, {
+    apiVersion: DISCOUNTS_API_VERSION,
     query: m.query,
     variables: { id },
     dataKey: m.dataKey,
@@ -1278,7 +1378,7 @@ export async function discounts_bulk_create(
     code: codes[0],
     title: raw.title ?? prefix,
   })
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION })
   markExternalEffect(ctx) // direct mutation send (bypasses runMutation's marking)
   const created = await client.query<{
     discountCodeBasicCreate: {
@@ -1374,7 +1474,7 @@ export async function discounts_bulk_create_poll(
 ): Promise<{ ready: boolean; result?: BulkCreateResult }> {
   const ref = params?.external_ref
   if (!ref?.discount_id || !ref.bulk_creation_id || !ref.requested_count) return { ready: false }
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, { apiVersion: DISCOUNTS_API_VERSION })
   const status = await bulkCreationStatus(client, ref.bulk_creation_id)
   if (!status?.done) return { ready: false }
   const result = await finishBulkCreate(ctx, client, {

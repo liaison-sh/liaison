@@ -1471,6 +1471,14 @@ function discountContextLines(context: unknown): string[] {
       .map((e) => str(e.title) ?? gidShort(e.id))
     if (names.length > 0) lines.push(`Currently applies to: ${names.join(", ")}`)
   }
+  const to = isRec(a.availableTo) ? a.availableTo : null
+  if (to?.type === "markets")
+    lines.push(
+      `Currently limited to markets: ${(isArr(to.markets) ? to.markets : [])
+        .filter(isRec)
+        .map((m) => str(m.name) ?? gidShort(m.id))
+        .join(", ")}`,
+    )
   const mr = isRec(a.minimumRequirement) ? a.minimumRequirement : null
   if (mr?.type === "subtotal")
     lines.push(

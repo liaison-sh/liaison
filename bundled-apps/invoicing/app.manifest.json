@@ -1384,7 +1384,7 @@
         "retainer_renewal": "json?",
         "retainer_terms": "json?",
         "retainer_agreements": "json?",
-        "edit_token": "text?"
+        "edit_claim": "text?"
       },
       "constraints": { "unique": [["external_ref"]] },
       "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]

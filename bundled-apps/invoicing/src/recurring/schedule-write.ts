@@ -21,7 +21,7 @@ export async function claimSchedule(
   id: string,
 ): Promise<string> {
   const token = crypto.randomUUID()
-  await ctx.db.update(ENTITY, id, { edit_token: token })
+  await ctx.db.update(ENTITY, id, { edit_claim: token })
   return token
 }
 
@@ -32,8 +32,8 @@ export async function writeVersion(
   data: Record<string, unknown>,
 ): Promise<boolean> {
   const { count } = await ctx.db.updateMany(ENTITY, {
-    where: { edit_token: claim.token, version: claim.version },
-    data: { ...data, edit_token: null },
+    where: { edit_claim: claim.token, version: claim.version },
+    data: { ...data, edit_claim: null },
   })
   return count === 1
 }

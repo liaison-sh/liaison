@@ -494,7 +494,7 @@ describe("the list and the editor", () => {
     })
     expect(row.retainer_terms_month).toBeUndefined()
     expect(row.retainer_terms).toBeUndefined()
-    expect(row.edit_token).toBeUndefined()
+    expect(row.edit_claim).toBeUndefined()
     expect(row.retainer_agreements).toBeUndefined()
     const d = draftFromRow(SCHEDULE, row)
     expect(d.retainer_hours).toBeNull()
@@ -536,7 +536,7 @@ describe("the list and the editor", () => {
 describe("two changes of one schedule", () => {
   test("another change claimed or written in between: nothing is saved", async () => {
     on(2026, 12, 10)
-    for (const meanwhile of [{ edit_token: "another" }, { version: 9 }]) {
+    for (const meanwhile of [{ edit_claim: "another" }, { version: 9 }]) {
       const h = harness()
       const db = h.db as unknown as {
         updateMany: (e: string, o: never) => Promise<{ count: number }>

@@ -158,7 +158,7 @@ export interface ScheduleRow extends Cadence {
   /** The signed renewals this schedule took, the replaced ones too (appliedRenewalsOf). */
   retainer_agreements?: unknown
   /** The change being written (writeVersion): a write that does not find its own is refused. */
-  edit_token?: string | null
+  edit_claim?: string | null
   /** Set on a retainer read by recurring_list: the month its hours, rate and lines are the terms of. */
   retainer_terms_month?: string
   /** Set by recurring_list on a retainer that was turned off: its last month billed from its card. */
@@ -1469,7 +1469,7 @@ export async function recurringList(
       retainer_terms: _terms,
       retainer_renewal: _renewal,
       retainer_agreements: _agreements,
-      edit_token: _token,
+      edit_claim: _token,
       ...row
     } = normalize(r)
     if (!isRetainerSchedule(row)) {

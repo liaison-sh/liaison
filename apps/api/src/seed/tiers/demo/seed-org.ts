@@ -83,6 +83,7 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { zeroDemoOrgPlatformCredit } from "~/modules/demo/demo-reset"
+import { protectedOrgReason } from "~/modules/demo/org-class"
 import {
   pinAgentModel,
   type SeededAgent,
@@ -546,10 +547,15 @@ async function clearInterruptedOrg(
   const { purgeOrg } = await import("~/modules/org/purge/purge-org")
   await purgeOrg(orgId, {
     reason: "seed-interrupted-org",
-    // Re-checked before every destructive step: still claimed, still unmarked.
+    // Re-checked before every destructive step: still claimed, still unmarked,
+    // and never a customer's or the operator's org.
     assertAllowed: async (id) => {
       await invalidateDemoMarker(id)
-      if (!(await hasOrgSlugClaim(orgSlug)) || (await loadDemoMarker(id))) {
+      if (
+        !(await hasOrgSlugClaim(orgSlug)) ||
+        (await loadDemoMarker(id)) ||
+        (await protectedOrgReason(id))
+      ) {
         throw new Error(`seedDemoOrg: '${orgSlug}' is no longer an interrupted seed's org`)
       }
     },
@@ -666,7 +672,9 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   // written before the admin provisioner creates the first account. An org that
   // has a person in it is an org somebody can sign into, and demo mode's
   // restrictions are all keyed on the marker.
-  const markedOrgId = target ? target.orgId : await markNewDemoOrg(configWithoutUsers, opts, log)
+  const markedOrgId = target
+    ? target.orgId
+    : await markNewDemoOrg(configWithoutUsers, opts, createdOrg, log)
 
   await provisionAdminAndRoles(configWithoutUsers, "seedDemoOrg", log)
   await provisionPeople(configWithoutUsers, userEntries ?? [], "seedDemoOrg", log)
@@ -787,9 +795,19 @@ async function readExistingOrg(
 async function markNewDemoOrg(
   configWithoutUsers: Omit<ProvisioningConfig, "users">,
   opts: SeedDemoOrgOptions,
+  createdOrg: boolean,
   log: (msg: string) => void,
 ): Promise<string> {
-  const orgShell = await provisionOrgShell(configWithoutUsers, "seedDemoOrg", log)
+  // A new org is a demo org from its first row. One that exists keeps its class:
+  // a workspace the previous release made during a rolling deploy carries the
+  // marker and no class (`liaison demo reclassify` gives it one), and its seed
+  // must not fail for it.
+  const orgShell = await provisionOrgShell(
+    configWithoutUsers,
+    "seedDemoOrg",
+    log,
+    createdOrg ? { orgClass: "demo" } : {},
+  )
 
   // THE DEMO MARKER, as early as it can possibly be written: the org row now
   // exists (the org pass created it) and not one account exists to log into it.

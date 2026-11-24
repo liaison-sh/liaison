@@ -857,6 +857,15 @@ async function orgCaps(argv: string[]): Promise<number> {
   return res.exitCode
 }
 
+// The visitor workspaces a rolling deploy left without their class (cli/demo-reclassify.ts).
+async function demoReclassify(argv: string[]): Promise<number> {
+  const { runDemoReclassifyCli } = await import("~/cli/demo-reclassify")
+  const res = await runDemoReclassifyCli(argv.slice(2))
+  if (res.report) process.stdout.write(`${JSON.stringify(res.report, null, 2)}\n`)
+  if (res.message) err(res.message)
+  return res.exitCode
+}
+
 // Removes the attachments messages deleted before deletion took them along.
 async function filesPurgeDeletedMessageAttachments(argv: string[]): Promise<number> {
   const { runPurgeDeletedMessageAttachmentsCli } = await import(
@@ -980,6 +989,7 @@ export const HANDLERS: Record<CommandName, Handler> = {
   "org export": orgExport,
   "org delete": orgDelete,
   "org caps": orgCaps,
+  "demo reclassify": demoReclassify,
   "org transfer keys": orgTransfer,
   "org transfer export": orgTransfer,
   "org transfer import": orgTransfer,

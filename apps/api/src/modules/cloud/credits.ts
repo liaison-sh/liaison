@@ -19,7 +19,7 @@ import {
   type CloudCreditGrantRequest,
   type CloudErrorReply,
 } from "@liaison/control-plane-contract"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { organizations } from "~/db/schema/kernel"
 import { rootLogger } from "~/lib/logger"
@@ -59,7 +59,8 @@ export async function applyCreditGrant(req: CloudCreditGrantRequest): Promise<Cr
     db
       .select({ id: organizations.id })
       .from(organizations)
-      .where(eq(organizations.id, req.orgId))
+      // A demo org is no customer's: no credit is granted to it.
+      .where(and(eq(organizations.id, req.orgId), eq(organizations.class, "standard")))
       .limit(1),
   )
   if (!org) {

@@ -146,11 +146,11 @@ describe("collecting expired demo workspaces", () => {
     for (let i = 0; i < DEMO_REAP_MAX_PER_RUN + 5; i++) {
       const orgId =
         i === 0
-          ? (await ensureOrg({ slug: `reap-${i}`, name: `Reap ${i}` })).orgId
+          ? (await ensureOrg({ slug: `reap-${i}`, name: `Reap ${i}`, class: "demo" })).orgId
           : ((
               await sql<{ id: string }[]>`
-                INSERT INTO kernel.organizations (id, name, slug)
-                VALUES (gen_random_uuid(), ${`Reap ${i}`}, ${`reap-${i}-${crypto.randomUUID().slice(0, 8)}`})
+                INSERT INTO kernel.organizations (id, name, slug, class)
+                VALUES (gen_random_uuid(), ${`Reap ${i}`}, ${`reap-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
                 RETURNING id`
             )[0]?.id as string)
       await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - (80 + i) * HOUR)))
@@ -278,8 +278,8 @@ describe("collecting expired demo workspaces", () => {
     const fresh: string[] = []
     for (let i = 0; i < 5; i++) {
       const row = await sql<{ id: string }[]>`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), ${`Paced ${i}`}, ${`paced-${i}-${crypto.randomUUID().slice(0, 8)}`})
+        INSERT INTO kernel.organizations (id, name, slug, class)
+        VALUES (gen_random_uuid(), ${`Paced ${i}`}, ${`paced-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
       await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
@@ -329,8 +329,8 @@ describe("collecting expired demo workspaces", () => {
     const fresh: string[] = []
     for (let i = 0; i < 12; i++) {
       const row = await sql<{ id: string }[]>`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), ${`Floor ${i}`}, ${`floor-${i}-${crypto.randomUUID().slice(0, 8)}`})
+        INSERT INTO kernel.organizations (id, name, slug, class)
+        VALUES (gen_random_uuid(), ${`Floor ${i}`}, ${`floor-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
       await markOrgAsDemo(orgId, visitorMarker(72, new Date(Date.now() - 80 * HOUR)))
@@ -359,8 +359,8 @@ describe("collecting expired demo workspaces", () => {
     const fresh: string[] = []
     for (let i = 0; i < 4; i++) {
       const row = await sql<{ id: string }[]>`
-        INSERT INTO kernel.organizations (id, name, slug)
-        VALUES (gen_random_uuid(), ${`Capped ${i}`}, ${`capped-${i}-${crypto.randomUUID().slice(0, 8)}`})
+        INSERT INTO kernel.organizations (id, name, slug, class)
+        VALUES (gen_random_uuid(), ${`Capped ${i}`}, ${`capped-${i}-${crypto.randomUUID().slice(0, 8)}`}, 'demo')
         RETURNING id`
       const orgId = row[0]?.id as string
       await markOrgAsDemo(orgId, {

@@ -273,6 +273,15 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
   const baseTime = opts.baseTime ?? new Date()
   const failures: SeedLayerFailure[] = []
 
+  // Before any write: the content reset takes the reserved org alone, and would
+  // refuse this one after the seed had already begun.
+  if (opts.resetContent === true && opts.variant !== "reserved") {
+    throw new Error(
+      `seedDemoWorld: only the reserved demo org's content is reset; '${opts.orgSlug}' is seeded ` +
+        "as a visitor org. Seed it without --reset.",
+    )
+  }
+
   // What this seed writes: everything (no needs), or a visitor's picks.
   const plan = demoSeedPlan(opts.needs, {
     warehouse: opts.warehouse ?? env.LIAISON_DEMO_WAREHOUSE,
@@ -294,7 +303,7 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
   if (off.length > 0) log(`world: turned Off the apps not picked: ${off.join(", ")}`)
 
   // `resetDemoOrgContent` REFUSES (it throws) unless demo mode is on and the
-  // org row itself carries a demo marker. It also raises an interrupted-reset
+  // org row itself is the reserved demo org's. It also raises an interrupted-reset
   // flag on the org, which stays up until every layer below has landed, so a
   // process that dies between the clear and the seed leaves a workspace that
   // says so instead of a thin one nobody can tell from a quiet one.

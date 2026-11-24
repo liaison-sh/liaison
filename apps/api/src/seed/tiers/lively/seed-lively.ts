@@ -26,6 +26,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { isPublicDemoInstance } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, loadDemoMarker } from "~/modules/demo/demo-org"
 import { DEMO_COMPANY_NAME } from "~/modules/demo/demo-seeder"
+import { orgClassOf, protectedOrgReason } from "~/modules/demo/org-class"
 import { runAsSeed } from "~/modules/notifications/seeded"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
 import { HOUR_MS } from "~/seed/clock"
@@ -125,7 +126,7 @@ const ticketRef = (key: string) => `lively:${key}`
 
 /**
  * Delete the demo org under `slug`, when there is one. Refused for an org
- * without the demo marker (a real workspace never goes this way) and on a public
+ * without the demo marker or class (a real workspace never goes this way) and on a public
  * demo box, where demo orgs belong to visitors and the reaper (a private
  * demo-mode box, `isPublicDemoInstance`, has none).
  */
@@ -139,7 +140,11 @@ export async function replaceLivelyOrg(slug: string, log: (msg: string) => void)
   }
   const guard = async (id: string) => {
     await invalidateDemoMarker(id)
-    if (!(await loadDemoMarker(id))) {
+    if (
+      !(await loadDemoMarker(id)) ||
+      (await orgClassOf(id)) !== "demo" ||
+      (await protectedOrgReason(id))
+    ) {
       throw new Error(
         `seedLivelyWorld: refusing to replace '${slug}': it is not a demo org, and replacing deletes it.`,
       )

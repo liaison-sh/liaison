@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test"
 import { draftFromCard, type Harness, harness, type Row } from "./__tests__/from-reconcile-harness"
-import { draftsDiscard, invoiceIssue } from "./mutations"
+import { draftsDiscard, invoiceIssue, invoiceIssuePreflight } from "./mutations"
 
 /** The harness, its run approved as `tool`, with the protocol records it makes. */
 function approvedAs(tool: string): Harness & { records: Row[] } {
@@ -79,12 +79,18 @@ describe("an approved run on its own transactions", () => {
   test("an issue failing after its number is committed records the invoice as landed, not as no effect", async () => {
     const h = approvedAs("invoicing:invoice_issue")
     const draftId = await draftFromCard(h)
+    // What its approver was shown, as the card carries it.
+    const pre = (await invoiceIssuePreflight(h.ctx, { draft_id: draftId })) as {
+      pinnedParams?: { draft_hash?: string }
+    }
     // The first thing after the numbering commit fails.
     h.ctx.emit = async () => {
       throw new Error("the event bus is down")
     }
 
-    await expect(invoiceIssue(h.ctx, { draft_id: draftId })).rejects.toThrow("event bus is down")
+    await expect(
+      invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: pre.pinnedParams?.draft_hash }),
+    ).rejects.toThrow("event bus is down")
 
     const issued = h.db.__all("documents").find((d) => d.status === "issued" && d.number)
     expect(issued).toBeDefined()

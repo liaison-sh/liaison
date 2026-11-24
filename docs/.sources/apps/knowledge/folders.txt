@@ -12,3 +12,7 @@ A document for named people is decided by the person the agent acts for -> apps/
 Two approvers on such a request: refused -> apps/api/src/modules/apps/execute-tool.ts (assertApproversAvailable)
 An imported collection is shared unless shared: false -> apps/api/src/apps/knowledge/import-kind.ts (importCollection)
 An agent's folder is shared unless personal -> apps/api/src/modules/apps/sandbox/bridge/knowledge-curation.ts (knowledge_collection_create)
+Your own document can be taken out of a synced folder -> apps/api/src/apps/knowledge/collections.ts (assertCanUnfile)
+A stopped sync leaves ordinary folders -> apps/api/src/apps/knowledge/collections.ts (governingSources)
+Syncing again takes its folders back -> apps/api/src/apps/knowledge/synced-sources.ts (restoreFolders)
+Only a confidential, restricted or team document needs the access -> apps/api/src/apps/knowledge/service.ts (assertCanCreateWithDimensions)

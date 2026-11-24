@@ -5,7 +5,6 @@ import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanReadDocumentRow,
   assertCanWriteDocumentRow,
-  inNoVisibleFolder,
   type KnowledgeActor,
   KnowledgeError,
   loadDocumentShareRole,
@@ -197,29 +196,63 @@ async function loadLiveCollection(
 }
 
 /** The description the sync gives a folder it made (syncedCollectionMarker, sync-reconciler.ts). */
-const SYNCED_MARKER = "^synced:[0-9a-fA-F-]{36}:"
+const SYNCED_MARKER = "^synced:([0-9a-fA-F-]{36}):"
 
-/** Whether the folder is the root of a synced source, or anywhere under one. */
-export async function isSynced(tx: RlsClient, folderId: string): Promise<boolean> {
-  const rows = extractRows(
+/**
+ * The live sources `folder` is the root of, or was made by. A stopped source, or
+ * one that ran once, governs nothing: its folders are ordinary ones.
+ */
+function liveSourcesOf(folder: string) {
+  const c = drizzleSql.raw(folder)
+  return drizzleSql`
+    SELECT s.id FROM ${knowledgeRel("synced_sources")} s
+     WHERE s.org_id = ${c}.org_id AND s.archived_at IS NULL
+       AND (s.root_collection_id = ${c}.id
+            OR s.id::text = lower(substring(${c}.description from ${SYNCED_MARKER})))`
+}
+
+/** The live sources that govern the folder: of it, or of one it lies under. */
+async function governingSources(tx: RlsClient, folderId: string): Promise<string[]> {
+  const rows = extractRows<{ id: string }>(
     await tx.execute(drizzleSql`
       WITH RECURSIVE up AS (
-        SELECT c.id, c.parent_collection_id, c.description
+        SELECT c.id, c.org_id, c.parent_collection_id, c.description
           FROM ${knowledgeRel("collections")} c WHERE c.id = ${folderId}::uuid
         UNION
-        SELECT c.id, c.parent_collection_id, c.description
+        SELECT c.id, c.org_id, c.parent_collection_id, c.description
           FROM ${knowledgeRel("collections")} c JOIN up ON c.id = up.parent_collection_id
       )
-      SELECT 1 FROM up
-      WHERE up.description ~ ${SYNCED_MARKER}
-         OR EXISTS (
-           SELECT 1 FROM ${knowledgeRel("synced_sources")} s
-           WHERE s.root_collection_id = up.id AND s.archived_at IS NULL
-         )
-      LIMIT 1
+      SELECT DISTINCT src.id::text AS id FROM up, LATERAL (${liveSourcesOf("up")}) src
     `),
   )
-  return rows.length > 0
+  return rows.map((r) => r.id)
+}
+
+/** Whether a live source governs the folder. */
+export async function isSynced(tx: RlsClient, folderId: string): Promise<boolean> {
+  return (await governingSources(tx, folderId)).length > 0
+}
+
+/** The folders a person may file into: all they see, but those a live source governs. */
+export async function listFileableCollections(
+  tx: RlsClient,
+  actor: KnowledgeActor,
+): Promise<KnowledgeCollectionRow[]> {
+  const governed = new Set(
+    extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        WITH RECURSIVE governed AS (
+          SELECT c.id FROM ${knowledgeRel("collections")} c
+           WHERE c.org_id = ${actor.orgId}::uuid AND EXISTS (${liveSourcesOf("c")})
+          UNION
+          SELECT c.id FROM ${knowledgeRel("collections")} c
+            JOIN governed g ON c.parent_collection_id = g.id
+        )
+        SELECT id::text AS id FROM governed
+      `),
+    ).map((r) => r.id),
+  )
+  return (await listKnowledgeCollections(tx, actor)).filter((c) => !governed.has(c.id))
 }
 
 /**
@@ -228,12 +261,14 @@ export async function isSynced(tx: RlsClient, folderId: string): Promise<boolean
  * organization's content away from everybody.
  */
 export async function assertNotSynced(tx: RlsClient, folderId: string): Promise<void> {
-  if (await isSynced(tx, folderId)) {
-    throw new KnowledgeError(
-      "VALIDATION",
-      "This folder is synced from another app. Change it there, or stop the sync first.",
-    )
-  }
+  if (await isSynced(tx, folderId)) throw syncedFolder()
+}
+
+function syncedFolder(): KnowledgeError {
+  return new KnowledgeError(
+    "VALIDATION",
+    "This folder is synced from another app. Change it there, or stop the sync first.",
+  )
 }
 
 /** Refuse to change who sees a tree that holds a synced folder. */
@@ -241,19 +276,13 @@ async function assertHoldsNoSynced(tx: RlsClient, folderId: string): Promise<voi
   const rows = extractRows(
     await tx.execute(drizzleSql`
       WITH RECURSIVE tree AS (
-        SELECT c.id, c.description
+        SELECT c.id, c.org_id, c.description
           FROM ${knowledgeRel("collections")} c WHERE c.id = ${folderId}::uuid
         UNION
-        SELECT c.id, c.description
+        SELECT c.id, c.org_id, c.description
           FROM ${knowledgeRel("collections")} c JOIN tree ON c.parent_collection_id = tree.id
       )
-      SELECT 1 FROM tree
-      WHERE tree.description ~ ${SYNCED_MARKER}
-         OR EXISTS (
-           SELECT 1 FROM ${knowledgeRel("synced_sources")} s
-           WHERE s.root_collection_id = tree.id AND s.archived_at IS NULL
-         )
-      LIMIT 1
+      SELECT 1 FROM tree WHERE EXISTS (${liveSourcesOf("tree")}) LIMIT 1
     `),
   )
   if (rows.length > 0) {
@@ -345,60 +374,37 @@ export async function listKnowledgeCollectionTree(
     syncedRootRows.map((r) => [r.root_collection_id, r.synced_source_id]),
   )
 
-  const members =
-    ids.length === 0
-      ? []
-      : extractRows<{
-          collection_id: string
-          target_id: string
-          title: string
-          synced_source_id: string | null
-        }>(
-          await tx.execute(drizzleSql`
-            SELECT m.collection_id, m.target_id, d.title, d.synced_source_id
-            FROM ${knowledgeRel("collection_memberships")} m
-            JOIN ${knowledgeRel("documents")} d
-              ON d.id = m.target_id AND d.org_id = m.org_id
-            WHERE m.collection_id IN (${drizzleSql.join(
-              ids.map((i) => drizzleSql`${i}::uuid`),
-              drizzleSql`,`,
-            )})
-              AND m.target_type = 'document'
-              AND d.archived_at IS NULL
-            ORDER BY lower(d.title), d.title, d.id
-          `),
-        )
-
-  // Two virtual buckets, both of pages in no live folder this reader sees:
-  //   - personal notes: personal documents (which belong to no folder by
-  //     validation) and the reader's own pages nobody else can read.
-  //   - unfiled: every other one, a page shared by someone who keeps it in a
-  //     personal folder included.
-  const personalNotes = extractRows<{ id: string; title: string }>(
+  // Two plain reads, put together here: joined in SQL, their plan depends on
+  // statistics, and reads every membership for every page when those are behind.
+  const pages = extractRows<{
+    id: string
+    title: string
+    synced_source_id: string | null
+    personal: boolean
+    only_mine: boolean
+    updated: number
+  }>(
     await tx.execute(drizzleSql`
-      SELECT d.id, d.title
+      SELECT d.id, d.title, d.synced_source_id, d.document_scope = 'personal' AS personal,
+             ${onlyMine(actor)} AS only_mine,
+             extract(epoch FROM d.updated_at)::float8 AS updated
       FROM ${knowledgeRel("documents")} d
-      WHERE d.org_id = ${actor.orgId}::uuid
-        AND d.archived_at IS NULL
-        AND (
-          d.document_scope = 'personal'
-          OR (${inNoVisibleFolder()} AND ${onlyMine(actor)})
-        )
-      ORDER BY d.updated_at DESC
+      WHERE d.org_id = ${actor.orgId}::uuid AND d.archived_at IS NULL
+      ORDER BY lower(d.title), d.title, d.id
     `),
   )
-  const unfiled = extractRows<{ id: string; title: string }>(
+  const placesOf = new Map<string, string[]>()
+  for (const m of extractRows<{ collection_id: string; target_id: string }>(
     await tx.execute(drizzleSql`
-      SELECT d.id, d.title
-      FROM ${knowledgeRel("documents")} d
-      WHERE d.org_id = ${actor.orgId}::uuid
-        AND d.archived_at IS NULL
-        AND d.document_scope = 'organization'
-        AND ${inNoVisibleFolder()}
-        AND NOT ${onlyMine(actor)}
-      ORDER BY d.updated_at DESC
+      SELECT m.collection_id, m.target_id
+      FROM ${knowledgeRel("collection_memberships")} m
+      WHERE m.org_id = ${actor.orgId}::uuid AND m.target_type = 'document'
     `),
-  )
+  )) {
+    const places = placesOf.get(m.target_id)
+    if (places) places.push(m.collection_id)
+    else placesOf.set(m.target_id, [m.collection_id])
+  }
 
   const byId = new Map<string, CollectionTreeNode>()
   for (const c of flat) {
@@ -413,13 +419,28 @@ export async function listKnowledgeCollectionTree(
       documents: [],
     })
   }
-  for (const m of members) {
-    byId.get(m.collection_id)?.documents.push({
-      id: m.target_id,
-      title: m.title,
-      syncedSourceId: m.synced_source_id ?? null,
-    })
+
+  // Two virtual buckets, both of pages in no live folder this reader sees:
+  //   - personal notes: personal documents (which belong to no folder by
+  //     validation) and the reader's own pages nobody else can read.
+  //   - unfiled: every other one, a page shared by someone who keeps it in a
+  //     personal folder included.
+  const personalNotes: typeof pages = []
+  const unfiled: typeof pages = []
+  for (const page of pages) {
+    const folders = (placesOf.get(page.id) ?? []).flatMap((id) => byId.get(id) ?? [])
+    for (const node of folders) {
+      node.documents.push({
+        id: page.id,
+        title: page.title,
+        syncedSourceId: page.synced_source_id ?? null,
+      })
+    }
+    if (page.personal || (folders.length === 0 && page.only_mine)) personalNotes.push(page)
+    else if (folders.length === 0) unfiled.push(page)
   }
+  const newestFirst = (list: typeof pages) =>
+    list.sort((a, b) => b.updated - a.updated).map(({ id, title }) => ({ id, title }))
 
   const roots: CollectionTreeNode[] = []
   for (const node of byId.values()) {
@@ -441,7 +462,7 @@ export async function listKnowledgeCollectionTree(
       ownerUserId: actor.userId,
       virtual: true,
       children: [],
-      documents: personalNotes,
+      documents: newestFirst(personalNotes),
     })
   }
   if (unfiled.length > 0) {
@@ -453,7 +474,7 @@ export async function listKnowledgeCollectionTree(
       ownerUserId: null,
       virtual: true,
       children: [],
-      documents: unfiled,
+      documents: newestFirst(unfiled),
     })
   }
 
@@ -517,7 +538,7 @@ export async function updateKnowledgeCollection(
   if (!existing) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
 
   await assertNotSynced(tx, id)
-  assertNotMarker(patch.description)
+  if (patch.description !== existing.description) assertNotMarker(patch.description)
 
   const parentId =
     patch.parentCollectionId !== undefined ? patch.parentCollectionId : existing.parentCollectionId
@@ -702,7 +723,7 @@ async function assertTargetEditable(
   assertCanWriteDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
 }
 
-/** A live folder the person sees and may file into or out of. */
+/** A live folder the person sees and may file into. */
 export async function assertCanFileIn(
   tx: RlsClient,
   collectionId: string,
@@ -711,6 +732,31 @@ export async function assertCanFileIn(
   const row = await loadLiveCollection(tx, collectionId, actor)
   await assertNotSynced(tx, row.id)
   return row
+}
+
+/**
+ * A live folder the person sees and may take this out of. What a person filed in
+ * a synced folder is theirs to take back; what its own sync files there is not.
+ */
+export async function assertCanUnfile(
+  tx: RlsClient,
+  input: CollectionMembershipInput,
+  actor: KnowledgeActor,
+): Promise<KnowledgeCollectionRow> {
+  const folder = await loadLiveCollection(tx, input.collectionId, actor)
+  const sources = await governingSources(tx, folder.id)
+  if (sources.length > 0) {
+    const table = input.targetType === "document" ? "documents" : "source_links"
+    const [target] = extractRows<{ synced_source_id: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT synced_source_id::text AS synced_source_id FROM ${knowledgeRel(table)}
+        WHERE id = ${input.targetId}::uuid AND org_id = ${actor.orgId}::uuid
+      `),
+    )
+    const of = target?.synced_source_id
+    if (!target || (of && sources.includes(of))) throw syncedFolder()
+  }
+  return folder
 }
 
 export async function addCollectionMembership(
@@ -775,7 +821,7 @@ export async function removeCollectionMembership(
   actor: KnowledgeActor,
 ): Promise<void> {
   requireCollectionsScope(actor)
-  const folder = await assertCanFileIn(tx, input.collectionId, actor)
+  const folder = await assertCanUnfile(tx, input, actor)
   await assertTargetEditable(tx, input, actor)
   await tx.execute(drizzleSql`
     DELETE FROM ${knowledgeRel("collection_memberships")}

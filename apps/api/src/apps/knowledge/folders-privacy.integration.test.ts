@@ -10,6 +10,7 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { sql } from "drizzle-orm"
+import postgres from "postgres"
 import {
   addCollectionMembership,
   archiveKnowledgeCollection,
@@ -23,15 +24,23 @@ import {
   updateKnowledgeCollection,
 } from "~/apps/knowledge/collections"
 import { runSyncWorker } from "~/apps/knowledge/knowledge-jobs"
+import { moveDocument } from "~/apps/knowledge/move"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   createKnowledgeDocument,
   type KnowledgeActor,
   knowledgeActorFromContext,
   listKnowledgeDocuments,
+  setDocumentSharing,
 } from "~/apps/knowledge/service"
-import { upsertSyncedCollection } from "~/apps/knowledge/sync-reconciler"
 import {
+  reparentMembership,
+  upsertSourceIdentity,
+  upsertSyncedCollection,
+  upsertSyncedDocument,
+} from "~/apps/knowledge/sync-reconciler"
+import {
+  archiveSyncedSource,
   createSyncedSource,
   reactivateSyncedSource,
   type SyncedSourceRow,
@@ -47,7 +56,7 @@ import { eraseUser } from "~/modules/erasure/erase-user"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
-import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { acquireTestLock, releaseTestLock, superuserUrlForTestDb } from "~/tests/route-test-setup"
 
 const MEMBER = [
   "knowledge:documents:read",
@@ -158,6 +167,16 @@ async function folderRow(id: string) {
     ),
   )
   return row
+}
+
+async function placesOf(target: string): Promise<string[]> {
+  return extractRows<{ id: string }>(
+    await withSystemDb("test-places", (tx) =>
+      tx.execute(sql`
+        SELECT collection_id::text AS id FROM ${knowledgeRel("collection_memberships")}
+         WHERE target_id = ${target}::uuid ORDER BY 1`),
+    ),
+  ).map((r) => r.id)
 }
 
 async function privileged(statement: ReturnType<typeof sql>): Promise<void> {
@@ -292,6 +311,54 @@ describe("a personal folder", () => {
     })
   })
 
+  it("row security refuses the writes the service refuses", async () => {
+    const insertFolder = (over: Record<string, RowValue>, scopes: string[] = MEMBER) =>
+      refusal(
+        as(
+          ben,
+          (tx) =>
+            tx.execute(
+              sql.raw(
+                insertSql(`${schemaRef("app_knowledge")}.collections`, {
+                  org_id: orgId,
+                  name: "Raw",
+                  ...over,
+                }),
+              ),
+            ),
+          scopes,
+        ),
+      )
+    expect(await insertFolder({})).toBe("accepted")
+    expect(await insertFolder({ owner_user_id: ben })).toBe("accepted")
+    expect(await insertFolder({ owner_user_id: ana })).not.toBe("accepted")
+    expect(await insertFolder({ owner_user_id: ana }, ADMIN)).not.toBe("accepted")
+    expect(
+      await insertFolder({}, ["knowledge:documents:read", "knowledge:documents:update"]),
+    ).not.toBe("accepted")
+
+    const doc = await page(ben, "Ben's, to file by SQL")
+    const hers = await personal(ana, "Ana's raw shelf")
+    const open = await shared(ana, "Open raw shelf")
+    const fileIn = (collectionId: string) =>
+      refusal(
+        as(ben, (tx) =>
+          tx.execute(
+            sql.raw(
+              insertSql(`${schemaRef("app_knowledge")}.collection_memberships`, {
+                org_id: orgId,
+                collection_id: collectionId,
+                target_type: "document",
+                target_id: doc,
+              }),
+            ),
+          ),
+        ),
+      )
+    expect(await fileIn(open.id)).toBe("accepted")
+    expect(await fileIn(hers.id)).not.toBe("accepted")
+  })
+
   it("nobody can write a folder of somebody else, by SQL under row security either", async () => {
     const mine = await personal(ana, "Ana drafts")
     const changed = await as(ben, (tx) =>
@@ -421,6 +488,89 @@ describe("no page ends in no place", () => {
     expect((await folderRow(sub.id))?.archived).toBe(false)
   })
 
+  it("emptying a folder is refused to whoever may not change it", async () => {
+    const empty = (userId: string, id: string, scopes: string[] = MEMBER) =>
+      refusal(
+        as(
+          userId,
+          (tx) => tx.execute(sql`SELECT ${knowledgeRel("empty_folder_into_parent")}(${id}::uuid)`),
+          scopes,
+        ).catch((err: Error) => {
+          throw (err.cause as Error | undefined) ?? err
+        }),
+      )
+    const hers = await personal(ana, "Ana's, not to empty")
+    const kept = await page(ana, "Kept in hers", { in: hers.id })
+    const open = await shared(ana, "Open, not to empty without the right")
+    const keptOpen = await page(ana, "Kept in open", { in: open.id })
+    const otherOrg = randomUUID()
+    const theirs = randomUUID()
+    const theirPage = randomUUID()
+    await withSystemDb("test-other-org", async (tx) => {
+      for (const [table, row] of [
+        [
+          `${schemaRef("kernel")}.organizations`,
+          { id: otherOrg, name: "Other", slug: `other-${otherOrg.slice(0, 8)}` },
+        ],
+        [
+          `${schemaRef("app_knowledge")}.collections`,
+          { id: theirs, org_id: otherOrg, name: "Theirs" },
+        ],
+        [
+          `${schemaRef("app_knowledge")}.collection_memberships`,
+          {
+            org_id: otherOrg,
+            collection_id: theirs,
+            target_type: "document",
+            target_id: theirPage,
+          },
+        ],
+      ] as const) {
+        await tx.execute(sql.raw(insertSql(table, row)))
+      }
+    })
+    expect(await empty(ben, hers.id)).toMatch(/no such folder/)
+    expect(await empty(admin, hers.id, ADMIN)).toMatch(/no such folder/)
+    expect(await empty(ben, open.id, ["knowledge:documents:read"])).toMatch(/not allowed/)
+    expect(await empty(ben, theirs, ADMIN)).toMatch(/no such folder/)
+    for (const [target, at] of [
+      [kept, hers.id],
+      [keptOpen, open.id],
+      [theirPage, theirs],
+    ] as const) {
+      expect(await placesOf(target)).toEqual([at])
+    }
+    expect(await empty(ana, hers.id)).toBe("accepted")
+    expect(await placesOf(kept)).toEqual([])
+  })
+
+  it("a folder whose parent is deleted, or of another section, empties to the top", async () => {
+    const gone = await shared(ana, "Deleted parent")
+    const underGone = await shared(ana, "Under a deleted parent", gone.id)
+    const below = await shared(ana, "Below it", underGone.id)
+    const doc = await page(ana, "Not filed in a deleted folder", { in: underGone.id })
+    await privileged(
+      sql`UPDATE ${knowledgeRel("collections")} SET archived_at = now() WHERE id = ${gone.id}::uuid`,
+    )
+    await as(ana, (tx, a) => archiveKnowledgeCollection(tx, underGone.id, a))
+    expect(await placesOf(doc)).toEqual([])
+    expect((await folderRow(below.id))?.parent_collection_id).toBeNull()
+
+    const hers = await personal(ana, "Ana's section")
+    const open = await shared(ben, "Shared, under Ana's")
+    const openSub = await shared(ben, "Shared, below that", open.id)
+    const bens = await page(ben, "Not filed in Ana's section", { in: open.id })
+    await privileged(
+      sql`UPDATE ${knowledgeRel("collections")} SET parent_collection_id = ${hers.id}::uuid WHERE id = ${open.id}::uuid`,
+    )
+    await as(ana, (tx, a) => archiveKnowledgeCollection(tx, open.id, a))
+    expect(await placesOf(bens)).toEqual([])
+    expect(await folderRow(openSub.id)).toMatchObject({
+      owner_user_id: null,
+      parent_collection_id: null,
+    })
+  })
+
   it("a page whose only folder was archived before is in Unfiled", async () => {
     const old = await shared(ana, "Archived long ago")
     const doc = await page(ana, "Hidden since then", { in: old.id })
@@ -428,6 +578,95 @@ describe("no page ends in no place", () => {
       sql`UPDATE ${knowledgeRel("collections")} SET archived_at = now() WHERE id = ${old.id}::uuid`,
     )
     expect(await inUnfiled(ben, doc)).toEqual({ tree: true, list: true })
+  })
+
+  it("my page in no folder, shared with one person, is Unfiled for both, not a personal note", async () => {
+    const doc = await page(ana, "Ana's, for Ben", { access: "none" })
+    expect(has(await node(ana, "__personal_notes__"), doc)).toBe(true)
+    await as(ana, (tx, a) =>
+      setDocumentSharing(
+        tx,
+        doc,
+        { orgAccess: "none", editScope: null, shares: [{ userId: ben, role: "viewer" }] },
+        a,
+      ),
+    )
+    expect(has(await node(ana, "__personal_notes__"), doc)).toBe(false)
+    for (const reader of [ana, ben]) {
+      expect(await inUnfiled(reader, doc)).toEqual({ tree: true, list: true })
+    }
+  })
+
+  it("the tree and Unfiled stay fast on 2,000 pages whose statistics are missing", async () => {
+    const fast = await minimal.person(orgId, { name: "Importer" })
+    const url = superuserUrlForTestDb()
+    if (!url) throw new Error("no superuser URL")
+    const su = postgres(url, { max: 1, onnotice: () => {} })
+    const tables = ["documents", "collections", "collection_memberships"].map(
+      (t) => `'${schemaRef("app_knowledge")}.${t}'::regclass`,
+    )
+    const K = schemaRef("app_knowledge")
+    try {
+      // What an import or a restore leaves until the next ANALYZE.
+      const folders = Array.from({ length: 200 }, () => randomUUID())
+      const pages = Array.from({ length: 2_000 }, () => randomUUID())
+      const bulkInsert = (table: string, rows: Record<string, RowValue>[]) =>
+        su.unsafe(insertSql(`${K}.${table}`, rows))
+      await bulkInsert(
+        "collections",
+        folders.map((id, i) => ({ id, org_id: orgId, name: `Bulk ${i}` })),
+      )
+      await bulkInsert(
+        "documents",
+        pages.map((id, i) => ({
+          id,
+          org_id: orgId,
+          title: `Bulk page ${i + 1}`,
+          body: "b",
+          document_scope: "organization",
+          owner_user_id: fast.id,
+          created_by: fast.id,
+          sensitivity: "internal",
+          team: { raw: "'[]'::jsonb" },
+          required_scopes: { raw: "'{}'::text[]" },
+          org_access: "editor",
+        })),
+      )
+      await bulkInsert(
+        "collection_memberships",
+        pages.slice(0, -1).map((id, i) => ({
+          org_id: orgId,
+          collection_id: folders[i % folders.length] ?? "",
+          target_type: "document",
+          target_id: id,
+        })),
+      )
+      await su.unsafe(`DELETE FROM pg_statistic WHERE starelid IN (${tables.join(", ")})`)
+      await su.unsafe(
+        `UPDATE pg_class SET reltuples = -1, relpages = 0 WHERE oid IN (${tables.join(", ")})`,
+      )
+      const started = performance.now()
+      const unfiled = (await node(ben, "__unfiled__"))?.documents ?? []
+      const listed = await as(ben, (tx, a) => listKnowledgeDocuments(tx, a, { unfiled: true }))
+      // About 0.2 s here; the join form passed the 10 s statement timeout.
+      expect(performance.now() - started).toBeLessThan(5_000)
+      const bulk = (titles: string[]) => titles.filter((t) => t.startsWith("Bulk page "))
+      expect(bulk(unfiled.map((d) => d.title))).toEqual(["Bulk page 2000"])
+      expect(bulk(listed.map((d) => d.title))).toEqual(["Bulk page 2000"])
+    } finally {
+      await su.unsafe(
+        `DELETE FROM ${K}.collection_memberships m USING ${K}.collections c
+          WHERE c.id = m.collection_id AND c.org_id = '${orgId}' AND c.name LIKE 'Bulk %'`,
+      )
+      await su.unsafe(
+        `DELETE FROM ${K}.collections WHERE org_id = '${orgId}' AND name LIKE 'Bulk %'`,
+      )
+      await su.unsafe(
+        `DELETE FROM ${K}.documents WHERE org_id = '${orgId}' AND title LIKE 'Bulk page %'`,
+      )
+      await su.unsafe(`ANALYZE ${K}.documents, ${K}.collections, ${K}.collection_memberships`)
+      await su.end()
+    }
   })
 
   it("the tree names its virtual nodes by kind and lists pages by title", async () => {
@@ -534,6 +773,65 @@ describe("moving between Personal and Shared", () => {
     expect(has(await node(ben, top.id), mine)).toBe(true)
   })
 
+  it("Shared -> Personal is refused for anything else of another person in the tree", async () => {
+    const top = await shared(ana, "Looks like Ana's")
+    const sub = await shared(ana, "Looks like Ana's, below", top.id)
+    const toPersonal = () =>
+      refusal(as(ana, (tx, a) => updateKnowledgeCollection(tx, top.id, { ownerUserId: ana }, a)))
+    const refused = /belongs to another person/
+
+    const given = await page(ana, "Ana's, given to Ben", { in: sub.id })
+    await privileged(
+      sql`UPDATE ${knowledgeRel("documents")} SET owner_user_id = ${ben}::uuid WHERE id = ${given}::uuid`,
+    )
+    expect(await toPersonal()).toMatch(refused)
+    await privileged(
+      sql`UPDATE ${knowledgeRel("documents")} SET owner_user_id = ${ana}::uuid WHERE id = ${given}::uuid`,
+    )
+
+    const identity = randomUUID()
+    const link = randomUUID()
+    const K = schemaRef("app_knowledge")
+    for (const [table, row] of [
+      [
+        "source_identities",
+        { id: identity, org_id: orgId, source: "google-drive", external_id: identity },
+      ],
+      [
+        "source_links",
+        {
+          id: link,
+          org_id: orgId,
+          source_identity_id: identity,
+          source: "google-drive",
+          external_id: identity,
+          title: "Ben's link",
+          owner_user_id: ben,
+        },
+      ],
+      [
+        "collection_memberships",
+        { org_id: orgId, collection_id: sub.id, target_type: "source_link", target_id: link },
+      ],
+    ] as const) {
+      await privileged(sql.raw(insertSql(`${K}.${table}`, row)))
+    }
+    expect(await toPersonal()).toMatch(refused)
+    await privileged(
+      sql`UPDATE ${knowledgeRel("source_links")} SET owner_user_id = ${ana}::uuid WHERE id = ${link}::uuid`,
+    )
+
+    const bens = await personal(ben, "Ben's own")
+    await privileged(
+      sql`UPDATE ${knowledgeRel("collections")} SET parent_collection_id = ${sub.id}::uuid WHERE id = ${bens.id}::uuid`,
+    )
+    expect(await toPersonal()).toMatch(refused)
+    await privileged(
+      sql`UPDATE ${knowledgeRel("collections")} SET parent_collection_id = NULL WHERE id = ${bens.id}::uuid`,
+    )
+    expect(await toPersonal()).toBe("accepted")
+  })
+
   it("moving a folder into another section gives its whole tree to that section", async () => {
     const mine = await personal(ana, "Ana's own")
     const below = await personal(ana, "Ana's own, below", mine.id)
@@ -603,13 +901,46 @@ describe("a synced tree", () => {
     return { source: created, root: created.rootCollectionId, below }
   }
 
+  /** A page the sync itself made and filed. */
+  async function syncedPage(s: SyncedSourceRow, folderId: string, title: string): Promise<string> {
+    return withPrivilegedDb(orgId, "test-synced-page", async (tx) => {
+      const identityId = await upsertSourceIdentity(tx, orgId, "google-drive", {
+        externalId: randomUUID(),
+        name: title,
+        kind: "file",
+      } as never)
+      const { id } = await upsertSyncedDocument(tx, {
+        source: s,
+        identityId,
+        title,
+        body: "synced",
+        externalPath: title,
+        externalRev: null,
+        lastSyncedAt: new Date(),
+      })
+      await reparentMembership(tx, orgId, s.id, "document", id, folderId, ana)
+      return id
+    })
+  }
+
+  const move = (userId: string, documentId: string, from: string | null, to: string | null) =>
+    as(userId, (tx, a) =>
+      moveDocument(tx, { documentId, fromCollectionId: from, toCollectionId: to }, a),
+    )
+
   it("PATCH owner, PATCH parent, move to Personal, rename, delete, file into: refused on a synced root and on a folder under it, by route and by tool, owner unchanged", async () => {
-    const { root, below } = await source("organization", "Company drive")
+    const { source: s, root, below } = await source("organization", "Company drive")
     const other = await shared(ana, "Ordinary")
     const mine = await personal(ana, "Ordinary and mine")
     const doc = await page(ana, "To file")
     for (const id of [root, below]) {
       const before = await folderRow(id)
+      const synced = await syncedPage(s, id, `file of ${id}`)
+      const theSyncs = () => ({
+        collectionId: id,
+        targetType: "document" as const,
+        targetId: synced,
+      })
       const service: Record<string, () => Promise<unknown>> = {
         owner: () => as(ana, (tx, a) => updateKnowledgeCollection(tx, id, { ownerUserId: ana }, a)),
         parent: () =>
@@ -635,14 +966,9 @@ describe("a synced tree", () => {
               a,
             ),
           ),
-        unfile: () =>
-          as(ana, (tx, a) =>
-            removeCollectionMembership(
-              tx,
-              { collectionId: id, targetType: "document", targetId: doc },
-              a,
-            ),
-          ),
+        unfile: () => as(ana, (tx, a) => removeCollectionMembership(tx, theSyncs(), a)),
+        moveIn: () => move(ana, doc, null, id),
+        moveOut: () => move(ana, synced, id, null),
         toolRename: () => tool(ana, "knowledge_collection_update", { id, name: "x" }),
         toolOwner: () => tool(ana, "knowledge_collection_update", { id, ownerUserId: ana }),
         toolParent: () =>
@@ -651,7 +977,7 @@ describe("a synced tree", () => {
         toolFile: () =>
           tool(ana, "knowledge_add_to_collection", { collectionId: id, documentId: doc }),
         toolUnfile: () =>
-          tool(ana, "knowledge_remove_from_collection", { collectionId: id, documentId: doc }),
+          tool(ana, "knowledge_remove_from_collection", { collectionId: id, documentId: synced }),
       }
       for (const [what, attempt] of Object.entries(service)) {
         expect({ what, answer: await refusal(attempt()) }).toEqual({
@@ -661,7 +987,143 @@ describe("a synced tree", () => {
         })
       }
       expect(await folderRow(id)).toEqual(before)
+      expect(await placesOf(synced)).toEqual([id])
+      expect(await placesOf(doc)).toEqual([])
     }
+  })
+
+  it("a page a person filed there before can be taken out or moved out, not moved around inside", async () => {
+    const { root, below } = await source("organization", "Drive people filed in")
+    const open = await shared(ben, "Where it goes")
+    const filed = async (title: string) => {
+      const doc = await page(ben, title)
+      await privileged(
+        sql.raw(
+          insertSql(`${schemaRef("app_knowledge")}.collection_memberships`, {
+            org_id: orgId,
+            collection_id: below,
+            target_type: "document",
+            target_id: doc,
+            created_by: ben,
+          }),
+        ),
+      )
+      return doc
+    }
+    const [byRoute, byTool, moved, refused] = [
+      await filed("Taken out"),
+      await filed("Taken out by an agent"),
+      await filed("Moved out"),
+      await filed("Stays"),
+    ]
+    await as(ben, (tx, a) =>
+      removeCollectionMembership(
+        tx,
+        { collectionId: below, targetType: "document", targetId: byRoute },
+        a,
+      ),
+    )
+    await tool(ben, "knowledge_remove_from_collection", { collectionId: below, documentId: byTool })
+    await move(ben, moved, below, open.id)
+    expect(await refusal(move(ben, refused, below, root))).toMatch(/synced from another app/)
+    // Still the page's editors only.
+    const guarded = await page(ben, "Ben's alone", { access: "none" })
+    expect(
+      await refusal(
+        as(ana, (tx, a) =>
+          removeCollectionMembership(
+            tx,
+            { collectionId: below, targetType: "document", targetId: guarded },
+            a,
+          ),
+        ),
+      ),
+    ).not.toBe("accepted")
+    expect([
+      await placesOf(byRoute),
+      await placesOf(byTool),
+      await placesOf(moved),
+      await placesOf(refused),
+    ]).toEqual([[], [], [open.id], [below]])
+  })
+
+  it("a folder the sync made is its own wherever it lies, until the sync is stopped", async () => {
+    const { source: s, below } = await source("organization", "Scattered drive")
+    const open = await shared(ana, "Holds a scattered folder")
+    await privileged(
+      sql`UPDATE ${knowledgeRel("collections")} SET parent_collection_id = ${open.id}::uuid WHERE id = ${below}::uuid`,
+    )
+    const rename = () =>
+      refusal(as(ana, (tx, a) => updateKnowledgeCollection(tx, below, { name: "x" }, a)))
+    const hide = () =>
+      refusal(as(ana, (tx, a) => updateKnowledgeCollection(tx, open.id, { ownerUserId: ana }, a)))
+    expect(await rename()).toMatch(/synced from another app/)
+    expect(await hide()).toMatch(/holds a folder synced from another app/)
+    await as(ana, (tx, a) => archiveSyncedSource(tx, s.id, a), ADMIN)
+    expect(await rename()).toBe("accepted")
+    expect(await hide()).toBe("accepted")
+  })
+
+  it("once the sync is stopped, or ran only once, its folders are ordinary ones", async () => {
+    const { source: s, root, below } = await source("organization", "Stopped drive")
+    const doc = await page(ben, "Filed after the stop")
+    await as(ana, (tx, a) => archiveSyncedSource(tx, s.id, a), ADMIN)
+    const open = await shared(ben, "New home")
+    await as(ben, (tx, a) => updateKnowledgeCollection(tx, below, { name: "Renamed" }, a))
+    await as(ben, (tx, a) =>
+      updateKnowledgeCollection(tx, below, { parentCollectionId: open.id }, a),
+    )
+    await as(ben, (tx, a) =>
+      addCollectionMembership(
+        tx,
+        { collectionId: below, targetType: "document", targetId: doc },
+        a,
+      ),
+    )
+    const inside = await shared(ben, "Inside", below)
+    expect(await placesOf(doc)).toEqual([below])
+    // A client that sends the whole row back changes nothing it did not mean to.
+    await as(ben, async (tx, a) => {
+      const row = await loadCollection(tx, below, a)
+      await updateKnowledgeCollection(tx, below, { description: row?.description ?? null }, a)
+    })
+    await as(ben, (tx, a) => archiveKnowledgeCollection(tx, inside.id, a))
+    await as(ben, (tx, a) => archiveKnowledgeCollection(tx, below, a))
+    await as(ben, (tx, a) => archiveKnowledgeCollection(tx, root, a))
+    expect((await folderRow(below))?.archived).toBe(true)
+    expect((await folderRow(root))?.archived).toBe(true)
+    expect(await placesOf(doc)).toEqual([open.id])
+  })
+
+  it("an agent is told before any card that a synced folder takes no page, and is not offered one", async () => {
+    const { source: s, root, below } = await source("organization", "Drive for agents")
+    const open = await shared(ana, "Offered to agents")
+    const ask = async (collectionId?: string) =>
+      JSON.parse(
+        await tool(ana, "knowledge_create_validate", {
+          title: "By an agent",
+          documentScope: "organization",
+          sensitivity: "internal",
+          ...(collectionId ? { collectionId } : {}),
+        }),
+      ) as { error?: { code: string; message: string }; audience?: string }
+    for (const id of [root, below]) {
+      const { error, audience } = await ask(id)
+      expect({ code: error?.code, audience }).toEqual({
+        code: "collection_synced",
+        audience: undefined,
+      })
+      expect(error?.message).toContain(open.id)
+      expect(error?.message).not.toContain(`(id ${id})`)
+    }
+    const offered = (await ask()).error?.message ?? ""
+    expect(offered).toContain(open.id)
+    for (const id of [root, below]) expect(offered).not.toContain(id)
+    expect((await ask(open.id)).audience).toBe("org")
+
+    await as(ana, (tx, a) => archiveSyncedSource(tx, s.id, a), ADMIN)
+    expect((await ask(below)).audience).toBe("org")
+    expect((await ask()).error?.message).toContain(below)
   })
 
   it("a tree that holds a synced folder keeps its section, and its other folders stay free", async () => {
@@ -717,6 +1179,50 @@ describe("a synced tree", () => {
       parent_collection_id: null,
       archived: false,
     })
+  })
+
+  it("syncing again brings back a deleted root and takes back every folder it made, not a person's", async () => {
+    const { source: s, root, below } = await source("organization", "Taken apart")
+    await as(ana, (tx, a) => archiveSyncedSource(tx, s.id, a), ADMIN)
+    const hers = await personal(ben, "Ben's section")
+    // Ben moves the subfolder to his section and keeps a folder of his own in it.
+    await as(ben, (tx, a) =>
+      updateKnowledgeCollection(tx, below, { parentCollectionId: hers.id }, a),
+    )
+    const own = await personal(ben, "Ben's plans", below)
+    await as(ben, (tx, a) => archiveKnowledgeCollection(tx, root, a))
+    expect((await folderRow(below))?.owner_user_id).toBe(ben)
+
+    await reactivateSyncedSource(orgId, s.id)
+    expect(await folderRow(root)).toMatchObject({ owner_user_id: null, archived: false })
+    expect(await folderRow(below)).toMatchObject({
+      name: "Taken apart below",
+      owner_user_id: null,
+      archived: false,
+    })
+    expect(await folderRow(own.id)).toEqual({
+      name: "Ben's plans",
+      owner_user_id: ben,
+      parent_collection_id: null,
+      archived: false,
+    })
+    expect(await node(ana, own.id)).toBeUndefined()
+  })
+
+  it("a personal source synced again is its owner's alone; what others made in its root goes to the top", async () => {
+    const { source: s, root, below } = await source("personal", "Ana's drive")
+    await as(ana, (tx, a) => archiveSyncedSource(tx, s.id, a))
+    await as(ana, (tx, a) => updateKnowledgeCollection(tx, root, { ownerUserId: null }, a))
+    const bens = await shared(ben, "Ben's folder in it", root)
+    const doc = await page(ben, "Ben's page in it", { in: bens.id })
+    await reactivateSyncedSource(orgId, s.id)
+    expect((await folderRow(root))?.owner_user_id).toBe(ana)
+    expect((await folderRow(below))?.owner_user_id).toBe(ana)
+    expect(await folderRow(bens.id)).toMatchObject({
+      owner_user_id: null,
+      parent_collection_id: null,
+    })
+    expect(has(await node(ben, bens.id), doc)).toBe(true)
   })
 })
 

@@ -31,29 +31,12 @@ beforeAll(async () => {
   const member = async (name: string) => {
     const p = await minimal.person(orgId, { name })
     await minimal.assignRole(p.id, "Full Member")
-    await classify(p.id)
     return minimal.sessionOf(p)
   }
   ana = await member("Ana")
   ben = await member("Ben")
 })
 afterAll(releaseTestLock)
-
-/** The right to write pages of the default sensitivity, which an admin gives apart from roles. */
-async function classify(userId: string): Promise<void> {
-  await withPrivilegedDb(orgId, "test-sensitivity", (tx) =>
-    tx.execute(
-      sql.raw(
-        insertSql(`${schemaRef("kernel")}.user_dimension_grants`, {
-          user_id: userId,
-          org_id: orgId,
-          dimension_key: "knowledge:sensitivity",
-          dimension_values: { raw: `'["internal"]'::jsonb` },
-        }),
-      ),
-    ),
-  )
-}
 
 interface Answer {
   status: number

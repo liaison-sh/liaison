@@ -10,24 +10,95 @@
 --  1. collections.previous_owner_user_id: who owned a folder before this
 --     migration shared it. Only this file writes it.
 --  2. The rule, once. A tree is a top folder and everything under it; the root of
---     a synced source is its own top and its tree is left alone. A tree stays
---     personal only if its top has an owner, every live folder in it has that
---     owner, and it holds at least one live page or source link, all created by
---     that owner and readable by nobody else. Every other tree becomes shared. No
+--     a synced source is its own top. A tree stays personal only if its top has an
+--     owner, every live folder in it has that owner, and it holds at least one live
+--     page or source link, all created by that owner and readable by nobody else.
+--     Every other tree becomes shared. A synced tree follows its source instead:
+--     the organization's source shares every folder in it (the sync governs them,
+--     so nobody could give them back), a person's source leaves its tree alone. No
 --     page's access changes, nothing is re-parented, updated_at is not touched.
 --  3. Triggers: a personal folder or source whose owner is lost (erasure, deleted
---     user) is archived and renamed instead of becoming shared.
+--     user) is archived and renamed instead of becoming shared; any change of a
+--     folder's owner forgets the previous one.
 --  4. Policies on collections (own or shared) and on collection_memberships (the
---     folder must be visible too).
+--     folder must be visible too). On documents, INSERT only: a page may be created
+--     public or internal without a sensitivity grant, which reading such a page has
+--     not needed since 0002; confidential and restricted still need it.
 --  5. Two SECURITY DEFINER functions for what one person's row view cannot do:
 --     empty a folder into its parent, and tell whether a tree is only one's own.
 --
 -- The previous release keeps working: the new column is nullable, its writes give
--- a folder to the caller or to nobody, and it hides what it may not see.
+-- a folder to the caller or to nobody, and it hides what it may not see. Its own
+-- agents' folders are personal again while it runs, and the rule runs only once:
+-- after a rollback and a new upgrade they stay so.
 --
--- Revert of 2 (touches only folders nobody re-assigned since):
--- UPDATE app_knowledge.collections SET owner_user_id = previous_owner_user_id, previous_owner_user_id = NULL
---  WHERE previous_owner_user_id IS NOT NULL AND owner_user_id IS NULL AND archived_at IS NULL;
+-- REVERT, complete, for a rollback that must show every folder to every reader
+-- again: run these lines (without the comment marks) in psql as the migration login.
+-- A folder somebody gave to a section since keeps it. Run as a whole: with the
+-- owners back and the new policies still there, team folders would vanish. To go
+-- forward again afterwards: psql -1 -f this file (the rule then decides anew).
+--REVERT BEGIN;
+--REVERT SET LOCAL lock_timeout = '5s';
+--REVERT DROP TRIGGER IF EXISTS collections_owner_lost ON app_knowledge.collections;
+--REVERT DROP TRIGGER IF EXISTS synced_sources_owner_lost ON app_knowledge.synced_sources;
+--REVERT DROP FUNCTION IF EXISTS app_knowledge.collections_owner_lost_fn();
+--REVERT DROP FUNCTION IF EXISTS app_knowledge.synced_sources_owner_lost_fn();
+--REVERT DROP FUNCTION IF EXISTS app_knowledge.empty_folder_into_parent(uuid);
+--REVERT DROP FUNCTION IF EXISTS app_knowledge.folder_tree_is_only_mine(uuid);
+--REVERT DROP POLICY IF EXISTS knowledge_collections_select ON app_knowledge.collections;
+--REVERT DROP POLICY IF EXISTS knowledge_collections_insert ON app_knowledge.collections;
+--REVERT DROP POLICY IF EXISTS knowledge_collections_update ON app_knowledge.collections;
+--REVERT DROP POLICY IF EXISTS knowledge_collections_delete ON app_knowledge.collections;
+--REVERT DROP POLICY IF EXISTS knowledge_collections_rls ON app_knowledge.collections;
+--REVERT CREATE POLICY knowledge_collections_rls ON app_knowledge.collections FOR ALL TO liaison_rls
+--REVERT   USING (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:documents:read'))
+--REVERT   WITH CHECK (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:collections:manage'));
+--REVERT DROP POLICY IF EXISTS knowledge_collection_memberships_select ON app_knowledge.collection_memberships;
+--REVERT CREATE POLICY knowledge_collection_memberships_select ON app_knowledge.collection_memberships
+--REVERT   FOR SELECT TO liaison_rls
+--REVERT   USING (org_id = (SELECT rls_ctx.org_id())::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:documents:read')
+--REVERT     AND ((target_type = 'document' AND EXISTS (
+--REVERT             SELECT 1 FROM app_knowledge.documents d
+--REVERT              WHERE d.id = collection_memberships.target_id
+--REVERT                AND d.org_id = collection_memberships.org_id))
+--REVERT       OR (target_type = 'source_link' AND EXISTS (
+--REVERT             SELECT 1 FROM app_knowledge.source_links sl
+--REVERT              WHERE sl.id = collection_memberships.target_id
+--REVERT                AND sl.org_id = collection_memberships.org_id))));
+--REVERT DROP POLICY IF EXISTS knowledge_collection_memberships_insert ON app_knowledge.collection_memberships;
+--REVERT CREATE POLICY knowledge_collection_memberships_insert ON app_knowledge.collection_memberships
+--REVERT   FOR INSERT TO liaison_rls
+--REVERT   WITH CHECK (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:collections:manage'));
+--REVERT DROP POLICY IF EXISTS knowledge_collection_memberships_update ON app_knowledge.collection_memberships;
+--REVERT CREATE POLICY knowledge_collection_memberships_update ON app_knowledge.collection_memberships
+--REVERT   FOR UPDATE TO liaison_rls
+--REVERT   USING (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:collections:manage'))
+--REVERT   WITH CHECK (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:collections:manage'));
+--REVERT DROP POLICY IF EXISTS knowledge_collection_memberships_delete ON app_knowledge.collection_memberships;
+--REVERT CREATE POLICY knowledge_collection_memberships_delete ON app_knowledge.collection_memberships
+--REVERT   FOR DELETE TO liaison_rls
+--REVERT   USING (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND app_knowledge.app_has_scope('knowledge:collections:manage'));
+--REVERT DROP POLICY IF EXISTS knowledge_documents_insert ON app_knowledge.documents;
+--REVERT CREATE POLICY knowledge_documents_insert ON app_knowledge.documents FOR INSERT TO liaison_rls
+--REVERT   WITH CHECK (org_id = rls_ctx.org_id()::uuid
+--REVERT     AND (app_knowledge.app_has_scope('knowledge:documents:create')
+--REVERT       OR app_knowledge.app_has_scope('knowledge:documents:admin'))
+--REVERT     AND (document_scope <> 'personal' OR owner_user_id = NULLIF(rls_ctx.user_id(), '')::uuid)
+--REVERT     AND (document_scope <> 'organization'
+--REVERT       OR app_knowledge.can_read_knowledge_dimensions(team, sensitivity)));
+--REVERT SET LOCAL ROLE liaison_admin;
+--REVERT UPDATE app_knowledge.collections
+--REVERT    SET owner_user_id = previous_owner_user_id, previous_owner_user_id = NULL
+--REVERT  WHERE previous_owner_user_id IS NOT NULL AND owner_user_id IS NULL;
+--REVERT RESET ROLE;
+--REVERT COMMIT;
 SET LOCAL lock_timeout = '5s';
 --> statement-breakpoint
 
@@ -36,18 +107,31 @@ ALTER TABLE app_knowledge.collections
   ADD COLUMN IF NOT EXISTS previous_owner_user_id uuid REFERENCES kernel.users(id) ON DELETE SET NULL;
 --> statement-breakpoint
 
+-- What the rule reads and writes, as liaison_admin. It owns the tables where 0000
+-- made them; a schema since handed to another login leaves it none of these.
+GRANT USAGE ON SCHEMA app_knowledge, kernel TO liaison_admin;
+--> statement-breakpoint
+GRANT SELECT ON app_knowledge.collections, app_knowledge.collection_memberships,
+  app_knowledge.documents, app_knowledge.source_links, app_knowledge.synced_sources,
+  kernel.resource_grants TO liaison_admin;
+--> statement-breakpoint
+GRANT UPDATE ON app_knowledge.collections TO liaison_admin;
+--> statement-breakpoint
+
 -- The tables force row security and their policies name the runtime roles only,
 -- so a migration login that is not a superuser would read no row (see 0283).
 SET LOCAL ROLE liaison_admin;
 --> statement-breakpoint
 WITH RECURSIVE tree AS (
   SELECT c.id, c.org_id, c.id AS top, c.owner_user_id AS top_owner,
-         EXISTS (SELECT 1 FROM app_knowledge.synced_sources s WHERE s.root_collection_id = c.id) AS synced
+         EXISTS (SELECT 1 FROM app_knowledge.synced_sources s WHERE s.root_collection_id = c.id) AS synced,
+         EXISTS (SELECT 1 FROM app_knowledge.synced_sources s
+                  WHERE s.root_collection_id = c.id AND s.owner_user_id IS NULL) AS org_source
     FROM app_knowledge.collections c
    WHERE c.parent_collection_id IS NULL
       OR EXISTS (SELECT 1 FROM app_knowledge.synced_sources s WHERE s.root_collection_id = c.id)
   UNION ALL
-  SELECT c.id, c.org_id, t.top, t.top_owner, t.synced
+  SELECT c.id, c.org_id, t.top, t.top_owner, t.synced, t.org_source
     FROM app_knowledge.collections c JOIN tree t ON c.parent_collection_id = t.id AND c.org_id = t.org_id
    WHERE NOT EXISTS (SELECT 1 FROM app_knowledge.synced_sources s WHERE s.root_collection_id = c.id)
 ), item AS (
@@ -74,8 +158,8 @@ WITH RECURSIVE tree AS (
 UPDATE app_knowledge.collections c
    SET previous_owner_user_id = c.owner_user_id, owner_user_id = NULL
   FROM tree t
- WHERE t.id = c.id AND NOT t.synced AND c.owner_user_id IS NOT NULL
-   AND t.top NOT IN (SELECT top FROM keep)
+ WHERE t.id = c.id AND c.owner_user_id IS NOT NULL
+   AND CASE WHEN t.synced THEN t.org_source ELSE t.top NOT IN (SELECT top FROM keep) END
    -- Once only: after this migration a personal folder is one its owner meant.
    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_trigger g
                     WHERE g.tgname = 'collections_owner_lost'
@@ -93,6 +177,12 @@ BEGIN
     NEW.archived_at := COALESCE(NEW.archived_at, now());
     NEW.name := 'Deleted folder';
     NEW.description := NULL;
+    NEW.external_ref := NULL;
+    NEW.maintainer_user_ids := '[]'::jsonb;
+  END IF;
+  -- Whose it was before this migration counts only until somebody decides again.
+  IF NEW.owner_user_id IS DISTINCT FROM OLD.owner_user_id THEN
+    NEW.previous_owner_user_id := NULL;
   END IF;
   RETURN NEW;
 END
@@ -271,6 +361,26 @@ CREATE POLICY knowledge_collection_memberships_delete ON app_knowledge.collectio
       SELECT 1 FROM app_knowledge.collections c
       WHERE c.id = collection_memberships.collection_id
         AND c.org_id = collection_memberships.org_id
+    )
+  );
+--> statement-breakpoint
+
+-- expand-safe: re-created below, wider.
+DROP POLICY IF EXISTS knowledge_documents_insert ON app_knowledge.documents;
+--> statement-breakpoint
+-- expand-safe: allows what it allowed, plus a public or internal page without a sensitivity grant; the previous release still asks for one itself.
+CREATE POLICY knowledge_documents_insert ON app_knowledge.documents FOR INSERT TO liaison_rls
+  WITH CHECK (
+    org_id = NULLIF((SELECT rls_ctx.org_id()), '')::uuid
+    AND (
+      app_knowledge.app_has_scope('knowledge:documents:create')
+      OR app_knowledge.app_has_scope('knowledge:documents:admin')
+    )
+    AND (document_scope <> 'personal' OR owner_user_id = NULLIF((SELECT rls_ctx.user_id()), '')::uuid)
+    AND (
+      document_scope <> 'organization'
+      OR app_knowledge.can_read_knowledge_dimensions(
+           team, CASE WHEN sensitivity IN ('public', 'internal') THEN NULL ELSE sensitivity END)
     )
   );
 --> statement-breakpoint

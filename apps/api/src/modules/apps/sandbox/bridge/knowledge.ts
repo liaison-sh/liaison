@@ -205,7 +205,7 @@ export async function validateKnowledgeCreatePlacement(args: {
     roleShares: Array<{ roleId: string; role: "viewer" | "editor" }>
   } | null = null
   if (!isCrossAppConnectorCreate) {
-    const { listKnowledgeCollections, loadCollection } = await import(
+    const { isSynced, listFileableCollections, loadCollection } = await import(
       "~/apps/knowledge/collections"
     )
     const { hasScope } = await import("~/modules/permissions/permissions")
@@ -224,7 +224,7 @@ export async function validateKnowledgeCreatePlacement(args: {
       }
     }
     const describeCollections = async (): Promise<string> => {
-      const cols = await listKnowledgeCollections(txDb as never, actor)
+      const cols = await listFileableCollections(txDb as never, actor)
       return cols.length > 0
         ? `Existing collections: ${cols.map((c) => `"${c.name}" (id ${c.id})`).join(", ")}.`
         : 'No collections exist yet — create one first with collection_create (e.g. "Finance", "Support", "Engineering").'
@@ -246,6 +246,14 @@ export async function validateKnowledgeCreatePlacement(args: {
         error: {
           code: "collection_not_found",
           message: `No active collection with id ${collectionId}. ${await describeCollections()}`,
+        },
+      }
+    }
+    if (await isSynced(txDb as never, collection.id)) {
+      return {
+        error: {
+          code: "collection_synced",
+          message: `The collection "${collection.name}" is synced from another app, so nothing is filed in it here. ${await describeCollections()}`,
         },
       }
     }

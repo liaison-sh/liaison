@@ -25,15 +25,18 @@ function ruleSql(): string {
   return statement
 }
 
+/** The header's revert, whole, but for the transaction around it: the test has its own. */
 function revertSql(): string {
-  const lines = text().split("\n")
-  const from = lines.findIndex((l) => l.startsWith("-- UPDATE app_knowledge.collections"))
-  const body: string[] = []
-  for (const line of lines.slice(from)) {
-    body.push(line.replace(/^-- ?/, ""))
-    if (line.trimEnd().endsWith(";")) break
-  }
-  return body.join("\n")
+  const lines = text()
+    .split("\n")
+    .filter((l) => l.startsWith("--REVERT "))
+    .map((l) => l.slice("--REVERT ".length))
+  expect([lines[0], lines.at(-1)]).toEqual(["BEGIN;", "COMMIT;"])
+  return lines.slice(1, -1).join("\n")
+}
+
+async function replay(): Promise<void> {
+  for (const statement of text().split("--> statement-breakpoint")) await run(statement)
 }
 
 const url = superuserUrlForTestDb()
@@ -162,7 +165,11 @@ async function grant(o: Org, doc: string, kind: "user" | "role", grantee: string
   })
 }
 
-async function sourceLink(o: Org, inFolder: string): Promise<void> {
+async function sourceLink(
+  o: Org,
+  inFolder: string,
+  opts: { archived?: boolean } = {},
+): Promise<void> {
   const identity = randomUUID()
   const id = randomUUID()
   await insert("app_knowledge.source_identities", {
@@ -179,11 +186,17 @@ async function sourceLink(o: Org, inFolder: string): Promise<void> {
     external_id: `f-${identity}`,
     title: "Mig0308 link",
     owner_user_id: o.a,
+    archived_at: opts.archived ? { raw: "now()" } : null,
   })
   await file(o, inFolder, "source_link", id)
 }
 
-async function syncedRoot(o: Org, root: string, owner: string | null): Promise<string> {
+async function syncedRoot(
+  o: Org,
+  root: string,
+  owner: string | null,
+  opts: { archived?: boolean } = {},
+): Promise<string> {
   const id = randomUUID()
   await insert("app_knowledge.synced_sources", {
     id,
@@ -195,6 +208,7 @@ async function syncedRoot(o: Org, root: string, owner: string | null): Promise<s
     owner_user_id: owner,
     default_sensitivity: owner ? null : "internal",
     created_by: o.a,
+    archived_at: opts.archived ? { raw: "now()" } : null,
   })
   return id
 }
@@ -212,9 +226,9 @@ function kept(shape: string, id: string, owner: string | null): void {
   expected.set(id, { shape, owner, previous: null })
   reverted.set(id, owner)
 }
-function shared(shape: string, id: string, previous: string | null, archived = false): void {
+function shared(shape: string, id: string, previous: string | null): void {
   expected.set(id, { shape, owner: null, previous })
-  reverted.set(id, archived ? null : previous)
+  reverted.set(id, previous)
 }
 
 async function seedShapes(): Promise<void> {
@@ -225,6 +239,25 @@ async function seedShapes(): Promise<void> {
     await page(o, f, { scope: "personal" })
     await page(o, f, { owner: null })
     kept("all mine, private", f, o.a)
+  }
+  {
+    const o = await org()
+    const f = await folder(o, o.a)
+    await page(o, f, { scope: "personal", access: "editor" })
+    kept("a personal document, whose access setting opens nothing", f, o.a)
+  }
+  {
+    const o = await org()
+    const f = await folder(o, o.a)
+    await page(o, f, { access: "viewer" })
+    shared("one page everyone can only read", f, o.a)
+  }
+  {
+    const o = await org()
+    const f = await folder(o, o.a)
+    await page(o, f)
+    await sourceLink(o, f, { archived: true })
+    kept("an archived source link does not count", f, o.a)
   }
   {
     const o = await org()
@@ -281,7 +314,7 @@ async function seedShapes(): Promise<void> {
     const archived = await folder(o, o.a, { parent: f, archived: true })
     shared("an empty tree", f, o.a)
     shared("an empty tree: its subfolder", child, o.a)
-    shared("an empty tree: its archived subfolder", archived, o.a, true)
+    shared("an empty tree: its archived subfolder", archived, o.a)
   }
   {
     const o = await org()
@@ -347,6 +380,29 @@ async function seedShapes(): Promise<void> {
     reverted.set(root, null)
     expected.set(under, { shape: "under it", owner: null, previous: null })
     reverted.set(under, null)
+  }
+  for (const archived of [false, true]) {
+    // The sync governs a live one, so nobody could give such a folder back.
+    const source = archived ? "stopped organization source" : "organization source"
+    const o = await org()
+    const root = await folder(o, null)
+    await syncedRoot(o, root, null, { archived })
+    const mine = await folder(o, o.a, { parent: root })
+    const below = await folder(o, o.a, { parent: mine })
+    await page(o, mine)
+    shared(`a person's folder under an ${source}'s root`, mine, o.a)
+    shared(`a folder below it, ${source}`, below, o.a)
+    const taken = await folder(o, o.a)
+    await syncedRoot(o, taken, null, { archived })
+    shared(`a root somebody took, ${source}`, taken, o.a)
+  }
+  {
+    const o = await org()
+    const root = await folder(o, o.a)
+    await syncedRoot(o, root, o.a)
+    const theirs = await folder(o, o.b, { parent: root })
+    kept("a personal source's root, with a folder of another person", root, o.a)
+    kept("the other person's folder in it", theirs, o.b)
   }
 }
 
@@ -418,7 +474,7 @@ describe("0308 personal folders: the rule", () => {
     try {
       const o = await org()
       const f = await folder(o, o.a)
-      for (const statement of text().split("--> statement-breakpoint")) await run(statement)
+      await replay()
       const [row] = (await tx.unsafe(
         "SELECT owner_user_id::text AS owner, archived_at, name FROM app_knowledge.collections WHERE id = $1",
         [f],
@@ -429,28 +485,116 @@ describe("0308 personal folders: the rule", () => {
     }
   })
 
-  it("is undone by the revert in its header, but for a folder re-assigned meanwhile", async () => {
+  it("is undone by the revert in its header, but for a folder somebody decided about since", async () => {
     await atMigrationTime(async () => {
       await run(ruleSql())
-      const [taken] = [...expected].filter(([, e]) => e.shape === "only archived pages")
-      const takenId = taken?.[0] ?? ""
-      await tx.unsafe(
+      // From here the triggers of the file stand, as they do after the migration.
+      await replay()
+      const find = (shape: string) => [...expected].find(([, e]) => e.shape === shape)?.[0] ?? ""
+      const taken = find("only archived pages")
+      const back = find("one page everyone can read")
+      const child = find("one page everyone can read: its subfolder")
+      const owner = expected.get(back)?.previous
+      await run(
         `UPDATE app_knowledge.collections SET owner_user_id =
            (SELECT u.id FROM kernel.users u WHERE u.org_id = collections.org_id AND u.name = 'b')
-          WHERE id = $1`,
-        [takenId],
+          WHERE id = '${taken}'`,
       )
+      // Its owner made it Personal, then Shared again: shared is what they want.
+      await run(`SELECT set_config('app.current_user_id', '${owner}', true)`)
+      for (const to of [`'${owner}'`, "NULL"]) {
+        await run(
+          `UPDATE app_knowledge.collections SET owner_user_id = ${to} WHERE id IN ('${back}', '${child}')`,
+        )
+      }
       const before = await state()
       await run(revertSql())
       const got = await state()
-      for (const [id, owner] of reverted) {
+      for (const [id, was] of reverted) {
         const shape = expected.get(id)?.shape
-        if (id === takenId) {
+        if (id === taken || id === back || id === child) {
           expect({ shape, ...got.get(id) }).toEqual({ shape, ...before.get(id) } as never)
           continue
         }
-        expect({ shape, owner: got.get(id)?.owner }).toEqual({ shape, owner })
+        expect({ shape, owner: got.get(id)?.owner }).toEqual({ shape, owner: was })
       }
+      expect([...got.values()].filter((r) => r.previous !== null)).toEqual([])
+    })
+  })
+
+  it("the revert brings back the policies too: every reader sees every folder, and the file runs again", async () => {
+    await atMigrationTime(async () => {
+      await replay()
+      const policies = async () =>
+        (
+          (await run(
+            `SELECT tablename || '.' || policyname AS p FROM pg_policies
+              WHERE schemaname = 'app_knowledge' AND tablename IN ('collections', 'collection_memberships')
+              ORDER BY 1`,
+          )) as unknown as Array<{ p: string }>
+        ).map((r) => r.p)
+      const now = await policies()
+      await run(revertSql())
+      const commands = ["delete", "insert", "select", "update"]
+      expect(await policies()).toEqual([
+        ...commands.map((c) => `collection_memberships.knowledge_collection_memberships_${c}`),
+        "collections.knowledge_collections_rls",
+      ])
+      const [left] = (await run(
+        `SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'app_knowledge' AND p.proname IN ('collections_owner_lost_fn',
+            'synced_sources_owner_lost_fn', 'empty_folder_into_parent', 'folder_tree_is_only_mine')`,
+      )) as unknown as Array<{ n: number }>
+      expect(left?.n).toBe(0)
+
+      const o = await org()
+      const f = await folder(o, o.a)
+      await page(o, f)
+      const readable = await folder(o, o.a)
+      const doc = await page(o, readable, { access: "editor" })
+      const asB = async (statement: string): Promise<unknown[]> => {
+        await run("SAVEPOINT reader")
+        try {
+          for (const [key, value] of [
+            ["app.current_org_id", o.id],
+            ["app.current_user_id", o.b],
+            [
+              "app.current_scopes",
+              "knowledge:documents:read,knowledge:documents:create,knowledge:collections:manage",
+            ],
+            ["app.current_dimensions", "{}"],
+          ]) {
+            await run(`SELECT set_config('${key}', '${value}', true)`)
+          }
+          await run("SET LOCAL ROLE liaison_rls")
+          return (await run(statement)) as unknown as unknown[]
+        } finally {
+          await run("ROLLBACK TO SAVEPOINT reader")
+        }
+      }
+      expect(await asB(`SELECT 1 FROM app_knowledge.collections WHERE id = '${f}'`)).toHaveLength(1)
+      expect(
+        await asB(`SELECT 1 FROM app_knowledge.collection_memberships WHERE target_id = '${doc}'`),
+      ).toHaveLength(1)
+      const internalPage = insertSql("app_knowledge.documents", {
+        org_id: o.id,
+        title: "t",
+        body: "b",
+        document_scope: "organization",
+        owner_user_id: o.b,
+        created_by: o.b,
+        sensitivity: "internal",
+        team: { raw: "'[]'::jsonb" },
+        required_scopes: { raw: "'{}'::text[]" },
+      })
+      await expect(asB(internalPage)).rejects.toThrow(/row-level security/)
+
+      // Forward again: the same file, and the same end.
+      await replay()
+      expect(await policies()).toEqual(now)
+      expectRule(await state())
+      expect(await asB(`SELECT 1 FROM app_knowledge.collections WHERE id = '${f}'`)).toHaveLength(0)
+      await asB(internalPage)
     })
   })
 })
@@ -477,9 +621,17 @@ describe("0308 personal folders: a lost owner", () => {
     await inTx(async () => {
       const o = await org()
       const f = await folder(o, o.a)
-      await run(`UPDATE app_knowledge.collections SET description = 'secret' WHERE id = '${f}'`)
+      await run(
+        `UPDATE app_knowledge.collections SET description = 'secret', external_ref = 'notion:secret',
+                maintainer_user_ids = '["${o.b}"]' WHERE id = '${f}'`,
+      )
       await run(`UPDATE app_knowledge.collections SET owner_user_id = NULL WHERE id = '${f}'`)
       expect(await row(f)).toEqual(tombstone)
+      expect(
+        await run(
+          `SELECT external_ref, maintainer_user_ids FROM app_knowledge.collections WHERE id = '${f}'`,
+        ),
+      ).toMatchObject([{ external_ref: null, maintainer_user_ids: [] }])
     })
   })
 

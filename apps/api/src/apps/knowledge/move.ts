@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
 import {
   assertCanFileIn,
+  assertCanUnfile,
   folderAudience,
   type KnowledgeCollectionRow,
   requireCollectionsScope,
@@ -40,7 +41,13 @@ export async function moveDocument(
   const row = await loadKnowledgeDocument(tx, documentId, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   assertCanWriteDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
-  const from = fromCollectionId ? await assertCanFileIn(tx, fromCollectionId, actor) : null
+  const from = fromCollectionId
+    ? await assertCanUnfile(
+        tx,
+        { collectionId: fromCollectionId, targetType: "document", targetId: row.id },
+        actor,
+      )
+    : null
   const to = toCollectionId ? await assertCanFileIn(tx, toCollectionId, actor) : null
   if (from?.id === to?.id) return { id: row.id }
 

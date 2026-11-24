@@ -290,6 +290,17 @@ describe("an agent's change of a page only its owner reads", () => {
     expect((await stored(id)).archived).toBe(true)
     expect((await requests()).length).toBe(before)
   })
+
+  it("agent creates what would be written into my private page: written there, no approval row", async () => {
+    const title = "Mine alone, written again"
+    const id = await page(title)
+    const before = (await requests()).length
+    const out = await orgCreate(owner, title)
+    expect(out.status).not.toBe("pending_approval")
+    expect((await stored(id)).body).toBe("For everyone")
+    expect(await pageTitled(title)).toBe(1)
+    expect((await requests()).length).toBe(before)
+  })
 })
 
 describe("an agent's page for named people", () => {

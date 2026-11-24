@@ -22,6 +22,7 @@ import { registerKnowledgeSearchEnrichment } from "~/apps/knowledge/search-enric
 import { md5 } from "~/apps/knowledge/versions"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { withRlsContext } from "~/db/rls"
 import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
@@ -282,6 +283,78 @@ describe("a reader without access to the linked page gets no title", () => {
     expect(await linkTargets(self.id)).toEqual([])
   })
 
+  it("a label with any brackets, escapes, code, a title or another syntax never reaches a reader", async () => {
+    const secret = await page(alice, { title: "Q3 [draft] Zephyr", orgAccess: "none" })
+    const other = await page(alice, { title: "Q3 Zephyr part two", orgAccess: "none" })
+    const shared = await page(alice, { title: "Shared hostile", body: "intro" })
+    const id = secret.id
+    const body = [
+      `See @[Q3 [draft] Zephyr](knowledge:document:${id}) now.`,
+      `Also @[Q3 [draft Zephyr](knowledge:document:${id}) and [Q3 draft] Zephyr]](knowledge:document:${id}).`,
+      `Escaped [Q3 \\[draft\\] Zephyr](knowledge:document:${id}), code [Q3 \`Zephyr]\`](knowledge:document:${id}).`,
+      `Titled [Zephyr](knowledge:document:${id} "Q3 Zephyr"), <knowledge:document:${id}>.`,
+      `HTML <a href="knowledge:document:${id}">Q3 [Zephyr]</a>, ![Zephyr](knowledge:document:${id}).`,
+      `Reference [Q3 Zephyr][z] and [Zephyr two].`,
+      "",
+      `[z]: knowledge:document:${id} "Zephyr"`,
+      `[Zephyr two]: <knowledge:document:${other.id}>`,
+    ].join("\n")
+    await patch(alice, shared.id, { body })
+    const s = await stored(shared.id)
+    expect(s.body).not.toContain("Zephyr")
+    expect(s.body).toContain(`See ${token(id)} now.`)
+    expect(await linkTargets(shared.id)).toEqual([id, other.id].sort())
+
+    const get = await call(bob, "GET", `/documents/${shared.id}`)
+    expect(get.status).toBe(200)
+    expect(get.text).not.toContain("Zephyr")
+    const plan = await planEntityDocument({
+      action: "upsert",
+      orgId,
+      app: "knowledge",
+      entityType: "document",
+      entityId: shared.id,
+    })
+    expect(JSON.stringify(plan)).not.toContain("Zephyr")
+    const bobGet = await tool<{ document?: { links?: unknown[] } }>(bobId, "knowledge:get", {
+      id: shared.id,
+    })
+    expect(JSON.stringify(bobGet)).not.toContain("Zephyr")
+
+    // A text an earlier release stored as it was written leaves without the labels too.
+    await withPrivilegedDb(orgId, "test-raw-hostile", (tx) =>
+      tx.execute(sql`UPDATE ${knowledgeRel("documents")} SET body = ${body}
+                      WHERE id = ${shared.id}::uuid`),
+    )
+    const raw = await call(bob, "GET", `/documents/${shared.id}`)
+    expect(raw.text).not.toContain("Zephyr")
+  })
+
+  it("resolve and the picker apply the read check, not only row security", async () => {
+    // A personal page Bob created and then handed to Alice: row security still shows it
+    // to its creator, the read check does not.
+    const mark = `Orion${crypto.randomUUID().slice(0, 6)}`
+    const handed = await page(bob, { title: `${mark} handed`, documentScope: "personal" })
+    await withPrivilegedDb(orgId, "test-hand-over", (tx) =>
+      tx.execute(sql`UPDATE ${knowledgeRel("documents")} SET owner_user_id = ${aliceId}::uuid
+                      WHERE id = ${handed.id}::uuid`),
+    )
+    const seen = await withRlsContext(
+      { actorType: "user", orgId, userId: bobId, scopes: SCOPES, dimensionGrants: {} },
+      (tx) =>
+        tx.execute(sql`SELECT id FROM ${knowledgeRel("documents")} WHERE id = ${handed.id}::uuid`),
+    )
+    expect(extractRows(seen)).toHaveLength(1)
+    expect((await call(bob, "GET", `/documents/${handed.id}`)).status).toBe(404)
+    expect((await call(bob, "POST", "/documents/resolve", { ids: [handed.id] })).data).toEqual([])
+    const pick = await call(bob, "GET", `/documents/pick?q=${mark}`)
+    expect(pick.status).toBe(200)
+    expect(pick.data).toEqual([])
+    expect((await call(alice, "POST", "/documents/resolve", { ids: [handed.id] })).data).toEqual([
+      { id: handed.id, title: `${mark} handed` },
+    ])
+  })
+
   it("a page created with a link records it; resolve drops pages in the Trash", async () => {
     const target = await page(alice, { title: "Archived target" })
     const created = await page(bob, { title: "New", body: labelled("Archived target", target.id) })
@@ -445,6 +518,24 @@ describe("the backfill of texts stored before", () => {
     await patch(alice, doc.id, { body: "next text" })
     const next = await versionRows(doc.id)
     expect(next.map((v) => v.kind)).toEqual([...versionsAfter.map((v) => v.kind), "edit"])
+  })
+
+  it("takes only pages whose text or history holds a page link", async () => {
+    const secret = await page(alice, { title: "Secret plan Zephyr", orgAccess: "none" })
+    const { doc } = await seedRaw(secret.id)
+    const plain = await page(alice, { title: "No links", body: "just text" })
+    await withPrivilegedDb(orgId, "test-unindexed", (tx) =>
+      tx.execute(sql`UPDATE ${knowledgeRel("documents")} SET links_indexed_at = NULL
+                      WHERE id = ${plain.id}::uuid`),
+    )
+    const dry = await backfillPageLinks({ orgId, dryRun: true })
+    expect(dry.documents).toBe(1)
+    await backfillPageLinks({ orgId })
+    expect((await stored(doc.id)).links_indexed_at).not.toBeNull()
+    expect((await stored(plain.id)).links_indexed_at).toBeNull()
+    // Its next save marks it done, as for any page the backfill has not reached.
+    await patch(alice, plain.id, { body: "more text" })
+    expect((await stored(plain.id)).links_indexed_at).not.toBeNull()
   })
 
   it("a page saved before the backfill reached it is normalised by that save, history too", async () => {

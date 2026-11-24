@@ -6480,12 +6480,7 @@
               null
             ]
           },
-          "payment_terms_days": {
-            "type": ["integer", "null"],
-            "minimum": 0,
-            "maximum": 999,
-            "description": "Days this customer has to pay, used for every later invoice without a due date of its own. Null: the issuer's terms."
-          },
+          "payment_terms_days": { "type": ["integer", "null"] },
           "siren": {
             "type": [
               "string",
@@ -6511,8 +6506,7 @@
             "type": [
               "string",
               "null"
-            ],
-            "description": "Where the SIREN was found (agent_web)."
+            ]
           },
           "billing_line1": {
             "type": [

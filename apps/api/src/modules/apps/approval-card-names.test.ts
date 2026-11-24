@@ -669,6 +669,29 @@ describe("the records a call names", () => {
     expect((await readBy(card, ALL)).title).toBe("Merge into Supplier portal rebuild")
   })
 
+  it("a text that already says the kind does not say it twice", async () => {
+    registerApprovalSummarizer(w.orgId, "projects", "noted", async () => ({
+      kind: "projects.noted",
+      title: `Merge task ${task} into task ${OTHER_ID}`,
+      lines: [
+        `A note is added to task ${task}; no reply is sent.`,
+        `Task ${task}`,
+        `Multitask ${task}`,
+      ],
+    }))
+    const card = await stored("projects:noted", { taskId: task })
+    expect(card.title).toBe(`Merge task into task ${OTHER_ID}`)
+    expect(card.lines).toEqual([
+      "A note is added to task; no reply is sent.",
+      "Task",
+      "Multitask a task",
+    ])
+    const seen = await readBy(card, ALL)
+    expect(seen.title).toBe(`Merge task Supplier portal rebuild into task ${OTHER_ID}`)
+    expect(seen.lines[0]).toBe("A note is added to task Supplier portal rebuild; no reply is sent.")
+    expect((await readBy(card, ["projects:approve"])).lines).toEqual(card.lines)
+  })
+
   it("a summarizer's own words keep an id only when nothing names it, and its records stand", async () => {
     registerApprovalSummarizer(w.orgId, "projects", "spoken", async () => ({
       kind: "projects.spoken",

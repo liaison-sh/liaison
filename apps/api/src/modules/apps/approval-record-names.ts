@@ -209,8 +209,20 @@ export function kindName(entityType: string): string {
   return withArticle(words(entityType))
 }
 
+/** The kind's noun just before a record: "added to ticket <record>". */
+const NOUN_BEFORE = new RegExp(`(\\b[\\p{L} ]*\\p{L}) ${RECORD_TOKEN.source}`, "gu")
+
+/** A record left unnamed adds nothing to the noun the text already says it with. */
 function replaceTokens(text: string, say: (ref: RecordRef) => string): string {
-  return text.replace(RECORD_TOKEN, (_m, app: string, entityType: string, id: string) =>
+  const once = text.replace(
+    NOUN_BEFORE,
+    (whole, before: string, app: string, entityType: string, id: string) => {
+      const noun = words(entityType)
+      const says = before.toLowerCase() === noun || before.toLowerCase().endsWith(` ${noun}`)
+      return says && say({ app, entityType, id }) === kindName(entityType) ? before : whole
+    },
+  )
+  return once.replace(RECORD_TOKEN, (_m, app: string, entityType: string, id: string) =>
     say({ app, entityType, id }),
   )
 }

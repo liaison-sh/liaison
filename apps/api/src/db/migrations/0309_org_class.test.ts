@@ -13,6 +13,7 @@ import postgres from "postgres"
 import { CLOUD_CREATE_ORG_ENDPOINT } from "~/modules/cloud/outcomes"
 import { seedOrgBillingState } from "~/seed/factories/billing/billing"
 import { seedOrgRow } from "~/seed/factories/org/rows"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0309_org_class.sql")
@@ -224,8 +225,16 @@ describe("0309 org class", () => {
     await rolledBack(async (tx) => {
       await before(tx)
       await mark(tx, made, marker("visitor"))
-      await tx`INSERT INTO kernel.cloud_request_outcomes (endpoint, idem_key, binding_hash)
-        SELECT ${CLOUD_CREATE_ORG_ENDPOINT}, slug, 'h' FROM kernel.organizations WHERE id = ${made}`
+      const [row] = await tx<
+        { slug: string }[]
+      >`SELECT slug FROM kernel.organizations WHERE id = ${made}`
+      await tx.unsafe(
+        insertSql("kernel.cloud_request_outcomes", {
+          endpoint: CLOUD_CREATE_ORG_ENDPOINT,
+          idem_key: row?.slug ?? "",
+          binding_hash: "h",
+        }),
+      )
       const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
       expect(String(err)).toContain(made)
     })

@@ -49,7 +49,13 @@ import { purgeOrg } from "~/modules/org/purge/purge-org"
 import { ensureOrg, OrgClassMismatchError } from "~/modules/provisioning/ensure-org"
 import { upsertAppRow } from "~/seed/factories/app-tables"
 import { AUTO_TOP_UP_OFF, seedOrgBillingState } from "~/seed/factories/billing/billing"
-import { type OrgRowSeed, seedOrgRow, seedRoleRow, seedUserRow } from "~/seed/factories/org/rows"
+import {
+  type OrgRowSeed,
+  seedOrgRow,
+  seedRoleRow,
+  seedUserRoleRow,
+  seedUserRow,
+} from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const tag = crypto.randomUUID().slice(0, 8)
@@ -227,8 +233,7 @@ describe("a demo org and the control plane", () => {
     })
     // An owner the handoff would find, were the org a standard one.
     await seedRoleRow(org.id, "admin")
-    await sql`INSERT INTO kernel.user_roles (org_id, user_id, role_id)
-      SELECT ${org.id}, ${owner}, id FROM kernel.roles WHERE org_id = ${org.id} AND name = 'admin'`
+    await seedUserRoleRow(org.id, owner, "admin")
     expect(await lookupOrgsByEmail(email)).toEqual({ ok: true, orgs: [] })
     expect((await cloudHandoff(org.id, crypto.randomUUID())).status).toBe(404)
     expect(

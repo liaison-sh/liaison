@@ -266,17 +266,16 @@ function stripeInvoiceItemOf(
 }
 
 /**
- * The event now waits elsewhere: close its open parks of `kind` other than `keepId`, with their
+ * The event now waits elsewhere: close its open parks of `kind`, with their
  * attention, so one event never waits (and is never tried again) twice.
  */
 export async function closeParksOfKind(
   ctx: { db: Pick<ParkDb, "findMany" | "update">; emit?: ParkAttentionCtx["emit"] },
   event_id: string,
   kind: string,
-  keepId: string,
 ): Promise<void> {
   for (const r of await openParksOf(ctx, event_id)) {
-    if (r.id === keepId || r.blocked_on.kind !== kind) continue
+    if (r.blocked_on.kind !== kind) continue
     await ctx.db.update("deferred_events", r.id, { status: "resolved", reason: "waits_elsewhere" })
     await resolveParkAttention(ctx, r)
   }

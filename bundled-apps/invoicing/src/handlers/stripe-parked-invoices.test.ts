@@ -297,6 +297,161 @@ describe("past its last automatic retry, an invoice is issued by a person only",
   })
 })
 
+describe("a click refused at any check leaves the park it was made on, alone", () => {
+  const SELLER = {
+    siren: "902000009",
+    address_line1: "1 rue Test",
+    postcode: "75011",
+    city: "Paris",
+    country: "FR",
+    vat_id: "FR40902000009",
+  }
+  const undecidedThenLiaison = async (issuer: Any = {}) => {
+    const db = stripeDb("undecided", issuer)
+    await onStripeInvoiceFinalized({ data: finalized() }, stripeCtx(db))
+    await db.update("stripe_streams", "st-1", { issuer: "liaison" })
+    return db
+  }
+  const cases: Record<
+    string,
+    { invoice: Any; why: string; setup?: (db: Db) => Promise<unknown>; issuer?: Any }
+  > = {
+    "a tax that differs": {
+      invoice: finalized({
+        lines: [
+          {
+            description: "Plan",
+            quantity: 1,
+            unit_amount_excl_minor: "10000",
+            tax_rate_bp: 2000,
+            tax_minor: "1900",
+          },
+        ],
+      }),
+      why: "stripe_tax_mismatch",
+    },
+    "a total that differs": {
+      invoice: finalized({ total_minor: "99900" }),
+      why: "stripe_total_mismatch",
+    },
+    "a negative total": { invoice: finalized({ total_minor: "-100" }), why: "negative_total" },
+    "no email": {
+      invoice: finalized({ customer: { name: "L", country: "FR" } }),
+      why: "customer_email_missing",
+    },
+    "no issuer profile": {
+      invoice: finalized(),
+      why: "issuer_profile_missing",
+      setup: (db) => db.delete("issuer_profiles", "iss-1"),
+    },
+    "no card stream": {
+      invoice: finalized(),
+      why: "card_stream_missing",
+      setup: (db) => db.update("stripe_streams", "st-1", { stripe_connected: false }),
+    },
+    "an issuer that cannot sign": {
+      invoice: finalized({ customer: { ...buyer, vat_id: "FR68900000001" } as Any }),
+      why: "issuer_incomplete",
+      setup: async (db) => {
+        const { seedConfirmedIdentity } = await import("../einvoicing/test-fixtures")
+        const { CONTACT } = await import("./stripe-money.testkit")
+        await seedConfirmedIdentity(db, {
+          contact_id: CONTACT,
+          siren: "900000001",
+          name: "Lumen Studio SAS",
+          postcode: "69001",
+          city: "Lyon",
+        })
+      },
+    },
+    "a customer with no e-invoicing identity": {
+      invoice: finalized({ customer: { ...buyer, vat_id: "FR68900000001" } as Any }),
+      why: "einvoice_data_missing",
+      issuer: SELLER,
+    },
+  }
+  for (const [name, c] of Object.entries(cases))
+    test(`${name}`, async () => {
+      const db = await undecidedThenLiaison(c.issuer)
+      await c.setup?.(db)
+      const ctx = stripeCtx(db, { executeTool: stripeApp({ invoice: c.invoice }) })
+      const r: Any = await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })
+      expect(r).toMatchObject({ status: "error", error: { code: "not_issued" } })
+      expect(r.error.message).toContain(c.why)
+      expect(parks(db).map((p) => (p.blocked_on as Any).kind)).toEqual(["stripe_issuer_undecided"])
+      expect(parks(db)[0]?.status).not.toBe("resolved")
+      expect(numbersTaken(db)).toBe(0)
+      expect(ctx.emitted.filter((e) => e.entity === "einvoicing")).toHaveLength(0)
+    })
+})
+
+describe("parks and lines of one invoice", () => {
+  test("an issuer that cannot sign takes over from the buyer: one open park, the buyer's line closed", async () => {
+    const db = stripeDb()
+    const { seedConfirmedIdentity } = await import("../einvoicing/test-fixtures")
+    const { CONTACT } = await import("./stripe-money.testkit")
+    await seedConfirmedIdentity(db, {
+      contact_id: CONTACT,
+      siren: "900000001",
+      name: "Lumen Studio SAS",
+      postcode: "69001",
+      city: "Lyon",
+    })
+    const ctx = stripeCtx(db)
+    await onStripeInvoiceFinalized({ data: noAddress() }, ctx)
+    await onStripeInvoiceFinalized(
+      { data: finalized({ customer: { ...buyer, vat_id: "FR68900000001" } as Any }) },
+      ctx,
+    )
+    expect(openParks(db).map((p) => p.reason)).toEqual(["issuer_incomplete"])
+    expect(needsPerson(ctx.emitted).at(-1)).toMatchObject({ data: { resolved: true } })
+  })
+
+  test("the undecided park stays a person's while a later delivery waits on its tax, and each item closes with its park", async () => {
+    const db = stripeDb("undecided")
+    const ctx = stripeCtx(db)
+    await onStripeInvoiceFinalized({ data: finalized() }, ctx)
+    await db.update("stripe_streams", "st-1", { issuer: "liaison" })
+    await onStripeInvoiceFinalized({ data: finalized({ total_minor: "99900" }) }, ctx)
+    expect(openParks(db).map((p) => p.reason)).toEqual([
+      "issuer_undecided",
+      "stripe_total_mismatch",
+    ])
+    const [undecided, tax] = openParks(db).map((p) => p.id)
+    await onStripeInvoiceClosed({ data: finalized({ status: "void" }) }, ctx, "voided")
+    expect(openParks(db)).toHaveLength(0)
+    const closed = ctx.emitted.filter((e) => (e.data as Any)?.resolved === true)
+    expect(closed.map((e) => [e.action, e.entityId])).toEqual([
+      ["issuer_undecided", undecided],
+      ["stripe_tax_review", tax],
+    ])
+  })
+
+  test("a refusal told after the park closed says nothing", async () => {
+    const db = stripeDb()
+    await exhausted(db)
+    const id = String(parks(db)[0]?.id)
+    await db.update("deferred_events", id, { status: "resolved", reason: "issued" })
+    const ctx = stripeCtx(db)
+    const refused = { park_id: id, why: "stripe_total_mismatch", words: "its total differs" }
+    await onStripeSaleDecided({ data: { names: ["in_1"], refused } }, ctx)
+    expect(ctx.emitted).toHaveLength(0)
+    expect(parks(db)[0]).toMatchObject({ status: "resolved", reason: "issued" })
+  })
+
+  test("a negative total past its retries is said as such, never as ready", async () => {
+    const db = stripeDb()
+    const negative = finalized({ total_minor: "-12000" })
+    await exhausted(db, negative)
+    const ctx = stripeCtx(db, { executeTool: stripeApp({ buyers: [complete], invoice: negative }) })
+    await db.update("deferred_events", String(parks(db)[0]?.id), {
+      blocked_on: { ...(parks(db)[0] as Any).blocked_on, line: null },
+    })
+    await reconcileStripePayments(ctx)
+    expect(needsPerson(ctx.emitted).map((e) => e.data.reason)).toEqual(["its total is negative"])
+  })
+})
+
 describe("one sale, one invoice, by either key", () => {
   /** in_1 past its retries, its charge ch_1 invoiced by hand and linked. */
   async function linkedByHand(db: Db, over: Answers = {}) {
@@ -445,6 +600,30 @@ describe("one sale, one invoice, by either key", () => {
     expect(openParks(db).filter((p) => p.event_id === "stripe:ch_1")).toHaveLength(0)
   })
 
+  test("every charge of the invoice counts, and what is found is recorded under every name", async () => {
+    const db = stripeDb()
+    await oldLink(db, "refs")
+    const before = numbersTaken(db)
+    const several = finalized({ charge_ids: ["ch_0", "ch_1"] })
+    const ctx = stripeCtx(db, { executeTool: stripeApp({ invoice: several }) })
+    expect(await onStripeInvoiceFinalized({ data: several }, ctx)).toMatchObject({
+      reason: "duplicate_document",
+    })
+    // A later event that names no charge is refused by the record alone.
+    expect(await onStripeInvoiceFinalized({ data: finalized() }, ctx)).toMatchObject({
+      reason: "duplicate_document",
+    })
+    expect(numbersTaken(db)).toBe(before)
+    expect(db.__all("stripe_sales").map((x) => x.key)).toContain("stripe:in_1")
+  })
+
+  test("a paid invoice's short row with no document parks and issues nothing", async () => {
+    const db = stripeDb()
+    const row = { stripe_invoice_id: "in_7", status: "paid", total_minor: "12000", currency: "eur" }
+    await reconcileStripePayments(stripeCtx(db, { executeTool: stripeApp({ candidates: [row] }) }))
+    expect(parks(db)).toHaveLength(0)
+  })
+
   test("issuing claims both keys of the sale, so a second issue under the other key cannot commit", async () => {
     const db = stripeDb()
     await onStripeInvoiceFinalized({ data: finalized(PAID) }, stripeCtx(db))
@@ -579,6 +758,36 @@ describe("a payment with no Stripe invoice is always decided by a person", () =>
     // The card an earlier version raised names it as an invoice: refused, with the way on.
     const card: Any = await invoiceFromStripePayment(ctx, { stripeInvoiceId: "ch_9" })
     expect(card.error.message).toContain("chargeId")
+  })
+
+  test("no event issues a payment, and a lone stray park of it closes on its first retry", async () => {
+    const db = stripeDb()
+    const asInvoice = finalized({ stripe_invoice_id: "ch_9" })
+    expect(await onStripeInvoiceFinalized({ data: asInvoice }, stripeCtx(db))).toMatchObject({
+      status: "skipped",
+      reason: "waits_for_a_person",
+    })
+    await onStripePaymentUnmatched({ data: CH }, stripeCtx(db))
+    await db.insert("deferred_events", {
+      event_id: "stripe:ch_9",
+      event_payload_json: { ...asInvoice, kind: "stripe_invoice" },
+      status: "awaiting_data",
+      reason: "customer_address_missing",
+      blocked_on: { kind: "stripe_invoice", stripe_invoice_id: "ch_9" },
+      retry_count: 0,
+      retried_at: null,
+      created_at: new Date(Date.UTC(2026, 10, 20)).toISOString(),
+    })
+    await sweep(stripeCtx(db, { executeTool: stripeApp({ invoice: asInvoice }) }), 2)
+    expect(openParks(db).map((p) => p.blocked_on.kind)).toEqual(["stripe_unmatched_payment"])
+    expect(invoices(db)).toHaveLength(0)
+    // With no park of the payment itself, the stray is all a person has: it stays.
+    const stray = parks(db).find((p) => (p.blocked_on as Any).kind === "stripe_invoice") as Any
+    const own = openParks(db)[0] as Any
+    await db.update("deferred_events", own.id, { status: "resolved" })
+    await db.update("deferred_events", stray.id, { status: "awaiting_data", retried_at: null })
+    await sweep(stripeCtx(db, { executeTool: stripeApp({ invoice: asInvoice }) }), 8)
+    expect(openParks(db).map((p) => p.id)).toEqual([stray.id])
   })
 
   test("whichever of its parks is read first, the click finds the payment", async () => {
@@ -797,6 +1006,8 @@ describe("what Home says", () => {
     // The mirror loses the address again: the line says so.
     await reconcileStripePayments(waiting)
     expect(needsPerson(waiting.emitted).at(-1).data.reason).toContain("no billing address")
+    await reconcileStripePayments(ctx)
+    expect(needsPerson(ctx.emitted)).toHaveLength(2)
     // A safety job that cannot read Stripe changes no line.
     const blind = stripeCtx(db, {
       executeTool: (async () => ({ status: "error", error: {} })) as never,
@@ -916,6 +1127,50 @@ describe("what Home says", () => {
     expect(parks(db).map((p) => p.status)).toEqual(["awaiting_data", "permanent_failure"])
   })
 
+  test("an event on an invoice given up on reopens it for a person and issues nothing", async () => {
+    const db = stripeDb()
+    await backlog(db, 2, () => ({ status: "permanent_failure" }))
+    const r = await onStripeInvoiceFinalized(
+      { data: finalized({ stripe_invoice_id: "in_1" }) },
+      stripeCtx(db),
+    )
+    expect(r).toMatchObject({ status: "deferred", reason: "waits_for_a_person" })
+    expect(invoices(db)).toHaveLength(0)
+    expect(parks(db).map((p) => p.status)).toEqual(["permanent_failure", "awaiting_data"])
+  })
+
+  test("the grouped line's park is never retried nor given up on", async () => {
+    const db = stripeDb()
+    await backlog(db, 11)
+    const ctx = stripeCtx(db, { executeTool: stripeApp({ buyers: [complete] }) })
+    await reconcileStripePayments(ctx)
+    for (let i = 0; i < 12; i++) await sweep(ctx, 24 * 30 + i * 2)
+    const marker = parks(db).find((p) => (p.blocked_on as Any).kind === "stripe_invoices_waiting")
+    expect(marker).toMatchObject({ status: "awaiting_dependency", retry_count: 0 })
+    await reconcileStripePayments(ctx)
+    expect(grouped(ctx.emitted)).toHaveLength(1)
+  })
+
+  test("the candidates read is told the newest waiting invoices first, of the days it covers", async () => {
+    const db = stripeDb()
+    await backlog(db, 510)
+    const day = 24 * 60 * 60 * 1000
+    for (const [i, p] of parks(db).entries())
+      await db.update("deferred_events", String(p.id), {
+        created_at: new Date(Date.now() - i * 60_000).toISOString(),
+      })
+    await db.update("deferred_events", String(parks(db)[0]?.id), {
+      created_at: new Date(Date.now() - 40 * day).toISOString(),
+    })
+    const calls: Any[] = []
+    await reconcileStripePayments(stripeCtx(db, { executeTool: stripeApp({}, calls) }))
+    const told = calls.find((c) => c.tool === "stripe:reconcile_candidates").params.waiting
+    expect(told).toHaveLength(500)
+    expect(told[0]).toBe("in_1")
+    expect(told).not.toContain("in_0")
+    expect(told).not.toContain("in_509")
+  })
+
   test("one voided in Stripe whose event was missed is dropped by the safety job, with its line", async () => {
     const db = stripeDb()
     await exhausted(db)
@@ -1021,8 +1276,11 @@ describe("a credit note that waited", () => {
     const w = await exhausted(db, noAddress({ charge_id: "ch_1" }))
     await onStripeRefundCreated({ data: refund }, w)
     for (let i = 0; i < 12; i++) await sweep(w, 100 + i * 2)
+    // What the job that tells a person about a long wait looks for.
+    expect(note(db)).toMatchObject({ reason: "invoice_not_issued", retry_count: 10 })
     return w
   }
+  const note = (db: Db) => parks(db).find((p) => p.event_id === "stripe:re_1")
 
   test("follows the invoice a person issued, however late, and not before", async () => {
     const db = stripeDb()
@@ -1033,6 +1291,7 @@ describe("a credit note that waited", () => {
     await reconcileStripePayments(ctx)
     await sweep(ctx, 200)
     expect(creditNotes(db)).toHaveLength(0)
+    expect(note(db)?.retry_count).toBe(10)
     await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })
     await reconcileStripePayments(ctx)
     await sweep(ctx, 220)

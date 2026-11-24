@@ -178,13 +178,13 @@ async function parkInvoice(
       blocked_on: { kind, stripe_invoice_id: p.stripe_invoice_id, ...extra },
     },
   )
-  if (kind !== STRIPE_INVOICE_PARK) await nowWaitsOn(ctx, p, def.id)
+  if (kind !== STRIPE_INVOICE_PARK) await nowWaitsElsewhere(ctx, p)
   return def
 }
 
-/** The invoice got past what it first waited for and waits on park `id` instead. */
-const nowWaitsOn = (ctx: StripeCtx, p: StripeInvoicePayload, id: string) =>
-  closeParksOfKind(ctx, stripeRef(p.stripe_invoice_id), STRIPE_INVOICE_PARK, id)
+/** The invoice got past what it first waited for and waits on another park. */
+const nowWaitsElsewhere = (ctx: StripeCtx, p: StripeInvoicePayload) =>
+  closeParksOfKind(ctx, stripeRef(p.stripe_invoice_id), STRIPE_INVOICE_PARK)
 
 /** What an issue needs of its buyer and Stripe does not hold; null when it is all there. The name
  *  falls back on the email. The one rule of the issue and of the safety job. */
@@ -716,7 +716,7 @@ export async function onStripeInvoiceFinalized(
         blocked_on: { ...issuerParkBlockedOn(gap), stripe_invoice_id: p.stripe_invoice_id },
       },
     )
-    await nowWaitsOn(ctx, p, def.id)
+    await nowWaitsElsewhere(ctx, p)
     await raiseIssuerAttention(ctx, {
       park: def,
       gap,

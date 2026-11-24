@@ -226,7 +226,14 @@ export interface CollectionTreeNode {
   children: CollectionTreeNode[]
   /** `syncedSourceId` is set on a document mirrored from an external synced
    *  source, so the tree can mark its provenance (T-9 cloud badge). */
-  documents: Array<{ id: string; title: string; syncedSourceId?: string | null }>
+  documents: Array<{
+    id: string
+    title: string
+    syncedSourceId?: string | null
+    /** Whether this reader may edit the page (rename, move, archive): the
+     *  server's own write check. Absent: editable (the server always sends it). */
+    canEdit?: boolean
+  }>
 }
 
 export async function getCollectionsTree(api: ApiClient): Promise<CollectionTreeNode[]> {

@@ -63,6 +63,11 @@ export interface KnowledgeCollectionTreeProps {
   onArchiveDoc?: (docId: string) => void
   /** Archive is offered only to holders of the archive scope. */
   canArchiveDocs?: boolean
+  /** May the reader make, rename, move and delete folders, and file pages in
+   *  them? The sidebar passes the reader's scopes; left out, it is allowed. */
+  canManageFolders?: boolean
+  /** May the reader make pages? As `canManageFolders`. */
+  canCreatePages?: boolean
   onCopyLink?: (docId: string) => void
   onMoveRequest?: (item: MoveRequest) => void
   onMoveDoc?: (args: MoveDocArgs) => void
@@ -202,19 +207,29 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
         : node().name
   const isPersonalBucket = () =>
     node().kind === "personal_notes" || node().id === "__personal_notes__"
-  const canNewPage = () => (node().virtual ? isPersonalBucket() : !synced())
+  const manage = () => props.tree.canManageFolders !== false
+  const create = () => props.tree.canCreatePages !== false
+  /** A page made in a real folder is filed there: both rights. */
+  const canNewPage = () =>
+    create() && (node().virtual ? isPersonalBucket() : !synced() && manage())
+  /** The folder's own menu: never on a bucket or a synced tree. */
+  const hasMenu = () => !node().virtual && !synced() && manage()
   const ownerOf = () => node().ownerUserId ?? null
 
   const folderItems = (): RowMenuItem[] => {
     const t = props.tree
     const id = node().id
     return [
-      {
-        id: "new-page",
-        label: i18n.t("knowledge.newPage"),
-        icon: FilePlus,
-        onSelect: () => t.onNewPage?.(id, ownerOf() !== null),
-      },
+      ...(create()
+        ? [
+            {
+              id: "new-page",
+              label: i18n.t("knowledge.newPage"),
+              icon: FilePlus,
+              onSelect: () => t.onNewPage?.(id, ownerOf() !== null),
+            },
+          ]
+        : []),
       {
         id: "new-folder",
         label: i18n.t("knowledge.newFolder"),
@@ -247,7 +262,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
 
   function onKeyDown(e: KeyboardEvent) {
     if (e.target !== e.currentTarget) return
-    if (e.key === "F2" && !node().virtual && !synced()) {
+    if (e.key === "F2" && hasMenu()) {
       e.preventDefault()
       props.tree.onRename?.(node().id)
     } else if (e.key === "Enter" || e.key === " ") {
@@ -261,7 +276,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
       <div
         data-testid={`knowledge-tree-row-${node().id}`}
         tabindex={0}
-        draggable={!node().virtual && !synced()}
+        draggable={hasMenu()}
         class="group/row flex items-center gap-1 rounded px-2 py-1 outline-none hover:bg-surface-hover focus-visible:bg-surface-hover"
         classList={{
           "bg-surface-active ring-1 ring-accent/40":
@@ -269,13 +284,13 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
         }}
         style={{ "padding-left": `${0.5 + props.depth}rem` }}
         onContextMenu={(e) => {
-          if (node().virtual || synced()) return
+          if (!hasMenu()) return
           e.preventDefault()
           setMenuOpen(true)
         }}
         onKeyDown={onKeyDown}
         onDragStart={(e) => {
-          if (node().virtual || synced()) return
+          if (!hasMenu()) return
           e.stopPropagation()
           setTreeDrag({ kind: "folder", id: node().id, fromCollectionId: null })
         }}
@@ -359,7 +374,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
             <Plus size={12} />
           </button>
         </Show>
-        <Show when={!node().virtual && !synced()}>
+        <Show when={hasMenu()}>
           <RowMenu
             label={i18n.t("knowledge.actionsFor", { name: name() })}
             triggerTestId={`knowledge-tree-menu-${node().id}`}
@@ -408,6 +423,10 @@ const DocRow: Component<{
   const [menuOpen, setMenuOpen] = createSignal(false)
   const active = () => props.tree.activeDocId === props.doc.id
   const synced = () => Boolean(props.doc.syncedSourceId)
+  /** Rename, move and archive need the right to edit the page (the server
+   *  says, per page); moving also needs the folder right. */
+  const editable = () => !synced() && props.doc.canEdit !== false
+  const movable = () => editable() && props.tree.canManageFolders !== false
   const items = (): RowMenuItem[] => {
     const t = props.tree
     const id = props.doc.id
@@ -417,7 +436,7 @@ const DocRow: Component<{
       icon: Link,
       onSelect: () => t.onCopyLink?.(id),
     }
-    if (synced()) return [copy]
+    if (!editable()) return [copy]
     return [
       {
         id: "rename",
@@ -425,18 +444,22 @@ const DocRow: Component<{
         icon: Pencil,
         onSelect: () => t.onRenameDoc?.(id),
       },
-      {
-        id: "move",
-        label: i18n.t("knowledge.moveToEllipsis"),
-        icon: FolderInput,
-        onSelect: () =>
-          t.onMoveRequest?.({
-            kind: "doc",
-            id,
-            title: props.doc.title,
-            fromCollectionId: props.folderId,
-          }),
-      },
+      ...(movable()
+        ? [
+            {
+              id: "move",
+              label: i18n.t("knowledge.moveToEllipsis"),
+              icon: FolderInput,
+              onSelect: () =>
+                t.onMoveRequest?.({
+                  kind: "doc",
+                  id,
+                  title: props.doc.title,
+                  fromCollectionId: props.folderId,
+                }),
+            },
+          ]
+        : []),
       copy,
       ...(t.canArchiveDocs
         ? [
@@ -460,9 +483,14 @@ const DocRow: Component<{
       data-testid={`knowledge-tree-doc-${props.doc.id}`}
       aria-current={active() ? "page" : undefined}
       tabindex={0}
-      draggable={!synced()}
+      draggable={movable()}
       onClick={(e) => {
-        if (e.target instanceof Element && e.target.closest("[data-row-menu]")) return
+        // The menu's items are portalled out of the row, but Solid hands their
+        // clicks to it all the same: only a click inside the row's own DOM, and
+        // not on its "…" button, opens the page.
+        const target = e.target
+        if (!(target instanceof Node) || !e.currentTarget.contains(target)) return
+        if (target instanceof Element && target.closest("[data-row-menu]")) return
         props.tree.onOpenDoc(props.doc.id, props.doc.title)
       }}
       onKeyDown={(e) => {
@@ -470,7 +498,7 @@ const DocRow: Component<{
         if (e.key === "Enter") {
           e.preventDefault()
           props.tree.onOpenDoc(props.doc.id, props.doc.title)
-        } else if (e.key === "F2" && !synced()) {
+        } else if (e.key === "F2" && editable()) {
           e.preventDefault()
           props.tree.onRenameDoc?.(props.doc.id)
         }
@@ -481,6 +509,7 @@ const DocRow: Component<{
       }}
       onDragStart={(e) => {
         e.stopPropagation()
+        if (!movable()) return
         setTreeDrag({ kind: "doc", id: props.doc.id, fromCollectionId: props.folderId })
       }}
       onDragEnd={() => {

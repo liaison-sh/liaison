@@ -23,7 +23,8 @@ async function choose(testid: string) {
 }
 
 function jwt(payload: Record<string, unknown>): string {
-  return `${btoa(JSON.stringify({ alg: "HS256" }))}.${btoa(JSON.stringify(payload))}.sig`
+  const full = { name: "Me", roles: [], exp: Math.floor(Date.now() / 1000) + 3600, ...payload }
+  return `${btoa(JSON.stringify({ alg: "HS256" }))}.${btoa(JSON.stringify(full))}.sig`
 }
 
 const tree = [
@@ -262,7 +263,7 @@ describe("KnowledgeCollectionTree", () => {
     expect(screen.getByTestId("knowledge-tree-menu-rename")).toBeInTheDocument()
   })
 
-  it("refused move shows the server message and the row stays", async () => {
+  it("refused move says so in the client's words and the row stays", async () => {
     setTokens(jwt({ sub: "me", userId: "me", orgId: "o1", scopes: ["*"] }), "r")
     const tree = [
       {
@@ -301,7 +302,7 @@ describe("KnowledgeCollectionTree", () => {
     await choose("knowledge-tree-menu-move")
     fireEvent.click(await screen.findByTestId("knowledge-move-to-c2"))
     await waitFor(() =>
-      expect(toasts().map((t) => t.message)).toContain("You cannot do this on this page"),
+      expect(toasts().map((t) => t.message)).toContain("You cannot do this on this page."),
     )
     // One request, never a remove then an add.
     expect(api.post).toHaveBeenCalledWith("/knowledge/documents/d1/move", {
@@ -313,6 +314,7 @@ describe("KnowledgeCollectionTree", () => {
   })
 
   it("B9: the section + is visible without focus, a folder name click opens or toggles it", async () => {
+    setTokens(jwt({ sub: "me", userId: "me", orgId: "o1", scopes: ["*"] }), "r")
     const api = { get: vi.fn(async () => []), post: vi.fn() }
     render(() => (
       <ApiContext.Provider value={api as never}>
@@ -505,5 +507,127 @@ describe("KnowledgeCollectionTree", () => {
     row.focus()
     fireEvent.keyDown(row, { key: "F2" })
     expect(onRename).toHaveBeenCalledWith("c1")
+  })
+  it("M1: a menu item never opens the page, whichever item and however chosen", async () => {
+    const onOpenDoc = vi.fn()
+    const onCopyLink = vi.fn()
+    const onRenameDoc = vi.fn()
+    const onMoveRequest = vi.fn()
+    const onArchiveDoc = vi.fn()
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={[{ id: "c1", name: "Eng", parentId: null, children: [], documents: [{ id: "d1", title: "X" }] }] as never}
+        onOpenDoc={onOpenDoc}
+        onCopyLink={onCopyLink}
+        onRenameDoc={onRenameDoc}
+        onMoveRequest={onMoveRequest}
+        onArchiveDoc={onArchiveDoc}
+        canArchiveDocs
+      />
+    ))
+    fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
+    for (const [item, spy] of [
+      ["copy-link", onCopyLink],
+      ["rename", onRenameDoc],
+      ["move", onMoveRequest],
+      ["archive", onArchiveDoc],
+    ] as const) {
+      fireEvent.pointerDown(screen.getByTestId("knowledge-tree-doc-menu-d1"), {
+        pointerType: "mouse",
+        button: 0,
+      })
+      const el = await screen.findByTestId(`knowledge-tree-menu-${item}`)
+      // A pointer choice: press, release, click, as a mouse sends them.
+      fireEvent.pointerDown(el, { pointerType: "mouse", button: 0 })
+      fireEvent.pointerUp(el, { pointerType: "mouse", button: 0 })
+      fireEvent.click(el)
+      await waitFor(() => expect(spy).toHaveBeenCalled())
+      await waitFor(() => expect(screen.queryByTestId(`knowledge-tree-menu-${item}`)).toBeNull())
+    }
+    // A click on the row itself still opens it.
+    expect(onOpenDoc).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("knowledge-tree-doc-d1"))
+    expect(onOpenDoc).toHaveBeenCalledWith("d1", "X")
+  })
+
+  it("M3: a page the reader cannot edit offers Copy link only, no F2, no drag", async () => {
+    const onRenameDoc = vi.fn()
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={
+          [
+            {
+              id: "c1",
+              name: "Eng",
+              parentId: null,
+              children: [],
+              documents: [
+                { id: "d1", title: "Read only", canEdit: false },
+                { id: "d2", title: "Mine", canEdit: true },
+              ],
+            },
+          ] as never
+        }
+        onOpenDoc={() => {}}
+        onRenameDoc={onRenameDoc}
+        canArchiveDocs
+      />
+    ))
+    fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
+    const ro = screen.getByTestId("knowledge-tree-doc-d1")
+    expect(ro.getAttribute("draggable")).toBe("false")
+    fireEvent.contextMenu(ro)
+    expect(await screen.findByTestId("knowledge-tree-menu-copy-link")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-tree-menu-rename")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-menu-move")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-menu-archive")).toBeNull()
+    fireEvent.keyDown(screen.getByTestId("knowledge-tree-menu-copy-link"), { key: "Escape" })
+    await waitFor(() => expect(screen.queryByTestId("knowledge-tree-menu-copy-link")).toBeNull())
+    ro.focus()
+    fireEvent.keyDown(ro, { key: "F2" })
+    expect(onRenameDoc).not.toHaveBeenCalled()
+    // An editable page keeps them all.
+    expect(screen.getByTestId("knowledge-tree-doc-d2").getAttribute("draggable")).toBe("true")
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d2"))
+    expect(await screen.findByTestId("knowledge-tree-menu-rename")).toBeInTheDocument()
+    expect(screen.getByTestId("knowledge-tree-menu-move")).toBeInTheDocument()
+    expect(screen.getByTestId("knowledge-tree-menu-archive")).toBeInTheDocument()
+  })
+
+  it("M3: folder actions and + follow the reader's rights", async () => {
+    const folders = [
+      { id: "c1", name: "Eng", parentId: null, children: [], documents: [] },
+    ] as never
+    const { unmount } = render(() => (
+      <KnowledgeCollectionTree
+        tree={folders}
+        onOpenDoc={() => {}}
+        onNewPage={() => {}}
+        canManageFolders={false}
+        canCreatePages
+      />
+    ))
+    // Without the folder right: no menu, no drag, no new page filed in it.
+    expect(screen.queryByTestId("knowledge-tree-menu-c1")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-new-page-c1")).toBeNull()
+    expect(screen.getByTestId("knowledge-tree-row-c1").getAttribute("draggable")).toBe("false")
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-row-c1"))
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByTestId("knowledge-tree-menu-rename")).toBeNull()
+    unmount()
+    // With it but without the right to make pages: the menu has no New page.
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={folders}
+        onOpenDoc={() => {}}
+        onNewPage={() => {}}
+        canManageFolders
+        canCreatePages={false}
+      />
+    ))
+    expect(screen.queryByTestId("knowledge-tree-new-page-c1")).toBeNull()
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-row-c1"))
+    expect(await screen.findByTestId("knowledge-tree-menu-rename")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-tree-menu-new-page")).toBeNull()
   })
 })

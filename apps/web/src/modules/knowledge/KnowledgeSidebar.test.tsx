@@ -250,7 +250,7 @@ describe("KnowledgeSidebar — personal vs. org-shared folder creation", () => {
       orgId: "org-1",
       name: "Test User",
       roles: [],
-      scopes: [],
+      scopes: ["knowledge:collections:manage"],
       dimensionGrants: {},
       exp: Math.floor(Date.now() / 1000) + 3600,
     })
@@ -280,7 +280,7 @@ describe("KnowledgeSidebar — personal vs. org-shared folder creation", () => {
       orgId: "org-1",
       name: "Test User",
       roles: [],
-      scopes: [],
+      scopes: ["knowledge:collections:manage"],
       dimensionGrants: {},
       exp: Math.floor(Date.now() / 1000) + 3600,
     })
@@ -321,6 +321,7 @@ describe("KnowledgeSidebar — organise (K1)", () => {
       makeJwt({
         userId: "me",
         orgId: "org-1",
+        name: "Me",
         roles: [],
         scopes: ["*"],
         exp: Math.floor(Date.now() / 1000) + 3600,
@@ -387,10 +388,137 @@ describe("KnowledgeSidebar — organise (K1)", () => {
     fireEvent.keyDown(del, { key: "Enter" })
     fireEvent.click(await screen.findByTestId("knowledge-folder-dialog-confirm"))
     await waitFor(() => expect(toasts().length).toBeGreaterThanOrEqual(3))
-    expect(toasts().every((t) => t.type === "error" && t.message === "Refused by the server")).toBe(
-      true,
-    )
+    // A known refusal (403) is said in the client's own words, never the server's.
+    expect(toasts().every((t) => t.type === "error")).toBe(true)
+    expect(toasts().map((t) => t.message)).toContain("The folder could not be changed.")
+    expect(toasts().map((t) => t.message)).toContain("The page could not be created.")
+    expect(toasts().some((t) => t.message === "Refused by the server")).toBe(false)
     expect(errors).not.toHaveBeenCalled()
+  })
+
+  it("M3: a reader without the folder or page rights is offered neither", async () => {
+    setTokens(
+      makeJwt({
+        userId: "me",
+        orgId: "org-1",
+        name: "Me",
+        roles: [],
+        scopes: ["knowledge:documents:read"],
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Policies",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "Warranty", canEdit: false }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(),
+    }
+    renderSidebar(api)
+    expect(await screen.findByTestId("knowledge-tree-folder-c1")).toBeInTheDocument()
+    for (const id of [
+      "knowledge-sidebar-personal-new-folder",
+      "knowledge-sidebar-shared-new-folder",
+      "knowledge-sidebar-new-page",
+      "knowledge-tree-new-page-c1",
+      "knowledge-tree-menu-c1",
+    ])
+      expect(screen.queryByTestId(id)).toBeNull()
+    fireEvent.click(screen.getByTestId("knowledge-tree-toggle-c1"))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
+    expect(await screen.findByTestId("knowledge-tree-menu-copy-link")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-tree-menu-rename")).toBeNull()
+    expect(screen.queryByTestId("knowledge-tree-menu-move")).toBeNull()
+  })
+
+  it("M2: French readers see French refusals; an unknown refusal keeps the server's words", async () => {
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Politiques",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "Garantie", canEdit: true }],
+              },
+              {
+                id: "c2",
+                name: "Manuel",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(async (path: string) => {
+        if (path === "/knowledge/documents/d1/move")
+          throw new ApiError("You cannot do this on this page", 404, "NOT_FOUND")
+        if (path === "/knowledge/collections")
+          throw new ApiError("Something new went wrong", 422, "SOMETHING_NEW")
+        return {}
+      }),
+      patch: vi.fn(async () => {
+        throw new ApiError(
+          "This folder is synced from another app. Change it there, or stop the sync first.",
+          400,
+          "VALIDATION",
+          undefined,
+          { reason: "synced_folder" },
+        )
+      }),
+    }
+    renderSidebar(api, "fr")
+    // A refused move (the page's 404): the client's sentence, in French.
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-c1"))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
+    const move = await screen.findByTestId("knowledge-tree-menu-move")
+    move.focus()
+    fireEvent.keyDown(move, { key: "Enter" })
+    fireEvent.click(await screen.findByTestId("knowledge-move-to-c2"))
+    await waitFor(() =>
+      expect(toasts().map((t) => t.message)).toContain(
+        "Vous ne pouvez pas faire cela sur cette page.",
+      ),
+    )
+    // A named refusal (a synced folder): its French sentence.
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-folder-c2"))
+    const rename = await screen.findByTestId("knowledge-tree-menu-rename")
+    rename.focus()
+    fireEvent.keyDown(rename, { key: "Enter" })
+    fireEvent.input(await screen.findByTestId("knowledge-folder-name-input"), {
+      target: { value: "Guide" },
+    })
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() =>
+      expect(toasts().map((t) => t.message)).toContain(
+        "Ce dossier est synchronisé depuis une autre application. Modifiez-le là-bas, ou arrêtez d'abord la synchronisation.",
+      ),
+    )
+    // A refusal the client does not know: the server's words, the only ones there are.
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-shared-new-folder"))
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() =>
+      expect(toasts().map((t) => t.message)).toContain("Something new went wrong"),
+    )
+    expect(toasts().some((t) => /cannot do this|synced from another app/.test(t.message))).toBe(
+      false,
+    )
   })
 
   it("B5: rename and archive of the open page update its row; a collection or membership frame reloads the tree once for a burst", async () => {

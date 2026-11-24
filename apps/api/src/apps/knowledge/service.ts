@@ -17,6 +17,7 @@ import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-requi
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   actorGrantRole,
+  grantRoleFrom,
   listGrants,
   recomputeSearchAcl,
   replaceGrants,
@@ -42,6 +43,9 @@ export class KnowledgeError extends Error {
   constructor(
     public readonly code: KnowledgeErrorCode,
     message: string,
+    /** A stable name of the refusal (`details.reason` in the response), so a
+     *  client says it in its reader's language; the message stays for others. */
+    public readonly reason?: string,
   ) {
     super(message)
     this.name = "KnowledgeError"
@@ -497,6 +501,42 @@ export async function loadDocumentShareRole(
     userId: actor.userId,
     roles: actor.roles ?? [],
   })
+}
+
+/**
+ * `loadDocumentShareRole` for every page of the org at once (the tree's pages):
+ * one read of the grants, the same rule per page. Pages with no role are absent.
+ */
+export async function loadDocumentShareRoles(
+  tx: RlsClient,
+  actor: KnowledgeActor,
+): Promise<Map<string, "viewer" | "editor">> {
+  const byDoc = new Map<
+    string,
+    Array<{ grantee_kind: string; grantee: string; role: "viewer" | "editor" }>
+  >()
+  for (const row of extractRows<{
+    resource_id: string
+    grantee_kind: string
+    grantee: string
+    role: "viewer" | "editor"
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT g.resource_id, g.grantee_kind, g.grantee, g.role
+      FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = ${actor.orgId}::uuid AND g.resource_type = ${KNOWLEDGE_RESOURCE}
+    `),
+  )) {
+    const list = byDoc.get(row.resource_id)
+    if (list) list.push(row)
+    else byDoc.set(row.resource_id, [row])
+  }
+  const roles = new Map<string, "viewer" | "editor">()
+  for (const [docId, rows] of byDoc) {
+    const role = grantRoleFrom(rows, { userId: actor.userId, roles: actor.roles ?? [] })
+    if (role) roles.set(docId, role)
+  }
+  return roles
 }
 
 /**

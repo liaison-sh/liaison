@@ -52,6 +52,7 @@ import {
   setFolderOpen,
   setKnowledgeView,
 } from "./knowledge-store"
+import { refusalMessage } from "./refusal"
 
 /** The scope that lets a person archive a page (Trash replaces it later). */
 const ARCHIVE_SCOPE = "knowledge:documents:archive"
@@ -99,6 +100,12 @@ const KnowledgeSidebar: Component = () => {
   })
   const activeDocId = createMemo(activeKnowledgeDocId)
   const canArchiveDocs = () => hasScope(ARCHIVE_SCOPE)
+  // Actions follow the person's scopes, as the server checks them: none is
+  // offered that the server would refuse for want of one.
+  const canManageFolders = () =>
+    hasScope("knowledge:collections:manage") || hasScope("knowledge:documents:admin")
+  const canCreatePages = () =>
+    hasScope("knowledge:documents:create") || hasScope("knowledge:documents:admin")
   // The phone navigator sheet is outside the shell's touch floor: size here.
   const touch = () => shellTier() !== "desktop"
 
@@ -110,10 +117,9 @@ const KnowledgeSidebar: Component = () => {
     }),
   )
 
-  /** A refusal is said where the person acted, in the server's words. */
+  /** A refusal is said where the person acted, in their language. */
   function refused(err: unknown, fallback: string) {
-    const message = err instanceof ApiError || err instanceof Error ? err.message : ""
-    addToast({ type: "error", message: message || fallback })
+    addToast({ type: "error", message: refusalMessage(err, fallback, i18n.t) })
   }
 
   async function runFederatedSearch(q: string) {
@@ -449,6 +455,8 @@ const KnowledgeSidebar: Component = () => {
     onArchive: openArchiveDialog,
     onArchiveDoc: (id: string) => void archiveDoc(id),
     canArchiveDocs: canArchiveDocs(),
+    canManageFolders: canManageFolders(),
+    canCreatePages: canCreatePages(),
     onCopyLink: (id: string) => void copyLink(id),
     onMoveRequest: (item: MoveRequest) => setMoveItem(item),
     onMoveDoc: onDragMoveDoc,
@@ -471,6 +479,7 @@ const KnowledgeSidebar: Component = () => {
             onKeyDown={onSearchKeydown}
           />
         </div>
+        <Show when={canCreatePages()}>
         <button
           type="button"
           data-testid="knowledge-sidebar-new-page"
@@ -481,6 +490,7 @@ const KnowledgeSidebar: Component = () => {
         >
           <Plus size={16} />
         </button>
+        </Show>
       </div>
 
       {/* Tree + search results */}
@@ -544,6 +554,7 @@ const KnowledgeSidebar: Component = () => {
               <span class="text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
                 {i18n.t("knowledge.personal")}
               </span>
+              <Show when={canManageFolders()}>
               <button
                 type="button"
                 data-testid="knowledge-sidebar-personal-new-folder"
@@ -554,6 +565,7 @@ const KnowledgeSidebar: Component = () => {
               >
                 <Plus size={12} />
               </button>
+              </Show>
             </div>
             <Show
               when={partitionedTree().personal.length > 0}
@@ -579,6 +591,7 @@ const KnowledgeSidebar: Component = () => {
               <span class="text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
                 {i18n.t("knowledge.sharedWithOrg")}
               </span>
+              <Show when={canManageFolders()}>
               <button
                 type="button"
                 data-testid="knowledge-sidebar-shared-new-folder"
@@ -589,6 +602,7 @@ const KnowledgeSidebar: Component = () => {
               >
                 <Plus size={12} />
               </button>
+              </Show>
             </div>
             <Show
               when={partitionedTree().shared.length > 0}

@@ -64,6 +64,7 @@ export async function moveDocument(
       throw new KnowledgeError(
         "VALIDATION",
         "This page is no longer in that folder. Reload the list and try again.",
+        "page_not_in_folder",
       )
     }
   }

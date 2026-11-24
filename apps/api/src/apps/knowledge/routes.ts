@@ -128,7 +128,16 @@ function knowledgeErrorResponse(c: KnowledgeContext, err: unknown) {
   }
   // All other codes (incl. SOURCE_NOT_ENABLED → 422) pass the actionable message
   // through. SOURCE_NOT_ENABLED is a client precondition, not a server fault.
-  return c.json({ error: { message: err.message, code: err.code } }, status)
+  return c.json(
+    {
+      error: {
+        message: err.message,
+        code: err.code,
+        ...(err.reason ? { details: { reason: err.reason } } : {}),
+      },
+    },
+    status,
+  )
 }
 
 /**

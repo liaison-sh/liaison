@@ -181,5 +181,15 @@
   "renameConflict": "Someone saved this page meanwhile. Open it to see their version, then rename it.",
   "renamePage": "Rename page",
   "sharedTopLevel": "Shared with org, top level",
-  "titleConflict": "Someone saved this page while you were renaming it. Your title is still here."
+  "titleConflict": "Someone saved this page while you were renaming it. Your title is still here.",
+  "refusalFolderScope": "You cannot organise folders. Ask an admin for access.",
+  "refusalSyncedFolder": "This folder is synced from another app. Change it there, or stop the sync first.",
+  "refusalHoldsSyncedFolder": "This folder holds a folder synced from another app, so it stays where people see it now.",
+  "refusalSyncedMarker": "This description is reserved for synced folders.",
+  "refusalNotYourFolder": "A personal folder can only be your own.",
+  "refusalSubfolderSection": "A folder is seen by whoever sees the folder it is in. Move it out first.",
+  "refusalHoldsOthers": "This folder holds something that belongs to another person, so it stays shared.",
+  "refusalFolderCycle": "A folder cannot go inside itself or one of its own folders.",
+  "refusalNameRequired": "Give it a name.",
+  "refusalPageNotInFolder": "This page is no longer in that folder. Reload the list and try again."
 }

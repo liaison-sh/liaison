@@ -261,6 +261,8 @@ export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
  * The caller trace stops at a call made from one of them.
  */
 export const REVIEWED_ORIGINS: Record<string, string> = {
+  "apps/api/src/apps/knowledge/trash.ts#runTrashPurge":
+    "the nightly Trash purge (knowledge jobs): each org id is read by the system pool from app_knowledge.documents rows in Trash past 30 days, and purgeOrg selects and deletes only that org's pages (every statement pinned to that org_id), in writeUnlessMoving",
   "apps/api/src/modules/approvals/summary-backfill.ts#backfillApprovalSummaryBatch":
     "the approval summary backfill job (queued by the leader, boot-phase10.ts registerApprovalSummaryBackfill): each org id is read from pending kernel.approval_requests rows that lack a summary, and only that org's rows are read and written, in writeUnlessMoving",
   "apps/api/src/modules/apps/attention-store.ts#processAttentionRefreshJob":

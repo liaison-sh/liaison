@@ -3,6 +3,7 @@
 // whitespace or opening punctuation, so a time (10:30), a URL (https://x),
 // a word:with:colons and code are never taken for one.
 import type { EditorState } from "@tiptap/pm/state"
+import { textBeforeCaret } from "./suggest"
 
 /** What may stand right before the colon: nothing, a space, or opening punctuation. */
 const BEFORE = String.raw`(?:^|[\s(\[{"'<,;!?*>])`
@@ -16,19 +17,9 @@ export interface EmojiQuery {
   from: number
 }
 
-/** Text before the caret in its block, leaves as a placeholder. */
-function beforeCaret(state: EditorState): string | null {
-  const { empty, $from } = state.selection
-  if (!empty || $from.parent.type.spec.code) return null
-  if ($from.marks().some((m) => m.type.name === "code" || m.type.name === "link")) return null
-  return $from.parent.textBetween(0, $from.parentOffset, undefined, (leaf) =>
-    leaf.type.name === "hardBreak" ? "\n" : "￼",
-  )
-}
-
 /** The `:xx` being typed at the caret (two letters or more), or null. */
 export function emojiQueryAt(state: EditorState): EmojiQuery | null {
-  const before = beforeCaret(state)
+  const before = textBeforeCaret(state)
   const match = before === null ? null : OPEN.exec(before)
   if (!match) return null
   const text = match[1]!
@@ -37,7 +28,7 @@ export function emojiQueryAt(state: EditorState): EmojiQuery | null {
 
 /** `:name` right before the caret, for a closing colon about to be typed. */
 export function emojiNameBeforeColon(state: EditorState): EmojiQuery | null {
-  const before = beforeCaret(state)
+  const before = textBeforeCaret(state)
   const match = before === null ? null : CLOSED.exec(before)
   if (!match) return null
   const text = match[1]!

@@ -33,6 +33,12 @@ You can also click **Create knowledge from…** on the Knowledge home to ask you
 
 If someone else saves the page while you write, or you do in another tab, Liaison tells you and keeps your text. Click **Choose what to keep**: **Keep mine** makes your text the page, **Take theirs** shows the other text, and **See both** compares them first. Whatever you choose, the other text stays in **Page history**. If you leave without choosing, the other text is shown and yours goes to **Page history**. If only the title changed elsewhere (someone renamed the page) and you did not edit the title, Liaison takes the new title and saves your text, without asking.
 
+### Add a block with /
+
+Type **/** at the start of a line, or after a space, to open **Add a block**: **Text**, **Heading 1** to **Heading 3**, **Checklist**, **Bulleted list**, **Numbered list**, **Quote**, **Code block**, **Table** and **Divider**, plus **Image**, **File** and **Link to a page** where the page takes them. Type a few letters to narrow the list (in your language: "todo" or "tâche" finds **Checklist**), move with the arrow keys and press Enter, or click one. Escape closes it and leaves the slash as text. A slash inside a word, an address or code never opens it. Every block is stored as plain markdown, so agents and other apps read the page as you see it.
+
+Tick a checklist item by clicking its box, or press Ctrl+Enter (Cmd+Enter on a Mac) with the caret in the item. The page saves the change like any other edit. People who may only read the page see which items are done and cannot tick them.
+
 ## See and restore a page's history
 
 1. Open the page and click the **...** menu, then **Page history**.

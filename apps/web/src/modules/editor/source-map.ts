@@ -42,6 +42,11 @@ export function mapSource(ed: Editor, markdown: string): SourceMap | null {
   try {
     const source = markdown.replace(/\r\n?/g, "\n")
     const tokens = extractAbsorbedBlankLines(manager.instance.lexer(source) as never) as Token[]
+    // The checklist tokenizer ends its raw on a newline the text may not have.
+    const last = tokens.at(-1)
+    if (last && !source.endsWith("\n") && last.raw.endsWith("\n")) {
+      tokens[tokens.length - 1] = { ...last, raw: last.raw.slice(0, -1) } as Token
+    }
     if (tokens.map((t) => t.raw).join("") !== source) return null
     const parser = manager as unknown as TokenParser
     const solid = tokens.flatMap((t, i) => (t.type === "space" ? [] : [i]))

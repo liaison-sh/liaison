@@ -198,7 +198,22 @@ async function snapshot(): Promise<Record<string, unknown[]>> {
   }
 }
 
+/**
+ * Whether an instance used a moved app is instance-wide: any org's `kernel.apps`
+ * row of the name (usedMovedApps). The unit runner runs many files in turn on
+ * one shard database, so earlier files' orgs are still there, and an org set
+ * up in this process, or one a catalog install hot-registers for, gets rows for
+ * the apps under test. Those rows would make this instance one that "used" an
+ * app it never ran here (and a catalog that lacks it then fails the
+ * reconcile), so every test starts and ends with no org registered for them.
+ */
+async function forgetOtherOrgsRegistrations(): Promise<void> {
+  const names = [APP, ...MOVED_APPS.map((a) => a.name)]
+  await sql`DELETE FROM kernel.apps WHERE org_id <> ${ORG} AND name IN ${sql(names)}`
+}
+
 beforeEach(async () => {
+  await forgetOtherOrgsRegistrations()
   catalogDir = mkdtempSync(join(tmpdir(), "moved-catalog-"))
   installRoot = mkdtempSync(join(tmpdir(), "moved-install-root-"))
   process.env.LIAISON_APP_CATALOG_DIR = catalogDir
@@ -243,6 +258,7 @@ afterEach(async () => {
   await sql`DELETE FROM app_knowledge.collections WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.connected_accounts WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.apps WHERE org_id = ${ORG}`
+  await forgetOtherOrgsRegistrations()
   await sql`DELETE FROM kernel.users WHERE org_id = ${ORG}`
   await sql`DELETE FROM kernel.organizations WHERE id = ${ORG}`
 })

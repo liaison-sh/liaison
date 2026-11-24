@@ -216,7 +216,7 @@ async function readGuardStatesQuietly(
  * and the thing the payload names, else the action in words. HOW it was made
  * rides along so the reader's client can say it in the reader's language.
  */
-function approvalRowName(
+export function approvalRowName(
   row: BundleStepRow,
   skillNamesById: Record<string, string>,
 ): {
@@ -239,7 +239,7 @@ function approvalRowName(
   return { authored, titleDetail, titleKind, title }
 }
 
-async function readCurrentScopes(tx: RlsClient): Promise<string[]> {
+export async function readCurrentScopes(tx: RlsClient): Promise<string[]> {
   try {
     const result = await tx.execute(drizzleSql`SELECT rls_ctx.scopes() AS scopes`)
     const row = extractRows<{ scopes: string | null }>(result)[0]
@@ -331,7 +331,7 @@ async function readAppsApprovingFromHome(
 }
 
 /** The facts the feed's "this person decides it" rule reads off a request row. */
-type DecidableApprovalRow = Pick<
+export type DecidableApprovalRow = Pick<
   PendingApprovalRow,
   | "id"
   | "tool_name"
@@ -351,7 +351,7 @@ type DecidableApprovalRow = Pick<
  * feed query returns at `approving` is a dead execution, and the people who
  * signed it are exactly who must see it.
  */
-function isCallersDecision(
+export function isCallersDecision(
   r: DecidableApprovalRow,
   callerUserId: string,
   callerScopes: string[],
@@ -396,7 +396,7 @@ function rowPlacement(
 }
 
 /** The feed's predicate over `approval_requests ar`: pending, or approving and dead. */
-const FEED_STATUS_SQL = drizzleSql`(
+export const FEED_STATUS_SQL = drizzleSql`(
   ar.status = 'pending'
   OR (
     ar.status = 'approving'

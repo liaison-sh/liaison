@@ -265,3 +265,50 @@ describe("a routine run waiting for the viewer's private mailbox", () => {
     expect(s.agents.notifications.some((i) => i.id === "w2")).toBe(false)
   })
 })
+
+describe("a request that expired without a decision", () => {
+  const expired = (id: string, over: Partial<AttentionItem> = {}): AttentionItem =>
+    item({
+      id,
+      app: "kernel",
+      entity: "approval_request",
+      kind: "approval_decision",
+      urgency: 50,
+      summary: "Approval request-1 expired",
+      persisted: true,
+      ...over,
+    })
+  const decided = (id: string, status: string): AttentionItem =>
+    expired(id, {
+      summary: `Approval request-2 ${status}`,
+      metadata: { decisionTitle: "Issue the invoice" },
+    })
+
+  it("asks for nothing: it is news among the notifications, in no count", () => {
+    const lines = [
+      expired("old"),
+      expired("new", {
+        summary: "Approval request-3 expired",
+        metadata: { decisionTitle: "Issue the invoice" },
+      }),
+    ]
+    const sections = buildHomeSections(lines, { viewer: member })
+    expect(sections.needs.total).toBe(0)
+    expect(sections.needs.alerts).toEqual([])
+    expect(sections.queues).toEqual([])
+    expect(sections.agents.notifications.map((i) => i.id).sort()).toEqual(["new", "old"])
+    expect(homeActionItems(lines, false, member)).toEqual([])
+  })
+
+  it("leaves an approval and a refusal where they were", () => {
+    const sections = buildHomeSections([decided("yes", "approved"), decided("no", "denied")], {
+      viewer: member,
+    })
+    expect(sections.needs.alerts.map((i) => i.id).sort()).toEqual(["no", "yes"])
+  })
+
+  it("stays in the way when it is scored urgent", () => {
+    const sections = buildHomeSections([expired("late", { urgency: 80 })], { viewer: member })
+    expect(sections.needs.alerts.map((i) => i.id)).toEqual(["late"])
+  })
+})

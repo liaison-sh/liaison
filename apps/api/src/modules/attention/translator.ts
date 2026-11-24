@@ -133,7 +133,7 @@ export interface TranslatorDeps {
     orgId: string,
   ) => Promise<Map<string, UserPrefsSnapshot>>
   /** `resolveWhen` hit: mark matching unread rows read. Injectable for tests. */
-  resolveAttentionRows?: (event: AppEvent, kind: string) => Promise<void>
+  resolveAttentionRows?: (event: AppEvent, kind: string, entityType?: string) => Promise<void>
   recipientContext?: Partial<RecipientContext>
   /**
    * Phase 16 Task A2 — per-translation, per-event subscription narrowing.
@@ -825,14 +825,18 @@ export function resolveWhenHit(
 
 /** `resolveWhen` hit: mark every matching UNREAD row read (org-wide — resolution
  *  clears the row for all recipients, not just those the event would notify). */
-async function resolveAttentionRows(event: AppEvent, kind: string): Promise<void> {
+async function resolveAttentionRows(
+  event: AppEvent,
+  kind: string,
+  entityType: string = event.entity,
+): Promise<void> {
   await withPrivilegedDb(event.orgId, "translator:resolve-rows", async (tx: PrivilegedDb) => {
     await tx.execute(sql`
       UPDATE ${K}.attention_events
       SET read_at = now()
       WHERE org_id = ${event.orgId}
         AND app = ${event.app}
-        AND entity_type = ${event.entity}
+        AND entity_type = ${entityType}
         AND entity_id = ${event.entityId}
         AND kind = ${kind}
         AND read_at IS NULL
@@ -1158,7 +1162,11 @@ export async function processTranslationEvent(
       // that ends its order:created row's reason to exist). Clear the unread
       // row(s) instead of upserting a nonsense "0 items need you" row.
       if (t.resolveWhen && resolveWhenHit(t.resolveWhen, event)) {
-        await (deps.resolveAttentionRows ?? resolveAttentionRows)(event, t.kind)
+        await (deps.resolveAttentionRows ?? resolveAttentionRows)(
+          event,
+          t.kind,
+          ...(t.resolveEntityType ? [t.resolveEntityType] : []),
+        )
         continue
       }
       // D2 batching: resolve the CANDIDATE set first, with NO subscription

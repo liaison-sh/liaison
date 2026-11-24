@@ -114,8 +114,17 @@ function isTimeLine(item: AttentionItem): boolean {
   return item.app === "projects" && item.kind.startsWith(TIME_KIND_PREFIX)
 }
 
+/** A request that expired with no decision: nothing happened and nothing is asked any more. */
+function isExpiredRequest(item: AttentionItem): boolean {
+  return (
+    item.app === "kernel" &&
+    item.kind === "approval_decision" &&
+    /^Approval \S+ expired$/.test(item.summary)
+  )
+}
+
 export function isNowItem(item: AttentionItem): boolean {
-  return NOW_KINDS.has(item.kind) || item.urgency >= NOW_URGENCY
+  return (NOW_KINDS.has(item.kind) && !isExpiredRequest(item)) || item.urgency >= NOW_URGENCY
 }
 
 /** Catalog key for an app's group label, or undefined for an app that declares none. */
@@ -238,8 +247,9 @@ export function splitFeed(items: AttentionItem[], opts: SplitFeedOptions = {}): 
     if (isCardedElsewhereInActivity(item)) continue
     // Informational agent notifications get their own section instead of
     // blending into the app's work queue — they are FYIs, not work items.
+    // A request that expired is one too.
     const key =
-      item.kind === "agent_notification"
+      item.kind === "agent_notification" || isExpiredRequest(item)
         ? `${item.app}::notifications`
         : isTimeLine(item)
           ? TIME_GROUP_KEY

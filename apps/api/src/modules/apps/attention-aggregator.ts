@@ -42,6 +42,10 @@ interface RegistryEntry {
  * week to go. Items routed to the same approval collapse onto the kernel's
  * item when there is one, else onto the first; a merged-away kind is noted in
  * `alsoKinds` as in `dedupeByEntity`.
+ *
+ * A reminder that a request waits (approvals/routed-reminders.ts) folds into the reader's own card
+ * of it, which already says how long is left. Beside a card filed under someone else it stays:
+ * that card is in a closed group, and the reminder is what shows it.
  */
 export function dedupeByApproval(sorted: AttentionItem[]): AttentionItem[] {
   const keeper = new Map<string, AttentionItem>()
@@ -55,6 +59,10 @@ export function dedupeByApproval(sorted: AttentionItem[]): AttentionItem[] {
   const out: AttentionItem[] = []
   for (const item of sorted) {
     if (item.action?.type !== "decide_approval") {
+      const reminded = (item.metadata?.routedReminder as { approvalId?: string } | undefined)
+        ?.approvalId
+      const card = reminded === undefined ? undefined : keeper.get(reminded)
+      if (card && card.metadata?.placement !== "others") continue
       out.push(item)
       continue
     }

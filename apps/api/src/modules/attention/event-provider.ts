@@ -3,6 +3,7 @@ import type { AttentionItem, AttentionKind } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { readRequestsNow } from "~/modules/approvals/attention-rows"
 import {
   externalOnlyDetail,
   getDetailExternalLink,
@@ -13,6 +14,18 @@ import { resolveReferenceMetadataFromManifests } from "~/modules/threads/referen
 const K = sql.raw(schemaRef("kernel"))
 
 const PROVIDER_ITEM_CAP = 200
+
+/** The request a stored row names: a reminder's, or the decided one. */
+function namedRequest(r: EventRow): { id: string; reminder: boolean } | null {
+  if (r.app !== "kernel") return null
+  if (r.kind === "agent_notification") {
+    const id = (r.metadata?.routedReminder as { approvalId?: unknown } | undefined)?.approvalId
+    return typeof id === "string" ? { id, reminder: true } : null
+  }
+  return r.kind === "approval_decision" && r.entity_type === "approval_request"
+    ? { id: r.entity_id, reminder: false }
+    : null
+}
 
 interface EventRow {
   id: string
@@ -49,6 +62,15 @@ export async function getEventAttentionItems(
     ORDER BY urgency DESC, occurred_at ASC
     LIMIT ${PROVIDER_ITEM_CAP}`)) as unknown as EventRow[]
 
+  // A row about a request follows the request: a reminder only while this reader can decide it,
+  // a decision with the name of what was decided (approvals/attention-rows.ts).
+  const requests = await readRequestsNow(
+    tx,
+    orgId,
+    userId,
+    rows.flatMap((r) => namedRequest(r)?.id ?? []),
+  )
+
   // Connection template vars (e.g. the Shopify shop subdomain) are resolved once
   // per app across the batch — a single small query even when many rows share an
   // app. `null` is cached too, so a disconnected app isn't re-queried per row.
@@ -62,6 +84,12 @@ export async function getEventAttentionItems(
 
   const items: AttentionItem[] = []
   for (const r of rows) {
+    const named = namedRequest(r)
+    const request = named ? requests.get(named.id) : undefined
+    if (named?.reminder && request?.theirs !== true) continue
+    if (named && !named.reminder && request?.title) {
+      r.metadata = { ...(r.metadata ?? {}), decisionTitle: request.title }
+    }
     const meta = resolveReferenceMetadataFromManifests(r.app, r.entity_type, orgId)
     const tabType = meta?.tabType ?? `${r.app}:${r.entity_type}`
     const occurredIso =

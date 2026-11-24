@@ -240,6 +240,18 @@ async function normalisePage(tx: Tx, orgId: string, page: PageRow, plan: PageNor
   await refreshDocumentLinks(tx, orgId, page.id, normalizePageRefs(page.body))
 }
 
+/**
+ * A page the backfill takes: not done, and its text, summary or history names a page
+ * (any form; the marker is the scheme). Every other page is marked done by its next save.
+ */
+function needsBackfill(orgId: string) {
+  return sql`org_id = ${orgId}::uuid AND links_indexed_at IS NULL
+    AND (body ILIKE ${MARKER} OR summary ILIKE ${MARKER}
+         OR EXISTS (SELECT 1 FROM ${knowledgeRel("document_versions")} v
+                     WHERE v.document_id = ${knowledgeRel("documents")}.id
+                       AND (v.body ILIKE ${MARKER} OR v.title ILIKE ${MARKER})))`
+}
+
 function pageRowsSql(where: ReturnType<typeof sql>, limit: number, lock: boolean) {
   return sql`
     SELECT id::text AS id, body, summary, revision, (synced_source_id IS NOT NULL) AS synced
@@ -275,7 +287,7 @@ export async function normaliseStoredLinksBeforeWrite(
 
 export interface PageLinksBackfillReport {
   dryRun: boolean
-  /** Pages not done before this run (a dry run: still to do). */
+  /** Pages with a page link not done before this run (a dry run: still to do). */
   documents: number
   /** Pages whose stored body or summary lost a label (or would). */
   documentsChanged: number
@@ -284,8 +296,8 @@ export interface PageLinksBackfillReport {
 }
 
 /**
- * The backfill: every page whose links were never recorded (`links_indexed_at` null),
- * in batches of {@link BACKFILL_BATCH}, one privileged transaction each, the rows
+ * The backfill: every page whose links were never recorded (`links_indexed_at` null)
+ * and whose text, summary or history names a page, in batches of {@link BACKFILL_BATCH}, one privileged transaction each, the rows
  * locked (a page a writer holds is skipped and normalised by that write). Idempotent:
  * a run over done pages finds nothing. A changed page is re-indexed for search after
  * its batch commits. `dryRun` only counts.
@@ -306,8 +318,12 @@ export async function backfillPageLinks(
         await sweepSkippingMoving((notMoving) =>
           withSystemDb("knowledge-links-backfill-orgs", (db) =>
             db.execute(sql`
-              SELECT DISTINCT org_id::text AS org_id FROM ${knowledgeRel("documents")}
-               WHERE links_indexed_at IS NULL AND ${notMoving(sql.raw("org_id"))}`),
+              SELECT DISTINCT d.org_id::text AS org_id FROM ${knowledgeRel("documents")} d
+               WHERE d.links_indexed_at IS NULL AND ${notMoving(sql.raw("d.org_id"))}
+                 AND (d.body ILIKE ${MARKER} OR d.summary ILIKE ${MARKER}
+                      OR EXISTS (SELECT 1 FROM ${knowledgeRel("document_versions")} v
+                                  WHERE v.document_id = d.id
+                                    AND (v.body ILIKE ${MARKER} OR v.title ILIKE ${MARKER})))`),
           ),
         ),
       ).map((r) => r.org_id)
@@ -329,11 +345,7 @@ async function countOrg(orgId: string, report: PageLinksBackfillReport): Promise
     const pages = await withPrivilegedDb(orgId, "knowledge-links-backfill-count", async (tx) => {
       const rows = extractRows<PageRow>(
         await tx.execute(
-          pageRowsSql(
-            sql`org_id = ${orgId}::uuid AND links_indexed_at IS NULL AND id > ${after}::uuid`,
-            BACKFILL_BATCH,
-            false,
-          ),
+          pageRowsSql(sql`${needsBackfill(orgId)} AND id > ${after}::uuid`, BACKFILL_BATCH, false),
         ),
       )
       for (const page of rows) {
@@ -358,13 +370,7 @@ async function backfillOrg(orgId: string, report: PageLinksBackfillReport): Prom
       "knowledge-links-backfill",
       async (tx) => {
         const rows = extractRows<PageRow>(
-          await tx.execute(
-            pageRowsSql(
-              sql`org_id = ${orgId}::uuid AND links_indexed_at IS NULL`,
-              BACKFILL_BATCH,
-              true,
-            ),
-          ),
+          await tx.execute(pageRowsSql(needsBackfill(orgId), BACKFILL_BATCH, true)),
         )
         const changedIds: string[] = []
         for (const page of rows) {

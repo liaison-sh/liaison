@@ -66,9 +66,76 @@ describe("knowledge tokens", () => {
     )
   })
 
-  it("does not touch an image or another scheme", () => {
-    const body = `![alt](knowledge:document:${A}) [x](https://example.com) [y](knowledge:docs:${A})`
+  it("does not touch another scheme", () => {
+    const body = `[x](https://example.com) [y](knowledge:docs:${A}) ![z](liaison-file:${F})`
     expect(normalizePageRefs(body)).toBe(body)
+  })
+
+  // A label is the linked page's title: whatever it holds, it never survives a write,
+  // and the link is still recorded (MED-2).
+  const T = pageToken(A)
+  const hostile: Array<[string, string, string]> = [
+    ["balanced brackets", `See @[Q3 [draft] Zephyr](knowledge:document:${A}) now`, `See ${T} now`],
+    ["nested twice", `[a [b [c]] d](knowledge:document:${A})`, T],
+    ["an unbalanced opening bracket", `x @[Q3 [draft](knowledge:document:${A}) y`, `x ${T} y`],
+    ["an opening bracket at the end", `x @[Q3 [](knowledge:document:${A}) y`, `x ${T} y`],
+    ["an unbalanced closing bracket", `x @[Q3 draft]](knowledge:document:${A}) y`, `x ${T} y`],
+    ["a plain link with a stray bracket", `x [Q3 [draft](knowledge:document:${A}) y`, `x ${T} y`],
+    ["escapes", `x [Q3 \\[a\\] \\](knowledge:document:${A}) y`, `x ${T} y`],
+    [
+      "an escaped closing bracket before the target",
+      `x [Q3 draft\\](knowledge:document:${A}) y`,
+      `x ${T} y`,
+    ],
+    ["a code span in the label", `x @[Q3 \`beta]\` plan](knowledge:document:${A}) y`, `x ${T} y`],
+    ["a link title", `x [Q3](knowledge:document:${A} "Q3 plan") y`, `x ${T} y`],
+    ["an angle-bracket target", `x [Q3](<knowledge:document:${A}> 'Q3') y`, `x ${T} y`],
+    ["a label over two lines", `x [Q3\nplan](knowledge:document:${A}) y`, `x ${T} y`],
+    ["an image of the page", `x ![Q3 plan](knowledge:document:${A}) y`, `x ${T} y`],
+    ["an autolink", `x <knowledge:document:${A}> y`, `x ${T} y`],
+    [
+      "an HTML anchor",
+      `x <a href="knowledge:document:${A}" title="Q3">Q3 [plan]</a> y`,
+      `x ${T} y`,
+    ],
+    [
+      "a reference link",
+      `x [Q3 plan][p] y\n\n[p]: knowledge:document:${A} "Q3 plan"\n`,
+      `x ${T} y\n\n`,
+    ],
+    ["a collapsed reference", `x [Q3][] y\n\n[q3]: <knowledge:document:${A}>`, `x ${T} y\n\n`],
+    [
+      "a shortcut reference",
+      `x [Q3 plan] y\n[Q3  PLAN]:\n  knowledge:document:${A}\n`,
+      `x ${T} y\n`,
+    ],
+  ]
+  for (const [name, body, expected] of hostile) {
+    it(`drops a label with ${name}, and records the link`, () => {
+      const out = normalizePageRefs(body)
+      expect(out).toBe(expected)
+      expect(out).not.toContain("Q3")
+      expect(normalizePageRefs(out)).toBe(out)
+      expect(pageIdsOf(body)).toEqual([A])
+      expect(plainTextOf(body)).not.toContain("Q3")
+    })
+  }
+
+  it("keeps the writer's own brackets around canonical links", () => {
+    const body = `[WIP] see [](knowledge:document:${A}), [note [](knowledge:document:${B}) and [x]`
+    expect(normalizePageRefs(body)).toBe(body)
+    expect(pageIdsOf(body)).toEqual([A, B])
+    const two = `@[One](knowledge:document:${A}) and @[Two](knowledge:document:${B})`
+    expect(normalizePageRefs(two)).toBe(`${pageToken(A)} and ${pageToken(B)}`)
+    // A reference label that names no page is the writer's text.
+    const other = `[a][b] [c]\n\n[b]: https://example.com\n`
+    expect(normalizePageRefs(`${other}[](knowledge:document:${A})`)).toBe(
+      `${other}[](knowledge:document:${A})`,
+    )
+  })
+
+  it("reads a file reference whose alt text holds brackets", () => {
+    expect(fileIdsOf(`![a [b] c](liaison-file:${F})`)).toEqual([F])
   })
 
   it("lists page and file ids outside code, once each", () => {

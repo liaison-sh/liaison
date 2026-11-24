@@ -8,9 +8,13 @@
  * stored text names the copy, so this page's readers can read it, and it outlives the
  * other page. The copy is made under the writer's row security: a file the writer
  * cannot read is never copied, and its token is kept byte for byte (a reader then sees
- * "Image not available"). A copy refused for room or storage leaves the token as it was
- * and is reported; the next save tries again. One mechanism for people and agents,
- * create and update; nothing else in the text is touched.
+ * "Image not available"). Only a file of another Knowledge page, or an upload not yet
+ * placed anywhere, is copied: a mail or ticket attachment, a template's file or a sealed
+ * (encrypted) file keeps its token and is reported `not_allowed`, so a page never turns
+ * a file meant for a narrower audience into one its readers can open. A copy refused for
+ * room or storage leaves the token as it was and is reported; the next save tries again.
+ * One mechanism for people and agents, create and update; nothing else in the text is
+ * touched.
  */
 import { fileIdsOf, pageToken, replaceFileIds } from "@liaison/shared"
 import { sql } from "drizzle-orm"
@@ -30,7 +34,8 @@ export const MAX_FILE_COPIES_PER_SAVE = 50
  * Why a named file was left as it was:
  * - `unavailable`: no such file for this writer (gone, or one they cannot read);
  * - `quota`: the organization's storage is full;
- * - `not_allowed`: the file's type is never attached, or the writer may not add files here;
+ * - `not_allowed`: the file is not a Knowledge page's file or a fresh upload, it is sealed,
+ *   its type is never attached, or the writer may not add files here;
  * - `storage`: the storage did not answer;
  * - `too_many`: over the copies one save makes.
  */
@@ -67,6 +72,16 @@ function reasonOf(err: unknown): NotCopiedReason {
 }
 
 /**
+ * A file a page may take a copy of: another Knowledge page's file, or an upload still
+ * in its upload session (pasted into the editor before the page took it), never sealed.
+ */
+function adoptable(file: { app: string; entity_type: string; enc_version: number }): boolean {
+  if (Number(file.enc_version ?? 0) !== 0) return false
+  if (file.app === "knowledge" && file.entity_type === "document") return true
+  return file.app === "kernel" && file.entity_type === "file_upload_session"
+}
+
+/**
  * The text with every file of another page that the writer can read replaced by this
  * page's copy of it, and what was copied or left. `tx` is the writer's RLS transaction;
  * the page `docId` must already exist in it (a create calls this after its insert).
@@ -82,9 +97,15 @@ export async function adoptForeignFiles(
   if (named.length === 0) return { body, ...adoption }
 
   // Where each named file lives, as the writer sees it (files_select applies).
-  const rows = extractRows<{ id: string; app: string; entity_type: string; entity_id: string }>(
+  const rows = extractRows<{
+    id: string
+    app: string
+    entity_type: string
+    entity_id: string
+    enc_version: number
+  }>(
     await tx.execute(sql`
-      SELECT id::text AS id, app, entity_type, entity_id
+      SELECT id::text AS id, app, entity_type, entity_id, enc_version
         FROM ${kernelRel("files")}
        WHERE org_id = ${actor.orgId}::uuid
          AND id = ANY(${`{${named.join(",")}}`}::uuid[])`),
@@ -103,6 +124,10 @@ export async function adoptForeignFiles(
       file.entity_type === "document" &&
       file.entity_id.toLowerCase() === docId.toLowerCase()
     if (own) continue
+    if (!adoptable(file)) {
+      adoption.notCopied.push({ id, reason: "not_allowed" })
+      continue
+    }
     if (copied >= MAX_FILE_COPIES_PER_SAVE) {
       adoption.notCopied.push({ id, reason: "too_many" })
       continue

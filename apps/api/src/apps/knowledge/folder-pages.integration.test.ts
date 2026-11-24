@@ -418,6 +418,44 @@ describe("names follow each other", () => {
     expect((await storedFolder(id)).name).toBe("Sales and partners")
   })
 
+  it("a page renamed by someone who may not manage folders: saved, the folder keeps its name", async () => {
+    const id = await folder(ana, "Clerk desk")
+    const index = (await start(ana, id, "text")).data.id
+    const clerk = await minimal.person(orgId, { name: "Desk clerk" })
+    for (const scope of ["knowledge:documents:read", "knowledge:documents:update"]) {
+      await minimal.grantScope(clerk.id, scope)
+    }
+    const session = await minimal.sessionOf(clerk)
+    await patchDoc(session, index, { title: "Clerk's title" })
+    expect((await storedDoc(index)).title).toBe("Clerk's title")
+    expect((await storedFolder(id)).name).toBe("Clerk desk")
+  })
+
+  it("a folder rename keeps a verified page verified; a title edit of the page does not", async () => {
+    const id = await folder(ana, "Policies")
+    const index = (await start(ana, id, "text")).data.id
+    const verify = () =>
+      withPrivilegedDb(orgId, "test-verify", (tx) =>
+        tx.execute(sql`UPDATE ${knowledgeRel("documents")} SET review_status = 'verified'
+                        WHERE id = ${index}::uuid`),
+      )
+    const review = async () =>
+      extractRows<{ s: string }>(
+        await withPrivilegedDb(orgId, "test-review", (tx) =>
+          tx.execute(sql`SELECT review_status AS s FROM ${knowledgeRel("documents")}
+                          WHERE id = ${index}::uuid`),
+        ),
+      )[0]?.s
+    await verify()
+    expect((await call(ana, "PATCH", `/collections/${id}`, { name: "Policies 2026" })).status).toBe(
+      200,
+    )
+    expect((await storedDoc(index)).title).toBe("Policies 2026")
+    expect(await review()).toBe("verified")
+    await patchDoc(ana, index, { title: "Policies and rules" })
+    expect(await review()).toBe("needs_review")
+  })
+
   it("a folder renamed by someone who may not edit its page keeps the page's title", async () => {
     const id = await folder(ana, "Legal")
     const index = (await start(ana, id, "text")).data.id
@@ -427,6 +465,67 @@ describe("names follow each other", () => {
     )
     expect((await storedFolder(id)).name).toBe("Legal desk")
     expect((await storedDoc(index)).title).toBe("Legal")
+  })
+})
+
+describe("concurrent writes on a folder and its page never deadlock", () => {
+  const ROUNDS = 25
+
+  it("renaming the folder and its page at once: 200 or 409, never 500, names agree", async () => {
+    const id = await folder(ana, "Race")
+    const index = (await start(ana, id, "text")).data.id
+    const statuses: number[] = []
+    for (let i = 0; i < ROUNDS; i++) {
+      const doc = (await call<Doc>(ben, "GET", `/documents/${index}`)).data
+      const [byFolder, byPage] = await Promise.all([
+        call(ana, "PATCH", `/collections/${id}`, { name: `Race folder ${i}` }),
+        call(ben, "PATCH", `/documents/${index}`, {
+          revision: doc.revision,
+          title: `Race page ${i}`,
+        }),
+      ])
+      statuses.push(byFolder.status, byPage.status)
+      expect((await storedFolder(id)).name).toBe((await storedDoc(index)).title)
+    }
+    expect(statuses.filter((s) => s !== 200 && s !== 409)).toEqual([])
+    expect(statuses.filter((s) => s === 200).length).toBeGreaterThanOrEqual(ROUNDS)
+  })
+
+  it("deleting the folder while its page goes to Trash: 200 both, never 500", async () => {
+    const statuses: number[] = []
+    for (let i = 0; i < ROUNDS; i++) {
+      const id = await folder(ana, `Race delete ${i}`)
+      const index = (await start(ana, id)).data.id
+      const [del, trash] = await Promise.all([
+        call(ana, "POST", `/collections/${id}/archive`, {}),
+        call(ana, "POST", `/documents/${index}/archive`, {}),
+      ])
+      statuses.push(del.status, trash.status)
+      expect((await storedFolder(id)).archived_at).not.toBeNull()
+      expect((await storedFolder(id)).index_document_id).toBeNull()
+      expect((await storedDoc(index)).archived_at).not.toBeNull()
+    }
+    expect(statuses.filter((s) => s !== 200)).toEqual([])
+  })
+
+  it("moving the page out while the folder is renamed or deleted: never 500", async () => {
+    const statuses: number[] = []
+    for (let i = 0; i < ROUNDS; i++) {
+      const id = await folder(ana, `Race move ${i}`)
+      const index = (await start(ana, id, "text")).data.id
+      const [renamed, moved] = await Promise.all([
+        i % 2 === 0
+          ? call(ana, "PATCH", `/collections/${id}`, { name: `Race moved ${i}` })
+          : call(ana, "POST", `/collections/${id}/archive`, {}),
+        call(ben, "POST", `/documents/${index}/move`, {
+          fromCollectionId: id,
+          toCollectionId: null,
+        }),
+      ])
+      statuses.push(renamed.status, moved.status)
+      expect((await storedFolder(id)).index_document_id).toBeNull()
+    }
+    expect(statuses.filter((s) => s >= 500)).toEqual([])
   })
 })
 

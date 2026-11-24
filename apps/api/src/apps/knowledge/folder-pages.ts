@@ -20,6 +20,13 @@
  *   Trash when the person deleting may do that; otherwise it stays an ordinary page.
  * - A folder a live sync governs has no page (its content belongs to the source).
  *
+ * Lock order, everywhere: the folder row first, then its page. A folder write that
+ * reaches the page (rename, delete) holds the folder when it writes the page; a page
+ * write that reaches the folder (a title save, Trash, a move out, taken out) takes the
+ * folder rows pointing at the page (`lockFoldersOfPage`) before it locks or writes the
+ * page or its memberships. So two people writing the folder and its page at once wait
+ * for each other instead of deadlocking.
+ *
  * The folder row may point at a page the reader cannot see, or at one in Trash
  * (moved there by someone without the folder scope, who cannot clear the pointer).
  * Neither is shown; a page in Trash no longer counts, so a new first edit replaces it.
@@ -247,6 +254,28 @@ export async function ensureIndexDocument(
 }
 
 /**
+ * Lock the folders whose page `documentId` is (or only `folderId`), before a page-side
+ * write that may reach them locks the page or its memberships. Nothing for a person
+ * who may not manage folders: such a write never touches a folder row. `FOR NO KEY
+ * UPDATE` is the lock an update of the row takes, so pages filed in the folder meanwhile
+ * (a key share on it) do not wait.
+ */
+export async function lockFoldersOfPage(
+  tx: RlsClient,
+  actor: KnowledgeActor,
+  documentId: string,
+  folderId?: string,
+): Promise<void> {
+  if (!canManageFolders(actor)) return
+  await tx.execute(drizzleSql`
+    SELECT id FROM ${knowledgeRel("collections")}
+     WHERE org_id = ${actor.orgId}::uuid AND index_document_id = ${documentId}::uuid
+       ${folderId ? drizzleSql`AND id = ${folderId}::uuid` : drizzleSql``}
+     ORDER BY id
+     FOR NO KEY UPDATE`)
+}
+
+/**
  * The page stops being a folder's page: it went to Trash (`folderId` absent: any
  * folder) or left that folder. Only a person who may manage folders can write
  * the folder row; for anyone else a page in Trash simply stops counting.
@@ -281,11 +310,13 @@ export async function followFolderRename(
   if (!folder.indexDocumentId) return
   const page = await openablePage(tx, folder.indexDocumentId, actor)
   if (!page?.canEdit || page.title === folder.name) return
+  // The folder row is already locked by its rename: folder first, then page.
   await updateKnowledgeDocument(
     tx,
     { id: page.id, revision: page.revision, title: folder.name },
     actor,
     [],
+    { titleFromFolder: true },
   )
 }
 

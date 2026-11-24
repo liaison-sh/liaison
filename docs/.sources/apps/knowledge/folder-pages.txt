@@ -11,3 +11,5 @@ Renaming the page renames the folder when you can manage folders -> apps/api/src
 Archived or moved out: no longer the folder's page -> apps/api/src/apps/knowledge/folder-pages.ts (detachFolderPage), service.ts (archiveKnowledgeDocument), move.ts, collections.ts (removeCollectionMembership)
 Deleting the folder keeps a page with text where the documents go; an empty one is archived when allowed -> apps/api/src/apps/knowledge/folder-pages.ts (releaseFolderPage), collections.ts (archiveKnowledgeCollection)
 Agents use the ordinary document tools -> apps/api/src/apps/knowledge/service.ts (updateKnowledgeDocument)
+A folder rename keeps a verified page verified -> apps/api/src/apps/knowledge/service.ts (updateKnowledgeDocument: titleFromFolder)
+Without the folder scope a page rename leaves the folder's name -> apps/api/src/apps/knowledge/folder-pages.ts (followPageRename)

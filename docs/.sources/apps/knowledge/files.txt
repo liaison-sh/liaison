@@ -20,3 +20,5 @@ A file removed from the text stays under Attachments -> apps/web/src/modules/edi
 A pasted web image is never loaded and keeps its address -> apps/web/src/modules/editor/raw-image.ts (rawImageOfSrc)
 A pasted file of another document the writer cannot open is not added, with a message -> apps/web/src/modules/editor/RichEditor.tsx (insertChecked)
 A file's bytes are read only through the app's authenticated inline route -> apps/web/src/modules/knowledge/page-files.ts (pageImageUrl)
+Only another document's file or a fresh upload is copied, never an attachment of another kind or an encrypted file -> apps/api/src/apps/knowledge/body-tokens.ts (adoptable)
+A copy left by a failed save is removed by an hourly cleanup -> apps/api/src/apps/knowledge/page-file-sweep.ts (sweepUnparentedPageCopies)

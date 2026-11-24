@@ -21,3 +21,5 @@ A link shows the title, a click opens the document -> apps/web/src/modules/edito
 Unreadable link: "Page you cannot open" -> packages/shared/src/i18n/locales/en/kernel.json (editor.pageUnavailable)
 Rename shows in every link -> apps/web/src/modules/knowledge/exports.ts (refreshPageTitle)
 References -> Linked from / Conversations, click opens -> apps/web/src/modules/knowledge/PageHeader.tsx (BacklinksButton)
+Titles are removed for good; a rollback shows plain links -> apps/api/src/apps/knowledge/links.ts (normalisePage)
+Only documents holding a link are backfilled -> apps/api/src/apps/knowledge/links.ts (needsBackfill)

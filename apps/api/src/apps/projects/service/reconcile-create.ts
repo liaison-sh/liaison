@@ -19,7 +19,8 @@ import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
 import { documentsForRef, type RefDocument } from "./reconcile-sweep"
 import { retainerDocumentRef, retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
-import { datedHoursOn, hoursPerDayMinutes } from "./time-plan"
+import { datedHoursOn, hoursPerDayMinutes, orgTimezone } from "./time-plan"
+import { todayIn } from "./took"
 
 type Tx = RlsClient
 
@@ -150,12 +151,17 @@ async function billingContactOf(
 }
 
 async function billedLines(tx: Tx, orgId: string, id: string) {
-  return extractRows<{ id: string; bill_minutes: number }>(
+  return extractRows<{ id: string; bill_minutes: number; work_month: string | null }>(
     await tx.execute(drizzleSql`
-      SELECT id::text AS id, bill_minutes FROM ${projectsRel("reconciliation_lines")}
+      SELECT id::text AS id, bill_minutes, work_month FROM ${projectsRel("reconciliation_lines")}
        WHERE reconciliation_id = ${id}::uuid AND org_id = ${orgId}::uuid AND bill_minutes > 0
        ORDER BY position`),
   )
+}
+
+/** A billed line as invoicing prices it: its minutes, and the earlier month they were worked in. */
+function pricedLine(l: { bill_minutes: number; work_month: string | null }) {
+  return { billMinutes: l.bill_minutes, ...(l.work_month ? { workMonth: l.work_month } : {}) }
 }
 
 /** One step of Create invoice, as the handler calls it through the bridge. */
@@ -194,7 +200,10 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       currency: facts.currency,
       rateMinor: facts.rateMinor,
       hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
-      lines: lines.map((l) => ({ billMinutes: l.bill_minutes })),
+      lines: lines.map(pricedLine),
+      notStarted:
+        head.period_start !== null &&
+        head.period_start > todayIn(await orgTimezone(tx, orgId), args.now),
       ...retainerFields,
     }
   }
@@ -249,6 +258,16 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         },
       )
     }
+    // A period that has not begun has nothing done in it: it is never drafted ahead.
+    const today = todayIn(await orgTimezone(tx, orgId), args.now)
+    if (head.period_start && head.period_start > today) {
+      throw new ProjectsServiceError(
+        409,
+        "period_not_started",
+        `This period of ${facts.name} begins on ${head.period_start}, so there is nothing to invoice yet. Nothing was created.`,
+        { next: "Press Create invoice once the period has begun." },
+      )
+    }
     // A contact named for the invoice belongs to the project's own company, or nothing is made.
     const contactId = typeof input.contactId === "string" ? input.contactId.trim() : ""
     if (contactId) {
@@ -295,7 +314,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       // A project with dated hours files the month's timesheet on the draft.
       datedHours: await datedHoursOn(tx, orgId, head.project_id),
       month: head.period_start ? head.period_start.slice(0, 7) : null,
-      lines: lines.map((l) => ({ billMinutes: l.bill_minutes })),
+      lines: lines.map(pricedLine),
       ...retainerFields,
     }
   }

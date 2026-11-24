@@ -2437,6 +2437,13 @@
       "when": 1900003430017,
       "tag": "0346_projects_timebox_person_edit",
       "breakpoints": true
+    },
+    {
+      "idx": 348,
+      "version": "7",
+      "when": 1900003430018,
+      "tag": "0347_projects_late_work",
+      "breakpoints": true
     }
   ]
 }

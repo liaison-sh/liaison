@@ -284,7 +284,7 @@ export function reconcileCardFields(input: CardInput) {
   const notes: Array<{ text: string }> = []
   if (input.state === "invoiced") {
     notes.push({
-      text: "Already invoiced: these lines are locked, and new work waits for its own period. A change goes through a credit note.",
+      text: "Already invoiced: these lines are locked. Work of this period done since goes on the next card; a change goes through a credit note.",
     })
   }
   if (input.late) notes.push({ text: input.late })

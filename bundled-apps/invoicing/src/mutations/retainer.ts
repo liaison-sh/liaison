@@ -121,7 +121,14 @@ interface LinesRead {
   documentRef: string | null
   period: { from: string; to: string }
   timeboxMinutes?: number | null
-  lines: Array<{ lineId: string; wording: string; billMinutes: number; proofLabels?: string[] }>
+  lines: Array<{
+    lineId: string
+    wording: string
+    billMinutes: number
+    /** The earlier retainer month the hours were worked in, after its invoice. */
+    workMonth?: string
+    proofLabels?: string[]
+  }>
 }
 
 type DbCtx = Pick<MutationsCtx, "db">
@@ -147,7 +154,7 @@ export function retainerRecipient(
 export { monthOnRun, retainerScheduleOf } from "../recurring/project-retainer"
 
 /** The hours rolled in from the month before: its unused included hours, read from its invoice. */
-async function rolledIn(ctx: DbCtx, s: Row, month: string, included: number) {
+async function rolledIn(ctx: DbCtx, s: Row, month: string, included: number, lateMinutes: number) {
   if (s.retainer_rollover !== "next") return 0
   const prev = retainerRefsOf(
     await one(ctx, "documents", {
@@ -155,7 +162,10 @@ async function rolledIn(ctx: DbCtx, s: Row, month: string, included: number) {
     }),
   )
   if (!prev) return 0
-  return Math.min(included, rolloverOut("next", prev.included_minutes, prev.used_minutes))
+  return Math.min(
+    included,
+    rolloverOut("next", prev.included_minutes, prev.used_minutes + lateMinutes),
+  )
 }
 
 function scheduleLines(
@@ -221,6 +231,57 @@ const absBig = (v: unknown): bigint => {
   return n < 0n ? -n : n
 }
 
+/**
+ * The part of each earlier month's late hours above what that month still held: its included hours
+ * and the ones rolled into it, less what its invoice and earlier late hours used, less what the
+ * month after already took of the hours it rolled on. No hour is included twice, none billed twice.
+ */
+function lateOverage(
+  schedule: Row,
+  standing: ReadonlyArray<{ refs: RetainerRefs }>,
+  late: ReadonlyArray<{ month: string; minutes: number }>,
+  month: string,
+) {
+  const here = (m: string) => late.reduce((a, l) => a + (l.month === m ? l.minutes : 0), 0)
+  const invoiceOf = (m: string) => standing.find((d) => d.refs.month === m)?.refs
+  const includedOf = (m: string) =>
+    invoiceOf(m)?.included_minutes ?? Number(termsForMonth(schedule, m).retainer_minutes ?? 0)
+  const usedOf = (m: string) => (invoiceOf(m)?.used_minutes ?? 0) + lateMinutesIn(standing, m)
+  /** What a month's invoice took of the hours rolled into it. */
+  const tookOf = (m: string) => {
+    const refs = invoiceOf(m)
+    return refs
+      ? Math.min(refs.rollover_in_minutes, Math.max(0, usedOf(m) - refs.included_minutes))
+      : 0
+  }
+  /** The hours rolled into a month that its month before still has, its late hours counted. */
+  const rolledInto = (m: string) => {
+    const rolled = invoiceOf(m)?.rollover_in_minutes ?? 0
+    if (rolled === 0) return 0
+    const prev = previousMonth(m)
+    const left = includedOf(prev) - usedOf(prev) - here(prev)
+    return Math.min(rolled, Math.max(tookOf(m), left))
+  }
+  return late
+    .filter((l) => l.month < month && l.minutes > 0)
+    .map((l) => {
+      const terms = termsForMonth(schedule, l.month)
+      const after = standing.find((d) => previousMonth(d.refs.month) === l.month)?.refs.month
+      const free =
+        includedOf(l.month) +
+        rolledInto(l.month) -
+        usedOf(l.month) -
+        (after !== undefined ? tookOf(after) : 0)
+      return {
+        month: l.month,
+        minutes: l.minutes,
+        overage_minutes: Math.max(0, l.minutes - Math.max(0, free)),
+        rate: BigInt(Number(terms.retainer_overage_rate_minor ?? 0)),
+        vat: Number(scheduleLines(terms)[0]?.vat_bp ?? 0),
+      }
+    })
+}
+
 export interface RetainerPlanInput {
   projectId: string
   period: { from: string; to: string }
@@ -229,7 +290,66 @@ export interface RetainerPlanInput {
   /** The month's timebox on the project, when it has one; else the schedule's included hours. */
   timeboxMinutes?: number | null
   waived: boolean
+  /** Hours of earlier months worked after their invoices, billed on this one. */
+  late?: ReadonlyArray<{ month: string; minutes: number }>
 }
+
+/** A card's billed minutes: its own month's, and each earlier month's. */
+export function cardMinutes(lines: ReadonlyArray<{ billMinutes?: unknown; workMonth?: unknown }>): {
+  used: number
+  late: Array<{ month: string; minutes: number }>
+} {
+  let used = 0
+  const late = new Map<string, number>()
+  for (const l of lines) {
+    const minutes = Math.max(0, Math.round(Number(l.billMinutes) || 0))
+    if (typeof l.workMonth === "string" && /^\d{4}-\d{2}$/.test(l.workMonth))
+      late.set(l.workMonth, (late.get(l.workMonth) ?? 0) + minutes)
+    else used += minutes
+  }
+  return {
+    used,
+    late: [...late]
+      .filter(([, minutes]) => minutes > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, minutes]) => ({ month, minutes })),
+  }
+}
+
+/** The schedule's retainer invoices that still stand (issued or drafted, not credited in full). */
+async function standingMonths(
+  ctx: DbCtx,
+  projectId: string,
+  scheduleId: string,
+  exceptKey: string,
+) {
+  const docs = (await ctx.db.findMany("documents", {
+    where: { billing_project_id: projectId },
+    limit: 500,
+  })) as Row[]
+  const out: Array<{ doc: Row; refs: RetainerRefs }> = []
+  for (const doc of docs) {
+    const refs = retainerRefsOf(doc)
+    if (!refs || refs.schedule_id !== scheduleId || doc.type === "credit_note") continue
+    if (doc.status === "cancelled" || doc.status === "voided") continue
+    const key = String(doc.external_ref ?? "")
+    if (key === exceptKey || key.startsWith(`${exceptKey}:`)) continue
+    if (
+      doc.status !== "draft" &&
+      absBig(doc.grand_total_minor) > 0n &&
+      (await advanceRemaining(ctx, doc)) <= 0n
+    )
+      continue
+    out.push({ doc, refs })
+  }
+  return out
+}
+
+const lateMinutesIn = (standing: ReadonlyArray<{ refs: RetainerRefs }>, month: string): number =>
+  standing.reduce(
+    (a, d) => a + (d.refs.late ?? []).reduce((b, l) => b + (l.month === month ? l.minutes : 0), 0),
+    0,
+  )
 
 /** A retainer month's lines and figures, priced exactly as its draft will be. Nothing is written. */
 export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPlanInput) {
@@ -241,12 +361,32 @@ export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPla
     Number(input.timeboxMinutes ?? 0) > 0
       ? Number(input.timeboxMinutes)
       : Number(s.retainer_minutes)
+  const standing =
+    s.retainer_rollover === "next" || (input.late?.length ?? 0) > 0
+      ? await standingMonths(
+          ctx,
+          input.projectId,
+          scheduleId,
+          retainerDocumentRef(scheduleId, month),
+        )
+      : []
+  const lateHere = (m: string) =>
+    (input.late ?? []).reduce((a, l) => a + (l.month === m ? l.minutes : 0), 0)
+  const prevMonth = previousMonth(month)
   const fig = retainerMonth({
     includedMinutes: included,
     usedMinutes: input.usedMinutes,
-    rolloverInMinutes: await rolledIn(ctx, s, month, included),
+    // Hours worked in the month before after its invoice use its included hours first.
+    rolloverInMinutes: await rolledIn(
+      ctx,
+      s,
+      month,
+      included,
+      lateMinutesIn(standing, prevMonth) + lateHere(prevMonth),
+    ),
     waived: input.waived,
   })
+  const late = lateOverage(schedule, standing, input.late ?? [], month)
   const refs: RetainerRefs = {
     schedule_id: scheduleId,
     month,
@@ -255,6 +395,15 @@ export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPla
     rollover_in_minutes: fig.rolloverInMinutes,
     overage_minutes: fig.overageMinutes,
     waived_minutes: fig.waivedMinutes,
+    ...(late.length > 0
+      ? {
+          late: late.map((l) => ({
+            month: l.month,
+            minutes: l.minutes,
+            overage_minutes: l.overage_minutes,
+          })),
+        }
+      : {}),
   }
 
   const issuer = (await one(ctx, "issuer_profiles", { id: String(s.issuer_profile_id) })) ?? null
@@ -284,6 +433,19 @@ export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPla
       tax_rate_bp_override: feeVat,
     })
   }
+  for (const l of late) {
+    if (l.overage_minutes <= 0) continue
+    items.push({
+      position: items.length + 1,
+      description: `Hours above the retainer, ${l.month}, worked after its invoice`,
+      quantity: lineQuantity(l.overage_minutes, "hour", 60),
+      unit_price_minor: l.rate,
+      line_kind: "service",
+      product_source: null,
+      external_id: `retainer_late:${scheduleId}:${l.month}`,
+      tax_rate_bp_override: l.vat,
+    })
+  }
   const prepaid = isPrepaidMonth(schedule, month)
   let deductions: DeductionLine[] = []
   if (prepaid) {
@@ -302,7 +464,7 @@ export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPla
     }
   }
 
-  return { fig, refs, items, deductions, fees, overageRate, currency, prepaid }
+  return { fig, refs, items, deductions, fees, overageRate, currency, prepaid, late }
 }
 
 function titleOf(projectName: string, month: string): string {
@@ -421,13 +583,12 @@ export async function retainerDraftFromReconcile(
       `${month} of ${name} is already billed by the month-end run (the schedule became a retainer during the month), so no retainer draft was made. The retainer bills from the next month.`,
     )
 
+  const minutes = cardMinutes(read.lines ?? [])
   const plan = await retainerPlan(ctx, s, {
     projectId: read.projectId,
     period: read.period,
-    usedMinutes: (read.lines ?? []).reduce(
-      (a, l) => a + Math.max(0, Number(l.billMinutes) || 0),
-      0,
-    ),
+    usedMinutes: minutes.used,
+    late: minutes.late,
     timeboxMinutes: read.timeboxMinutes ?? null,
     waived: input.waiveOverage === true,
   })
@@ -563,6 +724,11 @@ export async function retainerDraftFromReconcile(
     ...(fig.rolloverInMinutes > 0
       ? [`${hoursText(fig.rolloverInMinutes)} rolled in from ${previousMonth(month)}`]
       : []),
+    ...plan.late.map((l) =>
+      l.overage_minutes > 0
+        ? `${hoursText(l.overage_minutes)} above ${l.month}'s hours, worked after its invoice, at ${formatMoneyMinor(l.rate, currency)}`
+        : `${hoursText(l.minutes)} of ${l.month}, worked after its invoice, within its hours`,
+    ),
     ...deductions.map((d) => `${d.description} deducted`),
   ]
   const approvalLines = [

@@ -1668,8 +1668,9 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     reconciliationId: card.reconciliationId,
   })
   if (facts.error) return card
+  const { notStarted, ...ask } = facts
   const preview = await invoicingCall(() =>
-    ctx.executeTool("invoicing:preview_totals", JSON.stringify(facts)),
+    ctx.executeTool("invoicing:preview_totals", JSON.stringify(ask)),
   )
   if (!preview.ok) return card
   const p = preview.body
@@ -1695,6 +1696,13 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     const rate = moneyText(retainer.overageRateMinor, currency)
     const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used. The month is billed once, from this card or by its schedule in Invoicing.`
     out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
+  }
+  if (notStarted === true) {
+    out.notice = {
+      title: "Not started yet",
+      text: "This period has not begun, so it has no Create invoice yet.",
+    }
+    return out
   }
   if (retainer?.billedBySchedule) {
     // A month is billed once: its schedule's month-end run holds it.

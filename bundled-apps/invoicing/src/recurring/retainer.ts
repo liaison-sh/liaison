@@ -144,6 +144,8 @@ export interface RetainerRefs {
   rollover_in_minutes: number
   overage_minutes: number
   waived_minutes: number
+  /** Hours of earlier months worked after their invoices, billed here with the part above them. */
+  late?: Array<{ month: string; minutes: number; overage_minutes: number }>
 }
 
 /** The retainer figures of a document, when it is a retainer month's. */

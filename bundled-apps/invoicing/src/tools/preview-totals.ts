@@ -10,6 +10,7 @@ import type { CrossAppExecuteTool } from "../cross-app"
 import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
 import {
+  cardMinutes,
   monthOnRun,
   retainerPlan,
   retainerRecipient,
@@ -44,7 +45,7 @@ export interface PreviewTotalsInput {
   /** The rate per unit, in minor units. */
   rateMinor?: number | null
   hoursPerDayMinutes?: number | null
-  lines?: Array<{ billMinutes?: number }>
+  lines?: Array<{ billMinutes?: number; workMonth?: string }>
   /** A retainer card's first day: the month it bills. */
   periodFrom?: string | null
   /** A retainer month's timebox on the project. */
@@ -271,16 +272,14 @@ async function retainerPreview(
   let overageMinutes = 0
   let retainer: Extract<PreviewTotalsResult, { ready: boolean }>["retainer"]
   if (s && from && issuer.ok) {
-    const used = (input.lines ?? []).reduce(
-      (a, l) => a + Math.max(0, Math.round(Number(l.billMinutes) || 0)),
-      0,
-    )
+    const { used, late } = cardMinutes(input.lines ?? [])
     const [y, m] = from.split("-").map(Number) as [number, number]
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
     const plan = await retainerPlan(ctx, s, {
       projectId,
       period: { from, to: `${from.slice(0, 8)}${String(last).padStart(2, "0")}` },
       usedMinutes: used,
+      late,
       timeboxMinutes: input.timeboxMinutes ?? null,
       waived: input.waiveOverage === true,
     })

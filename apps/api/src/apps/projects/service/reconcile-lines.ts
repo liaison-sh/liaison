@@ -98,6 +98,11 @@ export function resolvePeriod(
   }
 }
 
+/** What a card of a period still running says: it can be invoiced, and what happens to the rest. */
+export function earlyNote(period: Period): string {
+  return `This period is not over: it ends on ${shortDate(period.to, false)}. Work closed after this card is invoiced goes on the next card.`
+}
+
 /** Asked after the period ended: its invoice should already have issued. */
 export function lateNote(period: Period): string {
   const name = period.month ? `${MONTHS[Number(period.month.slice(5)) - 1]}'s` : "This period's"
@@ -366,6 +371,20 @@ export interface ComputedLine {
   proofs: ComputedProof[]
   /** The project the line's work belongs to, when it is not this one (read under the asker). */
   otherProjectId?: string
+  /** The earlier retainer month the line's hours were worked in, after its invoice. */
+  workMonth?: string
+}
+
+/** The name of the line of work closed in an invoiced period after its invoice. */
+export const LATE_LINE_NAME = "Earlier work, closed after its invoice"
+export const LATE_UNPLANNED_LINE_NAME = "Earlier work not in the plan, closed after its invoice"
+
+export const LATE_RELATED_LINE_NAME =
+  "Earlier work, part of other work on a card: say what it bills"
+
+/** The name of the line of a retainer month's hours worked after its invoice. */
+export function lateMonthLineName(month: string): string {
+  return `Earlier work, ${MONTHS[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}, done after its invoice`
 }
 
 /** The tasks of a set that no other task of the set contains: counting them counts each once. */

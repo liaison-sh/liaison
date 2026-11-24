@@ -594,7 +594,8 @@ function buildCtxSpec(bridge: Record<string, (...args: any[]) => unknown>): CtxS
 
 export function marshalToContext(ctx: QuickJSAsyncContext, value: unknown): QuickJSHandle {
   if (value === undefined || value === null) return ctx.undefined
-  if (typeof value === "string") return ctx.newString(value)
+  // newString passes a C string, cut at its first NUL: such a string goes through JSON below.
+  if (typeof value === "string" && !value.includes("\0")) return ctx.newString(value)
   if (typeof value === "number") return ctx.newNumber(value)
   if (typeof value === "boolean") return value ? ctx.true : ctx.false
   // For objects/arrays, serialize via JSON round-trip

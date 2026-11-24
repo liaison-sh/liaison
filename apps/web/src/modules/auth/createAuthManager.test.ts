@@ -449,6 +449,57 @@ describe("createAuthManager", () => {
     expect(seen[0].fetches).toBe(0)
   })
 
+  // Unsaved page text that could not be stored: the person chose to stay signed
+  // in. Nothing of the sign-out happens, not even the before-sign-out work.
+  it("logout stops, signed in and untouched, when a sign-out guard says no", async () => {
+    const { createAuthManager } = await import("~/modules/auth/createAuthManager")
+    const { setTokens, isAuthenticated } = await import("~/modules/auth/auth-store")
+    const { onBeforeSignOut, onSignOutGuard } = await import("~/lib/session-lifecycle")
+    setTokens(
+      makeJwt({
+        userId: "u1",
+        orgId: "o1",
+        name: "Test",
+        roles: [],
+        scopes: [],
+        dimensionGrants: {},
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+    const before = vi.fn()
+    onBeforeSignOut(before)
+    const guard = vi.fn(async () => false)
+    onSignOutGuard(guard)
+    expect(await createAuthManager().logout()).toBe(false)
+    expect(guard).toHaveBeenCalledWith({ forced: false })
+    expect(before).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(isAuthenticated()).toBe(true)
+  })
+
+  it("a forced logout tells the guards it is forced and signs out whatever they could not save", async () => {
+    const { createAuthManager } = await import("~/modules/auth/createAuthManager")
+    const { setTokens, isAuthenticated } = await import("~/modules/auth/auth-store")
+    const { onSignOutGuard } = await import("~/lib/session-lifecycle")
+    setTokens(
+      makeJwt({
+        userId: "u1",
+        orgId: "o1",
+        name: "Test",
+        roles: [],
+        scopes: [],
+        dimensionGrants: {},
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ data: {} }), { status: 200 }))
+    const guard = vi.fn(async (ctx: { forced: boolean }) => ctx.forced)
+    onSignOutGuard(guard)
+    expect(await createAuthManager().logout({ forced: true })).toBe(true)
+    expect(guard).toHaveBeenCalledWith({ forced: true })
+    expect(isAuthenticated()).toBe(false)
+  })
+
   it("logout names this device so the server revokes its receipt credential (A7)", async () => {
     const { createAuthManager } = await import("~/modules/auth/createAuthManager")
     const { setTokens } = await import("~/modules/auth/auth-store")

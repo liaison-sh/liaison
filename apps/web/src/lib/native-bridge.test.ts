@@ -177,4 +177,30 @@ describe("the phone's sign out", () => {
       dispose()
     }
   })
+
+  it("asks the sign-out guards first, and stops on a no; forced tells them so", async () => {
+    const { onBeforeSignOut, onSignOutGuard } = await import("~/lib/session-lifecycle")
+    const before = vi.fn()
+    const disposeBefore = onBeforeSignOut(before)
+    let answer = false
+    const guard = vi.fn(async () => answer)
+    const disposeGuard = onSignOutGuard(guard)
+    const signOut = vi.fn(async () => {})
+    setBridge({
+      servers: { list: vi.fn(), add: vi.fn(), switchTo: vi.fn(), remove: vi.fn(), signOut },
+    })
+    try {
+      await nativeServers()?.signOut()
+      expect(guard).toHaveBeenLastCalledWith({ forced: false })
+      expect(before).not.toHaveBeenCalled()
+      expect(signOut).not.toHaveBeenCalled()
+      answer = true
+      await nativeServers()?.signOut({ forced: true })
+      expect(guard).toHaveBeenLastCalledWith({ forced: true })
+      expect(signOut).toHaveBeenCalledTimes(1)
+    } finally {
+      disposeBefore()
+      disposeGuard()
+    }
+  })
 })

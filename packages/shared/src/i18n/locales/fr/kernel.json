@@ -1538,6 +1538,10 @@
       "one": "facture Stripe à traiter par une personne",
       "other": "factures Stripe à traiter par une personne"
     },
+    "many_need_person": {
+      "one": "liste de factures Stripe à traiter par une personne",
+      "other": "listes de factures Stripe à traiter par une personne"
+    },
     "payment_failed": {
       "one": "paiement par carte échoué",
       "other": "paiements par carte échoués"

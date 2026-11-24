@@ -1541,6 +1541,10 @@
       "one": "Stripe invoice needing a person",
       "other": "Stripe invoices needing a person"
     },
+    "many_need_person": {
+      "one": "list of Stripe invoices needing a person",
+      "other": "lists of Stripe invoices needing a person"
+    },
     "payment_failed": {
       "one": "failed card payment",
       "other": "failed card payments"

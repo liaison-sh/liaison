@@ -299,6 +299,8 @@
     "kernel.homeKind.undecided_listed.other": "factures Stripe à émettre après le choix",
     "kernel.homeKind.needs_person.one": "facture Stripe à traiter par une personne",
     "kernel.homeKind.needs_person.other": "factures Stripe à traiter par une personne",
+    "kernel.homeKind.many_need_person.one": "liste de factures Stripe à traiter par une personne",
+    "kernel.homeKind.many_need_person.other": "listes de factures Stripe à traiter par une personne",
     "kernel.homeKind.payment_failed.one": "paiement par carte échoué",
     "kernel.homeKind.payment_failed.other": "paiements par carte échoués",
     "kernel.homeKind.voided.one": "facture Stripe annulée",

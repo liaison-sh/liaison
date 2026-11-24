@@ -1,0 +1,5 @@
+{
+  "reviewedOrigins": {
+    "apps/api/src/apps/knowledge/event-coalesce.ts#flushPendingUpdateEvents": "the owed update event flush's loop over the orgs that own pages with an owed event (one system read of documents.org_id, moving orgs skipped); each org's pages are claimed and their events queued only in that org (the claim is pinned to its org_id, and each event carries it)"
+  }
+}

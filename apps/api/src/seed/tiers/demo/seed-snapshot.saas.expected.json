@@ -45,11 +45,11 @@
   },
   "app_knowledge.collections": {
     "rows": 2,
-    "digest": "e6bcfb5df8f97d59"
+    "digest": "214da0a69bd42b86"
   },
   "app_knowledge.documents": {
     "rows": 5,
-    "digest": "8238470439755f38"
+    "digest": "7c745ad2446b7887"
   },
   "app_knowledge.taggings": {
     "rows": 10,
@@ -209,11 +209,11 @@
   },
   "kernel.pending_events": {
     "rows": 519,
-    "digest": "32128b9cc95dcfa3"
+    "digest": "0097c2e62975a0b4"
   },
   "kernel.roles": {
     "rows": 37,
-    "digest": "91f070ac1c48d2e6"
+    "digest": "c9c3c74329b87d17"
   },
   "kernel.routines": {
     "rows": 3,

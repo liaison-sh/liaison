@@ -65,11 +65,11 @@
   },
   "app_knowledge.collections": {
     "rows": 2,
-    "digest": "39b07f685808f74e"
+    "digest": "2a9a63d6ce2874c7"
   },
   "app_knowledge.documents": {
     "rows": 3,
-    "digest": "30af79d4f5152c6a"
+    "digest": "93d617325beee343"
   },
   "app_knowledge.taggings": {
     "rows": 6,
@@ -249,7 +249,7 @@
   },
   "kernel.pending_events": {
     "rows": 467,
-    "digest": "a590fd60b3484ee6"
+    "digest": "e2b1e82cec53c7d6"
   },
   "kernel.portal_people": {
     "rows": 2,
@@ -261,7 +261,7 @@
   },
   "kernel.roles": {
     "rows": 37,
-    "digest": "91f070ac1c48d2e6"
+    "digest": "c9c3c74329b87d17"
   },
   "kernel.routines": {
     "rows": 3,

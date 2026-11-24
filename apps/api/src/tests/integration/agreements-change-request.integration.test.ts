@@ -8,11 +8,13 @@
 // Approved on its link with the code, the change request is a recorded approval sealed like a
 // signature, accepted, and its parent's amended total rises by its price; its parent's project
 // then gets one milestone task, made as the person who sent the change request, and its billing
-// plan one milestone for the price (invoicing's step, added once).
+// plan one milestone for the price (invoicing's step, added once). A run killed half way and asked
+// again, or asked twice at once, leaves one change request that can be accepted, never two.
 
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import postgres from "postgres"
 import { createProject } from "~/apps/projects/service/create-project"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -39,7 +41,12 @@ import { insertAppRow } from "~/seed/factories/app-tables"
 import { asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { drainOutbox } from "~/tests/helpers/outbox"
-import { acquireTestLock, clearRedisPatterns, releaseTestLock } from "~/tests/route-test-setup"
+import {
+  acquireTestLock,
+  clearRedisPatterns,
+  releaseTestLock,
+  superuserUrlForTestDb,
+} from "~/tests/route-test-setup"
 import {
   CaptureProvider,
   createDoorWorld,
@@ -495,6 +502,179 @@ describe("a change request sent through the sandbox", () => {
     expect(replies).toHaveLength(1)
     expect(JSON.stringify(replies[0])).toContain(w.clientA.email)
   }, 180_000)
+
+  describe("killed half way and asked again", () => {
+    /** The test database's owner: the app's own role makes no trigger. */
+    let owner: ReturnType<typeof postgres>
+    beforeAll(() => {
+      owner = postgres(superuserUrlForTestDb() as string, { max: 1, onnotice: () => {} })
+    })
+    afterEach(async () => {
+      delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+      await owner.unsafe("DROP TRIGGER IF EXISTS cut_cr_test ON kernel.client_actions")
+      await owner.unsafe("DROP FUNCTION IF EXISTS public.cut_cr_test_fn()")
+    })
+    afterAll(async () => {
+      await owner.end()
+    })
+
+    /** Runs `act` in the database before this org's next link is written. */
+    async function whileLinkIsWritten(act: string): Promise<void> {
+      await owner.unsafe(`CREATE OR REPLACE FUNCTION public.cut_cr_test_fn() RETURNS trigger AS $$
+        BEGIN
+          IF NEW.org_id = '${w.orgId}' THEN ${act} END IF;
+          RETURN NEW;
+        END $$ LANGUAGE plpgsql SECURITY DEFINER`)
+      await owner.unsafe(`CREATE TRIGGER cut_cr_test BEFORE INSERT ON kernel.client_actions
+        FOR EACH ROW EXECUTE FUNCTION public.cut_cr_test_fn()`)
+    }
+    /** Staged by an agent and approved by the person: what the approved call answered. */
+    async function ask(
+      title: string,
+      mail: string,
+      over: Record<string, unknown> = {},
+      runMs?: number,
+    ): Promise<string> {
+      const actor: UserContext = {
+        actorType: "user",
+        userId: w.admin.userId,
+        orgId: w.orgId,
+        scopes: ["*"],
+        dimensionGrants: {},
+      }
+      const staged = (await executeToolCore({
+        toolName: "agreements:change_request_send",
+        orgId: w.orgId,
+        actor,
+        threadId: agentThreadId,
+        origin: "in-app-agent",
+        params: {
+          parent_agreement_id: parentId,
+          title,
+          work: ["Extra work"],
+          hours_minutes: 60,
+          hours_source: "past similar work",
+          rate_minor: "10000",
+          reply: { conversation_id: conversationId, body: "Here is a change request." },
+          passage: { version_id: versionId, section: "8.2" },
+          mail_message_id: mail,
+          ...over,
+        },
+      } as never)) as { blocked?: { approvalRequestId?: string } }
+      const requestId = staged.blocked?.approvalRequestId
+      if (!requestId) return JSON.stringify(staged)
+      if (runMs) process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = String(runMs)
+      try {
+        return JSON.stringify(
+          await decideApproval({ orgId: w.orgId, requestId, actor, decision: "approve" } as never),
+        )
+      } catch (err) {
+        return `${(err as { code?: string }).code ?? ""} ${String(err)}`
+      } finally {
+        delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+      }
+    }
+    const crsOf = async (title: string) =>
+      (await sql`
+        SELECT id, number, status, hours_minutes FROM ${app("agreements")}
+         WHERE org_id = ${w.orgId} AND parent_agreement_id = ${parentId} AND title = ${title}
+         ORDER BY number`) as unknown as Array<{
+        id: string
+        number: string
+        status: string
+        hours_minutes: number
+      }>
+    const openLinks = async (title: string) =>
+      (await sql`
+        SELECT a.id FROM ${kernel("client_actions")} a
+          JOIN ${app("agreement_versions")} v ON v.id = a.target_id
+          JOIN ${app("agreements")} g ON g.id = v.agreement_id
+         WHERE a.org_id = ${w.orgId} AND g.title = ${title} AND a.revoked_at IS NULL`) as unknown[]
+    const until = async (cond: () => Promise<boolean>) => {
+      const end = Date.now() + 15_000
+      while (!(await cond())) {
+        if (Date.now() > end) throw new Error("did not settle")
+        await new Promise((r) => setTimeout(r, 50))
+      }
+    }
+    const linkMails = (after: number) =>
+      capture.sent.slice(after).filter((m) => m.template === "client-action.link")
+
+    it("while its link is written: the retry names it, and one can be accepted", async () => {
+      const title = "Killed at its link"
+      const [mailsAt, repliesAt] = [capture.sent.length, smtpSent.length]
+      await whileLinkIsWritten("PERFORM pg_sleep(6);")
+      await ask(title, "mail-cut-1", {}, 2500)
+      expect(await openLinks(title)).toHaveLength(0)
+      expect((await crsOf(title)).map((c) => c.status)).toEqual(["draft"])
+      // The retry waits for the write it finds under way, and adds nothing to it.
+      await ask(title, "mail-cut-1")
+      await until(async () => (await openLinks(title)).length === 1)
+      const after = await ask(title, "mail-cut-1")
+      expect(after).toContain("CHANGE_REQUEST_ALREADY_SENT")
+      expect(after).toContain("whether its reply left is not known")
+      // Nor does another mail's change request go out beside it.
+      expect(await ask("Beside it", "mail-cut-1b")).toContain("CHANGE_REQUEST_ALREADY_SENT")
+      expect(await crsOf("Beside it")).toEqual([])
+      const crs = await crsOf(title)
+      expect(crs.map((c) => c.status)).toEqual(["draft"])
+      expect(await openLinks(title)).toHaveLength(1)
+      await until(async () => linkMails(mailsAt).length > 0)
+      expect(linkMails(mailsAt)).toHaveLength(1)
+      expect(smtpSent.length).toBe(repliesAt)
+      // A void withdraws its link and frees the mail.
+      const voided = await asPerson(w.admin.userId, "agreement_void", {
+        id: crs[0]?.id,
+        reason: "Start over",
+      })
+      expect(voided.data?.status).toBe("ok")
+      expect(await openLinks(title)).toHaveLength(0)
+      await owner.unsafe("DROP TRIGGER IF EXISTS cut_cr_test ON kernel.client_actions")
+      await ask(title, "mail-cut-1")
+      expect((await crsOf(title)).map((c) => c.status).sort()).toEqual(["sent", "voided"])
+      expect(await openLinks(title)).toHaveLength(1)
+      expect(smtpSent.length).toBe(repliesAt + 1)
+      // One mail has one change request that can be accepted: the database holds it to that.
+      const [sent] = (await crsOf(title)).filter((c) => c.status === "sent")
+      const second = owner.unsafe(`
+        INSERT INTO app_agreements.agreements (org_id, number, kind, status, title, send_key)
+        SELECT org_id, 'CR-99', kind, 'draft', title, send_key
+          FROM app_agreements.agreements WHERE id = '${sent?.id}'`)
+      await expect(
+        second.then(
+          () => "written",
+          (e: { code?: string }) => e.code,
+        ),
+      ).resolves.toBe("23505")
+    }, 120_000)
+
+    it("before its link, then asked with other hours: only the new one can be accepted", async () => {
+      const title = "Asked again with other hours"
+      await whileLinkIsWritten("RAISE EXCEPTION 'no link now';")
+      await ask(title, "mail-cut-2")
+      expect((await crsOf(title)).map((c) => c.status)).toEqual(["draft"])
+      await owner.unsafe("DROP TRIGGER IF EXISTS cut_cr_test ON kernel.client_actions")
+      await ask(title, "mail-cut-2", { hours_minutes: 120 })
+      expect((await crsOf(title)).map((c) => [c.status, c.hours_minutes]).sort()).toEqual([
+        ["sent", 120],
+        ["voided", 60],
+      ])
+      expect(await openLinks(title)).toHaveLength(1)
+    }, 120_000)
+
+    it("before its link, then asked again the same: it is the one that goes out", async () => {
+      const title = "Asked again the same"
+      await whileLinkIsWritten("RAISE EXCEPTION 'no link now';")
+      await ask(title, "mail-cut-3")
+      await owner.unsafe("DROP TRIGGER IF EXISTS cut_cr_test ON kernel.client_actions")
+      const [first] = await crsOf(title)
+      await ask(title, "mail-cut-3")
+      expect(await crsOf(title)).toEqual([{ ...first, status: "sent" } as never])
+      expect(await openLinks(title)).toHaveLength(1)
+      expect(await ask(title, "mail-cut-3")).toContain("CHANGE_REQUEST_ALREADY_SENT")
+    }, 120_000)
+  })
+
   it("a change request on a restricted agreement takes its list: a member off it reads the change request as a random id, and its link is the list's alone", async () => {
     const closedParent = crypto.randomUUID()
     const closedVersion = crypto.randomUUID()

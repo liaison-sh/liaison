@@ -4,7 +4,9 @@
 // from its manifest, a person's send run in the sandbox, the sandbox killed at chosen moments,
 // the rows, the outbox and the mails as Postgres and the mail channel hold them. Whatever was
 // cut off, the agreement reads as sent once its links exist, a signature is recorded, nobody is
-// mailed twice, and the document can be voided or replaced.
+// mailed twice, and the document can be voided or replaced. Half a send, or a draft changed since,
+// is never taken for sent or signed. A person whose role may send can send, and two people at one
+// address sign each with their own link.
 
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
@@ -27,6 +29,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import {
   acquireTestLock,
@@ -556,6 +559,329 @@ describe("a draft whose send was cut off", () => {
     expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("sent")
     expect(await linkRows(p.versionId)).toHaveLength(2)
     await oneMailEach(p.versionId, 2)
+  }, 120_000)
+})
+
+/** The signer's answer is decided in the kernel; the app never hears of it. */
+async function decidedUnheard(versionId: string, n: number): Promise<string> {
+  const link = (await linkRows(versionId)).find((r) => r.invited_email.startsWith(`s${n}-`))
+  await sql`
+    UPDATE ${kernel("client_actions")}
+       SET decided_at = now(), decision = 'signed', typed_name = ${`Signer ${n}`},
+           code_verified_at = now(), document_shown_at = now()
+     WHERE id = ${link?.id ?? ""}`
+  return link?.id ?? ""
+}
+
+const recordedFor = async (versionId: string) =>
+  (
+    (await sql`
+      SELECT client_action_id FROM ${app("signature_events")}
+       WHERE version_id = ${versionId}`) as unknown as Array<{ client_action_id: string }>
+  ).map((e) => e.client_action_id)
+
+const toldOf = async (agreementId: string) => {
+  await drainOutbox()
+  return (await sql`
+    SELECT user_id, summary FROM ${kernel("attention_events")}
+     WHERE org_id = ${w.orgId} AND entity_id = ${agreementId}
+       AND kind = 'agreements:agreement.send_unfinished'`) as unknown as Array<{
+    user_id: string
+    summary: string
+  }>
+}
+
+/** The links as an earlier release left them: made one by one, the last `missing` never made. */
+async function asMadeOneByOne(versionId: string, missing: number): Promise<void> {
+  const rows = (await linkRows(versionId)).sort((a, b) =>
+    a.invited_email.localeCompare(b.invited_email),
+  )
+  const gone = rows.slice(rows.length - missing).map((r) => r.id)
+  await owner.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL session_replication_role = replica")
+    for (const id of gone) {
+      await tx.unsafe(`DELETE FROM kernel.client_action_events WHERE action_id = '${id}'`)
+      await tx.unsafe(`DELETE FROM kernel.client_actions WHERE id = '${id}'`)
+    }
+    await tx.unsafe(`UPDATE kernel.client_action_events SET meta = meta - 'send_size'
+      WHERE action_id IN (SELECT id FROM kernel.client_actions WHERE target_id = '${versionId}')`)
+  })
+}
+
+describe("an answer not recorded yet", () => {
+  it("holds a void and a save as long as it is not recorded, on a draft and on a sent agreement", async () => {
+    const p = await cutSend("Held until recorded", 2)
+    const id = await decidedUnheard(p.versionId, 1)
+    const ask = async () => [
+      JSON.stringify(
+        await asPerson(w.admin.userId, "agreement_void", { id: p.agreementId, reason: "No" }),
+      ).includes("ANSWER_BEING_RECORDED"),
+      JSON.stringify(
+        await asPerson(w.admin.userId, "agreement_update", {
+          id: p.agreementId,
+          source: { body: { blocks: [{ type: "paragraph", text: "New terms." }] } },
+        }),
+      ).includes("ANSWER_BEING_RECORDED"),
+    ]
+    for (let i = 0; i < 2; i++) expect(await ask()).toEqual([true, true])
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("sent")
+    expect((await linkRows(p.versionId)).some((r) => r.revoked_at)).toBe(false)
+    await reconcile()
+    expect(await recordedFor(p.versionId)).toEqual([id])
+    const voided = await asPerson(w.admin.userId, "agreement_void", {
+      id: p.agreementId,
+      reason: "No",
+    })
+    expect(voided.data?.status).toBe("ok")
+    expect(await recordedFor(p.versionId)).toEqual([id])
+  }, 120_000)
+})
+
+describe("the job that repairs sends", () => {
+  it("records a lost signature however many long frozen versions there are, and whatever one draft does", async () => {
+    const lost = await preparedAgreement("Lost signature")
+    await asPerson(w.admin.userId, "agreement_send", sendParams(lost, 2))
+    await oneMailEach(lost.versionId, 2)
+    await drainOutbox()
+    const id = await decidedUnheard(lost.versionId, 1)
+    const bad = await cutSend("Cannot be written", 1)
+    const good = await cutSend("Can be written", 1)
+    // Hundreds of long documents, newer than the ones to repair.
+    const long = "x".repeat(60_000)
+    await owner.unsafe(`
+      INSERT INTO app_agreements.agreement_versions
+        (org_id, agreement_id, number, status, sha256, frozen_at, source, source_text)
+      SELECT '${w.orgId}', '${lost.agreementId}', -n, 'frozen', NULL, now(),
+             jsonb_build_object('body', jsonb_build_object('blocks', jsonb_build_array(
+               jsonb_build_object('type', 'paragraph', 'text', '${long}')))), '${long}'
+        FROM generate_series(1, 400) n`)
+    await trigger(
+      "app_agreements.agreements",
+      "UPDATE",
+      `NEW.id = '${bad.agreementId}' AND NEW.status = 'sent'`,
+      "RAISE EXCEPTION 'not now';",
+    )
+    await reconcile()
+    expect(await recordedFor(lost.versionId)).toEqual([id])
+    expect((await statusOf(lost.agreementId, lost.versionId)).agreement).toBe("partly_signed")
+    expect((await statusOf(good.agreementId, good.versionId)).agreement).toBe("sent")
+    expect((await statusOf(bad.agreementId, bad.versionId)).agreement).toBe("draft")
+    await dropTriggers()
+    await owner.begin(async (tx) => {
+      await tx.unsafe("SET LOCAL session_replication_role = replica")
+      await tx.unsafe(
+        `DELETE FROM app_agreements.agreement_versions WHERE agreement_id = '${lost.agreementId}' AND number < 0`,
+      )
+    })
+    await reconcile()
+    expect((await statusOf(bad.agreementId, bad.versionId)).agreement).toBe("sent")
+  }, 180_000)
+})
+
+describe("a draft an earlier release left with links", () => {
+  it("half a send is never sent or sealed: its signature is kept, its people are told once, and they decide", async () => {
+    const p = await cutSend("Half made", 2)
+    await asMadeOneByOne(p.versionId, 1)
+    const one = asSigner(p.versionId, 1)
+    await signAs(one.token(), one.who, "198.51.100.101")
+    await reconcile()
+    await reconcile()
+    expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+      agreement: "draft",
+      version: "frozen",
+      sealed: false,
+    })
+    expect(await recordedFor(p.versionId)).toHaveLength(1)
+    const told = await toldOf(p.agreementId)
+    expect(told.map((t) => t.user_id)).toEqual([w.admin.userId])
+    expect(told[0]?.summary).toContain("may have stopped before every signer had a link")
+    // Everyone asked again: refused, and still a draft.
+    const out = await asPerson(w.admin.userId, "agreement_send", sendParams(p, 2))
+    expect(JSON.stringify(out)).toContain("ALREADY_SENT")
+    expect(JSON.stringify(out)).toContain("stays a draft")
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+    const voided = await asPerson(w.admin.userId, "agreement_void", {
+      id: p.agreementId,
+      reason: "Sent by half",
+    })
+    expect(voided.data?.status).toBe("ok")
+    expect(await recordedFor(p.versionId)).toHaveLength(1)
+  }, 120_000)
+
+  it("a whole one is a person's to call sent: the same send again does, and mails nobody", async () => {
+    const p = await cutSend("Whole, made one by one", 2)
+    await asMadeOneByOne(p.versionId, 0)
+    await reconcile()
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+    const again = await asPerson(w.admin.userId, "agreement_send", sendParams(p, 2))
+    expect(again.data).toMatchObject({ status: "ok", already_sent: true })
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("sent")
+    await oneMailEach(p.versionId, 2)
+  }, 120_000)
+
+  it("a draft edited after its send was cut off is not taken for sent", async () => {
+    const p = await cutSend("Edited since", 1)
+    await owner.unsafe(`UPDATE app_agreements.agreement_drafts
+      SET source = '{"body":{"blocks":[{"type":"paragraph","text":"Renegotiated."}]}}'::jsonb
+      WHERE agreement_id = '${p.agreementId}'`)
+    await reconcile()
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+    const one = asSigner(p.versionId, 1)
+    await signAs(one.token(), one.who, "198.51.100.102")
+    expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+      agreement: "draft",
+      version: "frozen",
+      sealed: false,
+    })
+    expect((await toldOf(p.agreementId))[0]?.summary).toContain("The draft changed after version 1")
+  }, 120_000)
+})
+
+describe("a version prepared while the one before is being sent", () => {
+  for (const cut of [false, true]) {
+    it(`${cut ? "and the send is cut off" : "the send says so"}: no sent agreement without links, and the new version can be sent`, async () => {
+      const p = await preparedAgreement(`Prepared meanwhile ${cut}`)
+      await trigger(
+        "kernel.client_actions",
+        "INSERT",
+        `NEW.target_id = '${p.versionId}' AND (SELECT count(*) FROM kernel.client_actions WHERE target_id = NEW.target_id) = 0`,
+        "PERFORM pg_sleep(4);",
+      )
+      const sending = cut
+        ? sendCutOff(p, 2)
+        : asPerson(w.admin.userId, "agreement_send", sendParams(p, 2))
+      await new Promise((r) => setTimeout(r, 700))
+      const next = await asPerson(w.admin.userId, "agreement_prepare", { id: p.agreementId })
+      expect(next.data?.status).toBe("ok")
+      const out = await sending
+      if (!cut) expect(JSON.stringify(out)).toContain("VERSION_CHANGED")
+      await until(async () => (await linkRows(p.versionId)).length === 2)
+      await dropTriggers()
+      await drainOutbox()
+      await drainOutbox()
+      expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+      expect((await linkRows(p.versionId)).every((r) => r.revoked_at)).toBe(true)
+      const v2 = {
+        versionId: next.data?.version_id as string,
+        sha256: next.data?.sha256 as string,
+      }
+      const sent = await asPerson(w.admin.userId, "agreement_send", sendParams(v2, 2))
+      expect(sent.data?.status).toBe("ok")
+      await drainOutbox()
+      expect((await statusOf(p.agreementId, v2.versionId)).agreement).toBe("sent")
+    }, 120_000)
+  }
+
+  it("seen as sent before the newer version: the job puts it back to a draft and tells its people", async () => {
+    const p = await cutSend("Seen as sent first", 2)
+    const id = await decidedUnheard(p.versionId, 1)
+    await owner.unsafe(`
+      INSERT INTO app_agreements.agreement_versions
+        (org_id, agreement_id, number, status, sha256, frozen_at)
+      VALUES ('${w.orgId}', '${p.agreementId}', 2, 'frozen', '${"e".repeat(64)}', now())`)
+    await owner.unsafe(
+      `UPDATE app_agreements.agreements SET status = 'sent' WHERE id = '${p.agreementId}'`,
+    )
+    await reconcile()
+    expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+      agreement: "draft",
+      version: "superseded",
+      sealed: false,
+    })
+    expect(await recordedFor(p.versionId)).toEqual([id])
+    expect((await toldOf(p.agreementId))[0]?.summary).toContain("Send version 2")
+    const open = (await linkRows(p.versionId)).filter((r) => !r.revoked_at && !r.decided_at)
+    expect(open).toEqual([])
+  }, 120_000)
+})
+
+describe("who may send, and who signs", () => {
+  it("a role that may send can send, and nothing else opens to it", async () => {
+    const role = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.roles", { id: role, org_id: w.orgId, name: `lead-${role.slice(0, 8)}` }),
+    )
+    for (const scope of SCOPES)
+      await sql.unsafe(insertSql("kernel.role_scope_grants", { role_id: role, scope }))
+    await sql.unsafe(
+      insertSql("kernel.user_roles", {
+        user_id: w.member.userId,
+        role_id: role,
+        org_id: w.orgId,
+      }),
+    )
+    const created = await asPerson(w.member.userId, "agreement_create", {
+      kind: "nda",
+      title: "Sent by its lead",
+      source: { body: { blocks: [{ type: "paragraph", text: "The parties agree." }] } },
+    })
+    const id = created.data?.agreement?.id as string
+    const prepared = await asPerson(w.member.userId, "agreement_prepare", { id })
+    const p = {
+      versionId: prepared.data?.version_id as string,
+      sha256: prepared.data?.sha256 as string,
+    }
+    const sent = await asPerson(w.member.userId, "agreement_send", sendParams(p, 2))
+    expect(sent.error).toBeUndefined()
+    expect(sent.data?.status).toBe("ok")
+    await oneMailEach(p.versionId, 2)
+    // Their own call to the kernel's read stays refused, as does one of a document closed to them.
+    const direct = await asPerson(w.member.userId, "client_action_view_get", {
+      targetType: "agreement_version",
+      targetId: p.versionId,
+    })
+    expect(JSON.stringify(direct)).toContain("agreements:internal")
+    const closed = await preparedAgreement("Closed to the lead")
+    await owner.unsafe(
+      `UPDATE app_agreements.agreements SET org_access = 'none', acl_user_ids = '["${w.admin.userId}"]'::jsonb WHERE id = '${closed.agreementId}'`,
+    )
+    const refused = await asPerson(w.member.userId, "agreement_send", sendParams(closed, 1))
+    expect(JSON.stringify(refused)).toContain("NOT_FOUND")
+    expect(await linkRows(closed.versionId)).toHaveLength(0)
+    const one = asSigner(p.versionId, 1)
+    const two = asSigner(p.versionId, 2)
+    await signAs(one.token(), one.who, "198.51.100.103")
+    await signAs(two.token(), two.who, "198.51.100.104")
+    expect(await statusOf(id, p.versionId)).toEqual({
+      agreement: "signed",
+      version: "signed",
+      sealed: true,
+    })
+  }, 180_000)
+
+  it("two people at one address each sign with their own name and code, and it is signed only by both", async () => {
+    const p = await preparedAgreement("A couple")
+    const email = `couple-${p.versionId.slice(0, 8)}@signers.example`
+    const sent = await asPerson(w.admin.userId, "agreement_send", {
+      version_id: p.versionId,
+      sha256: p.sha256,
+      order: "any",
+      expires_in_days: 7,
+      signers: [
+        { email, name: "Anne Couple" },
+        { email, name: "Jean Couple" },
+      ],
+    })
+    expect(sent.data?.message).toContain("Anne Couple, Jean Couple can sign now")
+    await until(() => linkMails(p.versionId).length === 2)
+    const tokenFor = (name: string) =>
+      tokenOf(
+        linkMails(p.versionId).find((m) => m.text?.includes(name)) as (typeof capture.sent)[number],
+      )
+    await signAs(tokenFor("Anne Couple"), { email, name: "Anne Couple" }, "198.51.100.105")
+    expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("partly_signed")
+    await signAs(tokenFor("Jean Couple"), { email, name: "Jean Couple" }, "198.51.100.106")
+    expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+      agreement: "signed",
+      version: "signed",
+      sealed: true,
+    })
+    const names = (await sql`
+      SELECT typed_name FROM ${app("signature_events")}
+       WHERE version_id = ${p.versionId} ORDER BY typed_name`) as unknown as Array<{
+      typed_name: string
+    }>
+    expect(names.map((n) => n.typed_name)).toEqual(["Anne Couple", "Jean Couple"])
   }, 120_000)
 })
 

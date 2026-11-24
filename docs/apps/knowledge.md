@@ -31,7 +31,7 @@ If someone else saves the document while you edit it, Liaison tells you and offe
 
 A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
 
-A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
+A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
 
 ## Links between documents
 

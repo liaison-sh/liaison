@@ -29,6 +29,7 @@ import {
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { documentTemplates } from "~/db/schema/kernel/document-templates"
 import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { attachFileToParent } from "~/modules/files/attach"
@@ -546,6 +547,175 @@ describe("a save copies another page's files onto this page (K-R17)", () => {
         ),
       )
     }
+  })
+})
+
+describe("a save copies only a page's file or a fresh upload", () => {
+  it("never a template's file, a sealed file or another kind's file the writer can read", async () => {
+    const scopes = [...SCOPES, "kernel:files:read"]
+    const a = await page(editor)
+    const sealed = await seedFileRow({
+      orgId,
+      app: "knowledge",
+      entityType: "document",
+      entityId: a.id,
+      filename: "sealed.png",
+      mimeType: "image/png",
+      sizeBytes: 10,
+      storageKey: `test/${randomUUID()}/sealed.png`,
+      uploadedBy: editor.userId,
+      encVersion: 1,
+    })
+    const [template] = await withPrivilegedDb(orgId, "test-template", (tx) =>
+      tx
+        .insert(documentTemplates)
+        .values({ orgId, name: "Letter", kind: "rich_text", body: { type: "doc" } })
+        .returning({ id: documentTemplates.id }),
+    )
+    const templateFile = await seedFileRow({
+      orgId,
+      app: "kernel",
+      entityType: "document_template",
+      entityId: template?.id ?? "",
+      filename: "logo.png",
+      mimeType: "image/png",
+      sizeBytes: 10,
+      storageKey: `test/${randomUUID()}/logo.png`,
+      uploadedBy: editor.userId,
+    })
+    const b = await page(editor, { body: "" })
+    const actor = knowledgeActorFromContext({
+      orgId,
+      userId: editor.userId,
+      scopes,
+      dimensionGrants: {},
+    })
+    const ctx = { ...rlsOf(editor), scopes }
+    const result = await withRlsContext(ctx, async (tx) => {
+      const session = await createUploadSession(
+        {
+          orgId,
+          userId: editor.userId,
+          scopes,
+          targetApp: "knowledge",
+          targetEntityType: "document",
+          targetEntityId: null,
+        },
+        { rlsTx: tx, privileged },
+      )
+      const uploaded = await seedFileRow({
+        orgId,
+        app: "kernel",
+        entityType: "file_upload_session",
+        entityId: session.id,
+        filename: "pasted.png",
+        mimeType: "image/png",
+        sizeBytes: 10,
+        storageKey: `test/${randomUUID()}/pasted.png`,
+        uploadedBy: editor.userId,
+      })
+      // The writer reads all three: what keeps two of them is the kind of parent.
+      const visible = extractRows<{ id: string }>(
+        await tx.execute(sql`
+          SELECT id::text AS id FROM kernel.files
+           WHERE id = ANY(${`{${sealed},${templateFile},${uploaded}}`}::uuid[])`),
+      )
+      expect(visible.map((r) => r.id).sort()).toEqual([sealed, templateFile, uploaded].sort())
+      const doc = await updateKnowledgeDocument(
+        tx,
+        {
+          id: b.id,
+          revision: b.revision,
+          body: `${tokenOf(sealed)} ${tokenOf(templateFile)} ${tokenOf(uploaded)}`,
+        },
+        actor,
+        [],
+      )
+      return { doc, uploaded }
+    })
+    const own = await filesOf(b.id)
+    expect(own.map((f) => f.copied_from_id)).toEqual([result.uploaded])
+    expect(result.doc.body).toBe(
+      `${tokenOf(sealed)} ${tokenOf(templateFile)} ${tokenOf(own[0]?.id ?? "")}`,
+    )
+    expect(result.doc.notCopied).toEqual([
+      { id: sealed, reason: "not_allowed" },
+      { id: templateFile, reason: "not_allowed" },
+    ])
+  })
+})
+
+describe("the hourly sweep removes copies no saved text names", () => {
+  it("a copy left by a failed save goes; one a text, a version or the page's creation holds stays", async () => {
+    const a = await page(editor)
+    const src = await Promise.all([1, 2, 3, 4, 5].map(() => fileOn(a.id)))
+    const b = await page(editor, { body: "" })
+    const actor = knowledgeActorFromContext({
+      orgId,
+      userId: editor.userId,
+      scopes: SCOPES,
+      dimensionGrants: {},
+    })
+    // A save that fails after its copy: on a request login the copy's row has committed.
+    await expect(
+      withRlsContext(rlsOf(editor), async (tx) => {
+        await updateKnowledgeDocument(
+          tx,
+          { id: b.id, revision: b.revision, body: tokenOf(src[0] ?? "") },
+          actor,
+          [],
+        )
+        throw new Error("failed after the copy")
+      }),
+    ).rejects.toThrow("failed after the copy")
+    // The same, as the privileged pool leaves it whatever this login can do.
+    const stray = await seedFileRow({
+      orgId,
+      app: "knowledge",
+      entityType: "document",
+      entityId: b.id,
+      filename: "diagram.png",
+      mimeType: "image/png",
+      sizeBytes: 10,
+      storageKey: `test/${randomUUID()}/diagram.png`,
+      uploadedBy: editor.userId,
+      copiedFromId: src[1] ?? "",
+    })
+    // Named by a version only (the text moved on), and named by the text.
+    const first = await save(editor, b.id, tokenOf(src[2] ?? ""))
+    const inVersion = (await filesOf(b.id)).find((f) => f.copied_from_id === src[2])?.id ?? ""
+    expect(first.body).toBe(tokenOf(inVersion))
+    const second = await save(editor, b.id, `moved on ${tokenOf(src[3] ?? "")}`)
+    const inText = (await filesOf(b.id)).find((f) => f.copied_from_id === src[3])?.id ?? ""
+    expect(second.body).toBe(`moved on ${tokenOf(inText)}`)
+    // A file the import attached with the page (same transaction, same created_at).
+    const [created] = extractRows<{ created_at: string }>(
+      await withPrivilegedDb(orgId, "test-created", (tx) =>
+        tx.execute(sql`SELECT created_at::text AS created_at FROM app_knowledge.documents
+                        WHERE id = ${b.id}::uuid`),
+      ),
+    )
+    const imported = await seedFileRow({
+      orgId,
+      app: "knowledge",
+      entityType: "document",
+      entityId: b.id,
+      filename: "attached.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 10,
+      storageKey: `test/${randomUUID()}/attached.pdf`,
+      uploadedBy: editor.userId,
+      copiedFromId: src[4] ?? "",
+      createdAt: new Date(created?.created_at ?? ""),
+    })
+    await sweepUnparentedPageCopies({ graceMinutes: 0 })
+    const left = (await filesOf(b.id)).map((f) => f.id)
+    expect(left).not.toContain(stray)
+    expect(left).toContain(inVersion)
+    expect(left).toContain(inText)
+    expect(left).toContain(imported)
+    // Nothing of the failed save is left: only the kept copies.
+    expect(left.sort()).toEqual([inVersion, inText, imported].sort())
   })
 })
 

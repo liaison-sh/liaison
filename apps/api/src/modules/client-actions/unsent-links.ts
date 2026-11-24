@@ -5,9 +5,11 @@
 // stands, `sent_at` empty, no failure recorded, owed for some minutes), gives each a fresh token
 // and mails it. Never twice: the old token's mail can no longer be claimed, the row is read again
 // under its lock, and the fresh one is claimed like any other mail (mint.ts `claimLinkMail`). The
-// message its sender typed was only in the memory of the run that stopped, so the mail goes
-// without it. A mail already being handed over when the server stopped is not one of these: it
-// may have left, and a reminder is the sender's to send.
+// mail goes on the decision the link was made by (owed-mail.ts): the check its card pinned is asked
+// again, and a check that refuses leaves the link unsent and its sender told; the message goes with
+// it when the card holds it (one typed on the screen was only in the memory of the run that
+// stopped). A mail already being handed over when the server stopped is not one of these: it may
+// have left, and a reminder is the sender's to send.
 
 import { sql } from "drizzle-orm"
 import { extractRows } from "~/db"
@@ -15,7 +17,7 @@ import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { rootLogger } from "~/lib/logger"
 import { sweepSkippingMoving, writeUnlessMoving } from "~/modules/org/transfer-state/skip-moving"
-import { remailClientAction, unsentLinkSql } from "./mint"
+import { mailUnsentLink, unsentLinkSql } from "./mint"
 
 const log = rootLogger.child({ module: "client-actions" })
 
@@ -37,9 +39,7 @@ export async function mailUnsentLinks(): Promise<{ mailed: number }> {
   let mailed = 0
   for (const f of found) {
     try {
-      const sent = await writeUnlessMoving(f.org_id, () =>
-        remailClientAction(f.org_id, f.id, { onlyUnsent: true }),
-      )
+      const sent = await writeUnlessMoving(f.org_id, () => mailUnsentLink(f.org_id, f.id))
       if (sent === true) mailed += 1
     } catch (err) {
       log.error({ err, orgId: f.org_id, actionId: f.id }, "an unsent link was not mailed")

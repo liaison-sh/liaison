@@ -59,6 +59,7 @@ import {
   signerAddresses,
   signInPlaceOf,
 } from "~/modules/client-actions/mint"
+import type { MailDecision } from "~/modules/client-actions/owed-mail"
 import { signingUnavailable } from "~/modules/client-actions/signing-state"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
 import { describeStop, evaluateSendGuard, isPinnedSendGuard } from "~/modules/mail/send-guard"
@@ -212,6 +213,12 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       named,
     })
 
+  /** What a decided mail goes on, for one that leaves later (client-actions/owed-mail.ts). */
+  const mailDecision = (guard: unknown): MailDecision => ({
+    guard: isPinnedSendGuard(guard) ? guard : null,
+    approvalId: approvalContext?.approvalRequestId ?? null,
+  })
+
   /** A pinned check must name every signer's address and still clear, or no link is made. */
   async function guardStops(
     guard: unknown,
@@ -269,6 +276,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       orgId,
       targetApp: appName,
       ids,
+      mailDecision: mailDecision(guard),
       ...(guard !== undefined ? { check: (emails: string[]) => guardHolds(guard, emails) } : {}),
     })
     if ("stopped" in reminded) return refuse(reminded.stopped.code, reminded.stopped.message)
@@ -364,6 +372,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         createdByUserId: actorUserId(),
         createdByAgentId: bridgeActingAgentId ?? null,
         approvedByUserId: await decidingPerson(),
+        mailDecision: mailDecision(p.send_guard),
       })
       return JSON.stringify({
         status: "ok",
@@ -430,6 +439,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         createdByUserId: actorUserId(),
         createdByAgentId: bridgeActingAgentId ?? null,
         approvedByUserId: await decidingPerson(),
+        mailDecision: mailDecision(p.send_guard),
       })
       return JSON.stringify({
         status: "ok",

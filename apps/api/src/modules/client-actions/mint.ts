@@ -11,7 +11,9 @@
 // emptied when that fails. A link whose token stands and whose `sent_at` is empty,
 // with no failure recorded, was never mailed: the server stopped in between. The
 // `client-action-unsent-links` job gives it a fresh token and mails it, once
-// (unsent-links.ts).
+// (unsent-links.ts). What that later mail needs of the decision it goes on is kept with the
+// trail's `sent` event (owed-mail.ts): the check its card pinned and the card itself, never the
+// message or an address.
 //
 // A send of several signers (`mintClientActionSend`) reads the document once and
 // writes every signer in one transaction, with the event that tells the target's
@@ -22,7 +24,7 @@
 // `revokeClientAction` through their bridge methods. The agent's tool reaches
 // them after a person approved its card.
 
-import { sql } from "drizzle-orm"
+import { type SQL, sql } from "drizzle-orm"
 import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -31,6 +33,13 @@ import { rootLogger } from "~/lib/logger"
 import { writeClientActionEvent } from "./events"
 import { clientActionHearers } from "./hearers"
 import { newActionMailId, sendLinkMail, sendStaffTurnMail } from "./mail"
+import {
+  heldBack,
+  type MailDecision,
+  type OwedMailMeta,
+  owedMailMeta,
+  typedMessage,
+} from "./owed-mail"
 import {
   type ClientActionKind,
   type ClientActionView,
@@ -91,6 +100,8 @@ export interface MintInput {
   /** The person who approved this send (the approval's decider, or their own click); null when
    *  no person did. A call chained from the approved send runs on that person's act. */
   approvedByUserId?: string | null
+  /** What the mail goes on, kept for one that leaves later than the decision. */
+  mailDecision?: MailDecision | null
   /** The link of the same signer this one replaces (a new link): it leaves the send's group. */
   replacesActionId?: string | null
   /** One signer of a send written whole: how many signers that send has. */
@@ -102,7 +113,7 @@ export interface MintInput {
  * expiry, a withdrawal, a code-less decline or a corrected address). A replaced link no longer
  * counts in the send's signers or its turn order; its trail stays as it was.
  */
-function replacedSql(alias: string) {
+export function replacedSql(alias: string) {
   const a = sql.raw(alias)
   return sql`EXISTS (
     SELECT 1 FROM ${K()}.client_actions n
@@ -345,57 +356,74 @@ async function mailLink(orgId: string, args: LinkMailArgs): Promise<void> {
     locale: args.sender.senderLocale,
   }).catch(async (err) => {
     log.error({ err, orgId, actionId: args.actionId }, "client action link mail failed")
-    await killMailedLink(orgId, args.actionId, args.title, args.to, args.createdByUserId).catch(
-      (e) =>
-        log.error({ err: e, actionId: args.actionId }, "client action rotate after failed send"),
+    await withPrivilegedDb(orgId, "client-action-send-failed", (tx) =>
+      killUnreadLink(tx, {
+        orgId,
+        actionId: args.actionId,
+        title: args.title,
+        invitedName: args.to,
+        senderUserId: args.createdByUserId,
+        only: sql`token_hash = ${hashToken(args.token)}`,
+      }),
+    ).catch((e) =>
+      log.error({ err: e, actionId: args.actionId }, "client action rotate after failed send"),
     )
   })
 }
 
-/** After a failed send: the token that was rendered into the mail is rotated out and the sender told. */
-async function killMailedLink(
-  orgId: string,
-  actionId: string,
-  title: string,
-  invitedName: string,
-  senderUserId: string | null,
+/**
+ * A link nobody holds, its mail failed or held back: its token is rotated out and the sender told.
+ * Only while the link is as `only` says (the token of that very mail): a later mail's link stands.
+ */
+async function killUnreadLink(
+  tx: PrivilegedDb,
+  link: {
+    orgId: string
+    actionId: string
+    title: string
+    invitedName: string
+    senderUserId: string | null
+    only: SQL
+    /** Why it was held back, for the trail. */
+    why?: string
+  },
 ): Promise<void> {
-  await withPrivilegedDb(orgId, "client-action-send-failed", async (tx) => {
-    const rows = extractRows<{ id: string }>(
-      await tx.execute(sql`
+  const { orgId, actionId, title, invitedName, senderUserId } = link
+  const rows = extractRows<{ id: string }>(
+    await tx.execute(sql`
         UPDATE ${K()}.client_actions
            SET prior_token_hashes = CASE WHEN token_hash IS NULL THEN prior_token_hashes
                                           ELSE array_append(prior_token_hashes, token_hash) END,
                token_hash = ${hashToken(generateToken(32))}, sent_at = NULL
          WHERE id = ${actionId} AND org_id = ${orgId} AND decided_at IS NULL AND revoked_at IS NULL
+           AND ${link.only}
          RETURNING id
       `),
-    )
-    if (rows.length === 0) return
-    await writeClientActionEvent(tx, {
-      orgId,
-      actionId,
-      event: "rotated",
-      actorKind: "system",
-      meta: { reason: "send_failed" },
-    })
-    if (senderUserId) {
-      await tx.queueEvent({
-        app: "kernel",
-        entity: "client_action",
-        action: "send_failed",
-        entityId: actionId,
-        data: {
-          title,
-          invitedName,
-          senderUserIds: await clientActionHearers(tx, orgId, actionId),
-        },
-        actorId: SYSTEM_ACTOR_ID,
-        actorType: "system",
-        orgId,
-      })
-    }
+  )
+  if (rows.length === 0) return
+  await writeClientActionEvent(tx, {
+    orgId,
+    actionId,
+    event: "rotated",
+    actorKind: "system",
+    meta: { reason: "send_failed", ...(link.why ? { held: link.why } : {}) },
   })
+  if (senderUserId) {
+    await tx.queueEvent({
+      app: "kernel",
+      entity: "client_action",
+      action: "send_failed",
+      entityId: actionId,
+      data: {
+        title,
+        invitedName,
+        senderUserIds: await clientActionHearers(tx, orgId, actionId),
+      },
+      actorId: SYSTEM_ACTOR_ID,
+      actorType: "system",
+      orgId,
+    })
+  }
 }
 
 /** What every mint refuses before anything is read: an undeclared target, kind or expiry. */
@@ -488,12 +516,13 @@ async function insertClientAction(
     signer_user_id: string | null
   }>(
     await tx.execute(sql`
-      SELECT id, expires_at, token_hash, signer_user_id FROM ${K()}.client_actions
-       WHERE org_id = ${input.orgId} AND target_id = ${input.targetId}
-         AND contact_id IS NOT DISTINCT FROM ${invitee.contactId}
-         AND invited_email = ${invitee.email}
-         AND (contact_id IS NOT NULL OR lower(invited_name) = lower(${invitedName}))
-         AND decided_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+      SELECT x.id, x.expires_at, x.token_hash, x.signer_user_id FROM ${K()}.client_actions x
+       WHERE x.org_id = ${input.orgId} AND x.target_id = ${input.targetId}
+         AND x.contact_id IS NOT DISTINCT FROM ${invitee.contactId}
+         AND x.invited_email = ${invitee.email}
+         AND (x.contact_id IS NOT NULL OR lower(x.invited_name) = lower(${invitedName}))
+         AND x.decided_at IS NULL AND x.revoked_at IS NULL AND x.expires_at > now()
+         AND NOT ${replacedSql("x")}
        LIMIT 1
     `),
   )
@@ -571,6 +600,7 @@ async function insertClientAction(
       event: "sent",
       actorKind: "system",
       mailId,
+      meta: owedMailMeta(input.mailDecision ?? null, input.message ?? null),
     })
   }
   // A staff signer's turn: a Home row and a mail with no link; they sign in their session.
@@ -779,6 +809,34 @@ async function runningSend(tx: PrivilegedDb, input: MintSendInput): Promise<Sent
   return rows.filter((r) => live.has(r.group_id))
 }
 
+/**
+ * `kernel/client_action:links_made`, in the transaction that wrote them: the target's app hears of
+ * every link made on it, so one written beside a void or a newer version is withdrawn by it.
+ */
+async function queueLinksMade(
+  tx: PrivilegedDb,
+  input: Pick<MintInput, "orgId" | "targetApp" | "targetType" | "targetId" | "visibleTo">,
+  id: string,
+  groupId: string,
+): Promise<void> {
+  await tx.queueEvent({
+    app: "kernel",
+    entity: "client_action",
+    action: "links_made",
+    entityId: id,
+    data: {
+      id,
+      groupId,
+      target: { app: input.targetApp, type: input.targetType, id: input.targetId },
+      // A restricted document's send is known to its list only, like its decision.
+      ...(input.visibleTo && input.visibleTo.length > 0 ? { visibleTo: input.visibleTo } : {}),
+    },
+    actorId: SYSTEM_ACTOR_ID,
+    actorType: "system",
+    orgId: input.orgId,
+  })
+}
+
 /** The names a refusal lists: the first few, then how many more. */
 function namesOf(links: readonly SentLink[]): string {
   const names = links.map((l) => l.invited_name)
@@ -857,22 +915,7 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
         ),
       )
     }
-    await tx.queueEvent({
-      app: "kernel",
-      entity: "client_action",
-      action: "links_made",
-      entityId: made[0]?.result.id as string,
-      data: {
-        id: made[0]?.result.id,
-        groupId,
-        target: { app: input.targetApp, type: input.targetType, id: input.targetId },
-        // A restricted document's send is known to its list only, like its decision.
-        ...(input.visibleTo && input.visibleTo.length > 0 ? { visibleTo: input.visibleTo } : {}),
-      },
-      actorId: SYSTEM_ACTOR_ID,
-      actorType: "system",
-      orgId: input.orgId,
-    })
+    await queueLinksMade(tx, input, made[0]?.result.id as string, groupId)
     return { before: [] as SentLink[], made, groupId }
   })
   mailInBackground(input.orgId, mailsOf(out.made))
@@ -988,38 +1031,145 @@ const UNSENT_AFTER_MINUTES = 5
 /** Older than this, its sender has had days to see it: a restored copy never mails old links. */
 const UNSENT_WITHIN_DAYS = 3
 
-/** An open mailed link whose mail never started, as of now. */
+/**
+ * An open mailed link whose mail never started, as of now. One whose send a signer declined is
+ * not: nothing is asked of its other signers until that one is asked again.
+ */
 export function unsentLinkSql() {
   return sql`
     a.token_hash IS NOT NULL AND a.sent_at IS NULL AND a.signer_user_id IS NULL
     AND a.decided_at IS NULL AND a.revoked_at IS NULL AND a.code_locked_at IS NULL
     AND a.expires_at > now() AND NOT ${mailFailedSql("a")}
+    AND NOT EXISTS (SELECT 1 FROM ${K()}.client_actions d
+                     WHERE d.org_id = a.org_id AND d.group_id = a.group_id
+                       AND d.decision = 'declined' AND NOT ${replacedSql("d")})
     AND (SELECT max(e.at) FROM ${K()}.client_action_events e
           WHERE e.action_id = a.id AND e.org_id = a.org_id AND e.event = 'sent')
         BETWEEN now() - make_interval(days => ${UNSENT_WITHIN_DAYS})
             AND now() - make_interval(mins => ${UNSENT_AFTER_MINUTES})`
 }
 
+interface UnsentLink {
+  /** The owed mail, as its `sent` event kept it. */
+  owed: OwedMailMeta
+  mailId: string | null
+  /** Every signer's address of its send: what the check its card pinned covers. */
+  sendAddresses: string[]
+  invitedName: string
+  targetApp: string
+  targetType: string
+  targetId: string
+  createdByUserId: string | null
+}
+
+/** One link whose mail never started, or null. `lock`: held until the transaction ends. */
+async function readUnsentLink(
+  tx: PrivilegedDb,
+  orgId: string,
+  actionId: string,
+  lock: boolean,
+): Promise<UnsentLink | null> {
+  // Locked first, read after: the read then sees what another run wrote meanwhile.
+  if (lock)
+    await tx.execute(sql`
+      SELECT id FROM ${K()}.client_actions
+       WHERE id = ${actionId} AND org_id = ${orgId} FOR UPDATE`)
+  const [a] = extractRows<{
+    send_addresses: string[]
+    invited_name: string
+    target_app: string
+    target_type: string
+    target_id: string
+    created_by_user_id: string | null
+    meta: OwedMailMeta | null
+    mail_id: string | null
+  }>(
+    await tx.execute(sql`
+      SELECT a.invited_name, a.target_app, a.target_type, a.target_id,
+             a.created_by_user_id, s.meta, s.mail_id,
+             (SELECT jsonb_agg(DISTINCT g.invited_email) FROM ${K()}.client_actions g
+               WHERE g.org_id = a.org_id AND g.group_id = a.group_id
+                 AND NOT ${replacedSql("g")}) AS send_addresses
+        FROM ${K()}.client_actions a
+        LEFT JOIN LATERAL (
+          SELECT e.meta, e.mail_id FROM ${K()}.client_action_events e
+           WHERE e.action_id = a.id AND e.org_id = a.org_id AND e.event = 'sent'
+           ORDER BY e.at DESC, e.id LIMIT 1) s ON true
+       WHERE a.id = ${actionId} AND a.org_id = ${orgId} AND ${unsentLinkSql()}
+    `),
+  )
+  if (!a) return null
+  return {
+    owed: a.meta ?? {},
+    mailId: a.mail_id,
+    sendAddresses: a.send_addresses,
+    invitedName: a.invited_name,
+    targetApp: a.target_app,
+    targetType: a.target_type,
+    targetId: a.target_id,
+    createdByUserId: a.created_by_user_id,
+  }
+}
+
+/**
+ * Mails a link whose mail never started, on the decision it was made by: the check its card pinned
+ * is asked again at this moment, and the message goes with it when the card still holds that very
+ * text. A check that refuses leaves the link unsent, its sender told; one that could not run leaves
+ * it to the next run. True when it was mailed.
+ */
+export async function mailUnsentLink(orgId: string, actionId: string): Promise<boolean> {
+  const found = await withPrivilegedDb(orgId, "client-action-unsent-read", (tx) =>
+    readUnsentLink(tx, orgId, actionId, false),
+  )
+  if (!found) return false
+  const stop = await heldBack(orgId, found.owed, found.sendAddresses)
+  if (stop === "unavailable") return false
+  if (stop === null)
+    return remailClientAction(orgId, actionId, {
+      unsent: found,
+      message: await typedMessage(orgId, found.owed),
+    })
+  const view = await viewTarget({
+    orgId,
+    targetApp: found.targetApp,
+    targetType: found.targetType,
+    targetId: found.targetId,
+    actingUserId: found.createdByUserId,
+  })
+  await withPrivilegedDb(orgId, "client-action-mail-held", async (tx) => {
+    const now = await readUnsentLink(tx, orgId, actionId, true)
+    if (now?.mailId !== found.mailId) return
+    const sender = await readSender(tx, orgId, found.createdByUserId)
+    await killUnreadLink(tx, {
+      orgId,
+      actionId,
+      title: view === "down" ? sender.orgName : view.title,
+      invitedName: found.invitedName,
+      senderUserId: found.createdByUserId,
+      only: sql`sent_at IS NULL`,
+      why: stop,
+    })
+  })
+  return false
+}
+
 /** Mails a fresh link for an open action to its invited address (resend, next signer's turn). */
 export async function remailClientAction(
   orgId: string,
   actionId: string,
-  opts: { resend?: boolean /** Only while its mail never started. */; onlyUnsent?: boolean } = {},
+  opts: {
+    resend?: boolean
+    /** Only while its mail never started, and is still the one that was read. */
+    unsent?: UnsentLink
+    message?: string | null
+  } = {},
 ): Promise<boolean> {
   const mailId = newActionMailId()
+  const { unsent } = opts
   const out = await withPrivilegedDb(orgId, "client-action-remail", async (tx) => {
-    if (opts.onlyUnsent) {
-      // Locked first, read after: the read then sees what another run wrote meanwhile.
-      await tx.execute(sql`
-        SELECT id FROM ${K()}.client_actions
-         WHERE id = ${actionId} AND org_id = ${orgId} FOR UPDATE`)
-      const still = extractRows<{ id: string }>(
-        await tx.execute(sql`
-          SELECT a.id FROM ${K()}.client_actions a
-           WHERE a.id = ${actionId} AND a.org_id = ${orgId} AND ${unsentLinkSql()}
-        `),
-      )
-      if (still.length === 0) return null
+    if (unsent) {
+      const still = await readUnsentLink(tx, orgId, actionId, true)
+      if (still?.mailId !== unsent.mailId) return null
     }
     const [a] = extractRows<{
       kind: ClientActionKind
@@ -1048,6 +1198,8 @@ export async function remailClientAction(
       event: "sent",
       actorKind: "system",
       mailId,
+      // The same owed mail, still on the decision it was made by.
+      ...(unsent ? { meta: { ...unsent.owed } } : {}),
     })
     const sender = await readSender(tx, orgId, a.created_by_user_id)
     return { a, token, sender }
@@ -1070,6 +1222,7 @@ export async function remailClientAction(
     kind: out.a.kind,
     sender: out.sender,
     expiresAt: new Date(out.a.expires_at),
+    message: opts.message ?? null,
     resend: opts.resend,
     createdByUserId: out.a.created_by_user_id,
   })
@@ -1326,6 +1479,8 @@ export async function remindClientActions(input: {
   orgId: string
   targetApp: string
   ids: readonly string[]
+  /** What the reminder goes on, kept for a mail that leaves later. */
+  mailDecision?: MailDecision | null
   /** Run over the addresses about to be mailed; a code stops the reminder before any mail. */
   check?: (emails: string[]) => Promise<{ code: string; message: string } | null>
 }): Promise<
@@ -1412,6 +1567,7 @@ export async function remindClientActions(input: {
         event: "sent",
         actorKind: "system",
         mailId,
+        meta: owedMailMeta(input.mailDecision ?? null, null),
       })
       const sender = await readSender(tx, input.orgId, r.created_by_user_id)
       reminded.push(asLink(r))
@@ -1502,6 +1658,54 @@ async function replacementOf(
   return later ?? null
 }
 
+/**
+ * The signers before this one's turn, held until the transaction ends: an answer one of them is
+ * giving now is read by `earlierUnsigned`, and one given later finds the link this transaction
+ * wrote. In signing order, and before the link itself, as `openNextSignerTurn` takes them.
+ */
+async function holdEarlierSigners(
+  tx: PrivilegedDb,
+  orgId: string,
+  link: Pick<PriorLink, "group_id" | "sign_order">,
+): Promise<void> {
+  if (link.sign_order === null) return
+  await tx.execute(sql`
+    SELECT g.id FROM ${K()}.client_actions g
+     WHERE g.org_id = ${orgId} AND g.group_id = ${link.group_id}
+       AND g.sign_order < ${link.sign_order}
+     ORDER BY g.sign_order, g.created_at
+     FOR SHARE OF g`)
+}
+
+const holdsALink = (name: string) =>
+  new ClientActionError(
+    "HOLDS_A_LINK",
+    `${name} already holds a link of this document at that address; nobody signs on two`,
+    409,
+  )
+
+/** Refuses a place to someone who has one of their own in the send, whether or not it ran out. */
+async function refuseHeldPlace(
+  tx: PrivilegedDb,
+  orgId: string,
+  prior: PriorLink,
+  invitee: Invitee,
+): Promise<void> {
+  const [holds] = extractRows<{ invited_name: string }>(
+    await tx.execute(sql`
+      SELECT h.invited_name FROM ${K()}.client_actions h
+       WHERE h.org_id = ${orgId} AND h.group_id = ${prior.group_id} AND h.id <> ${prior.id}
+         AND h.decided_at IS NULL AND h.revoked_at IS NULL
+         AND h.contact_id IS NOT DISTINCT FROM ${invitee.contactId}::uuid
+         AND h.invited_email = ${invitee.email}
+         AND (h.contact_id IS NOT NULL OR lower(h.invited_name) = lower(${nameOf(invitee)}))
+         AND NOT ${replacedSql("h")}
+       LIMIT 1
+    `),
+  )
+  if (holds) throw holdsALink(holds.invited_name)
+}
+
 /** Under "one after the other": whether a signer before this turn has not signed yet. */
 async function earlierUnsigned(
   tx: PrivilegedDb,
@@ -1528,6 +1732,7 @@ interface InPlaceInput {
   createdByUserId: string | null
   createdByAgentId?: string | null
   approvedByUserId?: string | null
+  mailDecision?: MailDecision | null
 }
 
 type InPlaceResult = MintResult & { replacedId: string }
@@ -1577,12 +1782,14 @@ async function linkInPlaceOf(
     createdByUserId: input.createdByUserId,
     createdByAgentId: input.createdByAgentId ?? null,
     approvedByUserId: input.approvedByUserId ?? null,
+    mailDecision: input.mailDecision ?? null,
     replacesActionId: first.id,
   }
   assertMintable(mint)
   const view = await readMintView(mint)
   const made = await withPrivilegedDb(input.orgId, "client-action-new-link", async (tx) => {
     await lockTargetLinks(tx, mint)
+    await holdEarlierSigners(tx, input.orgId, first)
     const prior = await readPriorLink(tx, input)
     const invitee = await resolveInvitee(tx, mint)
     const later = await replacementOf(tx, input.orgId, prior)
@@ -1624,6 +1831,7 @@ async function linkInPlaceOf(
       } satisfies Inserted
     }
     await refuse(tx, prior)
+    await refuseHeldPlace(tx, input.orgId, prior, invitee)
     if (prior.decision === null && prior.revoked_at === null) {
       await tx.execute(sql`
         UPDATE ${K()}.client_actions
@@ -1639,13 +1847,17 @@ async function linkInPlaceOf(
       })
     }
     const sender = await readSender(tx, input.orgId, input.createdByUserId)
-    return insertClientAction(
+    const inserted = await insertClientAction(
       tx,
       { ...mint, waitingTurn: await earlierUnsigned(tx, input.orgId, prior) },
       view,
       invitee,
       sender,
     )
+    // Another link of that person on this document: theirs, never this place's.
+    if (inserted.result.deduped) throw holdsALink(inserted.result.invitedName)
+    await queueLinksMade(tx, mint, inserted.result.id, prior.group_id)
+    return inserted
   })
   mailInBackground(input.orgId, mailsOf([made]))
   return { ...made.result, replacedId: first.id }
@@ -1678,7 +1890,13 @@ export function newLinkAfter(
           "This signer declined after proving the emailed code; a new version is sent for a new answer",
           409,
         )
-      if (prior.decision === null && prior.revoked_at === null && prior.token_hash === null)
+      // A link that ran out while it waited never opens by itself: its signer may have a new one.
+      if (
+        prior.decision === null &&
+        prior.revoked_at === null &&
+        prior.token_hash === null &&
+        new Date(prior.expires_at).getTime() > Date.now()
+      )
         throw new ClientActionError(
           "NOT_THEIR_TURN",
           "This signer waits for the signer before them; their link opens after that signature",
@@ -1694,8 +1912,8 @@ const REPLACEABLE: readonly (string | null)[] = ["withdrawn", "access_ended", "p
 /**
  * Another person in the place of a signer who was withdrawn: the same document and turn, their
  * own name, link and code. The withdrawn signer's link stays in the trail, and no longer counts in
- * the send. Refuses a signer who was not withdrawn, and anyone who already holds a link of this
- * send that they can answer, now or at their turn.
+ * the send. Refuses a signer who was not withdrawn, and anyone who already has a place of their own
+ * in this send, unanswered: now, at their turn, or on a link that ran out.
  */
 export function signInPlaceOf(
   input: InPlaceInput & {
@@ -1734,19 +1952,14 @@ export function signInPlaceOf(
         await tx.execute(sql`
           SELECT h.invited_name FROM ${K()}.client_actions h
            WHERE h.org_id = ${input.orgId} AND h.group_id = ${prior.group_id}
-             AND h.decided_at IS NULL AND h.revoked_at IS NULL AND h.expires_at > now()
+             AND h.decided_at IS NULL AND h.revoked_at IS NULL
              AND (h.invited_email = ${who.email}
                   OR h.contact_id = ${who.contactId}::uuid)
              AND NOT ${replacedSql("h")}
            LIMIT 1
         `),
       )
-      if (holds)
-        throw new ClientActionError(
-          "HOLDS_A_LINK",
-          `${holds.invited_name} already holds a link of this document at that address; nobody signs on two`,
-          409,
-        )
+      if (holds) throw holdsALink(holds.invited_name)
     },
   )
 }

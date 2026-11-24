@@ -2,9 +2,9 @@
 //
 // What a portal person sees of one client action before they may decide or ask a
 // code, read as the portal role: the action is there only when their company's open
-// share shows it to them (portal.client_actions), with who it was sent to, and the
-// address they signed in with (portal.me). decideClientAction asks this first.
-import { sql } from "drizzle-orm"
+// share shows it to them (portal.client_actions), with who it was sent to, and whether
+// that is them (portal.me). decideClientAction asks this first.
+import { type SQL, sql } from "drizzle-orm"
 import { extractRows } from "~/db"
 import {
   type PortalContext,
@@ -16,8 +16,25 @@ import {
 /** The caller of a portal decision (set by portalAuthMiddleware). */
 export type PortalCaller = PortalContext
 
+/**
+ * Whether the row `a` of `portal.client_actions` is the signed-in person's: sent to the address
+ * they signed in with, and to their name when that address has two signers on the document.
+ */
+export function mineSql(a: string): SQL {
+  const row = sql.raw(a)
+  return sql`EXISTS (
+    SELECT 1 FROM portal.me me
+     WHERE lower(${row}.invited_email) = lower(me.email)
+       AND (lower(${row}.invited_name) = lower(me.name)
+            OR NOT EXISTS (
+              SELECT 1 FROM portal.client_actions o
+               WHERE o.target_id = ${row}.target_id AND o.revoked_at IS NULL
+                 AND lower(o.invited_email) = lower(${row}.invited_email)
+                 AND lower(o.invited_name) <> lower(${row}.invited_name))))`
+}
+
 export type PortalActionSight =
-  | { seen: true; invitedEmail: string; invitedName: string; myEmail: string }
+  | { seen: true; mine: boolean; invitedName: string }
   | { seen: false; why: "none" | "refused" | "unavailable" }
 
 export async function portalActionSight(
@@ -26,20 +43,16 @@ export async function portalActionSight(
 ): Promise<PortalActionSight> {
   try {
     const row = await withPortalContext(portal, async (tx) => {
-      const [a] = extractRows<{ invited_email: string; invited_name: string; me: string | null }>(
+      const [a] = extractRows<{ invited_name: string; mine: boolean; me: boolean }>(
         await tx.execute(sql`
-          SELECT a.invited_email, a.invited_name, (SELECT lower(m.email) FROM portal.me m) AS me
+          SELECT a.invited_name, ${mineSql("a")} AS mine,
+                 EXISTS (SELECT 1 FROM portal.me) AS me
             FROM portal.client_actions a WHERE a.id = ${actionId}::uuid`),
       )
       return a ?? null
     })
     if (!row?.me) return { seen: false, why: "none" }
-    return {
-      seen: true,
-      invitedEmail: row.invited_email,
-      invitedName: row.invited_name,
-      myEmail: row.me,
-    }
+    return { seen: true, mine: row.mine === true, invitedName: row.invited_name }
   } catch (err) {
     if (err instanceof PortalContextRefusedError) return { seen: false, why: "refused" }
     if (err instanceof PortalUnavailableError) return { seen: false, why: "unavailable" }

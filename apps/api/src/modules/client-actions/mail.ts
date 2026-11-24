@@ -154,10 +154,16 @@ export async function sendLinkMail(
 
 /** The code mail: names the document and what entering the code means; no Reply-To. */
 export async function sendCodeMail(
-  input: Common & { code: string; orgName: string },
+  input: Common & {
+    code: string
+    orgName: string
+    /** The person the code is for: an address may be shared by two signers. */
+    name: string
+  },
 ): Promise<void> {
   const { t } = tr(input.locale)
   const p = {
+    name: input.name,
     org: input.orgName,
     verb: t(`verb.${input.kind}`),
     title: input.title,
@@ -170,7 +176,7 @@ export async function sendCodeMail(
     eyebrow: t("mail.code.eyebrow", p),
     heading: input.title,
     code: input.code,
-    paragraphs: [t("mail.code.body", p), t("mail.code.safety", p)],
+    paragraphs: [t("mail.code.body", p), t("mail.code.for", p), t("mail.code.safety", p)],
     footer: [t("mail.code.footer", p)],
   })
   await send(

@@ -20,6 +20,7 @@
       "eyebrow": "{{org}}",
       "heading": "{{code}}",
       "body": "Vous êtes sur le point de {{verb}} « {{title}} ». Saisissez ce code sur la page pour continuer. Il fonctionne 10 minutes.",
+      "for": "Ce code est pour {{name}} seulement.",
       "safety": "Personne de {{org}} ne vous demandera ce code. Ne répondez pas à cet e-mail.",
       "footer": "Si vous n'avez pas demandé de code, ignorez cet e-mail."
     },

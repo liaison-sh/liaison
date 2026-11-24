@@ -36,6 +36,7 @@ import {
   beginPortalTotpSetup,
   confirmPortalTotp,
 } from "~/modules/portal/auth-service"
+import { mineSql } from "~/modules/portal/decide-gate"
 import { streamPortalFile } from "~/modules/portal/file-stream"
 import { portalWriteRateLimit } from "~/modules/portal/rate-limits"
 import { PORTAL_ROUTES, routerPath } from "~/modules/portal/routes-list"
@@ -212,7 +213,7 @@ const actionsOn = (
   targetIds: string[],
 ) => drizzleSql`SELECT a.id, a.kind, a.target_id, a.invited_name,
     a.expires_at, a.decided_at, a.decision, a.revoked_at,
-    (a.invited_email = (SELECT lower(m.email) FROM portal.me m)) AS mine
+    ${mineSql("a")} AS mine
   FROM portal.client_actions a
  WHERE a.target_id = ANY(${`{${targetIds.join(",")}}`}::uuid[])
  ORDER BY a.created_at, a.id`

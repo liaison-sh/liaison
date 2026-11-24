@@ -103,12 +103,13 @@ async function agreement(
 }
 
 /** A sealed package on a version: the signed PDF, the staff file, one signer's copy and the colleague's. */
-async function sealed(versionId: string, signerActionId: string) {
+async function sealed(versionId: string, signerActionId: string, otherActionId?: string) {
   const parent = { app: "agreements", entity_type: "evidence_package", entity_id: versionId }
   const signed = await insertFile(w, parent)
   const staff = await insertFile(w, parent)
   const own = await insertFile(w, parent)
   const colleague = await insertFile(w, parent)
+  const other = await insertFile(w, parent)
   await sql.unsafe(
     insertSql("app_agreements.evidence_packages", {
       id: crypto.randomUUID(),
@@ -121,12 +122,16 @@ async function sealed(versionId: string, signerActionId: string) {
       signed_pdf_file_id: signed,
       evidence_file_id: staff,
       signer_copy_file_ids: {
-        raw: `'${JSON.stringify({ [signerActionId]: own, colleague })}'::jsonb`,
+        raw: `'${JSON.stringify({
+          [signerActionId]: own,
+          colleague,
+          ...(otherActionId ? { [otherActionId]: other } : {}),
+        })}'::jsonb`,
       },
       sealed_at: { raw: "now()" },
     }),
   )
-  return { signed, staff, own, colleague }
+  return { signed, staff, own, colleague, other }
 }
 
 /** The client actions the portal view shows a person, read on the portal's own login. */
@@ -337,6 +342,38 @@ describe("portal documents", () => {
     } finally {
       open.mockRestore()
     }
+  })
+
+  it("one address, two signers: each reads their own link and their own copy", async () => {
+    const a = await agreement(w.companyA, { withFiles: true })
+    await insertShare(w, { company_id: w.companyA, kind: "agreement", object_id: a.id })
+    const link = (invited_name: string, decidedMinutesAgo: number) =>
+      insertClientAction(w, {
+        company_id: w.companyA,
+        target_id: a.versionId,
+        invited_email: w.clientA.email,
+        invited_name,
+        decision: "signed",
+        decided_at: { raw: `now() - interval '${decidedMinutesAgo} minutes'` },
+      })
+    // The other one signed first.
+    const other = await link("Someone Else", 20)
+    const own = await link(w.clientA.name, 10)
+    const f = await sealed(a.versionId, own, other)
+    type Doc = {
+      data: {
+        evidence: Array<{ copyFileId: string }>
+        actions: Array<{ id: string; mine: boolean }>
+      }
+    }
+    const mine = (await (await get(`/documents/${a.id}`)).json()) as Doc
+    expect(mine.data.evidence[0]?.copyFileId).toBe(f.own)
+    expect(mine.data.actions.map((x) => [x.id, x.mine])).toEqual(
+      expect.arrayContaining([
+        [own, true],
+        [other, false],
+      ]),
+    )
   })
 
   it("a share on the agreement itself shows its versions' open link; a closed share, or another company's agreement, shows none", async () => {

@@ -882,15 +882,28 @@ async function removePersonRows(
   const sessions = extractRows<{ id: string }>(
     await tx.execute(sql`DELETE FROM ${K()}.sessions WHERE user_id = ${p.userId} RETURNING id`),
   )
-  // Their open links for this company's documents; a link for another company still reaches them.
+  // Their open links for this company's documents; a link for another company still reaches them,
+  // and so does one of somebody else who signs the same document at their address.
   const actions = extractRows<{ id: string }>(
     await tx.execute(sql`
-      UPDATE ${K()}.client_actions
+      UPDATE ${K()}.client_actions a
          SET revoked_at = now(), revoked_by = ${p.actorId}, revoke_reason = 'access_ended'
-       WHERE org_id = ${p.orgId} AND decided_at IS NULL AND revoked_at IS NULL
-         AND (signer_user_id = ${p.userId}
-              OR (invited_email = ${p.email.toLowerCase()} AND company_id = ${p.companyId}))
-      RETURNING id`),
+       WHERE a.org_id = ${p.orgId} AND a.decided_at IS NULL AND a.revoked_at IS NULL
+         AND (a.signer_user_id = ${p.userId}
+              OR (a.invited_email = ${p.email.toLowerCase()} AND a.company_id = ${p.companyId}
+                  AND (EXISTS (SELECT 1 FROM ${K()}.portal_people pp
+                                WHERE pp.user_id = ${p.userId} AND pp.org_id = a.org_id
+                                  AND pp.contact_id = a.contact_id)
+                       OR EXISTS (SELECT 1 FROM ${K()}.users u
+                                   WHERE u.id = ${p.userId} AND u.org_id = a.org_id
+                                     AND lower(u.name) = lower(a.invited_name))
+                       OR NOT EXISTS (
+                         SELECT 1 FROM ${K()}.client_actions o
+                          WHERE o.org_id = a.org_id AND o.target_id = a.target_id
+                            AND o.invited_email = a.invited_email
+                            AND lower(o.invited_name) <> lower(a.invited_name)
+                            AND o.revoked_at IS NULL))))
+      RETURNING a.id`),
   )
   for (const a of actions) {
     await writeClientActionEvent(tx, {

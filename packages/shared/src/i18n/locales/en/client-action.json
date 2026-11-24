@@ -20,6 +20,7 @@
       "eyebrow": "{{org}}",
       "heading": "{{code}}",
       "body": "You are about to {{verb}} \"{{title}}\". Enter this code on the page to continue. It works for 10 minutes.",
+      "for": "This code is for {{name}} only.",
       "safety": "Nobody from {{org}} will ask you for this code. Do not reply to this email.",
       "footer": "If you did not ask for a code, you can ignore this email."
     },

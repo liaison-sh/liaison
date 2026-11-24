@@ -152,8 +152,8 @@ function agreementsViews(): PortalViewDef[] {
     },
     {
       // The sealed evidence of a readable version, as a client is given it: the signed PDF,
-      // and the copy of the caller's own decided link, or for a colleague who did not sign
-      // the copy with no device at all. The staff file is never named.
+      // and the copy of the caller's own decided link (by name too, when two signers share the
+      // address), or for a colleague who did not sign the copy with no device at all. The staff file is never named.
       name: "evidence",
       select: `SELECT e.version_id, e.signed_pdf_file_id,
        (to_jsonb(e.signer_copy_file_ids) ->> COALESCE(own.id::text, 'colleague'))::uuid AS signer_copy_file_id,
@@ -164,7 +164,15 @@ function agreementsViews(): PortalViewDef[] {
     SELECT ca.id FROM portal.client_actions ca
      WHERE ca.target_id = e.version_id
        AND ca.decided_at IS NOT NULL
-       AND lower(ca.invited_email) = (SELECT lower(m.email) FROM portal.me m)
+       AND EXISTS (
+         SELECT 1 FROM portal.me m
+          WHERE lower(ca.invited_email) = lower(m.email)
+            AND (lower(ca.invited_name) = lower(m.name)
+                 OR NOT EXISTS (
+                   SELECT 1 FROM portal.client_actions o
+                    WHERE o.target_id = ca.target_id AND o.revoked_at IS NULL
+                      AND lower(o.invited_email) = lower(ca.invited_email)
+                      AND lower(o.invited_name) <> lower(ca.invited_name))))
      ORDER BY ca.decided_at LIMIT 1) own ON true
  WHERE e.org_id = (SELECT rls_ctx.org_id())::uuid
    AND e.sealed_at IS NOT NULL

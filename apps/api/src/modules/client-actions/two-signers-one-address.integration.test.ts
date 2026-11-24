@@ -120,6 +120,12 @@ describe("two signers, one address", () => {
     const ip = nextIp()
     const codeA = await codeFor(kit, anne.token, ip, email)
     await codeFor(kit, jean.token, ip, email)
+    // Two mails alike in one box: each says whose code it is.
+    const codeMails = kit.capture.sent.filter(
+      (m) => m.template === "client-action.code" && m.to === email,
+    )
+    expect(codeMails.map((m) => m.text?.includes("Anne Couple"))).toEqual([true, false])
+    expect(codeMails.map((m) => m.text?.includes("Jean Couple"))).toEqual([false, true])
     const onJean = await call(
       "verify",
       { t: jean.token, code: codeA, name: "Jean Couple" },

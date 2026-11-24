@@ -187,6 +187,44 @@ describe("the token page's twelve states", () => {
   }, 60_000)
 })
 
+describe("where a signer's copy stands, when the document's app does not say", () => {
+  it("never that everyone signed while someone has not, and the same when it cannot be read", async () => {
+    const targetId = crypto.randomUUID()
+    const groupId = crypto.randomUUID()
+    const a = await mintTo(kit, kit.w.clientA, { targetId, groupId })
+    const b = await mintTo(kit, kit.w.clientA2, { targetId, groupId })
+    const decide = (id: string, decision: "signed" | "declined" | null) =>
+      sql`UPDATE ${k("client_actions")}
+             SET decision = ${decision}, decided_at = ${decision ? sql`now()` : null}
+           WHERE id = ${id}`
+    const copy = async () => {
+      const answers: unknown[] = []
+      for (const readable of [true, false]) {
+        kit.viewAnswers = readable
+        const res = await call("open", { t: a.token }, { "x-bun-socket-ip": nextIp() })
+        answers.push(((await res.json()) as { copy?: string }).copy)
+      }
+      kit.viewAnswers = true
+      return answers
+    }
+    await decide(a.id, "signed")
+    expect(await copy()).toEqual(["waiting_for_others", "waiting_for_others"])
+    await decide(b.id, "declined")
+    expect(await copy()).toEqual(["not_completed", "not_completed"])
+    await decide(b.id, null)
+    await sql`UPDATE ${k("client_actions")} SET revoked_at = now(), revoke_reason = 'sender_voided'
+               WHERE id = ${b.id}`
+    expect(await copy()).toEqual(["not_completed", "not_completed"])
+    await sql`UPDATE ${k("client_actions")} SET revoked_at = now(), revoke_reason = 'withdrawn'
+               WHERE id = ${b.id}`
+    expect(await copy()).toEqual(["waiting_for_others", "waiting_for_others"])
+    await sql`UPDATE ${k("client_actions")} SET revoked_at = NULL, revoke_reason = NULL
+               WHERE id = ${b.id}`
+    await decide(b.id, "signed")
+    expect(await copy()).toEqual(["on_its_way", "on_its_way"])
+  })
+})
+
 describe("a code asked while the document cannot be read", () => {
   it("uses none of the code sends: the next ask, once it reads again, mails the code", async () => {
     const a = await mintTo(kit)

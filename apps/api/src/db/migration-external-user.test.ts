@@ -28,8 +28,8 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
-const FIRST_NEW_TAG = "0308_mail_inbound_sender_index"
-const LAST_NEW_TAG = "0314_portal_role_and_schema"
+const FIRST_NEW_TAG = "0311_mail_inbound_sender_index"
+const LAST_NEW_TAG = "0317_portal_role_and_schema"
 
 function superuserUrl(): string {
   if (process.env.MIGRATION_DATABASE_URL) return process.env.MIGRATION_DATABASE_URL

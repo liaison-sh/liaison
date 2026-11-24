@@ -9,7 +9,7 @@ import { afterAll, beforeAll, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import postgres from "postgres"
 
-const FILE = new URL("./0347_mail_routines_read_accounts.sql", import.meta.url).pathname
+const FILE = new URL("./0350_mail_routines_read_accounts.sql", import.meta.url).pathname
 const KERN = "mig0347_kernel"
 
 function privilegedUrl(): string {

@@ -240,5 +240,5 @@ Flow messages signed with the routine's title -> apps/api/src/modules/agent/rout
 A flow leg with no agent step needs no credits -> apps/api/src/modules/agent/routines/routine-worker.ts:1424
 Flow scopes added at save, refused when the owner lacks one -> apps/api/src/modules/agent/routines/flow-scopes.ts:36
 Event filter field key checked against the project -> apps/api/src/modules/agent/tools/skills-routines-tools.ts:2839
-Templates that draft mail list mail:accounts:read; installed routines get it -> apps/api/src/modules/agent/routines/routine-run-reads.ts (missingRunReads) ; apps/api/src/db/migrations/0347_mail_routines_read_accounts.sql
+Templates that draft mail list mail:accounts:read; installed routines get it -> apps/api/src/modules/agent/routines/routine-run-reads.ts (missingRunReads) ; apps/api/src/db/migrations/0350_mail_routines_read_accounts.sql
 A reset re-applies text and schedule, not scopes -> apps/api/src/modules/agent/tools/skills-routines-tools.ts (handleResetRoutineToTemplate)

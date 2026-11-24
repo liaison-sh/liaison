@@ -21,10 +21,10 @@ import { insertSql } from "~/seed/factories/org/test-rows"
 import { withRoleCatalogLock } from "~/tests/helpers/role-catalog-lock"
 
 const MIGRATIONS = join(import.meta.dir, "migrations")
-const FIRST_NEW_TAG = "0315_companies"
-const LAST_NEW_TAG = "0318_contact_company_and_lawful_basis"
+const FIRST_NEW_TAG = "0318_companies"
+const LAST_NEW_TAG = "0321_contact_company_and_lawful_basis"
 /** Run after the others, on rows written since: a role, a direct grant and routines. */
-const SCOPE_TAG = "0320_suppressions_read_for_conversation_readers"
+const SCOPE_TAG = "0323_suppressions_read_for_conversation_readers"
 
 function superuserUrl(): string {
   if (process.env.MIGRATION_DATABASE_URL) return process.env.MIGRATION_DATABASE_URL

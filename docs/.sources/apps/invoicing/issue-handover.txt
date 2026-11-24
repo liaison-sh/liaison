@@ -3,7 +3,7 @@ a draft from a planned vs done card keeps the card's lines; its due date stays e
 an agent's invoice issue always waits for a person, even under an auto-approve policy -> bundled-apps/invoicing/app.manifest.json (invoice_issue)
 documents_search finds the documents that bill one project -> bundled-apps/invoicing/src/reads.ts (documentsSearch)
 A draft's invoice keeps the company it was made for (schedule, plan's quote, project); a new customer drops it -> bundled-apps/invoicing/src/issue.ts (documentCompany) ; bundled-apps/invoicing/src/mutations/billing-plan.ts (companyOf) ; bundled-apps/invoicing/src/mutations/from-reconcile.ts (company_id) ; bundled-apps/invoicing/src/mutations/retainer.ts (company_id) ; bundled-apps/invoicing/src/mutations/db-helpers.ts (updateDraftRow)
-The company page and portal list it -> bundled-apps/invoicing/src/reads.ts (allDocumentRefs) ; apps/api/src/db/migrations/0345_invoicing_documents_company_backfill.sql
+The company page and portal list it -> bundled-apps/invoicing/src/reads.ts (allDocumentRefs) ; apps/api/src/db/migrations/0348_invoicing_documents_company_backfill.sql
 An edited draft redraws its waiting issue card; a stale decision or a changed draft is refused -> bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (restageIssueApprovals) ; bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (draftChangedSinceCard) ; bundled-apps/invoicing/src/mutations/drafts.ts (updateDraft)
 A refusal names the draft by its customer -> bundled-apps/invoicing/src/mutations/issue-handover.ts (draftInWords)
 An issue request made before requests showed the amount, the tax country and the terms issues nothing and is asked again -> bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (olderCard, askedAgain)

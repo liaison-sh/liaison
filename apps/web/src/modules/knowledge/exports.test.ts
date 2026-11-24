@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { setAttentionApi } from "~/modules/shell/attention-store"
-import { handleKnowledgeDocumentWsEvent } from "./exports"
-import { knowledgeStore, resetKnowledgeStore } from "./knowledge-store"
+import { handleKnowledgeDocumentWsEvent, resolveKnowledgeDocLabel } from "./exports"
+import { knowledgeStore, loadCollectionsTree, resetKnowledgeStore } from "./knowledge-store"
 
 describe("handleKnowledgeDocumentWsEvent", () => {
   beforeEach(() => {
@@ -73,5 +73,55 @@ describe("handleKnowledgeDocumentWsEvent", () => {
   it("no-ops gracefully when no attention API is registered", async () => {
     setAttentionApi(null)
     await expect(handleKnowledgeDocumentWsEvent("create", { id: "d4" })).resolves.toBeUndefined()
+  })
+
+  it("B10: update event of a page not in the 50 newest renames its tab", async () => {
+    // The recent list (50 newest) does not hold the page; its tab still follows.
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/knowledge/home")
+          return { personal: [], recent: [], needsReview: [], sourceHealth: [] }
+        if (path === "/knowledge/documents/old1")
+          return { id: "old1", title: "Renamed long ago page", body: "" }
+        return []
+      }),
+    }
+    setAttentionApi(api as never)
+    expect(resolveKnowledgeDocLabel("old1")).toBeUndefined()
+    await handleKnowledgeDocumentWsEvent("update", { entityId: "old1" })
+    expect(resolveKnowledgeDocLabel("old1")).toBe("Renamed long ago page")
+  })
+
+  it("a page's tab is named from the folder tree when no list holds it", async () => {
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Eng",
+                parentId: null,
+                ownerUserId: null,
+                documents: [],
+                children: [
+                  {
+                    id: "c2",
+                    name: "RFCs",
+                    parentId: "c1",
+                    ownerUserId: null,
+                    children: [],
+                    documents: [{ id: "deep1", title: "Filed deep down" }],
+                  },
+                ],
+              },
+            ]
+          : [],
+      ),
+    }
+    await loadCollectionsTree(api as never)
+    expect(knowledgeStore.documentsById.deep1).toBeUndefined()
+    expect(knowledgeStore.documents.find((d) => d.id === "deep1")).toBeUndefined()
+    expect(resolveKnowledgeDocLabel("deep1")).toBe("Filed deep down")
+    expect(resolveKnowledgeDocLabel("nowhere")).toBeUndefined()
   })
 })

@@ -110,6 +110,9 @@ export const Sidebar: Component<SidebarProps> = (props) => {
       const onSheetActivationCapture = (e: MouseEvent): void => {
         const target = e.target
         if (!(target instanceof Element)) return
+        // A control that only changes the navigator itself (a tree chevron, a
+        // row menu) says so; the sheet stays for the next tap.
+        if (target.closest("[data-keep-navigator]")) return
         if (target.closest('button, a, [role="button"], [role="menuitem"]')) {
           closePhoneNavigator()
         }

@@ -127,6 +127,33 @@ describe("Knowledge home at phone width", () => {
     render(() => <KnowledgeHome />)
     expect(screen.getByTestId("knowledge-home").className).toContain("max-w-2xl")
   })
+  it("B7: nested folder is reachable on Home", () => {
+    mocks.store.collectionsTree = [
+      {
+        id: "top",
+        name: "Company",
+        parentId: null,
+        children: [
+          {
+            id: "inner",
+            name: "Policies",
+            parentId: "top",
+            children: [],
+            documents: [{ id: "deep", title: "Warranty policy" }],
+          },
+        ],
+        documents: [],
+      },
+    ]
+    setShellTier("phone")
+    render(() => <KnowledgeHome />)
+    fireEvent.click(screen.getByTestId("knowledge-collection-top"))
+    fireEvent.click(screen.getByTestId("knowledge-collection-inner"))
+    fireEvent.click(screen.getByTestId("knowledge-collection-doc-deep"))
+    expect(mocks.openTab).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "knowledge:document", entityId: "deep" }),
+    )
+  })
 })
 
 describe("formatUpdated", () => {

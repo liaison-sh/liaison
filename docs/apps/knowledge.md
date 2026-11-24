@@ -15,17 +15,28 @@ Search matches the words a document contains. When someone asks in another langu
 2. Click **New document** in the sidebar.
 3. Give it a title and write the body. Click **Save**.
 
-The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Use **New personal folder**, **New shared folder** or **New folder** to make folders, and **Move to** to file a document. Documents in no folder you can see are under **Unfiled**.
+You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
+
+If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
+
+## Organise documents and folders
+
+The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Any member can make, rename, move and delete the folders they see, and rename and move the documents they can edit.
+
+- **New page in a folder**: point at the folder and click its **+**. A page made in one of your personal folders is yours alone until you share it.
+- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Archive** if you hold `knowledge:documents:archive`. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
+- **Move to…** opens a list of folders you can search. Moving between **Personal** and **Shared with org** asks first and says who will see it. You can also drag a row onto a folder.
+- **New personal folder** and **New shared folder** (the **+** next to each tree's name) make a top folder.
+
+The open document is marked in the tree, its folders open, and a breadcrumb above its title says where it is (for example **Shared with org / Policies**). When someone else adds, renames, moves or deletes something you can see, your tree follows within a few seconds. If an action is refused, a message says why; nothing is changed.
+
+Documents in no folder you can see are under **Unfiled**. Click **Unfiled** at the bottom of the sidebar to list them, and click it again, or **Knowledge** above the list, to go back. Press Enter in the sidebar's search box to see every result.
 
 A personal folder is yours alone: nobody else sees it, admins included. It does not change who can read a document: one you share from a personal folder is under **Unfiled** for the others. A subfolder is seen by whoever sees the folder it is in. A shared folder that holds something of another person stays shared.
 
 Deleting a folder moves its documents and subfolders to the folder above it. At the top, its documents become unfiled. No document is deleted. When a person's account is erased, their personal folders are archived without their names.
 
-Moving a document, or taking it out of a folder, needs the right to edit it. A folder synced from another app is changed in that app only. You can still take one of your own documents out of it. When the sync is stopped, its folders become ordinary ones; syncing again takes them back.
-
-You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
-
-If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
+Moving a document, or taking it out of a folder, needs the right to edit it, and happens in one step: if it is refused, the document stays where it was. A folder synced from another app is changed in that app only, and its rows have no rename, move or delete. You can still take one of your own documents out of it. When the sync is stopped, its folders become ordinary ones; syncing again takes them back.
 
 ## Share a document
 

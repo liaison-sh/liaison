@@ -923,10 +923,10 @@ describe("discount approval cards: minimum and products by title", () => {
       undefined,
       {
         connectionIdentifier: null,
-        context: { proposedTitles: { "gid://shopify/Product/11": "Erae Sound" } },
+        context: { proposedTitles: { "gid://shopify/Product/11": "Acme Sound" } },
       },
     )
-    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Applies to products: Acme Sound")
     expect(card.lines).toContain(
       "Minimum purchase: order subtotal of at least 1000 (store currency)",
     )
@@ -973,14 +973,14 @@ describe("discount approval cards: minimum and products by title", () => {
             },
           },
           proposedTitles: {
-            "gid://shopify/Product/11": "Erae Sound",
+            "gid://shopify/Product/11": "Acme Sound",
             "gid://shopify/Product/12": "Cable",
           },
         },
       },
     )
     expect(card.title).toBe("Update discount BF10")
-    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Applies to products: Acme Sound")
     expect(card.lines).toContain("Removes products: Cable")
     expect(card.lines).toContain("Currently applies to: Cable")
   })
@@ -992,18 +992,18 @@ describe("discount approval cards: minimum and products by title", () => {
       {
         connectionIdentifier: null,
         context: {
-          title: "Black Friday Erae Sound -30%",
+          title: "Black Friday Acme Sound -30%",
           attributes: {
             method: "automatic",
             status: "ACTIVE",
-            summary: "30% off Erae Sound",
+            summary: "30% off Acme Sound",
             minimumRequirement: { type: "subtotal", amount: "1000.0", currencyCode: "EUR" },
           },
         },
       },
     )
-    expect(card.title).toBe("Deactivate automatic discount: Black Friday Erae Sound -30%")
-    expect(card.lines).toContain("Today: 30% off Erae Sound")
+    expect(card.title).toBe("Deactivate automatic discount: Black Friday Acme Sound -30%")
+    expect(card.lines).toContain("Today: 30% off Acme Sound")
     expect(card.lines).toContain("Current minimum: subtotal of at least 1000.0 EUR")
   })
 })
@@ -1065,12 +1065,12 @@ describe("automatic discount approval cards", () => {
       undefined,
       {
         connectionIdentifier: null,
-        context: { proposedTitles: { "gid://shopify/Product/11": "Erae Sound" } },
+        context: { proposedTitles: { "gid://shopify/Product/11": "Acme Sound" } },
       },
     )
     expect(card.title).toBe("Create automatic discount: Black Friday digital -30%")
     expect(card.lines).toContain("Discount: 30% off")
-    expect(card.lines).toContain("Applies to products: Erae Sound")
+    expect(card.lines).toContain("Applies to products: Acme Sound")
     expect(card.lines).toContain("Minimum purchase: none")
     expect(card.lines).toContain(
       "Combines with: order discounts (not product discounts, shipping discounts)",

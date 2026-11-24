@@ -200,8 +200,15 @@ function documentRecord(st, hex, body, attachments, losses) {
   return rec
 }
 
+/** The line without its HTML tags, removed until none is left (`<a<b>>` included). */
 function stripTags(line) {
-  return line.replace(/<[^>]*>/g, "").trim()
+  let out = line
+  let before
+  do {
+    before = out
+    out = out.replace(/<[^>]*>/g, "")
+  } while (out !== before)
+  return out.trim()
 }
 
 /** One page's Markdown into the knowledge body, its files and its losses. */
@@ -350,6 +357,7 @@ async function rewriteLink(st, ctx, dir, image, label, target, fileRefs, attachm
 function cell(value) {
   return clip(String(value == null ? "" : value), CELL_CHARS)
     .replace(/\r?\n/g, " ")
+    .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
 }
 

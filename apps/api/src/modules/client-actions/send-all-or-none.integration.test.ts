@@ -15,7 +15,7 @@ import { env } from "~/lib/env"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { createClientActionsMethods } from "~/modules/apps/sandbox/bridge/client-actions"
 import type { BridgeContext } from "~/modules/apps/sandbox/bridge/context"
-import { remindClientActions } from "~/modules/client-actions/mint"
+import { remindClientActions, revokeClientAction } from "~/modules/client-actions/mint"
 import { ClientActionTargetsTestAccess } from "~/modules/client-actions/targets"
 import { mailUnsentLinks } from "~/modules/client-actions/unsent-links"
 import { superuserUrlForTestDb } from "~/tests/route-test-setup"
@@ -83,6 +83,8 @@ interface Answer {
     deduped: boolean
     mail: string | null
   }>
+  action?: { id: string; status: string; invited_name: string }
+  opened_id?: string | null
   reminded?: Array<{ id: string }>
   recently_mailed?: Array<{ id: string }>
 }
@@ -548,6 +550,70 @@ describe("who the signers are", () => {
       payload: { data: { visibleTo?: string[] } }
     }>
     expect(e?.payload.data.visibleTo).toEqual(readers)
+  })
+})
+
+describe("a new link in the turn of a send one after the other", () => {
+  const state = async (id: string) =>
+    (
+      (await sql`SELECT token_hash, revoked_at FROM ${k("client_actions")}
+        WHERE id = ${id}`) as unknown as Array<{
+        token_hash: string | null
+        revoked_at: Date | null
+      }>
+    )[0]
+
+  it("a withdrawn signer whose turn has not come waits for it, with no link and no mail", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 3, { order: "sequential" }))
+    const [first, second] = (out.actions ?? []).map((a) => a.id)
+    expect(await mailsSettle(targetId, 1)).toBe(1)
+    await revokeClientAction({
+      orgId: kit.w.orgId,
+      id: second ?? "",
+      reason: "withdrawn",
+      byUserId: kit.w.admin.userId,
+    })
+    const again = await mint({ new_link: { after: second } })
+    expect(again).toMatchObject({ status: "ok", action: { status: "waiting_turn" } })
+    const placed = again.action?.id ?? ""
+    expect((await state(placed))?.token_hash).toBeNull()
+    expect(await mailsSettle(targetId, 1)).toBe(1)
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'signed'
+               WHERE id = ${first ?? ""}`
+    const turn = await mint({ next_turn_after: first })
+    expect(turn.opened_id).toBe(placed)
+    expect(await mailsSettle(targetId, 2)).toBe(2)
+  })
+
+  it("asked twice it is one link; another address in a place already taken is refused", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 2))
+    await mailsSettle(targetId, 2)
+    const first = out.actions?.[0]?.id ?? ""
+    const outs = await Promise.all([
+      mint({ new_link: { after: first } }),
+      mint({ new_link: { after: first } }),
+    ])
+    expect(outs.map((o) => o.status)).toEqual(["ok", "ok"])
+    expect(new Set(outs.map((o) => o.action?.id)).size).toBe(1)
+    expect(await mailsSettle(targetId, 3)).toBe(3)
+    const other = await mint({
+      new_link: { after: first, email: `x-${targetId.slice(0, 8)}@signers.example` },
+    })
+    expect(other.error?.code).toBe("ALREADY_REPLACED")
+    expect(await rowsOf(targetId)).toHaveLength(3)
+    expect((await state(first))?.revoked_at).not.toBeNull()
+  })
+
+  it("a document that reads differently now withdraws nothing", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 1))
+    await mailsSettle(targetId, 1)
+    kit.view = { ...kit.view, sha256: "d".repeat(64) }
+    const first = out.actions?.[0]?.id ?? ""
+    expect((await mint({ new_link: { after: first } })).error?.code).toBe("VERSION_CHANGED")
+    expect((await state(first))?.revoked_at).toBeNull()
   })
 })
 

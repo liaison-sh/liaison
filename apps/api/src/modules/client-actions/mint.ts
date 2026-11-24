@@ -1437,104 +1437,252 @@ export async function remindClientActions(input: {
   return { reminded: out.reminded, recentlyMailed: out.recentlyMailed }
 }
 
-/**
- * A new link for one signer of a send, in the same group and turn: after their link
- * expired or was withdrawn, after a decline made without the emailed code, or to a corrected
- * address. Their earlier link, if still open, is withdrawn first. Signatures already given
- * stand. A signer who signed, or who declined after proving the code, gets no new link.
- */
-export async function newLinkAfter(input: {
+/** The link a later one takes the place of, as both read it under the target's lock. */
+interface PriorLink {
+  id: string
+  kind: ClientActionKind
+  target_type: string
+  target_id: string
+  target_sha256: string | null
+  target_blocks_sha256: string | null
+  contact_id: string | null
+  company_id: string | null
+  invited_email: string
+  invited_name: string | null
+  sign_order: number | null
+  group_id: string
+  required_phrase: string | null
+  decision: string | null
+  code_verified_at: Date | null
+  revoked_at: Date | null
+  revoke_reason: string | null
+  expires_at: Date
+  token_hash: string | null
+  visible_to: string[] | null
+}
+
+async function readPriorLink(
+  tx: PrivilegedDb,
+  input: { orgId: string; targetApp: string; afterActionId: string },
+): Promise<PriorLink> {
+  const [prior] = extractRows<PriorLink>(
+    await tx.execute(sql`
+      SELECT id, kind, target_type, target_id, target_sha256, target_blocks_sha256, contact_id,
+             company_id, invited_email, invited_name, sign_order, group_id, required_phrase, decision,
+             code_verified_at, revoked_at, revoke_reason, expires_at, token_hash, visible_to
+        FROM ${K()}.client_actions
+       WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
+         AND target_app = ${input.targetApp}
+       FOR UPDATE
+    `),
+  )
+  if (!prior) throw new ClientActionError("NOT_FOUND", "No such link of this app", 404)
+  return prior
+}
+
+/** A later link that took this one's place, if one did. */
+async function replacementOf(
+  tx: PrivilegedDb,
+  orgId: string,
+  prior: PriorLink,
+): Promise<(SentLink & { revoked_at: Date | null }) | null> {
+  const [later] = extractRows<SentLink & { revoked_at: Date | null }>(
+    await tx.execute(sql`
+      SELECT n.id, n.group_id, n.kind, n.contact_id, n.invited_email, n.invited_name, n.sign_order,
+             n.token_hash, n.decision, n.expires_at, n.signer_user_id, n.sent_at, n.revoked_at,
+             false AS mail_failed
+        FROM ${K()}.client_actions n
+        JOIN ${K()}.client_action_events e ON e.action_id = n.id AND e.org_id = n.org_id
+       WHERE n.org_id = ${orgId} AND n.group_id = ${prior.group_id}
+         AND e.event = 'created' AND e.meta->>'replaces' = ${prior.id}
+       ORDER BY n.created_at LIMIT 1
+    `),
+  )
+  return later ?? null
+}
+
+/** Under "one after the other": whether a signer before this turn has not signed yet. */
+async function earlierUnsigned(
+  tx: PrivilegedDb,
+  orgId: string,
+  prior: PriorLink,
+): Promise<boolean> {
+  if (prior.sign_order === null) return false
+  const [row] = extractRows<{ n: number }>(
+    await tx.execute(sql`
+      SELECT count(*)::int AS n FROM ${K()}.client_actions g
+       WHERE g.org_id = ${orgId} AND g.group_id = ${prior.group_id}
+         AND g.sign_order < ${prior.sign_order} AND NOT ${replacedSql("g")}
+         AND (g.decision IS NULL OR g.decision NOT IN ('signed', 'accepted'))
+    `),
+  )
+  return (row?.n ?? 0) > 0
+}
+
+interface InPlaceInput {
   orgId: string
   targetApp: string
   afterActionId: string
-  email?: string | null
   expiresInDays?: (typeof EXPIRY_DAYS)[number]
   createdByUserId: string | null
   createdByAgentId?: string | null
   approvedByUserId?: string | null
-}): Promise<MintResult & { replacedId: string }> {
-  const [prior] = await withPrivilegedDb(input.orgId, "client-action-new-link-read", async (tx) =>
-    extractRows<{
-      id: string
-      kind: ClientActionKind
-      target_type: string
-      target_id: string
-      target_sha256: string | null
-      target_blocks_sha256: string | null
-      contact_id: string | null
-      company_id: string | null
-      invited_email: string
-      invited_name: string | null
-      sign_order: number | null
-      group_id: string | null
-      required_phrase: string | null
-      decision: string | null
-      code_verified_at: Date | null
-      revoked_at: Date | null
-      expires_at: Date
-      token_hash: string | null
-      visible_to: string[] | null
-    }>(
-      await tx.execute(sql`
-        SELECT id, kind, target_type, target_id, target_sha256, target_blocks_sha256, contact_id,
-               company_id, invited_email, invited_name, sign_order, group_id, required_phrase, decision,
-               code_verified_at, revoked_at, expires_at, token_hash, visible_to
-          FROM ${K()}.client_actions
-         WHERE id = ${input.afterActionId} AND org_id = ${input.orgId}
-           AND target_app = ${input.targetApp}
-      `),
-    ),
-  )
-  if (!prior) throw new ClientActionError("NOT_FOUND", "No such link of this app", 404)
-  if (prior.decision !== null && prior.decision !== "declined")
-    throw new ClientActionError("ALREADY_DECIDED", "This signer already gave their answer", 409)
-  if (prior.decision === "declined" && prior.code_verified_at !== null)
-    throw new ClientActionError(
-      "DECLINED_BY_SIGNER",
-      "This signer declined after proving the emailed code; a new version is sent for a new answer",
-      409,
-    )
-  if (prior.decision === null && prior.revoked_at === null && prior.token_hash === null)
-    throw new ClientActionError(
-      "NOT_THEIR_TURN",
-      "This signer waits for the signer before them; their link opens after that signature",
-      409,
-    )
-  const email = input.email?.trim().toLowerCase() || prior.invited_email
-  const stillOpen =
-    prior.decision === null && prior.revoked_at === null && new Date(prior.expires_at) > new Date()
-  if (stillOpen)
-    await revokeClientAction({
-      orgId: input.orgId,
-      id: prior.id,
-      reason: "replaced",
-      byUserId: input.createdByUserId,
-    })
-  const r = await mintClientAction({
+}
+
+type InPlaceResult = MintResult & { replacedId: string }
+
+/**
+ * A link in the place of an earlier one: same document held to the same fingerprint, same group,
+ * turn, phrase and readers. One transaction withdraws the earlier link when it is still open and
+ * writes the new one, or neither. Under "one after the other" it waits for its turn, with no token
+ * and no mail, until every signer before it has signed. The same call again answers the link it
+ * made; another person in a place already taken is refused.
+ */
+async function linkInPlaceOf(
+  input: InPlaceInput,
+  who: (prior: PriorLink) => Pick<MintInput, "contactId" | "companyId"> & {
+    email: string
+    name: string | null
+    message?: string | null
+  },
+  refuse: (tx: PrivilegedDb, prior: PriorLink) => Promise<void> | void,
+): Promise<InPlaceResult> {
+  const first = await withPrivilegedDb(input.orgId, "client-action-new-link-read", async (tx) => {
+    const prior = await readPriorLink(tx, input)
+    if (!(await replacementOf(tx, input.orgId, prior))) await refuse(tx, prior)
+    return prior
+  })
+  const w = who(first)
+  const mint: MintInput = {
     orgId: input.orgId,
-    kind: prior.kind,
+    kind: first.kind,
     targetApp: input.targetApp,
-    targetType: prior.target_type,
-    targetId: prior.target_id,
-    ...(prior.target_sha256 ? { targetSha256: prior.target_sha256 } : {}),
-    ...(prior.target_blocks_sha256 ? { targetBlocksSha256: prior.target_blocks_sha256 } : {}),
-    contactId: prior.contact_id,
-    companyId: prior.company_id,
-    invitedEmail: email,
-    invitedName: prior.invited_name,
+    targetType: first.target_type,
+    targetId: first.target_id,
+    ...(first.target_sha256 ? { targetSha256: first.target_sha256 } : {}),
+    ...(first.target_blocks_sha256 ? { targetBlocksSha256: first.target_blocks_sha256 } : {}),
+    contactId: w.contactId,
+    companyId: w.companyId,
+    invitedEmail: w.email,
+    invitedName: w.name,
     expiresInDays: input.expiresInDays ?? 14,
-    signOrder: prior.sign_order,
-    groupId: prior.group_id,
-    requiredPhrase: prior.required_phrase,
+    signOrder: first.sign_order,
+    groupId: first.group_id,
+    requiredPhrase: first.required_phrase,
+    message: w.message ?? null,
     // A restricted target's link is seen by its list alone: the new link keeps the list the
     // one it replaces holds (the follow step keeps that one current), never NULL for everyone.
-    ...(prior.visible_to && prior.visible_to.length > 0 ? { visibleTo: prior.visible_to } : {}),
+    ...(first.visible_to && first.visible_to.length > 0 ? { visibleTo: first.visible_to } : {}),
     createdByUserId: input.createdByUserId,
     createdByAgentId: input.createdByAgentId ?? null,
     approvedByUserId: input.approvedByUserId ?? null,
-    replacesActionId: prior.id,
+    replacesActionId: first.id,
+  }
+  assertMintable(mint)
+  const view = await readMintView(mint)
+  const made = await withPrivilegedDb(input.orgId, "client-action-new-link", async (tx) => {
+    await lockTargetLinks(tx, mint)
+    const prior = await readPriorLink(tx, input)
+    const invitee = await resolveInvitee(tx, mint)
+    const later = await replacementOf(tx, input.orgId, prior)
+    if (later) {
+      const key = signerKey({ ...invitee, name: nameOf(invitee) })
+      const had = signerKey({
+        contactId: later.contact_id,
+        email: later.invited_email,
+        name: later.invited_name,
+      })
+      const stands =
+        later.decision === null &&
+        later.revoked_at === null &&
+        new Date(later.expires_at).getTime() > Date.now()
+      if (key !== had || !stands)
+        throw new ClientActionError(
+          "ALREADY_REPLACED",
+          `A later link, to ${later.invited_name}, already took this one's place`,
+          409,
+        )
+      return {
+        input: mint,
+        token: null,
+        mailId: "",
+        mail: null,
+        staffMail: null,
+        result: {
+          id: later.id,
+          status: later.token_hash ? ("open" as const) : ("waiting_turn" as const),
+          expiresAt: new Date(later.expires_at),
+          mailQueued: false,
+          deduped: true,
+          invitedEmail: later.invited_email,
+          invitedName: later.invited_name,
+          signerIsStaff: later.signer_user_id !== null,
+          title: view.title,
+          sharedOnPortal: false,
+        },
+      } satisfies Inserted
+    }
+    await refuse(tx, prior)
+    if (prior.decision === null && prior.revoked_at === null) {
+      await tx.execute(sql`
+        UPDATE ${K()}.client_actions
+           SET revoked_at = now(), revoked_by = ${input.createdByUserId}, revoke_reason = 'replaced'
+         WHERE id = ${prior.id} AND org_id = ${input.orgId}`)
+      await writeClientActionEvent(tx, {
+        orgId: input.orgId,
+        actionId: prior.id,
+        event: "revoked",
+        actorKind: input.createdByUserId ? "staff" : "system",
+        actorUserId: input.createdByUserId,
+        meta: { reason: "replaced" },
+      })
+    }
+    const sender = await readSender(tx, input.orgId, input.createdByUserId)
+    return insertClientAction(
+      tx,
+      { ...mint, waitingTurn: await earlierUnsigned(tx, input.orgId, prior) },
+      view,
+      invitee,
+      sender,
+    )
   })
-  return { ...r, replacedId: prior.id }
+  mailInBackground(input.orgId, mailsOf([made]))
+  return { ...made.result, replacedId: first.id }
+}
+
+/**
+ * A new link for one signer of a send, in the same group and turn: after their link
+ * expired or was withdrawn, after a decline made without the emailed code, or to a corrected
+ * address. Their earlier link, if still open, is withdrawn with it. Signatures already given
+ * stand. A signer who signed, or who declined after proving the code, gets no new link; one whose
+ * turn has not come waits for it.
+ */
+export function newLinkAfter(input: InPlaceInput & { email?: string | null }): Promise<InPlaceResult> {
+  return linkInPlaceOf(
+    input,
+    (prior) => ({
+      contactId: prior.contact_id,
+      companyId: prior.company_id,
+      email: input.email?.trim().toLowerCase() || prior.invited_email,
+      name: prior.invited_name,
+    }),
+    (_tx, prior) => {
+      if (prior.decision !== null && prior.decision !== "declined")
+        throw new ClientActionError("ALREADY_DECIDED", "This signer already gave their answer", 409)
+      if (prior.decision === "declined" && prior.code_verified_at !== null)
+        throw new ClientActionError(
+          "DECLINED_BY_SIGNER",
+          "This signer declined after proving the emailed code; a new version is sent for a new answer",
+          409,
+        )
+      if (prior.decision === null && prior.revoked_at === null && prior.token_hash === null)
+        throw new ClientActionError(
+          "NOT_THEIR_TURN",
+          "This signer waits for the signer before them; their link opens after that signature",
+          409,
+        )
+    },
+  )
 }
 
 /** One link of a target as its app lists it: who, which turn, and where it stands. */

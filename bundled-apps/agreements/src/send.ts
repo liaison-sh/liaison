@@ -1504,7 +1504,10 @@ export async function agreementNewLink(
     status: "ok",
     agreement: { id: a.id, number: a.number, status },
     client_action: { id: out.action.id, replaces: out.replaced_id ?? rec.id },
-    message: `${a.number} version ${version.number}: a new link went to ${out.action.invited_name} <${out.action.invited_email}>, valid ${expires} days; their earlier link no longer works and signatures already given stand. Nothing else was sent.`,
+    message:
+      out.action.status === "waiting_turn"
+        ? `${a.number} version ${version.number}: ${out.action.invited_name} <${out.action.invited_email}> has their turn back; their link is mailed after the signer before them signs. Signatures already given stand. Nothing was sent.`
+        : `${a.number} version ${version.number}: a new link went to ${out.action.invited_name} <${out.action.invited_email}>, valid ${expires} days; their earlier link no longer works and signatures already given stand. Nothing else was sent.`,
   }
 }
 

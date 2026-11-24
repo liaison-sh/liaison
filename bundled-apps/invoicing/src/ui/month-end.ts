@@ -281,6 +281,10 @@ export interface ScheduleOption {
   id: string
   /** Null once the schedule has ended and its person was deleted. */
   contact_id: string | null
+  /** A retainer's included minutes: null on a plain schedule. */
+  retainer_minutes?: number | null
+  /** A retainer turned off: the first month (`YYYY-MM`) the run bills it. */
+  retainer_run_from?: string
   lines: Array<{
     description: string
     qty: number | string
@@ -306,6 +310,18 @@ export function scheduleItems(s: ScheduleOption, period: string): Array<Record<s
 export function missingSchedules<T extends { name: string }>(options: T[], rows: RunRow[]): T[] {
   const billed = new Set(rows.map((r) => (r.customer ?? "").trim().toLowerCase()).filter(Boolean))
   return options.filter((o) => !billed.has(o.name.trim().toLowerCase()))
+}
+
+/**
+ * Whether a run of `issueOn` may hold the schedule's invoice: a retainer is invoiced from its
+ * project's card, at its own month's terms, never from a run.
+ */
+export function billedByRun(
+  s: Pick<ScheduleOption, "retainer_minutes" | "retainer_run_from">,
+  issueOn: string | null,
+): boolean {
+  if (Number(s.retainer_minutes ?? 0) > 0) return false
+  return !s.retainer_run_from || (issueOn ?? "").slice(0, 7) >= s.retainer_run_from
 }
 
 /** A row the draft job held for want of an address (`recurring/item-state.ts`, `NO_ADDRESS`). */

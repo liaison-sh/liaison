@@ -1,0 +1,6 @@
+Turning a retainer off applies from the next month, the run starts with the first month after -> bundled-apps/invoicing/src/recurring/tools.ts (recurringScheduleUpdate) ; bundled-apps/invoicing/src/recurring/retainer.ts (withRetainerOff, isRetainerMonth)
+A month a retainer invoice or an advance covers is a retainer month -> bundled-apps/invoicing/src/recurring/run-dates.ts (firstRunMonth, runBills)
+The answer and the editor name the last retainer month, the run's first month and a renewal dropped -> bundled-apps/invoicing/src/recurring/tools.ts (offText) ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (retainerOffText, turnedOffText)
+On again from the next month on the same project; a longer period holding a retainer month is refused -> bundled-apps/invoicing/src/recurring/tools.ts (retainerPastRefusal)
+A change of terms needs expected_version; of two changes at once one is refused -> bundled-apps/invoicing/src/recurring/tools.ts (versionMissing) ; bundled-apps/invoicing/src/recurring/schedule-write.ts (writeVersion)
+A row's change from now on keeps a signed agreement's lines -> bundled-apps/invoicing/src/recurring/run-card.ts (writeSchedulePatch, linesKeptNote)

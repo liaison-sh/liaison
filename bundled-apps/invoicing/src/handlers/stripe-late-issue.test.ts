@@ -69,6 +69,24 @@ describe("a Stripe invoice issued in a later month than Stripe finalized it", ()
     })
     expect(none.notices[0]?.data).toMatchObject({ period: "not given by Stripe" })
   })
+
+  test("of several lines it names the first day billed to the last, whatever their order", async () => {
+    at("2026-12-10T10:00:00Z")
+    const line = (start: string, end: string) => ({
+      description: "Pro plan",
+      quantity: 1,
+      unit_amount_excl_minor: "5000",
+      tax_rate_bp: 2000,
+      tax_minor: "1000",
+      period_start: start,
+      period_end: end,
+    })
+    const { notices } = await issued({
+      finalized_at: "2026-11-30T10:00:00Z",
+      lines: [line("2026-11-01", "2026-12-31"), line("2026-10-01", "2026-10-31")],
+    })
+    expect(notices[0]?.data).toMatchObject({ period: "2026-10-01 to 2026-12-31" })
+  })
 })
 
 describe("a normal invoice raises none", () => {

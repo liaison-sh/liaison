@@ -259,9 +259,9 @@ async function retainerPreview(
   companyId: string | null,
   contactId: string | null,
 ): Promise<PreviewTotalsResult> {
-  const s = await retainerScheduleOf(ctx, projectId)
   const from =
     typeof input.periodFrom === "string" && DAY.test(input.periodFrom) ? input.periodFrom : null
+  const s = await retainerScheduleOf(ctx, projectId, from?.slice(0, 7) ?? "")
   if (!s || !from) missing.push("retainer")
   let excl: number | null = null
   let vat: number | null = null

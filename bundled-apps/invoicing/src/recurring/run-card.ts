@@ -13,8 +13,17 @@ import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { runCardLines } from "../summarizers"
 import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
-import { isRetainerSchedule, monthOf, nextMonth, termsForMonth, withTermsFrom } from "./retainer"
+import {
+  isRetainerSchedule,
+  monthOf,
+  nextMonth,
+  termsForMonth,
+  termsInForce,
+  withOffLinesFrom,
+  withTermsFrom,
+} from "./retainer"
 import { addDays, weekdayOf } from "./schedule"
+import { claimSchedule, writeVersion } from "./schedule-write"
 
 export { currentItemHash, itemContentHash }
 
@@ -395,6 +404,7 @@ export async function recurringRunIssue(
   const approvedIds: string[] = []
   const changed: string[] = []
   const patched: string[] = []
+  const keptSigned: string[] = []
   for (const item of all) {
     // Only rows a card can show are approved: a row that needs a fix stays a draft.
     if (
@@ -419,10 +429,12 @@ export async function recurringRunIssue(
     if (shown === undefined && wanted.size > 0) continue
     // "From now on" reaches its schedule only now, with a person's approval, once.
     const written = await writeSchedulePatch(ctx, item)
-    if (written) patched.push(written)
     const now = written
       ? (((await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null) ?? item)
       : item
+    const signed = written ? jsonOf<Row>(now.schedule_patch, {}).lines_kept : undefined
+    if (typeof signed === "string") keptSigned.push(`${written} (${signed})`)
+    else if (written) patched.push(written)
     await ctx.db.update("recurring_run_items", String(item.id), {
       state: "approved",
       approved_hash: itemContentHash(now, draft, lines, issuer),
@@ -464,6 +476,9 @@ export async function recurringRunIssue(
         : "") +
       (patched.length > 0
         ? ` ${patched.length} schedule${patched.length === 1 ? "" : "s"} now bill${patched.length === 1 ? "s" : ""} the new terms from the next period: ${patched.join(", ")}.`
+        : "") +
+      (keptSigned.length > 0
+        ? ` A change of the lines from now on was not written over a signed agreement: ${keptSigned.join(", ")}.`
         : ""),
   }
 }
@@ -472,38 +487,85 @@ export async function recurringRunIssue(
  * Write a row's "from now on" patch to its schedule, raising the schedule's version. Returns the
  * schedule id, or null when there is nothing to write or it was written at an earlier approval.
  * On a schedule that became a retainer since, the lines are its terms of the next period that has
- * not begun: the month already running keeps its own.
+ * not begun: the month already running keeps its own. Terms a signed agreement set are never
+ * replaced: the patch then leaves the lines alone, and the row says why.
  */
 export async function writeSchedulePatch(ctx: RunCtx, item: Row): Promise<string | null> {
   const patch = jsonOf<Row | null>(item.schedule_patch, null)
   if (!patch || patch.written === true || !item.schedule_id) return null
-  const schedule = (await ctx.db.findOne(
-    "recurring_schedules",
-    String(item.schedule_id),
-  )) as Row | null
-  if (!schedule) return null
-  const data: Row = { version: Number(schedule.version ?? 1) + 1 }
-  for (const key of ["lines", "contact_id", "due_rule", "due_days", "notes"])
-    if (key in patch) data[key] = patch[key]
-  if ("lines" in data && isRetainerSchedule(schedule)) {
-    const issuer = await findOneWhere(ctx, "issuer_profiles", { id: schedule.issuer_profile_id })
-    const now = await ctx.time.civil({ timezone: String(issuer?.timezone || "UTC") })
-    const next = nextMonth(monthOf(now.date))
-    const period = String(item.period_key)
-    const after = /^\d{4}-\d{2}$/.test(period) ? nextMonth(period) : next
-    const from = after > next ? after : next
-    const { lines, ...rest } = data
-    await ctx.db.update("recurring_schedules", String(item.schedule_id), {
-      ...rest,
-      ...withTermsFrom(schedule, from, { ...termsForMonth(schedule, from), lines }),
+  const id = String(item.schedule_id)
+  // Taken again on what the schedule holds when another change is written at the same moment.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!(await ctx.db.findOne("recurring_schedules", id))) return null
+    const token = await claimSchedule(ctx, id)
+    const schedule = (await ctx.db.findOne("recurring_schedules", id)) as Row | null
+    if (!schedule) return null
+    const version = Number(schedule.version ?? 1)
+    const data: Row = {}
+    for (const key of ["lines", "contact_id", "due_rule", "due_days", "notes"])
+      if (key in patch) data[key] = patch[key]
+    const kept =
+      "lines" in data && isRetainerSchedule(schedule)
+        ? await patchRetainerLines(ctx, schedule, item, data)
+        : null
+    const changes = Object.keys(data).length > 0
+    if (
+      changes &&
+      !(await writeVersion(ctx, { token, version }, { ...data, version: version + 1 }))
+    )
+      continue
+    await ctx.db.update("recurring_run_items", String(item.id), {
+      schedule_patch: {
+        ...patch,
+        written: true,
+        written_version: changes ? version + 1 : version,
+        ...(kept ? { lines_kept: kept } : {}),
+      },
+      ...(kept ? { note: [item.note, linesKeptNote(kept)].filter(Boolean).join(" · ") } : {}),
     })
-  } else {
-    await ctx.db.update("recurring_schedules", String(item.schedule_id), data)
+    return id
   }
-  await ctx.db.update("recurring_run_items", String(item.id), {
-    schedule_patch: { ...patch, written: true, written_version: data.version },
-  })
-  return String(item.schedule_id)
+  throw new Error(
+    `schedule_changed: schedule ${id} was changed at the same moment, so nothing was approved. Approve the run again.`,
+  )
+}
+
+/** The note on a row whose change from now on left a signed agreement's lines alone. */
+export function linesKeptNote(agreement: string): string {
+  return `Lines from now on kept: ${agreement} is signed`
+}
+
+/**
+ * A patch's lines on a retainer, as dated terms in `data`. Returns the signed agreement whose lines
+ * stay, when one set the terms the patch would replace.
+ */
+async function patchRetainerLines(
+  ctx: RunCtx,
+  schedule: Row,
+  item: Row,
+  data: Row,
+): Promise<string | null> {
+  const lines = data.lines
+  delete data.lines
+  const issuer = await findOneWhere(ctx, "issuer_profiles", { id: schedule.issuer_profile_id })
+  const now = await ctx.time.civil({ timezone: String(issuer?.timezone || "UTC") })
+  const next = nextMonth(monthOf(now.date))
+  const period = String(item.period_key)
+  const after = /^\d{4}-\d{2}$/.test(period) ? nextMonth(period) : next
+  // Off by then: the run bills the new lines from the row's next month, as on a plain schedule.
+  if (termsInForce(schedule, after)?.off) {
+    Object.assign(data, withOffLinesFrom(schedule, after, lines))
+    return null
+  }
+  const from = after > next ? after : next
+  const held = termsInForce(schedule, from)
+  if (held?.off) {
+    Object.assign(data, withOffLinesFrom(schedule, from, lines))
+    return null
+  }
+  if (held?.agreement_id) return held.agreement_number || held.agreement_id
+  Object.assign(data, withTermsFrom(schedule, from, { ...termsForMonth(schedule, from), lines }))
+  return null
 }
 
 /** Undo an approval before the first number: the run goes back to drafted and a new card is staged. */

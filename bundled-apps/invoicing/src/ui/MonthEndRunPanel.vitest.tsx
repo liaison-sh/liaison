@@ -534,6 +534,26 @@ describe("the month-end panel", () => {
         lines: line("Team plan, {period}", 65000),
         version: 1,
       },
+      // A retainer, and one whose last retainer month is this run's: their cards bill it.
+      {
+        id: "s-retainer",
+        issuer_profile_id: "iss-1",
+        contact_id: "c-arlon",
+        status: "active",
+        retainer_minutes: 2400,
+        lines: line("Retainer of the month after", 49000),
+        version: 1,
+      },
+      {
+        id: "s-off",
+        issuer_profile_id: "iss-1",
+        contact_id: "c-arlon",
+        status: "active",
+        retainer_minutes: null,
+        retainer_run_from: "2026-12",
+        lines: line("Retainer of the month after", 49000),
+        version: 1,
+      },
     ]
     renderPanel()
     fireEvent.click(await screen.findByTestId("month-end-add"))
@@ -544,7 +564,8 @@ describe("the month-end panel", () => {
         "Maison Arlon",
       ),
     )
-    expect(within(form).queryByTestId("month-end-add-schedule-s-belcour")).toBeNull()
+    for (const id of ["s-belcour", "s-retainer", "s-off"])
+      expect(within(form).queryByTestId(`month-end-add-schedule-${id}`)).toBeNull()
     expect(calls.find((c) => c.tool === "recurring_list")?.params).toMatchObject({
       status: "active",
     })

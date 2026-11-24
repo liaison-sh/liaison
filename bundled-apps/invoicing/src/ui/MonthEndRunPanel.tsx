@@ -23,6 +23,7 @@ import { formatMoneyMinor, isUserId } from "./kit"
 import {
   type Amounts,
   approveSummary,
+  billedByRun,
   type CardItem,
   changedBy,
   foldRows,
@@ -416,6 +417,7 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
         <AddForgotten
           rows={rows()}
           period={run()?.run.period ?? ""}
+          issueOn={run()?.run.issue_on ?? null}
           onAdd={(args) => addToRun(args)}
           onCancel={() => setAdding(false)}
         />
@@ -791,6 +793,7 @@ function RowAddressFix(props: {
 function AddForgotten(props: {
   rows: RunRow[]
   period: string
+  issueOn: string | null
   onAdd: (args: Record<string, unknown>) => Promise<boolean>
   onCancel: () => void
 }) {
@@ -808,7 +811,7 @@ function AddForgotten(props: {
       })
       const named: Array<ScheduleOption & { name: string }> = []
       for (const s of res?.rows ?? []) {
-        if (!s.contact_id) continue
+        if (!s.contact_id || !billedByRun(s, props.issueOn)) continue
         const c = await loadContact(s.contact_id)
         if (!c) continue
         named.push({ ...s, name: pickedContactPatch(c, {}).counterparty_name ?? contactLabel(c) })

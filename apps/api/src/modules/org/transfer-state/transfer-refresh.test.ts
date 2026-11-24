@@ -118,6 +118,31 @@ describe("a refresh after a change", () => {
     expect(h.view.peek(ORG)?.state).toBe("frozen")
   })
 
+  test("a change made while the queued read is about to start never joins a read begun before it", async () => {
+    const h = viewOf()
+    const first = h.view.refresh()
+    const queued = h.view.refreshAfterChange()
+    // In the steps between the first read's end and the queued one's start: a read, then a change.
+    let after: Promise<void> | undefined
+    void first.then(() => {
+      void h.view.refresh()
+      h.commit([frozen])
+      after = h.view.refreshAfterChange()
+    })
+    h.started[0]!.release()
+    await settle()
+    h.started[1]!.release()
+    await queued
+    await settle()
+    expect(h.started).toHaveLength(3)
+    h.started[2]!.release()
+    await after
+    expect(h.view.peek(ORG)?.state).toBe("frozen")
+    // Nothing is left queued: the next read is the next one asked for.
+    await settle()
+    expect(h.started).toHaveLength(3)
+  })
+
   test("a read before it that fails does not fail it", async () => {
     const h = viewOf()
     const before = h.view.refresh().catch(() => "failed")

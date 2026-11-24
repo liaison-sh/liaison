@@ -12,7 +12,11 @@ export interface RetainerFacts {
   retainer_minutes?: unknown
 }
 
-/** A schedule with included minutes is a retainer: every drafting path asks this one question. */
+/**
+ * A schedule with included minutes is a retainer, or was one (it may be off since, and its earlier
+ * months are still its own). Whether a month is one: `isRetainerMonth`; whether it is on:
+ * `isRetainerOn`.
+ */
 export function isRetainerSchedule(s: RetainerFacts | null | undefined): boolean {
   if (!s) return false
   const minutes = Number(s.retainer_minutes)
@@ -20,17 +24,43 @@ export function isRetainerSchedule(s: RetainerFacts | null | undefined): boolean
 }
 
 /**
- * True when the schedule's month `YYYY-MM` is a retainer month: the schedule is a retainer and
- * the month is on or after the one it became a retainer from (a schedule made a retainer during a
- * month keeps that month on the month-end run).
+ * True when the schedule's month `YYYY-MM` is a retainer month: the schedule is a retainer, the
+ * month is on or after the one it became a retainer from (a schedule made a retainer during a
+ * month keeps that month on the month-end run), and the retainer was not off that month.
  */
 export function isRetainerMonth(
-  s: (RetainerFacts & { retainer_from?: unknown }) | null | undefined,
+  s: (RetainerFacts & DatedTermsRow & { retainer_from?: unknown }) | null | undefined,
   month: string,
 ): boolean {
   if (!isRetainerSchedule(s)) return false
   const from = typeof s?.retainer_from === "string" ? s.retainer_from : null
-  return from === null || month >= from
+  return (from === null || month >= from) && termsInForce(s, month)?.off !== true
+}
+
+/** A retainer that was not turned off: its months to come are retainer months. */
+export function isRetainerOn(s: (RetainerFacts & DatedTermsRow) | null | undefined): boolean {
+  return isRetainerSchedule(s) && retainerTermsOf(s).at(-1)?.off !== true
+}
+
+/** The month the month-end run bills a turned-off retainer from, or null when it is on. */
+export function retainerOffFrom(
+  s: (RetainerFacts & DatedTermsRow) | null | undefined,
+): string | null {
+  if (!isRetainerSchedule(s)) return null
+  const entries = retainerTermsOf(s)
+  let from: string | null = null
+  for (let i = entries.length - 1; i >= 0 && entries[i]?.off; i--) from = entries[i]?.from ?? from
+  return from
+}
+
+/** The last month a turned-off retainer is billed from its card; null when it has none, or is on. */
+export function lastRetainerMonth(
+  s: (RetainerFacts & DatedTermsRow & { retainer_from?: unknown }) | null | undefined,
+): string | null {
+  const off = retainerOffFrom(s)
+  if (off === null) return null
+  const last = previousMonth(off)
+  return isRetainerMonth(s, last) ? last : null
 }
 
 /** The key a retainer month's draft carries: one draft per schedule and month. */
@@ -159,6 +189,10 @@ export interface RetainerTerms {
   /** The signed renewal that set these terms, when one did. */
   agreement_id?: string
   agreement_number?: string
+  /** The retainer is off from this month: the month-end run bills `lines`. */
+  off?: boolean
+  /** With `off`: whether the retainer's months before it were prepaid (`covers`). */
+  covers?: string
 }
 
 export interface DatedTermsRow {
@@ -182,9 +216,21 @@ export function retainerTermsOf(s: DatedTermsRow | null | undefined): RetainerTe
   return [parsed(s?.retainer_renewal), ...(Array.isArray(list) ? list : [])]
     .filter((t): t is RetainerTerms => {
       const v = t as Partial<RetainerTerms> | null
-      return !!v && typeof v.from === "string" && Number(v.retainer_minutes) > 0
+      return !!v && typeof v.from === "string" && (v.off === true || Number(v.retainer_minutes) > 0)
     })
     .sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))
+}
+
+/** The dated terms that apply to a month; null before the first of them. */
+export function termsInForce(
+  s: DatedTermsRow | null | undefined,
+  month: string,
+): RetainerTerms | null {
+  return (
+    retainerTermsOf(s)
+      .filter((t) => t.from <= month)
+      .at(-1) ?? null
+  )
 }
 
 /** The fields a month's terms hold. */
@@ -197,15 +243,22 @@ export const TERM_FIELDS = [
 
 /**
  * The schedule as it bills `month` (`YYYY-MM`): its hours, overage rate, rollover and fee lines as
- * the dated terms in force that month say, its own before the first of them. Every reader of a
- * month's terms asks this.
+ * the dated terms in force that month say, its own before the first of them. A month the retainer
+ * is off is a plain schedule's. Every reader of a month's terms asks this.
  */
 export function termsForMonth<T extends object>(s: T, month: string): T {
   const own = s as T & Record<string, unknown>
-  const t = retainerTermsOf(own as DatedTermsRow)
-    .filter((x) => x.from <= month)
-    .at(-1)
+  const t = termsInForce(own as DatedTermsRow, month)
   if (!t) return s
+  if (t.off)
+    return {
+      ...own,
+      retainer_project_id: null,
+      retainer_minutes: null,
+      retainer_overage_rate_minor: null,
+      retainer_rollover: "none",
+      lines: Array.isArray(t.lines) && t.lines.length > 0 ? t.lines : own.lines,
+    }
   return {
     ...own,
     retainer_minutes: t.retainer_minutes,
@@ -262,8 +315,116 @@ export function withTermsFrom(
           ? { agreement_id: same.agreement_id, agreement_number: same.agreement_number }
           : {}),
       },
-      ...entries.filter((t) => t.from > from).map((t) => ({ ...t, retainer_rollover: rollover })),
+      ...entries
+        .filter((t) => t.from > from)
+        .map((t) => (t.off ? t : { ...t, retainer_rollover: rollover })),
     ],
     retainer_renewal: null,
   }
+}
+
+/** A month the retainer is off, as one entry: the run bills `lines` from it on. */
+function offTerms(from: string, lines: unknown, covers: unknown): RetainerTerms {
+  return {
+    from,
+    off: true,
+    retainer_minutes: 0,
+    retainer_overage_rate_minor: null,
+    lines: (parsed(lines) as unknown[]) ?? [],
+    covers: covers === "period_ahead" ? "period_ahead" : "period_ended",
+  }
+}
+
+type DatedTerms = { retainer_terms: RetainerTerms[]; retainer_renewal: null }
+
+/** The columns that turn the retainer off from month `from`: the months before keep their terms. */
+export function withRetainerOff(
+  s: DatedTermsRow & { covers?: unknown },
+  from: string,
+  lines: unknown,
+): DatedTerms {
+  return {
+    retainer_terms: [
+      ...retainerTermsOf(s).filter((t) => t.from < from),
+      offTerms(from, lines, s.covers),
+    ],
+    retainer_renewal: null,
+  }
+}
+
+/** The columns that change what the run bills from month `from`, on a retainer that is off then. */
+export function withOffLinesFrom(s: DatedTermsRow, from: string, lines: unknown): DatedTerms {
+  const entries = retainerTermsOf(s)
+  return {
+    retainer_terms: [
+      ...entries.filter((t) => t.from < from),
+      offTerms(from, lines, termsInForce(s, from)?.covers),
+      ...entries.filter((t) => t.from > from),
+    ],
+    retainer_renewal: null,
+  }
+}
+
+/**
+ * The columns that change a turned-off retainer's lines at once, as a plain schedule's change: every
+ * run month from `thisMonth` on bills them, and no retainer month moves.
+ */
+export function withPlainLines(
+  s: RetainerFacts & DatedTermsRow & { retainer_from?: unknown; lines?: unknown },
+  thisMonth: string,
+  lines: unknown,
+): DatedTerms & { lines?: unknown } {
+  const entries = retainerTermsOf(s)
+  const off = retainerOffFrom(s) ?? thisMonth
+  const from = off > thisMonth ? off : thisMonth
+  const dated = [
+    ...entries.filter((t) => t.from < from),
+    offTerms(from, lines, termsInForce(s, off)?.covers),
+  ]
+  // A month still on the run before the retainer began: the schedule's own lines are its own.
+  const own = termsInForce(s, thisMonth) === null && !isRetainerMonth(s, thisMonth)
+  const start = typeof s.retainer_from === "string" ? s.retainer_from : null
+  if (!own || start === null) return { retainer_terms: dated, retainer_renewal: null }
+  return {
+    retainer_terms: [
+      // The retainer's first months kept the schedule's lines until now: they keep them.
+      ...(start < from && !entries.some((t) => t.from <= start)
+        ? withTermsFrom({}, start, s).retainer_terms
+        : []),
+      ...dated,
+    ],
+    retainer_renewal: null,
+    lines,
+  }
+}
+
+/** Whether a month's fee was invoiced ahead: as its retainer was billed then, when it is off since. */
+export function isPrepaidMonth(s: DatedTermsRow & { covers?: unknown }, month: string): boolean {
+  const off = retainerTermsOf(s).find((t) => t.off && t.from > month)
+  return (off?.covers ?? s.covers) === "period_ahead"
+}
+
+/** A signed renewal a schedule took, whether or not its terms are still in force. */
+export interface AppliedRenewal {
+  agreement_id: string
+  agreement_number: string
+  from: string
+}
+
+/** Every signed renewal the schedule ever took: the ones replaced since are kept in their own list. */
+export function appliedRenewalsOf(
+  s: (DatedTermsRow & { retainer_agreements?: unknown }) | null | undefined,
+): AppliedRenewal[] {
+  const list = parsed(s?.retainer_agreements)
+  const out = new Map<string, AppliedRenewal>()
+  for (const a of [...(Array.isArray(list) ? list : []), ...retainerTermsOf(s)]) {
+    const v = a as Partial<AppliedRenewal> | null
+    if (!v || typeof v.agreement_id !== "string" || out.has(v.agreement_id)) continue
+    out.set(v.agreement_id, {
+      agreement_id: v.agreement_id,
+      agreement_number: String(v.agreement_number ?? ""),
+      from: String(v.from ?? ""),
+    })
+  }
+  return [...out.values()]
 }

@@ -96,6 +96,10 @@ over at its first start on this release.
   refreshed by the server, or the connection's client credentials) instead; see
   [The app sandbox](app-sandbox.md). Sandboxed tools, events and jobs no longer hold a
   database transaction: write with `ctx.db.batch`.
+- **Retainers: roll forward only.** A retainer's terms are stored with the month they start.
+  An earlier version does not read them and its first change of the schedule drops them, so
+  after a change or a renewal it would bill the oldest terms: fix a problem with a newer
+  version, never by going back to one before this.
 - Migrations 0287 to 0301 run when the container starts.
 
 ## Apps your agent builds, dashboards for everyone, and approvals that answer to you

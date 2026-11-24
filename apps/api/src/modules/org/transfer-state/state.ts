@@ -202,6 +202,8 @@ export class OrgTransferView {
       }
     })().finally(() => {
       this.refreshing = null
+      // The refresh queued behind this one starts now: a later change queues its own.
+      this.queued = null
     })
     this.refreshing = run
     return run
@@ -216,10 +218,7 @@ export class OrgTransferView {
     if (!this.refreshing) return this.refresh()
     this.queued ??= this.refreshing
       .catch(() => {}) // its own caller hears of it
-      .then(() => {
-        this.queued = null
-        return this.refresh()
-      })
+      .then(() => this.refresh())
     return this.queued
   }
 

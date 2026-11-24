@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.8",
+  "version": "0.38.9",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1382,7 +1382,9 @@
         "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" },
         "retainer_from": "text?",
         "retainer_renewal": "json?",
-        "retainer_terms": "json?"
+        "retainer_terms": "json?",
+        "retainer_agreements": "json?",
+        "edit_token": "text?"
       },
       "constraints": { "unique": [["external_ref"]] },
       "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]
@@ -3347,7 +3349,7 @@
         "type": "object",
         "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "id": { "type": "string" },
-          "expected_version": { "type": "integer" },
+          "expected_version": { "type": "integer", "description": "The version read in recurring_list. Required to change a retainer's hours, rate, rollover or lines." },
           "terms_month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$", "description": "The retainer_terms_month the terms were read at." },
           "status": { "type": "string", "enum": ["active", "ended"] },
           "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "auto issues without a card; a person turns it on." },

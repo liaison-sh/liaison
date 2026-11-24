@@ -6,122 +6,33 @@
 // save from them never sends a replaced fee back.
 
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
+import { harness as runHarness, schedule as runSchedule } from "./__fixtures__/recurring-draft"
 import { activityRead } from "./activity"
 import { customerHistory } from "./customer-history"
-// The mutations module first: it settles the import order the retainer module relies on.
 import { invoiceIssue } from "./mutations"
 import { retainerPlan } from "./mutations/retainer"
-import { termsForMonth } from "./recurring/retainer"
+import { recurringDraftJob } from "./recurring/draft-job"
+import { isRetainerMonth, termsForMonth } from "./recurring/retainer"
 import { writeSchedulePatch } from "./recurring/run-card"
+import { checkScheduleUpdate, recurringScheduleUpdate, retainerTermsRenew } from "./recurring/tools"
 import {
-  type RecurringCtx,
-  recurringList,
-  recurringScheduleUpdate,
-  retainerTermsRenew,
-  type ScheduleUpdateInput,
-} from "./recurring/tools"
-import { createMockDb } from "./test-db"
-import { testTime } from "./test-time"
+  AGREEMENT,
+  AGREEMENT_2,
+  H,
+  harness,
+  line,
+  on,
+  PROJECT,
+  RENEWAL,
+  type Row,
+  SCHEDULE,
+  schedule,
+  seeded,
+} from "./retainer-terms.testkit"
 import { previewTotals } from "./tools/preview-totals"
 import { changedParams, draftFromRow, renewalText } from "./ui/ScheduleEditor"
 
-type Row = Record<string, unknown>
-
-const H = 60
-const PROJECT = "7a1d2c3e-0000-4000-8000-000000000001"
-const SCHEDULE = "7a1d2c3e-0000-4000-8000-0000000000f1"
 const CONTACT = "7a1d2c3e-0000-4000-8000-0000000000c1"
-const AGREEMENT = "7a1d2c3e-0000-4000-8000-0000000000b1"
-const AGREEMENT_2 = "7a1d2c3e-0000-4000-8000-0000000000b2"
-const ISSUER = {
-  id: "iss-1",
-  legal_name: "Maison Studio SAS",
-  country: "FR",
-  default_currency: "EUR",
-  timezone: "Europe/Paris",
-}
-
-const line = (fee: number, description = "Monthly retainer, 40 h included") => ({
-  description,
-  qty: 1,
-  unit_price_minor: fee,
-  vat_bp: 2000,
-})
-
-function schedule(over: Row = {}): Row {
-  return {
-    id: SCHEDULE,
-    issuer_profile_id: ISSUER.id,
-    contact_id: "contact-1",
-    status: "active",
-    repeats: "month",
-    billing_day: "last",
-    covers: "period_ended",
-    issue_mode: "review",
-    lines: [line(450_000)],
-    retainer_project_id: PROJECT,
-    retainer_minutes: 40 * H,
-    retainer_overage_rate_minor: 12_000,
-    retainer_rollover: "none",
-    retainer_from: "2026-01",
-    next_issue_on: "2026-12-31",
-    version: 3,
-    ...over,
-  }
-}
-
-function harness(over: Row = {}) {
-  const db = createMockDb({
-    seed: { issuer_profiles: [ISSUER], recurring_schedules: [schedule(over)] },
-  })
-  const calls: Row[] = []
-  const ctx = {
-    getUserId: async () => "user-1",
-    db: db as never,
-    time: testTime(),
-    approval: null,
-    hasScope: async () => true,
-    executeTool: async (target: string, params: Row) => {
-      calls.push({ target, ...params })
-      return { status: "completed" as const, result: {} }
-    },
-    emit: async () => {},
-  } as unknown as RecurringCtx
-  const stored = () => db.__all("recurring_schedules")[0] as Row
-  /** The month as its invoice prices it: fee, overage rate, included hours. */
-  const month = async (m: string, usedMinutes = 100 * H) => {
-    const p = await retainerPlan({ db } as never, stored(), {
-      projectId: PROJECT,
-      period: { from: `${m}-01`, to: `${m}-28` },
-      usedMinutes,
-      timeboxMinutes: null,
-      waived: false,
-    })
-    const price = (kind: string) =>
-      p.items
-        .filter((i) => String(i.external_id).startsWith(`retainer_${kind}:`))
-        .map((i) => Number(i.unit_price_minor))
-    return { fee: price("fee"), rate: price("overage")[0], hours: p.fig.includedMinutes / H }
-  }
-  const update = async (patch: Omit<ScheduleUpdateInput, "id">) => {
-    const r = await recurringScheduleUpdate(ctx, { id: SCHEDULE, ...patch })
-    if (r.status !== "completed") throw new Error(JSON.stringify(r))
-    return r
-  }
-  const listed = async () => (await recurringList(ctx, {})).rows[0] as unknown as Row
-  return { ctx, db, calls, stored, month, update, listed }
-}
-
-const on = (y: number, m: number, d: number) => setSystemTime(new Date(Date.UTC(y, m - 1, d, 12)))
-const RENEWAL = {
-  projectId: PROJECT,
-  agreementId: AGREEMENT,
-  agreementNumber: "AG-2026-017",
-  startsOn: "2026-12-01",
-  minutes: 44 * H,
-  feeMinor: "495000",
-  overageRateMinor: "12500",
-}
 const OLD = { fee: [450_000], rate: 12_000, hours: 40 }
 const SIGNED = { fee: [495_000], rate: 12_500, hours: 44 }
 
@@ -415,8 +326,9 @@ describe("a change of a retainer's terms applies from the next month", () => {
     await retainerTermsRenew(h.ctx, RENEWAL)
     on(2026, 12, 15)
     await h.update({ retainer_minutes: null, retainer_project_id: null })
-    expect((h.stored().lines as Row[])[0]?.unit_price_minor).toBe(495_000)
-    expect(h.stored().retainer_terms ?? null).toBeNull()
+    const run = termsForMonth(h.stored(), "2027-01")
+    expect((run.lines as Row[])[0]?.unit_price_minor).toBe(495_000)
+    expect(run.retainer_minutes).toBeNull()
     expect(h.stored().retainer_renewal ?? null).toBeNull()
   })
 })
@@ -623,5 +535,354 @@ describe("the list and the editor show the terms in force for the next month", (
       } as never,
     )) as { retainer?: { overageRateMinor: number; feeExclMinor: number } }
     expect(out.retainer).toMatchObject({ overageRateMinor: 12_500, feeExclMinor: 495_000 })
+  })
+})
+
+describe("what counts as a change of terms, and what a renewal carries", () => {
+  const base = { ...line(450_000), line_kind: "service" }
+  test.each([
+    ["the VAT alone", { ...base, vat_bp: 550 }],
+    ["the quantity alone", { ...base, qty: 2 }],
+    ["the product alone", { ...base, product_ref: "prod-1" }],
+    ["the line's kind alone", { ...base, line_kind: "software" }],
+  ])("%s is a change of the next month's line", async (_what, changed) => {
+    on(2026, 12, 15)
+    const h = harness({ lines: [base] })
+    await h.update({ lines: [changed as never] })
+    expect(termsForMonth(h.stored(), "2026-12").lines).toMatchObject([base])
+    expect(termsForMonth(h.stored(), "2027-01").lines).toMatchObject([changed])
+  })
+
+  test("a renewal keeps the rollover in force, and writes the old renewal column away", async () => {
+    on(2026, 11, 2)
+    const h = harness({
+      // As a row written before the dated terms holds a renewal still waiting.
+      retainer_renewal: {
+        from: "2027-03",
+        agreement_id: AGREEMENT,
+        agreement_number: "AG-2026-017",
+        retainer_minutes: 44 * H,
+        retainer_overage_rate_minor: "12500",
+        lines: [line(495_000)],
+      },
+    })
+    await h.update({ retainer_rollover: "next" })
+    const r = await h.renew({
+      agreementId: AGREEMENT_2,
+      agreementNumber: "AG-2026-021",
+      startsOn: "2026-12-01",
+      minutes: 50 * H,
+      feeMinor: "560000",
+    })
+    expect(r).toMatchObject({ status: "completed" })
+    expect(termsForMonth(h.stored(), "2026-12").retainer_rollover).toBe("next")
+    // The newer agreement replaced the waiting one: it never applies beside it.
+    expect(h.stored().retainer_renewal).toBeNull()
+    for (const m of ["2026-12", "2027-03", "2027-08"])
+      expect(await h.month(m)).toMatchObject({ fee: [560_000], hours: 50 })
+  })
+
+  test("a renewal carries over a waiting old column's month only when it starts after it", async () => {
+    on(2026, 11, 2)
+    const h = harness({
+      retainer_renewal: {
+        from: "2026-12",
+        agreement_id: AGREEMENT,
+        agreement_number: "AG-2026-017",
+        retainer_minutes: 44 * H,
+        retainer_overage_rate_minor: "12500",
+        lines: [line(495_000)],
+      },
+    })
+    await h.renew({
+      agreementId: AGREEMENT_2,
+      agreementNumber: "AG-2026-021",
+      startsOn: "2027-02-01",
+      minutes: 50 * H,
+      feeMinor: "560000",
+    })
+    expect(await h.month("2026-12")).toEqual(SIGNED)
+    expect(await h.month("2027-01")).toEqual(SIGNED)
+    expect((await h.month("2027-02")).fee).toEqual([560_000])
+    expect(h.stored().retainer_renewal).toBeNull()
+  })
+
+  test("a replayed renewal never overwrites a later one, after any change", async () => {
+    on(2026, 12, 2)
+    const h = harness()
+    await h.renew({ startsOn: "2027-01-01" })
+    await h.renew({
+      agreementId: AGREEMENT_2,
+      agreementNumber: "AG-2026-021",
+      startsOn: "2027-01-01",
+      feeMinor: "520000",
+    })
+    const replay = await h.renew({ startsOn: "2027-01-01" })
+    expect(replay).toMatchObject({ status: "completed", unchanged: true })
+    expect((replay as { message: string }).message).toContain("replaced it since")
+    expect((await h.month("2027-01")).fee).toEqual([520_000])
+    // And the later one's own replay changes nothing either.
+    expect(await h.renew({ agreementId: AGREEMENT_2 })).toMatchObject({ unchanged: true })
+    await h.update({ lines: [line(530_000)] })
+    expect(await h.renew()).toMatchObject({ unchanged: true })
+    expect((await h.month("2027-01")).fee).toEqual([530_000])
+  })
+
+  test("an old row's null overage rate in a renewal is the schedule's own rate", async () => {
+    const h = harness({
+      retainer_renewal: {
+        from: "2026-12",
+        retainer_minutes: 44 * H,
+        retainer_overage_rate_minor: null,
+        lines: [line(495_000)],
+      },
+    })
+    expect(await h.month("2026-12")).toEqual({ fee: [495_000], rate: 12_000, hours: 44 })
+  })
+
+  test("an entry with no hours that does not turn the retainer off is not terms", async () => {
+    const h = harness({
+      retainer_terms: [
+        {
+          from: "2026-12",
+          retainer_minutes: 0,
+          retainer_overage_rate_minor: "1",
+          lines: [line(1)],
+        },
+      ],
+    })
+    expect(await h.month("2026-12")).toEqual(OLD)
+    expect(h.onCard("2026-12")).toBe(true)
+  })
+
+  test("a row holding both columns for one month bills the dated terms", async () => {
+    const entry = (fee: number, minutes: number) => ({
+      from: "2026-12",
+      retainer_minutes: minutes,
+      retainer_overage_rate_minor: "12500",
+      lines: [line(fee)],
+    })
+    const h = harness({
+      retainer_renewal: entry(495_000, 44 * H),
+      retainer_terms: [entry(505_000, 46 * H)],
+    })
+    expect(await h.month("2026-12")).toEqual({ fee: [505_000], rate: 12_500, hours: 46 })
+    expect(await h.month("2026-11")).toEqual(OLD)
+  })
+
+  test("a draft that already holds a signed renewal takes a change from its month, not at once", async () => {
+    on(2026, 11, 19)
+    const h = harness({ status: "draft" })
+    await h.renew()
+    await h.update({ retainer_overage_rate_minor: 14_000 })
+    expect(await h.month("2026-11")).toEqual(OLD)
+    expect(await h.month("2026-12")).toEqual({ ...SIGNED, rate: 14_000 })
+  })
+
+  test("a schedule resumed, or moved to another project, writes the hours in force, not its first ones", async () => {
+    on(2026, 11, 19)
+    const h = harness()
+    await h.renew()
+    on(2026, 12, 15)
+    const OTHER = "7a1d2c3e-0000-4000-8000-000000000002"
+    await h.update({ retainer_project_id: OTHER })
+    const timebox = () => {
+      const c = h.calls.filter((x) => x.target === "projects:period_timebox_set").at(-1)
+      return [c?.projectId, c?.month, c?.timebox]
+    }
+    expect(timebox()).toEqual([OTHER, "2027-01", "44h"])
+    const paused = harness({ status: "paused" })
+    await paused.renew({ startsOn: "2027-01-01" })
+    await paused.update({ status: "active" })
+    expect(paused.calls.at(-1)).toMatchObject({ month: "2027-01", timebox: "44h" })
+  })
+})
+
+describe("a month begins in the issuer's zone", () => {
+  // 23:30 UTC on 30 November is 1 December in Paris.
+  const late = () => setSystemTime(new Date(Date.UTC(2026, 10, 30, 23, 30)))
+
+  test("the list's terms are those of the month after the issuer's", async () => {
+    late()
+    expect((await harness().listed()).retainer_terms_month).toBe("2027-01")
+  })
+
+  test("a run row's change from now on begins after the issuer's month", async () => {
+    late()
+    const h = harness({ retainer_from: "2026-12" })
+    const item = {
+      id: "item-1",
+      schedule_id: SCHEDULE,
+      period_key: "2026-11",
+      schedule_patch: { applies: "from_now_on", lines: [line(430_000)] },
+    }
+    await h.db.insert("recurring_run_items", item)
+    await writeSchedulePatch(h.ctx as never, item)
+    expect(await h.month("2026-12")).toEqual(OLD)
+    expect(await h.month("2027-01")).toEqual({ ...OLD, fee: [430_000] })
+  })
+})
+
+describe("a run row's change from now on never replaces a signed agreement's lines", () => {
+  const item = (over: Row = {}) => ({
+    id: "item-1",
+    schedule_id: SCHEDULE,
+    period_key: "2026-12",
+    note: "Changed since November",
+    schedule_patch: {
+      applies: "from_now_on",
+      lines: [line(430_000)],
+      notes: "Net 30",
+      ...over,
+    },
+  })
+
+  test("signed from the same month: the lines stay, the rest is written, the row says why", async () => {
+    on(2026, 12, 20)
+    const h = harness({ retainer_from: "2027-01" })
+    await h.db.insert("recurring_run_items", item())
+    await h.renew({ startsOn: "2027-01-01" })
+    const version = Number(h.stored().version)
+    on(2026, 12, 31)
+    expect(await writeSchedulePatch(h.ctx as never, item())).toBe(SCHEDULE)
+    expect(await h.month("2027-01")).toEqual(SIGNED)
+    expect(h.stored()).toMatchObject({ notes: "Net 30", version: version + 1 })
+    const row = h.db.__all("recurring_run_items")[0] as Row
+    expect(row.note).toBe("Changed since November · Lines from now on kept: AG-2026-017 is signed")
+    expect(row.schedule_patch).toMatchObject({ written: true, lines_kept: "AG-2026-017" })
+  })
+
+  test("signed for an earlier month and still in force: the same, and lines alone write nothing", async () => {
+    on(2026, 11, 19)
+    const h = harness({ retainer_from: "2026-12" })
+    await h.renew()
+    const only = { ...item(), schedule_patch: { lines: [line(430_000)] } }
+    await h.db.insert("recurring_run_items", only)
+    const version = h.stored().version
+    on(2026, 12, 31)
+    await writeSchedulePatch(h.ctx as never, only)
+    expect(await h.month("2027-01")).toEqual(SIGNED)
+    expect(h.stored().version).toBe(version)
+  })
+
+  test("terms a person changed after the agreement are theirs to change again", async () => {
+    on(2026, 11, 19)
+    const h = harness({ retainer_from: "2026-12" })
+    await h.renew()
+    on(2026, 12, 10)
+    await h.update({ lines: [line(470_000)] })
+    await h.db.insert("recurring_run_items", item())
+    on(2026, 12, 31)
+    await writeSchedulePatch(h.ctx as never, item())
+    expect((await h.month("2027-01")).fee).toEqual([430_000])
+  })
+})
+
+describe("a change of a retainer's terms names the version it was read at", () => {
+  const changes: Array<[string, Row]> = [
+    ["lines", { lines: [line(450_000, "Design")] }],
+    ["hours", { retainer_minutes: 45 * H }],
+    ["rate", { retainer_overage_rate_minor: 1 }],
+    ["rollover", { retainer_rollover: "next" }],
+    ["off", { retainer_minutes: null, retainer_project_id: null }],
+  ]
+  test.each(changes)(
+    "%s: refused without it, in the preflight and when it runs",
+    async (_n, patch) => {
+      on(2026, 12, 15)
+      const h = harness()
+      for (const r of [
+        await checkScheduleUpdate(h.ctx, { id: SCHEDULE, ...patch }, "preflight"),
+        await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, ...patch }),
+      ]) {
+        expect(r).toMatchObject({ status: "error", error: { code: "version_required" } })
+        expect((r as { error: { message: string } }).error.message).toContain("version 3")
+      }
+      expect(h.stored().version).toBe(3)
+    },
+  )
+
+  test("anything else on a retainer, and a plain schedule's lines, need none", async () => {
+    on(2026, 12, 15)
+    const h = harness()
+    const notes = await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, notes: "Net 30" })
+    expect(notes.status).toBe("completed")
+    const plain = harness({ retainer_minutes: null, retainer_project_id: null })
+    const r = await recurringScheduleUpdate(plain.ctx, { id: SCHEDULE, lines: [line(1)] })
+    expect(r.status).toBe("completed")
+  })
+})
+
+describe("old rows bill exactly what they billed before the dated terms", () => {
+  // The rules as they were when a row held one renewal and no dated terms.
+  function oldTerms(s: Row, month: string): Row {
+    let r = s.retainer_renewal as Row | string | null
+    if (typeof r === "string") r = JSON.parse(r) as Row
+    if (!r || typeof r.from !== "string" || !(Number(r.retainer_minutes) > 0) || month < r.from)
+      return s
+    return {
+      ...s,
+      retainer_minutes: r.retainer_minutes,
+      retainer_overage_rate_minor: r.retainer_overage_rate_minor ?? s.retainer_overage_rate_minor,
+      lines: Array.isArray(r.lines) && r.lines.length > 0 ? r.lines : s.lines,
+    }
+  }
+  function oldIsMonth(s: Row, month: string): boolean {
+    if (s.retainer_minutes === null || !(Number(s.retainer_minutes) > 0)) return false
+    return typeof s.retainer_from !== "string" || month >= s.retainer_from
+  }
+
+  test("2000 rows, every month of two years", () => {
+    const rand = seeded(20261124)
+    const pick = <T>(xs: T[]): T => xs[Math.floor(rand() * xs.length)] as T
+    const months = Array.from({ length: 24 }, (_, i) => {
+      const y = 2026 + Math.floor(i / 12)
+      return `${y}-${String((i % 12) + 1).padStart(2, "0")}`
+    })
+    for (let n = 0; n < 2000; n++) {
+      const renewal = pick<Row | null>([
+        null,
+        {
+          from: pick(months),
+          agreement_id: AGREEMENT,
+          agreement_number: "AG-1",
+          retainer_minutes: pick([0, 600, 2640]),
+          retainer_overage_rate_minor: pick(["12500", null]),
+          lines: pick([[], [line(495_000)], [line(1), line(2)]]),
+        },
+      ])
+      const row: Row = {
+        ...schedule(),
+        retainer_minutes: pick([null, 0, 2400]),
+        retainer_from: pick([null, pick(months)]),
+        retainer_renewal: renewal && rand() < 0.5 ? JSON.stringify(renewal) : renewal,
+        ...(rand() < 0.5 ? { retainer_terms: null, retainer_agreements: null } : {}),
+      }
+      for (const m of months) {
+        expect(termsForMonth(row, m)).toEqual(oldTerms(row, m))
+        expect(isRetainerMonth(row, m)).toBe(oldIsMonth(row, m))
+      }
+    }
+  })
+
+  test("a schedule turned off before: the run bills its own lines, whatever renewal it still holds", async () => {
+    const h = runHarness("2026-12-29", {
+      schedules: [
+        runSchedule(SCHEDULE, {
+          next_issue_on: "2026-12-31",
+          next_draft_on: "2026-12-28",
+          retainer_minutes: null,
+          retainer_renewal: {
+            from: "2026-12",
+            retainer_minutes: 2640,
+            retainer_overage_rate_minor: null,
+            lines: [line(495_000)],
+          },
+          lines: [line(450_000)],
+        }),
+      ],
+    })
+    await recurringDraftJob(h.ctx)
+    expect(h.db.__all("document_lines").map((l) => Number(l.unit_price_minor))).toEqual([450_000])
   })
 })

@@ -22,8 +22,11 @@ import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL, recipientGaps } from "../recipient-gaps"
 import {
   hoursText,
+  isPrepaidMonth,
   isRetainerMonth,
+  isRetainerOn,
   isRetainerSchedule,
+  lastRetainerMonth,
   monthOf,
   previousMonth,
   type RetainerRefs,
@@ -130,7 +133,6 @@ async function one(ctx: DbCtx, table: string, where: Row): Promise<Row | null> {
   return rows[0] ?? null
 }
 
-/** The live retainer schedule of a project, or null. */
 /** Who a retainer's invoice goes to: the schedule's contact and company, else the card's. */
 export function retainerRecipient(
   s: Row,
@@ -144,12 +146,23 @@ export function retainerRecipient(
   }
 }
 
-export async function retainerScheduleOf(ctx: DbCtx, projectId: string): Promise<Row | null> {
+/**
+ * The project's retainer schedule for a month: the live one, or one turned off since whose month it
+ * still is. Null when the project has none.
+ */
+export async function retainerScheduleOf(
+  ctx: DbCtx,
+  projectId: string,
+  month: string,
+): Promise<Row | null> {
   const rows = (await ctx.db.findMany("recurring_schedules", {
     where: { retainer_project_id: projectId },
     limit: 20,
   })) as Row[]
-  return rows.find((s) => s.status !== "ended" && isRetainerSchedule(s)) ?? null
+  const held = rows.filter((s) => s.status !== "ended" && isRetainerSchedule(s))
+  const live = held.find(isRetainerOn)
+  if (live && isRetainerMonth(live, month)) return live
+  return held.find((s) => !isRetainerOn(s) && isRetainerMonth(s, month)) ?? live ?? held[0] ?? null
 }
 
 /** A month the month-end run holds: its draft or issued invoice, or its row in a run. */
@@ -298,7 +311,7 @@ export async function retainerPlan(ctx: DbCtx, schedule: Row, input: RetainerPla
       tax_rate_bp_override: feeVat,
     })
   }
-  const prepaid = s.covers === "period_ahead"
+  const prepaid = isPrepaidMonth(schedule, month)
   let deductions: DeductionLine[] = []
   if (prepaid) {
     deductions = renderDeductionLines(await prepaidAdvances(ctx, input.projectId, input.period))
@@ -353,14 +366,14 @@ export async function retainerDraftFromReconcile(
   if (read.basis !== "retainer")
     return refuse("not_a_retainer", `${name} is not billed by a retainer. No draft was made.`)
 
-  const s = await retainerScheduleOf(ctx, read.projectId)
+  const month = monthOf(read.period.from)
+  const s = await retainerScheduleOf(ctx, read.projectId, month)
   if (!s)
     return refuse(
       "no_retainer_schedule",
       `${name} has no retainer schedule in Invoicing, so no draft was made. Save the retainer on its recurring schedule, then press Create invoice again.`,
     )
   const scheduleId = String(s.id)
-  const month = monthOf(read.period.from)
   // The month's key; a month whose invoice was credited in full is billed again under the next
   // key, `<key>:<n>`, which the projects app chose for the new card.
   const base = retainerDocumentRef(scheduleId, month)
@@ -417,6 +430,12 @@ export async function retainerDraftFromReconcile(
     return refuse("card_changed", "The card was invoiced under another key. No draft was made.")
   if (read.state === "invoiced" || read.state === "credited")
     return refuse("already_invoiced", `The card is already ${read.state}. No draft was made.`)
+  const last = lastRetainerMonth(s)
+  if (last !== null && month > last)
+    return refuse(
+      "period_on_run",
+      `${month} of ${name} is billed by the month-end run: the retainer was turned off and ${last} is its last month. No retainer draft was made.`,
+    )
   if (!isRetainerMonth(s, month) || (await monthOnRun(ctx, scheduleId, month)))
     return refuse(
       "period_on_run",

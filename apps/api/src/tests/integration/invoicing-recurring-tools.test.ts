@@ -366,7 +366,7 @@ describe("recurring schedules on the real kernel", () => {
 
     const changed = await personClick(
       "invoicing:recurring_schedule_update",
-      { id, lines: [{ ...lines[0], unit_price_minor: 500_000 }] },
+      { id, expected_version: 1, lines: [{ ...lines[0], unit_price_minor: 500_000 }] },
       lead,
     )
     expect(changed.error).toBeUndefined()

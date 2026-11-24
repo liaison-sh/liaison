@@ -22,7 +22,7 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { recipientOf } from "../recipient"
 import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
 import { rowIssuerHold, runItemState } from "./item-state"
-import { isRetainerMonth, retainerDocumentRef } from "./retainer"
+import { isRetainerSchedule, monthOf, termsForMonth } from "./retainer"
 import {
   currentItemHash,
   dayOf,
@@ -37,6 +37,7 @@ import {
   runItems,
   stageRunCard,
 } from "./run-card"
+import { runBills, runDatesFrom } from "./run-dates"
 import {
   addDays,
   datesFrom,
@@ -45,6 +46,7 @@ import {
   periodKey,
   periodStart,
   type Repeats,
+  type ScheduleDates,
 } from "./schedule"
 import { draftCandidates, type ScheduleLineInput, type ScheduleRow } from "./tools"
 
@@ -249,10 +251,13 @@ async function draftSchedule(
   const label = periodLabel(key)
   const externalRef = `recurring:${s.id}:${key}`
   // A retainer month is invoiced from its planned vs done card, never by the run; so is any month
-  // that already holds the retainer's own invoice.
-  if (isRetainerMonth(s, key)) return null
-  if (await findOneWhere(ctx, "documents", { external_ref: retainerDocumentRef(s.id, key) }))
+  // that already holds the retainer's own invoice or an advance. The dates move past them, so the
+  // schedule bills again at its next run month (a retainer that is on has none).
+  if (!(await runBills(ctx, s, issueOn))) {
+    const next = await runDatesFrom(ctx, s, addDays(issueOn, 1))
+    if (await runBills(ctx, s, next.next_issue_on)) await moveDates(ctx, s.id, issueOn, next)
     return null
+  }
   const issuer = (await ctx.db.findOne("issuer_profiles", s.issuer_profile_id)) as Row | null
   if (!issuer) return null
 
@@ -311,7 +316,9 @@ async function draftSchedule(
     issued_at: null,
     operation_category: "services",
   }
-  const expected = draftLineRows(s.lines, label)
+  // A retainer turned off bills its dated lines; any other schedule its own.
+  const billed = isRetainerSchedule(s) ? termsForMonth(s, monthOf(issueOn)).lines : s.lines
+  const expected = draftLineRows(billed, label)
   const written = await writeDraft(ctx, { document: docRow, lines: expected })
   if (!written) return null
   const draftId = written.id
@@ -366,17 +373,26 @@ async function draftSchedule(
   }
   // The schedule moves to its next period only from the period just drafted, so a second run of
   // the job finds it already moved and moves nothing.
-  const next = datesFrom(s, addDays(issueOn, 1))
-  const fresh = (await ctx.db.findOne("recurring_schedules", s.id)) as Row | null
-  if (fresh && dayOf(fresh.next_issue_on) === issueOn)
-    await ctx.db.update("recurring_schedules", s.id, { ...next })
+  await moveDates(ctx, s.id, issueOn, datesFrom(s, addDays(issueOn, 1)))
   return { runId, drafted: item.created }
+}
+
+/** The schedule's next dates, unless another run of the job moved it first. */
+async function moveDates(
+  ctx: RunCtx,
+  id: string,
+  issueOn: string,
+  next: ScheduleDates,
+): Promise<void> {
+  const fresh = (await ctx.db.findOne("recurring_schedules", id)) as Row | null
+  if (fresh && dayOf(fresh.next_issue_on) === issueOn)
+    await ctx.db.update("recurring_schedules", id, { ...next })
 }
 
 /** Auto-issue a run when every row comes from a schedule set to issue by itself and none is over the threshold. */
 async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
-  if (!run || run.status !== "drafted" || run.approval_request_id) return false
+  if (run?.status !== "drafted" || run.approval_request_id) return false
   const issuer = (await ctx.db.findOne(
     "issuer_profiles",
     String(run.issuer_profile_id),
@@ -392,7 +408,7 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
   for (const item of items) {
     if (item.state !== "ready") return false
     const s = (await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null
-    if (!s || s.issue_mode !== "auto") return false
+    if (s?.issue_mode !== "auto") return false
     enabledBy = (s.auto_enabled_by as string | null) ?? enabledBy
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft) return false
@@ -443,7 +459,7 @@ export async function recurringDraftJob(ctx: RunCtx): Promise<DraftJobResult> {
   for (const runId of runs) {
     if (await approveByItself(ctx, runId)) continue
     const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
-    if (!run || run.status !== "drafted") continue
+    if (run?.status !== "drafted") continue
     await stageRunCard(ctx, runId)
     if (ctx.emit) {
       await ctx.emit({

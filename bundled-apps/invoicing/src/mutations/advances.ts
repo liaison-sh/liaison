@@ -8,7 +8,13 @@
 import { resolveOpenParks } from "../deferred"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
-import { isRetainerMonth, nextMonth, termsForMonth } from "../recurring/retainer"
+import {
+  isRetainerMonth,
+  isRetainerOn,
+  lastRetainerMonth,
+  nextMonth,
+  termsForMonth,
+} from "../recurring/retainer"
 import { advanceDeductedRefusal } from "./advance-guard"
 import {
   advanceRemaining,
@@ -155,16 +161,25 @@ export async function advanceDraftCreate(
   let month: string | null = null
   let retainer: Row | null = null
   if (!step) {
-    retainer = await retainerScheduleOf(ctx, projectId)
+    retainer = await retainerScheduleOf(ctx, projectId, "")
     if (retainer) {
       const m = await retainerAdvanceMonth(ctx, projectId, input.month)
       if (typeof m !== "string") return m
-      if (!isRetainerMonth(retainer, m))
+      retainer = (await retainerScheduleOf(ctx, projectId, m)) ?? retainer
+      if (isRetainerMonth(retainer, m)) month = m
+      else if (isRetainerOn(retainer) || input.month) {
+        const last = lastRetainerMonth(retainer)
         return refuse(
           "period_on_run",
-          `${m} of this project is billed by its recurring schedule's month-end run, not by the retainer, so no advance was drafted. The retainer bills from ${String(retainer.retainer_from)}.`,
+          `${m} of this project is billed by its recurring schedule's month-end run, not by the retainer, so no advance was drafted. ${
+            isRetainerOn(retainer)
+              ? `The retainer bills from ${String(retainer.retainer_from)}.`
+              : `The retainer was turned off${last ? `: ${last} is its last month` : ""}.`
+          }`,
         )
-      month = m
+      }
+      // A retainer turned off since: an advance for no month of it is an ordinary one.
+      else retainer = null
     }
   }
 

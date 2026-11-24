@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const updates: Array<Record<string, unknown>> = []
 let stored: Record<string, unknown> = {}
+/** What the server adds to a save: to its answer, and to the row it then lists. */
+let server: { answer?: Record<string, unknown>; row?: Record<string, unknown> } = {}
 const [LINE, LINE_EDITED] = ["Monthly retainer, {period}", "design"]
 const PROJECT = "44444444-4444-4444-8444-444444444444"
 
@@ -54,8 +56,8 @@ vi.mock("@liaison/host", () => ({
         return { items: [{ id: "issuer-1", legal_name: "Maison Nord SARL", country: "FR" }] }
       if (tool === "recurring_schedule_update") {
         updates.push(params)
-        stored = { ...stored, ...params, version: Number(stored.version) + 1 }
-        return { status: "completed", id: "sched-1", version: stored.version }
+        stored = { ...stored, ...params, ...server.row, version: Number(stored.version) + 1 }
+        return { status: "completed", id: "sched-1", version: stored.version, ...server.answer }
       }
       throw new Error(`unexpected tool ${tool}`)
     },
@@ -66,6 +68,7 @@ const { ScheduleEditor, draftFromRow, retainerListLine } = await import("./Sched
 
 beforeEach(() => {
   stored = row()
+  server = {}
   updates.length = 0
 })
 afterEach(() => cleanup())
@@ -160,6 +163,39 @@ describe("retainer terms in the schedule editor", () => {
       retainer_project_id: null,
       retainer_overage_rate_minor: null,
     })
+  })
+
+  it("turned off, it says the last retainer month, the run's first one and a signed renewal dropped", async () => {
+    server = {
+      answer: {
+        retainerOff: {
+          last_month: "2026-12",
+          run_from: "2027-01",
+          dropped: [{ agreement_number: "AG-2026-017", from: "2027-03" }],
+        },
+      },
+      row: { retainer_until: "2026-12", retainer_run_from: "2027-01" },
+    }
+    open()
+    expect(screen.queryByTestId("schedule-retainer-off")).toBeNull()
+    fireEvent.click(screen.getByTestId("schedule-retainer-on"))
+    fireEvent.click(screen.getByTestId("schedule-save"))
+    const off =
+      "December 2026 is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run bills from January 2027."
+    await waitFor(() =>
+      expect(screen.getByTestId("schedule-note").textContent).toBe(
+        `Saved. ${off} AG-2026-017, signed from March 2027, no longer applies.`,
+      ),
+    )
+    // The version it was read at goes with it, and the page keeps saying it.
+    expect(updates[0]).toMatchObject({ expected_version: 1 })
+    expect(screen.getByTestId("schedule-retainer-off").textContent).toBe(off)
+  })
+
+  it("a draft retainer names no month: a change there applies at once", () => {
+    stored = row({ status: "draft" })
+    open()
+    expect(screen.queryByTestId("schedule-retainer-terms")).toBeNull()
   })
 
   it("a plain schedule shows the section switched off", () => {

@@ -224,9 +224,16 @@ describe("a retainer's terms changed by the project lead", () => {
       retainer_minutes: schedule.minutes + 600,
     })) as { data: { status?: string } }
     expect(out.data.status).toBe("completed")
-    const [after] = await rows<{ minutes: number; version: number }>(sql`
-      SELECT retainer_minutes AS minutes, version FROM app_invoicing.recurring_schedules
+    // Its new hours are the next month's terms: the running month keeps its own.
+    const [after] = await rows<{ minutes: number; own: number; version: number }>(sql`
+      SELECT (retainer_terms -> -1 ->> 'retainer_minutes')::int AS minutes,
+             retainer_minutes AS own, version
+        FROM app_invoicing.recurring_schedules
        WHERE id = ${schedule.id}::uuid`)
-    expect(after).toEqual({ minutes: schedule.minutes + 600, version: schedule.version + 1 })
+    expect(after).toEqual({
+      minutes: schedule.minutes + 600,
+      own: schedule.minutes,
+      version: schedule.version + 1,
+    })
   })
 })

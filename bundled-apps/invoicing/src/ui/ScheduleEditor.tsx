@@ -67,6 +67,10 @@ export interface ScheduleDraft {
   terms_month: string | null
   /** A retainer: the renewal in force or to come, and the changes to come, each with its month. */
   terms_notes: string[]
+  /** A retainer that was turned off: the last month billed from its card, null when it had none. */
+  retainer_until: string | null
+  /** A retainer that was turned off: the first month the month-end run bills. */
+  retainer_run_from: string | null
   /** The version this draft was read at: a save says it, and a schedule saved since refuses it. */
   version: number
 }
@@ -96,6 +100,8 @@ export function defaultSchedule(): ScheduleDraft {
     retainer_rollover: "none",
     terms_month: null,
     terms_notes: [],
+    retainer_until: null,
+    retainer_run_from: null,
     version: 1,
   }
 }
@@ -179,6 +185,49 @@ export const NUMBER_LINE =
 
 export interface Conflict {
   message: string
+}
+
+/** What a turned-off retainer's months are billed by, month by month; null when it had none. */
+export function retainerOffText(
+  d: Pick<ScheduleDraft, "retainer_until" | "retainer_run_from">,
+): string | null {
+  if (!d.retainer_until || !d.retainer_run_from) return null
+  return tr(
+    "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run bills from {{from}}.",
+    { last: monthName(d.retainer_until), from: monthName(d.retainer_run_from) },
+  )
+}
+
+/** What a save that turned the retainer off says: its last month, and a signed renewal dropped. */
+export function turnedOffText(result: unknown): string | null {
+  const off = (
+    result as {
+      retainerOff?: {
+        last_month: string | null
+        run_from: string
+        dropped: Array<{ agreement_number: string; from: string }>
+      }
+    } | null
+  )?.retainerOff
+  if (!off) return null
+  return [
+    tr("Saved."),
+    retainerOffText({ retainer_until: off.last_month, retainer_run_from: off.run_from }),
+    ...off.dropped.map((x) =>
+      tr("{{agreement}}, signed from {{month}}, no longer applies.", {
+        agreement: x.agreement_number,
+        month: monthName(x.from),
+      }),
+    ),
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
+/** The first day an invoice of the run can fall on: after a turned-off retainer's last month. */
+export function runFirstDay(d: Pick<ScheduleDraft, "retainer_run_from">, day: string): string {
+  const first = d.retainer_run_from ? `${d.retainer_run_from}-01` : day
+  return first > day ? first : day
 }
 
 /** The open conflict a save refused with, when the customer already pays a Stripe subscription. */
@@ -379,6 +428,8 @@ export function draftFromRow(id: string, row: Record<string, unknown>): Schedule
     retainer_rollover: row.retainer_rollover === "next" ? "next" : "none",
     terms_month: typeof row.retainer_terms_month === "string" ? row.retainer_terms_month : null,
     terms_notes: renewalText(row),
+    retainer_until: typeof row.retainer_until === "string" ? row.retainer_until : null,
+    retainer_run_from: typeof row.retainer_run_from === "string" ? row.retainer_run_from : null,
     version: Number(row.version ?? 1),
   }
 }
@@ -510,6 +561,13 @@ function RetainerSection(p: { d: ScheduleDraft; patch: (v: Partial<ScheduleDraft
         />
         <span>{tr("Hours are included each month, and hours above them are billed")}</span>
       </label>
+      <Show when={!on() ? retainerOffText(p.d) : null}>
+        {(text) => (
+          <p data-testid="schedule-retainer-off" class="text-text-secondary">
+            {text()}
+          </p>
+        )}
+      </Show>
       <Show when={on()}>
         <span class="text-text-tertiary">
           {tr(
@@ -622,7 +680,7 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
     patch({ lines: d().lines.map((l, j) => (j === i ? { ...l, ...p } : l)) })
   const isNew = () => d().id === null
   const errors = () => draftErrors(d())
-  const next = () => nextInvoices(d(), today(), 3)
+  const next = () => nextInvoices(d(), runFirstDay(d(), today()), 3)
 
   // After a write the page shows what the server now holds, never the state it had before.
   const reload = async () => {
@@ -698,7 +756,11 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
         if (staleSaveFrom(r)) {
           await reload()
           setNote(tr(STALE_SAVE))
-        } else if (outcome(r)) await reload()
+        } else if (outcome(r)) {
+          await reload()
+          const off = turnedOffText(r)
+          if (off) setNote(off)
+        }
       }
     } catch (e) {
       setNote(e instanceof Error ? e.message : tr("Nothing was saved."))

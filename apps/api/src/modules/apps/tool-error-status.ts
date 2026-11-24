@@ -225,6 +225,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   month_on_other_card: 409,
   retainer_needs_project_money: 403,
   retainer_needs_reconcile: 409,
+  // A change of a retainer's terms that does not name the version it was read at.
+  version_required: 400,
   // A billing plan, its milestone and advance invoices, and an advance's refund.
   advance_already_deducted: 409,
   advance_exceeds_invoice: 422,

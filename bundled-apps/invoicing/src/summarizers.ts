@@ -1312,6 +1312,10 @@ export function summarizeRecurringScheduleUpdate(
   if (params.status === "active")
     lines.unshift("Resumes billing from today, without the days it was paused")
   if (ended) lines.unshift("Ends the schedule: nothing more is billed")
+  if (params.retainer_minutes === null)
+    lines.unshift(
+      "Turns the retainer off from next month: this month and earlier ones not invoiced yet stay on the project's card",
+    )
   return done({
     kind: "recurring_schedule_update",
     title: auto

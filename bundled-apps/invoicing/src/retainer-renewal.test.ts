@@ -10,7 +10,12 @@ import { afterEach, describe, expect, setSystemTime, test } from "bun:test"
 import { invoiceIssue } from "./mutations"
 import { retainerPlan } from "./mutations/retainer"
 import { termsForMonth } from "./recurring/retainer"
-import { type RecurringCtx, recurringScheduleUpdate, retainerTermsRenew } from "./recurring/tools"
+import {
+  type RecurringCtx,
+  recurringScheduleUpdate,
+  retainerTermsRenew,
+  type ScheduleUpdateInput,
+} from "./recurring/tools"
 import { retainerTimeboxRoll } from "./retainer-timebox-roll"
 import { createMockDb } from "./test-db"
 import { testTime } from "./test-time"
@@ -91,6 +96,14 @@ const RENEWAL = {
 
 const timeboxWrites = (calls: Row[]) =>
   calls.filter((c) => c.target === "projects:period_timebox_set").map((c) => [c.month, c.timebox])
+
+/** As the editor and an agent send it: on the version the schedule holds. */
+const update = (h: ReturnType<typeof harness>, patch: Omit<ScheduleUpdateInput, "id">) =>
+  recurringScheduleUpdate(h.ctx, {
+    id: SCHEDULE,
+    expected_version: Number((h.db.__all("recurring_schedules")[0] as Row).version),
+    ...patch,
+  })
 
 describe("a retainer renewed by a signed agreement", () => {
   test("the module loads with the issue path beside it", () => {
@@ -176,7 +189,7 @@ describe("a retainer renewed by a signed agreement", () => {
     await retainerTermsRenew(h.ctx, RENEWAL)
     // 15 Dec: the lead raises the included hours to 45 from January.
     setSystemTime(new Date(Date.UTC(2026, 11, 15, 12)))
-    const up = await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 45 * H })
+    const up = await update(h, { retainer_minutes: 45 * H })
     expect(up).toMatchObject({ status: "completed" })
     expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "45h"])
     // The daily roll the next day, and in January for February, keeps the change.
@@ -198,7 +211,7 @@ describe("a retainer renewed by a signed agreement", () => {
   test("a renewal signed after a change of terms applies from its own first month", async () => {
     setSystemTime(new Date(Date.UTC(2026, 10, 10, 12)))
     const h = harness()
-    await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 42 * H })
+    await update(h, { retainer_minutes: 42 * H })
     setSystemTime(new Date(Date.UTC(2026, 10, 19, 12)))
     await retainerTermsRenew(h.ctx, RENEWAL)
     setSystemTime(new Date(Date.UTC(2026, 10, 20, 12)))
@@ -211,7 +224,7 @@ describe("a retainer renewed by a signed agreement", () => {
     const h = harness()
     await retainerTermsRenew(h.ctx, { ...RENEWAL, startsOn: "2027-02-01" })
     setSystemTime(new Date(Date.UTC(2026, 11, 15, 12)))
-    await recurringScheduleUpdate(h.ctx, { id: SCHEDULE, retainer_minutes: 45 * H })
+    await update(h, { retainer_minutes: 45 * H })
     setSystemTime(new Date(Date.UTC(2026, 11, 16, 12)))
     await retainerTimeboxRoll(h.ctx as never)
     expect(timeboxWrites(h.calls).at(-1)).toEqual(["2027-01", "45h"])

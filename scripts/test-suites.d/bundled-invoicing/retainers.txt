@@ -2,3 +2,4 @@
 src/retainer.test.ts
 src/retainer-renewal.test.ts
 src/retainer-terms.test.ts
+src/retainer-off.test.ts

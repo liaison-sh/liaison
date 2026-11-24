@@ -6,7 +6,13 @@
 // next; a signed renewal's hours apply from its first month). It reads schedules only, never anyone's time or activity, and drafts nothing.
 
 import type { CrossAppExecuteTool } from "./cross-app"
-import { isRetainerSchedule, monthOf, nextMonth, termsForMonth } from "./recurring/retainer"
+import {
+  isRetainerMonth,
+  isRetainerSchedule,
+  monthOf,
+  nextMonth,
+  termsForMonth,
+} from "./recurring/retainer"
 import { writeRetainerTimeboxes } from "./recurring/tools"
 
 type Row = Record<string, unknown>
@@ -34,6 +40,8 @@ export async function retainerTimeboxRoll(
     })) as Row[]
     const timezone = String(issuer[0]?.timezone || "UTC")
     const month = nextMonth(monthOf((await ctx.time.civil({ timezone })).date))
+    // A retainer that is off by then bills that month with the month-end run: no included hours.
+    if (!isRetainerMonth(s, month)) continue
     const done = await writeRetainerTimeboxes(
       ctx as never,
       { id: String(s.id), retainer_project_id: s.retainer_project_id },

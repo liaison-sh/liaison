@@ -804,7 +804,7 @@ describe("the month-end run on the real kernel", () => {
     expect(due.map((r) => r.summary)).toEqual([
       "The month-end run for November 2026 waits for approval.",
     ])
-    expect(await rowsOf(seat.id, "due", runId)).toEqual([])
+    expect(await rowsOf(seat.id, "due", runId)).toHaveLength(0)
     const [card] = await sql<
       Row[]
     >`SELECT summary::text AS s, notify_user_ids::text[] AS who FROM kernel.approval_requests WHERE id = ${String(run.approval_request_id)}`

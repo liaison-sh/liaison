@@ -257,7 +257,7 @@ const taken = (id: string, doc: Row) =>
 
 const unreadable = (id: string) =>
   fail(
-    "stripe_unreadable",
+    "payment_unreadable",
     `${id} could not be read from Stripe, so it may have been paid, voided or refunded since; nothing was issued and no number was taken. Try again once Stripe answers.`,
   )
 

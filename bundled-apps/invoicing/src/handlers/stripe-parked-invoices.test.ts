@@ -210,7 +210,7 @@ describe("past its last automatic retry, an invoice is issued by a person only",
     await sweep(ctx, 48)
     expect(await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })).toMatchObject({
       status: "error",
-      error: { code: "stripe_unreadable" },
+      error: { code: "payment_unreadable" },
     })
     expect(invoices(db)).toHaveLength(0)
     expect(numbersTaken(db)).toBe(0)
@@ -271,7 +271,7 @@ describe("past its last automatic retry, an invoice is issued by a person only",
       executeTool: stripeApp({ invoice: finalized({ stripe_invoice_id: "in_2" }) }),
     })
     const r: Any = await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })
-    expect(r.error.code).toBe("stripe_unreadable")
+    expect(r.error.code).toBe("payment_unreadable")
     expect(numbersTaken(db)).toBe(0)
     expect(openParks(db)).toHaveLength(1)
   })
@@ -827,7 +827,7 @@ describe("a payment with no Stripe invoice is always decided by a person", () =>
       stripeCtx(db, { executeTool: stripeApp({}) }),
       { chargeId: "ch_9", vatRateBp: 2000 },
     )
-    expect(down.error.code).toBe("stripe_unreadable")
+    expect(down.error.code).toBe("payment_unreadable")
     const failed: Any = await invoiceFromStripePayment(
       stripeCtx(db, { executeTool: stripeApp({ payment: payment(buyer, { status: "failed" }) }) }),
       { chargeId: "ch_9", vatRateBp: 2000 },
@@ -878,7 +878,7 @@ describe("a payment with no Stripe invoice is always decided by a person", () =>
       executeTool: stripeApp({ payment: payment(buyer, { charge_id: "ch_8" }) }),
     })
     const r: Any = await invoiceFromStripePayment(ctx, { chargeId: "ch_9", vatRateBp: 2000 })
-    expect(r.error.code).toBe("stripe_unreadable")
+    expect(r.error.code).toBe("payment_unreadable")
     expect(numbersTaken(db)).toBe(0)
   })
 

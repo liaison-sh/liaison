@@ -151,8 +151,8 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   payment_ref_missing: 400,
   nothing_waiting: 404,
   vat_rate_required: 400,
-  // Stripe did not answer the read a person's decision is checked against: nothing was issued.
-  stripe_unreadable: 502,
+  // The payments provider did not answer the read a decision is checked against: nothing was issued.
+  payment_unreadable: 502,
   invoice_not_found: 404,
   einvoice_gate: 422,
   // Month-end run rows: a required argument is missing, the row changed under the caller, the run

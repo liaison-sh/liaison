@@ -346,6 +346,14 @@ export async function registerKnowledgeJobs(opts: RunSyncWorkerDeps = {}): Promi
     await sweepUnparentedPageCopies()
   })
 
+  // Page links stored with a title before links were normalised (links.ts): bodies,
+  // summaries and history, a batch at a time, until every page is done.
+  await registerScheduledJob("knowledge", "page-links-backfill", "41 3 * * *", async () => {
+    const { backfillPageLinks } = await import("~/apps/knowledge/links")
+    const report = await backfillPageLinks()
+    if (report.documents > 0) log.info({ ...report }, "knowledge: page links backfilled")
+  })
+
   registerJobWorker<SyncJobPayload>("knowledge", "sync-source", async (payload) => {
     await runSyncWorker(payload, opts)
   })

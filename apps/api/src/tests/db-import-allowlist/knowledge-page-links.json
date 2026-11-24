@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "apps/knowledge/links.ts": "The backfill that removes linked pages' titles from texts stored before links held only ids. It runs for no person (the daily job and the operator CLI): a system read of the orgs with pages not done yet, then per org one transaction pinned to that org per batch of locked pages, which rewrites only link tokens in bodies, summaries and history and records the links. It returns counts only, never a title or a text."
+  }
+}

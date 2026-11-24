@@ -969,6 +969,16 @@ export const COMMANDS = [
     ],
   },
   {
+    name: "knowledge links-backfill",
+    usage: "liaison knowledge links-backfill [--org <uuid>] [--dry-run]",
+    summary:
+      "Remove the linked page's title from Knowledge page links stored before links held only the page id (bodies, summaries, page history) and record each page's links, as the daily job does. Only link tokens change: no new revision, no event, review status kept. Every org, or only `--org`; idempotent.",
+    flags: [
+      { name: "--org", arg: "<uuid>", summary: "Only this org." },
+      { name: "--dry-run", summary: "Only count." },
+    ],
+  },
+  {
     name: "routines reconcile",
     usage:
       "liaison routines reconcile [--since <iso date>] [--days <n>] [--org <slug>] [--routine <uuid>] [--max-per-routine <n>] [--execute]",

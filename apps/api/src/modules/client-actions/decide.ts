@@ -19,6 +19,7 @@ import { type PortalCaller, portalActionSight } from "~/modules/portal/decide-ga
 import { attemptCode, wordsFor } from "./code-attempt"
 import { restoreProof, spendProof } from "./codes"
 import { writeClientActionEvent } from "./events"
+import { clientActionHearers } from "./hearers"
 import { maskEmail } from "./mail"
 import { SYSTEM_ACTOR_ID } from "./mint"
 import { type ClientActionState, clientActionState } from "./state"
@@ -394,7 +395,7 @@ export async function queueDecidedEvent(
       companyId: row.company_id,
       title: d.title,
       invitedName: row.invited_name,
-      senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
+      senderUserIds: await clientActionHearers(tx, row.org_id, row.id),
       // A restricted document's decision reaches its list only, the manager included.
       ...(row.visible_to ? { visibleTo: row.visible_to } : {}),
     },

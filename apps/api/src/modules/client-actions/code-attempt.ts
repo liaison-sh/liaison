@@ -15,6 +15,7 @@ import { serverT } from "~/modules/i18n/server-i18n"
 import { checkCode, PAUSES_TO_TELL, pausedUntil, WRONG_PER_CODE, WRONG_TOTAL_LOCK } from "./codes"
 import { type ActionRow, deadFrameBody } from "./decide"
 import { type ClientActionActorKind, writeClientActionEvent } from "./events"
+import { clientActionHearers } from "./hearers"
 import { SYSTEM_ACTOR_ID } from "./mint"
 
 const K = () => sql.raw(schemaRef("kernel"))
@@ -34,13 +35,13 @@ export function wordsFor(
 }
 
 /** A kernel event about one client action (opened, requested, code locked). */
-export function queueClientActionEvent(
+export async function queueClientActionEvent(
   tx: PrivilegedDb,
   row: ActionRow,
   action: "opened" | "requested" | "code_locked",
   data: Record<string, unknown>,
 ) {
-  return tx.queueEvent({
+  return await tx.queueEvent({
     app: "kernel",
     entity: "client_action",
     action,
@@ -50,7 +51,7 @@ export function queueClientActionEvent(
       kind: row.kind,
       companyId: row.company_id,
       invitedName: row.invited_name,
-      senderUserIds: row.created_by_user_id ? [row.created_by_user_id] : [],
+      senderUserIds: await clientActionHearers(tx, row.org_id, row.id),
       ...data,
     },
     actorId: SYSTEM_ACTOR_ID,

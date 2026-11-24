@@ -277,7 +277,8 @@
       "waiting_for_others": "Votre copie attend les autres signataires. Quand tout le monde aura signé, le PDF signé et sa preuve de signature seront envoyés à {{email}}.",
       "on_its_way": "Tout le monde a signé. Le PDF signé et sa preuve de signature sont en route vers {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
       "sent": "Le PDF signé et sa preuve de signature ont été envoyés à {{email}}. Gardez cet e-mail : c'est votre propre preuve, distincte des systèmes de {{org}}.",
-      "not_sent": "Votre copie n'a pas pu être envoyée à {{email}}. {{org}} a été informé."
+      "not_sent": "Votre copie n'a pas pu être envoyée à {{email}}. {{org}} a été informé.",
+      "not_completed": "Vous avez signé, mais pas tout le monde : le document a été refusé ou retiré, donc rien n'est convenu et il n'y a pas de copie signée. {{org}} peut l'envoyer de nouveau."
     }
   }
 }

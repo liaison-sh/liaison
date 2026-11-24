@@ -29,6 +29,7 @@ import { schemaRef } from "~/db/schema-ref"
 import { generateToken, hashToken } from "~/lib/crypto"
 import { rootLogger } from "~/lib/logger"
 import { writeClientActionEvent } from "./events"
+import { clientActionHearers } from "./hearers"
 import { newActionMailId, sendLinkMail, sendStaffTurnMail } from "./mail"
 import {
   type ClientActionKind,
@@ -288,6 +289,8 @@ interface LinkMailArgs {
   token: string
   mailId: string
   to: string
+  /** The person it is for: an address may be shared by two signers. */
+  name: string
   title: string
   kind: ClientActionKind
   sender: Sender
@@ -327,6 +330,7 @@ async function mailLink(orgId: string, args: LinkMailArgs): Promise<void> {
   await sendLinkMail({
     orgId,
     to: args.to,
+    name: args.name,
     mailId: args.mailId,
     title: args.title,
     kind: args.kind,
@@ -380,7 +384,11 @@ async function killMailedLink(
         entity: "client_action",
         action: "send_failed",
         entityId: actionId,
-        data: { title, invitedName, senderUserIds: [senderUserId] },
+        data: {
+          title,
+          invitedName,
+          senderUserIds: await clientActionHearers(tx, orgId, actionId),
+        },
         actorId: SYSTEM_ACTOR_ID,
         actorType: "system",
         orgId,
@@ -618,6 +626,7 @@ function mailsOf(made: readonly Inserted[]): OwedMail[] {
             token,
             mailId,
             to: mail.to,
+            name: result.invitedName,
             title: result.title,
             kind: input.kind,
             sender: mail.sender,
@@ -1017,12 +1026,13 @@ export async function remailClientAction(
       target_type: string
       target_id: string
       invited_email: string
+      invited_name: string
       signer_user_id: string | null
       created_by_user_id: string | null
       expires_at: Date
     }>(
       await tx.execute(sql`
-        SELECT kind, target_app, target_type, target_id, invited_email, signer_user_id,
+        SELECT kind, target_app, target_type, target_id, invited_email, invited_name, signer_user_id,
                created_by_user_id, expires_at
           FROM ${K()}.client_actions WHERE id = ${actionId} AND org_id = ${orgId}
       `),
@@ -1054,6 +1064,7 @@ export async function remailClientAction(
     token: out.token,
     mailId,
     to: out.a.invited_email,
+    name: out.a.invited_name,
     title: view === "down" ? out.sender.orgName : view.title,
     kind: out.a.kind,
     sender: out.sender,
@@ -1410,6 +1421,7 @@ export async function remindClientActions(input: {
           token,
           mailId,
           to: r.invited_email,
+          name: r.invited_name ?? r.invited_email,
           title: titles.get(r.target_id) ?? sender.orgName,
           kind: r.kind,
           sender,

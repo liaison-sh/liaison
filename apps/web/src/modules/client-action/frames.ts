@@ -50,7 +50,13 @@ export interface FrameFacts {
 }
 
 /** Where a signer's copy of a signed document stands (the server's `copy`). */
-export const COPY_STATES = ["waiting_for_others", "on_its_way", "sent", "not_sent"] as const
+export const COPY_STATES = [
+  "waiting_for_others",
+  "on_its_way",
+  "sent",
+  "not_sent",
+  "not_completed",
+] as const
 export type CopyState = (typeof COPY_STATES)[number]
 
 /** The server's `copy`, or null when it named none (or one this page does not know). */
@@ -62,7 +68,8 @@ export function copyStateOf(body: Record<string, unknown> | null): CopyState | n
 }
 
 /** A copy that will not move any more without a person: no point asking again. */
-export const copySettled = (c: CopyState | null) => c === "sent" || c === "not_sent"
+export const copySettled = (c: CopyState | null) =>
+  c === "sent" || c === "not_sent" || c === "not_completed"
 
 export const FRAME_ACTIONS: Record<FrameId, FrameAction[]> = {
   expired: [{ kind: "request", type: "new_link" }],

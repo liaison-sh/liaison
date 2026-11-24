@@ -11,7 +11,7 @@ import { createHash } from "node:crypto"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { CLIENT_ACTION_KINDS } from "~/db/schema/kernel/client-actions"
 import { rootLogger } from "~/lib/logger"
-import { appBridgeManifest } from "~/modules/apps/app-registries"
+import { appBridgeManifest, toolRegistry } from "~/modules/apps/app-registries"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { canonicalJson } from "~/modules/signing/canonical-json"
 import { storedFileSha256 } from "./document-files"
@@ -62,8 +62,8 @@ export interface ClientActionView {
   wordsParams: Record<string, string>
   /**
    * Where each signer's copy of a signed target stands, by client action id
-   * (`waiting_for_others`, `on_its_way`, `sent`, `not_sent`); only the holder's
-   * own entry is ever shown. Empty when the target has no copies.
+   * (`waiting_for_others`, `on_its_way`, `sent`, `not_sent`, or `not_completed` when the
+   * target was declined or withdrawn before everyone signed); only the holder's own entry is ever shown. Empty when the target has no copies.
    */
   copyStates: Record<string, CopyState>
   /**
@@ -77,7 +77,13 @@ export interface ClientActionView {
 export const TARGET_PORTAL_SHARE_KINDS = ["agreement", "change_request"] as const
 export type PortalShareKindOfTarget = (typeof TARGET_PORTAL_SHARE_KINDS)[number]
 
-export const COPY_STATES = ["waiting_for_others", "on_its_way", "sent", "not_sent"] as const
+export const COPY_STATES = [
+  "waiting_for_others",
+  "on_its_way",
+  "sent",
+  "not_sent",
+  "not_completed",
+] as const
 export type CopyState = (typeof COPY_STATES)[number]
 
 export interface ViewRequest {
@@ -213,6 +219,23 @@ function asView(data: unknown): ClientActionView | null {
   }
 }
 
+/**
+ * The scopes one read of a target runs with: the sender's own, plus the app's `internal` scope
+ * when its view tool asks for it. No role carries that scope (the tool is the kernel's alone);
+ * the send's own scope is what let this person send, and the rows the tool reads are still the
+ * ones they may see. Nothing else is called with it.
+ */
+export function viewScopes(
+  target: Pick<ClientActionTarget, "app" | "viewTool">,
+  orgId: string,
+  own: readonly string[],
+): string[] {
+  const internal = `${target.app}:internal`
+  const tool = toolRegistry.get([orgId, target.app, target.viewTool])
+  const asked = (tool?.requiredScopes ?? []) as readonly string[]
+  return asked.includes(internal) && !own.includes(internal) ? [...own, internal] : [...own]
+}
+
 async function viewThroughTool(
   target: ClientActionTarget,
   req: ViewRequest,
@@ -231,7 +254,7 @@ async function viewThroughTool(
       actorType: "user",
       userId,
       orgId: req.orgId,
-      scopes: perms.scopes,
+      scopes: viewScopes(target, req.orgId, perms.scopes),
       dimensionGrants: perms.dimensionGrants,
     },
     params: { targetType: req.targetType, targetId: req.targetId },

@@ -964,7 +964,9 @@ describe("any sequence of changes, with a run that drafts ahead of its month", (
             expect(run.has(month)).toBe(false)
             run.add(month)
             await h.db.insert("documents", runDoc(month))
-            await h.db.update("recurring_schedules", SCHEDULE, datesFrom(s, addDays(due, 1)))
+            await h.db.update("recurring_schedules", SCHEDULE, {
+              ...datesFrom(s, addDays(due, 1)),
+            })
           } else {
             const next = await runDatesFrom(h.ctx as never, s, addDays(due, 1))
             if (!(await runBills(h.ctx as never, s, next.next_issue_on))) return

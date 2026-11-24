@@ -25,7 +25,7 @@ const GONE = new Set(["cancelled", "voided"])
 async function scheduleRows(ctx: Db, projectId: string): Promise<Row[]> {
   return (await ctx.db.findMany("recurring_schedules", {
     where: { retainer_project_id: projectId },
-    limit: 50,
+    limit: 20,
   })) as Row[]
 }
 

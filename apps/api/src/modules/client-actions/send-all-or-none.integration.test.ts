@@ -734,7 +734,9 @@ describe("a reminder's check", () => {
       ids,
       check: async () => ({ code: "SEND_GUARD_REPLIED", message: "They wrote back." }),
     })
-    expect(stopped).toEqual({ stopped: { code: "SEND_GUARD_REPLIED", message: "They wrote back." } })
+    expect(stopped).toEqual({
+      stopped: { code: "SEND_GUARD_REPLIED", message: "They wrote back." },
+    })
     expect((await rowsOf(targetId)).map((r) => r.token_hash).sort()).toEqual(before)
     // The second link is locked when the check reads the addresses, and open again right after.
     await sql`UPDATE ${k("client_actions")} SET code_locked_at = now() WHERE id = ${ids[1] ?? ""}`

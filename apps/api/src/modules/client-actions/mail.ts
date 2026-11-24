@@ -119,7 +119,10 @@ export async function sendLinkMail(
     sender: input.senderName,
     verb,
     title: input.title,
-    email: input.name && input.name.toLowerCase() !== input.to ? `${input.name} (${input.to})` : input.to,
+    email:
+      input.name && input.name.toLowerCase() !== input.to
+        ? `${input.name} (${input.to})`
+        : input.to,
     until: input.expiresAt.toISOString().slice(0, 10),
     message: input.message ?? "",
   }

@@ -366,9 +366,7 @@ async function readyToSend(
     return refusal("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
   const r = await resolveSigners(ctx, p.signers)
   if (isError(r)) return r
-  const replaced = inPlace
-    ? await withdrawnSigner(ctx, agreement, version, p, r.signers)
-    : null
+  const replaced = inPlace ? await withdrawnSigner(ctx, agreement, version, p, r.signers) : null
   if (isError(replaced)) return replaced
   const scanState = await rescannedState(ctx, version)
   if (opts.record && scanState !== (version.scan_state ?? null))
@@ -662,12 +660,7 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
 }
 
 /** The approved send of one person in a withdrawn signer's place, on the version already out. */
-async function sendInPlace(
-  ctx: AgreementsCtx,
-  ready: Ready,
-  replaced: SigningLink,
-  p: SendParams,
-) {
+async function sendInPlace(ctx: AgreementsCtx, ready: Ready, replaced: SigningLink, p: SendParams) {
   const { agreement, version } = ready
   const out = bridgeAnswer<{
     status: string
@@ -822,7 +815,8 @@ async function unrecordedAnswers(
     if (l.state !== "decided" || recorded.has(l.id)) continue
     // An answer that will never be recorded (another kind of decision) holds nothing.
     const rec = ctx.client_actions_record
-      ? bridgeAnswer<{ record?: ActionRecord }>(await ctx.client_actions_record({ id: l.id })).record
+      ? bridgeAnswer<{ record?: ActionRecord }>(await ctx.client_actions_record({ id: l.id }))
+          .record
       : undefined
     if (rec && !decisionFits(a.kind, rec.decision)) continue
     out.push(l)
@@ -1844,7 +1838,7 @@ export async function decidedReconcile(ctx: AgreementsCtx) {
   })) as Agreement[]
   const repaired = await repairEach(marked, async (a) => {
     const v = await latestOf(ctx, a.id)
-    if (!v || v.status !== "signed") return 0
+    if (v?.status !== "signed") return 0
     const sealed = await ctx.db.findMany("evidence_packages", {
       where: { version_id: v.id },
       limit: 1,

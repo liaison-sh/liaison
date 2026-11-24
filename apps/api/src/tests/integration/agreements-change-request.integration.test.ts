@@ -589,7 +589,7 @@ describe("a change request sent through the sandbox", () => {
         SELECT a.id FROM ${kernel("client_actions")} a
           JOIN ${app("agreement_versions")} v ON v.id = a.target_id
           JOIN ${app("agreements")} g ON g.id = v.agreement_id
-         WHERE a.org_id = ${w.orgId} AND g.title = ${title} AND a.revoked_at IS NULL`) as unknown[]
+         WHERE a.org_id = ${w.orgId} AND g.title = ${title} AND a.revoked_at IS NULL`) as unknown as unknown[]
     const until = async (cond: () => Promise<boolean>) => {
       const end = Date.now() + 15_000
       while (!(await cond())) {

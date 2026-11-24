@@ -1003,7 +1003,7 @@ export function unsentLinkSql() {
 export async function remailClientAction(
   orgId: string,
   actionId: string,
-  opts: { resend?: boolean; /** Only while its mail never started. */ onlyUnsent?: boolean } = {},
+  opts: { resend?: boolean /** Only while its mail never started. */; onlyUnsent?: boolean } = {},
 ): Promise<boolean> {
   const mailId = newActionMailId()
   const out = await withPrivilegedDb(orgId, "client-action-remail", async (tx) => {
@@ -1657,7 +1657,9 @@ async function linkInPlaceOf(
  * stand. A signer who signed, or who declined after proving the code, gets no new link; one whose
  * turn has not come waits for it.
  */
-export function newLinkAfter(input: InPlaceInput & { email?: string | null }): Promise<InPlaceResult> {
+export function newLinkAfter(
+  input: InPlaceInput & { email?: string | null },
+): Promise<InPlaceResult> {
   return linkInPlaceOf(
     input,
     (prior) => ({

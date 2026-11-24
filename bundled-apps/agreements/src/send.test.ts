@@ -1536,8 +1536,7 @@ describe("a send cut off before the agreement left draft", () => {
             }
           : { status: "ok", record: record({ id: p.id, sign_order: null }) }
       if (seenBy === "the job") await decidedReconcile(ctx)
-      else
-        expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "replaced" })
+      else expect(await onLinksMade(ctx, made(prepared.version_id))).toEqual({ status: "replaced" })
       expect(rowOf(db, "agreements", id).status).toBe("draft")
       expect(rowOf(db, "agreement_versions", prepared.version_id).status).toBe("superseded")
       const events = (db.tables.get("signature_events") ?? []) as Row[]

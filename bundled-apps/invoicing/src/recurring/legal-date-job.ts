@@ -125,12 +125,9 @@ export async function recurringLegalDateJob(
           issue_on: dayOf(run.issue_on),
           latest_issue_on: dayOf(run.latest_issue_on),
           period: run.period_label,
+          // The card says the last issue day: the row repeats no date, only that the day has come.
           when:
-            urgency === "ends_today"
-              ? "Ends today"
-              : urgency === "late"
-                ? "Late"
-                : `Ends ${dayOf(run.latest_issue_on)}`,
+            urgency === "ends_today" ? "waits for approval and ends today" : "waits for approval",
           resolved: false,
         },
       })

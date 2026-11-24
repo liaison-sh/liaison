@@ -597,6 +597,10 @@ describe("the month-end run on the real kernel", () => {
   }, 900_000)
 
   it("an org at its app day cap on the last issue day sees the hold once, nothing issues, and the next day the run is late, never silently", async () => {
+    const decider = await minimal.person(ORG, { role: "member" })
+    await minimal.grantScope(decider.id, "invoicing:approve")
+    const seat = await minimal.person(ORG, { role: "member" })
+    await minimal.grantScope(seat.id, "invoicing:documents:write")
     const fx = await draftAndApprove(1)
     // Monday 30 November, 08:30 in Paris: the issue day is also the last issue day.
     AppDayCapTestAccess.setReader(async () => ({
@@ -615,6 +619,11 @@ describe("the month-end run on the real kernel", () => {
       >`SELECT summary FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${actor.userId} AND kind = 'invoicing:recurring_run.held'`
       expect(held).toHaveLength(1)
       expect(String(held[0]?.summary)).toContain("held until 2026-12-01")
+      const told = await sql<
+        Row[]
+      >`SELECT user_id::text AS id FROM kernel.attention_events WHERE org_id = ${ORG} AND kind = 'invoicing:recurring_run.held'`
+      expect(told.map((r) => r.id)).toContain(decider.id)
+      expect(told.map((r) => r.id)).not.toContain(seat.id)
       expect(await sequenceOf(fx.issuer)).toBe(0)
       expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["approved"])
     } finally {
@@ -769,5 +778,63 @@ describe("the month-end run on the real kernel", () => {
     ).toHaveLength(2)
     await runJob("recurring-legal-date")
     expect((await runOf(fx.issuer)).status).toBe("issued")
+  }, 240_000)
+
+  it("the Home rows of a run reach the people who can decide it, never a seat that only writes documents, and say no deadline the card says", async () => {
+    const decider = await minimal.person(ORG, { role: "member" })
+    await minimal.grantScope(decider.id, "invoicing:documents:write")
+    await minimal.grantScope(decider.id, "invoicing:approve")
+    const seat = await minimal.person(ORG, { role: "member" })
+    await minimal.grantScope(seat.id, "invoicing:documents:write")
+    const rowsOf = async (userId: string, kind: string, entityId: string) =>
+      sql<
+        Row[]
+      >`SELECT summary FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${userId} AND kind = ${`invoicing:recurring_run.${kind}`} AND entity_id = ${entityId}`
+
+    // Due: a run nobody decided on its last day.
+    const fx = await monthEnd(1)
+    setSystemTime(new Date("2026-11-27T09:00:00Z"))
+    await runJob("recurring-draft")
+    const run = await runOf(fx.issuer)
+    const runId = String(run.id)
+    setSystemTime(new Date("2026-11-28T06:00:00Z"))
+    await runJob("recurring-legal-date")
+    await drainOutbox()
+    const due = await rowsOf(decider.id, "due", runId)
+    expect(due.map((r) => r.summary)).toEqual([
+      "The month-end run for November 2026 waits for approval.",
+    ])
+    expect(await rowsOf(seat.id, "due", runId)).toEqual([])
+    const [card] = await sql<
+      Row[]
+    >`SELECT summary::text AS s, notify_user_ids::text[] AS who FROM kernel.approval_requests WHERE id = ${String(run.approval_request_id)}`
+    expect(String(card?.s)).toContain("Last day: 2026-11-30")
+    // The same people as the card's.
+    expect(card?.who).toContain(decider.id)
+    expect(card?.who).not.toContain(seat.id)
+    setSystemTime(new Date("2026-11-30T06:00:00Z"))
+    await runJob("recurring-legal-date")
+    await drainOutbox()
+    expect((await rowsOf(decider.id, "due", runId)).map((r) => r.summary)).toContain(
+      "The month-end run for November 2026 waits for approval and ends today.",
+    )
+
+    // Late and partial go to the same people (held: the day cap test above).
+    setSystemTime(new Date("2026-12-01T06:00:00Z"))
+    await runJob("recurring-legal-date")
+    const partial = await draftAndApprove(1)
+    const [item] = await itemsOf(partial.runId)
+    await sql`UPDATE app_invoicing.documents SET external_ref = NULL WHERE id = ${String(item?.document_id)}`
+    await runJob("recurring-issue")
+    expect((await itemsOf(partial.runId)).map((i) => i.state)).toEqual(["failed"])
+    await drainOutbox()
+    const kindsOf = async (userId: string) =>
+      (
+        await sql<
+          Row[]
+        >`SELECT DISTINCT kind FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${userId} AND starts_with(kind, 'invoicing:recurring_run.') ORDER BY kind`
+      ).map((r) => String(r.kind).split(".")[1])
+    expect(await kindsOf(decider.id)).toEqual(["due", "late", "partial"])
+    expect(await kindsOf(seat.id)).toEqual([])
   }, 240_000)
 })

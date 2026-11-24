@@ -376,7 +376,7 @@ export async function stageRunCard(
     const period = String(run.period_label ?? dayOf(run.issue_on) ?? "")
     const res = (await ctx.approvals.restagePayload(
       existing,
-      { items, period, ...(late ? { late: true } : {}) },
+      { items, period, last_day: dayOf(run.latest_issue_on), ...(late ? { late: true } : {}) },
       "The month-end run's rows changed.",
     )) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
@@ -432,6 +432,7 @@ export async function stageRunCard(
         run_id: runId,
         items,
         period: String(run.period_label ?? issueOn),
+        last_day: lastDay,
         ...(late ? { late: true } : {}),
       },
       editable_fields: [],

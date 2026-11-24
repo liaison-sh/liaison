@@ -225,7 +225,9 @@ describe("the month-end run card", () => {
       await recurringLegalDateJob(h.ctx)
       expect(events.at(-1)?.data.urgency).toBe(urgency)
     }
-    expect(events.find((e) => e.data.urgency === "ends_today")?.data.when).toBe("Ends today")
+    expect(events.find((e) => e.data.urgency === "ends_today")?.data.when).toBe(
+      "waits for approval and ends today",
+    )
     expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "late" })
     // Approved late, the issue job still issues nothing after the last day.
     let issueCalls = 0

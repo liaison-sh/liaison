@@ -111,6 +111,7 @@ describe("an invoice added to a month-end run", () => {
     await add(h, runId)
     const payload = h.restaged[h.restaged.length - 1] as Record<string, unknown>
     const card = await summarizeRecurringRunIssue(payload)
+    expect(card.subtitle).toContain("Last day: 2026-11-30.")
     expect(card.lines[0]).toStartWith("2 invoices: ")
     expect(card.lines[1]?.replace(/\s/g, " ")).toBe("Total: 1 920.00 EUR incl. VAT")
   })

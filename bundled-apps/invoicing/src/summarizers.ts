@@ -1387,6 +1387,7 @@ export function runCardSummary(
   rawItems: unknown,
   period: string | null,
   late = false,
+  lastDay: string | null = null,
 ): { title: string; subtitle: string; lines: string[] } {
   const items = Array.isArray(rawItems) ? rawItems : []
   const lines = runCardLines(items)
@@ -1394,7 +1395,7 @@ export function runCardSummary(
     title: `${late ? "Late: issue" : "Issue"} ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
     subtitle: late
       ? "The last issue day has passed: approving issues these now, dated the day they issue"
-      : "Numbers are taken on the issue day from 08:00, never at approval",
+      : `Numbers are taken on the issue day from 08:00, never at approval.${lastDay ? ` Last day: ${lastDay}.` : ""}`,
     lines: lines.length > 0 ? lines : [period ? `Month-end run for ${period}` : "Month-end run"],
   }
 }
@@ -1405,7 +1406,12 @@ export function summarizeRecurringRunIssue(
   const period = typeof params.period === "string" && params.period ? params.period : null
   return done({
     kind: "recurring_run_issue",
-    ...runCardSummary(params.items, period, params.late === true),
+    ...runCardSummary(
+      params.items,
+      period,
+      params.late === true,
+      typeof params.last_day === "string" ? params.last_day : null,
+    ),
   })
 }
 

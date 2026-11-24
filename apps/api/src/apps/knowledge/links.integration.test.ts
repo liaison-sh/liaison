@@ -26,6 +26,7 @@ import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { planEntityDocument } from "~/modules/search/indexer"
+import { seedDocumentVersion } from "~/seed/factories/knowledge/document-version"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -381,24 +382,19 @@ describe("the backfill of texts stored before", () => {
          WHERE id = ${doc.id}::uuid`)
       await tx.execute(sql`DELETE FROM ${knowledgeRel("document_links")}
                             WHERE source_document_id = ${doc.id}::uuid`)
-      for (const [kind, title, body] of [
-        ["baseline", "Old page", `older ${labelled("Secret plan Zephyr", secretId)}`],
-        [
-          "unapplied",
-          `T ${labelled("Secret plan Zephyr", secretId)}`,
-          `u ${labelled("Secret plan Zephyr", secretId)}`,
-        ],
-        ["edit", "Old page", rawBody],
-      ] as const) {
-        await tx.execute(sql`
-          INSERT INTO ${knowledgeRel("document_versions")}
-            (org_id, document_id, kind, title, body, body_md5, revision, author_type, author_id,
-             started_at, created_at, updated_at, required_scopes)
-          VALUES (${orgId}::uuid, ${doc.id}::uuid, ${kind}, ${title}, ${body}, ${md5(body)}, 1,
-                  'user', ${aliceId}::uuid, clock_timestamp(), clock_timestamp(),
-                  clock_timestamp(), '{}'::text[])`)
-      }
     })
+    const versions = [
+      ["baseline", "Old page", `older ${labelled("Secret plan Zephyr", secretId)}`],
+      [
+        "unapplied",
+        `T ${labelled("Secret plan Zephyr", secretId)}`,
+        `u ${labelled("Secret plan Zephyr", secretId)}`,
+      ],
+      ["edit", "Old page", rawBody],
+    ] as const
+    for (const [kind, title, body] of versions) {
+      await seedDocumentVersion({ orgId, documentId: doc.id, kind, title, body, authorId: aliceId })
+    }
     return { doc, rawBody, rawSummary }
   }
 

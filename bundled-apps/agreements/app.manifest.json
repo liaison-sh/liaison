@@ -1,6 +1,6 @@
 {
   "name": "agreements",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "iconName": "file-text",
   "kind": "app",
   "description": "Agreements: proposals, statements of work, contracts and any PDF, prepared and signed with a simple electronic signature.",
@@ -281,6 +281,8 @@
           "required": false,
           "description": "The project's whole timebox in minutes, as last set from this agreement (its proposal, then each accepted change request)."
         },
+        "send_told_version_id": "uuid?",
+        "send_key": "text?",
         "effects_claim": "uuid?",
         "effects_claimed_at": "date?",
         "effects_task_id": "uuid?",
@@ -311,6 +313,16 @@
           "required": false,
           "description": "Text read from an imported PDF, kept as unverified: never the signed text."
         }
+      },
+      "constraints": {
+        "unique": [
+          {
+            "columns": [
+              "send_key"
+            ],
+            "where": "send_key IS NOT NULL AND status <> 'declined' AND status <> 'voided' AND status <> 'expired' AND status <> 'withdrawn'"
+          }
+        ]
       }
     },
     "agreement_shares": {
@@ -1941,6 +1953,7 @@
         "agreements:agreements:write"
       ],
       "handler": "changeRequestSendHandler",
+      "timeoutMs": 25000,
       "summarizer": "summarizeChangeRequestSend",
       "gated": true,
       "noAutoApprove": true,
@@ -2360,6 +2373,7 @@
       "agreement:knowledge_copy_not_made",
       "agreement:links_withdrawn",
       "agreement:renewal_not_rolled",
+      "agreement:send_unfinished",
       "evidence:mismatch",
       "evidence:timestamp_overdue",
       "evidence:copy_failed",
@@ -2608,6 +2622,16 @@
         "resolveWhen": {
           "field": "resolved",
           "equals": true
+        }
+      },
+      {
+        "event": "agreement:send_unfinished",
+        "kind": "agreements:agreement.send_unfinished",
+        "urgency": 70,
+        "summary": "{{data.number}}: {{data.why}}",
+        "recipients": {
+          "kind": "participants",
+          "path": "data.personIds"
         }
       },
       {

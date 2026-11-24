@@ -34,7 +34,13 @@ import {
   refusal,
   todayOf,
 } from "./ctx"
-import { answerBeingRecorded, interruptedSend, linksOf, rescannedState } from "./send"
+import {
+  answerBeingRecorded,
+  interruptedSend,
+  linksOf,
+  rescannedState,
+  unfinishedWords,
+} from "./send"
 import { markSent } from "./sent-state"
 
 export interface AgreementRow {
@@ -352,7 +358,7 @@ export async function agreementGet(ctx: AgreementsCtx, p: { id: string }) {
       ...(l.state === "declined" && !l.code_verified ? { code_verified: false } : {}),
     })),
     message:
-      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${cut ? `Version ${cut.version.number} was sent to ${cut.links.length} signer(s) and its links stand: it reads as sent in a few minutes.` : row.status === "draft" ? "Check it with agreement_prepare." : ""}`
+      `Agreement ${row.number} "${row.title}" is ${row.status}${versions.length ? `, ${versions.length} version(s)` : ", no version yet"}. ${row.claimed_by_user_id ? ` An admin added themselves to its list on ${String(row.claimed_at ?? "").slice(0, 10)}, after every person on it had been deactivated for 7 days.` : ""} ${cut?.whole ? `Version ${cut.version.number} was sent to ${cut.links.length} signer(s) and its links stand: it reads as sent in a few minutes.` : cut ? `${unfinishedWords(cut)} Its links stand: send it again to the same signers to say it is whole, save a change to replace it, or void it.` : row.status === "draft" ? "Check it with agreement_prepare." : ""}`
         .replace(/\s+/g, " ")
         .trim(),
   }
@@ -644,9 +650,12 @@ export async function agreementUpdate(ctx: AgreementsCtx, p: UpdateParams) {
     if (cut) {
       const recording = await answerBeingRecorded(ctx, row, cut)
       if (recording) return recording
-      await markSent(ctx, row, cut.version)
+      if (cut.whole) await markSent(ctx, row, cut.version)
       row = { ...row, status: "sent" }
     }
+  } else if (SENT.includes(row.status) && (p.source !== undefined || p.file_id !== undefined)) {
+    const recording = await answerBeingRecorded(ctx, row, null)
+    if (recording) return recording
   }
   if (SENT.includes(row.status) && (p.source !== undefined || p.file_id !== undefined)) {
     // Saving over a sent version: its open links die (`replaced`), its signatures stay on it,
@@ -1002,6 +1011,17 @@ function freezeRecord(row: AgreementRow, source: AgreementSource): Record<string
   return { ...data, agreement: { ...own, number: row.number, title: row.title } }
 }
 
+/** Drawing or reading a file takes seconds: the version before may have been sent meanwhile. */
+async function sentMeanwhile(ctx: AgreementsCtx, row: AgreementRow): Promise<ErrorEnvelope | null> {
+  const now = await loadAgreement(ctx, row.id)
+  if (isError(now)) return now
+  if (now.status === "draft" && !(await interruptedSend(ctx, now))) return null
+  return refusal(
+    "NOT_A_DRAFT",
+    `Agreement ${row.number} was sent while this version was made ready: save a change to replace what was sent, or void it. Nothing was frozen.`,
+  )
+}
+
 /**
  * Freeze the draft as the next version: the host renders the filled source, the
  * freeze refuses a blank field and a drawn text that differs from the source's,
@@ -1058,6 +1078,8 @@ async function freezeDraft(
       "FREEZE_TEXT_MISMATCH",
       `The laid-out text of ${row.number} differs from its source, so it was not frozen. Nothing was frozen; report this document.`,
     )
+  const gone = await sentMeanwhile(ctx, row)
+  if (gone) return gone
   const user = await callerUserId(ctx)
   const number = Math.max(1, Number((draft as { next_number?: number }).next_number ?? 1))
   const version = (await ctx.db.insert("agreement_versions", {
@@ -1207,6 +1229,11 @@ async function freezeUpload(
       out.error?.code ?? "PDF_UNREADABLE",
       `The file of ${row.number} was not frozen: ${out.error?.message ?? "it could not be read."}`,
     )
+  }
+  const gone = await sentMeanwhile(ctx, row)
+  if (gone) {
+    if (opts.inJob) await ctx.db.update("agreement_drafts", draft.id, { upload_state: null })
+    return gone
   }
   const number = Math.max(1, Number(draft.next_number ?? 1))
   const user = opts.inJob ? (draft.updated_by_user_id ?? null) : await callerUserId(ctx)

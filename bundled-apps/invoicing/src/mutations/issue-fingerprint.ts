@@ -221,28 +221,52 @@ export async function restageForTerms(
 }
 
 /**
+ * Whether the card a call issues from was made before cards held what issuing writes: a fingerprint
+ * of the older shape, or an approval with none. Nothing says its approver saw the tax country, the
+ * terms or the amount, so it issues nothing and is asked again.
+ */
+export function olderCard(
+  ctx: Pick<MutationsCtx, "approval">,
+  shown: string | null | undefined,
+): boolean {
+  if (typeof shown === "string" && shown !== "") return !shown.startsWith("2:")
+  return ctx.approval?.toolName === "invoicing:invoice_issue"
+}
+
+/**
  * The issue's own check, the one every edit path meets: a draft whose fingerprint is not the one
  * its approval carries is not issued from that card, whether it was edited through drafts_update,
- * documents_update, a Shopify sync or anything else, or the terms it would be due by changed. An
- * approval with no fingerprint (one asked for by chaining a draft that did not exist yet, or made
- * before approvals carried one) is not checked; an older one holds the draft's own content alone.
- * The amount is checked by the issue itself, before a number is taken.
+ * documents_update, a Shopify sync or anything else, or the terms it would be due by changed. A
+ * call with no approval and no fingerprint (a person's own) is not checked; an older card is
+ * `olderCard`'s. The amount is checked by the issue itself, before a number is taken.
  */
 export async function draftChangedSinceCard(
   ctx: DbCtx,
   draft: DraftRow,
   shownHash: string | null | undefined,
 ): Promise<ErrorEnvelope | null> {
-  if (typeof shownHash !== "string" || shownHash === "") return null
-  const same = shownHash.startsWith("2:")
-    ? shownHash.split(":")[1] === (await contentOf(ctx, draft))
-    : draftContentHash(draft as HashableDraft) === shownHash
-  if (same) return null
+  if (typeof shownHash !== "string" || !shownHash.startsWith("2:")) return null
+  if (shownHash.split(":")[1] === (await contentOf(ctx, draft))) return null
   return {
     status: "error",
     error: {
       code: "draft_changed",
       message: `${upperFirst(draftInWords(draft))} was not issued: it changed after this request was made, or the payment terms it is due by did. Nothing was numbered. Ask for its issue again so the card shows what will be issued.`,
+    },
+  }
+}
+
+/** The answer of an older card: nothing issued, and the request that asks again. */
+export function askedAgain(draft: DraftRow, approvalId: string | null): ErrorEnvelope {
+  return {
+    status: "error",
+    error: {
+      code: "draft_changed",
+      message: `${upperFirst(draftInWords(draft))} was not issued: this request was made before issue requests showed the amount, the tax country and the due terms. Nothing was numbered. ${
+        approvalId
+          ? `Its issue is asked again, showing them (approval ${approvalId}): decide that one.`
+          : "Ask for its issue again so the card shows them."
+      }`,
     },
   }
 }

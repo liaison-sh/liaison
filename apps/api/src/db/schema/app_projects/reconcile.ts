@@ -97,6 +97,8 @@ export const reconciliationLines = appProjects.table(
     }),
     /** The earlier retainer month its hours were worked in; null for the card's own period. */
     workMonth: text("work_month"),
+    /** How it was drawn, and the minutes its bill leaves out (migration 0349). */
+    counting: jsonb("counting").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

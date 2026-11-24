@@ -4,7 +4,8 @@
 // every figure here is the server's. Nothing here knows who did the work: a task has minutes
 // and entries, never an author.
 import { parseDuration } from "@liaison/shared"
-import { type BudgetTask, plannedByTask, realByTask } from "./coverage"
+import type { BudgetTask } from "./coverage"
+import { type Counting, lessOf, type ShareInput, shareOut } from "./line-minutes"
 import { ProjectsServiceError } from "./statuses"
 import type { Basis } from "./time-plan"
 
@@ -373,6 +374,8 @@ export interface ComputedLine {
   otherProjectId?: string
   /** The earlier retainer month the line's hours were worked in, after its invoice. */
   workMonth?: string
+  /** How it was drawn, and what its bill leaves out. */
+  counting?: Counting
 }
 
 /** The name of the line of work closed in an invoiced period after its invoice. */
@@ -382,6 +385,10 @@ export const LATE_GAP_LINE_NAME = "Earlier work, on no invoice yet"
 export const LATE_GAP_UNPLANNED_LINE_NAME = "Earlier work not in the plan, on no invoice yet"
 /** The name of the line of time entered on billed tasks after their invoice. */
 export const LATE_TIME_LINE_NAME = "Time entered after its invoice"
+/** The same, on tasks a card left off its bill. */
+export const LATE_LEFT_LINE_NAME = "Time entered since a card left its task off"
+/** The same, on tasks whose invoice was credited. */
+export const LATE_CREDITED_LINE_NAME = "Earlier work, its invoice credited since"
 export const LATE_UNPLANNED_LINE_NAME = "Earlier work not in the plan, closed after its invoice"
 
 export const LATE_RELATED_LINE_NAME =
@@ -390,21 +397,6 @@ export const LATE_RELATED_LINE_NAME =
 /** The name of the line of a retainer month's hours worked after its invoice. */
 export function lateMonthLineName(month: string): string {
   return `Earlier work, ${MONTHS[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}, done after its invoice`
-}
-
-/** The tasks of a set that no other task of the set contains: counting them counts each once. */
-export function rootsOf(ids: readonly string[], byId: ReadonlyMap<string, BudgetTask>): string[] {
-  const set = new Set(ids)
-  return ids.filter((id) => {
-    let parent = byId.get(id)?.parentId ?? null
-    const seen = new Set<string>()
-    while (parent && !seen.has(parent)) {
-      if (set.has(parent)) return false
-      seen.add(parent)
-      parent = byId.get(parent)?.parentId ?? null
-    }
-    return true
-  })
 }
 
 /**
@@ -436,6 +428,21 @@ export function defaultBill(
   return { bill: 0 }
 }
 
+/** What a line's bill leaves out, in words, or null when it leaves nothing out. */
+export function countingSaid(c: Counting | undefined, basis: Basis, hpd: number): string | null {
+  if (!c) return null
+  const q = (m: number) => worded(m, basis, hpd)
+  const said: string[] = []
+  if (c.fee) said.push(`${q(c.fee)} of its plan was worked inside the retainer's fee`)
+  if (c.billed) said.push(`${q(c.billed)} of its plan is on another line or an earlier invoice`)
+  if (c.plan) said.push(`${q(c.plan)} is part of work billed at its plan`)
+  if (c.netted)
+    said.push(`${q(c.netted)} was taken off billed work since, so it comes off this line`)
+  return said.length === 0
+    ? null
+    : `Not billed by default: ${said.join("; ")}. Change the line to bill it.`
+}
+
 export function computeLines(args: {
   basis: Basis
   hoursPerDayMinutes: number
@@ -443,6 +450,8 @@ export function computeLines(args: {
   projectTasks: readonly BudgetTask[]
   /** Each task's own real minutes. */
   ownReal: ReadonlyMap<string, number>
+  /** What the project's claims left to count, per task; without it, each task's own real minutes. */
+  share?: Omit<ShareInput, "basis" | "tasks">
   lines: ReadonlyArray<
     ProposedLine & {
       resolvedTaskIds: string[]
@@ -453,30 +462,54 @@ export function computeLines(args: {
   /** Tasks of the period no line lists and the proposal did not leave out as the client's own. */
   unlisted: readonly string[]
 }): ComputedLine[] {
-  const byId = new Map(args.projectTasks.map((t) => [t.id, t]))
-  const planned = plannedByTask(args.projectTasks)
-  const real = realByTask(args.projectTasks, args.ownReal)
-  const figures = (ids: readonly string[]) => {
-    const roots = rootsOf(ids, byId)
-    const p = roots.reduce((s, id) => s + (planned.get(id) ?? 0), 0)
-    // A retainer's month lists every task with time in it: each counts its own time, once.
-    const r =
-      args.basis === "retainer"
-        ? [...new Set(ids)].reduce((s, id) => s + (args.ownReal.get(id) ?? 0), 0)
-        : roots.reduce((s, id) => s + (real.get(id) ?? args.ownReal.get(id) ?? 0), 0)
-    return { planned: p > 0 ? p : null, real: r }
+  const own = (id: string) => args.ownReal.get(id) ?? 0
+  const input: ShareInput = {
+    ...(args.share ?? { named: own, open: own }),
+    basis: args.basis,
+    tasks: args.projectTasks,
   }
-  // The period's plan: the planned time of every task on the card, each counted once.
-  const periodPlanned =
-    (figures([...new Set([...args.lines.flatMap((l) => l.resolvedTaskIds), ...args.unlisted])])
-      .planned ?? 0) > 0
+  // Past the card's bound, the last lines fold into "Other closed tasks" with the unlisted ones.
+  const room =
+    args.unlisted.length > 0 || args.lines.length > RECONCILE_LINES_MAX
+      ? RECONCILE_LINES_MAX - 1
+      : args.lines.length
+  const kept = args.lines.slice(0, room)
+  const folded = args.lines.slice(room)
+  const otherIds = [...new Set([...args.unlisted, ...folded.flatMap((l) => l.resolvedTaskIds)])]
+  const hasOther = otherIds.length > 0 || folded.length > 0
+  const shares = shareOut(input, [
+    ...kept.map((l) => ({ ids: l.resolvedTaskIds, other: false })),
+    ...(hasOther ? [{ ids: otherIds, other: true }] : []),
+  ])
+  // The period's plan: the planned time of every task on the card.
+  const periodPlanned = shares.some((x) => (x.planned ?? 0) > 0)
   const out: ComputedLine[] = []
-  for (const line of args.lines) {
-    const f = figures(line.resolvedTaskIds)
-    const kind = lineKindOf(f.planned)
+  const lineOf = (
+    share: (typeof shares)[number],
+    kind: LineKind,
+    rest: Omit<
+      ComputedLine,
+      "position" | "kind" | "plannedMinutes" | "realMinutes" | "billMinutes" | "tag" | "counting"
+    >,
+  ) => {
+    const { bill, tag } = defaultBill(args.basis, kind, share.planned, share.real, periodPlanned)
+    const less = lessOf(share.less)
+    out.push({
+      position: out.length,
+      ...rest,
+      kind,
+      ...(tag && kind !== "other" ? { tag } : {}),
+      plannedMinutes: share.planned,
+      realMinutes: share.real,
+      billMinutes: Math.max(0, bill - less),
+      ...(less > 0 ? { counting: share.less } : {}),
+    })
+  }
+  for (const [i, line] of kept.entries()) {
+    const share = shares[i] as (typeof shares)[number]
     let trace: number | null = null
     if (line.traceEstimate !== undefined) {
-      if (f.real > 0) {
+      if (share.real > 0) {
         throw new ProjectsServiceError(
           400,
           "trace_estimate_with_real",
@@ -501,48 +534,22 @@ export function computeLines(args: {
         )
       }
     }
-    const { bill, tag } = defaultBill(args.basis, kind, f.planned, f.real, periodPlanned)
-    out.push({
-      position: out.length,
+    lineOf(share, lineKindOf(share.planned), {
       name: line.name,
       ...(line.why ? { why: line.why } : {}),
-      kind,
       ...(line.reason ? { reason: line.reason } : {}),
-      ...(tag ? { tag } : {}),
       taskIds: line.resolvedTaskIds,
-      plannedMinutes: f.planned,
-      realMinutes: f.real,
       traceEstimateMinutes: trace,
-      billMinutes: bill,
       proofs: line.proofsOut,
       ...(line.otherProjectId ? { otherProjectId: line.otherProjectId } : {}),
     })
   }
-  // Past the card's bound, the last lines fold into "Other closed tasks" with the unlisted ones.
-  let otherIds = [...args.unlisted]
-  let otherProofs: ComputedProof[] = []
-  const room =
-    otherIds.length > 0 || out.length > RECONCILE_LINES_MAX ? RECONCILE_LINES_MAX - 1 : out.length
-  if (out.length > room) {
-    for (const extra of out.splice(room)) {
-      otherIds = [...otherIds, ...extra.taskIds]
-      otherProofs = [...otherProofs, ...extra.proofs]
-    }
-  }
-  if (otherIds.length > 0) {
-    const ids = [...new Set(otherIds)]
-    const f = figures(ids)
-    const { bill } = defaultBill(args.basis, "other", f.planned, f.real, periodPlanned)
-    out.push({
-      position: out.length,
+  if (hasOther) {
+    lineOf(shares[kept.length] as (typeof shares)[number], "other", {
       name: OTHER_LINE_NAME,
-      kind: "other",
-      taskIds: ids,
-      plannedMinutes: f.planned,
-      realMinutes: f.real,
+      taskIds: otherIds,
       traceEstimateMinutes: null,
-      billMinutes: bill,
-      proofs: otherProofs,
+      proofs: folded.flatMap((l) => l.proofsOut),
     })
   }
   return out

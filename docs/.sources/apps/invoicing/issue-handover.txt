@@ -6,3 +6,4 @@ A draft's invoice keeps the company it was made for (schedule, plan's quote, pro
 The company page and portal list it -> bundled-apps/invoicing/src/reads.ts (allDocumentRefs) ; apps/api/src/db/migrations/0345_invoicing_documents_company_backfill.sql
 An edited draft redraws its waiting issue card; a stale decision or a changed draft is refused -> bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (restageIssueApprovals) ; bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (draftChangedSinceCard) ; bundled-apps/invoicing/src/mutations/drafts.ts (updateDraft)
 A refusal names the draft by its customer -> bundled-apps/invoicing/src/mutations/issue-handover.ts (draftInWords)
+An issue request made before requests showed the amount, the tax country and the terms issues nothing and is asked again -> bundled-apps/invoicing/src/mutations/issue-fingerprint.ts (olderCard, askedAgain)

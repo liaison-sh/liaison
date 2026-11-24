@@ -290,7 +290,6 @@ export function reconcileCardFields(input: CardInput) {
     })
   }
   if (input.byHand) notes.push({ text: input.byHand })
-  if (input.byHand) notes.push({ text: input.byHand })
   if (input.late) notes.push({ text: input.late })
   if (offBill > 0) {
     notes.push({

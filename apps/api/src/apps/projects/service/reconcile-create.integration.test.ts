@@ -2666,7 +2666,12 @@ describe("the last month of a retainer, and a project billed another way since",
     await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
     const alone = await proposal(r.key, "2026-10", [])
     expect(alone.createInvoice ?? null).toBeNull()
-    expect((await create(alone)).error).toBeDefined()
+    // Nothing to set: the hours are inside the fee, and it says so.
+    expect(alone.notice).toMatchObject({ title: "Nothing to bill" })
+    const refused = await create(alone)
+    expect(refused.error).toMatchObject({ code: "nothing_to_bill" })
+    expect(refused.error.message).toContain("there is nothing to bill")
+    expect(JSON.stringify([alone.notice, refused.error])).not.toContain("recurring schedule")
     expect(await docsOf(r.id)).toHaveLength(1)
     await call("projects_timePlanSet", { projectId: r.id, basis: "daily" })
     await call("projects_billingTermsSet", { projectId: r.id, rate: 930, currency: "EUR" })
@@ -2847,6 +2852,34 @@ describe("what the approver of a card's invoice saw is what issues", () => {
       await terms(null)
     }
   }, 120_000)
+
+  for (const shape of ["with the older fingerprint", "with none"] as const)
+    it(`a card made before the amount and the terms were on it, ${shape}, issues nothing and is asked again as the draft is now`, async () => {
+      const { projectId, card } = await october()
+      const made = await create(card)
+      const [before] = await cardOf(made.documentId)
+      // As a release before stored it, and the tax country changed since outside the tools.
+      await db.execute(drizzleSql`
+        UPDATE kernel.approval_requests
+           SET current_payload = CASE WHEN ${shape === "with none"}
+                 THEN current_payload - 'draft_hash'
+                 ELSE jsonb_set(current_payload, '{draft_hash}', ${JSON.stringify("a".repeat(64))}::jsonb) END
+         WHERE id = ${String(before?.id)}::uuid`)
+      await db.execute(drizzleSql`
+        UPDATE app_invoicing.documents SET external_refs = '{"tax_country":"CH"}'::jsonb
+         WHERE id = ${made.documentId}::uuid`)
+      const taken = await numbersTaken()
+      await approveIssue(made.documentId).catch(() => null)
+      expect(await numbersTaken()).toBe(taken)
+      expect(await issued(projectId)).toBeUndefined()
+      const again = await cardOf(made.documentId)
+      expect(again).toHaveLength(1)
+      expect(again[0]?.id).not.toBe(before?.id as string)
+      expect(again[0]?.hash).toMatch(/^2:[0-9a-f]{64}:651000$/)
+      expect(again[0]?.summary).toMatch(/6.?510/)
+      expect((await approveIssue(made.documentId)).status).toBe("approved")
+      expect((await issued(projectId))?.total).toBe("651000")
+    }, 120_000)
 
   it("terms that moved behind its card take no number", async () => {
     const { projectId, card } = await october()

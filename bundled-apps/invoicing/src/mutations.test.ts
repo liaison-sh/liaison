@@ -90,6 +90,7 @@ import {
   settingsIssuerProfileWritePreflight,
   splitPostalAddress,
 } from "./mutations"
+import { issuePayloadFor } from "./mutations/issue-fingerprint"
 import type { ReadsFetch } from "./reads"
 import { documentsGet, documentsSearch, type ReadsCtx } from "./reads"
 import * as summarizers from "./summarizers"
@@ -1827,7 +1828,8 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       due_at: "2099-07-20", // NET-30 originally on the draft
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id, due_at: "2099-08-19" }) // corrected NET-60
+    const card = await issuePayloadFor(ctx, draft_id)
+    const r = await invoiceIssue(ctx, { ...card, due_at: "2099-08-19" }) // corrected NET-60
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
@@ -1856,7 +1858,7 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       due_at: "2099-07-20",
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id }) // no due_at override
+    const r = await invoiceIssue(ctx, await issuePayloadFor(ctx, draft_id)) // no due_at override
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)

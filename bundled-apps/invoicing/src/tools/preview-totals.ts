@@ -33,6 +33,7 @@ export type PreviewMissing =
   | "counterparty_mismatch"
   | "basis"
   | "retainer"
+  | "within_fee"
   | RecipientGap
 
 export interface PreviewTotalsInput {
@@ -107,6 +108,8 @@ const WHAT_TO_SET: Record<PreviewMissing, string> = {
     "a contact of the project's own company (the contact named belongs to another one)",
   basis: "nothing: this project bills by a fixed price or a billing plan, not from planned vs done",
   retainer: "the project's retainer on its recurring schedule in invoicing",
+  within_fee:
+    "nothing: the hours of earlier months are within what their retainer included, so there is nothing to bill",
   billing_address: "the customer's billing address",
   email: "the customer's email address",
   siren: "the customer's SIREN",
@@ -278,6 +281,7 @@ async function retainerPreview(
     typeof input.periodFrom === "string" && DAY.test(input.periodFrom) ? input.periodFrom : null
   const s = await retainerScheduleOf(ctx, projectId, from?.slice(0, 7) ?? "")
   const card = cardMinutes(input.lines ?? [])
+  let within = false
   // A month that bills no retainer from its card can still bill earlier months' later hours, alone.
   if (from && issuer.ok && card.late.length > 0) {
     const month = from.slice(0, 7)
@@ -286,6 +290,7 @@ async function retainerPreview(
       ? null
       : await lateOnOtherCard(ctx, { projectId, before: month, late: card.late })
     const items = alone ? lateItems(alone.late, 0) : []
+    within = !!alone && alone.unknown.length === 0 && alone.late.length > 0 && items.length === 0
     if (alone?.schedule && items.length > 0) {
       const who = retainerRecipient(alone.schedule, { contactId, companyId })
       const recipient = who.companyId || who.contactId ? await recipientOf(ctx, who) : null
@@ -311,6 +316,21 @@ async function retainerPreview(
         lateOnly: true,
         message: `Only the hours of earlier months entered after their invoices bill from this card: ${Number(tax.subtotal_minor)} excl. VAT (minor units, ${alone.currency}). Nothing was created.`,
       }
+    }
+  }
+  // The earlier hours are inside their fee and the month bills no retainer: there is nothing to set.
+  if (within) {
+    return {
+      projectId,
+      ready: false,
+      missing: ["within_fee"],
+      excl: null,
+      vat: null,
+      incl: null,
+      rateBp: null,
+      currency: null,
+      openPlanSteps,
+      message: `The hours of earlier months on this card are within what their retainer included, and this month bills no retainer, so there is nothing to bill. Nothing was created.`,
     }
   }
   if (!s || !from) missing.push("retainer")

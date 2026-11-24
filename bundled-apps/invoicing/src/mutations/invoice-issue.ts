@@ -26,6 +26,7 @@ import { runItemDraftRefusal } from "../recurring/run-card"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
 import { type RecordLanded, underApprovalProtocol } from "./approval-protocol"
+import { pendingIssueApproval } from "./billing-plan"
 import { assertNoLiveInvoiceForOrder } from "./credit-coverage"
 import {
   findIssuerProfile,
@@ -35,8 +36,16 @@ import {
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
+import { ISSUE_APPROVAL_EXPIRY_HOURS } from "./from-reconcile"
 import { issueWithFxRate } from "./fx-issue"
-import { approvedAmount, draftChangedSinceCard, issueFingerprint } from "./issue-fingerprint"
+import {
+  approvedAmount,
+  askedAgain,
+  draftChangedSinceCard,
+  issueFingerprint,
+  olderCard,
+  restageIssueApprovals,
+} from "./issue-fingerprint"
 import {
   handOverDraft,
   markReconciliation,
@@ -277,9 +286,17 @@ async function issueDraftInvoice(
     issuer.invoice_approval_threshold_minor != null
       ? toBigInt(issuer.invoice_approval_threshold_minor)
       : null
-  if (!ctx.approval && threshold != null && total > threshold) {
-    const approval = await ctx.requestApproval({
+  // The card of this draft as it is now: whoever decides sees what will be issued.
+  const ask = async (again = false) =>
+    ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
+      // Asked again for a draft made from a project: whoever could decide the first card can.
+      ...(again && draft.source?.billing_project_id
+        ? {
+            approve_scope: "invoicing:documents:write",
+            expiry_hours: ISSUE_APPROVAL_EXPIRY_HOURS,
+          }
+        : {}),
       ...asHandlerSummary(
         issueCard({
           kind: "invoice_issue",
@@ -320,6 +337,14 @@ async function issueDraftInvoice(
       },
       editable_fields: ["due_at"],
     })
+  // A card that never showed what issuing writes issues nothing: it is asked again, as it is now.
+  if (olderCard(ctx, input.draft_hash)) {
+    const waiting = await pendingIssueApproval(ctx, draft.id)
+    if (waiting) await restageIssueApprovals(ctx, draft)
+    return askedAgain(draft, waiting ?? (await ask(true)).approval_id)
+  }
+  if (!ctx.approval && threshold != null && total > threshold) {
+    const approval = await ask()
     // Granted inline (a person's own call holding the deciding scope): issue now.
     if (!approval.auto_approved) {
       return { status: "pending_approval", approval_id: approval.approval_id }

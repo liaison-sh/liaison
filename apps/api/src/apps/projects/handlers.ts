@@ -1591,6 +1591,10 @@ const MISSING_SAID: Record<string, string> = {
   siren: "the customer's SIREN",
 }
 
+/** Earlier months' hours inside their retainer, on a month that bills none. */
+const WITHIN_FEE =
+  "The hours of earlier months on this card are within what their retainer included, and this month bills no retainer, so there is nothing to bill. They stay on the next card."
+
 /** The refusal code Create answers for the first thing missing. */
 const MISSING_CODE: Record<string, string> = {
   issuer_profile: "no_issuer_profile",
@@ -1601,6 +1605,7 @@ const MISSING_CODE: Record<string, string> = {
   billing_contact: "billing_contact_missing",
   basis: "basis_not_billable",
   retainer: "no_retainer_schedule",
+  within_fee: "nothing_to_bill",
   billing_address: "billing_address_missing",
   email: "customer_email_missing",
   siren: "siren_missing",
@@ -1722,6 +1727,10 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     if (typeof p.overageMinutes === "number" && p.overageMinutes > 0) out.waiveOverage = true
     return out
   }
+  if (missing.includes("within_fee") && card.fit !== "nothing") {
+    out.notice = { title: "Nothing to bill", text: WITHIN_FEE }
+    return out
+  }
   const toSet = missing.filter((m) => MISSING_SAID[m]).map((m) => MISSING_SAID[m])
   if (toSet.length > 0 && card.fit !== "nothing") {
     const text = `To create the invoice from this card, set ${toSet.join(", ")}.`
@@ -1816,8 +1825,16 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
       MISSING_CODE[first] ?? "not_ready",
       first === "basis"
         ? `${name} is billed by a fixed price or a billing plan, not from planned vs done. Nothing was created.`
-        : `No invoice can be made for ${name} yet: set ${toSet.join(", ")}. Nothing was created.`,
-      { missing, next: "Set what is missing, then press Create invoice again." },
+        : first === "within_fee"
+          ? `${WITHIN_FEE} Nothing was created.`
+          : `No invoice can be made for ${name} yet: set ${toSet.join(", ")}. Nothing was created.`,
+      {
+        missing,
+        next:
+          first === "within_fee"
+            ? "Nothing to set: say that there is nothing to bill."
+            : "Set what is missing, then press Create invoice again.",
+      },
     )
   }
 

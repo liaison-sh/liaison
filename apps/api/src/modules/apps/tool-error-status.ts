@@ -219,6 +219,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   nothing_billed: 422,
   // A retainer: its terms, its month drafted from its card, and the card's own discard.
   no_retainer_schedule: 409,
+  nothing_to_bill: 409,
   // A renewal whose schedule bills several fee lines: a person sets the new terms.
   fee_lines_ambiguous: 409,
   not_a_card_draft: 409,

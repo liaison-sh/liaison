@@ -981,6 +981,18 @@ describe("another person in a withdrawn signer's place", () => {
       replaces: "ca-2",
     })) as { error: { code: string } }
     expect(other.error.code).toBe("SIGNER_NOT_WITHDRAWN")
+    const two = await sentWith({ Anne: "revoked", Jean: "revoked" })
+    const card = (await agreementSendPreflight(two.ctx, { ...two.base, signers: [pat] })) as {
+      pinnedParams: object
+    }
+    const moved = await agreementSend(two.ctx, {
+      ...two.base,
+      signers: [pat],
+      ...card.pinnedParams,
+      replaces: "ca-2",
+    })
+    expect(codeOf(moved)).toBe("SEND_GUARD_MISMATCH")
+    expect(two.ctx.calls.mints).toEqual([])
   })
 
   it("refuses a signer not withdrawn, a holder of a link, more than one person, and a draft", async () => {
@@ -1169,8 +1181,15 @@ describe("a send cut off before the agreement left draft", () => {
     await db.update("agreement_versions", prepared.version_id, {
       frozen_at: new Date(Date.now() - 11 * 60_000).toISOString(),
     })
+    let why = ""
+    ctx.emit = async (e) => {
+      if (e.action === "send_unfinished") why = (e.data as { why: string }).why
+      return null
+    }
     expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 1 })
     expect(rowOf(db, "agreements", id).status).toBe("sent")
+    // Its reply to the client's mail may not have left: its people are told to look.
+    expect(why).toContain("before the reply it goes with was confirmed")
   })
 
   it("a void withdraws its links; a draft never sent is still nothing to void", async () => {
@@ -1315,6 +1334,11 @@ describe("a send cut off before the agreement left draft", () => {
         if (e.action === "send_unfinished") told.push(e.data as (typeof told)[number])
         return null
       }
+      // Until its answer is kept it is held, and stays a draft.
+      expect(codeOfError(await agreementVoid(ctx, { id, reason: "No" }))).toBe(
+        "ANSWER_BEING_RECORDED",
+      )
+      expect(rowOf(db, "agreements", id).status).toBe("draft")
       // The signer's answer is kept, and nothing is signed or sealed on it.
       expect(await onClientActionDecided(ctx, made(prepared.version_id))).toEqual({
         status: "kept",

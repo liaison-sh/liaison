@@ -439,21 +439,28 @@ describe("change_request_send", () => {
   })
 
   it("asked again with other terms, the one it wrote is set aside, and only the new one is sent", async () => {
-    const { db, parentId, versionId } = await world()
-    await send(
-      killed(ctxFor(db, { approved: true }), "mint"),
-      db,
-      params(parentId, versionId),
-    ).catch(() => {})
-    const ctx = ctxFor(db, { approved: true })
-    const out = await send(ctx, db, params(parentId, versionId, { hours_minutes: 1200 }))
-    expect(out.status).toBe("ok")
-    expect(changeRequests(db).map((r) => [r.number, r.status])).toEqual([
-      ["CR-1", "voided"],
-      ["CR-2", "sent"],
-    ])
-    expect(ctx.calls.revokes).toEqual([expect.objectContaining({ reason: "sender_voided" })])
-    expect(ctx.calls.replies).toHaveLength(1)
+    for (const other of [
+      { hours_minutes: 1200 },
+      { rate_minor: "12000" },
+      { title: "Two-factor sign-in" },
+      { work: ["Something else"] },
+    ]) {
+      const { db, parentId, versionId } = await world()
+      await send(
+        killed(ctxFor(db, { approved: true }), "mint"),
+        db,
+        params(parentId, versionId),
+      ).catch(() => {})
+      const ctx = ctxFor(db, { approved: true })
+      const out = await send(ctx, db, params(parentId, versionId, other))
+      expect(out.status).toBe("ok")
+      expect(changeRequests(db).map((r) => [r.number, r.status])).toEqual([
+        ["CR-1", "voided"],
+        ["CR-2", "sent"],
+      ])
+      expect(ctx.calls.revokes).toEqual([expect.objectContaining({ reason: "sender_voided" })])
+      expect(ctx.calls.replies).toHaveLength(1)
+    }
   })
 
   it("a run killed after its link is named, and nothing is sent again, by this mail or another", async () => {

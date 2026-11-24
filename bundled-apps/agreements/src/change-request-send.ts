@@ -252,8 +252,6 @@ interface ChangeRequestRow {
   kind: string
   status: string
   title: string
-  hours_minutes?: number | null
-  rate_minor?: string | null
   parent_agreement_id?: string | null
 }
 
@@ -412,13 +410,8 @@ async function takeUp(
     where: { agreement_id: cr.id },
     limit: 1,
   })) as Array<{ source?: unknown }>
-  if (
-    cr.title === p.title.trim() &&
-    Number(cr.hours_minutes) === p.hours_minutes &&
-    String(cr.rate_minor) === ready.rate.toString() &&
-    canonical(draft?.source) === canonical(sourceOf(ready, p))
-  )
-    return cr
+  // Its text holds the title, the work, the hours, the rate, the price and the passage.
+  if (canonical(draft?.source) === canonical(sourceOf(ready, p))) return cr
   await ctx.db.update("agreements", cr.id, {
     status: "voided",
     void_reason: "Its send stopped half way and was asked again with other terms.",

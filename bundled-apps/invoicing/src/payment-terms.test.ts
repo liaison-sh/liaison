@@ -85,13 +85,13 @@ describe("the due date of an invoice made from a planned vs done card", () => {
     const due = day(docOf(h, id).due_at)
     const emitted: Row[] = []
     const ctx = { db: h.db, emit: async (e: Row) => void emitted.push(e) } as never
-    await overdueScanJob(ctx, { now: new Date(`${due}T06:00:00Z`) })
+    await overdueScanJob(ctx, { now: new Date(`${due} 06:00:00Z`) })
     expect(emitted).toEqual([])
-    await overdueScanJob(ctx, { now: new Date(`${addDays(due, 2)}T06:00:00Z`) })
+    await overdueScanJob(ctx, { now: new Date(`${addDays(due, 2)} 06:00:00Z`) })
     expect(emitted.map((e) => e.entityId)).toEqual([id])
     emitted.length = 0
     await h.db.update("documents", id, { grand_total_minor: "0" })
-    await overdueScanJob(ctx, { now: new Date(`${addDays(due, 2)}T06:00:00Z`) })
+    await overdueScanJob(ctx, { now: new Date(`${addDays(due, 2)} 06:00:00Z`) })
     expect(emitted).toEqual([])
   })
 })

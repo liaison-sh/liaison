@@ -11,9 +11,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { sql } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
-import { invalidateDemoMarker, loadDemoMarker } from "~/modules/demo/demo-org"
-import { claimOrgSlug, hasOrgSlugClaim } from "~/seed/factories/org/org"
-import { runSeedDemoCli } from "./seed-demo"
+import { CLOUD_CREATE_ORG_ENDPOINT, claimOutcome } from "~/modules/cloud/outcomes"
+import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
+import {
+  invalidateDemoMarker,
+  loadDemoMarker,
+  markOrgAsDemo,
+  visitorMarker,
+} from "~/modules/demo/demo-org"
+import {
+  claimOrgSlug,
+  hasOrgSlugClaim,
+  findOrgIdBySlug as orgIdBySlug,
+} from "~/seed/factories/org/org"
+import { seedUserRow } from "~/seed/factories/org/rows"
+import { runSeedDemoCli, type SeedDemoWorldOptions } from "./seed-demo"
 import { demoMarkRefusal, seedDemoOrg } from "./seed-org"
 
 const SLUG = `demo-adoption-${Math.random().toString(36).slice(2, 8)}`
@@ -26,6 +38,15 @@ function rowsOf(result: unknown): Rows {
 }
 
 let orgId = ""
+
+async function usersOf(id: string): Promise<number> {
+  const rows = rowsOf(
+    await withSystemDb("demo-adoption-test-users", (tx) =>
+      tx.execute(sql`SELECT count(*)::int AS n FROM kernel.users WHERE org_id = ${id}`),
+    ),
+  )
+  return Number(rows[0]?.n ?? 0)
+}
 
 async function marker(): Promise<unknown> {
   invalidateDemoMarker(orgId)
@@ -51,6 +72,17 @@ afterAll(async () => {
   await withSystemDb("demo-adoption-test-cleanup", (tx) =>
     tx.execute(sql`DELETE FROM kernel.organizations WHERE slug = ${SLUG}`),
   )
+  // The orgs the refusals left standing, theirs people first.
+  await withSystemDb("demo-adoption-test-cleanup-left", async (tx) => {
+    const left = sql`SELECT id FROM kernel.organizations WHERE slug LIKE ${`${SLUG}-%`} AND slug <> ${INTERRUPTED_SLUG}`
+    await tx.execute(sql`DELETE FROM kernel.users WHERE org_id IN (${left})`)
+    await tx.execute(
+      sql`DELETE FROM kernel.cloud_request_outcomes WHERE idem_key LIKE ${`${SLUG}-%`}`,
+    )
+    await tx.execute(
+      sql`DELETE FROM kernel.organizations WHERE slug LIKE ${`${SLUG}-%`} AND slug <> ${INTERRUPTED_SLUG}`,
+    )
+  })
   // The interrupted org is a marked demo org by now: its rows go with the demo purge path.
   await withSystemDb("demo-adoption-test-cleanup-claim", (tx) =>
     tx.execute(sql`DELETE FROM kernel.system_config WHERE key LIKE ${`seed.org-claim:${SLUG}%`}`),
@@ -68,6 +100,61 @@ describe("demoMarkRefusal", () => {
     expect(refusal).toContain("'acme'")
     expect(refusal).toContain("NOT a demo org")
     expect(refusal).toContain("did not create it")
+  })
+})
+
+describe("demo:seed --variant visitor --reset: a seeded visitor org is replaced", () => {
+  const seen: SeedDemoWorldOptions[] = []
+  const stubWorld = async (opts: SeedDemoWorldOptions) => {
+    seen.push(opts)
+    return { complete: true, partsOff: [], orgSlug: opts.orgSlug, orgId: "stub" } as never
+  }
+  const demoOrgUnder = async (slug: string, orgClass: "demo" | "standard") => {
+    const rows = rowsOf(
+      await withSystemDb("demo-adoption-test-replace-org", (tx) =>
+        tx.execute(
+          sql`INSERT INTO kernel.organizations (name, slug, class) VALUES ('Walk', ${slug}, ${orgClass}) RETURNING id`,
+        ),
+      ),
+    )
+    const id = String(rows[0]?.id ?? "")
+    await markOrgAsDemo(id, visitorMarker(72))
+    await seedUserRow({ orgId: id, email: `p@${slug}.test`, name: "P", passwordHash: "x" })
+    return id
+  }
+  const reset = (slug: string) =>
+    runSeedDemoCli(["--slug", slug, "--variant", "visitor", "--reset"], { seedWorld: stubWorld })
+
+  it("on a private box: the demo org is deleted, then seeded from nothing", async () => {
+    const slug = `${SLUG}-walk`
+    const old = await demoOrgUnder(slug, "demo")
+    expect((await reset(slug)).exitCode).toBe(0)
+    expect(await orgIdBySlug(slug)).toBeNull()
+    expect(await usersOf(old)).toBe(0)
+    expect(seen.at(-1)).toMatchObject({ orgSlug: slug, variant: "visitor", resetContent: false })
+    // Nothing under the slug: a fresh seed, nothing to replace.
+    expect((await reset(slug)).exitCode).toBe(0)
+  })
+
+  it("never an org of class standard, marker or not", async () => {
+    const slug = `${SLUG}-walk-std`
+    const real = await demoOrgUnder(slug, "standard")
+    const calls = seen.length
+    await expect(reset(slug)).rejects.toThrow(/not a demo org/)
+    expect(await usersOf(real)).toBe(1)
+    expect(seen.length).toBe(calls)
+  })
+
+  it("never on a public demo box", async () => {
+    const slug = `${SLUG}-walk-public`
+    const id = await demoOrgUnder(slug, "demo")
+    DemoModeTestAccess.set(true)
+    try {
+      await expect(reset(slug)).rejects.toThrow(/public demo box/)
+    } finally {
+      DemoModeTestAccess.set(null)
+    }
+    expect(await usersOf(id)).toBe(1)
   })
 })
 
@@ -94,7 +181,7 @@ describe("a seed killed between creating the org and marking it", () => {
     const rows = rowsOf(
       await withSystemDb("demo-adoption-test-interrupted-org", (tx) =>
         tx.execute(
-          sql`INSERT INTO kernel.organizations (name, slug) VALUES ('Resonant Audio Labs', ${INTERRUPTED_SLUG}) RETURNING id`,
+          sql`INSERT INTO kernel.organizations (name, slug, class) VALUES ('Resonant Audio Labs', ${INTERRUPTED_SLUG}, 'demo') RETURNING id`,
         ),
       ),
     )
@@ -107,6 +194,47 @@ describe("a seed killed between creating the org and marking it", () => {
     expect((await loadDemoMarker(org.orgId))?.variant).toBe("visitor")
     expect(await hasOrgSlugClaim(INTERRUPTED_SLUG)).toBe(false)
   }, 300_000)
+
+  it("never deletes a standard org that took the slug since: refused, org, people and claim kept", async () => {
+    const slug = `${SLUG}-taken`
+    await claimOrgSlug(slug)
+    const rows = rowsOf(
+      await withSystemDb("demo-adoption-test-taken-org", (tx) =>
+        tx.execute(
+          sql`INSERT INTO kernel.organizations (name, slug) VALUES ('Real Tenant', ${slug}) RETURNING id`,
+        ),
+      ),
+    )
+    const realId = String(rows[0]?.id ?? "")
+    await seedUserRow({ orgId: realId, email: `owner@${slug}.test`, name: "O", passwordHash: "x" })
+
+    await expect(seedDemoOrg({ orgSlug: slug, variant: "visitor" })).rejects.toThrow(
+      /not of class demo.*delete it by hand/,
+    )
+    expect(await usersOf(realId)).toBe(1)
+    expect(await orgIdBySlug(slug)).toBe(realId)
+    expect(await hasOrgSlugClaim(slug)).toBe(true)
+  })
+
+  it("never deletes a demo org the control plane created, even under a stale claim", async () => {
+    const slug = `${SLUG}-cloud`
+    await claimOrgSlug(slug)
+    const rows = rowsOf(
+      await withSystemDb("demo-adoption-test-cloud-org", (tx) =>
+        tx.execute(
+          sql`INSERT INTO kernel.organizations (name, slug, class) VALUES ('Made', ${slug}, 'demo') RETURNING id`,
+        ),
+      ),
+    )
+    const id = String(rows[0]?.id ?? "")
+    await seedUserRow({ orgId: id, email: `owner@${slug}.test`, name: "O", passwordHash: "x" })
+    await claimOutcome(CLOUD_CREATE_ORG_ENDPOINT, slug, "owner")
+
+    await expect(seedDemoOrg({ orgSlug: slug, variant: "visitor" })).rejects.toThrow(
+      /no longer an interrupted seed's org/,
+    )
+    expect(await usersOf(id)).toBe(1)
+  })
 
   it("leaves no claim behind after a run that completes", async () => {
     expect(await hasOrgSlugClaim(SLUG)).toBe(false)

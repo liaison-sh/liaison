@@ -49,7 +49,7 @@ import { purgeOrg } from "~/modules/org/purge/purge-org"
 import { ensureOrg, OrgClassMismatchError } from "~/modules/provisioning/ensure-org"
 import { upsertAppRow } from "~/seed/factories/app-tables"
 import { AUTO_TOP_UP_OFF, seedOrgBillingState } from "~/seed/factories/billing/billing"
-import { type OrgRowSeed, seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
+import { type OrgRowSeed, seedOrgRow, seedRoleRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const tag = crypto.randomUUID().slice(0, 8)
@@ -218,7 +218,17 @@ describe("a demo org and the control plane", () => {
   it("no sign-in link, credit or lookup names it, and no create adopts it", async () => {
     const org = await makeOrg({ class: "demo" })
     const email = `lookup-${tag}@orgclass.test`
-    await seedUserRow({ orgId: org.id, email, name: "L", passwordHash: "x", status: "active" })
+    const owner = await seedUserRow({
+      orgId: org.id,
+      email,
+      name: "L",
+      passwordHash: "x",
+      status: "active",
+    })
+    // An owner the handoff would find, were the org a standard one.
+    await seedRoleRow(org.id, "admin")
+    await sql`INSERT INTO kernel.user_roles (org_id, user_id, role_id)
+      SELECT ${org.id}, ${owner}, id FROM kernel.roles WHERE org_id = ${org.id} AND name = 'admin'`
     expect(await lookupOrgsByEmail(email)).toEqual({ ok: true, orgs: [] })
     expect((await cloudHandoff(org.id, crypto.randomUUID())).status).toBe(404)
     expect(
@@ -545,6 +555,8 @@ describe("liaison demo reclassify", () => {
   it("never takes an org outside the window, billed, control plane made, the operator's, or not a visitor's", async () => {
     const outside = await windowOrg()
     await sql`UPDATE kernel.organizations SET created_at = now() - interval '2 hours' WHERE id = ${outside.id}`
+    const after = await windowOrg()
+    await sql`UPDATE kernel.organizations SET created_at = now() + interval '2 hours' WHERE id = ${after.id}`
     const billed = await windowOrg()
     await seedOrgBillingState(billed.id)
     const made = await windowOrg()
@@ -560,7 +572,7 @@ describe("liaison demo reclassify", () => {
     const saved = mutable.LIAISON_OPERATOR_ORG_ID
     mutable.LIAISON_OPERATOR_ORG_ID = operator.id
     try {
-      const before = [outside, billed, made, customer, reserved, malformed, operator]
+      const before = [outside, after, billed, made, customer, reserved, malformed, operator]
       const taken = await listed([...window(), "--apply"])
       for (const org of before) {
         expect(taken).not.toContain(org.id)

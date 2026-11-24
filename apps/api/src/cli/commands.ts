@@ -1092,7 +1092,7 @@ export const COMMANDS = [
       {
         name: "--reset",
         summary:
-          "Clear the org's seeded content first (the default for `reserved`, the only one it takes).",
+          "Clear the reserved org's seeded content first (its default). With `--variant visitor`, delete the demo org under the slug and seed it fresh instead; refused on a public demo box and for any org that is not of class demo.",
       },
       { name: "--no-reset", summary: "Top up: adopt what is there, clear nothing." },
       {

@@ -70,6 +70,8 @@ export async function ensureImmutableTriggersCurrent(): Promise<{
       // Two purges regenerating the same function at once would collide
       // ("tuple concurrently updated"): one at a time, and the second finds
       // the body current and skips.
+      // A table busy behind a long transaction fails this one, not the boot.
+      await tx.execute(drizzleSql`SET LOCAL lock_timeout = '5s'`)
       await tx.execute(
         drizzleSql`SELECT pg_advisory_xact_lock(hashtext('org-purge-immutable-triggers'))`,
       )

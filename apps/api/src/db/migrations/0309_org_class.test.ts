@@ -2,7 +2,7 @@
 //
 // 0309 (`organizations.class`): a marked org becomes `demo`, everything else
 // `standard`; an org with a marker AND a billing row stops the migration before
-// it writes anything; and the previous release keeps working on the new schema
+// it writes anything; a migration login held to row security gets the same; and the previous release keeps working on the new schema
 // (it inserts orgs and billing rows without the new columns). Runs against the
 // migrated test database, taken back to the schema before it; every case rolls
 // back.
@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import postgres from "postgres"
+import { CLOUD_CREATE_ORG_ENDPOINT } from "~/modules/cloud/outcomes"
 import { seedOrgBillingState } from "~/seed/factories/billing/billing"
 import { seedOrgRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -88,6 +89,95 @@ afterAll(async () => {
   await releaseTestLock()
 })
 
+const LOGIN = `m0309_login_${crypto.randomUUID().slice(0, 8)}`
+
+/**
+ * Continue the transaction as a migration login that owns the schema and its
+ * tables and is a member of `roles`, with neither superuser nor BYPASSRLS (the
+ * shape 0283 is for). RESET ROLE then comes back to that login, as on a
+ * connection of its own. The role goes with the rollback.
+ */
+async function asOwnerLogin(
+  tx: Tx,
+  roles = "liaison_admin, liaison_rls, liaison_schema_admin, liaison_definer",
+): Promise<void> {
+  await tx.unsafe(`CREATE ROLE "${LOGIN}" NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEROLE NOCREATEDB`)
+  if (roles) await tx.unsafe(`GRANT ${roles} TO "${LOGIN}"`)
+  await tx.unsafe(`DO $$
+    DECLARE r record;
+    BEGIN
+      ALTER SCHEMA kernel OWNER TO "${LOGIN}";
+      FOR r IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = 'kernel' AND c.relkind IN ('r', 'p') LOOP
+        EXECUTE format('ALTER TABLE kernel.%I OWNER TO "${LOGIN}"', r.relname);
+      END LOOP;
+    END $$`)
+  await tx.unsafe(`SET LOCAL SESSION AUTHORIZATION "${LOGIN}"`)
+  const [who] = await tx<{ su: boolean; bypass: boolean; n: number }[]>`
+    SELECT rolsuper AS su, rolbypassrls AS bypass,
+           (SELECT count(*)::int FROM kernel.organizations) AS n
+      FROM pg_roles WHERE rolname = current_user`
+  // Row security hides every org from it: what the migration has to see through.
+  expect(who).toEqual({ su: false, bypass: false, n: 0 })
+}
+
+describe("0309, run by a schema owner that is neither superuser nor BYPASSRLS", () => {
+  it("gives the marked orgs their class, as for a superuser", async () => {
+    const visitor = await org()
+    const plain = await org()
+    const billed = await org(true)
+    await rolledBack(async (tx) => {
+      await before(tx)
+      await mark(tx, visitor, marker("visitor"))
+      await asOwnerLogin(tx)
+      await migrate(tx)
+      const [who] = await tx`SELECT current_user AS me`
+      expect(who?.me).toBe(LOGIN)
+      await tx.unsafe("RESET SESSION AUTHORIZATION")
+      expect(await classOf(tx, visitor)).toBe("demo")
+      expect(await classOf(tx, plain)).toBe("standard")
+      expect(await classOf(tx, billed)).toBe("standard")
+      const fk = await tx`SELECT 1 FROM pg_constraint
+        WHERE conname = 'org_billing_state_org_class_fk' AND convalidated`
+      expect(fk).toHaveLength(1)
+    })
+  })
+
+  it("stops at a marked org with a billing row", async () => {
+    const both = await org(true)
+    await rolledBack(async (tx) => {
+      await before(tx)
+      await mark(tx, both, marker("visitor"))
+      await asOwnerLogin(tx)
+      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+      expect(String(err)).toContain(both)
+    })
+  })
+
+  it("stops, instead of doing nothing, when the login is not a member of liaison_admin", async () => {
+    const visitor = await org()
+    await rolledBack(async (tx) => {
+      await before(tx)
+      await mark(tx, visitor, marker("visitor"))
+      await asOwnerLogin(tx, "")
+      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+      expect(String(err)).toMatch(/permission denied to set role "liaison_admin"/)
+    })
+  })
+
+  it("stops when liaison_admin itself is held to row security", async () => {
+    const visitor = await org()
+    await rolledBack(async (tx) => {
+      await before(tx)
+      await mark(tx, visitor, marker("visitor"))
+      await tx.unsafe("ALTER ROLE liaison_admin NOBYPASSRLS")
+      await asOwnerLogin(tx)
+      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+      expect(String(err)).toMatch(/liaison_admin is held to row security/)
+    })
+  })
+})
+
 describe("0309 org class", () => {
   it("a valid marker makes a demo org; anything else is standard", async () => {
     const visitor = await org()
@@ -126,6 +216,18 @@ describe("0309 org class", () => {
       const columns = await tx`SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'kernel' AND table_name = 'organizations' AND column_name = 'class'`
       expect(columns).toHaveLength(0)
+    })
+  })
+
+  it("a marked org the control plane created stops it, as a billed one does", async () => {
+    const made = await org()
+    await rolledBack(async (tx) => {
+      await before(tx)
+      await mark(tx, made, marker("visitor"))
+      await tx`INSERT INTO kernel.cloud_request_outcomes (endpoint, idem_key, binding_hash)
+        SELECT ${CLOUD_CREATE_ORG_ENDPOINT}, slug, 'h' FROM kernel.organizations WHERE id = ${made}`
+      const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
+      expect(String(err)).toContain(made)
     })
   })
 

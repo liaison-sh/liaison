@@ -80,6 +80,7 @@ import {
 import { runAsSeed } from "~/modules/notifications/seeded"
 import { joinPendingApprovals } from "~/seed/factories/people/membership"
 import { DEMO_APPS, demoSeedPlan } from "./demo-apps"
+import { replaceSeededDemoOrg } from "./replace-demo-org"
 import { type SeedDemoAccountsResult, seedDemoAccounts } from "./seed-accounts"
 import {
   enableScenarioRoutine,
@@ -483,8 +484,11 @@ export async function seedScenarioStart(
 // a clear it never did, because every layer ADOPTS the row it already wrote, so
 // a subject a reviewer rewrote survived every deploy. Converging that org is the
 // whole point of re-running the seed, so the clear is the default there and
-// `--no-reset` is how you ask for a top up. A `visitor` run never clears: that
-// org belongs to somebody who is probably still looking at it.
+// `--no-reset` is how you ask for a top up. A `visitor` run never clears in
+// place: that org belongs to somebody who is probably still looking at it. A
+// `visitor` run with `--reset` on a box that is not a public demo (a private QA
+// or walk box) deletes the demo org under the slug and seeds it fresh instead
+// (`replaceSeededDemoOrg`); a public demo box refuses it.
 //
 // The reserved org's OWNER is the App Review account, and its password comes
 // from `LIAISON_DEMO_REVIEWER_PASSWORD`: `reservedOwner()` refuses when it is
@@ -531,10 +535,20 @@ export async function runSeedDemoCli(
 ): Promise<{ result: SeedDemoWorldResult; exitCode: 0 | 1 }> {
   const seedWorld = deps.seedWorld ?? seedDemoWorld
   const variant = flag(argv, "variant") === "visitor" ? "visitor" : "reserved"
-  const resetContent = argv.includes("--no-reset")
+  let resetContent = argv.includes("--no-reset")
     ? false
     : argv.includes("--reset") || variant === "reserved"
   const slug = flag(argv, "slug") ?? DEMO_RESERVED_SLUG
+  // The in-place content reset is the reserved org's alone: a visitor org asked
+  // for one is replaced instead (deleted, then seeded from nothing), and only
+  // when it is a demo org and the box no public demo.
+  if (resetContent && variant === "visitor") {
+    await replaceSeededDemoOrg(slug, (msg) => console.log(`[demo-seed] ${msg}`), {
+      who: "demo-seed",
+      tier: "demo",
+    })
+    resetContent = false
+  }
   const result = await seedWorld({
     orgSlug: slug,
     orgName: flag(argv, "name") ?? DEMO_COMPANY_NAME,

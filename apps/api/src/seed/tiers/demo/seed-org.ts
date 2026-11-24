@@ -83,7 +83,7 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { zeroDemoOrgPlatformCredit } from "~/modules/demo/demo-reset"
-import { protectedOrgReason } from "~/modules/demo/org-class"
+import { orgClassOf, protectedOrgReason } from "~/modules/demo/org-class"
 import {
   pinAgentModel,
   type SeededAgent,
@@ -532,6 +532,10 @@ export function demoMarkRefusal(input: {
  * seeder's own, so it is deleted and the run makes it again from nothing.
  * Returns true when it cleared one. An org that carries the marker is a normal
  * re-seed (its stale claim is released); one without a claim is never touched.
+ *
+ * A claim alone is not enough: a real org may have taken the slug since the run
+ * died. Only an org of class `demo` (this seeder creates its orgs with it) is
+ * deleted; any other is refused, its claim kept, and an operator decides.
  */
 async function clearInterruptedOrg(
   orgSlug: string,
@@ -544,16 +548,25 @@ async function clearInterruptedOrg(
     await releaseOrgSlugClaim(orgSlug)
     return false
   }
+  if ((await orgClassOf(orgId)) !== "demo") {
+    throw new Error(
+      `seedDemoOrg: refusing to seed '${orgSlug}': an interrupted seed's claim is on the slug, but ` +
+        `the organization under it is not of class demo, so it is not deleted. If it is that ` +
+        `seed's leftover (an older release made it without a class), delete it by hand, then ` +
+        `seed again; otherwise use another slug.`,
+    )
+  }
   const { purgeOrg } = await import("~/modules/org/purge/purge-org")
   await purgeOrg(orgId, {
     reason: "seed-interrupted-org",
     // Re-checked before every destructive step: still claimed, still unmarked,
-    // and never a customer's or the operator's org.
+    // of class demo, and never a customer's or the operator's org.
     assertAllowed: async (id) => {
       await invalidateDemoMarker(id)
       if (
         !(await hasOrgSlugClaim(orgSlug)) ||
         (await loadDemoMarker(id)) ||
+        (await orgClassOf(id)) !== "demo" ||
         (await protectedOrgReason(id))
       ) {
         throw new Error(`seedDemoOrg: '${orgSlug}' is no longer an interrupted seed's org`)

@@ -213,6 +213,10 @@
     "copied": "Text copied.",
     "copyFailed": "The text could not be copied.",
     "staySignedIn": "Stay signed in",
-    "signOutDiscard": "Sign out and discard"
+    "signOutDiscard": "Sign out and discard",
+    "titleLabel": "Title",
+    "pageActions": "Page actions",
+    "oneReference": "1 reference",
+    "references": "{{count}} references"
   }
 }

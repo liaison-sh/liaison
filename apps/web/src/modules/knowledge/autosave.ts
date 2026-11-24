@@ -134,6 +134,11 @@ export interface PageSaver {
    * With unsaved text it is not taken: the next save meets the conflict.
    */
   adoptRemote(row: SavedRow): boolean
+  /**
+   * The text in the editor was written against an older text than `theirs` (a
+   * draft found on opening): nothing is saved until the person chooses.
+   */
+  markConflict(theirs: SavedRow): void
   /** Stop for good: timers, listeners and the request in flight. A last local put
    *  first, unless `discard`. */
   destroy(opts?: { discard?: boolean }): Promise<void>
@@ -397,6 +402,13 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
         accept(stored, sent)
         return
       }
+      // The revision moved without the text (verified, shared, moved): nobody wrote
+      // over mine, so it is saved against the new revision.
+      if (stored.title === acked.title && stored.body === acked.body) {
+        revision = stored.revision
+        again = true
+        return
+      }
       clearSaveTimers()
       setStatus({ state: "conflict", theirs: stored })
       return
@@ -443,6 +455,30 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
     }
     void run(true)
   }
+  /**
+   * The page goes away with a conflict open (D7): my text goes to Page history as it
+   * leaves (keepalive, so under 64 KB). The draft stays until a later open: the
+   * server keeps one unapplied version per session and base, so sending it again
+   * adds nothing.
+   */
+  const onPageGone = () => {
+    onPageHide()
+    if (destroyed || !dirty || status.state !== "conflict" || !mine()) return
+    const text = opts.read()
+    const payload = {
+      title: normalized(text).title,
+      body: text.body,
+      baseRevision: revision,
+      session: sessionId,
+    }
+    if (new TextEncoder().encode(JSON.stringify(payload)).length > KEEPALIVE_MAX_BYTES) return
+    opts.api
+      .post(`/knowledge/documents/${opts.docId}/versions`, payload, {
+        keepalive: true,
+        suppressGlobalError: true,
+      })
+      .catch(() => {})
+  }
   const onVisibility = () => {
     if (typeof document !== "undefined" && document.visibilityState === "hidden") onPageHide()
   }
@@ -453,7 +489,7 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
       void run()
     }
   }
-  target?.addEventListener("pagehide", onPageHide)
+  target?.addEventListener("pagehide", onPageGone)
   target?.addEventListener("online", onOnline)
   target?.document?.addEventListener("visibilitychange", onVisibility)
 
@@ -549,12 +585,20 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
       acked = { title: row.title, body: row.body }
       return true
     },
+    markConflict(theirs) {
+      if (destroyed) return
+      dirty = true
+      lastEditAt ||= Date.now()
+      clearSaveTimers()
+      setStatus({ state: "conflict", theirs })
+      void queueDraftPut()
+    },
     async destroy(destroyOpts) {
       if (destroyed) return
       clearSaveTimers()
       clearRetry()
       if (heartbeat) clearInterval(heartbeat)
-      target?.removeEventListener("pagehide", onPageHide)
+      target?.removeEventListener("pagehide", onPageGone)
       target?.removeEventListener("online", onOnline)
       target?.document?.removeEventListener("visibilitychange", onVisibility)
       if (destroyOpts?.discard) {

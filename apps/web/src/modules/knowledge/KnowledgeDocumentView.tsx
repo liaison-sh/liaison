@@ -1,62 +1,61 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// A Knowledge page. Whoever may edit it edits in place: the editor is always
+// mounted and the page saves itself (autosave.ts), with its unsaved text kept in a
+// local draft per user, page and tab (drafts.ts). Opening the page offers back a
+// draft that a closed tab left; a save that meets someone else's shows both texts
+// and the person chooses (D7: leaving with the choice open shows theirs and keeps
+// mine in Page history). A reader sees the rendered text only.
 
-import {
-  Archive,
-  ArchiveRestore,
-  ArrowLeftRight,
-  CheckCircle,
-  MoreHorizontal,
-  Pencil,
-  Share2,
-} from "lucide-solid"
 import {
   type Component,
   createEffect,
-  createMemo,
   createResource,
   createSignal,
-  For,
+  on,
   onCleanup,
   Show,
+  untrack,
 } from "solid-js"
 import { ApiError } from "~/lib/api-error"
-import { appLabel } from "~/lib/app-label"
 import { relativeTime } from "~/lib/relative-time"
-import { rovingFocus } from "~/lib/roving-focus"
-import { ComposerAssist } from "~/modules/assist/ComposerAssist"
-import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
 import { useDictation } from "~/modules/assist/useDictation"
-import { hasScope } from "~/modules/auth/auth-store"
-import { RichEditor, type RichEditorHandle } from "~/modules/editor"
-import FileList from "~/modules/files/FileList"
+import { userFromToken } from "~/modules/auth/auth-store"
+import { authManager } from "~/modules/auth/createAuthManager"
+import type { RichEditorHandle } from "~/modules/editor"
 import { useI18n } from "~/modules/i18n/i18n-context"
-import { useOptionalApi } from "~/modules/shell/ApiContext"
+import { useApi, useOptionalApi } from "~/modules/shell/ApiContext"
 import { shellTier } from "~/modules/shell/shell-tier"
 import { evictTabByEntity } from "~/modules/shell/tab-store"
+import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
-import { FloatingPanel } from "~/ui/FloatingPanel"
-import { OverlaySheet } from "~/ui/OverlaySheet"
-import { ScrollFade } from "~/ui/ScrollFade"
-
-import { renderMarkdown } from "./markdown"
-
-function formatRelative(iso: string | null, locale: string, never: string): string {
-  return relativeTime(iso, locale) || never
-}
-
-import { useApi } from "~/modules/shell/ApiContext"
+import {
+  createPageSaver,
+  openDrafts,
+  type PageSaver,
+  postDraftToHistory,
+  type SavedRow,
+  type SaverStatus,
+} from "./autosave"
+import { ConflictDialog } from "./ConflictDialog"
+import { draftKey, pageDrafts, webLocks } from "./drafts"
 import KnowledgeShareDialog from "./KnowledgeShareDialog"
 import {
   archiveKnowledgeDocument,
   getKnowledgeDocument,
   getKnowledgeDocumentBacklinks,
   type KnowledgeBacklink,
+  type KnowledgeVersionItem,
+  listKnowledgeVersions,
   restoreKnowledgeDocument,
+  restoreKnowledgeVersion,
   runSyncedSourceNow,
-  updateKnowledgeDocument,
   verifyKnowledgeDocument,
 } from "./knowledge-api"
-import { getPulseUpdated, isSyncedSourceArchived, loadDocuments } from "./knowledge-store"
+import { knowledgeStore, loadDocuments } from "./knowledge-store"
+import { PageBody } from "./PageBody"
+import { PageHeader } from "./PageHeader"
+import { PageHistory, versionAuthor } from "./PageHistory"
 
 interface KnowledgeDocumentFetched {
   id: string
@@ -74,27 +73,27 @@ interface KnowledgeDocumentFetched {
   lastSyncedAt?: string | null
   syncedSourceName?: string | null
   syncedSourceApp?: string | null
-  /** The server's own write check (service.ts canEditDocumentRow): the Edit control shows from it. */
+  updatedAt?: string
+  updatedBy?: string | null
+  /** The server's own write check (service.ts canEditDocumentRow). */
   canEdit?: boolean
 }
 
-/** What the server asks of a viewer to list or download a document's files. */
-const ATTACHMENTS_SCOPE = "knowledge:attachments:download"
+type Fetched = KnowledgeDocumentFetched | null | "not-found"
+
+const isRow = (d: Fetched | undefined): d is KnowledgeDocumentFetched => !!d && d !== "not-found"
 
 const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   const i18n = useI18n()
   const api = useOptionalApi()
   const apiForSidebar = useApi()
+  const phone = () => shellTier() === "phone"
+  const me = () => userFromToken()?.userId ?? null
 
   let docController: AbortController | null = null
-  let backlinksController: AbortController | null = null
-  onCleanup(() => {
-    docController?.abort()
-    backlinksController?.abort()
-  })
-  const [doc, { refetch }] = createResource(
+  const [doc, { refetch, mutate }] = createResource(
     () => props.entityId,
-    async (id: string | null): Promise<KnowledgeDocumentFetched | null | "not-found"> => {
+    async (id: string | null): Promise<Fetched> => {
       if (!id || !api) return null
       docController?.abort()
       const ac = new AbortController()
@@ -111,181 +110,412 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     },
   )
 
-  // The text being edited (null while reading), and the text a save is
-  // carrying: shown at once, as saved, until the server has answered.
-  const [draft, setDraft] = createSignal<string | null>(null)
-  const [pending, setPending] = createSignal<string | null>(null)
-  const editing = () => draft() !== null
-  let bodyEditor: RichEditorHandle | undefined
-  const bodyDictation = useDictation({ target: () => bodyEditor })
-  const storedBody = () => {
-    const d = doc()
-    return d && d !== "not-found" ? (d.body ?? "") : ""
-  }
-  const renderedBody = createMemo(() => renderMarkdown(pending() ?? storedBody()))
-  const [conflict, setConflict] = createSignal(false)
+  /** The editor opens with this text (null: read only). Set once per page. */
+  const [editorText, setEditorText] = createSignal<string | null>(null)
+  const [status, setStatus] = createSignal<SaverStatus>({ state: "idle" })
+  const [conflictMode, setConflictMode] = createSignal<"choose" | "both" | null>(null)
+  const [conflictBusy, setConflictBusy] = createSignal(false)
+  /** The conflict comes from a draft found on opening (not from a save). */
+  const [fromDraft, setFromDraft] = createSignal(false)
+  const [theirName, setTheirName] = createSignal<string | null>(null)
+  const [historyOpen, setHistoryOpen] = createSignal(false)
+  const [edited, setEdited] = createSignal<string | null>(null)
   const [actionError, setActionError] = createSignal<string | null>(null)
   const [backlinks, setBacklinks] = createSignal<KnowledgeBacklink[]>([])
-  const [_backlinksLoading, setBacklinksLoading] = createSignal(false)
-  const [menuOpen, setMenuOpen] = createSignal(false)
-  const [backlinksOpen, setBacklinksOpen] = createSignal(false)
   const [shareOpen, setShareOpen] = createSignal(false)
-  const [sourcesOpen, setSourcesOpen] = createSignal(false)
-  const phone = () => shellTier() === "phone"
 
+  let saver: PageSaver | null = null
+  let editor: RichEditorHandle | undefined
   let titleEl: HTMLHeadingElement | undefined
+  /** The text as it was when the view went away (the editor may be gone). */
+  let lastText: { title: string; body: string } | null = null
+  const bodyDictation = useDictation({ target: () => editor })
 
-  // Zero-knowledge denial / deleted doc: the fetch resolved "not-found", so
-  // this tab points at an entity the user cannot see. Evict it silently —
-  // manifest-app tab types have no validateEntity hook, so the tab would
-  // otherwise dangle (T23: no knowledge:document tab may survive a 404).
-  createEffect(() => {
-    if (doc() === "not-found") {
-      evictTabByEntity("knowledge:document", props.entityId)
+  const row = () => {
+    const d = doc()
+    return isRow(d) ? d : null
+  }
+  const editable = () => {
+    const d = row()
+    return !!d && d.canEdit === true && !d.syncedSourceId
+  }
+
+  /** The text in the editor now (the title as typed, the body serialized on demand). */
+  const readText = () => {
+    if (lastText) return lastText
+    const d = row()
+    return {
+      title: titleEl?.textContent ?? d?.title ?? "",
+      body: editor ? editor.markdown() : (untrack(editorText) ?? d?.body ?? ""),
     }
+  }
+
+  const setTitle = (title: string) => {
+    if (titleEl && document.activeElement !== titleEl && titleEl.textContent !== title)
+      titleEl.textContent = title
+  }
+
+  // ── Who edited last ───────────────────────────────────────────────────────
+  const editedLine = (name: string | null, self: boolean, at: string | undefined) => {
+    const when = relativeTime(at ?? null, i18n.locale(), { style: "long" }) || ""
+    if (self) return i18n.t("knowledge.autosave.editedByYou", { when })
+    if (name) return i18n.t("knowledge.autosave.editedBy", { name, when })
+    return when ? i18n.t("knowledge.autosave.edited", { when }) : null
+  }
+  const loadEdited = async (d: KnowledgeDocumentFetched) => {
+    if (!api) return
+    setEdited(editedLine(null, false, d.updatedAt))
+    if (!editable()) return
+    try {
+      const versions = await listKnowledgeVersions(api, d.id)
+      const last = versions.find((v) => v.kind !== "unapplied")
+      if (last)
+        setEdited(
+          editedLine(
+            versionAuthor(last, i18n.t),
+            last.authorType === "user" && last.authorId === me(),
+            d.updatedAt,
+          ),
+        )
+    } catch {
+      // The line keeps the date alone.
+    }
+  }
+
+  // ── Who saved theirs (a conflict) ─────────────────────────────────────────
+  const loadTheirName = async (theirs: SavedRow) => {
+    setTheirName(null)
+    if (!api) return
+    try {
+      const versions = await listKnowledgeVersions(api, theirs.id)
+      const last = versions.find((v) => v.kind !== "unapplied")
+      if (!last) return
+      // My other tab: "another of your tabs", never my own name.
+      if (last.authorType === "user" && last.authorId === me()) setTheirName(null)
+      else setTheirName(versionAuthor(last, i18n.t))
+    } catch {
+      setTheirName(i18n.t("knowledge.autosave.someone"))
+    }
+  }
+
+  // ── The saver of this page view ───────────────────────────────────────────
+  let setupFor: string | null = null
+  createEffect(() => {
+    const d = row()
+    if (!d || setupFor === d.id) return
+    setupFor = d.id
+    untrack(() => {
+      void loadEdited(d)
+      if (editable() && api && me()) void startEditing(d)
+      else setEditorText(null)
+      if (titleEl) titleEl.textContent = d.title
+    })
   })
 
+  const startEditing = async (d: KnowledgeDocumentFetched) => {
+    const userId = me()
+    if (!api || !userId) return
+    const drafts = pageDrafts()
+    const liveness = webLocks()
+    let opened: Awaited<ReturnType<typeof openDrafts>> = {
+      restore: null,
+      conflict: null,
+      extra: [],
+    }
+    try {
+      opened = await openDrafts({ drafts, liveness, userId, docId: d.id, current: d })
+    } catch {
+      // No drafts store here: the page opens on its stored text.
+    }
+    if (setupFor !== d.id) return
+    const draft = opened.restore ?? opened.conflict
+    setEditorText(draft ? draft.body : d.body)
+    if (draft && titleEl) titleEl.textContent = draft.title || d.title
+    const s = createPageSaver({
+      api,
+      userId,
+      docId: d.id,
+      base: { title: d.title, body: d.body, revision: d.revision },
+      read: readText,
+      currentUserId: me,
+      beforeRequest: () => authManager.pendingRefresh(),
+      drafts,
+      liveness,
+      untitled: () => i18n.t("knowledge.untitled"),
+      onStatus: (next) => {
+        setStatus(next)
+        if (next.state === "conflict" && next.theirs) void loadTheirName(next.theirs)
+      },
+      onSaved: saved,
+    })
+    saver = s
+    if (opened.restore) {
+      s.edit()
+      await s.persistDraft()
+      await drafts.remove(draftKey(opened.restore)).catch(() => {})
+      addToast({ type: "info", message: i18n.t("knowledge.autosave.restoredDraft") })
+    } else if (opened.conflict) {
+      setFromDraft(true)
+      s.markConflict({ ...d })
+      await s.persistDraft()
+      await drafts.remove(draftKey(opened.conflict)).catch(() => {})
+    }
+    for (const extra of opened.extra)
+      await postDraftToHistory(api, drafts, extra, i18n.t("knowledge.untitled"))
+  }
+
+  /** The server stored this view's text. */
+  const saved = (stored: SavedRow) => {
+    const before = row()
+    mutate((d) =>
+      isRow(d) ? ({ ...d, ...stored, body: stored.body, title: stored.title } as Fetched) : d,
+    )
+    setEdited(editedLine(null, true, new Date().toISOString()))
+    if (before && before.title !== stored.title) void loadDocuments(apiForSidebar)
+  }
+
+  // Someone else's save arrives (the socket refreshed the page in the store): taken
+  // in place while this view has nothing unsaved; otherwise the next save meets it.
+  createEffect(
+    on(
+      () => knowledgeStore.documentsById[props.entityId] as SavedRow | undefined,
+      (remote) => {
+        const s = saver
+        if (!remote || !s || typeof remote.revision !== "number") return
+        // Our own save comes back here too: its revision is not newer.
+        if (remote.revision <= s.revision()) return
+        if (!s.adoptRemote(remote)) return
+        editor?.applyRemote(remote.body)
+        setTitle(remote.title)
+        mutate((d) => (isRow(d) ? ({ ...d, ...remote } as Fetched) : d))
+      },
+    ),
+  )
+
+  // ── Leaving the page (tab closed, another page, sign-out) ────────────────
+  const leave = () => {
+    const s = saver
+    saver = null
+    if (!s) return
+    try {
+      lastText = readText()
+    } catch {
+      lastText = { title: row()?.title ?? "", body: row()?.body ?? "" }
+    }
+    const st = s.status()
+    if (st.state === "conflict" && st.theirs) {
+      // D7: theirs is shown, mine goes to Page history.
+      const theirs = st.theirs
+      void s
+        .takeTheirs(theirs)
+        .then((ok) =>
+          addToast({
+            type: ok ? "info" : "warning",
+            message: i18n.t(
+              ok ? "knowledge.autosave.leftConflictToast" : "knowledge.autosave.notStoredToast",
+            ),
+          }),
+        )
+        .finally(() => void s.destroy())
+    } else {
+      void s.flush().finally(() => void s.destroy())
+    }
+  }
+  createEffect(
+    on(
+      () => props.entityId,
+      () => {
+        leave()
+        lastText = null
+        setupFor = null
+        setEditorText(null)
+        setStatus({ state: "idle" })
+        setConflictMode(null)
+        setFromDraft(false)
+        setHistoryOpen(false)
+      },
+      { defer: true },
+    ),
+  )
+  onCleanup(() => {
+    docController?.abort()
+    leave()
+  })
+
+  // A page that is not found closes its tab, unless this view holds text that is
+  // not saved yet: that text stays on screen until the person has it (edge 3).
   createEffect(() => {
-    const d = doc()
-    if (d && d !== "not-found" && titleEl && titleEl.textContent !== d.title) {
-      titleEl.textContent = d.title
+    if (doc() === "not-found" && !(saver?.hasUnsaved() ?? false)) {
+      evictTabByEntity("knowledge:document", props.entityId)
     }
   })
 
   createEffect(() => {
     const id = props.entityId
     if (!id || !api) return
-    backlinksController?.abort()
     const ac = new AbortController()
-    backlinksController = ac
-    setBacklinksLoading(true)
+    onCleanup(() => ac.abort())
     void getKnowledgeDocumentBacklinks(api, id, { signal: ac.signal })
       .then((result) => {
-        if (ac.signal.aborted) return
-        setBacklinks(result.backlinks ?? [])
+        if (!ac.signal.aborted) setBacklinks(result.backlinks ?? [])
       })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return
-        setBacklinks([])
-      })
-      .finally(() => {
-        if (!ac.signal.aborted) setBacklinksLoading(false)
+      .catch(() => {
+        if (!ac.signal.aborted) setBacklinks([])
       })
   })
 
-  const startEditing = () => {
-    setConflict(false)
+  // ── Conflict choices ──────────────────────────────────────────────────────
+  const theirs = () => {
+    const st = status()
+    return st.state === "conflict" ? (st.theirs ?? null) : null
+  }
+  const keepMine = async () => {
+    const s = saver
+    const t = theirs()
+    if (!s || !t) return
+    setConflictBusy(true)
+    try {
+      await s.keepMine(t.revision)
+      if (s.status().state === "saved") {
+        setConflictMode(null)
+        setFromDraft(false)
+        addToast({ type: "success", message: i18n.t("knowledge.autosave.keptMineToast") })
+      }
+    } finally {
+      setConflictBusy(false)
+    }
+  }
+  const takeTheirs = async () => {
+    const s = saver
+    const t = theirs()
+    if (!s || !t) return
+    setConflictBusy(true)
+    try {
+      if (await s.takeTheirs(t)) {
+        editor?.applyRemote(t.body)
+        if (titleEl) titleEl.textContent = t.title
+        mutate((d) => (isRow(d) ? ({ ...d, ...t } as Fetched) : d))
+        setConflictMode(null)
+        setFromDraft(false)
+        addToast({ type: "success", message: i18n.t("knowledge.autosave.tookTheirsToast") })
+      } else {
+        addToast({ type: "warning", message: i18n.t("knowledge.autosave.notStoredToast") })
+      }
+    } finally {
+      setConflictBusy(false)
+    }
+  }
+
+  // ── Page actions ──────────────────────────────────────────────────────────
+  const act = async (run: () => Promise<unknown>, failed: string) => {
     setActionError(null)
-    setDraft(storedBody())
+    try {
+      await run()
+      void refetchMeta()
+      void loadDocuments(apiForSidebar)
+    } catch (err) {
+      setActionError(err instanceof Error && err.message ? err.message : i18n.t(failed))
+    }
   }
-
-  const cancelEditing = () => {
-    setDraft(null)
-    setConflict(false)
-  }
-
-  // Saved against the revision it was opened at: if someone saved in between,
-  // the server refuses (409) and the edit stays in the editor, never written
-  // over theirs.
-  const save = async () => {
-    const d = doc()
-    const next = draft()
-    if (!d || d === "not-found" || !api || next === null) return
-    // The editor hands back the stored text untouched while nothing was edited.
-    if (next === (d.body ?? "")) {
-      setDraft(null)
+  /** The page's state again, without touching the text being edited. */
+  const refetchMeta = async () => {
+    if (!api) return
+    if (!saver) {
+      await refetch()
       return
     }
-    setActionError(null)
-    setPending(next)
-    setDraft(null)
     try {
-      await updateKnowledgeDocument(api, d.id, { body: next, revision: d.revision })
-      await refetch()
+      const fresh = (await getKnowledgeDocument(api, props.entityId)) as KnowledgeDocumentFetched
+      // Verify, archive and sharing move the revision without the text.
+      saver?.adoptRemote({
+        id: fresh.id,
+        title: fresh.title,
+        body: fresh.body,
+        revision: fresh.revision,
+      })
+      mutate((d) => (isRow(d) ? ({ ...d, ...fresh, title: d.title, body: d.body } as Fetched) : d))
+    } catch {
+      // The header keeps what it showed.
+    }
+  }
+  const verify = () =>
+    act(async () => {
+      await saver?.flush()
+      const d = row()
+      if (d && api)
+        await verifyKnowledgeDocument(api, d.id, { revision: saver?.revision() ?? d.revision })
+    }, "knowledge.verifyFailed")
+  const archive = () =>
+    act(async () => {
+      await saver?.flush()
+      const d = row()
+      if (d && api) await archiveKnowledgeDocument(api, d.id)
+    }, "knowledge.archiveFailed")
+  const restoreArchived = () =>
+    act(async () => {
+      const d = row()
+      if (d && api) await restoreKnowledgeDocument(api, d.id)
+    }, "knowledge.restoreFailed")
+
+  const openHistory = async () => {
+    await saver?.flush()
+    setHistoryOpen(true)
+  }
+
+  const restoreVersion = async (v: KnowledgeVersionItem): Promise<boolean> => {
+    const d = row()
+    const s = saver
+    if (!d || !api || !s) return false
+    await s.flush()
+    if (s.hasUnsaved()) {
+      addToast({ type: "error", message: i18n.t("knowledge.autosave.restoreFailed") })
+      return false
+    }
+    try {
+      const restored = (await restoreKnowledgeVersion(api, d.id, v.id, s.revision())) as SavedRow
+      s.adoptRemote(restored)
+      editor?.applyRemote(restored.body)
+      if (titleEl) titleEl.textContent = restored.title
+      mutate((x) => (isRow(x) ? ({ ...x, ...restored } as Fetched) : x))
+      setHistoryOpen(false)
       void loadDocuments(apiForSidebar)
-    } catch (err) {
-      setDraft(next)
-      if (err instanceof ApiError && err.status === 409) setConflict(true)
-      else setActionError(err instanceof Error ? err.message : i18n.t("knowledge.saveFailed"))
-    } finally {
-      setPending(null)
+      addToast({ type: "success", message: i18n.t("knowledge.autosave.restoredToast") })
+      return true
+    } catch {
+      addToast({ type: "error", message: i18n.t("knowledge.autosave.restoreFailed") })
+      return false
     }
   }
 
-  /** After a refused save: drop this edit and read what was saved meanwhile. */
-  const loadLatest = async () => {
-    setDraft(null)
-    setConflict(false)
-    await refetch()
-  }
-
-  const archive = async () => {
-    const d = doc()
-    if (!d || d === "not-found" || !api) return
-    setActionError(null)
+  const copyText = async () => {
     try {
-      await archiveKnowledgeDocument(api, d.id)
-      void refetch()
-      void loadDocuments(apiForSidebar)
-      setMenuOpen(false)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : i18n.t("knowledge.archiveFailed"))
+      await navigator.clipboard.writeText(readText().body)
+      addToast({ type: "success", message: i18n.t("knowledge.autosave.copied") })
+    } catch {
+      addToast({ type: "error", message: i18n.t("knowledge.autosave.copyFailed") })
     }
   }
 
-  const restore = async () => {
-    const d = doc()
-    if (!d || d === "not-found" || !api) return
-    setActionError(null)
-    try {
-      await restoreKnowledgeDocument(api, d.id)
-      void refetch()
-      void loadDocuments(apiForSidebar)
-      setMenuOpen(false)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : i18n.t("knowledge.restoreFailed"))
-    }
-  }
-
-  const verify = async () => {
-    const d = doc()
-    if (!d || d === "not-found" || !api) return
-    setActionError(null)
-    try {
-      await verifyKnowledgeDocument(api, d.id, { revision: d.revision })
-      void refetch()
-      setMenuOpen(false)
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : i18n.t("knowledge.verifyFailed"))
-    }
-  }
-
-  const handleTitleBlur = async () => {
-    const d = doc()
-    if (!d || d === "not-found" || !api || !d.canEdit) return
-    const newTitle = titleEl?.textContent ?? ""
-    if (!newTitle.trim() || newTitle === d.title) return
-    try {
-      await updateKnowledgeDocument(api, d.id, { title: newTitle, revision: d.revision })
-      void refetch()
-      void loadDocuments(apiForSidebar)
-    } catch (err) {
-      console.error("Failed to update title:", err)
-      if (titleEl) titleEl.textContent = d.title
-    }
-  }
-
-  const handleTitleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      titleEl?.blur()
-    } else if (e.key === "Escape") {
-      e.preventDefault()
-      const d = doc()
-      if (d && d !== "not-found" && titleEl) titleEl.textContent = d.title
-      titleEl?.blur()
-    }
-  }
+  const notice = (
+    testid: string,
+    text: string,
+    action?: { label: string; run: () => void; testid: string },
+  ) => (
+    <div
+      data-testid={testid}
+      role="alert"
+      class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px] text-text"
+    >
+      <span class="min-w-0 flex-1 basis-60">{text}</span>
+      <Show when={action}>
+        {(a) => (
+          <Button variant="outline" size="sm" data-testid={a().testid} onClick={() => a().run()}>
+            {a().label}
+          </Button>
+        )}
+      </Show>
+    </div>
+  )
 
   return (
     <Show
@@ -299,237 +529,93 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
         </div>
       }
     >
-      <Show when={doc() && doc() !== "not-found" ? (doc() as KnowledgeDocumentFetched) : null}>
-        {(d) => {
-          const document = d()
-          return (
-            <div
-              data-testid="knowledge-document-view"
-              data-document-id={document.id}
-              // A guided tour points at a seeded document by its title.
-              data-doc-title={document.title}
-              class="flex h-full flex-col"
-            >
-              {/* Header — ThreadHeader pattern */}
-              <div
-                data-testid="knowledge-doc-header"
-                class="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-2.5"
+      <Show when={row()}>
+        {(d) => (
+          <div
+            data-testid="knowledge-document-view"
+            data-document-id={d().id}
+            // A guided tour points at a seeded document by its title.
+            data-doc-title={d().title}
+            class="flex h-full flex-col"
+          >
+            <Show when={historyOpen() && api}>
+              <PageHistory
+                api={api!}
+                docId={d().id}
+                me={me()}
+                current={{ title: d().title, body: d().body }}
+                onRestore={restoreVersion}
+                onClose={() => setHistoryOpen(false)}
+              />
+            </Show>
+            <div class="flex min-h-0 flex-1 flex-col" classList={{ hidden: historyOpen() }}>
+              <PageHeader
+                doc={d()}
+                editable={editorText() !== null}
+                hasHistory={editable()}
+                phone={phone()}
+                status={status()}
+                edited={edited()}
+                backlinks={backlinks()}
+                dictation={bodyDictation}
+                editor={() => editor}
+                titleRef={(el) => {
+                  titleEl = el
+                  el.textContent = d().title
+                }}
+                onTitleInput={() => saver?.edit()}
+                onTitleDone={() => editor?.focus()}
+                onShare={() => setShareOpen(true)}
+                onHistory={() => void openHistory()}
+                onVerify={() => void verify()}
+                onArchive={() => void archive()}
+                onRestore={() => void restoreArchived()}
+              />
+
+              <Show
+                when={
+                  status().state === "conflict" ||
+                  status().state === "no-access" ||
+                  status().state === "too-large" ||
+                  actionError()
+                }
               >
-                {/* Left: inline-editable title + badges */}
-                <div class="flex min-w-0 flex-col gap-0.5">
-                  <h1
-                    ref={titleEl}
-                    data-testid="knowledge-doc-title"
-                    contenteditable={document.canEdit ? "true" : "false"}
-                    class="truncate text-[15px] font-semibold text-text outline-none
-                           focus:ring-1 focus:ring-accent/20 focus:rounded-sm"
-                    onBlur={handleTitleBlur}
-                    onKeyDown={handleTitleKeyDown}
-                  >
-                    {document.title}
-                  </h1>
-                  <div class="flex gap-1.5">
-                    <Show when={document.reviewStatus && document.documentScope !== "personal"}>
-                      <span
-                        data-testid="knowledge-doc-review-status"
-                        class="rounded bg-surface-hover px-1.5 text-[11px] text-text-secondary"
-                      >
-                        {document.reviewStatus}
-                      </span>
-                    </Show>
-                    <Show when={document.sensitivity ?? document.documentScope}>
-                      {(label) => (
-                        <span
-                          data-testid="knowledge-doc-scope-badge"
-                          class="rounded bg-surface-hover px-1.5 text-[11px] text-text-secondary"
-                        >
-                          {label()}
-                        </span>
-                      )}
-                    </Show>
-                    <Show when={document.status === "archived"}>
-                      <span
-                        data-testid="knowledge-doc-archived-badge"
-                        class="rounded bg-surface-hover px-1.5 text-[11px] text-warning"
-                      >
-                        {i18n.t("knowledge.archived")}
-                      </span>
-                    </Show>
-                  </div>
-                </div>
-
-                {/* Right: while editing, Cancel and Save; otherwise backlinks,
-                    Edit (for whoever may), share and the actions menu. */}
-                <Show when={editing()}>
-                  <div class="flex shrink-0 items-center gap-1.5">
-                    <RecorderRow dictation={bodyDictation} barClass="w-[18rem] max-w-[60vw]">
-                      <ComposerAssist target={() => bodyEditor} />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        data-testid="knowledge-doc-cancel-edit"
-                        onClick={cancelEditing}
-                      >
-                        {i18n.t("kernel.common.cancel")}
-                      </Button>
-                      {/* The mic immediately left of Save, the row's primary action. */}
-                      <DictationMic dictation={bodyDictation} />
-                      <Button
-                        size="sm"
-                        data-testid="knowledge-doc-save"
-                        disabled={conflict()}
-                        onClick={() => void save()}
-                      >
-                        {i18n.t("knowledge.save")}
-                      </Button>
-                    </RecorderRow>
-                  </div>
-                </Show>
-                <div class="flex items-center gap-1" classList={{ hidden: editing() }}>
-                  {/* Visible backlink count — first-class, not buried in MoreHorizontal */}
-                  <Show when={backlinks().length > 0}>
-                    <FloatingPanel open={backlinksOpen()} onOpenChange={setBacklinksOpen}>
-                      <FloatingPanel.Trigger
-                        class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px]
-                               text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
-                      >
-                        <ArrowLeftRight size={12} />
-                        {backlinks().length} {backlinks().length === 1 ? "reference" : "references"}
-                      </FloatingPanel.Trigger>
-                      <FloatingPanel.Content class="w-64 py-2">
-                        <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
-                          {i18n.t("knowledge.referencedBy")}
-                        </div>
-                        <For each={backlinks()}>
-                          {(link) => (
-                            <button
-                              type="button"
-                              class="flex w-full items-center gap-2 px-3 py-1.5 text-left
-                                     hover:bg-surface-hover"
-                            >
-                              <span class="text-[11px] text-text-tertiary">
-                                {link.app}:{link.entityType}
-                              </span>
-                              <span class="truncate text-[13px] text-text">{link.title}</span>
-                            </button>
-                          )}
-                        </For>
-                      </FloatingPanel.Content>
-                    </FloatingPanel>
-                  </Show>
-
-                  <Show when={pending() !== null}>
-                    <span
-                      data-testid="knowledge-doc-saving"
-                      class="px-1 text-[11px] text-text-tertiary"
-                    >
-                      {i18n.t("knowledge.saving")}
-                    </span>
-                  </Show>
-                  <Show when={document.canEdit}>
-                    <button
-                      type="button"
-                      data-testid="knowledge-doc-edit"
-                      aria-label={i18n.t("kernel.common.edit")}
-                      disabled={pending() !== null}
-                      onClick={startEditing}
-                      class="flex h-7 items-center gap-1.5 rounded-md px-2 text-[12px]
-                             text-text-tertiary hover:bg-surface-hover hover:text-text-secondary disabled:opacity-50"
-                    >
-                      <Pencil size={13} />
-                      <Show when={!phone()}>{i18n.t("kernel.common.edit")}</Show>
-                    </button>
-                  </Show>
-
-                  {/* Share */}
-                  <button
-                    type="button"
-                    data-testid="knowledge-share-button"
-                    aria-label={i18n.t("knowledge.share")}
-                    onClick={() => setShareOpen(true)}
-                    class="flex h-7 w-7 items-center justify-center rounded-md
-                           text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
-                  >
-                    <Share2 size={14} />
-                  </button>
-
-                  {/* Actions menu */}
-                  <FloatingPanel open={menuOpen()} onOpenChange={setMenuOpen}>
-                    <FloatingPanel.Trigger
-                      class="flex h-7 w-7 items-center justify-center rounded-md
-                             text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
-                    >
-                      <MoreHorizontal size={16} />
-                    </FloatingPanel.Trigger>
-                    <FloatingPanel.Content class="w-48" onKeyDown={rovingFocus}>
-                      <button
-                        type="button"
-                        data-roving
-                        class="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:bg-surface-hover focus-visible:text-text"
-                        onClick={() => void verify()}
-                      >
-                        <CheckCircle size={14} />
-                        {i18n.t("knowledge.verify")}
-                      </button>
-
-                      <div class="my-1 h-px bg-border-subtle" />
-
-                      <Show
-                        when={document.status === "archived"}
-                        fallback={
-                          <button
-                            type="button"
-                            data-roving
-                            class="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:bg-surface-hover focus-visible:text-text"
-                            onClick={() => void archive()}
-                          >
-                            <Archive size={14} />
-                            {i18n.t("kernel.common.archive")}
-                          </button>
-                        }
-                      >
-                        <button
-                          type="button"
-                          data-roving
-                          class="flex w-full items-center gap-2.5 px-3 py-1.5 text-[13px] text-text-secondary outline-none transition-colors hover:bg-surface-hover hover:text-text focus-visible:bg-surface-hover focus-visible:text-text"
-                          onClick={() => void restore()}
-                        >
-                          <ArchiveRestore size={14} />
-                          {i18n.t("kernel.common.restore")}
-                        </button>
-                      </Show>
-                    </FloatingPanel.Content>
-                  </FloatingPanel>
-                </div>
-              </div>
-
-              {/* Notices about the edit sit above the scrolling text: Save is
-                  often pressed far down a document, where a notice at the top
-                  of the text was out of sight. */}
-              <Show when={conflict() || actionError()}>
                 <div
                   class={`flex shrink-0 flex-col gap-2 pt-3 ${phone() ? "px-4" : "mx-auto w-full max-w-2xl px-8"}`}
                 >
-                  {/* A save refused because someone saved first: the edit is
-                      kept below, and loading theirs is the reader's choice. */}
-                  <Show when={conflict()}>
-                    <div
-                      data-testid="knowledge-doc-conflict-banner"
-                      role="alert"
-                      class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px] text-text"
-                    >
-                      <span class="min-w-0 flex-1 basis-60">
-                        {i18n.t("knowledge.thisDocumentWasUpdatedBySomeone")}
-                      </span>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        data-testid="knowledge-doc-load-latest"
-                        onClick={() => void loadLatest()}
-                      >
-                        {i18n.t("knowledge.loadLatestVersion")}
-                      </Button>
-                    </div>
+                  <Show when={status().state === "conflict"}>
+                    {notice(
+                      "knowledge-doc-conflict-banner",
+                      fromDraft()
+                        ? i18n.t("knowledge.autosave.draftConflictBanner")
+                        : theirName()
+                          ? i18n.t("knowledge.autosave.conflictBanner", { name: theirName() ?? "" })
+                          : i18n.t("knowledge.autosave.conflictBannerSelf"),
+                      {
+                        label: i18n.t("knowledge.autosave.chooseWhatToKeep"),
+                        run: () => setConflictMode("choose"),
+                        testid: "conflict-open",
+                      },
+                    )}
+                  </Show>
+                  <Show when={status().state === "no-access"}>
+                    {notice(
+                      "knowledge-doc-no-access",
+                      i18n.t("knowledge.autosave.noAccessNotice"),
+                      {
+                        label: i18n.t("knowledge.autosave.copyText"),
+                        run: () => void copyText(),
+                        testid: "knowledge-doc-copy-text",
+                      },
+                    )}
+                  </Show>
+                  <Show when={status().state === "too-large"}>
+                    {notice(
+                      "knowledge-doc-too-large",
+                      i18n.t("knowledge.autosave.tooLargeNotice", {
+                        size: (status().size ?? 0).toLocaleString(i18n.locale()),
+                      }),
+                    )}
                   </Show>
                   <Show when={actionError()}>
                     <p data-testid="knowledge-doc-error" role="alert" class="text-xs text-danger">
@@ -539,186 +625,46 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 </div>
               </Show>
 
-              {/* Scrollable body */}
-              <ScrollFade class="min-h-0 flex-1" fadeColor="var(--color-surface)">
-                <div
-                  data-testid="knowledge-doc-body"
-                  class={phone() ? "w-full px-4 py-4" : "mx-auto w-full max-w-2xl px-8 py-8"}
-                >
-                  {/* T-9: synced read-only banner. I4: switches to
-                      "Source removed" + disabled Refresh when the upstream
-                      source has been archived (e.g. someone hit Remove in
-                      Settings while this tab is still open). */}
-                  <Show when={document.syncedSourceId}>
-                    {(() => {
-                      const sourceArchived = () =>
-                        document.syncedSourceId
-                          ? isSyncedSourceArchived(document.syncedSourceId)
-                          : false
-                      return (
-                        <div
-                          data-testid="knowledge-doc-synced-banner"
-                          data-source-archived={sourceArchived() ? "true" : undefined}
-                          class="mb-3 flex items-center gap-2 border-b border-border-subtle pb-2 text-[12px] text-text-tertiary"
-                        >
-                          <span aria-hidden class="opacity-70">
-                            ☁
-                          </span>
-                          <Show
-                            when={!sourceArchived()}
-                            fallback={
-                              <span data-testid="knowledge-doc-source-removed">
-                                {i18n.t("knowledge.sourceRemovedThisDocumentIsNo")}
-                              </span>
-                            }
-                          >
-                            <span>
-                              {i18n.t("knowledge.syncedFrom")}{" "}
-                              {document.syncedSourceApp
-                                ? appLabel(document.syncedSourceApp, i18n.t)
-                                : i18n.t("knowledge.externalSource")}
-                              <Show when={document.syncedSourceName}>
-                                {(name) => <> · {name()}</>}
-                              </Show>
-                              <Show when={document.lastSyncedAt}>
-                                {i18n.t("knowledge.lastRefreshed")}
-                                {formatRelative(
-                                  document.lastSyncedAt ?? null,
-                                  i18n.locale(),
-                                  i18n.t("knowledge.neverSynced"),
-                                )}
-                              </Show>
-                            </span>
-                          </Show>
-                          <button
-                            type="button"
-                            data-testid="knowledge-doc-synced-refresh"
-                            disabled={sourceArchived()}
-                            onClick={async () => {
-                              if (!api || !document.syncedSourceId) return
-                              if (sourceArchived()) return
-                              try {
-                                await runSyncedSourceNow(api, document.syncedSourceId)
-                              } catch {
-                                // surface via existing actionError pathway
-                                setActionError(i18n.t("knowledge.refreshFailed"))
-                              }
-                            }}
-                            class="ml-auto rounded px-2 py-0.5 text-[11px] text-text-secondary hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
-                          >
-                            {i18n.t("kernel.common.refresh")}
-                          </button>
-                          <Show when={getPulseUpdated(document.id)}>
-                            <span
-                              data-testid="knowledge-doc-refreshed-pill"
-                              class="ml-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
-                            >
-                              {i18n.t("knowledge.refreshedJustNow")}
-                            </span>
-                          </Show>
-                        </div>
-                      )
-                    })()}
-                  </Show>
-
-                  <Show
-                    when={editing()}
-                    fallback={
-                      <div
-                        data-testid="knowledge-doc-body-rendered"
-                        data-saving={pending() !== null ? "true" : undefined}
-                        class="prose-thread min-h-[20rem] text-[13px] leading-relaxed text-text"
-                        // Sanitized by renderMarkdown (DOMPurify) before injection.
-                        innerHTML={renderedBody()}
-                      />
-                    }
-                  >
-                    {/* No autofocus: the caret at the end would scroll a long
-                        document away from where it was being read. */}
-                    <RichEditor
-                      preset="document"
-                      ref={(handle) => {
-                        bodyEditor = handle
-                      }}
-                      value={draft() ?? ""}
-                      onChange={setDraft}
-                      onSubmit={() => void save()}
-                      aria-label={document.title}
-                      data-testid="knowledge-doc-body-editor"
-                      editorClass="min-h-[20rem] text-[13px] leading-relaxed"
-                    />
-                  </Show>
-
-                  {/* Attachments. At phone width the reading column IS the
-                      screen, so this side panel becomes a Sources sheet
-                      reached from one control rather than a second column of
-                      rows under the text. A viewer the server would refuse
-                      them to is not shown the section at all. */}
-                  <Show when={hasScope(ATTACHMENTS_SCOPE)}>
-                    <Show
-                      when={phone()}
-                      fallback={
-                        <section
-                          data-testid="knowledge-attachment-list"
-                          class="mt-8 border-t border-border-subtle pt-6"
-                        >
-                          <h3 class="mb-3 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
-                            {i18n.t("knowledge.attachments")}
-                          </h3>
-                          <Show when={api}>
-                            <FileList
-                              parent={{
-                                app: "knowledge",
-                                entityType: "document",
-                                entityId: document.id,
-                              }}
-                            />
-                          </Show>
-                        </section>
-                      }
-                    >
-                      <div class="mt-8 border-t border-border-subtle pt-4">
-                        <button
-                          type="button"
-                          data-testid="knowledge-doc-sources-open"
-                          onClick={() => setSourcesOpen(true)}
-                          class="flex min-h-11 w-full items-center justify-between rounded-md border border-border px-3 text-[15px] text-text hover:bg-surface-hover"
-                        >
-                          {i18n.t("kernel.knowledgeSources")}
-                        </button>
-                      </div>
-                      <OverlaySheet
-                        open={sourcesOpen()}
-                        onClose={() => setSourcesOpen(false)}
-                        variant="bottom"
-                        title={i18n.t("kernel.knowledgeSources")}
-                      >
-                        <section data-testid="knowledge-attachment-list" class="px-4 py-3">
-                          <Show when={api}>
-                            <FileList
-                              parent={{
-                                app: "knowledge",
-                                entityType: "document",
-                                entityId: document.id,
-                              }}
-                            />
-                          </Show>
-                        </section>
-                      </OverlaySheet>
-                    </Show>
-                  </Show>
-                </div>
-              </ScrollFade>
-
-              <KnowledgeShareDialog
-                documentId={document.id}
-                documentTitle={document.title}
-                open={shareOpen()}
-                onOpenChange={setShareOpen}
+              <PageBody
+                doc={d()}
+                editorText={editorText()}
+                phone={phone()}
+                hasApi={!!api}
+                editorRef={(handle) => {
+                  editor = handle
+                }}
+                onEdit={() => saver?.edit()}
+                onRefreshSynced={() => {
+                  const sourceId = d().syncedSourceId
+                  if (!api || !sourceId) return
+                  void runSyncedSourceNow(api, sourceId).catch(() =>
+                    setActionError(i18n.t("knowledge.refreshFailed")),
+                  )
+                }}
               />
             </div>
-          )
-        }}
+
+            <ConflictDialog
+              open={conflictMode() !== null && theirs() !== null}
+              mode={conflictMode() ?? "choose"}
+              theirName={fromDraft() ? i18n.t("knowledge.autosave.someone") : theirName()}
+              mine={conflictMode() ? readText().body : ""}
+              theirs={theirs()?.body ?? ""}
+              busy={conflictBusy()}
+              onMode={setConflictMode}
+              onKeepMine={() => void keepMine()}
+              onTakeTheirs={() => void takeTheirs()}
+              onClose={() => setConflictMode(null)}
+            />
+
+            <KnowledgeShareDialog
+              documentId={d().id}
+              documentTitle={d().title}
+              open={shareOpen()}
+              onOpenChange={setShareOpen}
+            />
+          </div>
+        )}
       </Show>
     </Show>
   )

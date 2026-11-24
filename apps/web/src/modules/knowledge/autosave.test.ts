@@ -85,12 +85,14 @@ function apiOf(server: Server) {
         return { ...server.page } as T
       },
     ),
-    post: vi.fn(async <T>(path: string, body: unknown): Promise<T> => {
-      if (server.offline) throw net()
-      if (server.gone) throw new ApiError("Not found", 404)
-      server.posts.push({ path, body: body as Record<string, unknown> })
-      return { id: `v${server.posts.length}` } as T
-    }),
+    post: vi.fn(
+      async <T>(path: string, body: unknown, _init?: { keepalive?: boolean }): Promise<T> => {
+        if (server.offline) throw net()
+        if (server.gone) throw new ApiError("Not found", 404)
+        server.posts.push({ path, body: body as Record<string, unknown> })
+        return { id: `v${server.posts.length}` } as T
+      },
+    ),
   }
 }
 
@@ -342,6 +344,27 @@ describe("createPageSaver", () => {
     await vi.advanceTimersByTimeAsync(30_000)
     expect(server.page.body).toBe("Amina's text")
     expect(drafts.map.get(b.saver.key)?.body).toBe("Lucas's text, longer")
+  })
+
+  it("the page goes away with a conflict open: my text is posted to Page history with keepalive, the draft kept", async () => {
+    const a = tab({ server, api, drafts, liveness: locks })
+    const b = tab({ server, api, drafts, liveness: locks })
+    a.type("A")
+    await vi.advanceTimersByTimeAsync(1_000)
+    b.type("B")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(b.saver.status().state).toBe("conflict")
+    await a.saver.destroy()
+    window.dispatchEvent(new Event("pagehide"))
+    await flushPromises()
+    expect(server.posts).toEqual([
+      {
+        path: "/knowledge/documents/p1/versions",
+        body: { title: "Returns", body: "B", baseRevision: 1, session: b.saver.sessionId },
+      },
+    ])
+    expect(api.post.mock.calls[0]![2]).toMatchObject({ keepalive: true })
+    expect(drafts.map.get(b.saver.key)?.body).toBe("B")
   })
 
   it("Keep mine saves over theirs with fresh=1 at their revision", async () => {

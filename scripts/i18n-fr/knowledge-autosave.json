@@ -67,6 +67,11 @@
     "knowledge.autosave.copied": "Texte copié.",
     "knowledge.autosave.copyFailed": "Le texte n'a pas pu être copié.",
     "knowledge.autosave.staySignedIn": "Rester connecté",
-    "knowledge.autosave.signOutDiscard": "Se déconnecter et abandonner"
+    "knowledge.autosave.signOutDiscard": "Se déconnecter et abandonner",
+    "knowledge.autosave.titleLabel": "Titre",
+    "knowledge.autosave.pageActions": "Actions de la page",
+    "knowledge.autosave.oneReference": "1 référence",
+    "knowledge.autosave.references": "{{count}} références",
+    "tours.knowledge.basics.edit.body": "Cliquez dans le texte d'un document que vous pouvez modifier et écrivez. Il s'enregistre tout seul."
   }
 }

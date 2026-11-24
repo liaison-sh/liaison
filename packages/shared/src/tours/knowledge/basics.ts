@@ -56,7 +56,8 @@ export const knowledgeBasicsTour = defineTour({
       kind: "do",
       title: k("edit.title"),
       body: k("edit.body"),
-      anchor: "knowledge-doc-edit",
+      // The page is edited in place and saves itself: the step points at its text.
+      anchor: "knowledge-doc-body-editor",
       event: { app: "knowledge", entity: "document", action: "update", actor: "user-or-agent" },
       // Only the document this tour created. When the create beat was skipped
       // there is none, and "Do it for me" stops: the person picks what to edit.
@@ -67,7 +68,6 @@ export const knowledgeBasicsTour = defineTour({
           unlessVisible: { testid: "knowledge-document-view", created: CREATED_DOC },
         },
         { waitFor: { testid: "knowledge-document-view", created: CREATED_DOC } },
-        { click: "knowledge-doc-edit" },
         { waitFor: "knowledge-doc-body-editor" },
         // Added to the document, never over it.
         {
@@ -77,7 +77,7 @@ export const knowledgeBasicsTour = defineTour({
             append: true,
           },
         },
-        { click: "knowledge-doc-save" },
+        // No Save: the first autosave emits its update at once.
         { waitEvent: true },
       ],
     },

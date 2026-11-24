@@ -184,6 +184,30 @@ describe("the knowledge sign-out guard", () => {
     expect(liveSavers()).not.toContain(t.saver)
   })
 
+  it("Discard also erases a draft of a page that is not open, which could not be stored", async () => {
+    await drafts.put({
+      userId: "amina",
+      docId: "p2",
+      sessionId: "old",
+      title: "Warranty",
+      body: "left offline",
+      baseRevision: 1,
+      baseHash: "",
+      at: 1,
+      beat: 1,
+    })
+    server.state.offline = true
+    const stay = guardWith(new Set())
+    expect(await stay.guard({ forced: false })).toBe(false)
+    expect(stay.ask.mock.calls[0]![0]).toEqual([
+      expect.objectContaining({ docId: "p2", title: "Warranty", body: "left offline" }),
+    ])
+    expect(drafts.map.size).toBe(1)
+    const discard = guardWith(new Set(), { ask: vi.fn(async () => "discard" as const) })
+    expect(await discard.guard({ forced: false })).toBe(true)
+    expect(drafts.map.size).toBe(0)
+  })
+
   it("conflict: my text posted as an unapplied version, no question, draft gone", async () => {
     const savers = new Set<PageSaver>()
     const t = openPage("p1", savers)

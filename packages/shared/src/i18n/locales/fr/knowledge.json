@@ -213,6 +213,10 @@
     "copied": "Texte copié.",
     "copyFailed": "Le texte n'a pas pu être copié.",
     "staySignedIn": "Rester connecté",
-    "signOutDiscard": "Se déconnecter et abandonner"
+    "signOutDiscard": "Se déconnecter et abandonner",
+    "titleLabel": "Titre",
+    "pageActions": "Actions de la page",
+    "oneReference": "1 référence",
+    "references": "{{count}} références"
   }
 }

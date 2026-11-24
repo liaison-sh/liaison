@@ -355,3 +355,69 @@ export async function createSyncedSource(
 export async function runSyncedSourceNow(api: ApiClient, id: string): Promise<unknown> {
   return api.post(`/knowledge/synced-sources/${id}/run-now`, {})
 }
+
+// ---------------------------------------------------------------------------
+// Page history (versions): for whoever may edit the page
+// ---------------------------------------------------------------------------
+
+export type KnowledgeVersionKind =
+  | "baseline"
+  | "edit"
+  | "agent"
+  | "import"
+  | "restore"
+  | "unapplied"
+
+/** A version as the history list shows it: no text. */
+export interface KnowledgeVersionItem {
+  id: string
+  kind: KnowledgeVersionKind
+  title: string
+  authorType: "user" | "agent" | "system"
+  authorId: string | null
+  authorName: string | null
+  agentId: string | null
+  revision: number | null
+  baseRevision: number | null
+  startedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface KnowledgeVersion extends KnowledgeVersionItem {
+  body: string
+}
+
+export async function listKnowledgeVersions(
+  api: ApiClient,
+  id: string,
+  opts?: { signal?: AbortSignal },
+): Promise<KnowledgeVersionItem[]> {
+  return api.get(`/knowledge/documents/${id}/versions`, { ...opts, suppressGlobalError: true })
+}
+
+export async function getKnowledgeVersion(
+  api: ApiClient,
+  id: string,
+  versionId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<KnowledgeVersion> {
+  return api.get(`/knowledge/documents/${id}/versions/${versionId}`, {
+    ...opts,
+    suppressGlobalError: true,
+  })
+}
+
+/** The page gets the version's text back, as a new version; `revision` is the page's now. */
+export async function restoreKnowledgeVersion(
+  api: ApiClient,
+  id: string,
+  versionId: string,
+  revision: number,
+): Promise<unknown> {
+  return api.post(
+    `/knowledge/documents/${id}/versions/${versionId}/restore`,
+    { revision },
+    { suppressGlobalError: true },
+  )
+}

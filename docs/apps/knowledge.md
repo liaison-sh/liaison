@@ -61,9 +61,11 @@ A document shows only images stored in Liaison. When you save a document that sh
 
 ## Links between documents
 
+To link a document while you write, type `@` or `[[` at the start of a word, then a few letters of its title. The list shows only documents you can read; pick one with the arrow keys and Enter, or click it. Escape closes the list. Pasting the address of a document from this workspace also makes a link. A link shows the document's title; click it to open the document.
+
 A link to another document stores that document's id, never its title. Each reader sees the title only if they can read the linked document; anyone else sees that they cannot open it, and receives no title, in the app or through the API. A link to a document in the archive shows nothing until it is restored. When the linked document is renamed, every link to it shows the new name.
 
-Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it.
+Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it: open **references** in the document's header to see them under **Linked from** and **Conversations**, and click one to open it.
 
 Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts).
 

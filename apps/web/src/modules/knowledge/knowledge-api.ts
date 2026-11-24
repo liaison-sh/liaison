@@ -34,6 +34,8 @@ export interface KnowledgeSearchResult {
 }
 
 export interface KnowledgeBacklink {
+  /** A page that links here, or a conversation that references the page. */
+  kind?: "page" | "thread"
   app: string
   entityType: string
   entityId: string

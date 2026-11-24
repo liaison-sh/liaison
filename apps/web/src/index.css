@@ -569,6 +569,31 @@
   text-underline-offset: 2px;
 }
 
+/* A link to another Knowledge page (editor/page-link-view.ts): the mention chip
+   with a page icon; a page the reader cannot open is a quiet grey label. */
+.page-link {
+  white-space: normal;
+}
+.page-link-icon {
+  display: inline;
+  vertical-align: -1.5px;
+  margin-right: 3px;
+}
+.page-link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+.page-link-muted {
+  display: inline;
+  padding: 1px 4px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  background: var(--color-surface-hover);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
 /* Local path links (desktop): the prose link look, inside code as well, and
    the path can wrap rather than push the message sideways. */
 :is(.prose-thread, .prose-agent) a.local-path-link {

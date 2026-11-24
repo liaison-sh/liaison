@@ -16,6 +16,8 @@ const IMAGE = new RegExp(String.raw`^!\[(?:\\.|[^\]\\])*\]${DEST}`)
 const EMPTY_LINK = new RegExp(String.raw`^\[\]${DEST}`)
 /** A file of this app's storage is its own node (liaison-file.ts), never this chip. */
 const FILE_REF = /^!\[(?:\\.|[^\]\\])*\]\(liaison-file:/
+/** A link to a page is its own node too (page-link.ts). */
+const PAGE_REF = /^\[\]\(knowledge:document:/
 
 /**
  * A pasted web image kept as its source, never loaded: `![](address)` with the
@@ -51,7 +53,7 @@ export const RawMarkdownInline = Node.create<{ labels: RawMarkdownLabels }>({
     level: "inline",
     start: (src) => src.search(/!\[|\[\]\(/),
     tokenize: (src) => {
-      if (FILE_REF.test(src)) return undefined
+      if (FILE_REF.test(src) || PAGE_REF.test(src)) return undefined
       const match = IMAGE.exec(src) ?? EMPTY_LINK.exec(src)
       return match ? { type: "rawMarkdownInline", raw: match[0] } : undefined
     },

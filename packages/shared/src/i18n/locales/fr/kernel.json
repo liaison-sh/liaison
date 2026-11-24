@@ -4678,7 +4678,12 @@
     "image": "Image",
     "file": "Fichier",
     "fileToken": "Image ou fichier",
-    "uploadingFile": "Envoi de {{name}}"
+    "uploadingFile": "Envoi de {{name}}",
+    "linkToPage": "Lier une page",
+    "pagesLoading": "Recherche des pages",
+    "noPage": "Aucune page trouvée",
+    "pageUnavailable": "Page que vous ne pouvez pas ouvrir",
+    "untitledPage": "Sans titre"
   },
   "nodes": {
     "chat": {

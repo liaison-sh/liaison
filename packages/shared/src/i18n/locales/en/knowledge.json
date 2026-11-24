@@ -235,5 +235,9 @@
     "failed": "{{name}} was not added: the upload failed. Try again.",
     "unreadable": "An image or file you pasted is one you cannot open, so it was not added.",
     "copyLater": "An image from another page could not be copied here yet: storage is full. It is copied at a later save, once there is room."
+  },
+  "links": {
+    "linkedFrom": "Linked from",
+    "conversations": "Conversations"
   }
 }

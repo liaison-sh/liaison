@@ -19,11 +19,12 @@ import { Editor, type JSONContent } from "@tiptap/core"
 import { CharacterCount } from "@tiptap/extensions"
 import { closeHistory } from "@tiptap/pm/history"
 import { Slice } from "@tiptap/pm/model"
-import { type EditorState, Selection, TextSelection } from "@tiptap/pm/state"
+import { type EditorState, NodeSelection, Selection, TextSelection } from "@tiptap/pm/state"
 import {
   type Component,
   createEffect,
   createSignal,
+  createUniqueId,
   on,
   onCleanup,
   onMount,
@@ -41,6 +42,9 @@ import { emojiNameBeforeColon, emojiQueryAt } from "./emoji-trigger"
 import { type EditorPreset, editorExtensions, insertedTintKey } from "./extensions"
 import type { FileViewDeps } from "./file-view"
 import { fileIdsInFragment, isEmptySlice, withFileIds, withoutFiles } from "./liaison-file"
+import { PageSuggest, type PickedPage, pageOptionId } from "./PageSuggest"
+import { isPageId, type PageLinkDeps } from "./page-link-view"
+import { pageQueryAt } from "./page-trigger"
 import { mapSource, type SourceMap, spliceMarkdown } from "./source-map"
 
 export interface RichEditorHandle {
@@ -102,6 +106,16 @@ export interface EditorFiles {
   /** The chip of a file on its way. */
   uploading: (name: string) => string
 }
+
+/** A page's links to other pages (document preset): their chips and the `@` / `[[` picker. */
+export interface EditorPages {
+  link: PageLinkDeps
+  /** Pages the writer may read whose title holds `query` (most relevant first). */
+  pick: (query: string) => Promise<PickedPage[]>
+}
+
+/** How long the picker waits for typing to pause before it asks for pages. */
+const PAGE_PICK_DEBOUNCE_MS = 120
 
 /** How long text written by dictation stays tinted (the CSS fade's length). */
 export const INSERTED_TINT_MS = 1600
@@ -202,6 +216,8 @@ export interface RichEditorProps {
   onPaste?: (event: ClipboardEvent) => void
   /** A page's files (document preset): pasted, dropped and picked files are uploaded. */
   files?: EditorFiles
+  /** A page's links to other pages (document preset): `@` and `[[` pick a page. */
+  pages?: EditorPages
   ref?: (handle: RichEditorHandle) => void
   class?: string
   editorClass?: string
@@ -402,6 +418,148 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
     event.preventDefault()
     return true
   }
+  // The page picker (document preset with `pages`): `@` or `[[` being typed, and the
+  // one Escape closed (it stays closed until the trigger it belongs to is gone).
+  const pickerId = `page-suggest-${createUniqueId()}`
+  const [pagePick, setPagePick] = createSignal<{
+    from: number
+    query: string
+    items: PickedPage[]
+    active: number
+    loading: boolean
+    anchor: { left: number; top: number; bottom: number }
+  } | null>(null)
+  let pageDismissed: number | null = null
+  let pickSeq = 0
+  let pickTimer: ReturnType<typeof setTimeout> | undefined
+  const closePages = () => {
+    pickSeq++
+    clearTimeout(pickTimer)
+    if (pagePick()) setPagePick(null)
+  }
+  const syncPages = (ed: Editor) => {
+    const pages = props.pages
+    const query =
+      pages && props.preset === "document" && ed.isEditable && ed.view.hasFocus()
+        ? pageQueryAt(ed.state)
+        : null
+    if (!query || !pages) {
+      pageDismissed = null
+      return closePages()
+    }
+    if (pageDismissed === query.from) return closePages()
+    const open = pagePick()
+    if (open && open.from === query.from && open.query === query.text) return
+    let anchor = { left: 0, top: 0, bottom: 0 }
+    try {
+      const at = ed.view.coordsAtPos(query.from)
+      anchor = { left: at.left, top: at.top, bottom: at.bottom }
+    } catch {
+      // No layout (a test environment): the list opens at the corner.
+    }
+    const same = open && open.from === query.from
+    setPagePick({
+      from: query.from,
+      query: query.text,
+      items: same ? open.items : [],
+      active: 0,
+      loading: true,
+      anchor,
+    })
+    const seq = ++pickSeq
+    clearTimeout(pickTimer)
+    pickTimer = setTimeout(() => {
+      void pages.pick(query.text.trim()).then(
+        (items) => {
+          const now = pagePick()
+          if (seq !== pickSeq || !now) return
+          // Words after `@` that name no page are just text: the list goes away.
+          if (!items.length && /\s/.test(query.text)) return closePages()
+          setPagePick({ ...now, items, active: 0, loading: false })
+        },
+        () => {
+          const now = pagePick()
+          if (seq === pickSeq && now) setPagePick({ ...now, items: [], loading: false })
+        },
+      )
+    }, PAGE_PICK_DEBOUNCE_MS)
+  }
+  const pickPage = (ed: Editor, item: PickedPage) => {
+    const open = pagePick()
+    if (!open || !isPageId(item.id)) return
+    const { to } = ed.state.selection
+    closePages()
+    ed.view.focus()
+    ed.chain()
+      .insertContentAt({ from: open.from, to }, [
+        { type: "pageLink", attrs: { id: item.id } },
+        { type: "text", text: " " },
+      ])
+      .run()
+  }
+  const pageKey = (event: KeyboardEvent): boolean => {
+    const open = pagePick()
+    const ed = editor()
+    if (!open || !ed || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {
+      return false
+    }
+    const n = open.items.length
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowUp": {
+        if (!n) return false
+        const step = event.key === "ArrowDown" ? 1 : n - 1
+        setPagePick({ ...open, active: (open.active + step) % n })
+        break
+      }
+      case "Enter":
+      case "Tab": {
+        if (event.shiftKey || !n) return false
+        pickPage(ed, open.items[open.active]!)
+        break
+      }
+      case "Escape":
+        pageDismissed = open.from
+        closePages()
+        break
+      default:
+        return false
+    }
+    event.preventDefault()
+    return true
+  }
+  /** Enter on a selected page chip opens the page (a writer may open it). */
+  const pageChipKey = (event: KeyboardEvent): boolean => {
+    const ed = editor()
+    if (!ed || event.key !== "Enter" || !props.pages) return false
+    const sel = ed.state.selection
+    if (!(sel instanceof NodeSelection) || sel.node.type.name !== "pageLink") return false
+    const dom = ed.view.nodeDOM(sel.from)
+    if (!(dom instanceof HTMLElement) || dom.dataset.state !== "open") return false
+    event.preventDefault()
+    props.pages.link.open(String(sel.node.attrs.id), dom.textContent ?? "")
+    return true
+  }
+  // The text field points screen readers at the picker and its active option.
+  createEffect(() => {
+    const ed = editor()
+    if (!ed || ed.isDestroyed) return
+    const dom = ed.view.dom
+    const open = pagePick()
+    if (!open) {
+      for (const a of ["aria-controls", "aria-activedescendant", "aria-expanded"]) {
+        dom.removeAttribute(a)
+      }
+      return
+    }
+    dom.setAttribute("aria-controls", pickerId)
+    dom.setAttribute("aria-expanded", "true")
+    if (open.items.length) {
+      dom.setAttribute("aria-activedescendant", pageOptionId(pickerId, open.active))
+    } else dom.removeAttribute("aria-activedescendant")
+  })
+  onCleanup(() => clearTimeout(pickTimer))
+
   // The caret right after the space a picked mention adds: a space typed
   // there first is that space (people type one after a name anyway, and the
   // message went out as "@Tobias Braun  please").
@@ -609,6 +767,13 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
             image: i18n.t("kernel.editor.remoteImage"),
             link: i18n.t("kernel.editor.pageLink"),
           },
+          pageLinks: {
+            deps: props.pages?.link ?? null,
+            labels: {
+              unavailable: i18n.t("kernel.editor.pageUnavailable"),
+              loading: i18n.t("kernel.editor.pageLink"),
+            },
+          },
           files: {
             view: props.files?.view ?? null,
             label: i18n.t("kernel.editor.fileToken"),
@@ -666,7 +831,11 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           }
           return false
         },
-        handleKeyDown: (_view, event) => emojiKey(event) || (props.onKeyDown?.(event) ?? false),
+        handleKeyDown: (_view, event) =>
+          emojiKey(event) ||
+          pageKey(event) ||
+          pageChipKey(event) ||
+          (props.onKeyDown?.(event) ?? false),
         handleTextInput: (view, from, to, text) => {
           const at = softSpace
           softSpace = null
@@ -726,6 +895,17 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           // An address of an entity page on THIS server is a reference to that
           // entity: the chip every other mention is, not a bare link.
           const own = ed.isActive("codeBlock") ? null : ownEntityLink(text)
+          // In a page, another page's address is a link to it: its id, never a title.
+          const ownPage = own && /^knowledge:document:(.+)$/.exec(own.ref)?.[1]
+          if (ownPage && props.preset === "document" && props.pages && isPageId(ownPage)) {
+            ed.chain()
+              .insertContent([
+                { type: "pageLink", attrs: { id: ownPage } },
+                { type: "text", text: " " },
+              ])
+              .run()
+            return true
+          }
           if (own) {
             ed.chain()
               .insertContent([
@@ -763,6 +943,7 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       }
       setVersion((v) => v + 1)
       syncEmoji(ed)
+      syncPages(ed)
       if (!props.onMention) return
       const query = mentionAt(ed.state)
       const key = query ? `${query.trigger}${query.text}` : ""
@@ -770,7 +951,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       mentioning = key
       props.onMention(query && { trigger: query.trigger, text: query.text })
     })
-    ed.on("blur", () => setEmoji(null))
+    ed.on("blur", () => {
+      setEmoji(null)
+      closePages()
+    })
     ed.on("update", ({ transaction }) => {
       // An edit of the text, not a change of state (setEditable also says "update").
       if (transaction.docChanged) props.onEdit?.()
@@ -989,6 +1173,21 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
             onPick={(item) => {
               const ed = editor()
               if (ed) pickEmoji(ed, item)
+            }}
+          />
+        )}
+      </Show>
+      <Show when={pagePick()}>
+        {(open) => (
+          <PageSuggest
+            id={pickerId}
+            items={open().items}
+            active={open().active}
+            loading={open().loading}
+            anchor={open().anchor}
+            onPick={(item) => {
+              const ed = editor()
+              if (ed) pickPage(ed, item)
             }}
           />
         )}

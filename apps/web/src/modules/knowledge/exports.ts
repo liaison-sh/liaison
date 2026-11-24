@@ -10,6 +10,7 @@ import {
   loadKnowledgeHome,
   markSyncedSourceArchived,
 } from "./knowledge-store"
+import { refreshPageTitle } from "./page-links"
 
 export { registerEntityPreviews } from "./entity-preview-renderers"
 export { default as KnowledgeIcon } from "./KnowledgeIcon"
@@ -44,8 +45,14 @@ export async function handleKnowledgeDocumentWsEvent(
   data: unknown,
   _ctx?: unknown,
 ): Promise<void> {
-  if (action !== "create" && action !== "update") return
   const api = getAttentionApi()
+  // Renamed, moved to Trash, restored, shared: the chips that show this page ask
+  // again for its title (only those this reader has on screen; the server decides).
+  if (action !== "create") {
+    const changed = data as { entityId?: string; id?: string } | null
+    refreshPageTitle(api, changed?.entityId ?? changed?.id)
+  }
+  if (action !== "create" && action !== "update") return
   if (!api) return
 
   if (action === "create") {

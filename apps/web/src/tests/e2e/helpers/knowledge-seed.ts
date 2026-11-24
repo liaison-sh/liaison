@@ -237,7 +237,7 @@ export async function uploadPageFileApi(
   const put = await fetch(url, {
     method: "PUT",
     headers: { "content-type": file.mimeType, authorization: `Bearer ${token}` },
-    body: file.bytes,
+    body: new Blob([new Uint8Array(file.bytes)]),
   })
   if (!put.ok) throw new Error(`upload PUT: HTTP ${put.status}`)
   const confirm = await fetch(`${env.serverUrl}/api/files/confirm`, {

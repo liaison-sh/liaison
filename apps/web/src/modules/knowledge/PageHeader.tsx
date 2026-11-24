@@ -10,7 +10,9 @@ import {
   ArchiveRestore,
   ArrowLeftRight,
   CheckCircle,
+  FileText,
   History,
+  MessageSquare,
   MoreHorizontal,
   Share2,
 } from "lucide-solid"
@@ -21,7 +23,9 @@ import { DictationMic, RecorderRow } from "~/modules/assist/RecorderBar"
 import type { useDictation } from "~/modules/assist/useDictation"
 import type { RichEditorHandle } from "~/modules/editor"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { openTab } from "~/modules/shell/tab-store"
 import { FloatingPanel } from "~/ui/FloatingPanel"
+import { OverlaySheet } from "~/ui/OverlaySheet"
 import type { SaverStatus } from "./autosave"
 import type { KnowledgeBacklink } from "./knowledge-api"
 
@@ -45,6 +49,8 @@ export interface PageHeaderProps {
   /** "Edited by X, 2 minutes ago", when known. */
   edited: string | null
   backlinks: KnowledgeBacklink[]
+  /** The "Linked from" list was opened: it is asked again. */
+  onBacklinksOpen?: () => void
   dictation: ReturnType<typeof useDictation>
   editor: () => RichEditorHandle | undefined
   titleRef: (el: HTMLHeadingElement) => void
@@ -207,7 +213,11 @@ export const PageHeader: Component<PageHeaderProps> = (props) => {
           <SaveState status={props.status} />
         </Show>
         <Show when={props.backlinks.length > 0}>
-          <BacklinksButton backlinks={props.backlinks} />
+          <BacklinksButton
+            backlinks={props.backlinks}
+            phone={props.phone}
+            onOpen={props.onBacklinksOpen}
+          />
         </Show>
         <Show when={props.editable}>
           <RecorderRow dictation={props.dictation} barClass="w-[18rem] max-w-[60vw]">
@@ -230,36 +240,113 @@ export const PageHeader: Component<PageHeaderProps> = (props) => {
   )
 }
 
-const BacklinksButton: Component<{ backlinks: KnowledgeBacklink[] }> = (props) => {
+/** A page that links here (else a conversation that references the page). */
+function isPageBacklink(link: KnowledgeBacklink): boolean {
+  return link.kind
+    ? link.kind === "page"
+    : link.app === "knowledge" && link.entityType === "document"
+}
+
+/** Open what links here in its own tab. */
+function openBacklink(link: KnowledgeBacklink): void {
+  if (isPageBacklink(link)) {
+    openTab({ type: "knowledge:document", entityId: link.entityId, label: link.title })
+  } else openTab({ type: "kernel:thread", entityId: link.entityId, label: link.title })
+}
+
+const BacklinksButton: Component<{
+  backlinks: KnowledgeBacklink[]
+  phone: boolean
+  onOpen?: () => void
+}> = (props) => {
   const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
+  const pages = () => props.backlinks.filter(isPageBacklink)
+  const threads = () => props.backlinks.filter((l) => !isPageBacklink(l))
+  const show = (next: boolean) => {
+    setOpen(next)
+    if (next) props.onOpen?.()
+  }
+  const label = () =>
+    props.backlinks.length === 1
+      ? i18n.t("knowledge.autosave.oneReference")
+      : i18n.t("knowledge.autosave.references", { count: props.backlinks.length })
+  const heading = (text: string) => (
+    <div class="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
+      {text}
+    </div>
+  )
+  const row = (link: KnowledgeBacklink) => (
+    <button
+      type="button"
+      data-roving
+      data-testid={isPageBacklink(link) ? "knowledge-backlink-page" : "knowledge-backlink-thread"}
+      data-entity-id={link.entityId}
+      onClick={() => {
+        setOpen(false)
+        openBacklink(link)
+      }}
+      class={`flex w-full items-center gap-2 px-3 text-left hover:bg-surface-hover focus-visible:bg-surface-hover focus-visible:outline-none ${props.phone ? "min-h-11" : "py-1.5"}`}
+    >
+      {isPageBacklink(link) ? (
+        <FileText size={13} class="shrink-0 text-text-tertiary" />
+      ) : (
+        <MessageSquare size={13} class="shrink-0 text-text-tertiary" />
+      )}
+      <span class="truncate text-[13px] text-text">
+        {link.title || i18n.t("knowledge.untitled")}
+      </span>
+    </button>
+  )
+  const list = () => (
+    <div data-testid="knowledge-backlinks-panel" onKeyDown={rovingFocus}>
+      <Show when={pages().length > 0}>
+        {heading(i18n.t("knowledge.links.linkedFrom"))}
+        <For each={pages()}>{row}</For>
+      </Show>
+      <Show when={threads().length > 0}>
+        {heading(i18n.t("knowledge.links.conversations"))}
+        <For each={threads()}>{row}</For>
+      </Show>
+    </div>
+  )
+  const trigger =
+    "flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
   return (
-    <FloatingPanel open={open()} onOpenChange={setOpen}>
-      <FloatingPanel.Trigger class="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-text-tertiary hover:bg-surface-hover hover:text-text-secondary">
-        <ArrowLeftRight size={12} />
-        {props.backlinks.length === 1
-          ? i18n.t("knowledge.autosave.oneReference")
-          : i18n.t("knowledge.autosave.references", { count: props.backlinks.length })}
-      </FloatingPanel.Trigger>
-      <FloatingPanel.Content class="w-64 py-2">
-        <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
-          {i18n.t("knowledge.referencedBy")}
-        </div>
-        <For each={props.backlinks}>
-          {(link) => (
-            <button
-              type="button"
-              class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-hover"
-            >
-              <span class="text-[11px] text-text-tertiary">
-                {link.app}:{link.entityType}
-              </span>
-              <span class="truncate text-[13px] text-text">{link.title}</span>
-            </button>
-          )}
-        </For>
-      </FloatingPanel.Content>
-    </FloatingPanel>
+    <Show
+      when={!props.phone}
+      fallback={
+        <>
+          <button
+            type="button"
+            data-testid="knowledge-backlinks-button"
+            aria-haspopup="dialog"
+            class={`${trigger} min-h-11`}
+            onClick={() => show(true)}
+          >
+            <ArrowLeftRight size={12} />
+            {label()}
+          </button>
+          <OverlaySheet
+            open={open()}
+            onClose={() => setOpen(false)}
+            variant="bottom"
+            title={i18n.t("knowledge.links.linkedFrom")}
+            closeLabel={i18n.t("kernel.close")}
+          >
+            <div class="py-2">{list()}</div>
+          </OverlaySheet>
+        </>
+      }
+    >
+      <FloatingPanel open={open()} onOpenChange={show}>
+        <FloatingPanel.Trigger data-testid="knowledge-backlinks-button" class={trigger}>
+          <ArrowLeftRight size={12} />
+          {label()}
+        </FloatingPanel.Trigger>
+        <FloatingPanel.Content class="w-64 py-2">{list()}</FloatingPanel.Content>
+      </FloatingPanel>
+    </Show>
   )
 }
 

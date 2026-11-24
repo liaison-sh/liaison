@@ -1894,7 +1894,7 @@ async function seedScenarioRoutines(
         // capability, so the routine briefed and never staged the reply.
         "mail:conversations:write",
         // The reply reads the conversation's mailbox account before it stages
-        // anything (ROUTINE_TOOL_RUN_READS, skills-routines-tools.ts): without
+        // anything (ROUTINE_TOOL_RUN_READS, routine-run-reads.ts): without
         // it every reply failed with Conversation account not found, and the
         // compose fallback with No mailbox matches that accountId.
         "mail:accounts:read",

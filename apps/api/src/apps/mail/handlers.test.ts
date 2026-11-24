@@ -1787,6 +1787,7 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
   // org's shared mailbox: that silently sent a user's personal mail from contact@.
   const orgMailboxBridge = () =>
     makeComposeBridge({
+      hasScope: async () => true,
       db_findOne: async (entity: string, id: string) => {
         if (entity === "accounts" && id === "account-1") return JSON.stringify({ id: "account-1" })
         // the real sandbox/DB throws on an invalid-uuid id rather than returning null
@@ -1823,6 +1824,48 @@ describe("mail:composeForApp (B8) — internal companion tool", () => {
       bridge: orgMailboxBridge(),
     })) as any
     expect(result.error?.code).toBe("NOT_FOUND")
+  })
+
+  // A run whose scopes lack mail:accounts:read sees no mailbox however many are connected: it is told
+  // that the access is missing, never that no mailbox matches.
+  it("preflight tells a caller who may read no mailbox that the access is missing", async () => {
+    const noAccess = { ...orgMailboxBridge(), hasScope: async () => false }
+    for (const accountId of [undefined, "other-account", "sales@example.com"]) {
+      const result = (await runMail({
+        exportName: "agentMailComposePreflight",
+        params: {
+          ...(accountId ? { accountId } : {}),
+          to: ["dealer@example.com"],
+          subject: "R",
+          textBody: "b",
+        },
+        bridge: noAccess,
+      })) as any
+      expect(result.error?.code).toBe("MISSING_SCOPE")
+      expect(result.error?.message).toContain("mail:accounts:read")
+      expect(result.error?.message).not.toMatch(/No mailbox|listAccounts/)
+    }
+  })
+
+  it("a reply or a forward by a caller who may read no mailbox is told the same", async () => {
+    for (const exportName of ["agentMailReplyPreflight", "agentMailForwardPreflight"]) {
+      const bridge = makeComposeBridge({
+        hasScope: async () => false,
+        db_findOne: async (entity: string) =>
+          entity === "conversations"
+            ? JSON.stringify({ id: "conv-1", account_id: "account-1" })
+            : "null",
+      })
+      const params = { conversationId: "conv-1", to: ["dealer@example.com"] }
+      const denied = (await runMail({ exportName, params, bridge })) as any
+      expect(denied.error?.code).toBe("MISSING_SCOPE")
+      const other = (await runMail({
+        exportName,
+        params,
+        bridge: { ...bridge, hasScope: async () => true },
+      })) as any
+      expect(other.error?.code).toBe("NOT_FOUND")
+    }
   })
 
   it("preflight accepts a real accountId", async () => {

@@ -75,6 +75,7 @@ import {
   timeOfCron,
 } from "~/modules/agent/routines/kernel-routine-templates"
 import { routineDisplayName } from "~/modules/agent/routines/routine-label"
+import { ROUTINE_TOOL_RUN_READS } from "~/modules/agent/routines/routine-run-reads"
 import { runContextStore } from "~/modules/agent/runtime/run-context"
 import { turnToolScopes } from "~/modules/agent/scopes/effective-scope"
 import { checkToolScopes } from "~/modules/agent/scopes/required-scopes"
@@ -5317,19 +5318,6 @@ function nextFireTimes(cron: string, timezone: string, count = 3): string[] {
  * user (the held ones); `missingScopes` the ones they lack (a create or update still leaves those
  * out and files a scope request). Read-only: it grants nothing.
  */
-/**
- * Reads a tool performs before it acts, which its `requiredScopes` (the scope that gates the call)
- * does not list. A routine runs capped to its own scopes, so without these every tick fails: the
- * mail reply and forward preflights read the conversation and its mailbox account, compose reads the
- * mailbox it sends from ("Conversation account not found or inaccessible", walks 2026-10-09 and
- * 2026-10-12). The lookup returns them with the tool so the list the user approves runs.
- */
-const ROUTINE_TOOL_RUN_READS: Readonly<Record<string, readonly string[]>> = {
-  mail__reply: ["mail:conversations:read", "mail:accounts:read"],
-  mail__forward: ["mail:conversations:read", "mail:accounts:read"],
-  mail__compose: ["mail:accounts:read"],
-}
-
 export async function handleRoutineToolScopes(
   params: { tools: string[] },
   ctx: AppContext & { scopes: string[] },

@@ -6721,7 +6721,10 @@ export async function agentMailReplyPreflight(
   const account = JSON.parse(await ctx.db_findOne("accounts", conversation.account_id))
   if (!account?.id) {
     return {
-      error: { code: "NOT_FOUND", message: "Conversation account not found or inaccessible" },
+      error: (await mailboxAccessMissing(ctx)) ?? {
+        code: "NOT_FOUND",
+        message: "Conversation account not found or inaccessible",
+      },
     }
   }
 
@@ -6768,6 +6771,22 @@ const COMPOSE_ACCOUNT_REQUIRED =
   "accountId is required: call mail listAccounts and pass the id of the mailbox to send FROM (the user's own mailbox when they write as themselves, the shared org mailbox only for mail the org sends)."
 const COMPOSE_ACCOUNT_NOT_FOUND =
   "No mailbox matches that accountId: call mail listAccounts and pass a real account id. Never invent one."
+
+/**
+ * Why no mailbox was found, when the caller may read none: a run whose scopes lack
+ * mail:accounts:read sees no mailbox however many are connected, and an agent told "no mailbox
+ * matches" told its owner to connect one that was. Null when the caller reads mailboxes.
+ */
+async function mailboxAccessMissing(
+  ctx: MailCtx,
+): Promise<{ code: string; message: string } | null> {
+  if (await ctx.hasScope("mail:accounts:read")) return null
+  return {
+    code: "MISSING_SCOPE",
+    message:
+      "This run may not read mailboxes: mail:accounts:read is not among its scopes, so it can send from none. That says nothing about which mailboxes are connected: never report that none is. Say that the access is missing and that the routine's or agent's owner can add it (Mail: read mail accounts). Nothing was drafted.",
+  }
+}
 
 /**
  * Shared compose pipeline used by both `agentMailCompose` (post-approval) and
@@ -7047,7 +7066,10 @@ async function resolveForwardSource(
   const account = JSON.parse(await ctx.db_findOne("accounts", conversation.account_id))
   if (!account?.id) {
     return {
-      error: { code: "NOT_FOUND", message: "Conversation account not found or inaccessible" },
+      error: (await mailboxAccessMissing(ctx)) ?? {
+        code: "NOT_FOUND",
+        message: "Conversation account not found or inaccessible",
+      },
     }
   }
 
@@ -7225,7 +7247,12 @@ export async function agentMailComposePreflight(
   // tells the agent how to recover (never throw: a bare throw surfaces as "Tool execution failed" and the
   // agent loops). A non-uuid placeholder makes db_findOne throw, so tolerate that as "not found".
   if (!params.accountId) {
-    return { error: { code: "invalid_params", message: COMPOSE_ACCOUNT_REQUIRED } }
+    return {
+      error: (await mailboxAccessMissing(ctx)) ?? {
+        code: "invalid_params",
+        message: COMPOSE_ACCOUNT_REQUIRED,
+      },
+    }
   }
   let account: { id?: string } | null = null
   try {
@@ -7234,7 +7261,12 @@ export async function agentMailComposePreflight(
     account = null
   }
   if (!account?.id) {
-    return { error: { code: "NOT_FOUND", message: COMPOSE_ACCOUNT_NOT_FOUND } }
+    return {
+      error: (await mailboxAccessMissing(ctx)) ?? {
+        code: "NOT_FOUND",
+        message: COMPOSE_ACCOUNT_NOT_FOUND,
+      },
+    }
   }
 
   return pinSendGuard("mail:compose", params, { to: params.to }, ctx)

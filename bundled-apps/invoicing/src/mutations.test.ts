@@ -1783,7 +1783,7 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 (the wrong terms)
+      due_at: "2099-07-20", // NET-30 (the wrong terms)
       items: sampleDraftItems,
     })
     const r = await invoiceIssue(ctx, { draft_id })
@@ -1796,8 +1796,8 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
     // With the fingerprint of the draft the card shows, so an edited draft is refused at issue.
     expect(req.current_payload).toEqual({
       draft_id,
-      due_at: "2026-07-20",
-      draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      due_at: "2099-07-20",
+      draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/),
     })
     // Nothing issued yet.
     expect(issuedDocs(db)).toHaveLength(0)
@@ -1824,14 +1824,14 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 originally on the draft
+      due_at: "2099-07-20", // NET-30 originally on the draft
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id, due_at: "2026-08-19" }) // corrected NET-60
+    const r = await invoiceIssue(ctx, { draft_id, due_at: "2099-08-19" }) // corrected NET-60
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-08-19")
+    expect(String(issued[0]!.due_at)).toBe("2099-08-19")
   })
 
   test("re-entry WITHOUT an edited due_at issues with the draft's original terms (no accidental clear)", async () => {
@@ -1853,14 +1853,14 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20",
+      due_at: "2099-07-20",
       items: sampleDraftItems,
     })
     const r = await invoiceIssue(ctx, { draft_id }) // no due_at override
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-07-20")
+    expect(String(issued[0]!.due_at)).toBe("2099-07-20")
   })
 })
 
@@ -10415,7 +10415,7 @@ describe("intra-EU business buyer guard", () => {
           ? {
               ok: true,
               noAutoApprove: true,
-              pinnedParams: { draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+              pinnedParams: { draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/) },
             }
           : { ok: true, noAutoApprove: true },
       )

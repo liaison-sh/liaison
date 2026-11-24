@@ -32,6 +32,8 @@ export interface RunDetailRun {
   approved_by: string | null
   approved_at: string | null
   auto?: boolean
+  /** A late run whose card a person rejected. */
+  card_rejected?: boolean
   /** The issuer's time zone, so a date reads as the issuer's day. */
   timezone?: string | null
 }
@@ -157,6 +159,7 @@ export function runDetailView(
         : tr("Not approved yet"),
     period: run.period,
     lateSince: run.status === "late" ? run.latest_issue_on : null,
+    rejected: run.card_rejected === true,
     runId: run.id,
     /** The rows a late run's card covers, for the rows shown to decide under it. */
     toDecide: rows
@@ -314,7 +317,11 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                 >
                   {tr("All schedules")}
                 </Button>
-                <Show when={v().lateSince && v().toDecide.length > 0 && access()?.documents_write}>
+                <Show
+                  when={
+                    v().lateSince && v().toDecide.length > 0 && !v().rejected && access()?.approve
+                  }
+                >
                   <Button
                     variant="primary"
                     class={TAP}
@@ -338,13 +345,17 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                   <div data-testid="run-late" class="flex flex-col gap-3">
                     <LastDayNote lastDay={day()} />
                     <p class="text-text-secondary">
-                      {v().toDecide.length > 0
+                      {v().toDecide.length > 0 && v().rejected
                         ? tr(
-                            "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.",
+                            "Its card marked Late was rejected, so nothing issues. Change a row, or take one out, and it asks again.",
                           )
-                        : tr(
-                            "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.",
-                          )}
+                        : v().toDecide.length > 0
+                          ? tr(
+                              "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.",
+                            )
+                          : tr(
+                              "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.",
+                            )}
                     </p>
                     <MonthEndRunPanel
                       payload={{ run_id: v().runId, items: v().toDecide }}

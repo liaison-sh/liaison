@@ -11,6 +11,8 @@ import { type BilledUnit, lineQuantity } from "../line-amount"
 import { resolveIssuerProfileOrError } from "../mutations/db-helpers"
 import {
   cardMinutes,
+  lateItems,
+  lateOnOtherCard,
   monthOnRun,
   retainerPlan,
   retainerRecipient,
@@ -46,7 +48,7 @@ export interface PreviewTotalsInput {
   rateMinor?: number | null
   hoursPerDayMinutes?: number | null
   lines?: Array<{ billMinutes?: number; workMonth?: string }>
-  /** A retainer card's first day: the month it bills. */
+  /** A card's first day: the month a retainer card bills, and the one earlier hours come before. */
   periodFrom?: string | null
   /** A retainer month's timebox on the project. */
   timeboxMinutes?: number | null
@@ -84,11 +86,14 @@ export type PreviewTotalsResult =
         overageRateMinor: number
         billedBySchedule: boolean
       }
+      /** A retainer card whose month bills no retainer: only earlier months' later hours bill. */
+      lateOnly?: boolean
       message: string
     }
   | { error: { code: string; message: string; retryable: false } }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const DAY = /^\d{4}-\d{2}-\d{2}$/
 const RATE_BASES = new Set(["daily", "hourly", "retainer"])
 const OPEN_STEP = new Set(["planned", "drafted"])
 const LIVE_STEP = new Set(["planned", "drafted", "issued", "paid"])
@@ -205,9 +210,20 @@ export async function previewTotals(
     RATE_BASES.has(basis)
   ) {
     const unit = unitOfBasis(basis)
+    // Hours of a retainer month told after its invoice: priced as that month's, not at this rate.
+    const { late } = cardMinutes(input.lines ?? [])
+    const from = typeof input.periodFrom === "string" ? input.periodFrom : ""
+    const other =
+      late.length > 0 && DAY.test(from)
+        ? await lateOnOtherCard(ctx, { projectId, before: from.slice(0, 7), late })
+        : null
+    const lateLines = other ? lateItems(other.late, 0) : []
+    if (late.length > 0 && (!other || other.unknown.length > 0)) missing.push("retainer")
+    if (lateLines.length > 0 && other && other.currency !== currency) missing.push("currency")
     const recipient =
       companyId || contactId ? await recipientOf(ctx, { contactId, companyId }) : null
-    const lines = (input.lines ?? [])
+    const ownLines = (input.lines ?? [])
+      .filter((l) => typeof l.workMonth !== "string")
       .map((l) => Math.max(0, Math.round(Number(l.billMinutes) || 0)))
       .filter((m) => m > 0)
       .map((m) => ({
@@ -218,7 +234,7 @@ export async function previewTotals(
       issuerCountry: issuer.issuer.country,
       taxCountry: recipient?.counterparty_country ?? null,
       hasVatId: !!recipient?.counterparty_vat_id,
-      lines,
+      lines: [...ownLines, ...(lateLines as never[])],
     })
     excl = Number(plan.subtotal_minor)
     vat = Number(plan.tax_minor)
@@ -247,8 +263,6 @@ export async function previewTotals(
   }
 }
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/
-
 /** A retainer card priced as its draft will be: the schedule's fee, then any overage. */
 async function retainerPreview(
   ctx: PreviewTotalsCtx,
@@ -263,6 +277,42 @@ async function retainerPreview(
   const from =
     typeof input.periodFrom === "string" && DAY.test(input.periodFrom) ? input.periodFrom : null
   const s = await retainerScheduleOf(ctx, projectId, from?.slice(0, 7) ?? "")
+  const card = cardMinutes(input.lines ?? [])
+  // A month that bills no retainer from its card can still bill earlier months' later hours, alone.
+  if (from && issuer.ok && card.late.length > 0) {
+    const month = from.slice(0, 7)
+    const onCard = !!s && isRetainerMonth(s, month) && !(await monthOnRun(ctx, String(s.id), month))
+    const alone = onCard
+      ? null
+      : await lateOnOtherCard(ctx, { projectId, before: month, late: card.late })
+    const items = alone ? lateItems(alone.late, 0) : []
+    if (alone?.schedule && items.length > 0) {
+      const who = retainerRecipient(alone.schedule, { contactId, companyId })
+      const recipient = who.companyId || who.contactId ? await recipientOf(ctx, who) : null
+      const tax = netLinesTotals({
+        issuerCountry: issuer.issuer.country,
+        taxCountry: recipient?.counterparty_country ?? null,
+        hasVatId: !!recipient?.counterparty_vat_id,
+        lines: items as never,
+      })
+      if (alone.unknown.length > 0) missing.push("retainer")
+      if (recipient && missing.length === 0)
+        missing.push(...(await recipientGaps(ctx, issuer.issuer, who.contactId, recipient)))
+      return {
+        projectId,
+        ready: missing.length === 0,
+        missing,
+        excl: Number(tax.subtotal_minor),
+        vat: Number(tax.tax_minor),
+        incl: Number(tax.total_minor),
+        rateBp: tax.rate_bp,
+        currency: alone.currency,
+        openPlanSteps,
+        lateOnly: true,
+        message: `Only the hours of earlier months entered after their invoices bill from this card: ${Number(tax.subtotal_minor)} excl. VAT (minor units, ${alone.currency}). Nothing was created.`,
+      }
+    }
+  }
   if (!s || !from) missing.push("retainer")
   let excl: number | null = null
   let vat: number | null = null
@@ -272,7 +322,7 @@ async function retainerPreview(
   let overageMinutes = 0
   let retainer: Extract<PreviewTotalsResult, { ready: boolean }>["retainer"]
   if (s && from && issuer.ok) {
-    const { used, late } = cardMinutes(input.lines ?? [])
+    const { used, late } = card
     const [y, m] = from.split("-").map(Number) as [number, number]
     const last = new Date(Date.UTC(y, m, 0)).getUTCDate()
     const plan = await retainerPlan(ctx, s, {
@@ -284,7 +334,8 @@ async function retainerPreview(
       waived: input.waiveOverage === true,
     })
     currency = plan.currency
-    overageMinutes = plan.fig.overageMinutes
+    overageMinutes = plan.fig.overageMinutes + plan.late.reduce((a, l) => a + l.overage_minutes, 0)
+    if (plan.unknown.length > 0) missing.push("retainer")
     const month = from.slice(0, 7)
     const billedBySchedule =
       !isRetainerMonth(s, month) || (await monthOnRun(ctx, String(s.id), month))

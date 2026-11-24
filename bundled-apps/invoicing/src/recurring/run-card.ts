@@ -204,30 +204,45 @@ export function approvedLateOn(run: Row): string | null {
 }
 
 /**
+ * The days a row's due date is counted, when its terms gave that date; null when a person set it.
+ * Counted from the run's issue day, or the day a late run last counted it from.
+ */
+export async function termsGivenDays(
+  ctx: Pick<RunCtx, "db">,
+  run: Row,
+  item: Row,
+  draft: Row,
+): Promise<{ days: number; countedFrom: string } | null> {
+  const refs = jsonOf<Row>(draft.external_refs, {})
+  const countedFrom = dayOf(refs.due_counted_from) ?? (dayOf(run.issue_on) as string)
+  const schedule = item.schedule_id
+    ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
+    : null
+  const days = schedule
+    ? scheduleTermsDays(schedule)
+    : (
+        await paymentTermsOf(ctx.db, {
+          issuer: { id: String(run.issuer_profile_id) },
+          contactId: (draft.counterparty_contact_id as string | null) ?? null,
+          externalRefs: refs,
+        })
+      ).days
+  return dayOf(draft.due_at) === dueOn(countedFrom, days) ? { days, countedFrom } : null
+}
+
+/**
  * The due dates of a late run's rows: a date its terms gave from the run's issue day is counted
- * from today instead, so a late invoice is not due before it exists. A date a person set stays.
+ * from today instead, so its card shows the date it would issue with. A date a person set stays.
  */
 async function moveLateDueDates(ctx: RunCtx, run: Row, today: string): Promise<void> {
   for (const item of await runItems(ctx, String(run.id))) {
     if (item.state === "issued" || item.state === "left_out") continue
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft || draft.status !== "draft") continue
+    const given = await termsGivenDays(ctx, run, item, draft)
+    if (!given || given.countedFrom === today) continue
     const refs = jsonOf<Row>(draft.external_refs, {})
-    const countedFrom = dayOf(refs.due_counted_from) ?? (dayOf(run.issue_on) as string)
-    if (countedFrom === today) continue
-    const schedule = item.schedule_id
-      ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
-      : null
-    const days = schedule
-      ? scheduleTermsDays(schedule)
-      : (
-          await paymentTermsOf(ctx.db, {
-            issuer: { id: String(run.issuer_profile_id) },
-            contactId: (draft.counterparty_contact_id as string | null) ?? null,
-            externalRefs: refs,
-          })
-        ).days
-    if (dayOf(draft.due_at) !== dueOn(countedFrom, days)) continue
+    const { days } = given
     await ctx.db.update("documents", String(draft.id), {
       due_at: dueOn(today, days),
       external_refs: { ...refs, due_counted_from: today },
@@ -445,7 +460,11 @@ export async function stageRunCard(
       await ctx.db.update("recurring_runs", runId, { approval_request_id: existing ?? null })
       return { approval_id: null, staged: false, owed: true }
     }
-    await ctx.db.update("recurring_runs", runId, { approval_request_id: approval.approval_id })
+    await ctx.db.update("recurring_runs", runId, {
+      approval_request_id: approval.approval_id,
+      // The card that asks about a late run: one staged before its last day is not one.
+      ...(late ? { late_card_id: approval.approval_id } : {}),
+    })
     return { approval_id: approval.approval_id, staged: true }
   } catch (err) {
     await ctx.db.update("recurring_runs", runId, { approval_request_id: existing ?? null })
@@ -571,6 +590,8 @@ export async function recurringRunIssue(
       await ctx.db.update("recurring_run_items", String(item.id), {
         state: "waiting_reapproval",
         approved_hash: null,
+        approved_total_minor: null,
+        send_grant: null,
       })
       changed.push(String(draft.id))
       continue
@@ -817,8 +838,15 @@ export async function runItemDraftRefusal(
 ): Promise<ErrorEnvelope | null> {
   const refs = jsonOf<Record<string, unknown>>(draft?.external_refs, {})
   const itemId = refs.recurring_run_item_id
-  if (typeof itemId !== "string" || itemId === "") return null
-  const item = (await ctx.db.findOne("recurring_run_items", itemId)) as Row | null
+  const named = typeof itemId === "string" && itemId !== ""
+  // A row's draft is the row's whether or not it still names it: a write of its references can
+  // drop the name.
+  const item = named
+    ? ((await ctx.db.findOne("recurring_run_items", itemId)) as Row | null)
+    : typeof draft?.id === "string"
+      ? await findOneWhere(ctx, "recurring_run_items", { document_id: draft.id })
+      : null
+  if (!named && !item) return null
   const run = item
     ? ((await ctx.db.findOne("recurring_runs", String(item.run_id))) as Row | null)
     : null

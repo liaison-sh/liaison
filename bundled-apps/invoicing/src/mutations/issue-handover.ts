@@ -261,7 +261,7 @@ export interface OwnApprovals {
   ) => Promise<unknown>
 }
 
-interface WithdrawCtx extends MarkCtx {
+export interface WithdrawCtx extends MarkCtx {
   approvals?: OwnApprovals
   approval?: { approvalRequestId: string } | null
 }
@@ -272,9 +272,9 @@ export function draftInWords(draft: { counterparty_name?: string | null }): stri
   return name ? `the invoice draft for ${name}` : "this invoice draft"
 }
 
-const upperFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
+export const upperFirst = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 
-const asJson = (v: unknown): unknown => {
+export const asJson = (v: unknown): unknown => {
   if (typeof v !== "string") return v
   try {
     return JSON.parse(v)
@@ -447,13 +447,9 @@ export async function reconcileStillReserved(
 }
 
 /**
- * The fingerprint of what an invoice draft bills: its type, issuer, customer, tax treatment and
- * e-invoicing facts, currency, terms, notes, PO reference, shipping and lines. An issue approval
- * carries it as `draft_hash` from the moment it is made (the preflight pins it on a call, and a
- * handler that parks the card states it). When the draft is edited through drafts_update while the
- * approval waits, the card is redrawn with the new fingerprint (a decision on the old card is
- * refused by its payload hash). Whatever path edited the draft, the issue refuses a draft whose
- * fingerprint is not the one on the approval.
+ * The hash of what an invoice draft's own columns and lines say: its type, issuer, customer, tax
+ * treatment and e-invoicing facts, currency, due date, notes, PO reference, shipping and lines. The
+ * issue fingerprint (`issue-fingerprint.ts`) holds it with the amount and the payment terms.
  */
 export interface HashableDraft {
   id: string
@@ -524,65 +520,4 @@ export function draftContentHash(draft: HashableDraft): string {
     ]),
   })
   return sha256Hex(utf8Bytes(canonical))
-}
-
-/**
- * After a draft is edited, its issue approvals still waiting are redrawn: each gets the draft's new
- * fingerprint, so the kernel rebuilds its card from the edited draft and a decision taken on the
- * card as it was is refused. Best effort: the issue itself checks the fingerprint again.
- */
-export async function restageIssueApprovals(
-  ctx: WithdrawCtx,
-  draft: HashableDraft,
-): Promise<string[]> {
-  const pendingFor = ctx.approvals?.pendingFor
-  const restage = ctx.approvals?.restagePayload
-  if (!pendingFor || !restage) return []
-  const hash = draftContentHash(draft)
-  const done: string[] = []
-  try {
-    const raw = asJson(await pendingFor("draft_id", ["invoicing:invoice_issue"]))
-    const rows = (Array.isArray(raw) ? raw : []) as Array<{
-      id?: unknown
-      target_id?: unknown
-      payload?: unknown
-    }>
-    for (const r of rows) {
-      if (r.target_id !== draft.id || typeof r.id !== "string") continue
-      const payload = asJson(r.payload) as { draft_hash?: unknown } | null
-      if (payload?.draft_hash === hash) continue
-      const res = asJson(
-        await restage(r.id, { draft_hash: hash }, `${upperFirst(draftInWords(draft))} was edited.`),
-      ) as { ok?: unknown } | null
-      if (res?.ok === true) done.push(r.id)
-    }
-  } catch (err) {
-    ctx.logger?.warn?.("redrawing the draft's issue approval failed", {
-      draftId: draft.id,
-      error: err instanceof Error ? err.message : String(err),
-    })
-  }
-  return done
-}
-
-/**
- * The issue's own check, the one every edit path meets: a draft whose fingerprint is not the one
- * its approval carries is not issued from that card, whether it was edited through drafts_update,
- * documents_update, a Shopify sync or anything else. An approval with no fingerprint (one asked
- * for by chaining a draft that did not exist yet, or made before approvals carried one) is not
- * checked.
- */
-export function draftChangedSinceCard(
-  draft: HashableDraft,
-  shownHash: string | null | undefined,
-): ErrorEnvelope | null {
-  if (typeof shownHash !== "string" || shownHash === "") return null
-  if (draftContentHash(draft) === shownHash) return null
-  return {
-    status: "error",
-    error: {
-      code: "draft_changed",
-      message: `${upperFirst(draftInWords(draft))} was not issued: it changed after this request was made. Nothing was numbered. Ask for its issue again so the card shows what will be issued.`,
-    },
-  }
 }

@@ -23,6 +23,14 @@
     },
     {
       "method": "db_findMany",
+      "args": [
+        "recurring_run_items",
+        "{\"where\":{\"document_id\":\"5b72202c-1f3a-472b-a2a2-3dcb9847933a\"},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
       "args": ["stripe_streams", "{\"limit\":100}"],
       "reply": "[]"
     },

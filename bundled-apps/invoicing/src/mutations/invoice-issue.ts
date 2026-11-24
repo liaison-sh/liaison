@@ -21,7 +21,7 @@ import {
 } from "../issue"
 import { issueDateParts } from "../issue-date"
 import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
-import { paymentTermsOf, termsText } from "../payment-terms"
+import { dueOn, paymentTermsOf, termsText } from "../payment-terms"
 import { runItemDraftRefusal } from "../recurring/run-card"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
@@ -36,9 +36,8 @@ import {
   updateDraftRow,
 } from "./db-helpers"
 import { issueWithFxRate } from "./fx-issue"
+import { approvedAmount, draftChangedSinceCard, issueFingerprint } from "./issue-fingerprint"
 import {
-  draftChangedSinceCard,
-  draftContentHash,
   handOverDraft,
   markReconciliation,
   reconcileStillReserved,
@@ -176,7 +175,7 @@ async function preflightInvoiceIssueParams(
   const changed = await reconcileStillReserved(ctx, draft)
   if (changed) return { ok: false, error: changed }
   // The card was drawn from the draft as it was: a draft edited since is not issued from it.
-  const edited = draftChangedSinceCard(draft, input.draft_hash)
+  const edited = await draftChangedSinceCard(ctx, draft, input.draft_hash)
   if (edited) return { ok: false, error: edited }
   // E-invoicing gate, same rule: a French business buyer without the data its e-invoice needs is
   // refused here (enforce) with the fields and the tools that fix them.
@@ -214,7 +213,15 @@ export async function invoiceIssuePreflight(
   // is made (a pinned param: a caller's own value is dropped), so the issue refuses the draft once
   // anything edits it, whichever path did.
   if (!pre.ok || !("ok" in result)) return result
-  return { ...result, pinnedParams: { draft_hash: draftContentHash(pre.draft) } }
+  const { grand } = computeLineFinancials(pre.draft.lines, {
+    issuer_country: pre.issuer.country,
+    counterparty_country: taxCountryOf(pre.counterparty),
+    has_vat_id: !!pre.counterparty.vat_id,
+  })
+  return {
+    ...result,
+    pinnedParams: { draft_hash: await issueFingerprint(ctx, pre.draft, grand) },
+  }
 }
 
 type InvoiceIssueInput = {
@@ -308,7 +315,7 @@ async function issueDraftInvoice(
       // The fingerprint of the draft this card shows, so the issue refuses it once edited.
       current_payload: {
         draft_id: input.draft_id,
-        draft_hash: draftContentHash(draft),
+        draft_hash: await issueFingerprint(ctx, draft, total),
         ...(draft.due_at ? { due_at: draft.due_at } : {}),
       },
       editable_fields: ["due_at"],
@@ -323,10 +330,12 @@ async function issueDraftInvoice(
   // The draft is discarded in the same commit as the invoice that replaces it, so a
   // re-invocation refuses with not_found rather than re-issuing. Its key, project and period,
   // and the rows that point at it, move to the invoice in that commit (issue-handover.ts).
-  const issueInput = handOverDraft(
-    draft,
-    buildIssueInputFromDraft(draft, issuer, counterparty, when),
-  )
+  const amount = approvedAmount(input.draft_hash)
+  const issueInput = handOverDraft(draft, {
+    ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+    // The amount on the card, or nothing is issued.
+    ...(amount !== null ? { expected_total_minor: amount } : {}),
+  })
   const issued = await issueWithFxRate(ctx, issueInput, { onCommitted: landed })
   if (!issued.ok) return issued.error
   const result = issued.result
@@ -362,6 +371,8 @@ export async function issueRunDraft(
     lifecycle_log: Array<Record<string, unknown>>
     einvoice_send?: "stage" | "batch" | "held"
     commit_with?: IssueBatchOp[]
+    /** The days its due date is counted from its issue, when its terms gave that date. */
+    due_days?: number | null
     /** The total a person approved the row at: it issues at that amount or not at all. */
     expected_total_minor?: string | null
   },
@@ -375,10 +386,14 @@ export async function issueRunDraft(
   if (!when.ok) return when.error
   // The draft is discarded in the same commit as the invoice that replaces it, handing over the
   // run's period key (cleared on the draft first) and whatever points at the draft.
+  const built = buildIssueInputFromDraft(draft, issuer, counterparty, when)
   const issueInput = handOverDraft(
     draft,
     {
-      ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
+      ...built,
+      ...(typeof input.due_days === "number"
+        ? { draft: { ...built.draft, due_at: dueOn(when.issued_at, input.due_days) } }
+        : {}),
       lifecycle_carry: input.lifecycle_log,
       ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
       ...(input.expected_total_minor ? { expected_total_minor: input.expected_total_minor } : {}),

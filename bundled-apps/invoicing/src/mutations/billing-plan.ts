@@ -26,13 +26,8 @@ import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import {
-  customerLine,
-  dueLine,
-  ISSUE_APPROVAL_EXPIRY_HOURS,
-  issuePayloadFor,
-  monthEnd,
-} from "./from-reconcile"
+import { customerLine, dueLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import { issuePayloadFor } from "./issue-fingerprint"
 import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
 

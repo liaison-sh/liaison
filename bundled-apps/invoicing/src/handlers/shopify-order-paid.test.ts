@@ -479,6 +479,8 @@ describe("onShopifyOrderPaid auto-flow (E2)", () => {
     const doc = docs[0]!
     // Payment side settled…
     expect(doc.payment_status).toBe("paid")
+    // Paid already: nothing is due.
+    expect(doc.due_at ?? null).toBeNull()
     expect(doc.paid_at).toBe("2026-05-15") // order createdAt date
     // …but the invoice stays a live, shippable issued document (boxtal reads
     // status='issued'; flipping to 'paid' here would drop it from shipping).

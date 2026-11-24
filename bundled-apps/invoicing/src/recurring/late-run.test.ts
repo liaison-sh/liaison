@@ -10,7 +10,12 @@ import { summarizeRecurringRunIssue } from "../summarizers"
 import { recurringDraftJob } from "./draft-job"
 import { recurringIssueJob } from "./issue-job"
 import { recurringLegalDateJob } from "./legal-date-job"
-import { recurringRunIssue, recurringRunIssuePreflight, recurringRunUnapprove } from "./run-card"
+import {
+  recurringRunIssue,
+  recurringRunIssuePreflight,
+  recurringRunUnapprove,
+  runItemDraftRefusal,
+} from "./run-card"
 import { recurringRunGet } from "./run-get"
 
 type Row = Record<string, unknown>
@@ -206,6 +211,107 @@ describe("a run past its last issue day", () => {
     r.status.set("approval-3", "expired")
     await r.at("2026-12-03", () => recurringLegalDateJob(r.h.ctx))
     expect(r.h.approvals).toHaveLength(4)
+  })
+
+  test("approved and not issued in the days after, it is late again and asks again", async () => {
+    const r = await run()
+    await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
+    await recurringRunIssue(r.h.ctx, { run_id: r.runId })
+    for (const d of ["2026-12-02", "2026-12-03"])
+      await r.at(d, () => recurringLegalDateJob(r.h.ctx))
+    expect(r.runRow().status).toBe("approved")
+    expect(r.h.approvals).toHaveLength(2)
+    await r.at("2026-12-04", () => recurringLegalDateJob(r.h.ctx))
+    expect(r.runRow().status).toBe("late")
+    expect(r.items().map((i) => i.state)).toEqual(["waiting_reapproval", "waiting_reapproval"])
+    expect(r.h.approvals).toHaveLength(3)
+  })
+
+  test("failed rows ask again on its late card, with nothing kept of their approval", async () => {
+    const r = await run()
+    await recurringRunIssue(r.h.ctx, { run_id: r.runId })
+    const [a, b] = r.items().map((i) => String(i.id)) as [string, string]
+    await r.h.db.update("recurring_run_items", a, { state: "issued" })
+    await r.h.db.update("recurring_run_items", b, { state: "failed", send_grant: "g" })
+    await r.h.db.update("recurring_runs", r.runId, { status: "partial" })
+    await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
+    expect(r.runRow().status).toBe("late")
+    expect(r.items()).toMatchObject([
+      { state: "issued" },
+      {
+        state: "waiting_reapproval",
+        approved_hash: null,
+        approved_total_minor: null,
+        send_grant: null,
+      },
+    ])
+    expect(((r.h.approvals.at(-1) as Row).current_payload as { items: Row[] }).items).toHaveLength(
+      1,
+    )
+  })
+
+  test("a card still waiting is not priced again by the five-minute job", async () => {
+    const r = await run()
+    await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
+    const before = r.h.restaged.length
+    await r.at("2026-12-01", () => recurringIssueJob(r.h.ctx))
+    expect(r.h.restaged).toHaveLength(before)
+    // Expired, the same job asks again.
+    r.status.set("approval-2", "expired")
+    await r.at("2026-12-02", () => recurringIssueJob(r.h.ctx))
+    expect(r.h.approvals).toHaveLength(3)
+  })
+
+  test("whose late card was rejected says so on its page, and nothing else changes it but a row", async () => {
+    const r = await run()
+    await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
+    const read = async () => {
+      const got = await recurringRunGet(r.h.ctx, { run_id: r.runId })
+      if (got.status !== "completed") throw new Error("not read")
+      return got
+    }
+    expect((await read()).run.card_rejected).toBeUndefined()
+    r.status.set("approval-2", "denied")
+    const got = await read()
+    expect(got.run.card_rejected).toBe(true)
+    expect(got.message).toContain("rejected")
+    expect(got.message).not.toContain("waits for a person")
+  })
+
+  test("a row put back into a late run that had closed is late again, never open in time", async () => {
+    const r = await run()
+    await r.h.db.update("recurring_runs", r.runId, { status: "issued" })
+    const [a] = r.items().map((i) => String(i.document_id)) as [string]
+    for (const i of r.items())
+      await r.h.db.update("recurring_run_items", String(i.id), {
+        state: i.document_id === a ? "left_out" : "issued",
+      })
+    await r.h.db.update("documents", a, { updated_at: "2026-11-28T09:00:00Z" })
+    const putBack = () =>
+      draftsUpdateTool(r.h.ctx as never, {
+        draft_id: a,
+        put_back: true,
+        if_unchanged_since: "2026-11-28T09:00:00Z",
+      })
+    await r.at("2026-11-28", putBack)
+    expect(r.runRow().status).toBe("partial")
+    expect(r.items()[0]?.state).toBe("waiting_reapproval")
+    await r.h.db.update("recurring_runs", r.runId, { status: "issued" })
+    await r.h.db.update("recurring_run_items", String(r.items()[0]?.id), { state: "left_out" })
+    await r.at("2026-12-05", putBack)
+    expect(r.runRow().status).toBe("late")
+  })
+
+  test("a row whose draft lost its link to the run is still the run's", async () => {
+    const r = await run()
+    const draft = String(r.items()[0]?.document_id)
+    await r.h.db.update("documents", draft, { external_refs: {} })
+    expect(
+      await runItemDraftRefusal(r.h.ctx, r.doc(draft) as never, "invoice_issue"),
+    ).toMatchObject({ error: { code: "run_item_draft" } })
+    expect(
+      await runItemDraftRefusal(r.h.ctx, { id: "other", external_refs: {} }, "invoice_issue"),
+    ).toBeNull()
   })
 
   test("a row dropped leaves the card; the last one dropped closes the run with nothing issued", async () => {

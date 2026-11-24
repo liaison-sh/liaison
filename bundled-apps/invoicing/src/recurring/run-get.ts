@@ -7,6 +7,8 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { AMOUNT_CHECK } from "./flags"
 import { updatedAtOf } from "./restage"
 import {
+  approvalStatus,
+  cardOf,
   dayOf,
   draftLines,
   draftTotals,
@@ -60,6 +62,12 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
   return now > Number(item.schedule_version) && now !== own
     ? ["The schedule changed after this draft"]
     : []
+}
+
+/** A late run whose card a person rejected: nothing asks again until a row changes. */
+async function lateCardRejected(ctx: RunCtx, run: Row): Promise<boolean> {
+  const card = run.status === "late" ? cardOf(run) : null
+  return card !== null && (await approvalStatus(ctx, card)) === "denied"
 }
 
 /** A card staged for the run and not yet decided: the run still waits for it. */
@@ -146,6 +154,7 @@ export async function recurringRunGet(
       ...suggestionOf(item),
     })
   }
+  const rejected = await lateCardRejected(ctx, run)
   const runOut: Row = {
     id: String(run.id),
     status: run.status,
@@ -157,6 +166,7 @@ export async function recurringRunGet(
     auto: run.auto === true,
     approval_request_id: run.approval_request_id ?? null,
     timezone: (issuer?.timezone as string | null) ?? null,
+    ...(rejected ? { card_rejected: true } : {}),
   }
   const far = rows.filter(
     (r) =>
@@ -178,7 +188,10 @@ export async function recurringRunGet(
               ", ",
             )}${far.length > 3 ? ", ..." : ""}). The "Check the amount" flag names what was billed last time: check it with a person before the card is approved.`
         : "") +
-      (cardWaiting(run, rows)
+      (rejected
+        ? " Its late card was rejected, so nothing asks again by itself: a change of a row, or a row taken out, does."
+        : "") +
+      (!rejected && cardWaiting(run, rows)
         ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.`
         : ""),
   }

@@ -1515,6 +1515,7 @@
         "approved_by": "uuid?",
         "approved_at": "date?",
         "late_approved_on": "day?",
+        "late_card_id": "text?",
           "auto": { "type": "boolean", "default": false },
         "period_label": "text"
       },
@@ -2534,7 +2535,7 @@
               "additionalProperties": true
             }
           },
-          "periodFrom": { "type": ["string", "null"], "description": "A retainer card's first day." },
+          "periodFrom": { "type": ["string", "null"], "description": "The card's first day." },
           "timeboxMinutes": { "type": ["number", "null"], "description": "A retainer month's timebox on the project." },
           "waiveOverage": { "type": "boolean", "description": "A retainer month billed with no overage." }
         },
@@ -2575,6 +2576,7 @@
           "reconciliationId": { "type": "string", "description": "The reconciliation's id." },
           "revision": { "type": "integer", "minimum": 1, "description": "The card revision the person saw." },
           "waiveOverage": { "type": "boolean", "description": "Bill no overage this month." },
+          "lateOnly": { "type": "boolean", "description": "The month bills no retainer: draft earlier months' later hours alone." },
           "contactId": { "type": ["string", "null"], "description": "The contact of the project's company the invoice goes to, when the schedule names none." }
         },
         "required": ["reconciliationId", "revision"],

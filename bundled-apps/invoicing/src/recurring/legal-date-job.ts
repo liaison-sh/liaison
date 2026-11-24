@@ -37,6 +37,13 @@ const OPEN = ["drafted", "rejected", "approved", "issuing", "partial", "late"]
 const LATE_ISSUE_DAYS = 2
 
 /**
+ * A late run that never had its late card: marked late by an older build, whose rows may still read
+ * approved or failed and whose card, if it has one, was staged before its last day.
+ */
+const neverAsked = (run: Row): boolean =>
+  typeof run.late_card_id !== "string" || run.late_card_id === ""
+
+/**
  * The run's last day passed with rows undecided or not issued: it is late. A row approved in time
  * and not issued is not issued by itself any more, and the card it had is replaced by a late one.
  */
@@ -44,11 +51,15 @@ async function markLate(ctx: RunCtx, run: Row): Promise<void> {
   const runId = String(run.id)
   for (const item of await runItems(ctx, runId)) {
     if (item.state !== "approved" && item.state !== "failed") continue
-    await ctx.db.update("recurring_run_items", String(item.id), {
-      state: "waiting_reapproval",
-      approved_hash: null,
-      approved_total_minor: null,
-      send_grant: null,
+    // Only as it was read: a row issued in between is the issue job's.
+    await ctx.db.updateMany("recurring_run_items", {
+      where: { run_id: runId, document_id: String(item.document_id), state: item.state },
+      data: {
+        state: "waiting_reapproval",
+        approved_hash: null,
+        approved_total_minor: null,
+        send_grant: null,
+      },
     })
   }
   const card = cardOf(run)
@@ -104,7 +115,7 @@ export async function recurringLegalDateJob(
     }
     const urgency = urgencyOf(now.date, dayOf(run.latest_issue_on) as string)
     if (urgency === "late") {
-      if (status !== "late") await markLate(ctx, run)
+      if (status !== "late" || neverAsked(run)) await markLate(ctx, run)
       const late = (await ctx.db.findOne("recurring_runs", runId)) as Row
       const card = cardOf(late)
       const decided = card ? await approvalStatus(ctx, card) : null

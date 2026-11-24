@@ -8,6 +8,7 @@
 // confirmed SIREN with another value asks for an identity confirmation instead and writes nothing
 // until it is approved. A web page is never the source of a SIREN by itself.
 import type { CrossAppExecuteTool } from "../cross-app"
+import { restageForTerms } from "../mutations/issue-fingerprint"
 import { termsDays } from "../payment-terms"
 import { isSirenConfirmed, isValidSiren, isValidSiret, sirenFromFrVat } from "./identity"
 import { readEinvoiceRowColumns } from "./issue-gate"
@@ -436,14 +437,23 @@ async function upsertIdentity(
   data: Row,
 ): Promise<Row> {
   const row = { ...data, changed_at: new Date() }
+  // An invoice waiting to be issued that would be due by these terms is asked about again.
+  const termsMoved =
+    "payment_terms_days" in data &&
+    (existing?.payment_terms_days ?? null) !== (data.payment_terms_days ?? null)
+  const reask = async () => {
+    if (termsMoved) await restageForTerms(ctx as never, { contactId })
+  }
   if (existing) {
     await ctx.db.update("counterparty_identities", String(existing.id), row)
+    await reask()
     return { ...existing, ...row }
   }
   const inserted = (await ctx.db.insert("counterparty_identities", {
     contact_id: contactId,
     ...row,
   })) as Row
+  await reask()
   return { contact_id: contactId, ...row, ...(inserted ?? {}) }
 }
 

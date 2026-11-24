@@ -107,6 +107,8 @@ export interface RetainerMonthInput {
   usedMinutes: number
   /** Hours rolled in from the month before, counted before any overage. */
   rolloverInMinutes: number
+  /** Hours of this month a later invoice already counted inside its included hours. */
+  takenMinutes?: number
   waived: boolean
 }
 
@@ -125,7 +127,7 @@ export function retainerMonth(input: RetainerMonthInput): RetainerMonth {
   const included = Math.max(0, Math.round(input.includedMinutes))
   const used = Math.max(0, Math.round(input.usedMinutes))
   const rolledIn = Math.min(included, Math.max(0, Math.round(input.rolloverInMinutes)))
-  const over = Math.max(0, used - included - rolledIn)
+  const over = Math.max(0, used - Math.max(0, included + rolledIn - (input.takenMinutes ?? 0)))
   return {
     includedMinutes: included,
     usedMinutes: used,
@@ -144,8 +146,19 @@ export interface RetainerRefs {
   rollover_in_minutes: number
   overage_minutes: number
   waived_minutes: number
-  /** Hours of earlier months worked after their invoices, billed here with the part above them. */
-  late?: Array<{ month: string; minutes: number; overage_minutes: number }>
+  /** Hours of earlier months told after their invoices, billed here with the part above them. */
+  late?: LateHours[]
+  /** The document bills those hours alone, or beside other work: it is not its month's invoice. */
+  late_only?: true
+}
+
+/** An earlier month's hours on a later invoice. */
+export interface LateHours {
+  month: string
+  minutes: number
+  overage_minutes: number
+  /** What the overage would have been, when it was waived. */
+  waived_minutes?: number
 }
 
 /** The retainer figures of a document, when it is a retainer month's. */

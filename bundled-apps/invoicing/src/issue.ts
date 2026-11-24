@@ -1476,7 +1476,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
   // An invoice with no date of its own is due by the customer's terms, else the issuer's, counted
   // from the day it is issued. One already settled owes nothing, and no other type is payable.
-  const dueAt =
+  const dueGiven =
     draft.due_at ||
     (type === "invoice" && !input.settlement && !input.already_paid
       ? dueOn(
@@ -1490,6 +1490,12 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
           ).days,
         )
       : null)
+  // Whatever gave it, an invoice is never due before the day it is issued.
+  const issuedDay = draft.issued_at.slice(0, 10)
+  const dueAt =
+    type === "invoice" && dueGiven && String(dueGiven).slice(0, 10) < issuedDay
+      ? issuedDay
+      : dueGiven
 
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()

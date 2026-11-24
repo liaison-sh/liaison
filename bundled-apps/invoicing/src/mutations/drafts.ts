@@ -48,12 +48,12 @@ import {
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
+import { restageIssueApprovals } from "./issue-fingerprint"
 import {
   billingDraftHeaderLockedError,
   cardLinesLockedError,
   deductionLinesLockedError,
   markReconciliation,
-  restageIssueApprovals,
   withdrawIssueApprovals,
 } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"

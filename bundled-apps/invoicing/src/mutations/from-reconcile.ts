@@ -23,7 +23,8 @@ import { RECIPIENT_GAP_REFUSAL } from "../recipient-gaps"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
 import { findIssuerProfile, getDraft } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import { draftContentHash } from "./issue-handover"
+import { issuePayloadFor } from "./issue-fingerprint"
+import { cardMinutes, lateItems, lateOnOtherCard, lateSaid } from "./retainer"
 import type { MutationsCtx } from "./shared"
 
 type Row = Record<string, unknown>
@@ -31,18 +32,6 @@ type Row = Record<string, unknown>
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 /** An issue approval waits up to 30 days. */
-
-/**
- * The payload of an issue approval a handler parks for a draft: the draft and the fingerprint of
- * it as the card shows it, so the issue refuses the draft once anything edits it.
- */
-export async function issuePayloadFor(
-  ctx: MutationsCtx,
-  draftId: string,
-): Promise<{ draft_id: string; draft_hash?: string }> {
-  const draft = await getDraft(ctx.db, draftId)
-  return draft ? { draft_id: draftId, draft_hash: draftContentHash(draft) } : { draft_id: draftId }
-}
 
 /** The card line naming a draft's customer, or none when the draft names nobody. */
 export async function customerLine(ctx: MutationsCtx, draftId: string): Promise<string[]> {
@@ -123,6 +112,8 @@ interface LinesRead {
     position: number
     wording: string
     billMinutes: number
+    /** The earlier retainer month the line's hours were worked in. */
+    workMonth?: string
     proofLabels: string[]
   }>
 }
@@ -295,7 +286,11 @@ export async function draftFromReconcile(
     currency,
     rateMinor: read.rate?.rateMinor ?? null,
     hoursPerDayMinutes: read.rate?.hoursPerDayMinutes ?? null,
-    lines: read.lines.map((l) => ({ billMinutes: l.billMinutes })),
+    periodFrom: read.period.from,
+    lines: read.lines.map((l) => ({
+      billMinutes: l.billMinutes,
+      ...(l.workMonth ? { workMonth: l.workMonth } : {}),
+    })),
   })
   if ("error" in preview) return refuse(preview.error.code, preview.error.message)
   if (!preview.ready) {
@@ -307,6 +302,23 @@ export async function draftFromReconcile(
   const unit = unitOfBasis(read.basis)
   const hpd = read.rate.hoursPerDayMinutes
   const rate = read.rate.rateMinor as number
+  const ownLines = read.lines.filter((l) => !l.workMonth)
+  // Hours of a retainer month told after its invoice bill as that month's, on lines of their own.
+  const late = cardMinutes(read.lines).late
+  const other =
+    late.length > 0
+      ? await lateOnOtherCard(ctx, {
+          projectId: read.projectId,
+          before: read.period.from.slice(0, 7),
+          late,
+        })
+      : null
+  const lateLines = other ? lateItems(other.late, ownLines.length) : []
+  if (ownLines.length + lateLines.length === 0)
+    return refuse(
+      "nothing_billed",
+      "The earlier hours on this card are within their month's included hours, so there is nothing to bill. No draft was made.",
+    )
   const recipient = await recipientOf(ctx, { contactId, companyId: read.companyId ?? null })
   const created = await draftsCreate(ctx, {
     type: "invoice",
@@ -314,15 +326,18 @@ export async function draftFromReconcile(
     ...recipient,
     currency: currency as string,
     operation_category: "services",
-    items: read.lines.map((l, i) => ({
-      position: i + 1,
-      description: l.wording,
-      quantity: lineQuantity(l.billMinutes, unit, hpd),
-      unit_price_minor: BigInt(rate),
-      line_kind: "service",
-      product_source: null,
-      external_id: `reconcile_line:${l.lineId}`,
-    })),
+    items: [
+      ...ownLines.map((l, i) => ({
+        position: i + 1,
+        description: l.wording,
+        quantity: lineQuantity(l.billMinutes, unit, hpd),
+        unit_price_minor: BigInt(rate),
+        line_kind: "service",
+        product_source: null,
+        external_id: `reconcile_line:${l.lineId}`,
+      })),
+      ...lateLines,
+    ],
   } as never)
   const draftId = created.draft_id
 
@@ -338,6 +353,7 @@ export async function draftFromReconcile(
       service_period_start: read.period.from,
       service_period_end: read.period.to,
       latest_issue_on: monthEnd(read.period.to),
+      ...(other?.refs ? { external_refs: { retainer: other.refs } } : {}),
       ...(canIssue ? { approved_by: userId, approved_at: today } : {}),
     })
   } catch (err) {
@@ -381,6 +397,7 @@ export async function draftFromReconcile(
         subtitle: `${read.lines.length} line${read.lines.length === 1 ? "" : "s"} from planned vs done`,
         lines: [
           ...(await customerLine(ctx, draftId)),
+          ...(other ? lateSaid(other.late, totals.currency) : []),
           `To pay ${formatMoneyMinor(BigInt(totals.incl), totals.currency)} incl. VAT (${formatMoneyMinor(BigInt(totals.excl), totals.currency)} excl. VAT)`,
           ...(await dueLine(ctx, draftId)),
           ...notOverLine(read.period.to, today),

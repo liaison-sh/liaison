@@ -92,6 +92,43 @@ describe("an invoice added to a month-end run", () => {
     })
   })
 
+  test("added after the issue day, in time, is due counted from that day", async () => {
+    const { h, runId } = await drafted()
+    await h.db.update("recurring_runs", runId, { issue_on: "2026-11-25" })
+    const added = await add(h, runId)
+    expect(doc(h, added.draft_id).due_at).toBe("2026-12-27")
+    expect(doc(h, added.draft_id).external_refs).toMatchObject({ due_counted_from: "2026-11-27" })
+  })
+
+  test("for a company abroad whose VAT number an earlier invoice holds is shown without VAT, as it issues", async () => {
+    const earlier = {
+      id: "55555555-5555-4555-8555-555555555559",
+      type: "invoice",
+      status: "issued",
+      number: "F-2026-0001",
+      counterparty_contact_id: CONTACT,
+      counterparty_name: "Arlon GmbH",
+      counterparty_email: "compta@arlon.example",
+      counterparty_address: "Hauptstrasse 1, 10115 Berlin",
+      counterparty_country: "DE",
+      counterparty_vat_id: "DE298765432",
+      issued_at: "2026-10-31",
+      currency: "EUR",
+      grand_total_minor: "10000",
+      tax_total_minor: "0",
+      external_refs: {},
+      lifecycle_log: [],
+    }
+    const { h, runId } = await drafted({ docs: [earlier] })
+    const added = await add(h, runId, { counterparty_country: "DE" })
+    await h.db.update("documents", added.draft_id, { counterparty_vat_id: null })
+    const row = async () =>
+      (await cardItems(h.ctx, runId)).items.find((i) => i.document_id === added.draft_id)
+    expect((await row())?.total_minor).toBe("10000")
+    await h.db.update("documents", earlier.id, { counterparty_vat_id: null })
+    expect((await row())?.total_minor).not.toBe("10000")
+  })
+
   test("keeps what the caller said, and a goods line is goods", async () => {
     const { h, runId } = await drafted()
     const own = await add(h, runId, { due_at: "2027-01-15", operation_category: "mixed" })

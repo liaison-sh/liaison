@@ -33,6 +33,7 @@ import {
   type RunCtx,
   runItems,
   stageRunCard,
+  termsGivenDays,
   workingDayFrom,
 } from "./run-card"
 
@@ -162,6 +163,8 @@ export async function recurringItemIssue(
     await ctx.db.update("recurring_run_items", input.item_id, {
       state: "waiting_reapproval",
       approved_hash: null,
+      approved_total_minor: null,
+      send_grant: null,
     })
     return fail(
       "changed_since_approval",
@@ -202,6 +205,8 @@ export async function recurringItemIssue(
         ]
       : []),
   ]
+  // A date the row's terms gave is counted from the day it issues; a date a person set stays.
+  const given = await termsGivenDays(ctx, run, item, draft)
   // A second call for the same item that lost the race (the period key is unique, the draft is
   // gone, so its commit fails or answers that the draft went away): the first one issued it, and
   // this one wrote nothing. It says so, with the number the winner took.
@@ -220,6 +225,7 @@ export async function recurringItemIssue(
       external_ref: externalRef,
       lifecycle_log: carried,
       ...(send ? { einvoice_send: send } : {}),
+      due_days: given?.days ?? null,
       expected_total_minor:
         item.approved_total_minor === null || item.approved_total_minor === undefined
           ? null
@@ -238,6 +244,7 @@ export async function recurringItemIssue(
         state: "waiting_reapproval",
         approved_hash: null,
         approved_total_minor: null,
+        send_grant: null,
       })
       return fail(
         "changed_since_approval",
@@ -407,17 +414,16 @@ async function stageOwedCards(ctx: RunCtx): Promise<number> {
   const runs = (await ctx.db.findMany("recurring_runs", {
     where: { status: { in: ["drafted", "approved", "issuing", "partial", "late"] } },
     orderBy: { issue_on: "asc" },
-    limit: 50,
+    limit: 200,
   })) as Row[]
   let staged = 0
   for (const run of runs) {
     const items = await runItems(ctx, String(run.id))
-    // A card still waiting is rewritten only when its rows changed, so asking again is free.
-    if (run.status === "late") {
-      // A late card a person rejected is not asked again by itself.
-      const card = cardOf(run)
-      if (card && (await approvalStatus(ctx, card)) === "denied") continue
-    }
+    const card = cardOf(run)
+    const asked = card ? await approvalStatus(ctx, card) : null
+    // A late card a person rejected is not asked again by itself. One still waiting is rewritten by
+    // the change that made it stale, so it is not priced again here.
+    if (run.status === "late" && (asked === "denied" || asked === "pending")) continue
     const owed =
       run.status === "late"
         ? items.some((i) => i.state === "ready" || i.state === "waiting_reapproval")

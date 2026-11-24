@@ -5,7 +5,7 @@
 // told in, the overage of all the invoices together is the overage of the hours worked.
 import { describe, expect, test } from "bun:test"
 import "./mutations"
-import { cardMinutes, retainerPlan } from "./mutations/retainer"
+import { cardMinutes, lateItems, lateOnOtherCard, retainerPlan } from "./mutations/retainer"
 import { previousMonth, retainerDocumentRef } from "./recurring/retainer"
 import { harness, seeded } from "./retainer-terms.testkit"
 
@@ -20,12 +20,13 @@ function retainer(over: Row = {}) {
     month: string,
     usedMinutes: number,
     late: Array<{ month: string; minutes: number }> = [],
+    waived = false,
   ) =>
     retainerPlan({ db: h.db } as never, s(), {
       projectId,
       period: { from: `${month}-01`, to: `${month}-28` },
       usedMinutes,
-      waived: false,
+      waived,
       late,
     })
   /** Invoice a month: its document stands, with the figures it was priced on. */
@@ -34,8 +35,9 @@ function retainer(over: Row = {}) {
     usedMinutes: number,
     late: Array<{ month: string; minutes: number }> = [],
     doc: Row = {},
+    waived = false,
   ) => {
-    const p = await plan(month, usedMinutes, late)
+    const p = await plan(month, usedMinutes, late, waived)
     await h.db.insert("documents", {
       type: "invoice",
       status: "issued",
@@ -49,7 +51,10 @@ function retainer(over: Row = {}) {
   }
   const overage = (p: Awaited<ReturnType<typeof plan>>) =>
     p.fig.overageMinutes + p.late.reduce((a, l) => a + l.overage_minutes, 0)
-  return { h, plan, invoice, overage }
+  /** The hours above a month that a waiver left unbilled. */
+  const waivedOf = (p: Awaited<ReturnType<typeof plan>>) =>
+    p.fig.waivedMinutes + p.late.reduce((a, l) => a + (l.waived_minutes ?? 0), 0)
+  return { h, plan, invoice, overage, waivedOf }
 }
 
 describe("hours of a month worked after its invoice", () => {
@@ -123,6 +128,173 @@ describe("hours of a month worked after its invoice", () => {
         { month: "2026-10", minutes: 40 },
       ],
     })
+  })
+
+  test("are billed at the rate, the hours and the VAT of the month they were worked in", async () => {
+    const r = retainer({
+      retainer_terms: [
+        {
+          from: "2026-11",
+          retainer_minutes: 60 * H,
+          retainer_overage_rate_minor: "15000",
+          lines: [{ description: "Fee", qty: 1, unit_price_minor: 600_000, vat_bp: 1000 }],
+        },
+      ],
+    })
+    await r.invoice("2026-10", 41 * H)
+    const p = await r.plan("2026-11", 61 * H, [{ month: "2026-10", minutes: 2 * H }])
+    expect(
+      p.items.slice(1).map((i) => [Number(i.quantity), i.unit_price_minor, i.tax_rate_bp_override]),
+    ).toEqual([
+      [1, 15_000n, 1000],
+      [2, 12_000n, 2000],
+    ])
+    // Of a month with no invoice, at its own terms too.
+    const alone = await r.plan("2026-12", 0, [{ month: "2026-11", minutes: 61 * H }])
+    expect(alone.late[0]).toMatchObject({ overage_minutes: 60, rate: 15_000n, vat: 1000 })
+  })
+
+  test("of another schedule's month are that schedule's, and a month no schedule holds is named, never billed at 0", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 47 * H)
+    const old = String(r.h.stored().id)
+    await r.h.db.update("recurring_schedules", old, {
+      status: "ended",
+      retainer_terms: [{ from: "2026-11", off: true, retainer_minutes: 0, lines: [] }],
+    })
+    const next: Row = {
+      ...r.h.stored(),
+      id: "7a1d2c3e-0000-4000-8000-0000000000f2",
+      status: "active",
+      retainer_terms: null,
+      retainer_from: "2026-11",
+      retainer_minutes: 100 * H,
+      retainer_overage_rate_minor: 15_000,
+    }
+    await r.h.db.insert("recurring_schedules", next)
+    const projectId = String(next.retainer_project_id)
+    const plan = (late: Array<{ month: string; minutes: number }>) =>
+      retainerPlan({ db: r.h.db } as never, next, {
+        projectId,
+        period: { from: "2026-11-01", to: "2026-11-30" },
+        usedMinutes: 0,
+        waived: false,
+        late,
+      })
+    const p = await plan([{ month: "2026-10", minutes: 18 * H }])
+    expect(p.late).toMatchObject([
+      { month: "2026-10", overage_minutes: 18 * H, rate: 12_000n, scheduleId: old },
+    ])
+    expect(p.unknown).toEqual([])
+    const none = await plan([{ month: "2025-10", minutes: 60 }])
+    expect(none.unknown).toEqual(["2025-10"])
+    expect(none.late).toEqual([])
+  })
+
+  test("a document that only bills later hours is not its month's invoice", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 47 * H)
+    const other = await lateOnOtherCard({ db: r.h.db } as never, {
+      projectId: String(r.h.stored().retainer_project_id),
+      before: "2026-11",
+      late: [{ month: "2026-10", minutes: 2 * H }],
+    })
+    expect(other.late).toMatchObject([{ month: "2026-10", overage_minutes: 2 * H }])
+    expect(other.refs).toMatchObject({ month: "2026-11", late_only: true, used_minutes: 0 })
+    expect(lateItems(other.late, 3).map((i) => [i.position, Number(i.quantity)])).toEqual([[4, 2]])
+    await r.h.db.insert("documents", {
+      type: "invoice",
+      status: "issued",
+      billing_project_id: String(r.h.stored().retainer_project_id),
+      external_ref: "reconcile:x:1",
+      external_refs: { retainer: other.refs },
+      grand_total_minor: "24000",
+    })
+    // November is still whole for its own hours told later, and October's two are counted.
+    const p = await r.plan("2026-12", 0, [
+      { month: "2026-10", minutes: H },
+      { month: "2026-11", minutes: 41 * H },
+    ])
+    expect(p.late.map((l) => [l.month, l.overage_minutes])).toEqual([
+      ["2026-10", H],
+      ["2026-11", H],
+    ])
+  })
+
+  test("are found however many documents the project has", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 40 * H)
+    for (let i = 0; i < 450; i++)
+      await r.h.db.insert("documents", {
+        id: `00000000-0000-4000-9000-${String(i).padStart(12, "0")}`,
+        type: "invoice",
+        status: "issued",
+        billing_project_id: String(r.h.stored().retainer_project_id),
+        grand_total_minor: "1",
+      })
+    const p = await r.plan("2026-11", 0, [{ month: "2026-10", minutes: H }])
+    expect(p.late[0]?.overage_minutes).toBe(H)
+  })
+
+  test("counted by a later invoice are not free again on the month's own, made again", async () => {
+    const r = retainer({ retainer_rollover: "next" })
+    await r.invoice("2026-11", 0, [{ month: "2026-10", minutes: 15 * H }])
+    const p = await r.plan("2026-10", 35 * H)
+    expect(p.fig.overageMinutes).toBe(10 * H)
+  })
+
+  test("waived leave no line, are not billed later, and are kept as waived", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 41 * H)
+    const p = await r.invoice("2026-11", 0, [{ month: "2026-10", minutes: 5 * H }], {}, true)
+    expect(p.late).toMatchObject([{ minutes: 5 * H, overage_minutes: 0, waived_minutes: 5 * H }])
+    expect(p.items.some((i) => String(i.external_id).startsWith("retainer_late:"))).toBe(false)
+    expect(p.refs.late).toEqual([
+      { month: "2026-10", minutes: 5 * H, overage_minutes: 0, waived_minutes: 5 * H },
+    ])
+    expect((await r.plan("2026-12", 0, [{ month: "2026-10", minutes: H }])).late).toMatchObject([
+      { overage_minutes: H },
+    ])
+  })
+
+  test("random months with waivers: what is billed and what is waived together stay in the same bounds", async () => {
+    for (let seed = 1; seed <= 1500; seed++) {
+      const rand = seeded(seed + 70_000)
+      const int = (n: number) => Math.floor(rand() * n)
+      const r = retainer({ retainer_rollover: "next" })
+      const months = ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]
+      const total = new Map<string, number>()
+      let settled = 0
+      for (const [i, m] of months.entries()) {
+        const used = int(60) * H
+        total.set(m, used)
+        const late: Array<{ month: string; minutes: number }> = []
+        for (const e of months.slice(0, i)) {
+          if (rand() < 0.4) {
+            const minutes = int(20) * H
+            if (minutes > 0) late.push({ month: e, minutes })
+            total.set(e, (total.get(e) ?? 0) + minutes)
+          }
+        }
+        const p = await r.invoice(m, used, late, {}, rand() < 0.5)
+        settled += r.overage(p) + r.waivedOf(p)
+      }
+      const of = (m: string) => total.get(m) ?? 0
+      let byRule = 0
+      let least = 0
+      let left = 0
+      for (const m of months) {
+        const prev = total.get(previousMonth(m))
+        const rolled = prev !== undefined ? Math.max(0, 2400 - prev) : 0
+        byRule += Math.max(0, of(m) - 2400 - rolled)
+        const afterRolled = Math.max(0, of(m) - left)
+        least += Math.max(0, afterRolled - 2400)
+        left = Math.max(0, 2400 - afterRolled)
+      }
+      const said = `seed ${seed}: ${settled} settled, ${least} to ${byRule}`
+      expect(settled, said).toBeGreaterThanOrEqual(least)
+      expect(settled, said).toBeLessThanOrEqual(byRule)
+    }
   })
 
   test("random months, hours told late in any order: no hour is included twice and none bills above its month's rule", async () => {

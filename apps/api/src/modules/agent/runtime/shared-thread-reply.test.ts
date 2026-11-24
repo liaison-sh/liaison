@@ -149,7 +149,11 @@ describe("an answer closed by its next steps", () => {
   }
 
   const cases: Array<[string, TurnTimelineEntry[], string]> = [
-    ["is the reply when the chips are the turn's end", [{ kind: "text", text: ANSWER }, CHIPS], ANSWER],
+    [
+      "is the reply when the chips are the turn's end",
+      [{ kind: "text", text: ANSWER }, CHIPS],
+      ANSWER,
+    ],
     [
       "is the reply when the chips were refused and asked for again",
       [{ kind: "text", text: ANSWER }, CHIPS, CHIPS],
@@ -172,8 +176,17 @@ describe("an answer closed by its next steps", () => {
     ],
     [
       "is said once when the model says it again after the chips",
-      [{ kind: "text", text: ANSWER }, CHIPS, { kind: "text", text: ` ${ANSWER.replace(/\.$/, "!")}` }],
+      [
+        { kind: "text", text: ANSWER },
+        CHIPS,
+        { kind: "text", text: ` ${ANSWER.replace(/\.$/, "!")}` },
+      ],
       ` ${ANSWER.replace(/\.$/, "!")}`,
+    ],
+    [
+      "is kept alone when what follows the chips only repeats a part of it",
+      [{ kind: "text", text: ANSWER }, CHIPS, { kind: "text", text: "Three subtasks are filed." }],
+      ANSWER,
     ],
     [
       "is a note when a tool that gathers follows the chips",
@@ -200,10 +213,12 @@ describe("an answer closed by its next steps", () => {
 
   test("is said once when the model words it again after the chips", () => {
     const long =
-      "The retainer bills 4,950 a month for 44 hours, 112.50 an hour, and 120 above that rate. " +
-      "Clara is off until Thursday, so the March hours wait for the approval of Sofia."
+      "The harbour job bills 800 a month for ten hours, 80 an hour, and 95 above that rate. " +
+      "The planner is off until Thursday, so the March hours wait for the approval of the owner."
     const again = `To recap: ${long.replace("bills", "is billed at").replace("wait for", "need")}`
-    expect(shared([{ kind: "text", text: long }, CHIPS, { kind: "text", text: again }]).text).toBe(again)
+    expect(shared([{ kind: "text", text: long }, CHIPS, { kind: "text", text: again }]).text).toBe(
+      again,
+    )
     const other = "Nothing else is open on the account this week, and no invoice is late for it."
     expect(shared([{ kind: "text", text: long }, CHIPS, { kind: "text", text: other }]).text).toBe(
       `${long}\n\n${other}`,

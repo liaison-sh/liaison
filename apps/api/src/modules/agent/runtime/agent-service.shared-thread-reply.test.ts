@@ -41,7 +41,7 @@ const ANSWER = "Three subtasks are filed under the task."
 
 const CHIPS = "kernel__suggest_next_steps"
 const CLOSED =
-  "The retainer bills 4,950.00 a month for 44 hours, 112.50 an hour, and 120.00 above that. " +
+  "The harbour job bills 800.00 a month for ten hours, 80.00 an hour, and 95.00 above that. " +
   "I can open the project, pull the billing history, or ask an admin for the access you need."
 
 type MockStep = Array<{ text: string } | { call: string; input?: unknown }>
@@ -299,7 +299,7 @@ describe("a reply in a shared thread is the final answer only", () => {
       expect(reply.content).toBe(CLOSED)
       expect(reply.streamed).toBe(CLOSED)
       expect(calls).toBe(1)
-      expect(JSON.stringify(reply.metadata?.timeline ?? [])).toContain("4,950.00")
+      expect(JSON.stringify(reply.metadata?.timeline ?? [])).toContain("800.00")
     })
 
     test(`it stays when the steps were refused, ${shared ? "with a teammate" : "in private"}`, async () => {

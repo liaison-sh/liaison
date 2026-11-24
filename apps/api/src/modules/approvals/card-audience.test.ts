@@ -18,8 +18,9 @@ import { computeApprovalAttentionItems } from "~/modules/approvals/attention"
 import { loadApprovalSummary } from "~/modules/approvals/event-data"
 import { getApproval, listApprovals } from "~/modules/approvals/list"
 import { runRoutedReminderSweep } from "~/modules/approvals/routed-reminders"
-import { entityRegistry } from "~/modules/apps/app-registries"
+import { entityRegistry, toolRegistry } from "~/modules/apps/app-registries"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
+import { executeTool } from "~/modules/apps/execute-tool"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -30,6 +31,10 @@ const NAME = "Harbour portal rebuild"
 
 let w: DealWorld
 let request = ""
+let taskId = ""
+let threadId = ""
+/** A step's stored card, of the same task. */
+let step: unknown
 let reader: UserContext
 let decider: UserContext
 
@@ -56,6 +61,7 @@ beforeAll(async () => {
   } as never)
   const project = (await makeWorkProject(w, "Client portal")).projectId
   const task = await makeTask(w, project, NAME)
+  taskId = task
   decider = await person(["invoicing:approve"])
   reader = await person(["invoicing:approve", "projects:projects:read"])
   const params = { taskId: task, step: "Kick-off" }
@@ -70,6 +76,17 @@ beforeAll(async () => {
     ),
   )
   const thread = await minimal.thread(w.orgId, w.userId, { title: "Audience fixtures" })
+  threadId = thread
+  step = await withRlsContext({ ...w.actor, scopes: ["*"] }, (tx) =>
+    generateApprovalSummary(
+      w.orgId,
+      "projects",
+      "archive",
+      { id: task },
+      { tx, orgId: w.orgId, userId: w.userId, actor: w.actor },
+      "projects:archive",
+    ),
+  )
   request = randomUUID()
   await sql.unsafe(
     insertSql("kernel.approval_requests", {
@@ -142,6 +159,60 @@ describe("a record of another app, on a request two people may decide", () => {
     expect(JSON.stringify(event)).not.toContain(NAME)
     expect(event.summary.namesHeld).toBe(true)
     expect(event.summary.names).toBeUndefined()
+  })
+
+  it("is named by the last step of a sequence only to who may read it", async () => {
+    const bundle = randomUUID()
+    await sql`
+      INSERT INTO kernel.approval_requests
+        (id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params,
+         current_payload, approve_scope, expires_at, notify_user_ids, requested_by, status, summary,
+         bundle_id, bundle_position, depends_on_id)
+      SELECT CASE WHEN step = 0 THEN ${bundle}::uuid ELSE gen_random_uuid() END, org_id,
+             'step-' || step || handle, thread_id, originating_thread_id, 'projects:archive',
+             tool_params, current_payload, approve_scope, expires_at, notify_user_ids, requested_by,
+             'pending', ${JSON.stringify(step)}::text::jsonb, ${bundle}::uuid, step,
+             CASE WHEN step = 1 THEN ${bundle}::uuid END
+        FROM kernel.approval_requests, generate_series(0, 1) step
+       WHERE id = ${request}::uuid ORDER BY step`
+    const title = async (who: UserContext) =>
+      withRlsContext(who, async (tx) => {
+        const home = await computeApprovalAttentionItems(tx, w.orgId, who.userId)
+        return JSON.stringify(home.find((i) => i.entityId === bundle))
+      })
+    const [named, plain] = [await title(reader), await title(decider)]
+    await sql`DELETE FROM kernel.approval_requests WHERE bundle_id = ${bundle}::uuid AND id <> ${bundle}::uuid`
+    await sql`DELETE FROM kernel.approval_requests WHERE id = ${bundle}::uuid`
+    expect(named).toContain(`Projects: archive: ${NAME}`)
+    expect(plain).not.toContain(NAME)
+  })
+
+  it("is not in what the agent that asked is answered, and stands by kind in what is stored", async () => {
+    toolRegistry.set([w.orgId, "projects", "held"], {
+      appName: "projects",
+      name: "held",
+      description: "A held change of a task",
+      requiredScopes: ["projects:projects:write"],
+      gated: true,
+      handler: async () => ({ ok: true }),
+    } as never)
+    const answer = await executeTool({
+      toolName: "projects:held",
+      orgId: w.orgId,
+      actor: w.actor,
+      threadId,
+      params: { taskId },
+    })
+    toolRegistry.delete([w.orgId, "projects", "held"])
+    const id = answer.blocked?.approvalRequestId
+    expect(id).toBeTruthy()
+    expect(JSON.stringify(answer)).not.toContain(NAME)
+    expect(JSON.stringify(answer.blocked?.summary)).not.toContain(taskId)
+    const [row] = await sql<{ summary: { title: string; names?: unknown[] } }[]>`
+      SELECT summary FROM kernel.approval_requests WHERE id = ${id as string}::uuid`
+    await sql`UPDATE kernel.approval_requests SET status = 'cancelled' WHERE id = ${id as string}::uuid`
+    expect(row?.summary.title).toBe("Projects: held")
+    expect(row?.summary.names).toHaveLength(2)
   })
 
   it("is not in the reminder its deciders are sent", async () => {

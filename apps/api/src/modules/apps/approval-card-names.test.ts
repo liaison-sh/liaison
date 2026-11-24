@@ -375,6 +375,19 @@ describe("the records a call names", () => {
     })
   }
 
+  it("a kind's read scope is asked even where its rows would be readable", async () => {
+    entityRegistry.set(
+      [w.orgId, "projects", "gadget"],
+      entity("title", "tasks", "projects:gadgets:read"),
+    )
+    const card = await stored("projects:gadget_move", { gadgetId: task })
+    expect((await readBy(card, ["projects:projects:read"])).lines).toEqual(["Gadget: a gadget"])
+    expect((await readBy(card, ["projects:projects:read", "projects:gadgets:read"])).lines).toEqual(
+      ["Gadget: Supplier portal rebuild"],
+    )
+    entityRegistry.delete([w.orgId, "projects", "gadget"])
+  })
+
   it("a kind that says nothing of who reads it is named to nobody", async () => {
     entityRegistry.set([w.orgId, "projects", "note"], entity("title", "tasks"))
     expect((await read("projects:note_move", { noteId: task }, ["*"])).lines).toEqual([
@@ -407,7 +420,12 @@ describe("the records a call names", () => {
       withViewerNames(tx as never, w.orgId, [{ summary: card }]),
     )
     expect(row?.summary.title).toBe("Projects: move")
-    expect(row?.summary.lines[0]).toBe("Task: a task")
+    // Not even a colleague's, which every person may read.
+    expect(row?.summary.lines.slice(0, 3)).toEqual([
+      "Task: a task",
+      "Project: a project",
+      "Assignee: a person",
+    ])
     expect(row?.summary.names).toBeUndefined()
   })
 
@@ -464,6 +482,13 @@ describe("the records a call names", () => {
     expect(card.lines).toEqual(["Task: Supplier portal rebuild", "Other task: Second task"])
     const parts = await read("projects:link", { a: { taskId: task }, b: { taskId: second } })
     expect(parts.lines).toEqual(["A, task: Supplier portal rebuild", "B, task: Second task"])
+    registerApprovalSummarizer(w.orgId, "projects", "pair", async () => ({
+      kind: "projects.pair",
+      title: "Link two tasks",
+      lines: [task, second].map((id) => `Task: ${id}`),
+    }))
+    const pair = await read("projects:pair", { taskIds: [task, second] })
+    expect(pair.lines).toEqual(["Task: Supplier portal rebuild", "Task: Second task"])
   })
 
   it("a caller's words cannot pass for a record", async () => {
@@ -489,13 +514,24 @@ describe("the records a call names", () => {
   })
 
   it("the app's own kind comes before another app's of the same word", async () => {
+    // One id, a record of both apps: each app's tool means its own.
     entityRegistry.set(
-      [w.orgId, "another", "task"],
-      entity("name", "projects", "another:tasks:read"),
+      [w.orgId, "knowledge", "document"],
+      entity("title", "documents", "knowledge:documents:read"),
     )
-    const card = await stored("projects:move", { taskId: task })
-    expect(card.names?.[0]?.named).toContain("projects:task:")
-    entityRegistry.delete([w.orgId, "another", "task"])
+    entityRegistry.set(
+      [w.orgId, "projects", "document"],
+      entity("title", "tasks", "projects:projects:read"),
+    )
+    const both = await document("Same id", "viewer")
+    await sql`UPDATE app_knowledge.documents SET id = ${task} WHERE id = ${both}`
+    const kindOf = async (tool: string) =>
+      (await stored(tool, { documentId: task })).names?.map((n) => n.named).join()
+    const [own, other] = [await kindOf("projects:move"), await kindOf("knowledge:move")]
+    entityRegistry.delete([w.orgId, "projects", "document"])
+    await sql`UPDATE app_knowledge.documents SET id = ${both} WHERE id = ${task}`
+    expect(own).toContain("projects:document:")
+    expect(other).toContain("knowledge:document:")
   })
 
   it("a list reads as names", async () => {

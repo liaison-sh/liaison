@@ -200,7 +200,7 @@ import {
   createAnswerText,
   createLiveTextGate,
   replyForAudience,
-  toolEntryCloses,
+  toolTimelineEntry,
 } from "~/modules/agent/runtime/shared-thread-reply"
 import type { ClipLedger } from "~/modules/agent/runtime/stale-result-clipper"
 import { StepTimer } from "~/modules/agent/runtime/step-timing"
@@ -5592,12 +5592,7 @@ async function runThreadTurn(
           ...presentation,
           ...replayableProviderMetadata(chunk.providerMetadata),
         })
-        timeline.push({
-          kind: "tool",
-          toolCallId: chunk.toolCallId,
-          step: steps.length,
-          ...toolEntryCloses(chunk.toolName),
-        })
+        timeline.push(toolTimelineEntry(chunk, steps.length))
         liveText.toolCall(chunk.toolName)
         emitStreamEvent("tool_call", {
           toolCallId: chunk.toolCallId,

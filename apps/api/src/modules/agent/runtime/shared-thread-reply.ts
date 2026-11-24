@@ -25,9 +25,17 @@ import { closesReply } from "~/modules/agent/providers/answer-after-tools"
 import type { TurnTimelineEntry } from "~/modules/agent/runtime/agent-service"
 import { joinStepTexts } from "~/modules/agent/runtime/reply-flatten"
 
-/** What an entry of the turn's order is when it stands before the answer: work, or its close. */
-export function toolEntryCloses(toolName: string): { closes?: true } {
-  return closesReply(toolName) ? { closes: true } : {}
+/** A call's entry in the turn's order: work, or the close of the reply. */
+export function toolTimelineEntry(
+  call: { toolCallId: string; toolName: string },
+  step?: number,
+): TurnTimelineEntry {
+  return {
+    kind: "tool",
+    toolCallId: call.toolCallId,
+    ...(step === undefined ? {} : { step }),
+    ...(closesReply(call.toolName) ? { closes: true } : {}),
+  }
 }
 
 const wordsOf = (text: string): string[] => text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []

@@ -367,6 +367,25 @@ describe("the line that says a request was decided", () => {
     }
   })
 
+  it("that names no request keeps its line, and the rest of the feed stays", async () => {
+    await sql.unsafe(
+      insertSql("kernel.attention_events", {
+        org_id: ORG,
+        user_id: people.sara as string,
+        app: "kernel",
+        entity_type: "approval_request",
+        entity_id: "not-a-request",
+        kind: "approval_decision",
+        urgency: 50,
+        summary: "Approval request-9 expired",
+        actor_type: "system",
+        occurred_at: { raw: "now()" },
+        digest_eligible_at: { raw: "now()" },
+      }),
+    )
+    expect(await rowsOf("not-a-request", people.sara as string, [])).toHaveLength(1)
+  })
+
   it("is not given a title of a request it does not name, nor a reminder one", async () => {
     const r = await request({ status: "expired", requestedBy: people.sara })
     const row = (over: Record<string, unknown>) =>

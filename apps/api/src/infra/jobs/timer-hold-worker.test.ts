@@ -27,11 +27,24 @@ describe("a long timer's job in the worker", () => {
     await enqueueAppJob(APP, "wake", { n: 1, _wakeAt: wakeAt }, { jobId })
 
     // Several hops in, the job has not run: it waits, delayed, its attempts unspent.
+    // Each hop briefly makes the job active while the worker puts it back, and
+    // 1.2 s is a whole number of 300 ms hops, so a single look can land on that
+    // instant (it did on a loaded CI runner). Look between hops instead: the
+    // first snapshot in which the job sits delayed.
     await Bun.sleep(1_200)
+    const look: { job?: Awaited<ReturnType<typeof JobsTestAccess.findJob>>; state?: string } = {}
+    await waitFor(
+      async () => {
+        look.job = await JobsTestAccess.findJob(APP, "wake", jobId)
+        look.state = await look.job?.getState()
+        return look.state === "delayed"
+      },
+      { timeoutMs: 1_000, label: "the job to sit delayed between hops" },
+    )
     expect(runs).toEqual([])
-    const held = await JobsTestAccess.findJob(APP, "wake", jobId)
+    const held = look.job
     expect(held).toBeDefined()
-    expect(await held?.getState()).toBe("delayed")
+    expect(look.state).toBe("delayed")
     expect(held?.attemptsMade).toBe(0)
     // One hop at a time: the next look is at most a hop away, never the wake time itself.
     const nextLook = (held?.timestamp ?? 0) + (held?.delay ?? 0)

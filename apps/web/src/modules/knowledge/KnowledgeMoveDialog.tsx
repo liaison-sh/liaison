@@ -218,7 +218,7 @@ const KnowledgeMoveDialog: Component<{
                     type="button"
                     data-testid="knowledge-move-confirm"
                     onClick={() => props.onMove(o().target)}
-                    class="rounded-md bg-accent px-3 py-1.5 text-[12px] text-white transition-colors hover:opacity-90"
+                    class="rounded-md bg-accent px-3 py-1.5 text-[12px] text-accent-foreground transition-colors hover:opacity-90"
                   >
                     {i18n.t("knowledge.move")}
                   </button>

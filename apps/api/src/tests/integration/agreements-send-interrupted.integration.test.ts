@@ -647,14 +647,20 @@ describe("the job that repairs sends", () => {
     const bad = await cutSend("Cannot be written", 1)
     const good = await cutSend("Can be written", 1)
     // Hundreds of long documents, newer than the ones to repair.
-    const long = "x".repeat(60_000)
-    await owner.unsafe(`
-      INSERT INTO app_agreements.agreement_versions
-        (org_id, agreement_id, number, status, sha256, frozen_at, source, source_text)
-      SELECT '${w.orgId}', '${lost.agreementId}', -n, 'frozen', NULL, now(),
-             jsonb_build_object('body', jsonb_build_object('blocks', jsonb_build_array(
-               jsonb_build_object('type', 'paragraph', 'text', '${long}')))), '${long}'
-        FROM generate_series(1, 400) n`)
+    await owner.unsafe(
+      insertSql(
+        "app_agreements.agreement_versions",
+        Array.from({ length: 400 }, (_, i) => ({
+          org_id: w.orgId,
+          agreement_id: lost.agreementId,
+          number: -1 - i,
+          status: "frozen",
+          frozen_at: { raw: "now()" },
+          source: { raw: "jsonb_build_object('text', repeat('x', 60000))" },
+          source_text: { raw: "repeat('x', 60000)" },
+        })),
+      ),
+    )
     await trigger(
       "app_agreements.agreements",
       "UPDATE",
@@ -775,10 +781,16 @@ describe("a version prepared while the one before is being sent", () => {
   it("seen as sent before the newer version: the job puts it back to a draft and tells its people", async () => {
     const p = await cutSend("Seen as sent first", 2)
     const id = await decidedUnheard(p.versionId, 1)
-    await owner.unsafe(`
-      INSERT INTO app_agreements.agreement_versions
-        (org_id, agreement_id, number, status, sha256, frozen_at)
-      VALUES ('${w.orgId}', '${p.agreementId}', 2, 'frozen', '${"e".repeat(64)}', now())`)
+    await owner.unsafe(
+      insertSql("app_agreements.agreement_versions", {
+        org_id: w.orgId,
+        agreement_id: p.agreementId,
+        number: 2,
+        status: "frozen",
+        sha256: "e".repeat(64),
+        frozen_at: { raw: "now()" },
+      }),
+    )
     await owner.unsafe(
       `UPDATE app_agreements.agreements SET status = 'sent' WHERE id = '${p.agreementId}'`,
     )

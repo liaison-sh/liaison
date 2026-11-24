@@ -11,7 +11,7 @@ import {
   KERNEL_TEMPLATE_APP,
   registerKernelRoutineTemplates,
 } from "~/modules/agent/routines/kernel-routine-templates"
-import { missingRunReads } from "~/modules/agent/routines/routine-run-reads"
+import { missingRunReads, templateRunReadGaps } from "~/modules/agent/routines/routine-run-reads"
 import { routineTemplateRegistry } from "~/modules/apps/app-registries"
 
 const REPO_ROOT = join(import.meta.dir, "..", "..", "..", "..", "..", "..")
@@ -19,8 +19,9 @@ const ORG = "00000000-0000-4000-8000-00000000d0f2"
 
 interface Template {
   name: string
-  text: string
-  scopes: string[]
+  promptTemplate?: string
+  flow?: unknown
+  scopes?: string[]
 }
 
 function manifestTemplates(): Template[] {
@@ -35,8 +36,9 @@ function manifestTemplates(): Template[] {
       for (const [key, t] of Object.entries(manifest.routines ?? {}))
         out.push({
           name: `${app}/${key}`,
-          text: `${t.promptTemplate ?? ""} ${JSON.stringify(t.flow ?? "")}`,
-          scopes: t.scopes ?? [],
+          promptTemplate: t.promptTemplate,
+          flow: t.flow,
+          scopes: t.scopes,
         })
     }
   }
@@ -49,7 +51,7 @@ function kernelTemplates(): Template[] {
     .filter(([key]) => key[1] === KERNEL_TEMPLATE_APP)
     .map(([key, t]) => ({
       name: `${KERNEL_TEMPLATE_APP}/${key[2]}`,
-      text: t.promptTemplate,
+      promptTemplate: t.promptTemplate,
       scopes: t.scopes,
     }))
 }
@@ -60,7 +62,7 @@ describe("routine templates", () => {
     const names = templates.map((t) => t.name)
     expect(names).toContain("kernel/deal-followups")
     expect(names).toContain("stripe/failed-payments")
-    const gaps = templates.flatMap((t) => missingRunReads(t).map((gap) => `${t.name} ${gap}`))
+    const gaps = templates.flatMap((t) => templateRunReadGaps(t).map((gap) => `${t.name} ${gap}`))
     expect(gaps).toEqual([])
   })
 
@@ -80,5 +82,15 @@ describe("routine templates", () => {
       missingRunReads({ text: "mail__compose", scopes: [...write, "mail:accounts:read"] }),
     ).toEqual([])
     expect(missingRunReads({ text: "read the mail composer", scopes: [] })).toEqual([])
+  })
+
+  it("an app's template is read in its prompt and its steps, as registration reads it", () => {
+    expect(templateRunReadGaps({ promptTemplate: "call mail__compose", scopes: [] })).toEqual([
+      "mail__compose: mail:accounts:read",
+    ])
+    expect(
+      templateRunReadGaps({ flow: { steps: [{ tool: "mail:compose" }] }, scopes: [] }),
+    ).toEqual(["mail__compose: mail:accounts:read"])
+    expect(templateRunReadGaps({})).toEqual([])
   })
 })

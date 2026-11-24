@@ -38,6 +38,7 @@ import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worke
 import { mintClientAction } from "~/modules/client-actions/mint"
 import { seedContext } from "~/seed/context"
 import { insertAppRow } from "~/seed/factories/app-tables"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { asUser } from "~/seed/factories/people/actors"
 import * as minimal from "~/seed/tiers/minimal"
 import { drainOutbox } from "~/tests/helpers/outbox"
@@ -636,10 +637,18 @@ describe("a change request sent through the sandbox", () => {
       expect(smtpSent.length).toBe(repliesAt + 1)
       // One mail has one change request that can be accepted: the database holds it to that.
       const [sent] = (await crsOf(title)).filter((c) => c.status === "sent")
-      const second = owner.unsafe(`
-        INSERT INTO app_agreements.agreements (org_id, number, kind, status, title, send_key)
-        SELECT org_id, 'CR-99', kind, 'draft', title, send_key
-          FROM app_agreements.agreements WHERE id = '${sent?.id}'`)
+      const second = owner.unsafe(
+        insertSql("app_agreements.agreements", {
+          org_id: w.orgId,
+          number: "CR-99",
+          kind: "change_request",
+          status: "draft",
+          title,
+          send_key: {
+            raw: `(SELECT send_key FROM app_agreements.agreements WHERE id = '${sent?.id}')`,
+          },
+        }),
+      )
       await expect(
         second.then(
           () => "written",

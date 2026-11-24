@@ -31,3 +31,15 @@ export function missingRunReads(template: { text: string; scopes: readonly strin
   }
   return out
 }
+
+/** The run reads a routine template lacks for the tools its prompt and its steps name. */
+export function templateRunReadGaps(t: {
+  promptTemplate?: string
+  flow?: unknown
+  scopes?: readonly string[]
+}): string[] {
+  return missingRunReads({
+    text: `${t.promptTemplate ?? ""} ${JSON.stringify(t.flow ?? "")}`,
+    scopes: t.scopes ?? [],
+  })
+}

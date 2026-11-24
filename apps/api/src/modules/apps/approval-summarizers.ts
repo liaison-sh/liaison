@@ -125,7 +125,8 @@ function namedValue(ids: string[], names: RecordNames): string | null {
   return `${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""}`
 }
 
-const ANY_UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
+/** An id in a text; never one inside an `@ref:<id>:<key>` token, which names an earlier step. */
+const ANY_UUID = /(?<!@ref:)\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi
 
 /** A text with each id replaced by its record's name; an id nothing names becomes `other`. */
 function withNames(text: string, names: RecordNames, other: (id: string) => string): string {
@@ -221,7 +222,7 @@ async function defaultSummary(
 async function namesFor(
   toolName: string,
   params: unknown,
-  ctx: Parameters<ApprovalSummarizer>[1] | undefined,
+  ctx: Parameters<ApprovalSummarizer>[1],
 ): Promise<RecordNames> {
   return resolveRecordNames(ctx, toolName, params).catch((err) => {
     log.warn({ err, tool: toolName }, "Record names for an approval card could not be read")
@@ -260,32 +261,45 @@ function paramAt(params: unknown, path: string[]): unknown {
   return node
 }
 
+/** A template's card for a call, its records read by `names`. */
+function templateSummary(
+  template: string,
+  toolName: string,
+  params: unknown,
+  names: RecordNames,
+): ApprovalSummary {
+  const title = template
+    .replace(/\{\{\s*params\.([\w.]+)\s*\}\}/g, (_m, path: string) => {
+      const v = paramAt(params, path.split("."))
+      if (v === undefined || v === null || isRecord(v)) return ""
+      const ids = idsIn(v)
+      if (ids) return namedValue(ids, names) ?? ""
+      return withNames(compactValue(v), names, () => "…")
+    })
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+  return {
+    kind: toolName,
+    title: title.length > 0 ? title : humanizeToolName(toolName),
+    subtitle: "Pending approval",
+    lines: defaultLines(params, names),
+  }
+}
+
+/** The template a summarizer was built from, so its card can be given the records' names. */
+const templates = new WeakMap<ApprovalSummarizer, { template: string; toolName: string }>()
+
 /**
  * A summarizer built from a manifest tool's `approvalCard.summary` template
  * ("Create inbox {{params.name}}"), for a gated tool that declares no
  * summarizer of its own. A placeholder the payload lacks drops out.
  */
 export function templateApprovalSummarizer(template: string, toolName: string): ApprovalSummarizer {
-  return async (params, ctx) => {
-    const names = await namesFor(toolName, params, ctx)
-    const title = template
-      .replace(/\{\{\s*params\.([\w.]+)\s*\}\}/g, (_m, path: string) => {
-        const v = paramAt(params, path.split("."))
-        if (v === undefined || v === null || isRecord(v)) return ""
-        const ids = idsIn(v)
-        if (ids) return namedValue(ids, names) ?? ""
-        return withNames(compactValue(v), names, () => "…")
-      })
-      .replace(/\(\s*\)/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim()
-    return {
-      kind: toolName,
-      title: title.length > 0 ? title : humanizeToolName(toolName),
-      subtitle: "Pending approval",
-      lines: defaultLines(params, names),
-    }
-  }
+  const summarize: ApprovalSummarizer = async (params) =>
+    templateSummary(template, toolName, params, NO_NAMES)
+  templates.set(summarize, { template, toolName })
+  return summarize
 }
 
 /** A summarizer's own words with each record it names by id read by its name. */
@@ -319,7 +333,15 @@ export async function generateApprovalSummary(
   if (!summarizer) return defaultSummary(fullToolName, params, ctx)
 
   try {
-    const raw = await summarizer(params, ctx)
+    const made = templates.get(summarizer)
+    const raw = made
+      ? templateSummary(
+          made.template,
+          made.toolName,
+          params,
+          await namesFor(fullToolName, params, ctx),
+        )
+      : await summarizer(params, ctx)
     const permissive = rawApprovalSummarySchema.safeParse(raw)
     if (!permissive.success) {
       log.warn(

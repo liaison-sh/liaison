@@ -12,10 +12,10 @@
 // card is read by every decider, and whoever asked may see more than they do.
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
 import { companies, contacts, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { isRecord } from "~/lib/guards"
+import { quoteIdent } from "~/lib/sql-utils"
 import { isUuid } from "~/lib/uuid"
 import { splitToolName } from "~/modules/approvals/tool-name"
 import { entityRegistry, toolRegistry } from "~/modules/apps/app-registries"
@@ -75,6 +75,9 @@ function knownKinds(orgId: string, app: string): Kind[] {
   for (const scope of [orgId, "*"]) {
     for (const [[, entryApp, entityType]] of entityRegistry.entriesOf(scope)) {
       if (PERSONAL_APPS.has(entryApp)) continue
+      // A part of a record that can be closed (a version of an agreement) says nothing of its own.
+      const closable = RESTRICTED_ENTITY_KINDS.some((k) => k.startsWith(`${entryApp}.`))
+      if (closable && !RESTRICTED_ENTITY_KINDS.includes(`${entryApp}.${entityType}`)) continue
       if (all.some((k) => k.app === entryApp && k.entityType === entityType)) continue
       all.push({ app: entryApp, entityType })
     }
@@ -117,18 +120,23 @@ function idsOf(params: unknown, key = ""): Array<{ key: string; id: string }> {
   return Object.entries(params).flatMap(([k, v]) => idsOf(v, k))
 }
 
-/** The kernel's own answer, which the requester's role may not ask for. */
-async function isRestricted(orgId: string, k: Kind, id: string): Promise<boolean> {
-  const kind = `${k.app}.${k.entityType}`
-  if (!RESTRICTED_ENTITY_KINDS.includes(kind)) return false
-  return withPrivilegedDb(orgId, "approval-card-restricted", async (tx) => {
-    const [row] = extractRows<{ ids: string[] | null }>(
-      await tx.execute(
-        drizzleSql`SELECT ${drizzleSql.raw(schemaRef("kernel"))}.restricted_among(${orgId}::uuid, ${kind}, ARRAY[${id}]::text[]) AS ids`,
-      ),
-    )
-    return (row?.ids ?? []).map(String).includes(id)
-  })
+/** Whether a record of a kind that can be closed to the organization is; unreadable is closed. */
+async function isRestricted(
+  tx: RlsClient,
+  orgId: string,
+  k: Kind,
+  id: string,
+  table: string | undefined,
+): Promise<boolean> {
+  if (!RESTRICTED_ENTITY_KINDS.includes(`${k.app}.${k.entityType}`)) return false
+  if (!table) return true
+  const [row] = extractRows<{ org_access: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT org_access
+        FROM ${drizzleSql.raw(`${quoteIdent(schemaRef(`app_${k.app}`))}.${quoteIdent(table)}`)}
+       WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`),
+  )
+  return row === undefined || row.org_access === "none"
 }
 
 async function nameOf(
@@ -154,10 +162,18 @@ async function nameOf(
       .limit(1)
     return row ? { ...k, name: row.access === "none" ? null : row.name } : null
   }
-  const { resolveEntityLabel } = await import("~/modules/threads/reference-display")
-  const label = await resolveEntityLabel(tx, { orgId, ...k, entityId: id })
+  const { resolveEntityLabel, lookupEntityDecl } = await import(
+    "~/modules/threads/reference-display"
+  )
+  const label = await resolveEntityLabel(tx, {
+    orgId,
+    app: k.app,
+    entityType: k.entityType,
+    entityId: id,
+  })
   if (label === null) return null
-  if (await isRestricted(orgId, k, id)) return { ...k, name: null }
+  if (await isRestricted(tx, orgId, k, id, lookupEntityDecl(orgId, k.app, k.entityType)?.tableName))
+    return { ...k, name: null }
   const name = label.replace(/\s+/g, " ").trim()
   // A record with no name of its own is labelled by a piece of its id.
   if (!name || name === `#${id.slice(0, 8)}`) return { ...k, name: null }
@@ -172,11 +188,11 @@ async function nameOf(
  * cannot be read never costs the caller its transaction; an id nothing names is absent.
  */
 export async function resolveRecordNames(
-  ctx: { tx?: RlsClient; orgId?: string } | undefined,
+  ctx: { tx?: RlsClient; orgId?: string },
   toolName: string,
   params: unknown,
 ): Promise<RecordNames> {
-  const { tx, orgId } = ctx ?? {}
+  const { tx, orgId } = ctx
   if (!tx || !orgId || typeof tx.transaction !== "function") return NO_NAMES
   const out = new Map<string, NamedRecord>()
   const seen = new Set<string>()

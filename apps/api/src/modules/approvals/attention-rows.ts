@@ -12,7 +12,7 @@ import { extractRows, type RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import {
   approvalRowName,
-  type DecidableApprovalRow,
+  type CallersDecisionRow,
   FEED_STATUS_SQL,
   isCallersDecision,
   readCurrentScopes,
@@ -29,7 +29,7 @@ export interface RequestNow {
   title: string | null
 }
 
-type Row = DecidableApprovalRow & {
+type Row = CallersDecisionRow & {
   open: boolean
   summary: { title?: string } | null
   current_payload: Record<string, unknown> | null
@@ -49,7 +49,7 @@ export async function readRequestsNow(
   const rows = extractRows<Row>(
     await tx.execute(drizzleSql`
       SELECT ar.id::text AS id, ar.tool_name, ar.status, ar.metadata, ar.notify_user_ids,
-             ar.requested_by, ar.approve_scope, ar.resource_owner_id, ar.route_person_id,
+             ar.requested_by, ar.approve_scope, ar.resource_owner_id,
              ar.summary, ar.current_payload, ar.proposing_turn_scopes,
              ${FEED_STATUS_SQL} AS open
         FROM ${K}.approval_requests ar

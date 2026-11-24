@@ -119,6 +119,9 @@ describe("a card made from a call's params, over the whole catalog", () => {
       items: { deep: { deeper: { ref: ID } } },
     })
     expect(card.lines).toEqual(["Body: Same as …, see there", 'Items, deep, deeper: {"ref":"…"}'])
+    // A token naming an earlier step is read by the step, later (modules/apps/execute-tool.ts).
+    const token = `@ref:${ID}:draft_id`
+    expect(genericApprovalSummary("mail:reply", { body: token }).lines).toEqual([`Body: ${token}`])
     const merge = await templateApprovalSummarizer("Merge {{params.ids}}", "tickets:merge")(
       { ids: [ID, OTHER_ID] },
       {} as never,

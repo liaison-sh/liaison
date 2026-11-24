@@ -331,7 +331,7 @@ async function readAppsApprovingFromHome(
 }
 
 /** The facts the feed's "this person decides it" rule reads off a request row. */
-export type DecidableApprovalRow = Pick<
+type DecidableApprovalRow = Pick<
   PendingApprovalRow,
   | "id"
   | "tool_name"
@@ -344,6 +344,9 @@ export type DecidableApprovalRow = Pick<
   | "route_person_id"
 >
 
+/** The same without whose item it is: deciding reads no route. */
+export type CallersDecisionRow = Omit<DecidableApprovalRow, "route_person_id">
+
 /**
  * Whether a request is in the caller's feed as THEIR decision: the feed's
  * visibility rule, minus a two-approver request they already signed off
@@ -352,7 +355,7 @@ export type DecidableApprovalRow = Pick<
  * signed it are exactly who must see it.
  */
 export function isCallersDecision(
-  r: DecidableApprovalRow,
+  r: CallersDecisionRow,
   callerUserId: string,
   callerScopes: string[],
 ): boolean {

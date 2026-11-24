@@ -1,0 +1,1 @@
+In place of a withdrawn signer: replaces, one signer, same version and turn, refusals -> bundled-apps/agreements/src/send.ts (withdrawnSigner, sendInPlace) ; apps/api/src/modules/client-actions/mint.ts (signInPlaceOf)

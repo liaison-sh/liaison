@@ -3724,6 +3724,13 @@ function refusalStatus(code: string, declared: unknown): number {
   return isClientClass(mapped) ? mapped : 422
 }
 
+/** The card a tool's own `card_changed` refusal carries. */
+function latestCardOf(details: unknown): unknown {
+  const latest =
+    details && typeof details === "object" ? (details as { latest?: unknown }).latest : undefined
+  return latest && typeof latest === "object" ? latest : undefined
+}
+
 function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
   if (typeof result !== "object" || result === null || !("error" in result)) return null
   const error = (result as { error?: unknown }).error
@@ -3735,6 +3742,7 @@ function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
       status?: unknown
       body?: unknown
       refusal?: unknown
+      details?: unknown
     }
     const code = typeof e.code === "string" ? e.code : "tool_error"
     const status =
@@ -3749,6 +3757,10 @@ function normalizeToolErrorResult(result: unknown): ExecuteToolError | null {
       retryable: typeof e.retryable === "boolean" ? e.retryable : false,
       ...(status !== undefined ? { status } : {}),
       ...(e.body !== undefined ? { body: e.body } : {}),
+      // A card that moved on: the latest one, for the click that was made on the old one.
+      ...(code === "card_changed" && latestCardOf(e.details) !== undefined
+        ? { details: { latest: latestCardOf(e.details) } }
+        : {}),
     }
   }
   if (typeof error === "string") {

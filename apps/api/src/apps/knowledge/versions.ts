@@ -17,7 +17,7 @@
  */
 import { createHash } from "node:crypto"
 import { type SQL, sql } from "drizzle-orm"
-import { knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 
 export type VersionKind = "baseline" | "edit" | "agent" | "import" | "restore" | "unapplied"
@@ -200,4 +200,151 @@ export async function pruneVersions(tx: RlsClient, documentId: string): Promise<
           WHERE document_id = ${documentId}::uuid
           ORDER BY created_at DESC, id DESC
          OFFSET ${VERSIONS_PER_PAGE})`)
+}
+
+/** A version as the history list shows it: no text. */
+export interface VersionListItem {
+  id: string
+  kind: VersionKind
+  title: string
+  authorType: VersionAuthorType
+  authorId: string | null
+  authorName: string | null
+  agentId: string | null
+  revision: number | null
+  baseRevision: number | null
+  startedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface VersionDetail extends VersionListItem {
+  body: string
+  requiredScopes: string[]
+}
+
+interface VersionDbRow {
+  id: string
+  kind: VersionKind
+  title: string
+  body?: string
+  author_type: VersionAuthorType
+  author_id: string | null
+  author_name: string | null
+  agent_id: string | null
+  revision: number | null
+  base_revision: number | null
+  started_at: string | Date
+  created_at: string | Date
+  updated_at: string | Date
+  required_scopes?: string[]
+}
+
+const iso = (v: string | Date) => (v instanceof Date ? v.toISOString() : v)
+
+function listItem(r: VersionDbRow): VersionListItem {
+  return {
+    id: r.id,
+    kind: r.kind,
+    title: r.title,
+    authorType: r.author_type,
+    authorId: r.author_id,
+    authorName: r.author_name,
+    agentId: r.agent_id,
+    revision: r.revision,
+    baseRevision: r.base_revision,
+    startedAt: iso(r.started_at),
+    createdAt: iso(r.created_at),
+    updatedAt: iso(r.updated_at),
+  }
+}
+
+/** The columns both readers select, under the reader's row view. */
+function versionColumns(withBody: boolean) {
+  return sql`
+    v.id::text AS id, v.kind, v.title, v.author_type, v.author_id::text AS author_id,
+    u.name AS author_name, v.agent_id::text AS agent_id, v.revision, v.base_revision,
+    v.started_at, v.created_at, v.updated_at
+    ${withBody ? sql`, v.body, v.required_scopes` : sql``}`
+}
+
+/** A page's history, newest first, without texts. Row security keeps it to editors. */
+export async function listVersions(tx: RlsClient, documentId: string): Promise<VersionListItem[]> {
+  const rows = extractRows<VersionDbRow>(
+    await tx.execute(sql`
+      SELECT ${versionColumns(false)}
+        FROM ${knowledgeRel("document_versions")} v
+        LEFT JOIN ${kernelRel("users")} u ON u.id = v.author_id
+       WHERE v.document_id = ${documentId}::uuid
+       ORDER BY v.created_at DESC, v.id DESC`),
+  )
+  return rows.map(listItem)
+}
+
+/** One version with its text, or null when it is not this page's or not readable. */
+export async function getVersion(
+  tx: RlsClient,
+  documentId: string,
+  versionId: string,
+): Promise<VersionDetail | null> {
+  const [row] = extractRows<VersionDbRow>(
+    await tx.execute(sql`
+      SELECT ${versionColumns(true)}
+        FROM ${knowledgeRel("document_versions")} v
+        LEFT JOIN ${kernelRel("users")} u ON u.id = v.author_id
+       WHERE v.document_id = ${documentId}::uuid AND v.id = ${versionId}::uuid`),
+  )
+  if (!row) return null
+  return { ...listItem(row), body: row.body ?? "", requiredScopes: row.required_scopes ?? [] }
+}
+
+/**
+ * A text a person could not apply (a conflict left open, a draft of another tab) goes
+ * to history as `unapplied`. One row per author, base revision and session: a later
+ * text of that same session on that same base replaces it; any other is its own row.
+ */
+export async function saveUnapplied(
+  tx: RlsClient,
+  args: {
+    orgId: string
+    documentId: string
+    title: string
+    body: string
+    baseRevision: number
+    session: string | null
+    authorId: string
+  },
+): Promise<string> {
+  const versions = knowledgeRel("document_versions")
+  if (args.session) {
+    const [updated] = extractRows<{ id: string }>(
+      await tx.execute(sql`
+        UPDATE ${versions}
+           SET title = ${args.title}, body = ${args.body}, body_md5 = ${md5(args.body)},
+               updated_at = clock_timestamp()
+         WHERE id = (
+           SELECT id FROM ${versions}
+            WHERE document_id = ${args.documentId}::uuid AND kind = 'unapplied'
+              AND author_id = ${args.authorId}::uuid AND base_revision = ${args.baseRevision}
+              AND session_id = ${args.session}::uuid
+            ORDER BY created_at DESC LIMIT 1)
+        RETURNING id::text AS id`),
+    )
+    if (updated) return updated.id
+  }
+  const [inserted] = extractRows<{ id: string }>(
+    await tx.execute(sql`
+      INSERT INTO ${versions}
+        (org_id, document_id, kind, title, body, body_md5, base_revision, session_id,
+         author_type, author_id, started_at, created_at, updated_at, required_scopes)
+      SELECT d.org_id, d.id, 'unapplied', ${args.title}, ${args.body}, ${md5(args.body)},
+             ${args.baseRevision}, ${args.session}::uuid, 'user', ${args.authorId}::uuid,
+             clock_timestamp(), clock_timestamp(), clock_timestamp(), d.required_scopes
+        FROM ${knowledgeRel("documents")} d
+       WHERE d.id = ${args.documentId}::uuid AND d.org_id = ${args.orgId}::uuid
+      RETURNING id::text AS id`),
+  )
+  if (!inserted) throw new Error("unapplied version not stored")
+  await pruneVersions(tx, args.documentId)
+  return inserted.id
 }

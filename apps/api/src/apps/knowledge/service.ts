@@ -9,6 +9,11 @@ import {
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import {
+  markEventPending,
+  stampEventNow,
+  updateEventIsRecent,
+} from "~/apps/knowledge/event-coalesce"
 import { shouldResetVerification } from "~/apps/knowledge/review"
 import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { type VersionSession, writeWithVersion } from "~/apps/knowledge/versions"
@@ -1197,6 +1202,11 @@ export interface KnowledgeUpdateOptions {
   session?: VersionSession
   /** A restore from history: its own version, kind `restore`. */
   restore?: boolean
+  /**
+   * An autosave (the autosave route only): identical text writes nothing, and the
+   * update event is coalesced to one a minute (event-coalesce.ts).
+   */
+  coalesceEvents?: boolean
 }
 
 export async function updateKnowledgeDocument(
@@ -1227,6 +1237,17 @@ export async function updateKnowledgeDocument(
   assertCanWriteDocumentRow(row, actor, updateShareRole)
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
+
+  // An autosave of the text already stored (an editor opened and closed, a retry
+  // whose first answer was lost) writes nothing: no revision, no version, no event.
+  if (
+    opts.coalesceEvents &&
+    (parsed.title === undefined || parsed.title === row.title) &&
+    (parsed.body === undefined || parsed.body === row.body)
+  ) {
+    return row
+  }
+  const eventOwed = opts.coalesceEvents === true && (await updateEventIsRecent(tx, row.id))
 
   if (
     parsed.ownerUserId &&
@@ -1308,6 +1329,8 @@ export async function updateKnowledgeDocument(
   sets.push(drizzleSql`updated_by = ${actor.userId}::uuid`)
   sets.push(drizzleSql`updated_at = now()`)
   sets.push(drizzleSql`revision = revision + 1`)
+  if (eventOwed) sets.push(markEventPending())
+  else sets.push(...stampEventNow())
   // D5: the writing turn's scopes join the document's tag. Union, never
   // replace: an empty assertion (a human edit) leaves an existing tag intact.
   sets.push(unionRequiredScopesSql(requiredScopes))
@@ -1390,16 +1413,20 @@ export async function updateKnowledgeDocument(
     await recomputeDocumentAcl(tx, parsed.id)
   }
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "document",
-    action: "update",
-    entityId: parsed.id,
-    data: { id: parsed.id },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  // An autosave inside the minute after the page's last event owes its event to the
+  // flush job instead (event-coalesce.ts); every other update emits now.
+  if (!eventOwed) {
+    await tx.queueEvent({
+      app: "knowledge",
+      entity: "document",
+      action: "update",
+      entityId: parsed.id,
+      data: { id: parsed.id },
+      actorId: actor.userId,
+      actorType: "user",
+      orgId: actor.orgId,
+    })
+  }
 
   const updated = await loadKnowledgeDocument(tx, parsed.id, actor)
   if (!updated) throw new KnowledgeError("NOT_FOUND", "Knowledge document missing after update")

@@ -1,0 +1,5 @@
+{
+  "privileged": {
+    "apps/knowledge/event-coalesce.ts": "The job that queues the one update event autosave owes a page (once its last event is a minute old). It runs for no person: a system read of the orgs with owed events, then per org one transaction that claims the marks and queues their events, pinned to that org; it reads no title or text."
+  }
+}

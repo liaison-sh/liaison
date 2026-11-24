@@ -505,6 +505,10 @@
           ],
           "default": "frozen"
         },
+        "answers_recorded": {
+          "type": "json",
+          "required": false
+        },
         "change_note": "text?",
         "knowledge_document_id": "uuid?",
         "scan_state": {

@@ -1041,6 +1041,7 @@ describe("a send cut off before the agreement left draft", () => {
   const made = (versionId: string) => ({
     data: { id: "ca-1", target: { app: "agreements", type: "agreement_version", id: versionId } },
   })
+  const codeOfError = (x: unknown) => (x as { error?: { code: string } }).error?.code
   const sentOnce = (ctx: ReturnType<typeof ctxFor>) =>
     ctx.calls.emitted.filter((e) => e === "agreement:sent").length
 
@@ -1410,6 +1411,14 @@ describe("a send cut off before the agreement left draft", () => {
       version_id: prepared.version_id,
       client_action_id: "ca-1",
     })
+    // Recorded by an earlier release: the job notes it on the version, where whoever may not read
+    // the evidence sees it.
+    const decided = withLinks(ctxFor(db), [{ id: "ca-1", state: "decided" }])
+    expect(codeOfError(await agreementUpdate(decided, { id, source }))).toBe(
+      "ANSWER_BEING_RECORDED",
+    )
+    expect(await decidedReconcile(decided)).toMatchObject({ handled: 0 })
+    expect(rowOf(db, "agreement_versions", prepared.version_id).answers_recorded).toEqual(["ca-1"])
     const ctx = withLinks(ctxFor(db), [
       { id: "ca-1", state: "decided" },
       { id: "ca-2", state: "declined" },

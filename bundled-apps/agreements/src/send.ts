@@ -59,6 +59,8 @@ interface Version {
   pages_sha256?: string | null
   scan_state?: string | null
   copy_differs_at?: string | null
+  /** The links whose answer is a signature event, for people who may not read the evidence. */
+  answers_recorded?: string[] | null
 }
 
 /** What says which version it is and where it stands: never its text, source or pages. */
@@ -71,6 +73,7 @@ const VERSION_STATE = [
   "frozen_at",
   "source_kind",
   "copy_differs_at",
+  "answers_recorded",
 ]
 
 export interface SignerInput {
@@ -810,16 +813,13 @@ async function unrecordedAnswers(
   opts: { declines: boolean },
 ): Promise<SigningLink[]> {
   if (version.status !== "frozen") return []
+  // The signature events are the evidence's: whoever saves or voids may not read them.
+  const recorded = new Set(version.answers_recorded ?? [])
   const out: SigningLink[] = []
   for (const l of await linksOf(ctx, version.id)) {
     if (l.replaced === true) continue
     if (l.state === "declined" && opts.declines) out.push(l)
-    if (l.state !== "decided") continue
-    const seen = await ctx.db.findMany("signature_events", {
-      where: { client_action_id: l.id },
-      limit: 1,
-    })
-    if (seen.length > 0) continue
+    if (l.state !== "decided" || recorded.has(l.id)) continue
     // An answer that will never be recorded (another kind of decision) holds nothing.
     const rec = ctx.client_actions_record
       ? bridgeAnswer<{ record?: ActionRecord }>(await ctx.client_actions_record({ id: l.id })).record
@@ -1051,8 +1051,31 @@ interface ActionRecord {
   group: Array<{ id: string; sign_order: number | null; decision: string | null; open: boolean }>
 }
 
+/** Notes on the version which links' answers are recorded, so a save or a void sees it too. */
+async function noteRecorded(
+  ctx: AgreementsCtx,
+  versionId: string,
+  linkIds: readonly string[],
+): Promise<void> {
+  const v = (await ctx.db.findOne("agreement_versions", versionId)) as Version | null
+  const had = v?.answers_recorded ?? []
+  const missing = linkIds.filter((id) => !had.includes(id))
+  if (!v || missing.length === 0) return
+  await ctx.db.update("agreement_versions", versionId, { answers_recorded: [...had, ...missing] })
+}
+
 /** One signature event per client action: the decision as the kernel recorded it. */
 async function writeSignatureEvent(
+  ctx: AgreementsCtx,
+  agreement: Agreement,
+  version: Version,
+  rec: ActionRecord,
+): Promise<void> {
+  await insertSignatureEvent(ctx, agreement, version, rec)
+  await noteRecorded(ctx, version.id, [rec.id])
+}
+
+async function insertSignatureEvent(
   ctx: AgreementsCtx,
   agreement: Agreement,
   version: Version,
@@ -1763,6 +1786,7 @@ async function resumeInterruptedSend(ctx: AgreementsCtx, a: Agreement): Promise<
 /** Every answer of a version's links the app has not handled, through the event's own handler. */
 async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Promise<number> {
   let handled = 0
+  const recorded: string[] = []
   for (const l of await linksOf(ctx, v.id)) {
     if (l.replaced === true) continue
     if (l.state !== "decided" && l.state !== "declined") continue
@@ -1771,7 +1795,10 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
         where: { client_action_id: l.id },
         limit: 1,
       })
-      if (seen.length > 0) continue
+      if (seen.length > 0) {
+        recorded.push(l.id)
+        continue
+      }
     } else if (a.status === "draft") continue
     await onClientActionDecided(ctx, {
       data: { id: l.id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
@@ -1779,6 +1806,9 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
     handled += 1
     if (l.state === "declined") break
   }
+  // Recorded by an earlier release, or by a run stopped before it noted it.
+  if (recorded.some((id) => !(v.answers_recorded ?? []).includes(id)))
+    await noteRecorded(ctx, v.id, recorded)
   return handled
 }
 

@@ -199,3 +199,13 @@ Agent can hide or show apps -> apps/api/src/modules/agent/tools/skills-routines-
 Admin sets a starting list from the Users page -> apps/web/src/modules/settings/AdminUserDetail.tsx:437
 Drive shared drives section in settings -> bundled-apps/google-drive/app.manifest.json:1
 Install screen lists pages that put an account's access in the browser -> apps/web/src/modules/settings/InstallAppDialog.tsx:105
+A built-in import refuses an upload over 1 GB before reading -> apps/api/src/modules/imports/builtin/registry.ts:78
+A built-in refuses a password-protected archive -> apps/api/src/modules/imports/parsers/zip.ts:385
+A built-in refuses an entry outside its folder -> apps/api/src/modules/imports/parsers/zip.ts:410
+A built-in refuses a link entry -> apps/api/src/modules/imports/parsers/zip.ts:446
+A built-in refuses an entry that expands far more than its size -> apps/api/src/modules/imports/parsers/zip.ts:463
+Zips inside the upload are read one level deep -> apps/api/src/modules/imports/transform-run.ts:1582
+A page file over 1 MB is skipped and named -> apps/api/src/modules/imports/transform-run.ts:1364
+The report names up to 20,000 items, then counts -> apps/api/src/modules/imports/transform-run.ts:205
+Losses past the named cap are counted -> apps/api/src/modules/imports/runner.ts:248
+A private built-in import dedups per person, a shared one per organization -> apps/api/src/modules/imports/builtin/registry.ts:131

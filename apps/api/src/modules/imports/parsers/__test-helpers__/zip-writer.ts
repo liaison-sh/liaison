@@ -17,6 +17,8 @@ export interface FixtureEntry {
   encrypted?: boolean
   /** Write the data as already compressed bytes with these declared sizes (bomb fixtures). */
   raw?: { compressed: Uint8Array; uncompressedSize: number }
+  /** Unix file mode in the external attributes (made by Unix), e.g. 0o120777 for a symlink. */
+  unixMode?: number
 }
 
 export interface FixtureOptions {
@@ -98,7 +100,7 @@ export function buildZip(entries: FixtureEntry[], opts: FixtureOptions = {}): Ui
     central.push(
       new Uint8Array([
         ...u32(0x02014b50),
-        ...u16(z64 ? 45 : 20),
+        ...u16((e.unixMode !== undefined ? 3 << 8 : 0) | (z64 ? 45 : 20)),
         ...u16(z64 ? 45 : 20),
         ...u16(flags),
         ...u16(method),
@@ -112,7 +114,7 @@ export function buildZip(entries: FixtureEntry[], opts: FixtureOptions = {}): Ui
         ...u16(0),
         ...u16(0),
         ...u16(0),
-        ...u32(0),
+        ...u32(e.unixMode !== undefined ? (e.unixMode << 16) >>> 0 : 0),
         ...u32(z64 ? 0xffffffff : localOffset),
       ]),
     )

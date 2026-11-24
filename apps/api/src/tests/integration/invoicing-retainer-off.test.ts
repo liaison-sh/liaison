@@ -521,6 +521,182 @@ describe("a retainer turned off, on the real kernel", () => {
     expect((await card(w, "2027-01")).fee).toBe(495_000)
   }, 120_000)
 
+  it("on again once the run holds next month: it starts after it, and nothing is billed twice", async () => {
+    for (const covers of ["period_ahead", "period_ended"]) {
+      const w = await world({
+        covers,
+        billing_day: "1",
+        next_issue_on: "2027-01-01",
+        next_draft_on: "2026-12-29",
+      })
+      at("2026-12-10")
+      await off(w)
+      await tick("2026-12-30")
+      expect(await drafts(w)).toEqual({ "2027-01": 450_000 })
+      at("2026-12-30")
+      const r = await update(w, {
+        retainer_project_id: w.project,
+        retainer_minutes: 2400,
+        retainer_overage_rate_minor: 12_000,
+      })
+      expect(String(r.message)).toContain("again from 2027-02")
+      expect(String(r.message)).toContain("already holds 2027-01")
+      const ask = (month: string) =>
+        call("advance_draft_create", { projectId: w.project, amountMinor: 450_000, month })
+      expect(String((await ask("2027-01")).error)).toContain("The retainer bills from 2027-02")
+      expect((await card(w, "2026-12")).onRun).toBe(false)
+      expect((await card(w, "2027-01")).onRun).toBe(true)
+      expect(await card(w, "2027-02")).toEqual(OWN)
+      await tick("2027-02-27")
+      expect(await drafts(w)).toEqual({ "2027-01": 450_000 })
+    }
+  }, 180_000)
+
+  it("made a retainer for the first time once the run holds next month: from the month after", async () => {
+    const w = await world({
+      retainer_project_id: null,
+      retainer_minutes: null,
+      retainer_overage_rate_minor: null,
+      retainer_from: null,
+      billing_day: "1",
+      covers: "period_ahead",
+      next_issue_on: "2027-01-01",
+      next_draft_on: "2026-12-29",
+    })
+    await tick("2026-12-30")
+    expect(await drafts(w)).toEqual({ "2027-01": 450_000 })
+    at("2026-12-30")
+    await update(w, {
+      retainer_project_id: w.project,
+      retainer_minutes: 2400,
+      retainer_overage_rate_minor: 12_000,
+    })
+    const r = await call("advance_draft_create", {
+      projectId: w.project,
+      amountMinor: 450_000,
+      month: "2027-01",
+    })
+    expect(String(r.error)).toContain("The retainer bills from 2027-02")
+    expect((await card(w, "2027-01")).onRun).toBe(true)
+    expect(await card(w, "2027-02")).toEqual(OWN)
+  }, 120_000)
+
+  it("another retainer's advances on the project never silence a turned-off schedule's months", async () => {
+    const a = await world()
+    at("2026-12-10")
+    await off(a)
+    const b = await world({
+      retainer_project_id: a.project,
+      retainer_from: "2027-01",
+      covers: "period_ahead",
+      next_issue_on: "2027-01-31",
+      next_draft_on: "2027-01-28",
+    })
+    for (const month of ["2027-02", "2027-03"]) await advance({ ...b, project: a.project }, month)
+    await tick("2027-03-31", 8)
+    expect(await drafts(a)).toEqual({ "2027-01": 450_000, "2027-02": 450_000, "2027-03": 450_000 })
+    expect(await drafts(b)).toEqual({})
+  }, 120_000)
+
+  it("a row turned off before this rule with two invoiced months in a row bills the next ones", async () => {
+    const w = await world({
+      retainer_project_id: null,
+      retainer_minutes: null,
+      retainer_overage_rate_minor: null,
+      retainer_from: null,
+    })
+    await retainerInvoice(w, "2026-10")
+    await retainerInvoice(w, "2026-11")
+    await tick("2027-01-31", 8)
+    expect(await drafts(w)).toEqual({ "2026-12": 450_000, "2027-01": 450_000 })
+  }, 120_000)
+
+  it("ended after it was turned off, or while on: its months stay on their card, none after", async () => {
+    for (const first of ["off", "on"]) {
+      const w = await world()
+      at("2026-12-10")
+      if (first === "off") await off(w)
+      const r = await update(w, { status: "ended" })
+      expect(String(r.message)).toContain("last retainer month is 2026-12")
+      for (const m of ["2026-10", "2026-12"]) expect(await card(w, m)).toEqual(OWN)
+      const gone = await internal("preview_totals", {
+        projectId: w.project,
+        basis: "retainer",
+        contactId: w.contact,
+        periodFrom: "2027-01-01",
+        lines: [],
+      })
+      expect(gone.ready).toBe(false)
+      await tick("2027-02-28")
+      expect(await drafts(w)).toEqual({})
+    }
+  }, 120_000)
+
+  it("a signed renewal survives off and on again, and the project never moves", async () => {
+    const w = await world()
+    at("2026-12-10")
+    await renew(w, "2027-03-01", "495000", "AG-9")
+    await off(w)
+    const on = {
+      retainer_project_id: w.project,
+      retainer_minutes: 2400,
+      retainer_overage_rate_minor: 12_000,
+    }
+    const r = await update(w, on)
+    expect(String(r.message)).toContain("From 2027-03 the signed terms of AG-9 apply")
+    expect((await card(w, "2027-02")).fee).toBe(450_000)
+    expect((await card(w, "2027-03")).fee).toBe(495_000)
+    const move = { retainer_project_id: randomUUID() }
+    for (const patch of [move, { ...on, ...move }]) {
+      const res = await call("recurring_schedule_update", {
+        id: w.id,
+        expected_version: Number((await stored(w)).version),
+        ...patch,
+      })
+      expect(String(res.error)).toContain(w.project)
+    }
+    expect((await card(w, "2026-12")).fee).toBe(450_000)
+  }, 120_000)
+
+  it("a pause and a resume by its date never lower the version nor lose a change made meanwhile", async () => {
+    at("2026-12-10")
+    const held = async (w: World, run: () => Promise<unknown>) => {
+      let release: () => void = () => {}
+      const go = new Promise<void>((r) => {
+        release = r
+      })
+      let version = 0
+      // Another change holds the row while the pause or the job waits to write it.
+      const other = sql.begin(async (tx) => {
+        const [row] = await tx<Array<{ version: number }>>`
+          UPDATE app_invoicing.recurring_schedules SET version = version + 5, notes = 'Net 30'
+           WHERE id = ${w.id} RETURNING version`
+        version = Number(row?.version)
+        await go
+      })
+      const doing = run()
+      for (let i = 0; i < 100; i++) {
+        const [row] = await sql<Array<{ n: number }>>`
+          SELECT count(*)::int AS n FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid
+           WHERE NOT l.granted AND a.datname = current_database()`
+        if ((row?.n ?? 0) > 0) break
+        await Bun.sleep(50)
+      }
+      release()
+      await other
+      await doing
+      return version
+    }
+    const w = await world()
+    const before = await held(w, () =>
+      call("recurring_schedule_pause", { id: w.id, until: "2026-12-20" }),
+    )
+    expect(await stored(w)).toMatchObject({ status: "paused", version: before + 1 })
+    setSystemTime(new Date(Date.parse("2026-12-20") + 9 * HOUR))
+    const paused = await held(w, runJob)
+    expect(await stored(w)).toMatchObject({ status: "active", version: paused + 1 })
+  }, 120_000)
+
   it("changes at once: each is saved or refused, and no dated terms are lost", async () => {
     at("2026-12-10")
     const w = await world()

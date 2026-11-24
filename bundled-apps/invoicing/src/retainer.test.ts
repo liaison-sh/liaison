@@ -724,6 +724,32 @@ describe("a retainer month's invoice", () => {
     expect((await recurringDraftJob(dec.ctx)).drafted).toBe(0)
   })
 
+  test("a schedule that ended while it was a retainer still invoices its last month, none after", async () => {
+    const h = harness({
+      schedule: retainerSchedule({
+        status: "ended",
+        retainer_terms: [
+          { from: "2026-11", off: true, retainer_minutes: 0, lines: [], covers: "period_ended" },
+        ],
+      }),
+    })
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 46))
+    const res = await retainerDraftFromReconcile(h.ctx, { reconciliationId: REC_OCT, revision: 1 })
+    expect(res).toMatchObject({
+      status: "completed",
+      created: true,
+      month: "2026-10",
+      retainer: { overage_minutes: 6 * H },
+      totals: { excl: 450_000 + 6 * 12_000 },
+    })
+    h.cards.set(REC_NOV, card(REC_NOV, "2026-11", 46))
+    const after = await retainerDraftFromReconcile(h.ctx, {
+      reconciliationId: REC_NOV,
+      revision: 1,
+    })
+    expect(after).toMatchObject({ error: { code: "no_retainer_schedule" } })
+  })
+
   test("a month the run already drafted is refused and makes nothing", async () => {
     const h = harness({
       docs: [

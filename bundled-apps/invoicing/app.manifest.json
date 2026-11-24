@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.9",
+  "version": "0.38.10",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1384,6 +1384,7 @@
         "retainer_renewal": "json?",
         "retainer_terms": "json?",
         "retainer_agreements": "json?",
+        "retainer_kept_project": "text?",
         "edit_claim": "text?"
       },
       "constraints": { "unique": [["external_ref"]] },

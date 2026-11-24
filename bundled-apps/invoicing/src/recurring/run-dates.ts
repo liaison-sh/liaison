@@ -6,13 +6,8 @@
 // a month it bills.
 import { creditedTotalMinor } from "../mutations/credit-coverage"
 import type { MutationsCtx } from "../mutations/shared"
-import {
-  isRetainerMonth,
-  isRetainerSchedule,
-  monthOf,
-  nextMonth,
-  retainerDocumentRef,
-} from "./retainer"
+import { advanceOfAnother } from "./project-retainer"
+import { isRetainerMonth, monthOf, nextMonth, retainerDocumentRef } from "./retainer"
 import {
   addDays,
   type Cadence,
@@ -73,13 +68,17 @@ async function one(ctx: Db, externalRef: string): Promise<Row | null> {
   return rows[0] ?? null
 }
 
-/** Whether a retainer's invoice, or an advance for the month, already covers the month. */
+/**
+ * Whether the schedule's retainer invoice, or an advance for the month, already covers the month.
+ * An advance of another retainer on the same project never does.
+ */
 export async function monthCovered(ctx: Db, s: RunSchedule, month: string): Promise<boolean> {
   if (await one(ctx, retainerDocumentRef(s.id, month))) return true
   const project = s.retainer_project_id
   if (typeof project !== "string" || project === "") return false
   const advance = await one(ctx, advanceRef(project, month))
-  return !!advance && (await advanceStands(ctx, advance))
+  if (!advance || !(await advanceStands(ctx, advance))) return false
+  return !(await advanceOfAnother(ctx, s, project, month))
 }
 
 /** The months of the period an issue day bills. */
@@ -101,13 +100,13 @@ export async function runBills(ctx: Db, s: RunSchedule, issueOn: string): Promis
 }
 
 /**
- * The first issue day on or after `from` the run bills. A schedule that never was a retainer takes
- * its next billing day; a retainer that is on has none left to find, and takes it too: its months
- * are invoiced from their cards.
+ * The first issue day on or after `from` the run bills: past every month of the retainer, and every
+ * one its invoice or advance covers, on a row turned off by an earlier version too (it holds no
+ * retainer columns). A retainer that is on has none to find and takes its next billing day: its
+ * months are invoiced from their cards.
  */
 export async function runDatesFrom(ctx: Db, s: RunSchedule, from: string): Promise<ScheduleDates> {
   const first = datesFrom(s, from)
-  if (!isRetainerSchedule(s)) return first
   let d = first
   // Past the last dated change nothing varies: five years of months are more than any of them hold.
   for (let i = 0; i < 60; i++) {
@@ -150,7 +149,10 @@ export async function firstRunMonth(
   for (const doc of docs) {
     const held = refs.get(String(doc.external_ref))
     if (!held || (covered && held.month <= covered.month)) continue
-    if (held.by === "advance" && !(await advanceStands(ctx, doc))) continue
+    if (held.by === "advance") {
+      if (!(await advanceStands(ctx, doc))) continue
+      if (await advanceOfAnother(ctx, s, project, held.month)) continue
+    }
     covered = { ...held, number: typeof doc.number === "string" ? doc.number : null }
   }
   return { from: nextMonth(covered?.month ?? thisMonth), covered }

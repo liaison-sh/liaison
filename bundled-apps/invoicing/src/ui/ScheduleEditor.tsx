@@ -166,11 +166,11 @@ export function renewalText(row: Record<string, unknown>): string[] {
   const month = row.retainer_terms_month
   if (typeof month !== "string") return []
   const terms = retainerTermsOf(row)
-  const signed = terms.filter((t) => t.from <= month && t.agreement_number).at(-1)
+  const signed = terms.filter((t) => t.from <= month && t.agreement_number && !t.carried).at(-1)
   return terms
     .filter((t) => t === signed || t.from >= month)
     .map((t) =>
-      t.agreement_number
+      t.agreement_number && !t.carried
         ? tr("Renewed by {{agreement}} from {{month}}", {
             agreement: t.agreement_number,
             month: monthName(t.from),
@@ -191,7 +191,12 @@ export interface Conflict {
 export function retainerOffText(
   d: Pick<ScheduleDraft, "retainer_until" | "retainer_run_from">,
 ): string | null {
-  if (!d.retainer_until || !d.retainer_run_from) return null
+  if (!d.retainer_until) return null
+  if (!d.retainer_run_from)
+    return tr(
+      "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card.",
+      { last: monthName(d.retainer_until) },
+    )
   return tr(
     "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run starts with {{from}}.",
     { last: monthName(d.retainer_until), from: monthName(d.retainer_run_from) },
@@ -219,6 +224,37 @@ export function turnedOffText(result: unknown): string | null {
         month: monthName(x.from),
       }),
     ),
+  ]
+    .filter(Boolean)
+    .join(" ")
+}
+
+/** What a save that turned the retainer on says: a month the run bills, and a renewal gone. */
+export function turnedOnText(result: unknown): string | null {
+  const on = (
+    result as {
+      retainerOn?: {
+        from: string
+        on_run: string | null
+        gone: { agreement_number: string; from: string } | null
+      }
+    } | null
+  )?.retainerOn
+  if (!on) return null
+  return [
+    tr("Saved."),
+    tr("The retainer bills from {{month}}.", { month: monthName(on.from) }),
+    on.on_run
+      ? tr("{{month}} is already on the month-end run, which bills it.", {
+          month: monthName(on.on_run),
+        })
+      : null,
+    on.gone
+      ? tr("{{agreement}}, signed from {{month}}, no longer applies.", {
+          agreement: on.gone.agreement_number,
+          month: monthName(on.gone.from),
+        })
+      : null,
   ]
     .filter(Boolean)
     .join(" ")
@@ -758,8 +794,8 @@ export const ScheduleEditor: Component<{ initial: ScheduleDraft }> = (props) => 
           setNote(tr(STALE_SAVE))
         } else if (outcome(r)) {
           await reload()
-          const off = turnedOffText(r)
-          if (off) setNote(off)
+          const turned = turnedOffText(r) ?? turnedOnText(r)
+          if (turned) setNote(turned)
         }
       }
     } catch (e) {

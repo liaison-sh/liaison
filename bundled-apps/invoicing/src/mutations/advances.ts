@@ -8,7 +8,9 @@
 import { resolveOpenParks } from "../deferred"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
+import { monthOnRun, retainerScheduleOf } from "../recurring/project-retainer"
 import {
+  firstRetainerMonth,
   isRetainerMonth,
   isRetainerOn,
   lastRetainerMonth,
@@ -33,7 +35,6 @@ import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import { counterpartyFromRow } from "./lines"
 import { heldText, raiseOnePerProject } from "./prepaid-hold"
-import { retainerScheduleOf } from "./retainer"
 import type { ErrorEnvelope, MutationsCtx, PreflightResult } from "./shared"
 
 type Row = Record<string, unknown>
@@ -166,6 +167,12 @@ export async function advanceDraftCreate(
       const m = await retainerAdvanceMonth(ctx, projectId, input.month)
       if (typeof m !== "string") return m
       retainer = (await retainerScheduleOf(ctx, projectId, m)) ?? retainer
+      // A month the run already drafted or issued is paid there: its advance would be paid twice.
+      if (isRetainerMonth(retainer, m) && (await monthOnRun(ctx, String(retainer.id), m)))
+        return refuse(
+          "period_on_run",
+          `${m} of this project is already on its recurring schedule's month-end run, which bills its fee, so no advance was drafted. Name a later month (month, YYYY-MM).`,
+        )
       if (isRetainerMonth(retainer, m)) month = m
       else if (isRetainerOn(retainer) || input.month) {
         const last = lastRetainerMonth(retainer)
@@ -173,7 +180,7 @@ export async function advanceDraftCreate(
           "period_on_run",
           `${m} of this project is billed by its recurring schedule's month-end run, not by the retainer, so no advance was drafted. ${
             isRetainerOn(retainer)
-              ? `The retainer bills from ${String(retainer.retainer_from)}.`
+              ? `The retainer bills from ${firstRetainerMonth(retainer, m)}.`
               : `The retainer was turned off${last ? `: ${last} is its last month` : ""}.`
           }`,
         )

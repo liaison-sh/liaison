@@ -193,6 +193,10 @@ export interface RetainerTerms {
   off?: boolean
   /** With `off`: whether the retainer's months before it were prepaid (`covers`). */
   covers?: string
+  /** With `off`: the signed terms of months from it on, for a retainer taken up again. */
+  dropped?: RetainerTerms[]
+  /** With an agreement: a person's terms that keep the lines it signed. */
+  carried?: boolean
 }
 
 export interface DatedTermsRow {
@@ -233,6 +237,20 @@ export function termsInForce(
   )
 }
 
+/**
+ * The first month from `month` on that is the retainer's: a change of its terms applies from it. A
+ * month the run holds between two times as a retainer, or before its first month, is not one.
+ */
+export function firstRetainerMonth(
+  s: RetainerFacts & DatedTermsRow & { retainer_from?: unknown },
+  month: string,
+): string {
+  const start = typeof s.retainer_from === "string" ? s.retainer_from : month
+  const first = start > month ? start : month
+  if (termsInForce(s, first)?.off !== true) return first
+  return retainerTermsOf(s).find((t) => t.from > first && !t.off)?.from ?? first
+}
+
 /** The fields a month's terms hold. */
 export const TERM_FIELDS = [
   "retainer_minutes",
@@ -271,11 +289,18 @@ export function termsForMonth<T extends object>(s: T, month: string): T {
 /** One canonical string per month's terms, so two months compare by value. */
 export function termsSignature(s: object): string {
   const t = s as Record<string, unknown>
-  const lines = parsed(t.lines)
   return JSON.stringify([
     Number(t.retainer_minutes ?? 0),
     String(t.retainer_overage_rate_minor ?? 0),
     t.retainer_rollover === "next" ? "next" : "none",
+    linesSignature(t.lines),
+  ])
+}
+
+/** One canonical string per set of lines, so two sets compare by value. */
+export function linesSignature(raw: unknown): string {
+  const lines = parsed(raw)
+  return JSON.stringify(
     (Array.isArray(lines) ? (lines as Array<Record<string, unknown>>) : []).map((l) => [
       String(l.description ?? ""),
       Number(l.qty),
@@ -284,24 +309,30 @@ export function termsSignature(s: object): string {
       l.product_ref ?? null,
       l.line_kind ?? "service",
     ]),
-  ])
+  )
 }
 
 /**
  * The columns that make `after` the schedule's terms from month `from` on, leaving every earlier
  * month as it was. Later entries (a renewal that starts later) keep their own first month; a
  * rollover set here goes on into them, since no agreement sets one. An entry of a renewal that
- * starts the same month keeps naming its agreement.
+ * starts the same month keeps naming its agreement, and so do terms that keep the lines of the
+ * signed ones they follow (`signed`, the terms in force that month unless given).
  */
 export function withTermsFrom(
   s: DatedTermsRow,
   from: string,
   after: object,
+  signed: RetainerTerms | null = termsInForce(s, from),
 ): { retainer_terms: RetainerTerms[]; retainer_renewal: null } {
   const a = after as Record<string, unknown>
   const entries = retainerTermsOf(s)
   const same = entries.filter((t) => t.from === from).at(-1)
   const rollover: Rollover = a.retainer_rollover === "next" ? "next" : "none"
+  const keeps =
+    !same?.agreement_id &&
+    signed?.agreement_id &&
+    linesSignature(signed.lines) === linesSignature(a.lines)
   return {
     retainer_terms: [
       ...entries.filter((t) => t.from < from),
@@ -312,8 +343,18 @@ export function withTermsFrom(
         retainer_rollover: rollover,
         lines: (parsed(a.lines) as unknown[]) ?? [],
         ...(same?.agreement_id
-          ? { agreement_id: same.agreement_id, agreement_number: same.agreement_number }
-          : {}),
+          ? {
+              agreement_id: same.agreement_id,
+              agreement_number: same.agreement_number,
+              ...(same.carried ? { carried: true } : {}),
+            }
+          : keeps
+            ? {
+                agreement_id: signed.agreement_id,
+                agreement_number: signed.agreement_number,
+                carried: true,
+              }
+            : {}),
       },
       ...entries
         .filter((t) => t.from > from)
@@ -324,7 +365,12 @@ export function withTermsFrom(
 }
 
 /** A month the retainer is off, as one entry: the run bills `lines` from it on. */
-function offTerms(from: string, lines: unknown, covers: unknown): RetainerTerms {
+function offTerms(
+  from: string,
+  lines: unknown,
+  covers: unknown,
+  dropped: RetainerTerms[],
+): RetainerTerms {
   return {
     from,
     off: true,
@@ -332,7 +378,24 @@ function offTerms(from: string, lines: unknown, covers: unknown): RetainerTerms 
     retainer_overage_rate_minor: null,
     lines: (parsed(lines) as unknown[]) ?? [],
     covers: covers === "period_ahead" ? "period_ahead" : "period_ended",
+    ...(dropped.length > 0 ? { dropped } : {}),
   }
+}
+
+/** The signed terms these entries hold, those an earlier turn-off dropped included. */
+function signedTerms(entries: RetainerTerms[]): RetainerTerms[] {
+  return entries.flatMap((t) =>
+    t.off ? (t.dropped ?? []) : t.agreement_id && !t.carried ? [t] : [],
+  )
+}
+
+/** The signed terms a turn-off still in force dropped, earliest first. */
+export function droppedTermsOf(s: RetainerFacts & DatedTermsRow): RetainerTerms[] {
+  const off = retainerOffFrom(s)
+  if (off === null) return []
+  return signedTerms(retainerTermsOf(s).filter((t) => t.off && t.from >= off)).sort((a, b) =>
+    a.from < b.from ? -1 : a.from > b.from ? 1 : 0,
+  )
 }
 
 type DatedTerms = { retainer_terms: RetainerTerms[]; retainer_renewal: null }
@@ -343,10 +406,11 @@ export function withRetainerOff(
   from: string,
   lines: unknown,
 ): DatedTerms {
+  const entries = retainerTermsOf(s)
   return {
     retainer_terms: [
-      ...retainerTermsOf(s).filter((t) => t.from < from),
-      offTerms(from, lines, s.covers),
+      ...entries.filter((t) => t.from < from),
+      offTerms(from, lines, s.covers, signedTerms(entries.filter((t) => t.from >= from))),
     ],
     retainer_renewal: null,
   }
@@ -358,7 +422,12 @@ export function withOffLinesFrom(s: DatedTermsRow, from: string, lines: unknown)
   return {
     retainer_terms: [
       ...entries.filter((t) => t.from < from),
-      offTerms(from, lines, termsInForce(s, from)?.covers),
+      offTerms(
+        from,
+        lines,
+        termsInForce(s, from)?.covers,
+        signedTerms(entries.filter((t) => t.from === from)),
+      ),
       ...entries.filter((t) => t.from > from),
     ],
     retainer_renewal: null,
@@ -379,7 +448,12 @@ export function withPlainLines(
   const from = off > thisMonth ? off : thisMonth
   const dated = [
     ...entries.filter((t) => t.from < from),
-    offTerms(from, lines, termsInForce(s, off)?.covers),
+    offTerms(
+      from,
+      lines,
+      termsInForce(s, off)?.covers,
+      signedTerms(entries.filter((t) => t.from >= from)),
+    ),
   ]
   // A month still on the run before the retainer began: the schedule's own lines are its own.
   const own = termsInForce(s, thisMonth) === null && !isRetainerMonth(s, thisMonth)

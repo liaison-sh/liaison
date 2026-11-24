@@ -901,6 +901,11 @@ export const FR: Record<string, string> = {
     "Les heures, le taux et les lignes affichés sont ceux de {{month}}. Les mois précédents gardent les leurs.",
   "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run starts with {{from}}.":
     "{{last}} est le dernier mois du forfait : ce mois et les mois précédents pas encore facturés le sont depuis la carte du projet. La facturation de fin de mois commence avec {{from}}.",
+  "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card.":
+    "{{last}} est le dernier mois du forfait : ce mois et les mois précédents pas encore facturés le sont depuis la carte du projet.",
+  "The retainer bills from {{month}}.": "Le forfait est facturé à partir de {{month}}.",
+  "{{month}} is already on the month-end run, which bills it.":
+    "{{month}} est déjà dans la facturation de fin de mois, qui le facture.",
   "{{agreement}}, signed from {{month}}, no longer applies.":
     "{{agreement}}, signé à partir de {{month}}, ne s'applique plus.",
   Retainer: "Forfait",

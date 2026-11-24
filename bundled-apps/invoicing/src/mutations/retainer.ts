@@ -20,12 +20,11 @@ import { lineQuantity } from "../line-amount"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL, recipientGaps } from "../recipient-gaps"
+import { monthOnRun, retainerScheduleOf } from "../recurring/project-retainer"
 import {
   hoursText,
   isPrepaidMonth,
   isRetainerMonth,
-  isRetainerOn,
-  isRetainerSchedule,
   lastRetainerMonth,
   monthOf,
   previousMonth,
@@ -34,7 +33,6 @@ import {
   retainerMonth,
   retainerRefsOf,
   rolloverOut,
-  runDocumentRef,
   termsForMonth,
 } from "../recurring/retainer"
 import {
@@ -63,7 +61,6 @@ function monthEnd(day: string): string {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const ISSUED = new Set(["issued", "paid", "overdue", "refunded"])
-const GONE = new Set(["cancelled", "voided"])
 
 export interface RetainerDraftInput {
   reconciliationId?: string
@@ -146,32 +143,7 @@ export function retainerRecipient(
   }
 }
 
-/**
- * The project's retainer schedule for a month: the live one, or one turned off since whose month it
- * still is. Null when the project has none.
- */
-export async function retainerScheduleOf(
-  ctx: DbCtx,
-  projectId: string,
-  month: string,
-): Promise<Row | null> {
-  const rows = (await ctx.db.findMany("recurring_schedules", {
-    where: { retainer_project_id: projectId },
-    limit: 20,
-  })) as Row[]
-  const held = rows.filter((s) => s.status !== "ended" && isRetainerSchedule(s))
-  const live = held.find(isRetainerOn)
-  if (live && isRetainerMonth(live, month)) return live
-  return held.find((s) => !isRetainerOn(s) && isRetainerMonth(s, month)) ?? live ?? held[0] ?? null
-}
-
-/** A month the month-end run holds: its draft or issued invoice, or its row in a run. */
-export async function monthOnRun(ctx: DbCtx, scheduleId: string, month: string): Promise<boolean> {
-  const doc = await one(ctx, "documents", { external_ref: runDocumentRef(scheduleId, month) })
-  if (doc && !GONE.has(String(doc.status))) return true
-  const item = await one(ctx, "recurring_run_items", { schedule_id: scheduleId, period_key: month })
-  return !!item && item.state !== "left_out"
-}
+export { monthOnRun, retainerScheduleOf } from "../recurring/project-retainer"
 
 /** The hours rolled in from the month before: its unused included hours, read from its invoice. */
 async function rolledIn(ctx: DbCtx, s: Row, month: string, included: number) {

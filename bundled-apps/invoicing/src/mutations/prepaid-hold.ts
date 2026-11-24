@@ -9,7 +9,7 @@
 // so the next hour tries again, and stays a draft to issue from its page.
 
 import { formatMoneyMinor } from "../money"
-import { isRetainerSchedule } from "../recurring/retainer"
+import { isRetainerOn, isRetainerSchedule } from "../recurring/retainer"
 import { raiseIssueApproval } from "./billing-plan"
 import type { MutationsCtx } from "./shared"
 
@@ -96,6 +96,11 @@ const latestIssueOf = (doc: Row): string | null => {
   return null
 }
 
+/** A retainer schedule whose months are invoiced from their card: an ended one keeps its own. */
+function holdsMonths(s: Row): boolean {
+  return isRetainerSchedule(s) && (s.status !== "ended" || !isRetainerOn(s))
+}
+
 /** The result's words for a held approval. */
 export function heldText(heldBy: { id: string; title: string }): string {
   return `Its issue approval waits until ${heldBy.title} (draft ${heldBy.id}) is issued or discarded, or its approval is turned down or runs out, so the project has one invoice to approve at a time; it is raised then.`
@@ -118,9 +123,7 @@ export async function raiseHeldApproval(
       where: { retainer_project_id: projectId },
       limit: 20,
     })) as Row[]
-    const prepaid = schedules.some(
-      (s) => s.status !== "ended" && isRetainerSchedule(s) && s.covers === "period_ahead",
-    )
+    const prepaid = schedules.some((s) => holdsMonths(s) && s.covers === "period_ahead")
     if (!prepaid) return
     if (await waitingDraftOf(ctx, projectId, String(gone.id))) return
     const drafts = (
@@ -177,7 +180,7 @@ export async function raiseHeldApprovals(ctx: Ctx): Promise<number> {
     })) as Row[]
     const projects = new Set(
       schedules
-        .filter((s) => s.status !== "ended" && isRetainerSchedule(s))
+        .filter(holdsMonths)
         .map((s) => s.retainer_project_id)
         .filter((p): p is string => typeof p === "string" && p !== ""),
     )

@@ -319,7 +319,7 @@ describe("paused while the last retainer month runs", () => {
 })
 
 describe("on again", () => {
-  test("a signed renewal the turn-off dropped does not come back with a replay", async () => {
+  test("a signed renewal comes back with the retainer, and a replay adds nothing", async () => {
     on(2026, 12, 10)
     const h = harness()
     await h.renew({ startsOn: "2027-03-01" })
@@ -327,8 +327,11 @@ describe("on again", () => {
     await h.db.update("recurring_schedules", SCHEDULE, { retainer_agreements: null })
     await h.update(OFF)
     await h.update(ON)
+    const terms = h.stored().retainer_terms
     expect(await h.renew({ startsOn: "2027-03-01" })).toMatchObject({ unchanged: true })
-    expect((await h.month("2027-03")).fee).toEqual([450_000])
+    expect(h.stored().retainer_terms).toEqual(terms)
+    expect((await h.month("2027-02")).fee).toEqual([450_000])
+    expect((await h.month("2027-03")).fee).toEqual([495_000])
   })
 
   test("in the same month: no month goes to the run", async () => {

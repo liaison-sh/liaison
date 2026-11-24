@@ -15,7 +15,7 @@
 // feature and never the page. A bridge function is a hint, never a gate — the
 // callers each keep a browser fallback of their own (`lib/share.ts`,
 // `navigator.onLine`).
-import { runBeforeSignOut } from "~/lib/session-lifecycle"
+import { confirmSignOut, runBeforeSignOut } from "~/lib/session-lifecycle"
 
 /** The name the mobile boot bundle publishes. Changing it changes both sides. */
 export const NATIVE_BRIDGE_GLOBAL = "__LIAISON_NATIVE__"
@@ -68,7 +68,7 @@ export interface NativeServers {
   add: (url: string) => Promise<void>
   switchTo: (address: string) => Promise<void>
   remove: (address: string) => Promise<void>
-  signOut: () => Promise<void>
+  signOut: (opts?: { forced?: boolean }) => Promise<void>
   /**
    * True when the shell asks its own removal question (the desktop's native
    * dialog), so the page asks none. The phone's shell leaves it unset.
@@ -232,7 +232,10 @@ export function nativeServers(): NativeServers | null {
   // The shell signs out by itself (the page never runs its own logout), so the
   // page's before-sign-out work runs here first, while the session still
   // authenticates it.
-  const signOut = async (): Promise<void> => {
+  // First of all the sign-out guards: unsaved text is saved, or the person is asked
+  // and may stay signed in. `forced`: nothing to save or ask (a deleted account).
+  const signOut = async (opts: { forced?: boolean } = {}): Promise<void> => {
+    if (!(await confirmSignOut({ forced: opts.forced === true }))) return
     await runBeforeSignOut()
     await servers.signOut()
   }

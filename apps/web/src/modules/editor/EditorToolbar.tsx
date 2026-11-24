@@ -8,6 +8,7 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Image,
   Italic,
   Link,
   List,
@@ -15,6 +16,7 @@ import {
   ListTodo,
   type LucideProps,
   MoreHorizontal,
+  Paperclip,
   Quote,
   SquareCode,
   Strikethrough,
@@ -138,7 +140,15 @@ const TOOLS: Record<string, Tool> = {
     active: (e) => e.isActive("table"),
     run: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
   },
+  // A page's own image and file: the toolbar opens the file picker (onPick).
+  image: { key: "image", icon: Image, active: () => false, run: () => {} },
+  file: { key: "file", icon: Paperclip, active: () => false, run: () => {} },
 }
+
+/** The tools that pick a file rather than format the text. */
+export const FILE_TOOLS = ["image", "file"] as const
+export type FileTool = (typeof FILE_TOOLS)[number]
+const isFileTool = (key: string): key is FileTool => key === "image" || key === "file"
 
 /** What can be done to the table the caret is in, in menu order. The menu gives focus back. */
 const TABLE_ACTIONS = [
@@ -183,9 +193,10 @@ const DIVIDER_PX = 9
 export function toolbarFit(
   preset: ToolbarPreset,
   width: number,
+  layout: string[][] = TOOLBAR_LAYOUT[preset],
 ): { shown: string[]; more: string[]; width: number } {
   const steps: Array<{ key: string; px: number }> = []
-  TOOLBAR_LAYOUT[preset].forEach((group, g) => {
+  layout.forEach((group, g) => {
     group.forEach((key, i) => {
       const lead = steps.length === 0 ? 0 : GAP_PX
       const divider = g > 0 && i === 0 ? DIVIDER_PX + GAP_PX : 0
@@ -215,6 +226,8 @@ export const EditorToolbar: Component<{
   version: () => number
   disabled?: boolean
   onLink: () => void
+  /** A page that takes files: the Image and File tools open its picker. */
+  onPick?: (kind: FileTool) => void
   /** `more` (default): the tools that do not fit fold into a "more" menu.
    *  `scroll`: every tool stays in the row, which scrolls sideways with a
    *  fade at the edge that has more (a header row on a phone). */
@@ -242,8 +255,12 @@ export const EditorToolbar: Component<{
     observer.observe(el)
     onCleanup(() => observer.disconnect())
   })
+  const layout = () =>
+    props.onPick && props.preset === "document"
+      ? [...TOOLBAR_LAYOUT.document, [...FILE_TOOLS]]
+      : TOOLBAR_LAYOUT[props.preset]
   const fit = createMemo(() =>
-    toolbarFit(props.preset, scrolls() ? Number.POSITIVE_INFINITY : width()),
+    toolbarFit(props.preset, scrolls() ? Number.POSITIVE_INFINITY : width(), layout()),
   )
   const { canScrollStart, canScrollEnd } = createScrollOverflow(() => row, "horizontal")
   const fade = () => {
@@ -256,7 +273,7 @@ export const EditorToolbar: Component<{
   /** The groups as shown: hidden tools out, a group left empty dropped. */
   const groups = createMemo(() => {
     const shown = new Set(fit().shown)
-    return TOOLBAR_LAYOUT[props.preset]
+    return layout()
       .map((group) => group.filter((key) => shown.has(key)))
       .filter((group) => group.length > 0)
   })
@@ -297,7 +314,13 @@ export const EditorToolbar: Component<{
                     <Tooltip content={hintFor(tool, label)} triggerClass="shrink-0">
                       <Toggle
                         pressed={isActive(tool)}
-                        onChange={() => (key === "link" ? props.onLink() : tool.run(props.editor))}
+                        onChange={() =>
+                          key === "link"
+                            ? props.onLink()
+                            : isFileTool(key)
+                              ? props.onPick?.(key)
+                              : tool.run(props.editor)
+                        }
                         disabled={props.disabled}
                         aria-label={label}
                         data-testid={`rich-editor.tool-${key}`}
@@ -315,7 +338,12 @@ export const EditorToolbar: Component<{
         )}
       </For>
       <Show when={fit().more.length > 0}>
-        <MoreTools editor={props.editor} keys={fit().more} onLink={props.onLink} />
+        <MoreTools
+          editor={props.editor}
+          keys={fit().more}
+          onLink={props.onLink}
+          onPick={props.onPick}
+        />
       </Show>
     </div>
   )
@@ -326,6 +354,7 @@ const MoreTools: Component<{
   editor: Editor
   keys: string[]
   onLink: () => void
+  onPick?: (kind: FileTool) => void
 }> = (props) => {
   const i18n = useI18n()
   const [open, setOpen] = createSignal(false)
@@ -358,7 +387,13 @@ const MoreTools: Component<{
             return (
               <PopupMenu.Item
                 data-testid={`rich-editor.more-${key}`}
-                onSelect={() => (key === "link" ? props.onLink() : tool.run(props.editor))}
+                onSelect={() =>
+                  key === "link"
+                    ? props.onLink()
+                    : isFileTool(key)
+                      ? props.onPick?.(key)
+                      : tool.run(props.editor)
+                }
               >
                 <span class="flex items-center gap-2">
                   <Icon class="h-3.5 w-3.5" stroke-width={2.25} />

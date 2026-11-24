@@ -118,6 +118,10 @@ const KnowledgeSidebar: Component = () => {
     }
   }
 
+  function openFolder(id: string, name: string) {
+    openTab({ type: "knowledge:folder", entityId: id, label: name })
+  }
+
   function openDoc(docId: string, label = "Document") {
     openTab({ type: "knowledge:document", entityId: docId, label })
   }
@@ -339,6 +343,7 @@ const KnowledgeSidebar: Component = () => {
               <KnowledgeCollectionTree
                 tree={partitionedTree().personal}
                 onOpenDoc={(id) => openDoc(id)}
+                onOpenFolder={openFolder}
                 onCreateChild={(parentId, ownerUserId) =>
                   void handleCreateFolder(parentId, ownerUserId)
                 }
@@ -379,6 +384,7 @@ const KnowledgeSidebar: Component = () => {
               <KnowledgeCollectionTree
                 tree={partitionedTree().shared}
                 onOpenDoc={(id) => openDoc(id)}
+                onOpenFolder={openFolder}
                 onCreateChild={(parentId, ownerUserId) =>
                   void handleCreateFolder(parentId, ownerUserId)
                 }

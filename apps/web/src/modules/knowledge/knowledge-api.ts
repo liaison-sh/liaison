@@ -34,6 +34,8 @@ export interface KnowledgeSearchResult {
 }
 
 export interface KnowledgeBacklink {
+  /** A page that links here, or a conversation that references the page. */
+  kind?: "page" | "thread"
   app: string
   entityType: string
   entityId: string
@@ -226,6 +228,41 @@ export interface CollectionTreeNode {
   documents: Array<{ id: string; title: string; syncedSourceId?: string | null }>
 }
 
+/** A folder's page and what is directly inside it that the reader may open. */
+export interface KnowledgeFolderPage {
+  folder: {
+    id: string
+    name: string
+    parentId: string | null
+    ownerUserId: string | null
+    synced: boolean
+  }
+  /** The folder's own page, when it has one the reader may open; null otherwise. */
+  page: { id: string; title: string; body: string; revision: number; canEdit?: boolean } | null
+  /** The reader may write the first text of a page this folder does not have. */
+  canStartPage: boolean
+  folders: Array<{ id: string; name: string }>
+  pages: Array<{ id: string; title: string }>
+  /** More is inside than listed. */
+  more: boolean
+}
+
+export async function getKnowledgeFolderPage(
+  api: ApiClient,
+  folderId: string,
+): Promise<KnowledgeFolderPage> {
+  return api.get<KnowledgeFolderPage>(`/knowledge/collections/${folderId}/page`)
+}
+
+/** The folder's page, made on its first text (the existing one when it has one). */
+export async function startKnowledgeFolderPage(
+  api: ApiClient,
+  folderId: string,
+  body: string,
+): Promise<{ id: string; title: string; body: string; revision: number }> {
+  return api.post(`/knowledge/collections/${folderId}/page`, { body })
+}
+
 export async function getCollectionsTree(api: ApiClient): Promise<CollectionTreeNode[]> {
   return api.get<CollectionTreeNode[]>("/knowledge/collections/tree")
 }
@@ -354,4 +391,70 @@ export async function createSyncedSource(
 
 export async function runSyncedSourceNow(api: ApiClient, id: string): Promise<unknown> {
   return api.post(`/knowledge/synced-sources/${id}/run-now`, {})
+}
+
+// ---------------------------------------------------------------------------
+// Page history (versions): for whoever may edit the page
+// ---------------------------------------------------------------------------
+
+export type KnowledgeVersionKind =
+  | "baseline"
+  | "edit"
+  | "agent"
+  | "import"
+  | "restore"
+  | "unapplied"
+
+/** A version as the history list shows it: no text. */
+export interface KnowledgeVersionItem {
+  id: string
+  kind: KnowledgeVersionKind
+  title: string
+  authorType: "user" | "agent" | "system"
+  authorId: string | null
+  authorName: string | null
+  agentId: string | null
+  revision: number | null
+  baseRevision: number | null
+  startedAt: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface KnowledgeVersion extends KnowledgeVersionItem {
+  body: string
+}
+
+export async function listKnowledgeVersions(
+  api: ApiClient,
+  id: string,
+  opts?: { signal?: AbortSignal },
+): Promise<KnowledgeVersionItem[]> {
+  return api.get(`/knowledge/documents/${id}/versions`, { ...opts, suppressGlobalError: true })
+}
+
+export async function getKnowledgeVersion(
+  api: ApiClient,
+  id: string,
+  versionId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<KnowledgeVersion> {
+  return api.get(`/knowledge/documents/${id}/versions/${versionId}`, {
+    ...opts,
+    suppressGlobalError: true,
+  })
+}
+
+/** The page gets the version's text back, as a new version; `revision` is the page's now. */
+export async function restoreKnowledgeVersion(
+  api: ApiClient,
+  id: string,
+  versionId: string,
+  revision: number,
+): Promise<unknown> {
+  return api.post(
+    `/knowledge/documents/${id}/versions/${versionId}/restore`,
+    { revision },
+    { suppressGlobalError: true },
+  )
 }

@@ -14,6 +14,8 @@ export interface MoveDocArgs {
 export interface KnowledgeCollectionTreeProps {
   tree: CollectionTreeNode[]
   onOpenDoc: (docId: string) => void
+  /** A folder's name opens its folder page (the chevron shows what is inside). */
+  onOpenFolder?: (id: string, name: string) => void
   onCreateChild?: (parentId: string | null, ownerUserId: string | null) => void
   onRename?: (id: string) => void
   onArchive?: (id: string) => void
@@ -161,6 +163,7 @@ const KnowledgeCollectionTree: Component<KnowledgeCollectionTreeProps> = (props)
               node={node}
               depth={0}
               onOpenDoc={props.onOpenDoc}
+              onOpenFolder={props.onOpenFolder}
               onRename={props.onRename}
               onContextMenu={openFolderMenu}
               onDocContextMenu={openDocMenu}
@@ -269,6 +272,7 @@ interface CollectionRowProps {
   node: CollectionTreeNode
   depth: number
   onOpenDoc: (id: string) => void
+  onOpenFolder?: (id: string, name: string) => void
   onRename?: (id: string) => void
   onContextMenu: (node: CollectionTreeNode, e: MouseEvent) => void
   onDocContextMenu: (docId: string, fromCollectionId: string | null, e: MouseEvent) => void
@@ -319,6 +323,8 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
           type="button"
           data-testid={`knowledge-tree-toggle-${props.node.id}`}
           onClick={() => setOpen(!open())}
+          aria-expanded={open()}
+          aria-label={i18n.t("knowledge.folderPage.showInside", { name: props.node.name })}
           class="shrink-0 text-text-tertiary"
         >
           <Show when={open()} fallback={<ChevronRight size={12} />}>
@@ -326,9 +332,18 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
           </Show>
         </button>
         <Folder size={12} class="shrink-0 text-text-tertiary" />
-        <span data-testid={`knowledge-tree-folder-${props.node.id}`} class="text-[13px] text-text">
+        <button
+          type="button"
+          data-testid={`knowledge-tree-folder-${props.node.id}`}
+          class="min-w-0 truncate text-left text-[13px] text-text"
+          onClick={() => {
+            // Unfiled and the personal-notes bucket are not folders: they only fold.
+            if (props.node.virtual || !props.onOpenFolder) setOpen(!open())
+            else props.onOpenFolder(props.node.id, props.node.name)
+          }}
+        >
           {props.node.name}
-        </span>
+        </button>
         <Show when={props.node.syncedSourceId}>
           <span
             data-testid={`knowledge-collection-synced-badge-${props.node.id}`}
@@ -349,6 +364,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
                 node={c}
                 depth={props.depth + 1}
                 onOpenDoc={props.onOpenDoc}
+                onOpenFolder={props.onOpenFolder}
                 onRename={props.onRename}
                 onContextMenu={props.onContextMenu}
                 onDocContextMenu={props.onDocContextMenu}

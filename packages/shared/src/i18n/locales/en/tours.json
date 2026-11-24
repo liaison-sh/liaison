@@ -252,7 +252,7 @@
       },
       "edit": {
         "title": "Edit a document",
-        "body": "Open a document you can edit, press Edit, change the text and save.",
+        "body": "Click in the text of a document you can edit and write. It saves by itself.",
         "text": " Reviewed today."
       },
       "share": {

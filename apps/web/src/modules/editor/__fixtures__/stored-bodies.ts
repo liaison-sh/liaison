@@ -49,3 +49,18 @@ export const STORED_BODIES: string[] = [...CONSTRUCTS.map(([, body]) => body), .
   0,
   200,
 )
+
+/** Each block of the `/` menu, as the page editor writes it once inserted and typed in. */
+export const SLASH_FIXTURES: Readonly<Record<string, string>> = {
+  text: "Plain words",
+  heading1: "# Big",
+  heading2: "## Medium",
+  heading3: "### Small",
+  taskList: "- [ ] Call the carrier",
+  bulletList: "- One",
+  orderedList: "1. First",
+  quote: "> Said",
+  codeBlock: "```\nconst a = 1\n```",
+  table: "|     |     |     |\n| --- | --- | --- |\n|     |     |     |\n|     |     |     |",
+  divider: "---",
+}

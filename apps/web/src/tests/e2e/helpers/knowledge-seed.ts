@@ -204,3 +204,47 @@ export async function searchKnowledge(
   const json = (await res.json()) as { data: KnowledgeSearchResult }
   return json.data
 }
+
+/** A 1x1 PNG, as bytes. */
+export const TINY_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+  "base64",
+)
+
+/** Store a file on a page through the files API (presign, upload, confirm); its id. */
+export async function uploadPageFileApi(
+  env: WorkerEnv,
+  token: string,
+  docId: string,
+  file: { name: string; mimeType: string; bytes: Uint8Array },
+): Promise<string> {
+  const auth = { authorization: `Bearer ${token}`, "content-type": "application/json" }
+  const presign = await fetch(`${env.serverUrl}/api/files/upload-url`, {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({
+      app: "knowledge",
+      entityType: "document",
+      entityId: docId,
+      filename: file.name,
+      mimeType: file.mimeType,
+      sizeBytes: file.bytes.byteLength,
+    }),
+  })
+  if (presign.status !== 200) throw new Error(`upload-url: HTTP ${presign.status}`)
+  const { data } = (await presign.json()) as { data: { uploadUrl: string; fileToken: string } }
+  const url = data.uploadUrl.startsWith("/") ? `${env.serverUrl}${data.uploadUrl}` : data.uploadUrl
+  const put = await fetch(url, {
+    method: "PUT",
+    headers: { "content-type": file.mimeType, authorization: `Bearer ${token}` },
+    body: new Blob([new Uint8Array(file.bytes)]),
+  })
+  if (!put.ok) throw new Error(`upload PUT: HTTP ${put.status}`)
+  const confirm = await fetch(`${env.serverUrl}/api/files/confirm`, {
+    method: "POST",
+    headers: auth,
+    body: JSON.stringify({ fileToken: data.fileToken, disposition: "inline" }),
+  })
+  if (confirm.status !== 200) throw new Error(`confirm: HTTP ${confirm.status}`)
+  return ((await confirm.json()) as { data: { id: string } }).data.id
+}

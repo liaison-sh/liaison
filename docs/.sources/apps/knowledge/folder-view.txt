@@ -1,0 +1,7 @@
+A folder's name opens its folder page; the arrow only shows what is inside -> apps/web/src/modules/knowledge/KnowledgeCollectionTree.tsx (onOpenFolder), KnowledgeSidebar.tsx (openFolder)
+The folder page tab -> apps/api/src/apps/knowledge/app.manifest.json (views.tabTypes.folder), apps/web/src/modules/knowledge/exports.ts (KnowledgeFolderView)
+In this folder lists what the server lists for the reader, each in its own tab -> apps/web/src/modules/knowledge/KnowledgeFolderView.tsx (inside)
+Nothing here yet and New page (private in a personal folder) -> apps/web/src/modules/knowledge/KnowledgeFolderView.tsx (newPage)
+The folders above are links -> apps/web/src/modules/knowledge/KnowledgeFolderView.tsx (breadcrumb, ancestorsOf)
+Write about this folder: typing makes the page once, then it saves itself -> apps/web/src/modules/knowledge/KnowledgeFolderView.tsx (startPage), KnowledgeDocumentView.tsx (DocumentInFolder.fresh)
+Labels -> packages/shared/src/i18n/locales/en/knowledge.json (folderPage.*)

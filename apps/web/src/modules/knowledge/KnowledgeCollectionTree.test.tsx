@@ -44,6 +44,50 @@ describe("KnowledgeCollectionTree", () => {
     expect(screen.getByTestId("knowledge-tree-doc-d1").textContent).toContain("RFC-001")
   })
 
+  it("a folder's name opens its folder page; the chevron only folds", () => {
+    const onOpenFolder = vi.fn()
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={tree as never}
+        onOpenDoc={() => {}}
+        onOpenFolder={onOpenFolder}
+      />
+    ))
+    fireEvent.click(screen.getByTestId("knowledge-tree-folder-c1"))
+    expect(onOpenFolder).toHaveBeenCalledWith("c1", "Eng")
+    expect(screen.queryByTestId("knowledge-tree-folder-c2")).not.toBeInTheDocument()
+    const chevron = screen.getByTestId("knowledge-tree-toggle-c1")
+    expect(chevron.getAttribute("aria-expanded")).toBe("false")
+    expect(chevron.getAttribute("aria-label")).toBe("Show what is inside Eng")
+    fireEvent.click(chevron)
+    expect(chevron.getAttribute("aria-expanded")).toBe("true")
+    expect(onOpenFolder).toHaveBeenCalledTimes(1)
+  })
+
+  it("Unfiled is not a folder: its name folds, it opens no folder page", () => {
+    const onOpenFolder = vi.fn()
+    const unfiled = [
+      {
+        id: "__unfiled__",
+        name: "Unfiled",
+        parentId: null,
+        virtual: true,
+        children: [],
+        documents: [{ id: "d9", title: "Loose" }],
+      },
+    ]
+    render(() => (
+      <KnowledgeCollectionTree
+        tree={unfiled as never}
+        onOpenDoc={() => {}}
+        onOpenFolder={onOpenFolder}
+      />
+    ))
+    fireEvent.click(screen.getByTestId("knowledge-tree-folder-__unfiled__"))
+    expect(onOpenFolder).not.toHaveBeenCalled()
+    expect(screen.getByTestId("knowledge-tree-doc-d9")).toBeInTheDocument()
+  })
+
   it("marks an externally-synced document leaf with a cloud badge (local docs unmarked)", () => {
     const synced = [
       {

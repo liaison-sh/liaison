@@ -13,7 +13,13 @@ Search matches the words a document contains. When someone asks in another langu
 
 1. Click **Knowledge** in the activity bar.
 2. Click **New document** in the sidebar.
-3. Give it a title and write the body. Click **Save**.
+3. Give it a title and write the body. There is no Save button: a page saves itself.
+
+A page you may edit is edited in place: click in its text and write. It is saved about a second after you stop typing, and at least every few seconds while you type. The header says **Saving…**, **Saved**, or **Not saved** with the reason. People who may only read a page see its text without an editor.
+
+Text that is not saved yet is kept in this browser, per person, page and tab, until the page has it. If you close the tab, reload, lose the connection or your session ends, the text is back when you open the page again. A page over 1,000,000 characters, or with a title over 240 characters, is not saved until it is shortened; a page moved to the trash or no longer yours to edit while you type keeps your text on screen with **Copy text**.
+
+When you sign out with text that could not be saved, Liaison first tries to save it, or to put it in the page's history. What is left is listed with **Copy** for each page: **Stay signed in** keeps it, **Sign out and discard** drops it.
 
 The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Use **New personal folder**, **New shared folder** or **New folder** to make folders, and **Move to** to file a document. Documents in no folder you can see are under **Unfiled**.
 
@@ -25,9 +31,27 @@ Moving a document, or taking it out of a folder, needs the right to edit it. A f
 
 You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
 
-If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
+If someone else saves the page while you write, or you do in another tab, Liaison tells you and keeps your text. Click **Choose what to keep**: **Keep mine** makes your text the page, **Take theirs** shows the other text, and **See both** compares them first. Whatever you choose, the other text stays in **Page history**. If you leave without choosing, the other text is shown and yours goes to **Page history**. If only the title changed elsewhere (someone renamed the page) and you did not edit the title, Liaison takes the new title and saves your text, without asking.
+
+### Add a block with /
+
+Type **/** at the start of a line, or after a space, to open **Add a block**: **Text**, **Heading 1** to **Heading 3**, **Checklist**, **Bulleted list**, **Numbered list**, **Quote**, **Code block**, **Table** and **Divider**, plus **Image**, **File** and **Link to a page** where the page takes them. Type a few letters to narrow the list (in your language: "todo" or "tâche" finds **Checklist**), move with the arrow keys and press Enter, or click one. Escape closes it and leaves the slash as text. A slash inside a word, an address or code never opens it. Every block is stored as plain markdown, so agents and other apps read the page as you see it.
+
+Tick a checklist item by clicking its box, or press Ctrl+Enter (Cmd+Enter on a Mac) with the caret in the item. The page saves the change like any other edit. People who may only read the page see which items are done and cannot tick them.
+
+## See and restore a page's history
+
+1. Open the page and click the **...** menu, then **Page history**.
+2. Pick a version on the right: who wrote it, when, and what changed since is marked.
+3. Click **Restore this version** to give the page that text back. The text it replaces stays in the history.
+
+Every change by a person or an agent is kept with its author and time. One person's edits in one tab within 10 minutes form one version; an agent's write is always its own. A page keeps its versions for a year and at most 200 of them, oldest first out, but each author's newest version and every text kept aside from a conflict are never removed to make room, and texts kept aside from a conflict are kept past a year too. Pages synced from another app have no history. Anyone who may edit a page sees its history.
 
 ## A folder's own page
+
+Click a folder's name in the sidebar to open it as a page; the arrow next to it only shows or hides what is inside. The folder page has the folder's own text, then **In this folder**: the folders and documents directly inside that you can open, each opening in its own tab. An empty folder says **Nothing here yet.**; **New page** makes a document in the folder (private, in a personal folder). The folders above it are links at the top.
+
+To write the folder's text, click under its name (**Write about this folder**) and type: the page is made as you start, and saves itself like any page.
 
 A folder can have a page of its own: text about what the folder holds, shown above the list of what is inside. The folder has no page until someone writes in it. The first text makes an ordinary document, titled as the folder and filed in it. In a shared folder everyone in the organization can edit it; in a personal folder only you can see it. After that you share it like any other document.
 
@@ -41,15 +65,29 @@ Agents read and update a folder's page like any other document.
 
 ## Images and files in a document
 
+### Add an image or a file
+
+- Paste an image or a file into the text, or drop it on the text. It is uploaded and shows where the cursor was.
+- Or click **Image** or **File** in the toolbar and pick one or more files.
+- To add a file without putting it in the text, click **Add a file** under **Attachments**. On a phone, open **Sources** first.
+
+An image shows as the picture. Any other file, an SVG image included, shows as a card with its name and size; click it to download the file. While a file uploads, the text shows **Uploading** and its name. A file that is too large, or that does not fit in your organization's storage, is not added, and Liaison says why.
+
+When you remove an image or a file from the text, the file stays listed under **Attachments**. It is deleted with the document.
+
+A pasted image from a website is never loaded: the text keeps its address and shows **Image from another site, not loaded**. Upload the image instead. An image or a file of another document you cannot open is not added when you paste it, and Liaison tells you.
+
 A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
 
 A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. Only images and files of other documents, and files you have just uploaded, are copied: an email or ticket attachment, a template's file or an encrypted file is never copied onto a document, and readers see it as not available. A copy made by a save that then failed, which no version of the document names, is removed by an hourly cleanup. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
 
 ## Links between documents
 
+To link a document while you write, type `@` or `[[` at the start of a word, then a few letters of its title. The list shows only documents you can read; pick one with the arrow keys and Enter, or click it. Escape closes the list. Pasting the address of a document from this workspace also makes a link. A link shows the document's title; click it to open the document.
+
 A link to another document stores that document's id, never its title. Each reader sees the title only if they can read the linked document; anyone else sees that they cannot open it, and receives no title, in the app or through the API. A link to a document in the archive shows nothing until it is restored. When the linked document is renamed, every link to it shows the new name.
 
-Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it.
+Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it: open **references** in the document's header to see them under **Linked from** and **Conversations**, and click one to open it.
 
 Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts). The titles are removed for good: if you go back to a release from before links held only the id, those links show as plain links without a title.
 

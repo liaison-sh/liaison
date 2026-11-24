@@ -14,6 +14,21 @@ import { Node } from "@tiptap/core"
 const DEST = String.raw`\((?:[^()\s\\]|\\.|\([^()\s]*\))*(?:\s+(?:"[^"]*"|'[^']*'))?\)`
 const IMAGE = new RegExp(String.raw`^!\[(?:\\.|[^\]\\])*\]${DEST}`)
 const EMPTY_LINK = new RegExp(String.raw`^\[\]${DEST}`)
+/** A file of this app's storage is its own node (liaison-file.ts), never this chip. */
+const FILE_REF = /^!\[(?:\\.|[^\]\\])*\]\(liaison-file:/
+/** A link to a page is its own node too (page-link.ts). */
+const PAGE_REF = /^\[\]\(knowledge:document:/
+
+/**
+ * A pasted web image kept as its source, never loaded: `![](address)` with the
+ * address escaped so it stays one destination. Only http(s) addresses are kept;
+ * a `data:`, `blob:` or other image is dropped.
+ */
+export function rawImageOfSrc(src: string | null | undefined): string | null {
+  if (!src || !/^https?:\/\//i.test(src.trim())) return null
+  const address = src.trim().replace(/[\s()<>\\]/g, (c) => encodeURIComponent(c))
+  return `![](${address})`
+}
 
 export type RawMarkdownKind = "image" | "link"
 
@@ -38,17 +53,29 @@ export const RawMarkdownInline = Node.create<{ labels: RawMarkdownLabels }>({
     level: "inline",
     start: (src) => src.search(/!\[|\[\]\(/),
     tokenize: (src) => {
+      if (FILE_REF.test(src) || PAGE_REF.test(src)) return undefined
       const match = IMAGE.exec(src) ?? EMPTY_LINK.exec(src)
       return match ? { type: "rawMarkdownInline", raw: match[0] } : undefined
     },
   },
   addAttributes() {
     return {
-      raw: { default: "", parseHTML: (el) => el.getAttribute("data-raw-markdown") ?? "" },
+      // Null when absent, so a rule's own attrs (a pasted image) are kept.
+      raw: { default: "", parseHTML: (el) => el.getAttribute("data-raw-markdown") },
     }
   },
   parseHTML() {
-    return [{ tag: "span[data-raw-markdown]" }]
+    return [
+      { tag: "span[data-raw-markdown]" },
+      // Any other pasted image (one of this app is a file node, tried first).
+      {
+        tag: "img[src]",
+        getAttrs: (el) => {
+          const raw = rawImageOfSrc((el as HTMLElement).getAttribute("src"))
+          return raw ? { raw } : false
+        },
+      },
+    ]
   },
   renderHTML({ node }) {
     const raw = String(node.attrs.raw ?? "")

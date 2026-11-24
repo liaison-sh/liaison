@@ -11,7 +11,22 @@ import { PageTextEditor } from "./PageTextEditor"
 import { RichEditor, type RichEditorHandle } from "./RichEditor"
 import { editorOf, typeInto } from "./test-helpers"
 
-afterEach(cleanup)
+// A text the editor cannot tie to its source block by block (none of the stored
+// fixtures is one: the switch is driven from here).
+const noSourceMap = vi.hoisted(() => ({ on: false }))
+vi.mock("./source-map", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./source-map")>()
+  return {
+    ...real,
+    mapSource: (...args: Parameters<typeof real.mapSource>) =>
+      noSourceMap.on ? null : real.mapSource(...args),
+  }
+})
+
+afterEach(() => {
+  noSourceMap.on = false
+  cleanup()
+})
 
 function mount(value: string) {
   const onChange = vi.fn()
@@ -142,13 +157,22 @@ describe("a text from elsewhere", () => {
 
 describe("a body the editor cannot write back", () => {
   it("opens in the source editor, which keeps it byte for byte", () => {
-    // A checklist nested in a checklist: the editor would write it otherwise.
+    noSourceMap.on = true
     const body = "- [ ] a\n  - [x] b"
     const onChange = vi.fn()
     render(() => <PageTextEditor value={body} onChange={onChange} data-testid="page" />)
     const area = screen.getByTestId("page-source") as HTMLTextAreaElement
     expect(area.value).toBe(body)
     expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it("a checklist opens in the rich editor, so its boxes tick in place", () => {
+    for (const body of ["- [ ] Call the carrier", "- [ ] a\n- [x] b", "Intro\n\n- [ ] a\n\nEnd"]) {
+      const { handle } = mount(body)
+      expect(handle.roundTrips, body).toBe(true)
+      expect(handle.markdown()).toBe(body)
+      cleanup()
+    }
   })
 
   it("a body it can write back opens in the rich editor", () => {

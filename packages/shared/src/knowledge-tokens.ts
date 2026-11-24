@@ -35,7 +35,48 @@ export function pageToken(id: string): string {
 }
 
 const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/
-const CODE_SPAN_RE = /(`+)(?:[\s\S]*?[^`])?\1(?!`)/g
+
+/**
+ * The code spans of a stretch of prose, as [start, end) offsets: a run of N
+ * backticks opens one, and the next run of exactly N backticks closes it; a run
+ * with no closer is plain text. One pass over the backtick runs, then each
+ * length's runs are walked once (a regular expression for this backtracks
+ * polynomially on long runs of backticks).
+ */
+function codeSpans(text: string): Array<[number, number]> {
+  const runs: Array<{ at: number; len: number }> = []
+  for (let i = 0; i < text.length; ) {
+    if (text.charCodeAt(i) !== 96) {
+      i++
+      continue
+    }
+    let j = i
+    while (j < text.length && text.charCodeAt(j) === 96) j++
+    runs.push({ at: i, len: j - i })
+    i = j
+  }
+  const byLen = new Map<number, number[]>()
+  runs.forEach((r, k) => {
+    const list = byLen.get(r.len)
+    if (list) list.push(k)
+    else byLen.set(r.len, [k])
+  })
+  const next = new Map<number, number>()
+  const spans: Array<[number, number]> = []
+  for (let k = 0; k < runs.length; k++) {
+    const run = runs[k] as { at: number; len: number }
+    const list = byLen.get(run.len) as number[]
+    let p = next.get(run.len) ?? 0
+    while (p < list.length && (list[p] as number) <= k) p++
+    next.set(run.len, p)
+    if (p >= list.length) continue
+    const close = list[p] as number
+    const closer = runs[close] as { at: number; len: number }
+    spans.push([run.at, closer.at + closer.len])
+    k = close
+  }
+  return spans
+}
 
 /**
  * Apply `fn` to every stretch of text outside fenced blocks and code spans, and
@@ -50,10 +91,9 @@ function mapOutsideCode(md: string, fn: (text: string) => string): string {
     if (!prose) return
     let last = 0
     let mapped = ""
-    for (const m of prose.matchAll(CODE_SPAN_RE)) {
-      const at = m.index ?? 0
-      mapped += fn(prose.slice(last, at)) + m[0]
-      last = at + m[0].length
+    for (const [at, end] of codeSpans(prose)) {
+      mapped += fn(prose.slice(last, at)) + prose.slice(at, end)
+      last = end
     }
     mapped += fn(prose.slice(last))
     out += mapped

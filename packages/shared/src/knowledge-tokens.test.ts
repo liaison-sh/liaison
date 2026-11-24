@@ -81,4 +81,28 @@ describe("knowledge tokens", () => {
       plainTextOf(`Hello @[Secret](knowledge:document:${A}) and ![](liaison-file:${F}) bye`),
     ).toBe("Hello  and  bye")
   })
+
+  it("a code span closes only on a run of the same length; an unclosed run is text", () => {
+    const link = `@[T](knowledge:document:${A})`
+    // Two backticks hold a single one: the link inside is code.
+    expect(pageIdsOf(`\`\` a \` ${link} \`\``)).toEqual([])
+    // One backtick is not closed by two: the link is read.
+    expect(pageIdsOf(`\` ${link} \`\``)).toEqual([A])
+    // No closer at all: the run is plain text.
+    expect(normalizePageRefs(`x \`\`\` ${link}`)).toBe(`x \`\`\` ${pageToken(A)}`)
+  })
+
+  it("long runs of backticks are read in linear time", () => {
+    const link = `[](knowledge:document:${A})`
+    for (const body of [
+      "`".repeat(200_000) + link,
+      `\`${"``".repeat(100_000)}${link}`,
+      "`a".repeat(100_000) + link,
+    ]) {
+      const started = performance.now()
+      expect(pageIdsOf(body).length).toBeLessThanOrEqual(1)
+      normalizePageRefs(body)
+      expect(performance.now() - started).toBeLessThan(1_000)
+    }
+  })
 })

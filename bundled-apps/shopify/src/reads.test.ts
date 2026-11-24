@@ -2980,11 +2980,11 @@ describe("discounts_search: automatic discounts are listed too", () => {
               id: "gid://shopify/DiscountAutomaticNode/7",
               automaticDiscount: {
                 __typename: "DiscountAutomaticBasic",
-                title: "Black Friday Erae Sound -30%",
+                title: "Black Friday Acme Sound -30%",
                 status: "ACTIVE",
                 startsAt: "2026-11-20T00:00:00Z",
                 endsAt: "2026-12-01T00:00:00Z",
-                summary: "30% off Erae Sound",
+                summary: "30% off Acme Sound",
               },
             },
           },
@@ -3002,9 +3002,9 @@ describe("discounts_search: automatic discounts are listed too", () => {
     ).toEqual(["DiscountsSearch", "AutomaticDiscountsSearch"])
     expect(out.results.map((r) => [r.id, r.title, r.attributes.method])).toEqual([
       ["gid://shopify/DiscountCodeNode/1", "WELCOME10", "code"],
-      ["gid://shopify/DiscountAutomaticNode/7", "Black Friday Erae Sound -30%", "automatic"],
+      ["gid://shopify/DiscountAutomaticNode/7", "Black Friday Acme Sound -30%", "automatic"],
     ])
-    expect(out.results[1]!.attributes.summary).toBe("30% off Erae Sound")
+    expect(out.results[1]!.attributes.summary).toBe("30% off Acme Sound")
     expect(out.results[1]!.attributes.kind).toBe("DiscountAutomaticBasic")
     expect(out.nextCursor).toBe("c1")
     expect(out.automaticNextCursor).toBe("a1")
@@ -3076,7 +3076,7 @@ describe("discounts_get: one discount in full", () => {
                   value: { __typename: "DiscountPercentage", percentage: 0.2 },
                   items: {
                     __typename: "DiscountProducts",
-                    products: { nodes: [{ id: "gid://shopify/Product/11", title: "Erae Sound" }] },
+                    products: { nodes: [{ id: "gid://shopify/Product/11", title: "Acme Sound" }] },
                     productVariants: {
                       nodes: [
                         {
@@ -3110,7 +3110,7 @@ describe("discounts_get: one discount in full", () => {
     })
     expect(out.attributes.appliesTo).toEqual({
       all: false,
-      products: [{ id: "gid://shopify/Product/11", title: "Erae Sound" }],
+      products: [{ id: "gid://shopify/Product/11", title: "Acme Sound" }],
       variants: [{ id: "gid://shopify/ProductVariant/5", title: "Black", productTitle: "Cover" }],
       collections: [],
     })
@@ -3123,7 +3123,7 @@ describe("discounts_get: one discount in full", () => {
         {
           data: {
             nodes: [
-              { id: "gid://shopify/Product/11", __typename: "Product", title: "Erae Sound" },
+              { id: "gid://shopify/Product/11", __typename: "Product", title: "Acme Sound" },
               {
                 id: "gid://shopify/ProductVariant/5",
                 __typename: "ProductVariant",
@@ -3155,7 +3155,7 @@ describe("discounts_get: one discount in full", () => {
       "gid://shopify/ProductVariant/5",
     ])
     expect(out.proposedTitles).toEqual({
-      "gid://shopify/Product/11": "Erae Sound",
+      "gid://shopify/Product/11": "Acme Sound",
       "gid://shopify/ProductVariant/5": "Cover: Black",
     })
   })

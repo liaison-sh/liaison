@@ -616,7 +616,7 @@ const AUTOMATIC_DELETE = `
   }
 `
 
-/** "Erae Sound" for a gid the card context titled, else the gid itself (never a guessed name). */
+/** "Acme Sound" for a gid the card context titled, else the gid itself (never a guessed name). */
 function scopeLabel(gid: unknown, titles: Record<string, string>): string {
   const g = String(gid)
   return titles[g] ?? g

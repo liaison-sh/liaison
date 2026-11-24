@@ -1074,6 +1074,8 @@ export const manifestFileParentRegistry = createTypedRegistry<
     writeScope: string
     /** Delete: the uploader, or a holder of this scope. Absent: writeScope alone. */
     deleteScope?: string
+    /** A function of the parent's schema: may the caller change this row's files. */
+    canWrite?: string
     /** Set when the parent table is immutable with a legal retention period. */
     retention?: { retentionYears: number; anchor: string }
   }

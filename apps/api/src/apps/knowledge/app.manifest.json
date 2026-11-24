@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -705,7 +705,8 @@
         "schemaRef": "app_knowledge",
         "joinOn": "id",
         "readScope": "knowledge:attachments:download",
-        "writeScope": "knowledge:documents:update"
+        "writeScope": "knowledge:documents:update",
+        "canWrite": "can_edit_document"
       }
     },
     "source_link": {
@@ -1104,7 +1105,7 @@
       }
     },
     "update": {
-      "description": "Update a local Knowledge document with revision check The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
+      "description": "Update a local Knowledge document with revision check. When you rewrite the body, keep every `![](liaison-file:…)` and `[](knowledge:document:…)` exactly as `get` returned them: they are the page's images, files and page links (`get` lists the files in `files`). A file token of another page is copied onto this page and the answer's `fileIdMap` gives the new ids. The result includes a `mentionTag` (@[Title](knowledge:document:<id>)) — paste it verbatim in your confirmation so the updated doc is one click away.",
       "searchKeywords": ["modifier", "edit", "doc", "document", "mettre"],
       "requiredScopes": ["knowledge:documents:update"],
       "writesToTable": "app_knowledge.documents",

@@ -1,0 +1,6 @@
+{
+  "privileged": {
+    "apps/knowledge/body-tokens.ts": "A save copies the files of other pages its text names onto the page: the source is read and the destination checked under the writer's row security (attachFileToParent), and only the copy's quota check and row insert run privileged, in the writer's transaction when its login can elevate, else on the privileged pool (privilegedFrom).",
+    "apps/knowledge/page-file-sweep.ts": "The job that removes file copies made for a page whose create rolled back. It runs for no person: a system read of the orgs with such copies, then per org one transaction pinned to that org that deletes them and queues their byte deletion; it reads no title, text or file content."
+  }
+}

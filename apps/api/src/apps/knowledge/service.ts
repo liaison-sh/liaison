@@ -9,6 +9,7 @@ import {
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import { adoptForeignFiles, adoptionFields, type FileAdoption } from "~/apps/knowledge/body-tokens"
 import {
   markEventPending,
   stampEventNow,
@@ -227,6 +228,12 @@ export interface KnowledgeDocumentRow {
   orgAccess: "none" | "viewer" | "editor"
   editScope: string | null
 }
+
+/**
+ * A page as a create or update leaves it, with what the save did to the files its
+ * text names when it named another page's file (body-tokens.ts).
+ */
+export type KnowledgeSavedDocument = KnowledgeDocumentRow & Partial<FileAdoption>
 
 function toIso(value: Date | string | null): string | null {
   if (value === null) return null
@@ -988,7 +995,7 @@ export async function createKnowledgeDocument(
   input: KnowledgeCreateDocument,
   actor: KnowledgeActor,
   requiredScopes: string[],
-): Promise<KnowledgeDocumentRow> {
+): Promise<KnowledgeSavedDocument> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
   if (!scope(actor, "knowledge:documents:create") && !scope(actor, "knowledge:documents:admin")) {
     forbidden("Forbidden to create Knowledge document")
@@ -1102,6 +1109,13 @@ export async function createKnowledgeDocument(
   // freshly-created doc) — recomputeDocumentAcl derives exactly that from the
   // row just inserted, keeping one implementation for every write point.
   await recomputeDocumentAcl(tx, id)
+  // Files of other pages the text names become this page's own (body-tokens.ts).
+  const adopted = await adoptForeignFiles(tx, id, parsed.body ?? "", actor)
+  if (adopted.body !== (parsed.body ?? "")) {
+    await tx.execute(drizzleSql`
+      UPDATE ${knowledgeRel("documents")} SET body = ${adopted.body}
+       WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid`)
+  }
   await tx.queueEvent({
     app: "knowledge",
     entity: "document",
@@ -1153,7 +1167,7 @@ export async function createKnowledgeDocument(
 
   const row = await loadKnowledgeDocument(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge document not found after insert")
-  return row
+  return { ...row, ...adoptionFields(adopted) }
 }
 
 /** How an update reaches history and events; set by routes, never by a request body. */
@@ -1175,9 +1189,10 @@ export async function updateKnowledgeDocument(
   actor: KnowledgeActor,
   requiredScopes: string[],
   opts: KnowledgeUpdateOptions = {},
-): Promise<KnowledgeDocumentRow> {
+): Promise<KnowledgeSavedDocument> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
-  const parsed = validateUpdateInput(input)
+  // A copy: the body is rewritten below when it names another page's file.
+  const parsed = { ...validateUpdateInput(input) }
   // Run inside the caller-provided RLS transaction directly (see
   // createKnowledgeDocument for rationale).
   const row = await loadKnowledgeDocument(tx, parsed.id, actor)
@@ -1198,6 +1213,15 @@ export async function updateKnowledgeDocument(
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
 
+  // Files of other pages the new text names become this page's own, before the text
+  // is compared and written (body-tokens.ts).
+  let adoption: FileAdoption = { fileIdMap: {}, notCopied: [] }
+  if (parsed.body !== undefined) {
+    const adopted = await adoptForeignFiles(tx, row.id, parsed.body, actor)
+    parsed.body = adopted.body
+    adoption = adopted
+  }
+
   // An autosave of the text already stored (an editor opened and closed, a retry
   // whose first answer was lost) writes nothing: no revision, no version, no event.
   if (
@@ -1205,7 +1229,7 @@ export async function updateKnowledgeDocument(
     (parsed.title === undefined || parsed.title === row.title) &&
     (parsed.body === undefined || parsed.body === row.body)
   ) {
-    return row
+    return { ...row, ...adoptionFields(adoption) }
   }
   const eventOwed = opts.coalesceEvents === true && (await updateEventIsRecent(tx, row.id))
 
@@ -1390,7 +1414,7 @@ export async function updateKnowledgeDocument(
 
   const updated = await loadKnowledgeDocument(tx, parsed.id, actor)
   if (!updated) throw new KnowledgeError("NOT_FOUND", "Knowledge document missing after update")
-  return updated
+  return { ...updated, ...adoptionFields(adoption) }
 }
 
 /** The reviewed fields this patch gives a value different from the row's. */

@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { createHash } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
+import { registerKnowledgeSearchEnrichment } from "~/apps/knowledge/search-enrichment"
 import {
   registerMailFragmentConsumer,
   registerMailSearchEnrichment,
@@ -519,6 +520,7 @@ export async function runPhase10Boot(): Promise<void> {
   // inside buildSearchDocument at upsert time, not re-checked later).
   registerTicketsSearchEnrichment()
   registerMailSearchEnrichment()
+  registerKnowledgeSearchEnrichment()
   // Register the rebuild worker BEFORE drift detection: drift may enqueue
   // `search-reindex-full`, which requires the handler to already exist.
   registerIndexerConsumer()

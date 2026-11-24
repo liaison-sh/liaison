@@ -122,3 +122,18 @@ export function fileIdsOf(md: string): string[] {
 export function plainTextOf(md: string): string {
   return mapOutsideCode(md, (text) => text.replace(PAGE_REF_RE, "").replace(FILE_REF_RE, ""))
 }
+
+/**
+ * The body with the file ids `map` names (any case) replaced by their new ids, in
+ * every file reference outside code. Every other byte, an alt text included, is kept.
+ */
+export function replaceFileIds(md: string, map: Readonly<Record<string, string>>): string {
+  const to = new Map(Object.entries(map).map(([from, id]) => [from.toLowerCase(), id]))
+  if (to.size === 0 || !md.includes("liaison-file:")) return md
+  return mapOutsideCode(md, (text) =>
+    text.replace(FILE_REF_RE, (whole, id: string) => {
+      const next = to.get(id.toLowerCase())
+      return next ? `${whole.slice(0, whole.length - id.length - 1)}${next})` : whole
+    }),
+  )
+}

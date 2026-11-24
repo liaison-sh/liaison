@@ -1153,7 +1153,10 @@ export async function createKnowledgeDocument(
   const adopted = await adoptForeignFiles(tx, id, parsed.body ?? "", actor)
   if (adopted.body !== (parsed.body ?? "")) {
     await tx.execute(drizzleSql`
-      UPDATE ${knowledgeRel("documents")} SET body = ${adopted.body}
+      UPDATE ${knowledgeRel("documents")}
+         SET body = ${adopted.body},
+             required_scopes = ARRAY(SELECT DISTINCT s
+               FROM unnest(required_scopes || ${textArraySql(requiredScopes)}) AS s ORDER BY s)
        WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid`)
   }
   await tx.queueEvent({

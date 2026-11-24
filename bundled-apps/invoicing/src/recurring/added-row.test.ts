@@ -145,6 +145,10 @@ describe("approving a run", () => {
       (await cardItems(h.ctx, runId)).items.find((i) => i.document_id === added.draft_id)
         ?.content_hash
     const seen = new Set([await hash()])
+    await h.db.update("documents", added.draft_id, {
+      external_refs: { ...(doc(h, added.draft_id).external_refs as object), tax_country: "US" },
+    })
+    seen.add(await hash())
     for (const patch of [
       { operation_category: "mixed" },
       { service_period_end: "2026-12-31" },
@@ -155,7 +159,7 @@ describe("approving a run", () => {
     }
     await h.db.update("issuer_profiles", ISSUER, { country: "GB" })
     seen.add(await hash())
-    expect(seen.size).toBe(5)
+    expect(seen.size).toBe(6)
   })
 
   test("again, by someone else, the run and its row say the last approver", async () => {

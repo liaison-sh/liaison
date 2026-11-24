@@ -122,6 +122,44 @@ describe("a run past its last issue day", () => {
     expect([issued.issued, issued.failed]).toEqual([0, 0])
   })
 
+  test("issues nothing in the hours before it is marked late either", async () => {
+    const r = await run()
+    await recurringRunIssue(r.h.ctx, { run_id: r.runId })
+    const calls: string[] = []
+    r.h.ctx = {
+      ...r.h.ctx,
+      executeTool: async (t: string) => {
+        calls.push(t)
+        return { status: "error", error: { code: "unavailable", message: "no tool" } }
+      },
+    } as never
+    await r.at("2026-12-01", () => recurringIssueJob(r.h.ctx))
+    expect(calls).toEqual([])
+    expect(r.items().map((i) => i.state)).toEqual(["approved", "approved"])
+  })
+
+  test("whose card was rejected asks again from its job when a person changed a row", async () => {
+    const r = await run()
+    await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
+    r.status.set("approval-2", "denied")
+    const ask = r.h.ctx.requestApproval
+    // A person's own click cannot ask for a decision: the card is owed to the job.
+    r.h.ctx = { ...r.h.ctx, requestApproval: async () => ({ approval_id: null }) } as never
+    const draft = String(r.items()[0]?.document_id)
+    await r.h.db.update("documents", draft, { updated_at: "2026-12-02T09:00:00Z" })
+    await r.at("2026-12-02", () =>
+      draftsUpdateTool(r.h.ctx as never, {
+        draft_id: draft,
+        patch: { notes: "Late, sorry" },
+        if_unchanged_since: "2026-12-02T09:00:00Z",
+      }),
+    )
+    expect(r.h.approvals).toHaveLength(2)
+    r.h.ctx = { ...r.h.ctx, requestApproval: ask } as never
+    await r.at("2026-12-02", () => recurringIssueJob(r.h.ctx))
+    expect(r.h.approvals).toHaveLength(3)
+  })
+
   test("is approved on its late card: its rows may issue then, and it is not late again at once", async () => {
     const r = await run()
     await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))

@@ -81,6 +81,21 @@ describe("hours of a month worked after its invoice", () => {
     expect(p.late[0]?.overage_minutes).toBe(0)
   })
 
+  test("of an invoice credited in full by a credit note are free again", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 30 * H)
+    await r.invoice("2026-11", 0, [{ month: "2026-10", minutes: 9 * H }], { id: "nov-doc" })
+    await r.h.db.insert("documents", {
+      type: "credit_note",
+      status: "issued",
+      original_document_id: "nov-doc",
+      grand_total_minor: "-100000",
+      lifecycle_log: [],
+    })
+    const p = await r.plan("2026-12", 0, [{ month: "2026-10", minutes: 9 * H }])
+    expect(p.late[0]?.overage_minutes).toBe(0)
+  })
+
   test("of a month to come, or of the card's own month, are not late hours", async () => {
     const r = retainer()
     const p = await r.plan("2026-11", 0, [

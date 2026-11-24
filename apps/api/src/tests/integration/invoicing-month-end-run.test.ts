@@ -662,14 +662,12 @@ describe("the month-end run on the real kernel", () => {
   const approve = (requestId: unknown, by: UserContext = actor) =>
     decideApproval({ orgId: ORG, requestId: String(requestId), actor: by, decision: "approve" })
 
-  const cardItemsOf = async (requestId: unknown) =>
-    (
-      (
-        await sql<
-          Row[]
-        >`SELECT current_payload AS p FROM kernel.approval_requests WHERE id = ${String(requestId)}`
-      )[0]?.p as { items: Array<{ document_id: string; total_minor: string }> }
-    ).items
+  const cardItemsOf = async (requestId: unknown) => {
+    const [row] = await sql<
+      Row[]
+    >`SELECT current_payload AS p FROM kernel.approval_requests WHERE id = ${String(requestId)}`
+    return (row as { p: { items: Array<{ document_id: string; total_minor: string }> } }).p.items
+  }
 
   it("a row added by hand issues exactly what its card showed, and the run says who approved it last", async () => {
     const second = await minimal.person(ORG, { role: "admin" })

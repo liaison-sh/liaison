@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.10",
+  "version": "1.0.11",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -81,7 +81,12 @@
         "aclUserIds",
         "aclRoleIds",
         "orgWide",
-        "requiredScopes"
+        "requiredScopes",
+        "trashedAt",
+        "trashedBy",
+        "updateEventAt",
+        "updateEventPendingAt",
+        "linksIndexedAt"
       ],
       "fields": {
         "title": "string",
@@ -176,6 +181,13 @@
           "type": "string",
           "required": false,
           "description": "Import dedup key `<source>:<key>` (modules/imports). Column and partial unique index added by migration 0208; NULL for rows the app writes itself."
+        },
+        "trashedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who moved the page to Trash. Added by migration 0310; only the app's own SQL writes it."
         }
       },
       "constraints": {
@@ -205,6 +217,40 @@
           "where": "archived_at IS NULL"
         }
       ]
+    },
+    "document_versions": {
+      "migrationOwnedColumns": ["requiredScopes"],
+      "fields": {
+        "documentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" }
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["baseline", "edit", "agent", "import", "restore", "unapplied"],
+          "description": "Page history (migration 0310 creates the table and its row security: the edit right on the page)."
+        },
+        "title": "string",
+        "body": "text",
+        "bodyMd5": "string",
+        "revision": "integer?",
+        "baseRevision": "integer?",
+        "sessionId": "uuid?",
+        "authorType": { "type": "string", "enum": ["user", "agent", "system"] },
+        "authorId": { "type": "uuid", "required": false, "userRef": true, "onErase": "anonymize" },
+        "agentId": "uuid?",
+        "startedAt": "date"
+      }
+    },
+    "document_links": {
+      "fields": {
+        "sourceDocumentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" },
+          "description": "Which page links to which (migration 0310: primary key on both ids, no foreign key on the target)."
+        },
+        "targetDocumentId": "uuid"
+      }
     },
     "source_identities": {
       "fields": {
@@ -342,7 +388,7 @@
       ]
     },
     "collections": {
-      "migrationOwnedColumns": ["previousOwnerUserId"],
+      "migrationOwnedColumns": ["previousOwnerUserId", "indexDocumentId"],
       "fields": {
         "parentCollectionId": {
           "type": "uuid",

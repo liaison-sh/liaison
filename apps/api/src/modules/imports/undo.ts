@@ -88,7 +88,12 @@ const TEXT_LINK_CHILDREN: Record<string, Array<{ table: string; column: string }
 }
 
 /** Child tables that hold derived state, not work: viewing a task seats the viewer. */
-const NOT_WORK_CHILDREN = new Set(["kernel.thread_participants", "kernel.user_thread_state"])
+const NOT_WORK_CHILDREN = new Set([
+  "kernel.thread_participants",
+  "kernel.user_thread_state",
+  // A page's links are derived from its body.
+  "app_knowledge.document_links",
+])
 
 /**
  * Person columns that carry no foreign key yet name a user (or a contact).

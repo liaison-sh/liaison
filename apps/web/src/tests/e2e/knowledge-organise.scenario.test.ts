@@ -2,7 +2,8 @@
 // Knowledge, organise: one member makes, renames, moves and deletes folders and
 // a page from the tree's own rows; a second member's tree, in another browser,
 // follows each change within 3 s and never shows the first one's personal
-// folder. Then the same menu at phone width.
+// folder. A menu item never opens its page; moves across Personal and Shared
+// ask first (edges 10 and 11). Then the same menu at phone width.
 import type { Page } from "@playwright/test"
 import { expect, loginAs, test } from "./fixtures/test"
 
@@ -34,6 +35,13 @@ async function newFolder(page: Page, section: "personal" | "shared", name: strin
   await input.fill(name)
   await page.getByTestId("knowledge-folder-dialog-confirm").click()
   await expect(input).toHaveCount(0)
+}
+
+/** Open a folder (or bucket) of one person's tree, if it is not open yet. */
+async function openFolder(page: Page, id: string) {
+  const toggle = page.getByTestId(`knowledge-tree-toggle-${id}`)
+  await expect(toggle).toBeVisible({ timeout: FOLLOW_MS })
+  if ((await toggle.getAttribute("aria-expanded")) !== "true") await toggle.click()
 }
 
 async function rowMenu(page: Page, triggerTestId: string, item: string) {
@@ -143,6 +151,34 @@ test("organise: a member's folder and page changes reach the other member's tree
       timeout: FOLLOW_MS,
     })
 
+    // A menu item never opens its page: with the Knowledge tab in front, Copy
+    // link leaves it there.
+    await page.getByTestId("tabstrip").getByText("Knowledge", { exact: true }).click()
+    await expect(page.getByTestId("knowledge-document-view")).toBeHidden()
+    await rowMenu(page, `knowledge-tree-doc-menu-${docId}`, "copy-link")
+    await expect(page.getByTestId("knowledge-tree-menu-copy-link")).toHaveCount(0)
+    await page.waitForTimeout(500)
+    await expect(page.getByTestId("knowledge-document-view")).toBeHidden()
+
+    // Edge 10: into Amina's personal folder. Asked first, nothing sent until she
+    // confirms; the page keeps its sharing, so Lucas then finds it in his Unfiled.
+    moves.length = 0
+    const personalId = await folderId(page, personalName)
+    await rowMenu(page, `knowledge-tree-doc-menu-${docId}`, "move")
+    await page.getByTestId("knowledge-move-search").fill(personalName)
+    await page.getByTestId(`knowledge-move-to-${personalId}`).click()
+    await expect(page.getByTestId("knowledge-move-audience")).toBeVisible()
+    expect(moves).toEqual([])
+    await page.getByTestId("knowledge-move-confirm").click()
+    await expect.poll(() => moves).toEqual([`POST /api/knowledge/documents/${docId}/move`])
+    await expect(lucas.getByTestId(`knowledge-tree-doc-${docId}`)).toHaveCount(0, {
+      timeout: FOLLOW_MS,
+    })
+    await openFolder(lucas, "__unfiled__")
+    await expect(lucas.getByTestId(`knowledge-tree-doc-${docId}`)).toBeVisible({
+      timeout: FOLLOW_MS,
+    })
+
     // Delete the renamed folder: it leaves Lucas's tree.
     await rowMenu(page, `knowledge-tree-menu-${policiesId}`, "delete")
     await expect(page.getByTestId("knowledge-folder-delete-where")).toBeVisible()
@@ -157,6 +193,18 @@ test("organise: a member's folder and page changes reach the other member's tree
     await openKnowledge(lucas)
     await expect(folderLabel(lucas, handbook)).toBeVisible()
     await expect(folderLabel(lucas, personalName)).toHaveCount(0)
+
+    // Edge 11: another personal folder moved to Shared's top level. Asked first,
+    // saying everyone will see it; only then does Lucas see it.
+    const later = `Amina later ${suffix}`
+    await newFolder(page, "personal", later)
+    const laterId = await folderId(page, later)
+    await rowMenu(page, `knowledge-tree-menu-${laterId}`, "move")
+    await page.getByTestId("knowledge-move-to-shared-root").click()
+    await expect(page.getByTestId("knowledge-move-audience")).toBeVisible()
+    await expect(folderLabel(lucas, later)).toHaveCount(0)
+    await page.getByTestId("knowledge-move-confirm").click()
+    await expect(folderLabel(lucas, later)).toBeVisible({ timeout: FOLLOW_MS })
   } finally {
     await lucasContext.close()
   }

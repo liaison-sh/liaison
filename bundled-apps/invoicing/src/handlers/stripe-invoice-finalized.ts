@@ -141,8 +141,9 @@ export async function documentByRef(
 export async function cardStreamFor(
   ctx: Pick<MutationsCtx, "db">,
   at: string,
+  streams?: Row[],
 ): Promise<{ row: Row; issuer: StreamIssuer } | null> {
-  const rows = (await streamRows(ctx)).filter((r) => r.stripe_connected === true)
+  const rows = (streams ?? (await streamRows(ctx))).filter((r) => r.stripe_connected === true)
   if (rows.length === 0) return null
   const named = rows.map((row) => ({ row, issuer: issuerAt(row, at) ?? "undecided" }))
   // Several issuer profiles: the one that issues decides; none issues, the first undecided waits.
@@ -368,6 +369,8 @@ export interface FinalizedOptions {
   byPerson?: boolean
   /** The park that person decided on. */
   park?: DeferredRow
+  /** The Stripe invoice a clicked payment pays: that invoice is issued whole, never the payment. */
+  paysInvoice?: string
 }
 
 /** The names a payload gives its sale. */
@@ -571,6 +574,15 @@ export async function onStripeInvoiceFinalized(
     await markIssuedBy(ctx, p.stripe_invoice_id, "before_connection")
     return drop("before_connection")
   }
+
+  // 3b. A payment of a Stripe invoice is never invoiced by itself: it may be a part of it.
+  if (opts.paysInvoice)
+    return refuseClick(
+      ctx,
+      opts.park,
+      "pays_stripe_invoice",
+      `it pays the Stripe invoice ${opts.paysInvoice}, which is invoiced as a whole: issue that one (stripeInvoiceId) once it waits here, or link this payment to the invoice already made for it`,
+    )
 
   // 4. Totals.
   const total = toBigInt(p.total_minor)

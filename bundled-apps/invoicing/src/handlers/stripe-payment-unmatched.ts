@@ -415,6 +415,9 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
   const outcome: FinalizedResult = await onStripeInvoiceFinalized(invoice, ctx, {
     byPerson: true,
     park: row,
+    ...(id.startsWith("in_") || !invoice.stripe_invoice_id.startsWith("in_")
+      ? {}
+      : { paysInvoice: invoice.stripe_invoice_id }),
   })
   const names = [id, ...saleNames(invoice)]
   if (outcome.status === "ok") {

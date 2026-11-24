@@ -248,10 +248,18 @@ async function stateOf(
 }
 const READY_WORDS = "Issue it"
 
+/** Whether Stripe issues it now: a click would refuse it, so nothing offers one. */
+async function issuedByStripe(ctx: StripeCtx, p: PersonPark, streams: Row[]): Promise<boolean> {
+  const at = isoOf(p.finalized_at) ?? new Date().toISOString()
+  const stream = await cardStreamFor(ctx, at, streams)
+  return stream?.issuer === "stripe"
+}
+
 /** Home, for every invoice only a person issues. Nothing is issued. */
 async function sayWhatWaits(ctx: StripeCtx, persons: PersonPark[]): Promise<void> {
   const taken = await documentIdsByKey(ctx, [...new Set(persons.flatMap((p) => p.keys))])
   const state = persons.length > 0 ? await waitingState(ctx, persons) : null
+  const streams = persons.length > 0 ? await streamRows(ctx) : []
   const waiting: PersonInvoice[] = []
   let dropped = 0
   for (const p of persons) {
@@ -260,7 +268,9 @@ async function sayWhatWaits(ctx: StripeCtx, persons: PersonPark[]): Promise<void
       ? "already_issued"
       : status !== undefined && !isInvoiceable({ status })
         ? NOT_OPEN_IN_STRIPE
-        : null
+        : (await issuedByStripe(ctx, p, streams))
+          ? "issued_by_stripe"
+          : null
     if (gone) {
       if (dropped < TOUCH_MAX) await dropPerson(ctx, p.row, gone)
       dropped += 1

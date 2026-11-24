@@ -32,6 +32,7 @@ One credit note per succeeded refund, pending waits, failed alerts -> bundled-ap
 Credit note split over the invoice's rates with a rounding line -> bundled-apps/invoicing/src/handlers/shopify-refund-created.ts (floorNetOfIncludedTax)
 Mode B makes no credit note -> bundled-apps/invoicing/src/handlers/stripe-refund-created.ts (onStripeRefundCreated)
 Unmatched payment waits in the queue with attention -> bundled-apps/invoicing/src/handlers/stripe-payment-unmatched.ts (onStripePaymentUnmatched) ; bundled-apps/invoicing/src/handlers/stripe-payment-unmatched.ts (parkToDecide)
+A payment of a Stripe invoice is refused by name, and nothing is issued for it -> bundled-apps/invoicing/src/handlers/stripe-payment-unmatched.ts (invoiceFromStripePayment) ; bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (paysInvoice)
 invoice_from_stripe_payment and payment_link_to_invoice always wait for a person -> bundled-apps/invoicing/app.manifest.json (tools.invoice_from_stripe_payment) ; bundled-apps/invoicing/app.manifest.json (tools.payment_link_to_invoice)
 Safety job every 10 minutes hands missed events to the same handlers -> bundled-apps/invoicing/src/handlers/reconcile-stripe-payments.ts (reconcileStripePayments)
 First run draft bills the schedule's company: name, contact billing address, recorded VAT -> bundled-apps/invoicing/src/recurring/draft-job.ts (draftLineRows) ; bundled-apps/invoicing/src/recurring/draft-job.ts (counterpartySnapshot)

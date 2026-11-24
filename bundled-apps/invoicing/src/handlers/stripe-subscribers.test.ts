@@ -603,10 +603,10 @@ describe("Stripe invoices handled by invoicing", () => {
     expect(modeB.__all("documents")).toHaveLength(0)
   })
 
-  test("an orphan charge invoiced by hand, then its invoice's finalized event, leaves one document", async () => {
+  test("a charge of a Stripe invoice is refused on its own, and the invoice's finalized event leaves one document", async () => {
     const db = stripeDb()
     const ctx = stripeCtx(db)
-    // The charge belongs to invoice in_1: a person invoices it from the queue first.
+    // The charge belongs to invoice in_1: a person clicks on it in the queue first.
     await onStripePaymentUnmatched(
       { charge_id: "ch_1", amount_minor: "12000", currency: "eur", created: "2026-11-15" },
       ctx,
@@ -622,13 +622,16 @@ describe("Stripe invoices handled by invoicing", () => {
         customer: finalized().customer,
       },
     })
-    const made = await invoiceFromStripePayment(
+    const refused = await invoiceFromStripePayment(
       { ...ctx, approval: { approvalRequestId: "a", approvalDeciderId: "u", toolName: "t" } },
       { chargeId: "ch_1", vatRateBp: 2000 },
     )
-    expect(made.status).toBe("completed")
-    const r = await onStripeInvoiceFinalized(finalized(), ctx)
-    expect(r).toMatchObject({ status: "skipped", reason: "duplicate_document" })
+    expect(refused).toMatchObject({ status: "error", error: { code: "not_issued" } })
+    expect(invoices(db)).toHaveLength(0)
+    expect(await onStripeInvoiceFinalized(finalized(), ctx)).toMatchObject({ status: "ok" })
+    expect(await onStripeInvoiceFinalized(finalized(), ctx)).toMatchObject({
+      reason: "duplicate_document",
+    })
     expect(invoices(db)).toHaveLength(1)
   })
 

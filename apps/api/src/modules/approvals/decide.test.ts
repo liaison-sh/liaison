@@ -3,6 +3,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { APPROVING_WEDGE_GRACE_MS } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import { HTTPException } from "hono/http-exception"
 import { z } from "zod"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
@@ -1069,6 +1070,73 @@ describe("decideApproval lifecycle", () => {
       // A person can close it, as any pending request.
       expect((await decide("deny")).status).toBe("denied")
     })
+
+    it("an external handler that answers HTTP 400 after its effect is not a parameter refusal: unknown, never pending", async () => {
+      await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+      toolRegistry.set([ORG, "decide_test", "externalEffectThen400"], {
+        appName: "decide_test",
+        name: "externalEffectThen400",
+        description: "External-impact tool whose provider refuses after the effect",
+        requiredScopes: ["decide_test:gated:write"],
+        gated: true,
+        approvalImpact: "external",
+        params: z.object({ chargeId: z.string() }),
+        handler: async () => {
+          providerSends += 1
+          throw new HTTPException(400, { message: "the provider's receipt is malformed" })
+        },
+      } as any)
+      const id = await createRequest("externalEffectThen400", { chargeId: "ch_1" })
+      const sends = providerSends
+      const decide = () => decideApproval({ orgId: ORG, requestId: id, actor, decision: "approve" })
+      await expect(decide()).rejects.toMatchObject({ code: "handler_ambiguous" })
+      expect(await statusOf(id)).toBe("approving")
+      // A second click never sends again.
+      await expect(decide()).rejects.toThrow()
+      expect(providerSends).toBe(sends + 1)
+    })
+
+    it.each([
+      ["a check that breaks", () => new TypeError("schema is not a function")],
+      ["a check that answers another status", () => new HTTPException(503, { message: "down" })],
+    ])(
+      "%s is not a parameter refusal either: the request does not go back to pending",
+      async (_, broken) => {
+        await grantScopes(["decide_test:gated:write", "decide_test:approve"])
+        const register = (params: unknown) =>
+          toolRegistry.set([ORG, "decide_test", "externalBrokenCheck"], {
+            appName: "decide_test",
+            name: "externalBrokenCheck",
+            description: "External-impact tool whose parameter check breaks",
+            requiredScopes: ["decide_test:gated:write"],
+            gated: true,
+            approvalImpact: "external",
+            params,
+            handler: async () => {
+              providerSends += 1
+              return { ok: true }
+            },
+          } as any)
+        register(z.object({ chargeId: z.string() }))
+        const id = await createRequest("externalBrokenCheck", { chargeId: "ch_1" })
+        register({
+          shape: { chargeId: z.string() },
+          safeParse: () => {
+            throw broken()
+          },
+        })
+        const sends = providerSends
+        const err = await decideApproval({
+          orgId: ORG,
+          requestId: id,
+          actor,
+          decision: "approve",
+        }).catch((e) => e)
+        expect(err).toMatchObject({ code: "handler_ambiguous" })
+        expect(await statusOf(id)).toBe("approving")
+        expect(providerSends).toBe(sends)
+      },
+    )
 
     it("a parameter refusal does not settle an earlier attempt whose outcome is unknown", async () => {
       const id = await stageThenRequireCharge()

@@ -20,10 +20,15 @@ import { messages, routines } from "~/db/schema/kernel"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { MORNING_BRIEF_TEMPLATE_KEY } from "~/modules/agent/routines/kernel-routine-templates"
+import { decideApproval } from "~/modules/approvals/decide"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { aggregateAttentionItems } from "~/modules/apps/attention-aggregator"
 import { executeTool, validateParamsForTool } from "~/modules/apps/execute-tool"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
+import {
+  forgetDemoPaymentsOutside,
+  outsideObjectsOf,
+} from "~/modules/demo/worlds/saas/payments/overlay"
 import { seedContext } from "~/seed/context"
 import { actorFor, asUser } from "~/seed/factories/people/actors"
 import { type SeedDemoWorldResult, seedDemoWorld } from "~/seed/tiers/demo/seed-demo"
@@ -917,4 +922,60 @@ describe("the transfer schedules' runs", () => {
       String(verrieres.next_issue_on),
     ])
   })
+})
+
+// Last: it spends the seeded refund.
+describe("the seeded refund card, decided", () => {
+  it("approving it refunds the charge it names on the payments stand-in, once and in full", async () => {
+    const [card] = await rows(
+      world.orgId,
+      sql`SELECT id::text AS id, current_payload FROM kernel.approval_requests
+          WHERE org_id = ${world.orgId} AND handle = 'demo-ombre-refund'`,
+    )
+    const chargeId = String((card?.current_payload as { chargeId?: string } | undefined)?.chargeId)
+    const charge = async () => {
+      const [row] = await rows(
+        world.orgId,
+        sql`SELECT amount_minor::text AS amount, refunded_minor::text AS refunded
+            FROM app_stripe.stripe_payments
+            WHERE org_id = ${world.orgId} AND stripe_id = ${chargeId}`,
+      )
+      return row as { amount: string; refunded: string }
+    }
+    const before = await charge()
+    expect(before.refunded).toBe("0")
+    const actor = await ownerActor()
+    setSystemTime(BOARD_DATE)
+    try {
+      const done = await decideApproval({
+        orgId: world.orgId,
+        requestId: String(card?.id),
+        actor,
+        decision: "approve",
+      })
+      expect(done.status).toBe("approved")
+      const refunds = await outsideObjectsOf(world.orgId, "refund")
+      expect(refunds.map((r) => [r.charge, String(r.amount), r.status])).toEqual([
+        [chargeId, before.amount, "succeeded"],
+      ])
+      const [exec] = await rows(
+        world.orgId,
+        sql`SELECT status FROM kernel.approved_handler_executions
+            WHERE approval_request_id = ${String(card?.id)}`,
+      )
+      expect(exec?.status).toBe("succeeded")
+      await expect(
+        decideApproval({
+          orgId: world.orgId,
+          requestId: String(card?.id),
+          actor,
+          decision: "approve",
+        }),
+      ).rejects.toThrow()
+      expect(await outsideObjectsOf(world.orgId, "refund")).toHaveLength(1)
+    } finally {
+      setSystemTime()
+      await forgetDemoPaymentsOutside(world.orgId)
+    }
+  }, 120_000)
 })

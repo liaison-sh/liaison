@@ -26,6 +26,7 @@ import {
 import { Portal } from "solid-js/web"
 import { cn } from "~/lib/cn"
 import type { MentionTrigger } from "~/lib/mention-service"
+import { useI18n } from "~/modules/i18n/i18n-context"
 import { ownEntityLink, pastedAddressText } from "~/modules/shell/entity-link"
 import { EditorToolbar, LinkRow } from "./EditorToolbar"
 import { EmojiSuggest } from "./EmojiSuggest"
@@ -55,6 +56,21 @@ export interface RichEditorHandle {
   replaceText: (range: TextRange, text: string) => TextRange
   /** Tint a range for a moment (the text dictation just wrote). */
   tint: (range: TextRange) => void
+  /** The field's markdown now, serialized on demand (the stored text while nothing changed). */
+  markdown: () => string
+  /**
+   * Whether the text loaded last is written back byte for byte by this editor: each
+   * block tied to its source, and the whole spliced back equal to it (line endings
+   * aside). A page that does not is edited as source instead (SourceEditor).
+   */
+  readonly roundTrips: boolean
+  /**
+   * Show a newer text from elsewhere (another person's save) in place of this one:
+   * only the range that differs is replaced, the caret and selection are mapped
+   * through it, nothing is emitted and nothing lands in the undo history. The text
+   * becomes the one loaded.
+   */
+  applyRemote: (markdown: string) => void
 }
 
 /** How long text written by dictation stays tinted (the CSS fade's length). */
@@ -126,6 +142,8 @@ export interface MentionQuery {
 export interface RichEditorProps {
   value: string
   onChange?: (markdown: string) => void
+  /** The text was edited (called without serializing it; `markdown()` reads it). */
+  onEdit?: () => void
   preset: EditorPreset
   /** `focus`: the toolbar shows under the text while the field has focus;
    *  `none`: hidden (the chat's Aa shows it). Default `always`. */
@@ -231,6 +249,7 @@ function linkHref(input: string): string {
 }
 
 export const RichEditor: Component<RichEditorProps> = (props) => {
+  const i18n = useI18n()
   const [editor, setEditor] = createSignal<Editor>()
   const [version, setVersion] = createSignal(0)
   const [focused, setFocused] = createSignal(false)
@@ -268,6 +287,8 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
   let loaded = ""
   let baseline = ""
   let emitted: string | undefined
+  // Whether the text loaded last is written back as it was read.
+  let roundTrips = false
   // Each block's source, so blocks not edited are written back as they were read.
   let sourceMap: SourceMap | null = null
   const serialize = (ed: Editor) =>
@@ -376,10 +397,49 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
         return true
       })
       .run()
+    settle(ed, markdown)
+  }
+
+  /** `markdown` is now the text the editor shows: what an unedited field hands back. */
+  const settle = (ed: Editor, markdown: string) => {
     loaded = markdown
     sourceMap = props.preset === "inline" ? null : mapSource(ed, markdown)
     baseline = serialize(ed)
     emitted = markdown
+    roundTrips =
+      sourceMap !== null && spliceMarkdown(ed, sourceMap) === markdown.replace(/\r\n?/g, "\n")
+  }
+
+  /** The current text: the loaded one, byte for byte, while it is unchanged. */
+  const current = (ed: Editor) => {
+    const markdown = serialize(ed)
+    return markdown === baseline ? loaded : markdown
+  }
+
+  /** Replace only what differs between the shown document and `markdown`'s. */
+  const applyRemote = (ed: Editor, markdown: string) => {
+    const manager = ed.markdown
+    if (!manager) return load(ed, markdown)
+    const next = ed.schema.nodeFromJSON(manager.parse(editorSource(markdown, props.preset)))
+    const doc = ed.state.doc
+    const start = doc.content.findDiffStart(next.content)
+    if (start !== null) {
+      const end = doc.content.findDiffEnd(next.content)
+      let endA = end?.a ?? doc.content.size
+      let endB = end?.b ?? next.content.size
+      // Both ends overlap when the change repeats text around it: widen to the start.
+      const overlap = start - Math.min(endA, endB)
+      if (overlap > 0) {
+        endA += overlap
+        endB += overlap
+      }
+      const tr = ed.state.tr
+        .replace(start, endA, next.slice(start, endB))
+        .setMeta("addToHistory", false)
+        .setMeta("preventUpdate", true)
+      ed.view.dispatch(tr)
+    }
+    settle(ed, markdown)
   }
 
   onMount(() => {
@@ -388,6 +448,10 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       extensions: [
         ...editorExtensions(props.preset, {
           placeholder: props.placeholder,
+          rawLabels: {
+            image: i18n.t("kernel.editor.remoteImage"),
+            link: i18n.t("kernel.editor.pageLink"),
+          },
           keys: {
             onSubmit: props.onSubmit && (() => props.onSubmit?.()),
             enterSubmits: props.enterSubmits,
@@ -498,9 +562,11 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
       props.onMention(query && { trigger: query.trigger, text: query.text })
     })
     ed.on("blur", () => setEmoji(null))
-    ed.on("update", () => {
-      const markdown = serialize(ed)
-      const next = markdown === baseline ? loaded : markdown
+    ed.on("update", ({ transaction }) => {
+      // An edit of the text, not a change of state (setEditable also says "update").
+      if (transaction.docChanged) props.onEdit?.()
+      if (!props.onChange) return
+      const next = current(ed)
       if (next === emitted) return
       emitted = next
       props.onChange?.(next)
@@ -567,6 +633,11 @@ export const RichEditor: Component<RichEditorProps> = (props) => {
           if (!ed.isDestroyed) ed.view.dispatch(ed.state.tr.setMeta(insertedTintKey, null))
         }, INSERTED_TINT_MS)
       },
+      markdown: () => current(ed),
+      get roundTrips() {
+        return roundTrips
+      },
+      applyRemote: (markdown) => applyRemote(ed, markdown),
     })
     onCleanup(() => {
       setEditor(undefined)

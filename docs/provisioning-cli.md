@@ -294,8 +294,11 @@ liaison erase-user <userId>
 - **`knowledge links-backfill`**: remove the linked document's title from
   Knowledge links stored before links held only the document's id (bodies,
   summaries, history), and record each document's links, as the daily job
-  does. Only links change: no new version, no event, review status kept.
-  Every org, or only `--org`; idempotent; `--dry-run` only counts.
+  does. Only documents whose text, summary or history holds a link are
+  touched; only links change: no new version, no event, review status kept.
+  Every org, or only `--org`; idempotent; `--dry-run` only counts. The titles
+  are gone for good: after a rollback to a release older than id-only links,
+  those links show as plain links without a title.
 - **`seed --tier demo`**: fills an org with the demo world: the fictional
   company Resonant Audio Labs, its seven people and their agents, tickets,
   mail, knowledge, projects, invoices, shipments and routines. `--slug` names

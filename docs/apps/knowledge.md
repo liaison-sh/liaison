@@ -39,7 +39,7 @@ A link to another document stores that document's id, never its title. Each read
 
 Each document lists the documents that link to it, limited to the ones you can read, beside the conversations that mention it.
 
-Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts).
+Older texts held the linked document's title, as agents wrote their links. Liaison removes those titles from documents, summaries and their history once, in a daily job: only the links change, a document keeps its version and its review status. Self-hosters can run it at once with `liaison knowledge links-backfill` (`--dry-run` only counts). The titles are removed for good: if you go back to a release from before links held only the id, those links show as plain links without a title.
 
 ## Share a document
 

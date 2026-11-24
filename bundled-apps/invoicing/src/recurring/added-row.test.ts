@@ -8,7 +8,7 @@ import { CONTACT, harness, ISSUER, schedule } from "../__fixtures__/recurring-dr
 import { draftsCreateTool, draftsUpdateTool } from "../mutations"
 import { summarizeRecurringRunIssue } from "../summarizers"
 import { recurringDraftJob } from "./draft-job"
-import { cardItems, recurringRunIssue, recurringRunUnapprove, type CardItem } from "./run-card"
+import { type CardItem, cardItems, recurringRunIssue, recurringRunUnapprove } from "./run-card"
 import { recurringRunGet } from "./run-get"
 
 const SCHED = "33333333-3333-4333-8333-333333333331"
@@ -100,9 +100,7 @@ describe("an invoice added to a month-end run", () => {
       operation_category: "mixed",
     })
     const goods = await add(h, runId, {
-      items: [
-        { description: "Cable", quantity: "1", unit_price_minor: "500", line_kind: "goods" },
-      ],
+      items: [{ description: "Cable", quantity: "1", unit_price_minor: "500", line_kind: "goods" }],
     })
     expect(doc(h, goods.draft_id).operation_category).toBe("goods")
   })

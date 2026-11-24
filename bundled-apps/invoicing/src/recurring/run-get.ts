@@ -66,6 +66,8 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
 function cardWaiting(run: Row, rows: readonly { state: string }[]): boolean {
   const id = run.approval_request_id
   if (typeof id !== "string" || id === "" || id === "staging") return false
+  if (run.status === "late")
+    return rows.some((r) => r.state === "ready" || r.state === "waiting_reapproval")
   return run.status === "drafted" || rows.some((r) => r.state === "waiting_reapproval")
 }
 

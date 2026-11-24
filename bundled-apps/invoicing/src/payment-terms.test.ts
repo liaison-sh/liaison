@@ -5,9 +5,9 @@
 import { describe, expect, test } from "bun:test"
 import {
   draftFromCard,
+  type Harness,
   harness,
   issuedFromCard,
-  type Harness,
 } from "./__tests__/from-reconcile-harness"
 import { overdueScanJob } from "./handlers/overdue-scan"
 import { invoiceIssue } from "./mutations"
@@ -18,8 +18,7 @@ import { addDays } from "./recurring/schedule"
 type Row = Record<string, unknown>
 const day = (v: unknown) => String(v ?? "").slice(0, 10)
 const docOf = (h: Harness, id: string) => h.db.__all("documents").find((d) => d.id === id) as Row
-const contactOf = (h: Harness) =>
-  String(h.db.__all("counterparty_identities")[0]?.contact_id ?? "")
+const contactOf = (h: Harness) => String(h.db.__all("counterparty_identities")[0]?.contact_id ?? "")
 
 async function withIssuerTerms(h: Harness, days: number | null) {
   const [issuer] = h.db.__all("issuer_profiles")

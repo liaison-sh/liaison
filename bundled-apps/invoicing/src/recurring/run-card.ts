@@ -10,6 +10,7 @@
 import { mintRunSendGrants } from "../einvoicing/run-send"
 import type { EinvCtx } from "../einvoicing/transmit"
 import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
+import { dueOn, paymentTermsOf, scheduleTermsDays } from "../payment-terms"
 import { runCardLines } from "../summarizers"
 import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
@@ -158,6 +159,100 @@ export function runDecided(run: Row | null | undefined): boolean {
   return run?.status === "approved" || run?.status === "issuing" || run?.status === "partial"
 }
 
+/** Where one of the app's own approval requests stands; null when it cannot be read. */
+export async function approvalStatus(ctx: RunCtx, approvalId: string): Promise<string | null> {
+  if (!ctx.approvals?.statusOf) return null
+  let raw: unknown = await ctx.approvals.statusOf(approvalId)
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      raw = null
+    }
+  }
+  const st = (raw ?? {}) as { status?: string | null; expired?: boolean }
+  if (st.status === "pending" && st.expired) return "expired"
+  return st.status ?? null
+}
+
+/** A card id on a run, or null when it has none yet (or one is being staged). */
+export function cardOf(run: Row): string | null {
+  const id = run.approval_request_id
+  return typeof id === "string" && id !== "" && id !== "staging" ? id : null
+}
+
+/** Whether a run's last issue day has passed, in its issuer's zone. */
+export async function pastLastDay(ctx: RunCtx, run: Row): Promise<boolean> {
+  const issuer = await issuerOf(ctx, String(run.issuer_profile_id))
+  if (!issuer) return false
+  const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
+  return now.date > (dayOf(run.latest_issue_on) as string)
+}
+
+/**
+ * Whether a person approved a run after its last issue day: its rows then issue when approved,
+ * dated the day they issue. A run approved in time that missed its last day is late instead.
+ */
+export async function approvedLateOn(ctx: RunCtx, run: Row, issuer: Row): Promise<string | null> {
+  if (run.status !== "approved" && run.status !== "issuing") return null
+  if (!run.approved_at) return null
+  const at =
+    run.approved_at instanceof Date ? run.approved_at.toISOString() : String(run.approved_at)
+  const day = (await ctx.time.civil({ timezone: String(issuer.timezone || "UTC"), at })).date
+  return day > (dayOf(run.latest_issue_on) as string) ? day : null
+}
+
+/**
+ * The due dates of a late run's rows: a date its terms gave from the run's issue day is counted
+ * from today instead, so a late invoice is not due before it exists. A date a person set stays.
+ */
+async function moveLateDueDates(ctx: RunCtx, run: Row, today: string): Promise<void> {
+  for (const item of await runItems(ctx, String(run.id))) {
+    if (item.state === "issued" || item.state === "left_out") continue
+    const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
+    if (!draft || draft.status !== "draft") continue
+    const refs = jsonOf<Row>(draft.external_refs, {})
+    const countedFrom = dayOf(refs.due_counted_from) ?? (dayOf(run.issue_on) as string)
+    if (countedFrom === today) continue
+    const schedule = item.schedule_id
+      ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
+      : null
+    const days = schedule
+      ? scheduleTermsDays(schedule)
+      : (
+          await paymentTermsOf(ctx.db, {
+            issuer: { id: String(run.issuer_profile_id) },
+            contactId: (draft.counterparty_contact_id as string | null) ?? null,
+            externalRefs: refs,
+          })
+        ).days
+    if (dayOf(draft.due_at) !== dueOn(countedFrom, days)) continue
+    await ctx.db.update("documents", String(draft.id), {
+      due_at: dueOn(today, days),
+      external_refs: { ...refs, due_counted_from: today },
+    })
+  }
+}
+
+/** A late run with no row left to decide is closed, and its alert and card leave. */
+async function closeLateRun(ctx: RunCtx, run: Row): Promise<boolean> {
+  const items = await runItems(ctx, String(run.id))
+  if (items.some((i) => i.state !== "issued" && i.state !== "left_out")) return false
+  const status = items.some((i) => i.state === "issued") ? "issued" : "nothing_to_issue"
+  await ctx.db.update("recurring_runs", String(run.id), { status })
+  const card = cardOf(run)
+  if (card && ctx.approvals?.withdraw)
+    await ctx.approvals.withdraw(card, "Every row of the late run was decided.").catch(() => null)
+  if (ctx.emit)
+    await ctx.emit({
+      entity: "recurring_run",
+      action: "late",
+      entityId: String(run.id),
+      data: { run_id: String(run.id), resolved: true },
+    })
+  return true
+}
+
 /**
  * The rows of a run a card shows, in order: before the decision, every ready row (a row that needs
  * a fix, is left out or issued stays off the card and out of "Approve N"); after it, the rows
@@ -267,17 +362,20 @@ export async function stageRunCard(
 ): Promise<{ approval_id: string | null; staged: boolean; owed?: boolean }> {
   const run = (await ctx.db.findOne("recurring_runs", runId)) as Row | null
   if (!run) return { approval_id: null, staged: false }
+  const late = run.status === "late"
+  if (late) {
+    if (await closeLateRun(ctx, run)) return { approval_id: null, staged: false }
+    const zone = String((await issuerOf(ctx, String(run.issuer_profile_id)))?.timezone || "UTC")
+    await moveLateDueDates(ctx, run, (await ctx.time.civil({ timezone: zone })).date)
+  }
   const { items, needsFix } = await cardItems(ctx, runId)
-  const existing =
-    typeof run.approval_request_id === "string" && run.approval_request_id !== "staging"
-      ? run.approval_request_id
-      : null
+  const existing = cardOf(run)
   // The card still waiting follows its rows, even down to none left to approve.
   if (existing && ctx.approvals?.restagePayload) {
     const period = String(run.period_label ?? dayOf(run.issue_on) ?? "")
     const res = (await ctx.approvals.restagePayload(
       existing,
-      { items, period },
+      { items, period, ...(late ? { late: true } : {}) },
       "The month-end run's rows changed.",
     )) as { ok?: boolean } | null
     if (res?.ok) return { approval_id: existing, staged: false }
@@ -304,16 +402,19 @@ export async function stageRunCard(
       tool_name: RUN_ISSUE_TOOL,
       // No count: rows join and leave the card while it waits, and its title does not change. The
       // lines under it, the panel and Approve N say how many.
-      summary: `${again ? "Approve again: the changed invoices of" : "Issue the invoices of"} ${String(run.period_label ?? issueOn)} on ${issueOn}`,
+      summary: late
+        ? `Late: the invoices of ${String(run.period_label ?? issueOn)}, not issued by ${lastDay}`
+        : `${again ? "Approve again: the changed invoices of" : "Issue the invoices of"} ${String(run.period_label ?? issueOn)} on ${issueOn}`,
       summary_detail: {
-        subtitle:
-          `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.` +
-          (again
-            ? " These rows changed after the run was approved; the others issue as approved."
-            : "") +
-          (needsFix > 0
-            ? ` ${needsFix} row${needsFix === 1 ? " needs" : "s need"} a fix: it stays a draft, uses no number and comes back to you once fixed.`
-            : ""),
+        subtitle: late
+          ? `The last issue day, ${lastDay}, has passed and nothing issued by itself. Approving issues these invoices now, dated the day they issue; take a row out to drop it.${needsFix > 0 ? ` ${needsFix} row${needsFix === 1 ? " needs" : "s need"} a fix first.` : ""}`
+          : `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.` +
+            (again
+              ? " These rows changed after the run was approved; the others issue as approved."
+              : "") +
+            (needsFix > 0
+              ? ` ${needsFix} row${needsFix === 1 ? " needs" : "s need"} a fix: it stays a draft, uses no number and comes back to you once fixed.`
+              : ""),
         // Who is billed and the total; the panel under the card lists each row with its amounts.
         lines: runCardLines(items),
         // The run is the record the card is about: the kernel asks `approval_route_read` who it is for.
@@ -326,9 +427,15 @@ export async function stageRunCard(
           },
         ],
       },
-      current_payload: { run_id: runId, items, period: String(run.period_label ?? issueOn) },
+      current_payload: {
+        run_id: runId,
+        items,
+        period: String(run.period_label ?? issueOn),
+        ...(late ? { late: true } : {}),
+      },
       editable_fields: [],
-      expiry_hours: hoursUntilEndOf(now.date, now.hour, lastDay),
+      // A late run has no last day left to wait for.
+      expiry_hours: late ? 720 : hoursUntilEndOf(now.date, now.hour, lastDay),
     })
     if (!approval.approval_id) {
       // A person's own click cannot ask for a decision: the kernel takes it as theirs. The card is
@@ -420,12 +527,9 @@ export async function recurringRunIssue(
   if (
     reask
       ? !all.some((i) => i.state === "waiting_reapproval")
-      : run.status !== "drafted" && run.status !== "rejected"
+      : run.status !== "drafted" && run.status !== "rejected" && run.status !== "late"
   ) {
-    return fail(
-      "run_not_drafted",
-      nothingToApprove(run),
-    )
+    return fail("run_not_drafted", nothingToApprove(run))
   }
   if (!reask) {
     const refused = nothingReadyRefusal(input.run_id, all)
@@ -490,16 +594,12 @@ export async function recurringRunIssue(
   }
   // The person's approval carries the rows' e-invoice sends: one grant per approved row.
   if (approvedIds.length > 0) await mintRunSendGrants(ctx as unknown as EinvCtx, approvedIds)
-  const issueOn = dayOf(run.issue_on) as string
-  await ctx.db.update(
-    "recurring_runs",
-    input.run_id,
-    {
-      status: reask ? (run.status === "partial" ? "issuing" : run.status) : "approved",
-      // Who approved the run is whoever approved it last, the rows of a second card included.
-      ...(approved > 0 || !reask ? { approved_by: decider, approved_at: now } : {}),
-    },
-  )
+  const issueOn = run.status === "late" ? "now" : (`on ${dayOf(run.issue_on)} from 08:00` as string)
+  await ctx.db.update("recurring_runs", input.run_id, {
+    status: reask ? (run.status === "partial" ? "issuing" : run.status) : "approved",
+    // Who approved the run is whoever approved it last, the rows of a second card included.
+    ...(approved > 0 || !reask ? { approved_by: decider, approved_at: now } : {}),
+  })
   await withdrawDecidedCard(ctx, run)
   // The run is decided: its "waits for approval" and "is late" alerts end for everyone they reached.
   if (!reask && ctx.emit) {
@@ -517,9 +617,9 @@ export async function recurringRunIssue(
     run_id: input.run_id,
     approved,
     changed,
-    issueOn,
+    issueOn: dayOf(run.issue_on) as string,
     message:
-      `Approved ${approved} invoice${approved === 1 ? "" : "s"} of run ${input.run_id}. No number is taken now: they issue on ${issueOn} from 08:00.` +
+      `Approved ${approved} invoice${approved === 1 ? "" : "s"} of run ${input.run_id}. No number is taken now: they issue ${issueOn}.` +
       (changed.length > 0
         ? ` ${changed.length} draft${changed.length === 1 ? "" : "s"} changed since the card was drawn and wait for a new approval: ${changed.join(", ")}.`
         : "") +
@@ -676,8 +776,10 @@ export async function recurringRunUnapprove(
   }
   // Every edit stays, and a patch already written to its schedule stays written. A re-ask still
   // waiting becomes the run's card again (restaged with every row); a decided one gives way to a new card.
+  const run = (await ctx.db.findOne("recurring_runs", input.run_id)) as Row
   await ctx.db.update("recurring_runs", input.run_id, {
-    status: "drafted",
+    // Undone after its last day, a run is late again: its card says so.
+    status: (await pastLastDay(ctx, run)) ? "late" : "drafted",
     approved_by: null,
     approved_at: null,
   })
@@ -740,7 +842,7 @@ export async function recurringRunIssuePreflight(
     }
   const items = await runItems(ctx, input.run_id)
   const reask = runDecided(run) && items.some((i) => i.state === "waiting_reapproval")
-  if (!reask && run.status !== "drafted" && run.status !== "rejected") {
+  if (!reask && run.status !== "drafted" && run.status !== "rejected" && run.status !== "late") {
     return {
       error: {
         code: "run_not_drafted",

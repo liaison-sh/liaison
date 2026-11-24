@@ -3,9 +3,22 @@
 // The daily legal-date job of month-end runs. A run issues no later than its last issue day (the
 // billing month's last day, in the issuer's time zone), so an undecided run is pushed up as that
 // day nears: three days before, its line rises to the top; on the day, the card says it ends
-// today; the day after, the run is late, the line stays, and nothing issues by itself. A rejected
-// card also lands here: its drafts stay drafts until the issue job asks again.
-import { dayOf, endHold, type Row, type RunCtx } from "./run-card"
+// today; the day after, the run is late, the line stays, and nothing issues by itself: one new card
+// marked Late asks what to do with each row, whatever was open on the run before. It is followed
+// while it waits, staged again when it expired, and left alone once a person rejected it (a change
+// of a row asks again). A rejected card also lands here: its drafts stay drafts until the issue job
+// asks again.
+import {
+  approvalStatus,
+  approvedLateOn,
+  cardOf,
+  dayOf,
+  endHold,
+  type Row,
+  type RunCtx,
+  runItems,
+  stageRunCard,
+} from "./run-card"
 import { addDays } from "./schedule"
 
 export type Urgency = "normal" | "rising" | "ends_today" | "late"
@@ -18,21 +31,32 @@ export function urgencyOf(today: string, lastDay: string): Urgency {
   return "normal"
 }
 
-const OPEN = ["drafted", "rejected", "approved", "issuing", "late"]
+const OPEN = ["drafted", "rejected", "approved", "issuing", "partial", "late"]
 
-async function approvalStatus(ctx: RunCtx, approvalId: string): Promise<string | null> {
-  if (!ctx.approvals?.statusOf) return null
-  let raw: unknown = await ctx.approvals.statusOf(approvalId)
-  if (typeof raw === "string") {
-    try {
-      raw = JSON.parse(raw)
-    } catch {
-      raw = null
-    }
+/** How long a run approved after its last day may take to issue before it is late again, in days. */
+const LATE_ISSUE_DAYS = 2
+
+/**
+ * The run's last day passed with rows undecided or not issued: it is late. A row approved in time
+ * and not issued is not issued by itself any more, and the card it had is replaced by a late one.
+ */
+async function markLate(ctx: RunCtx, run: Row): Promise<void> {
+  const runId = String(run.id)
+  for (const item of await runItems(ctx, runId)) {
+    if (item.state !== "approved" && item.state !== "failed") continue
+    await ctx.db.update("recurring_run_items", String(item.id), {
+      state: "waiting_reapproval",
+      approved_hash: null,
+      approved_total_minor: null,
+      send_grant: null,
+    })
   }
-  const st = (raw ?? {}) as { status?: string | null; expired?: boolean }
-  if (st.status === "pending" && st.expired) return "expired"
-  return st.status ?? null
+  const card = cardOf(run)
+  if (card && ctx.approvals?.withdraw)
+    await ctx.approvals
+      .withdraw(card, "The run's last issue day has passed: its late card replaces this one.")
+      .catch(() => null)
+  await ctx.db.update("recurring_runs", runId, { status: "late", approval_request_id: null })
 }
 
 export async function recurringLegalDateJob(
@@ -66,13 +90,24 @@ export async function recurringLegalDateJob(
         status = "rejected"
       }
     }
-    if (status === "approved" || status === "issuing") {
+    if (status === "approved" || status === "issuing" || status === "partial") {
       // Approved runs issue by themselves; only a run past its last day still owes something.
       if (now.date <= (dayOf(run.latest_issue_on) as string)) continue
+      const approvedLate = await approvedLateOn(ctx, run, issuer)
+      if (approvedLate && now.date <= addDays(approvedLate, LATE_ISSUE_DAYS)) continue
+      const items = await runItems(ctx, runId)
+      if (items.every((i) => i.state === "issued" || i.state === "left_out")) continue
     }
     const urgency = urgencyOf(now.date, dayOf(run.latest_issue_on) as string)
-    if (urgency === "late" && status !== "late")
-      await ctx.db.update("recurring_runs", runId, { status: "late" })
+    if (urgency === "late") {
+      if (status !== "late") await markLate(ctx, run)
+      const late = (await ctx.db.findOne("recurring_runs", runId)) as Row
+      const card = cardOf(late)
+      const decided = card ? await approvalStatus(ctx, card) : null
+      if (decided !== "denied") await stageRunCard(ctx, runId)
+      // Nothing left to decide: the run closed instead.
+      if (((await ctx.db.findOne("recurring_runs", runId)) as Row).status !== "late") continue
+    }
     if (urgency === "normal") continue
     out.push({ run_id: runId, urgency })
     if (ctx.emit) {

@@ -14,9 +14,9 @@ import {
   taxCountryOf,
 } from "../issue"
 import { issueDateParts } from "../issue-date"
+import { paymentTermsOf, termsText } from "../payment-terms"
 import { documentsGet, type ReadsCtx } from "../reads"
 import type { ClassifyInput } from "../tax"
-import { paymentTermsOf, termsText } from "../payment-terms"
 import { planTax } from "../tax-plan"
 import {
   findIssuerProfile,
@@ -1031,7 +1031,12 @@ export async function draftIssuePreview(
           ).days,
         )
       : null
-  return { ...doc, issue_total_minor: grand.toString(), today, ...(terms ? { due_terms: terms } : {}) }
+  return {
+    ...doc,
+    issue_total_minor: grand.toString(),
+    today,
+    ...(terms ? { due_terms: terms } : {}),
+  }
 }
 
 /** STAGE-TIME preflight for `po_create_and_issue`: the same checks, before any approval exists. */

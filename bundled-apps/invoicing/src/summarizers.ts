@@ -1386,12 +1386,15 @@ export function runCardLines(rawItems: unknown): string[] {
 export function runCardSummary(
   rawItems: unknown,
   period: string | null,
+  late = false,
 ): { title: string; subtitle: string; lines: string[] } {
   const items = Array.isArray(rawItems) ? rawItems : []
   const lines = runCardLines(items)
   return {
-    title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
-    subtitle: "Numbers are taken on the issue day from 08:00, never at approval",
+    title: `${late ? "Late: issue" : "Issue"} ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
+    subtitle: late
+      ? "The last issue day has passed: approving issues these now, dated the day they issue"
+      : "Numbers are taken on the issue day from 08:00, never at approval",
     lines: lines.length > 0 ? lines : [period ? `Month-end run for ${period}` : "Month-end run"],
   }
 }
@@ -1400,7 +1403,10 @@ export function summarizeRecurringRunIssue(
   params: Record<string, unknown>,
 ): Promise<ApprovalSummaryShape> {
   const period = typeof params.period === "string" && params.period ? params.period : null
-  return done({ kind: "recurring_run_issue", ...runCardSummary(params.items, period) })
+  return done({
+    kind: "recurring_run_issue",
+    ...runCardSummary(params.items, period, params.late === true),
+  })
 }
 
 function moneyLine(v: bigint, currency: string): string {

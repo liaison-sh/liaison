@@ -9,12 +9,15 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { isComparisonFlag, linesSignature, runItemFlags } from "./flags"
 import { NEGATIVE_TOTAL, rowIssuerHold, runItemState, STATE_REASONS } from "./item-state"
 import {
+  approvalStatus,
   cardItems,
+  cardOf,
   dayOf,
   draftLines,
   draftTotals,
   findOneWhere,
   jsonOf,
+  pastLastDay,
   previousInvoice,
   type Row,
   type RunCtx,
@@ -338,16 +341,30 @@ export async function afterRunWrite(
   await ctx.db.update("recurring_run_items", itemId, data)
   if (item.state === "approved" && state !== "approved")
     await ctx.db.update("documents", String(draft.id), { approved_by: null, approved_at: null })
+  // A row back in a run that had closed opens it again: late past its last day, else as it was.
+  if ((run.status === "issued" || run.status === "nothing_to_issue") && state !== "left_out") {
+    run.status = (await pastLastDay(ctx, run))
+      ? "late"
+      : run.status === "issued"
+        ? "partial"
+        : "drafted"
+    await ctx.db.update("recurring_runs", String(run.id), { status: run.status })
+    if (run.status === "partial" && state === "ready") {
+      state = "waiting_reapproval"
+      await ctx.db.update("recurring_run_items", itemId, { state })
+    }
+  }
+  // A change of a late run whose card a person rejected asks them again.
+  const card = cardOf(run)
+  if (run.status === "late" && card && (await approvalStatus(ctx, card)) === "denied") {
+    run.approval_request_id = null
+    await ctx.db.update("recurring_runs", String(run.id), { approval_request_id: null })
+  }
   // The run's card: rewritten in place while it waits, or one new card after the decision. A
   // rejected run asks again on its issue day by itself.
   let approvalId: string | null =
     typeof run.approval_request_id === "string" ? run.approval_request_id : null
-  if (
-    run.status !== "rejected" &&
-    run.status !== "issued" &&
-    run.status !== "late" &&
-    run.status !== "nothing_to_issue"
-  ) {
+  if (run.status !== "rejected" && run.status !== "issued" && run.status !== "nothing_to_issue") {
     const card = await stageRunCard(ctx, String(run.id))
     const fresh = (await ctx.db.findOne("recurring_runs", String(run.id))) as Row | null
     approvalId =
@@ -425,7 +442,6 @@ export async function stageRunCardAfterRemoval(
     run &&
     run.status !== "rejected" &&
     run.status !== "issued" &&
-    run.status !== "late" &&
     run.status !== "nothing_to_issue"
   ) {
     const card = await stageRunCard(ctx, runId)

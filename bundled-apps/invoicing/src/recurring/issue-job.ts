@@ -5,8 +5,8 @@
 // From 08:00 in the issuer's time zone on the run's issue day, and until its last issue day, the
 // job issues the approved items in order, each through `recurring_item_issue`, its own tool call
 // whose writes land in one commit: a failed item writes nothing (its number is never taken) and
-// the others keep theirs. A run past its last issue day issues nothing: it is late, and a person
-// decides.
+// the others keep theirs. A run past its last issue day issues nothing by itself: it is late, and
+// what a person approves on its late card issues then.
 //
 // The issued document is a new row (issuing a draft writes a document and deletes the draft), so
 // the item follows it. In the one commit that numbers the invoice, the draft's `external_ref`
@@ -22,6 +22,9 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { KEPT_AFTER_STOP, stoppedScheduleNote } from "./end-schedule"
 import { rowIssuerHold } from "./item-state"
 import {
+  approvalStatus,
+  approvedLateOn,
+  cardOf,
   currentItemHash,
   dayOf,
   endHold,
@@ -275,9 +278,10 @@ async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
   const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
   const issueOn = dayOf(run.issue_on) as string
   const lastDay = dayOf(run.latest_issue_on) as string
+  const approvedLate = now.date > lastDay ? await approvedLateOn(ctx, run, issuer) : null
   return {
     early: now.date < issueOn || (now.date === issueOn && now.hour < ISSUE_HOUR),
-    late: now.date > lastDay,
+    late: now.date > lastDay && approvedLate === null,
     today: now.date,
     hour: now.hour,
   }
@@ -402,7 +406,7 @@ async function restageRejected(ctx: RunCtx, run: Row, w: RunWindow): Promise<boo
  */
 async function stageOwedCards(ctx: RunCtx): Promise<number> {
   const runs = (await ctx.db.findMany("recurring_runs", {
-    where: { status: { in: ["drafted", "approved", "issuing", "partial"] } },
+    where: { status: { in: ["drafted", "approved", "issuing", "partial", "late"] } },
     orderBy: { issue_on: "asc" },
     limit: 50,
   })) as Row[]
@@ -410,10 +414,17 @@ async function stageOwedCards(ctx: RunCtx): Promise<number> {
   for (const run of runs) {
     const items = await runItems(ctx, String(run.id))
     // A card still waiting is rewritten only when its rows changed, so asking again is free.
+    if (run.status === "late") {
+      // A late card a person rejected is not asked again by itself.
+      const card = cardOf(run)
+      if (card && (await approvalStatus(ctx, card)) === "denied") continue
+    }
     const owed =
-      run.status === "drafted"
-        ? items.some((i) => i.state === "ready")
-        : items.some((i) => i.state === "waiting_reapproval")
+      run.status === "late"
+        ? items.some((i) => i.state === "ready" || i.state === "waiting_reapproval")
+        : run.status === "drafted"
+          ? items.some((i) => i.state === "ready")
+          : items.some((i) => i.state === "waiting_reapproval")
     if (!owed) continue
     if ((await stageRunCard(ctx, String(run.id))).staged) staged += 1
   }

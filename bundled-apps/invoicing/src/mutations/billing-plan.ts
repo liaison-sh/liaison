@@ -27,7 +27,8 @@ import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import {
-  customerLine, dueLine,
+  customerLine,
+  dueLine,
   ISSUE_APPROVAL_EXPIRY_HOURS,
   issuePayloadFor,
   monthEnd,

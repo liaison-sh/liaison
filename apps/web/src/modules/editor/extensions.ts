@@ -601,6 +601,8 @@ export function editorExtensions(
   preset: EditorPreset,
   options: {
     placeholder?: string
+    /** A checklist box's accessible name, from its item's text. */
+    checkboxLabel?: (text: string) => string
     keys: EditorKeys
     rawLabels?: RawMarkdownLabels
     files?: EditorFileOptions
@@ -628,7 +630,22 @@ export function editorExtensions(
       link: false,
     }),
     ...(inline ? [InlineDocument] : []),
-    ...(full ? [TaskList, TaskItem.configure({ nested: true })] : []),
+    ...(full
+      ? [
+          TaskList,
+          TaskItem.configure({
+            nested: true,
+            ...(options.checkboxLabel
+              ? {
+                  a11y: {
+                    checkboxLabel: (node: { textContent: string }) =>
+                      options.checkboxLabel?.(node.textContent) ?? "",
+                  },
+                }
+              : {}),
+          }),
+        ]
+      : []),
     ...(doc ? documentTable : []),
     // A page's own images and files, by id.
     ...(doc

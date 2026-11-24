@@ -4683,7 +4683,30 @@
     "pagesLoading": "Recherche des pages",
     "noPage": "Aucune page trouvée",
     "pageUnavailable": "Page que vous ne pouvez pas ouvrir",
-    "untitledPage": "Sans titre"
+    "untitledPage": "Sans titre",
+    "text": "Texte",
+    "divider": "Séparateur",
+    "addBlock": "Ajouter un bloc",
+    "blocks": "Blocs",
+    "noBlock": "Aucun bloc trouvé",
+    "checkboxLabel": "Fait : {{text}}",
+    "checkboxEmpty": "Fait : élément vide",
+    "slashWords": {
+      "text": "paragraphe texte simple",
+      "heading1": "titre grand h1",
+      "heading2": "sous-titre h2",
+      "heading3": "petit titre h3",
+      "taskList": "tâche à faire case à cocher todo liste",
+      "bulletList": "puces liste",
+      "orderedList": "numéros liste numérotée",
+      "quote": "citation",
+      "codeBlock": "code extrait",
+      "table": "tableau grille lignes colonnes",
+      "divider": "ligne séparation trait",
+      "image": "photo capture illustration",
+      "file": "pièce jointe document pdf envoyer",
+      "linkToPage": "page lien mention"
+    }
   },
   "nodes": {
     "chat": {

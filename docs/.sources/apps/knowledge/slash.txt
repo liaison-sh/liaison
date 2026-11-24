@@ -1,0 +1,11 @@
+/ opens Add a block at the start of a line or after a space -> apps/web/src/modules/editor/slash.ts (slashQueryAt)
+Not inside a word, an address or code -> apps/web/src/modules/editor/slash.ts (SLASH), apps/web/src/modules/editor/suggest.ts (textBeforeCaret)
+The blocks and their order -> apps/web/src/modules/editor/slash.ts (SLASH_BLOCKS)
+Image, File and Link to a page only where the page takes them -> apps/web/src/modules/editor/slash.ts (available), apps/web/src/modules/editor/RichEditor.tsx (slashContext)
+Typed letters narrow the list, in the reader's language -> apps/web/src/modules/editor/slash.ts (slashBlocks), packages/shared/src/i18n/locales/en/kernel.json (editor.slashWords)
+Arrows, Enter, click, Escape -> apps/web/src/modules/editor/suggest.ts (suggestKey), apps/web/src/modules/editor/SlashSuggest.tsx
+Labels Add a block, Checklist, Divider -> packages/shared/src/i18n/locales/en/kernel.json (editor.addBlock, editor.taskList, editor.divider)
+Stored as markdown -> apps/web/src/modules/editor/RichEditor.slash.test.tsx, apps/web/src/modules/editor/__fixtures__/stored-bodies.ts (SLASH_FIXTURES)
+A checklist ticks by click or Ctrl+Enter -> apps/web/src/modules/editor/RichEditor.tsx (taskKey), apps/web/src/modules/editor/extensions.ts (TaskItem)
+A page with a checklist opens in the editor -> apps/web/src/modules/editor/source-map.ts (mapSource)
+Readers see the state and cannot tick -> packages/shared/src/markdown-rules.ts:43, apps/web/src/modules/knowledge/PageBody.tsx (readOnly)

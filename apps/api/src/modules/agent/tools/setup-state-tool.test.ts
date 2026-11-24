@@ -212,3 +212,43 @@ describe("kernel__setup_state", () => {
     expect(agentInstructionsRegistry.get([orgId, "setup-guide"])).toBeUndefined()
   })
 })
+
+describe("kernel__setup_state on Cloud: the goal first, mail last", () => {
+  const state = {
+    items: [],
+    next: "mail" as const,
+    asOf: "2026-11-24T00:00:00Z",
+    connections: [],
+    features: { ...plan([]), chosen: null },
+  }
+
+  test("self-hosted: no cloud facts, the next action is unchanged", async () => {
+    const result = await setupStateHandler()({}, { orgId, userId: admin.userId })
+    expect(result.edition).toBe("self-hosted")
+    expect(result.goal).toBeNull()
+    expect(setupNextAction(state, undefined)).toBe(setupNextAction(state))
+    expect(setupNextAction(state)).toContain("First ask which features")
+  })
+
+  test("managed with a goal: that goal's step first, then the team, then mail", () => {
+    const action = setupNextAction(state, { goal: "knowledge" })
+    expect(action).toContain("chose to start with knowledge")
+    expect(action).toContain("then invite the team, then offer mail connection last")
+    expect(action).not.toContain("First ask which features")
+    expect(action).not.toContain("Next checklist item: mail")
+  })
+
+  test("managed without a goal: ask for one goal first, unless the conversation already says it", () => {
+    const action = setupNextAction(state, { goal: null })
+    expect(action).toContain("ask which one goal they want to start with")
+    expect(action).toContain("knowledge, support or projects")
+    expect(action).not.toContain("First ask which features")
+  })
+
+  test("the setup guide has one Cloud branch keyed on edition and goal", () => {
+    const body = skillRegistry.get([orgId, "kernel", "setup-guide"])?.body ?? ""
+    expect(body).toContain("**On Cloud")
+    expect(body).toContain("`edition` is `managed`")
+    for (const goal of ["`knowledge`", "`support`", "`projects`"]) expect(body).toContain(goal)
+  })
+})

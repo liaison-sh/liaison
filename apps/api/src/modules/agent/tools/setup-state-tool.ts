@@ -6,8 +6,13 @@
 // conversation needs it, and the result's hint sends it to the setup-guide
 // skill. Any member may read it; `canConfigure` says whether this person can
 // act on it (an administrator), so the agent proposes steps only to them.
+import { isKickoffGoal, type KickoffGoal } from "@liaison/shared"
+import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
+import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
+import { schemaRef } from "~/db/schema-ref"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import { holdsAdminScope } from "~/modules/auth/admin-second-factor"
@@ -28,6 +33,10 @@ interface SetupStateCtx {
 
 export type SetupStateResult = SetupState & {
   canConfigure: boolean
+  /** `managed` on Cloud: the setup starts from one goal and offers mail last. */
+  edition: "managed" | "self-hosted"
+  /** Cloud: the goal the person chose at signup (the setup card's), or null. */
+  goal: KickoffGoal | null
   /** What to do next, in words: an unfinished connection the person may have
    *  asked for comes before the checklist's next item. */
   nextAction: string
@@ -66,9 +75,24 @@ export function connectionSetupCall(
   return `ask for its OAuth client (kernel__request_secret kind oauth_client, app ${app}, connection ${connection}), then ${connectCard}`
 }
 
+/** Cloud's order, said before everything else: the goal's step, the team, mail last. */
+function cloudOrder(goal: KickoffGoal | null): string {
+  const tail =
+    "then invite the team, then offer mail connection last (the setup-guide skill, On Cloud). Do not ask which features they want, and leave the checklist order until then."
+  return goal
+    ? `This Cloud workspace's person chose to start with ${goal}: do that step first unless it is already done, ${tail} `
+    : `This is a Cloud workspace: first ask which one goal they want to start with, knowledge, support or projects (unless they already said it in this conversation), do that step, ${tail} `
+}
+
 /** The next action: what is left of the features the person chose (connections
- *  first, when the person asked for them), then the checklist; the rest is a menu. */
-export function setupNextAction(state: SetupState): string {
+ *  first, when the person asked for them), then the checklist; the rest is a menu.
+ *  `cloud` is given on the managed edition only: its goal-first order leads. */
+export function setupNextAction(state: SetupState, cloud?: { goal: KickoffGoal | null }): string {
+  if (cloud) return `${cloudOrder(cloud.goal)}${nextActionFor(state, false)}`
+  return nextActionFor(state, true)
+}
+
+function nextActionFor(state: SetupState, selfHosted: boolean): string {
   const plan = state.features
   const wanted = new Set(plan.left.flatMap((s) => (s.unavailable ? [] : s.refs)))
   const oauth = new Set(state.connections.map((c) => `${c.app}/${c.connection}`))
@@ -76,7 +100,7 @@ export function setupNextAction(state: SetupState): string {
     (c) => !c.connected && wanted.has(`${c.app}/${c.connection}`),
   )
   const ask =
-    plan.chosen === null
+    selfHosted && plan.chosen === null
       ? `First ask which features the person wants (the basics are a fine answer) and record the answer with kernel__config_setup { setup: { features: [...] } }; until then only the basics (${plan.counted.join(", ")}) count as left. `
       : ""
   const others = plan.left.filter(
@@ -117,7 +141,11 @@ export function setupNextAction(state: SetupState): string {
     ? `the checklist's next item (${state.next})`
     : "anything else (every required item is done)"
   if (open.length === 0) {
-    const base = state.next ? `Next checklist item: ${state.next}.` : "Every required item is done."
+    const base = state.next
+      ? selfHosted
+        ? `Next checklist item: ${state.next}.`
+        : `After those, the checklist's next item: ${state.next}.`
+      : "Every required item is done."
     return `${ask}${base}${partialText}${otherText}${team}${menu}`
   }
   const list = open
@@ -139,10 +167,14 @@ export async function handleSetupState(
     loadEffectivePermissions(tx, ctx.userId, ctx.orgId),
   )
   const state = await computeSetupState(ctx.orgId)
+  const managed = isManagedEdition()
+  const goal = managed ? await kickoffGoal(ctx.orgId) : null
   return {
     ...state,
     canConfigure: holdsAdminScope(ctx.orgId, perms.scopes),
-    nextAction: setupNextAction(state),
+    edition: managed ? "managed" : "self-hosted",
+    goal,
+    nextAction: setupNextAction(state, managed ? { goal } : undefined),
     server: serverSetup(env).map(({ id, title, optional, done }) => ({
       id,
       title,
@@ -150,6 +182,20 @@ export async function handleSetupState(
       done,
     })),
   }
+}
+
+/** The goal on the workspace's setup card (provisioning/setup-kickoff.ts), if any. */
+async function kickoffGoal(orgId: string): Promise<KickoffGoal | null> {
+  const k = drizzleSql.raw(schemaRef("kernel"))
+  const [row] = await withPrivilegedDb(orgId, "setup-state-goal", async (tx) =>
+    extractRows<{ goal: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT metadata ->> 'goal' AS goal FROM ${k}.messages
+        WHERE org_id = ${orgId}::uuid AND (metadata ->> 'type') = 'setup-kickoff'
+        ORDER BY created_at LIMIT 1`),
+    ),
+  )
+  return isKickoffGoal(row?.goal) ? row.goal : null
 }
 
 export function registerSetupStateTool(orgId: string): void {

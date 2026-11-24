@@ -49,6 +49,26 @@ export const REPLAYED_SYSTEM_EVENT_TYPES: ReadonlySet<string> = new Set([
 export const SETUP_KICKOFF_LINE =
   "[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. The demo link was already offered.]"
 
+/**
+ * The same card on Cloud (the managed edition): one goal first, mail last.
+ * Still a pure function of the row: `managed` is a boolean flag and the goal
+ * one of a closed list, anything else reads as no goal. Self-hosted rows keep
+ * the fixed line above.
+ */
+export function setupKickoffLine(card: {
+  managed: boolean
+  goal: KickoffGoal | null
+  demoOffered: boolean
+}): string {
+  if (!card.managed) return SETUP_KICKOFF_LINE
+  const start = card.goal
+    ? `This is a Cloud workspace and their goal: ${card.goal}; start there.`
+    : "This is a Cloud workspace: ask which one goal they want to start with (knowledge, support or projects) and start there."
+  const demo = card.demoOffered ? " The demo link was already offered." : ""
+  return `[Event: this workspace is new. Help the person set it up: call kernel__setup_state, then follow the setup-guide skill. ${start} Then invite the team; offer mail connection last.${demo}]`
+}
+
+import { isKickoffGoal, type KickoffGoal } from "@liaison/shared"
 import { wrapExternalContent } from "~/lib/external-content"
 import {
   neutralisePlatformStep,
@@ -76,6 +96,10 @@ interface SystemEventMetadata {
   page?: unknown
   summary?: unknown
   data?: unknown
+  /** The setup card (provisioning/setup-kickoff.ts) on Cloud. */
+  managed?: unknown
+  goal?: unknown
+  demoUrl?: unknown
 }
 
 /**
@@ -289,7 +313,11 @@ export function systemEventLine(msg: { content: string; metadata: unknown }): st
       return `[Event: ${content}]${tail}`
     }
     case "setup-kickoff":
-      return SETUP_KICKOFF_LINE
+      return setupKickoffLine({
+        managed: meta.managed === true,
+        goal: isKickoffGoal(meta.goal) ? meta.goal : null,
+        demoOffered: typeof meta.demoUrl === "string" && meta.demoUrl !== "",
+      })
     case "drive-picker-result":
       return drivePickerLine(meta)
     case "app-page-result":

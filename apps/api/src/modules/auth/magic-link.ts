@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { timingSafeEqual } from "node:crypto"
+import type { KickoffGoal } from "@liaison/shared"
 import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import { organizations, users } from "~/db/schema/kernel"
@@ -359,6 +360,8 @@ export async function verifyMagicLink(input: {
   host?: string
   /** The person clicked "Continue" on a handoff link. */
   confirm?: boolean
+  /** The goal a signup chose: read for a handoff only, for its first setup only. */
+  goal?: KickoffGoal
 }): Promise<MagicLinkVerifyResult> {
   const { challengeId, code, token } = input
   const challengeKey = `${CHALLENGE_PREFIX}:${challengeId}`
@@ -464,7 +467,17 @@ export async function verifyMagicLink(input: {
     return { totpRequired: true, challengeToken }
   }
 
-  return createSession(user.id, user.orgId)
+  // The goal rides only on a handoff (a new Cloud workspace's first sign-in,
+  // minted by the operator). It can only shape a setup kickoff that is still
+  // due; it never touches an existing session or the workspace itself.
+  const kickoffGoal = record.handoff && input.goal !== undefined ? input.goal : undefined
+  return createSession(
+    user.id,
+    user.orgId,
+    undefined,
+    undefined,
+    kickoffGoal ? { kickoffGoal } : undefined,
+  )
 }
 
 /** What a handoff page shows before "Continue": the workspace and the account. */

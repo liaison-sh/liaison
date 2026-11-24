@@ -464,7 +464,7 @@ auth.post("/magic-link/request", zValidator("json", magicLinkRequestSchema), asy
 })
 
 auth.post("/magic-link/verify", zValidator("json", magicLinkVerifySchema), async (c) => {
-  const { challengeId, code, token, confirm } = c.req.valid("json")
+  const { challengeId, code, token, confirm, goal } = c.req.valid("json")
   const ip = getClientIp(c)
 
   // Light per-IP guard against challenge/code sweeping (the service also caps
@@ -486,7 +486,7 @@ auth.post("/magic-link/verify", zValidator("json", magicLinkVerifySchema), async
     // The host the client asked for, as the edge reports it (signed edge mode
     // carries it in a header; the request URL then names the cell origin).
     const host = effectiveRequest(c).host ?? undefined
-    const result = await verifyMagicLink({ challengeId, code, token, host, confirm })
+    const result = await verifyMagicLink({ challengeId, code, token, host, confirm, goal })
 
     // A handoff link before "Continue": who and where, no session yet.
     if ("confirmRequired" in result) {

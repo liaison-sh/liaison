@@ -34,11 +34,15 @@ const { withRlsContext } = await import("~/db/rls")
 const schema = await import("~/db/schema/kernel")
 const { env } = await import("~/lib/env")
 const { ENV_KEY_MAP } = await import("~/modules/agent/credits/platform-key-env")
-const { SETUP_KICKOFF_LINE } = await import("~/modules/agent/context/system-event-replay")
+const { SETUP_KICKOFF_LINE, systemEventLine } = await import(
+  "~/modules/agent/context/system-event-replay"
+)
 const { getOrCreatePersonalAgentId } = await import("~/modules/agent/directory/personal-agent")
 const { AgentServiceTestAccess } = await import("~/modules/agent/runtime/agent-service")
 const { registerKernelAgentTools } = await import("~/modules/agent/tools/kernel-tools")
 const { createSession } = await import("~/modules/auth/auth")
+const { mintChallenge } = await import("~/modules/auth/magic-link")
+const { _setEdition } = await import("~/lib/edition")
 const { markOrgAsDemo, reservedMarker, visitorMarker } = await import("~/modules/demo/demo-org")
 const { loadEffectivePermissions } = await import("~/modules/permissions/permissions")
 const { runSetupKickoff, SETUP_KICKOFF_JOB, SetupKickoffTestAccess } = await import(
@@ -520,5 +524,148 @@ describe("sign-in never waits for it and never fails because of it", () => {
         .where(and(eq(schema.messages.orgId, orgId), eq(schema.messages.id, row!.id))),
     )
     expect(visible).toHaveLength(1)
+  }, 60_000)
+})
+
+describe("on Cloud, the first session starts from one goal", () => {
+  async function verifyLink(body: Json): Promise<Response> {
+    return app.request("/api/auth/magic-link/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  }
+
+  async function handoffSignIn(
+    orgId: string,
+    adminId: string,
+    email: string,
+    extra: Json,
+    handoff = true,
+  ): Promise<Response> {
+    const minted = await mintChallenge({ id: adminId, orgId }, email, handoff ? { handoff } : {})
+    return verifyLink({
+      challengeId: minted.challengeId,
+      token: minted.linkToken,
+      ...(handoff ? { confirm: true } : {}),
+      ...extra,
+    })
+  }
+
+  it("goal=knowledge on a handoff's Continue lands in the kickoff payload; an unknown goal is dropped; an emailed link ignores it", async () => {
+    const known = await freshOrg()
+    expect(
+      (await handoffSignIn(known.orgId, known.adminId, known.email, { goal: "knowledge" })).status,
+    ).toBe(200)
+    await settle(known.orgId)
+    expect(kickoffJobs(known.orgId)[0]?.payload).toEqual({
+      orgId: known.orgId,
+      userId: known.adminId,
+      goal: "knowledge",
+    })
+
+    // Not one of the three: the sign-in still works, the goal is dropped.
+    const unknown = await freshOrg()
+    expect(
+      (await handoffSignIn(unknown.orgId, unknown.adminId, unknown.email, { goal: "billing" }))
+        .status,
+    ).toBe(200)
+    await settle(unknown.orgId)
+    expect(kickoffJobs(unknown.orgId)[0]?.payload).toEqual({
+      orgId: unknown.orgId,
+      userId: unknown.adminId,
+    })
+
+    // An emailed link (not a handoff) carries no goal, whatever it is sent.
+    const emailed = await freshOrg()
+    expect(
+      (
+        await handoffSignIn(
+          emailed.orgId,
+          emailed.adminId,
+          emailed.email,
+          { goal: "support" },
+          false,
+        )
+      ).status,
+    ).toBe(200)
+    await settle(emailed.orgId)
+    expect(kickoffJobs(emailed.orgId)[0]?.payload).toEqual({
+      orgId: emailed.orgId,
+      userId: emailed.adminId,
+    })
+  }, 60_000)
+
+  it("a goal never reaches a workspace that is not new: nothing is enqueued", async () => {
+    const { orgId, adminId, email } = await freshOrg()
+    expect((await signIn(email)).status).toBe(200)
+    await settle(orgId)
+    const job = kickoffJobs(orgId)[0]
+    await runSetupKickoff(job!.payload as { orgId: string; userId: string })
+    enqueued.length = 0
+    SetupKickoffTestAccess.reset()
+    expect((await handoffSignIn(orgId, adminId, email, { goal: "projects" })).status).toBe(200)
+    await settle(orgId)
+    expect(kickoffJobs(orgId)).toHaveLength(0)
+    const rows = await kickoffRows(orgId)
+    expect(rows).toHaveLength(1)
+    expect((rows[0]!.metadata as Json).goal).toBeUndefined()
+  }, 60_000)
+
+  // No turn here (no key): the line the turn reads is systemEventLine's, read
+  // back from the stored row below, the same function every turn replays.
+  it("managed, without a goal: the card asks for one goal, mail last, and carries managed", async () => {
+    const { orgId, adminId } = await freshOrg()
+    _setEdition("managed")
+    try {
+      await runSetupKickoff({ orgId, userId: adminId })
+    } finally {
+      _setEdition(null)
+    }
+    const [row] = await kickoffRows(orgId)
+    const meta = row!.metadata as Json
+    expect(meta.managed).toBe(true)
+    expect(meta.goal).toBeUndefined()
+    expect(row!.content).toContain("Where do you want to start?")
+    expect(row!.content).not.toContain("your mailbox, Google sign-in")
+    expect(systemEventLine({ content: row!.content, metadata: meta })).toContain(
+      "ask which one goal they want to start with",
+    )
+  }, 60_000)
+
+  it("managed, with a goal: the card and the line the agent's turn reads start there", async () => {
+    const { orgId, adminId } = await freshOrg()
+    _setEdition("managed")
+    try {
+      const result = await runSetupKickoff({ orgId, userId: adminId, goal: "support" })
+      expect(result).toMatchObject({ posted: true })
+    } finally {
+      _setEdition(null)
+    }
+    const [row] = await kickoffRows(orgId)
+    const meta = row!.metadata as Json
+    expect(meta).toMatchObject({ managed: true, goal: "support" })
+    expect(row!.content).toContain("customer support")
+    expect(systemEventLine({ content: row!.content, metadata: meta })).toContain(
+      "their goal: support; start there",
+    )
+  }, 60_000)
+
+  it("self-hosted: a goal in the payload changes nothing on the card", async () => {
+    // One at a time: a registration resets the org tables.
+    const a = await freshOrg()
+    await runSetupKickoff({ orgId: a.orgId, userId: a.adminId })
+    const [ra] = await kickoffRows(a.orgId)
+    const b = await freshOrg()
+    await runSetupKickoff({ orgId: b.orgId, userId: b.adminId, goal: "knowledge" })
+    const [rb] = await kickoffRows(b.orgId)
+    expect(rb!.content).toBe(ra!.content)
+    const strip = (m: Json) => {
+      const { agentId: _a, secretRequestId: _s, state: _st, agentAuthorLabel: _l, ...rest } = m
+      return rest
+    }
+    expect(strip(rb!.metadata as Json)).toEqual(strip(ra!.metadata as Json))
+    expect((rb!.metadata as Json).goal).toBeUndefined()
+    expect((rb!.metadata as Json).managed).toBeUndefined()
   }, 60_000)
 })

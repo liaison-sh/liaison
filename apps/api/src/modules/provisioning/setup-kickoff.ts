@@ -19,7 +19,12 @@
  * at once, every failure is logged and swallowed, and a workspace found not due
  * is remembered in this process so a token refresh costs one Set lookup.
  */
-import { orgKernelSettingsSchema, resolveLocale } from "@liaison/shared"
+import {
+  isKickoffGoal,
+  type KickoffGoal,
+  orgKernelSettingsSchema,
+  resolveLocale,
+} from "@liaison/shared"
 import { sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows } from "~/db"
 import { advisoryXactLock } from "~/db/advisory-lock"
@@ -29,6 +34,7 @@ import { withRlsContext } from "~/db/rls"
 import { organizations, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { enqueueAppJob } from "~/infra/jobs/jobs"
+import { isManagedEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import { rootLogger } from "~/lib/logger"
 import { getOrgKernelSettings } from "~/lib/settings"
@@ -55,6 +61,8 @@ export interface SetupKickoffPayload {
   orgId: string
   /** The administrator whose sign-in found the workspace due. */
   userId: string
+  /** Cloud: the goal the signup chose, carried by the handoff sign-in. */
+  goal?: KickoffGoal
 }
 
 /** What the card's row carries in `metadata` (read by the web row). */
@@ -66,6 +74,10 @@ export interface SetupKickoffMetadata {
   demoUrl: string | null
   /** The key card, when the workspace has no model key the agent could use. */
   secretRequestId?: string
+  /** Set on the managed edition (Cloud) only: the card asks for one goal, mail last. */
+  managed?: true
+  /** Cloud: the goal the person chose at signup; the setup starts there. */
+  goal?: KickoffGoal
 }
 
 /** Unset: on, except under NODE_ENV=test (lib/env.ts). */
@@ -149,6 +161,8 @@ export interface SetupKickoffSession {
   userId: string
   /** The session holds an administrative scope. */
   admin: boolean
+  /** Cloud: the goal a handoff sign-in carried (auth/magic-link.ts). */
+  goal?: KickoffGoal
 }
 
 async function maybeStartSetupKickoff(session: SetupKickoffSession): Promise<void> {
@@ -158,7 +172,11 @@ async function maybeStartSetupKickoff(session: SetupKickoffSession): Promise<voi
     settledOrgs.add(session.orgId)
     return
   }
-  await deps.enqueue({ orgId: session.orgId, userId: session.userId })
+  await deps.enqueue({
+    orgId: session.orgId,
+    userId: session.userId,
+    ...(session.goal ? { goal: session.goal } : {}),
+  })
   settledOrgs.add(session.orgId)
 }
 
@@ -246,6 +264,16 @@ export async function runSetupKickoff(payload: SetupKickoffPayload): Promise<Set
   const state = await computeSetupState(orgId)
   const demoUrl = demoOfferUrl()
   const { locale, agentId } = prep
+  // Cloud asks for one goal and puts it first, mail last. A self-hosted card
+  // stays exactly as it was, whatever the payload says. The payload comes back
+  // from the queue: the goal is checked against the closed list again.
+  const managed = isManagedEdition()
+  const goal = managed && isKickoffGoal(payload.goal) ? payload.goal : undefined
+  const intro = managed
+    ? goal
+      ? serverT(locale, `first-run.kickoff.introManagedGoal.${goal}`)
+      : serverT(locale, "first-run.kickoff.introManaged")
+    : serverT(locale, "first-run.kickoff.intro")
 
   const posted = await withRlsContext(actor, async (tx) => {
     // Two sign-ins racing, or the job enqueued twice: the second waits here and
@@ -270,10 +298,12 @@ export async function runSetupKickoff(payload: SetupKickoffPayload): Promise<Set
       state,
       demoUrl,
       ...(secretRequestId ? { secretRequestId } : {}),
+      ...(managed ? { managed: true as const } : {}),
+      ...(goal ? { goal } : {}),
     }
     const lines = [
       serverT(locale, "first-run.kickoff.title"),
-      serverT(locale, "first-run.kickoff.intro"),
+      intro,
       ...(secretRequestId ? [serverT(locale, "first-run.kickoff.keyFirst")] : []),
       ...(demoUrl
         ? [

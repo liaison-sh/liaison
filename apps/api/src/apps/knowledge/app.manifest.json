@@ -960,6 +960,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "create",
       "params": {
         "type": "object",
@@ -1077,6 +1078,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "update",
       "params": {
         "type": "object",
@@ -1143,6 +1145,7 @@
       "conditionalGate": true,
       "approvalCard": { "summary": "Archive a knowledge document" },
       "approvalImpact": "internal",
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "archive",
       "params": {
         "type": "object",

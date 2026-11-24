@@ -624,7 +624,17 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
         callerApp: bridgeOptions?.callerApp,
         appName,
       })
-      return JSON.stringify("error" in guard ? { error: guard.error } : {})
+      if ("error" in guard) return JSON.stringify({ error: guard.error })
+      // Who could read the page this create makes, or the existing one it would
+      // be written into (the redirects of knowledge_create): the gate's question.
+      const { audienceOfCreate, audienceOfDocument } = await import(
+        "~/apps/knowledge/approval-audience"
+      )
+      const bound = await findRoutineBoundRunningDoc(txDb as never, orgId, actor, bridgeRoutineId)
+      const target =
+        (bound?.id ? await audienceOfDocument(txDb as never, orgId, bound.id) : null) ??
+        (await audienceOfCreate(txDb as never, actor, params))
+      return JSON.stringify({ audience: target.audience })
     },
     knowledge_create: async (paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {

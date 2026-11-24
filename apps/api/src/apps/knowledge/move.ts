@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { randomUUID } from "node:crypto"
 import { sql as drizzleSql } from "drizzle-orm"
-import { assertCanFileIn, requireCollectionsScope } from "~/apps/knowledge/collections"
+import {
+  assertCanFileIn,
+  folderAudience,
+  type KnowledgeCollectionRow,
+  requireCollectionsScope,
+} from "~/apps/knowledge/collections"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanWriteDocumentRow,
@@ -80,6 +85,9 @@ export async function moveDocument(
       collectionId: to?.id ?? from?.id ?? null,
       targetType: "document",
       targetId: row.id,
+      ...(to || from ? folderAudience((to ?? from) as KnowledgeCollectionRow) : {}),
+      // Readers of the folder it leaves drop it.
+      ...(to && from ? { wasOrgWide: from.ownerUserId === null } : {}),
     },
     actorId: actor.userId,
     actorType: "user",

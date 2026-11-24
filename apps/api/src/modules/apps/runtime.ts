@@ -1139,6 +1139,30 @@ function baselineMemberScopes(
   return nonAdmin[0]?.scopes ?? []
 }
 
+/**
+ * The host functions a core app's manifest may name as a gated tool's
+ * `resourceOwner.host`: who alone decides this call, or null for the
+ * organization's deciders. One that fails answers the requester, never null.
+ */
+const HOST_RESOURCE_OWNERS: Record<
+  string,
+  | ((
+      tool: string,
+      params: Record<string, unknown>,
+      ctx: { orgId: string; requestedBy: string },
+    ) => Promise<string | null>)
+  | undefined
+> = {
+  "knowledge.page": async (tool, params, ctx) => {
+    try {
+      const { knowledgeApprovalOwner } = await import("~/apps/knowledge/approval-audience")
+      return await knowledgeApprovalOwner(tool, params, ctx)
+    } catch {
+      return ctx.requestedBy
+    }
+  },
+}
+
 /** Reserved name of the auto-maintained composite role. */
 export const FULL_MEMBER_ROLE_NAME = "Full Member"
 const FULL_MEMBER_ROLE_DESCRIPTION =
@@ -3391,7 +3415,19 @@ async function registerSingleApp(
           // tool targeting a personally-owned resource routes its approval to
           // the owner alone. Interpreted host-side by
           // modules/approvals/resource-owner.ts — no app code runs.
-          if (
+          if (typeof tool.resourceOwner?.host === "string") {
+            // A host function a core app names: the platform's own code, so never
+            // an installed app's to choose.
+            const resolve = core ? HOST_RESOURCE_OWNERS[tool.resourceOwner.host] : undefined
+            if (!resolve) {
+              throw new Error(
+                `${desc.name}:${toolName}: no host resource owner "${tool.resourceOwner.host}"`,
+              )
+            }
+            approvalResourceOwnerRegistry.set([orgId, desc.name, toolName], {
+              resolveOwner: (params, ctx) => resolve(toolName, params, ctx),
+            })
+          } else if (
             tool.resourceOwner?.requester &&
             typeof tool.resourceOwner.requester.param === "string" &&
             typeof tool.resourceOwner.requester.equals === "string"

@@ -40,6 +40,48 @@ export function requireCollectionsScope(actor: KnowledgeActor): void {
 }
 
 // ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+
+/**
+ * Who a folder change concerns, carried instead of what it says: no name leaves
+ * the row. `orgWide` is a shared folder, `userIds` the owner of a personal one,
+ * `wasOrgWide` a folder (or page place) others saw until this change. Sockets
+ * deliver by it (websocket.ts), the audit log drops it.
+ */
+export function folderAudience(folder: Pick<KnowledgeCollectionRow, "ownerUserId">): {
+  orgWide: boolean
+  userIds: string[]
+} {
+  return folder.ownerUserId === null
+    ? { orgWide: true, userIds: [] }
+    : { orgWide: false, userIds: [folder.ownerUserId] }
+}
+
+async function queueFolderEvent(
+  tx: RlsClient,
+  action: "create" | "update" | "archive",
+  row: Pick<KnowledgeCollectionRow, "id" | "ownerUserId">,
+  before: Pick<KnowledgeCollectionRow, "ownerUserId">,
+  actor: KnowledgeActor,
+): Promise<void> {
+  await tx.queueEvent({
+    app: "knowledge",
+    entity: "collection",
+    action,
+    entityId: row.id,
+    data: {
+      id: row.id,
+      ...folderAudience(row),
+      wasOrgWide: before.ownerUserId === null,
+    },
+    actorId: actor.userId,
+    actorType: "user",
+    orgId: actor.orgId,
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Row types
 // ---------------------------------------------------------------------------
 
@@ -457,16 +499,7 @@ export async function createKnowledgeCollection(
     )
   `)
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "collection",
-    action: "create",
-    entityId: id,
-    data: { id, name },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  await queueFolderEvent(tx, "create", { id, ownerUserId }, { ownerUserId }, actor)
 
   const row = await loadCollection(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Collection not found after insert")
@@ -565,16 +598,7 @@ export async function updateKnowledgeCollection(
     `)
   }
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "collection",
-    action: "update",
-    entityId: id,
-    data: { id },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  await queueFolderEvent(tx, "update", { id, ownerUserId }, existing, actor)
 
   const row = await loadCollection(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Collection not found after update")
@@ -622,16 +646,7 @@ export async function archiveKnowledgeCollection(
     WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid
   `)
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "collection",
-    action: "archive",
-    entityId: id,
-    data: { id },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  await queueFolderEvent(tx, "archive", existing, existing, actor)
 
   const row = await loadCollection(tx, id, actor)
   if (!row) throw new KnowledgeError("NOT_FOUND", "Collection not found after archive")
@@ -704,7 +719,7 @@ export async function addCollectionMembership(
   actor: KnowledgeActor,
 ): Promise<{ id: string }> {
   requireCollectionsScope(actor)
-  await assertCanFileIn(tx, input.collectionId, actor)
+  const folder = await assertCanFileIn(tx, input.collectionId, actor)
   await assertTargetReadable(tx, input, actor)
 
   const id = randomUUID()
@@ -740,7 +755,12 @@ export async function addCollectionMembership(
     entity: "collection_membership",
     action: "create",
     entityId: effectiveId,
-    data: { ...input },
+    data: {
+      collectionId: folder.id,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      ...folderAudience(folder),
+    },
     actorId: actor.userId,
     actorType: "user",
     orgId: actor.orgId,
@@ -755,7 +775,7 @@ export async function removeCollectionMembership(
   actor: KnowledgeActor,
 ): Promise<void> {
   requireCollectionsScope(actor)
-  await assertCanFileIn(tx, input.collectionId, actor)
+  const folder = await assertCanFileIn(tx, input.collectionId, actor)
   await assertTargetEditable(tx, input, actor)
   await tx.execute(drizzleSql`
     DELETE FROM ${knowledgeRel("collection_memberships")}
@@ -769,7 +789,12 @@ export async function removeCollectionMembership(
     entity: "collection_membership",
     action: "delete",
     entityId: input.targetId,
-    data: { ...input },
+    data: {
+      collectionId: folder.id,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      ...folderAudience(folder),
+    },
     actorId: actor.userId,
     actorType: "user",
     orgId: actor.orgId,

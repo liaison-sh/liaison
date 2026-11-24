@@ -734,6 +734,13 @@ const toolSchema = {
           required: ["requester"],
           additionalProperties: false,
         },
+        {
+          // A host function answers per call (core apps only, runtime.ts).
+          type: "object",
+          properties: { host: { type: "string", minLength: 1 } },
+          required: ["host"],
+          additionalProperties: false,
+        },
       ],
     },
     editableFields: {

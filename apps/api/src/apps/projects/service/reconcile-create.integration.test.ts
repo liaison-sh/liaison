@@ -2289,6 +2289,83 @@ describe("time entered while a card waits, or after it was claimed", () => {
   }, 120_000)
 })
 
+describe("a retainer over four months, time told in any order", () => {
+  it("counts every minute of every invoiced month once, and bills each month's overage once", async () => {
+    let above = 0
+    for (const seed of [3, 11, 29, 47]) {
+      let x = seed
+      const rand = (n: number) => {
+        x = (x * 1664525 + 1013904223) >>> 0
+        return x % n
+      }
+      const months = ["2026-07", "2026-08", "2026-09", "2026-10"]
+      const r = await retainerProject([...months, "2026-11"])
+      const tasks = [
+        await closedTask(r.id, "One", null, []),
+        await closedTask(r.id, "Two", null, []),
+        await closedTask(r.id, "Three", null, []),
+      ]
+      const used = new Set<string>()
+      /** Some hours on a task on a free day of a month up to `upTo`. */
+      const enter = async (upTo: number) => {
+        const task = tasks[rand(tasks.length)] as string
+        const day = `${months[rand(upTo + 1)]}-${String(1 + rand(28)).padStart(2, "0")}`
+        if (used.has(`${task} ${day}`)) return
+        used.add(`${task} ${day}`)
+        await addTime(r.id, task, [[day, 60 * (4 + rand(9))]])
+      }
+      for (const [i, month] of [...months, "2026-11"].entries()) {
+        const upTo = Math.min(i, months.length - 1)
+        for (let n = rand(6) + 2; n > 0; n--) await enter(upTo)
+        let card = await proposal(r.key, month, [])
+        // Time entered while the card waits, on some months.
+        if (month !== "2026-11") for (let n = rand(3); n > 0; n--) await enter(upTo)
+        let made = await create(card)
+        for (let tries = 0; made.error?.code === "card_changed" && tries < 3; tries++) {
+          card = made.error.details.latest
+          made = await create(card)
+        }
+        expect(made.error, `seed ${seed}, ${month}`).toBeUndefined()
+        if (rand(3) === 0) {
+          // Undone and made again: the same minutes, once.
+          const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+          expect(undone.undone).toBe(true)
+          card = await proposal(r.key, month, [])
+          made = await create(card)
+          expect(made.error, `seed ${seed}, ${month} again`).toBeUndefined()
+        }
+      }
+      const entered = extractRows<{ month: string; task: string; m: number }>(
+        await db.execute(drizzleSql`
+          SELECT to_char(work_date, 'YYYY-MM') AS month, task_id::text AS task, sum(minutes)::int AS m
+            FROM app_projects.task_time WHERE project_id = ${r.id}::uuid
+           GROUP BY 1, 2 ORDER BY 1, 2`),
+      )
+      const counted = extractRows<{ month: string; task: string; m: number }>(
+        await db.execute(drizzleSql`
+          SELECT split_part(period_key, '+', 1) AS month, source_ref AS task,
+                 sum(counted_minutes)::int AS m
+            FROM app_projects.billing_claims
+           WHERE project_id = ${r.id}::uuid AND state IN ('reserved', 'billed')
+           GROUP BY 1, 2 ORDER BY 1, 2`),
+      )
+      expect(counted, `seed ${seed}`).toEqual(entered)
+      const lines = extractRows<{ q: string }>(
+        await db.execute(drizzleSql`
+          SELECT sum(l.quantity)::text AS q FROM app_invoicing.document_lines l
+            JOIN app_invoicing.documents d ON d.id = l.document_id
+           WHERE d.billing_project_id = ${r.id}::uuid AND l.unit_price_minor = 12000`),
+      )
+      const owed = months
+        .map((m) => entered.filter((e) => e.month === m).reduce((a, e) => a + e.m, 0))
+        .reduce((a, m) => a + Math.max(0, m - 2400), 0)
+      expect(Math.round(Number(lines[0]?.q ?? 0) * 60), `seed ${seed}`).toBe(owed)
+      above += owed
+    }
+    expect(above).toBeGreaterThan(0)
+  }, 300_000)
+})
+
 describe("two cards of one month", () => {
   it("never hold the same task's month, whatever key each is drafted under", async () => {
     const r = await retainerProject(["2026-09"])

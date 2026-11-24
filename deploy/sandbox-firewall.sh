@@ -25,7 +25,9 @@
 #   sudo deploy/sandbox-firewall.sh install    rules now + a systemd unit that
 #                                               re-applies them at every boot,
 #                                               before Docker starts
-#   sudo deploy/sandbox-firewall.sh apply      rules now (idempotent)
+#   sudo deploy/sandbox-firewall.sh apply      rules now (idempotent); an
+#                                               installed unit takes the
+#                                               current settings too
 #   sudo deploy/sandbox-firewall.sh apply --boot
 #                                               the same without asking Docker
 #                                               about the live network (the
@@ -59,6 +61,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SELF="$HERE/$(basename "$0")"
 CHAIN_FWD="LIAISON-SANDBOX-FWD"
 CHAIN_IN="LIAISON-SANDBOX-IN"
+CHAIN_FWD6="LIAISON-SANDBOX-FWD6"
+CHAIN_IN6="LIAISON-SANDBOX-IN6"
 # The host's files; SANDBOX_FIREWALL_ROOT points them at a fake tree (tests).
 ROOT="${SANDBOX_FIREWALL_ROOT:-}"
 UNIT_NAME="liaison-sandbox-firewall.service"
@@ -186,14 +190,22 @@ need_root() {
 }
 
 ipt() { iptables -w "$@"; }
+ip6() { ip6tables -w "$@"; }
 
-# Create (or empty) a chain of ours, and make sure `parent` jumps to it first.
+# Create (or empty) a chain of ours, and make sure `parent` jumps to it first
+# (with `ip6` as the third argument: the IPv6 table).
 own_chain() {
   parent="$1"
   chain="$2"
-  ipt -N "$chain" 2>/dev/null || ipt -F "$chain"
-  while ipt -D "$parent" -j "$chain" 2>/dev/null; do :; done
-  ipt -I "$parent" 1 -j "$chain"
+  t="${3:-ipt}"
+  "$t" -N "$chain" 2>/dev/null || "$t" -F "$chain"
+  while "$t" -D "$parent" -j "$chain" 2>/dev/null; do :; done
+  "$t" -I "$parent" 1 -j "$chain"
+}
+
+# ip6tables is there and the kernel has IPv6 (else there is nothing to drop).
+has_ip6() {
+  command -v ip6tables >/dev/null 2>&1 && ip6 -S INPUT >/dev/null 2>&1
 }
 
 apply() {
@@ -232,20 +244,47 @@ apply() {
   ipt -A "$CHAIN_FWD" -i "$BRIDGE" -s "$SUBNET" -d "$SANDBOX_IP" -p tcp --dport "$SANDBOX_PORT" -j RETURN
   ipt -A "$CHAIN_FWD" -i "$BRIDGE" -j DROP
 
-  # No IPv6 on the sandbox network (the compose file disables it); drop any anyway.
-  if command -v ip6tables >/dev/null 2>&1 && [ -e "$ROOT/proc/sys/net/ipv6/conf/$BRIDGE" ]; then
+  # No IPv6 on the sandbox network (the compose file disables it, and the rules
+  # above are IPv4 only): drop any to the host and through the host, matched by
+  # the bridge's name, which holds before Docker creates the bridge (the boot
+  # unit runs first) and after it recreates it. Switch IPv6 off on the bridge
+  # too when it exists now.
+  if has_ip6; then
+    own_chain INPUT "$CHAIN_IN6" ip6
+    ip6 -A "$CHAIN_IN6" -i "$BRIDGE" -j DROP
+    ip6 -N DOCKER-USER 2>/dev/null || true
+    if ! ip6 -C FORWARD -j DOCKER-USER 2>/dev/null; then ip6 -I FORWARD 1 -j DOCKER-USER; fi
+    own_chain DOCKER-USER "$CHAIN_FWD6" ip6
+    ip6 -A "$CHAIN_FWD6" -i "$BRIDGE" -j DROP
+    ip6 -A "$CHAIN_FWD6" -o "$BRIDGE" -j DROP
+  elif [ -e "$ROOT/proc/sys/net/ipv6" ]; then
+    echo "sandbox-firewall: ip6tables is missing: IPv6 on $BRIDGE is not filtered (install ip6tables, then run this again)" >&2
+  fi
+  if [ -e "$ROOT/proc/sys/net/ipv6/conf/$BRIDGE" ]; then
     sysctl -q -w "net.ipv6.conf.$BRIDGE.disable_ipv6=1" || true
   fi
   echo "sandbox-firewall: rules applied (sandbox $SANDBOX_IP on $SUBNET may reach :$BRIDGE_PORT only)"
+  # An installed boot unit carries the settings: keep it on the ones just
+  # applied, so the next boot does not go back to older ones.
+  if [ -z "${1:-}" ] && [ -f "$UNIT" ] && command -v systemctl >/dev/null 2>&1; then
+    write_unit
+    echo "sandbox-firewall: boot unit updated to these settings ($UNIT)"
+  fi
 }
 
 install_unit() {
   need_root
-  apply
+  apply install
   if ! command -v systemctl >/dev/null 2>&1; then
     echo "sandbox-firewall: no systemd; run '$SELF apply --boot' at every boot, before Docker starts" >&2
     return 0
   fi
+  write_unit
+  echo "sandbox-firewall: installed $UNIT (re-applies at boot, before Docker starts)"
+}
+
+# The root-disk copy and the unit, on the current settings, enabled.
+write_unit() {
   mkdir -p "$ROOT$BOOT_DIR"
   cp "$SELF" "$ROOT$BOOT_COPY.new"
   chmod 0755 "$ROOT$BOOT_COPY.new"
@@ -283,7 +322,6 @@ EOF
   mv -f "$UNIT.new" "$UNIT"
   systemctl daemon-reload
   systemctl enable "$UNIT_NAME" >/dev/null
-  echo "sandbox-firewall: installed $UNIT (re-applies at boot, before Docker starts)"
 }
 
 remove() {
@@ -295,6 +333,15 @@ remove() {
     ipt -F "$chain" 2>/dev/null || true
     ipt -X "$chain" 2>/dev/null || true
   done
+  if command -v ip6tables >/dev/null 2>&1; then
+    for pair in "INPUT $CHAIN_IN6" "DOCKER-USER $CHAIN_FWD6"; do
+      parent="${pair% *}"
+      chain="${pair#* }"
+      while ip6 -D "$parent" -j "$chain" 2>/dev/null; do :; done
+      ip6 -F "$chain" 2>/dev/null || true
+      ip6 -X "$chain" 2>/dev/null || true
+    done
+  fi
   if command -v systemctl >/dev/null 2>&1; then
     systemctl disable "$UNIT_NAME" >/dev/null 2>&1 || true
   fi

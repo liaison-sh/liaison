@@ -311,6 +311,7 @@ describe("sandbox-firewall.sh install writes a unit that runs before Docker", ()
     }
     stub("id", "echo 0")
     stub("iptables", `echo "$*" >> "${state}/iptables.log"; case "$*" in *" -C "* | *" -D "*) exit 1 ;; esac; exit 0`)
+    stub("ip6tables", `echo "$*" >> "${state}/ip6tables.log"; case "$*" in *" -C "* | *" -D "*) exit 1 ;; esac; exit 0`)
     stub("modprobe", "exit 0")
     stub("sysctl", "exit 0")
     stub(
@@ -339,6 +340,11 @@ exit 0`,
     host()
     // An earlier install's link from multi-user.target.
     writeFileSync(path.join(root, "etc/systemd/system/multi-user.target.wants/liaison-sandbox-firewall.service"), "")
+    // A systemctl whose disable leaves that link: the script removes it itself.
+    writeFileSync(
+      path.join(bin, "systemctl"),
+      `#!/bin/sh\necho "$*" >> "${state}/systemctl.log"\n[ "$1" = enable ] && mkdir -p "${root}/etc/systemd/system/docker.service.wants" && ln -sf ../liaison-sandbox-firewall.service "${root}/etc/systemd/system/docker.service.wants/$2"\nexit 0\n`,
+    )
     const envFile = path.join(dir, "custom.env")
     writeFileSync(envFile, "LIAISON_SANDBOX_SUBNET=10.73.250.0/24\n")
     const r = run(["-p", "liaison", "--env-file", envFile, "install"], { SANDBOX_FIREWALL_ROOT: root })
@@ -432,6 +438,64 @@ exit 0`,
     expect(log("iptables.log")).toBe("")
   })
 
+  // The bridge does not exist yet when the unit runs (Docker creates it), so
+  // IPv6 is dropped by the bridge's name, which holds before and after.
+  it("apply --boot drops IPv6 on the bridge by its name, before the bridge exists", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    expect(() => readFileSync(path.join(root, "proc/sys/net/ipv6/conf/liaison-sbx0/disable_ipv6"))).toThrow()
+    const r = run(["apply", "--boot"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.stderr).toBe("")
+    expect(r.code).toBe(0)
+    const ip6 = log("ip6tables.log")
+    expect(ip6).toContain("-I INPUT 1 -j LIAISON-SANDBOX-IN6")
+    expect(ip6).toContain("-A LIAISON-SANDBOX-IN6 -i liaison-sbx0 -j DROP")
+    expect(ip6).toContain("-I DOCKER-USER 1 -j LIAISON-SANDBOX-FWD6")
+    expect(ip6).toContain("-A LIAISON-SANDBOX-FWD6 -i liaison-sbx0 -j DROP")
+    expect(ip6).toContain("-A LIAISON-SANDBOX-FWD6 -o liaison-sbx0 -j DROP")
+    // A second apply empties the chain or makes it, and drops the old jump before adding one.
+    expect(run(["apply", "--boot"], { SANDBOX_FIREWALL_ROOT: root }).code).toBe(0)
+    const again = log("ip6tables.log").split("\n")
+    for (const [parent, chain] of [["INPUT", "LIAISON-SANDBOX-IN6"], ["DOCKER-USER", "LIAISON-SANDBOX-FWD6"]]) {
+      const removes = again.filter((l) => l === `-w -D ${parent} -j ${chain}`).length
+      expect(removes).toBe(2)
+      expect(again.filter((l) => l === `-w -I ${parent} 1 -j ${chain}`).length).toBe(removes)
+    }
+  })
+
+  it("a kernel without IPv6 skips the IPv6 rules and still applies", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    writeFileSync(path.join(bin, "ip6tables"), `#!/bin/sh\necho "$*" >> "${state}/ip6tables.log"\nexit 3\n`)
+    const r = run(["apply", "--boot"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.code).toBe(0)
+    expect(log("ip6tables.log")).not.toContain("-A ")
+    expect(log("iptables.log")).toContain("-A LIAISON-SANDBOX-FWD -i liaison-sbx0 -j DROP")
+  })
+
+  // The unit carries the settings; an apply after a settings change must not
+  // leave the next boot on the old ones.
+  it("apply after a settings change rewrites an installed unit; without one it installs nothing", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    const fresh = run(["apply"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(fresh.code).toBe(0)
+    expect(() => readFileSync(unitPath())).toThrow()
+    expect(run(["install"], { SANDBOX_FIREWALL_ROOT: root }).code).toBe(0)
+    writeFileSync(copyPath(), "stale\n")
+    stack({ subnet: "10.80.1.0/24", sandboxIp: "10.80.1.10", appIp: "10.80.1.2" })
+    const envFile = path.join(dir, "moved.env")
+    writeFileSync(envFile, "LIAISON_SANDBOX_SUBNET=10.80.1.0/24\nLIAISON_SANDBOX_IP=10.80.1.10\n")
+    const r = run(["--env-file", envFile, "apply"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.stderr).toBe("")
+    expect(r.code).toBe(0)
+    const lines = readFileSync(unitPath(), "utf8").split("\n")
+    expect(lines).toContain("Environment=LIAISON_SANDBOX_SUBNET=10.80.1.0/24")
+    expect(lines).toContain("Environment=LIAISON_SANDBOX_IP=10.80.1.10")
+    expect(readFileSync(copyPath(), "utf8")).toBe(readFileSync(SCRIPT, "utf8"))
+    expect(r.stdout).toContain("boot unit updated")
+  })
+
   it("remove drops the unit, the copy and every link", () => {
     stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
     host()
@@ -445,5 +509,8 @@ exit 0`,
       expect(() => readFileSync(path.join(root, "etc/systemd/system", wants, "liaison-sandbox-firewall.service"))).toThrow()
     }
     expect(log("systemctl.log")).toContain("daemon-reload")
+    const ip6 = log("ip6tables.log")
+    expect(ip6).toContain("-X LIAISON-SANDBOX-IN6")
+    expect(ip6).toContain("-X LIAISON-SANDBOX-FWD6")
   })
 })

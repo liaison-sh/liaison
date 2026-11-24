@@ -93,8 +93,21 @@ The unit `liaison-sandbox-firewall.service` puts the rules back before Docker st
 - It runs a copy of the script that `install` keeps at `/usr/local/lib/liaison/sandbox-firewall.sh`, with `apply --boot`: the settings come from the unit, not from your env files, and it does not ask Docker about the network (Docker is not up yet). So it works when your checkout or env file sits on a volume that is mounted after boot.
 - Docker never depends on it: if the unit fails, Docker still starts, and the service refuses every run with `sandbox_network_open` until the rules are back (`sudo deploy/sandbox-firewall.sh install`). `systemctl status liaison-sandbox-firewall` says why it failed.
 - It runs after `network-pre.target`, so a host firewall that loads its own rules at boot (nftables, firewalld, iptables-persistent, ufw) loads them first.
+- IPv6 is dropped by the bridge's name (`ip6tables`, to the host and through it), which holds before Docker creates the bridge. The compose file keeps IPv6 off on the sandbox network anyway; a host without `ip6tables` gets a warning.
+- It is wanted by `docker.service` only. Where Docker runs under another unit name (the snap package's `snap.docker.dockerd.service`, for example), the unit does not run at boot: run `sudo deploy/sandbox-firewall.sh apply --boot` before that unit starts (a drop-in of your own), or use Docker's own packages. The service still refuses runs while the rules are missing.
 
-Run `install` again after each upgrade (with your `-p`/`--env-file`) so the copy and the unit follow the release. Installs made before this unit existed ran their rules after Docker had started the containers; running `install` again replaces that unit. To see the order after a reboot, `systemctl show -p ExecMainExitTimestampMonotonic liaison-sandbox-firewall` must be lower than `systemctl show -p ActiveEnterTimestampMonotonic docker`.
+Run `install` again after each upgrade (with your `-p`/`--env-file`) so the copy and the unit follow the release. Installs made before this unit existed ran their rules after Docker had started the containers; running `install` again replaces that unit. The unit keeps the settings it was written with: an `apply` after you change them rewrites an installed unit and its copy too, so the next boot uses the new ones.
+
+To see after a reboot that the rules went in before Docker, run this; it prints the line only when the unit succeeded and finished before Docker's process started, and fails otherwise (a failed or timed-out unit included). Then run `check` as above, which must exit 0:
+
+```sh
+systemctl is-active --quiet liaison-sandbox-firewall &&
+  [ "$(systemctl show -p Result --value liaison-sandbox-firewall)" = success ] &&
+  [ "$(systemctl show -p ExecMainExitTimestampMonotonic --value liaison-sandbox-firewall)" -lt "$(systemctl show -p ExecMainStartTimestampMonotonic --value docker)" ] &&
+  echo "rules in before Docker"
+```
+
+Each `apply` empties the script's chains and fills them again, so a running stack has a gap of well under a second while it runs. Nothing re-applies the rules after the host firewall reloads (`systemctl restart nftables` or a firewalld reload); the service notices the open network and refuses runs until you run `apply` again.
 
 On the sandbox network the rules let through only an app process's connection to the service and the service's connection to an app process's bridge port; anything else coming from that network is dropped. `apply` and `check` stop with an error when the live network's subnet, or the service's address, is not the one in the settings.
 

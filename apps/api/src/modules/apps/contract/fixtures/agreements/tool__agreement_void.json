@@ -1,7 +1,7 @@
 {
   "entry": "tool:agreement_void",
   "params": {
-    "id": "d6973161-9d35-454e-a9fa-22f29f5b7497",
+    "id": "32101f1f-3d4f-40a4-b4df-b03e04fdf732",
     "reason": "Terms changed"
   },
   "recordedFrom": "the contract org on a local stack, record-agreements.recorder.ts",
@@ -11,21 +11,24 @@
   "calls": [
     {
       "method": "db_findOne",
-      "args": ["agreements", "d6973161-9d35-454e-a9fa-22f29f5b7497"],
-      "reply": "{\"id\":\"d6973161-9d35-454e-a9fa-22f29f5b7497\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-24 07:41:25.012179+00\",\"updated_at\":\"2026-11-24 07:41:25.131392+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"b5a442ba-614f-422a-9f7f-d76626ce3108\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null,\"project_time_budgets\":null,\"project_timebox_minutes\":null,\"effects_claim\":null,\"effects_claimed_at\":null,\"effects_task_id\":null,\"effects_timebox_minutes\":null,\"effects_time_plan\":null,\"effects_billing\":null,\"effects_done_at\":null,\"effects_note\":null,\"imported_text\":null}"
+      "args": [
+        "agreements",
+        "32101f1f-3d4f-40a4-b4df-b03e04fdf732"
+      ],
+      "reply": "{\"id\":\"32101f1f-3d4f-40a4-b4df-b03e04fdf732\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-24 10:13:34.741616+00\",\"updated_at\":\"2026-11-24 10:13:34.853159+00\",\"number\":\"AG-2026-001\",\"kind\":\"nda\",\"status\":\"draft\",\"title\":\"NDA with Maison Verre\",\"company_id\":null,\"contact_id\":null,\"deal_task_id\":null,\"project_id\":null,\"quote_document_id\":null,\"parent_agreement_id\":null,\"became_agreement_id\":null,\"template_id\":\"9ddbf1af-60e9-4b24-9a2c-bec2a64db0e2\",\"template_version\":1,\"language\":\"en\",\"fit_tag\":\"commercial\",\"pricing_mode\":null,\"price_minor\":null,\"currency\":null,\"priced_by_user_id\":null,\"amended_total_minor\":null,\"hours_minutes\":null,\"rate_minor\":null,\"starts_on\":null,\"ends_on\":null,\"renews_on\":\"2027-06-30\",\"notice_days\":null,\"signed_at\":null,\"expiring_notified_on\":null,\"retention_until\":null,\"void_reason\":null,\"what_it_is\":null,\"what_it_is_by_user_id\":null,\"not_a_guarantee_by_user_id\":null,\"org_access\":\"editor\",\"acl_user_ids\":[],\"created_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"created_by_agent_id\":null,\"seal_overdue_at\":null,\"claimed_by_user_id\":null,\"claimed_at\":null,\"project_time_budgets\":null,\"project_timebox_minutes\":null,\"send_told_version_id\":null,\"send_key\":null,\"effects_claim\":null,\"effects_claimed_at\":null,\"effects_task_id\":null,\"effects_timebox_minutes\":null,\"effects_time_plan\":null,\"effects_billing\":null,\"effects_done_at\":null,\"effects_note\":null,\"imported_text\":null}"
     },
     {
       "method": "db_findMany",
       "args": [
         "agreement_versions",
-        "{\"where\":{\"agreement_id\":\"d6973161-9d35-454e-a9fa-22f29f5b7497\"},\"limit\":500}"
+        "{\"where\":{\"agreement_id\":\"32101f1f-3d4f-40a4-b4df-b03e04fdf732\"},\"orderBy\":{\"number\":\"desc\"},\"limit\":1,\"select\":[\"id\",\"agreement_id\",\"number\",\"status\",\"sha256\",\"frozen_at\",\"source_kind\",\"copy_differs_at\",\"answers_recorded\"]}"
       ],
-      "reply": "[{\"id\":\"0a45ea04-a38d-43e9-bc3f-a46eb15601cf\",\"org_id\":\"00000000-0000-4000-8000-00000000c0de\",\"created_at\":\"2026-11-24 07:41:25.377706+00\",\"updated_at\":\"2026-11-24 07:41:25.427114+00\",\"agreement_id\":\"d6973161-9d35-454e-a9fa-22f29f5b7497\",\"number\":1,\"source\":{\"body\":{\"blocks\":[{\"text\":\"Mutual non-disclosure agreement\",\"type\":\"heading\"},{\"text\":\"Each party keeps the other's information confidential.\",\"type\":\"paragraph\"},{\"text\":\"1. Term\",\"type\":\"heading\"},{\"text\":\"This agreement lasts two years.\",\"type\":\"paragraph\"}]},\"data\":{}},\"source_text\":\"Mutual non-disclosure agreement\\nEach party keeps the other's information confidential.\\n1. Term\\nThis agreement lasts two years.\",\"file_id\":\"475c7cf9-6e89-4513-ba88-a5bcdb5bb84b\",\"sha256\":\"7236a9758b33f8158075f7d8e917bb48116222dc72db613c5a40b9be4101bc39\",\"byte_size\":15657,\"page_count\":1,\"frozen_at\":\"2026-01-01 00:00:00+00\",\"copy_differs_at\":null,\"frozen_by_user_id\":\"00000000-0000-4000-8000-00000000c0df\",\"source_kind\":\"generated\",\"source_text_origin\":\"rendered\",\"pages\":null,\"pages_sha256\":null,\"file_report\":null,\"status\":\"frozen\",\"change_note\":null,\"knowledge_document_id\":null,\"scan_state\":\"not_run\"}]"
+      "reply": "[{\"id\":\"8b0c6217-46fb-4999-bc54-c1569e02b630\",\"agreement_id\":\"32101f1f-3d4f-40a4-b4df-b03e04fdf732\",\"number\":1,\"status\":\"frozen\",\"sha256\":\"cb8e0df80f22fb64dc6087a403c556a1ec492bd61d23e6bd74a250cddc805dcc\",\"frozen_at\":\"2026-01-01 00:00:00+00\",\"source_kind\":\"generated\",\"copy_differs_at\":null,\"answers_recorded\":null}]"
     },
     {
       "method": "client_actions_record",
       "args": [
-        "{\"target_type\":\"agreement_version\",\"target_id\":\"0a45ea04-a38d-43e9-bc3f-a46eb15601cf\"}"
+        "{\"target_type\":\"agreement_version\",\"target_id\":\"8b0c6217-46fb-4999-bc54-c1569e02b630\"}"
       ],
       "reply": "{\"status\":\"ok\",\"links\":[]}"
     }

@@ -22,8 +22,8 @@ import { ALL_DEFERRED_TOOLS_UNLOCKED, buildToolSet } from "~/modules/agent/tools
 import { toolRegistry } from "~/modules/apps/app-registries"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
-import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
 
 ownSubrunHandler({ live: true })
 

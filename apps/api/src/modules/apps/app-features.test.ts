@@ -71,8 +71,8 @@ import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
-import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../test-support/harness/subrun-handler"
 
 ownSubrunHandler({ live: true })
 

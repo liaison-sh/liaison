@@ -17,8 +17,8 @@ import { awaitSubRunResult } from "~/modules/agent/subruns/subrun-await"
 import { startSubrunWorker } from "~/modules/agent/subruns/subrun-worker"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
-import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { ownSubrunHandler } from "../../../../test-support/harness/subrun-handler"
 
 ownSubrunHandler({ live: true })
 

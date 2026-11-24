@@ -863,10 +863,12 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `customers_tag` | Add or remove tags on a Shopify customer | yes | `shopify:customers:write` |
 | `customers_update` | Update a Shopify customer record | yes | `shopify:customers:write` |
 | `discounts_bulk_create` | Generate MANY unique discount codes on ONE code discount in a SINGLE call — the right tool when the user asks for N unique codes (e.g. | yes | `shopify:discounts:write` |
-| `discounts_create` | Create a Shopify discount code. | yes | `shopify:discounts:write` |
-| `discounts_delete` | Delete a Shopify discount code | yes | `shopify:discounts:write` |
-| `discounts_search` | Search Shopify discount-code nodes (basic / bxgy / free-shipping) by code/title KEYWORD. |  | `shopify:discounts:read` |
-| `discounts_update` | Update a Shopify discount code (gated). | yes | `shopify:discounts:write` |
+| `discounts_create` | Create a Shopify discount: a CODE (basicCodeDiscount) or an AUTOMATIC discount applied at checkout with no code (automaticBasicDiscount, e.g. | yes | `shopify:discounts:write` |
+| `discounts_delete` | Delete a Shopify discount for good: a code, or an automatic discount (DiscountAutomaticNode id). | yes | `shopify:discounts:write` |
+| `discounts_get` | Read ONE Shopify discount in full, a code or an automatic discount (id from discounts_search): title, method, status, window, summary, value (percentage as a 0-1 fraction or a fixed amount), what it applies to (all items, or products, variants and collections BY TITLE), its minimum requirement (subtotal or quantity), who it is available to (availableTo: all, or the markets by name), how it combines, codes and usage. |  | `shopify:discounts:read` |
+| `discounts_search` | Search Shopify discounts: discount CODES and AUTOMATIC discounts (applied at checkout with no code, e.g. |  | `shopify:discounts:read` |
+| `discounts_set_status` | Activate or DEACTIVATE a Shopify discount, a code OR an AUTOMATIC discount (id from discounts_search, e.g. | yes | `shopify:discounts:write` |
+| `discounts_update` | Update a Shopify discount (gated): a code (basicCodeDiscount) or, when id is a DiscountAutomaticNode, a basic AUTOMATIC discount (automaticBasicDiscount, same fields as on create). | yes | `shopify:discounts:write` |
 | `draft_orders_complete` | Complete a Shopify draft order: it becomes a real order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_create` | Create a Shopify draft order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_delete` | Delete a Shopify draft order. | yes | `shopify:draft-orders:write` |

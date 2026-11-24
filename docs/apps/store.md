@@ -163,7 +163,7 @@ An order read shows the tax it charged, whether it was tax exempt, the B2B compa
 | `shopify:inventory:read` / `shopify:inventory:write` | Read / adjust stock |
 | `shopify:markets:read` | Read markets |
 | `shopify:analytics:read` | Sales analytics |
-| `shopify:discounts:read` / `shopify:discounts:write` | Read / change discount codes |
+| `shopify:discounts:read` / `shopify:discounts:write` | Read / change discount codes and automatic discounts |
 | `shopify:metafields:read` / `shopify:metafields:write` | Read / change metafields |
 | `shopify:admin:identity-map` | Diagnostics, staff mappings, disconnect, webhook repair |
 | `shopify:admin:scope-seed` | Apply a reviewed scope-seed suggestion |
@@ -191,7 +191,7 @@ Read tools never wait. Every tool marked "Always" files an approval and changes 
 | `inventory_levels_list`, `inventory_value`, `locations_list` | Stock per location and stock value | No |
 | `markets_list`, `markets_get` | Read markets | No |
 | `analytics_query` | Sales totals and store sessions over a period, by SKU, product or market, optionally per day, week or month | No |
-| `discounts_search`, `metafields_list` | Read discount codes and metafields | No |
+| `discounts_search`, `discounts_get`, `metafields_list` | Read discount codes, automatic discounts and metafields | No |
 | `order_note_set` | Set an order's internal staff note | No |
 | `webhooks_repair` | Re-register the store webhooks | No |
 | `order_update`, `order_cancel` | Change tags or note, cancel an order | Always |
@@ -201,11 +201,14 @@ Read tools never wait. Every tool marked "Always" files an approval and changes 
 | `products_create`, `products_update`, `products_delete`, `products_merge`, `products_publish`, `products_unpublish` | Products | Always |
 | `variants_create`, `variants_update`, `variants_delete` | Variants | Always |
 | `inventory_adjust`, `inventory_set_on_hand` | Change stock by a delta or to a count | Always |
-| `discounts_create`, `discounts_bulk_create`, `discounts_update`, `discounts_delete` | Discount codes | Always |
+| `discounts_create`, `discounts_bulk_create`, `discounts_update`, `discounts_delete` | Discount codes and automatic discounts | Always |
+| `discounts_set_status` | Activate or deactivate a discount code or an automatic discount | Always |
 | `returns_request`, `returns_approve`, `returns_decline`, `returns_refund`, `returns_close` | Returns | Always |
 | `customers_update`, `customers_tag`, `customers_email_marketing_consent_update`, `customers_sms_marketing_consent_update` | Customers and consent | Always |
 | `metafields_set`, `metafields_delete` | Metafields | Always |
 | `connection_disconnect`, `staff_overrides_upsert`, `staff_overrides_delete`, `apply_seed_suggestion` | Admin actions | Always |
+
+`discounts_search` lists discount codes and automatic discounts (the ones Shopify applies at checkout with no code); each result says which. `discounts_get` reads one in full: its value, the products and collections it applies to by name, and its minimum purchase. A discount's approval card names the products it applies to, its minimum purchase, and, for a change, the discount as it is before the change. `discounts_create` also creates an automatic discount (a percentage or amount off products or the whole order, a minimum purchase, the dates, and which other discounts it combines with), and `discounts_update` and `discounts_delete` change or remove one. An automatic discount's approval card shows its title, value, products, minimum purchase and what it combines with. A discount, code or automatic, can be limited to some of your Shopify markets: its approval card names the markets, and `discounts_search` and `discounts_get` say who a discount is available to. A minimum purchase amount is always in the store currency, also for a market that sells in another one.
 
 When Shopify is still adding the codes of an approved `discounts_bulk_create`, the action finishes once they are all in, and the codes appear in its result then.
 

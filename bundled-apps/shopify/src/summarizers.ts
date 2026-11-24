@@ -1443,19 +1443,79 @@ export function summarizeInventorySetOnHand(params: unknown): Promise<ApprovalSu
 
 // ─── Discounts ──────────────────────────────────────────────────────────────────
 
-export function summarizeDiscountsCreate(params: unknown): Promise<ApprovalSummaryShape> {
+/** gid -> title map the card's discounts_get context resolved for the proposed scope ({} when absent). */
+function proposedTitlesFromContext(context: unknown): Record<string, string> {
+  if (!isRec(context) || !isRec(context.proposedTitles)) return {}
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(context.proposedTitles)) if (typeof v === "string") out[k] = v
+  return out
+}
+
+/** Reviewer lines for an EXISTING discount read by discounts_get: what it is today. */
+function discountContextLines(context: unknown): string[] {
+  if (!isRec(context) || !isRec(context.attributes)) return []
+  const a = context.attributes
+  const lines: string[] = []
+  const method = a.method === "automatic" ? "automatic discount" : "discount code"
+  lines.push(`Discount: ${str(context.title) ?? "(untitled)"} (${method})`)
+  if (str(a.summary)) lines.push(`Today: ${str(a.summary)}`)
+  if (str(a.status)) lines.push(`Current status: ${str(a.status)}`)
+  const ap = isRec(a.appliesTo) ? a.appliesTo : null
+  if (ap && ap.all !== true) {
+    const names = [
+      ...(isArr(ap.products) ? ap.products : []),
+      ...(isArr(ap.variants) ? ap.variants : []),
+      ...(isArr(ap.collections) ? ap.collections : []),
+    ]
+      .filter(isRec)
+      .map((e) => str(e.title) ?? gidShort(e.id))
+    if (names.length > 0) lines.push(`Currently applies to: ${names.join(", ")}`)
+  }
+  const to = isRec(a.availableTo) ? a.availableTo : null
+  if (to?.type === "markets")
+    lines.push(
+      `Currently limited to markets: ${(isArr(to.markets) ? to.markets : [])
+        .filter(isRec)
+        .map((m) => str(m.name) ?? gidShort(m.id))
+        .join(", ")}`,
+    )
+  const mr = isRec(a.minimumRequirement) ? a.minimumRequirement : null
+  if (mr?.type === "subtotal")
+    lines.push(
+      `Current minimum: subtotal of at least ${String(mr.amount ?? "?")}${str(mr.currencyCode) ? ` ${str(mr.currencyCode)}` : ""}`,
+    )
+  else if (mr?.type === "quantity")
+    lines.push(`Current minimum: at least ${String(mr.quantity ?? "?")} item(s)`)
+  const window = [dateOnly(a.startsAt), dateOnly(a.endsAt)]
+  if (window[0] || window[1])
+    lines.push(`Active: ${window[0] ?? "?"} to ${window[1] ?? "no end date"}`)
+  return lines
+}
+
+export function summarizeDiscountsCreate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
+  const automatic = isRec(p.automaticBasicDiscount) ? p.automaticBasicDiscount : null
   const d = isRec(p.basicCodeDiscount) ? p.basicCodeDiscount : p
   const code = str(d.code) ?? "(no code)"
   // The lines describe the NORMALISED discount the handler will send, not the raw payload.
   return Promise.resolve({
     kind: "discounts_create",
-    title: `Create discount code: ${code}`,
-    lines: describeDiscountInput(p, "create"),
+    title: automatic
+      ? `Create automatic discount: ${str(automatic.title) ?? "(no title)"}`
+      : `Create discount code: ${code}`,
+    lines: describeDiscountInput(p, "create", proposedTitlesFromContext(meta?.context)),
   })
 }
 
-export function summarizeDiscountsBulkCreate(params: unknown): Promise<ApprovalSummaryShape> {
+export function summarizeDiscountsBulkCreate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const count = typeof p.count === "number" ? p.count : Number(p.count ?? 0)
   const prefix = str(p.codePrefix) ?? "(no prefix)"
@@ -1463,32 +1523,76 @@ export function summarizeDiscountsBulkCreate(params: unknown): Promise<ApprovalS
   return Promise.resolve({
     kind: "discounts_bulk_create",
     title: `Bulk-create ${count} discount code${count === 1 ? "" : "s"} (prefix "${prefix}")`,
-    lines: [`Prefix: ${prefix}`, ...describeDiscountInput(p, "bulk")],
+    lines: [
+      `Prefix: ${prefix}`,
+      ...describeDiscountInput(p, "bulk", proposedTitlesFromContext(meta?.context)),
+    ],
   })
 }
 
-export function summarizeDiscountsUpdate(params: unknown): Promise<ApprovalSummaryShape> {
+export function summarizeDiscountsUpdate(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
   const id = gidShort(p.id)
-  const d = isRec(p.basicCodeDiscount) ? p.basicCodeDiscount : {}
-  const lines = describeDiscountInput(p, "update")
+  const d = isRec(p.automaticBasicDiscount)
+    ? p.automaticBasicDiscount
+    : isRec(p.basicCodeDiscount)
+      ? p.basicCodeDiscount
+      : {}
+  const lines = describeDiscountInput(p, "update", proposedTitlesFromContext(meta?.context))
   if (lines.length === 0) lines.push(...describeRemainingFields(d, []))
   if (lines.length === 0) lines.push("Only the discount identifier is present in the payload")
+  const current = discountContextLines(meta?.context)
+  const name = isRec(meta?.context) ? str(meta.context.title) : null
 
   return Promise.resolve({
     kind: "discounts_update",
-    title: `Update discount ${str(d.code) ?? id}`,
-    lines,
+    title: `Update discount ${str(d.code) ?? name ?? id}`,
+    lines: current.length > 0 ? [...lines, "Before the change:", ...current] : lines,
   })
 }
 
-export function summarizeDiscountsDelete(params: unknown): Promise<ApprovalSummaryShape> {
+export function summarizeDiscountsDelete(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
   const p = isRec(params) ? params : {}
+  const name = isRec(meta?.context) ? str(meta.context.title) : null
+  const current = discountContextLines(meta?.context)
   return Promise.resolve({
     kind: "discounts_delete",
-    title: `Delete discount ${gidShort(p.id)}`,
-    subtitle: "The code stops working for future orders",
-    lines: [`Discount: ${gidShort(p.id)}`],
+    title: `Delete discount ${name ?? gidShort(p.id)}`,
+    subtitle: /DiscountAutomaticNode/.test(String(p.id ?? ""))
+      ? "The automatic discount stops applying and is removed for good"
+      : "The code stops working for future orders",
+    lines: current.length > 0 ? current : [`Discount: ${gidShort(p.id)}`],
+  })
+}
+
+export function summarizeDiscountsSetStatus(
+  params: unknown,
+  _ctx?: unknown,
+  meta?: SummarizerMeta,
+): Promise<ApprovalSummaryShape> {
+  const p = isRec(params) ? params : {}
+  const automatic = /DiscountAutomaticNode/.test(String(p.id ?? ""))
+  const what = automatic ? "automatic discount" : "discount code"
+  const name = isRec(meta?.context) ? str(meta.context.title) : null
+  const deactivate = p.action === "deactivate"
+  const current = discountContextLines(meta?.context)
+  return Promise.resolve({
+    kind: "discounts_set_status",
+    title: `${deactivate ? "Deactivate" : "Activate"} ${what}: ${name ?? gidShort(p.id)}`,
+    subtitle: deactivate
+      ? automatic
+        ? "It ends now and stops applying at checkout; its settings are kept"
+        : "It ends now and the code can no longer be redeemed; its settings are kept"
+      : "It becomes active from now",
+    lines: current.length > 0 ? current : [`Discount: ${gidShort(p.id)} (${what})`],
   })
 }
 

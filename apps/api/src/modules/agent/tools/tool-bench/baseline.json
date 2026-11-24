@@ -826,7 +826,7 @@
     },
     "invoicing__drafts_create": {
       "desc": 290,
-      "schema": 1523
+      "schema": 1509
     },
     "invoicing__drafts_discard": {
       "desc": 179,
@@ -2133,8 +2133,8 @@
       "schema": 854
     },
     "projects__createProject": {
-      "desc": 523,
-      "schema": 995
+      "desc": 512,
+      "schema": 980
     },
     "projects__delete": {
       "desc": 164,
@@ -2294,23 +2294,31 @@
     },
     "shopify__discounts_bulk_create": {
       "desc": 774,
-      "schema": 328
+      "schema": 396
     },
     "shopify__discounts_create": {
-      "desc": 356,
-      "schema": 315
+      "desc": 598,
+      "schema": 686
     },
     "shopify__discounts_delete": {
-      "desc": 30,
+      "desc": 158,
       "schema": 19
     },
+    "shopify__discounts_get": {
+      "desc": 512,
+      "schema": 113
+    },
     "shopify__discounts_search": {
-      "desc": 348,
-      "schema": 38
+      "desc": 878,
+      "schema": 133
+    },
+    "shopify__discounts_set_status": {
+      "desc": 401,
+      "schema": 59
     },
     "shopify__discounts_update": {
-      "desc": 171,
-      "schema": 254
+      "desc": 492,
+      "schema": 623
     },
     "shopify__draft_orders_complete": {
       "desc": 1125,

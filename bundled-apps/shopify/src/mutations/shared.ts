@@ -93,9 +93,10 @@ export async function readGatedTarget(
   id: string,
   expectedType: string,
   tool: string,
+  opts: { apiVersion?: string } = {},
 ): Promise<GatedTargetNode | undefined> {
   if (!isShopifyGid(id)) return undefined
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, opts)
   const data = await client.query<{ node?: GatedTargetNode | null }>(GATED_TARGET_PROBE, { id })
   const node = data.node
   if (!node) throw makeMutationError("NOT_FOUND", `${tool}: no ${expectedType} found for ${id}.`)
@@ -327,6 +328,8 @@ export async function runMutation<T extends Record<string, unknown>>(
     eventAction: string
     entityIdPath?: string
     entityIdOverride?: string
+    /** Admin API version of this mutation (default: the app's). */
+    apiVersion?: string
     // Post-process the extracted node before it is returned and emitted —
     // e.g. resolving the order-then-draft PO-number fallback onto the node
     // in `draft_orders_complete`. Runs AFTER the userErrors/entityId checks
@@ -335,7 +338,7 @@ export async function runMutation<T extends Record<string, unknown>>(
     transformNode?: (node: Record<string, unknown>) => Record<string, unknown>
   },
 ): Promise<T> {
-  const client = await getShopifyClient(ctx)
+  const client = await getShopifyClient(ctx, { apiVersion: args.apiVersion })
   let data: Record<string, T>
   try {
     data = await client.query<Record<string, T>>(args.query, args.variables)

@@ -20,6 +20,7 @@ import {
   loadDeclaredEmits,
 } from "./lib/emit.testutil"
 import {
+  canonicaliseAutomaticBasicDiscount,
   canonicaliseBasicCodeDiscount,
   canonicaliseBasicCodeDiscountPartial,
   canonicalizeProductInput,
@@ -30,7 +31,10 @@ import {
   discounts_bulk_create,
   discounts_create,
   discounts_create_preflight,
+  discounts_delete,
   discounts_delete_preflight,
+  discounts_set_status,
+  discounts_set_status_preflight,
   discounts_update,
   discounts_update_preflight,
   draft_orders_complete,
@@ -7116,4 +7120,437 @@ describe("marketing consent updates send the customer inside the mutation input"
       })
     })
   }
+})
+
+describe("discount minimum requirement and scope deltas", () => {
+  it("a create keeps the minimum subtotal (it used to be stripped, so the code had no minimum)", () => {
+    const out = canonicaliseBasicCodeDiscount({
+      code: "BIG10",
+      percentage: 10,
+      startsAt: "2026-11-24T00:00:00Z",
+      minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: "1000" } },
+    })
+    expect(out.minimumRequirement).toEqual({ subtotal: { greaterThanOrEqualToSubtotal: "1000" } })
+  })
+
+  it("maps the flat aliases and rejects an ambiguous minimum", () => {
+    expect(
+      canonicaliseBasicCodeDiscount({ code: "A", minimumSubtotal: 1000 }).minimumRequirement,
+    ).toEqual({
+      subtotal: { greaterThanOrEqualToSubtotal: "1000" },
+    })
+    expect(canonicaliseBasicCodeDiscountPartial({ minimumQuantity: 2 }).minimumRequirement).toEqual(
+      {
+        quantity: { greaterThanOrEqualToQuantity: "2" },
+      },
+    )
+    expect(() =>
+      canonicaliseBasicCodeDiscount({ code: "A", minimumSubtotal: 1000, minimumQuantity: 2 }),
+    ).toThrow(/not both/)
+    expect(() => canonicaliseBasicCodeDiscount({ code: "A", minimumSubtotal: 0 })).toThrow(
+      /positive/,
+    )
+  })
+
+  it("an update of the value alone never widens the scope to the whole store", () => {
+    const out = canonicaliseBasicCodeDiscountPartial({
+      customerGets: { value: { percentage: 0.3 } },
+    })
+    expect(out.customerGets).toEqual({ value: { percentage: 0.3 } })
+  })
+
+  it("an update can take products out of the scope", () => {
+    const out = canonicaliseBasicCodeDiscountPartial({
+      customerGets: {
+        items: {
+          products: {
+            productsToAdd: ["gid://shopify/Product/1"],
+            productsToRemove: ["gid://shopify/Product/2"],
+          },
+        },
+      },
+    })
+    expect(out.customerGets).toEqual({
+      items: {
+        products: {
+          productsToAdd: ["gid://shopify/Product/1"],
+          productsToRemove: ["gid://shopify/Product/2"],
+        },
+      },
+    })
+  })
+})
+
+describe("discounts_set_status: activate or deactivate a code or an automatic discount", () => {
+  const AUTO = "gid://shopify/DiscountAutomaticNode/7"
+  const CODE = "gid://shopify/DiscountCodeNode/9"
+
+  it("deactivates an AUTOMATIC discount with discountAutomaticDeactivate", async () => {
+    const { ctx, calls, events } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            discountAutomaticDeactivate: {
+              automaticDiscountNode: { id: AUTO, automaticDiscount: { status: "EXPIRED" } },
+              userErrors: [],
+            },
+          },
+        },
+      ],
+    })
+    await discounts_set_status({ id: AUTO, action: "deactivate" }, ctx)
+    const body = JSON.parse(calls[0]!.body) as { query: string; variables: Record<string, unknown> }
+    expect(body.query).toContain("discountAutomaticDeactivate(id: $id)")
+    expect(body.variables).toEqual({ id: AUTO })
+    expect(events.map((e) => `${e.entity}:${e.action}`)).toEqual(["discount:deactivated"])
+  })
+
+  it("activates a CODE discount with discountCodeActivate", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        { data: { discountCodeActivate: { codeDiscountNode: { id: CODE }, userErrors: [] } } },
+      ],
+    })
+    await discounts_set_status({ id: CODE, action: "activate" }, ctx)
+    expect(calls[0]!.body).toContain("discountCodeActivate(id: $id)")
+  })
+
+  it("refuses a non-discount id or a missing action before sending anything", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [] })
+    await expect(
+      discounts_set_status({ id: "gid://shopify/Product/1", action: "deactivate" }, ctx),
+    ).rejects.toThrow(/discount gid/)
+    await expect(discounts_set_status({ id: AUTO }, ctx)).rejects.toThrow(/action must be/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it("the preflight refuses to deactivate a discount that is already EXPIRED", async () => {
+    const { ctx } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            node: {
+              id: AUTO,
+              __typename: "DiscountAutomaticNode",
+              automaticDiscount: {
+                __typename: "DiscountAutomaticBasic",
+                title: "BF -30%",
+                status: "EXPIRED",
+              },
+            },
+          },
+        },
+      ],
+    })
+    const r = await discounts_set_status_preflight({ id: AUTO, action: "deactivate" }, ctx)
+    expect(r).toEqual({
+      error: {
+        code: "INVALID_STATE",
+        message: expect.stringContaining("already EXPIRED"),
+      },
+    })
+  })
+
+  it("the preflight passes an ACTIVE automatic discount and refuses one that does not exist", async () => {
+    const active = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            node: {
+              id: AUTO,
+              __typename: "DiscountAutomaticNode",
+              automaticDiscount: {
+                __typename: "DiscountAutomaticBasic",
+                title: "BF -30%",
+                status: "ACTIVE",
+              },
+            },
+          },
+        },
+      ],
+    })
+    expect(
+      await discounts_set_status_preflight({ id: AUTO, action: "deactivate" }, active.ctx),
+    ).toEqual({
+      ok: true,
+    })
+    const gone = makeCtx({ fetchResponses: [{ data: { node: null } }] })
+    const r = await discounts_set_status_preflight({ id: AUTO, action: "deactivate" }, gone.ctx)
+    expect((r as { error: { code: string } }).error.code).toBe("NOT_FOUND")
+  })
+})
+
+describe("automatic discounts: create, update, delete", () => {
+  const AUTO = "gid://shopify/DiscountAutomaticNode/7"
+  const bfDigital = {
+    title: "Black Friday digital -30%",
+    startsAt: "2026-11-27T00:00:00Z",
+    endsAt: "2026-12-01T00:00:00Z",
+    customerGets: {
+      value: { percentage: 0.3 },
+      items: { products: { productsToAdd: ["gid://shopify/Product/11"] } },
+    },
+    combinesWith: { orderDiscounts: true, productDiscounts: false, shippingDiscounts: false },
+    // Fields an automatic discount does not have: stripped, never sent.
+    code: "NOPE",
+    usageLimit: 5,
+    customerSelection: { all: true },
+  }
+
+  it("creates an automatic discount with discountAutomaticBasicCreate, combinesWith kept", async () => {
+    const { ctx, calls, events } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            discountAutomaticBasicCreate: { automaticDiscountNode: { id: AUTO }, userErrors: [] },
+          },
+        },
+      ],
+    })
+    await discounts_create({ automaticBasicDiscount: bfDigital }, ctx)
+    const body = JSON.parse(calls[0]!.body) as { query: string; variables: Record<string, unknown> }
+    expect(body.query).toContain("discountAutomaticBasicCreate(")
+    expect(body.variables.automaticBasicDiscount).toEqual({
+      title: "Black Friday digital -30%",
+      startsAt: "2026-11-27T00:00:00Z",
+      endsAt: "2026-12-01T00:00:00Z",
+      combinesWith: { orderDiscounts: true, productDiscounts: false, shippingDiscounts: false },
+      customerGets: {
+        value: { percentage: 0.3 },
+        items: { products: { productsToAdd: ["gid://shopify/Product/11"] } },
+      },
+    })
+    expect(events.map((e) => `${e.entity}:${e.action}`)).toEqual(["discount:created"])
+  })
+
+  it("an order discount above 1000 keeps its minimum and stacks with product discounts", () => {
+    const out = canonicaliseAutomaticBasicDiscount(
+      {
+        title: "Black Friday -10% from 1000",
+        startsAt: "2026-11-27T00:00:00Z",
+        customerGets: { value: { percentage: 0.1 }, items: { all: true } },
+        minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: "1000" } },
+        combinesWith: { productDiscounts: true },
+      },
+      "create",
+    )
+    expect(out.minimumRequirement).toEqual({ subtotal: { greaterThanOrEqualToSubtotal: "1000" } })
+    expect(out.combinesWith).toEqual({ productDiscounts: true })
+    expect(out.customerGets).toEqual({ value: { percentage: 0.1 }, items: { all: true } })
+  })
+
+  it("the create preflight refuses an automatic discount without a title, start or value, or a non-boolean combinesWith", async () => {
+    for (const bad of [
+      { startsAt: "2026-11-27T00:00:00Z", percentage: 30 },
+      { title: "T", percentage: 30 },
+      { title: "T", startsAt: "2026-11-27T00:00:00Z" },
+      { ...bfDigital, combinesWith: { orderDiscounts: "yes" } },
+    ]) {
+      const r = await discounts_create_preflight({ automaticBasicDiscount: bad })
+      expect("error" in r).toBe(true)
+    }
+  })
+
+  it("updates an automatic discount: adds and removes products, value untouched", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        {
+          data: {
+            discountAutomaticBasicUpdate: { automaticDiscountNode: { id: AUTO }, userErrors: [] },
+          },
+        },
+      ],
+    })
+    await discounts_update(
+      {
+        id: AUTO,
+        automaticBasicDiscount: {
+          customerGets: {
+            items: {
+              products: {
+                productsToAdd: ["gid://shopify/Product/12"],
+                productsToRemove: ["gid://shopify/Product/13"],
+              },
+            },
+          },
+        },
+      },
+      ctx,
+    )
+    const body = JSON.parse(calls[0]!.body) as { query: string; variables: Record<string, unknown> }
+    expect(body.query).toContain("discountAutomaticBasicUpdate(")
+    expect(body.variables).toEqual({
+      id: AUTO,
+      automaticBasicDiscount: {
+        customerGets: {
+          items: {
+            products: {
+              productsToAdd: ["gid://shopify/Product/12"],
+              productsToRemove: ["gid://shopify/Product/13"],
+            },
+          },
+        },
+      },
+    })
+  })
+
+  it("the update preflight reads the automatic discount and refuses a non-basic one", async () => {
+    const node = (kind: string) => ({
+      data: {
+        node: {
+          id: AUTO,
+          __typename: "DiscountAutomaticNode",
+          automaticDiscount: { __typename: kind, title: "BF", status: "ACTIVE" },
+        },
+      },
+    })
+    const ok = makeCtx({ fetchResponses: [node("DiscountAutomaticBasic")] })
+    expect(
+      await discounts_update_preflight({ id: AUTO, endsAt: "2026-12-02T00:00:00Z" }, ok.ctx),
+    ).toEqual({ ok: true })
+    expect(ok.calls[0]!.body).toContain("DiscountGet")
+    const bxgy = makeCtx({ fetchResponses: [node("DiscountAutomaticBxgy")] })
+    const r = await discounts_update_preflight(
+      { id: AUTO, endsAt: "2026-12-02T00:00:00Z" },
+      bxgy.ctx,
+    )
+    expect((r as { error: { code: string } }).error.code).toBe("UNSUPPORTED_DISCOUNT_TYPE")
+  })
+
+  it("deletes an automatic discount with discountAutomaticDelete", async () => {
+    const { ctx, calls } = makeCtx({
+      fetchResponses: [
+        { data: { discountAutomaticDelete: { deletedAutomaticDiscountId: AUTO, userErrors: [] } } },
+      ],
+    })
+    await discounts_delete({ id: AUTO }, ctx)
+    expect(calls[0]!.body).toContain("discountAutomaticDelete(id: $id)")
+  })
+
+  it("the delete preflight accepts an automatic discount id", async () => {
+    const { ctx } = makeCtx({
+      fetchResponses: [{ data: { node: { id: AUTO, __typename: "DiscountAutomaticNode" } } }],
+    })
+    expect(await discounts_delete_preflight({ id: AUTO }, ctx)).toEqual({ ok: true })
+  })
+})
+
+describe("market-limited discounts (context.markets, API 2026-07)", () => {
+  const AUTO = "gid://shopify/DiscountAutomaticNode/7"
+  const USA = "gid://shopify/Market/38080446613"
+  const INTL = "gid://shopify/Market/78971029"
+  const usd = {
+    title: "10% off",
+    startsAt: "2026-11-27T00:00:00Z",
+    customerGets: { value: { percentage: 0.1 }, items: { all: true } },
+    minimumRequirement: { subtotal: { greaterThanOrEqualToSubtotal: "900" } },
+    context: { markets: { add: [USA, INTL] } },
+  }
+  const created = {
+    data: { discountAutomaticBasicCreate: { automaticDiscountNode: { id: AUTO }, userErrors: [] } },
+  }
+
+  it("creates an automatic discount limited to its markets, on 2026-07", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [created] })
+    await discounts_create({ automaticBasicDiscount: usd }, ctx)
+    expect(calls[0]!.url).toContain("/admin/api/2026-07/graphql.json")
+    const sent = JSON.parse(calls[0]!.body).variables.automaticBasicDiscount
+    expect(sent.context).toEqual({ markets: { add: [USA, INTL] } })
+    expect(sent.minimumRequirement).toEqual({ subtotal: { greaterThanOrEqualToSubtotal: "900" } })
+  })
+
+  it("sends no context when no market is named", async () => {
+    const { ctx, calls } = makeCtx({ fetchResponses: [created] })
+    const { context: _c, ...everywhere } = usd
+    await discounts_create({ automaticBasicDiscount: everywhere }, ctx)
+    expect("context" in JSON.parse(calls[0]!.body).variables.automaticBasicDiscount).toBe(false)
+  })
+
+  it("takes the market list from its usual aliases and completes bare ids", () => {
+    for (const alias of [
+      { context: { markets: [USA] } },
+      { markets: ["38080446613"] },
+      { marketIds: [USA, USA] },
+      { customerSelection: { markets: { add: [USA] } } },
+    ]) {
+      const out = canonicaliseAutomaticBasicDiscount({ ...usd, context: null, ...alias }, "create")
+      expect(out.context).toEqual({ markets: { add: [USA] } })
+    }
+  })
+
+  it("the preflight refuses a limit it cannot send rather than widening the discount", async () => {
+    for (const bad of [
+      { context: "USA" },
+      { context: { markets: { add: ["USA"] } } },
+      { context: { markets: { add: [] } } },
+      { context: { markets: { add: [USA], remove: [INTL] } } },
+      { context: { all: "ALL", markets: { add: [USA] } } },
+      { context: { customers: { add: ["gid://shopify/Customer/1"] } } },
+      { customerSelection: { customers: { add: ["gid://shopify/Customer/1"] } } },
+    ]) {
+      const r = await discounts_create_preflight({ automaticBasicDiscount: { ...usd, ...bad } })
+      expect("error" in r).toBe(true)
+    }
+    expect(await discounts_create_preflight({ automaticBasicDiscount: usd })).toEqual({ ok: true })
+  })
+
+  it("an update adds and removes markets, or opens the discount to everyone", () => {
+    const update = (context: unknown) =>
+      canonicaliseAutomaticBasicDiscount({ context }, "update").context
+    expect(update({ markets: { add: [USA], remove: [INTL] } })).toEqual({
+      markets: { add: [USA], remove: [INTL] },
+    })
+    expect(update({ all: true })).toEqual({ all: "ALL" })
+    expect("context" in canonicaliseAutomaticBasicDiscount({ title: "T" }, "update")).toBe(false)
+  })
+
+  it("a code limited to markets sends context instead of customerSelection", () => {
+    const out = canonicaliseBasicCodeDiscount({
+      code: "USD10",
+      percentage: 10,
+      customerSelection: { all: true },
+      context: { markets: { add: [USA] } },
+    })
+    expect(out.context).toEqual({ markets: { add: [USA] } })
+    expect("customerSelection" in out).toBe(false)
+    const partial = canonicaliseBasicCodeDiscountPartial({ context: { markets: { add: [USA] } } })
+    expect(partial).toEqual({ context: { markets: { add: [USA] } } })
+    const everyone = canonicaliseBasicCodeDiscount({ code: "X", percentage: 10 })
+    expect(everyone.customerSelection).toEqual({ all: true })
+    expect("context" in everyone).toBe(false)
+  })
+
+  it("reads and changes a discount on 2026-07, where a market-limited one exists", async () => {
+    const node = {
+      data: {
+        node: {
+          id: AUTO,
+          __typename: "DiscountAutomaticNode",
+          automaticDiscount: { __typename: "DiscountAutomaticBasic", title: "T", status: "ACTIVE" },
+        },
+      },
+    }
+    const ok = { automaticDiscountNode: { id: AUTO }, userErrors: [] }
+    const runs = [
+      (c: AppContext) => discounts_update_preflight({ id: AUTO, title: "U" }, c),
+      (c: AppContext) => discounts_delete_preflight({ id: AUTO }, c),
+      (c: AppContext) => discounts_set_status_preflight({ id: AUTO, action: "deactivate" }, c),
+      (c: AppContext) => discounts_update({ id: AUTO, title: "U" }, c),
+      (c: AppContext) => discounts_set_status({ id: AUTO, action: "deactivate" }, c),
+      (c: AppContext) => discounts_delete({ id: AUTO }, c),
+    ]
+    const replies = [
+      node,
+      node,
+      node,
+      { data: { discountAutomaticBasicUpdate: ok } },
+      { data: { discountAutomaticDeactivate: ok } },
+      { data: { discountAutomaticDelete: { deletedAutomaticDiscountId: AUTO, userErrors: [] } } },
+    ]
+    for (const [i, run] of runs.entries()) {
+      const { ctx, calls } = makeCtx({ fetchResponses: [replies[i]] })
+      await run(ctx)
+      expect(calls[0]!.url).toContain("/admin/api/2026-07/")
+    }
+  })
 })

@@ -9,7 +9,7 @@
       "appliesOncePerCustomer": true
     }
   },
-  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts",
+  "recordedFrom": "a Shopify development store, record-shopify.recorder.ts; API version 2026-07 set by hand, re-record with CONTRACT_RECORD_ONLY",
   "calls": [
     {
       "method": "db_findMany",
@@ -24,7 +24,7 @@
     {
       "method": "fetch",
       "args": [
-        "https://contract-shop.myshopify.com/admin/api/2026-04/graphql.json",
+        "https://contract-shop.myshopify.com/admin/api/2026-07/graphql.json",
         "{\"method\":\"POST\",\"headers\":{\"Content-Type\":\"application/json\"},\"body\":\"{\\\"query\\\":\\\"\\\\n  mutation DiscountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {\\\\n    discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {\\\\n      codeDiscountNode { id }\\\\n      userErrors { field message }\\\\n    }\\\\n  }\\\\n\\\",\\\"variables\\\":{\\\"basicCodeDiscount\\\":{\\\"title\\\":\\\"Contract Fixture 15 percent\\\",\\\"code\\\":\\\"CONTRACT15\\\",\\\"startsAt\\\":\\\"2026-01-01T00:00:00Z\\\",\\\"appliesOncePerCustomer\\\":true,\\\"customerSelection\\\":{\\\"all\\\":true},\\\"customerGets\\\":{\\\"value\\\":{\\\"percentage\\\":0.15},\\\"items\\\":{\\\"all\\\":true}}}}}\",\"auth\":{\"connection\":\"shop\",\"identifier\":\"contract-shop.myshopify.com\",\"scheme\":\"header:X-Shopify-Access-Token\"}}"
       ],
       "reply": "{\"status\":200,\"headers\":{\"content-type\":\"application/json; charset=utf-8\"},\"body\":\"{\\\"data\\\":{\\\"discountCodeBasicCreate\\\":{\\\"codeDiscountNode\\\":{\\\"id\\\":\\\"gid://shopify/DiscountCodeNode/2415682781350\\\"},\\\"userErrors\\\":[]}},\\\"extensions\\\":{\\\"cost\\\":{\\\"requestedQueryCost\\\":10,\\\"actualQueryCost\\\":10,\\\"throttleStatus\\\":{\\\"maximumAvailable\\\":20000,\\\"currentlyAvailable\\\":19990,\\\"restoreRate\\\":1000}}}}\"}"

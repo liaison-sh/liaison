@@ -349,8 +349,8 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `shopify:approve` | approver scope | Decide (approve, edit, or deny) shopify approvals raised by its gated tools |
 | `shopify:customers:read` | manifest scopes; entity customer; tools companies_get, companies_search, customers_get, customers_get_by_external_id, customers_search, customers_segment_search and 1 more |  |
 | `shopify:customers:write` | manifest scopes; tools customers_email_marketing_consent_update, customers_sms_marketing_consent_update, customers_tag, customers_update |  |
-| `shopify:discounts:read` | manifest scopes; tool discounts_search |  |
-| `shopify:discounts:write` | manifest scopes; tools discounts_bulk_create, discounts_create, discounts_delete, discounts_update |  |
+| `shopify:discounts:read` | manifest scopes; tools discounts_get, discounts_search |  |
+| `shopify:discounts:write` | manifest scopes; tools discounts_bulk_create, discounts_create, discounts_delete, discounts_set_status, discounts_update |  |
 | `shopify:draft-orders:read` | manifest scopes; entity draftOrder; tools draft_orders_get, draft_orders_list |  |
 | `shopify:draft-orders:write` | manifest scopes; tools draft_orders_complete, draft_orders_create, draft_orders_delete, draft_orders_send, draft_orders_update |  |
 | `shopify:fulfillments:read` | manifest scopes; tool fulfillments_get |  |

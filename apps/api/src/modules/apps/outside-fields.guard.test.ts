@@ -210,7 +210,11 @@ const LISTED = new Map<string, string>([
     "shopify:fulfillment_orders_get",
     `line titles and SKUs of the store's own catalog, and its own locations: ${NONE}`,
   ],
-  ["shopify:discounts_search", `codes the org created: ${NONE}`],
+  ["shopify:discounts_search", `discounts the org created: ${NONE}`],
+  [
+    "shopify:discounts_get",
+    `one discount the org created, with its own products, collections and markets by name, never a customer: ${NONE}`,
+  ],
   ["shopify:settings_load", `connection and sync settings: ${NONE}`],
   ["boxtal:packages_list", `the org's own shipping profiles, packs and products: ${NONE}`],
   [

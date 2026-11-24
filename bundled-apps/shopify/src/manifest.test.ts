@@ -982,6 +982,8 @@ describe("Shopify app.manifest.json", () => {
     // 0.4.28: the orders list names a line without a short code by its product title, not "?".
     // 0.4.29: fulfillments_create treats a shipment already on the order (same tracking) as done
     // instead of re-sending it, and refuses a closed fulfillment order in plain words.
+    // 0.4.30, 0.4.31 (main): automatic discounts, and discounts limited to markets.
+    // 0.4.32: the branch's 0.4.30 and main's 0.4.31, merged.
     expect(m.version).toMatch(/^\d+\.\d+\.\d+$/)
   })
 

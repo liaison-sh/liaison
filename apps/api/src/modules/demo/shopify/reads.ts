@@ -602,6 +602,43 @@ const READ_HANDLERS: Record<string, Handler> = {
     abandonedCheckouts: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
   }),
   DiscountsSearch: discountsSearch,
+  // The book has no automatic discounts and the demo creates none.
+  AutomaticDiscountsSearch: () => ({
+    automaticDiscountNodes: {
+      edges: [],
+      nodes: [],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    },
+  }),
+  DiscountGet: (ctx) => {
+    const found = discountsFor(ctx.orgId).find((d) => d.id === ctx.variables.id)
+    return {
+      node: found
+        ? {
+            ...(demoDiscountNode(found, 5) as Record<string, unknown>),
+            __typename: "DiscountCodeNode",
+          }
+        : null,
+    }
+  },
+  DiscountScopeTitles: (ctx) => {
+    const ids = Array.isArray(ctx.variables.ids) ? ctx.variables.ids : []
+    return {
+      nodes: ids.map((id) => {
+        const product = ctx.book.products.find((p) => p.id === id)
+        if (product) return { id, __typename: "Product", title: product.title }
+        const entry = allVariants(ctx).find(({ variant }) => variant.id === id)
+        if (entry)
+          return {
+            id,
+            __typename: "ProductVariant",
+            title: entry.variant.title,
+            product: { title: entry.product.title },
+          }
+        return null
+      }),
+    }
+  },
   DiscountNodeCodes: (ctx) => {
     const found = discountsFor(ctx.orgId).find((d) => d.id === ctx.variables.id)
     const first = Number(ctx.variables.first)

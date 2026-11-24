@@ -421,6 +421,7 @@ const READ_ONLY: Record<string, string[]> = {
     "fulfillment_orders_get",
     "returns_search",
     "refunds_get",
+    "discounts_get",
     "discounts_search",
     "metafields_list",
     "settings_load",

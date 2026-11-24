@@ -332,6 +332,14 @@ export async function viewTarget(
   budgetMs: number = VIEW_TOOL_BUDGET_MS,
   out?: { refused?: string },
 ): Promise<ClientActionView | "down"> {
+  // Reached from a public link and from a job too, with nothing that set the org up before.
+  try {
+    const { awaitOrgApps } = await import("~/modules/apps/init")
+    await awaitOrgApps(req.orgId)
+  } catch (err) {
+    log.warn({ err, orgId: req.orgId }, "client action view: the org's apps are not set up")
+    return "down"
+  }
   const target = declaredTarget(req.orgId, req.targetApp, req.targetType)
   if (!target) return "down"
   const controller = new AbortController()

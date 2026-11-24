@@ -1861,6 +1861,10 @@
       "one": "signed renewal that kept its old terms",
       "other": "signed renewals that kept their old terms"
     },
+    "send_unfinished": {
+      "one": "agreement whose send did not finish",
+      "other": "agreements whose sends did not finish"
+    },
     "advance_received": {
       "one": "payment received before its advance invoice",
       "other": "payments received before their advance invoice"

@@ -1858,6 +1858,10 @@
       "one": "renouvellement signé resté aux anciennes conditions",
       "other": "renouvellements signés restés aux anciennes conditions"
     },
+    "send_unfinished": {
+      "one": "contrat dont l'envoi ne s'est pas terminé",
+      "other": "contrats dont l'envoi ne s'est pas terminé"
+    },
     "advance_received": {
       "one": "paiement reçu avant sa facture d'acompte",
       "other": "paiements reçus avant leur facture d'acompte"

@@ -575,6 +575,15 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // void that waits for an answer not recorded yet.
   SEND_NOT_CONFIRMED: 409,
   ANSWER_BEING_RECORDED: 409,
+  // Another person in a withdrawn signer's place: a signer who was not withdrawn, more than one
+  // person named, someone who already holds a link, or a place already taken.
+  SIGNER_NOT_WITHDRAWN: 409,
+  ONE_SIGNER_IN_PLACE: 400,
+  HOLDS_A_LINK: 409,
+  ALREADY_REPLACED: 409,
+  // The client's mail is already answered by a change request, or this one was closed meanwhile.
+  CHANGE_REQUEST_ALREADY_SENT: 409,
+  CHANGE_REQUEST_CLOSED: 409,
   // mail: the run may read no mailbox, so it can send from none.
   MISSING_SCOPE: 403,
   REMIND_FAILED: 409,

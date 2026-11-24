@@ -45,8 +45,7 @@ function manifestTemplates(): Template[] {
 
 function kernelTemplates(): Template[] {
   registerKernelRoutineTemplates(ORG)
-  return routineTemplateRegistry
-    .entriesOf(ORG)
+  return [...routineTemplateRegistry.entriesOf(ORG)]
     .filter(([key]) => key[1] === KERNEL_TEMPLATE_APP)
     .map(([key, t]) => ({
       name: `${KERNEL_TEMPLATE_APP}/${key[2]}`,

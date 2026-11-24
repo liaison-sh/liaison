@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: FSL-1.1-ALv2
 -- Two shipped routine templates draft mail with `mail__compose`, which reads the mailbox it sends
--- from (mail:accounts:read), and did not list that read: Failed payments (Stripe) and Deal
+-- from (mail:accounts:read), and did not list that read: Failed payments and Deal
 -- follow-ups. Their routines ran green and drafted nothing. The templates list it now; this adds it
 -- to the routines made from them, which keep the scopes they were enabled with. Only where the
 -- routine still drafts mail, its owner holds the read by a role or a grant of their own, and its
@@ -19,7 +19,7 @@ SET LOCAL ROLE liaison_admin;
 --> statement-breakpoint
 UPDATE kernel.routines r
    SET scopes = array_append(r.scopes, 'mail:accounts:read')
- WHERE ((r.source_kind = 'app' AND r.app_name = 'stripe' AND r.template_key = 'failed-payments')
+ WHERE ((r.source_kind = 'app' AND r.template_key = 'failed-payments')
      OR (r.source_kind = 'kernel' AND r.template_key = 'deal-followups'))
    AND 'mail:conversations:write' = ANY (r.scopes)
    AND NOT r.scopes && ARRAY['mail:accounts:read', 'mail:accounts:*', 'mail:accounts',

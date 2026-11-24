@@ -222,18 +222,50 @@ async function readSender(tx: PrivilegedDb, orgId: string, userId: string | null
 /** How many link mails of one send leave at the same time. */
 const MAILS_AT_ONCE = 5
 
-/** Runs the mails of one send a few at a time, not awaited. Each reports its own failure. */
-function mailInBackground(mails: ReadonlyArray<() => Promise<void>>): void {
-  const queue = [...mails]
-  const worker = async () => {
-    for (let next = queue.shift(); next; next = queue.shift()) await next()
+/** One mail a written action owes: the person's link, or a staff signer's turn with no link. */
+type OwedMail =
+  | { turn: false; link: LinkMailArgs }
+  | {
+      turn: true
+      actionId: string
+      to: string
+      title: string
+      kind: ClientActionKind
+      sender: Sender
+    }
+
+/** Sends from the queue until it is empty. Each mail reports its own failure. */
+async function mailInTurn(orgId: string, queue: OwedMail[]): Promise<void> {
+  for (let next = queue.shift(); next; next = queue.shift()) {
+    if (next.turn) await mailStaffTurn(orgId, next)
+    else await mailLink(orgId, next.link)
   }
-  for (let i = 0; i < Math.min(MAILS_AT_ONCE, mails.length); i++) void worker()
 }
 
-/** The person's link mail. A failed send makes that link dead by rotation; never throws. */
-async function mailLink(args: {
-  orgId: string
+/** Sends the mails of one send a few at a time, not awaited. */
+function mailInBackground(orgId: string, mails: readonly OwedMail[]): void {
+  const queue = [...mails]
+  for (let i = 0; i < Math.min(MAILS_AT_ONCE, mails.length); i++) void mailInTurn(orgId, queue)
+}
+
+/** A staff signer's turn, told by mail with no link; never throws. */
+async function mailStaffTurn(
+  orgId: string,
+  m: { actionId: string; to: string; title: string; kind: ClientActionKind; sender: Sender },
+): Promise<void> {
+  await sendStaffTurnMail({
+    orgId,
+    to: m.to,
+    mailId: newActionMailId(),
+    title: m.title,
+    kind: m.kind,
+    orgName: m.sender.orgName,
+    senderName: m.sender.senderName,
+    locale: m.sender.senderLocale,
+  }).catch((err) => log.error({ err, orgId, actionId: m.actionId }, "staff signer notice failed"))
+}
+
+interface LinkMailArgs {
   actionId: string
   token: string
   mailId: string
@@ -245,9 +277,12 @@ async function mailLink(args: {
   message?: string | null
   resend?: boolean
   createdByUserId: string | null
-}): Promise<void> {
+}
+
+/** The person's link mail. A failed send makes that link dead by rotation; never throws. */
+async function mailLink(orgId: string, args: LinkMailArgs): Promise<void> {
   await sendLinkMail({
-    orgId: args.orgId,
+    orgId,
     to: args.to,
     mailId: args.mailId,
     title: args.title,
@@ -261,15 +296,10 @@ async function mailLink(args: {
     resend: args.resend,
     locale: args.sender.senderLocale,
   }).catch(async (err) => {
-    log.error({ err, orgId: args.orgId, actionId: args.actionId }, "client action link mail failed")
-    await killMailedLink(
-      args.orgId,
-      args.actionId,
-      args.title,
-      args.to,
-      args.createdByUserId,
-    ).catch((e) =>
-      log.error({ err: e, actionId: args.actionId }, "client action rotate after failed send"),
+    log.error({ err, orgId, actionId: args.actionId }, "client action link mail failed")
+    await killMailedLink(orgId, args.actionId, args.title, args.to, args.createdByUserId).catch(
+      (e) =>
+        log.error({ err: e, actionId: args.actionId }, "client action rotate after failed send"),
     )
   })
 }
@@ -532,13 +562,13 @@ async function insertClientAction(
 }
 
 /** The mails the written actions owe, each with its raw token, after the commit. */
-function mailsOf(made: readonly Inserted[]): Array<() => Promise<void>> {
-  return made.flatMap(({ input, result, token, mailId, mail, staffMail }) => {
+function mailsOf(made: readonly Inserted[]): OwedMail[] {
+  return made.flatMap(({ input, result, token, mailId, mail, staffMail }): OwedMail[] => {
     if (mail && token)
       return [
-        () =>
-          mailLink({
-            orgId: input.orgId,
+        {
+          turn: false,
+          link: {
             actionId: result.id,
             token,
             mailId,
@@ -549,23 +579,19 @@ function mailsOf(made: readonly Inserted[]): Array<() => Promise<void>> {
             expiresAt: result.expiresAt,
             message: input.message,
             createdByUserId: input.createdByUserId,
-          }),
+          },
+        },
       ]
     if (!staffMail) return []
     return [
-      () =>
-        sendStaffTurnMail({
-          orgId: input.orgId,
-          to: staffMail.to,
-          mailId: newActionMailId(),
-          title: result.title,
-          kind: input.kind,
-          orgName: staffMail.sender.orgName,
-          senderName: staffMail.sender.senderName,
-          locale: staffMail.sender.senderLocale,
-        }).catch((err) =>
-          log.error({ err, orgId: input.orgId, actionId: result.id }, "staff signer notice failed"),
-        ),
+      {
+        turn: true,
+        actionId: result.id,
+        to: staffMail.to,
+        title: result.title,
+        kind: input.kind,
+        sender: staffMail.sender,
+      },
     ]
   })
 }
@@ -585,7 +611,7 @@ export async function mintClientAction(input: MintInput): Promise<MintResult> {
     const sender = await readSender(tx, input.orgId, input.createdByUserId)
     return insertClientAction(tx, input, view, invitee, sender)
   })
-  mailInBackground(mailsOf([made]))
+  mailInBackground(input.orgId, mailsOf([made]))
   return made.result
 }
 
@@ -754,7 +780,7 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
     })
     return { before: [] as SentLink[], made, groupId }
   })
-  mailInBackground(mailsOf(out.made))
+  mailInBackground(input.orgId, mailsOf(out.made))
   if (out.before.length > 0)
     return {
       groupId: out.groupId,
@@ -903,22 +929,18 @@ export async function remailClientAction(
     targetId: out.a.target_id,
     actingUserId: out.a.created_by_user_id,
   })
-  mailInBackground([
-    () =>
-      mailLink({
-        orgId,
-        actionId,
-        token: out.token,
-        mailId,
-        to: out.a.invited_email,
-        title: view === "down" ? out.sender.orgName : view.title,
-        kind: out.a.kind,
-        sender: out.sender,
-        expiresAt: new Date(out.a.expires_at),
-        resend: opts.resend,
-        createdByUserId: out.a.created_by_user_id,
-      }),
-  ])
+  void mailLink(orgId, {
+    actionId,
+    token: out.token,
+    mailId,
+    to: out.a.invited_email,
+    title: view === "down" ? out.sender.orgName : view.title,
+    kind: out.a.kind,
+    sender: out.sender,
+    expiresAt: new Date(out.a.expires_at),
+    resend: opts.resend,
+    createdByUserId: out.a.created_by_user_id,
+  })
   return true
 }
 
@@ -1243,7 +1265,7 @@ export async function remindClientActions(input: {
          AND id::text IN (${wanted}) ORDER BY id FOR UPDATE
     `)
     const now = await readOpen(tx)
-    const mails: Array<() => Promise<void>> = []
+    const mails: OwedMail[] = []
     const reminded: RemindedLink[] = []
     for (const r of now) {
       if (r.recent || !checked.has(r.id)) continue
@@ -1260,9 +1282,9 @@ export async function remindClientActions(input: {
       })
       const sender = await readSender(tx, input.orgId, r.created_by_user_id)
       reminded.push(asLink(r))
-      mails.push(() =>
-        mailLink({
-          orgId: input.orgId,
+      mails.push({
+        turn: false,
+        link: {
           actionId: r.id,
           token,
           mailId,
@@ -1273,12 +1295,12 @@ export async function remindClientActions(input: {
           expiresAt: new Date(r.expires_at),
           resend: true,
           createdByUserId: r.created_by_user_id,
-        }),
-      )
+        },
+      })
     }
     return { mails, reminded, recentlyMailed: now.filter((r) => r.recent).map(asLink) }
   })
-  mailInBackground(out.mails)
+  mailInBackground(input.orgId, out.mails)
   return { reminded: out.reminded, recentlyMailed: out.recentlyMailed }
 }
 

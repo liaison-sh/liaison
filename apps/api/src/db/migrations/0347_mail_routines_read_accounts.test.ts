@@ -31,7 +31,7 @@ const ELSEWHERE = id(4)
 const ROLE = id(10)
 const AGENT_WIDE = id(20)
 const AGENT_NARROW = id(21)
-const STRIPE = ["stripe:invoices:read", "mail:conversations:write"]
+const DRAFTS = ["payments:invoices:read", "mail:conversations:write"]
 
 const ROUTINES: Array<{
   key: string
@@ -51,8 +51,8 @@ const ROUTINES: Array<{
   { key: "deals", owner: BY_ROLE, app: null, template: "deal-followups", source: "kernel" },
   { key: "brief", owner: BY_ROLE, app: null, template: "morning-brief", source: "kernel" },
   { key: "own", owner: BY_ROLE, app: null, template: "failed-payments", source: "user" },
-  { key: "no-longer-drafts", owner: BY_ROLE, scopes: ["stripe:invoices:read"] },
-  { key: "had-it", owner: BY_ROLE, scopes: [...STRIPE, "mail:accounts:read"] },
+  { key: "no-longer-drafts", owner: BY_ROLE, scopes: ["payments:invoices:read"] },
+  { key: "had-it", owner: BY_ROLE, scopes: [...DRAFTS, "mail:accounts:read"] },
   { key: "had-all", owner: BY_ROLE, scopes: ["mail:conversations:write", "mail:*"] },
 ]
 
@@ -78,8 +78,8 @@ beforeAll(async () => {
       ('${WITHOUT}', '${ORG}', 'mail:conversations:read'),
       ('${ELSEWHERE}', '${OTHER_ORG}', 'mail:accounts:read');
     INSERT INTO agents VALUES
-      ('${AGENT_WIDE}', '${ORG}', '["stripe:invoices:read", "mail:accounts:read"]'),
-      ('${AGENT_NARROW}', '${ORG}', '["stripe:invoices:read", "mail:conversations:write"]')`)
+      ('${AGENT_WIDE}', '${ORG}', '["payments:invoices:read", "mail:accounts:read"]'),
+      ('${AGENT_NARROW}', '${ORG}', '["payments:invoices:read", "mail:conversations:write"]')`)
   for (const r of ROUTINES)
     await sql.unsafe(
       `INSERT INTO routines (key, org_id, owner_user_id, owner_agent_id, app_name, template_key, source_kind, scopes)
@@ -89,10 +89,10 @@ beforeAll(async () => {
         ORG,
         r.owner,
         r.agent ?? null,
-        r.app === undefined ? "stripe" : r.app,
+        r.app === undefined ? "payments" : r.app,
         r.template ?? "failed-payments",
         r.source ?? "app",
-        r.scopes ?? STRIPE,
+        r.scopes ?? DRAFTS,
       ],
     )
 })

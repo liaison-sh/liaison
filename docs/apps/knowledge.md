@@ -49,6 +49,10 @@ Every change by a person or an agent is kept with its author and time. One perso
 
 ## A folder's own page
 
+Click a folder's name in the sidebar to open it as a page; the arrow next to it only shows or hides what is inside. The folder page has the folder's own text, then **In this folder**: the folders and documents directly inside that you can open, each opening in its own tab. An empty folder says **Nothing here yet.**; **New page** makes a document in the folder (private, in a personal folder). The folders above it are links at the top.
+
+To write the folder's text, click under its name (**Write about this folder**) and type: the page is made as you start, and saves itself like any page.
+
 A folder can have a page of its own: text about what the folder holds, shown above the list of what is inside. The folder has no page until someone writes in it. The first text makes an ordinary document, titled as the folder and filed in it. In a shared folder everyone in the organization can edit it; in a personal folder only you can see it. After that you share it like any other document.
 
 Writing the first text needs the right to manage folders and to create documents. A folder synced from another app has no page.

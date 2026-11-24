@@ -119,3 +119,29 @@ test("visual: knowledge document view (personal)", async ({ authenticatedPage, e
 // in-Knowledge source-settings surface is gone — connector auth/config now
 // lives in `AdminIntegrations` (settings), and visual coverage for that
 // surface belongs in a settings-scenario test rather than here.
+
+test("visual: knowledge folder page", async ({ authenticatedPage, env, qa }) => {
+  const page = authenticatedPage
+  const made = await fetch(`${env.serverUrl}/api/knowledge/collections`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${qa.admin.token}`, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Customer policies", ownerUserId: null }),
+  })
+  const folderId = ((await made.json()) as { data: { id: string } }).data.id
+  await createKnowledgeDocument(env, qa.admin.token, {
+    title: "Refund rules",
+    documentScope: "organization",
+    collectionIds: [folderId],
+  })
+  await createKnowledgeDocument(env, qa.admin.token, {
+    title: "Shipping times",
+    documentScope: "organization",
+    collectionIds: [folderId],
+  })
+
+  await page.goto(`http://localhost:${env.ports[1]}/knowledge/folders/${folderId}`)
+  const view = page.getByTestId("knowledge-folder-view")
+  await expect(view.getByTestId("knowledge-folder-start-editor")).toBeVisible({ timeout: 20_000 })
+  await expect(view.getByTestId("knowledge-folder-contents")).toContainText("Shipping times")
+  await expect(view).toHaveScreenshot("knowledge-folder-page.png", { maxDiffPixelRatio: 0.02 })
+})

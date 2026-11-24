@@ -1,0 +1,16 @@
+{
+  "key": {
+    "knowledge.folderPage.inside": "Dans ce dossier",
+    "knowledge.folderPage.nothingHere": "Rien ici pour l'instant.",
+    "knowledge.folderPage.newPage": "Nouvelle page",
+    "knowledge.folderPage.writeAbout": "Écrivez à propos de ce dossier",
+    "knowledge.folderPage.startFailed": "La page de ce dossier n'a pas pu être créée. Votre texte est toujours là ; tapez à nouveau pour réessayer.",
+    "knowledge.folderPage.more": "Seuls les 500 premiers dossiers et les 500 premières pages sont affichés.",
+    "knowledge.folderPage.folder": "Dossier",
+    "knowledge.folderPage.notFound": "Ce dossier n'existe plus, ou vous ne pouvez pas l'ouvrir.",
+    "knowledge.folderPage.path": "Emplacement de ce dossier",
+    "knowledge.folderPage.openFolder": "Ouvrir {{name}}",
+    "knowledge.folderPage.newPageFailed": "La page n'a pas pu être créée.",
+    "knowledge.folderPage.showInside": "Afficher le contenu de {{name}}"
+  }
+}

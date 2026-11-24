@@ -239,5 +239,19 @@
   "links": {
     "linkedFrom": "Pages qui pointent ici",
     "conversations": "Conversations"
+  },
+  "folderPage": {
+    "inside": "Dans ce dossier",
+    "nothingHere": "Rien ici pour l'instant.",
+    "newPage": "Nouvelle page",
+    "writeAbout": "Écrivez à propos de ce dossier",
+    "startFailed": "La page de ce dossier n'a pas pu être créée. Votre texte est toujours là ; tapez à nouveau pour réessayer.",
+    "more": "Seuls les 500 premiers dossiers et les 500 premières pages sont affichés.",
+    "folder": "Dossier",
+    "notFound": "Ce dossier n'existe plus, ou vous ne pouvez pas l'ouvrir.",
+    "path": "Emplacement de ce dossier",
+    "openFolder": "Ouvrir {{name}}",
+    "newPageFailed": "La page n'a pas pu être créée.",
+    "showInside": "Afficher le contenu de {{name}}"
   }
 }

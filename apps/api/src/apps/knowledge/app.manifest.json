@@ -1668,6 +1668,15 @@
         "resolveLabel": "resolveKnowledgeDocLabel",
         "referenceable": false
       },
+      "folder": {
+        "component": "KnowledgeFolderView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Folder",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/folders/:entityId",
+        "resolveLabel": "resolveKnowledgeFolderLabel",
+        "referenceable": false
+      },
       "source_link": {
         "component": "KnowledgeLinkedSourceView",
         "sidebar": "KnowledgeSidebar",

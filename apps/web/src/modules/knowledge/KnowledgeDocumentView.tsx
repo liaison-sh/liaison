@@ -12,11 +12,13 @@ import {
   createEffect,
   createResource,
   createSignal,
+  type JSX,
   on,
   onCleanup,
   Show,
   untrack,
 } from "solid-js"
+import type { ApiClient } from "~/lib/api-client"
 import { ApiError } from "~/lib/api-error"
 import { relativeTime } from "~/lib/relative-time"
 import { useDictation } from "~/modules/assist/useDictation"
@@ -60,7 +62,7 @@ import { PageHistory, versionAuthor } from "./PageHistory"
 import { pageFileView, uploadPageFile, uploadRefusal } from "./page-files"
 import { editorPages, pageLinkDeps } from "./page-links"
 
-interface KnowledgeDocumentFetched {
+export interface KnowledgeDocumentFetched {
   id: string
   title: string
   body: string
@@ -84,9 +86,22 @@ interface KnowledgeDocumentFetched {
 
 type Fetched = KnowledgeDocumentFetched | null | "not-found"
 
+/** A page shown as its folder's own page (KnowledgeFolderView). */
+export interface DocumentInFolder {
+  /** Shown under the text: what is inside the folder. */
+  below: JSX.Element
+  /** The page is no longer the folder's (gone, in the trash): the folder view asks again. */
+  onGone: () => void
+  /** The page was made a moment ago from this text (still being typed): it opens on
+   *  that row and that text at once, with no reload, and saves what came after. */
+  fresh?: { row: KnowledgeDocumentFetched; text: string }
+}
+
 const isRow = (d: Fetched | undefined): d is KnowledgeDocumentFetched => !!d && d !== "not-found"
 
-const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
+const KnowledgeDocumentView: Component<{ entityId: string; folder?: DocumentInFolder }> = (
+  props,
+) => {
   const i18n = useI18n()
   const api = useOptionalApi()
   const apiForSidebar = useApi()
@@ -94,10 +109,19 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   const me = () => userFromToken()?.userId ?? null
 
   let docController: AbortController | null = null
+  /** Pages opened on a fresh row already (a later fetch asks the server). */
+  const freshUsed = new Set<string>()
+  /** The page made from text being typed: its editor takes the caret when it opens. */
+  let focusOnOpen = false
   const [doc, { refetch, mutate }] = createResource(
     () => props.entityId,
     async (id: string | null): Promise<Fetched> => {
       if (!id || !api) return null
+      const fresh = untrack(() => props.folder?.fresh)
+      if (fresh && fresh.row.id === id && !freshUsed.has(id)) {
+        freshUsed.add(id)
+        return { ...fresh.row, canEdit: fresh.row.canEdit ?? true }
+      }
       docController?.abort()
       const ac = new AbortController()
       docController = ac
@@ -215,34 +239,15 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     })
   })
 
-  const startEditing = async (d: KnowledgeDocumentFetched) => {
-    const userId = me()
-    if (!api || !userId) return
-    const drafts = pageDrafts()
-    const liveness = webLocks()
-    let opened: Awaited<ReturnType<typeof openDrafts>> = {
-      restore: null,
-      conflict: null,
-      extra: [],
-    }
-    try {
-      opened = await openDrafts({
-        drafts,
-        liveness,
-        userId,
-        docId: d.id,
-        current: d,
-        inHistory: draftInHistory(api, userId),
-      })
-    } catch {
-      // No drafts store here: the page opens on its stored text.
-    }
-    if (setupFor !== d.id) return
-    const draft = opened.restore ?? opened.conflict
-    setEditorText(draft ? draft.body : d.body)
-    if (draft && titleEl) titleEl.textContent = draft.title || d.title
-    const s = createPageSaver({
-      api,
+  const makeSaver = (
+    client: ApiClient,
+    userId: string,
+    d: KnowledgeDocumentFetched,
+    drafts: ReturnType<typeof pageDrafts>,
+    liveness: ReturnType<typeof webLocks>,
+  ): PageSaver =>
+    createPageSaver({
+      api: client,
       userId,
       docId: d.id,
       base: { title: d.title, body: d.body, revision: d.revision },
@@ -261,6 +266,44 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
         if (titleEl) titleEl.textContent = title
       },
     })
+
+  const startEditing = async (d: KnowledgeDocumentFetched) => {
+    const userId = me()
+    if (!api || !userId) return
+    const drafts = pageDrafts()
+    const liveness = webLocks()
+    let opened: Awaited<ReturnType<typeof openDrafts>> = {
+      restore: null,
+      conflict: null,
+      extra: [],
+    }
+    // Made a moment ago from the text in the folder view: no draft can be older than
+    // the page, and waiting for the drafts store would drop the keys typed meanwhile.
+    const fresh = props.folder?.fresh
+    if (fresh && fresh.row.id === d.id) {
+      focusOnOpen = true
+      setEditorText(fresh.text)
+      saver = makeSaver(api, userId, d, drafts, liveness)
+      if (fresh.text !== d.body) saver.edit()
+      return
+    }
+    try {
+      opened = await openDrafts({
+        drafts,
+        liveness,
+        userId,
+        docId: d.id,
+        current: d,
+        inHistory: draftInHistory(api, userId),
+      })
+    } catch {
+      // No drafts store here: the page opens on its stored text.
+    }
+    if (setupFor !== d.id) return
+    const draft = opened.restore ?? opened.conflict
+    setEditorText(draft ? draft.body : d.body)
+    if (draft && titleEl) titleEl.textContent = draft.title || d.title
+    const s = makeSaver(api, userId, d, drafts, liveness)
     saver = s
     if (opened.restore) {
       s.edit()
@@ -400,7 +443,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   // not saved yet: that text stays on screen until the person has it (edge 3).
   createEffect(() => {
     if (doc() === "not-found" && !(saver?.hasUnsaved() ?? false)) {
-      evictTabByEntity("knowledge:document", props.entityId)
+      // A folder's page that went away leaves the folder open: it asks again.
+      if (props.folder) props.folder.onGone()
+      else evictTabByEntity("knowledge:document", props.entityId)
     }
   })
 
@@ -508,6 +553,8 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       await saver?.flush()
       const d = row()
       if (d && api) await archiveKnowledgeDocument(api, d.id)
+      // In the trash it is no longer the folder's page.
+      props.folder?.onGone()
     }, "knowledge.archiveFailed")
   const restoreArchived = () =>
     act(async () => {
@@ -691,7 +738,12 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                 hasApi={!!api}
                 editorRef={(handle) => {
                   editor = handle
+                  if (focusOnOpen) {
+                    focusOnOpen = false
+                    handle.focus()
+                  }
                 }}
+                below={props.folder?.below}
                 fileView={fileView}
                 editorFiles={editorText() !== null ? editorFiles : undefined}
                 pageLinks={pageLinks}

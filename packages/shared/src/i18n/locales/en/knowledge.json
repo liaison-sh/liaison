@@ -239,5 +239,19 @@
   "links": {
     "linkedFrom": "Linked from",
     "conversations": "Conversations"
+  },
+  "folderPage": {
+    "inside": "In this folder",
+    "nothingHere": "Nothing here yet.",
+    "newPage": "New page",
+    "writeAbout": "Write about this folder",
+    "startFailed": "This folder's page could not be made. Your text is still here; type again to retry.",
+    "more": "Showing the first 500 folders and the first 500 pages.",
+    "folder": "Folder",
+    "notFound": "This folder no longer exists, or you cannot open it.",
+    "path": "Where this folder is",
+    "openFolder": "Open {{name}}",
+    "newPageFailed": "The page could not be made.",
+    "showInside": "Show what is inside {{name}}"
   }
 }

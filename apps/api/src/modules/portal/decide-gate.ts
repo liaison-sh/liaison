@@ -20,18 +20,15 @@ export type PortalCaller = PortalContext
  * Whether the row `a` of `portal.client_actions` is the signed-in person's: sent to the address
  * they signed in with, and to their name when that address has two signers on the document.
  */
-export function mineSql(a: string): SQL {
-  const row = sql.raw(a)
-  return sql`EXISTS (
+export const MINE: SQL = sql`EXISTS (
     SELECT 1 FROM portal.me me
-     WHERE lower(${row}.invited_email) = lower(me.email)
-       AND (lower(${row}.invited_name) = lower(me.name)
+     WHERE lower(a.invited_email) = lower(me.email)
+       AND (lower(a.invited_name) = lower(me.name)
             OR NOT EXISTS (
               SELECT 1 FROM portal.client_actions o
-               WHERE o.target_id = ${row}.target_id AND o.revoked_at IS NULL
-                 AND lower(o.invited_email) = lower(${row}.invited_email)
-                 AND lower(o.invited_name) <> lower(${row}.invited_name))))`
-}
+               WHERE o.target_id = a.target_id AND o.revoked_at IS NULL
+                 AND lower(o.invited_email) = lower(a.invited_email)
+                 AND lower(o.invited_name) <> lower(a.invited_name))))`
 
 export type PortalActionSight =
   | { seen: true; mine: boolean; invitedName: string }
@@ -45,7 +42,7 @@ export async function portalActionSight(
     const row = await withPortalContext(portal, async (tx) => {
       const [a] = extractRows<{ invited_name: string; mine: boolean; me: boolean }>(
         await tx.execute(sql`
-          SELECT a.invited_name, ${mineSql("a")} AS mine,
+          SELECT a.invited_name, ${MINE} AS mine,
                  EXISTS (SELECT 1 FROM portal.me) AS me
             FROM portal.client_actions a WHERE a.id = ${actionId}::uuid`),
       )

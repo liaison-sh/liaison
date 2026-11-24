@@ -7,8 +7,7 @@
 
 import { createHash } from "node:crypto"
 import { sql } from "drizzle-orm"
-import { extractRows } from "~/db"
-import { withPrivilegedDb } from "~/db/privileged"
+import { extractRows, type PrivilegedDb } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
 import {
   evaluateSendGuard,
@@ -62,16 +61,18 @@ export async function heldBack(
 }
 
 /** The message its requester typed, read from the card while that card holds the very text. */
-export async function typedMessage(orgId: string, owed: OwedMailMeta): Promise<string | null> {
+export async function typedMessage(
+  tx: Pick<PrivilegedDb, "execute">,
+  orgId: string,
+  owed: OwedMailMeta,
+): Promise<string | null> {
   if (!owed.card || !owed.message_sha256) return null
-  const [card] = await withPrivilegedDb(orgId, "client-action-typed-message", async (tx) =>
-    extractRows<{ message: string | null }>(
-      await tx.execute(sql`
-        SELECT current_payload->>'message' AS message
-          FROM ${sql.raw(schemaRef("kernel"))}.approval_requests
-         WHERE id = ${owed.card}::uuid AND org_id = ${orgId}
-      `),
-    ),
+  const [card] = extractRows<{ message: string | null }>(
+    await tx.execute(sql`
+      SELECT current_payload->>'message' AS message
+        FROM ${sql.raw(schemaRef("kernel"))}.approval_requests
+       WHERE id = ${owed.card}::uuid AND org_id = ${orgId}
+    `),
   )
   const message = card?.message ?? null
   return message !== null && sha256(message) === owed.message_sha256 ? message : null

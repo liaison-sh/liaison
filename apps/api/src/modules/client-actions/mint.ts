@@ -1123,16 +1123,17 @@ async function readUnsentLink(
  * it to the next run. True when it was mailed.
  */
 export async function mailUnsentLink(orgId: string, actionId: string): Promise<boolean> {
-  const found = await withPrivilegedDb(orgId, "client-action-unsent-read", (tx) =>
-    readUnsentLink(tx, orgId, actionId, false),
-  )
+  const found = await withPrivilegedDb(orgId, "client-action-unsent-read", async (tx) => {
+    const link = await readUnsentLink(tx, orgId, actionId, false)
+    return link && { ...link, message: await typedMessage(tx, orgId, link.owed) }
+  })
   if (!found) return false
   const stop = await heldBack(orgId, found.owed, found.sendAddresses)
   if (stop === "unavailable") return false
   if (stop === null)
     return remailClientAction(orgId, actionId, {
       unsent: found,
-      message: await typedMessage(orgId, found.owed),
+      message: found.message,
     })
   const view = await viewTarget({
     orgId,

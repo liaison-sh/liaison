@@ -659,6 +659,21 @@ describe("a link mailed later than its approval", () => {
     await mailUnsentLinks()
     expect(await mailsSettle(targetId, 2)).toBe(2)
     expect(await notSentTold(id)).toBe(0)
+    // One they wrote after holds it back.
+    await triggerOnClaim(targetId, "RAISE EXCEPTION 'the server stopped';")
+    await age(targetId, 20)
+    const since = { ...guardFor(targetId, 1) }
+    expect((await mint({ remind: { ids: [id], send_guard: since } })).error?.code).toBe(
+      "SEND_GUARD_REPLIED",
+    )
+    const soon = { ...since, since: new Date().toISOString(), stagedAt: new Date().toISOString() }
+    expect((await mint({ remind: { ids: [id], send_guard: soon } })).reminded).toHaveLength(1)
+    await writesBack(signersOf(targetId, 1)[0]?.email ?? "")
+    await dropTrigger()
+    await age(targetId, 6)
+    await mailUnsentLinks()
+    expect(await mailsSettle(targetId, 2)).toBe(2)
+    expect(await notSentTold(id)).toBe(1)
   })
 })
 
@@ -1147,7 +1162,8 @@ describe("another person in a withdrawn signer's place", () => {
     await withdraw(first)
     await runOut(second)
     const [, holder] = signersOf(targetId, 2)
-    expect((await place(first, holder as object)).error?.code).toBe("HOLDS_A_LINK")
+    for (const name of [holder?.name, "Another Name"])
+      expect((await place(first, { email: holder?.email, name })).error?.code).toBe("HOLDS_A_LINK")
     expect((await mint({ new_link: { after: second } })).action?.deduped).toBe(false)
   })
 

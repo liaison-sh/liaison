@@ -24,6 +24,10 @@
  * set apart from the platform's own words, without the tags.
  */
 const AGENT_DIRECTIVE = /—\s*your reply (?:MUST|should)\b/i
+/** A line whose only value is one id or a list of them ("Task id: 6c1b..."): nothing a person reads.
+ *  Cards stored before the server read records by their names hold them. */
+const BARE_IDS =
+  /^\s*(?:[^:]{1,80}:\s*)?[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?:,\s*[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})*\s*$/i
 const FENCE_OPEN = /<\s*external-content(?:\s+source="[a-z]+")?\s*>/i
 const FENCE_CLOSE = /<\s*\/\s*external-content\s*>/i
 const ESCAPED_FENCE_TAG = /&lt;(\s*\/?\s*external-content)/gi
@@ -74,7 +78,7 @@ export function readableSummaryLines(lines: readonly string[]): string[] {
     if (expanded) out.push(...expanded)
     else out.push(line)
   }
-  return out
+  return out.filter((line) => !BARE_IDS.test(line))
 }
 
 function expandJsonObjectLine(line: string): string[] | null {

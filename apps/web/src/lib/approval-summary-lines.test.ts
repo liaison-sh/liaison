@@ -41,6 +41,17 @@ describe("readableSummaryLines", () => {
     ])
   })
 
+  it("drops a line that says nothing but an id, in a stored line or a stored JSON line", () => {
+    const id = "6c1bffa3-edf4-4e2f-b1d2-6ff36ba0a708"
+    expect(readableSummaryLines([`Task id: ${id}`, "Outcome: won", `Ids: ${id}, ${id}`])).toEqual([
+      "Outcome: won",
+    ])
+    expect(readableSummaryLines([`{"task_id":"${id}","outcome":"won"}`])).toEqual(["outcome: won"])
+    // Words around an id are the summarizer's own, and stay.
+    expect(readableSummaryLines([`Reply to ${id} by mail`])).toEqual([`Reply to ${id} by mail`])
+    expect(readableSummaryLines([id])).toEqual([])
+  })
+
   it("keeps the outside-text marking, and splits a line into its words and the quote", () => {
     const stored =
       '15 tickets. E.g. <external-content source="untrusted">\n{"subject":"Printer <b>jam</b>"}\n</external-content>'

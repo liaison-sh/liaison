@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: FSL-1.1-ALv2
+//
+// The card of a deal change names the deal, the client and the amount the change sets: the person
+// deciding must know which deal they are closing. The deal's stored amount is not on it (it has a
+// scope of its own), nor a client shared by name.
+import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
+import {
+  type DealWorld,
+  makeDealWorld,
+  makePipeline,
+  makeTask,
+} from "~/apps/projects/service/__tests__/deal-world"
+import { sql } from "~/db/connection"
+import { withRlsContext } from "~/db/rls"
+import { createTestCompany } from "~/tests/helpers/company"
+import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { summarizeDealsUpdate } from "../summarizers"
+
+let w: DealWorld
+let deal = ""
+let key = ""
+
+const card = (params: Record<string, unknown>) =>
+  withRlsContext(w.actor, (tx) =>
+    summarizeDealsUpdate(params, { tx, orgId: w.orgId, userId: w.userId }),
+  )
+
+describe("the card of a deal change", () => {
+  beforeAll(async () => {
+    await acquireTestLock()
+    w = await makeDealWorld("deal-card")
+    const pipeline = await makePipeline(w, "Sales 2027")
+    deal = await makeTask(w, pipeline.projectId, "Supplier portal")
+    const client = await createTestCompany(w.orgId, "Northwind Cooperative")
+    await sql`UPDATE app_projects.deals SET company_id = ${client} WHERE task_id = ${deal}`
+    await sql`INSERT INTO app_projects.deal_values (task_id, org_id, amount_minor, currency)
+              VALUES (${deal}, ${w.orgId}, 987654300, 'EUR')
+              ON CONFLICT (task_id) DO UPDATE SET amount_minor = 987654300, currency = 'EUR'`
+    const [row] = await sql<{ key: string }[]>`
+      SELECT p.key || '-' || t.number AS key FROM app_projects.tasks t
+        JOIN app_projects.projects p ON p.id = t.project_id WHERE t.id = ${deal}`
+    key = row?.key ?? ""
+  }, 120_000)
+
+  afterAll(async () => {
+    await releaseTestLock()
+  })
+
+  it("names the deal, its client and its pipeline, and links to it", async () => {
+    const c = await card({ taskId: deal, outcome: "won" })
+    expect(c.title).toBe("Mark the deal won: Supplier portal")
+    expect(c.subtitle).toBe("Northwind Cooperative, Sales 2027")
+    expect(c.ref).toBe(key)
+    expect(c.lines).toEqual(["Outcome: won"])
+    expect(c.links).toEqual([
+      { label: "Open deal", app: "projects", entityType: "task", entityId: deal },
+    ])
+    expect(JSON.stringify({ ...c, links: [] })).not.toContain(deal)
+  })
+
+  it("reads a deal named by its key the same", async () => {
+    expect((await card({ taskId: key, outcome: "open" })).title).toBe(
+      "Reopen the deal: Supplier portal",
+    )
+  })
+
+  it("says each change in words, an amount with its currency and period", async () => {
+    const contactless = await createTestCompany(w.orgId, "Second Client")
+    const c = await card({
+      taskId: deal,
+      companyId: contactless,
+      amountMinor: 1_250_050,
+      currency: "EUR",
+      amountPeriod: "month",
+      probability: 60,
+      nextStep: "Send the proposal",
+    })
+    expect(c.title).toBe("Change the deal: Supplier portal")
+    expect(c.lines).toEqual([
+      "Client: Second Client",
+      "Amount: 12500.50 EUR per month",
+      "Probability: 60%",
+      "Next step: Send the proposal",
+    ])
+    const cleared = await card({ taskId: deal, amountMinor: null, nextStep: null })
+    expect(cleared.lines).toEqual(["Amount: cleared", "Next step: cleared"])
+    const lost = await card({ taskId: deal, outcome: "lost", reason: "Price" })
+    expect(lost.title).toBe("Mark the deal lost: Supplier portal")
+    expect(lost.lines).toEqual(["Outcome: lost", "Reason: Price"])
+    const yen = await card({ taskId: deal, amountMinor: 5000, currency: "JPY" })
+    expect(yen.lines).toEqual(["Amount: 5000 JPY"])
+  })
+
+  it("keeps the stored amount and a client shared by name off the card", async () => {
+    expect(JSON.stringify(await card({ taskId: deal, outcome: "won" }))).not.toContain("9876543")
+    const quiet = await createTestCompany(w.orgId, "Quiet Holdings")
+    await sql`UPDATE kernel.companies SET org_access = 'none', created_by = ${w.userId}
+               WHERE id = ${quiet}`
+    const set = await card({ taskId: deal, companyId: quiet })
+    expect(set.lines).toEqual(["Client: a company shared by name"])
+    const person = crypto.randomUUID()
+    await sql`INSERT INTO kernel.contacts (id, org_id, name, email, handle, org_access, created_by, owner_user_id)
+              VALUES (${person}, ${w.orgId}, 'Quiet Person', 'quiet@example.com',
+                      ${`c-${person.slice(0, 8)}`}, 'none', ${w.userId}, ${w.userId})`
+    expect((await card({ taskId: deal, contactId: person })).lines).toEqual([
+      "Contact: a contact shared by name",
+    ])
+    await sql`UPDATE app_projects.deals SET company_id = ${quiet} WHERE task_id = ${deal}`
+    const c = await card({ taskId: deal, outcome: "won" })
+    expect(c.subtitle).toBe("Sales 2027")
+  })
+
+  it("says so when the deal cannot be seen, with no raw id", async () => {
+    const c = await card({ taskId: crypto.randomUUID(), outcome: "won" })
+    expect(c.title).toBe("Mark a deal won")
+    expect(c.subtitle).toBe("The deal is not visible to the person who asked")
+    expect(c.lines).toEqual(["Outcome: won"])
+  })
+
+  it("is the card the manifest names", () => {
+    const m = JSON.parse(readFileSync(join(import.meta.dir, "../app.manifest.json"), "utf8")) as {
+      tools: Record<string, { summarizer?: string }>
+    }
+    expect(m.tools.deals_update?.summarizer).toBe("summarizeDealsUpdate")
+  })
+})

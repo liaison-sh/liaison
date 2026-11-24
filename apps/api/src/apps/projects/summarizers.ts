@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import type { ApprovalSummary } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
-import { projectsRel } from "~/apps/projects/schema-refs"
+import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { UUID_RE } from "~/lib/uuid"
 
@@ -488,5 +488,124 @@ export async function summarizeClientReportSend(
       subtitle: "Send a client report",
       lines: [err instanceof Error ? err.message : "The report could not be read."],
     }
+  }
+}
+
+interface DealCardRow {
+  id: string
+  title: string
+  number: number | null
+  project_key: string | null
+  project_name: string
+  company_name: string | null
+}
+
+const PERIOD_WORDS: Record<string, string> = { month: " per month", year: " per year" }
+
+function dealAmount(minor: number, currency: unknown, period: unknown): string {
+  const code = typeof currency === "string" ? currency.toUpperCase() : ""
+  let digits = 2
+  try {
+    if (code) {
+      digits =
+        new Intl.NumberFormat("en", { style: "currency", currency: code }).resolvedOptions()
+          .maximumFractionDigits ?? 2
+    }
+  } catch {
+    // Not a currency code: two decimals, as most are.
+  }
+  const amount = (minor / 10 ** digits).toFixed(digits)
+  return `${amount}${code ? ` ${code}` : ""}${PERIOD_WORDS[String(period)] ?? ""}`
+}
+
+/**
+ * Approval summary of `deals_update`, shown when a deal change is held for a decision: which deal,
+ * whose, and what changes. The deal's stored amount is left out (it has a scope of its own, which
+ * a decider may not hold), and so is a client shared by name.
+ */
+export async function summarizeDealsUpdate(
+  params: Record<string, unknown>,
+  ctx: { tx: RlsClient; orgId: string; userId: string },
+): Promise<ApprovalSummary> {
+  const ref = typeof params.taskId === "string" ? params.taskId.trim() : ""
+  const { parseTaskKey, formatTaskKey } = await import("~/apps/projects/service/task-key")
+  const key = UUID_RE.test(ref) ? null : parseTaskKey(ref)
+  const names = async (table: "companies" | "contacts", id: unknown): Promise<string | null> => {
+    if (typeof id !== "string" || !UUID_RE.test(id)) return null
+    const [row] = extractRows<{ name: string | null }>(
+      await ctx.tx.execute(drizzleSql`
+        SELECT name FROM ${kernelRel(table)}
+         WHERE id = ${id}::uuid AND org_id = ${ctx.orgId}::uuid AND org_access <> 'none'`),
+    )
+    return row?.name?.trim() || null
+  }
+  const [deal] =
+    key || UUID_RE.test(ref)
+      ? extractRows<DealCardRow>(
+          await ctx.tx.execute(drizzleSql`
+            SELECT t.id::text AS id, t.title, t.number, p.key AS project_key,
+                   p.name AS project_name, c.name AS company_name
+              FROM ${projectsRel("tasks")} t
+              JOIN ${projectsRel("projects")} p ON p.id = t.project_id AND p.org_id = t.org_id
+              LEFT JOIN ${projectsRel("deals")} d ON d.task_id = t.id
+              LEFT JOIN ${kernelRel("companies")} c
+                ON c.id = d.company_id AND c.org_id = t.org_id AND c.org_access <> 'none'
+             WHERE t.org_id = ${ctx.orgId}::uuid
+               AND ${
+                 key
+                   ? drizzleSql`p.key = ${key.key} AND t.number = ${key.number}`
+                   : drizzleSql`t.id = ${ref}::uuid`
+               }
+             LIMIT 1`),
+        )
+      : []
+  const outcome = params.outcome
+  const article = deal ? "the" : "a"
+  const act =
+    outcome === "won" || outcome === "lost"
+      ? `Mark ${article} deal ${outcome}`
+      : outcome === "open"
+        ? `Reopen ${article} deal`
+        : `Change ${article} deal`
+
+  const lines: string[] = []
+  const says = (field: string, value: unknown, words: (v: unknown) => string = String) => {
+    if (value === undefined) return
+    lines.push(`${field}: ${value === null || value === "" ? "cleared" : clip(words(value), 160)}`)
+  }
+  says("Outcome", outcome)
+  says("Reason", params.reason)
+  if (params.companyId !== undefined) {
+    const name = await names("companies", params.companyId)
+    says("Client", params.companyId, () => name ?? "a company shared by name")
+  }
+  if (params.contactId !== undefined) {
+    const name = await names("contacts", params.contactId)
+    says("Contact", params.contactId, () => name ?? "a contact shared by name")
+  }
+  says("Amount", params.amountMinor, (v) =>
+    dealAmount(Number(v), params.currency, params.amountPeriod),
+  )
+  says("Probability", params.probability, (v) => `${String(v)}%`)
+  says("Next step", params.nextStep)
+
+  return {
+    kind: "projects.deals_update",
+    title: deal ? `${act}: ${clip(deal.title, 120)}` : act,
+    subtitle: deal
+      ? [deal.company_name, deal.project_name]
+          .filter((n): n is string => Boolean(n))
+          .map((n) => clip(n, 90))
+          .join(", ")
+      : "The deal is not visible to the person who asked",
+    ...(deal?.project_key && deal.number !== null
+      ? { ref: formatTaskKey(deal.project_key, deal.number) }
+      : {}),
+    lines,
+    ...(deal
+      ? {
+          links: [{ label: "Open deal", app: "projects", entityType: "task", entityId: deal.id }],
+        }
+      : {}),
   }
 }

@@ -1542,6 +1542,7 @@
       ],
       "trustBoundary": "user",
       "handler": "dealsUpdate",
+      "summarizer": "summarizeDealsUpdate",
       "writesToTable": "app_projects.deals",
       "params": {
         "type": "object",

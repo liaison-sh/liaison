@@ -90,6 +90,8 @@ const BUILD_COLUMNS: Record<string, RegExp> = {
 /** Arrays built from a set or a parallel lookup, whose order carries no meaning. */
 const UNORDERED_COLUMN = /^(scope_ceiling|participants)$/
 const COUNTER_HANDLE = /-[0-9a-f-]*\d[0-9a-f-]*$/
+/** A task's thread handle is the start of the task's random id (projects `tasks.ts`), digits or not. */
+const TASK_THREAD_HANDLE = /^proj-task-[0-9a-f-]{12}$/
 
 const HEX_DIGEST = /^[0-9a-f]{64}$/
 const DIGEST_COLUMN = /(^|_)hash$|Hash$|^entityId$/
@@ -144,7 +146,10 @@ function normalise(
   if (value === null || value === undefined) return value
   if (VOLATILE_COLUMN.test(column)) return "<volatile>"
   if (ARRIVAL_ORDER_COLUMN.test(column)) return "<counter>"
-  if (column === "handle" && typeof value === "string") return value.replace(COUNTER_HANDLE, "-<n>")
+  if (column === "handle" && typeof value === "string") {
+    if (TASK_THREAD_HANDLE.test(value)) return "proj-task-<n>"
+    return value.replace(COUNTER_HANDLE, "-<n>")
+  }
   if (typeof value === "string") {
     // A digest keyed per org (a suppressed address's hash) differs between two orgs by design.
     if (DIGEST_COLUMN.test(column) && HEX_DIGEST.test(value)) return "<digest>"

@@ -5,10 +5,12 @@ import { ApiError } from "~/lib/api-error"
 import { editorOf, setMarkdown } from "~/modules/editor/test-helpers"
 import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { ApiContext } from "~/modules/shell/ApiContext"
+import { setShellTier } from "~/tests/helpers/shell-tier"
 import { liveSavers } from "./autosave"
 import { _resetPageDrafts, type DraftStore, draftKey, type PageDraft } from "./drafts"
 import KnowledgeDocumentView from "./KnowledgeDocumentView"
 import { resetKnowledgeStore, setKnowledgeStoreDocument } from "./knowledge-store"
+import { resetPageFiles } from "./page-files"
 
 // The viewer's scopes: the attachments section follows knowledge:attachments:download.
 const scopes = vi.hoisted(() => new Set(["knowledge:attachments:download"]))
@@ -147,6 +149,7 @@ afterEach(async () => {
   for (const s of liveSavers()) await s.destroy({ discard: true })
   _resetPageDrafts(null)
   resetKnowledgeStore()
+  resetPageFiles()
   scopes.add("knowledge:attachments:download")
 })
 
@@ -449,5 +452,103 @@ describe("KnowledgeDocumentView: around the text", () => {
     renderView(makeApi())
     fireEvent.click(await screen.findByTestId("knowledge-share-button"))
     expect(await screen.findByTestId("knowledge-share-dialog")).toBeInTheDocument()
+  })
+})
+
+describe("KnowledgeDocumentView: images and files (S11, S12)", () => {
+  const A = "11111111-1111-4111-8111-111111111111"
+  const B = "22222222-2222-4222-8222-222222222222"
+  const token = (id: string) => `![](liaison-file:${id})`
+
+  /** The page's files answered by the files API, its pictures by the inline route. */
+  function withFiles(api: ReturnType<typeof makeApi>) {
+    const get = api.get.getMockImplementation()!
+    const files = vi.fn(async (path: string): Promise<unknown> => {
+      const m = /^\/files\/([0-9a-f-]{36})\/metadata$/.exec(path)
+      if (m) return { id: m[1], filename: "chart.png", mimeType: "image/png", sizeBytes: 10 }
+      return get(path)
+    })
+    api.get.mockImplementation(files as unknown as typeof get)
+    URL.createObjectURL = vi.fn(() => "blob:http://localhost/picture")
+    URL.revokeObjectURL = vi.fn()
+    return Object.assign(api, {
+      rawGet: vi.fn(
+        async () => new Response("png", { status: 200, headers: { "content-type": "image/png" } }),
+      ),
+    })
+  }
+
+  it("a reader sees the page's picture through the files API, and no add control", async () => {
+    const api = withFiles(makeApi({ canEdit: false, body: `Look: ${token(A)}` }))
+    renderView(api)
+    const rendered = await screen.findByTestId("knowledge-doc-body-rendered")
+    await waitFor(() =>
+      expect(rendered.querySelector("img")?.getAttribute("src")).toBe(
+        "blob:http://localhost/picture",
+      ),
+    )
+    expect(api.get).toHaveBeenCalledWith(`/files/${A}/metadata`, { suppressGlobalError: true })
+    expect(api.rawGet).toHaveBeenCalledWith(`/files/${A}/inline`, { suppressGlobalError: true })
+    expect(screen.queryByTestId("knowledge-attachment-add")).toBeNull()
+    expect(screen.queryByTestId("rich-editor.tool-image")).toBeNull()
+  })
+
+  it("a writer has the Image and File tools and Add a file", async () => {
+    renderView(withFiles(makeApi()))
+    await bodyField()
+    expect(await screen.findByTestId("rich-editor.tool-image")).toBeTruthy()
+    expect(screen.getByTestId("rich-editor.tool-file")).toBeTruthy()
+    expect(screen.getByTestId("knowledge-attachment-add").textContent).toBe("Add a file")
+  })
+
+  it("the save copied another page's file: the editor takes the copy's id, nothing more is sent", async () => {
+    const api = withFiles(makeApi({ body: "Start." }))
+    const patch = api.patch.getMockImplementation()!
+    api.patch.mockImplementation(async (path, body) => {
+      const copied = { ...body, body: body.body.replace(A, B) }
+      const row = await patch(path, copied)
+      return { ...row, fileIdMap: body.body.includes(A) ? { [A]: B } : undefined }
+    })
+    renderView(api)
+    const field = await bodyField()
+    setMarkdown(field, `Start. ${token(A)}`)
+    await waitFor(
+      () => expect(screen.getByTestId("save-state").textContent).toBe("Saved"),
+      SAVE_WAIT,
+    )
+    const editor = editorOf(field)
+    const ids: string[] = []
+    editor.state.doc.descendants((n) => {
+      if (n.type.name === "liaisonFile") ids.push(n.attrs.id)
+    })
+    expect(ids).toEqual([B])
+    await new Promise((r) => setTimeout(r, 1_500))
+    expect(api.patch).toHaveBeenCalledTimes(1)
+    expect(api.page().body).toBe(`Start. ${token(B)}`)
+  })
+
+  it("phone: a writer adds a file from the Sources sheet", async () => {
+    setShellTier("phone")
+    try {
+      renderView(withFiles(makeApi()))
+      await bodyField()
+      expect(screen.queryByTestId("knowledge-attachment-add")).toBeNull()
+      fireEvent.click(screen.getByTestId("knowledge-doc-sources-open"))
+      expect((await screen.findByTestId("knowledge-attachment-add")).textContent).toBe("Add a file")
+    } finally {
+      setShellTier("desktop")
+    }
+  })
+
+  it("FR: the add control and the unavailable label are French", async () => {
+    const api = withFiles(makeApi({ canEdit: false, body: token(A) }))
+    api.get.mockImplementation(async (path: string) => {
+      if (path.startsWith("/files/")) throw new ApiError("nf", 404)
+      if (path.endsWith("/backlinks")) return { backlinks: [] }
+      return { ...api.page(), canEdit: false, body: token(A) }
+    })
+    renderView(api, "doc1", "fr")
+    const rendered = await screen.findByTestId("knowledge-doc-body-rendered")
+    await waitFor(() => expect(rendered.textContent).toContain("Image non disponible"))
   })
 })

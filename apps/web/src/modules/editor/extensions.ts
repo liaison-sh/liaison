@@ -36,8 +36,20 @@ import {
   matchMention,
   mentionMarked,
 } from "~/modules/shell/markdown-content"
+import type { FileViewDeps } from "./file-view"
+import { LiaisonFile, UploadingFile } from "./liaison-file"
 import { rawHtml } from "./raw-html"
 import { RawMarkdownInline, type RawMarkdownLabels } from "./raw-image"
+
+/** How a page draws and labels its files (document preset). */
+export interface EditorFileOptions {
+  /** Null: files show a neutral label and nothing is fetched. */
+  view: FileViewDeps | null
+  /** The label of a file the page does not draw. */
+  label: string
+  /** The chip of a file on its way: "Uploading {name}". */
+  uploading: (name: string) => string
+}
 
 /**
  * A range just written by dictation, tinted for a moment (`.inserted-tint`
@@ -222,7 +234,7 @@ const MarkdownTable = Node.create({
 
 // What a table cell may hold for the editor to write it back unchanged.
 const CELL_INLINE = new Set(["text", "escape", "strong", "em", "codespan", "del", "link"])
-const CELL_EXTRA = new Set(["underline", "mention"])
+const CELL_EXTRA = new Set(["underline", "mention", "liaisonFile"])
 
 function cellEditable(tokens: Token[] | undefined): boolean {
   return (tokens ?? []).every((t) => {
@@ -585,7 +597,12 @@ function keys(handlers: EditorKeys, inline: boolean) {
 
 export function editorExtensions(
   preset: EditorPreset,
-  options: { placeholder?: string; keys: EditorKeys; rawLabels?: RawMarkdownLabels },
+  options: {
+    placeholder?: string
+    keys: EditorKeys
+    rawLabels?: RawMarkdownLabels
+    files?: EditorFileOptions
+  },
 ): AnyExtension[] {
   const inline = preset === "inline"
   const doc = preset === "document"
@@ -609,6 +626,16 @@ export function editorExtensions(
     ...(inline ? [InlineDocument] : []),
     ...(full ? [TaskList, TaskItem.configure({ nested: true })] : []),
     ...(doc ? documentTable : []),
+    // A page's own images and files, by id.
+    ...(doc
+      ? [
+          LiaisonFile.configure({
+            view: options.files?.view ?? null,
+            label: options.files?.label ?? "Image or file",
+          }),
+          UploadingFile.configure(options.files ? { label: options.files.uploading } : {}),
+        ]
+      : []),
     // A page keeps images and label-less links (page links) as their source.
     ...(doc
       ? [

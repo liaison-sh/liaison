@@ -5,15 +5,28 @@
 // tick). A synced page says where it comes from. Files sit under the text, or in a
 // Sources sheet on a phone.
 
-import { type Component, createSignal, lazy, Show, Suspense } from "solid-js"
+import {
+  type Component,
+  createEffect,
+  createSignal,
+  lazy,
+  on,
+  onCleanup,
+  Show,
+  Suspense,
+} from "solid-js"
 import { appLabel } from "~/lib/app-label"
 import { relativeTime } from "~/lib/relative-time"
 import { hasScope } from "~/modules/auth/auth-store"
 import type { RichEditorHandle } from "~/modules/editor"
+import type { FileViewDeps } from "~/modules/editor/file-view"
+import type { EditorFiles } from "~/modules/editor/RichEditor"
 import FileList from "~/modules/files/FileList"
 import { useI18n } from "~/modules/i18n/i18n-context"
+import { Button } from "~/ui/Button"
 import { OverlaySheet } from "~/ui/OverlaySheet"
 import { ScrollFade } from "~/ui/ScrollFade"
+import { hydrateFileTokens } from "./hydrate-tokens"
 import { getPulseUpdated, isSyncedSourceArchived } from "./knowledge-store"
 import { renderMarkdown } from "./markdown"
 
@@ -40,6 +53,12 @@ export interface PageBodyProps {
   phone: boolean
   hasApi: boolean
   editorRef: (handle: RichEditorHandle) => void
+  /** How the page draws its files, for the reader and the editor. */
+  fileView: FileViewDeps | null
+  /** The editor's files (paste, drop, pick); absent for a reader. */
+  editorFiles?: EditorFiles
+  /** Add files to the page's Attachments (a writer only); absent: no add control. */
+  onAddFiles?: (files: File[]) => void
   onEdit: () => void
   onRefreshSynced: () => void
 }
@@ -47,13 +66,55 @@ export interface PageBodyProps {
 export const PageBody: Component<PageBodyProps> = (props) => {
   const i18n = useI18n()
   const [sourcesOpen, setSourcesOpen] = createSignal(false)
-  const readOnly = () => (
-    <div
-      data-testid="knowledge-doc-body-rendered"
-      class="prose-thread min-h-[20rem] text-[13px] leading-relaxed text-text"
-      // Sanitized by renderMarkdown (DOMPurify) before injection.
-      innerHTML={renderMarkdown(props.doc.body ?? "")}
-    />
+  const readOnly = () => {
+    let el: HTMLDivElement | undefined
+    let stop = () => {}
+    // The rendered text is in place before effects run: its file tokens get their views.
+    createEffect(
+      on(
+        () => props.doc.body,
+        () => {
+          stop()
+          if (el) stop = hydrateFileTokens(el, props.fileView, i18n.t("kernel.editor.fileToken"))
+        },
+      ),
+    )
+    onCleanup(() => stop())
+    return (
+      <div
+        ref={el}
+        data-testid="knowledge-doc-body-rendered"
+        class="prose-thread min-h-[20rem] text-[13px] leading-relaxed text-text"
+        // Sanitized by renderMarkdown (DOMPurify) before injection.
+        innerHTML={renderMarkdown(props.doc.body ?? "")}
+      />
+    )
+  }
+  let addInput: HTMLInputElement | undefined
+  const addControl = () => (
+    <Show when={props.onAddFiles}>
+      <Button
+        variant="outline"
+        size="sm"
+        data-testid="knowledge-attachment-add"
+        onClick={() => addInput?.click()}
+      >
+        {i18n.t("knowledge.files.addFile")}
+      </Button>
+      <input
+        ref={addInput}
+        type="file"
+        multiple
+        hidden
+        data-testid="knowledge-attachment-input"
+        onChange={(e) => {
+          const input = e.currentTarget
+          const chosen = Array.from(input.files ?? [])
+          input.value = ""
+          if (chosen.length) props.onAddFiles?.(chosen)
+        }}
+      />
+    </Show>
   )
 
   return (
@@ -128,6 +189,7 @@ export const PageBody: Component<PageBodyProps> = (props) => {
               value={props.editorText ?? ""}
               onEdit={props.onEdit}
               aria-label={props.doc.title}
+              files={props.editorFiles}
               data-testid="knowledge-doc-body-editor"
               editorClass="min-h-[20rem] text-[13px] leading-relaxed"
             />
@@ -142,9 +204,12 @@ export const PageBody: Component<PageBodyProps> = (props) => {
                 data-testid="knowledge-attachment-list"
                 class="mt-8 border-t border-border-subtle pt-6"
               >
-                <h3 class="mb-3 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
-                  {i18n.t("knowledge.attachments")}
-                </h3>
+                <div class="mb-3 flex items-center justify-between gap-2">
+                  <h3 class="text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
+                    {i18n.t("knowledge.attachments")}
+                  </h3>
+                  {addControl()}
+                </div>
                 <Show when={props.hasApi}>
                   <FileList
                     parent={{ app: "knowledge", entityType: "document", entityId: props.doc.id }}
@@ -170,6 +235,9 @@ export const PageBody: Component<PageBodyProps> = (props) => {
               title={i18n.t("kernel.knowledgeSources")}
             >
               <section data-testid="knowledge-attachment-list" class="px-4 py-3">
+                <Show when={props.onAddFiles}>
+                  <div class="mb-3">{addControl()}</div>
+                </Show>
                 <Show when={props.hasApi}>
                   <FileList
                     parent={{ app: "knowledge", entityType: "document", entityId: props.doc.id }}

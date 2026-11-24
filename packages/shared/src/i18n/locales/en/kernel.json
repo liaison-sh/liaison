@@ -4677,7 +4677,11 @@
     "emojiSuggestions": "Emoji suggestions",
     "remoteImage": "Image from another site, not loaded",
     "pageLink": "Page link",
-    "sourceEditor": "Page text, as written"
+    "sourceEditor": "Page text, as written",
+    "image": "Image",
+    "file": "File",
+    "fileToken": "Image or file",
+    "uploadingFile": "Uploading {{name}}"
   },
   "nodes": {
     "chat": {

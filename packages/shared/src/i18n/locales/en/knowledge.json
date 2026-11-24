@@ -221,5 +221,19 @@
     "pageActions": "Page actions",
     "oneReference": "1 reference",
     "references": "{{count}} references"
+  },
+  "files": {
+    "addFile": "Add a file",
+    "unavailable": "Image not available",
+    "loading": "Loading the file",
+    "download": "Download {{name}}",
+    "tooLarge": "{{name}} was not added: it is larger than the size limit for one file.",
+    "tooLargeLimit": "{{name}} was not added: one file can be at most {{limit}} MB.",
+    "storageFull": "{{name}} was not added: your organization's storage is full.",
+    "storageDown": "{{name}} was not added: file storage is not available right now. Try again in a moment.",
+    "notAllowed": "{{name}} was not added: you cannot add files to this page.",
+    "failed": "{{name}} was not added: the upload failed. Try again.",
+    "unreadable": "An image or file you pasted is one you cannot open, so it was not added.",
+    "copyLater": "An image from another page could not be copied here yet: storage is full. It is copied at a later save, once there is room."
   }
 }

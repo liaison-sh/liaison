@@ -3,6 +3,7 @@
 // A page whose stored text the rich editor would not write back byte for byte
 // (RichEditorHandle.roundTrips false) is edited as that text, in a plain textarea
 // with the same handle, so editing one line never rewrites the rest.
+import { replaceFileIds } from "@liaison/shared"
 import { type Component, createEffect, on, onMount } from "solid-js"
 import { cn } from "~/lib/cn"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -69,6 +70,16 @@ export const SourceEditor: Component<SourceEditorProps> = (props) => {
       markdown: () => area.value,
       roundTrips: true,
       applyRemote,
+      // The text as written: a file goes in through the page's Attachments.
+      insertFiles: () => {},
+      replaceFileIds: (map) => {
+        const next = replaceFileIds(area.value, map)
+        if (next === area.value) return
+        const { selectionStart, selectionEnd } = area
+        area.value = next
+        emitted = next
+        area.setSelectionRange(selectionStart, selectionEnd)
+      },
     })
   })
 

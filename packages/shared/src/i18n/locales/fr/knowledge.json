@@ -221,5 +221,19 @@
     "pageActions": "Actions de la page",
     "oneReference": "1 référence",
     "references": "{{count}} références"
+  },
+  "files": {
+    "addFile": "Ajouter un fichier",
+    "unavailable": "Image non disponible",
+    "loading": "Chargement du fichier",
+    "download": "Télécharger {{name}}",
+    "tooLarge": "{{name}} n'a pas été ajouté : il dépasse la taille maximale d'un fichier.",
+    "tooLargeLimit": "{{name}} n'a pas été ajouté : un fichier peut faire au plus {{limit}} Mo.",
+    "storageFull": "{{name}} n'a pas été ajouté : l'espace de stockage de votre organisation est plein.",
+    "storageDown": "{{name}} n'a pas été ajouté : le stockage des fichiers est indisponible pour le moment. Réessayez dans un instant.",
+    "notAllowed": "{{name}} n'a pas été ajouté : vous ne pouvez pas ajouter de fichiers à cette page.",
+    "failed": "{{name}} n'a pas été ajouté : l'envoi a échoué. Réessayez.",
+    "unreadable": "Une image ou un fichier collé fait partie de ceux que vous ne pouvez pas ouvrir : il n'a pas été ajouté.",
+    "copyLater": "Une image d'une autre page n'a pas encore pu être copiée ici : le stockage est plein. Elle sera copiée lors d'un prochain enregistrement, quand il y aura de la place."
   }
 }

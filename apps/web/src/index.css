@@ -478,6 +478,61 @@
   color: var(--color-text-tertiary);
 }
 
+/* A page's image or file (editor/file-view.ts), in the editor and the reader. A
+   picture fills the line it is on; any other file is a card with its name. */
+.liaison-file[data-kind="image"] {
+  display: block;
+  margin: 0.75em 0;
+}
+.liaison-file img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 8px;
+}
+.liaison-file-card {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.25em 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.liaison-file-card:hover {
+  background: var(--color-surface-hover);
+}
+.liaison-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.liaison-file-size {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.liaison-file-label,
+.liaison-file-uploading {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px dashed var(--color-border);
+  border-radius: 4px;
+  color: var(--color-text-tertiary);
+  font-size: 12px;
+}
+.rich-editor .ProseMirror .liaison-file.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent-border);
+  border-radius: 8px;
+}
+
 /* Mention pills inside thread prose. An INLINE chip on the text line: it
    never sets a height or a line-height of its own, so the paragraph keeps its
    rhythm, and a long name wraps with the chip's look on both fragments. */

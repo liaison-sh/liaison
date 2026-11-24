@@ -23,11 +23,35 @@
  */
 
 import { editorMarkdown } from "@liaison/shared"
-import { Marked } from "marked"
+import { Marked, type MarkedExtension } from "marked"
 import { wrapMarkdownTables } from "~/lib/markdown-tables"
 import { sanitizeHtml } from "~/lib/sanitize"
+import { FILE_REF_AT_START } from "~/modules/editor/file-view"
 
-const marked = new Marked({ breaks: false, gfm: true }, editorMarkdown)
+/**
+ * A page's image or file (`![](liaison-file:<id>)`) is an empty
+ * `<span data-liaison-file="<id>">`: no address at all. The page mounts the file's
+ * view into it after the HTML is in place (hydrate-tokens.ts).
+ */
+const fileTokens: MarkedExtension = {
+  extensions: [
+    {
+      name: "liaisonFile",
+      level: "inline",
+      start: (src: string) => {
+        const at = src.search(/!\[[^\]]*\]\(liaison-file:/)
+        return at < 0 ? undefined : at
+      },
+      tokenizer(src: string) {
+        const match = FILE_REF_AT_START.exec(src)
+        return match ? { type: "liaisonFile", raw: match[0], id: match[1] } : undefined
+      },
+      renderer: (token) => `<span data-liaison-file="${String(token.id)}"></span>`,
+    },
+  ],
+}
+
+const marked = new Marked({ breaks: false, gfm: true }, editorMarkdown, fileTokens)
 
 /** Sanitized HTML; a wide table scrolls in its own box, as in a message. */
 export function renderMarkdown(body: string): string {

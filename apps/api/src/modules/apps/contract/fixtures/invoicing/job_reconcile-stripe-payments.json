@@ -19,7 +19,7 @@
       "method": "db_findMany",
       "args": [
         "deferred_events",
-        "{\"where\":{\"status\":{\"in\":[\"permanent_failure\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:in_\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+        "{\"where\":{\"status\":{\"in\":[\"permanent_failure\"]}},\"search\":{\"fields\":[\"event_id\"],\"query\":\"stripe:in_\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"createdAt\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
       ],
       "reply": "[]"
     },

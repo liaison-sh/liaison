@@ -19,7 +19,7 @@
 //   8. above the issuer's approval threshold: a person approves first (the payload waits parked);
 //   9. issue, due on the issue date, paid already when Stripe says so; link the Stripe invoice.
 //
-// A person's click (`byPerson`) that is refused at 5 or 7 leaves the park it was made on as it is:
+// A person's click (`byPerson`) that is refused at 4 to 7 leaves the park it was made on as it is:
 // nothing it leaves behind issues later by itself.
 //
 // The typed payload is the Stripe app's `invoice:finalized` (and `invoice:paid`): minor units as
@@ -457,14 +457,23 @@ async function refuseClick(
   why: string,
   words: string,
 ): Promise<FinalizedResult> {
-  if (on && isPersonOnly(on)) {
-    // What the job cannot see for itself stays on the line; an incomplete buyer it reads again.
-    const read = why === LACKS.email.reason || why === LACKS.address.reason
-    const blocked_on = { ...on.blocked_on, refused: read ? null : words }
-    await ctx.db.update("deferred_events", on.id, { reason: why, blocked_on })
-    if (!read) await sayLineOf(ctx, on.id, refusedText(words))
-  }
+  if (on) await noteRefusal(ctx, on, why, words)
   return { status: "deferred", deferred_id: on?.id ?? "", reason: "awaiting_data", why, words }
+}
+
+/** What an invoice past its retries was last refused for, on its park and its line. */
+export async function noteRefusal(
+  ctx: StripeCtx,
+  on: DeferredRow,
+  why: string,
+  words: string,
+): Promise<void> {
+  if (!isPersonOnly(on)) return
+  // What the job cannot see for itself stays on the line; an incomplete buyer it reads again.
+  const read = why === LACKS.email.reason || why === LACKS.address.reason
+  const blocked_on = { ...on.blocked_on, refused: read ? null : words }
+  await ctx.db.update("deferred_events", on.id, { reason: why, blocked_on })
+  if (!read) await sayLineOf(ctx, on.id, refusedText(words))
 }
 
 /** The Home line of an invoice whose last click was refused. */
@@ -604,6 +613,13 @@ export async function onStripeInvoiceFinalized(
   // 6. Tax as charged, line by line.
   const mismatches = stripeTaxMismatches(p.lines ?? [])
   if (mismatches.length > 0) {
+    if (opts.byPerson)
+      return refuseClick(
+        ctx,
+        opts.park,
+        "stripe_tax_mismatch",
+        `line ${mismatches[0]?.position}: Stripe charged ${mismatches[0]?.stripe_minor} of tax, Liaison computes ${mismatches[0]?.computed_minor}`,
+      )
     const def = await parkInvoice(ctx, p, "awaiting_data", "stripe_tax_mismatch", STRIPE_TAX_PARK, {
       lines: mismatches,
     })
@@ -631,6 +647,11 @@ export async function onStripeInvoiceFinalized(
   const residual = liaisonTotal === null ? null : total - liaisonTotal
   const tolerance = BigInt((p.lines ?? []).length)
   if (residual === null || residual > tolerance || -residual > tolerance) {
+    const difference =
+      liaisonTotal === null
+        ? "a line carries several taxes, so no single rate can be issued"
+        : `Stripe charged ${money(total, p.currency)}, Liaison computes ${money(liaisonTotal, p.currency)}`
+    if (opts.byPerson) return refuseClick(ctx, opts.park, "stripe_total_mismatch", difference)
     const def = await parkInvoice(
       ctx,
       p,
@@ -650,10 +671,7 @@ export async function onStripeInvoiceFinalized(
         data: {
           deferred_id: def.id,
           stripe_invoice_id: p.stripe_invoice_id,
-          reason:
-            liaisonTotal === null
-              ? "a line carries several taxes, so no single rate can be issued"
-              : `Stripe charged ${money(total, p.currency)}, Liaison computes ${money(liaisonTotal, p.currency)}`,
+          reason: difference,
           resolved: false,
         },
       })

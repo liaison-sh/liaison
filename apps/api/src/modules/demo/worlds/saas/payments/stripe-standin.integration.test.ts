@@ -17,7 +17,12 @@ import { maskWithNote } from "@liaison/shared"
 import { sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type SystemContext, type UserContext, withRlsContext } from "~/db/rls"
-import { flushEventHandlers, initEventBus } from "~/infra/events/event-bus"
+import {
+  type AppEvent,
+  flushEventHandlers,
+  initEventBus,
+  subscribeToEvent,
+} from "~/infra/events/event-bus"
 import { dispatchAppJobWithContext } from "~/infra/jobs/job-context"
 import { JobsTestAccess } from "~/infra/jobs/jobs"
 import { ObjectStorageTestAccess } from "~/infra/storage/object-storage"
@@ -34,6 +39,7 @@ import { SandboxBridgeTestAccess } from "~/modules/apps/sandbox/bridge/shared"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
+import { processTranslationEvent } from "~/modules/attention/translator"
 import { DemoRestrictionError } from "~/modules/demo/demo-egress"
 import { DemoModeTestAccess } from "~/modules/demo/demo-mode"
 import { invalidateDemoMarker, markOrgAsDemo, visitorMarker } from "~/modules/demo/demo-org"
@@ -382,10 +388,15 @@ async function drain(): Promise<void> {
   await drainOutbox()
 }
 
-async function runJob(job: string): Promise<void> {
-  const handler = JobsTestAccess.getHandler("stripe", job)
+async function runJob(job: string, app = "stripe"): Promise<void> {
+  const handler = JobsTestAccess.getHandler(app, job)
   if (!handler) throw new Error(`${job} is not registered`)
-  await dispatchAppJobWithContext(handler, { orgId: ORG }, actor(), "session")
+  await dispatchAppJobWithContext(
+    handler,
+    { orgId: ORG },
+    { ...actor(), scopes: [`${app}:*`] },
+    "session",
+  )
 }
 
 const MIRROR = [
@@ -691,6 +702,173 @@ describe("the card-payments stand-in on the real kernel", () => {
     >`SELECT cancel_at, current_period_end FROM app_stripe.stripe_subscriptions WHERE org_id = ${ORG} AND stripe_id = 'sub_SIombre'`
     expect(row?.cancel_at).toEqual(row?.current_period_end)
   }, 120_000)
+
+  it("an invoice parked through every retry is issued by a person once its customer is complete: park, cap, Home line, click, one numbered invoice, all closed", async () => {
+    const seen: AppEvent[] = []
+    const stop = await Promise.all(
+      ["needs_person", "many_need_person"].map((action) =>
+        subscribeToEvent("invoicing", "stripe_invoice", action, async (e) => void seen.push(e), {
+          delivery: "once",
+          name: `parked-recovery-${action}`,
+        }),
+      ),
+    )
+    /** The Home lines of the park, as the translator writes and resolves them. */
+    const home = async (parkId: unknown) => {
+      await drain()
+      for (const e of seen.splice(0)) await processTranslationEvent(e)
+      return sql<Row[]>`
+        SELECT summary, (read_at IS NULL) AS open FROM kernel.attention_events
+        WHERE org_id = ${ORG} AND user_id = ${ADMIN} AND entity_id = ${String(parkId)}
+        ORDER BY created_at`
+    }
+    const park = async () => {
+      const rows = await sql<Row[]>`
+        SELECT id::text, status, reason, retry_count FROM app_invoicing.deferred_events
+        WHERE org_id = ${ORG} AND event_id = 'stripe:in_SIpark'`
+      expect(rows).toHaveLength(1)
+      return rows[0] as Row
+    }
+    const docs = () => sql<Row[]>`
+      SELECT number, number_int, payment_status, counterparty_address FROM app_invoicing.documents
+      WHERE org_id = ${ORG} AND external_ref = 'stripe:in_SIpark'`
+    const numbersUsed = async () => {
+      const [r] = await sql<Row[]>`
+        SELECT COALESCE(sum(value), 0)::int AS n FROM kernel.app_sequences WHERE org_id = ${ORG}`
+      return Number(r?.n)
+    }
+    const click = async () => {
+      try {
+        const r = await executeTool<Row>({
+          toolName: "invoicing:invoice_from_stripe_payment",
+          orgId: ORG,
+          // Whoever issues documents, with no right of their own in the payments app.
+          actor: {
+            ...person,
+            scopes: [
+              "invoicing:documents:read",
+              "invoicing:documents:write",
+              "invoicing:settings:read",
+            ],
+          },
+          origin: "human-ui",
+          params: { stripeInvoiceId: "in_SIpark" },
+        })
+        return JSON.stringify(r.data)
+      } catch (err) {
+        return `${(err as Error).message} ${JSON.stringify((err as { details?: unknown }).details ?? {})}`
+      }
+    }
+    // Each sweep an hour and more after the last, as the retries are spaced.
+    const sweep = async () => {
+      await sql`UPDATE app_invoicing.deferred_events SET retried_at = now() - interval '2 hours', created_at = now() - interval '2 hours'
+        WHERE org_id = ${ORG} AND event_id = 'stripe:in_SIpark'`
+      await runJob("deferred-retry", "invoicing")
+    }
+    try {
+      await putOutsideObjects(ORG, [
+        {
+          id: "cus_SIpark",
+          object: "customer",
+          livemode: false,
+          email: "compta@atelier-nord.example",
+          name: "Atelier Nord",
+          currency: "eur",
+          delinquent: false,
+          address: null,
+          tax_ids: null,
+          created: Math.floor(NOW / 1000),
+        },
+        {
+          id: "in_SIpark",
+          object: "invoice",
+          livemode: false,
+          customer: "cus_SIpark",
+          number: "TF-0199",
+          status: "open",
+          total: 12000,
+          total_taxes: [{ amount: 2000 }],
+          amount_paid: 0,
+          amount_due: 12000,
+          currency: "eur",
+          period_start: Math.floor(NOW / 1000) - 5 * 86400,
+          period_end: Math.floor(NOW / 1000) + 25 * 86400,
+          billing_reason: "manual",
+          hosted_invoice_url: standInHostedInvoiceUrl("in_SIpark"),
+          status_transitions: { finalized_at: Math.floor(NOW / 1000) - 3600, paid_at: null },
+        },
+      ])
+      await deliverDemoPaymentsEvent(
+        ORG,
+        standInEvent("customer.created", { id: "cus_SIpark", object: "customer" }),
+      )
+      await deliverDemoPaymentsEvent(
+        ORG,
+        standInEvent("invoice.finalized", { id: "in_SIpark", object: "invoice" }),
+      )
+      await drain()
+      const parked = await park()
+      expect(parked).toMatchObject({ status: "awaiting_data", reason: "customer_address_missing" })
+      const id = parked.id
+      expect(await home(id)).toMatchObject([
+        { open: true, summary: expect.stringContaining("Add it there and the invoice is issued") },
+      ])
+
+      // Every automatic retry passes while the customer still has no address.
+      for (let i = 0; i < 12; i++) await sweep()
+      expect(Number((await park()).retry_count)).toBe(10)
+      await runJob("reconcile-stripe-payments", "invoicing")
+      expect(await home(id)).toMatchObject([
+        { open: true, summary: expect.stringContaining("it is no longer issued on its own") },
+      ])
+
+      // A click too early refuses with the reason; the park stays.
+      const numbers = await numbersUsed()
+      expect(await click()).toContain("customer_address_missing")
+      expect(await numbersUsed()).toBe(numbers)
+      expect(String((await park()).status)).toBe("awaiting_data")
+
+      // The address is added in Stripe. Nothing issues it: not the job, not the sweep, not an event.
+      await sql`UPDATE app_stripe.stripe_customers
+        SET address = '{"country":"FR","line1":"8 quai Nord","postal_code":"33000","city":"Bordeaux"}'::jsonb
+        WHERE org_id = ${ORG} AND stripe_id = 'cus_SIpark'`
+      for (let i = 0; i < 2; i++) {
+        await runJob("reconcile-stripe-payments", "invoicing")
+        await sweep()
+      }
+      await deliverDemoPaymentsEvent(
+        ORG,
+        standInEvent("invoice.finalized", { id: "in_SIpark", object: "invoice" }),
+      )
+      expect(await home(id)).toMatchObject([
+        { open: true, summary: expect.stringContaining("is complete in Stripe now. Issue it") },
+      ])
+      expect(await docs()).toHaveLength(0)
+      expect(await numbersUsed()).toBe(numbers)
+
+      // A person's click: one numbered invoice, the park and the line closed.
+      expect(await click()).toContain("took the next number")
+      const made = await docs()
+      expect(made).toMatchObject([
+        { counterparty_address: "8 quai Nord, 33000 Bordeaux", payment_status: "unpaid" },
+      ])
+      expect(made[0]?.number).toBeTruthy()
+      expect(await numbersUsed()).toBe(numbers + 1)
+      await drain()
+      expect(await park()).toMatchObject({ status: "resolved", reason: "issued" })
+      expect(await home(id)).toMatchObject([{ open: false }])
+
+      // And only once.
+      expect(await click()).toContain("already invoiced")
+      await runJob("reconcile-stripe-payments", "invoicing")
+      await sweep()
+      expect(await docs()).toHaveLength(1)
+      expect(await numbersUsed()).toBe(numbers + 1)
+      expect(onTheWire.filter((u) => u.includes(HOST))).toEqual([])
+    } finally {
+      for (const s of stop) await s()
+    }
+  }, 180_000)
 
   it("no mirror row or fixture holds a key-shaped string, and emails are on .example with last 4 of 4242 or 5108 only", async () => {
     const snapshot = await mirrorSnapshot()

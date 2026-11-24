@@ -89,7 +89,7 @@ describe("money received before any invoice", () => {
       { chargeId: "ch_adv", vatRateBp: 2000 },
     )
     expect(r).toMatchObject({ status: "completed" })
-    expect(ctx.emitted.at(-1)).toMatchObject({
+    expect(ctx.emitted.filter((e) => e.entity === "stripe_payment").at(-1)).toMatchObject({
       entity: "stripe_payment",
       action: "advance_received",
       entityId: "ch_adv",
@@ -114,7 +114,10 @@ describe("money received before any invoice", () => {
       },
       { chargeId: "ch_other", vatRateBp: 2000 },
     )
-    expect(ctx.emitted.at(-1)).toMatchObject({ action: "unmatched", data: { resolved: true } })
+    expect(ctx.emitted.filter((e) => e.entity === "stripe_payment").at(-1)).toMatchObject({
+      action: "unmatched",
+      data: { resolved: true },
+    })
   })
 
   test("drafting the advance answers the line and takes no number", async () => {

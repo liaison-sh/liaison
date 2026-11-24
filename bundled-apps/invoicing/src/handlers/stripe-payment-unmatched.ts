@@ -12,7 +12,7 @@
 //     already invoiced, the buyer incomplete). A refused click leaves nothing that issues later;
 //   payment_link_to_invoice: link the charge to an invoice already issued, once, and close what
 //     waited for the sale: the payment and its Stripe invoice.
-import { type DeferredRow, openRowsOf, park, parksOf, resolveOpenParks } from "../deferred"
+import { type DeferredRow, openRowsOf, park, parksOf, toDeferredRow } from "../deferred"
 import { lineTax, netOfIncludedTax } from "../money"
 import { toBigInt } from "../mutations/shared"
 import { isoOf, streamRows, stripeDocumentRef } from "../streams"
@@ -22,6 +22,7 @@ import {
   type FinalizedResult,
   linkBack,
   NOT_OPEN_IN_STRIPE,
+  noteRefusal,
   onStripeInvoiceFinalized,
   payloadOf,
   STRIPE_APPROVAL_PARK,
@@ -201,6 +202,44 @@ export interface InvoiceFromStripeInput {
   description?: string
 }
 
+/**
+ * What a person's decision changed of the waiting sale: closed, with every park under its names, or
+ * refused. Parks are the system's to write (a person holds no right to their table), so the
+ * decision is told as an event and recorded by `onStripeSaleDecided` on the system's behalf.
+ */
+export interface SaleDecided {
+  names: string[]
+  closed?: string
+  refused?: { park_id: string; why: string; words: string }
+}
+
+const tellDecided = (
+  ctx: StripeCtx,
+  names: ReadonlyArray<string | null | undefined>,
+  what: Omit<SaleDecided, "names">,
+) =>
+  ctx.emit({
+    entity: "stripe_sale",
+    action: "decided",
+    entityId: String(names.find((n) => !!n) ?? ""),
+    data: { names: [...new Set(names.filter((n): n is string => !!n))], ...what },
+  })
+
+export async function onStripeSaleDecided(event: unknown, ctx: StripeCtx) {
+  const d = payloadOf<SaleDecided>(event)
+  if (!Array.isArray(d?.names)) return { status: "skipped" as const, reason: "invalid_payload" }
+  if (d.closed) await closeSale(ctx, d.names, d.closed)
+  if (d.refused) {
+    const { park_id, why, words } = d.refused
+    const [row] = (await ctx.db.findMany("deferred_events", {
+      where: { id: park_id },
+      limit: 1,
+    })) as Row[]
+    if (row) await noteRefusal(ctx, toDeferredRow(row), why, words)
+  }
+  return { status: "ok" as const }
+}
+
 /** Stage-time check: there is something waiting to issue, and it is not issued already. */
 export async function invoiceFromStripePaymentPreflight(
   ctx: StripeCtx,
@@ -246,7 +285,10 @@ async function waiting(ctx: StripeCtx, input: InvoiceFromStripeInput, close = fa
   ]
   const existing = await saleDocument(ctx, names)
   if (existing) {
-    if (close) await closeSale(ctx, names, "already_issued")
+    if (close) {
+      await closeSale(ctx, names, "already_issued")
+      await tellDecided(ctx, names, { closed: "already_issued" })
+    }
     return taken(id, existing)
   }
   if (!row)
@@ -374,8 +416,10 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
     byPerson: true,
     park: row,
   })
+  const names = [id, ...saleNames(invoice)]
   if (outcome.status === "ok") {
-    await resolveOpenParks(ctx, stripeRef(id), "issued")
+    await closeSale(ctx, names, "issued")
+    await tellDecided(ctx, names, { closed: "issued" })
     return {
       status: "completed" as const,
       document_id: outcome.document_id,
@@ -387,6 +431,9 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
     return { status: "pending_approval" as const, approval_id: outcome.approval_id }
   if (outcome.status === "error") return { status: "error" as const, error: outcome.error }
   if (outcome.status === "skipped") {
+    await tellDecided(ctx, names, {
+      closed: outcome.document_id ? "already_issued" : outcome.reason,
+    })
     if (outcome.document_id) {
       const doc = (await ctx.db.findOne("documents", outcome.document_id)) as Row | null
       return taken(id, doc ?? { id: outcome.document_id })
@@ -396,13 +443,12 @@ export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFro
       `${id} was not invoiced: ${SKIPPED[outcome.reason] ?? outcome.reason}; no number was taken.`,
     )
   }
-  const def = outcome.why
-    ? null
-    : ((await ctx.db.findOne("deferred_events", outcome.deferred_id)) as Row | null)
-  const why = outcome.why ?? String(def?.reason ?? outcome.reason)
+  const why = outcome.why ?? outcome.reason
+  const words = outcome.words ?? outcome.reason
+  await tellDecided(ctx, names, { refused: { park_id: row.id, why, words } })
   return fail(
     "not_issued",
-    `${id} was not invoiced: ${outcome.words ? `${outcome.words} (${why})` : why}; no number was taken. It stays in the queue, and nothing issues it but the next decision.`,
+    `${id} was not invoiced: ${words} (${why}); no number was taken. It stays in the queue, and nothing issues it but the next decision.`,
   )
 }
 
@@ -488,6 +534,7 @@ export async function paymentLinkToInvoice(ctx: StripeCtx, input: PaymentLinkInp
     return linked(chargeId, holder)
   }
   await closeSale(ctx, names, "linked")
+  await tellDecided(ctx, names, { closed: "linked" })
   if (invoiceId)
     await linkBack(
       ctx,

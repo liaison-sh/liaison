@@ -1550,6 +1550,7 @@
     },
     "stripe_sales": {
       "rlsScope": "internal",
+      "internalWriteScope": "invoicing:documents:write",
       "fields": {
         "key": "text",
         "document_id": "uuid"
@@ -6914,6 +6915,7 @@
       "stripe/refund:settled": "onStripeRefundCreatedEvent",
       "stripe/refund:failed": "onStripeRefundCreatedEvent",
       "stripe/payment:unmatched": "onStripePaymentUnmatchedEvent",
+      "stripe_sale:decided": "onStripeSaleDecidedEvent",
       "kernel/client_action:decided": "onQuoteClientActionDecidedHandler",
       "agreements/agreement:signed": "onAgreementSignedAdvanceHandler",
       "projects/task:status_changed": "onMilestoneTaskDoneHandler"
@@ -6964,6 +6966,7 @@
       "stripe_invoice:undecided_listed",
       "stripe_invoice:needs_person",
       "stripe_invoice:many_need_person",
+      "stripe_sale:decided",
       "stripe_invoice:payment_failed",
       "stripe_invoice:voided",
       "stripe_invoice:uncollectible",

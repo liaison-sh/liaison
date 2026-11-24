@@ -932,6 +932,7 @@ import {
   paymentLinkToInvoice,
   paymentLinkToInvoicePreflight,
   onStripePaymentUnmatched as stripePaymentUnmatched,
+  onStripeSaleDecided as stripeSaleDecided,
 } from "./handlers/stripe-payment-unmatched"
 import { onStripeRefundCreated as stripeRefundCreated } from "./handlers/stripe-refund-created"
 
@@ -951,6 +952,8 @@ export const onStripeRefundCreatedEvent = (event: unknown, ctx: StripeCtx) =>
   stripeRefundCreated(event, ctx)
 export const onStripePaymentUnmatchedEvent = (event: unknown, ctx: StripeCtx) =>
   stripePaymentUnmatched(event, ctx)
+export const onStripeSaleDecidedEvent = (event: unknown, ctx: StripeCtx) =>
+  stripeSaleDecided(event, ctx)
 export const invoiceFromStripePaymentHandler = (
   params: Parameters<typeof invoiceFromStripePayment>[1],
   ctx: StripeCtx,

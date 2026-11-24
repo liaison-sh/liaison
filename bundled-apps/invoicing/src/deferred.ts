@@ -422,7 +422,8 @@ const ROW_FIELDS = [
   "blocked_on",
   "retry_count",
   "retried_at",
-  "created_at",
+  // The kernel's own column, under the name it declares; the row carries it as created_at.
+  "createdAt",
 ]
 
 interface PageDb {

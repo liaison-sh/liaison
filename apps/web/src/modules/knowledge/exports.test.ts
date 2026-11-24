@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { setAttentionApi } from "~/modules/shell/attention-store"
 import { handleKnowledgeDocumentWsEvent, resolveKnowledgeDocLabel } from "./exports"
-import { knowledgeStore, resetKnowledgeStore } from "./knowledge-store"
+import { knowledgeStore, loadCollectionsTree, resetKnowledgeStore } from "./knowledge-store"
 
 describe("handleKnowledgeDocumentWsEvent", () => {
   beforeEach(() => {
@@ -90,5 +90,38 @@ describe("handleKnowledgeDocumentWsEvent", () => {
     expect(resolveKnowledgeDocLabel("old1")).toBeUndefined()
     await handleKnowledgeDocumentWsEvent("update", { entityId: "old1" })
     expect(resolveKnowledgeDocLabel("old1")).toBe("Renamed long ago page")
+  })
+
+  it("a page's tab is named from the folder tree when no list holds it", async () => {
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Eng",
+                parentId: null,
+                ownerUserId: null,
+                documents: [],
+                children: [
+                  {
+                    id: "c2",
+                    name: "RFCs",
+                    parentId: "c1",
+                    ownerUserId: null,
+                    children: [],
+                    documents: [{ id: "deep1", title: "Filed deep down" }],
+                  },
+                ],
+              },
+            ]
+          : [],
+      ),
+    }
+    await loadCollectionsTree(api as never)
+    expect(knowledgeStore.documentsById.deep1).toBeUndefined()
+    expect(knowledgeStore.documents.find((d) => d.id === "deep1")).toBeUndefined()
+    expect(resolveKnowledgeDocLabel("deep1")).toBe("Filed deep down")
+    expect(resolveKnowledgeDocLabel("nowhere")).toBeUndefined()
   })
 })

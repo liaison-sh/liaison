@@ -26,6 +26,20 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.fake-signature`
 }
 
+/** The tree's Unfiled bucket holding `count` pages. */
+function unfiledNode(count: number) {
+  return {
+    id: "__unfiled__",
+    kind: "unfiled",
+    name: "Unfiled",
+    parentId: null,
+    ownerUserId: null,
+    virtual: true,
+    children: [],
+    documents: Array.from({ length: count }, (_, i) => ({ id: `u${i}`, title: `Loose ${i}` })),
+  }
+}
+
 describe("KnowledgeSidebar — collection tree", () => {
   it("renders the collection tree, not a recent-docs list", async () => {
     const api = {
@@ -215,29 +229,19 @@ describe("KnowledgeSidebar — collapsed IA (no source-settings, conditional Unf
     expect(screen.queryByTestId("knowledge-sidebar-unfiled")).not.toBeInTheDocument()
   })
 
-  it("Unfiled entry shows the count when unfiledCount > 0", async () => {
-    const { loadKnowledgeHome } = await import("./knowledge-store")
+  it("Unfiled entry shows the count of the tree's Unfiled pages", async () => {
     const api: any = {
       get: vi.fn(async (path: string) =>
-        path === "/knowledge/home"
-          ? {
-              personal: [],
-              recent: [],
-              needsReview: [],
-              sourceHealth: [],
-              unfiledCount: 3,
-            }
-          : [],
+        path === "/knowledge/collections/tree" ? [unfiledNode(3)] : [],
       ),
       post: vi.fn(),
     }
-    await loadKnowledgeHome(api)
     render(() => (
       <ApiContext.Provider value={api as never}>
         <KnowledgeSidebar />
       </ApiContext.Provider>
     ))
-    expect(screen.getByTestId("knowledge-sidebar-unfiled")).toHaveTextContent("3")
+    expect(await screen.findByTestId("knowledge-sidebar-unfiled")).toHaveTextContent("3")
   })
 })
 
@@ -580,6 +584,7 @@ describe("KnowledgeSidebar — organise (K1)", () => {
       get: vi.fn(async (path: string) => {
         if (path === "/knowledge/home")
           return { recent: [], needsReview: [], unfiled: [], unfiledCount: 2 }
+        if (path === "/knowledge/collections/tree") return [unfiledNode(2)]
         return []
       }),
       post: vi.fn(async () => ({ hits: [], sourceStatuses: [], final: true })),
@@ -593,7 +598,7 @@ describe("KnowledgeSidebar — organise (K1)", () => {
       </ApiContext.Provider>
     ))
     // From a page tab: the click brings the list forward.
-    fireEvent.click(screen.getByTestId("knowledge-sidebar-unfiled"))
+    fireEvent.click(await screen.findByTestId("knowledge-sidebar-unfiled"))
     const active = () => tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
     expect(active()?.type).toBe("knowledge:home")
     expect(knowledgeStore.view).toBe("unfiled")
@@ -654,5 +659,328 @@ describe("KnowledgeSidebar — organise (K1)", () => {
     expect((screen.getByTestId("knowledge-folder-name-input") as HTMLInputElement).value).toBe(
       "Nouveau dossier",
     )
+  })
+
+  // ---- Moving across sections (edges 10 and 11), open folders ----------
+
+  /** Ana's personal folder holding a page, and a shared folder. */
+  function crossTree() {
+    return [
+      {
+        id: "p1",
+        name: "Mine",
+        parentId: null,
+        ownerUserId: "me",
+        children: [],
+        documents: [{ id: "d1", title: "Draft", canEdit: true }],
+      },
+      {
+        id: "s1",
+        name: "Policies",
+        parentId: null,
+        ownerUserId: null,
+        children: [],
+        documents: [],
+      },
+    ]
+  }
+
+  function moveApi() {
+    return {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree" ? crossTree() : [],
+      ),
+      post: vi.fn(async () => ({ id: "d1" })),
+      patch: vi.fn(async () => ({ id: "p1" })),
+    }
+  }
+
+  async function chooseItem(testid: string) {
+    const item = await screen.findByTestId(testid)
+    item.focus()
+    fireEvent.keyDown(item, { key: "Enter" })
+  }
+
+  it("edge 10: Move to a Shared folder asks and says the page keeps its sharing; Back returns; Move sends one request", async () => {
+    signIn()
+    const api = moveApi()
+    renderSidebar(api)
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-p1"))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
+    await chooseItem("knowledge-tree-menu-move")
+    fireEvent.click(await screen.findByTestId("knowledge-move-to-s1"))
+    expect(await screen.findByTestId("knowledge-move-audience")).toHaveTextContent(
+      "A folder does not change who sees a page",
+    )
+    expect(api.post).not.toHaveBeenCalled()
+    // Back: the list again, nothing sent.
+    fireEvent.click(screen.getByTestId("knowledge-move-back"))
+    expect(await screen.findByTestId("knowledge-move-search")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-move-audience")).toBeNull()
+    expect(api.post).not.toHaveBeenCalled()
+    // Within the section: no question. Across: asked, then one request.
+    fireEvent.click(screen.getByTestId("knowledge-move-to-s1"))
+    fireEvent.click(await screen.findByTestId("knowledge-move-confirm"))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/knowledge/documents/d1/move", {
+        fromCollectionId: "p1",
+        toCollectionId: "s1",
+      }),
+    )
+    expect(api.post).toHaveBeenCalledTimes(1)
+  })
+
+  it("edge 11: a personal folder moved to Shared's top level asks who will see it, then is shared", async () => {
+    signIn()
+    const api = moveApi()
+    renderSidebar(api)
+    fireEvent.contextMenu(await screen.findByTestId("knowledge-tree-folder-p1"))
+    await chooseItem("knowledge-tree-menu-move")
+    fireEvent.click(await screen.findByTestId("knowledge-move-to-shared-root"))
+    expect(await screen.findByTestId("knowledge-move-audience")).toHaveTextContent(
+      "Everyone in the organization will see this folder",
+    )
+    expect(api.patch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("knowledge-move-confirm"))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/knowledge/collections/p1", {
+        parentCollectionId: null,
+        ownerUserId: null,
+      }),
+    )
+  })
+
+  it("edges 10 and 11 by drag: crossing sections asks first, within a section it does not", async () => {
+    signIn()
+    const api = moveApi()
+    renderSidebar(api)
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-p1"))
+    // A page dragged from Personal onto a Shared folder: asked, nothing sent.
+    fireEvent.dragStart(screen.getByTestId("knowledge-tree-doc-d1"))
+    fireEvent.dragOver(screen.getByTestId("knowledge-tree-row-s1"))
+    fireEvent.drop(screen.getByTestId("knowledge-tree-row-s1"))
+    expect(await screen.findByTestId("knowledge-move-audience")).toHaveTextContent(
+      "A folder does not change who sees a page",
+    )
+    expect(api.post).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/knowledge/documents/d1/move", {
+        fromCollectionId: "p1",
+        toCollectionId: "s1",
+      }),
+    )
+    await waitFor(() => expect(screen.queryByTestId("knowledge-move-audience")).toBeNull())
+    // The personal folder dropped on Shared's top level: asked, then shared.
+    const sharedRoot = screen
+      .getByTestId("knowledge-sidebar-section-shared")
+      .querySelector('[data-testid="knowledge-tree-root"]') as HTMLElement
+    fireEvent.dragStart(screen.getByTestId("knowledge-tree-row-p1"))
+    fireEvent.dragOver(sharedRoot)
+    fireEvent.drop(sharedRoot)
+    expect(await screen.findByTestId("knowledge-move-audience")).toHaveTextContent(
+      "Everyone in the organization will see this folder",
+    )
+    expect(api.patch).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() =>
+      expect(api.patch).toHaveBeenCalledWith("/knowledge/collections/p1", {
+        parentCollectionId: null,
+        ownerUserId: null,
+      }),
+    )
+    await waitFor(() => expect(screen.queryByTestId("knowledge-move-audience")).toBeNull())
+    // Within Personal: straight through, no question.
+    const personalRoot = screen
+      .getByTestId("knowledge-sidebar-section-personal")
+      .querySelector('[data-testid="knowledge-tree-root"]') as HTMLElement
+    fireEvent.dragStart(screen.getByTestId("knowledge-tree-doc-d1"))
+    fireEvent.drop(personalRoot)
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith("/knowledge/documents/d1/move", {
+        fromCollectionId: "p1",
+        toCollectionId: null,
+      }),
+    )
+    expect(screen.queryByTestId("knowledge-move-audience")).toBeNull()
+  })
+
+  it("opening a page in a closed nested folder opens its folders, and marks its row", async () => {
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Eng",
+                parentId: null,
+                ownerUserId: null,
+                documents: [],
+                children: [
+                  {
+                    id: "c2",
+                    name: "RFCs",
+                    parentId: "c1",
+                    ownerUserId: null,
+                    children: [],
+                    documents: [{ id: "d1", title: "RFC-001", canEdit: true }],
+                  },
+                ],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(),
+    }
+    renderSidebar(api)
+    expect(await screen.findByTestId("knowledge-tree-folder-c1")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-tree-doc-d1")).toBeNull()
+    openTab({ type: "knowledge:document", entityId: "d1", label: "RFC-001" })
+    expect(await screen.findByTestId("knowledge-tree-doc-d1")).toHaveAttribute(
+      "aria-current",
+      "page",
+    )
+    expect(screen.getByTestId("knowledge-tree-toggle-c1")).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByTestId("knowledge-tree-toggle-c2")).toHaveAttribute("aria-expanded", "true")
+    localStorage.clear()
+  })
+
+  it("open folders survive a remount for the same person, not for another", async () => {
+    localStorage.clear()
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Eng",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "RFC-001", canEdit: true }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(),
+    }
+    try {
+      const first = renderSidebar(api)
+      fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-c1"))
+      expect(screen.getByTestId("knowledge-tree-doc-d1")).toBeInTheDocument()
+      first.unmount()
+      resetKnowledgeStore()
+      // The same person, a new page load: still open.
+      const again = renderSidebar(api)
+      expect(await screen.findByTestId("knowledge-tree-doc-d1")).toBeInTheDocument()
+      again.unmount()
+      resetKnowledgeStore()
+      // Someone else in this browser: their own, closed.
+      setTokens(
+        makeJwt({
+          userId: "other",
+          orgId: "org-1",
+          name: "Other",
+          roles: [],
+          scopes: ["*"],
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        }),
+      )
+      renderSidebar(api)
+      expect(await screen.findByTestId("knowledge-tree-folder-c1")).toBeInTheDocument()
+      expect(screen.queryByTestId("knowledge-tree-doc-d1")).toBeNull()
+    } finally {
+      localStorage.clear()
+    }
+  })
+
+  it("L1: the bottom Unfiled count is the tree's, and follows it", async () => {
+    signIn()
+    let unfiled = [
+      { id: "u1", title: "Loose", canEdit: true },
+      { id: "u2", title: "Looser", canEdit: true },
+    ]
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/knowledge/collections/tree")
+          return unfiled.length
+            ? [
+                {
+                  id: "__unfiled__",
+                  kind: "unfiled",
+                  name: "Unfiled",
+                  parentId: null,
+                  ownerUserId: null,
+                  virtual: true,
+                  children: [],
+                  documents: unfiled,
+                },
+              ]
+            : []
+        return []
+      }),
+      post: vi.fn(),
+    }
+    setAttentionApi(api as never)
+    renderSidebar(api)
+    // Home never shown: the count is there all the same, the tree's own.
+    expect(await screen.findByTestId("knowledge-sidebar-unfiled")).toHaveTextContent("2")
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    unfiled = [...unfiled, { id: "u3", title: "Loosest", canEdit: true }]
+    handleKnowledgeCollectionWsEvent("delete", { id: "c9" })
+    await vi.advanceTimersByTimeAsync(TREE_RELOAD_DEBOUNCE_MS + 10)
+    await waitFor(() =>
+      expect(screen.getByTestId("knowledge-sidebar-unfiled")).toHaveTextContent("3"),
+    )
+    unfiled = []
+    handleKnowledgeCollectionWsEvent("create", { id: "c9" })
+    await vi.advanceTimersByTimeAsync(TREE_RELOAD_DEBOUNCE_MS + 10)
+    await waitFor(() => expect(screen.queryByTestId("knowledge-sidebar-unfiled")).toBeNull())
+  })
+
+  it("L4: a page in Personal notes is not offered Unfiled, where moving would do nothing", async () => {
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "__personal_notes__",
+                kind: "personal_notes",
+                name: "Personal notes",
+                parentId: null,
+                ownerUserId: "me",
+                virtual: true,
+                children: [],
+                documents: [{ id: "d1", title: "Mine", canEdit: true }],
+              },
+              ...crossTree().slice(1),
+            ]
+          : [],
+      ),
+      post: vi.fn(),
+    }
+    renderSidebar(api)
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-__personal_notes__"))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-doc-d1"))
+    await chooseItem("knowledge-tree-menu-move")
+    expect(await screen.findByTestId("knowledge-move-to-s1")).toBeInTheDocument()
+    expect(screen.queryByTestId("knowledge-move-to-root")).toBeNull()
+  })
+
+  it("L6: an empty name keeps the dialog open and sends nothing", async () => {
+    signIn()
+    const api = { get: vi.fn(async () => []), post: vi.fn(async () => ({ id: "x" })) }
+    renderSidebar(api)
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-shared-new-folder"))
+    fireEvent.input(screen.getByTestId("knowledge-folder-name-input"), {
+      target: { value: "   " },
+    })
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(screen.getByTestId("knowledge-folder-name-input")).toBeInTheDocument()
+    expect(api.post).not.toHaveBeenCalled()
   })
 })

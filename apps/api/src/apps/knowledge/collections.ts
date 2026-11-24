@@ -405,7 +405,7 @@ export async function listKnowledgeCollectionTree(
     org_id: string
     document_scope: "organization" | "personal"
     owner_user_id: string | null
-    created_by: string | null
+    created_by: string
     org_access: "none" | "viewer" | "editor"
     edit_scope: string | null
   }>(
@@ -624,7 +624,8 @@ export async function updateKnowledgeCollection(
   const sets: ReturnType<typeof drizzleSql>[] = []
   if (patch.name !== undefined) {
     const name = patch.name?.trim()
-    if (!name) throw new KnowledgeError("VALIDATION", "Collection name is required", "name_required")
+    if (!name)
+      throw new KnowledgeError("VALIDATION", "Collection name is required", "name_required")
     sets.push(drizzleSql`name = ${name}`)
   }
   if (patch.description !== undefined) sets.push(drizzleSql`description = ${patch.description}`)

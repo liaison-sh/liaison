@@ -23,11 +23,7 @@ const REASON_KEYS: Record<string, string> = {
  * server, as `fallback` says it for the action; only a refusal this client
  * does not know keeps the server's words, the only ones there are.
  */
-export function refusalMessage(
-  err: unknown,
-  fallback: string,
-  t: (key: string) => string,
-): string {
+export function refusalMessage(err: unknown, fallback: string, t: (key: string) => string): string {
   if (!(err instanceof ApiError)) return fallback
   const reason = err.details?.reason
   if (typeof reason === "string" && REASON_KEYS[reason]) return t(REASON_KEYS[reason])

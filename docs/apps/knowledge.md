@@ -24,7 +24,7 @@ If someone else saves the document while you edit it, Liaison tells you and offe
 The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Any member can make, rename, move and delete the folders they see, and rename and move the documents they can edit.
 
 - **New page in a folder**: point at the folder and click its **+**. A page made in one of your personal folders is yours alone until you share it.
-- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Archive** if you hold `knowledge:documents:archive`. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
+- **Row menu**: every folder and document has a **…** button (or right click it). A folder offers **New page**, **New folder**, **Rename**, **Move to…** and **Delete folder**; a document offers **Rename**, **Move to…** and **Copy link**, and **Archive** if you hold `knowledge:documents:archive`. A document you can only read offers **Copy link** alone, and the folder actions and **+** buttons show only if your role lets you organise folders and make pages. The menu works with the mouse, the keyboard (Enter opens it, Escape closes it) and on touch.
 - **Move to…** opens a list of folders you can search. Moving between **Personal** and **Shared with org** asks first and says who will see it. You can also drag a row onto a folder.
 - **New personal folder** and **New shared folder** (the **+** next to each tree's name) make a top folder.
 

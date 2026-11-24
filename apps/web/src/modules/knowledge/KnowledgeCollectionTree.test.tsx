@@ -516,7 +516,17 @@ describe("KnowledgeCollectionTree", () => {
     const onArchiveDoc = vi.fn()
     render(() => (
       <KnowledgeCollectionTree
-        tree={[{ id: "c1", name: "Eng", parentId: null, children: [], documents: [{ id: "d1", title: "X" }] }] as never}
+        tree={
+          [
+            {
+              id: "c1",
+              name: "Eng",
+              parentId: null,
+              children: [],
+              documents: [{ id: "d1", title: "X" }],
+            },
+          ] as never
+        }
         onOpenDoc={onOpenDoc}
         onCopyLink={onCopyLink}
         onRenameDoc={onRenameDoc}

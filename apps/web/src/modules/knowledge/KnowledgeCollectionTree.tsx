@@ -210,8 +210,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
   const manage = () => props.tree.canManageFolders !== false
   const create = () => props.tree.canCreatePages !== false
   /** A page made in a real folder is filed there: both rights. */
-  const canNewPage = () =>
-    create() && (node().virtual ? isPersonalBucket() : !synced() && manage())
+  const canNewPage = () => create() && (node().virtual ? isPersonalBucket() : !synced() && manage())
   /** The folder's own menu: never on a bucket or a synced tree. */
   const hasMenu = () => !node().virtual && !synced() && manage()
   const ownerOf = () => node().ownerUserId ?? null

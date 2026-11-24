@@ -70,16 +70,24 @@ const KnowledgeMoveDialog: Component<{
   const options = createMemo<Option[]>(() => {
     const item = props.item
     if (!item) return []
+    // A page in Personal notes is in no folder already: "Unfiled" would
+    // move it nowhere, so it is not offered.
+    const inNotes =
+      item.kind === "doc" &&
+      props.current.collectionId === null &&
+      props.current.section === "personal"
     const tops: Option[] =
       item.kind === "doc"
-        ? [
-            {
-              key: "root",
-              target: { collectionId: null, section: "shared" },
-              name: i18n.t("knowledge.unfiled"),
-              path: "",
-            },
-          ]
+        ? inNotes
+          ? []
+          : [
+              {
+                key: "root",
+                target: { collectionId: null, section: "shared" },
+                name: i18n.t("knowledge.unfiled"),
+                path: "",
+              },
+            ]
         : [
             {
               key: "personal-root",

@@ -99,6 +99,13 @@ const KnowledgeSidebar: Component = () => {
     return { personal, shared }
   })
   const activeDocId = createMemo(activeKnowledgeDocId)
+  /** Unfiled's count at the bottom: the tree's own bucket, so both agree and
+   *  follow every reload of the tree. */
+  const unfiledCount = createMemo(
+    () =>
+      knowledgeStore.collectionsTree.find((n) => n.kind === "unfiled" || n.id === "__unfiled__")
+        ?.documents.length ?? 0,
+  )
   const canArchiveDocs = () => hasScope(ARCHIVE_SCOPE)
   // Actions follow the person's scopes, as the server checks them: none is
   // offered that the server would refuse for want of one.
@@ -242,11 +249,13 @@ const KnowledgeSidebar: Component = () => {
   async function confirmDialog() {
     const p = pending()
     if (!p || busy()) return
+    // A name prompt left empty stays open: nothing to send, nothing lost.
+    const named = p.kind === "create" || p.kind === "rename" || p.kind === "rename-doc"
+    if (named && !nameInput().trim()) return
     setBusy(true)
     try {
       if (p.kind === "create") {
         const name = nameInput().trim()
-        if (!name) return
         await createCollection(api, {
           name,
           parentCollectionId: p.parentId,
@@ -480,16 +489,16 @@ const KnowledgeSidebar: Component = () => {
           />
         </div>
         <Show when={canCreatePages()}>
-        <button
-          type="button"
-          data-testid="knowledge-sidebar-new-page"
-          aria-label={i18n.t("knowledge.newDocument")}
-          title={i18n.t("knowledge.newDocument")}
-          onClick={() => void newPage(null, false)}
-          class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
-        >
-          <Plus size={16} />
-        </button>
+          <button
+            type="button"
+            data-testid="knowledge-sidebar-new-page"
+            aria-label={i18n.t("knowledge.newDocument")}
+            title={i18n.t("knowledge.newDocument")}
+            onClick={() => void newPage(null, false)}
+            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+          >
+            <Plus size={16} />
+          </button>
         </Show>
       </div>
 
@@ -555,16 +564,16 @@ const KnowledgeSidebar: Component = () => {
                 {i18n.t("knowledge.personal")}
               </span>
               <Show when={canManageFolders()}>
-              <button
-                type="button"
-                data-testid="knowledge-sidebar-personal-new-folder"
-                aria-label={i18n.t("knowledge.newPersonalFolder")}
-                onClick={() => openCreateDialog(null, me())}
-                title={i18n.t("knowledge.newPersonalFolder")}
-                class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
-              >
-                <Plus size={12} />
-              </button>
+                <button
+                  type="button"
+                  data-testid="knowledge-sidebar-personal-new-folder"
+                  aria-label={i18n.t("knowledge.newPersonalFolder")}
+                  onClick={() => openCreateDialog(null, me())}
+                  title={i18n.t("knowledge.newPersonalFolder")}
+                  class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
+                >
+                  <Plus size={12} />
+                </button>
               </Show>
             </div>
             <Show
@@ -592,16 +601,16 @@ const KnowledgeSidebar: Component = () => {
                 {i18n.t("knowledge.sharedWithOrg")}
               </span>
               <Show when={canManageFolders()}>
-              <button
-                type="button"
-                data-testid="knowledge-sidebar-shared-new-folder"
-                aria-label={i18n.t("knowledge.newSharedFolder")}
-                onClick={() => openCreateDialog(null, null)}
-                title={i18n.t("knowledge.newSharedFolder")}
-                class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
-              >
-                <Plus size={12} />
-              </button>
+                <button
+                  type="button"
+                  data-testid="knowledge-sidebar-shared-new-folder"
+                  aria-label={i18n.t("knowledge.newSharedFolder")}
+                  onClick={() => openCreateDialog(null, null)}
+                  title={i18n.t("knowledge.newSharedFolder")}
+                  class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
+                >
+                  <Plus size={12} />
+                </button>
               </Show>
             </div>
             <Show
@@ -634,7 +643,7 @@ const KnowledgeSidebar: Component = () => {
       </ScrollFade>
 
       {/* Auto-appearing Unfiled entry — only when there are orphan docs */}
-      <Show when={(knowledgeStore.homeData?.unfiledCount ?? 0) > 0}>
+      <Show when={unfiledCount() > 0}>
         <div class="border-t border-border-subtle py-1">
           <button
             type="button"
@@ -649,9 +658,7 @@ const KnowledgeSidebar: Component = () => {
           >
             <FolderOpen size={14} />
             <span class="flex-1 text-left">{i18n.t("knowledge.unfiled")}</span>
-            <span class="rounded-full bg-surface px-2 py-0.5 text-[11px]">
-              {knowledgeStore.homeData?.unfiledCount}
-            </span>
+            <span class="rounded-full bg-surface px-2 py-0.5 text-[11px]">{unfiledCount()}</span>
           </button>
         </div>
       </Show>

@@ -293,6 +293,21 @@ describe("the records a call names", () => {
     expect(card.lines).toEqual(["N: 1"])
   })
 
+  it("a part of a record that can be closed is never looked up", async () => {
+    entityRegistry.set([w.orgId, "agreements", "agreement_version"], {
+      labelField: "number",
+      handlePrefix: "x",
+      tableName: "agreement_versions",
+    } as never)
+    const read = spyOn(referenceDisplay, "resolveEntityLabel")
+    try {
+      await summary("projects:attach", { agreementVersionId: OTHER_ID })
+      expect(read.mock.calls.map(([, at]) => at.app)).not.toContain("agreements")
+    } finally {
+      read.mockRestore()
+    }
+  })
+
   it("what may be one person's own is never looked up", async () => {
     const mail = { tool: "mail:archive", params: { conversationId: task } }
     entityRegistry.set([w.orgId, "projects", "conversation"], {

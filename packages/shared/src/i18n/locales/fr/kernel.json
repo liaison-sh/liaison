@@ -1182,8 +1182,8 @@
       "remainingOther": "Encore {{count}} scénarios à jouer :",
       "remainingKeyOne": "Encore {{count}} scénario à jouer avec votre clé :",
       "remainingKeyOther": "Encore {{count}} scénarios à jouer avec votre clé :",
-      "notify": "M'envoyer de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée",
-      "notifyDone": "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison, notamment l'ouverture de la version hébergée.",
+      "notify": "M'envoyer de temps en temps des nouvelles de Liaison",
+      "notifyDone": "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison.",
       "continue": "Continuer à explorer",
       "close": "Fermer",
       "bannerLink": "Envie de Liaison pour votre entreprise ?"

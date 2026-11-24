@@ -304,6 +304,34 @@ describe("with a register URL (the hosted edition's signup)", () => {
     )
   })
 
+  it("the news offer promises news only, so it stays true once the hosted edition is open", async () => {
+    for (const [locale, offer, done] of [
+      [
+        "en",
+        "Send me occasional news about Liaison",
+        "Done. We will send you occasional news about Liaison.",
+      ],
+      [
+        "fr",
+        "M'envoyer de temps en temps des nouvelles de Liaison",
+        "C'est noté. Nous vous enverrons de temps en temps des nouvelles de Liaison.",
+      ],
+    ] as const) {
+      _resetDemoStore()
+      world({}, WITH_REGISTER)
+      mount(locale)
+      openDemoNextSteps("budget")
+      expect((await screen.findByTestId("demo-next-notify")).textContent?.trim()).toBe(offer)
+      cleanup()
+      _resetDemoStore()
+      world({ notifyManaged: true, verified: true }, WITH_REGISTER)
+      mount(locale)
+      openDemoNextSteps("budget")
+      expect((await screen.findByTestId("demo-next-notify-done")).textContent?.trim()).toBe(done)
+      cleanup()
+    }
+  })
+
   it("the banner offers it once a scenario is finished, and not before", async () => {
     setQueue([item("support", "new")])
     world({}, WITH_REGISTER)

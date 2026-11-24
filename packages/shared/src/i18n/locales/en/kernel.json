@@ -1182,8 +1182,8 @@
       "remainingOther": "{{count}} more scenarios to play:",
       "remainingKeyOne": "{{count}} more scenario to play with your key:",
       "remainingKeyOther": "{{count}} more scenarios to play with your key:",
-      "notify": "Send me occasional news about Liaison, including when the hosted version opens",
-      "notifyDone": "Done. We will send you occasional news about Liaison, including when the hosted version opens.",
+      "notify": "Send me occasional news about Liaison",
+      "notifyDone": "Done. We will send you occasional news about Liaison.",
       "continue": "Keep exploring",
       "close": "Close",
       "bannerLink": "Want this for your company?"

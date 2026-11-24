@@ -42,6 +42,7 @@ import {
   agreementVoidPreflight,
   clientActionViewGet,
   decidedReconcile,
+  onAgreementClosed,
   onClientActionDecided,
   onLinksMade,
   type SendParams,
@@ -124,6 +125,9 @@ export const onClientActionDecidedHandler = (event: unknown, ctx: Ctx) =>
 
 export const onLinksMadeHandler = (event: unknown, ctx: Ctx) =>
   onLinksMade(ctx, event as Parameters<typeof onLinksMade>[1])
+
+export const onAgreementClosedHandler = (event: unknown, ctx: Ctx) =>
+  onAgreementClosed(ctx, event as Parameters<typeof onAgreementClosed>[1])
 
 export const onPortalAccessEndedHandler = (event: unknown, ctx: Ctx) =>
   onPortalAccessEnded(ctx, event as Parameters<typeof onPortalAccessEnded>[1])

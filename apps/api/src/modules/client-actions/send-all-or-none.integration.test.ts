@@ -285,6 +285,8 @@ describe("a send of 40 signers", () => {
     expect(again).toMatchObject({ status: "ok", already_sent: true, group_id: out.group_id })
     expect(again.actions?.map((a) => a.id).sort()).toEqual(out.actions?.map((a) => a.id).sort())
     expect(again.actions?.find((a) => a.id === out.actions?.[0]?.id)?.status).toBe("decided")
+    // The app goes over that answer: it may have kept it until a person sent it all the same.
+    expect(await sentEvents(targetId)).toHaveLength(2)
     expect(await rowsOf(targetId)).toHaveLength(3)
     expect(await mailsSettle(targetId, 3)).toBe(3)
   })

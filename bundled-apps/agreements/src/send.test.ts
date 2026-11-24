@@ -33,6 +33,7 @@ import {
   type SendDocument,
 } from "./send"
 import { markSent } from "./sent-state"
+import { summarizeAgreementSend } from "./summarizers"
 
 const PERSON = "11111111-1111-4111-8111-111111111111"
 const AGENT = "33333333-3333-4333-8333-333333333333"
@@ -940,7 +941,12 @@ describe("another person in a withdrawn signer's place", () => {
     const pre = (await agreementSendPreflight(asked.ctx, params)) as {
       pinnedParams: { replaced: unknown; guardKey: string }
     }
-    expect(pre.pinnedParams.replaced).toEqual({ name: "Anne", email: "anne@signers.example" })
+    expect(pre.pinnedParams.replaced).toEqual({
+      name: "Anne",
+      email: "anne@signers.example",
+      mode: "sign",
+      phrase: null,
+    })
     const parked = (await agreementSend(asked.ctx, params)) as { status: string }
     expect(parked.status).toBe("pending_approval")
     expect(JSON.stringify(asked.ctx.calls.approvals)).toContain("In place of: Anne")
@@ -996,6 +1002,38 @@ describe("another person in a withdrawn signer's place", () => {
     expect(two.ctx.calls.mints).toEqual([])
   })
 
+  it("the card says what the place asks, never what the call asks: the kind and the phrase are the withdrawn signer's", async () => {
+    for (const [kind, phrase, words] of [
+      ["accept", "Bon pour accord", "an acceptance"],
+      ["sign", null, "a simple electronic signature"],
+    ] as const) {
+      const { ctx, base } = await sentWith({ Anne: "revoked" }, { agent: AGENT })
+      const links = ctx.client_actions_record
+      ctx.client_actions_record = async (p) =>
+        "id" in p
+          ? { status: "ok", record: { id: p.id, kind, required_phrase: phrase } }
+          : links?.(p)
+      const params = {
+        ...base,
+        signers: [pat],
+        mode: kind === "sign" ? ("accept" as const) : ("sign" as const),
+        required_phrase: "Words nobody types",
+      }
+      const pre = (await agreementSendPreflight(ctx, params)) as { pinnedParams: object }
+      const shown = JSON.stringify(await summarizeAgreementSend({ ...params, ...pre.pinnedParams }))
+      await agreementSend(ctx, params)
+      const parked = JSON.stringify(
+        (ctx.calls.approvals as Array<{ summary_detail: unknown }>).map((a) => a.summary_detail),
+      )
+      for (const card of [shown, parked]) {
+        expect(card).toContain(words)
+        expect(card).not.toContain("Words nobody types")
+        if (phrase) expect(card).toContain(phrase)
+        else expect(card).not.toContain("types:")
+      }
+    }
+  })
+
   it("refuses a signer not withdrawn, a holder of a link, more than one person, and a draft", async () => {
     const ask = async (
       states: Record<string, string>,
@@ -1008,7 +1046,7 @@ describe("another person in a withdrawn signer's place", () => {
     const jean = { email: "Jean@signers.example", name: "Someone" }
     expect(await ask({ Anne: "open", Jean: "open" }, [pat])).toBe("SIGNER_NOT_WITHDRAWN")
     expect(await ask({ Anne: "decided" }, [pat])).toBe("SIGNER_NOT_WITHDRAWN")
-    for (const state of ["open", "waiting_turn", "locked"])
+    for (const state of ["open", "waiting_turn", "locked", "expired"])
       expect(await ask({ Anne: "revoked", Jean: state }, [jean])).toBe("HOLDS_A_LINK")
     expect(await ask({ Anne: "revoked", Jean: "replaced" }, [jean])).toBeUndefined()
     expect(await ask({ Anne: "revoked" }, [pat, jean])).toBe("ONE_SIGNER_IN_PLACE")
@@ -1383,6 +1421,72 @@ describe("a send cut off before the agreement left draft", () => {
       expect(out.status).toBe("ok")
       expect(db.tables.get("signature_events") ?? []).toHaveLength(1)
     }
+  })
+
+  it("one link of a whole send beside one that is not is no whole send", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    const ctx = withLinks(ctxFor(db), [
+      { id: "ca-1", state: "open", send_size: 2 },
+      { id: "ca-2", state: "open", send_size: null },
+    ])
+    expect(await decidedReconcile(ctx)).toMatchObject({ resumed: 0 })
+    expect(rowOf(db, "agreements", id).status).toBe("draft")
+  })
+
+  it("a version made ready while the one before was sent is not frozen", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    const ctx = withLinks(ctxFor(db), [])
+    const render = ctx.rich_text_render
+    ctx.rich_text_render = async (p) => {
+      const out = await render?.(p)
+      await db.update("agreements", id, { status: "sent" })
+      return out
+    }
+    expect(codeOfError(await agreementPrepare(ctx, { id }))).toBe("NOT_A_DRAFT")
+    expect(db.tables.get("agreement_versions")).toHaveLength(1)
+    // And one whose send was cut off, still a draft.
+    const other = memoryDb()
+    const cut = await frozen(other)
+    const links: Link[] = []
+    const ctx2 = withLinks(ctxFor(other), links)
+    const render2 = ctx2.rich_text_render
+    ctx2.rich_text_render = async (p) => {
+      links.push({ id: "ca-1", state: "open", send_size: 1 })
+      return render2?.(p)
+    }
+    expect(codeOfError(await agreementPrepare(ctx2, { id: cut.id }))).toBe("NOT_A_DRAFT")
+    expect(other.tables.get("agreement_versions")).toHaveLength(1)
+  })
+
+  it("the frozen version of a closed agreement is not sent", async () => {
+    for (const status of ["voided", "declined", "signed", "expired"]) {
+      const db = memoryDb()
+      const { id, prepared } = await frozen(db)
+      await db.update("agreements", id, { status })
+      const ctx = withLinks(ctxFor(db), [])
+      const out = await agreementSend(ctx, {
+        version_id: prepared.version_id,
+        sha256: prepared.sha256,
+        signers: [{ contact_id: C1 }],
+      })
+      expect(codeOfError(out)).toBe("ALREADY_SENT")
+      expect(ctx.calls.mints).toEqual([])
+      expect(rowOf(db, "agreements", id).status).toBe(status)
+    }
+  })
+
+  it("an answer of another kind, which is never recorded, holds no void", async () => {
+    const db = memoryDb()
+    const { id } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = withLinks(ctxFor(db), [{ id: "ca-1", state: "decided" }], {
+      "ca-1": record({ decision: "approved" }),
+    })
+    const out = (await agreementVoid(ctx, { id, reason: "No" })) as { status: string }
+    expect(out.status).toBe("ok")
+    expect(rowOf(db, "agreements", id).status).toBe("voided")
   })
 
   it("an unfinished send says so to nobody off a restricted agreement's list", async () => {

@@ -102,7 +102,15 @@ export interface SendParams {
    */
   replaces?: string
   /** Who that is, as the card says it; pinned like the document. */
-  replaced?: { name: string; email: string }
+  replaced?: ReplacedOnCard
+}
+
+/** Whose place it is, and what that place asks. */
+export interface ReplacedOnCard {
+  name: string
+  email: string
+  mode: "sign" | "accept"
+  phrase: string | null
 }
 
 /** What a card that sends a document says it is. */
@@ -247,10 +255,15 @@ interface Ready {
   scanState: string | null
   /** The withdrawn signer the one signer of this send takes the place of. */
   replaced: SigningLink | null
+  /** What that place asks: the kernel gives the new link the withdrawn one's kind and phrase. */
+  asked: { mode: "sign" | "accept"; phrase: string | null } | null
 }
 
 /** A link its holder can answer, now or when their turn comes. */
 const ANSWERABLE = ["open", "waiting_turn", "locked"]
+
+/** A place its holder has not answered, whether or not their link ran out. */
+const HELD = [...ANSWERABLE, "expired"]
 
 /**
  * A send on the version already sent that puts another person in a withdrawn signer's place: the
@@ -284,8 +297,7 @@ async function withdrawnSigner(
   // Already replaced: by the same person (asked again) the kernel answers their link, else it refuses.
   if (link.replaced === true) return link
   const holds = links.find(
-    (l) =>
-      l.replaced !== true && ANSWERABLE.includes(l.state) && keyOf(l.invited_email) === who.email,
+    (l) => l.replaced !== true && HELD.includes(l.state) && keyOf(l.invited_email) === who.email,
   )
   if (holds)
     return refusal(
@@ -368,6 +380,7 @@ async function readyToSend(
   if (isError(r)) return r
   const replaced = inPlace ? await withdrawnSigner(ctx, agreement, version, p, r.signers) : null
   if (isError(replaced)) return replaced
+  const asked = replaced ? await askedOf(ctx, replaced.id) : null
   const scanState = await rescannedState(ctx, version)
   if (opts.record && scanState !== (version.scan_state ?? null))
     await ctx.db.update("agreement_versions", version.id, { scan_state: scanState })
@@ -386,16 +399,36 @@ async function readyToSend(
     expires,
     scanState,
     replaced,
+    asked,
+  }
+}
+
+/** What a link asks of its signer, as the kernel holds it. */
+async function askedOf(
+  ctx: AgreementsCtx,
+  id: string,
+): Promise<{ mode: "sign" | "accept"; phrase: string | null }> {
+  const rec = ctx.client_actions_record
+    ? bridgeAnswer<{ record?: Pick<ActionRecord, "kind" | "required_phrase"> }>(
+        await ctx.client_actions_record({ id }),
+      ).record
+    : undefined
+  return {
+    mode: rec?.kind === "accept" ? "accept" : "sign",
+    phrase: rec?.required_phrase ?? null,
   }
 }
 
 function cardLines(ready: Ready, p: SendParams): string[] {
+  const mode = ready.asked?.mode ?? ready.mode
+  const phrase = ready.asked ? ready.asked.phrase : p.required_phrase
+  const what = mode === "sign" ? "a simple electronic signature" : "an acceptance"
   const lines = [
     `Agreement: ${ready.agreement.number} "${ready.agreement.title}", version ${ready.version.number}`,
     `Fingerprint: ${String(ready.version.sha256)}`,
     ready.replaced
-      ? `In place of: ${ready.replaced.invited_name} <${ready.replaced.invited_email}> (withdrawn), in the same turn`
-      : `Asks: ${ready.mode === "sign" ? "a simple electronic signature" : "an acceptance"}, ${ready.order === "sequential" ? "one after the other" : "in any order"}`,
+      ? `In place of: ${ready.replaced.invited_name} <${ready.replaced.invited_email}> (withdrawn), in the same turn. Asks: ${what}`
+      : `Asks: ${what}, ${ready.order === "sequential" ? "one after the other" : "in any order"}`,
     ...ready.signers.map(
       (s, i) => `Signer ${i + 1}: ${s.name} <${s.email}>${s.contact_id ? "" : " (not a contact)"}`,
     ),
@@ -412,7 +445,7 @@ function cardLines(ready: Ready, p: SendParams): string[] {
     lines.push(
       "Restricted document: a signer who works here but is not on its list signs by their own link and reads it only there.",
     )
-  if (p.required_phrase) lines.push(`Each signer types: "${p.required_phrase}"`)
+  if (phrase) lines.push(`Each signer types: "${phrase}"`)
   if (p.message) lines.push(`Message: ${p.message}`)
   return lines
 }
@@ -480,7 +513,7 @@ export async function agreementSendPreflight(
         sendGuard: Record<string, unknown>
         guardKey: string
         document: SendDocument
-        replaced?: { name: string; email: string }
+        replaced?: ReplacedOnCard
       }
     }
   | { error: { code: string; message: string } }
@@ -497,11 +530,12 @@ export async function agreementSendPreflight(
         title: ready.agreement.title,
         version: ready.version.number,
       },
-      ...(ready.replaced
+      ...(ready.replaced && ready.asked
         ? {
             replaced: {
               name: ready.replaced.invited_name,
               email: ready.replaced.invited_email,
+              ...ready.asked,
             },
           }
         : {}),
@@ -659,6 +693,37 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
   }
 }
 
+/**
+ * A void or a newer version while a link was being made: that link is withdrawn with the others,
+ * and nothing is called sent. The kernel's word of the link (`onLinksMade`) and the word of the void
+ * or the save (`onAgreementClosed`) do the same when this run is cut off here.
+ */
+async function closedMeanwhile(
+  ctx: AgreementsCtx,
+  agreement: Agreement,
+  version: Version,
+): Promise<ErrorEnvelope | null> {
+  const now = (await ctx.db.findOne("agreements", agreement.id)) as Agreement | null
+  const latest = await latestOf(ctx, agreement.id)
+  const voided = !!now && CLOSED.includes(now.status)
+  const replaced = !!latest && (latest.id !== version.id || latest.status === "superseded")
+  if (!voided && !replaced) return null
+  await ctx.client_actions_revoke?.({
+    target_type: TARGET_TYPE,
+    target_id: version.id,
+    reason: voided ? "sender_voided" : "replaced",
+  })
+  return voided
+    ? refusal(
+        "NOT_SENT",
+        `${agreement.number} was voided while this link was being made: the link was withdrawn, so a signer who got it can no longer open it.`,
+      )
+    : refusal(
+        "VERSION_CHANGED",
+        `${agreement.number} version ${version.number} was replaced while this link was being made: the link was withdrawn, so a signer who got it can no longer open it. Next: send the new version.`,
+      )
+}
+
 /** The approved send of one person in a withdrawn signer's place, on the version already out. */
 async function sendInPlace(ctx: AgreementsCtx, ready: Ready, replaced: SigningLink, p: SendParams) {
   const { agreement, version } = ready
@@ -690,6 +755,8 @@ async function sendInPlace(ctx: AgreementsCtx, ready: Ready, replaced: SigningLi
       out.error?.code ?? "SEND_FAILED",
       `${agreement.number} version ${version.number}: ${out.error?.message ?? "no link was made"}`,
     )
+  const closed = await closedMeanwhile(ctx, agreement, version)
+  if (closed) return closed
   const who = out.action.invited_name
   const how = out.action.deduped
     ? "already signs in their place: nothing was made or mailed again"
@@ -912,7 +979,8 @@ async function tellPeople(
 /**
  * `kernel/client_action:links_made`: a send's links exist, told by the transaction that made
  * them. The agreement is marked sent when the run that asked was cut off before it could. Links
- * made on a version replaced meanwhile, or on an agreement voided meanwhile, are withdrawn. A
+ * made on a version replaced meanwhile, or on an agreement voided meanwhile, are withdrawn. Told
+ * again when a person sends again links that were already answered: those answers count then. A
  * change request's own run writes its state, after the reply it goes with.
  */
 export async function onLinksMade(ctx: AgreementsCtx, event: DecidedEvent) {
@@ -935,9 +1003,14 @@ export async function onLinksMade(ctx: AgreementsCtx, event: DecidedEvent) {
     })
     return { status: "withdrawn" }
   }
-  if (a.status !== "draft" || version.status !== "frozen" || a.kind === CHANGE_REQUEST)
-    return { status: "ignored" }
-  return { status: (await markSent(ctx, a, version)) ? "sent" : "ignored" }
+  if (version.status !== "frozen") return { status: "ignored" }
+  let status = "ignored"
+  if (a.status === "draft" && a.kind !== CHANGE_REQUEST && (await markSent(ctx, a, version)))
+    status = "sent"
+  // Answers its links already hold (kept on a draft whose send was not taken for whole) count now.
+  const now = status === "sent" ? { ...a, status } : a
+  if (WAITING.includes(now.status)) await recordAnswers(ctx, now, version)
+  return { status }
 }
 
 /** An agreement its sender closed: no link of it stays open. */
@@ -998,14 +1071,18 @@ function frozenPrice(source: unknown): Array<{ k: string; v: string }> {
   return typeof price === "string" && price ? [{ k: "Price", v: price }] : []
 }
 
-/** Each signer's copy state of a version, by client action id (the token page's last frame). */
+/**
+ * Each signer's copy state of a version, by client action id (the token page's last frame). The
+ * page reads as its sender, who may not read the signature events: who signed is the kernel's word.
+ */
 async function copyStatesOf(
   ctx: AgreementsCtx,
   versionId: string,
 ): Promise<Record<string, CopyState>> {
+  const signed = new Set((await eventsOf(ctx, versionId)).map((e) => e.client_action_id))
+  for (const l of await linksOf(ctx, versionId)) if (l.state === "decided") signed.add(l.id)
   const out: Record<string, CopyState> = {}
-  for (const e of await eventsOf(ctx, versionId))
-    out[e.client_action_id] = await copyStateOf(ctx, versionId, e.client_action_id)
+  for (const id of signed) out[id] = await copyStateOf(ctx, versionId, id)
   return out
 }
 
@@ -1019,6 +1096,7 @@ interface DecidedEvent {
 
 interface ActionRecord {
   id: string
+  kind?: string
   target_id?: string
   decision: string | null
   decided_at: string | null
@@ -1170,8 +1248,10 @@ export async function onClientActionDecided(ctx: AgreementsCtx, event: DecidedEv
   if (!version) return { status: "ignored" }
   let agreement = (await ctx.db.findOne("agreements", version.agreement_id)) as Agreement | null
   if (!agreement) return { status: "ignored" }
-  // A link a later one replaced counts for nothing: its signer answers on the new link.
-  if (rec.replaced === true) return { status: "ignored" }
+  // A link a later one replaced counts for nothing: its signer answers on the new link. Nor does
+  // one of another document.
+  if (rec.replaced === true || (rec.target_id !== undefined && rec.target_id !== version.id))
+    return { status: "ignored" }
   // An answer counts on the document it was given for, and only while that is the latest one.
   const latest = await latestOf(ctx, agreement.id)
   if (latest?.id !== version.id) return { status: "ignored" }
@@ -1645,6 +1725,8 @@ export async function agreementNewLink(
       out.error?.code ?? "NEW_LINK_FAILED",
       `No new link for ${rec.invited_name} on ${a.number}: ${out.error?.message ?? "nothing was sent"}`,
     )
+  const closed = await closedMeanwhile(ctx, a, version)
+  if (closed) return closed
   let status = a.status
   if (a.status === "declined") {
     const signed = await ctx.db.findMany("signature_events", {
@@ -1777,11 +1859,39 @@ async function resumeInterruptedSend(ctx: AgreementsCtx, a: Agreement): Promise<
   return false
 }
 
-/** Every answer of a version's links the app has not handled, through the event's own handler. */
+/**
+ * The recorded answer to go over again when a version's links say more than its agreement does:
+ * an answer kept before it was sent, or a handler stopped after it wrote the signature. Null when
+ * the two agree. Its handler writes nothing twice.
+ */
+function answerToReplay(links: readonly SigningLink[], status: string): string | null {
+  const live = links.filter((l) => l.replaced !== true)
+  const decided = live.filter((l) => l.state === "decided")
+  const last = decided.at(-1)
+  if (!last || live.some((l) => l.state === "declined")) return null
+  if (status === "sent" || decided.length === live.length) return last.id
+  // A turn that should have opened: everyone before a waiting signer signed.
+  const waits = live.find((l) => l.state === "waiting_turn" && l.sign_order !== null)
+  const before = live.filter(
+    (l) => l.sign_order !== null && l.sign_order < Number(waits?.sign_order ?? 0),
+  )
+  if (!waits || before.length === 0 || before.some((l) => l.state !== "decided")) return null
+  return before.at(-1)?.id ?? null
+}
+
+/**
+ * Every answer of a version's links the app has not handled, through the event's own handler, and
+ * then one it recorded when the agreement never moved on with it.
+ */
 async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Promise<number> {
   let handled = 0
   const recorded: string[] = []
-  for (const l of await linksOf(ctx, v.id)) {
+  const links = await linksOf(ctx, v.id)
+  const decided = (id: string) =>
+    onClientActionDecided(ctx, {
+      data: { id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
+    })
+  for (const l of links) {
     if (l.replaced === true) continue
     if (l.state !== "decided" && l.state !== "declined") continue
     if (l.state === "decided") {
@@ -1794,11 +1904,15 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
         continue
       }
     } else if (a.status === "draft") continue
-    await onClientActionDecided(ctx, {
-      data: { id: l.id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
-    })
+    await decided(l.id)
     handled += 1
     if (l.state === "declined") break
+  }
+  if (handled === 0 && recorded.length > 0) {
+    const now = (await ctx.db.findOne("agreements", a.id)) as Agreement | null
+    const again = now && WAITING.includes(now.status) ? answerToReplay(links, now.status) : null
+    if (again && recorded.includes(again) && (await decided(again)).status !== "ignored")
+      handled += 1
   }
   // Recorded by an earlier release, or by a run stopped before it noted it.
   if (recorded.some((id) => !(v.answers_recorded ?? []).includes(id)))
@@ -1807,11 +1921,34 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
 }
 
 /**
+ * `agreement:voided` and `agreement:updated`, heard once the void or the save is committed: a link
+ * written beside it was neither there to withdraw nor, when the kernel told of it, on a document
+ * that read as closed yet. It is withdrawn now.
+ */
+export async function onAgreementClosed(ctx: AgreementsCtx, event: { entityId?: string }) {
+  const id = event?.entityId
+  const a = id ? ((await ctx.db.findOne("agreements", id)) as Agreement | null) : null
+  const v = a ? await latestOf(ctx, a.id) : null
+  if (!a || !v) return { status: "ignored" }
+  const voided = CLOSED.includes(a.status)
+  if (!voided && v.status !== "superseded") return { status: "ignored" }
+  if (!(await linksOf(ctx, v.id)).some((l) => ANSWERABLE.includes(l.state)))
+    return { status: "ignored" }
+  await ctx.client_actions_revoke?.({
+    target_type: TARGET_TYPE,
+    target_id: v.id,
+    reason: voided ? "sender_voided" : "replaced",
+  })
+  return { status: "withdrawn" }
+}
+
+/**
  * Job `decided-reconcile` (every 10 minutes). A decision whose event this app never handled (a
  * lost delivery) is handled now: for each agreement waiting for signatures, every decided link of
  * its latest version without a signature event, and a decline the agreement does not show yet,
- * goes through the same handler as the event, so nothing is written twice. Then the sends cut off
- * before their agreement left draft. One agreement that cannot be repaired stops no other.
+ * goes through the same handler as the event, so nothing is written twice; so does one recorded
+ * whose agreement never moved on with it. Then the sends cut off before their agreement left draft.
+ * One agreement that cannot be repaired stops no other.
  */
 export async function decidedReconcile(ctx: AgreementsCtx) {
   const recordWaiting = async (a: Agreement): Promise<number> => {

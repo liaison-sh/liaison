@@ -23,7 +23,8 @@
  *  - `client_actions_record({ id })`: what a decided action recorded (read-only).
  *  - `client_actions_revoke({ target_type, target_id, reason })`: every open
  *    action of one target, in one transaction. "replaced" needs no decision (a
- *    newer version kills the old links); any other reason does, like a send.
+ *    newer version kills the old links), nor does "sender_voided" from the app's own
+ *    event handler (a link written beside the void); any other reason does, like a send.
  *  - `client_actions_signed_copy({ target_type, target_id, create, archive_ids, readers_only })`:
  *    the Knowledge copy of a signed target, written and read back as the member who
  *    sent it for signature (modules/client-actions/signed-copy.ts). Only for a
@@ -189,6 +190,13 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     const own = bridgeOptions.personScopes as string[]
     return required.length > 0 && required.every((s) => hasScope(s, own))
   }
+
+  /**
+   * The app's own event handler: a link made beside a void is withdrawn with the void's own reason.
+   * The handler could withdraw it as replaced already; no tool, job or agent run is one.
+   */
+  const ownEventHandler = (): boolean =>
+    bridgeOptions?.jobsAttributedToSystem === true && !approvalContext && !bridgeRoutineId
 
   const actorUserId = (): string | null => (UUID.test(userId) ? userId : null)
 
@@ -605,7 +613,8 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         )
       if (typeof p.target_id !== "string" || !UUID.test(p.target_id))
         return refuse("INVALID_INPUT", "client_actions_revoke takes a target_id.")
-      if (reason !== "replaced" && !(await personDecided()))
+      const beside = reason === "sender_voided" && ownEventHandler()
+      if (reason !== "replaced" && !beside && !(await personDecided()))
         return refuse(
           "REVOKE_NEEDS_A_PERSON",
           "Links are withdrawn only inside a person's decision on this app's tool. Nothing was withdrawn.",

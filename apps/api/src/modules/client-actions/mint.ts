@@ -850,7 +850,8 @@ function namesOf(links: readonly SentLink[]): string {
  * that reading; the rows, their trail and the `client_action:links_made` event are one
  * transaction, so a caller killed at any moment leaves either the whole send, which the target's
  * app hears of, or nothing. The same send again (a retry, a second click, at the same moment or
- * later) answers the links it made and mails nobody. Other signers on a document whose send is
+ * later) answers the links it made and mails nobody; when one of them was answered, the app hears
+ * of them again. Other signers on a document whose send is
  * still running are refused.
  */
 export async function mintClientActionSend(input: MintSendInput): Promise<MintSendResult> {
@@ -890,7 +891,11 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
           `The document was already sent to ${namesOf(before)}, and those links still stand`,
           409,
         )
-      return { before, made: [] as Inserted[], groupId: before[0]?.group_id as string }
+      const groupId = before[0]?.group_id as string
+      // A person sent again what had been answered: the app goes over those answers.
+      if (before.some((l) => l.decision !== null))
+        await queueLinksMade(tx, input, before[0]?.id as string, groupId)
+      return { before, made: [] as Inserted[], groupId }
     }
     const sender = await readSender(tx, input.orgId, base.createdByUserId)
     const groupId = crypto.randomUUID()

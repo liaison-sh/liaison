@@ -53,19 +53,26 @@ function sharedAddresses(signers: unknown[], pinned: unknown[]): string[] {
 export function summarizeAgreementSend(params: Record<string, unknown>): Promise<Card> {
   const signers = Array.isArray(params.signers) ? params.signers : []
   const order = params.order === "any" ? "in any order" : "one after the other"
-  const mode = params.mode === "accept" ? "an acceptance" : "a simple electronic signature"
   const document = pinnedDocument(params)
   const who = `${signers.length} signer${signers.length === 1 ? "" : "s"}`
   // One person in a withdrawn signer's place, on the version already sent.
   const inPlace = typeof params.replaces === "string"
-  const was = (params.replaced ?? {}) as { name?: unknown; email?: unknown }
+  const was = (params.replaced ?? {}) as {
+    name?: unknown
+    email?: unknown
+    mode?: unknown
+    phrase?: unknown
+  }
   const wasName = typeof was.name === "string" && was.name ? was.name : "a withdrawn signer"
   const wasEmail = typeof was.email === "string" && was.email ? ` <${was.email}>` : ""
+  // That place asks what it asked: the kernel takes neither from the call.
+  const asked = inPlace ? was : { mode: params.mode, phrase: params.required_phrase }
+  const mode = asked.mode === "accept" ? "an acceptance" : "a simple electronic signature"
   const lines = [
     ...(document ? [`Document: ${document}`] : []),
     `Fingerprint: ${String(params.sha256 ?? "")}`,
     inPlace
-      ? `In place of: ${wasName}${wasEmail}, withdrawn. Same version, same turn; signatures already given stand`
+      ? `In place of: ${wasName}${wasEmail}, withdrawn. Same version, same turn; signatures already given stand. Asks: ${mode}`
       : `Asks: ${mode}, ${order}`,
     ...signers.map((x, i) => signerLine(x, i, pinnedAddresses(params))),
     ...sharedAddresses(signers, pinnedAddresses(params)).map(
@@ -73,8 +80,8 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
     ),
     `Links last ${String(params.expires_in_days ?? 14)} days`,
   ]
-  if (typeof params.required_phrase === "string" && params.required_phrase)
-    lines.push(`Each signer types: "${params.required_phrase}"`)
+  if (typeof asked.phrase === "string" && asked.phrase)
+    lines.push(`Each signer types: "${asked.phrase}"`)
   if (typeof params.message === "string" && params.message) lines.push(`Message: ${params.message}`)
   return done({
     kind: "agreement_send",

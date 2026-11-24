@@ -29,6 +29,7 @@ import { registerApps } from "~/modules/apps/runtime"
 import { initSandboxPool, shutdownSandboxPool } from "~/modules/apps/sandbox/pool"
 import { initWorkerPool, shutdownWorkerPool } from "~/modules/apps/sandbox/worker-pool"
 import { registerTranslatorConsumer } from "~/modules/attention/translator"
+import { revokeClientAction } from "~/modules/client-actions/mint"
 import { insertSql } from "~/seed/factories/org/test-rows"
 import { drainOutbox } from "~/tests/helpers/outbox"
 import {
@@ -233,10 +234,14 @@ const signersOf = (versionId: string, n: number) =>
     name: `Signer ${i + 1}`,
   }))
 
-const sendParams = (p: { versionId: string; sha256: string }, n: number) => ({
+const sendParams = (
+  p: { versionId: string; sha256: string },
+  n: number,
+  order: "any" | "sequential" = "any",
+) => ({
   version_id: p.versionId,
   sha256: p.sha256,
-  order: "any",
+  order,
   expires_in_days: 7,
   signers: signersOf(p.versionId, n),
 })
@@ -275,9 +280,13 @@ async function oneMailEach(versionId: string, n: number): Promise<void> {
 }
 
 /** Sends with the run's wall clock cut to 1.5 s: the sandbox is killed 2 s later, while `trigger` holds. */
-async function sendCutOff(p: { versionId: string; sha256: string }, n: number): Promise<Out> {
+async function sendCutOff(
+  p: { versionId: string; sha256: string },
+  n: number,
+  order: "any" | "sequential" = "any",
+): Promise<Out> {
   process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = "1500"
-  const out = await asPerson(w.admin.userId, "agreement_send", sendParams(p, n))
+  const out = await asPerson(w.admin.userId, "agreement_send", sendParams(p, n, order))
   delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
   return out
 }
@@ -436,7 +445,7 @@ describe("a send of 40 signers", () => {
 })
 
 /** A send of n signers whose run was killed, and whose word of the links was lost. */
-async function cutSend(title: string, n: number) {
+async function cutSend(title: string, n: number, order: "any" | "sequential" = "any") {
   const p = await preparedAgreement(title)
   await trigger(
     "kernel.client_actions",
@@ -444,10 +453,10 @@ async function cutSend(title: string, n: number) {
     `NEW.target_id = '${p.versionId}' AND (SELECT count(*) FROM kernel.client_actions WHERE target_id = NEW.target_id) = 0`,
     "PERFORM pg_sleep(5);",
   )
-  expect((await sendCutOff(p, n)).error?.code).toBe("timeout")
+  expect((await sendCutOff(p, n, order)).error?.code).toBe("timeout")
   await until(async () => (await linkRows(p.versionId)).length === n)
   await dropTriggers()
-  await oneMailEach(p.versionId, n)
+  await oneMailEach(p.versionId, order === "any" ? n : 1)
   await loseEvents(p.versionId)
   expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
   return p
@@ -725,6 +734,54 @@ describe("a draft an earlier release left with links", () => {
     await oneMailEach(p.versionId, 2)
   }, 120_000)
 
+  for (const lost of [false, true]) {
+    it(`a kept signature counts once its agreement is sent again${lost ? ", by the job when the word of it is lost" : ""}: alone, it seals it`, async () => {
+      const p = await cutSend(`Kept, alone ${lost}`, 1)
+      await asMadeOneByOne(p.versionId, 0)
+      const one = asSigner(p.versionId, 1)
+      await signAs(one.token(), one.who, `198.51.100.${lost ? 111 : 112}`)
+      expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+      const again = await asPerson(w.admin.userId, "agreement_send", sendParams(p, 1))
+      expect(again.data).toMatchObject({ status: "ok", already_sent: true })
+      if (lost) {
+        await loseEvents(p.versionId)
+        await reconcile()
+      }
+      await drainOutbox()
+      expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+        agreement: "signed",
+        version: "signed",
+        sealed: true,
+      })
+      expect(await recordedFor(p.versionId)).toHaveLength(1)
+      await oneMailEach(p.versionId, 1)
+    }, 120_000)
+
+    it(`a kept signature counts once its agreement is sent again${lost ? ", by the job when the word of it is lost" : ""}: the next signer is asked`, async () => {
+      const p = await cutSend(`Kept, in turn ${lost}`, 2, "sequential")
+      await asMadeOneByOne(p.versionId, 0)
+      const one = asSigner(p.versionId, 1)
+      await signAs(one.token(), one.who, `198.51.100.${lost ? 113 : 114}`)
+      expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("draft")
+      await oneMailEach(p.versionId, 1)
+      await asPerson(w.admin.userId, "agreement_send", sendParams(p, 2, "sequential"))
+      if (lost) {
+        await loseEvents(p.versionId)
+        await reconcile()
+      }
+      await drainOutbox()
+      expect((await statusOf(p.agreementId, p.versionId)).agreement).toBe("partly_signed")
+      await oneMailEach(p.versionId, 2)
+      const two = asSigner(p.versionId, 2)
+      await signAs(two.token(), two.who, `198.51.100.${lost ? 115 : 116}`)
+      expect(await statusOf(p.agreementId, p.versionId)).toEqual({
+        agreement: "signed",
+        version: "signed",
+        sealed: true,
+      })
+    }, 120_000)
+  }
+
   it("a draft edited after its send was cut off is not taken for sent", async () => {
     const p = await cutSend("Edited since", 1)
     await owner.unsafe(`UPDATE app_agreements.agreement_drafts
@@ -807,6 +864,159 @@ describe("a version prepared while the one before is being sent", () => {
   }, 120_000)
 })
 
+/** The links of a version that can still be answered, now or at their turn. */
+const openOf = async (versionId: string) =>
+  (await linkRows(versionId)).filter((r) => !r.revoked_at && !r.decided_at)
+
+describe("a link made while the document is closed", () => {
+  for (const made of ["a proxy's", "a new one"]) {
+    for (const closed of ["a void", "a save"]) {
+      it(`${made}, beside ${closed}: no link stays open, and the send does not say it went`, async () => {
+        const p = await preparedAgreement(`${made} and ${closed}`)
+        await asPerson(w.admin.userId, "agreement_send", sendParams(p, 2))
+        await oneMailEach(p.versionId, 2)
+        await drainOutbox()
+        const first = (await linkRows(p.versionId)).find((r) => r.invited_email.startsWith("s1-"))
+        const id = first?.id ?? ""
+        if (made === "a proxy's")
+          await revokeClientAction({
+            orgId: w.orgId,
+            id,
+            reason: "withdrawn",
+            byUserId: w.admin.userId,
+          })
+        await trigger(
+          "kernel.client_actions",
+          "INSERT",
+          `NEW.target_id = '${p.versionId}'`,
+          "PERFORM pg_sleep(3);",
+        )
+        const making =
+          made === "a proxy's"
+            ? asPerson(w.admin.userId, "agreement_send", {
+                ...sendParams(p, 1),
+                signers: [
+                  { email: `p-${p.versionId.slice(0, 8)}@signers.example`, name: "Pat Proxy" },
+                ],
+                replaces: id,
+              })
+            : asPerson(w.admin.userId, "agreement_new_link", { client_action_id: id })
+        await new Promise((r) => setTimeout(r, 1500))
+        const closing = await (closed === "a void"
+          ? asPerson(w.admin.userId, "agreement_void", { id: p.agreementId, reason: "No" })
+          : asPerson(w.admin.userId, "agreement_update", {
+              id: p.agreementId,
+              source: { body: { blocks: [{ type: "paragraph", text: "New terms." }] } },
+            }))
+        expect(closing.error).toBeUndefined()
+        const out = await making
+        await dropTriggers()
+        // A new link holds the one it replaces: the void or save that met it there came after it.
+        if (made === "a proxy's")
+          expect(JSON.stringify(out)).toContain(
+            closed === "a void" ? "NOT_SENT" : "VERSION_CHANGED",
+          )
+        await drainOutbox()
+        expect((await linkRows(p.versionId)).length).toBe(3)
+        expect(await openOf(p.versionId)).toEqual([])
+      }, 120_000)
+    }
+  }
+
+  for (const closed of ["a void", "a save"]) {
+    it(`a proxy's, beside ${closed}, its run killed: the word of it withdraws it`, async () => {
+      const p = await preparedAgreement(`Killed beside ${closed}`)
+      await asPerson(w.admin.userId, "agreement_send", sendParams(p, 2))
+      await oneMailEach(p.versionId, 2)
+      await drainOutbox()
+      const first = (await linkRows(p.versionId)).find((r) => r.invited_email.startsWith("s1-"))
+      const id = first?.id ?? ""
+      await revokeClientAction({
+        orgId: w.orgId,
+        id,
+        reason: "withdrawn",
+        byUserId: w.admin.userId,
+      })
+      await trigger(
+        "kernel.client_actions",
+        "INSERT",
+        `NEW.target_id = '${p.versionId}'`,
+        "PERFORM pg_sleep(5);",
+      )
+      process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS = "1500"
+      const making = asPerson(w.admin.userId, "agreement_send", {
+        ...sendParams(p, 1),
+        signers: [{ email: `p-${p.versionId.slice(0, 8)}@signers.example`, name: "Pat Proxy" }],
+        replaces: id,
+      })
+      expect((await making).error?.code).toBe("timeout")
+      delete process.env.LIAISON_SANDBOX_MAX_TOOL_TIMEOUT_MS
+      await (closed === "a void"
+        ? asPerson(w.admin.userId, "agreement_void", { id: p.agreementId, reason: "No" })
+        : asPerson(w.admin.userId, "agreement_update", {
+            id: p.agreementId,
+            source: { body: { blocks: [{ type: "paragraph", text: "New terms." }] } },
+          }))
+      await until(async () => (await linkRows(p.versionId)).length === 3)
+      await dropTriggers()
+      await drainOutbox()
+      expect(await openOf(p.versionId)).toEqual([])
+    }, 120_000)
+  }
+
+  it("one told of before the void or the save is committed is withdrawn by the word of that", async () => {
+    for (const closed of ["void", "save"]) {
+      const p = await preparedAgreement(`Told before the ${closed}`)
+      await asPerson(w.admin.userId, "agreement_send", sendParams(p, 1))
+      await oneMailEach(p.versionId, 1)
+      await drainOutbox()
+      await (closed === "void"
+        ? asPerson(w.admin.userId, "agreement_void", { id: p.agreementId, reason: "No" })
+        : asPerson(w.admin.userId, "agreement_update", {
+            id: p.agreementId,
+            source: { body: { blocks: [{ type: "paragraph", text: "New terms." }] } },
+          }))
+      // As one written after the withdrawal, whose own word was heard already.
+      await owner.unsafe(
+        `UPDATE kernel.client_actions SET revoked_at = NULL, revoke_reason = NULL, revoked_by = NULL
+          WHERE target_id = '${p.versionId}'`,
+      )
+      expect(await openOf(p.versionId)).toHaveLength(1)
+      await drainOutbox()
+      expect(await openOf(p.versionId)).toEqual([])
+      const [row] = (await sql`
+        SELECT revoke_reason FROM ${kernel("client_actions")}
+         WHERE target_id = ${p.versionId}`) as unknown as Array<{ revoke_reason: string }>
+      expect(row?.revoke_reason).toBe(closed === "void" ? "sender_voided" : "replaced")
+    }
+  }, 120_000)
+})
+
+describe("one after the other", () => {
+  it("a turn that never opened is opened by the job", async () => {
+    const p = await preparedAgreement("Turn lost")
+    await asPerson(w.admin.userId, "agreement_send", sendParams(p, 3, "sequential"))
+    await oneMailEach(p.versionId, 1)
+    await drainOutbox()
+    const one = asSigner(p.versionId, 1)
+    await signAs(one.token(), one.who, "198.51.100.117")
+    await oneMailEach(p.versionId, 2)
+    // Its signer waits again, as one whose turn was looked for before they were there.
+    await owner.unsafe(
+      `UPDATE kernel.client_actions SET token_hash = NULL, sent_at = NULL
+        WHERE target_id = '${p.versionId}' AND sign_order = 2`,
+    )
+    const mails = () => linkMails(p.versionId).filter((m) => m.to.startsWith("s2-")).length
+    expect(mails()).toBe(1)
+    await reconcile()
+    await until(() => mails() === 2)
+    await reconcile()
+    await new Promise((r) => setTimeout(r, 300))
+    expect(mails()).toBe(2)
+    expect(linkMails(p.versionId).some((m) => m.to.startsWith("s3-"))).toBe(false)
+  }, 120_000)
+})
+
 describe("who may send, and who signs", () => {
   it("a role that may send can send, and nothing else opens to it", async () => {
     const role = crypto.randomUUID()
@@ -852,8 +1062,24 @@ describe("who may send, and who signs", () => {
     expect(await linkRows(closed.versionId)).toHaveLength(0)
     const one = asSigner(p.versionId, 1)
     const two = asSigner(p.versionId, 2)
+    const copyOf = async (token: string) =>
+      (
+        (await (
+          await call("open", { t: token }, { "x-bun-socket-ip": "198.51.100.118" })
+        ).json()) as {
+          copy?: string
+        }
+      ).copy
     await signAs(one.token(), one.who, "198.51.100.103")
+    // Their role reads no signature: what the signer is told does not depend on it.
+    expect(await copyOf(one.token())).toBe("waiting_for_others")
+    const setStatus = (status: string) =>
+      owner.unsafe(`UPDATE app_agreements.agreements SET status = '${status}' WHERE id = '${id}'`)
+    await setStatus("declined")
+    expect(await copyOf(one.token())).toBe("not_completed")
+    await setStatus("partly_signed")
     await signAs(two.token(), two.who, "198.51.100.104")
+    expect(await copyOf(one.token())).toBe("on_its_way")
     expect(await statusOf(id, p.versionId)).toEqual({
       agreement: "signed",
       version: "signed",

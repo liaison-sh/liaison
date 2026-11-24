@@ -851,6 +851,42 @@ const TERMS_KEYS = [
   "lines",
 ]
 
+/** Every field a drafts_update patch changes. Anything else in a patch is refused by name. */
+export const PATCH_FIELDS: ReadonlySet<string> = new Set([
+  "type",
+  "lines",
+  ...TERMS_KEYS,
+  "buyer_is_consumer",
+  "counterparty_shipping_address",
+  "counterparty_shipping_name",
+  "tax_treatment",
+  "issuer_profile_id",
+  "incoterm",
+  "external_refs",
+  "notes",
+  "po_number",
+  "operation_category",
+  "project_id",
+  "billing_project_id",
+])
+
+/**
+ * A patch naming a field drafts_update does not change is refused before anything is read or
+ * written: a success would report a change that was never made. `items` is what drafts_create
+ * calls the lines.
+ */
+function refuseUnknownFields(draftId: string, patch: unknown): void {
+  const unknown = Object.keys((patch ?? {}) as object).filter((k) => !PATCH_FIELDS.has(k))
+  if (unknown.length === 0) return
+  const named = unknown.map((k) => `"${k}"`).join(", ")
+  refuse(
+    "unknown_field",
+    `The patch names ${named}, which drafts_update does not change, so draft ${draftId} was not changed at all.` +
+      (unknown.includes("items") ? ` The lines of a draft are patch.lines.` : "") +
+      ` A patch may hold: ${[...PATCH_FIELDS].join(", ")}.`,
+  )
+}
+
 const ADDRESS_KEYS = [
   "counterparty_address",
   "billing_line1",
@@ -1088,6 +1124,7 @@ async function updateDraft(
   input: DraftsUpdateInput,
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed | RunUpdated | RunParked> {
+  refuseUnknownFields(input.draft_id, input.patch)
   // A new buyer on an invoice draft meets the issuer guard, as a new draft does.
   const p = input.patch ?? {}
   if ("counterparty_contact_id" in p || "counterparty_email" in p) {

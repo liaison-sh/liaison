@@ -291,3 +291,159 @@ describe("the compose file's sandbox defaults", () => {
     }
   })
 })
+
+// The boot unit. Rules in place before Docker starts any container, from a copy
+// of the script on the root disk (the checkout may sit on a volume mounted after
+// boot), never holding Docker back: Docker only wants the unit, so a missing
+// script or a failed apply still lets it start (the service then refuses runs).
+describe("sandbox-firewall.sh install writes a unit that runs before Docker", () => {
+  let root: string
+
+  // Root, iptables, modprobe, sysctl and systemctl stubs; /proc and /etc under a fake root.
+  function host() {
+    root = path.join(dir, "root")
+    mkdirSync(path.join(root, "proc/sys/net/bridge"), { recursive: true })
+    writeFileSync(path.join(root, "proc/sys/net/bridge/bridge-nf-call-iptables"), "1\n")
+    mkdirSync(path.join(root, "etc/systemd/system/multi-user.target.wants"), { recursive: true })
+    const stub = (name: string, body: string) => {
+      writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`)
+      chmodSync(path.join(bin, name), 0o755)
+    }
+    stub("id", "echo 0")
+    stub("iptables", `echo "$*" >> "${state}/iptables.log"; case "$*" in *" -C "* | *" -D "*) exit 1 ;; esac; exit 0`)
+    stub("modprobe", "exit 0")
+    stub("sysctl", "exit 0")
+    stub(
+      "systemctl",
+      `echo "$*" >> "${state}/systemctl.log"
+case "$1" in
+  enable) mkdir -p "${root}/etc/systemd/system/docker.service.wants"; ln -sf ../liaison-sandbox-firewall.service "${root}/etc/systemd/system/docker.service.wants/$2" ;;
+  disable) rm -f "${root}/etc/systemd/system/"*.wants/"$2" ;;
+esac
+exit 0`,
+    )
+  }
+
+  const unitPath = () => path.join(root, "etc/systemd/system/liaison-sandbox-firewall.service")
+  const copyPath = () => path.join(root, "usr/local/lib/liaison/sandbox-firewall.sh")
+  const log = (name: string) => {
+    try {
+      return readFileSync(path.join(state, name), "utf8")
+    } catch {
+      return ""
+    }
+  }
+
+  it("orders the unit before docker.service, wanted by it, on a copy of the script outside the checkout", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    // An earlier install's link from multi-user.target.
+    writeFileSync(path.join(root, "etc/systemd/system/multi-user.target.wants/liaison-sandbox-firewall.service"), "")
+    const envFile = path.join(dir, "custom.env")
+    writeFileSync(envFile, "LIAISON_SANDBOX_SUBNET=10.73.250.0/24\n")
+    const r = run(["-p", "liaison", "--env-file", envFile, "install"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.stderr).toBe("")
+    expect(r.code).toBe(0)
+    const unit = readFileSync(unitPath(), "utf8")
+    const lines = unit.split("\n")
+    expect(lines).toContain("Before=docker.service")
+    expect(lines.some((l) => l.startsWith("After=") && l.includes("network-pre.target"))).toBe(true)
+    expect(lines).toContain("RequiresMountsFor=/usr/local/lib/liaison")
+    expect(lines).toContain("WantedBy=docker.service")
+    expect(lines.some((l) => l.startsWith("TimeoutStartSec="))).toBe(true)
+    // Docker never depends on it, and it never waits for Docker.
+    expect(unit).not.toMatch(/^(Wants|Requires|BindsTo|PartOf|RequiredBy|After)=.*docker/m)
+    expect(unit).not.toContain("multi-user.target")
+    expect(unit).not.toMatch(/^DefaultDependencies=no/m)
+    // The root-disk copy, no compose option (its files may not be mounted yet).
+    expect(lines).toContain("ExecStart=/bin/sh /usr/local/lib/liaison/sandbox-firewall.sh apply --boot")
+    expect(unit).not.toContain(dir)
+    expect(lines).toContain("Environment=LIAISON_SANDBOX_SUBNET=10.73.250.0/24")
+    expect(lines).toContain("Environment=LIAISON_SANDBOX_IP=10.73.250.10")
+    expect(readFileSync(copyPath(), "utf8")).toBe(readFileSync(SCRIPT, "utf8"))
+    // The old link is gone, the new one in place, disabled before enabled.
+    expect(() => readFileSync(path.join(root, "etc/systemd/system/multi-user.target.wants/liaison-sandbox-firewall.service"))).toThrow()
+    const sc = log("systemctl.log")
+    expect(sc.indexOf("disable liaison-sandbox-firewall.service")).toBeGreaterThanOrEqual(0)
+    expect(sc.indexOf("disable")).toBeLessThan(sc.indexOf("enable liaison-sandbox-firewall.service"))
+    // The rules were applied now too.
+    expect(log("iptables.log")).toContain("-A LIAISON-SANDBOX-FWD -i liaison-sbx0 -j DROP")
+  })
+
+  it("a second install gives the same unit and copy", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    expect(run(["install"], { SANDBOX_FIREWALL_ROOT: root }).code).toBe(0)
+    const first = readFileSync(unitPath(), "utf8")
+    const again = run(["install"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(again.stderr).toBe("")
+    expect(again.code).toBe(0)
+    expect(readFileSync(unitPath(), "utf8")).toBe(first)
+    expect(readFileSync(copyPath(), "utf8")).toBe(readFileSync(SCRIPT, "utf8"))
+  })
+
+  it("apply --boot never calls Docker: a hung daemon does not hold the boot", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    writeFileSync(path.join(bin, "docker"), `#!/bin/sh\necho "$*" >> "${state}/docker-calls.log"\nsleep 30\n`)
+    const started = Date.now()
+    const r = run(["apply", "--boot"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(Date.now() - started).toBeLessThan(5000)
+    expect(r.stderr).toBe("")
+    expect(r.code).toBe(0)
+    expect(log("docker-calls.log")).toBe("")
+    const ipt = log("iptables.log")
+    expect(ipt).toContain("-N DOCKER-USER")
+    expect(ipt).toContain("-A LIAISON-SANDBOX-IN -s 10.73.250.10 -j DROP")
+    expect(ipt).toContain("-A LIAISON-SANDBOX-FWD -i liaison-sbx0 -j DROP")
+  })
+
+  it("the root-disk copy applies alone, from the unit's settings, with no compose file beside it", () => {
+    host()
+    const lib = path.join(dir, "lib")
+    mkdirSync(lib)
+    copyFileSync(SCRIPT, path.join(lib, "sandbox-firewall.sh"))
+    writeFileSync(path.join(bin, "docker"), `#!/bin/sh\necho "$*" >> "${state}/docker-calls.log"\nexit 1\n`)
+    const proc = Bun.spawnSync(["/bin/sh", path.join(lib, "sandbox-firewall.sh"), "apply", "--boot"], {
+      cwd: "/",
+      env: {
+        PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+        SANDBOX_FIREWALL_ROOT: root,
+        LIAISON_SANDBOX_SUBNET: "10.80.1.0/24",
+        LIAISON_SANDBOX_IP: "10.80.1.10",
+        LIAISON_SANDBOX_BRIDGE: "liaison-sbx0",
+        LIAISON_APP_BRIDGE_PORT: "3100",
+      },
+    })
+    expect(proc.stderr.toString()).toBe("")
+    expect(proc.exitCode).toBe(0)
+    expect(log("docker-calls.log")).toBe("")
+    expect(log("iptables.log")).toContain("-A LIAISON-SANDBOX-IN -s 10.80.1.10 -j DROP")
+  })
+
+  it("apply without --boot still refuses a live network on other settings; an unknown flag is refused", () => {
+    stack({ subnet: "172.31.250.0/24", sandboxIp: "172.31.250.10", appIp: "172.31.250.2" })
+    host()
+    const r = run(["apply"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.code).toBe(1)
+    expect(r.stderr).toContain("runs on 172.31.250.0/24")
+    const bad = run(["apply", "--now"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(bad.code).toBe(2)
+    expect(log("iptables.log")).toBe("")
+  })
+
+  it("remove drops the unit, the copy and every link", () => {
+    stack({ subnet: "10.73.250.0/24", sandboxIp: "10.73.250.10", appIp: "10.73.250.2" })
+    host()
+    expect(run(["install"], { SANDBOX_FIREWALL_ROOT: root }).code).toBe(0)
+    writeFileSync(path.join(root, "etc/systemd/system/multi-user.target.wants/liaison-sandbox-firewall.service"), "")
+    const r = run(["remove"], { SANDBOX_FIREWALL_ROOT: root })
+    expect(r.code).toBe(0)
+    expect(() => readFileSync(unitPath())).toThrow()
+    expect(() => readFileSync(copyPath())).toThrow()
+    for (const wants of ["multi-user.target.wants", "docker.service.wants"]) {
+      expect(() => readFileSync(path.join(root, "etc/systemd/system", wants, "liaison-sandbox-firewall.service"))).toThrow()
+    }
+    expect(log("systemctl.log")).toContain("daemon-reload")
+  })
+})

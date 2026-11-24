@@ -15,6 +15,7 @@ Worker module needed; executor workerd in timing and usage -> apps/api/src/modul
 LIAISON_APP_RUNTIME=quickjs -> apps/api/src/modules/apps/workers/config.ts quickjsForced
 Same image, entrypoint `sandbox` -> apps/api/scripts/entrypoint.sh ; deploy/docker-compose.yml sandbox
 Firewall step install/apply/remove/check -> deploy/sandbox-firewall.sh
+Boot unit before docker.service, wanted by it, root-disk copy, apply --boot, after network-pre.target, Docker starts if it fails -> deploy/sandbox-firewall.sh install_unit ; deploy/sandbox-firewall.sh apply ; deploy/sandbox-firewall.test.ts
 Sizing 6+2 @256 MiB = 2 GiB, 10+2 3 GiB 3 CPUs; ~127 MiB measured for 6 processes -> deploy/docker-compose.yml sandbox ; packages/sandbox-supervisor/src/config.ts
 Accepted risks (shared host, no Spectre guard, Date.now live, performance.now 1 ms, SharedArrayBuffer) -> packages/sandbox-supervisor/test/probes.test.ts
 Dev/CI run the supervisor directly -> packages/sandbox-supervisor/src/main.ts ; apps/api/src/modules/apps/workers/__fixtures__/workerd-loader.ts

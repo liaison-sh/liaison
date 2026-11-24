@@ -23,8 +23,13 @@
 # two containers on the same bridge goes through those chains too.
 #
 #   sudo deploy/sandbox-firewall.sh install    rules now + a systemd unit that
-#                                               re-applies them at every boot
+#                                               re-applies them at every boot,
+#                                               before Docker starts
 #   sudo deploy/sandbox-firewall.sh apply      rules now (idempotent)
+#   sudo deploy/sandbox-firewall.sh apply --boot
+#                                               the same without asking Docker
+#                                               about the live network (the
+#                                               boot unit: Docker is not up yet)
 #   sudo deploy/sandbox-firewall.sh remove     remove the rules and the unit
 #        deploy/sandbox-firewall.sh check      probe from inside the running
 #                                               sandbox container: only the
@@ -51,9 +56,18 @@
 set -eu
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+SELF="$HERE/$(basename "$0")"
 CHAIN_FWD="LIAISON-SANDBOX-FWD"
 CHAIN_IN="LIAISON-SANDBOX-IN"
-UNIT="/etc/systemd/system/liaison-sandbox-firewall.service"
+# The host's files; SANDBOX_FIREWALL_ROOT points them at a fake tree (tests).
+ROOT="${SANDBOX_FIREWALL_ROOT:-}"
+UNIT_NAME="liaison-sandbox-firewall.service"
+UNIT_DIR="$ROOT/etc/systemd/system"
+UNIT="$UNIT_DIR/$UNIT_NAME"
+# The copy the boot unit runs: on the root disk, so the unit never waits for the
+# volume this checkout sits on (an encrypted volume is mounted after boot).
+BOOT_DIR="/usr/local/lib/liaison"
+BOOT_COPY="$BOOT_DIR/sandbox-firewall.sh"
 SANDBOX_PORT=8790
 
 die() {
@@ -184,10 +198,12 @@ own_chain() {
 
 apply() {
   need_root
-  same_network
+  # At boot Docker is not up (and asking it would wait for this very unit):
+  # the settings in the unit are the ones `install` checked against it.
+  [ "${1:-}" = boot ] || same_network
   # Bridged traffic (container to container on one bridge) through iptables.
   modprobe br_netfilter 2>/dev/null || true
-  if [ ! -e /proc/sys/net/bridge/bridge-nf-call-iptables ]; then
+  if [ ! -e "$ROOT/proc/sys/net/bridge/bridge-nf-call-iptables" ]; then
     echo "sandbox-firewall: br_netfilter is not available; the bridge allowlist cannot hold" >&2
     exit 1
   fi
@@ -217,7 +233,7 @@ apply() {
   ipt -A "$CHAIN_FWD" -i "$BRIDGE" -j DROP
 
   # No IPv6 on the sandbox network (the compose file disables it); drop any anyway.
-  if command -v ip6tables >/dev/null 2>&1 && [ -e "/proc/sys/net/ipv6/conf/$BRIDGE" ]; then
+  if command -v ip6tables >/dev/null 2>&1 && [ -e "$ROOT/proc/sys/net/ipv6/conf/$BRIDGE" ]; then
     sysctl -q -w "net.ipv6.conf.$BRIDGE.disable_ipv6=1" || true
   fi
   echo "sandbox-firewall: rules applied (sandbox $SANDBOX_IP on $SUBNET may reach :$BRIDGE_PORT only)"
@@ -227,43 +243,63 @@ install_unit() {
   need_root
   apply
   if ! command -v systemctl >/dev/null 2>&1; then
-    echo "sandbox-firewall: no systemd; re-run 'apply' at every boot, after Docker starts" >&2
+    echo "sandbox-firewall: no systemd; run '$SELF apply --boot' at every boot, before Docker starts" >&2
     return 0
   fi
-  cat >"$UNIT" <<EOF
+  mkdir -p "$ROOT$BOOT_DIR"
+  cp "$SELF" "$ROOT$BOOT_COPY.new"
+  chmod 0755 "$ROOT$BOOT_COPY.new"
+  mv -f "$ROOT$BOOT_COPY.new" "$ROOT$BOOT_COPY"
+  # Earlier versions were wanted by multi-user.target and ran after Docker:
+  # drop every link before enabling the new one.
+  systemctl disable "$UNIT_NAME" >/dev/null 2>&1 || true
+  rm -f "$UNIT_DIR/multi-user.target.wants/$UNIT_NAME"
+  # Before=docker.service: the rules are in place before Docker starts any
+  # container. WantedBy=docker.service (never Requires): a missing script or a
+  # failed apply leaves Docker starting, the sandbox service then refuses runs
+  # (sandbox_network_open). After=network-pre.target: after the host's own
+  # firewall (nftables, firewalld, iptables-persistent; ufw named too), whose
+  # load would otherwise drop these rules.
+  cat >"$UNIT.new" <<EOF
 [Unit]
 Description=Liaison app sandbox firewall (deploy/sandbox-firewall.sh)
-After=docker.service network-online.target
-Wants=docker.service
+After=network-pre.target ufw.service
+Before=docker.service
+RequiresMountsFor=$BOOT_DIR
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+TimeoutStartSec=30
 Environment=LIAISON_SANDBOX_IP=$SANDBOX_IP
 Environment=LIAISON_SANDBOX_SUBNET=$SUBNET
 Environment=LIAISON_SANDBOX_BRIDGE=$BRIDGE
 Environment=LIAISON_APP_BRIDGE_PORT=$BRIDGE_PORT
-ExecStart=/bin/sh $HERE/sandbox-firewall.sh $(echo "$DC" | sed 's/^docker compose //') apply
+ExecStart=/bin/sh $BOOT_COPY apply --boot
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=docker.service
 EOF
+  mv -f "$UNIT.new" "$UNIT"
   systemctl daemon-reload
-  systemctl enable liaison-sandbox-firewall.service >/dev/null
-  echo "sandbox-firewall: installed $UNIT (re-applies at boot)"
+  systemctl enable "$UNIT_NAME" >/dev/null
+  echo "sandbox-firewall: installed $UNIT (re-applies at boot, before Docker starts)"
 }
 
 remove() {
   need_root
   for pair in "INPUT $CHAIN_IN" "DOCKER-USER $CHAIN_FWD"; do
-    set -- $pair
-    while ipt -D "$1" -j "$2" 2>/dev/null; do :; done
-    ipt -F "$2" 2>/dev/null || true
-    ipt -X "$2" 2>/dev/null || true
+    parent="${pair% *}"
+    chain="${pair#* }"
+    while ipt -D "$parent" -j "$chain" 2>/dev/null; do :; done
+    ipt -F "$chain" 2>/dev/null || true
+    ipt -X "$chain" 2>/dev/null || true
   done
-  if [ -f "$UNIT" ]; then
-    systemctl disable liaison-sandbox-firewall.service >/dev/null 2>&1 || true
-    rm -f "$UNIT"
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable "$UNIT_NAME" >/dev/null 2>&1 || true
+  fi
+  rm -f "$UNIT_DIR/multi-user.target.wants/$UNIT_NAME" "$UNIT_DIR/docker.service.wants/$UNIT_NAME" "$UNIT" "$ROOT$BOOT_COPY"
+  if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload 2>/dev/null || true
   fi
   echo "sandbox-firewall: removed"
@@ -375,13 +411,21 @@ process.exit(bad ? 1 : 0)
 "
 }
 
+usage() {
+  echo "usage: $0 [-p name] [--env-file file] [-f file] install|apply [--boot]|remove|check" >&2
+  exit 2
+}
+
 case "${1:-}" in
-  apply) apply ;;
+  apply)
+    case "${2:-}" in
+      "") apply ;;
+      --boot) apply boot ;;
+      *) usage ;;
+    esac
+    ;;
   install) install_unit ;;
   remove) remove ;;
   check) check ;;
-  *)
-    echo "usage: $0 [-p name] [--env-file file] [-f file] install|apply|remove|check" >&2
-    exit 2
-    ;;
+  *) usage ;;
 esac

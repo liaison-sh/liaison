@@ -68,7 +68,7 @@ sudo deploy/sandbox-firewall.sh install   # rules now, and a systemd unit for ev
 deploy/sandbox-firewall.sh check          # from inside the sandbox: only the bridge port answers
 ```
 
-`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too), then one per workerd process (each runs as its own uid, and another uid cannot open its environment or memory), and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules away.
+`check` prints one line per probe for every running app process on the sandbox network (`app`, or the rolling `api` and `worker` processes: each one's bridge port must answer and its main port must be blocked; the host's SSH port, the cloud metadata address and a public address must be blocked too), then one per workerd process (each runs as its own uid, and another uid cannot open its environment or memory), and exits non-zero on any miss. `sudo deploy/sandbox-firewall.sh remove` takes the rules, the unit and its copy away.
 
 ### The service checks it too
 
@@ -83,7 +83,18 @@ sudo deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env i
 deploy/sandbox-firewall.sh -p liaison --env-file /srv/liaison/liaison.env check
 ```
 
-It accepts `-p`/`--project-name`, `--env-file` (several allowed) and `-f`/`--file` (default `deploy/docker-compose.yml`), and honours `COMPOSE_PROJECT_NAME` from the environment or the env file. Without `--env-file` it reads `deploy/.env`, as compose does. The settings it reads (environment first, then the env files) are the compose file's: `LIAISON_SANDBOX_SUBNET`, `LIAISON_SANDBOX_IP`, `LIAISON_SANDBOX_BRIDGE` (liaison-sbx0) and `LIAISON_APP_BRIDGE_PORT` (3100). `install` writes the options and values into the systemd unit.
+It accepts `-p`/`--project-name`, `--env-file` (several allowed) and `-f`/`--file` (default `deploy/docker-compose.yml`), and honours `COMPOSE_PROJECT_NAME` from the environment or the env file. Without `--env-file` it reads `deploy/.env`, as compose does. The settings it reads (environment first, then the env files) are the compose file's: `LIAISON_SANDBOX_SUBNET`, `LIAISON_SANDBOX_IP`, `LIAISON_SANDBOX_BRIDGE` (liaison-sbx0) and `LIAISON_APP_BRIDGE_PORT` (3100). `install` writes those values into the systemd unit.
+
+### At boot
+
+The unit `liaison-sandbox-firewall.service` puts the rules back before Docker starts any container:
+
+- It runs before `docker.service` and is wanted by it, so it runs whenever Docker starts: at boot, or later when something else starts Docker (a script that unlocks an encrypted data volume first, for example).
+- It runs a copy of the script that `install` keeps at `/usr/local/lib/liaison/sandbox-firewall.sh`, with `apply --boot`: the settings come from the unit, not from your env files, and it does not ask Docker about the network (Docker is not up yet). So it works when your checkout or env file sits on a volume that is mounted after boot.
+- Docker never depends on it: if the unit fails, Docker still starts, and the service refuses every run with `sandbox_network_open` until the rules are back (`sudo deploy/sandbox-firewall.sh install`). `systemctl status liaison-sandbox-firewall` says why it failed.
+- It runs after `network-pre.target`, so a host firewall that loads its own rules at boot (nftables, firewalld, iptables-persistent, ufw) loads them first.
+
+Run `install` again after each upgrade (with your `-p`/`--env-file`) so the copy and the unit follow the release. Installs made before this unit existed ran their rules after Docker had started the containers; running `install` again replaces that unit. To see the order after a reboot, `systemctl show -p ExecMainExitTimestampMonotonic liaison-sandbox-firewall` must be lower than `systemctl show -p ActiveEnterTimestampMonotonic docker`.
 
 On the sandbox network the rules let through only an app process's connection to the service and the service's connection to an app process's bridge port; anything else coming from that network is dropped. `apply` and `check` stop with an error when the live network's subnet, or the service's address, is not the one in the settings.
 

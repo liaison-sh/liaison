@@ -709,6 +709,20 @@ describe("a payment with no Stripe invoice is always decided by a person", () =>
     expect(openParks(db)).toHaveLength(0)
   })
 
+  test("a payment waiting past its dead letter still issues on a click, and its line closes", async () => {
+    const db = stripeDb()
+    await onStripePaymentUnmatched({ data: CH }, stripeCtx(db))
+    await db.update("deferred_events", String(parks(db)[0]?.id), { status: "permanent_failure" })
+    const ctx = stripeCtx(db, { executeTool: stripeApp({ payment: payment(buyer) }) })
+    expect(
+      (await invoiceFromStripePayment(ctx, { chargeId: "ch_9", vatRateBp: 2000 })).status,
+    ).toBe("completed")
+    expect(openParks(db)).toHaveLength(0)
+    expect(ctx.emitted.filter((e) => e.action === "unmatched")).toMatchObject([
+      { entityId: "ch_9", data: { resolved: true } },
+    ])
+  })
+
   test("a click with Stripe unreadable, or on a payment that did not succeed, refuses", async () => {
     const db = stripeDb()
     await onStripePaymentUnmatched({ data: { ...CH, customer: buyer } }, stripeCtx(db))

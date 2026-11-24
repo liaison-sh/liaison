@@ -31,6 +31,7 @@ import {
   park,
   parksOf,
   resolveOpenParks,
+  resolveParkAttention,
   STRIPE_INVOICE_PARK,
 } from "../deferred"
 import {
@@ -390,13 +391,20 @@ async function alreadyInvoiced(
   return { status: "skipped", reason: "duplicate_document", document_id: id }
 }
 
-/** Close the open parks of a sale, under each of its names. */
+/** Close the parks of a sale, under each of its names: the given-up ones too, whose line a person
+ *  still sees. */
 export async function closeSale(
   ctx: StripeCtx,
   ids: ReadonlyArray<string | null | undefined>,
   reason: string,
 ): Promise<void> {
-  for (const id of new Set(ids)) if (id) await resolveOpenParks(ctx, stripeRef(id), reason)
+  for (const id of new Set(ids)) {
+    if (!id) continue
+    for (const r of await parksOf(ctx, stripeRef(id))) {
+      await ctx.db.update("deferred_events", r.id, { status: "resolved", reason })
+      await resolveParkAttention(ctx, r)
+    }
+  }
 }
 
 /**

@@ -10,6 +10,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
 import postgres from "postgres"
+import { seedOrgBillingState } from "~/seed/factories/billing/billing"
+import { seedOrgRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const MIGRATION = join(import.meta.dir, "0309_org_class.sql")
@@ -52,19 +54,19 @@ const migrate = async (tx: Tx) => {
   for (const s of STATEMENTS) await tx.unsafe(s)
 }
 
-/** An org as the previous release inserts it. */
-async function org(tx: Tx, settings: unknown = {}): Promise<string> {
-  const [row] = await tx<{ id: string }[]>`
-    INSERT INTO kernel.organizations (name, slug, settings)
-    VALUES ('Org', ${`m0309-${crypto.randomUUID()}`}, ${JSON.stringify(settings)}::text::jsonb) RETURNING id`
-  return (row as { id: string }).id
+const orgs: string[] = []
+const org = async (billed = false): Promise<string> => {
+  const id = await seedOrgRow({ name: "0309 Org", slug: `m0309-${crypto.randomUUID()}` })
+  orgs.push(id)
+  if (billed) await seedOrgBillingState(id)
+  return id
 }
 
-/** A billing row as the previous release inserts it. */
-async function bill(tx: Tx, orgId: string): Promise<void> {
-  await tx`INSERT INTO kernel.org_billing_state
-      (org_id, version, plan, status, period_end, included_credits, auto_top_up)
-    VALUES (${orgId}, 1, 'base', 'active', now(), 0, '{}'::jsonb)`
+/** Write `settings.demo`, as the previous release marks an org: after its insert. */
+const mark = async (tx: Tx, orgId: string, demo: unknown) => {
+  await tx`UPDATE kernel.organizations
+    SET settings = settings || jsonb_build_object('demo', ${JSON.stringify(demo)}::text::jsonb)
+    WHERE id = ${orgId}`
 }
 
 async function classOf(tx: Tx, orgId: string): Promise<string> {
@@ -74,27 +76,34 @@ async function classOf(tx: Tx, orgId: string): Promise<string> {
 }
 
 const marker = (variant: string) => ({
-  demo: { variant, createdAt: "2026-01-01T00:00:00Z", expiresAt: null },
+  variant,
+  createdAt: "2026-01-01T00:00:00Z",
+  expiresAt: null,
 })
 
 beforeAll(() => acquireTestLock())
 afterAll(async () => {
+  for (const id of orgs) await priv`DELETE FROM kernel.organizations WHERE id = ${id}`
   await priv.end()
   await releaseTestLock()
 })
 
 describe("0309 org class", () => {
   it("a valid marker makes a demo org; anything else is standard", async () => {
+    const visitor = await org()
+    const reserved = await org()
+    const plain = await org()
+    const billed = await org(true)
+    const odd = await org()
+    const empty = await org()
+    const text = await org()
     await rolledBack(async (tx) => {
       await before(tx)
-      const visitor = await org(tx, marker("visitor"))
-      const reserved = await org(tx, marker("reserved"))
-      const plain = await org(tx)
-      const billed = await org(tx)
-      await bill(tx, billed)
-      const odd = await org(tx, marker("staging"))
-      const empty = await org(tx, { demo: {} })
-      const text = await org(tx, { demo: "visitor" })
+      await mark(tx, visitor, marker("visitor"))
+      await mark(tx, reserved, marker("reserved"))
+      await mark(tx, odd, marker("staging"))
+      await mark(tx, empty, {})
+      await mark(tx, text, "visitor")
       await migrate(tx)
       expect([await classOf(tx, visitor), await classOf(tx, reserved)]).toEqual(["demo", "demo"])
       for (const id of [plain, billed, odd, empty, text]) {
@@ -104,11 +113,12 @@ describe("0309 org class", () => {
   })
 
   it("a marked org with a billing row stops it, naming the org and the way out", async () => {
+    const both = await org(true)
+    const other = await org()
     await rolledBack(async (tx) => {
       await before(tx)
-      const both = await org(tx, marker("visitor"))
-      await bill(tx, both)
-      const other = await org(tx, marker("visitor"))
+      await mark(tx, both, marker("visitor"))
+      await mark(tx, other, marker("visitor"))
       const err = await tx.savepoint(async (sp) => migrate(sp)).catch((e: Error) => e)
       expect(String(err)).toContain(both)
       expect(String(err)).not.toContain(other)
@@ -120,13 +130,11 @@ describe("0309 org class", () => {
   })
 
   it("the previous release works on it: an org marked after its insert, and a customer billed", async () => {
+    const window = await org()
+    const customer = await org(true)
     await rolledBack(async (tx) => {
-      const window = await org(tx)
-      await tx`UPDATE kernel.organizations
-        SET settings = settings || ${JSON.stringify(marker("visitor"))}::text::jsonb WHERE id = ${window}`
+      await mark(tx, window, marker("visitor"))
       expect(await classOf(tx, window)).toBe("standard")
-      const customer = await org(tx)
-      await bill(tx, customer)
       await tx`UPDATE kernel.org_billing_state SET version = 2 WHERE org_id = ${customer}`
       await tx`DELETE FROM kernel.organizations WHERE id = ${customer}`
       expect(
@@ -135,14 +143,10 @@ describe("0309 org class", () => {
     })
   })
 
-  it("a demo org can never be billed, and no third class exists", async () => {
+  it("a billed org can never become a demo one, and no third class exists", async () => {
+    const customer = await org(true)
+    const plain = await org()
     await rolledBack(async (tx) => {
-      const demo = await org(tx)
-      await tx`UPDATE kernel.organizations SET class = 'demo' WHERE id = ${demo}`
-      const billed = await tx.savepoint((sp) => bill(sp, demo)).catch((e: Error) => e)
-      expect(String(billed)).toMatch(/org_billing_state_org_class_fk/)
-      const customer = await org(tx)
-      await bill(tx, customer)
       const flipped = await tx
         .savepoint(
           (sp) => sp`UPDATE kernel.organizations SET class = 'demo' WHERE id = ${customer}`,
@@ -150,7 +154,7 @@ describe("0309 org class", () => {
         .catch((e: Error) => e)
       expect(String(flipped)).toMatch(/org_billing_state_org_class_fk/)
       const third = await tx
-        .savepoint((sp) => sp`UPDATE kernel.organizations SET class = 'trial' WHERE id = ${demo}`)
+        .savepoint((sp) => sp`UPDATE kernel.organizations SET class = 'trial' WHERE id = ${plain}`)
         .catch((e: Error) => e)
       expect(String(third)).toMatch(/organizations_class_check/)
     })

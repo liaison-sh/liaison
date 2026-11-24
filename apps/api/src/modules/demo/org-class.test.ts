@@ -15,6 +15,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, spyOn
 import postgres from "postgres"
 import { runDemoReclassifyCli } from "~/cli/demo-reclassify"
 import { sql } from "~/db"
+import { withSystemDb } from "~/db/privileged"
+import { orgBillingState } from "~/db/schema/kernel"
 import { _setEdition } from "~/lib/edition"
 import { env } from "~/lib/env"
 import * as beforeDisconnectModule from "~/modules/apps/connections/before-disconnect"
@@ -45,12 +47,14 @@ import type { OrgExternalStateDeps } from "~/modules/org/purge/external"
 import { ensureImmutableTriggersCurrent } from "~/modules/org/purge/immutable-triggers"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
 import { ensureOrg, OrgClassMismatchError } from "~/modules/provisioning/ensure-org"
-import { seedOrgBillingState } from "~/seed/factories/billing/billing"
+import { upsertAppRow } from "~/seed/factories/app-tables"
+import { AUTO_TOP_UP_OFF, seedOrgBillingState } from "~/seed/factories/billing/billing"
 import { type OrgRowSeed, seedOrgRow, seedUserRow } from "~/seed/factories/org/rows"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
 const tag = crypto.randomUUID().slice(0, 8)
-const APP_SCHEMA = `app_orgclass_${tag}`
+const APP = `orgclass_${tag}`
+const APP_SCHEMA = `app_${APP}`
 const HOUR = 3_600_000
 /** Expired two days ago. */
 const expired = () => visitorMarker(1, new Date(Date.now() - 48 * HOUR))
@@ -98,7 +102,9 @@ async function makeOrg(row: Partial<OrgRowSeed> & { class?: "standard" | "demo" 
     name: "P",
     passwordHash: "x",
   })
-  await sql.unsafe(`INSERT INTO "${APP_SCHEMA}".legal (org_id, sha) VALUES ('${id}', 'h')`)
+  await withSystemDb("test-org-class-legal", (tx) =>
+    upsertAppRow(tx, APP, "legal", { id: crypto.randomUUID(), org_id: id, sha: "h" }),
+  )
   return { id, slug }
 }
 
@@ -245,11 +251,21 @@ describe("a demo org and the control plane", () => {
     const org = await makeOrg({ class: "demo" })
     const err = await seedOrgBillingState(org.id).catch((e: unknown) => e)
     expect(String((err as { cause?: unknown }).cause ?? err)).toMatch(/org_billing_state_org_class/)
-    const claimed = await sql`
-      INSERT INTO kernel.org_billing_state
-        (org_id, org_class, version, plan, status, period_end, included_credits, auto_top_up)
-      VALUES (${org.id}, 'demo', 1, 'base', 'active', now(), 0, '{}'::jsonb)`.catch((e: Error) => e)
-    expect(String(claimed)).toMatch(/org_billing_state_org_class/)
+    const claimed = await withSystemDb("test-org-class-claimed", (tx) =>
+      tx.insert(orgBillingState).values({
+        orgId: org.id,
+        orgClass: "demo" as "standard",
+        version: 1,
+        plan: "base",
+        status: "active",
+        periodEnd: new Date(),
+        includedCredits: "0",
+        autoTopUp: AUTO_TOP_UP_OFF,
+      }),
+    ).catch((e: unknown) => e)
+    expect(String((claimed as { cause?: unknown }).cause ?? claimed)).toMatch(
+      /org_billing_state_org_class/,
+    )
   })
 
   it("a customer org is billed as before, and deleting it takes its billing row", async () => {
@@ -378,8 +394,7 @@ describe("purging a demo org", () => {
   it("refuses an org the control plane created", async () => {
     const org = await makeOrg({ class: "demo" })
     await markOrgAsDemo(org.id, expired())
-    await sql`INSERT INTO kernel.cloud_request_outcomes (endpoint, idem_key, binding_hash)
-      VALUES (${CLOUD_CREATE_ORG_ENDPOINT}, ${org.slug}, 'a-create-in-progress')`
+    await claimOutcome(CLOUD_CREATE_ORG_ENDPOINT, org.slug, "owner@example.test")
     expect(await purgeDemoOrg(org.id, new Date(), noStorage)).toEqual({
       purged: false,
       refusal: "customer-org",

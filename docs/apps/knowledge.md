@@ -27,6 +27,12 @@ You can also click **Create knowledge from…** on the Knowledge home to ask you
 
 If someone else saves the document while you edit it, Liaison tells you and offers **Load the latest version**.
 
+## Images and files in a document
+
+A document's images and files are read by the people who can read the document, and by nobody else. When someone loses access to the document, they lose access to its files too. Adding or removing a file needs the right to edit the document.
+
+A document shows only images stored in Liaison. When you save a document that shows an image or a file of another document, Liaison stores its own copy on this document, so it stays when the other document is deleted. A file you cannot read is not copied: its place in the text is kept, and readers see that it is not available. When your organization's storage is full, the document is still saved and the copy is made at a later save, once there is room.
+
 ## Share a document
 
 1. Open the document and click **Share**.
@@ -117,11 +123,11 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | Tool | What it does | Scope |
 |---|---|---|
 | `search` | Search Knowledge and enabled remote sources | `knowledge:documents:read` |
-| `get` | Read a document or a remote source item | `knowledge:documents:read` |
+| `get` | Read a document or a remote source item, with the files its text shows | `knowledge:documents:read` |
 | `find_by_title` | Find a document by its exact title | `knowledge:documents:read` |
 | `review_queue` | List items that need review | `knowledge:documents:read` |
 | `create` | Create a document | `knowledge:documents:create` |
-| `update` | Update a document | `knowledge:documents:update` |
+| `update` | Update a document. Images, files and page links in the text are kept exactly | `knowledge:documents:update` |
 | `verify` | Mark a document verified | `knowledge:documents:update` |
 | `archive`, `restore` | Archive or restore a document | `knowledge:documents:archive` |
 | `collection_create`, `collection_update`, `collection_delete` | Create, change or delete a folder. A created folder is shared unless the user asks for a personal one | `knowledge:collections:manage` |

@@ -30,6 +30,7 @@
 // App registrations here record job handlers but create no BullMQ worker:
 // only a declared job host does (infra/jobs/jobs.ts, hostJobWorkers).
 import { sql as drizzleSql } from "drizzle-orm"
+import { registerKnowledgeSearchEnrichment } from "~/apps/knowledge/search-enrichment"
 import { registerMailSearchEnrichment } from "~/apps/mail/search-enrichment"
 import { kernelRel } from "~/apps/tickets/schema-refs"
 import { registerTicketsSearchEnrichment } from "~/apps/tickets/search-enrichment"
@@ -61,6 +62,7 @@ export async function runSearchReindexCli(): Promise<SearchReindexResult> {
     // registry — same ordering requirement as boot-phase10.ts.
     registerTicketsSearchEnrichment()
     registerMailSearchEnrichment()
+    registerKnowledgeSearchEnrichment()
 
     const orgIds = await listAllOrgIds()
     const apps = await getDefaultApps()

@@ -9,8 +9,14 @@ import {
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import {
+  markEventPending,
+  stampEventNow,
+  updateEventIsRecent,
+} from "~/apps/knowledge/event-coalesce"
 import { shouldResetVerification } from "~/apps/knowledge/review"
 import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { type VersionSession, writeWithVersion } from "~/apps/knowledge/versions"
 import { extractRows, type RlsClient } from "~/db"
 import { isUuid } from "~/lib/uuid"
 import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
@@ -88,6 +94,12 @@ export interface KnowledgeActor {
    */
   roles?: string[]
   includeArchived?: boolean
+  /**
+   * Who writes, for page history: absent for a person; an agent (or an approved
+   * agent action) acting for `userId` is `{ type: "agent", agentId }`. Set by the
+   * bridge (`bridgeKnowledgeActorInput`), never by a request body.
+   */
+  author?: { type: "agent" | "system"; agentId?: string | null }
 }
 
 /**
@@ -105,6 +117,7 @@ export function knowledgeActorFromContext(input: {
   dimensionGrants: Record<string, string[]>
   roles?: string[]
   includeArchived?: boolean
+  author?: KnowledgeActor["author"]
 }): KnowledgeActor {
   const raw = input.dimensionGrants ?? {}
   const expanded: Record<string, string[]> = {}
@@ -151,6 +164,7 @@ export function knowledgeActorFromContext(input: {
     dimensionGrants: expanded,
     roles: input.roles ?? [],
     includeArchived: input.includeArchived,
+    ...(input.author ? { author: input.author } : {}),
   }
 }
 
@@ -1182,11 +1196,25 @@ export async function createKnowledgeDocument(
   return row
 }
 
+/** How an update reaches history and events; set by routes, never by a request body. */
+export interface KnowledgeUpdateOptions {
+  /** The client's editing session (autosave route): one person's edits in it coalesce. */
+  session?: VersionSession
+  /** A restore from history: its own version, kind `restore`. */
+  restore?: boolean
+  /**
+   * An autosave (the autosave route only): identical text writes nothing, and the
+   * update event is coalesced to one a minute (event-coalesce.ts).
+   */
+  coalesceEvents?: boolean
+}
+
 export async function updateKnowledgeDocument(
   tx: RlsClient,
   input: KnowledgeUpdateDocument & { id?: string },
   actor: KnowledgeActor,
   requiredScopes: string[],
+  opts: KnowledgeUpdateOptions = {},
 ): Promise<KnowledgeDocumentRow> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
   const parsed = validateUpdateInput(input)
@@ -1209,6 +1237,17 @@ export async function updateKnowledgeDocument(
   assertCanWriteDocumentRow(row, actor, updateShareRole)
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
+
+  // An autosave of the text already stored (an editor opened and closed, a retry
+  // whose first answer was lost) writes nothing: no revision, no version, no event.
+  if (
+    opts.coalesceEvents &&
+    (parsed.title === undefined || parsed.title === row.title) &&
+    (parsed.body === undefined || parsed.body === row.body)
+  ) {
+    return row
+  }
+  const eventOwed = opts.coalesceEvents === true && (await updateEventIsRecent(tx, row.id))
 
   if (
     parsed.ownerUserId &&
@@ -1272,10 +1311,15 @@ export async function updateKnowledgeDocument(
   if (parsed.editScope !== undefined) sets.push(drizzleSql`edit_scope = ${parsed.editScope}`)
   if (parsed.reviewDueAt !== undefined) sets.push(drizzleSql`review_due_at = ${parsed.reviewDueAt}`)
 
-  // shouldResetVerification needs the merged shape
-  const merged = { ...row, ...mapPatchForReview(parsed) }
+  // Only what this patch really changes counts: a field sent back with the value it
+  // already has (an editor re-sending the whole page, a reviewDueAt-only patch) leaves a
+  // verified page verified.
+  const changed = changedReviewFields(row, parsed, changingTeam, changingSensitivity)
   let reviewStatus: string | undefined
-  if (shouldResetVerification(row, merged)) reviewStatus = "needs_review"
+  if (shouldResetVerification(row, changed)) {
+    reviewStatus = "needs_review"
+    sets.push(drizzleSql`review_reason = 'content_changed'`)
+  }
   if (parsed.verifyNow) reviewStatus = "verified"
   if (reviewStatus !== undefined) sets.push(drizzleSql`review_status = ${reviewStatus}`)
   if (parsed.verifyNow) {
@@ -1285,6 +1329,8 @@ export async function updateKnowledgeDocument(
   sets.push(drizzleSql`updated_by = ${actor.userId}::uuid`)
   sets.push(drizzleSql`updated_at = now()`)
   sets.push(drizzleSql`revision = revision + 1`)
+  if (eventOwed) sets.push(markEventPending())
+  else sets.push(...stampEventNow())
   // D5: the writing turn's scopes join the document's tag. Union, never
   // replace: an empty assertion (a human edit) leaves an existing tag intact.
   sets.push(unionRequiredScopesSql(requiredScopes))
@@ -1305,13 +1351,34 @@ export async function updateKnowledgeDocument(
     // the second writer's UPDATE (which blocks on the first's row lock, then
     // re-evaluates its WHERE against the committed row) matches zero rows and
     // surfaces as REVISION_CONFLICT for the caller to re-read and retry.
-    const updateResult = await tx.execute(drizzleSql`
-      UPDATE ${knowledgeRel("documents")}
-      SET ${setSql}
-      WHERE id = ${parsed.id}::uuid AND org_id = ${actor.orgId}::uuid
-        AND revision = ${parsed.revision}
-      RETURNING id
-    `)
+    // The version of the text this write leaves is written by the same statement
+    // (versions.ts), so the save and its history land together or not at all.
+    const textChanges =
+      (parsed.title !== undefined && parsed.title !== row.title) ||
+      (parsed.body !== undefined && parsed.body !== row.body)
+    const agent = actor.author?.type === "agent"
+    const applied = await writeWithVersion(tx, {
+      orgId: actor.orgId,
+      documentId: parsed.id,
+      expectedRevision: parsed.revision,
+      setSql,
+      pre: {
+        title: row.title,
+        body: row.body,
+        revision: row.revision,
+        createdBy: row.createdBy,
+        updatedBy: row.updatedBy,
+        updatedAt: row.updatedAt,
+      },
+      textChanges,
+      kind: opts.restore ? "restore" : agent ? "agent" : "edit",
+      author: {
+        type: actor.author?.type ?? "user",
+        userId: actor.userId,
+        agentId: actor.author?.agentId ?? null,
+      },
+      session: opts.session,
+    })
     // ⛔ NO SILENT NO-OP (BL-277). The service-layer authz (assertCanWriteDocumentRow + the revision
     // check) passed above, so this UPDATE MUST touch exactly one row. If RLS (the UPDATE USING policy)
     // disagrees with the service authz — as it did before this fix, when the RLS policy was owner-only
@@ -1321,7 +1388,7 @@ export async function updateKnowledgeDocument(
     // routine tick's troubleshooting-doc body never persisted; the tick honestly believed it succeeded).
     // Fail LOUDLY instead so any future service-vs-RLS authz drift surfaces as a real error in the tool
     // result, never a swallowed no-op. RETURNING id makes the affected-row count deterministic.
-    if (extractRows(updateResult).length === 0) {
+    if (!applied) {
       // Zero rows now has TWO possible causes — disambiguate by re-reading the
       // revision: if it moved, this is the concurrent-writer race (the CAS
       // doing its job) → REVISION_CONFLICT so callers retry; only a still-
@@ -1346,32 +1413,42 @@ export async function updateKnowledgeDocument(
     await recomputeDocumentAcl(tx, parsed.id)
   }
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "document",
-    action: "update",
-    entityId: parsed.id,
-    data: { id: parsed.id },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  // An autosave inside the minute after the page's last event owes its event to the
+  // flush job instead (event-coalesce.ts); every other update emits now.
+  if (!eventOwed) {
+    await tx.queueEvent({
+      app: "knowledge",
+      entity: "document",
+      action: "update",
+      entityId: parsed.id,
+      data: { id: parsed.id },
+      actorId: actor.userId,
+      actorType: "user",
+      orgId: actor.orgId,
+    })
+  }
 
   const updated = await loadKnowledgeDocument(tx, parsed.id, actor)
   if (!updated) throw new KnowledgeError("NOT_FOUND", "Knowledge document missing after update")
   return updated
 }
 
-function mapPatchForReview(
+/** The reviewed fields this patch gives a value different from the row's. */
+function changedReviewFields(
+  row: KnowledgeDocumentRow,
   parsed: KnowledgeUpdateDocument & { id: string },
-): Partial<KnowledgeDocumentRow> {
-  const out: Partial<KnowledgeDocumentRow> = {}
-  if (parsed.title !== undefined) out.title = parsed.title
-  if (parsed.summary !== undefined) out.summary = parsed.summary
-  if (parsed.body !== undefined) out.body = parsed.body
-  if (parsed.ownerUserId !== undefined) out.ownerUserId = parsed.ownerUserId
-  if (parsed.team !== undefined) out.team = parsed.team
-  if (parsed.sensitivity !== undefined) out.sensitivity = parsed.sensitivity
+  changingTeam: boolean,
+  changingSensitivity: boolean,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (parsed.title !== undefined && parsed.title !== row.title) out.title = parsed.title
+  if (parsed.summary !== undefined && (parsed.summary ?? null) !== (row.summary ?? null))
+    out.summary = parsed.summary
+  if (parsed.body !== undefined && parsed.body !== row.body) out.body = parsed.body
+  if (parsed.ownerUserId !== undefined && parsed.ownerUserId !== row.ownerUserId)
+    out.ownerUserId = parsed.ownerUserId
+  if (changingTeam) out.team = parsed.team
+  if (changingSensitivity) out.sensitivity = parsed.sensitivity
   return out
 }
 

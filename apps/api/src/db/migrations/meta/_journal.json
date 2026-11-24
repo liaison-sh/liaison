@@ -2178,6 +2178,13 @@
       "when": 1900003401001,
       "tag": "0309_org_class",
       "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1900003402001,
+      "tag": "0310_knowledge_page_lifecycle",
+      "breakpoints": true
     }
   ]
 }

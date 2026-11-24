@@ -37,6 +37,7 @@ import {
   mentionMarked,
 } from "~/modules/shell/markdown-content"
 import { rawHtml } from "./raw-html"
+import { RawMarkdownInline, type RawMarkdownLabels } from "./raw-image"
 
 /**
  * A range just written by dictation, tinted for a moment (`.inserted-tint`
@@ -584,7 +585,7 @@ function keys(handlers: EditorKeys, inline: boolean) {
 
 export function editorExtensions(
   preset: EditorPreset,
-  options: { placeholder?: string; keys: EditorKeys },
+  options: { placeholder?: string; keys: EditorKeys; rawLabels?: RawMarkdownLabels },
 ): AnyExtension[] {
   const inline = preset === "inline"
   const doc = preset === "document"
@@ -608,6 +609,14 @@ export function editorExtensions(
     ...(inline ? [InlineDocument] : []),
     ...(full ? [TaskList, TaskItem.configure({ nested: true })] : []),
     ...(doc ? documentTable : []),
+    // A page keeps images and label-less links (page links) as their source.
+    ...(doc
+      ? [
+          options.rawLabels
+            ? RawMarkdownInline.configure({ labels: options.rawLabels })
+            : RawMarkdownInline,
+        ]
+      : []),
     ...(inline ? [] : [MarkdownTable, ...rawHtml]),
     MarkdownUnderline,
     StrikeAlias,

@@ -17,6 +17,7 @@
  */
 import { sql as drizzleSql } from "drizzle-orm"
 import { runAppSourceSyncJob } from "~/apps/knowledge/app-sources"
+import { flushPendingUpdateEvents } from "~/apps/knowledge/event-coalesce"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import type { KnowledgeSourceAdapter } from "~/apps/knowledge/source-protocol"
 import { reconcileSyncedSource } from "~/apps/knowledge/sync-reconciler"
@@ -331,6 +332,12 @@ export async function registerKnowledgeJobs(opts: RunSyncWorkerDeps = {}): Promi
   // up again.
   await registerScheduledJob("knowledge", "stale-running-reclaim", "*/5 * * * *", async () => {
     await reclaimStaleRunningSources()
+  })
+
+  // The update event autosave held back (event-coalesce.ts): one per page, once the
+  // page's last event is a minute old.
+  await registerScheduledJob("knowledge", "update-event-flush", "*/1 * * * *", async () => {
+    await flushPendingUpdateEvents()
   })
 
   registerJobWorker<SyncJobPayload>("knowledge", "sync-source", async (payload) => {

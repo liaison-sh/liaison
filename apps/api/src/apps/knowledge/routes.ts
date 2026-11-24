@@ -35,7 +35,7 @@ import {
 } from "~/apps/knowledge/federated-search"
 import { requestForceOnOpenSync } from "~/apps/knowledge/force-on-open"
 import { searchLocalKnowledge } from "~/apps/knowledge/local-search"
-import { mountPageRoutes } from "~/apps/knowledge/page-routes"
+import { autosaveOptions, mountPageRoutes } from "~/apps/knowledge/page-routes"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   archiveKnowledgeDocument,
@@ -170,6 +170,7 @@ function writeRefusal(c: KnowledgeContext, err: unknown, what: "page" | "folder"
 mountPageRoutes(knowledgeRoutes, {
   getActor: (c) => getActor(c),
   pageWriteRefusal: (c, err) => writeRefusal(c, err, "page"),
+  pageNotFound: (c, err) => zeroKnowledgeResponse(c, err),
 })
 
 // ---------------------------------------------------------------------------
@@ -310,9 +311,15 @@ knowledgeRoutes.patch(
       const actor = getActor(c)
       const { id } = c.req.valid("param")
       const input = { ...c.req.valid("json"), id }
+      // `?autosave=1&session=<uuid>[&fresh=1]`: the page editor's own saves. Its update
+      // events are coalesced and its edits in one session form one version; from the
+      // query only, so no body field (and no agent) reaches it.
+      const autosave = autosaveOptions((name) => c.req.query(name))
       // A human edit asserts [] and the union leaves any tag an agent turn put
       // on the document intact.
-      const doc = await withRequestRls(c, (tx) => updateKnowledgeDocument(tx, input, actor, []))
+      const doc = await withRequestRls(c, (tx) =>
+        updateKnowledgeDocument(tx, input, actor, [], autosave ?? {}),
+      )
       return success(c, doc)
     } catch (err) {
       // Writes against rows the actor cannot read must also zero-knowledge.

@@ -359,7 +359,8 @@ async function lateWorkOf(tx: Tx, orgId: string, c: Omit<Context, "late">): Prom
   const { ledger } = c
   const earlier = c.cards.filter((b) => b.to < c.period.from)
   const months = lateMonths(ledger, earlier)
-  const closed = lateClosedTasks(c.cards, c.rows, ledger.claimed, c.period.from)
+  // A claim of a retainer month holds that month's hours alone, not the task.
+  const closed = lateClosedTasks(c.cards, c.rows, ledger.rest.touched, c.period.from)
   const after = laterTime(ledger, c.period.from)
   if (c.basis === "daily" || c.basis === "hourly") {
     const byTime = new Set(
@@ -533,7 +534,7 @@ export async function reconcileFacts(args: {
             r.completed_on !== null &&
             r.completed_on > lastBilled &&
             r.completed_on < c.period.from &&
-            !taskClaim.has(r.id)),
+            !c.ledger.rest.touched.has(r.id)),
       )
     : []
   // Hours of an invoiced retainer month its invoice did not count, month by month, and the time

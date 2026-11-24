@@ -787,6 +787,15 @@ class World {
 
     let next = this.month
     while (cards.some((c) => c.from === monthAt(next))) next++
+    const credited = new Set(
+      (
+        await rows<{ from: string }>(drizzleSql`
+          SELECT DISTINCT to_char(period_start, 'YYYY-MM') AS "from"
+            FROM app_projects.reconciliations
+           WHERE project_id = ${this.project}::uuid AND state = 'credited'`)
+      ).map((c) => c.from),
+    )
+    for (const c of cards) credited.delete(c.from)
     const fee = new Set(cards.filter((c) => c.basis === "retainer").map((c) => c.from))
     const monthOf = (key: string) => key.split("+")[0] as string
     const bucketOf = (key: string) =>
@@ -912,6 +921,9 @@ class World {
           toSay += m
         // Closed under a fixed price, with nothing of it on a card: inside that price.
         else if (bucket === "all" && !touched && t.closed && this.fixed.has(t.closed.slice(0, 7)))
+          continue
+        // Its invoice credited and its month's card not made again: on that month's card.
+        else if (bucket === "all" && !touched && t.closed && credited.has(t.closed.slice(0, 7)))
           continue
         // Closed in a month no card was made for: told to whoever makes the next one.
         else if (bucket === "all" && !touched && told.has(id)) continue
@@ -1465,5 +1477,213 @@ describe("what the lines of later time say", () => {
     await made(w, OCT)
     await w.credit(sep.reconciliationId)
     expect(await offered(w, NOV)).toEqual([["Earlier work, its invoice credited since", 120, 120]])
+  })
+})
+
+describe("minutes counted one way and a project billed another way since", () => {
+  it("by the hour first, a month that becomes a retainer's does not count them again", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    await w.enter(x, "2026-10-02", 60)
+    // September's card, made in October, counts the task whole.
+    expect(said(await made(w, SEP, [line("One", x)]))).toEqual([["One", 180, 180]])
+    w.month = OCT
+    await w.setBasis("retainer")
+    await w.enter(x, "2026-10-05", 30)
+    expect((await offered(w, OCT)).map((l) => l.slice(1))).toEqual([[30, 30]])
+    await made(w, OCT)
+    expect(await offered(w, NOV)).toEqual([])
+    // And what counted them owes nothing back.
+    w.month = NOV
+    await w.setBasis("hourly")
+    const z = await w.task({ closed: "2026-11-04" })
+    await w.enter(z, "2026-11-03", 60)
+    expect(said(await proposed(w, NOV, [line("New", z)]))).toEqual([["New", 60, 60]])
+  })
+
+  it("a claim made before the month began counted none of it, whatever was taken off it since", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    const sep = await made(w, SEP, [line("One", x)])
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET created_at = '2026-09-30 09:00+00'
+       WHERE reconciliation_id = ${sep.reconciliationId}::uuid`)
+    await db.execute(drizzleSql`DELETE FROM app_projects.task_time WHERE task_id = ${x.id}::uuid`)
+    w.month = OCT
+    await w.setBasis("retainer")
+    await w.enter(x, "2026-10-05", 60)
+    expect((await offered(w, OCT)).map((l) => l.slice(1))).toEqual([[60, 60]])
+  })
+
+  it("a later card's hours of a month whose own invoice was credited are not billed by the hour", async () => {
+    const w = await world("retainer")
+    const x = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    const sep = await made(w, SEP, [line("One", x)])
+    await w.enter(x, "2026-09-11", 60)
+    await made(w, OCT)
+    await w.credit(sep.reconciliationId)
+    w.month = NOV
+    await w.setBasis("hourly")
+    await w.close(x, "2026-11-02")
+    expect(said(await proposed(w, NOV, [line("One", x)]))).toEqual([["One", 120, 120]])
+  })
+
+  it("a task with a retainer month's hours, closed by the hour after its period's card, is on the next one", async () => {
+    const w = await world("retainer")
+    const x = await w.task({})
+    const y = await w.task({})
+    await w.enter(x, "2026-09-09", 120)
+    await made(w, SEP)
+    w.month = OCT
+    await w.setBasis("hourly")
+    await w.enter(y, "2026-10-02", 60)
+    await w.close(y, "2026-10-03")
+    await made(w, OCT, [line("October", y)])
+    await w.enter(x, "2026-10-10", 90)
+    await w.close(x, "2026-10-20")
+    expect(await offered(w, NOV)).toEqual([
+      ["Earlier work not in the plan, closed after its invoice", 90, 90],
+    ])
+    // Told too when no card covers the day it closed.
+    await w.close(x, "2026-11-20")
+    expect((await w.dry(NOV + 1)).told.has(x.id)).toBe(true)
+  })
+
+  it("hours of a retainer month that has a timebox and no card yet are its card's, not said as outside", async () => {
+    const w = await world("retainer")
+    const x = await w.task({})
+    await w.enter(x, "2026-09-09", 120)
+    await insertAppRow(db as never, "projects", "project_timeboxes", {
+      id: crypto.randomUUID(),
+      org_id: orgId,
+      project_id: w.project,
+      period_start: "2026-09-01",
+      period_end: "2026-09-30",
+      minutes: 2400,
+      source: "retainer",
+      source_ref: crypto.randomUUID(),
+      created_by: a,
+    })
+    expect((await w.dry(OCT)).byHand).toBeNull()
+  })
+
+  it("the client's own work outside a retainer's months is not said", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    const theirs = await w.task({ closed: "2026-09-11" })
+    await w.enter(x, "2026-09-09", 60)
+    await w.enter(theirs, "2026-09-11", 300)
+    await reserved(w, await proposed(w, SEP, [line("One", x)], [theirs]), SEP)
+    w.month = OCT
+    await w.setBasis("retainer")
+    expect((await w.dry(OCT)).byHand).toBeNull()
+  })
+
+  it("time outside the retainer's months on a task closed in one is said on an hourly card, or is on the line of the task above it", async () => {
+    const w = await world("retainer")
+    const p = await w.task({})
+    const x = await w.task({ closed: "2026-09-10", parent: p.id })
+    await w.enter(x, "2026-09-09", 60)
+    await made(w, SEP)
+    w.month = OCT
+    await w.setBasis("hourly")
+    await w.enter(x, "2026-10-02", 120)
+    expect((await w.dry(OCT)).byHand).toContain('2 h were entered on "T1"')
+    await w.close(p, "2026-10-20")
+    const whole = await w.dry(OCT)
+    expect(whole.byHand).toBeNull()
+    await made(w, OCT, [line("Whole", p)])
+    await w.enter(x, "2026-10-25", 30)
+    const nov = await w.dry(NOV)
+    expect(said(nov.card)).toEqual([[LATER, 30, 30]])
+    expect(nov.byHand).toBeNull()
+  })
+})
+
+describe("what a line above takes in", () => {
+  it("is not the client's own work, nor what is under it", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10" })
+    const theirs = await w.task({ closed: "2026-09-11", parent: p.id })
+    const under = await w.task({ parent: theirs.id })
+    await w.enter(p, "2026-09-09", 60)
+    await w.enter(theirs, "2026-09-11", 300)
+    await w.enter(under, "2026-09-11", 120)
+    const card = await proposed(w, SEP, [line("Whole", p)], [theirs])
+    expect(said(card)).toEqual([["Whole", 60, 60]])
+    await reserved(w, card, SEP)
+    expect(await offered(w, OCT)).toEqual([])
+  })
+
+  it("is not work left off another card, unless the line names it; a planned task left off bills its plan again when named", async () => {
+    const w = await world("hourly")
+    const p = await w.task({})
+    const c = await w.task({ closed: "2026-09-10", parent: p.id })
+    const x = await w.task({ closed: "2026-09-10" })
+    const plan = await w.task({ closed: "2026-09-12", plan: 240 })
+    await w.enter(c, "2026-09-09", 120)
+    await w.enter(x, "2026-09-09", 60)
+    await w.enter(plan, "2026-09-12", 90)
+    let card = await proposed(w, SEP, [line("One", x), line("Part", c), line("Plan", plan)])
+    card = await bill(card, "One", 1)
+    card = await bill(card, "Plan", 0)
+    await reserved(w, card, SEP)
+    await w.enter(p, "2026-10-02", 60)
+    await w.close(p, "2026-10-03")
+    expect(said(await proposed(w, OCT, [line("Whole", p)]))).toEqual([["Whole", 60, 60]])
+    const both = await proposed(w, OCT, [line("Whole", p), line("Part", c), line("Plan", plan)])
+    expect(said(both)).toEqual([
+      ["Whole", 60, 0],
+      ["Plan", 90, 240],
+      ["Part", 120, 120],
+    ])
+    await reserved(w, both, OCT)
+    expect(await offered(w, NOV)).toEqual([])
+  })
+
+  it("named on a line set to 0 again, it is left off once", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    const y = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 60)
+    await w.enter(y, "2026-09-09", 120)
+    await reserved(
+      w,
+      await bill(await proposed(w, SEP, [line("One", x), line("Two", y)]), "Two", 0),
+      SEP,
+    )
+    const z = await w.task({ closed: "2026-10-04" })
+    await w.enter(z, "2026-10-04", 60)
+    const card = await proposed(w, OCT, [line("New", z), line("Two after all", y)])
+    await reserved(w, await bill(card, "Two after all", 0), OCT)
+    await w.enter(y, "2026-10-20", 30)
+    expect(await offered(w, NOV)).toEqual([[LEFT, 30, 30]])
+  })
+
+  it("a task a person billed by hand on one line, its minutes left off on another, is left off", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10" })
+    const c = await w.task({ closed: "2026-09-11", parent: p.id })
+    await w.enter(p, "2026-09-09", 60)
+    await w.enter(c, "2026-09-11", 120)
+    let card = await proposed(w, SEP, [line("Whole", p)])
+    card = await bill(card, "Whole", 0)
+    card = await bill(card, "Other closed tasks", 1)
+    await reserved(w, card, SEP)
+    expect(await offered(w, OCT)).toEqual([])
+  })
+
+  it("is each task once on a retainer, whatever is above it", async () => {
+    const w = await world("retainer")
+    const p = await w.task({})
+    const c = await w.task({ parent: p.id })
+    await w.enter(p, "2026-09-09", 60)
+    await w.enter(c, "2026-09-09", 120)
+    const card = await made(w, SEP, [line("Whole", p), line("Again", p)])
+    expect((card.lines as Card[]).reduce((x, l) => x + l.realMinutes, 0)).toBe(180)
+    expect(await offered(w, OCT)).toEqual([])
   })
 })

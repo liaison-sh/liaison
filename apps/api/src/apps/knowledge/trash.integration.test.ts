@@ -32,6 +32,7 @@ import { initializedOrgRuntimes } from "~/modules/apps/app-registries"
 import { executeTool } from "~/modules/apps/execute-tool"
 import { extendFullMemberRole, FULL_MEMBER_ROLE_NAME } from "~/modules/apps/runtime"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -119,6 +120,16 @@ async function trash(id: string, who = editor): Promise<void> {
 
 async function privileged(statement: ReturnType<typeof sql>) {
   return withPrivilegedDb(orgId, "test-trash", (tx) => tx.execute(statement))
+}
+
+/** Test rows written as they are (the test-row factory), in the org's privileged context. */
+async function insertRow(
+  schema: string,
+  table: string,
+  rows: Record<string, RowValue> | Record<string, RowValue>[],
+  returning?: string,
+) {
+  return privileged(sql.raw(insertSql(`${schemaRef(schema)}.${table}`, rows, { returning })))
 }
 
 interface Clock {
@@ -214,31 +225,43 @@ async function trashList(who = editor): Promise<Entry[]> {
 /** A shared folder holding the page (as the folder tree files it). */
 async function folderWith(name: string, ...ids: string[]): Promise<string> {
   const [folder] = extractRows<{ id: string }>(
-    await privileged(sql`
-      INSERT INTO ${K()}.collections (org_id, name) VALUES (${orgId}::uuid, ${name})
-      RETURNING id::text AS id`),
+    await insertRow("app_knowledge", "collections", { org_id: orgId, name }, "id::text AS id"),
   )
   for (const id of ids) {
-    await privileged(sql`
-      INSERT INTO ${K()}.collection_memberships (org_id, collection_id, target_type, target_id)
-      VALUES (${orgId}::uuid, ${folder?.id}::uuid, 'document', ${id}::uuid)`)
+    await insertRow("app_knowledge", "collection_memberships", {
+      org_id: orgId,
+      collection_id: folder?.id ?? null,
+      target_type: "document",
+      target_id: id,
+    })
   }
   return folder?.id ?? ""
 }
 
 async function syncedSource(): Promise<string> {
   const [folder] = extractRows<{ id: string }>(
-    await privileged(sql`
-      INSERT INTO ${K()}.collections (org_id, name) VALUES (${orgId}::uuid, 'Drive root')
-      RETURNING id::text AS id`),
+    await insertRow(
+      "app_knowledge",
+      "collections",
+      { org_id: orgId, name: "Drive root" },
+      "id::text AS id",
+    ),
   )
   const [src] = extractRows<{ id: string }>(
-    await privileged(sql`
-      INSERT INTO ${K()}.synced_sources
-        (org_id, app_name, folder_ref, display_name, root_collection_id, created_by, default_sensitivity)
-      VALUES (${orgId}::uuid, 'google-drive', ${`f-${crypto.randomUUID()}`}, 'Drive',
-              ${folder?.id}::uuid, ${editorId}::uuid, 'internal')
-      RETURNING id::text AS id`),
+    await insertRow(
+      "app_knowledge",
+      "synced_sources",
+      {
+        org_id: orgId,
+        app_name: "google-drive",
+        folder_ref: `f-${crypto.randomUUID()}`,
+        display_name: "Drive",
+        root_collection_id: folder?.id ?? null,
+        created_by: editorId,
+        default_sensitivity: "internal",
+      },
+      "id::text AS id",
+    ),
   )
   return src?.id ?? ""
 }
@@ -459,9 +482,12 @@ describe("synced pages never go to Trash (edge 6, A21)", () => {
     const id = await page()
     const src = await syncedSource()
     const [identity] = extractRows<{ id: string }>(
-      await privileged(sql`
-        INSERT INTO ${K()}.source_identities (org_id, source, external_id)
-        VALUES (${orgId}::uuid, 'google-drive', ${`file-${id}`}) RETURNING id::text AS id`),
+      await insertRow(
+        "app_knowledge",
+        "source_identities",
+        { org_id: orgId, source: "google-drive", external_id: `file-${id}` },
+        "id::text AS id",
+      ),
     )
     await privileged(sql`UPDATE ${K()}.documents
                             SET synced_source_id = ${src}::uuid, source_identity_id = ${identity?.id}::uuid, revision = 0
@@ -632,36 +658,71 @@ describe("the purge removes everything (S19, K-R12)", () => {
     const doc = (await call(editor, "GET", `/documents/${id}`)).json.data as { revision: number }
     await call(editor, "PATCH", `/documents/${id}`, { revision: doc.revision, body: "second" })
     const [file] = extractRows<{ id: string }>(
-      await privileged(sql`
-        INSERT INTO ${KS()}.files (org_id, app, entity_type, entity_id, filename, mime_type, size_bytes, storage_key, thumbnail_key)
-        VALUES (${orgId}::uuid, 'knowledge', 'document', ${id}, 'shot.png', 'image/png', 10,
-                ${`${orgId}/trash-test/${id}.png`}, ${`${orgId}/trash-test/${id}.thumb.png`})
-        RETURNING id::text AS id`),
+      await insertRow(
+        "kernel",
+        "files",
+        {
+          org_id: orgId,
+          app: "knowledge",
+          entity_type: "document",
+          entity_id: id,
+          filename: "shot.png",
+          mime_type: "image/png",
+          size_bytes: 10,
+          storage_key: `${orgId}/trash-test/${id}.png`,
+          thumbnail_key: `${orgId}/trash-test/${id}.thumb.png`,
+        },
+        "id::text AS id",
+      ),
     )
     const [tag] = extractRows<{ id: string }>(
-      await privileged(sql`
-        INSERT INTO ${K()}.tags (org_id, name, normalized_name)
-        VALUES (${orgId}::uuid, ${`t-${id}`}, ${`t-${id}`}) RETURNING id::text AS id`),
+      await insertRow(
+        "app_knowledge",
+        "tags",
+        { org_id: orgId, name: `t-${id}`, normalized_name: `t-${id}` },
+        "id::text AS id",
+      ),
     )
     const thread = await minimal.thread(orgId, editorId, { title: "refs" })
-    await privileged(sql`
-      INSERT INTO ${K()}.taggings (org_id, tag_id, target_type, target_id)
-      VALUES (${orgId}::uuid, ${tag?.id}::uuid, 'document', ${id}::uuid)`)
-    await privileged(sql`
-      INSERT INTO ${K()}.document_links (org_id, source_document_id, target_document_id)
-      VALUES (${orgId}::uuid, ${id}::uuid, ${neighbour}::uuid),
-             (${orgId}::uuid, ${neighbour}::uuid, ${id}::uuid)`)
-    await privileged(sql`
-      INSERT INTO ${KS()}.resource_grants (org_id, resource_type, resource_id, grantee_kind, grantee, role)
-      VALUES (${orgId}::uuid, 'knowledge.document', ${id}::uuid, 'user', ${viewerId}, 'viewer')`)
-    await privileged(sql`
-      INSERT INTO ${KS()}.thread_references (thread_id, app, entity_type, entity_id, added_by, org_id)
-      VALUES (${thread}::uuid, 'knowledge', 'document', ${id}, ${editorId}::uuid, ${orgId}::uuid)`)
-    await privileged(sql`
-      INSERT INTO ${KS()}.attention_events
-        (org_id, user_id, app, entity_type, entity_id, kind, urgency, summary, actor_type, occurred_at, digest_eligible_at)
-      VALUES (${orgId}::uuid, ${editorId}::uuid, 'knowledge', 'document', ${id}, 'knowledge_review', 1,
-              'Review', 'system', now(), now())`)
+    await insertRow("app_knowledge", "taggings", {
+      org_id: orgId,
+      tag_id: tag?.id ?? null,
+      target_type: "document",
+      target_id: id,
+    })
+    await insertRow("app_knowledge", "document_links", [
+      { org_id: orgId, source_document_id: id, target_document_id: neighbour },
+      { org_id: orgId, source_document_id: neighbour, target_document_id: id },
+    ])
+    await insertRow("kernel", "resource_grants", {
+      org_id: orgId,
+      resource_type: "knowledge.document",
+      resource_id: id,
+      grantee_kind: "user",
+      grantee: viewerId,
+      role: "viewer",
+    })
+    await insertRow("kernel", "thread_references", {
+      thread_id: thread,
+      app: "knowledge",
+      entity_type: "document",
+      entity_id: id,
+      added_by: editorId,
+      org_id: orgId,
+    })
+    await insertRow("kernel", "attention_events", {
+      org_id: orgId,
+      user_id: editorId,
+      app: "knowledge",
+      entity_type: "document",
+      entity_id: id,
+      kind: "knowledge_review",
+      urgency: 1,
+      summary: "Review",
+      actor_type: "system",
+      occurred_at: { raw: "now()" },
+      digest_eligible_at: { raw: "now()" },
+    })
     await privileged(sql`
       UPDATE ${K()}.collections SET index_document_id = ${id}::uuid WHERE id = ${f1.id}::uuid`)
     const before = await residue(id)
@@ -742,11 +803,15 @@ describe("the purge removes everything (S19, K-R12)", () => {
              trashed_at = trashed_at - interval '31 days' WHERE id = ${id}::uuid`)
     // Something the purge does not know writes a row naming the page as it goes.
     const fn = `${KN()}.trash_test_plant_${id.replaceAll("-", "")}`
+    const plant = insertSql(`${KN()}.document_links`, {
+      org_id: { raw: "OLD.org_id" },
+      source_document_id: keeper,
+      target_document_id: { raw: "OLD.id" },
+    })
     await asOwner(`
       CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $f$
       BEGIN
-        INSERT INTO ${KN()}.document_links (org_id, source_document_id, target_document_id)
-        VALUES (OLD.org_id, '${keeper}', OLD.id);
+        ${plant};
         RETURN OLD;
       END $f$;
       CREATE TRIGGER trash_test_plant AFTER DELETE ON ${KN()}.documents

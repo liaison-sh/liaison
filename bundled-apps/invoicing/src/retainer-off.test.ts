@@ -23,7 +23,7 @@ import {
 import { writeSchedulePatch } from "./recurring/run-card"
 import { runBills, runDatesFrom } from "./recurring/run-dates"
 import { addDays, datesFrom } from "./recurring/schedule"
-import { recurringScheduleUpdate, type ScheduleRow } from "./recurring/tools"
+import { draftCandidates, recurringScheduleUpdate, type ScheduleRow } from "./recurring/tools"
 import {
   AGREEMENT_2,
   H,
@@ -250,6 +250,20 @@ describe("prepaid", () => {
     expect((await h.update(OFF)).nextIssueOn).toBe("2027-01-31")
   })
 
+  test("two months ahead: the later one holds, whatever order they come in", async () => {
+    on(2026, 12, 10)
+    for (const months of [
+      ["2027-01", "2027-03"],
+      ["2027-03", "2027-01"],
+    ]) {
+      const h = harness({ covers: "period_ahead" }, { documents: months.map((m) => advance(m)) })
+      expect((await h.update(OFF)).retainerOff).toMatchObject({
+        last_month: "2027-03",
+        run_from: "2027-04",
+      })
+    }
+  })
+
   test("how the retainer's months were billed is kept: a later change of what it covers deducts all the same", async () => {
     on(2026, 12, 10)
     const h = harness({ covers: "period_ahead" })
@@ -287,7 +301,36 @@ describe("prepaid", () => {
   })
 })
 
+describe("paused while the last retainer month runs", () => {
+  test("resumed by a person, or by its date: from the first month the run bills", async () => {
+    on(2026, 12, 10)
+    const h = harness({ status: "paused" })
+    await h.update(OFF)
+    const r = await h.update({ status: "active" })
+    expect(r.nextIssueOn).toBe("2027-01-31")
+    await h.db.update("recurring_schedules", SCHEDULE, {
+      status: "paused",
+      paused_until: "2026-12-20",
+      next_issue_on: "2026-12-31",
+    })
+    await draftCandidates(h.ctx, "2026-12-20")
+    expect(h.stored()).toMatchObject({ status: "active", next_issue_on: "2027-01-31" })
+  })
+})
+
 describe("on again", () => {
+  test("a signed renewal the turn-off dropped does not come back with a replay", async () => {
+    on(2026, 12, 10)
+    const h = harness()
+    await h.renew({ startsOn: "2027-03-01" })
+    // As a row holds it when its renewals were not listed yet.
+    await h.db.update("recurring_schedules", SCHEDULE, { retainer_agreements: null })
+    await h.update(OFF)
+    await h.update(ON)
+    expect(await h.renew({ startsOn: "2027-03-01" })).toMatchObject({ unchanged: true })
+    expect((await h.month("2027-03")).fee).toEqual([450_000])
+  })
+
   test("in the same month: no month goes to the run", async () => {
     on(2026, 12, 10)
     const h = harness()
@@ -420,6 +463,9 @@ describe("a project with more than one retainer schedule", () => {
     const of = async (m: string) => (await retainerScheduleOf(h.ctx as never, PROJECT, m))?.id
     expect(await of("2026-12")).toBe(SCHEDULE)
     expect(await of("2027-01")).toBe(OTHER_SCHEDULE)
+    // A month both hold is the live one's.
+    await h.db.update("recurring_schedules", OTHER_SCHEDULE, { retainer_from: "2026-12" })
+    expect(await of("2026-12")).toBe(OTHER_SCHEDULE)
   })
 })
 
@@ -453,7 +499,7 @@ describe("the list and the editor", () => {
     const d = draftFromRow(SCHEDULE, row)
     expect(d.retainer_hours).toBeNull()
     expect(d.lines[0]?.unit_price_minor).toBe(495_000)
-    expect(retainerOffText(d)).toContain("bills from January 2027")
+    expect(retainerOffText(d)).toContain("starts with January 2027")
     expect(nextInvoices(d, runFirstDay(d, "2026-12-10"), 1)[0]?.issueOn).toBe("2027-01-31")
     expect(runFirstDay(d, "2027-03-04")).toBe("2027-03-04")
     // Nothing is sent by saving it as it reads.

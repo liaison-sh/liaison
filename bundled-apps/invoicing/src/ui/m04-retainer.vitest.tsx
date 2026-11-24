@@ -181,7 +181,7 @@ describe("retainer terms in the schedule editor", () => {
     fireEvent.click(screen.getByTestId("schedule-retainer-on"))
     fireEvent.click(screen.getByTestId("schedule-save"))
     const off =
-      "December 2026 is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run bills from January 2027."
+      "December 2026 is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run starts with January 2027."
     await waitFor(() =>
       expect(screen.getByTestId("schedule-note").textContent).toBe(
         `Saved. ${off} AG-2026-017, signed from March 2027, no longer applies.`,

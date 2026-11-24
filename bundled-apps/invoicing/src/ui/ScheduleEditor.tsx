@@ -193,7 +193,7 @@ export function retainerOffText(
 ): string | null {
   if (!d.retainer_until || !d.retainer_run_from) return null
   return tr(
-    "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run bills from {{from}}.",
+    "{{last}} is the last retainer month: it and any earlier month not invoiced yet are billed from the project's card. The month-end run starts with {{from}}.",
     { last: monthName(d.retainer_until), from: monthName(d.retainer_run_from) },
   )
 }

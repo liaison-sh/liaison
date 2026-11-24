@@ -861,6 +861,44 @@ describe("a retainer month's invoice", () => {
   })
 })
 
+describe("a retainer turned off since", () => {
+  const off = (covers: string) =>
+    retainerSchedule({
+      covers,
+      retainer_terms: [
+        {
+          from: "2026-12",
+          off: true,
+          retainer_minutes: 0,
+          retainer_overage_rate_minor: null,
+          lines: [{ description: "Hosting", qty: 1, unit_price_minor: 20_000, vat_bp: 2000 }],
+          covers: "period_ended",
+        },
+      ],
+    })
+
+  test("its last month still drafts from its card, with its fee and overage; the next one is the run's", async () => {
+    const h = harness({ schedule: off("period_ended") })
+    h.cards.set(REC_NOV, card(REC_NOV, "2026-11", 42))
+    const res = await draft(h, REC_NOV)
+    expect(res).toMatchObject({
+      status: "completed",
+      month: "2026-11",
+      retainer: { overage_minutes: 2 * H },
+      totals: { excl: 450_000 + 2 * 12_000 },
+    })
+    h.cards.set(REC_DEC, card(REC_DEC, "2026-12", 42))
+    const refused = await retainerDraftFromReconcile(h.ctx, {
+      reconciliationId: REC_DEC,
+      revision: 1,
+    })
+    expect(refused).toMatchObject({ status: "error", error: { code: "period_on_run" } })
+    expect((refused as { error: { message: string } }).error.message).toContain(
+      "turned off and 2026-11 is its last month",
+    )
+  })
+})
+
 // ---------------------------------------------------------------------------------------------
 // Saving a retainer
 

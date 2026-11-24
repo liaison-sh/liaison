@@ -71,7 +71,10 @@ import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { resetOrgRuntimeForTest } from "~/tests/helpers/org-runtime"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
+import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+ownSubrunHandler({ live: true })
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
 const ORIG_PROVIDER = process.env.LIAISON_MODEL_PROVIDER

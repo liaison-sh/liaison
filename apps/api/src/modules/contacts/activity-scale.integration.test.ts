@@ -9,6 +9,7 @@
 // 1 000 ms; a cold miss is printed with the source named.
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import postgres from "postgres"
 import { sql } from "~/db/connection"
 import type { UserContext } from "~/db/rls"
 import {
@@ -21,7 +22,11 @@ import { ensureAppsForOrg } from "~/modules/apps/init"
 import { ACTIVITY_DEADLINE_MS, readActivity } from "~/modules/contacts/activity"
 import { seedContext } from "~/seed/context"
 import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
-import { SCALE, seedActivityScaleWorld } from "~/seed/factories/timeline/activity-scale-world"
+import {
+  FILLED_KERNEL_TABLES,
+  SCALE,
+  seedActivityScaleWorld,
+} from "~/seed/factories/timeline/activity-scale-world"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { seedCalendarAccount } from "../../../test-support/seed/calendar"
 import { ensureMailAccount } from "../../../test-support/seed/mail"
@@ -40,6 +45,13 @@ const SOURCES = ["calendar", "mail", "projects", "tickets"] as const
 
 async function insertRow(table: string, cols: Record<string, RowValue>): Promise<void> {
   await sql.unsafe(insertSql(table, cols))
+}
+
+/** The database under test as the kernel tables' owner. */
+function ownerUrl(): string {
+  if (process.env.MIGRATION_DATABASE_URL) return process.env.MIGRATION_DATABASE_URL
+  const base = process.env.DB_RESET_SUPERUSER_URL ?? "postgres://postgres:postgres@localhost:5432"
+  return `${base.replace(/\/$/, "")}${new URL(process.env.DATABASE_URL ?? "").pathname}`
 }
 
 function p95(values: number[]): number {
@@ -120,6 +132,9 @@ describe("the timeline at a real customer's size", () => {
       stageId,
       tag,
     })
+    const owner = postgres(ownerUrl(), { max: 1, onnotice: () => {} })
+    for (const table of FILLED_KERNEL_TABLES) await owner.unsafe(`ANALYZE kernel.${table}`)
+    await owner.end()
   }, 300_000)
 
   afterAll(async () => {

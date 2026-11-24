@@ -34,7 +34,10 @@ import * as minimal from "~/seed/tiers/minimal"
 import { stubStreamText } from "~/tests/helpers/agent-stub"
 import { createTestOrg } from "~/tests/helpers/org"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
+import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+ownSubrunHandler({ live: true })
 
 const SEEDED = seededApps()
 

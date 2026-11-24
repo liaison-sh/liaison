@@ -20,7 +20,10 @@ import { startSubrunWorker } from "~/modules/agent/subruns/subrun-worker"
 import { toolRegistry } from "~/modules/apps/app-registries"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
+import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+
+ownSubrunHandler({ live: true })
 
 const ORIG_ANTHROPIC_KEY = process.env.LIAISON_ANTHROPIC_API_KEY
 const READ = "srt:deals:read"

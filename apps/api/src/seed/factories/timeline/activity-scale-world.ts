@@ -29,6 +29,21 @@ export const SCALE = {
   years: 3,
 } as const
 
+/** The app tables the world is written to. */
+const FILLED_APP_TABLES = [
+  ["app_mail", "conversations"],
+  ["app_mail", "messages"],
+  ["app_tickets", "tickets"],
+  ["app_tickets", "messages"],
+  ["app_projects", "tasks"],
+  ["app_projects", "deals"],
+  ["app_projects", "deal_values"],
+  ["app_calendar", "events"],
+] as const
+
+/** The kernel tables the world is written to: only their owner can ANALYZE them, so the caller does. */
+export const FILLED_KERNEL_TABLES = ["contacts", "threads"] as const
+
 export interface ScaleWorldInput {
   orgId: string
   userId: string
@@ -143,7 +158,10 @@ async function seedAfterDeals(
            jsonb_build_array(jsonb_build_object('email', (${`{${people.map((p) => p.email).join(",")}}`}::text[])[1 + (g % ${SCALE.people})]))
       FROM generate_series(1, ${SCALE.singleMeetings}) g,
            LATERAL (SELECT now() - (random() * ${span}::interval) AS s) t`)
-  await tx.execute(drizzleSql`ANALYZE ${drizzleSql.raw(schemaRef("app_mail"))}.messages`)
+  // Every app table filled here has the planner's figures before the first timed read: without
+  // them the plans wait on whenever autovacuum comes by.
+  for (const [schema, table] of FILLED_APP_TABLES)
+    await tx.execute(drizzleSql.raw(`ANALYZE ${schemaRef(schema)}.${table}`))
   return ids
 }
 

@@ -326,13 +326,16 @@ async function runUnitOnShard(files: string[], shardId: number, token: number): 
  *   - bounds CPU time (`process.cpuUsage()`): the counter is the whole process's,
  *     so what earlier files left running and the GC of the heap they grew count
  *     against the bound (tool-bench/bench.test.ts measured 6.9 s of ranking CPU
- *     in a batch of 8 on CI, 1.8 s alone in the same run).
+ *     in a batch of 8 on CI, 1.8 s alone in the same run), or
+ *   - bounds a wall-clock percentile (`p95(`): the same GC and leftover work of
+ *     earlier files count against the bound (contacts/activity-scale missed one
+ *     of 200 bounded reads in a batch on CI, none alone).
  * A file that fails inside a batch is rerun alone before it counts as failed
  * (cross-file bleed is the batch's fault, not the file's), and the report names
  * every file that only passed alone.
  */
 const SOLO_PATTERN =
-  /\bmock\.module\(|\b_getGlobalHandlerCount\(\)|\bmemoryUsage\(\)\.rss\b|\bcpuUsage\(/
+  /\bmock\.module\(|\b_getGlobalHandlerCount\(\)|\bmemoryUsage\(\)\.rss\b|\bcpuUsage\(|\bp95\(/
 function isSolo(file: string): boolean {
   if (BATCH <= 1) return true
   if ((HISTORY[file] ?? 0) >= SLOW_SOLO_MS) return true

@@ -17,6 +17,7 @@ import { type RunContext, runContextStore } from "~/modules/agent/runtime/run-co
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { seededApps } from "~/tests/helpers/seeded-app-rows"
+import { ownSubrunHandler } from "~/tests/helpers/subrun-handler"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import {
   clamp,
@@ -29,6 +30,8 @@ import {
   spawnAgent,
 } from "./spawn-agent"
 import { createSubAgentDefinition } from "./sub-agent-definitions"
+
+ownSubrunHandler({ live: false })
 
 const SEEDED = seededApps()
 

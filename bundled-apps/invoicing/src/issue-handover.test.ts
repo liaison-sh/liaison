@@ -694,21 +694,76 @@ describe("a draft edited while its issue card waits", () => {
     expect(restaged).toHaveLength(1)
   })
 
-  test("an older card, with the draft's own content alone, does not issue it once it changed", async () => {
+  /** The same call as the run of an approved card, with what its handler asks for again. */
+  function approvedCard(h: Harness) {
+    const asked: Row[] = []
+    h.ctx.approval = {
+      approvalRequestId: crypto.randomUUID(),
+      approvalDeciderId: "finance",
+      toolName: "invoicing:invoice_issue",
+    }
+    h.ctx.requestApproval = (async (input: Row) => {
+      asked.push(input)
+      return { approval_id: "asked-again" }
+    }) as never
+    return asked
+  }
+
+  for (const [what, shape] of [
+    ["the draft's own content alone", "content"],
+    ["no fingerprint at all", "none"],
+  ] as const) {
+    test(`an older card, with ${what}, issues nothing, even from a draft nobody touched, and is asked again as it is now`, async () => {
+      const h = harness()
+      const draftId = await draftWith(h, null)
+      const shown = draftContentHash((await getDraft(h.db, draftId))!)
+      // Changed behind the card in what it never held: the customer's payment terms.
+      await h.db.update("documents", draftId, {
+        external_refs: {
+          ...((docById(h.db, draftId)?.external_refs as Row) ?? {}),
+          tax_country: "FR",
+        },
+      })
+      const asked = approvedCard(h)
+      const res = await invoiceIssue(h.ctx, {
+        draft_id: draftId,
+        ...(shape === "content" ? { draft_hash: shown } : {}),
+      })
+      expect(res).toMatchObject({ status: "pending_approval", approval_id: "asked-again" })
+      expect((res as { message?: string }).message).toContain(
+        "The invoice draft for Klangwerk GmbH was not issued: this request was made before",
+      )
+      expect(sequenceTotal(h.db)).toBe(0)
+      expect(issuedDocs(h.db)).toEqual([])
+      expect(asked).toHaveLength(1)
+      const payload = asked[0]?.current_payload as { draft_id: string; draft_hash: string }
+      expect(payload.draft_id).toBe(draftId)
+      expect(payload.draft_hash).toBe(await shownAt(h, (await getDraft(h.db, draftId))!))
+      // The card asked again issues it.
+      const ok = await invoiceIssue(h.ctx, payload)
+      expect(ok.status).toBe("completed")
+    })
+  }
+
+  test("asked again for a draft made from a project, whoever could decide the first card can", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)
-    const shown = draftContentHash((await getDraft(h.db, draftId))!)
-    await h.db.update("documents", draftId, { notes: "changed behind the card" })
-    const res = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: shown })
-    expect(res).toMatchObject({ status: "error", error: { code: "draft_changed" } })
-    expect((res as { error: { message: string } }).error.message).toContain(
-      "The invoice draft for Klangwerk GmbH was not issued: it changed after this request was made",
-    )
+    await h.db.update("documents", draftId, { billing_project_id: crypto.randomUUID() })
+    const asked = approvedCard(h)
+    await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(asked[0]).toMatchObject({ approve_scope: "invoicing:documents:write" })
+  })
+
+  test("an older card of a draft whose card waits redrawn asks nothing twice", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const asked = approvedCard(h)
+    const { card, restaged } = withPendingCard(h, draftId)
+    const res = await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(res).toMatchObject({ status: "pending_approval", approval_id: card.id })
+    expect(asked).toEqual([])
+    expect(restaged.map((r) => r.id)).toEqual([card.id])
     expect(sequenceTotal(h.db)).toBe(0)
-    // The fingerprint of the draft as it is now issues it.
-    const now = draftContentHash((await getDraft(h.db, draftId))!)
-    const ok = await invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: now })
-    expect(ok.status).toBe("completed")
   })
 })
 

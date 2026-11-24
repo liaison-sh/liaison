@@ -18,11 +18,12 @@ import { projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { advisoryXactLock } from "~/db/advisory-lock"
 import { cardMinutesNow, type LineMinutes, type LineNow } from "./card-minutes"
-import { claimMonth } from "./late-work"
-import { billedHundredths, LATE_RELATED_LINE_NAME, worded } from "./reconcile-lines"
+import type { Counting } from "./line-minutes"
+import { billedHundredths, worded } from "./reconcile-lines"
 import { documentsForRef, ISSUED_STATES, type RefDocument } from "./reconcile-sweep"
 import { retainerMonthFacts } from "./retainer-month"
 import { ProjectsServiceError } from "./statuses"
+import { claimMonth } from "./time-ledger"
 import { type Basis, hoursPerDayMinutes, orgTimezone } from "./time-plan"
 
 type Tx = RlsClient
@@ -95,6 +96,7 @@ async function storedLines(tx: Tx, orgId: string, id: string): Promise<StoredLin
   return extractRows<{
     id: string
     name: string | null
+    drawn_as: string | null
     kind: string | null
     bill_minutes: number
     real_minutes: number | null
@@ -102,17 +104,19 @@ async function storedLines(tx: Tx, orgId: string, id: string): Promise<StoredLin
     task_ids: string[] | string
     other_project_id: string | null
     work_month: string | null
+    counting: Counting | null
   }>(
     await tx.execute(drizzleSql`
-      SELECT id::text AS id, coalesce(wording, name) AS name, kind, bill_minutes, real_minutes,
-             planned_minutes, task_ids::text[] AS task_ids,
-             other_project_id::text AS other_project_id, work_month
+      SELECT id::text AS id, coalesce(wording, name) AS name, name AS drawn_as, kind,
+             bill_minutes, real_minutes, planned_minutes, task_ids::text[] AS task_ids,
+             other_project_id::text AS other_project_id, work_month, counting
         FROM ${projectsRel("reconciliation_lines")}
        WHERE reconciliation_id = ${id}::uuid AND org_id = ${orgId}::uuid
        ORDER BY position`),
   ).map((l) => ({
     id: l.id,
     name: l.name,
+    drawnAs: l.drawn_as,
     kind: l.kind,
     billMinutes: Number(l.bill_minutes),
     realMinutes: Number(l.real_minutes ?? 0),
@@ -120,6 +124,7 @@ async function storedLines(tx: Tx, orgId: string, id: string): Promise<StoredLin
     taskIds: idList(l.task_ids),
     otherProjectId: l.other_project_id,
     workMonth: l.work_month,
+    counting: l.counting,
   }))
 }
 
@@ -133,6 +138,7 @@ async function sourcesOf(
   r: ReconRow,
   lines: readonly StoredLine[],
   now: ReadonlyMap<string, LineNow>,
+  held: ReadonlySet<string>,
 ): Promise<{ billed: Source[]; leftOff: Source[] }> {
   const proofs = extractRows<{ line_id: string; kind: string; ref: string; label: string }>(
     await tx.execute(drizzleSql`
@@ -152,20 +158,33 @@ async function sourcesOf(
     seen.add(k)
     to.push(s)
   }
-  const task = (l: StoredLine, id: string): Source => ({
+  const task = (l: StoredLine, id: string, counted: number | null): Source => ({
     lineId: l.id,
     kind: "task",
     ref: id,
     periodKey: l.workMonth ?? taskKey,
     label: l.name ?? "",
-    counted: now.get(l.id)?.counted?.get(id) ?? null,
-    ...(now.get(l.id)?.later ? { later: true } : {}),
+    counted,
+    // Minutes no claim of the task counted yet take a key of their own beside the ones that stand.
+    ...(now.get(l.id)?.later ||
+    (held.has(id) && (now.get(l.id)?.real ?? 0) > 0 && (counted ?? 0) > 0)
+      ? { later: true }
+      : {}),
     ...(l.workMonth ? { workMonth: l.workMonth } : {}),
   })
+  // The tasks a line names, and those under them whose minutes it counts.
+  const tasksOf = (l: StoredLine) => {
+    const named = [...new Set(l.taskIds)]
+    const counted = now.get(l.id)?.counted
+    const under = [...(counted ?? [])].filter(([id, m]) => m > 0 && !named.includes(id))
+    return [...named.map((id) => [id, counted?.get(id) ?? null] as const), ...under]
+  }
   for (const l of lines) {
     if (l.billMinutes <= 0) continue
     const before = billed.length
-    for (const t of l.taskIds) add(billed, task(l, t))
+    const atPlan = now.get(l.id)?.atPlan === true
+    for (const [t, m] of tasksOf(l))
+      add(billed, task(l, t, atPlan && l.taskIds.includes(t) ? null : m))
     for (const p of proofs) {
       if (p.line_id !== l.id) continue
       // A task proof names a task already claimed through the line's tasks.
@@ -187,7 +206,12 @@ async function sourcesOf(
   // Left off: the tasks of lines at zero, on this project, that no billed line claims.
   for (const l of lines) {
     if (l.billMinutes > 0 || l.otherProjectId) continue
-    for (const t of l.taskIds) add(leftOff, task(l, t))
+    for (const [t, m] of tasksOf(l)) {
+      const s = task(l, t, m)
+      // On another line at some minutes of its own: these are left off all the same.
+      if ((m ?? 0) > 0 && billed.some((b) => b.kind === "task" && b.ref === t)) leftOff.push(s)
+      else add(leftOff, s)
+    }
   }
   return { billed, leftOff }
 }
@@ -202,9 +226,20 @@ export interface ReserveResult {
   message: string
 }
 
+/** A line whose minutes, or bill by default, moved since it was drawn. */
+export interface MovedLine {
+  lineId: string
+  name: string
+  was: number
+  now: number
+  billWas: number
+  bill: number
+  counting: Counting | null
+}
+
 /** Work on a card changed since it was drawn: what it says now, line by line. */
 export class CardMinutesMoved extends Error {
-  constructor(readonly lines: Array<{ lineId: string; name: string; was: number; now: number }>) {
+  constructor(readonly lines: MovedLine[]) {
     super("card_minutes_moved")
   }
 }
@@ -297,8 +332,22 @@ export async function reserveClaims(
     const stored = (await storedLines(sp as Tx, orgId, reconciliationId)).filter(
       (l) => !input.lateOnly || l.workMonth !== null,
     )
-    const minutes = await cardMinutesNow(sp as Tx, { orgId, tz, head: r, lines: stored })
-    const { billed, leftOff } = await sourcesOf(sp as Tx, orgId, r, stored, minutes.lines)
+    const out = await excludedOf(sp as Tx, orgId, reconciliationId)
+    const minutes = await cardMinutesNow(sp as Tx, {
+      orgId,
+      tz,
+      head: r,
+      lines: stored,
+      excluded: new Set(out),
+    })
+    const { billed, leftOff } = await sourcesOf(
+      sp as Tx,
+      orgId,
+      r,
+      stored,
+      minutes.lines,
+      minutes.held,
+    )
     if (count("reserved") + count("billed") > 0) {
       // Its claims from an earlier try: kept, unless the card was proposed again since and no
       // draft was made from them.
@@ -328,32 +377,37 @@ export async function reserveClaims(
        WHERE org_id = ${orgId}::uuid AND reconciliation_id = ${reconciliationId}::uuid
          AND state IN ('reserved', 'left_off')`)
 
-    // What another card took whole is on that card; any other change of the minutes is shown first.
-    const moved: CardMinutesMoved["lines"] = []
+    // What another card took since is on that card; any other change of the minutes is shown first.
+    const moved: MovedLine[] = []
     for (const l of stored) {
       const is = minutes.lines.get(l.id)
-      if (!is || is.real === l.realMinutes) continue
-      if (is.gone) {
-        const taken = l.taskIds.filter((t) => (is.counted?.get(t) ?? 0) === 0)
-        for (const t of taken) {
-          const s: Source = {
-            lineId: l.id,
-            kind: "task",
-            ref: t,
-            periodKey: l.workMonth ?? "all",
-            label: l.name ?? "",
-            ...(l.workMonth ? { workMonth: l.workMonth } : {}),
-          }
-          if (await heldElsewhere(sp as Tx, orgId, s, reconciliationId))
-            throw await alreadyOn(sp as Tx, orgId, s, reconciliationId)
+      if (!is?.moved) continue
+      for (const t of is.gone) {
+        const s: Source = {
+          lineId: l.id,
+          kind: "task",
+          ref: t,
+          periodKey: l.workMonth ?? claimPeriodKey(r.basis, r.period_start),
+          label: l.name ?? "",
+          ...(l.workMonth ? { workMonth: l.workMonth } : {}),
         }
+        if (await takenSince(sp as Tx, orgId, s, reconciliationId))
+          throw await alreadyOn(sp as Tx, orgId, s, reconciliationId)
       }
-      moved.push({ lineId: l.id, name: l.name ?? "", was: l.realMinutes, now: is.real })
+      moved.push({
+        lineId: l.id,
+        name: l.name ?? "",
+        was: l.realMinutes,
+        now: is.real,
+        billWas: is.billWas,
+        bill: is.bill,
+        counting: is.counting,
+      })
     }
     if (moved.length > 0) throw new CardMinutesMoved(moved)
 
     const lost: Source[] = []
-    const back = new Set(stored.filter((l) => minutes.lines.get(l.id)?.addsBack).map((l) => l.id))
+    const back = new Map(stored.map((l) => [l.id, minutes.lines.get(l.id)?.addsBack ?? []]))
     for (const s of billed) {
       const base = s.periodKey
       if (s.kind === "task" && (s.later || r.basis === "retainer")) {
@@ -366,7 +420,7 @@ export async function reserveClaims(
         }
         s.periodKey = freeKey(base, new Set(keys.map((k) => k.key)))
       }
-      if (back.has(s.lineId) && s.kind === "task") {
+      if (s.kind === "task" && back.get(s.lineId)?.includes(s.ref)) {
         // Left out of a card before, and billed now: it is not left out any more.
         await sp.execute(drizzleSql`
           UPDATE ${projectsRel("billing_claims")} SET state = 'released', updated_at = now()
@@ -391,7 +445,6 @@ export async function reserveClaims(
     if (lost.length > 0) throw await alreadyOn(sp as Tx, orgId, lost[0]!, reconciliationId)
     // Earlier time of the tasks left out as the client's own: it stays out of the next cards.
     const listed = new Set(stored.flatMap((l) => l.taskIds))
-    const out = await excludedOf(sp as Tx, orgId, reconciliationId)
     const left: Array<Omit<Source, "lineId" | "label"> & { lineId: string | null }> = [...leftOff]
     for (const id of out.filter((x) => !listed.has(x))) {
       for (const m of minutes.months) {
@@ -403,6 +456,14 @@ export async function reserveClaims(
       if (counted > 0) left.push({ lineId: null, kind: "task", ref: id, periodKey: "all", counted })
     }
     for (const s of left) {
+      // Named on a line set to 0: left out again, with all the line shows.
+      if (s.lineId && back.get(s.lineId)?.includes(s.ref)) {
+        await sp.execute(drizzleSql`
+          UPDATE ${projectsRel("billing_claims")} SET state = 'released', updated_at = now()
+           WHERE org_id = ${orgId}::uuid AND source_kind = 'task' AND source_ref = ${s.ref}
+             AND state = 'left_off' AND reconciliation_id IS DISTINCT FROM ${reconciliationId}::uuid
+             AND (period_key = ${s.periodKey} OR starts_with(period_key, ${`${s.periodKey}+`}))`)
+      }
       await sp.execute(drizzleSql`
         INSERT INTO ${projectsRel("billing_claims")}
           (org_id, project_id, reconciliation_id, line_id, source_kind, source_ref, period_key,
@@ -432,21 +493,17 @@ export async function reserveClaims(
  */
 export async function refreshCardMinutes(
   tx: Tx,
-  input: { orgId: string; reconciliationId: string; moved: CardMinutesMoved["lines"] },
+  input: { orgId: string; reconciliationId: string; moved: readonly MovedLine[] },
 ): Promise<void> {
   const { orgId, reconciliationId } = input
   const r = await readReconciliation(tx, orgId, reconciliationId, true)
   if (r.state !== "proposed") return
   for (const m of input.moved) {
-    // A line not billed by default (a plan's, or one left at 0) keeps what it bills.
     await tx.execute(drizzleSql`
       UPDATE ${projectsRel("reconciliation_lines")}
          SET real_minutes = ${m.now}, updated_at = now(),
-             bill_minutes = CASE WHEN bill_minutes = ${m.was} AND ${m.was} > 0 THEN ${m.now}
-                                 WHEN bill_minutes = 0 AND ${m.was} = 0
-                                      AND name IS DISTINCT FROM ${LATE_RELATED_LINE_NAME}
-                                      AND (planned_minutes IS NULL OR planned_minutes = 0)
-                                   THEN ${m.now}
+             counting = ${m.counting ? JSON.stringify(m.counting) : null}::jsonb,
+             bill_minutes = CASE WHEN bill_minutes = ${m.billWas} THEN ${m.bill}
                                  ELSE bill_minutes END
        WHERE id = ${m.lineId}::uuid AND reconciliation_id = ${reconciliationId}::uuid
          AND org_id = ${orgId}::uuid`)
@@ -467,14 +524,26 @@ async function excludedOf(tx: Tx, orgId: string, id: string): Promise<string[]> 
   )
 }
 
-/** Whether another card's live claim holds this source, under its key or a later one of it. */
-async function heldElsewhere(
+/** Whether another card claimed this task, under its key or a later one, after the line was drawn. */
+async function takenSince(
   tx: Tx,
   orgId: string,
   s: Source,
   reconciliationId: string,
 ): Promise<boolean> {
-  return (await liveKeys(tx, orgId, s.ref, s.periodKey, reconciliationId)).length > 0
+  return (
+    extractRows<{ id: string }>(
+      await tx.execute(drizzleSql`
+        SELECT c.id::text AS id FROM ${projectsRel("billing_claims")} c
+         WHERE c.org_id = ${orgId}::uuid AND c.source_kind = 'task' AND c.source_ref = ${s.ref}
+           AND c.state IN ('reserved', 'billed')
+           AND (c.period_key = ${s.periodKey} OR starts_with(c.period_key, ${`${s.periodKey}+`}))
+           AND c.reconciliation_id IS DISTINCT FROM ${reconciliationId}::uuid
+           AND c.created_at > (SELECT l.updated_at FROM ${projectsRel("reconciliation_lines")} l
+                                WHERE l.id = ${s.lineId}::uuid AND l.org_id = c.org_id)
+         LIMIT 1`),
+    ).length > 0
+  )
 }
 
 /** The live keys of a task under a base key on other cards, with the period of each. */

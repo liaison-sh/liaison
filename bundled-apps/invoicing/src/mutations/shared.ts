@@ -200,6 +200,8 @@ export type CompletedEnvelope<T> = { status: "completed" } & T
 export type PendingApprovalEnvelope = {
   status: "pending_approval"
   approval_id: string
+  /** Why it waits, when the call it answers was itself approved. */
+  message?: string
 }
 
 export type MutationResult<T> = CompletedEnvelope<T> | PendingApprovalEnvelope | ErrorEnvelope

@@ -377,7 +377,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       return {
         moved: true as const,
         projectName: facts.name,
-        lines: err.lines,
+        lines: err.lines.map(({ lineId, name, was, now }) => ({ lineId, name, was, now })),
         latest: latest.card,
       }
     }

@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 // Which closed tasks of invoiced periods are late work, from the cards alone.
 import { describe, expect, it } from "bun:test"
-import {
-  type BilledCard,
-  claimMonth,
-  coveredByCard,
-  inRetainerMonth,
-  lateClosedTasks,
-} from "./late-work"
+import { type BilledCard, coveredByCard, inRetainerMonth, lateClosedTasks } from "./late-work"
+import { claimMonth } from "./time-ledger"
 
 const card = (over: Partial<BilledCard> = {}): BilledCard => ({
   id: "c1",

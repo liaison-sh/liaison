@@ -2458,6 +2458,13 @@
       "when": 1900003430020,
       "tag": "0349_projects_claim_counted_minutes",
       "breakpoints": true
+    },
+    {
+      "idx": 350,
+      "version": "7",
+      "when": 1900003430020,
+      "tag": "0349_projects_line_counting",
+      "breakpoints": true
     }
   ]
 }

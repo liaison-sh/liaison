@@ -14,7 +14,14 @@
 import { sql as drizzleSql } from "drizzle-orm"
 import { kernelRel, projectsRel } from "~/apps/projects/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
-import { reconcileMark, releaseReconciliation, reserveClaims, SUPERSEDED } from "./claims"
+import {
+  CardMinutesMoved,
+  reconcileMark,
+  refreshCardMinutes,
+  releaseReconciliation,
+  reserveClaims,
+  SUPERSEDED,
+} from "./claims"
 import { draftTitle, reconciliationHead, storedCard } from "./reconcile"
 import { documentsForRef, type RefDocument } from "./reconcile-sweep"
 import { retainerDocumentRef, retainerMonthFacts } from "./retainer-month"
@@ -159,6 +166,17 @@ async function billedLines(tx: Tx, orgId: string, id: string) {
   )
 }
 
+/** Whether a retainer card was already made for an earlier month's later hours alone. */
+async function heldLateOnly(tx: Tx, orgId: string, id: string): Promise<boolean> {
+  return (
+    extractRows<{ document_ref: string | null }>(
+      await tx.execute(drizzleSql`
+        SELECT document_ref FROM ${projectsRel("reconciliations")}
+         WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`),
+    )[0]?.document_ref?.startsWith("reconcile:") === true
+  )
+}
+
 /** A billed line as invoicing prices it: its minutes, and the earlier month they were worked in. */
 function pricedLine(l: { bill_minutes: number; work_month: string | null }) {
   return { billMinutes: l.bill_minutes, ...(l.work_month ? { workMonth: l.work_month } : {}) }
@@ -176,8 +194,13 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
     head.basis === "retainer" && head.period_start
       ? await retainerMonthFacts(tx, orgId, head.project_id, head.period_start)
       : null
+  // A month that bills no retainer (turned off, ended, or on the month-end run) can still bill an
+  // earlier month's later hours: that draft is the card's own, keyed by its revision.
+  const lateOnly =
+    head.basis === "retainer" &&
+    (input.lateOnly === true || (await heldLateOnly(tx, orgId, head.id)))
   const key =
-    retainer?.scheduleId && head.period_start
+    !lateOnly && retainer?.scheduleId && head.period_start
       ? await retainerCardKey(
           tx,
           orgId,
@@ -185,9 +208,11 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
           retainerDocumentRef(retainer.scheduleId, head.period_start),
         )
       : reconcileDocumentRef(head.id, revision)
-  const retainerFields = retainer
-    ? { periodFrom: head.period_start, timeboxMinutes: retainer.timeboxMinutes }
-    : {}
+  const retainerFields = {
+    // The first day: the month a retainer card bills, and the one earlier months' hours come before.
+    periodFrom: head.period_start,
+    ...(retainer ? { timeboxMinutes: retainer.timeboxMinutes } : {}),
+  }
 
   // What invoicing prices a card from, read under the reader's own rows: no check, no write.
   if (args.step === "facts") {
@@ -248,7 +273,12 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         { next: "A fixed price or a billing plan is invoiced from its milestones." },
       )
     }
-    if (head.basis === "retainer" && !retainer?.scheduleId) {
+    const lines = await billedLines(tx, orgId, head.id)
+    if (
+      head.basis === "retainer" &&
+      !retainer?.scheduleId &&
+      !lines.some((l) => l.work_month !== null)
+    ) {
       throw new ProjectsServiceError(
         409,
         "no_retainer_schedule",
@@ -286,7 +316,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       }
     }
     // One draft per retainer month: a second card never adds its lines to another card's draft.
-    if (retainer && (await otherCardOnKey(tx, orgId, key, head.id))) {
+    if (retainer && !lateOnly && (await otherCardOnKey(tx, orgId, key, head.id))) {
       throw new ProjectsServiceError(
         409,
         "month_on_other_card",
@@ -296,12 +326,12 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         },
       )
     }
-    const lines = await billedLines(tx, orgId, head.id)
     return {
       reconciliationId: head.id,
       revision: head.revision,
       state: head.state,
       documentRef: key,
+      ...(head.basis === "retainer" ? { hasRetainerMonth: Boolean(retainer?.scheduleId) } : {}),
       projectId: head.project_id,
       projectName: facts.name,
       companyId: facts.companyId,
@@ -330,16 +360,40 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
         `This card moved on to revision ${head.revision} since it was drawn. Nothing was reserved.`,
       )
     }
-    return reserveClaims(tx, {
-      orgId,
-      reconciliationId: head.id,
-      documentRef: key,
-      terms: {
-        rateMinor: facts.rateMinor,
-        currency: facts.currency,
-        hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
-      },
-    })
+    try {
+      return await reserveClaims(tx, {
+        orgId,
+        reconciliationId: head.id,
+        documentRef: key,
+        revision,
+        lateOnly,
+        terms: {
+          rateMinor: facts.rateMinor,
+          currency: facts.currency,
+          hoursPerDayMinutes: await hoursPerDayMinutes(tx, orgId),
+        },
+      })
+    } catch (err) {
+      if (!(err instanceof CardMinutesMoved)) throw err
+      // Time was entered since the card was drawn: it is brought to the minutes of now, shown, and
+      // nothing is reserved. A draft is made only from minutes a person was shown.
+      await refreshCardMinutes(tx, { orgId, reconciliationId: head.id, moved: err.lines })
+      const latest = await storedCard({
+        tx,
+        orgId,
+        userId,
+        scopes: args.scopes,
+        reconciliationId: head.id,
+        said: "Time was entered since this card was drawn, so it was brought up to date.",
+        ...(args.now ? { now: args.now } : {}),
+      })
+      return {
+        moved: true as const,
+        projectName: facts.name,
+        lines: err.lines,
+        latest: latest.card,
+      }
+    }
   }
 
   if (args.step === "release") {
@@ -388,7 +442,9 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
     )
   }
   // Each billed line's place on the draft: the draft lists them in the card's order.
-  const lines = await billedLines(tx, orgId, head.id)
+  const lines = (await billedLines(tx, orgId, head.id)).filter((l) =>
+    lateOnly ? l.work_month : head.basis === "retainer" || !l.work_month,
+  )
   for (const [i, l] of lines.entries()) {
     await tx.execute(drizzleSql`
       UPDATE ${projectsRel("reconciliation_lines")} SET document_line_position = ${i + 1}

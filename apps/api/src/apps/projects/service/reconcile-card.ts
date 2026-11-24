@@ -52,6 +52,8 @@ export interface CardInput {
   notSeen: ReadonlyArray<{ source: string; why: string }>
   excludedCount: number
   late: string | null
+  /** Work done after an invoice that this card cannot bill, and how to bill it by hand. */
+  byHand?: string | null
 }
 
 /**
@@ -287,6 +289,8 @@ export function reconcileCardFields(input: CardInput) {
       text: "Already invoiced: these lines are locked. Work of this period done since goes on the next card; a change goes through a credit note.",
     })
   }
+  if (input.byHand) notes.push({ text: input.byHand })
+  if (input.byHand) notes.push({ text: input.byHand })
   if (input.late) notes.push({ text: input.late })
   if (offBill > 0) {
     notes.push({

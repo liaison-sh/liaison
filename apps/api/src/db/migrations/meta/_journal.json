@@ -2444,6 +2444,13 @@
       "when": 1900003430018,
       "tag": "0347_projects_late_work",
       "breakpoints": true
+    },
+    {
+      "idx": 349,
+      "version": "7",
+      "when": 1900003430019,
+      "tag": "0348_projects_claim_counted_minutes",
+      "breakpoints": true
     }
   ]
 }

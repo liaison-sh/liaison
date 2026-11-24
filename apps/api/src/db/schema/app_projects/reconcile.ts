@@ -158,8 +158,10 @@ export const billingClaims = appProjects.table(
     state: text("state", { enum: BILLING_CLAIM_STATES }).notNull(),
     documentId: uuid("document_id"),
     documentNumber: text("document_number"),
-    /** A retainer task's time on the day it was claimed. */
+    /** Kept for the shape of the table: nothing reads or writes it (`counted_minutes` is). */
     dayMinutes: integer("day_minutes"),
+    /** The minutes of the task the card counted; null on a claim not billed by its time. */
+    countedMinutes: integer("counted_minutes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

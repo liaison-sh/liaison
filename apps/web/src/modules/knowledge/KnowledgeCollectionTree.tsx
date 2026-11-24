@@ -163,12 +163,20 @@ const KnowledgeCollectionTree: Component<KnowledgeCollectionTreeProps> = (props)
 }
 
 /** Hover and focus show a row's buttons on desktop; a finger always sees them. */
+/** On touch a row's buttons are a finger's size (44px), set here because the
+ *  phone navigator sheet sits outside the shell that carries the touch floor. */
 function rowButtonClass(): string {
   const base =
-    "flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-tertiary transition-opacity hover:bg-surface-active hover:text-text-secondary"
+    "flex shrink-0 items-center justify-center rounded text-text-tertiary transition-opacity hover:bg-surface-active hover:text-text-secondary"
   return shellTier() === "desktop"
-    ? `${base} opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 data-[expanded]:opacity-100 pointer-coarse:opacity-100`
-    : base
+    ? `${base} h-5 w-5 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 data-[expanded]:opacity-100 pointer-coarse:opacity-100`
+    : `${base} h-11 w-11`
+}
+
+function toggleClass(): string {
+  return shellTier() === "desktop"
+    ? "shrink-0 text-text-tertiary"
+    : "flex h-11 w-11 shrink-0 items-center justify-center text-text-tertiary"
 }
 
 interface CollectionRowProps {
@@ -299,7 +307,7 @@ const CollectionRow: Component<CollectionRowProps> = (props) => {
             })}
             aria-expanded={open() ? "true" : "false"}
             onClick={() => toggleFolder(node().id)}
-            class="shrink-0 text-text-tertiary"
+            class={toggleClass()}
           >
             <Show when={open()} fallback={<ChevronRight size={12} />}>
               <ChevronDown size={12} />

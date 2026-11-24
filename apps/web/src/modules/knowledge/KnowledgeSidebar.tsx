@@ -17,6 +17,7 @@ import { hasScope, userFromToken } from "~/modules/auth/auth-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
 import { useApi } from "~/modules/shell/ApiContext"
 import { openEntity } from "~/modules/shell/entity-opener"
+import { shellTier } from "~/modules/shell/shell-tier"
 import { evictTabByEntity, openTab, tabStore } from "~/modules/shell/tab-store"
 import { addToast } from "~/modules/shell/toast-store"
 import { Dialog } from "~/ui/Dialog"
@@ -98,6 +99,8 @@ const KnowledgeSidebar: Component = () => {
   })
   const activeDocId = createMemo(activeKnowledgeDocId)
   const canArchiveDocs = () => hasScope(ARCHIVE_SCOPE)
+  // The phone navigator sheet is outside the shell's touch floor: size here.
+  const touch = () => shellTier() !== "desktop"
 
   // The open page's row stays in sight: its folders open when it opens, and
   // again when the tree reloads with it somewhere new.
@@ -547,7 +550,7 @@ const KnowledgeSidebar: Component = () => {
                 aria-label={i18n.t("knowledge.newPersonalFolder")}
                 onClick={() => openCreateDialog(null, me())}
                 title={i18n.t("knowledge.newPersonalFolder")}
-                class="flex h-5 w-5 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+                class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
               >
                 <Plus size={12} />
               </button>
@@ -582,7 +585,7 @@ const KnowledgeSidebar: Component = () => {
                 aria-label={i18n.t("knowledge.newSharedFolder")}
                 onClick={() => openCreateDialog(null, null)}
                 title={i18n.t("knowledge.newSharedFolder")}
-                class="flex h-5 w-5 items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary"
+                class={`flex items-center justify-center rounded text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-secondary ${touch() ? "h-11 w-11" : "h-5 w-5"}`}
               >
                 <Plus size={12} />
               </button>

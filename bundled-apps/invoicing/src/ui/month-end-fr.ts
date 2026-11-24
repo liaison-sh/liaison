@@ -6,6 +6,15 @@ export const MONTH_END_FR: Record<string, string> = {
   "{{n}} same as {{month}}": "{{n}} identiques à {{month}}",
   "{{customer}} waits for a fix: it stays a draft, uses no number and comes back to you once fixed.":
     "{{customer}} attend une correction : il reste un brouillon, ne prend aucun numéro et vous revient une fois corrigé.",
+  "Due {{day}}": "Échéance le {{day}}",
+  "Due by the payment terms, counted from issue":
+    "Échéance selon les conditions de paiement, à partir de l'émission",
+  "Period {{from}} to {{to}}": "Période du {{from}} au {{to}}",
+  "Decide in Approvals": "Décider dans Approbations",
+  "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.":
+    "Sa carte marquée En retard est dans Approbations : l'approuver émet ces factures, datées de ce jour. Ouvrez une ligne pour la modifier, ou retirez-la pour l'abandonner.",
+  "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.":
+    "Chaque ligne demande une correction avant de pouvoir être émise. Ouvrez une ligne pour la corriger, ou retirez-la pour l'abandonner ; une carte marquée En retard demande ensuite le reste.",
   "This row": "Cette ligne",
   "Changed after approval: it waits for this card, the others issue on time.":
     "Modifiée après l'approbation : elle attend cette carte, les autres sont émises à l'heure.",

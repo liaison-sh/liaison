@@ -21,7 +21,9 @@ const B = "33333333-3333-4333-8333-333333333332"
 async function run(opts: { autoLate?: boolean; noAddress?: boolean } = {}) {
   const h = harness("2026-11-27", {
     schedules: [schedule(A), schedule(B, { due_rule: "days_n", due_days: 10 })],
-    ...(opts.noAddress ? { kernel: { "kernel:contacts_addresses_list": () => ({ addresses: [] }) } } : {}),
+    ...(opts.noAddress
+      ? { kernel: { "kernel:contacts_addresses_list": () => ({ addresses: [] }) } }
+      : {}),
   })
   const status = new Map<string, string>()
   const withdrawn: string[] = []
@@ -82,9 +84,9 @@ describe("a run past its last issue day", () => {
     expect((await summarizeRecurringRunIssue(card.current_payload as Row)).title).toBe(
       "Late: issue 2 invoices for November 2026",
     )
-    expect(
-      r.emitted.some((e) => e.action === "late" && (e.data as Row).resolved === false),
-    ).toBe(true)
+    expect(r.emitted.some((e) => e.action === "late" && (e.data as Row).resolved === false)).toBe(
+      true,
+    )
     // The next days and the five-minute job follow the same card: never a second one.
     for (const d of ["2026-12-02", "2026-12-03"]) {
       await r.at(d, () => recurringLegalDateJob(r.h.ctx))
@@ -124,7 +126,7 @@ describe("a run past its last issue day", () => {
   test("is approved on its late card: its rows may issue then, and it is not late again at once", async () => {
     const r = await run()
     await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
-    const items = (r.h.approvals[1]?.current_payload as Row).items as never
+    const items = ((r.h.approvals[1] as Row).current_payload as Row).items as never
     expect(await recurringRunIssuePreflight(r.h.ctx, { run_id: r.runId })).toEqual({ ok: true })
     const out = await recurringRunIssue(r.h.ctx, { run_id: r.runId, items })
     expect(out).toMatchObject({ status: "completed", approved: 2 })
@@ -183,9 +185,9 @@ describe("a run past its last issue day", () => {
     )
     expect(r.runRow().status).toBe("nothing_to_issue")
     expect(r.withdrawn).toContain("approval-2")
-    expect(
-      r.emitted.filter((e) => e.action === "late").at(-1),
-    ).toMatchObject({ data: { resolved: true } })
+    expect(r.emitted.filter((e) => e.action === "late").at(-1)).toMatchObject({
+      data: { resolved: true },
+    })
     await r.at("2026-12-02", () => recurringLegalDateJob(r.h.ctx))
     expect(r.h.approvals).toHaveLength(2)
     // Put back, the run is late again and asks.

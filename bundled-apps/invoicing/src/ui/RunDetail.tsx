@@ -5,10 +5,19 @@
 // e-invoicing platform. "None missing" shows only when the numbers really follow each other. A
 // partial run lists the rows that could not issue, each with Fix (its draft in the editor).
 // Download all fetches each invoice's PDF through the same path as the invoice's own Download.
-import { app, fetchBlob, fetch as hostFetch, navigate, openFile } from "@liaison/host"
-import { type Component, createResource, createSignal, For, Show } from "solid-js"
+import {
+  app,
+  fetchBlob,
+  fetch as hostFetch,
+  navigate,
+  onEntityChange,
+  openFile,
+} from "@liaison/host"
+import { type Component, createResource, createSignal, For, onCleanup, Show } from "solid-js"
+import { loadViewerAccess } from "./access"
 import { tr } from "./i18n"
 import { Button, formatMoneyMinor, isUserId } from "./kit"
+import { MonthEndRunPanel } from "./MonthEndRunPanel"
 import { einvoiceStatusWord, LastDayNote } from "./RecurringStates"
 
 /** Phone-sized tap target that shrinks back on a desktop. */
@@ -148,6 +157,16 @@ export function runDetailView(
         : tr("Not approved yet"),
     period: run.period,
     lateSince: run.status === "late" ? run.latest_issue_on : null,
+    runId: run.id,
+    /** The rows a late run's card covers, for the rows shown to decide under it. */
+    toDecide: rows
+      .filter((r) => r.state === "ready" || r.state === "waiting_reapproval")
+      .map((r) => ({
+        item_id: r.item_id,
+        document_id: r.document_id,
+        content_hash: "",
+        total_minor: r.total_minor,
+      })),
     range: issuedRun ? numberRange(shown.map((r) => r.number as string)) : null,
     rows: shown.map((r) => ({
       key: r.number ?? r.item_id,
@@ -232,7 +251,10 @@ const money = (minor: string, currency: string) =>
 
 export const RunDetail: Component<{ runId: string }> = (props) => {
   const [view, { refetch }] = createResource(() => props.runId, loadRun)
+  // A row changed, or the run itself: a late run closes, or its card appears.
+  onCleanup(onEntityChange(["invoicing:document", "invoicing:recurring_run"], () => void refetch()))
   const [note, setNote] = createSignal<string | null>(null)
+  const [access] = createResource(loadViewerAccess)
   const downloadAll = async () => {
     const rows = view()?.rows ?? []
     let missing = 0
@@ -292,6 +314,16 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                 >
                   {tr("All schedules")}
                 </Button>
+                <Show when={v().lateSince && v().toDecide.length > 0 && access()?.documents_write}>
+                  <Button
+                    variant="primary"
+                    class={TAP}
+                    testid="run-decide-late"
+                    onClick={() => app.openApprovals()}
+                  >
+                    {tr("Decide in Approvals")}
+                  </Button>
+                </Show>
                 <Show when={v().issued && v().rows.length > 0}>
                   <Button class={TAP} testid="run-download-all" onClick={() => void downloadAll()}>
                     {tr("Download {{n}} PDFs", { n: v().rows.length })}
@@ -301,7 +333,26 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
             </header>
             <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 py-4 text-[12.5px]">
               <Show when={note()}>{(n) => <p class="text-text-secondary">{n()}</p>}</Show>
-              <Show when={v().lateSince}>{(day) => <LastDayNote lastDay={day()} />}</Show>
+              <Show when={v().lateSince}>
+                {(day) => (
+                  <div data-testid="run-late" class="flex flex-col gap-3">
+                    <LastDayNote lastDay={day()} />
+                    <p class="text-text-secondary">
+                      {v().toDecide.length > 0
+                        ? tr(
+                            "Its card marked Late is in Approvals: approving it issues these invoices, dated that day. Open a row to change it, or take it out to drop it.",
+                          )
+                        : tr(
+                            "Every row needs a fix before it can issue. Open a row to fix it, or take it out to drop it; a card marked Late then asks for the rest.",
+                          )}
+                    </p>
+                    <MonthEndRunPanel
+                      payload={{ run_id: v().runId, items: v().toDecide }}
+                      viewerScopes={access()?.documents_write ? ["invoicing:documents:write"] : []}
+                    />
+                  </div>
+                )}
+              </Show>
               <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <dt class="text-text-tertiary">{v().issued ? tr("Issued") : tr("Issues on")}</dt>
@@ -371,62 +422,67 @@ export const RunDetail: Component<{ runId: string }> = (props) => {
                 </div>
               </Show>
 
-              <div class="overflow-x-auto">
-                <table class="w-full min-w-0 text-left">
-                  <thead>
-                    <tr class="text-[11.5px] text-text-tertiary">
-                      <th class="py-1.5 pr-3 font-normal">{tr("Number")}</th>
-                      <th class="py-1.5 pr-3 font-normal">{tr("Customer")}</th>
-                      <th class="hidden py-1.5 pr-3 text-right font-normal md:table-cell">
-                        {tr("Excl. VAT")}
-                      </th>
-                      <th class="hidden py-1.5 pr-3 text-right font-normal md:table-cell">
-                        {tr("VAT")}
-                      </th>
-                      <th class="py-1.5 pr-3 text-right font-normal">{tr("Incl. VAT")}</th>
-                      <th class="py-1.5 font-normal">{tr("E-invoicing platform")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <For each={v().rows}>
-                      {(r) => (
-                        <tr data-testid={`run-row-${r.key}`} class="border-t border-border-subtle">
-                          <td class="py-2 pr-3 font-mono">
-                            <a
-                              class={`inline-flex items-center text-text hover:underline ${TAP}`}
-                              href={r.href}
-                              onClick={(e) => {
-                                e.preventDefault()
-                                navigate(r.href)
-                              }}
-                            >
-                              {r.number ?? (
-                                <span class="font-sans text-text-secondary">{tr("Draft")}</span>
-                              )}
-                            </a>
-                          </td>
-                          <td class="break-words py-2 pr-3 text-text">{r.customer ?? "-"}</td>
-                          <td class="hidden py-2 pr-3 text-right tabular-nums md:table-cell">
-                            {money(r.net, r.currency)}
-                          </td>
-                          <td class="hidden py-2 pr-3 text-right tabular-nums md:table-cell">
-                            {money(r.vat, r.currency)}
-                          </td>
-                          <td class="py-2 pr-3 text-right tabular-nums">
-                            {money(r.total, r.currency)}
-                          </td>
-                          <td
-                            data-testid={`run-einvoice-${r.key}`}
-                            class="py-2 text-text-secondary"
+              <Show when={!v().lateSince}>
+                <div class="overflow-x-auto">
+                  <table class="w-full min-w-0 text-left">
+                    <thead>
+                      <tr class="text-[11.5px] text-text-tertiary">
+                        <th class="py-1.5 pr-3 font-normal">{tr("Number")}</th>
+                        <th class="py-1.5 pr-3 font-normal">{tr("Customer")}</th>
+                        <th class="hidden py-1.5 pr-3 text-right font-normal md:table-cell">
+                          {tr("Excl. VAT")}
+                        </th>
+                        <th class="hidden py-1.5 pr-3 text-right font-normal md:table-cell">
+                          {tr("VAT")}
+                        </th>
+                        <th class="py-1.5 pr-3 text-right font-normal">{tr("Incl. VAT")}</th>
+                        <th class="py-1.5 font-normal">{tr("E-invoicing platform")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <For each={v().rows}>
+                        {(r) => (
+                          <tr
+                            data-testid={`run-row-${r.key}`}
+                            class="border-t border-border-subtle"
                           >
-                            {r.einvoice ? tr(r.einvoice) : "-"}
-                          </td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-              </div>
+                            <td class="py-2 pr-3 font-mono">
+                              <a
+                                class={`inline-flex items-center text-text hover:underline ${TAP}`}
+                                href={r.href}
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  navigate(r.href)
+                                }}
+                              >
+                                {r.number ?? (
+                                  <span class="font-sans text-text-secondary">{tr("Draft")}</span>
+                                )}
+                              </a>
+                            </td>
+                            <td class="break-words py-2 pr-3 text-text">{r.customer ?? "-"}</td>
+                            <td class="hidden py-2 pr-3 text-right tabular-nums md:table-cell">
+                              {money(r.net, r.currency)}
+                            </td>
+                            <td class="hidden py-2 pr-3 text-right tabular-nums md:table-cell">
+                              {money(r.vat, r.currency)}
+                            </td>
+                            <td class="py-2 pr-3 text-right tabular-nums">
+                              {money(r.total, r.currency)}
+                            </td>
+                            <td
+                              data-testid={`run-einvoice-${r.key}`}
+                              class="py-2 text-text-secondary"
+                            >
+                              {r.einvoice ? tr(r.einvoice) : "-"}
+                            </td>
+                          </tr>
+                        )}
+                      </For>
+                    </tbody>
+                  </table>
+                </div>
+              </Show>
               <p data-testid="run-totals" class="text-text-secondary">
                 {v().issued
                   ? tr("{{n}} invoices", { n: v().rows.length })

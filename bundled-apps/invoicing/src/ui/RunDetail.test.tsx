@@ -3,7 +3,9 @@
 // The detail of a month-end run once issued: when it issued, who approved it, the period, the
 // number range ("none missing" only when the numbers really follow each other), and where each
 // invoice stands with the e-invoicing platform. A partial run lists its failed rows with Fix.
+
 import { afterEach, describe, expect, it } from "bun:test"
+import { rowFacts } from "./month-end"
 import {
   dayIn,
   numberRange,
@@ -142,6 +144,36 @@ describe("a run that has not issued yet", () => {
       ["b", null, "/invoicing/editor/db"],
     ])
     expect(v.totals.total).toBe("240000")
+  })
+
+  it("a late run lists the rows its card covers, and a row that needs a fix is not one", () => {
+    const rows = [
+      row({ item_id: "a", state: "ready", draft_id: "da", document_id: "da" }),
+      row({ item_id: "b", state: "needs_fix", draft_id: "db", document_id: "db" }),
+      row({ item_id: "c", state: "waiting_reapproval", draft_id: "dc", document_id: "dc" }),
+      row({ item_id: "d", state: "left_out", draft_id: "dd", document_id: "dd" }),
+    ]
+    const v = runDetailView({ ...run, status: "late", approved_by: null }, rows, null)
+    expect(v.lateSince).toBe(run.latest_issue_on)
+    expect(v.toDecide.map((r) => r.item_id)).toEqual(["a", "c"])
+    expect(v.runId).toBe(run.id)
+  })
+
+  it("a row's due date, operation type and period are said before it is approved", () => {
+    const facts = rowFacts({
+      ...row({ state: "ready", number: null }),
+      due_at: "2026-12-30",
+      operation_category: "services",
+      period_start: "2026-11-01",
+      period_end: "2026-11-30",
+      account_manager: null,
+      updated_at: null,
+      latest_change: null,
+    } as never)
+    expect(facts).toEqual(["Due 2026-12-30", "Services", "Period 2026-11-01 to 2026-11-30"])
+    expect(rowFacts({ ...row({ state: "ready", number: null }), due_at: null } as never)).toEqual([
+      "Due by the payment terms, counted from issue",
+    ])
   })
 
   it("an approved run is approved, not issued, and shows the approval day in the issuer's zone", () => {

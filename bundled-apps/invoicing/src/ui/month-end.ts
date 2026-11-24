@@ -19,6 +19,11 @@ export interface RunRow {
   total_minor: string
   currency: string
   number: string | null
+  /** The invoice's due date, operation type and service period, as it will issue. */
+  due_at?: string | null
+  operation_category?: string | null
+  period_start?: string | null
+  period_end?: string | null
   updated_at: string | null
   latest_change: Record<string, unknown> | null
   flags: string[]
@@ -154,6 +159,24 @@ export function waitingSentence(row: RunRow): string | null {
   if (row.state === "waiting_reapproval")
     return tr("Changed after approval: it waits for this card, the others issue on time.")
   return null
+}
+
+const OPERATION: Record<string, string> = {
+  goods: "Goods",
+  services: "Services",
+  mixed: "Goods and services",
+}
+
+/** What the row's invoice says beside its amounts, before it is approved: due date, type, period. */
+export function rowFacts(row: RunRow): string[] {
+  const out: string[] = []
+  if (row.due_at) out.push(tr("Due {{day}}", { day: row.due_at }))
+  else if (!row.number) out.push(tr("Due by the payment terms, counted from issue"))
+  const type = row.operation_category ? OPERATION[row.operation_category] : undefined
+  if (type) out.push(tr(type))
+  if (row.period_start && row.period_end)
+    out.push(tr("Period {{from}} to {{to}}", { from: row.period_start, to: row.period_end }))
+  return out
 }
 
 /** When the Number column fills in. */

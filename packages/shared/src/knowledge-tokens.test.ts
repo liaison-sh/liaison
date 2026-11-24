@@ -9,6 +9,7 @@ import {
   pageIdsOf,
   pageToken,
   plainTextOf,
+  replaceFileIds,
 } from "./knowledge-tokens"
 
 const A = "0b9a3c5e-1d2f-4a6b-8c7d-9e0f1a2b3c4d"
@@ -104,5 +105,30 @@ describe("knowledge tokens", () => {
       normalizePageRefs(body)
       expect(performance.now() - started).toBeLessThan(1_000)
     }
+  })
+
+  it("replaces only the ids it is given, keeps every other byte, never inside code", () => {
+    const G = "3e2d6f8b-4a5c-4d9e-9fa0-2b3c4d5e6f70"
+    const up = F.toUpperCase()
+    const body = [
+      `a ![](liaison-file:${F}) b ![kept alt](liaison-file:${up}) c ![](liaison-file:${B})`,
+      `\`![](liaison-file:${F})\``,
+      "```",
+      `![](liaison-file:${F})`,
+      "```",
+      `[](knowledge:document:${F})`,
+    ].join("\n")
+    expect(replaceFileIds(body, { [F]: G })).toBe(
+      [
+        `a ![](liaison-file:${G}) b ![kept alt](liaison-file:${G}) c ![](liaison-file:${B})`,
+        `\`![](liaison-file:${F})\``,
+        "```",
+        `![](liaison-file:${F})`,
+        "```",
+        `[](knowledge:document:${F})`,
+      ].join("\n"),
+    )
+    expect(replaceFileIds(body, {})).toBe(body)
+    expect(replaceFileIds(body, { [A]: G })).toBe(body)
   })
 })

@@ -49,6 +49,9 @@ export type EnrichmentHelpers = {
  * `distinct` never collapses).
  */
 export type SearchEnrichmentResult = {
+  /** Replaces the manifest-mapped `body` when the indexed text is computed from it
+   *  (a Knowledge page's text without its file and page tokens). */
+  body?: string | null
   bodyExtra?: string | null
   dedupeKey?: string | null
   /** Replaces the manifest-mapped `handle` when the shown handle is computed

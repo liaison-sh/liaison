@@ -76,7 +76,7 @@ export async function buildSearchDocument(
   // enrichment text appended with a newline separator. An entity with only
   // an enrichment hook and no indexFields.body still gets a body from the
   // hook alone.
-  const manifestBody = indexFields?.body ? ((row[indexFields.body] as string | null) ?? null) : null
+  let manifestBody = indexFields?.body ? ((row[indexFields.body] as string | null) ?? null) : null
   const hook = lookupSearchEnrichment(reg.app, reg.entityType)
   let enrichedBody: string | null = null
   let dedupeKey: string | null = null
@@ -90,6 +90,7 @@ export async function buildSearchDocument(
     } else if (result) {
       enrichedBody = result.bodyExtra ?? null
       dedupeKey = result.dedupeKey ?? null
+      if (result.body !== undefined) manifestBody = result.body
       if (result.handle !== undefined) doc.handle = result.handle
     }
   }

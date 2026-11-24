@@ -342,6 +342,10 @@ async function importDocument(
         userId: ctx.actorUserId,
         actorType: "user",
         scopes: ctx.actorScopes,
+        // The page was created for this person in this run, so they edit it. The
+        // page's edit check would run as liaison_admin on the run's own GUCs, which
+        // are the person's today but are not a request's row security to rely on.
+        destinationAuthorized: true,
       },
     )
     rows.push({ table: "kernel.files", id: copied.id })

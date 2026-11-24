@@ -322,6 +322,33 @@ describe("a whole answer closed by its next steps is the end of the turn", () =>
       textStep("Twelve metrics."),
     ])
     expect(await allText(gathered.result)).toBe(`${ANSWER}Twelve metrics.`)
+    const both = run([
+      {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: "stream-start" as const, warnings: [] },
+            { type: "text-start" as const, id: "t0" },
+            { type: "text-delta" as const, id: "t0", delta: ANSWER },
+            { type: "text-end" as const, id: "t0" },
+            {
+              type: "tool-call" as const,
+              toolCallId: "c1",
+              toolName: SUGGEST,
+              input: '{"steps":[{"label":"Hand over"}]}',
+            },
+            {
+              type: "tool-call" as const,
+              toolCallId: "c2",
+              toolName: "kpi__kpi_list_metrics",
+              input: "{}",
+            },
+            finish("tool-calls"),
+          ],
+        }),
+      },
+      textStep("Twelve metrics."),
+    ])
+    expect(await allText(both.result)).toBe(`${ANSWER}Twelve metrics.`)
     const silent = run([callStep(SUGGEST, "c1"), textStep(ANSWER)])
     expect(await allText(silent.result)).toBe(ANSWER)
   })

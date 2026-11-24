@@ -113,6 +113,19 @@ describe("a card made from a call's params, over the whole catalog", () => {
     expect(card.lines).toEqual(["Outcome: won", "Probability: 40", "Next step: Call on Monday"])
   })
 
+  it("shows no id inside a longer text either", async () => {
+    const card = genericApprovalSummary("projects:comment", {
+      body: `Same as ${ID}, see there`,
+      items: { deep: { deeper: { ref: ID } } },
+    })
+    expect(card.lines).toEqual(["Body: Same as …, see there", 'Items, deep, deeper: {"ref":"…"}'])
+    const merge = await templateApprovalSummarizer("Merge {{params.ids}}", "tickets:merge")(
+      { ids: [ID, OTHER_ID] },
+      {} as never,
+    )
+    expect(merge.title).toBe("Merge 2 items")
+  })
+
   it("says how many records a list of ids names", () => {
     expect(
       genericApprovalSummary("tickets:merge", { sourceTicketIds: [ID, OTHER_ID] }).lines,

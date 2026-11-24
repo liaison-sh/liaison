@@ -1687,3 +1687,106 @@ describe("what a line above takes in", () => {
     expect(await offered(w, OCT)).toEqual([])
   })
 })
+
+describe("what owes nothing back, and what stands", () => {
+  it("time taken off work under a plan, or off work billed before any was entered, comes off nothing", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10", plan: 600 })
+    const c = await w.task({ parent: p.id })
+    await w.enter(c, "2026-09-09", 60)
+    const ahead = await w.task({ closed: "2026-09-12" })
+    const card = await proposed(w, SEP, [line("Whole", p), line("Ahead", ahead)])
+    await reserved(w, await bill(card, "Ahead", 1), SEP)
+    await db.execute(drizzleSql`DELETE FROM app_projects.task_time WHERE task_id = ${c.id}::uuid`)
+    const z = await w.task({ closed: "2026-10-04" })
+    await w.enter(z, "2026-10-03", 120)
+    expect(said(await proposed(w, OCT, [line("New", z)]))).toEqual([["New", 120, 120]])
+    // Billed ahead, its time is counted once entered, and only what is above it is offered.
+    await w.enter(ahead, "2026-09-12", 90)
+    expect(await offered(w, OCT)).toContainEqual([LATER, 30, 30])
+  })
+
+  it("a card proposed again after a try that stopped shows the same minutes; a drafted card keeps showing its own", async () => {
+    for (const basis of ["hourly", "retainer"] as const) {
+      const w = await world(basis)
+      const x = await w.task({ closed: "2026-09-10" })
+      await w.enter(x, "2026-09-09", 120)
+      const card = await proposed(w, SEP, [line("One", x)])
+      await as(a, (tx) =>
+        reserveClaims(tx as never, {
+          orgId,
+          reconciliationId: card.reconciliationId,
+          documentRef: "try",
+        }),
+      )
+      await db.execute(drizzleSql`
+        UPDATE app_projects.reconciliations SET document_ref = NULL
+         WHERE id = ${card.reconciliationId}::uuid`)
+      const again = await proposed(w, SEP, [line("One, again", x)])
+      expect(said(again), basis).toEqual([["One, again", 120, 120]])
+      await reserved(w, again, SEP)
+      const facts = (await as(a, (tx) =>
+        reconcileFacts({
+          tx: tx as never,
+          orgId,
+          userId: a,
+          scopes: ["*"],
+          input: { project: w.key, month: monthAt(SEP) },
+        }),
+      )) as Card
+      expect(
+        facts.tasks.map((t: Card) => t.realMinutes),
+        basis,
+      ).toEqual([120])
+    }
+  })
+
+  it("an older claim left off with no minutes kept offers no later time, and all of it when a line names it", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    const y = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 60)
+    await w.enter(y, "2026-09-09", 120)
+    const card = await proposed(w, SEP, [line("One", x), line("Two", y)])
+    await reserved(w, await bill(card, "Two", 0), SEP)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET counted_minutes = NULL
+       WHERE reconciliation_id = ${card.reconciliationId}::uuid AND state = 'left_off'`)
+    await w.enter(y, "2026-09-20", 30)
+    expect(await offered(w, OCT)).toEqual([])
+    expect(said(await proposed(w, OCT, [line("Two after all", y)]))).toEqual([
+      ["Two after all", 150, 150],
+    ])
+  })
+
+  it("a credited month's card asked again lists a task a later card holds once", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    const sep = await made(w, SEP, [line("One", x)])
+    await w.enter(x, "2026-09-20", 60)
+    await made(w, OCT)
+    await w.credit(sep.reconciliationId)
+    expect(said(await proposed(w, SEP))).toEqual([["Other closed tasks", 120, 0]])
+    expect(said(await made(w, SEP, [line("One", x)]))).toEqual([["One", 120, 120]])
+    expect(await offered(w, NOV)).toEqual([])
+  })
+
+  it("two cards of one task: the second is told, whether its minutes are gone or some are new", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    const y = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    await w.enter(y, "2026-09-09", 60)
+    const mine = await proposed(w, SEP, [line("One", x)])
+    const theirs = await proposed(w, SEP, [line("One", x), line("Two", y)], [], b)
+    await reserved(w, mine, SEP)
+    const told = await reserved(w, theirs, SEP, b).catch((e) => e)
+    expect(told.code).toBe("already_on")
+    // With new minutes on it, the line is brought to them.
+    await w.enter(x, "2026-09-11", 30)
+    const moved = await reserved(w, theirs, SEP, b).catch((e) => e)
+    expect(moved).toBeInstanceOf(CardMinutesMoved)
+    expect(moved.lines).toMatchObject([{ was: 120, now: 30 }])
+  })
+})

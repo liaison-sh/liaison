@@ -26,6 +26,8 @@ const SRC = join(import.meta.dir, "..", "..", "..")
 
 // Content-rewriting UPDATEs that deliberately keep the row's existing tag.
 const EXEMPT_UPDATES: Record<string, string> = {
+  "apps/knowledge/import-kind.ts":
+    "an import rewrites, in the same run and outside any turn, only the ids of the files and page links in the text it has just created through createKnowledgeDocument (which set the tag): there is no taint to add, and the tag the page was created with stays",
   "apps/knowledge/sync-reconciler.ts":
     "an external source refresh rewrites title and body from upstream and deliberately leaves required_scopes alone: the reconciler runs outside any turn, so there is no taint to add, and a refresh must never narrow the tag the document already carries",
 }

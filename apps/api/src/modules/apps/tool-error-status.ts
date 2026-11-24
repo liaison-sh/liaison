@@ -571,6 +571,12 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   ALREADY_DECIDED: 409,
   DECLINED_BY_SIGNER: 409,
   NOT_THEIR_TURN: 409,
+  // A send whose links could not be written (asking again asks nobody twice), and a save or a
+  // void that waits for an answer not recorded yet.
+  SEND_NOT_CONFIRMED: 409,
+  ANSWER_BEING_RECORDED: 409,
+  // mail: the run may read no mailbox, so it can send from none.
+  MISSING_SCOPE: 403,
   REMIND_FAILED: 409,
   NEW_LINK_FAILED: 409,
   SEND_GUARD_MISMATCH: 409,

@@ -91,6 +91,10 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(fives).toEqual([])
   })
 
+  it("mail: a run that may read no mailbox is refused as forbidden, not as a fault", () => {
+    expect(statusForToolError("MISSING_SCOPE")).toBe(403)
+  })
+
   it("the buyer-VAT guard's refusals are 4xx, found by the positional refuse() scan", () => {
     const codes = declaredCodes(join(REPO, "bundled-apps", "invoicing", "src"))
     for (const code of ["vat_id_invalid", "buyer_vat_id_required", "buyer_is_consumer_refused"]) {

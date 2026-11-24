@@ -223,7 +223,7 @@ describe("hours of a month worked after its invoice", () => {
 
   test("are found however many documents the project has", async () => {
     const r = retainer()
-    await r.invoice("2026-10", 40 * H)
+    await r.invoice("2026-10", 40 * H, [], { id: "ffffffff-ffff-4fff-8fff-ffffffffffff" })
     for (let i = 0; i < 450; i++)
       await r.h.db.insert("documents", {
         id: `00000000-0000-4000-9000-${String(i).padStart(12, "0")}`,
@@ -241,6 +241,54 @@ describe("hours of a month worked after its invoice", () => {
     await r.invoice("2026-11", 0, [{ month: "2026-10", minutes: 15 * H }])
     const p = await r.plan("2026-10", 35 * H)
     expect(p.fig.overageMinutes).toBe(10 * H)
+  })
+
+  test("counted above by a later invoice leave the month's own free hours as they are", async () => {
+    const r = retainer({ retainer_rollover: "next" })
+    await r.invoice("2026-09", 30 * H)
+    // 45 h of October told on November's invoice: 40 inside its hours, 5 above them.
+    await r.invoice("2026-11", 0, [{ month: "2026-10", minutes: 45 * H }])
+    // October's own card has 10 rolled in from September, and only those are free.
+    expect((await r.plan("2026-10", 10 * H)).fig.overageMinutes).toBe(0)
+    expect((await r.plan("2026-10", 11 * H)).fig.overageMinutes).toBe(H)
+  })
+
+  test("already on another invoice are out of what the month rolls on", async () => {
+    const r = retainer({ retainer_rollover: "next" })
+    await r.invoice("2026-10", 30 * H)
+    await r.invoice("2026-12", 0, [{ month: "2026-10", minutes: 6 * H }])
+    const p = await r.plan("2026-11", 46 * H)
+    expect(p.fig).toMatchObject({ rolloverInMinutes: 4 * H, overageMinutes: 2 * H })
+  })
+
+  test("are billed by the schedule that invoiced their month, whatever it became since", async () => {
+    const r = retainer()
+    await r.invoice("2026-10", 47 * H)
+    const s = r.h.stored()
+    const projectId = String(s.retainer_project_id)
+    await r.h.db.update("recurring_schedules", String(s.id), { retainer_project_id: null })
+    const other = await lateOnOtherCard({ db: r.h.db } as never, {
+      projectId,
+      before: "2026-11",
+      late: [{ month: "2026-10", minutes: 2 * H }],
+    })
+    expect(other.unknown).toEqual([])
+    expect(other.late).toMatchObject([{ overage_minutes: 2 * H, rate: 12_000n }])
+  })
+
+  test("are not read from a credit note that kept an invoice's figures", async () => {
+    const r = retainer()
+    const p = await r.invoice("2026-10", 40 * H, [], { status: "cancelled" })
+    await r.h.db.insert("documents", {
+      type: "credit_note",
+      status: "issued",
+      billing_project_id: String(r.h.stored().retainer_project_id),
+      external_refs: { retainer: p.refs },
+      grand_total_minor: "-100000",
+    })
+    expect((await r.plan("2026-11", 0, [{ month: "2026-10", minutes: H }])).late).toMatchObject([
+      { overage_minutes: 0 },
+    ])
   })
 
   test("waived leave no line, are not billed later, and are kept as waived", async () => {

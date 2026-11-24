@@ -357,7 +357,7 @@ export async function countedTasks(
 /** The project's tasks on a reserved, billed or left-off claim. */
 export async function claimedTasks(
   tx: Tx,
-  input: Pick<CountsInput, "orgId" | "projectId" | "notProposedFor">,
+  input: Pick<CountsInput, "orgId" | "projectId" | "notProposedFor" | "exceptReconciliation">,
 ): Promise<Set<string>> {
   return new Set(
     extractRows<{ task: string }>(
@@ -368,7 +368,30 @@ export async function claimedTasks(
             ON r.id = c.reconciliation_id AND r.org_id = c.org_id
          WHERE c.org_id = ${input.orgId}::uuid AND c.project_id = ${input.projectId}::uuid
            AND c.source_kind = 'task' AND c.state IN ('reserved', 'billed', 'left_off')
-           AND NOT ${ofStoppedTry(input.notProposedFor)}`),
+           AND NOT ${ofStoppedTry(input.notProposedFor)}
+           AND c.reconciliation_id IS DISTINCT FROM ${input.exceptReconciliation ?? null}::uuid`),
     ).map((r) => r.task),
   )
+}
+
+/**
+ * A task's own minutes with those of the tasks under it, down to the ones in `apart`: a task with a
+ * claim, or a line, of its own counts its own time.
+ */
+export function minutesApart(
+  tasks: ReadonlyArray<{ id: string; parentId: string | null }>,
+  own: ReadonlyMap<string, number>,
+  apart: ReadonlySet<string>,
+): (id: string) => number {
+  const kids = new Map<string, string[]>()
+  for (const t of tasks)
+    if (t.parentId) kids.set(t.parentId, [...(kids.get(t.parentId) ?? []), t.id])
+  const walk = (id: string, seen: Set<string>): number => {
+    if (seen.has(id)) return 0
+    seen.add(id)
+    return (kids.get(id) ?? [])
+      .filter((k) => !apart.has(k))
+      .reduce((a, k) => a + walk(k, seen), own.get(id) ?? 0)
+  }
+  return (id) => walk(id, new Set())
 }

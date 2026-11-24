@@ -2037,6 +2037,13 @@ describe("time entered while a card waits, or after it was claimed", () => {
     await addTime(r.id, a, [["2026-09-07", 60]])
     const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
     expect(nov.unbilledEarlier.map((t: any) => t.realMinutes)).toEqual([60])
+    // Two older claims of one task: the later one says the day.
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims
+         SET counted_minutes = NULL, created_at = '2026-10-15 09:00+00'::timestamptz
+       WHERE reconciliation_id = ${oct.reconciliationId}::uuid AND state = 'reserved'`)
+    const both = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(both.unbilledEarlier).toEqual([])
   }, 120_000)
 
   it("a line left off counts the hours it left off, and no later ones", async () => {
@@ -2257,6 +2264,10 @@ describe("time entered while a card waits, or after it was claimed", () => {
     ])
     const facts = await run(reconcileFacts, { project: p.key, month: "2026-10" })
     expect(facts.unbilledEarlier.map((t: any) => [t.id, t.realMinutes])).toEqual([[a, 90]])
+    // Closed again in October, it is still billed only for what is new.
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-10-02 10:00+00'::timestamptz WHERE id = ${a}::uuid`,
+    )
     const oct = await proposal(p.key, "2026-10", [])
     expect(oct.lines.map((l: any) => [l.name, l.billMinutes])).toEqual([
       ["Time entered after its invoice", 90],
@@ -2275,6 +2286,90 @@ describe("time entered while a card waits, or after it was claimed", () => {
     expect(
       (await run(reconcileFacts, { project: p.key, month: "2026-12" })).unbilledEarlier,
     ).toEqual([])
+  }, 120_000)
+})
+
+describe("two cards of one month", () => {
+  it("never hold the same task's month, whatever key each is drafted under", async () => {
+    const r = await retainerProject(["2026-09"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 600]])
+    const mine = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    const theirs = await run(
+      reconcilePropose,
+      { project: r.key, month: "2026-09", lines: [lineOf("Upkeep", [a])] },
+      { userId: otherLead.userId },
+    )
+    expect((await create(mine)).error).toBeUndefined()
+    const second = await withRlsContext(actorOf(otherLead.userId, FINANCE), (tx) =>
+      reserveClaims(tx as never, {
+        orgId,
+        reconciliationId: theirs.reconciliationId,
+        documentRef: "retainer:another:2026-09",
+      }),
+    ).then(
+      () => "reserved",
+      (e) => (e as { code?: string }).code,
+    )
+    expect(second).toBe("already_on")
+  }, 120_000)
+})
+
+describe("a task billed by its time whose invoice was credited", () => {
+  it("is billed whole again on a new card, whatever was left out of a card since", async () => {
+    const p = await dailyProject()
+    await call("projects_timePlanSet", { projectId: p.id, basis: "hourly" })
+    const a = await closedTask(p.id, "Support", "2026-09-10", [["2026-09-09", 120]])
+    const sep = await proposal(p.key, "2026-09", [lineOf("Support", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(p.id, a, [["2026-09-20", 60]])
+    const now = await closedTask(p.id, "October", "2026-10-10", [["2026-10-09", 60]])
+    const oct = await proposal(p.key, "2026-10", [lineOf("October", [now])], {
+      excluded: [{ taskId: a, reason: "client_own" }],
+    })
+    expect(oct.lines.map((l: any) => l.taskIds)).toEqual([[now]])
+    expect((await create(oct)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: p.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'credited'
+       WHERE reconciliation_id = ${sep.reconciliationId}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'credited'
+       WHERE id = ${sep.reconciliationId}::uuid`)
+    const again = await proposal(p.key, "2026-09", [lineOf("Support", [a])])
+    expect(again.lines.map((l: any) => l.billMinutes)).toEqual([180])
+    const made = await create(again)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[3, 93000]])
+  }, 120_000)
+})
+
+describe("time entered after a parent and its subtask were billed by their time", () => {
+  it("is listed once, on the task it was entered on", async () => {
+    const p = await dailyProject()
+    await call("projects_timePlanSet", { projectId: p.id, basis: "hourly" })
+    const parent = await closedTask(p.id, "Whole", "2026-09-10", [["2026-09-09", 120]])
+    const child = await call<{ id: string }>("projects_createTask", {
+      projectId: p.id,
+      title: "Part",
+      statusLabel: "done",
+      parentTaskId: parent,
+    })
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-09-11 10:00+00'::timestamptz WHERE id = ${child.id}::uuid`,
+    )
+    await addTime(p.id, child.id, [["2026-09-11", 60]])
+    const sep = await proposal(p.key, "2026-09", [lineOf("Both", [parent, child.id])])
+    expect(sep.lines[0].billMinutes).toBe(180)
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(p.id, child.id, [["2026-09-20", 60]])
+    const oct = await proposal(p.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.taskIds, l.billMinutes])).toEqual([[[child.id], 60]])
+    expect((await create(oct)).error).toBeUndefined()
+    await addTime(p.id, parent, [["2026-09-21", 30]])
+    const nov = await proposal(p.key, "2026-11", [])
+    expect(nov.lines.map((l: any) => [l.taskIds, l.billMinutes])).toEqual([[[parent], 30]])
   }, 120_000)
 })
 
@@ -2401,8 +2496,9 @@ describe("the last month of a retainer, and a project billed another way since",
     expect((await stateOf(oct.reconciliationId))?.state).toBe("invoiced")
     // October's own hours are not a retainer month's later hours, on any card after.
     await addTime(r.id, c, [["2026-10-09", 600]])
+    await closedTask(r.id, "More October", "2026-10-21", [["2026-10-20", 60]])
     const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
-    expect(nov.unbilledEarlier).toEqual([])
+    expect(nov.unbilledEarlier.filter((t: any) => t.workMonth)).toEqual([])
     // More of September still goes on the next card.
     await addTime(r.id, r.a, [["2026-09-19", 60]])
     const novCard = await proposal(r.key, "2026-11", [])
@@ -2476,6 +2572,7 @@ describe("the last month of a retainer, and a project billed another way since",
     await call("projects_timePlanSet", { projectId: r.id, basis: "fixed" })
     const oct = await proposal(r.key, "2026-10", [])
     const said = JSON.stringify(oct.cardNotes)
+    expect(oct.lines).toEqual([])
     expect(said).toContain("18 h of 2026-09")
     expect(said).toContain("bill it by hand")
     expect(oct.createInvoice ?? null).toBeNull()

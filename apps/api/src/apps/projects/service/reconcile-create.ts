@@ -166,17 +166,6 @@ async function billedLines(tx: Tx, orgId: string, id: string) {
   )
 }
 
-/** Whether a retainer card was already made for an earlier month's later hours alone. */
-async function heldLateOnly(tx: Tx, orgId: string, id: string): Promise<boolean> {
-  return (
-    extractRows<{ document_ref: string | null }>(
-      await tx.execute(drizzleSql`
-        SELECT document_ref FROM ${projectsRel("reconciliations")}
-         WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`),
-    )[0]?.document_ref?.startsWith("reconcile:") === true
-  )
-}
-
 /** A billed line as invoicing prices it: its minutes, and the earlier month they were worked in. */
 function pricedLine(l: { bill_minutes: number; work_month: string | null }) {
   return { billMinutes: l.bill_minutes, ...(l.work_month ? { workMonth: l.work_month } : {}) }
@@ -196,9 +185,7 @@ export async function reconcileCreateStep(args: StepArgs & { step: CreateStep })
       : null
   // A month that bills no retainer (turned off, ended, or on the month-end run) can still bill an
   // earlier month's later hours: that draft is the card's own, keyed by its revision.
-  const lateOnly =
-    head.basis === "retainer" &&
-    (input.lateOnly === true || (await heldLateOnly(tx, orgId, head.id)))
+  const lateOnly = head.basis === "retainer" && input.lateOnly === true
   const key =
     !lateOnly && retainer?.scheduleId && head.period_start
       ? await retainerCardKey(

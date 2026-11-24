@@ -10,9 +10,11 @@ import { extractRows, type RlsClient } from "~/db"
 import { type BudgetTask, liveTasks, realByTask } from "./coverage"
 import {
   billedCards,
+  claimedTasks,
   countedTasks,
   lateMonths,
   type MonthMinutes,
+  minutesApart,
   monthCounts,
   retainerFeeMinutes,
   taskMinutes,
@@ -154,9 +156,18 @@ export async function cardMinutesNow(
     ? await countedTasks(tx, { orgId, projectId, exceptReconciliation: head.id })
     : new Map<string, never>()
   const after: MonthMinutes = { offered: new Map(), leftOut: new Map() }
+  const claimed = byTask
+    ? await claimedTasks(tx, { orgId, projectId, exceptReconciliation: head.id })
+    : new Set<string>()
+  const sinceOf = minutesApart(tree, own, claimed)
+  const countedOf = minutesApart(
+    tree,
+    own,
+    new Set([...claimed, ...lines.flatMap((l) => l.taskIds)]),
+  )
   for (const [id, c] of billedByTime) {
     if (!live.has(id)) continue
-    const open = (real.get(id) ?? 0) - c.all
+    const open = sinceOf(id) - c.all
     if (open > 0) after.offered.set(id, open)
     if (c.leftOut > 0) after.leftOut.set(id, c.leftOut)
   }
@@ -219,9 +230,7 @@ export async function cardMinutesNow(
     const moves = byTime || bills(l.realMinutes) !== bills(now)
     out.set(l.id, {
       real: moves ? now : l.realMinutes,
-      counted: byTime
-        ? new Map(ids.map((id) => [id, roots.includes(id) ? (real.get(id) ?? 0) : 0]))
-        : null,
+      counted: byTime ? new Map(ids.map((id) => [id, countedOf(id)])) : null,
       later: false,
       gone: false,
       addsBack: false,

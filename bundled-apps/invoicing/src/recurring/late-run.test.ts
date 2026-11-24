@@ -250,6 +250,32 @@ describe("a run past its last issue day", () => {
     )
   })
 
+  test("a row issued while the run is marked late stays issued", async () => {
+    const r = await run()
+    await recurringRunIssue(r.h.ctx, { run_id: r.runId })
+    const [a] = r.items().map((i) => String(i.id)) as [string]
+    const find = r.h.ctx.db.findMany.bind(r.h.ctx.db)
+    let reads = 0
+    const db = new Proxy(r.h.ctx.db as object, {
+      get: (t, k) =>
+        k === "findMany"
+          ? async (table: string, q: Record<string, unknown>) => {
+              const rows = await find(table as never, q as never)
+              // The second read is the one it marks the rows from.
+              if (table === "recurring_run_items" && ++reads === 2) {
+                const before = structuredClone(rows)
+                await r.h.db.update("recurring_run_items", a, { state: "issued" })
+                return before
+              }
+              return rows
+            }
+          : Reflect.get(t, k),
+    })
+    await r.at("2026-12-01", () => recurringLegalDateJob({ ...r.h.ctx, db } as never))
+    expect(reads).toBeGreaterThanOrEqual(2)
+    expect(r.items()[0]?.state).toBe("issued")
+  })
+
   test("a card still waiting is not priced again by the five-minute job", async () => {
     const r = await run()
     await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))

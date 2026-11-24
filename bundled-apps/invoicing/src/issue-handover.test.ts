@@ -27,7 +27,7 @@ import {
 } from "./mutations"
 import { getDraft } from "./mutations/db-helpers"
 import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
-import { draftAmount, issueFingerprint } from "./mutations/issue-fingerprint"
+import { draftAmount, issueFingerprint, restageForTerms } from "./mutations/issue-fingerprint"
 import { DRAFT_DEPENDENTS, draftContentHash, handOverDraft } from "./mutations/issue-handover"
 import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
@@ -755,6 +755,21 @@ describe("what an approver saw is what issues", () => {
     expect(sequenceTotal(h.db)).toBe(0)
   })
 
+  test("the tax country and who the buyer is are part of it at the same amount", async () => {
+    const h = harness()
+    const draft = (await getDraft(h.db, await draftWith(h, null)))!
+    const at = (external_refs: Row) =>
+      issueFingerprint({ db: h.db } as never, { ...draft, external_refs } as never, 1)
+    const seen = [
+      await at({}),
+      await at({ tax_country: "CH" }),
+      await at({ tax_country: "US" }),
+      await at({ buyer_is_consumer: true }),
+    ]
+    expect(new Set(seen).size).toBe(4)
+    expect(await at({ note: "x" })).toBe(seen[0] as string)
+  })
+
   test("an amount other than the card's is not issued, whatever moved it", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)
@@ -792,6 +807,11 @@ describe("what an approver saw is what issues", () => {
     })
     // The same terms again, and a change that moves another customer's, redraw nothing.
     await set(60)
+    expect(restaged).toHaveLength(1)
+    const [identity] = h.db.__all("counterparty_identities").filter((r) => r.contact_id === contact)
+    await h.db.update("counterparty_identities", String(identity?.id), { payment_terms_days: 75 })
+    await restageForTerms(h.ctx as never, { contactId: crypto.randomUUID() })
+    await restageForTerms(h.ctx as never, { issuerId: crypto.randomUUID() })
     expect(restaged).toHaveLength(1)
     expect(sequenceTotal(h.db)).toBe(0)
   })

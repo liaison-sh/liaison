@@ -17,17 +17,17 @@ import { orgPublicBaseUrl } from "~/lib/org-public-url"
 import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 import { LINE_SOURCE } from "./claims"
-import { type BudgetTask, coverageOf, liveTasks, plannedByTask, realByTask } from "./coverage"
+import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
 import {
   type BilledCard,
   billedCards,
   claimedTasks,
   countedTasks,
   coveredByCard,
-  inRetainerMonth,
   lateClosedTasks,
   lateMonths,
   type MonthMinutes,
+  minutesApart,
   monthCounts,
   retainerFeeMinutes,
   taskMinutes,
@@ -396,12 +396,12 @@ async function lateWorkOf(tx: Tx, orgId: string, c: Omit<Context, "late">): Prom
       )
     }
     const planned = plannedByTask(c.live)
-    const real = realByTask(c.live, own)
+    const sinceOf = minutesApart(c.live, own, claimed)
     const live = new Set(c.live.map((t) => t.id))
     for (const [id, counted] of counts) {
       if (!live.has(id) || counted.billedTo >= c.period.from || (planned.get(id) ?? 0) > 0) continue
       billedByTime.add(id)
-      const open = (real.get(id) ?? 0) - counted.all
+      const open = sinceOf(id) - counted.all
       if (open > 0) after.offered.set(id, open)
       if (counted.leftOut > 0) after.leftOut.set(id, counted.leftOut)
     }
@@ -503,7 +503,6 @@ export async function reconcileFacts(args: {
             r.completed_on !== null &&
             r.completed_on > lastBilled &&
             r.completed_on < c.period.from &&
-            !inRetainerMonth(c.cards, r.completed_on) &&
             !taskClaim.has(r.id)),
       )
     : []

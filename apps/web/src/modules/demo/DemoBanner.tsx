@@ -14,7 +14,7 @@
 // are worse than no claims.
 import { type Component, createSignal, Show } from "solid-js"
 import { DemoLimitsPanel } from "~/modules/demo/DemoLimitsPanel"
-import { DemoNextStepsBannerEntry } from "~/modules/demo/DemoNextSteps"
+import { DemoNextStepsBannerEntry, DemoRegisterBannerEntry } from "~/modules/demo/DemoNextSteps"
 import { ScenariosBannerEntry } from "~/modules/demo/DemoWelcome"
 import { demoWorkspace, openDemoNextSteps } from "~/modules/demo/demo-store"
 import { useI18n } from "~/modules/i18n/i18n-context"
@@ -77,6 +77,8 @@ export const DemoBanner: Component = () => {
         </button>
         {/* What to do next, at any moment: run it yourself or have it set up. */}
         <DemoNextStepsBannerEntry />
+        {/* A hosted signup, once a scenario is finished (when the box names one). */}
+        <DemoRegisterBannerEntry />
       </div>
       <DemoLimitsPanel open={limitsOpen()} onClose={() => setLimitsOpen(false)} />
     </Show>

@@ -373,6 +373,7 @@ Boxtal: ship orders with Boxtal carriers, with quotes, shipments, tracking and c
 | `shipment_draft_set_package` | Replace the draft's auto-resolved parcel set with an explicit carton set: ONE carton, OR an ARRAY of cartons for a MIXED multi-carton shipment (e.g. |  | `boxtal:shipments:read` |
 | `stuck_list` | The SINGLE needs-attention queue: every shipment in a STUCK state, across ALL families, in ONE call — so you do NOT have to enumerate the whole fleet with search and classify each tracking_status enum yourself. |  | `boxtal:shipments:read` |
 | `to_prepare_list` | Exact counts of what is left to ship, ready against needs a fix: a WORKLIST of issued invoices with shippable goods that have NO live shipment yet, returned as a SERVER-SIDE AUTHORITATIVE PARTITION (not a bounded sample): `total` + `ready_count` + `needs_fix_count` are the exact denominators, and the rows come PRE-SPLIT into `ready_to_prepare` (render THESE as the trustworthy ready-to-pack list) and `needs_fix` (each carries its blocking `reason`). |  | `boxtal:shipments:read` |
+| `to_ship_by_product` | UNITS STILL TO SHIP PER PRODUCT: how many units of each product the To prepare worklist still needs, as one row per short product code. |  | `boxtal:shipments:read` |
 | `track` | Where a parcel is now, for the person: live tracking for a Boxtal shipment (latest carrier status + checkpoint message + the carrier tracking_number + a pickup_deadline). |  | `boxtal:shipments:read` |
 | `webhooks_repair` | Re-register the Boxtal v3 webhook subscriptions (tracking-changed, document-created) with the CURRENT kernel webhook secret, reusing each stored subscription's callback URL. |  | `boxtal:catalog:write` |
 
@@ -704,10 +705,12 @@ Shopify orders, customers, products, refunds, fulfilments and returns.
 | `customers_tag` | Add or remove tags on a Shopify customer | yes | `shopify:customers:write` |
 | `customers_update` | Update a Shopify customer record | yes | `shopify:customers:write` |
 | `discounts_bulk_create` | Generate MANY unique discount codes on ONE code discount in a SINGLE call — the right tool when the user asks for N unique codes (e.g. | yes | `shopify:discounts:write` |
-| `discounts_create` | Create a Shopify discount code. | yes | `shopify:discounts:write` |
-| `discounts_delete` | Delete a Shopify discount code | yes | `shopify:discounts:write` |
-| `discounts_search` | Search Shopify discount-code nodes (basic / bxgy / free-shipping) by code/title KEYWORD. |  | `shopify:discounts:read` |
-| `discounts_update` | Update a Shopify discount code (gated). | yes | `shopify:discounts:write` |
+| `discounts_create` | Create a Shopify discount: a CODE (basicCodeDiscount) or an AUTOMATIC discount applied at checkout with no code (automaticBasicDiscount, e.g. | yes | `shopify:discounts:write` |
+| `discounts_delete` | Delete a Shopify discount for good: a code, or an automatic discount (DiscountAutomaticNode id). | yes | `shopify:discounts:write` |
+| `discounts_get` | Read ONE Shopify discount in full, a code or an automatic discount (id from discounts_search): title, method, status, window, summary, value (percentage as a 0-1 fraction or a fixed amount), what it applies to (all items, or products, variants and collections BY TITLE), its minimum requirement (subtotal or quantity), who it is available to (availableTo: all, or the markets by name), how it combines, codes and usage. |  | `shopify:discounts:read` |
+| `discounts_search` | Search Shopify discounts: discount CODES and AUTOMATIC discounts (applied at checkout with no code, e.g. |  | `shopify:discounts:read` |
+| `discounts_set_status` | Activate or DEACTIVATE a Shopify discount, a code OR an AUTOMATIC discount (id from discounts_search, e.g. | yes | `shopify:discounts:write` |
+| `discounts_update` | Update a Shopify discount (gated): a code (basicCodeDiscount) or, when id is a DiscountAutomaticNode, a basic AUTOMATIC discount (automaticBasicDiscount, same fields as on create). | yes | `shopify:discounts:write` |
 | `draft_orders_complete` | Complete a Shopify draft order: it becomes a real order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_create` | Create a Shopify draft order. | yes | `shopify:draft-orders:write` |
 | `draft_orders_delete` | Delete a Shopify draft order. | yes | `shopify:draft-orders:write` |

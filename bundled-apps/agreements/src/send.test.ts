@@ -30,6 +30,7 @@ import {
   onClientActionDecided,
   onLinksMade,
   resolveSigners,
+  type SendDocument,
 } from "./send"
 import { markSent } from "./sent-state"
 
@@ -331,7 +332,7 @@ async function pinnedFor(db: Db, p: Parameters<typeof agreementSend>[1]) {
     pinnedParams: {
       sendGuard: Record<string, unknown>
       guardKey: string
-      document: Record<string, unknown>
+      document: SendDocument
     }
   }
   return out.pinnedParams

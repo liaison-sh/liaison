@@ -37,7 +37,7 @@ interface Agreement {
   parent_agreement_id?: string | null
   language?: string | null
   org_access?: string | null
-  price_minor?: string | null
+  price_minor?: string | number | null
   currency?: string | null
   /** The version whose unfinished send its people were told of. */
   send_told_version_id?: string | null

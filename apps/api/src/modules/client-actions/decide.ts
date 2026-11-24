@@ -234,10 +234,12 @@ export async function viewOf(row: ActionRow): Promise<ClientActionView | "down">
  * Where a signer's copy stands when the document's app does not say, from the send alone: on its
  * way only once every signer of it has answered yes.
  */
-export async function copyStateFromSend(row: ActionRow): Promise<CopyState> {
-  const [send] = await withPrivilegedDb(row.org_id, "client-action-copy-state", async (tx) =>
-    extractRows<{ closed: boolean; all_signed: boolean }>(
-      await tx.execute(sql`
+export async function copyStateFromSend(
+  tx: Pick<PrivilegedDb, "execute">,
+  row: ActionRow,
+): Promise<CopyState> {
+  const [send] = extractRows<{ closed: boolean; all_signed: boolean }>(
+    await tx.execute(sql`
         SELECT bool_or(coalesce(g.decision = 'declined', false)
                        OR coalesce(g.revoke_reason IN ('sender_voided', 'replaced'), false)) AS closed,
                bool_and(g.decision IS NOT NULL) AS all_signed
@@ -245,7 +247,6 @@ export async function copyStateFromSend(row: ActionRow): Promise<CopyState> {
           JOIN ${K()}.client_actions g ON g.org_id = a.org_id AND g.group_id = a.group_id
          WHERE a.id = ${row.id} AND a.org_id = ${row.org_id} AND NOT ${replacedSql("g")}
       `),
-    ),
   )
   if (send?.closed) return "not_completed"
   return send?.all_signed ? "on_its_way" : "waiting_for_others"

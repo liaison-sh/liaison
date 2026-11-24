@@ -268,7 +268,11 @@ clientActionPublicRoutes.post(
       const said = signedView === "down" ? undefined : signedView.copyStates?.[row.id]
       return caJson(200, {
         ...deadFrameBody(row, "signed"),
-        copy: said ?? (await copyStateFromSend(row)),
+        copy:
+          said ??
+          (await inClientActionOrg(row, "client-action-copy-state", (tx) =>
+            copyStateFromSend(tx, row),
+          )),
         copy_to: maskEmail(row.invited_email),
       })
     }

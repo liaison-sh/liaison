@@ -25,6 +25,7 @@ import {
 } from "~/modules/client-actions/mint"
 import { ClientActionTargetsTestAccess } from "~/modules/client-actions/targets"
 import { mailUnsentLinks } from "~/modules/client-actions/unsent-links"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { superuserUrlForTestDb } from "~/tests/route-test-setup"
 import {
   k,
@@ -534,15 +535,32 @@ const guardFor = (targetId: string, n: number) => {
 async function approvedCard(message: string): Promise<string> {
   const id = crypto.randomUUID()
   const thread = crypto.randomUUID()
-  await sql`INSERT INTO ${k("threads")} (id, org_id, handle, title, type, created_by)
-    VALUES (${thread}, ${kit.w.orgId}, ${`approval-${thread}`}, 'Approval', 'approval', ${kit.w.admin.userId})`
-  await sql`INSERT INTO ${k("approval_requests")} (
-      id, org_id, handle, thread_id, originating_thread_id, tool_name, tool_params, current_payload,
-      expires_at, requested_by, status, summary)
-    VALUES (${id}, ${kit.w.orgId}, ${`APR-${id.slice(0, 8)}`}, ${thread}, ${thread},
-      ${`${kit.targetApp}:${SEND_TOOL}`}, '{}'::jsonb,
-      ${JSON.stringify({ message })}::text::jsonb,
-      now() + interval '1 hour', ${kit.w.admin.userId}, 'approved', '{}'::jsonb)`
+  await sql.unsafe(
+    insertSql("kernel.threads", {
+      id: thread,
+      org_id: kit.w.orgId,
+      handle: `approval-${thread}`,
+      title: "Approval",
+      type: "approval",
+      created_by: kit.w.admin.userId,
+    }),
+  )
+  await sql.unsafe(
+    insertSql("kernel.approval_requests", {
+      id,
+      org_id: kit.w.orgId,
+      handle: `APR-${id.slice(0, 8)}`,
+      thread_id: thread,
+      originating_thread_id: thread,
+      tool_name: `${kit.targetApp}:${SEND_TOOL}`,
+      tool_params: { raw: "'{}'::jsonb" },
+      current_payload: { raw: `'${JSON.stringify({ message })}'::jsonb` },
+      expires_at: { raw: "now() + interval '1 hour'" },
+      requested_by: kit.w.admin.userId,
+      status: "approved",
+      summary: { raw: "'{}'::jsonb" },
+    }),
+  )
   return id
 }
 
@@ -1171,8 +1189,15 @@ describe("another person in a withdrawn signer's place", () => {
     const targetId = crypto.randomUUID()
     const contact = crypto.randomUUID()
     const at = (n: number) => `c${n}-${targetId.slice(0, 8)}@signers.example`
-    await sql`INSERT INTO ${k("contacts")} (id, org_id, handle, name, email)
-      VALUES (${contact}, ${kit.w.orgId}, ${`contact-${contact.slice(0, 8)}`}, 'Cleo Contact', ${at(1)})`
+    await sql.unsafe(
+      insertSql("kernel.contacts", {
+        id: contact,
+        org_id: kit.w.orgId,
+        handle: `contact-${contact.slice(0, 8)}`,
+        name: "Cleo Contact",
+        email: at(1),
+      }),
+    )
     const out = await mint(
       sendOf(targetId, 0, { signers: [...signersOf(targetId, 1), { contact_id: contact }] }),
     )

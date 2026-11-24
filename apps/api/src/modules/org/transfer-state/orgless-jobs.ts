@@ -77,6 +77,7 @@ export const ORGLESS_JOB_AUDIT: Readonly<Record<string, OrglessJobEntry>> = {
   "knowledge:synced-sources-tick": skips("apps/knowledge/knowledge-jobs.ts"),
   "knowledge:stale-running-reclaim": skips("apps/knowledge/knowledge-jobs.ts"),
   "knowledge:update-event-flush": skips("apps/knowledge/event-coalesce.ts"),
+  "knowledge:trash-purge": skips("apps/knowledge/trash.ts"),
   "kernel:mailbox-backfill": skips("modules/mailbox-crypto/backfill-job.ts"),
   "kernel:sync-model-pricing": audited("writes the global model price table only; no per-org rows"),
   "kernel:sync-openrouter-prices": audited("writes the global price table only; no per-org rows"),

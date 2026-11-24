@@ -107,7 +107,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Routine row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {
@@ -134,7 +140,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Two approver row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {
@@ -300,7 +312,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Peer row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {
@@ -327,7 +345,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Routine row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {
@@ -512,7 +536,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Routine row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {
@@ -539,7 +569,13 @@
           "peerSelfApprovable": false,
           "approvalImpact": "external",
           "baseTitle": "Two approver row",
-          "titleKind": "summary"
+          "titleKind": "summary",
+          "runGroup": {
+            "key": "batch:projects:approve||projects:createTask|<day>:mine",
+            "count": 2,
+            "basis": "batch",
+            "toolName": "projects:createTask"
+          }
         }
       },
       {

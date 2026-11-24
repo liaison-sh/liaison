@@ -4,8 +4,9 @@
 //
 // Routing sorts the audience the feed already has; it never widens it. The first block pins
 // that a world with no route input changes nothing: the feed and the badge equal, row for row,
-// a snapshot taken before routing existed (`home-routing.snapshot.json`). Only the keys routing
-// adds to an item's metadata are left out of the comparison.
+// a snapshot taken before routing existed (`home-routing.snapshot.json`), with the Home group
+// (`runGroup`) the cards of one day's same action carry since. Only the keys routing adds to an
+// item's metadata are left out of the comparison.
 //
 // Write the snapshot again (only on purpose): HOME_ROUTING_SNAPSHOT_WRITE=1.
 
@@ -134,7 +135,9 @@ function normalise(value: unknown, names: Map<string, string>): unknown {
   if (typeof value === "string") {
     let out = value
     for (const [id, name] of names) out = out.split(id).join(`<${name}>`)
-    return out.replace(/APR-[0-9a-f]{8}/g, "<handle>")
+    return out
+      .replace(/APR-[0-9a-f]{8}/g, "<handle>")
+      .replace(/(batch:[^ ]*\|)\d{4}-\d{2}-\d{2}:/, "$1<day>:")
   }
   if (Array.isArray(value)) return value.map((v) => normalise(v, names))
   if (value && typeof value === "object") {
@@ -265,6 +268,30 @@ describe("home routing: who a pending approval is for", () => {
     }
     expect(existsSync(SNAPSHOT_PATH)).toBe(true)
     expect(world).toEqual(JSON.parse(readFileSync(SNAPSHOT_PATH, "utf8")))
+  })
+
+  it("the Home group of a day's same-action cards marks them and changes nothing else", async () => {
+    // The two cards that are this viewer's to decide, with no run behind either, fold into one row.
+    // One that is for others, a wedged one, an owner's own and a bundle's each stay on their own.
+    const grouped: Record<string, string[]> = {
+      ines: ["routine", "twoApprovers"],
+      tom: ["peer", "routine"],
+      sara: ["routine", "twoApprovers"],
+    }
+    for (const [viewer, names] of Object.entries(grouped)) {
+      const feed = await feedOf(people[viewer] as string)
+      const marked = feed.filter((i) => i.metadata?.runGroup !== undefined)
+      expect(marked.map((i) => i.entityId).sort()).toEqual(
+        names.map((n) => rows[n] as string).sort(),
+      )
+      for (const i of marked) {
+        expect(i.metadata?.runGroup).toMatchObject({ basis: "batch", count: 2 })
+        expect(i.action).toMatchObject({ type: "decide_approval", approvalId: i.entityId })
+      }
+    }
+    const ownerFeed = await feedOf(people.owner as string)
+    expect(ownerFeed.length).toBeGreaterThan(0)
+    expect(ownerFeed.some((i) => i.metadata?.runGroup !== undefined)).toBe(false)
   })
 
   it("with no manager the feed equals the snapshot taken before", async () => {

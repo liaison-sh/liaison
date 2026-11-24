@@ -1471,11 +1471,20 @@ export async function archiveKnowledgeDocument(
   if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
   const archiveShareRole = await loadDocumentShareRole(tx, row.id, actor)
   assertCanWriteDocumentRow(row, archivedActor, archiveShareRole)
-  // Only flip + emit the event when the doc is actually ACTIVE — re-archiving an
-  // already-archived doc is a no-op (no second `archive` event), mirroring restore.
+  // A synced page belongs to its source (edge 6, A21): it never goes to Trash.
+  // Archiving it used to hide it only until the next sync.
+  if (row.syncedSourceId) {
+    validation("This page is synced from another source: manage it there, not in Trash")
+  }
+  // Archiving is moving to Trash: the clock starts in the same write (trashed_at at
+  // the same now() as archived_at), so the daily job deletes it 30 days later
+  // (trash.ts). Only flip + emit the event when the doc is actually ACTIVE:
+  // re-archiving an already-archived doc is a no-op (no second `archive` event,
+  // no new clock), mirroring restore.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = now(), updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = now(), trashed_at = now(), trashed_by = ${actor.userId}::uuid,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NULL
@@ -1515,9 +1524,12 @@ export async function restoreKnowledgeDocument(
   // IC-7: only emit a restore event when we actually un-archive a row. Calling
   // restore on an already-active document is a no-op — otherwise every retry
   // (or double-click) would emit a spurious `restore` event downstream.
+  // Out of Trash: the clock goes with the archive. Its folders are kept; when none
+  // of them is live and visible the page reads as Unfiled.
   const updateResult = await tx.execute(drizzleSql`
     UPDATE ${knowledgeRel("documents")}
-    SET archived_at = NULL, updated_by = ${actor.userId}::uuid, updated_at = now()
+    SET archived_at = NULL, trashed_at = NULL, trashed_by = NULL,
+        updated_by = ${actor.userId}::uuid, updated_at = now()
     WHERE id = ${id}::uuid
       AND org_id = ${actor.orgId}::uuid
       AND archived_at IS NOT NULL

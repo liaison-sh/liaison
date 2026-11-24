@@ -3,8 +3,8 @@
 // `createCloudOrg`: the org a Control signup creates on a cell (`POST
 // /api/cloud/orgs`). Idempotent on (slug, owner email), keyed by the slug in the
 // outcome store, which also serialises two creations of one slug:
-//  - the slug is checked first: held by another owner, or by an org this API did
-//    not create → 409, nothing written;
+//  - the slug is checked first: held by another owner, by a demo org, or by an
+//    org this API did not create → 409, nothing written;
 //  - then, each step idempotent so a resumed attempt completes the org: `ensureOrg`
 //    with what follows its commit (apps, login provider, default views), the
 //    owner as an active passwordless admin, the tier for the plan and the caps.
@@ -110,7 +110,7 @@ export async function createCloudOrg(
 
   const holders = await withSystemDb("cloud-create-org-check", (db) =>
     db
-      .select({ id: organizations.id, slug: organizations.slug })
+      .select({ id: organizations.id, slug: organizations.slug, class: organizations.class })
       .from(organizations)
       .where(
         req.orgId === undefined
@@ -123,7 +123,8 @@ export async function createCloudOrg(
 
   // A fresh claim on a held slug: the org was not made by this API for this owner.
   // A resumed claim on it: our own earlier attempt created it, then died.
-  if ((bySlug && !claim.resumed) || idTakenElsewhere) {
+  // A demo org is never adopted, not even by a resumed claim.
+  if ((bySlug && (!claim.resumed || bySlug.class !== "standard")) || idTakenElsewhere) {
     await releaseClaim(ENDPOINT, req.slug)
     return { status: 409, reply: { ok: false, code: CLOUD_ERROR_CODES.slugTaken } }
   }
@@ -136,6 +137,7 @@ export async function createCloudOrg(
     name: req.name,
     locale: req.locale,
     credits: { initial: req.includedCredits ?? "0" },
+    class: "standard",
   })
 
   await ensureUser({

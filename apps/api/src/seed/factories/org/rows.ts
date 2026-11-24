@@ -8,6 +8,7 @@
 // Privileged: written over the system connection, as the provisioning paths
 // write them. Every column is the schema's, so defaults (timezone, settings,
 // status) are the product's.
+import { and, eq } from "drizzle-orm"
 import { withSystemDb } from "~/db/privileged"
 import {
   auditLog,
@@ -16,6 +17,7 @@ import {
   passwordResets,
   roles,
   userPreferences,
+  userRoles,
   users,
 } from "~/db/schema/kernel"
 
@@ -78,6 +80,22 @@ export async function seedRoleRow(orgId: string, name: string): Promise<void> {
       .values({ orgId, name })
       .onConflictDoNothing({ target: [roles.orgId, roles.name] }),
   )
+}
+
+/** The org's role of that name given to the user (the role must exist: `seedRoleRow`). */
+export async function seedUserRoleRow(
+  orgId: string,
+  userId: string,
+  roleName: string,
+): Promise<void> {
+  await withSystemDb("seed-user-role-row", async (db) => {
+    const [role] = await db
+      .select({ id: roles.id })
+      .from(roles)
+      .where(and(eq(roles.orgId, orgId), eq(roles.name, roleName)))
+    if (!role) throw new Error(`seedUserRoleRow: org ${orgId} has no role "${roleName}"`)
+    await db.insert(userRoles).values({ orgId, userId, roleId: role.id }).onConflictDoNothing()
+  })
 }
 
 export type UserPreferencesSeed = Omit<typeof userPreferences.$inferInsert, "userId">

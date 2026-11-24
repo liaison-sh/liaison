@@ -24,7 +24,11 @@ import { CryptoContext, encryptSecret } from "~/lib/crypto"
 import { env } from "~/lib/env"
 import { bullPrefix, redisBullMQ } from "~/lib/redis"
 import { connectionConfigRegistry, initializedOrgRuntimes } from "~/modules/apps/app-registries"
-import { generateImmutableTriggerDdl, IMMUTABLE_TRIGGER_DELETING_BRANCH } from "~/modules/apps/ddl"
+import {
+  generateImmutableTriggerDdl,
+  IMMUTABLE_TRIGGER_CLASS_BRANCH,
+  IMMUTABLE_TRIGGER_DELETING_BRANCH,
+} from "~/modules/apps/ddl"
 import {
   markOrgDeleting,
   ORG_DELETING_SETTLE_MS,
@@ -101,10 +105,11 @@ async function seedOrg(name: string): Promise<string> {
   return orgId
 }
 
-/** The scratch legal table's trigger as an OLDER release generated it: no deleting branch. */
+/** The scratch legal table's trigger as an OLDER release generated it: neither branch. */
 function staleTriggerStatements(): string[] {
   return generateImmutableTriggerDdl(APP_SCHEMA, "legal", { retentionYears: 10 })
     .replace(IMMUTABLE_TRIGGER_DELETING_BRANCH, "false")
+    .replace(IMMUTABLE_TRIGGER_CLASS_BRANCH, "false")
     .split(";\n")
     .filter((s) => s.trim())
 }

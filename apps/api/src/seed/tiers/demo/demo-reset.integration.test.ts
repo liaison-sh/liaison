@@ -100,9 +100,9 @@ function setReviewerPassword(value: string): void {
   ;(env as { LIAISON_DEMO_REVIEWER_PASSWORD: string }).LIAISON_DEMO_REVIEWER_PASSWORD = value
 }
 
-async function makeOrg(key: string): Promise<Fixture> {
+async function makeOrg(key: string, orgClass: "standard" | "demo" = "demo"): Promise<Fixture> {
   const slug = `${PREFIX}-${key}`
-  const { orgId } = await ensureOrg({ slug, name: `Demo reset ${key}` })
+  const { orgId } = await ensureOrg({ slug, name: `Demo reset ${key}`, class: orgClass })
   const fixture = { key, slug, orgId }
   fixtures[key] = fixture
   return fixture
@@ -293,7 +293,7 @@ beforeAll(async () => {
   const reserved = await makeOrg("reserved")
   await markOrgAsDemo(reserved.orgId, reservedMarker(new Date(NOW.getTime() - 90 * 86_400_000)))
 
-  await makeOrg("plain")
+  await makeOrg("plain", "standard")
 
   const malformed = await makeOrg("malformed")
   // Hand written into the jsonb, exactly the way an operator's SQL would get it
@@ -308,15 +308,15 @@ beforeAll(async () => {
   })
   invalidateDemoMarker(malformed.orgId)
 
-  // The pair the content reset runs against: two marked demo orgs holding the
-  // SAME rows, so "it cleared the right one" is an assertion and not a hope.
+  // The pair the content reset runs against (it takes reserved orgs alone): two
+  // holding the SAME rows, so "it cleared the right one" is an assertion and not a hope.
   const target = await makeOrg("reset-target")
   await populate(target.orgId)
-  await markOrgAsDemo(target.orgId, visitorMarker(72, NOW))
+  await markOrgAsDemo(target.orgId, reservedMarker(NOW))
 
   const bystander = await makeOrg("reset-bystander")
   await populate(bystander.orgId)
-  await markOrgAsDemo(bystander.orgId, visitorMarker(72, NOW))
+  await markOrgAsDemo(bystander.orgId, reservedMarker(NOW))
 }, 300_000)
 
 afterAll(async () => {
@@ -326,6 +326,11 @@ afterAll(async () => {
   // visitor org and collected through the same path under test.
   for (const fixture of Object.values(fixtures)) {
     if (!(await orgExists(fixture.orgId))) continue
+    await withSystemDb("demo-reset-test-class", (tx) =>
+      tx.execute(
+        sql`UPDATE kernel.organizations SET class = 'demo' WHERE id = ${fixture.orgId}::uuid`,
+      ),
+    )
     await markOrgAsDemo(fixture.orgId, visitorMarker(1, new Date(Date.now() - 48 * 3600_000)))
     await purgeDemoOrg(fixture.orgId)
   }

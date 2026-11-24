@@ -1676,6 +1676,63 @@ describe("what a line above takes in", () => {
     expect(await offered(w, OCT)).toEqual([])
   })
 
+  it("among the other closed tasks, is not what an earlier card counted", async () => {
+    const w = await world("hourly")
+    const p = await w.task({})
+    const c = await w.task({ closed: "2026-09-10", parent: p.id })
+    const z = await w.task({ closed: "2026-10-04" })
+    await w.enter(c, "2026-09-09", 120)
+    await made(w, SEP, [line("Part", c)])
+    await w.enter(c, "2026-09-20", 30)
+    await w.enter(p, "2026-10-02", 60)
+    await w.enter(z, "2026-10-02", 60)
+    await w.close(p, "2026-10-03")
+    expect(said(await proposed(w, OCT, [line("New", z)]))).toEqual([
+      ["New", 60, 60],
+      ["Other closed tasks", 60, 0],
+      [LATER, 30, 30],
+    ])
+  })
+
+  it("of a plan added up from its subtasks, leaves out the ones billed at theirs, and never more than the plan", async () => {
+    const w = await world("hourly")
+    const p = await w.task({})
+    const one = await w.task({ closed: "2026-09-10", parent: p.id, plan: 120 })
+    await w.task({ parent: p.id, plan: 60 })
+    await made(w, SEP, [line("One", one)])
+    await w.close(p, "2026-10-03")
+    expect(said(await proposed(w, OCT, [line("Whole", p)]))).toEqual([["Whole", 0, 60]])
+    const small = await w.task({})
+    const c = await w.task({ closed: "2026-10-10", parent: small.id })
+    await w.enter(c, "2026-10-10", 120)
+    let card = await proposed(w, OCT, [line("Part", c)])
+    card = await bill(card, "Part", 2)
+    await reserved(w, card, OCT)
+    await w.plan(small, 60)
+    await w.close(small, "2026-11-03")
+    const nov = await proposed(w, NOV, [line("Small", small)])
+    expect(said(nov)).toEqual([["Small", 0, 0]])
+    expect(nov.lines[0].why).toContain("1 h of its plan is on another line")
+  })
+
+  it("at its plan, does not move with the time entered while the card waits", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10", plan: 120 })
+    const card = await proposed(w, SEP, [line("Whole", p)])
+    await w.enter(p, "2026-09-12", 60)
+    await reserved(w, card, SEP)
+    expect(await offered(w, OCT)).toEqual([])
+  })
+
+  it("on a retainer, is nothing a line does not name", async () => {
+    const w = await world("retainer")
+    const p = await w.task({})
+    const c = await w.task({ parent: p.id })
+    await w.enter(p, "2026-09-09", 60)
+    await w.enter(c, "2026-09-09", 120)
+    expect(said(await proposed(w, SEP, [line("Whole", p)], [c]))).toEqual([["Whole", 60, 60]])
+  })
+
   it("is each task once on a retainer, whatever is above it", async () => {
     const w = await world("retainer")
     const p = await w.task({})
@@ -1704,6 +1761,25 @@ describe("what owes nothing back, and what stands", () => {
     // Billed ahead, its time is counted once entered, and only what is above it is offered.
     await w.enter(ahead, "2026-09-12", 90)
     expect(await offered(w, OCT)).toContainEqual([LATER, 30, 30])
+  })
+
+  it("later time under work billed at its plan is inside that price, and an archived task's is dropped with it", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10", plan: 600 })
+    const c = await w.task({ parent: p.id })
+    await w.enter(c, "2026-09-09", 60)
+    await made(w, SEP, [line("Whole", p)])
+    await w.enter(c, "2026-09-20", 30)
+    expect(await offered(w, OCT)).toEqual([])
+    // Moved out from under it, what is new is offered.
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET parent_task_id = NULL WHERE id = ${c.id}::uuid`,
+    )
+    expect(await offered(w, OCT)).toEqual([[LATER, 30, 30]])
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET archived_at = now() WHERE id = ${c.id}::uuid`,
+    )
+    expect(await offered(w, OCT)).toEqual([])
   })
 
   it("a card proposed again after a try that stopped shows the same minutes; a drafted card keeps showing its own", async () => {
@@ -1757,6 +1833,82 @@ describe("what owes nothing back, and what stands", () => {
     expect(said(await proposed(w, OCT, [line("Two after all", y)]))).toEqual([
       ["Two after all", 150, 150],
     ])
+    // Closed again and on no line, it is among the others at nothing, and stays left off.
+    await w.close(y, "2026-10-05")
+    const z = await w.task({ closed: "2026-10-04" })
+    await w.enter(z, "2026-10-04", 60)
+    expect(said(await made(w, OCT, [line("New", z)]))).toEqual([
+      ["New", 60, 60],
+      ["Other closed tasks", 0, 0],
+    ])
+    expect(await offered(w, NOV)).toEqual([])
+  })
+
+  it("hours left out of a card stay out of the line the next card draws by itself", async () => {
+    for (const basis of ["hourly", "retainer"] as const) {
+      const w = await world(basis)
+      const x = await w.task({ closed: "2026-09-10" })
+      const z = await w.task({ closed: "2026-10-04" })
+      await w.enter(x, "2026-09-09", 120)
+      await w.enter(z, "2026-10-04", 60)
+      await made(w, SEP, [line("One", x)])
+      await w.enter(x, "2026-09-20", 60)
+      await reserved(w, await proposed(w, OCT, [line("New", z)], [x]), OCT)
+      await w.enter(x, "2026-09-21", 30)
+      expect(
+        (await offered(w, NOV)).map((l) => l.slice(1)),
+        basis,
+      ).toEqual([[30, 30]])
+      await made(w, NOV)
+      expect(await offered(w, NOV + 1), basis).toEqual([])
+      const named = await proposed(w, NOV + 1, [line("All of it", x)])
+      expect(said(named), basis).toEqual([["All of it", 60, 60]])
+    }
+  })
+
+  it("a subtask made under billed work and closed in its period bills its own minutes on the next card", async () => {
+    const w = await world("hourly")
+    const p = await w.task({ closed: "2026-09-10" })
+    await w.enter(p, "2026-09-09", 120)
+    await made(w, SEP, [line("Whole", p)])
+    const c = await w.task({ closed: "2026-09-28", parent: p.id })
+    await w.enter(c, "2026-09-28", 30)
+    expect(await offered(w, OCT)).toEqual([
+      ["Earlier work not in the plan, closed after its invoice", 30, 30],
+    ])
+  })
+
+  it("a plan bills its plan, whatever was taken off billed time", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    await w.enter(x, "2026-09-09", 120)
+    await made(w, SEP, [line("One", x)])
+    await db.execute(drizzleSql`
+      UPDATE app_projects.task_time SET minutes = 60 WHERE task_id = ${x.id}::uuid`)
+    const p = await w.task({ closed: "2026-10-03", plan: 120 })
+    const card = await made(w, OCT, [line("Plan", p)])
+    expect(said(card)).toEqual([["Plan", 0, 120]])
+  })
+
+  it("hours dated after a retainer's card are not said to be outside its months", async () => {
+    const w = await world("retainer")
+    const x = await w.task({})
+    await w.enter(x, "2026-09-09", 120)
+    await made(w, SEP)
+    await w.enter(x, "2026-11-09", 60)
+    expect((await w.dry(OCT)).byHand).toBeNull()
+  })
+
+  it("a line of a billed task with new minutes and a new task bills both", async () => {
+    const w = await world("hourly")
+    const x = await w.task({ closed: "2026-09-10" })
+    const z = await w.task({ closed: "2026-10-04" })
+    await w.enter(x, "2026-09-09", 120)
+    await w.enter(z, "2026-10-04", 60)
+    await made(w, SEP, [line("One", x)])
+    await w.enter(x, "2026-09-20", 30)
+    expect(said(await made(w, OCT, [line("Both", x, z)]))).toEqual([["Both", 90, 90]])
+    expect(await offered(w, NOV)).toEqual([])
   })
 
   it("a credited month's card asked again lists a task a later card holds once", async () => {

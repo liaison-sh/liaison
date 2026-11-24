@@ -39,8 +39,10 @@ export interface VersionSession {
 
 /** One author session's edits coalesce for this long. */
 export const VERSION_COALESCE_MINUTES = 10
-/** Rows kept per page; the oldest go first. */
+/** Rows kept per page; the oldest go first ({@link pruneVersions} says which never go). */
 export const VERSIONS_PER_PAGE = 200
+/** A version is kept this long after it was last written; an unapplied text longer. */
+export const VERSIONS_KEPT_DAYS = 365
 
 /** The page as the writer read it, before the write. */
 export interface VersionPreImage {
@@ -189,17 +191,40 @@ export async function writeWithVersion(
   return true
 }
 
-/** Keep the newest {@link VERSIONS_PER_PAGE} rows of a page. */
+/**
+ * Trim a page's history.
+ *
+ * - A version last written more than {@link VERSIONS_KEPT_DAYS} days ago goes, except an
+ *   `unapplied` text: a text a person could not save is kept at any age.
+ * - Then the page keeps at most {@link VERSIONS_PER_PAGE} rows, oldest first out, but two
+ *   kinds of row never count against that: every `unapplied` text, and each author's
+ *   newest version (an author is a person, or one agent acting for that person). So an
+ *   agent or an integration looping on a page can push out only its own older rows and
+ *   other authors' older rows, never a person's last text or a conflict text.
+ */
 export async function pruneVersions(tx: RlsClient, documentId: string): Promise<void> {
   const versions = knowledgeRel("document_versions")
   await tx.execute(sql`
     DELETE FROM ${versions}
+     WHERE document_id = ${documentId}::uuid AND kind <> 'unapplied'
+       AND updated_at < now() - make_interval(days => ${VERSIONS_KEPT_DAYS})`)
+  await tx.execute(sql`
+    DELETE FROM ${versions}
      WHERE document_id = ${documentId}::uuid
        AND id IN (
-         SELECT id FROM ${versions}
-          WHERE document_id = ${documentId}::uuid
+         WITH ranked AS (
+           SELECT id, created_at,
+                  CASE WHEN kind = 'unapplied' THEN 1
+                       ELSE row_number() OVER (
+                              PARTITION BY kind = 'unapplied', author_type, author_id, agent_id
+                              ORDER BY created_at DESC, id DESC)
+                  END AS rank
+             FROM ${versions}
+            WHERE document_id = ${documentId}::uuid)
+         SELECT id FROM ranked
+          WHERE rank > 1
           ORDER BY created_at DESC, id DESC
-         OFFSET ${VERSIONS_PER_PAGE})`)
+         OFFSET GREATEST(0, ${VERSIONS_PER_PAGE} - (SELECT count(*) FROM ranked WHERE rank = 1)))`)
 }
 
 /** A version as the history list shows it: no text. */

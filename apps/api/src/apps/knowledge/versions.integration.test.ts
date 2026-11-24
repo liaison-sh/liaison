@@ -26,7 +26,7 @@ import {
   loadKnowledgeDocument,
   updateKnowledgeDocument,
 } from "~/apps/knowledge/service"
-import { VERSIONS_PER_PAGE } from "~/apps/knowledge/versions"
+import { saveUnapplied, VERSIONS_PER_PAGE } from "~/apps/knowledge/versions"
 import { extractRows } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import { type UserContext, withRlsContext } from "~/db/rls"
@@ -265,6 +265,73 @@ describe("one version per author session", () => {
     expect(rows.length).toBe(VERSIONS_PER_PAGE)
     expect(rows[0]?.body).toBe("old 2")
     expect(rows.at(-1)?.body).toBe("newest")
+  })
+
+  it("an agent looping 300 writes keeps the person's text and the conflict text", async () => {
+    const doc = await create(alice)
+    await save(alice, doc.id, { body: "the person's text" }, { session: crypto.randomUUID() })
+    const base = (await loadAsAlice(doc.id)).revision
+    await withRlsContext(ctx(bob, WRITER), (tx) =>
+      saveUnapplied(tx, {
+        orgId,
+        documentId: doc.id,
+        title: "Page",
+        body: "bob's conflict text",
+        baseRevision: base,
+        session: crypto.randomUUID(),
+        authorId: bob,
+      }),
+    )
+    const agentId = crypto.randomUUID()
+    for (let i = 1; i <= 300; i++) {
+      await save(alice, doc.id, { body: `agent ${i}` }, { author: { type: "agent", agentId } })
+    }
+    const rows = await versions(doc.id)
+    expect(rows.length).toBe(VERSIONS_PER_PAGE)
+    expect(rows.find((r) => r.body === "the person's text")).toMatchObject({
+      kind: "edit",
+      author_type: "user",
+    })
+    expect(rows.find((r) => r.body === "bob's conflict text")?.kind).toBe("unapplied")
+    expect(rows.at(-1)?.body).toBe("agent 300")
+    // The cap took the agent's oldest rows: its newest 198 are left.
+    expect(rows.filter((r) => r.kind === "agent").map((r) => r.body)[0]).toBe("agent 103")
+  })
+
+  it("past a year a version goes, even an author's newest; an unapplied text stays", async () => {
+    const doc = await create(alice)
+    const old = new Date(Date.now() - 400 * 86_400_000).toISOString()
+    await privileged(
+      sql.raw(
+        insertSql(
+          `${schemaRef("app_knowledge")}.document_versions`,
+          [
+            { kind: "edit", body: "bob's old edit", author_id: bob },
+            { kind: "unapplied", body: "bob's old conflict text", author_id: bob },
+          ].map((r) => ({
+            org_id: orgId,
+            document_id: doc.id,
+            kind: r.kind,
+            title: "Page",
+            body: r.body,
+            body_md5: { raw: `md5('${r.body.replace(/'/g, "''")}')` },
+            revision: 1,
+            base_revision: 1,
+            author_type: "user",
+            author_id: r.author_id,
+            created_at: old,
+            updated_at: old,
+            started_at: old,
+            required_scopes: { raw: "'{}'::text[]" },
+          })),
+        ),
+      ),
+    )
+    await save(alice, doc.id, { body: "today" })
+    const bodies = (await versions(doc.id)).map((r) => r.body)
+    expect(bodies).toContain("bob's old conflict text")
+    expect(bodies).not.toContain("bob's old edit")
+    expect(bodies).toContain("today")
   })
 })
 

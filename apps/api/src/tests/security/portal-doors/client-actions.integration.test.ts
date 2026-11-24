@@ -297,6 +297,7 @@ describe("portal doors: the client action page", () => {
       "modules/client-actions/signed-copy.ts",
       "modules/client-actions/synced-mail.ts",
       "modules/client-actions/targets.ts",
+      "modules/client-actions/unsent-links.ts",
     ])
     const { id, token } = await mint()
     const ip = nextIp()

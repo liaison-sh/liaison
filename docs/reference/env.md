@@ -298,13 +298,13 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `CLAUDE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:23`, `apps/desktop/sidecar/session-import.ts:14` |
 | `CLAUDE_SECURESTORAGE_CONFIG_DIR` | `apps/desktop/sidecar/config-isolation.ts:17`, `apps/desktop/sidecar/config-isolation.ts:22` |
 | `CONTEXT_PROVIDERS_DISABLED` | `apps/api/src/modules/agent/context/context-providers.ts:271` |
-| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5731` |
+| `EVENT_ROUTINE_COALESCE_MS` | `apps/api/src/infra/jobs/event-routine-subscriber.ts:58`, `apps/api/src/modules/agent/tools/skills-routines-tools.ts:5733` |
 | `GS_BIN` | `apps/api/src/modules/pdf/render.ts:388` |
 | `INBOUND_TRUSTED_AUTHSERV_IDS` | `apps/api/src/lib/email/sender-auth.ts:44` |
 | `LIAISON_ALLOW_OLDER_IMAGE` | `apps/api/src/db/schema-guard.ts:32` |
 | `LIAISON_ALLOW_PRIVATE_API_CONNECTOR_HOSTS` | `apps/api/src/modules/apps/connections/api/adapter-policy.ts:25` |
 | `LIAISON_ALLOW_PRIVATE_MODEL_SERVERS` | `apps/api/src/modules/agent/providers/model-server.ts:33` |
-| `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:77`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
+| `LIAISON_APP_CATALOG_DIR` | `apps/api/src/modules/apps/catalog.ts:78`, `apps/api/src/modules/permissions/scope-registry.ts:81` |
 | `LIAISON_APP_PRIVATE_HOSTS` | `apps/api/src/modules/apps/sandbox/bridge/shared.ts:224` |
 | `LIAISON_BUNDLED_APPS_FROM_SOURCE` | `apps/api/src/modules/apps/contract/recording-run.test-helpers.ts:100`, `apps/api/src/modules/apps/sandbox/bundle-loader.ts:75` |
 | `LIAISON_CLI_OPERATOR` | `apps/api/src/cli/agent/ask.ts:172` |
@@ -320,7 +320,7 @@ Variables the code under `apps/` and `bundled-apps/` reads directly (`process.en
 | `LIAISON_PUBLIC_DIR` | `apps/api/src/lib/server.ts:522`, `apps/api/src/modules/apps/app-frame.ts:35` |
 | `LIAISON_WEB_TOOLS_ALLOW_PRIVATE` | `apps/api/src/modules/agent/tools/web-tools.ts:160`, `apps/api/src/modules/agent/tools/web-tools.ts:253` |
 | `MAIL_INGEST_STALE_SEC` | `apps/api/src/modules/monitor/index.ts:307` |
-| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:106` |
+| `MAILBOX_DECRYPT_WAIT_BUDGET_MS` | `apps/api/src/modules/agent/mailbox-plaintext/mailbox-plaintext-broker.ts:107` |
 | `MAINTENANCE_FLAG_PATH` | `apps/api/src/lib/server.ts:178`, `apps/api/src/middleware/maintenance.ts:23` |
 | `MAINTENANCE_VERSION_PATH` | `apps/api/src/lib/server.ts:185`, `apps/api/src/middleware/maintenance.ts:27` |
 | `MCP_MAILBOX_WAIT_MS` | `apps/api/src/modules/mcp/mcp-mailbox-plaintext.ts:54` |

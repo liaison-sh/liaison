@@ -398,7 +398,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `stripe:approve` | approver scope | Decide (approve, edit, or deny) stripe approvals raised by its gated tools |
 | `stripe:customers:read` | manifest scopes; entity customer; role member; tools activity_read, approval_route_read, card_update_link, customers_get, customers_search, home_load |  |
 | `stripe:customers:write` | manifest scopes; role billing; tool customer_link |  |
-| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, invoice_payload, reconcile_candidates, refund_document_link, refunds_for_charge |  |
+| `stripe:internal` | manifest scopes; tools billing_status_for_counterparty, invoice_document_link, invoice_payload, payment_payload, reconcile_candidates, refund_document_link and 2 more |  |
 | `stripe:invoices:read` | manifest scopes; role member; tools invoice_send_state, invoices_search |  |
 | `stripe:payments:read` | manifest scopes; role member; tools disputes_list, payments_search |  |
 | `stripe:refunds:write` | manifest scopes; role billing; tool refunds_create |  |

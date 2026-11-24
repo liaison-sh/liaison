@@ -202,7 +202,7 @@ The tools an agent can call. An agent sees a tool only when its role holds the t
 | `routine_tool_scopes` | Look up which scopes a routine needs for the tools it will call. |  | `kernel:routines:write` |
 | `run_on_my_computer` | Hand this request to the person's own computer (one of their computers running Liaison), where it runs as a session with their own Claude sign-in, local files and tools, and no cloud token budget. |  | `kernel:threads:write` |
 | `run_routine_now` | Trigger one ad-hoc execution of a routine right now, outside its cron schedule. | yes | `kernel:routines:write` |
-| `set_away` | Record that a person is away (dates only, never a reason), end it, or name their standing next in line. |  | `kernel:threads:read` |
+| `set_away` | Set a person away on their days off (dates only, never a reason), end it, or name who stands in. |  | `kernel:threads:read` |
 | `setup_state` | What is set up in this workspace and what is left of the features the person chose (setup.features), with the other features as a menu with times; read from the workspace itself. |  | `kernel:threads:read` |
 | `share_folder_on_my_computer` | Share a folder of the person's own computer with Liaison, so kernel__run_on_my_computer can work in it. | yes | `kernel:threads:write` |
 | `shopify_app_toml` | Post this server's shopify.app.toml with the Shopify CLI steps. |  | `kernel:threads:write` |
@@ -977,6 +977,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `invoice_send_state` | Whether a payment reminder about a Stripe invoice may still go out, read from Stripe at send time: stops on paid, void or uncollectible; waits when Stripe cannot be asked. |  | `stripe:invoices:read` |
 | `invoices_search` | Stripe invoices from the mirror by customer or status, with number, amounts due and paid, next retry, and the Liaison document it became. |  | `stripe:invoices:read` |
 | `mrr_query` | Stripe MRR from the mirror, per currency: now, past due, plan split, movements since the month start. |  | `stripe:subscriptions:read` |
+| `payment_payload` | One charge read again in the payment:unmatched shape, with its status and its Stripe invoice, for a person's decision in invoicing. |  | `stripe:internal` |
 | `payments_search` | Stripe charges from the mirror by customer, invoice or status, card as brand and last 4; unmatched: charges no Stripe invoice explains. |  | `stripe:payments:read` |
 | `reconcile_candidates` | Stripe invoices with no Liaison document, recently paid invoices, and succeeded refunds with no credit note, for invoicing's safety job. |  | `stripe:internal` |
 | `refund_document_link` | Record the credit note a Stripe refund became, or that none follows it. |  | `stripe:internal` |
@@ -986,6 +987,7 @@ Stripe: customers, subscriptions, invoices and payments from your Stripe account
 | `subscription_cancel` | Cancel a Stripe subscription, at the end of its period unless atPeriodEnd is false. | yes | `stripe:subscriptions:write` |
 | `subscription_cancel_effect` | What cancelling a subscription changes: MRR, invoices and the company's open deals, for its approval card. |  | `stripe:subscriptions:read` |
 | `subscriptions_search` | Stripe subscriptions from the mirror by id, plan name, status or customer, with plan, MRR, period end, trial end and masked card. |  | `stripe:subscriptions:read` |
+| `waiting_state` | Customers and invoices by id as the mirror holds them now, for the Stripe invoices invoicing keeps waiting. |  | `stripe:internal` |
 
 ## tickets
 

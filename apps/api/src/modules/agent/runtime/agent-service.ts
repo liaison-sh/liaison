@@ -196,7 +196,12 @@ import {
   historyUsedNotificationTools,
   NOTIFICATION_CHANGE_NOTE,
 } from "~/modules/agent/runtime/settings-change-note"
-import { createLiveTextGate, replyForAudience } from "~/modules/agent/runtime/shared-thread-reply"
+import {
+  createAnswerText,
+  createLiveTextGate,
+  replyForAudience,
+  toolEntryCloses,
+} from "~/modules/agent/runtime/shared-thread-reply"
 import type { ClipLedger } from "~/modules/agent/runtime/stale-result-clipper"
 import { StepTimer } from "~/modules/agent/runtime/step-timing"
 import {
@@ -1031,9 +1036,10 @@ export function runAgentStream(params: RunAgentStreamParams): ReturnType<typeof 
     messages: params.messages as never,
     tools: params.tools,
     // Beside the caller's limits, a whole answer closed by its next steps ends the turn, so no
-    // further step says it again (answer-after-tools.ts).
-    stopWhen: (params.stopWhen === undefined
-      ? undefined
+    // further step says it again (answer-after-tools.ts). A sub-run that owes a structured result
+    // ends on its `finalize` call, never on words.
+    stopWhen: (params.stopWhen === undefined || Object.hasOwn(params.tools ?? {}, "finalize")
+      ? params.stopWhen
       : [...[params.stopWhen].flat(), replyIsClosed]) as never,
     onStepFinish: params.onStepFinish as never,
     // A demo visitor's step is settled as soon as its model call has answered,
@@ -1346,7 +1352,9 @@ export type TurnTimelineEntry =
   // turn replays one message per step even when no words separate the steps
   // (context.ts stepsFromTimeline): merged, they would not repeat the request
   // the model was sent, and the next turn would re-read them uncached.
-  | { kind: "tool"; toolCallId: string; step?: number }
+  // `closes`: the call closed the reply (its next steps), so the text before it
+  // is part of the answer (shared-thread-reply.ts).
+  | { kind: "tool"; toolCallId: string; step?: number; closes?: true }
   | { kind: "text"; text: string }
 
 interface RunAgentChatResult {
@@ -5584,8 +5592,13 @@ async function runThreadTurn(
           ...presentation,
           ...replayableProviderMetadata(chunk.providerMetadata),
         })
-        timeline.push({ kind: "tool", toolCallId: chunk.toolCallId, step: steps.length })
-        liveText.toolCall()
+        timeline.push({
+          kind: "tool",
+          toolCallId: chunk.toolCallId,
+          step: steps.length,
+          ...toolEntryCloses(chunk.toolName),
+        })
+        liveText.toolCall(chunk.toolName)
         emitStreamEvent("tool_call", {
           toolCallId: chunk.toolCallId,
           toolName: chunk.toolName,
@@ -5868,7 +5881,7 @@ export async function rerunAgentTurn(input: {
   let text = ""
   const replyText = createReplyText()
   // The text after the last tool call: what a shared room receives (shared-thread-reply.ts).
-  let finalStepText = ""
+  const answerText = createAnswerText()
   let finishReason = "stop"
   let errorDetail: string | undefined
   const usage = {
@@ -5898,9 +5911,9 @@ export async function rerunAgentTurn(input: {
       if (chunk.type === "text-delta") {
         replyText.add(chunk.text)
         text = replyText.text
-        finalStepText += chunk.text
+        answerText.add(chunk.text)
       } else if (chunk.type === "tool-call") {
-        finalStepText = ""
+        answerText.toolCall(chunk.toolName)
         // Same redaction as the room path: the reply's metadata is persisted.
         currentStep.toolCalls.push({
           toolCallId: chunk.toolCallId,
@@ -5965,7 +5978,7 @@ export async function rerunAgentTurn(input: {
     finishReason,
     text,
     stepTexts: replyText.steps,
-    finalStepText,
+    finalStepText: answerText.text,
     steps,
     errorDetail,
   })

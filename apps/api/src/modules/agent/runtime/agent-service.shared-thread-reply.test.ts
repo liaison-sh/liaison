@@ -10,6 +10,8 @@
 
 import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test"
 import crypto from "node:crypto"
+import { simulateReadableStream, streamText } from "ai"
+import { MockLanguageModelV4 } from "ai/test"
 import { z } from "zod"
 import type { RlsClient } from "~/db"
 import { sql } from "~/db"
@@ -32,6 +34,61 @@ const TOOL = "str__probeTool"
 const SCOPE = "str:probe:read"
 const NARRATION = "I'll read the task first, then break it into subtasks.\n\n"
 const ANSWER = "Three subtasks are filed under the task."
+
+const CHIPS = "kernel__suggest_next_steps"
+const CLOSED =
+  "The retainer bills 4,950.00 a month for 44 hours, 112.50 an hour, and 120.00 above that. " +
+  "I can open the project, pull the billing history, or ask an admin for the access you need."
+
+type MockStep = Array<{ text: string } | { call: string; input?: unknown }>
+
+/** The turn run by the real loop on a scripted model: its stop conditions and tools are the product's. */
+function scriptedTurn(steps: MockStep[]) {
+  const usage = {
+    inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 },
+    outputTokens: { total: 5, text: 5, reasoning: 0 },
+  }
+  let n = 0
+  const model = new MockLanguageModelV4({
+    doStream: steps.map((step) => ({
+      stream: simulateReadableStream({
+        chunks: [
+          { type: "stream-start" as const, warnings: [] },
+          ...step.flatMap((part) => {
+            const id = `p${n++}`
+            if ("call" in part) {
+              return [
+                {
+                  type: "tool-call" as const,
+                  toolCallId: id,
+                  toolName: part.call,
+                  input: JSON.stringify(part.input ?? {}),
+                },
+              ]
+            }
+            return [
+              { type: "text-start" as const, id },
+              { type: "text-delta" as const, id, delta: part.text },
+              { type: "text-end" as const, id },
+            ]
+          }),
+          {
+            type: "finish" as const,
+            finishReason: step.some((p) => "call" in p)
+              ? { unified: "tool-calls" as const, raw: "TOOL" }
+              : { unified: "stop" as const, raw: "STOP" },
+            usage,
+          },
+        ],
+      }),
+    })) as never,
+  })
+  const run = ((opts: Parameters<typeof streamText>[0]) =>
+    streamText({ ...opts, model })) as typeof streamText
+  return { model, run }
+}
+
+const chips = (label: string) => ({ call: CHIPS, input: { steps: [{ label }] } })
 
 type StreamTools = Record<string, { execute?: (args: unknown) => Promise<unknown> }>
 
@@ -101,7 +158,12 @@ describe("a reply in a shared thread is the final answer only", () => {
    * One real turn; returns the stored agent reply's content and timeline, and
    * the `agent_stream` frames the room's sockets were handed for it.
    */
-  async function turn(threadId: string, actor: UserContext) {
+  async function turn(
+    threadId: string,
+    actor: UserContext,
+    stream: unknown = narratingStream(),
+    background = false,
+  ) {
     const msg = await withPrivilegedDb(orgId, "test-str-msg", (tx) =>
       sendMessage(tx as unknown as RlsClient, {
         requiredScopes: [],
@@ -113,11 +175,11 @@ describe("a reply in a shared thread is the final answer only", () => {
       }),
     )
     if (!msg) throw new Error("the requester could not post into the test thread")
-    AgentServiceTestAccess.setStreamText(narratingStream() as never)
+    AgentServiceTestAccess.setStreamText(stream as never)
     const broadcastSpy = spyOn(eventBusModule, "broadcastEphemeral")
     let sent: Parameters<typeof eventBusModule.broadcastEphemeral>[0][] = []
     try {
-      await invokeAgentForThread(threadId, msg.id, actor, orgId)
+      await invokeAgentForThread(threadId, msg.id, actor, orgId, background)
     } finally {
       sent = broadcastSpy.mock.calls.map(([event]) => event)
       broadcastSpy.mockRestore()
@@ -204,5 +266,75 @@ describe("a reply in a shared thread is the final answer only", () => {
     // The live stream is unchanged too: every line, as it is written.
     expect(reply.streamed).toBe(NARRATION + ANSWER)
     expect(reply.toolCalls).toBe(1)
+  })
+
+  /** A thread with a teammate, or the person's own chat, and the turn run in it by the real loop. */
+  async function closedTurn(shared: boolean, steps: MockStep[], unwatched = false) {
+    const asker = (await minimal.person(orgId)).id
+    await minimal.grantScope(asker, SCOPE)
+    const others = shared ? [(await minimal.person(orgId)).id] : []
+    for (const other of others) await minimal.grantScope(other, SCOPE)
+    await seedPersonalAgent(asker)
+    const threadId = await seedThread(shared ? "thread" : "agent_chat", asker, [asker, ...others])
+    const { model, run } = scriptedTurn(steps)
+    const reply = await turn(
+      threadId,
+      await actorFor(asker),
+      run,
+      unwatched,
+    )
+    return { reply, calls: model.doStreamCalls.length }
+  }
+
+  for (const shared of [true, false]) {
+    test(`an answer closed by its next steps is the whole reply, ${shared ? "with a teammate" : "in private"}`, async () => {
+      const { reply, calls } = await closedTurn(shared, [
+        [{ text: CLOSED }, chips("Open the project")],
+        [{ text: "To recap what I wrote above." }],
+      ])
+      expect(reply.content).toBe(CLOSED)
+      expect(reply.streamed).toBe(CLOSED)
+      expect(calls).toBe(1)
+      expect(JSON.stringify(reply.metadata?.timeline ?? [])).toContain("4,950.00")
+    })
+
+    test(`it stays when the steps were refused, ${shared ? "with a teammate" : "in private"}`, async () => {
+      const bad = { call: CHIPS, input: { steps: [{ label: "Open it", prompt: "other words" }] } }
+      const { reply } = await closedTurn(shared, [
+        [{ text: CLOSED }, bad],
+        [chips("Open the project")],
+        [{ text: "To recap what I wrote above." }],
+      ])
+      expect(reply.content).toBe(CLOSED)
+      expect(reply.streamed).toBe(CLOSED)
+    })
+  }
+
+  test("a short answer before its next steps is not lost, and a silent step is not asked again", async () => {
+    const { reply, calls } = await closedTurn(true, [
+      [{ text: "Yes, it went out on Monday." }, chips("Open it")],
+      [],
+    ])
+    expect(reply.content).toBe("Yes, it went out on Monday.")
+    expect(reply.streamed).toBe("Yes, it went out on Monday.")
+    expect(calls).toBe(2)
+  })
+
+  test("work before the answer stays out of the room, the answer and its steps stay in", async () => {
+    const { reply } = await closedTurn(true, [
+      [{ text: NARRATION }, { call: TOOL }],
+      [{ text: CLOSED }, chips("Open the project")],
+    ])
+    expect(reply.content).toBe(CLOSED)
+    expect(JSON.stringify(reply.metadata?.timeline ?? [])).not.toContain("read the task first")
+  })
+
+  test("a run nobody watches keeps its answer when its next steps are refused", async () => {
+    const { reply } = await closedTurn(
+      true,
+      [[{ text: CLOSED }, chips("Open the project")], [chips("Open the project")]],
+      true,
+    )
+    expect(reply.content).toBe(CLOSED)
   })
 })

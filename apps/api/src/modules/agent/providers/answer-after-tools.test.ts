@@ -82,7 +82,12 @@ function textStep(text: string) {
 }
 
 /** A step that writes `text` and then calls `toolName`, in one step. */
-function textThenCallStep(text: string, toolName: string, id = "c2") {
+function textThenCallStep(
+  text: string,
+  toolName: string,
+  id = "c2",
+  input = '{"steps":[{"label":"Hand over"}]}',
+) {
   return {
     stream: simulateReadableStream({
       chunks: [
@@ -94,7 +99,7 @@ function textThenCallStep(text: string, toolName: string, id = "c2") {
           type: "tool-call" as const,
           toolCallId: id,
           toolName,
-          input: '{"steps":[{"label":"Hand over"}]}',
+          input,
         },
         finish("tool-calls"),
       ],
@@ -131,6 +136,7 @@ async function allText(result: ReturnType<typeof runAgentStream>): Promise<strin
 function run(
   steps: Array<{ stream: ReadableStream<unknown> }>,
   chips: Array<Record<string, unknown>> = [],
+  more: Record<string, unknown> = {},
 ) {
   const answers = [...chips]
   const model = new MockLanguageModelV4({ doStream: steps as never })
@@ -151,7 +157,8 @@ function run(
         execute: async () =>
           answers.shift() ?? { ok: true, shown: 1, message: "1 shown under your reply." },
       }),
-    },
+      ...more,
+    } as never,
     stopWhen: stepCountIs(8),
   })
   return { model, result }
@@ -313,6 +320,53 @@ describe("a whole answer closed by its next steps is the end of the turn", () =>
       const { result } = run([textThenCallStep(text, SUGGEST), textStep("The options are ...")])
       expect(await allText(result)).toBe(`${text}The options are ...`)
     }
+  })
+
+  it("goes on when the text does not end as an answer does", async () => {
+    for (const end of [
+      " **Options:**",
+      " Here are the options：",
+      " and then...",
+      " and then…",
+      " one, two,",
+      "\n\n## What I can do next",
+      " I will now lay out the options",
+    ]) {
+      const { result } = run([textThenCallStep(ANSWER + end, SUGGEST), textStep("The options are ...")])
+      expect(await allText(result)).toBe(`${ANSWER}${end}The options are ...`)
+    }
+  })
+
+  it("ends on a sentence in bold or quotes, a list, a table, or a sentence of another script", async () => {
+    for (const end of [
+      " **Tell me which.**",
+      " She wrote \"send it.\"",
+      "\n\n- Open the project\n- Ask an admin",
+      "\n\n1. Open the project\n2. Ask an admin",
+      "\n\n| Month | Hours |\n|---|---|\n| March | 44 |",
+      " どれにしますか？",
+      " Tell me which! 🙂",
+    ]) {
+      const { result } = run([textThenCallStep(ANSWER + end, SUGGEST), textStep("Again.")])
+      expect(await allText(result)).toBe(ANSWER + end)
+    }
+  })
+
+  it("lets a call its schema refuses be made again", async () => {
+    const bad = textThenCallStep(ANSWER, SUGGEST, "c2", '{"steps":"none"}')
+    const { model, result } = run([bad, callStep(SUGGEST, "c3"), textStep("The answer is above.")])
+    expect(await allText(result)).toBe(ANSWER)
+    expect(model.doStreamCalls.length).toBe(2)
+  })
+
+  it("never ends a run that owes a structured result", async () => {
+    const { model, result } = run(
+      [textThenCallStep(ANSWER, SUGGEST), textStep("Filed.")],
+      [],
+      { finalize: tool({ description: "result", inputSchema: z.object({}) }) },
+    )
+    expect(await allText(result)).toBe(`${ANSWER}Filed.`)
+    expect(model.doStreamCalls.length).toBe(2)
   })
 
   it("goes on when the step also gathered something, or wrote nothing", async () => {

@@ -42,7 +42,7 @@ import {
   type TurnTimelineEntry,
 } from "~/modules/agent/runtime/agent-service"
 import { autoTitleAgentChat } from "~/modules/agent/runtime/auto-title"
-import { createLiveTextGate } from "~/modules/agent/runtime/shared-thread-reply"
+import { createLiveTextGate, toolEntryCloses } from "~/modules/agent/runtime/shared-thread-reply"
 import {
   type LiveAgentStreamSnapshot,
   listLiveAgentStreams,
@@ -578,8 +578,12 @@ async function chatTurn(
               ...toolCallPresentation(orgId, part.toolName),
             }
             currentStepToolCalls.push(call)
-            finalTimeline.push({ kind: "tool", toolCallId: part.toolCallId })
-            liveText.toolCall()
+            finalTimeline.push({
+              kind: "tool",
+              toolCallId: part.toolCallId,
+              ...toolEntryCloses(part.toolName),
+            })
+            liveText.toolCall(part.toolName)
             await writeEvent("tool-call", call)
             emitStreamEvent("tool_call", {
               ...call,

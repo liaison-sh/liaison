@@ -25,6 +25,7 @@ import {
   redactMailToolResult,
 } from "~/modules/agent/mailbox-plaintext/mail-plaintext-redaction"
 import type { TurnTimelineEntry } from "~/modules/agent/runtime/agent-service"
+import { toolEntryCloses } from "~/modules/agent/runtime/shared-thread-reply"
 
 /** A message as the SDK hands it (ModelMessage); opaque here. */
 export type JournalMessage = { role: string; content: unknown }
@@ -175,7 +176,11 @@ export async function stepView(orgId: string, step: unknown): Promise<JournalSte
         args: await redactMailToolArgs(orgId, toolName, part.input),
         ...(part.providerMetadata ? { providerMetadata: part.providerMetadata } : {}),
       })
-      view.timeline.push({ kind: "tool", toolCallId: String(part.toolCallId) })
+      view.timeline.push({
+        kind: "tool",
+        toolCallId: String(part.toolCallId),
+        ...toolEntryCloses(toolName),
+      })
     } else if (part.type === "tool-result") {
       view.toolResults.push({
         toolCallId: String(part.toolCallId),

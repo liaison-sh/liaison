@@ -6,7 +6,7 @@ import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withPrivilegedReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { UUID_RE } from "~/lib/uuid"
-import { nextInLineOn } from "~/modules/users/away"
+import { nextInLineToday } from "~/modules/users/away"
 
 const K = sql.raw(schemaRef("kernel"))
 
@@ -1484,15 +1484,15 @@ export function standInMark(ids: readonly string[] | null): {
 }
 
 /**
- * A company's account manager, an active member, and while they are away today the
- * colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
+ * A company's account manager, an active member, and while they are away today (their own day)
+ * the colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
  * A company merged into another answers with the surviving company's manager: the
  * merge's audit row names the survivor (followed through a few merges in a row).
  */
 export async function loadAccountManager(
   orgId: string,
   companyId: string,
-  opts?: { standIn?: boolean },
+  opts?: { standIn?: boolean; now?: Date },
 ): Promise<string[] | null> {
   if (!UUID_RE.test(companyId)) return null
   const K = sql.raw(schemaRef("kernel"))
@@ -1524,6 +1524,6 @@ export async function loadAccountManager(
   )
   if (!row) return null
   if (opts?.standIn === false) return [row.id]
-  const next = await nextInLineOn(orgId, row.id, new Date().toISOString().slice(0, 10))
+  const next = await nextInLineToday(orgId, row.id, opts?.now)
   return next ? [row.id, next] : [row.id]
 }

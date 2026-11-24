@@ -756,6 +756,19 @@ export async function nextInLineOn(
   })
 }
 
+/** `nextInLineOn` on the person's own today: their time zone, else the org's, else UTC. */
+export async function nextInLineToday(
+  orgId: string,
+  userId: string,
+  now: Date = new Date(),
+): Promise<string | null> {
+  const today = await withPrivilegedReadReusingHeld(orgId, "away-own-today", async (tx) => {
+    const person = (await readPeople(tx, orgId, [userId])).get(userId)
+    return person ? todayOf(tx, orgId, person, now) : null
+  })
+  return today === null ? null : nextInLineOn(orgId, userId, today)
+}
+
 // ---------------------------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------------------------

@@ -3954,6 +3954,18 @@ export function statusForToolError(code: string): number {
     case "company_has_accounts":
     case "company_has_schedules":
       return 409
+    // A deactivation refused until it says who takes the person's companies, or because it would
+    // leave no admin (kernel-bulk.ts): the same 409 as the admin route.
+    case "accounts_to_required":
+    case "last_admin":
+    // A company's account manager that cannot be: inactive, a client, or unable to read the
+    // company (contacts/companies.ts).
+    case "manager_inactive":
+    case "manager_external":
+    case "manager_cannot_see_company":
+      return 409
+    case "manager_not_found":
+      return 404
     // A person delete refused while a live recurring invoice schedule bills them
     // (contacts/service.ts): the workspace's state, not a fault.
     case "contact_has_schedules":

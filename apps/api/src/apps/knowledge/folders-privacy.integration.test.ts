@@ -41,8 +41,10 @@ import { buildProvisionContext } from "~/cli/provisioners/types"
 import { extractRows, type RlsClient } from "~/db"
 import { withPrivilegedDb, withSystemDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { createRpcBridge } from "~/modules/apps/sandbox/rpc-bridge"
 import { eraseUser } from "~/modules/erasure/erase-user"
+import { insertSql, type RowValue } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -317,15 +319,28 @@ describe("a personal folder", () => {
     const id = randomUUID()
     const docId = await page(ana, "Old release page")
     await as(ana, async (tx) => {
-      await tx.execute(sql`
-        INSERT INTO ${knowledgeRel("collections")}
-          (id, org_id, name, description, parent_collection_id, owner_user_id, maintainer_user_ids)
-        VALUES (${id}::uuid, ${orgId}::uuid, 'Old release', NULL, NULL, ${ana}::uuid, '[]'::jsonb)`)
-      await tx.execute(sql`
-        INSERT INTO ${knowledgeRel("collection_memberships")}
-          (id, org_id, collection_id, target_type, target_id, created_by)
-        VALUES (gen_random_uuid(), ${orgId}::uuid, ${id}::uuid, 'document', ${docId}::uuid, ${ana}::uuid)
-        ON CONFLICT (org_id, collection_id, target_type, target_id) DO NOTHING`)
+      const insert = (table: string, row: Record<string, RowValue>) =>
+        tx.execute(
+          sql.raw(
+            insertSql(`${schemaRef("app_knowledge")}.${table}`, row, { onConflictDoNothing: true }),
+          ),
+        )
+      await insert("collections", {
+        id,
+        org_id: orgId,
+        name: "Old release",
+        description: null,
+        parent_collection_id: null,
+        owner_user_id: ana,
+        maintainer_user_ids: { raw: "'[]'::jsonb" },
+      })
+      await insert("collection_memberships", {
+        org_id: orgId,
+        collection_id: id,
+        target_type: "document",
+        target_id: docId,
+        created_by: ana,
+      })
       await tx.execute(sql`
         UPDATE ${knowledgeRel("collections")} SET owner_user_id = NULL, updated_at = now()
         WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`)

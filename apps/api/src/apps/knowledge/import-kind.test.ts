@@ -257,6 +257,32 @@ describe("knowledge.document", () => {
     expect(String(run.errors[0]?.error)).toMatch(/syncedSourceId/)
   })
 
+  it("a file the text names is copied only by the rule of a save: another thread's file is named, the page kept", async () => {
+    const label = `kn${tag()}`
+    const threadFile = await uploadedFile(orgId, adminId)
+    const run = await importDocs(
+      [
+        {
+          externalRef: "n1",
+          title: "Named file",
+          body: "See ![manual](import-file:1).",
+          attachments: [{ fileId: threadFile, ref: "1" }],
+        },
+      ],
+      label,
+    )
+    expect(run.counts["knowledge.document"]).toEqual({ created: 1, skipped: 0, failed: 0 })
+    const row = (await doc(label, "n1"))!
+    const files = await sql`SELECT id FROM kernel.files WHERE entity_id = ${String(row.id)}`
+    expect(files.length).toBe(0)
+    const [body] = await sql`SELECT body FROM app_knowledge.documents WHERE id = ${row.id}`
+    expect(body!.body).toBe("See manual.")
+    const losses = (run.report.losses ?? []) as Array<{ what: string; where: string }>
+    expect(losses.map((l) => `${l.where}: ${l.what}`)).toContain(
+      "Named file: file not carried (manual.txt): only a Knowledge page's file or a new upload is copied onto a page",
+    )
+  })
+
   it("attaches an uploaded file the person can see, refuses another org's (A9)", async () => {
     const label = `ka${tag()}`
     const mine = await uploadedFile(orgId, adminId)

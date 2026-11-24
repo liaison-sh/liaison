@@ -75,7 +75,11 @@ function reasonOf(err: unknown): NotCopiedReason {
  * A file a page may take a copy of: another Knowledge page's file, or an upload still
  * in its upload session (pasted into the editor before the page took it), never sealed.
  */
-function adoptable(file: { app: string; entity_type: string; enc_version: number }): boolean {
+export function adoptable(file: {
+  app: string
+  entity_type: string
+  enc_version: number
+}): boolean {
   if (Number(file.enc_version ?? 0) !== 0) return false
   if (file.app === "knowledge" && file.entity_type === "document") return true
   return file.app === "kernel" && file.entity_type === "file_upload_session"

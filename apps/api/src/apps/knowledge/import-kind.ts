@@ -54,7 +54,7 @@ import { randomUUID } from "node:crypto"
 import { fileToken } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { z } from "zod"
-import { importPageRefsOf, replaceImportPageRefs } from "~/apps/knowledge/body-tokens"
+import { adoptable, importPageRefsOf, replaceImportPageRefs } from "~/apps/knowledge/body-tokens"
 import { createKnowledgeCollection } from "~/apps/knowledge/collections"
 import { refreshDocumentLinks } from "~/apps/knowledge/links"
 import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
@@ -443,16 +443,22 @@ async function copyFileOntoPage(
   ctx: HostImportContext,
   documentId: string,
   fileId: string,
+  named: boolean,
 ): Promise<{ id: string; storageKey: string | null; filename: string }> {
   const src = await ctx.resolveFile(fileId)
-  const uploaded = extractRows(
+  const uploaded = extractRows<{ app: string; entity_type: string; enc_version: number }>(
     await tx.execute(drizzleSql`
-      SELECT 1 FROM ${kernelRel("files")}
+      SELECT app, entity_type, enc_version FROM ${kernelRel("files")}
       WHERE org_id = ${ctx.orgId}::uuid AND id::text = ${fileId}
       LIMIT 1
     `),
   )
-  if (uploaded.length > 0) {
+  if (uploaded[0]) {
+    // A file a page names takes the rule of a save (body-tokens.ts): only another
+    // Knowledge page's file or a fresh upload, never a sealed one.
+    if (named && !adoptable(uploaded[0])) {
+      throw new Error("only a Knowledge page's file or a new upload is copied onto a page")
+    }
     const copied = await attachFileToParent(
       {
         sourceFileId: fileId,
@@ -661,13 +667,15 @@ async function importDocument(
       if (!att.ref) {
         // An upload the person can see (A9), its failure the record's.
         await ctx.resolveFile(att.fileId)
-        const file = await copyFileOntoPage(tx, ctx, doc.id, att.fileId)
+        const file = await copyFileOntoPage(tx, ctx, doc.id, att.fileId, false)
         rows.push({ table: "kernel.files", id: file.id })
         continue
       }
       const ref = att.ref
       try {
-        const file = await tx.transaction((sp) => copyFileOntoPage(sp, ctx, doc.id, att.fileId))
+        const file = await tx.transaction((sp) =>
+          copyFileOntoPage(sp, ctx, doc.id, att.fileId, true),
+        )
         if (file.storageKey) copiedKeys.push(file.storageKey)
         copied.set(ref, file.id)
         rows.push({ table: "kernel.files", id: file.id })

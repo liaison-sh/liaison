@@ -8,6 +8,7 @@ import {
   type KnowledgeCollectionRow,
   requireCollectionsScope,
 } from "~/apps/knowledge/collections"
+import { detachFolderPage, lockFoldersOfPage } from "~/apps/knowledge/folder-pages"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanWriteDocumentRow,
@@ -52,6 +53,8 @@ export async function moveDocument(
   if (from?.id === to?.id) return { id: row.id }
 
   if (from) {
+    // Folder first, then the page's memberships (folder-pages.ts).
+    await lockFoldersOfPage(tx, actor, row.id, from.id)
     const left = extractRows(
       await tx.execute(drizzleSql`
         DELETE FROM ${knowledgeRel("collection_memberships")}
@@ -66,6 +69,8 @@ export async function moveDocument(
         "This page is no longer in that folder. Reload the list and try again.",
       )
     }
+    // A folder's page that leaves its folder is an ordinary page.
+    await detachFolderPage(tx, actor, row.id, from.id)
   }
   let entityId = row.id
   if (to) {

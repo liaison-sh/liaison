@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm"
 import type { Context, Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
+import { ensureIndexDocument, readFolderPage } from "~/apps/knowledge/folder-pages"
 import { MAX_RESOLVE_IDS, pageBacklinks, pickPages, readablePages } from "~/apps/knowledge/links"
 import { moveDocument } from "~/apps/knowledge/move"
 import {
@@ -30,6 +31,8 @@ export interface PageRouteHelpers {
   pageWriteRefusal(c: Context<AppEnv>, err: unknown): Response
   /** A refused read: the same 404 as an unknown id, naming nothing. */
   pageNotFound(c: Context<AppEnv>, err: unknown): Response
+  /** A refused write on a folder: 403 without the scope it needs, else the zero-knowledge 404. */
+  folderWriteRefusal(c: Context<AppEnv>, err: unknown): Response
 }
 
 const idParamSchema = z.object({ id: z.uuid() })
@@ -45,6 +48,8 @@ const unappliedSchema = z.object({
 
 const resolveSchema = z.object({ ids: z.array(z.uuid()).max(MAX_RESOLVE_IDS) })
 const pickQuerySchema = z.object({ q: z.string().max(200).optional() })
+/** The first text of a folder's page, written when the page is made. */
+const folderPageStartSchema = z.object({ body: z.string().max(1_000_000).optional() }).strict()
 
 const notFound = () => new KnowledgeError("NOT_FOUND", "Knowledge item not found")
 
@@ -127,6 +132,39 @@ async function threadBacklinks(tx: RlsClient, orgId: string, id: string) {
 }
 
 export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers): void {
+  // A folder's page and what is inside that the reader may open (folder-pages.ts).
+  routes.get("/collections/:id/page", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const view = await withRequestRls(c, (tx) => readFolderPage(tx, id, actor))
+      return success(c, view)
+    } catch (err) {
+      return helpers.pageNotFound(c, err)
+    }
+  })
+
+  // The first edit of a folder's page: made now when the folder has none, else the
+  // existing one (201 when made here, 200 otherwise).
+  routes.post(
+    "/collections/:id/page",
+    zValidator("param", idParamSchema),
+    zValidator("json", folderPageStartSchema),
+    async (c) => {
+      try {
+        const actor = helpers.getActor(c)
+        const { id } = c.req.valid("param")
+        const { body } = c.req.valid("json")
+        const { page, created } = await withRequestRls(c, (tx) =>
+          ensureIndexDocument(tx, id, actor, body === undefined ? {} : { body }),
+        )
+        return success(c, page, undefined, created ? 201 : 200)
+      } catch (err) {
+        return helpers.folderWriteRefusal(c, err)
+      }
+    },
+  )
+
   // Titles of the pages a text links to, for this reader: live pages they may read only;
   // any other id is absent from the answer (the reader then shows "Page you cannot open").
   routes.post("/documents/resolve", zValidator("json", resolveSchema), async (c) => {

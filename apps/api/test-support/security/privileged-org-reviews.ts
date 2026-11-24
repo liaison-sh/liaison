@@ -95,6 +95,16 @@ export const REVIEWED_DISPATCH: Record<string, string> = {
  * follow to a trusted source, could not be traced, or is a literal: `file#enclosing` → why.
  */
 export const REVIEWED_OUTSIDE_ROUTES: Record<string, string> = {
+  "apps/api/src/apps/knowledge/links.ts#countOrg":
+    "daily page-links backfill (dry-run count): orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages) and is re-checked by writeUnlessMoving; every read is pinned to that org_id",
+  "apps/api/src/apps/knowledge/links.ts#backfillOrg":
+    "daily page-links backfill: orgId comes from the scheduled job's own org scan (withSystemDb listing the orgs that hold unindexed pages), run under writeUnlessMoving; every write is pinned to that org_id",
+  "apps/api/src/apps/knowledge/page-file-sweep.ts#sweepUnparentedPageCopies":
+    "scheduled sweep of unparented page-file copies: orgId is read from the files rows the job's own system query listed (not moving), and the delete is pinned to that org_id",
+  "apps/api/src/modules/files/origin.ts#fileIsFromOutside":
+    "file origin check: callers pass the org of the file's own request or job context (attach, media analysis, import); the read is pinned to that org_id and the file id",
+  "apps/api/src/seed/factories/knowledge/document-version.ts#seedDocumentVersion":
+    "test-only seed factory (no product caller): the org a test seeded itself, writing a version row for its own page",
   "apps/api/src/modules/agent/scopes/taint-approval-audience.ts#loadOrgMemberGrants":
     "readers' grants for a message post (rule 14): sendMessage passes the org of the message it writes, which every caller binds to its own context (a request's org, or the routine_runs row's own org_id on the waiting-run sweep); the read is pinned to that org_id and to the listed user ids",
   "apps/api/src/apps/knowledge/app-sources.ts#beginAppSourcePass":

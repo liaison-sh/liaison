@@ -202,7 +202,7 @@ const SYNCED_MARKER = "^synced:([0-9a-fA-F-]{36}):"
  * The live sources `folder` is the root of, or was made by. A stopped source, or
  * one that ran once, governs nothing: its folders are ordinary ones.
  */
-function liveSourcesOf(folder: string) {
+function liveSourcesOf(folder: "up" | "c" | "tree") {
   const c = drizzleSql.raw(folder)
   return drizzleSql`
     SELECT s.id FROM ${knowledgeRel("synced_sources")} s

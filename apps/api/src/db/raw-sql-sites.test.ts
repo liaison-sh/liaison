@@ -180,6 +180,8 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "policyFingerprintSql(kernelSchema)": "fingerprint query from code over the kernel schema name",
     "quoteLiteral(policyComment(stmt, after.fingerprint, build.versions))":
       "COMMENT takes no bind parameter; stamp of hex hashes plus base64url catalog versions, quoted with quoteLiteral",
+    "quoteLiteral(policyComment(stmt, live.fingerprint, build.versions))":
+      "the same comment for an unchanged policy rebuilt from a newer catalog: hex hashes plus base64url catalog versions, quoted with quoteLiteral",
   },
   "apps/api/src/infra/events/outbox-worker.ts#adminExec": {
     query: "fixed outbox statements from the same file",

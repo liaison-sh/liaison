@@ -12,22 +12,27 @@
 //                        invoices of the last 3 days that name one (to mark them paid),
 //                        and succeeded refunds of the last 35 days with no credit note.
 //                        Invoicing's own handlers decide; each is idempotent by its key.
-//                        With `buyers`, those customers as the mirror holds them now (what
-//                        invoicing's parked invoices wait for); Stripe is not asked.
+//   waiting_state        customers and invoices by id as the mirror holds them now, for the
+//                        invoices invoicing keeps parked; Stripe is not asked.
 //   invoice_payload      one Stripe invoice read again (`GET /v1/invoices/{id}`), in the
-//                        `invoice:finalized` shape, with the buyer the mirror holds now: the
-//                        retry of an invoice invoicing parked (a buyer's address added since).
+//                        `invoice:finalized` shape: its status, amounts and dates as Stripe
+//                        answers them (an event may have been missed), the buyer as the mirror
+//                        holds it, and the charges known to have paid it.
+//   payment_payload      one charge read again (`GET /v1/charges/{id}`), in the
+//                        `payment:unmatched` shape, with its status and its invoice, if any.
 import { refuseTool } from "@liaison/app-sdk/errors"
 import { type StripeHttpCtx, stripeFetch } from "../http"
-import { type MirrorDb, newTally } from "../mirror"
+import { invoiceRow, type MirrorDb, newTally } from "../mirror"
 import {
   buyerOf,
   chargedAt,
+  customerOf,
   invoiceEventPayload,
   invoiceOfCharge,
   listRefunds,
   refundItem,
   stripeDocumentRef,
+  unmatchedPayload,
 } from "../money-events"
 import { moneyActionHold, type StateDb } from "../states"
 
@@ -128,17 +133,88 @@ async function newestWhere(
   return out
 }
 
-/** The customers named, as invoicing reads a buyer, from the mirror only. */
-async function mirroredBuyers(ctx: MoneyReadCtx, ids: string[]): Promise<Obj[]> {
-  const rows = (await ctx.db.findMany("stripe_customers", {
-    where: { stripe_id: { in: ids }, deleted_at: null },
-    limit: ids.length,
+const ids = (v: unknown) =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x !== "") : []
+
+export async function waitingState(params: Obj | undefined, ctx: MoneyReadCtx) {
+  const hold = await moneyActionHold(ctx.db)
+  if (hold)
+    return refuseTool(
+      hold.error.code ?? "stripe_unavailable",
+      `The waiting invoices' customers were not read: ${hold.error.message}`,
+      { retryable: true },
+    )
+  const customers = ids(params?.customers)
+  const invoices = ids(params?.invoices)
+  const customerRows =
+    customers.length === 0
+      ? []
+      : ((await ctx.db.findMany("stripe_customers", {
+          where: { stripe_id: { in: customers }, deleted_at: null },
+          limit: customers.length,
+        })) as Obj[])
+  const invoiceRows =
+    invoices.length === 0
+      ? []
+      : ((await ctx.db.findMany("stripe_invoices", {
+          where: { stripe_id: { in: invoices } },
+          limit: invoices.length,
+        })) as Obj[])
+  return {
+    buyers: customerRows.map((r) => ({
+      customer_id: String(r.stripe_id),
+      customer: buyerOf(r),
+    })),
+    invoices: invoiceRows.map((r) => ({
+      stripe_invoice_id: String(r.stripe_id),
+      status: typeof r.status === "string" ? r.status : null,
+    })),
+    summary: `${customerRows.length} of ${customers.length} customer(s) and ${invoiceRows.length} of ${invoices.length} invoice(s) read from the Stripe mirror.`,
+  }
+}
+
+/** A mirror row with what Stripe answers of the invoice now: an event may have been missed. */
+function asStripeAnswers(row: Obj, obj: Obj): Obj {
+  const now = invoiceRow(obj, newTally())
+  const said: Obj = {}
+  for (const [field, key] of [
+    ["status", "status"],
+    ["total_minor", "total"],
+    ["amount_paid_minor", "amount_paid"],
+    ["currency", "currency"],
+    ["next_payment_attempt", "next_payment_attempt"],
+  ] as const)
+    if (obj[key] !== undefined) said[field] = now[field]
+  if (Array.isArray(obj.total_taxes)) said.tax_minor = now.tax_minor
+  if (obj.status_transitions) {
+    // A finalization never moves: the mirror's stands.
+    said.finalized_at = row.finalized_at ?? now.finalized_at
+    if (said.status === "paid") said.paid_at = now.paid_at ?? row.paid_at
+  }
+  return { ...row, ...said }
+}
+
+/** The charges known to have paid an invoice: the one it names, and those the mirror links to it. */
+async function chargesOfInvoice(ctx: MoneyReadCtx, id: string, obj: Obj): Promise<string[]> {
+  const rows = (await ctx.db.findMany("stripe_payments", {
+    where: { invoice_id: id, status: "succeeded" },
+    limit: 50,
   })) as Obj[]
-  return rows.map((r) => ({
-    customer_id: String(r.stripe_id),
-    contact_id: typeof r.contact_id === "string" ? r.contact_id : null,
-    customer: buyerOf(r),
-  }))
+  const named = typeof obj.charge === "string" ? [obj.charge] : []
+  return [...new Set([...named, ...rows.map((r) => String(r.stripe_id))])]
+}
+
+async function invoiceNow(ctx: MoneyReadCtx, row: Obj, obj: Obj, now: string): Promise<Obj> {
+  const payload = await invoiceEventPayload(
+    ctx,
+    asStripeAnswers(row, obj),
+    obj,
+    newTally(),
+    now,
+    false,
+  )
+  const charges = await chargesOfInvoice(ctx, String(row.stripe_id), obj)
+  return { ...payload, charge_id: payload.charge_id ?? charges[0] ?? null, charge_ids: charges }
 }
 
 export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyReadCtx) {
@@ -152,10 +228,7 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   const now = Date.now()
   const since = now - WINDOW_DAYS * DAY
   // Invoices and refunds invoicing holds parked: its retry sweep re-drives them, not this job.
-  const ids = (v: unknown) =>
-    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
   const waiting = new Set(ids(params?.waiting))
-  const buyerIds = ids(params?.buyers)
 
   // Invoicing decides each finalized invoice once: a document (linked), or Stripe's own invoice
   // stands (issuer recorded). Only the undecided ones are candidates, and a zero total never is.
@@ -181,9 +254,7 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
         `/v1/invoices/${encodeURIComponent(String(r.stripe_id))}`,
         {},
       )
-      invoices.push(
-        await invoiceEventPayload(ctx, r, obj, newTally(), new Date(now).toISOString(), false),
-      )
+      invoices.push(await invoiceNow(ctx, r, obj, new Date(now).toISOString()))
     } catch {
       // Read again on the next run.
       unread++
@@ -247,7 +318,6 @@ export async function reconcileCandidates(params: Obj | undefined, ctx: MoneyRea
   return {
     invoices,
     refunds,
-    ...(buyerIds.length > 0 ? { buyers: await mirroredBuyers(ctx, buyerIds) } : {}),
     summary: `${missing.length} Stripe invoice(s) with no Liaison document${unread ? ` (${unread} not read from Stripe this time)` : ""}, ${paidRows.length} paid invoice(s) to check, ${refunds.length} succeeded refund(s) with no credit note recorded.`,
   }
 }
@@ -280,20 +350,51 @@ export async function invoicePayload(params: Obj | undefined, ctx: MoneyReadCtx)
   }
   try {
     const obj = await stripeFetch<Obj>(ctx, `/v1/invoices/${encodeURIComponent(id)}`, {})
-    return {
-      invoice: await invoiceEventPayload(
-        ctx,
-        row,
-        obj,
-        newTally(),
-        new Date().toISOString(),
-        false,
-      ),
-    }
+    return { invoice: await invoiceNow(ctx, row, obj, new Date().toISOString()) }
   } catch (err) {
     return refuseTool(
       "stripe_unavailable",
       `Stripe did not answer for invoice ${id} (${err instanceof Error ? err.message : String(err)}). Nothing changed; it is read again on the next run.`,
+      { retryable: true },
+    )
+  }
+}
+
+export async function paymentPayload(params: Obj | undefined, ctx: MoneyReadCtx) {
+  const id = typeof params?.chargeId === "string" ? params.chargeId.trim() : ""
+  if (!CHARGE.test(id)) {
+    return refuseTool(
+      "charge_id_invalid",
+      `"${id}" is not a Stripe charge id (ch_...), so no payment was read.`,
+    )
+  }
+  const hold = await moneyActionHold(ctx.db)
+  if (hold)
+    return refuseTool(
+      hold.error.code ?? "stripe_unavailable",
+      `Stripe cannot be asked about charge ${id}: ${hold.error.message}`,
+      { retryable: true },
+    )
+  try {
+    const charge = await stripeFetch<Obj>(ctx, `/v1/charges/${encodeURIComponent(id)}`, {})
+    const invoiceId = await invoiceOfCharge(ctx, charge)
+    const customerId =
+      typeof charge.customer === "string"
+        ? charge.customer
+        : (((charge.customer as Obj | null)?.id as string | undefined) ?? null)
+    const customer = await customerOf(ctx, customerId, new Date().toISOString(), false)
+    return {
+      payment: {
+        ...unmatchedPayload({ ...charge, id }, customer, newTally()),
+        invoice_id: invoiceId,
+        document_ref: stripeDocumentRef({ id, invoice: invoiceId }),
+        status: typeof charge.status === "string" ? charge.status : null,
+      },
+    }
+  } catch (err) {
+    return refuseTool(
+      "stripe_unavailable",
+      `Stripe did not answer for charge ${id} (${err instanceof Error ? err.message : String(err)}). Nothing changed; ask again later.`,
       { retryable: true },
     )
   }

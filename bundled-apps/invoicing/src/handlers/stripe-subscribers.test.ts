@@ -212,36 +212,6 @@ describe("Stripe invoices handled by invoicing", () => {
       return ctx
     }
 
-    test("issues once, on its own, after the buyer's address is added in Stripe", async () => {
-      const db = stripeDb()
-      await exhausted(db)
-      expect(invoices(db)).toHaveLength(0)
-      // The reason a person reads stays the one it waits for.
-      expect(parks(db)[0]?.reason).toBe("customer_address_missing")
-
-      const calls: Array<{ tool: string; params: unknown }> = []
-      const ctx = stripeCtx(db, {
-        executeTool: stripeApp(
-          {
-            buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
-            invoice: finalized(),
-          },
-          calls,
-        ),
-      })
-      await reconcileStripePayments(ctx)
-      expect(calls.find((c) => c.tool === "stripe:reconcile_candidates")?.params).toEqual({
-        waiting: ["in_1"],
-        buyers: ["cus_1"],
-      })
-      await sweep(ctx, 48)
-      await reconcileStripePayments(ctx)
-      await sweep(ctx, 72)
-      expect(invoices(db)).toHaveLength(1)
-      expect(JSON.stringify(invoices(db)[0])).toContain("3 rue Neuve")
-      expect(parks(db)[0]?.status).toBe("resolved")
-    })
-
     test("is not retried, and Stripe is not asked for it, while the buyer is still incomplete", async () => {
       const db = stripeDb()
       await exhausted(db)
@@ -262,49 +232,6 @@ describe("Stripe invoices handled by invoicing", () => {
       expect(parks(db)[0]?.status).toBe("awaiting_data")
       expect(invoices(db)).toHaveLength(0)
       expect(db.__all("__sequences")).toHaveLength(0)
-    })
-
-    test("an invoice of a payment Stripe holds no invoice for is issued with the completed buyer too", async () => {
-      const db = stripeDb()
-      await exhausted(db, { ...noAddress(), stripe_invoice_id: "ch_9", status: "paid" })
-      const ctx = stripeCtx(db, {
-        executeTool: stripeApp({
-          buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
-        }),
-      })
-      await reconcileStripePayments(ctx)
-      await sweep(ctx, 48)
-      expect(invoices(db).map((d) => d.external_ref)).toEqual(["stripe:ch_9"])
-    })
-
-    test("a credit note that waited for that invoice follows it, however late", async () => {
-      const db = stripeDb()
-      const waiting = await exhausted(db)
-      const refund = {
-        charge_id: "ch_1",
-        invoice_id: "in_1",
-        refunds: [{ id: "re_1", amount_minor: "12000", status: "succeeded" }],
-      }
-      await onStripeRefundCreated({ data: refund }, waiting)
-      for (let i = 0; i < 12; i++) await sweep(waiting, 100 + i * 2)
-      const refundPark = () => parks(db).find((p) => p.event_id === "stripe:re_1")
-      expect(refundPark()?.retry_count).toBe(10)
-      // What the job that tells a person about a long wait looks for.
-      expect(refundPark()?.reason).toBe("invoice_not_issued")
-
-      const ctx = stripeCtx(db, {
-        executeTool: stripeApp({
-          buyers: [{ customer_id: "cus_1", contact_id: null, customer: buyer }],
-          invoice: finalized(),
-        }),
-      })
-      await reconcileStripePayments(ctx)
-      await sweep(ctx, 200)
-      expect(invoices(db)).toHaveLength(1)
-      await reconcileStripePayments(ctx)
-      await sweep(ctx, 210)
-      expect(creditNotes(db).map((d) => d.external_ref)).toEqual(["stripe:re_1"])
-      expect(refundPark()?.status).toBe("resolved")
     })
 
     test("a person's click issues it with the buyer as Stripe holds it now", async () => {
@@ -350,8 +277,7 @@ describe("Stripe invoices handled by invoicing", () => {
           invoice: finalized({ total_minor: "99900" }),
         }),
       })
-      await reconcileStripePayments(ctx)
-      await sweep(ctx, 48)
+      await invoiceFromStripePayment(ctx, { stripeInvoiceId: "in_1" })
       const open = parks(db).filter((p) => p.status !== "resolved")
       expect(open.map((p) => p.reason)).toEqual(["stripe_total_mismatch"])
       expect(invoices(db)).toHaveLength(0)
@@ -735,7 +661,7 @@ describe("Stripe invoices handled by invoicing", () => {
     const ctx = stripeCtx(db, {
       executeTool: (async () => ({
         status: "completed",
-        result: { invoices: [], refunds: [] },
+        result: { invoices: [], refunds: [], invoice: finalized() },
       })) as never,
     })
     const r = await onStripeInvoiceFinalized(finalized(), ctx)

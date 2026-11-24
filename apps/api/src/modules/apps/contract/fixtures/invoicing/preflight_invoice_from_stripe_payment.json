@@ -10,14 +10,33 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": ["documents", "{\"where\":{\"external_ref\":\"stripe:ch_contract_1\"},\"limit\":1}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"event_id\":\"stripe:ch_contract_1\"},\"limit\":500}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
       "args": [
-        "deferred_events",
-        "{\"where\":{\"event_id\":\"stripe:ch_contract_1\"},\"limit\":20}"
+        "stripe_sales",
+        "{\"where\":{\"key\":{\"in\":[\"stripe:ch_contract_1\"]}},\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"external_ref\":{\"in\":[\"stripe:ch_contract_1\"]}},\"select\":[\"id\",\"external_ref\"],\"limit\":1}"
+      ],
+      "reply": "[]"
+    },
+    {
+      "method": "db_findMany",
+      "args": [
+        "documents",
+        "{\"where\":{\"type\":\"invoice\"},\"select\":[\"id\",\"external_refs\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":1000,\"offset\":0}"
       ],
       "reply": "[]"
     }

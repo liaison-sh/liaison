@@ -6,7 +6,10 @@
 // `finalized_at`, so a late event never moves a legal date or year).
 //
 // Steps, in order, each one stopping or parking with its reason:
-//   1. a document already carries the key, or the payment was already invoiced by hand: stop;
+//   1. the sale already has a document under any of its names (stripe-sale.ts), or Stripe no longer
+//      holds the invoice open: stop, and close what waited;
+//   1b. with no person deciding: past its last automatic retry, or waiting on its approval card, it
+//      stays with the person; a payment with no Stripe invoice always does;
 //   2. the card stream: Stripe issues, stop; nobody decided yet, park until a person decides;
 //   3. finalized before Stripe was connected: stop;
 //   4. a zero total: stop; a negative total: park for a person;
@@ -16,9 +19,20 @@
 //   8. above the issuer's approval threshold: a person approves first (the payload waits parked);
 //   9. issue, due on the issue date, paid already when Stripe says so; link the Stripe invoice.
 //
+// A person's click (`byPerson`) that is refused at 5 or 7 leaves the park it was made on as it is:
+// nothing it leaves behind issues later by itself.
+//
 // The typed payload is the Stripe app's `invoice:finalized` (and `invoice:paid`): minor units as
 // strings across the JSON bridge, as the Shopify order payload is.
-import { closeParksOfKind, park, resolveOpenParks, STRIPE_INVOICE_PARK } from "../deferred"
+import {
+  closeParksOfKind,
+  type DeferredRow,
+  isBulkDeadLettered,
+  park,
+  parksOf,
+  resolveOpenParks,
+  STRIPE_INVOICE_PARK,
+} from "../deferred"
 import {
   EINVOICE_IDENTITY_PARK_KIND,
   GATE_CODES,
@@ -34,6 +48,10 @@ import { findIssuerProfile } from "../mutations/db-helpers"
 import { issueWithFxRate } from "../mutations/fx-issue"
 import { type ErrorEnvelope, type MutationsCtx, toBigInt } from "../mutations/shared"
 import { isoOf, issuerAt, type StreamIssuer, streamRows } from "../streams"
+import { isPersonOnly, sayLineOf } from "./stripe-lines"
+import { claimOps, isSaleTaken, recordSale, saleDocument, stripeRef } from "./stripe-sale"
+
+export { stripeRef }
 
 type Row = Record<string, unknown>
 
@@ -68,6 +86,8 @@ export interface StripeInvoicePayload {
   finalized_at?: string | null
   paid_at?: string | null
   charge_id?: string | null
+  /** Every charge of the invoice, when there are several. */
+  charge_ids?: string[] | null
   billing_reason?: string | null
   next_payment_attempt?: string | null
   failure_code?: string | null
@@ -88,7 +108,7 @@ export type StripeCtx = MutationsCtx & {
 export type FinalizedResult =
   | { status: "ok"; document_id: string; number: string }
   | { status: "skipped"; reason: string; document_id?: string }
-  | { status: "deferred"; deferred_id: string; reason: string }
+  | { status: "deferred"; deferred_id: string; reason: string; why?: string; words?: string }
   | { status: "pending_approval"; approval_id: string | null }
   | { status: "error"; error: ErrorEnvelope["error"] }
 
@@ -98,8 +118,6 @@ export { STRIPE_INVOICE_PARK }
 export const STRIPE_UNDECIDED_PARK = "stripe_issuer_undecided"
 export const STRIPE_APPROVAL_PARK = "stripe_invoice_approval"
 export const STRIPE_TAX_PARK = "tax_check"
-
-export const stripeRef = (id: string) => `stripe:${id}`
 
 /** The event's payload: the kernel delivers `{entity, action, data}`, a direct call the payload. */
 export function payloadOf<T>(event: unknown): T {
@@ -168,28 +186,20 @@ async function parkInvoice(
 const nowWaitsOn = (ctx: StripeCtx, p: StripeInvoicePayload, id: string) =>
   closeParksOfKind(ctx, stripeRef(p.stripe_invoice_id), STRIPE_INVOICE_PARK, id)
 
-/** Park on a buyer Stripe does not hold completely, and tell the people who issue documents. */
-async function parkOnBuyer(
-  ctx: StripeCtx,
-  p: StripeInvoicePayload,
-  reason: "customer_email_missing" | "customer_address_missing",
-  missing: string,
-  extra: Row = {},
-): Promise<FinalizedResult> {
-  const def = await parkInvoice(ctx, p, "awaiting_data", reason, STRIPE_INVOICE_PARK, {
-    customer_id: p.customer_id ?? null,
-    ...extra,
-  })
-  // A payment with no Stripe invoice has its own line already (its amount and its customer).
-  if (def.created && p.stripe_invoice_id.startsWith("in_")) {
-    await raise(ctx, "needs_person", def.id, {
-      deferred_id: def.id,
-      stripe_invoice_id: p.stripe_invoice_id,
-      reason: `its customer has no ${missing} in Stripe. Add it there and the invoice is issued`,
-    })
-  }
-  return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
+/** What an issue needs of its buyer and Stripe does not hold; null when it is all there. The name
+ *  falls back on the email. The one rule of the issue and of the safety job. */
+export function buyerLacks(c: StripeInvoicePayload["customer"]): "email" | "address" | null {
+  if (typeof c?.email !== "string" || !c.email.includes("@")) return "email"
+  return typeof c.address === "string" && c.address.trim() ? null : "address"
 }
+
+export const LACKS = {
+  email: { reason: "customer_email_missing", words: "its customer has no email in Stripe" },
+  address: {
+    reason: "customer_address_missing",
+    words: "its customer has no billing address in Stripe",
+  },
+} as const
 
 async function raise(ctx: StripeCtx, action: string, entityId: string, data: Row): Promise<void> {
   if (ctx.emit)
@@ -309,7 +319,7 @@ async function counterpartyOf(
   const vat = typeof c.vat_id === "string" && c.vat_id.trim() ? c.vat_id.trim() : null
   return {
     contact_id: contactId,
-    legal_name: String(c.name ?? email ?? "").trim(),
+    legal_name: String(c.name ?? "").trim() || (email ?? ""),
     country: String(c.country ?? issuerCountry).toUpperCase(),
     vat_id: vat,
     address: typeof c.address === "string" && c.address.trim() ? c.address.trim() : null,
@@ -319,35 +329,25 @@ async function counterpartyOf(
 }
 
 /**
- * A parked Stripe invoice as Stripe answers for it now: the Stripe app reads the invoice again and
- * the buyer as its mirror holds them today, so a buyer completed in Stripe after the park (an
- * address, a name, an email) reaches the retry. When the Stripe app cannot answer, the stored
- * payload is retried: it can only park again for what it lacked, never issue with less.
+ * A parked Stripe invoice as Stripe answers for it now: the Stripe app reads the invoice again,
+ * with the buyer as its mirror holds them today, so a buyer completed in Stripe after the park (an
+ * address, a name, an email) reaches the retry, and one voided or paid since is seen. Null when
+ * Stripe cannot be read: the payload stored at the park may be out of date (an invoice voided, or
+ * paid, or invoiced by hand since), so it is never issued from.
  */
-export async function currentStripeInvoice(ctx: StripeCtx, stored: unknown): Promise<unknown> {
-  const p = payloadOf<StripeInvoicePayload>(stored)
-  if (!ctx.executeTool || !p || typeof p.stripe_invoice_id !== "string" || !p.stripe_invoice_id)
-    return stored
+export async function currentStripeInvoice(
+  ctx: StripeCtx,
+  stripeInvoiceId: string,
+): Promise<StripeInvoicePayload | null> {
+  if (!ctx.executeTool || !stripeInvoiceId) return null
   try {
-    const env = await ctx.executeTool("stripe:invoice_payload", {
-      stripeInvoiceId: p.stripe_invoice_id,
-    })
-    if (env.status !== "completed") return stored
+    const env = await ctx.executeTool("stripe:invoice_payload", { stripeInvoiceId })
+    if (env.status !== "completed") return null
     const fresh = (env.result as { invoice?: StripeInvoicePayload } | null)?.invoice
-    return fresh && fresh.stripe_invoice_id === p.stripe_invoice_id ? fresh : stored
+    return fresh && fresh.stripe_invoice_id === stripeInvoiceId ? fresh : null
   } catch {
-    return stored
+    return null
   }
-}
-
-/** A buyer an invoice can be made out to: an email, and an address (the name falls back on the email). */
-export function buyerIsComplete(c: StripeInvoicePayload["customer"]): boolean {
-  return (
-    typeof c?.email === "string" &&
-    c.email.includes("@") &&
-    typeof c.address === "string" &&
-    c.address.trim() !== ""
-  )
 }
 
 /** Why a park of an invoice Stripe no longer holds open (void, uncollectible) was dropped. */
@@ -365,7 +365,111 @@ export function isInvoiceable(p: { status?: string | null }): boolean {
 export interface FinalizedOptions {
   /** A person decided this invoice (issue-now click, or the approval of the threshold card). */
   byPerson?: boolean
+  /** The park that person decided on. */
+  park?: DeferredRow
 }
+
+/** The names a payload gives its sale. */
+export const saleNames = (p: StripeInvoicePayload): Array<string | null | undefined> => [
+  p.stripe_invoice_id,
+  p.charge_id,
+  ...(Array.isArray(p.charge_ids) ? p.charge_ids : []),
+]
+
+/** The sale has its document: link the Stripe invoice to it and close everything that waited. */
+async function alreadyInvoiced(
+  ctx: StripeCtx,
+  p: StripeInvoicePayload,
+  doc: Row,
+): Promise<FinalizedResult> {
+  const id = String(doc.id)
+  await recordSale(ctx, saleNames(p), id)
+  if (p.stripe_invoice_id.startsWith("in_"))
+    await linkBack(ctx, p.stripe_invoice_id, id, typeof doc.number === "string" ? doc.number : null)
+  await closeSale(ctx, saleNames(p), "already_issued")
+  return { status: "skipped", reason: "duplicate_document", document_id: id }
+}
+
+/** Close the open parks of a sale, under each of its names. */
+export async function closeSale(
+  ctx: StripeCtx,
+  ids: ReadonlyArray<string | null | undefined>,
+  reason: string,
+): Promise<void> {
+  for (const id of new Set(ids)) if (id) await resolveOpenParks(ctx, stripeRef(id), reason)
+}
+
+/**
+ * With no person deciding, the event (a delivery, a retry, the safety job) changes nothing of what
+ * a person decides. Its approval card keeps what it showed, only what Stripe says of the payment is
+ * brought up to date; an invoice past its last retry keeps the newest payload, for the line.
+ */
+async function leftToAPerson(
+  ctx: StripeCtx,
+  p: StripeInvoicePayload,
+): Promise<FinalizedResult | null> {
+  const parks = await parksOf(ctx, stripeRef(p.stripe_invoice_id))
+  const card = parks.find(
+    (r) => r.blocked_on.kind === STRIPE_APPROVAL_PARK && r.status !== "permanent_failure",
+  )
+  if (card) {
+    const shown = (card.event_payload_json ?? {}) as StripeInvoicePayload
+    await ctx.db.update("deferred_events", card.id, {
+      event_payload_json: withPaymentOf(shown, p),
+    })
+    return { status: "deferred", deferred_id: card.id, reason: "awaiting_dependency" }
+  }
+  const capped = parks.find(
+    (r) => isPersonOnly({ ...r, status: "awaiting_data" }) && !isBulkDeadLettered(r.reason),
+  )
+  if (capped) {
+    await ctx.db.update("deferred_events", capped.id, {
+      ...(p.customer && p.lines ? { event_payload_json: parkPayload(p) } : {}),
+      // Given up on by an earlier version: the safety job raises its line.
+      ...(capped.status === "permanent_failure" ? { status: "awaiting_data" } : {}),
+    })
+    return { status: "deferred", deferred_id: capped.id, reason: "waits_for_a_person" }
+  }
+  if (!p.stripe_invoice_id.startsWith("in_"))
+    return { status: "skipped", reason: "waits_for_a_person" }
+  return null
+}
+
+/** What was shown of an invoice, with the payment Stripe reports of it now. */
+export const withPaymentOf = (
+  shown: StripeInvoicePayload,
+  now: StripeInvoicePayload,
+): StripeInvoicePayload => ({
+  ...shown,
+  status: now.status ?? shown.status,
+  paid_at: now.paid_at ?? shown.paid_at,
+  charge_id: now.charge_id ?? shown.charge_id,
+  ...(now.charge_ids ? { charge_ids: now.charge_ids } : {}),
+})
+
+/**
+ * A person's click is refused for now: the park it was made on stays the only one, with what was
+ * missing, so nothing issues later that nobody decided again.
+ */
+async function refuseClick(
+  ctx: StripeCtx,
+  on: DeferredRow | undefined,
+  why: string,
+  words: string,
+): Promise<FinalizedResult> {
+  if (on && isPersonOnly(on)) {
+    // What the job cannot see for itself stays on the line; an incomplete buyer it reads again.
+    const read = why === LACKS.email.reason || why === LACKS.address.reason
+    const blocked_on = { ...on.blocked_on, refused: read ? null : words }
+    await ctx.db.update("deferred_events", on.id, { reason: why, blocked_on })
+    if (!read) await sayLineOf(ctx, on.id, refusedText(words))
+  }
+  return { status: "deferred", deferred_id: on?.id ?? "", reason: "awaiting_data", why, words }
+}
+
+/** The Home line of an invoice whose last click was refused. */
+export const refusedText = (words: string) =>
+  `its last issue was refused: ${words}. Fix that, then issue it`
 
 /**
  * Issue the Liaison invoice of one finalized Stripe invoice, or say why not. Idempotent: the
@@ -383,19 +487,9 @@ export async function onStripeInvoiceFinalized(
   }
   const ref = stripeRef(p.stripe_invoice_id)
 
-  // 1. One document per Stripe invoice, and one per charge: the charge invoiced by hand before
-  //    this event names the same invoice key (stripeDocumentRef).
-  const existing = await documentByRef(ctx, ref)
-  if (existing) {
-    await linkBack(
-      ctx,
-      p.stripe_invoice_id,
-      String(existing.id),
-      typeof existing.number === "string" ? existing.number : null,
-    )
-    await resolveOpenParks(ctx, ref, "already_issued")
-    return { status: "skipped", reason: "duplicate_document", document_id: String(existing.id) }
-  }
+  // 1. One document per sale, whatever made it and whichever of its names it carries.
+  const existing = await saleDocument(ctx, saleNames(p))
+  if (existing) return alreadyInvoiced(ctx, p, existing)
 
   // An invoice voided or written off in Stripe since it was finalized (a park retried later
   // reads it again) has nothing left to invoice: its park is dropped and no number is taken.
@@ -404,10 +498,22 @@ export async function onStripeInvoiceFinalized(
     return { status: "skipped", reason: NOT_OPEN_IN_STRIPE }
   }
 
+  // 1b. What a person decides is never decided by an event.
+  if (!opts.byPerson) {
+    const left = await leftToAPerson(ctx, p)
+    if (left) return left
+  }
+  const drop = async (reason: string): Promise<FinalizedResult> => {
+    await resolveOpenParks(ctx, ref, reason)
+    return { status: "skipped", reason }
+  }
+
   // 2. Who issues.
   const finalizedAt = isoOf(p.finalized_at) ?? new Date().toISOString()
   const stream = await cardStreamFor(ctx, finalizedAt)
   if (!stream) {
+    if (opts.byPerson)
+      return refuseClick(ctx, opts.park, "card_stream_missing", "no card stream issues it")
     const def = await parkInvoice(
       ctx,
       p,
@@ -419,7 +525,7 @@ export async function onStripeInvoiceFinalized(
   }
   if (stream.issuer === "stripe") {
     await markIssuedBy(ctx, p.stripe_invoice_id, "stripe")
-    return { status: "skipped", reason: "issued_by_stripe" }
+    return drop("issued_by_stripe")
   }
   if (stream.issuer === "undecided" && !opts.byPerson) {
     const def = await parkInvoice(
@@ -446,7 +552,7 @@ export async function onStripeInvoiceFinalized(
   const connectedAt = isoOf(stream.row.created_at)
   if (connectedAt && finalizedAt < connectedAt) {
     await markIssuedBy(ctx, p.stripe_invoice_id, "before_connection")
-    return { status: "skipped", reason: "before_connection" }
+    return drop("before_connection")
   }
 
   // 4. Totals.
@@ -454,23 +560,25 @@ export async function onStripeInvoiceFinalized(
   if (total === 0n) {
     // Nothing to invoice: Stripe's own zero invoice stands.
     await markIssuedBy(ctx, p.stripe_invoice_id, "stripe")
-    return { status: "skipped", reason: "zero_total" }
+    return drop("zero_total")
   }
   if (total < 0n) {
+    if (opts.byPerson) return refuseClick(ctx, opts.park, "negative_total", "its total is negative")
     const def = await parkInvoice(ctx, p, "awaiting_data", "negative_total", STRIPE_INVOICE_PARK)
-    if (def.created) {
-      await raise(ctx, "needs_person", def.id, {
-        deferred_id: def.id,
-        stripe_invoice_id: p.stripe_invoice_id,
-        reason: "its total is negative",
-      })
-    }
+    await sayLineOf(ctx, def.id, "its total is negative")
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
 
   // 5. Issuer and buyer.
   const issuer = await findIssuerProfile(ctx.db, String(stream.row.issuer_profile_id ?? ""))
   if (!issuer) {
+    if (opts.byPerson)
+      return refuseClick(
+        ctx,
+        opts.park,
+        "issuer_profile_missing",
+        "the issuer profile of card payments is missing",
+      )
     const def = await parkInvoice(
       ctx,
       p,
@@ -481,13 +589,16 @@ export async function onStripeInvoiceFinalized(
     return { status: "deferred", deferred_id: def.id, reason: "awaiting_config" }
   }
   const counterparty = await counterpartyOf(ctx, p, issuer.country)
-  if (!counterparty.email) {
-    return parkOnBuyer(ctx, p, "customer_email_missing", "email")
-  }
-  if (!counterparty.address || !counterparty.legal_name) {
-    return parkOnBuyer(ctx, p, "customer_address_missing", "billing address", {
-      contact_id: counterparty.contact_id,
+  const lacks = buyerLacks(p.customer)
+  if (lacks) {
+    const { reason, words } = LACKS[lacks]
+    if (opts.byPerson) return refuseClick(ctx, opts.park, reason, words)
+    const def = await parkInvoice(ctx, p, "awaiting_data", reason, STRIPE_INVOICE_PARK, {
+      customer_id: p.customer_id ?? null,
+      ...(lacks === "address" ? { contact_id: counterparty.contact_id } : {}),
     })
+    await sayLineOf(ctx, def.id, `${words}. Add it there and the invoice is issued`)
+    return { status: "deferred", deferred_id: def.id, reason: "awaiting_data" }
   }
 
   // 6. Tax as charged, line by line.
@@ -570,6 +681,13 @@ export async function onStripeInvoiceFinalized(
     // waits on the issuer (never on the buyer's identity), the people who may edit the issuer get
     // one attention item, and it is issued once Settings is completed.
     const gap = gate.error.error
+    if (opts.byPerson)
+      return refuseClick(
+        ctx,
+        opts.park,
+        "issuer_incomplete",
+        "the issuer profile cannot sign an e-invoice",
+      )
     const def = await park(
       { db: ctx.db },
       {
@@ -590,6 +708,13 @@ export async function onStripeInvoiceFinalized(
   }
   if (!gate.ok) {
     const code = String(gate.error.error.code ?? "einvoice_gate")
+    if (opts.byPerson)
+      return refuseClick(
+        ctx,
+        opts.park,
+        code,
+        "its customer's e-invoicing identity is not complete",
+      )
     const def = await parkInvoice(ctx, p, "awaiting_data", code, EINVOICE_IDENTITY_PARK_KIND, {
       contact_id: counterparty.contact_id,
       code,
@@ -645,14 +770,16 @@ export async function onStripeInvoiceFinalized(
     const paid = await civilDateOf(ctx, issuer, p.paid_at)
     if (paid.ok) settlement = { paid_at: paid.date, source: "stripe" }
   }
-  const issued = await issueWithFxRate(ctx, {
-    type: "invoice",
+  const issuing = {
+    type: "invoice" as const,
     issuer,
     counterparty,
     external_ref: ref,
+    // Every name of the sale, unique: of two transactions on it, one commits (stripe-sale.ts).
+    commit_with: claimOps(saleNames(p), { $ref: "document" }),
     // Issued with no person: its e-invoice goes out like every other no-person issue (the card
     // stream's standing authorization when on, else the daily send card), never its own card.
-    einvoice_send: opts.byPerson ? "stage" : "batch",
+    einvoice_send: opts.byPerson ? ("stage" as const) : ("batch" as const),
     ...(settlement ? { settlement } : {}),
     draft: {
       currency: p.currency.toUpperCase(),
@@ -669,9 +796,19 @@ export async function onStripeInvoiceFinalized(
       },
       lines,
     },
-  })
+  }
+  let issued: Awaited<ReturnType<typeof issueWithFxRate>>
+  try {
+    issued = await issueWithFxRate(ctx, issuing)
+  } catch (err) {
+    // Another transaction issued or linked this sale between the check above and the commit:
+    // this one rolled back, with its number.
+    const other = isSaleTaken(err) ? await saleDocument(ctx, saleNames(p)) : null
+    if (!other) throw err
+    return alreadyInvoiced(ctx, p, other)
+  }
   if (!issued.ok) return { status: "error", error: issued.error.error }
-  await resolveOpenParks(ctx, ref, "issued")
+  await closeSale(ctx, saleNames(p), "issued")
   await linkBack(ctx, p.stripe_invoice_id, issued.result.document_id, issued.result.number ?? null)
   return { status: "ok", document_id: issued.result.document_id, number: issued.result.number }
 }

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.4",
+  "version": "0.38.5",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1547,6 +1547,14 @@
       },
       "constraints": { "unique": [["schedule_id", "period_key"], ["document_id"]] },
       "indexes": [["run_id", "position"], ["state"]]
+    },
+    "stripe_sales": {
+      "rlsScope": "internal",
+      "fields": {
+        "key": "text",
+        "document_id": "uuid"
+      },
+      "constraints": { "unique": [["key"]] }
     },
     "stripe_streams": {
       "rlsScope": "settings",
@@ -6955,6 +6963,7 @@
       "stripe_invoice:issuer_undecided",
       "stripe_invoice:undecided_listed",
       "stripe_invoice:needs_person",
+      "stripe_invoice:many_need_person",
       "stripe_invoice:payment_failed",
       "stripe_invoice:voided",
       "stripe_invoice:uncollectible",
@@ -6994,6 +7003,7 @@
       {"event": "stripe_invoice:issuer_undecided", "kind": "invoicing:stripe_invoice.issuer_undecided", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} ({{data.total}}) is not invoiced: nobody has decided who issues card payments' invoices. Decide in the issuer settings.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:undecided_listed", "kind": "invoicing:stripe_invoice.undecided_listed", "urgency": 60, "summary": "{{data.count}} Stripe invoices finalized before the decision are not invoiced ({{data.invoices}}). Issue them now one by one, or say Stripe sent them.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:needs_person", "kind": "invoicing:stripe_invoice.needs_person", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: {{data.reason}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:many_need_person", "kind": "invoicing:stripe_invoice.many_need_person", "urgency": 60, "summary": "{{data.count}} Stripe invoices are not invoiced and wait for a person. {{data.text}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:payment_failed", "kind": "invoicing:stripe_invoice.payment_failed", "urgency": 50, "summary": "Card payment of {{data.number}} failed and {{data.reason}}. The invoice is unchanged.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:voided", "kind": "invoicing:stripe_invoice.voided", "urgency": 40, "summary": "Stripe invoice {{data.number}} was voided in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:uncollectible", "kind": "invoicing:stripe_invoice.uncollectible", "urgency": 40, "summary": "Stripe invoice {{data.number}} was marked uncollectible in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
@@ -7541,7 +7551,15 @@
     },
     {
       "target": "stripe:invoice_payload",
-      "reason": "the retry of a parked Stripe invoice reads it again as Stripe answers now, so a buyer's address added since is what it issues with"
+      "reason": "the retry of a parked Stripe invoice, and a person's decision on one, read it again as Stripe answers now, so a buyer's address added since is what it issues with and a void one is not issued"
+    },
+    {
+      "target": "stripe:payment_payload",
+      "reason": "a person's decision on a payment with no Stripe invoice reads the charge and its customer again, and a payment linked by hand says which Stripe invoice it paid"
+    },
+    {
+      "target": "stripe:waiting_state",
+      "reason": "the safety job says on Home which waiting Stripe invoices have a complete customer now, and drops the ones voided since"
     },
     {
       "target": "stripe:reconcile_candidates",

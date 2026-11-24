@@ -183,6 +183,10 @@ function cases(db: MemDb): Record<string, Case | string> {
     reconcile_candidates: () => reconcileCandidates({}, { db: db as never, fetch: mockFetch }),
     // Invoicing's read, never the agent's (agentVisible false, stripe:internal): it carries the
     // buyer's address on purpose, as the invoice:finalized event does, for a legal invoice.
+    waiting_state:
+      "the buyers' addresses for invoicing's Home lines, never the agent's, as invoice_payload (money-events.test.ts)",
+    payment_payload:
+      "the buyer's address for a person's decision in invoicing, as invoice_payload (money-events.test.ts)",
     invoice_payload:
       "the buyer's address for invoicing's retry, as the invoice:finalized event carries it (money-events.test.ts)",
     invoice_send_state: () =>

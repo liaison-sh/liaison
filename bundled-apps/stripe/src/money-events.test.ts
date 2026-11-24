@@ -9,7 +9,13 @@ import { handleStripeEvent, type IngestCtx } from "./dispatch"
 import { MemDb } from "./mem-db.testkit"
 import { mockFetch, moneyCtx, seedCharge, stripeMockReset, stripeMockSeed } from "./money.testkit"
 import { stripeDocumentRef } from "./money-events"
-import { invoicePayload, reconcileCandidates, refundsForCharge } from "./tools/money-reads"
+import {
+  invoicePayload,
+  paymentPayload,
+  reconcileCandidates,
+  refundsForCharge,
+  waitingState,
+} from "./tools/money-reads"
 import { refundsCreate } from "./tools/refunds"
 import { invoiceDocumentLink, refundDocumentLink } from "./tools/routes"
 
@@ -460,6 +466,7 @@ describe("the reads invoicing calls", () => {
     stripeMockSeed("invoices", {
       id: "in_P1",
       status: "open",
+      total: 12000,
       lines: { object: "list", has_more: false, data: [] },
     })
     const ctx = { db: db as never, fetch: fetchStripe }
@@ -559,7 +566,7 @@ describe("the reads invoicing calls", () => {
     ])
   })
 
-  it("reconcile_candidates answers the customers asked for as the mirror holds them, without asking Stripe", async () => {
+  it("waiting_state answers the customers and invoices asked for as the mirror holds them, without asking Stripe", async () => {
     db.seed("stripe_customers", [
       {
         stripe_id: "cus_A",
@@ -579,14 +586,18 @@ describe("the reads invoicing calls", () => {
       return fetchStripe(...args)
     }) as typeof fetchStripe
     const ctx = { db: db as never, fetch }
-    const res = (await reconcileCandidates(
-      { buyers: ["cus_A", "cus_B", "cus_GONE", "cus_NEVER"] },
+    db.seed("stripe_invoices", [
+      { stripe_id: "in_V", status: "void" },
+      { stripe_id: "in_O", status: "open" },
+    ])
+    const res = (await waitingState(
+      { customers: ["cus_A", "cus_B", "cus_GONE", "cus_NEVER"], invoices: ["in_V", "in_NEVER"] },
       ctx,
     )) as Obj
+    expect(res.invoices).toEqual([{ stripe_invoice_id: "in_V", status: "void" }])
     expect(res.buyers).toEqual([
       {
         customer_id: "cus_A",
-        contact_id: "7d4e3c1a-0000-4000-8000-00000000000a",
         customer: {
           name: "Lumen Studio",
           email: "billing@lumen.example",
@@ -597,12 +608,99 @@ describe("the reads invoicing calls", () => {
       },
       {
         customer_id: "cus_B",
-        contact_id: null,
         customer: expect.objectContaining({ email: "b@lumen.example", address: null }),
       },
     ])
     expect(asked).toBe(0)
-    expect(await reconcileCandidates({}, ctx)).not.toHaveProperty("buyers")
+    expect(await waitingState({ customers: [], invoices: [] }, ctx)).toMatchObject({
+      buyers: [],
+      invoices: [],
+    })
+  })
+
+  it("invoice_payload answers the invoice as Stripe holds it, though the mirror missed an event, and the charges that paid it", async () => {
+    db.seed("stripe_invoices", [
+      {
+        stripe_id: "in_S1",
+        customer_id: "cus_S1",
+        status: "open",
+        total_minor: 12000,
+        currency: "eur",
+        finalized_at: new Date(Date.UTC(2026, 10, 15)).toISOString(),
+        paid_at: null,
+      },
+    ])
+    db.seed("stripe_customers", [{ stripe_id: "cus_S1", name: "Lumen Studio" }])
+    db.seed("stripe_payments", [
+      { stripe_id: "ch_S1", invoice_id: "in_S1", status: "succeeded" },
+      { stripe_id: "ch_S0", invoice_id: "in_S1", status: "failed" },
+    ])
+    const lines = { object: "list", has_more: false, data: [] }
+    const read = async (obj: Obj) => {
+      stripeMockSeed("invoices", { id: "in_S1", total: 12000, lines, ...obj })
+      const r = (await invoicePayload(
+        { stripeInvoiceId: "in_S1" },
+        {
+          db: db as never,
+          fetch: fetchStripe,
+        },
+      )) as Obj
+      return r.invoice as Obj
+    }
+    const paidAt = Date.UTC(2026, 10, 16) / 1000
+    expect(
+      await read({
+        status: "paid",
+        status_transitions: { finalized_at: Date.UTC(2026, 10, 15) / 1000, paid_at: paidAt },
+      }),
+    ).toMatchObject({
+      status: "paid",
+      paid_at: new Date(paidAt * 1000).toISOString(),
+      finalized_at: new Date(Date.UTC(2026, 10, 15)).toISOString(),
+      total_minor: "12000",
+      charge_id: "ch_S1",
+      charge_ids: ["ch_S1"],
+    })
+    expect(await read({ status: "void" })).toMatchObject({ status: "void" })
+  })
+
+  it("payment_payload reads one charge again with its status, its invoice and its customer, and refuses when Stripe does not answer", async () => {
+    db.seed("stripe_customers", [
+      {
+        stripe_id: "cus_P9",
+        name: "Lumen Studio",
+        email: "billing@lumen.example",
+        address: { line1: "3 rue Neuve", postal_code: "69001", city: "Lyon", country: "FR" },
+        contact_id: "7d4e3c1a-0000-4000-8000-00000000000a",
+      },
+    ])
+    stripeMockSeed("charges", {
+      id: "ch_P9",
+      amount: 12000,
+      currency: "eur",
+      status: "succeeded",
+      customer: "cus_P9",
+      invoice: "in_P9",
+      created: 1_763_200_800,
+    })
+    const ctx = { db: db as never, fetch: fetchStripe }
+    const r = (await paymentPayload({ chargeId: "ch_P9" }, ctx)) as Obj
+    expect(r.payment).toMatchObject({
+      charge_id: "ch_P9",
+      invoice_id: "in_P9",
+      customer_id: "cus_P9",
+      contact_id: "7d4e3c1a-0000-4000-8000-00000000000a",
+      amount_minor: "12000",
+      currency: "eur",
+      status: "succeeded",
+      customer: { name: "Lumen Studio", address: "3 rue Neuve, 69001 Lyon" },
+    })
+    expect(((await paymentPayload({ chargeId: "ch_NEVER" }, ctx)) as Obj).error.code).toBe(
+      "stripe_unavailable",
+    )
+    expect(((await paymentPayload({ chargeId: "in_1" }, ctx)) as Obj).error.code).toBe(
+      "charge_id_invalid",
+    )
   })
 
   it("reconcile_candidates walks past what invoicing decided or holds parked, however many come first", async () => {

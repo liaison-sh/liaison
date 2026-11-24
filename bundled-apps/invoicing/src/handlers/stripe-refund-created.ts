@@ -34,7 +34,7 @@ import {
   type StripeCtx,
   stripeRef,
 } from "./stripe-invoice-finalized"
-import { invoiceLinkedTo } from "./stripe-payment-unmatched"
+import { saleDocument } from "./stripe-sale"
 
 type Row = Record<string, unknown>
 
@@ -256,8 +256,7 @@ async function handleOne(
   if (note) return { refund_id: r.id, outcome: "exists", document_id: String(note.id) }
   if (status !== "succeeded") return { refund_id: r.id, outcome: "pending" }
   // The invoice the charge became, or the one a person linked it to by hand.
-  const original =
-    (await documentByRef(ctx, invoiceRef)) ?? (await invoiceLinkedTo(ctx, p.charge_id))
+  const original = await saleDocument(ctx, [invoiceRef.slice("stripe:".length), p.charge_id])
   if (!original) {
     // Stripe issued the charge's invoice: there is nothing of Liaison's to credit.
     if (await issuedByStripeAt(ctx, p.charged_at))

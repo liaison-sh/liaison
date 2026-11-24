@@ -22,6 +22,7 @@ import type { CrossAppExecuteTool } from "./cross-app"
 import { csvCell } from "./csv"
 import { needsHumanReview } from "./deferred"
 import { type LinkedShipment, linkedShipments } from "./handlers/link-shipments"
+import { LINES_PARK } from "./handlers/stripe-lines"
 import { civilDateOf, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { deliveryFileId } from "./legal-originals/delivery"
 import { type AnnexListing, annexListing } from "./mutations/send-annexes"
@@ -1438,6 +1439,9 @@ export interface DeferredRow {
 }
 
 /** deferred_list — parked auto-flow events (the sidebar's "deferred" badge). */
+const notLinesPark = (row: unknown) =>
+  (row as { blocked_on?: { kind?: unknown } | null }).blocked_on?.kind !== LINES_PARK
+
 export async function deferredList(
   ctx: ReadsCtx,
   input: { limit?: number } = {},
@@ -1480,7 +1484,8 @@ export async function deferredList(
     }
   }
   return {
-    items: rows.map((row) => {
+    // The grouped line of many waiting Stripe invoices is Home's, each invoice has its own row.
+    items: rows.filter(notLinesPark).map((row) => {
       const r = row as Record<string, unknown>
       const docId = ownDocument(r)
       if (docId) {

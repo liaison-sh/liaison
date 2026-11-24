@@ -36,6 +36,7 @@ import {
   onStripeInvoiceFinalized,
   STRIPE_PARK_PREFIX,
 } from "./stripe-invoice-finalized"
+import { hasUnmatchedPark } from "./stripe-payment-unmatched"
 import { retryParkedStripeCreditNote, STRIPE_CREDIT_NOTE_PARK } from "./stripe-refund-created"
 
 // The cron ctx is the full bundled-app bridge, so it satisfies both the
@@ -209,12 +210,19 @@ export async function deferredRetryJobHandler(
       ) {
         return { status: "still_blocked", reason: row.reason ?? "waits_for_a_person" }
       }
+      const stored = (row.event_payload_json ?? {}) as { stripe_invoice_id?: string }
+      const id = String(stored.stripe_invoice_id ?? "")
+      // A payment with no Stripe invoice is always decided by a person, on its own park.
+      if (!id.startsWith("in_"))
+        return (await hasUnmatchedPark(ctx, row.event_id))
+          ? { status: "ok" }
+          : { status: "still_blocked", reason: "waits_for_a_person" }
       // The invoice as Stripe answers for it now, never the payload frozen at the park: a buyer
       // completed in Stripe since (the address a park waited for) is what this retry issues with.
-      const r = await onStripeInvoiceFinalized(
-        await currentStripeInvoice(ctx, row.event_payload_json),
-        ctx,
-      )
+      // Stripe unreadable: it waits for the next try.
+      const invoice = await currentStripeInvoice(ctx, id)
+      if (!invoice) return { status: "still_blocked" }
+      const r = await onStripeInvoiceFinalized(invoice, ctx)
       // Parked again: the row keeps the reason the handler gave it, which a person reads.
       if (r.status === "deferred") return { status: "still_blocked" }
       return r.status === "error" || r.status === "pending_approval"

@@ -5,52 +5,82 @@
   "calls": [
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_config\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_data\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_dependency\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"render_failed\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"email_failed\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_config\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_config\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_data\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_data\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"awaiting_dependency\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"awaiting_dependency\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"render_failed\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"render_failed\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     },
     {
       "method": "db_findMany",
-      "args": ["deferred_events", "{\"where\":{\"status\":\"email_failed\"},\"limit\":500}"],
+      "args": [
+        "deferred_events",
+        "{\"where\":{\"status\":\"email_failed\"},\"select\":[\"id\",\"event_id\",\"status\",\"reason\",\"blocked_on\",\"retry_count\",\"retried_at\",\"created_at\"],\"orderBy\":{\"id\":\"asc\"},\"limit\":500,\"offset\":0}"
+      ],
       "reply": "[]"
     }
   ]

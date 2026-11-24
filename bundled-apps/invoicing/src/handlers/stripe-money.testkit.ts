@@ -54,6 +54,22 @@ export function stripeCtx(
     },
     executeTool: (async (tool: string, params: unknown) => {
       calls.push({ tool, params })
+      // Stripe answers for a payment as its event told it, unless a test says otherwise.
+      if (tool === "stripe:payment_payload") {
+        const { chargeId } = params as { chargeId: string }
+        const park = db
+          .__all("deferred_events")
+          .find(
+            (p) =>
+              p.event_id === `stripe:${chargeId}` &&
+              (p.event_payload_json as { charge_id?: string }).charge_id === chargeId,
+          )
+        if (park)
+          return {
+            status: "completed",
+            result: { payment: { ...(park.event_payload_json as object), status: "succeeded" } },
+          }
+      }
       return { status: "error", error: { code: "tool_not_found", message: "absent" } }
     }) as StripeCtx["executeTool"],
     resolveContact: async () => ({ id: CONTACT }),

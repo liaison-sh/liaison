@@ -9,37 +9,58 @@
 //   - a paid Stripe invoice whose document is unpaid: the paid handler;
 //   - a succeeded refund in mode A with no credit note, whose payment's invoice has a document:
 //     the refund handler (its unique key stops a second credit note).
-// It gives back to the retry sweep the parks whose ordinary retries ran out, once what they wait on
-// is there (a buyer completed in Stripe, the issuer, a credit note's invoice).
+// Past its last automatic retry a Stripe invoice is issued by a person only: the job notices what
+// it lacked is there (its buyer complete in Stripe, its issuer set) and says so on Home, one line
+// per invoice or one for many (stripe-lines.ts), and closes the ones invoiced or void since. A
+// credit note past its retries goes back to the retry sweep once its invoice exists.
 // It also lists, once, the Stripe invoices that waited while nobody had decided who issues, as
 // soon as a person picked Liaison: they issue only on a person's click. A refund still waiting for
 // its invoice after a day raises one Home item.
 import {
+  DEAD_LETTER_CAP,
   type DeferredRow,
+  isBulkDeadLettered,
   isStalled,
+  openRowsOf,
   resolveOpenParks,
   revive,
   STRIPE_CREDIT_NOTE_PARK,
-  toDeferredRow,
+  STRIPE_INVOICE_PARK,
 } from "../deferred"
 import { findIssuerProfile } from "../mutations/db-helpers"
+import { toBigInt } from "../mutations/shared"
 import { isoOf, issuerAt, streamRows } from "../streams"
 import {
-  buyerIsComplete,
+  buyerLacks,
   cardStreamFor,
-  documentByRef,
+  isInvoiceable,
+  LACKS,
+  NOT_OPEN_IN_STRIPE,
   onStripeInvoiceFinalized,
+  refusedText,
   STRIPE_UNDECIDED_PARK,
   type StripeCtx,
   type StripeInvoicePayload,
+  saleNames,
   stripeRef,
 } from "./stripe-invoice-finalized"
 import { hasCollectionMark, onStripeInvoicePaid } from "./stripe-invoice-paid"
 import {
+  invoiceIdOf,
+  isPersonOnly,
+  type LinesCtx,
+  type PersonInvoice,
+  sayPersonLines,
+  TOUCH_MAX,
+} from "./stripe-lines"
+import { hasUnmatchedPark } from "./stripe-payment-unmatched"
+import {
   flagLongRefundWaits,
   onStripeRefundCreated,
+  type ParkedStripeCreditNote,
   type StripeRefundPayload,
 } from "./stripe-refund-created"
+import { documentIdsByKey, invoicesLinkedTo, saleDocument } from "./stripe-sale"
 
 type Row = Record<string, unknown>
 
@@ -48,12 +69,12 @@ export interface ReconcileCandidates {
   refunds?: Array<
     StripeRefundPayload & { refund_id: string; amount_minor: string | number; status: string }
   >
-  /** The customers asked for, as the Stripe mirror holds them now. */
-  buyers?: Array<{
-    customer_id: string
-    contact_id?: string | null
-    customer?: StripeInvoicePayload["customer"]
-  }>
+}
+
+/** What the Stripe mirror holds now of the customers and invoices asked for. */
+interface WaitingState {
+  buyers: Map<string, StripeInvoicePayload["customer"]>
+  statuses: Map<string, string>
 }
 
 export interface StripeReconcileResult {
@@ -65,100 +86,217 @@ export interface StripeReconcileResult {
   message: string
 }
 
-const OPEN_PARK = ["awaiting_config", "awaiting_data", "awaiting_dependency"]
 const WAITING_MAX = 500
+/** How far back the candidates read goes (its 35 days, and one for the clock). */
+const CANDIDATE_DAYS_MS = 36 * 24 * 60 * 60 * 1000
 
-async function openParks(ctx: StripeCtx): Promise<Row[]> {
-  return (await ctx.db.findMany("deferred_events", {
-    where: { status: { in: OPEN_PARK } },
-    limit: 2000,
-  })) as Row[]
+/** An invoice only a person issues, with what its payload says of it. */
+interface PersonPark {
+  row: DeferredRow
+  customer_id: string | null
+  customer: StripeInvoicePayload["customer"]
+  negative: boolean
+  finalized_at: string | null
+  keys: string[]
 }
 
-/** Stripe invoices and refunds held by an open park: the retry sweep re-drives them, so the
- *  safety job's places go to what no handler holds. */
-function waitingIds(rows: Row[]): string[] {
-  const ids = new Set<string>()
-  for (const r of rows) {
-    const m = /^stripe:((?:in|re)_[A-Za-z0-9]+)$/.exec(String(r.event_id ?? ""))
-    if (m?.[1]) ids.add(m[1])
-    if (ids.size >= WAITING_MAX) break
+interface Waiting {
+  /** Stripe invoices and refunds an open park holds, the newest first. */
+  ids: string[]
+  persons: PersonPark[]
+  /** Credit notes past their retries. */
+  notes: DeferredRow[]
+  /** Parks an earlier version left on a payment, beside the payment's own. */
+  strays: DeferredRow[]
+}
+
+/** Everything that waits on Stripe, read a page at a time, payloads dropped as they are read. */
+async function waitingRows(ctx: StripeCtx): Promise<Waiting> {
+  const out: Waiting = { ids: [], persons: [], notes: [], strays: [] }
+  const held: Array<{ id: string; at: number }> = []
+  const db = ctx as LinesCtx
+  for await (const r of openRowsOf(db, "stripe:", { payload: true })) {
+    const m = /^stripe:((?:in|re)_[A-Za-z0-9]+)$/.exec(r.event_id)
+    if (m?.[1]) held.push({ id: m[1], at: r.created_at.getTime() })
+    if (isPersonOnly(r)) out.persons.push(personPark(r))
+    else if (isStalled(r) && r.blocked_on.kind === STRIPE_CREDIT_NOTE_PARK) out.notes.push(r)
+    else if (isStalled(r) && r.blocked_on.kind === STRIPE_INVOICE_PARK) out.strays.push(r)
   }
-  return [...ids]
+  // What the candidates read would find again: the newest, as that read goes back 35 days.
+  const since = Date.now() - CANDIDATE_DAYS_MS
+  out.ids = held
+    .filter((h) => h.at === 0 || h.at >= since)
+    .sort((a, b) => b.at - a.at)
+    .slice(0, WAITING_MAX)
+    .map((h) => h.id)
+  return out
 }
 
-/** The Stripe customer a stalled park waits for, or null when it waits on something else. */
-function waitedCustomer(r: DeferredRow): string | null {
-  const id = r.blocked_on.customer_id
-  return r.status === "awaiting_data" && typeof id === "string" && id ? id : null
+function personPark(row: DeferredRow): PersonPark {
+  const p = (row.event_payload_json ?? {}) as StripeInvoicePayload
+  const customer = row.blocked_on.customer_id ?? p.customer_id
+  return {
+    row: { ...row, event_payload_json: undefined },
+    customer_id: typeof customer === "string" && customer ? customer : null,
+    customer: p.customer ?? null,
+    negative: toBigInt(p.total_minor ?? 0) < 0n,
+    finalized_at: p.finalized_at ?? null,
+    keys: [
+      ...new Set([
+        row.event_id,
+        ...saleNames(p)
+          .filter((n) => !!n)
+          .map((n) => stripeRef(String(n))),
+      ]),
+    ],
+  }
 }
 
-/** Most stalled parks revived per run: two sweeps' worth, so the queue never fills with them. */
-const REVIVE_MAX = 50
+/** Invoices an earlier version gave up on (a dead letter) wait for a person like the others. */
+async function reopenGivenUp(ctx: StripeCtx): Promise<void> {
+  const db = ctx as LinesCtx
+  const open = new Set<string>()
+  const given: DeferredRow[] = []
+  for await (const r of openRowsOf(db, "stripe:in_", { statuses: ["permanent_failure"] }))
+    if (r.blocked_on.kind === STRIPE_INVOICE_PARK && !isBulkDeadLettered(r.reason)) given.push(r)
+  if (given.length === 0) return
+  for await (const r of openRowsOf(db, "stripe:in_")) open.add(r.event_id)
+  let touched = 0
+  for (const r of given) {
+    if (open.has(r.event_id) || touched >= TOUCH_MAX) continue
+    touched += 1
+    open.add(r.event_id)
+    await ctx.db.update("deferred_events", r.id, {
+      status: "awaiting_data",
+      retry_count: Math.max(r.retry_count, DEAD_LETTER_CAP),
+    })
+  }
+}
 
-/**
- * Parks the sweep no longer tries (isStalled), given back to it once what they wait on is there:
- * the buyer is complete in Stripe, the issuer is set, the credit note's invoice is issued. Nothing
- * is issued here, and a park whose record is still missing costs no retry and no call to Stripe.
- */
-async function reviveStalled(
-  ctx: StripeCtx,
-  stalled: DeferredRow[],
-  buyers: ReconcileCandidates["buyers"],
-): Promise<void> {
-  const byCustomer = new Map((buyers ?? []).map((b) => [b.customer_id, b]))
-  const refs = stalled
-    .filter((r) => r.blocked_on.kind === STRIPE_CREDIT_NOTE_PARK)
-    .map((r) => String(r.blocked_on.invoice_ref))
-  const issued = new Set(
-    refs.length === 0
-      ? []
-      : (
-          (await ctx.db.findMany("documents", {
-            where: { external_ref: { in: refs } },
-            limit: refs.length,
-          })) as Row[]
-        ).map((d) => String(d.external_ref)),
-  )
-  let revived = 0
-  for (const r of stalled) {
-    if (revived >= REVIVE_MAX) return
-    const p = (r.event_payload_json ?? {}) as StripeInvoicePayload
-    const customer = waitedCustomer(r)
-    if (customer) {
-      const buyer = byCustomer.get(customer)
-      if (!buyerIsComplete(buyer?.customer)) continue
-      await revive(ctx, r.id, {
-        ...p,
-        customer: buyer?.customer,
-        contact_id: buyer?.contact_id ?? p.contact_id ?? null,
+/** Close an invoice only a person issues, with its line; the grouped line is counted after. */
+async function dropPerson(ctx: StripeCtx, row: DeferredRow, reason: string): Promise<void> {
+  await ctx.db.update("deferred_events", row.id, { status: "resolved", reason })
+  await ctx.emit({
+    entity: "stripe_invoice",
+    action: "needs_person",
+    entityId: row.id,
+    data: { deferred_id: row.id, resolved: true },
+  })
+}
+
+/** What the Stripe mirror says of the invoices only a person issues, or null when it cannot say. */
+async function waitingState(ctx: StripeCtx, persons: PersonPark[]): Promise<WaitingState | null> {
+  const out: WaitingState = { buyers: new Map(), statuses: new Map() }
+  const customers = [...new Set(persons.map((p) => p.customer_id).filter((c) => c !== null))]
+  const ids = persons.map((p) => invoiceIdOf(p.row))
+  for (let i = 0; i < Math.max(customers.length, ids.length); i += WAITING_MAX) {
+    try {
+      const env = await ctx.executeTool?.("stripe:waiting_state", {
+        customers: customers.slice(i, i + WAITING_MAX),
+        invoices: ids.slice(i, i + WAITING_MAX),
       })
-    } else if (r.blocked_on.kind === STRIPE_CREDIT_NOTE_PARK) {
-      if (!issued.has(String(r.blocked_on.invoice_ref))) continue
-      await revive(ctx, r.id)
-    } else {
-      if (r.status !== "awaiting_config") continue
-      const stream = await cardStreamFor(ctx, isoOf(p.finalized_at) ?? new Date().toISOString())
-      const profile = String(stream?.row.issuer_profile_id ?? "")
-      if (!profile || !(await findIssuerProfile(ctx.db, profile))) continue
-      await revive(ctx, r.id)
+      if (env?.status !== "completed") return null
+      const r = env.result as {
+        buyers?: Array<{ customer_id: string; customer?: StripeInvoicePayload["customer"] }>
+        invoices?: Array<{ stripe_invoice_id: string; status?: string | null }>
+      }
+      for (const b of r.buyers ?? []) out.buyers.set(b.customer_id, b.customer ?? null)
+      for (const v of r.invoices ?? [])
+        out.statuses.set(v.stripe_invoice_id, String(v.status ?? ""))
+    } catch {
+      return null
     }
+  }
+  return out
+}
+
+const ON_HAND = "it is no longer issued on its own"
+
+/** What an invoice only a person issues waits for now, and whether a click issues it. */
+async function stateOf(
+  ctx: StripeCtx,
+  p: PersonPark,
+  state: WaitingState | null,
+): Promise<{ text: string; ready: boolean }> {
+  const said = p.row.blocked_on.line
+  if (p.negative) return { text: "its total is negative", ready: false }
+  const refused = p.row.blocked_on.refused
+  if (typeof refused === "string") return { text: refusedText(refused), ready: false }
+  if (p.row.status === "awaiting_config") {
+    const stream = await cardStreamFor(ctx, isoOf(p.finalized_at) ?? new Date().toISOString())
+    const profile = String(stream?.row.issuer_profile_id ?? "")
+    const issuer = profile ? await findIssuerProfile(ctx.db, profile) : null
+    if (!issuer)
+      return {
+        text: `the issuer profile is missing. Set it in the issuer settings, then issue it: ${ON_HAND}`,
+        ready: false,
+      }
+  }
+  // The mirror could not say: the line keeps what it says.
+  if (!state && typeof said === "string") return { text: said, ready: said.includes(READY_WORDS) }
+  const buyer = (p.customer_id ? state?.buyers.get(p.customer_id) : null) ?? p.customer
+  const lacks = buyerLacks(buyer)
+  if (lacks)
+    return { text: `${LACKS[lacks].words}. Add it there, then issue it: ${ON_HAND}`, ready: false }
+  return {
+    text:
+      p.row.status === "awaiting_config"
+        ? `its issuer is set. ${READY_WORDS}: ${ON_HAND}`
+        : `its customer is complete in Stripe now. ${READY_WORDS}: ${ON_HAND}`,
+    ready: true,
+  }
+}
+const READY_WORDS = "Issue it"
+
+/** Home, for every invoice only a person issues. Nothing is issued. */
+async function sayWhatWaits(ctx: StripeCtx, persons: PersonPark[]): Promise<void> {
+  const taken = await documentIdsByKey(ctx, [...new Set(persons.flatMap((p) => p.keys))])
+  const state = persons.length > 0 ? await waitingState(ctx, persons) : null
+  const waiting: PersonInvoice[] = []
+  let dropped = 0
+  for (const p of persons) {
+    const status = state?.statuses.get(invoiceIdOf(p.row))
+    const gone = p.keys.some((k) => taken.has(k))
+      ? "already_issued"
+      : status !== undefined && !isInvoiceable({ status })
+        ? NOT_OPEN_IN_STRIPE
+        : null
+    if (gone) {
+      if (dropped < TOUCH_MAX) await dropPerson(ctx, p.row, gone)
+      dropped += 1
+      continue
+    }
+    waiting.push({ row: p.row, ...(await stateOf(ctx, p, state)) })
+  }
+  await sayPersonLines(ctx as LinesCtx, waiting)
+}
+
+/** Most credit notes handed back per run: two sweeps' worth, so the queue never fills with them. */
+export const REVIVE_MAX = 50
+
+/** Credit notes past their retries go back to the sweep once their invoice is there: issued from
+ *  Stripe, or made by hand and linked to the charge. */
+async function reviveNotes(ctx: StripeCtx, notes: DeferredRow[]): Promise<void> {
+  if (notes.length === 0) return
+  const chargeOf = (r: DeferredRow) =>
+    String((r.event_payload_json as Partial<ParkedStripeCreditNote> | null)?.charge_id ?? "")
+  const keysOf = (r: DeferredRow) => [String(r.blocked_on.invoice_ref), stripeRef(chargeOf(r))]
+  const byKey = await documentIdsByKey(ctx, [...new Set(notes.flatMap(keysOf))])
+  const left = notes.filter((r) => !keysOf(r).some((k) => byKey.has(k)))
+  const linked = await invoicesLinkedTo(ctx, left.map(chargeOf).filter(Boolean))
+  let revived = 0
+  for (const r of notes) {
+    if (revived >= REVIVE_MAX) return
+    if (!keysOf(r).some((k) => byKey.has(k)) && !linked.has(chargeOf(r))) continue
+    await revive(ctx, r.id)
     revived += 1
   }
 }
 
-async function candidates(
-  ctx: StripeCtx,
-  parks: Row[],
-  stalled: DeferredRow[],
-): Promise<ReconcileCandidates | null> {
+async function candidates(ctx: StripeCtx, waiting: string[]): Promise<ReconcileCandidates | null> {
   if (!ctx.executeTool) return null
-  const buyers = [...new Set(stalled.map(waitedCustomer).filter((c): c is string => c !== null))]
   try {
-    const env = await ctx.executeTool("stripe:reconcile_candidates", {
-      waiting: waitingIds(parks),
-      ...(buyers.length > 0 ? { buyers: buyers.slice(0, WAITING_MAX) } : {}),
-    })
+    const env = await ctx.executeTool("stripe:reconcile_candidates", { waiting })
     return env.status === "completed" ? ((env.result ?? {}) as ReconcileCandidates) : null
   } catch {
     return null
@@ -214,13 +352,22 @@ export async function reconcileStripePayments(ctx: StripeCtx): Promise<StripeRec
   let notes = 0
   const listed = await listUndecided(ctx)
   await flagLongRefundWaits(ctx)
-  const parks = await openParks(ctx)
-  const stalled = parks.map(toDeferredRow).filter(isStalled)
-  const found = await candidates(ctx, parks, stalled)
-  await reviveStalled(ctx, stalled, found?.buyers)
+  await reopenGivenUp(ctx)
+  const waiting = await waitingRows(ctx)
+  for (const r of waiting.strays)
+    if (await hasUnmatchedPark(ctx, r.event_id))
+      await ctx.db.update("deferred_events", r.id, {
+        status: "resolved",
+        reason: "waits_elsewhere",
+      })
+  await reviveNotes(ctx, waiting.notes)
+  await sayWhatWaits(ctx, waiting.persons)
+  const found = await candidates(ctx, waiting.ids)
   for (const inv of found?.invoices ?? []) {
-    const doc = await documentByRef(ctx, stripeRef(inv.stripe_invoice_id))
+    const doc = await saleDocument(ctx, saleNames(inv))
     if (!doc) {
+      // A paid invoice's short row (its document was linked) says too little to issue from.
+      if (!inv.lines) continue
       // Re-emitted to its own handler: the decision to issue is the handler's, never this job's.
       const r = await onStripeInvoiceFinalized(inv, ctx)
       if (r.status === "ok") issued += 1

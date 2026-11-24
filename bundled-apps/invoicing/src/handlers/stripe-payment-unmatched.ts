@@ -6,23 +6,32 @@
 //   invoice_from_stripe_payment: issue the Liaison invoice now (it takes the next number), keyed
 //     like any document made from that charge (`stripeDocumentRef`), so it never doubles a
 //     finalized invoice; with `stripeInvoiceId` it issues a Stripe invoice that waited for a
-//     decision (the card stream undecided, or above the approval threshold);
-//   payment_link_to_invoice: link the charge to an invoice already issued, once.
-import { park, resolveOpenParks } from "../deferred"
+//     person (the card stream undecided, above the approval threshold, or past its last automatic
+//     retry). Each click reads the invoice or the payment from Stripe at that moment: it issues
+//     what Stripe answers, or refuses with the reason and takes no number (Stripe unreadable, void,
+//     already invoiced, the buyer incomplete). A refused click leaves nothing that issues later;
+//   payment_link_to_invoice: link the charge to an invoice already issued, once, and close what
+//     waited for the sale: the payment and its Stripe invoice.
+import { type DeferredRow, openRowsOf, park, parksOf, resolveOpenParks } from "../deferred"
 import { lineTax, netOfIncludedTax } from "../money"
 import { toBigInt } from "../mutations/shared"
 import { isoOf, streamRows, stripeDocumentRef } from "../streams"
 import {
+  closeSale,
   currentStripeInvoice,
-  documentByRef,
   type FinalizedResult,
+  linkBack,
+  NOT_OPEN_IN_STRIPE,
   onStripeInvoiceFinalized,
   payloadOf,
   STRIPE_APPROVAL_PARK,
   type StripeCtx,
   type StripeInvoicePayload,
-  stripeRef,
+  saleNames,
+  withPaymentOf,
 } from "./stripe-invoice-finalized"
+import type { LinesCtx } from "./stripe-lines"
+import { claimOps, isSaleTaken, saleDocument, stripeRef } from "./stripe-sale"
 
 type Row = Record<string, unknown>
 
@@ -92,11 +101,12 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
   if (since && created && created < since)
     return { status: "skipped" as const, reason: "before_connection" }
   const ref = stripeRef(p.charge_id)
-  if (await documentByRef(ctx, ref))
-    return { status: "skipped" as const, reason: "already_invoiced" }
-  if (await invoiceLinkedTo(ctx, p.charge_id)) {
-    return { status: "skipped" as const, reason: "already_linked" }
-  }
+  const made = await saleDocument(ctx, [p.charge_id])
+  if (made)
+    return {
+      status: "skipped" as const,
+      reason: made.external_ref === ref ? "already_invoiced" : "already_linked",
+    }
   const advance = await waitingAdvance(ctx, p.contact_id ?? null)
   const def = await park(
     { db: ctx.db },
@@ -148,30 +158,39 @@ export async function onStripePaymentUnmatched(event: unknown, ctx: StripeCtx) {
   return { status: "deferred" as const, deferred_id: def.id, created: def.created }
 }
 
-const PAGE = 500
+/** Which park a click is made on, when an event has several. */
+const CLICKED_FIRST = [STRIPE_APPROVAL_PARK, STRIPE_UNMATCHED_PARK, "stripe_issuer_undecided"]
 
-/** The invoice a charge was linked to by hand (`external_refs.stripe_charge_id`), read a page at a
- *  time through every invoice, so an organization with many never misses it. */
-export async function invoiceLinkedTo(ctx: StripeCtx, chargeId: string): Promise<Row | null> {
-  for (let offset = 0; ; offset += PAGE) {
-    const page = (await ctx.db.findMany("documents", {
-      where: { type: "invoice" },
-      orderBy: { id: "asc" },
-      limit: PAGE,
-      offset,
-    })) as Row[]
-    const hit = page.find((d) => (d.external_refs as Row | null)?.stripe_charge_id === chargeId)
-    if (hit) return hit
-    if (page.length < PAGE) return null
+/** The park a person decides on: not resolved (a given-up one still is theirs to decide). */
+async function parkToDecide(ctx: StripeCtx, eventId: string): Promise<DeferredRow | null> {
+  const rows = await parksOf(ctx, eventId)
+  const rank = (r: DeferredRow) => {
+    const i = CLICKED_FIRST.indexOf(String(r.blocked_on.kind ?? ""))
+    return i === -1 ? CLICKED_FIRST.length : i
   }
+  return [...rows].sort((a, b) => rank(a) - rank(b))[0] ?? null
 }
 
-async function openPark(ctx: StripeCtx, eventId: string): Promise<Row | null> {
-  const rows = (await ctx.db.findMany("deferred_events", {
-    where: { event_id: eventId },
-    limit: 20,
-  })) as Row[]
-  return rows.find((r) => r.status !== "resolved" && r.status !== "dead_letter") ?? null
+/** Whether a payment's own park still waits for a person. */
+export async function hasUnmatchedPark(ctx: StripeCtx, eventId: string): Promise<boolean> {
+  return (await parksOf(ctx, eventId)).some((r) => r.blocked_on.kind === STRIPE_UNMATCHED_PARK)
+}
+
+/** A charge as Stripe answers for it now, or null when Stripe cannot be read. */
+async function currentStripePayment(
+  ctx: StripeCtx,
+  chargeId: string,
+): Promise<(StripePaymentPayload & { status?: string | null }) | null> {
+  if (!ctx.executeTool) return null
+  try {
+    const env = await ctx.executeTool("stripe:payment_payload", { chargeId })
+    if (env.status !== "completed") return null
+    const p = (env.result as { payment?: StripePaymentPayload & { status?: string } } | null)
+      ?.payment
+    return p && p.charge_id === chargeId ? p : null
+  } catch {
+    return null
+  }
 }
 
 export interface InvoiceFromStripeInput {
@@ -191,31 +210,51 @@ export async function invoiceFromStripePaymentPreflight(
   return "status" in found ? found : { ok: true, noAutoApprove: true }
 }
 
-async function waiting(ctx: StripeCtx, input: InvoiceFromStripeInput) {
+const taken = (id: string, doc: Row) =>
+  fail(
+    "already_invoiced",
+    `${id} is already invoiced by ${String(doc.number ?? doc.id)}; nothing was issued again and no number was taken.`,
+  )
+
+const unreadable = (id: string) =>
+  fail(
+    "stripe_unreadable",
+    `${id} could not be read from Stripe, so it may have been paid, voided or refunded since; nothing was issued and no number was taken. Try again once Stripe answers.`,
+  )
+
+/** `close`: the click itself (not its stage-time check) closes what waited for an invoiced sale. */
+async function waiting(ctx: StripeCtx, input: InvoiceFromStripeInput, close = false) {
   const id = input.stripeInvoiceId?.trim() || input.chargeId?.trim() || ""
   if (!id)
     return fail(
       "payment_ref_missing",
       "Name the Stripe payment (chargeId, ch_...) or the Stripe invoice (stripeInvoiceId, in_...); nothing was issued.",
     )
-  const existing = await documentByRef(ctx, stripeRef(id))
-  if (existing) {
+  const byInvoice = !!input.stripeInvoiceId?.trim()
+  if (byInvoice && !id.startsWith("in_"))
     return fail(
-      "already_invoiced",
-      `${id} is already invoiced by ${String(existing.number ?? existing.id)}; nothing was issued again.`,
+      "payment_ref_missing",
+      `${id} is a payment, not a Stripe invoice; nothing was issued. Name it as chargeId, with the VAT rate its amount includes (vatRateBp).`,
     )
+  const row = await parkToDecide(ctx, stripeRef(id))
+  const stored = (row?.event_payload_json ?? {}) as Partial<
+    StripeInvoicePayload & StripePaymentPayload
+  >
+  const names = [
+    id,
+    ...(byInvoice ? saleNames(stored as StripeInvoicePayload) : [stored.invoice_id]),
+  ]
+  const existing = await saleDocument(ctx, names)
+  if (existing) {
+    if (close) await closeSale(ctx, names, "already_issued")
+    return taken(id, existing)
   }
-  const row = await openPark(ctx, stripeRef(id))
   if (!row)
     return fail(
       "nothing_waiting",
       `No Stripe payment or invoice ${id} is waiting to be invoiced; nothing was issued. List the waiting ones with deferred_list.`,
     )
-  if (
-    input.chargeId &&
-    !input.stripeInvoiceId &&
-    (typeof input.vatRateBp !== "number" || input.vatRateBp < 0)
-  ) {
+  if (!byInvoice && (typeof input.vatRateBp !== "number" || input.vatRateBp < 0)) {
     return fail(
       "vat_rate_required",
       `Charge ${id} has no Stripe invoice, so its VAT rate is not known; nothing was issued. Ask the person which rate the amount includes and pass vatRateBp (2000 for 20%).`,
@@ -253,75 +292,133 @@ export function chargeLines(
   return lines
 }
 
-export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFromStripeInput) {
-  const found = await waiting(ctx, input)
-  if ("status" in found) return found
-  const stored = (found.row.event_payload_json ?? {}) as Row
-  let outcome: FinalizedResult
-  if (input.stripeInvoiceId) {
-    // As Stripe holds it now (a buyer completed since the park). An invoice above the threshold
-    // is issued as its card showed it: that buyer was complete already.
-    const blocked = (found.row.blocked_on ?? {}) as Row
-    const invoice =
-      blocked.kind === STRIPE_APPROVAL_PARK ? stored : await currentStripeInvoice(ctx, stored)
-    outcome = await onStripeInvoiceFinalized(invoice, ctx, { byPerson: true })
-  } else {
-    const p = stored as unknown as StripePaymentPayload
-    const gross = toBigInt(p.amount_minor)
-    const rate = Number(input.vatRateBp ?? 0)
-    outcome = await onStripeInvoiceFinalized(
-      {
-        // One document per charge: keyed by its invoice when it has one, else by itself.
-        stripe_invoice_id: stripeDocumentRef({
-          id: p.charge_id,
-          invoice: p.invoice_id ?? null,
-        }).slice("stripe:".length),
-        customer_id: p.customer_id ?? null,
-        contact_id: p.contact_id ?? null,
-        total_minor: gross.toString(),
-        currency: p.currency,
-        finalized_at: p.created ?? null,
-        paid_at: p.created ?? null,
-        status: "paid",
-        charge_id: p.charge_id,
-        customer: p.customer ?? null,
-        lines: chargeLines(
-          gross,
-          rate,
-          input.description?.trim() || p.description || `Payment ${p.charge_id}`,
-        ),
-      } satisfies StripeInvoicePayload,
-      ctx,
-      { byPerson: true },
+/** Why a click issued nothing, in words. */
+const SKIPPED: Record<string, string> = {
+  [NOT_OPEN_IN_STRIPE]: "it was voided or written off in Stripe",
+  issued_by_stripe: "Stripe issues it",
+  before_connection: "it was finalized before Stripe was connected",
+  zero_total: "its total is zero",
+}
+
+/** What a click on a Stripe invoice issues: the invoice as Stripe answers for it now, or, for the
+ *  approval card, what the card showed with the payment as it is now. */
+async function invoiceToIssue(
+  ctx: StripeCtx,
+  id: string,
+  row: DeferredRow,
+): Promise<StripeInvoicePayload | ReturnType<typeof fail>> {
+  const now = await currentStripeInvoice(ctx, id)
+  if (!now) return unreadable(id)
+  if (row.blocked_on.kind !== STRIPE_APPROVAL_PARK) return now
+  const shown = (row.event_payload_json ?? {}) as StripeInvoicePayload
+  if (
+    toBigInt(now.total_minor) !== toBigInt(shown.total_minor) ||
+    now.currency.toLowerCase() !== shown.currency.toLowerCase()
+  )
+    return fail(
+      "not_issued",
+      `${id} was not invoiced: its amount changed in Stripe since its card was made; no number was taken.`,
     )
+  return withPaymentOf(shown, now)
+}
+
+/** What a click on a payment issues: the charge and its customer as Stripe answers for them now,
+ *  at the rate and with the description of this click. */
+async function paymentToIssue(
+  ctx: StripeCtx,
+  id: string,
+  row: DeferredRow,
+  input: InvoiceFromStripeInput,
+): Promise<StripeInvoicePayload | ReturnType<typeof fail>> {
+  const now = await currentStripePayment(ctx, id)
+  if (!now) return unreadable(id)
+  if (now.status && now.status !== "succeeded")
+    return fail(
+      "not_issued",
+      `${id} was not invoiced: the payment did not succeed in Stripe (${now.status}); no number was taken.`,
+    )
+  const stored = (row.event_payload_json ?? {}) as Partial<StripePaymentPayload>
+  const gross = toBigInt(now.amount_minor)
+  return {
+    // One document per charge: keyed by its invoice when it has one, else by itself.
+    stripe_invoice_id: stripeDocumentRef({
+      id,
+      invoice: now.invoice_id ?? stored.invoice_id ?? null,
+    }).slice("stripe:".length),
+    customer_id: now.customer_id ?? null,
+    contact_id: now.contact_id ?? stored.contact_id ?? null,
+    total_minor: gross.toString(),
+    currency: now.currency,
+    finalized_at: now.created ?? null,
+    paid_at: now.created ?? null,
+    status: "paid",
+    charge_id: id,
+    customer: now.customer ?? null,
+    lines: chargeLines(
+      gross,
+      Number(input.vatRateBp ?? 0),
+      input.description?.trim() || now.description || `Payment ${id}`,
+    ),
   }
+}
+
+export async function invoiceFromStripePayment(ctx: StripeCtx, input: InvoiceFromStripeInput) {
+  const found = await waiting(ctx, input, true)
+  if ("status" in found) return found
+  const { row, id } = found
+  const invoice = input.stripeInvoiceId
+    ? await invoiceToIssue(ctx, id, row)
+    : await paymentToIssue(ctx, id, row, input)
+  if ("error" in invoice) return invoice
+  const outcome: FinalizedResult = await onStripeInvoiceFinalized(invoice, ctx, {
+    byPerson: true,
+    park: row,
+  })
   if (outcome.status === "ok") {
-    await resolveOpenParks(ctx, stripeRef(found.id), "issued")
+    await resolveOpenParks(ctx, stripeRef(id), "issued")
     return {
       status: "completed" as const,
       document_id: outcome.document_id,
       number: outcome.number,
-      summary: `Invoice ${outcome.number} was issued for ${found.id} and took the next number. Send it with documents_send_to_customer.`,
+      summary: `Invoice ${outcome.number} was issued for ${id} and took the next number. Send it with documents_send_to_customer.`,
     }
   }
   if (outcome.status === "pending_approval")
     return { status: "pending_approval" as const, approval_id: outcome.approval_id }
   if (outcome.status === "error") return { status: "error" as const, error: outcome.error }
-  if (outcome.status === "skipped")
+  if (outcome.status === "skipped") {
+    if (outcome.document_id) {
+      const doc = (await ctx.db.findOne("documents", outcome.document_id)) as Row | null
+      return taken(id, doc ?? { id: outcome.document_id })
+    }
     return fail(
       "not_issued",
-      `${found.id} was not invoiced (${outcome.reason}); no number was taken.`,
+      `${id} was not invoiced: ${SKIPPED[outcome.reason] ?? outcome.reason}; no number was taken.`,
     )
-  const def = (await ctx.db.findOne("deferred_events", outcome.deferred_id)) as Row | null
+  }
+  const def = outcome.why
+    ? null
+    : ((await ctx.db.findOne("deferred_events", outcome.deferred_id)) as Row | null)
+  const why = outcome.why ?? String(def?.reason ?? outcome.reason)
   return fail(
     "not_issued",
-    `${found.id} was not invoiced (${String(def?.reason ?? outcome.reason)}); no number was taken. It stays in the queue.`,
+    `${id} was not invoiced: ${outcome.words ? `${outcome.words} (${why})` : why}; no number was taken. It stays in the queue, and nothing issues it but the next decision.`,
   )
 }
 
 export interface PaymentLinkInput {
   chargeId: string
   documentId: string
+}
+
+/** The Stripe invoice a charge paid: what a waiting invoice says of itself, else what Stripe says
+ *  of the charge. Null: none is known. */
+async function invoiceOfCharge(ctx: StripeCtx, chargeId: string): Promise<string | null> {
+  for await (const r of openRowsOf(ctx as LinesCtx, "stripe:in_", { payload: true })) {
+    const p = (r.event_payload_json ?? {}) as StripeInvoicePayload
+    if (saleNames(p).includes(chargeId)) return p.stripe_invoice_id
+  }
+  return (await currentStripePayment(ctx, chargeId))?.invoice_id ?? null
 }
 
 async function linkCheck(ctx: StripeCtx, input: PaymentLinkInput) {
@@ -338,16 +435,17 @@ async function linkCheck(ctx: StripeCtx, input: PaymentLinkInput) {
       `No issued invoice ${input.documentId}; nothing was linked. Find it with documents_search.`,
     )
   }
-  const byRef = await documentByRef(ctx, stripeRef(chargeId))
-  const holder = byRef ?? (await invoiceLinkedTo(ctx, chargeId))
-  if (holder) {
-    return fail(
-      "already_linked",
-      `Payment ${chargeId} is already linked to ${String(holder.number ?? holder.id)}; nothing changed.`,
-    )
-  }
-  return { doc, chargeId }
+  const invoiceId = await invoiceOfCharge(ctx, chargeId)
+  const holder = await saleDocument(ctx, [chargeId, invoiceId])
+  if (holder) return linked(chargeId, holder)
+  return { doc, chargeId, invoiceId }
 }
+
+const linked = (chargeId: string, holder: Row) =>
+  fail(
+    "already_linked",
+    `Payment ${chargeId} is already linked to ${String(holder.number ?? holder.id)}; nothing changed.`,
+  )
 
 export async function paymentLinkToInvoicePreflight(ctx: StripeCtx, input: PaymentLinkInput) {
   const r = await linkCheck(ctx, input)
@@ -357,23 +455,46 @@ export async function paymentLinkToInvoicePreflight(ctx: StripeCtx, input: Payme
 export async function paymentLinkToInvoice(ctx: StripeCtx, input: PaymentLinkInput) {
   const r = await linkCheck(ctx, input)
   if ("status" in r) return r
-  const { doc, chargeId } = r
-  const refs = ((doc.external_refs as Row | null) ?? {}) as Row
-  const log = Array.isArray(doc.lifecycle_log) ? (doc.lifecycle_log as Row[]) : []
-  await ctx.db.update("documents", String(doc.id), {
-    ...(doc.external_ref ? {} : { external_ref: stripeRef(chargeId) }),
-    external_refs: { ...refs, stripe_charge_id: chargeId },
-    lifecycle_log: [
-      ...log,
-      {
-        event: "stripe_payment_linked",
-        actor: await ctx.getUserId(),
-        ts: new Date().toISOString(),
-        charge_id: chargeId,
-      },
-    ],
-  })
-  await resolveOpenParks(ctx, stripeRef(chargeId), "linked")
+  const { doc, chargeId, invoiceId } = r
+  const names = [chargeId, invoiceId]
+  try {
+    // The sale's names with the link: of a link and an issue of one sale, one commits.
+    await ctx.db.batch({
+      ops: [
+        ...claimOps(names, String(doc.id)),
+        {
+          update: "documents",
+          id: String(doc.id),
+          ...(doc.external_ref ? {} : { data: { external_ref: stripeRef(chargeId) } }),
+          merge: {
+            external_refs: { stripe_charge_id: chargeId },
+          },
+          append: {
+            lifecycle_log: [
+              {
+                event: "stripe_payment_linked",
+                actor: await ctx.getUserId(),
+                ts: new Date().toISOString(),
+                charge_id: chargeId,
+              },
+            ],
+          },
+        },
+      ],
+    })
+  } catch (err) {
+    const holder = isSaleTaken(err) ? await saleDocument(ctx, names) : null
+    if (!holder) throw err
+    return linked(chargeId, holder)
+  }
+  await closeSale(ctx, names, "linked")
+  if (invoiceId)
+    await linkBack(
+      ctx,
+      invoiceId,
+      String(doc.id),
+      typeof doc.number === "string" ? doc.number : null,
+    )
   return {
     status: "completed" as const,
     document_id: String(doc.id),

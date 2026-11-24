@@ -569,7 +569,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                         data-testid="knowledge-doc-title-load-latest"
                         onClick={() => {
                           setTitleConflict(false)
-                          void refetch().then((fresh) => {
+                          void Promise.resolve(refetch()).then((fresh) => {
                             if (fresh && fresh !== "not-found" && titleEl) {
                               titleEl.textContent = fresh.title
                             }
@@ -600,8 +600,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       Settings while this tab is still open). */}
                   <Show when={d().syncedSourceId}>
                     {(() => {
-                      const sourceArchived = () =>
-                        d().syncedSourceId ? isSyncedSourceArchived(d().syncedSourceId) : false
+                      const sourceArchived = () => isSyncedSourceArchived(d().syncedSourceId ?? "")
                       return (
                         <div
                           data-testid="knowledge-doc-synced-banner"
@@ -622,7 +621,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                             <span>
                               {i18n.t("knowledge.syncedFrom")}{" "}
                               {d().syncedSourceApp
-                                ? appLabel(d().syncedSourceApp, i18n.t)
+                                ? appLabel(d().syncedSourceApp ?? "", i18n.t)
                                 : i18n.t("knowledge.externalSource")}
                               <Show when={d().syncedSourceName}>{(name) => <> · {name()}</>}</Show>
                               <Show when={d().lastSyncedAt}>
@@ -643,7 +642,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                               if (!api || !d().syncedSourceId) return
                               if (sourceArchived()) return
                               try {
-                                await runSyncedSourceNow(api, d().syncedSourceId)
+                                await runSyncedSourceNow(api, d().syncedSourceId ?? "")
                               } catch {
                                 // surface via existing actionError pathway
                                 setActionError(i18n.t("knowledge.refreshFailed"))

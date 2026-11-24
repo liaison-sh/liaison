@@ -9,7 +9,11 @@
 // Real database and object storage, one fixture host app on an ad-hoc schema.
 import { afterAll, beforeAll, describe, expect, it } from "bun:test"
 import crypto from "node:crypto"
+import { readdirSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { sql as drizzleSql } from "drizzle-orm"
+import { z } from "zod"
 import { extractRows, sql } from "~/db"
 import { withPrivilegedDb } from "~/db/privileged"
 import type { UserContext } from "~/db/rls"
@@ -17,15 +21,25 @@ import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { getObjectBuffer, listOrgPrefix, putObject } from "~/infra/storage/object-storage"
 import { importRegistry } from "~/modules/apps/app-registries"
 import { ensureAppsForOrg } from "~/modules/apps/init"
+import {
+  BUILTIN_TRANSFORMS,
+  type BuiltinTransform,
+  builtinSourceLabel,
+} from "~/modules/imports/builtin/registry"
 import { BUILTIN_IMPORT_HANDLERS } from "~/modules/imports/builtin-import-handlers"
 import { processImportRunJob } from "~/modules/imports/job"
 import type { ImportKindDecl } from "~/modules/imports/kind-schema"
 import { buildZip } from "~/modules/imports/parsers/__test-helpers__/zip-writer"
-import { runImport, transformRunSource } from "~/modules/imports/runner"
+import { loadAnyPreview, previewImport, startFromPreview } from "~/modules/imports/preview"
+import { addCounters, runImport, transformRunSource } from "~/modules/imports/runner"
 import { createImportRun, getImportRun, requestRunCancel } from "~/modules/imports/runs"
 import { noteStagedBytes, orgStagedBytes, stagingPrefixOf } from "~/modules/imports/staging"
 import { sweepStaleImportRuns } from "~/modules/imports/sweep"
-import { type ApiConnectionClient, prepareTransform } from "~/modules/imports/transform-run"
+import {
+  type ApiConnectionClient,
+  prepareTransform,
+  transformSourceOfRun,
+} from "~/modules/imports/transform-run"
 import { shutdownTransformPool } from "~/modules/imports/transforms/pool"
 import { saveTransform } from "~/modules/imports/transforms/store"
 import { dedupMatchSql, type HostImportHandler, ImportError } from "~/modules/imports/types"
@@ -865,4 +879,345 @@ async function pull(page, ctx) {
     const missing = result.report.missingFiles as Array<{ reason: string }>
     expect(missing[0]?.reason).toContain("storage quota")
   }, 120_000)
+})
+
+// ---------------------------------------------------------------------------
+// Built-in transforms (K7 T7.1): shipped code, server-set labels, nested zips,
+// listings, oversize skips, full previews, the zip safety caps.
+// ---------------------------------------------------------------------------
+
+const ENGINE = "engine-test"
+const ENGINE_DEF: BuiltinTransform = {
+  file: "__fixtures__/engine-test.js",
+  label: "enginetest",
+  about: "The engine's own test transform.",
+  kinds: ["xformfix.folder", "xformfix.note"],
+  files: [
+    { match: "**", as: "listing" },
+    { match: "**/*.json" },
+    { match: "**/*.md", as: "text", oversize: "skip" },
+  ],
+  params: z
+    .object({
+      prefix: z.string().max(40).default(""),
+      listing: z.boolean().default(false),
+      access: z.enum(["private", "shared"]).default("shared"),
+    })
+    .strict(),
+  isPrivate: (params) => params.access === "private",
+  limits: {
+    nestedZips: true,
+    maxUploadBytes: 16 * 1024 * 1024,
+    maxDecompressedBytes: 64 * 1024 * 1024,
+    previewTimeMs: 10 * 60_000,
+  },
+}
+
+function runBuiltin(
+  fileId: string,
+  params: Record<string, unknown>,
+  extra: { dryRun?: boolean; sourceLabel?: string; userId?: string } = {},
+) {
+  const userId = extra.userId ?? adminId
+  return runImport({
+    orgId,
+    actor: actor(userId),
+    kinds: ["xformfix.note"],
+    source: {
+      type: "transform",
+      transform: { builtin: ENGINE, params },
+      input: { type: "files", fileIds: [fileId] },
+    },
+    sourceLabel: extra.sourceLabel ?? builtinSourceLabel(ENGINE, params, userId),
+    mode: "api",
+    ...(extra.dryRun ? { dryRun: true } : {}),
+  })
+}
+
+/** Nested-zip copies a run left in the spool folder. */
+function spoolLeftovers(runId: string): string[] {
+  try {
+    return readdirSync(join(tmpdir(), "liaison-import-spool")).filter((f) => f.startsWith(runId))
+  } catch {
+    return []
+  }
+}
+
+/** Text that deflate cannot shrink much (so no ratio cap trips on it). */
+function noisyText(bytes: number): string {
+  return crypto
+    .randomBytes(Math.ceil((bytes * 3) / 4))
+    .toString("base64")
+    .slice(0, bytes)
+}
+
+describe("built-in transforms", () => {
+  beforeAll(() => {
+    BUILTIN_TRANSFORMS[ENGINE] = ENGINE_DEF
+  })
+  afterAll(() => {
+    delete BUILTIN_TRANSFORMS[ENGINE]
+  })
+
+  it("a row naming an unknown builtin, a path or inline code is refused", async () => {
+    const input = { type: "files", fileIds: [crypto.randomUUID()] }
+    const refused = (transform: unknown) => {
+      try {
+        transformSourceOfRun({ transform, input })
+        return null
+      } catch (err) {
+        return err
+      }
+    }
+    for (const t of [
+      { builtin: "no-such-import" },
+      { builtin: "../reference/slack-export.js" },
+      { builtin: "/etc/passwd" },
+      { builtin: ENGINE, inline: "async function transform() {}" },
+      { inline: "async function transform() {}", name: "x" },
+      { builtin: ENGINE, params: "not an object" },
+    ]) {
+      const err = refused(t)
+      expect(err).toBeInstanceOf(ImportError)
+      expect((err as ImportError).code).toBe("invalid_source")
+    }
+    // A known builtin is accepted; its file rules come from the registry, never the row.
+    const ok = transformSourceOfRun({
+      transform: { builtin: ENGINE, params: { prefix: "a" } },
+      input,
+      files: [{ match: "../../secret/*" }],
+    })
+    expect(ok?.transform).toEqual({ builtin: ENGINE, params: { prefix: "a" } })
+    expect(ok?.files).toEqual(ENGINE_DEF.files)
+    // A queued run whose row names an unknown builtin fails with the reason.
+    const run = await createImportRun({
+      orgId,
+      kinds: ["xformfix.note"],
+      sourceLabel: "builtin:enginetest",
+      source: { transform: { builtin: "no-such-import" }, input },
+      mode: "api",
+      dryRun: false,
+      placeholders: false,
+      startedBy: adminId,
+    })
+    await processImportRunJob({ orgId, runId: run.id })
+    const done = await getImportRun(orgId, run.id)
+    expect(done?.status).toBe("failed")
+    expect(JSON.stringify(done?.errors)).toContain("built-in")
+  }, 60_000)
+
+  it("refuses a built-in whose shipped code changed since its pin", async () => {
+    const err = await prepareTransform(
+      orgId,
+      {
+        type: "transform",
+        transform: { builtin: ENGINE, params: {}, sha256: "0".repeat(64) },
+        input: { type: "files", fileIds: [crypto.randomUUID()] },
+      },
+      ["xformfix.note"],
+    ).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ImportError)
+    expect((err as ImportError).message).toContain("changed")
+  })
+
+  it("the label is the server's: per person for a private import, per org for a shared one", () => {
+    expect(builtinSourceLabel(ENGINE, { access: "shared" }, adminId)).toBe("builtin:enginetest")
+    expect(builtinSourceLabel(ENGINE, { access: "private" }, adminId)).toBe(
+      `builtin:enginetest:u:${adminId}`,
+    )
+  })
+
+  it("a client sending a builtin's label or another user's is refused", async () => {
+    const p = `L${crypto.randomUUID().slice(0, 6)}`
+    const fileId = await upload(
+      "rows.json",
+      JSON.stringify([{ id: `${p}-1`, title: "One" }]),
+      "application/json",
+    )
+    const other = crypto.randomUUID()
+    for (const sourceLabel of [`builtin:enginetest:u:${other}`, "builtin:enginetest", "anything"]) {
+      const err = await runBuiltin(
+        fileId,
+        { prefix: `${p}-`, access: "private" },
+        { sourceLabel },
+      ).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(ImportError)
+      expect((err as ImportError).code).toBe("forbidden")
+    }
+    // The preview takes no label for a built-in, and a saved transform's label never holds a colon.
+    const ctx = { orgId, userId: adminId, scopes: ["*"] }
+    const viaPreview = await previewImport(
+      { builtin: ENGINE, fileIds: [fileId], sourceLabel: "builtin:enginetest" },
+      ctx,
+    ).catch((e: unknown) => e)
+    expect(viaPreview).toBeInstanceOf(ImportError)
+    expect((viaPreview as ImportError).message).toContain("set by the server")
+    const saved = await previewImport(
+      { transform: "anything", fileIds: [fileId], sourceLabel: `builtin:enginetest:u:${other}` },
+      ctx,
+    ).catch((e: unknown) => e)
+    expect(saved).toBeInstanceOf(z.ZodError)
+    expect(await notes(`builtin:enginetest:u:${other}:${p}`)).toHaveLength(0)
+  }, 60_000)
+
+  it("zip of two zips = one namespace; the copies are gone after the run", async () => {
+    const p = `N${crypto.randomUUID().slice(0, 6)}`
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 9, 9, 9, 9])
+    const part1 = buildZip([
+      {
+        name: "Export/notes/one.json",
+        data: JSON.stringify([{ id: `${p}-1`, title: "One", file: "Export/files/pic.png" }]),
+      },
+    ])
+    const part2 = buildZip([
+      { name: "Export/notes/two.json", data: JSON.stringify([{ id: `${p}-2`, title: "Two" }]) },
+      { name: "Export/files/pic.png", data: png },
+    ])
+    const outer = buildZip([
+      { name: "Export-Part-1.zip", data: part1 },
+      { name: "Export-Part-2.zip", data: part2 },
+    ])
+    const fileId = await upload("export.zip", outer, "application/zip")
+    const result = await runBuiltin(fileId, { prefix: `${p}-` })
+    expect(result.status).toBe("done")
+    expect(result.counts["xformfix.note"]).toEqual({ created: 2, skipped: 0, failed: 0 })
+    expect(result.report.filesRead).toEqual(["Export/notes/one.json", "Export/notes/two.json"])
+    const got = await notes(`builtin:enginetest:${p}`)
+    expect(got.map((n) => n.hashes)).toEqual([[sha(png)], []])
+    expect(spoolLeftovers(result.runId)).toEqual([])
+  }, 120_000)
+
+  it("bomb, encrypted, ../, symlink, depth 2 and size in the inner zip are refused before any write", async () => {
+    const p = `B${crypto.randomUUID().slice(0, 6)}`
+    const row = { name: "rows.json", data: JSON.stringify([{ id: `${p}-x`, title: "X" }]) }
+    const inner = (entries: Parameters<typeof buildZip>[0]) =>
+      buildZip([{ name: "inner.zip", data: buildZip([row, ...entries]) }])
+    const cases: Array<{ zip: Uint8Array; says: string }> = [
+      {
+        // Declares 10 GB from a few bytes: refused on its declared size, before any read.
+        zip: inner([
+          {
+            name: "bomb.json",
+            raw: { compressed: new Uint8Array([3, 0]), uncompressedSize: 10 * 1024 ** 3 },
+          },
+        ]),
+        says: "decompressed",
+      },
+      {
+        // A real deflate bomb: 32 MB of zeros, about 32 KB compressed.
+        zip: inner([{ name: "zeros.json", data: new Uint8Array(32 * 1024 * 1024) }]),
+        says: "zip bomb",
+      },
+      { zip: inner([{ name: "secret.json", data: "{}", encrypted: true }]), says: "password" },
+      { zip: inner([{ name: "../escape.json", data: "[]" }]), says: "../escape.json" },
+      { zip: inner([{ name: "/abs/path.json", data: "[]" }]), says: "/abs/path.json" },
+      {
+        zip: inner([{ name: "link.json", data: "/etc/passwd", unixMode: 0o120777 }]),
+        says: "symbolic link",
+      },
+      {
+        zip: inner([{ name: "deeper.zip", data: buildZip([row]) }]),
+        says: "more than one level",
+      },
+    ]
+    for (const c of cases) {
+      const fileId = await upload("export.zip", c.zip, "application/zip")
+      const err = await runBuiltin(fileId, { prefix: `${p}-` }).catch((e: unknown) => e)
+      expect(err).toBeInstanceOf(Error)
+      expect(String((err as Error).message)).toContain(c.says)
+    }
+    // The same rules hold for the outer zip.
+    const outerTraversal = await upload(
+      "export.zip",
+      buildZip([row, { name: "a/../../b.json", data: "[]" }]),
+      "application/zip",
+    )
+    const err = await runBuiltin(outerTraversal, { prefix: `${p}-` }).catch((e: unknown) => e)
+    expect(String((err as Error).message)).toContain("a/../../b.json")
+    // An upload past the built-in's size limit is refused by its size.
+    ENGINE_DEF.limits.maxUploadBytes = 64
+    try {
+      const big = await upload("export.zip", buildZip([row]), "application/zip")
+      const tooBig = await runBuiltin(big, { prefix: `${p}-` }).catch((e: unknown) => e)
+      expect(String((tooBig as Error).message)).toContain("at most 64 bytes")
+    } finally {
+      ENGINE_DEF.limits.maxUploadBytes = 16 * 1024 * 1024
+    }
+    expect(await notes(`builtin:enginetest:${p}`)).toHaveLength(0)
+  }, 180_000)
+
+  it("a 2 MB md is skipped and named, the run continues", async () => {
+    const p = `O${crypto.randomUUID().slice(0, 6)}`
+    const zip = buildZip([
+      { name: "Pages/small.md", data: "# Small\n\nfits" },
+      { name: "Pages/huge.md", data: noisyText(2 * 1024 * 1024) },
+      { name: "Pages/after.md", data: "# After\n\nstill read" },
+    ])
+    const fileId = await upload("export.zip", zip, "application/zip")
+    const result = await runBuiltin(fileId, { prefix: `${p}-` })
+    expect(result.status).toBe("done")
+    expect(result.counts["xformfix.note"]).toEqual({ created: 2, skipped: 0, failed: 0 })
+    const missing = result.report.missingFiles as Array<{ path: string; reason: string }>
+    expect(missing).toHaveLength(1)
+    expect(missing[0]?.path).toBe("Pages/huge.md")
+    expect(missing[0]?.reason).toContain("1 MB")
+  }, 120_000)
+
+  it("a listing rule hands every entry name first, 500 to a record", async () => {
+    const p = `S${crypto.randomUUID().slice(0, 6)}`
+    const entries = Array.from({ length: 1200 }, (_, i) => ({
+      name: `files/f${String(i).padStart(4, "0")}.bin`,
+      data: "x",
+    }))
+    const zip = buildZip([
+      { name: "rows.json", data: JSON.stringify([{ id: `${p}-1`, title: "One" }]) },
+      ...entries,
+    ])
+    const fileId = await upload("export.zip", zip, "application/zip")
+    const result = await runBuiltin(fileId, { prefix: `${p}-`, listing: true })
+    expect(result.status).toBe("done")
+    const titles = (await notes(`builtin:enginetest:${p}`)).map((n) => n.title)
+    // 1,201 entries: records of 500, 500 and 201, before any file is parsed.
+    expect(titles).toContain("listed 1201 in 3 first files/f0000.bin early 0")
+  }, 120_000)
+
+  it("preview counts every record of 1,000 files", async () => {
+    const p = `V${crypto.randomUUID().slice(0, 6)}`
+    const zip = buildZip(
+      Array.from({ length: 1000 }, (_, i) => ({
+        name: `Pages/p${String(i).padStart(4, "0")}.md`,
+        data: `# Page ${i}`,
+      })),
+    )
+    const fileId = await upload("export.zip", zip, "application/zip")
+    const out = await previewImport(
+      { builtin: ENGINE, params: { prefix: `${p}-` }, fileIds: [fileId] },
+      { orgId, userId: adminId, scopes: ["*"] },
+    )
+    expect(out.counts["xformfix.note"]).toEqual({ created: 1000, skipped: 0, failed: 0 })
+    expect((out.report as Record<string, unknown>).cutAtLimit).toBeUndefined()
+    expect(await notes(`builtin:enginetest:${p}`)).toHaveLength(0)
+    // Started from its preview, the run is the server's: same label, same pinned code.
+    const pv = await loadAnyPreview(orgId, out.previewId, adminId)
+    expect(pv.run.sourceLabel).toBe("builtin:enginetest")
+    const started = await startFromPreview({ orgId, userId: adminId }, pv)
+    const row = await getImportRun(orgId, started.runId)
+    expect(row?.sourceLabel).toBe("builtin:enginetest")
+    expect((row?.source.transform as { builtin?: string } | undefined)?.builtin).toBe(ENGINE)
+  }, 300_000)
+})
+
+describe("report names", () => {
+  it("losses are listed up to 20,000 names, then counted; numbers still add", () => {
+    const report: Record<string, unknown> = {}
+    addCounters(report, { created: 1, losses: [{ what: "embed", where: "A" }] })
+    addCounters(report, {
+      created: 2,
+      losses: Array.from({ length: 20_005 }, (_, i) => ({ what: "web image", where: `P${i}` })),
+    })
+    expect(report.created).toBe(3)
+    expect((report.losses as unknown[]).length).toBe(20_000)
+    expect((report.losses as Array<{ where: string }>)[0]?.where).toBe("A")
+    expect(report.lossesNotListed).toBe(6)
+  })
 })

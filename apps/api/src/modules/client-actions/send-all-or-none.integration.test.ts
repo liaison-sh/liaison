@@ -611,8 +611,7 @@ describe("a link mailed later than its approval", () => {
 
   it("does not go once a signer wrote since the card: the links stay unsent, their sender told once", async () => {
     const { targetId, out } = await late(2, "Hello")
-    const [, second] = signersOf(targetId, 2) as [{ email: string }, { email: string }]
-    await writesBack(second.email)
+    await writesBack(signersOf(targetId, 2)[1]?.email ?? "")
     await age(targetId, 6)
     const ids = (out.actions ?? []).map((a) => a.id) as [string, string]
     for (let i = 0; i < 2; i++) {
@@ -648,8 +647,7 @@ describe("a link mailed later than its approval", () => {
     const out = await mint(sendOf(targetId, 1, { send_guard: guardFor(targetId, 1) }))
     await mailsSettle(targetId, 1)
     const id = out.actions?.[0]?.id ?? ""
-    const [signer] = signersOf(targetId, 1) as [{ email: string }]
-    await writesBack(signer.email)
+    await writesBack(signersOf(targetId, 1)[0]?.email ?? "")
     // Their mail was read before the reminder's card: it is no reason not to remind them.
     const later = new Date(Date.now() + 1000).toISOString()
     const guard = { ...guardFor(targetId, 1), since: later, stagedAt: later }

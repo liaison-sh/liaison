@@ -15,7 +15,7 @@
 import { app, fetch as hostFetch, navigate, onEntityChange } from "@liaison/host"
 import { type Component, createResource, createSignal, For, Show } from "solid-js"
 import { periodLabel } from "../recurring/flags"
-import { PREPAID_WARNING } from "../recurring/retainer"
+import { PREPAID_WARNING, retainerTermsOf, TERM_FIELDS } from "../recurring/retainer"
 import {
   datesFrom,
   draftOn,
@@ -25,7 +25,7 @@ import {
 } from "../recurring/schedule"
 import { ContactPicker, contactLabel, loadContact } from "./ContactPicker"
 import { type EditorIssuerProfile, loadIssuerProfiles } from "./Editor"
-import { tr } from "./i18n"
+import { tr, uiLocale } from "./i18n"
 import { Button, formatMoneyMinor, inputClass } from "./kit"
 
 const TAP = "min-h-11 md:min-h-8"
@@ -63,6 +63,10 @@ export interface ScheduleDraft {
   retainer_project_id: string | null
   retainer_overage_rate_minor: number | null
   retainer_rollover: "none" | "next"
+  /** A retainer: the month (`YYYY-MM`) the hours, rate and lines above are the terms of. */
+  terms_month: string | null
+  /** A retainer: the renewal in force or to come, and the changes to come, each with its month. */
+  terms_notes: string[]
   /** The version this draft was read at: a save says it, and a schedule saved since refuses it. */
   version: number
 }
@@ -90,6 +94,8 @@ export function defaultSchedule(): ScheduleDraft {
     retainer_project_id: null,
     retainer_overage_rate_minor: null,
     retainer_rollover: "none",
+    terms_month: null,
+    terms_notes: [],
     version: 1,
   }
 }
@@ -135,6 +141,36 @@ export function retainerListLine(row: Record<string, unknown>): string | null {
   return tr("Retainer, {{hours}} h included a month", {
     hours: Math.round((minutes / 60) * 100) / 100,
   })
+}
+
+/** "December 2026" in the reader's language. */
+function monthName(month: string, locale = uiLocale()): string {
+  return new Date(`${month}-01T00:00:00Z`).toLocaleDateString(locale, {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  })
+}
+
+/**
+ * What a retainer's dated terms say beside the terms of its next month: the signed renewal in
+ * force and the terms to come, each with its first month. Empty on a plain schedule.
+ */
+export function renewalText(row: Record<string, unknown>): string[] {
+  const month = row.retainer_terms_month
+  if (typeof month !== "string") return []
+  const terms = retainerTermsOf(row)
+  const signed = terms.filter((t) => t.from <= month && t.agreement_number).at(-1)
+  return terms
+    .filter((t) => t === signed || t.from >= month)
+    .map((t) =>
+      t.agreement_number
+        ? tr("Renewed by {{agreement}} from {{month}}", {
+            agreement: t.agreement_number,
+            month: monthName(t.from),
+          })
+        : tr("New terms from {{month}}", { month: monthName(t.from) }),
+    )
 }
 
 /** How the invoice number is taken: said in words, never a number before issue. */
@@ -262,6 +298,8 @@ export function changedParams(
     if (k === "issuer_profile_id" || k === "status") continue
     if (JSON.stringify(a[k]) !== JSON.stringify(v)) out[k] = v
   }
+  // Which month's terms the change was made on: the server refuses it once they are past.
+  if (before.terms_month && TERM_FIELDS.some((k) => k in out)) out.terms_month = before.terms_month
   return out
 }
 
@@ -339,6 +377,8 @@ export function draftFromRow(id: string, row: Record<string, unknown>): Schedule
         ? null
         : Number(row.retainer_overage_rate_minor),
     retainer_rollover: row.retainer_rollover === "next" ? "next" : "none",
+    terms_month: typeof row.retainer_terms_month === "string" ? row.retainer_terms_month : null,
+    terms_notes: renewalText(row),
     version: Number(row.version ?? 1),
   }
 }
@@ -476,6 +516,21 @@ function RetainerSection(p: { d: ScheduleDraft; patch: (v: Partial<ScheduleDraft
             "Each month is invoiced from the project's planned vs done card, once a person reconciles it.",
           )}
         </span>
+        <Show when={p.d.terms_month}>
+          {(month) => (
+            <div data-testid="schedule-retainer-terms" class="flex flex-col gap-0.5">
+              <For each={p.d.terms_notes}>
+                {(note) => <span class="text-text-secondary">{note}</span>}
+              </For>
+              <span class="text-text-tertiary">
+                {tr(
+                  "The hours, rate and lines here are those of {{month}}. Earlier months keep theirs.",
+                  { month: monthName(month()) },
+                )}
+              </span>
+            </div>
+          )}
+        </Show>
         <label class="flex flex-col gap-1.5">
           <span class="text-text-tertiary">{tr("Project")}</span>
           <select

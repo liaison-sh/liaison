@@ -1545,6 +1545,10 @@
       "one": "list of Stripe invoices needing a person",
       "other": "lists of Stripe invoices needing a person"
     },
+    "issued_late_period": {
+      "one": "Stripe invoice issued in a later month",
+      "other": "Stripe invoices issued in a later month"
+    },
     "payment_failed": {
       "one": "failed card payment",
       "other": "failed card payments"

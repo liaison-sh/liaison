@@ -12,6 +12,7 @@ import { normaliseAddress } from "./address-match"
 import { shopifyAbsent, shopifyTerm } from "./buyer-vat"
 import { formatMoneyMinor } from "./money"
 import { type DocumentHeader, documentsSearch, type ReadsCtx } from "./reads"
+import { isRetainerSchedule, monthOf, nextMonth, termsForMonth } from "./recurring/retainer"
 
 export interface CustomerHistoryInput {
   /** The customer's name, company, email or a word of their address, as the user said it. */
@@ -260,7 +261,11 @@ async function schedulesOf(
     })) as Array<Record<string, unknown>>
     for (const r of rows) {
       if (r.status === "ended") continue
-      const raw = typeof r.lines === "string" ? (JSON.parse(r.lines) as unknown) : r.lines
+      // A retainer's fee is the next month's: what a change made now would replace.
+      const stored = isRetainerSchedule(r)
+        ? termsForMonth(r, nextMonth(monthOf(new Date().toISOString()))).lines
+        : r.lines
+      const raw = typeof stored === "string" ? (JSON.parse(stored) as unknown) : stored
       const lines = (Array.isArray(raw) ? raw : []) as Array<Record<string, unknown>>
       const day =
         r.next_issue_on instanceof Date

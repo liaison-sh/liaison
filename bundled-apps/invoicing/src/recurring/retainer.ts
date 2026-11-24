@@ -143,47 +143,127 @@ export const PREPAID_WARNING =
   "Prepaid: each month's fee is invoiced ahead as an advance, and the month-end invoice deducts it and adds any overage, so it can total zero; check this way of billing with your accountant."
 
 /**
- * The renewed terms a signed renewal left on a retainer schedule (`retainer_renewal`): they apply
- * from `from` (`YYYY-MM`); the months before keep the schedule's own terms.
+ * A schedule's terms from a month on, as one entry of its dated terms (`retainer_terms`): a change
+ * of terms or a signed renewal adds one. The schedule's own columns are the terms of the months
+ * before the first entry.
  */
-export interface RetainerRenewal {
+export interface RetainerTerms {
+  /** The first month (`YYYY-MM`) these terms apply to. */
   from: string
-  agreement_id: string
-  agreement_number: string
   retainer_minutes: number
+  /** The schedule's own rate when null. */
   retainer_overage_rate_minor: string | null
+  retainer_rollover?: Rollover
+  /** The schedule's own lines when empty. */
   lines: unknown[]
+  /** The signed renewal that set these terms, when one did. */
+  agreement_id?: string
+  agreement_number?: string
 }
 
-/** The schedule's renewal, when it has one. */
-export function renewalOf(
-  s: { retainer_renewal?: unknown } | null | undefined,
-): RetainerRenewal | null {
-  let r = s?.retainer_renewal as unknown
-  if (typeof r === "string") {
-    try {
-      r = JSON.parse(r)
-    } catch {
-      return null
-    }
+export interface DatedTermsRow {
+  retainer_terms?: unknown
+  /** One signed renewal, as rows written before the dated terms hold it: read, never written. */
+  retainer_renewal?: unknown
+}
+
+function parsed(raw: unknown): unknown {
+  if (typeof raw !== "string") return raw
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
   }
-  const v = r as Partial<RetainerRenewal> | null
-  return v && typeof v.from === "string" && Number(v.retainer_minutes) > 0
-    ? (v as RetainerRenewal)
-    : null
+}
+
+/** The schedule's dated terms, earliest first. Of two entries for a month, the last one counts. */
+export function retainerTermsOf(s: DatedTermsRow | null | undefined): RetainerTerms[] {
+  const list = parsed(s?.retainer_terms)
+  return [parsed(s?.retainer_renewal), ...(Array.isArray(list) ? list : [])]
+    .filter((t): t is RetainerTerms => {
+      const v = t as Partial<RetainerTerms> | null
+      return !!v && typeof v.from === "string" && Number(v.retainer_minutes) > 0
+    })
+    .sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0))
+}
+
+/** The fields a month's terms hold. */
+export const TERM_FIELDS = [
+  "retainer_minutes",
+  "retainer_overage_rate_minor",
+  "retainer_rollover",
+  "lines",
+] as const
+
+/**
+ * The schedule as it bills `month` (`YYYY-MM`): its hours, overage rate, rollover and fee lines as
+ * the dated terms in force that month say, its own before the first of them. Every reader of a
+ * month's terms asks this.
+ */
+export function termsForMonth<T extends object>(s: T, month: string): T {
+  const own = s as T & Record<string, unknown>
+  const t = retainerTermsOf(own as DatedTermsRow)
+    .filter((x) => x.from <= month)
+    .at(-1)
+  if (!t) return s
+  return {
+    ...own,
+    retainer_minutes: t.retainer_minutes,
+    retainer_overage_rate_minor: t.retainer_overage_rate_minor ?? own.retainer_overage_rate_minor,
+    ...(t.retainer_rollover ? { retainer_rollover: t.retainer_rollover } : {}),
+    lines: Array.isArray(t.lines) && t.lines.length > 0 ? t.lines : own.lines,
+  }
+}
+
+/** One canonical string per month's terms, so two months compare by value. */
+export function termsSignature(s: object): string {
+  const t = s as Record<string, unknown>
+  const lines = parsed(t.lines)
+  return JSON.stringify([
+    Number(t.retainer_minutes ?? 0),
+    String(t.retainer_overage_rate_minor ?? 0),
+    t.retainer_rollover === "next" ? "next" : "none",
+    (Array.isArray(lines) ? (lines as Array<Record<string, unknown>>) : []).map((l) => [
+      String(l.description ?? ""),
+      Number(l.qty),
+      Number(l.unit_price_minor),
+      Number(l.vat_bp),
+      l.product_ref ?? null,
+      l.line_kind ?? "service",
+    ]),
+  ])
 }
 
 /**
- * The schedule as it bills `month` (`YYYY-MM`): its renewed hours, overage rate and fee lines from
- * the renewal's first month on, its own terms before it. Every reader of a month's terms asks this.
+ * The columns that make `after` the schedule's terms from month `from` on, leaving every earlier
+ * month as it was. Later entries (a renewal that starts later) keep their own first month; a
+ * rollover set here goes on into them, since no agreement sets one. An entry of a renewal that
+ * starts the same month keeps naming its agreement.
  */
-export function termsForMonth<T extends Record<string, unknown>>(s: T, month: string): T {
-  const r = renewalOf(s)
-  if (!r || month < r.from) return s
+export function withTermsFrom(
+  s: DatedTermsRow,
+  from: string,
+  after: object,
+): { retainer_terms: RetainerTerms[]; retainer_renewal: null } {
+  const a = after as Record<string, unknown>
+  const entries = retainerTermsOf(s)
+  const same = entries.filter((t) => t.from === from).at(-1)
+  const rollover: Rollover = a.retainer_rollover === "next" ? "next" : "none"
   return {
-    ...s,
-    retainer_minutes: r.retainer_minutes,
-    retainer_overage_rate_minor: r.retainer_overage_rate_minor ?? s.retainer_overage_rate_minor,
-    lines: Array.isArray(r.lines) && r.lines.length > 0 ? r.lines : s.lines,
+    retainer_terms: [
+      ...entries.filter((t) => t.from < from),
+      {
+        from,
+        retainer_minutes: Number(a.retainer_minutes),
+        retainer_overage_rate_minor: String(a.retainer_overage_rate_minor ?? 0),
+        retainer_rollover: rollover,
+        lines: (parsed(a.lines) as unknown[]) ?? [],
+        ...(same?.agreement_id
+          ? { agreement_id: same.agreement_id, agreement_number: same.agreement_number }
+          : {}),
+      },
+      ...entries.filter((t) => t.from > from).map((t) => ({ ...t, retainer_rollover: rollover })),
+    ],
+    retainer_renewal: null,
   }
 }

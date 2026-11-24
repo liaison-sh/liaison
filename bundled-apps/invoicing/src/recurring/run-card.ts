@@ -13,6 +13,7 @@ import type { ErrorEnvelope, MutationsCtx } from "../mutations/shared"
 import { runCardLines } from "../summarizers"
 import { linesSignature, type PreviousInvoice } from "./flags"
 import { currentItemHash, itemContentHash } from "./item-hash"
+import { isRetainerSchedule, monthOf, nextMonth, termsForMonth, withTermsFrom } from "./retainer"
 import { addDays, weekdayOf } from "./schedule"
 
 export { currentItemHash, itemContentHash }
@@ -470,8 +471,10 @@ export async function recurringRunIssue(
 /**
  * Write a row's "from now on" patch to its schedule, raising the schedule's version. Returns the
  * schedule id, or null when there is nothing to write or it was written at an earlier approval.
+ * On a schedule that became a retainer since, the lines are its terms of the next period that has
+ * not begun: the month already running keeps its own.
  */
-async function writeSchedulePatch(ctx: RunCtx, item: Row): Promise<string | null> {
+export async function writeSchedulePatch(ctx: RunCtx, item: Row): Promise<string | null> {
   const patch = jsonOf<Row | null>(item.schedule_patch, null)
   if (!patch || patch.written === true || !item.schedule_id) return null
   const schedule = (await ctx.db.findOne(
@@ -482,7 +485,21 @@ async function writeSchedulePatch(ctx: RunCtx, item: Row): Promise<string | null
   const data: Row = { version: Number(schedule.version ?? 1) + 1 }
   for (const key of ["lines", "contact_id", "due_rule", "due_days", "notes"])
     if (key in patch) data[key] = patch[key]
-  await ctx.db.update("recurring_schedules", String(item.schedule_id), data)
+  if ("lines" in data && isRetainerSchedule(schedule)) {
+    const issuer = await findOneWhere(ctx, "issuer_profiles", { id: schedule.issuer_profile_id })
+    const now = await ctx.time.civil({ timezone: String(issuer?.timezone || "UTC") })
+    const next = nextMonth(monthOf(now.date))
+    const period = String(item.period_key)
+    const after = /^\d{4}-\d{2}$/.test(period) ? nextMonth(period) : next
+    const from = after > next ? after : next
+    const { lines, ...rest } = data
+    await ctx.db.update("recurring_schedules", String(item.schedule_id), {
+      ...rest,
+      ...withTermsFrom(schedule, from, { ...termsForMonth(schedule, from), lines }),
+    })
+  } else {
+    await ctx.db.update("recurring_schedules", String(item.schedule_id), data)
+  }
   await ctx.db.update("recurring_run_items", String(item.id), {
     schedule_patch: { ...patch, written: true, written_version: data.version },
   })

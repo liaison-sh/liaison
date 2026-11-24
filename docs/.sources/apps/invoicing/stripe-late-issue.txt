@@ -1,0 +1,1 @@
+A Stripe invoice issued in a later month than it was finalized raises one Home line with the number and the period -> bundled-apps/invoicing/src/handlers/stripe-invoice-finalized.ts (noticeIfLate) ; bundled-apps/invoicing/app.manifest.json (attention.translations)

@@ -15,6 +15,7 @@
  * cursor to the rows. Nothing past a cap is ever dropped.
  */
 import type { ReadsDb } from "./reads"
+import { isRetainerSchedule, monthOf, nextMonth, termsForMonth } from "./recurring/retainer"
 
 /** Documents per database call: the most the app database returns at once. */
 export const ACTIVITY_READ_PAGE = 1000
@@ -161,6 +162,7 @@ export async function activityRead(ctx: { db: ReadsDb }, raw: unknown, page = AC
       })
     }
   }
+  const termsMonth = nextMonth(monthOf(new Date().toISOString()))
   for (let offset = 0; ; offset += size) {
     const batch = (await ctx.db.findMany("recurring_schedules", {
       where: { contact_id: { in: input.contactIds } },
@@ -176,7 +178,7 @@ export async function activityRead(ctx: { db: ReadsDb }, raw: unknown, page = AC
       push({
         id: `${id}:schedule`,
         at: new Date(at).toISOString(),
-        title: `Recurring schedule, ${CADENCE[String(s.repeats)] ?? String(s.repeats ?? "")}${scheduleAmount(s.lines)}${status === "active" ? "" : ` (${status})`}`,
+        title: `Recurring schedule, ${CADENCE[String(s.repeats)] ?? String(s.repeats ?? "")}${scheduleAmount(isRetainerSchedule(s) ? termsForMonth(s, termsMonth).lines : s.lines)}${status === "active" ? "" : ` (${status})`}`,
         who: null,
         contactId: typeof s.contact_id === "string" ? s.contact_id : null,
         href: { app: "invoicing", entityType: "schedule", entityId: id },

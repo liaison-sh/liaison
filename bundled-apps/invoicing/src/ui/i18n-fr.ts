@@ -895,6 +895,10 @@ export const FR: Record<string, string> = {
     "Déduite : facture d'acompte {{number}} du {{date}}, {{amount}}",
   "Stays inside": "Reste en interne",
   "Retainer, {{hours}} h included a month": "Forfait, {{hours}} h incluses par mois",
+  "Renewed by {{agreement}} from {{month}}": "Renouvelé par {{agreement}} à partir de {{month}}",
+  "New terms from {{month}}": "Nouvelles conditions à partir de {{month}}",
+  "The hours, rate and lines here are those of {{month}}. Earlier months keep theirs.":
+    "Les heures, le taux et les lignes affichés sont ceux de {{month}}. Les mois précédents gardent les leurs.",
   Retainer: "Forfait",
   "Hours are included each month, and hours above them are billed":
     "Des heures sont incluses chaque mois, et les heures au-delà sont facturées",

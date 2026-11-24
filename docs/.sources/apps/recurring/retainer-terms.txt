@@ -1,0 +1,5 @@
+Changed hours, fee, lines, overage rate and rollover apply from the next month; earlier months keep theirs -> bundled-apps/invoicing/src/recurring/tools.ts (recurringScheduleUpdate) ; bundled-apps/invoicing/src/recurring/retainer.ts (termsForMonth, withTermsFrom)
+A schedule not started yet takes the change at once -> bundled-apps/invoicing/src/recurring/tools.ts (recurringScheduleUpdate)
+A signed renewal applies from its first month, at the earliest the next -> bundled-apps/invoicing/src/recurring/tools.ts (retainerTermsRenew)
+The list and the editor show the next month's terms, the renewal and the changes to come -> bundled-apps/invoicing/src/recurring/tools.ts (recurringList) ; bundled-apps/invoicing/src/ui/ScheduleEditor.tsx (renewalText)
+A page left open into another month refuses the save when the terms differ -> bundled-apps/invoicing/src/recurring/tools.ts (termsMonthPassed)

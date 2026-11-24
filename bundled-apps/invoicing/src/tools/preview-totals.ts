@@ -295,7 +295,7 @@ async function retainerPreview(
         .reduce((a, i) => a + Number(i.unit_price_minor) * Number(i.quantity), 0),
       includedMinutes: plan.fig.includedMinutes,
       usedMinutes: plan.fig.usedMinutes,
-      overageRateMinor: Number(s.retainer_overage_rate_minor ?? 0),
+      overageRateMinor: Number(plan.overageRate),
       billedBySchedule,
     }
     // The customer the retainer's Create drafts to: the schedule's contact and company first.

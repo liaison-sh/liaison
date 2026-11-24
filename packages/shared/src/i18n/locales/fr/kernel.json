@@ -1542,6 +1542,10 @@
       "one": "liste de factures Stripe à traiter par une personne",
       "other": "listes de factures Stripe à traiter par une personne"
     },
+    "issued_late_period": {
+      "one": "facture Stripe émise lors d'un mois ultérieur",
+      "other": "factures Stripe émises lors d'un mois ultérieur"
+    },
     "payment_failed": {
       "one": "paiement par carte échoué",
       "other": "paiements par carte échoués"

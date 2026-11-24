@@ -42,6 +42,7 @@ const OUTSIDER = "00000000-0000-4000-8000-0000000e7003"
 const READER = "00000000-0000-4000-8000-0000000e7007"
 const THREAD = "00000000-0000-4000-8000-0000000e7004"
 const CONTACT = "00000000-0000-4000-8000-0000000e7005"
+const PROJECT = "00000000-0000-4000-8000-0000000e7008"
 const ISSUER = "00000000-0000-4000-8000-0000000e7006"
 
 // A billing clerk: reads and writes documents, reads the issuer settings, decides invoicing
@@ -324,5 +325,67 @@ describe("recurring schedules on the real kernel", () => {
     const refused = await personClick("invoicing:recurring_schedule_create", schedule, reader)
     expect(refused.error).toBeTruthy()
     expect(await rows()).toHaveLength(ids.length)
+  }, 60_000)
+
+  it("a retainer's changed fee is stored as the next month's terms, and the list shows it", async () => {
+    const lead = actor(STAFF, [...STAFF_SCOPES, "projects:money:write"])
+    const made = await personClick(
+      "invoicing:recurring_schedule_create",
+      {
+        ...schedule,
+        lines: [{ ...lines[0], unit_price_minor: 450_000 }],
+        retainer_project_id: PROJECT,
+        retainer_minutes: 2400,
+        retainer_overage_rate_minor: 12_000,
+      },
+      lead,
+    )
+    expect(made.error).toBeUndefined()
+    const id = (made.data as { id: string }).id
+    // A renewal as a row written before the dated terms holds it.
+    const renewal = {
+      from: "2020-02",
+      agreement_id: PROJECT,
+      agreement_number: "AG-1",
+      retainer_minutes: 2640,
+      retainer_overage_rate_minor: "12500",
+      lines: [{ ...lines[0], unit_price_minor: 495_000 }],
+    }
+    await sql`UPDATE app_invoicing.recurring_schedules SET retainer_renewal = ${JSON.stringify(renewal)}::text::jsonb WHERE id = ${id}`
+    const listed = async () =>
+      (
+        (await personClick("invoicing:recurring_list", { limit: 200 }, lead)).data as {
+          rows: Array<Record<string, unknown>>
+        }
+      ).rows.find((r) => r.id === id)
+    expect(await listed()).toMatchObject({
+      retainer_minutes: 2640,
+      lines: [{ unit_price_minor: 495_000 }],
+      retainer_terms: [{ from: "2020-02", agreement_number: "AG-1" }],
+    })
+
+    const changed = await personClick(
+      "invoicing:recurring_schedule_update",
+      { id, lines: [{ ...lines[0], unit_price_minor: 500_000 }] },
+      lead,
+    )
+    expect(changed.error).toBeUndefined()
+    const [stored] = await sql<
+      Array<{ lines: unknown; terms: Array<Record<string, unknown>>; renewal: unknown }>
+    >`
+      SELECT lines, retainer_terms AS terms, retainer_renewal AS renewal
+        FROM app_invoicing.recurring_schedules WHERE id = ${id}`
+    expect(stored?.lines).toMatchObject([{ unit_price_minor: 450_000 }])
+    expect(stored?.renewal).toBeNull()
+    expect(stored?.terms).toHaveLength(2)
+    expect(stored?.terms[0]).toMatchObject({ from: "2020-02", agreement_number: "AG-1" })
+    expect(stored?.terms[1]).toMatchObject({
+      retainer_minutes: 2640,
+      retainer_overage_rate_minor: "12500",
+      lines: [{ unit_price_minor: 500_000 }],
+    })
+    const row = await listed()
+    expect(row?.lines).toMatchObject([{ unit_price_minor: 500_000 }])
+    expect(row?.retainer_terms_month).toBe(stored?.terms[1]?.from)
   }, 60_000)
 })

@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.7",
+  "version": "0.38.8",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1381,7 +1381,8 @@
         "retainer_overage_rate_minor": "bigint?",
         "retainer_rollover": { "type": "string", "enum": ["none", "next"], "default": "none" },
         "retainer_from": "text?",
-        "retainer_renewal": "json?"
+        "retainer_renewal": "json?",
+        "retainer_terms": "json?"
       },
       "constraints": { "unique": [["external_ref"]] },
       "indexes": [["status", "next_draft_on"], ["company_id"], ["contact_id"], ["retainer_project_id"]]
@@ -3331,7 +3332,7 @@
     },
     "recurring_schedule_update": {
       "summarizer": "summarizeRecurringScheduleUpdate",
-      "description": "Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. Drafts already made keep their amounts. Always waits for a person's approval.",
+      "description": "Change a recurring schedule, resume a paused one (status active), end it (status ended) or turn issue_mode auto on or off. Drafts already made keep their amounts; a retainer's new terms apply from next month. Always waits for a person's approval.",
       "searchKeywords": ["récurrent", "abonnement", "modifier", "arrêter", "recurring", "tarif", "prix", "montant", "amount", "résilier", "contrat", "contract", "cancel", "annuler"],
       "requiredScopes": ["invoicing:documents:write"],
       "handler": "recurringScheduleUpdateHandler",
@@ -3347,6 +3348,7 @@
         "properties": { "billsOtherThanStripe": { "type": "string", "minLength": 5 }, 
           "id": { "type": "string" },
           "expected_version": { "type": "integer" },
+          "terms_month": { "type": "string", "pattern": "^\\d{4}-\\d{2}$", "description": "The retainer_terms_month the terms were read at." },
           "status": { "type": "string", "enum": ["active", "ended"] },
           "issue_mode": { "type": "string", "enum": ["review", "auto"], "description": "auto issues without a card; a person turns it on." },
           "company_id": { "type": ["string", "null"] },
@@ -3551,7 +3553,7 @@
       "approvalCard": { "summary": "Link this Stripe payment to an invoice" }
     },
     "recurring_list": {
-      "description": "List recurring schedules with their next issue day and draft day. Filter by status or client company; page with cursor.",
+      "description": "List recurring schedules with their next issue day and draft day. A retainer shows the terms of retainer_terms_month. Filter by status or client company; page with cursor.",
       "searchKeywords": ["récurrent", "abonnements", "échéancier", "recurring"],
       "requiredScopes": ["invoicing:documents:read"],
       "handler": "recurringListHandler",
@@ -6966,6 +6968,7 @@
       "stripe_invoice:undecided_listed",
       "stripe_invoice:needs_person",
       "stripe_invoice:many_need_person",
+      "stripe_invoice:issued_late_period",
       "stripe_sale:decided",
       "stripe_invoice:payment_failed",
       "stripe_invoice:voided",
@@ -7007,6 +7010,7 @@
       {"event": "stripe_invoice:undecided_listed", "kind": "invoicing:stripe_invoice.undecided_listed", "urgency": 60, "summary": "{{data.count}} Stripe invoices finalized before the decision are not invoiced ({{data.invoices}}). Issue them now one by one, or say Stripe sent them.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:needs_person", "kind": "invoicing:stripe_invoice.needs_person", "urgency": 60, "summary": "Stripe invoice {{data.stripe_invoice_id}} is not invoiced: {{data.reason}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:many_need_person", "kind": "invoicing:stripe_invoice.many_need_person", "urgency": 60, "summary": "{{data.count}} Stripe invoices are not invoiced and wait for a person. {{data.text}}.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
+      {"event": "stripe_invoice:issued_late_period", "kind": "invoicing:stripe_invoice.issued_late_period", "urgency": 40, "summary": "Invoice {{data.number}} (period {{data.period}}) is dated {{data.issued_month}}: Stripe finalized it as {{data.stripe_number}} in {{data.finalized_month}}. Check the month with your accountant.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:payment_failed", "kind": "invoicing:stripe_invoice.payment_failed", "urgency": 50, "summary": "Card payment of {{data.number}} failed and {{data.reason}}. The invoice is unchanged.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:voided", "kind": "invoicing:stripe_invoice.voided", "urgency": 40, "summary": "Stripe invoice {{data.number}} was voided in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},
       {"event": "stripe_invoice:uncollectible", "kind": "invoicing:stripe_invoice.uncollectible", "urgency": 40, "summary": "Stripe invoice {{data.number}} was marked uncollectible in Stripe. No Liaison document changed.", "recipients": {"kind": "scope_holders", "scope": "invoicing:documents:write"}, "resolveWhen": {"field": "resolved", "equals": true}},

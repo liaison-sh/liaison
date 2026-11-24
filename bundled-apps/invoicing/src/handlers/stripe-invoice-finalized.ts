@@ -848,7 +848,49 @@ export async function onStripeInvoiceFinalized(
   if (!issued.ok) return { status: "error", error: issued.error.error }
   await closeSale(ctx, saleNames(p), "issued")
   await linkBack(ctx, p.stripe_invoice_id, issued.result.document_id, issued.result.number ?? null)
+  await noticeIfLate(ctx, p, issuer, when.issued_at, issued.result)
   return { status: "ok", document_id: issued.result.document_id, number: issued.result.number }
+}
+
+/** The period the invoice bills: its lines' own, else the one Stripe gives the invoice. */
+function periodText(p: StripeInvoicePayload): string {
+  const days = (k: "period_start" | "period_end") =>
+    (p.lines ?? [])
+      .map((l) => (l[k] ?? p[k] ?? "").slice(0, 10))
+      .filter(Boolean)
+      .sort()
+  const start = days("period_start")[0]
+  const end = days("period_end").at(-1)
+  return start && end ? `${start} to ${end}` : "not given by Stripe"
+}
+
+/**
+ * Stripe finalized the invoice in an earlier calendar month than the one Liaison dated it in (the
+ * zone of the issue date): the people who issue invoices are told once. The period billed decides
+ * nothing: an invoice in arrears and a cycle renewal both bill across months.
+ */
+async function noticeIfLate(
+  ctx: StripeCtx,
+  p: StripeInvoicePayload,
+  issuer: { timezone?: string | null },
+  issuedAt: string,
+  doc: { document_id: string; number?: string | null },
+): Promise<void> {
+  const finalizedAt = isoOf(p.finalized_at)
+  if (!finalizedAt) return
+  const finalizedOn = await civilDateOf(ctx, issuer, finalizedAt)
+  if (!finalizedOn.ok) return
+  const finalizedMonth = finalizedOn.date.slice(0, 7)
+  const issuedMonth = issuedAt.slice(0, 7)
+  if (finalizedMonth >= issuedMonth) return
+  await raise(ctx, "issued_late_period", doc.document_id, {
+    document_id: doc.document_id,
+    number: doc.number ?? null,
+    stripe_number: p.number ?? p.stripe_invoice_id,
+    period: periodText(p),
+    finalized_month: finalizedMonth,
+    issued_month: issuedMonth,
+  })
 }
 
 /** Tell the Stripe app that Stripe's own invoice stands (no Liaison document), so its safety job

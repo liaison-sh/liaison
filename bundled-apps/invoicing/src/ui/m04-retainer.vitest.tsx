@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const updates: Array<Record<string, unknown>> = []
 let stored: Record<string, unknown> = {}
-const [LINE] = ["Monthly retainer, {period}"]
+const [LINE, LINE_EDITED] = ["Monthly retainer, {period}", "design"]
 const PROJECT = "44444444-4444-4444-8444-444444444444"
 
 const row = (over: Record<string, unknown> = {}) => ({
@@ -113,6 +113,40 @@ describe("retainer terms in the schedule editor", () => {
     await waitFor(() => expect(updates).toHaveLength(1))
     expect(updates[0]).toMatchObject({ id: "sched-1", retainer_minutes: 2700 })
     expect(updates[0]).not.toHaveProperty("lines")
+  })
+
+  it("a renewed retainer shows its month's terms and the renewal, and a line's text keeps the fee", async () => {
+    stored = row({
+      retainer_minutes: 2640,
+      lines: [{ description: LINE, qty: 1, unit_price_minor: 495000, vat_bp: 2000 }],
+      retainer_terms_month: "2026-12",
+      retainer_terms: [
+        {
+          from: "2026-12",
+          retainer_minutes: 2640,
+          retainer_overage_rate_minor: "12500",
+          lines: [],
+          agreement_id: "agreement-1",
+          agreement_number: "AG-2026-017",
+        },
+      ],
+    })
+    open()
+    const terms = screen.getByTestId("schedule-retainer-terms").textContent
+    expect(terms).toContain("Renewed by AG-2026-017 from December 2026")
+    expect(terms).toContain("are those of December 2026")
+    fireEvent.input(
+      screen.getByTestId("schedule-line-0").querySelector("input") as HTMLInputElement,
+      {
+        target: { value: LINE_EDITED },
+      },
+    )
+    fireEvent.click(screen.getByTestId("schedule-save"))
+    await waitFor(() => expect(updates).toHaveLength(1))
+    expect(updates[0]).toMatchObject({
+      terms_month: "2026-12",
+      lines: [{ description: LINE_EDITED, unit_price_minor: 495000 }],
+    })
   })
 
   it("turning the retainer off clears its terms", async () => {

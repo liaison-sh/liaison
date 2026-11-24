@@ -301,6 +301,8 @@
     "kernel.homeKind.needs_person.other": "factures Stripe à traiter par une personne",
     "kernel.homeKind.many_need_person.one": "liste de factures Stripe à traiter par une personne",
     "kernel.homeKind.many_need_person.other": "listes de factures Stripe à traiter par une personne",
+    "kernel.homeKind.issued_late_period.one": "facture Stripe émise lors d'un mois ultérieur",
+    "kernel.homeKind.issued_late_period.other": "factures Stripe émises lors d'un mois ultérieur",
     "kernel.homeKind.payment_failed.one": "paiement par carte échoué",
     "kernel.homeKind.payment_failed.other": "paiements par carte échoués",
     "kernel.homeKind.voided.one": "facture Stripe annulée",

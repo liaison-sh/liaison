@@ -23,9 +23,13 @@ import {
   monthOf,
   nextMonth,
   PREPAID_WARNING,
-  type RetainerRenewal,
-  renewalOf,
+  previousMonth,
+  type RetainerTerms,
+  retainerTermsOf,
+  TERM_FIELDS,
   termsForMonth,
+  termsSignature,
+  withTermsFrom,
 } from "./retainer"
 import {
   type Cadence,
@@ -101,6 +105,11 @@ export type ScheduleUpdateInput = Partial<ScheduleFields> & {
   status?: "active" | "ended"
   /** The version the change was made from: a schedule saved since then refuses it. */
   expected_version?: number
+  /**
+   * A retainer's terms were read as this month's (`retainer_terms_month`): a save made once another
+   * month's terms are the ones it would replace is refused when they differ.
+   */
+  terms_month?: string
 }
 
 export interface ScheduleRow extends Cadence {
@@ -134,7 +143,11 @@ export interface ScheduleRow extends Cadence {
   retainer_overage_rate_minor?: number | string | null
   retainer_rollover?: string
   retainer_from?: string | null
+  /** The dated terms (retainerTermsOf); a row read by recurring_list carries them as a list. */
+  retainer_terms?: unknown
   retainer_renewal?: unknown
+  /** Set on a retainer read by recurring_list: the month its hours, rate and lines are the terms of. */
+  retainer_terms_month?: string
 }
 
 type Fail = ErrorEnvelope
@@ -538,6 +551,7 @@ export async function checkScheduleUpdate(
     id: _id,
     status: _status,
     expected_version: _expected,
+    terms_month: _termsMonth,
     billsOtherThanStripe,
     ...patch
   } = input
@@ -550,9 +564,36 @@ export async function checkScheduleUpdate(
       retainer_overage_rate_minor: next.retainer_overage_rate_minor ?? 0,
     }) ?? (await retainerScopeRefusal(ctx, patch))
   if (retainer) return retainer
+  const passed = await termsMonthPassed(ctx, current, input)
+  if (passed) return passed
   // Ending a schedule bills nothing more, so it never meets the guard.
   if (raw.status === "ended") return null
   return scheduleGuard(ctx, next, billsOtherThanStripe ?? current.bills_other_than_stripe, stage)
+}
+
+/**
+ * A retainer's terms read as one month's and saved when another month's are the next ones: refused
+ * when the two differ, so the fee of a month already begun is never written over a signed one.
+ */
+async function termsMonthPassed(
+  ctx: RecurringCtx,
+  current: ScheduleRow,
+  input: ScheduleUpdateInput,
+): Promise<Fail | null> {
+  const read = input.terms_month
+  if (read === undefined || !TERM_FIELDS.some((k) => input[k] !== undefined)) return null
+  const now = await today(ctx, await issuerOf(ctx, current.issuer_profile_id))
+  if (!now.ok) return now.error
+  const next = nextMonth(monthOf(now.date))
+  if (
+    next === read ||
+    termsSignature(termsForMonth(current, read)) === termsSignature(termsForMonth(current, next))
+  )
+    return null
+  return fail(
+    "schedule_changed",
+    `The terms of schedule ${current.id} were read as ${read}'s, and a change saved now applies from ${next}, whose terms are others. Nothing was saved. Read it again with recurring_list, then make the change on what it holds now.`,
+  )
 }
 
 /** Tell open views of the schedule that it changed (they read it again). */
@@ -607,6 +648,7 @@ export async function recurringScheduleUpdate(
     id: _id,
     status: wanted,
     expected_version: _expected,
+    terms_month: _termsMonth,
     billsOtherThanStripe,
     ...patch
   } = input
@@ -626,27 +668,37 @@ export async function recurringScheduleUpdate(
   if (isRetainerSchedule(becomes) && !isRetainerSchedule(current))
     data.retainer_from = nextMonth(monthOf(now.date))
   else if (!isRetainerSchedule(becomes) && isRetainerSchedule(current)) data.retainer_from = null
-  // New terms apply from the next month. When a signed renewal already governs that month, they
-  // are written into the renewal's terms: the later act wins from its first month, so the daily
-  // roll and the month's invoice read the change instead of the earlier renewal. A renewal that
-  // starts after the next month is kept and applies from its own start; the months before it take
-  // the schedule's own terms.
-  const renewal = renewalOf(current)
-  if (renewal && isRetainerSchedule(becomes) && renewal.from <= nextMonth(monthOf(now.date))) {
-    const terms = ["retainer_minutes", "retainer_overage_rate_minor", "lines"] as const
-    if (terms.some((k) => data[k] !== undefined)) {
-      const renewed: RetainerRenewal = { ...renewal }
-      if (data.retainer_minutes !== undefined)
-        renewed.retainer_minutes = Number(data.retainer_minutes)
-      if (data.retainer_overage_rate_minor !== undefined)
-        renewed.retainer_overage_rate_minor =
-          data.retainer_overage_rate_minor === null
-            ? null
-            : String(data.retainer_overage_rate_minor)
-      if (data.lines !== undefined) renewed.lines = data.lines as unknown[]
-      for (const k of terms) delete data[k]
-      data.retainer_renewal = renewed
+  // A retainer's new terms apply from the next month, as dated terms: this month and any earlier
+  // month not invoiced yet keep theirs. A signed renewal that starts later keeps its own first
+  // month. A schedule that never started has no month to keep.
+  const nextM = nextMonth(monthOf(now.date))
+  const wasRetainer = isRetainerSchedule(current)
+  const isRetainer = isRetainerSchedule(becomes)
+  const inForce = termsForMonth(current, nextM)
+  const touched = TERM_FIELDS.some((k) => data[k] !== undefined)
+  const notStarted = current.status === "draft" && retainerTermsOf(current).length === 0
+  let termsFrom: string | null = null
+  if (wasRetainer && isRetainer && touched && !notStarted) {
+    const after = merged(inForce, data as Partial<ScheduleFields>)
+    for (const k of TERM_FIELDS) delete data[k]
+    if (termsSignature(after) !== termsSignature(inForce)) {
+      Object.assign(data, withTermsFrom(current, nextM, after))
+      termsFrom = nextM
     }
+  } else if (isRetainer && !wasRetainer) {
+    // The run still bills this month: its lines stay, the retainer's are the next month's. Terms
+    // left from an earlier time as a retainer are over.
+    data.retainer_terms = null
+    data.retainer_renewal = null
+    if (data.lines !== undefined && !notStarted) {
+      Object.assign(data, withTermsFrom({}, nextM, { ...becomes, lines: data.lines }))
+      delete data.lines
+    }
+  } else if (wasRetainer && !isRetainer) {
+    // Back to the month-end run: it bills the lines in force, never those a renewal replaced.
+    if (data.lines === undefined) data.lines = inForce.lines
+    data.retainer_terms = null
+    data.retainer_renewal = null
   }
 
   // Who turned automatic issuing on is the person who decided it: the approver of an agent's
@@ -680,38 +732,45 @@ export async function recurringScheduleUpdate(
   data.version = current.version + 1
   await ctx.db.update(ENTITY, current.id, data)
   await announceScheduleChange(ctx, current.id, current.version + 1)
-  // A retainer's terms changed mid-month apply from the next month: this month keeps its
-  // timebox. Ending it removes its months to come (the derived rows are the signal projects reads).
+  // The next month's timebox follows its terms: this month keeps its own. Ending a retainer
+  // removes its months to come (the derived rows are the signal projects reads).
   let retainerNote = ""
-  const after = merged(current, patch)
-  if (isRetainerSchedule(after) || isRetainerSchedule(current)) {
-    const nextM = nextMonth(monthOf(now.date))
+  const after = becomes
+  if (isRetainer || wasRetainer) {
     const target = {
       id: current.id,
       retainer_project_id: after.retainer_project_id ?? current.retainer_project_id ?? null,
     }
-    if (status === "ended" || !isRetainerSchedule(after)) {
+    if (status === "ended" || !isRetainer) {
       await writeRetainerTimeboxes(ctx, target, [nextM], null)
       retainerNote = ` Its months after this one are taken off the project.`
-    } else if (
-      patch.retainer_minutes !== undefined ||
-      patch.retainer_project_id !== undefined ||
-      wanted === "active"
-    ) {
-      const wrote = await writeRetainerTimeboxes(
-        ctx,
-        target,
-        [nextM],
-        Number(
-          termsForMonth({ ...current, ...data } as Record<string, unknown>, nextM).retainer_minutes,
-        ),
-      )
-      retainerNote =
-        wrote.length > 0
-          ? ` New retainer terms apply from ${nextM}; this month keeps what it had.`
-          : ` New retainer terms apply from ${nextM}; the project's timebox for it is added by the daily roll.`
+    } else {
+      const stored = { ...current, ...data }
+      const later = retainerTermsOf(stored).find((t) => t.from > nextM)
+      if (!wasRetainer)
+        retainerNote = ` It is a retainer from ${nextM}; the month-end run still bills the months before, on their own lines.`
+      else if (termsFrom)
+        retainerNote =
+          ` New retainer terms apply from ${nextM}; this month and earlier months not invoiced yet keep their hours, fee, overage rate and rollover.` +
+          (later
+            ? ` From ${later.from} the terms of ${later.agreement_number ?? "the later change"} apply.`
+            : "")
+      else if (touched && notStarted)
+        retainerNote = " It has not started, so its terms apply from its first month."
+      if (
+        patch.retainer_minutes !== undefined ||
+        patch.retainer_project_id !== undefined ||
+        wanted === "active"
+      ) {
+        const minutes = Number(termsForMonth(stored, nextM).retainer_minutes)
+        const wrote = await writeRetainerTimeboxes(ctx, target, [nextM], minutes)
+        retainerNote +=
+          wrote.length > 0
+            ? ` The project's ${nextM} timebox is ${hoursText(minutes)}.`
+            : ` The project's timebox for ${nextM} is added by the daily roll.`
+      }
     }
-    if (status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead")
+    if (status !== "ended" && isRetainer && after.covers === "period_ahead")
       retainerNote += ` ${PREPAID_WARNING}`
   }
   // Ending reaches the month-end run already drafted as a pause does: its rows not issued yet are
@@ -746,9 +805,11 @@ export async function recurringScheduleUpdate(
           (leftOut > 0
             ? ` Its row in the open month-end run is left out (note "${SCHEDULE_ENDED}"), so approving the run does not issue it; drafts_update with put_back puts it back, and it then issues with the run.`
             : "")
-        : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`) +
+        : isRetainer && wasRetainer
+          ? "Each month is invoiced from the project's planned vs done card; drafts already made keep their amounts."
+          : `Its next invoice issues on ${nextIssueOn ?? "no date"}; drafts already made keep their amounts.`) +
       retainerNote,
-    ...(status !== "ended" && isRetainerSchedule(after) && after.covers === "period_ahead"
+    ...(status !== "ended" && isRetainer && after.covers === "period_ahead"
       ? { warning: PREPAID_WARNING }
       : {}),
   }
@@ -790,11 +851,12 @@ function renewedLine(
 
 /**
  * A retainer renewed by a signed agreement (agreements' call, as the person who approved its
- * send): the new included hours, fee and overage rate are kept on the project's retainer schedule
- * as its renewal, which every month from the renewal's first one is billed on (`termsForMonth`);
- * the months before keep the schedule's own terms, so no month is billed twice or on two sets of
- * terms. The first renewed month's timebox is written now when it is the next month; later ones
- * come with the daily roll. The same agreement again changes nothing.
+ * send): the new included hours, fee and overage rate join the dated terms of the project's
+ * retainer schedule, which every month from the renewal's first one is billed on
+ * (`termsForMonth`); the months before keep theirs, so no month is billed twice or on two sets of
+ * terms. Terms dated from its first month or later are replaced. The first renewed month's timebox
+ * is written now when it is the next month; later ones come with the daily roll. The same
+ * agreement again changes nothing.
  */
 export async function retainerTermsRenew(ctx: RecurringCtx, input: RetainerTermsRenewInput) {
   const fee = String(input.feeMinor ?? "")
@@ -839,46 +901,44 @@ export async function retainerTermsRenew(ctx: RecurringCtx, input: RetainerTerms
   const next = nextMonth(monthOf(now.date))
   const asked = monthOf(input.startsOn)
   const from = asked > next ? asked : next
-  const pending = renewalOf(current)
-  if (pending?.agreement_id === input.agreementId)
+  const entries = retainerTermsOf(current)
+  const signed = entries.find((t) => t.agreement_id === input.agreementId)
+  if (signed)
     return {
       status: "completed" as const,
       scheduleId: current.id,
-      from: pending.from,
+      from: signed.from,
       unchanged: true,
-      message: `${input.agreementNumber} already renewed retainer schedule ${current.id} from ${pending.from}. Nothing changed.`,
+      message: `${input.agreementNumber} already renewed retainer schedule ${current.id} from ${signed.from}. Nothing changed.`,
     }
 
-  // A renewal already in force is the schedule's own terms now: the new one follows it.
-  const data: Record<string, unknown> = {}
-  let base: ScheduleRow = current
-  if (pending && pending.from <= monthOf(now.date)) {
-    base = {
-      ...current,
-      lines: (pending.lines as ScheduleLineInput[]) ?? current.lines,
-      retainer_minutes: pending.retainer_minutes,
-      retainer_overage_rate_minor:
-        pending.retainer_overage_rate_minor ?? current.retainer_overage_rate_minor ?? null,
-    }
-    data.lines = base.lines
-    data.retainer_minutes = base.retainer_minutes
-    data.retainer_overage_rate_minor = base.retainer_overage_rate_minor
-  }
+  // The terms it renews: those of its first month without it. A renewal signed earlier for that
+  // month or later is the one it replaces, so it is not read.
+  const dated = (list: RetainerTerms[]): ScheduleRow => ({
+    ...current,
+    retainer_terms: list,
+    retainer_renewal: null,
+  })
+  const base = termsForMonth(dated(entries.filter((t) => t.from < from || !t.agreement_id)), from)
+  const before = termsForMonth(dated(entries), previousMonth(from))
   if (base.lines.length !== 1)
     return fail(
       "fee_lines_ambiguous",
       `Retainer schedule ${current.id} bills ${base.lines.length} fee lines, so ${input.agreementNumber}'s fee cannot replace one of them. Nothing was changed; set the new terms with recurring_schedule_update.`,
     )
-  const line = renewedLine(base.lines[0] as ScheduleLineInput, Number(fee), input.minutes)
-  const renewal: RetainerRenewal = {
+  const renewal: RetainerTerms = {
     from,
     agreement_id: input.agreementId,
     agreement_number: input.agreementNumber,
     retainer_minutes: input.minutes,
     retainer_overage_rate_minor: rate ?? String(base.retainer_overage_rate_minor ?? 0),
-    lines: [line],
+    retainer_rollover: base.retainer_rollover === "next" ? "next" : "none",
+    lines: [renewedLine(base.lines[0] as ScheduleLineInput, Number(fee), input.minutes)],
   }
-  data.retainer_renewal = renewal
+  const data: Record<string, unknown> = {
+    retainer_terms: [...entries.filter((t) => t.from < from), renewal],
+    retainer_renewal: null,
+  }
   data.version = current.version + 1
   await ctx.db.update(ENTITY, current.id, data)
   await announceScheduleChange(ctx, current.id, current.version + 1)
@@ -892,7 +952,10 @@ export async function retainerTermsRenew(ctx: RecurringCtx, input: RetainerTerms
         )
       : []
   const currency = String((issuer as { default_currency?: string }).default_currency ?? "EUR")
-  const oldFee = Number((base.lines[0] as ScheduleLineInput).unit_price_minor)
+  const oldFee = before.lines.reduce(
+    (a, l) => a + Math.round(Number(l.qty) * Number(l.unit_price_minor)),
+    0,
+  )
   return {
     status: "completed" as const,
     scheduleId: current.id,
@@ -901,7 +964,7 @@ export async function retainerTermsRenew(ctx: RecurringCtx, input: RetainerTerms
     message:
       `${input.agreementNumber} renewed retainer schedule ${current.id}: from ${from}, ${hoursText(input.minutes)} included and ${formatMoneyMinor(fee, currency)} a month` +
       `${rate !== null ? `, ${formatMoneyMinor(rate, currency)} an hour above them` : ""}. ` +
-      `The months before keep ${hoursText(Number(base.retainer_minutes))} and ${formatMoneyMinor(oldFee, currency)}. ` +
+      `Earlier months keep their own terms (${previousMonth(from)}: ${hoursText(Number(before.retainer_minutes))} and ${formatMoneyMinor(oldFee, currency)}). ` +
       (wrote.length > 0
         ? `The project's ${from} timebox is ${hoursText(input.minutes)}.`
         : `The project's timebox for ${from} is written by the daily roll.`),
@@ -1085,6 +1148,17 @@ export async function draftCandidates(
   return active.filter((s) => isDueForDraft(s, todayDate))
 }
 
+/** The month after this one where the issuer is; UTC's when the zone cannot be read. */
+async function nextTermsMonth(ctx: RecurringCtx, issuerId: string): Promise<string> {
+  try {
+    const now = await today(ctx, await issuerOf(ctx, issuerId))
+    if (now.ok) return nextMonth(monthOf(now.date))
+  } catch {
+    // A zone nobody can read never hides the list.
+  }
+  return nextMonth(monthOf(new Date().toISOString()))
+}
+
 export async function recurringList(
   ctx: RecurringCtx,
   input: { status?: string; company_id?: string; limit?: number; cursor?: string },
@@ -1104,10 +1178,36 @@ export async function recurringList(
     offset,
   })) as unknown[]
   // The free-text `notes` stay out of the list: a row names its schedule, dates and amounts only.
-  const rows = found.slice(0, limit).map((r) => {
-    const { notes: _notes, ...row } = normalize(r)
-    return row as ScheduleRow
-  })
+  // A retainer's hours, rate, rollover and lines are those of the next month in its issuer's zone,
+  // the ones a change made now replaces, with the month they are for and the dated terms.
+  const months = new Map<string, string>()
+  const rows: ScheduleRow[] = []
+  for (const r of found.slice(0, limit)) {
+    const {
+      notes: _notes,
+      retainer_terms: _terms,
+      retainer_renewal: _renewal,
+      ...row
+    } = normalize(r)
+    if (!isRetainerSchedule(row)) {
+      rows.push(row as ScheduleRow)
+      continue
+    }
+    const stored = normalize(r)
+    const month =
+      months.get(row.issuer_profile_id) ?? (await nextTermsMonth(ctx, row.issuer_profile_id))
+    months.set(row.issuer_profile_id, month)
+    const terms = termsForMonth(stored, month)
+    rows.push({
+      ...(row as ScheduleRow),
+      retainer_minutes: terms.retainer_minutes,
+      retainer_overage_rate_minor: terms.retainer_overage_rate_minor,
+      retainer_rollover: terms.retainer_rollover,
+      lines: terms.lines,
+      retainer_terms_month: month,
+      retainer_terms: retainerTermsOf(stored),
+    })
+  }
   const first = (await ctx.db.findMany(ENTITY, {
     where: { status: "active" },
     orderBy: { next_issue_on: "asc" },

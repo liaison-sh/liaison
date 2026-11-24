@@ -8,7 +8,7 @@
 import { resolveOpenParks } from "../deferred"
 import { formatMoneyMinor } from "../money"
 import { recipientOf } from "../recipient"
-import { isRetainerMonth, nextMonth } from "../recurring/retainer"
+import { isRetainerMonth, nextMonth, termsForMonth } from "../recurring/retainer"
 import { advanceDeductedRefusal } from "./advance-guard"
 import {
   advanceRemaining,
@@ -241,12 +241,11 @@ export async function advanceDraftCreate(
       (issuer.issuer as { default_currency?: string }).default_currency ??
       "EUR",
   )
-  // A retainer's advance takes the fee's VAT, so the month's final deducts it rate for rate.
-  const retainerFee = retainer
-    ? ((typeof retainer.lines === "string" ? JSON.parse(retainer.lines) : retainer.lines) as
-        | Array<{ vat_bp?: unknown }>
-        | undefined)
-    : undefined
+  // A retainer's advance takes its month's fee's VAT, so that month's final deducts it rate for rate.
+  const rawFee = retainer ? termsForMonth(retainer, month ?? "").lines : undefined
+  const retainerFee = (typeof rawFee === "string" ? JSON.parse(rawFee) : rawFee) as
+    | Array<{ vat_bp?: unknown }>
+    | undefined
   const feeRate = Array.isArray(retainerFee) ? retainerFee[0]?.vat_bp : undefined
   const stepRate =
     typeof step?.tax_rate_bp === "number"

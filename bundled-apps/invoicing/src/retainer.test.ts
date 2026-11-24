@@ -541,6 +541,39 @@ describe("a retainer month's invoice", () => {
     expect((await advance()).service_period_start).toBe("2027-01-01")
   })
 
+  test("an advance takes the VAT of its own month's terms", async () => {
+    const fee = { description: "Monthly retainer", qty: 1, unit_price_minor: 450_000, vat_bp: 1000 }
+    const h = harness({
+      schedule: retainerSchedule({
+        covers: "period_ahead",
+        contact_id: "contact-1",
+        retainer_terms: [
+          {
+            from: "2026-11",
+            retainer_minutes: 2400,
+            retainer_overage_rate_minor: "12000",
+            lines: [fee],
+          },
+        ],
+      }),
+    })
+    const vatOf = async (month: string) => {
+      const res = await advanceDraftCreate(h.ctx, {
+        projectId: PROJECT,
+        amountMinor: 450_000,
+        contactId: CONTACT,
+        month,
+      })
+      if (res.status !== "completed") throw new Error(JSON.stringify(res))
+      return h.db
+        .__all("document_lines")
+        .filter((l) => l.document_id === res.draftId)
+        .map((l) => Number(l.tax_rate_bp))
+    }
+    expect(await vatOf("2026-10")).toEqual([2000])
+    expect(await vatOf("2026-11")).toEqual([1000])
+  })
+
   test("a prepaid retainer waits on one issue approval per project at a time", async () => {
     const h = harness({
       schedule: retainerSchedule({ covers: "period_ahead", contact_id: "contact-1" }),

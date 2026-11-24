@@ -95,12 +95,12 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog, pg_temp AS $f
   SELECT EXISTS (
     SELECT 1 FROM app_knowledge.documents d
      WHERE d.id = p_document
-       AND d.org_id = current_setting('app.current_org_id', true)::uuid
+       AND d.org_id = rls_ctx.org_id()::uuid
        AND (app_knowledge.app_has_scope('knowledge:documents:update')
             OR app_knowledge.app_has_scope('knowledge:documents:admin'))
        AND (
-         d.owner_user_id = NULLIF(current_setting('app.current_user_id', true), '')::uuid
-         OR d.created_by = NULLIF(current_setting('app.current_user_id', true), '')::uuid
+         d.owner_user_id = NULLIF(rls_ctx.user_id(), '')::uuid
+         OR d.created_by = NULLIF(rls_ctx.user_id(), '')::uuid
          OR (
            d.document_scope = 'organization'
            AND (

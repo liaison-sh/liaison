@@ -46,6 +46,7 @@ import {
 } from "./billing-plan"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate, draftsDiscard } from "./drafts"
+import { notOverLine } from "./from-reconcile"
 import { heldText, raiseOnePerProject } from "./prepaid-hold"
 import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
@@ -247,12 +248,23 @@ function lateOverage(
   const includedOf = (m: string) =>
     invoiceOf(m)?.included_minutes ?? Number(termsForMonth(schedule, m).retainer_minutes ?? 0)
   const usedOf = (m: string) => (invoiceOf(m)?.used_minutes ?? 0) + lateMinutesIn(standing, m)
-  /** What a month's invoice took of the hours rolled into it. */
-  const tookOf = (m: string) => {
+  /** The hours of a month already billed, or waived, above what it held. */
+  const aboveOf = (m: string, refs: RetainerRefs) =>
+    refs.overage_minutes +
+    refs.waived_minutes +
+    standing.reduce(
+      (a, d) =>
+        a + (d.refs.late ?? []).reduce((b, l) => b + (l.month === m ? l.overage_minutes : 0), 0),
+      0,
+    )
+  const afterOf = (m: string) => standing.find((d) => previousMonth(d.refs.month) === m)?.refs.month
+  /** What a month took of the hours rolled into it, its own partly taken by the month after. */
+  const tookOf = (m: string): number => {
     const refs = invoiceOf(m)
-    return refs
-      ? Math.min(refs.rollover_in_minutes, Math.max(0, usedOf(m) - refs.included_minutes))
-      : 0
+    if (!refs || refs.rollover_in_minutes === 0) return 0
+    const after = afterOf(m)
+    const asked = usedOf(m) + (after === undefined ? 0 : tookOf(after)) - aboveOf(m, refs)
+    return Math.min(refs.rollover_in_minutes, Math.max(0, asked - refs.included_minutes))
   }
   /** The hours rolled into a month that its month before still has, its late hours counted. */
   const rolledInto = (m: string) => {
@@ -266,7 +278,7 @@ function lateOverage(
     .filter((l) => l.month < month && l.minutes > 0)
     .map((l) => {
       const terms = termsForMonth(schedule, l.month)
-      const after = standing.find((d) => previousMonth(d.refs.month) === l.month)?.refs.month
+      const after = afterOf(l.month)
       const free =
         includedOf(l.month) +
         rolledInto(l.month) -
@@ -732,6 +744,7 @@ export async function retainerDraftFromReconcile(
     ...deductions.map((d) => `${d.description} deducted`),
   ]
   const approvalLines = [
+    ...notOverLine(read.period.to, today),
     ...said,
     `To pay ${formatMoneyMinor(BigInt(totals.incl), currency)} incl. VAT`,
   ]

@@ -69,6 +69,15 @@ export async function dueLine(ctx: MutationsCtx, draftId: string): Promise<strin
   return [`Due ${termsText(terms.days)}`]
 }
 
+/** The card line of a draft whose period is still running, or none. */
+export function notOverLine(periodEnd: string, today: string): string[] {
+  return today <= periodEnd
+    ? [
+        `The period is not over: it ends on ${periodEnd}, and work closed later goes on the next card`,
+      ]
+    : []
+}
+
 export const ISSUE_APPROVAL_EXPIRY_HOURS = 720
 
 export interface DraftFromReconcileInput {
@@ -374,6 +383,7 @@ export async function draftFromReconcile(
           ...(await customerLine(ctx, draftId)),
           `To pay ${formatMoneyMinor(BigInt(totals.incl), totals.currency)} incl. VAT (${formatMoneyMinor(BigInt(totals.excl), totals.currency)} excl. VAT)`,
           ...(await dueLine(ctx, draftId)),
+          ...notOverLine(read.period.to, today),
           latestIssueLine(monthEnd(read.period.to), today) as string,
         ],
         latest_on: monthEnd(read.period.to),

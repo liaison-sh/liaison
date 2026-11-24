@@ -107,8 +107,9 @@ export async function writeWithVersion(
 ): Promise<boolean> {
   const docs = knowledgeRel("documents")
   const versions = knowledgeRel("document_versions")
+  // The relation is spelled out so the tagged-sink scan sees this write.
   const cas = sql`
-    UPDATE ${docs} SET ${args.setSql}
+    UPDATE ${knowledgeRel("documents")} SET ${args.setSql}
      WHERE id = ${args.documentId}::uuid AND org_id = ${args.orgId}::uuid
        AND revision = ${args.expectedRevision}
     RETURNING id, org_id, title, body, revision, required_scopes`

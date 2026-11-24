@@ -38,6 +38,10 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
   "projects/ProjectEditForm.tsx": { fields: 1, reason: "project description, not listed" },
   "dashboards/DashboardView.tsx": { fields: 1, reason: "dashboard description, not listed" },
   "contacts/ContactAddresses.tsx": { fields: 1, reason: "a postal address's note (contact data)" },
+  // The page editor's own parts: the page that mounts them carries the wand and the
+  // mic; a page saves itself, so there is no Save.
+  "editor/PageTextEditor.tsx": { fields: 1, reason: "the page editor; its page has the helpers" },
+  "editor/SourceEditor.tsx": { fields: 1, reason: "the page editor's source mode, same page" },
   "settings/documents/RichTextEditor.tsx": {
     fields: 1,
     reason: "document template text with {{field}} placeholders (configuration)",

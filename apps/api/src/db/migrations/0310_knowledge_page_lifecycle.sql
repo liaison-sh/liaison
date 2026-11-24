@@ -141,6 +141,17 @@ CREATE TABLE IF NOT EXISTS app_knowledge.document_versions (
   required_scopes text[] NOT NULL
 );
 --> statement-breakpoint
+-- reviewed-dynamic: gives the new table to its schema's owner (liaison_admin on a
+-- standard install, the migrating login where that login owns the schemas); no input
+-- reaches the statement. Re-runnable: an owner change to the current owner is a no-op.
+DO $$
+BEGIN
+  EXECUTE format('ALTER TABLE app_knowledge.document_versions OWNER TO %I',
+    (SELECT pg_catalog.pg_get_userbyid(nspowner) FROM pg_catalog.pg_namespace
+      WHERE nspname = 'app_knowledge'));
+END
+$$;
+--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS idx_knowledge_document_versions_document
   ON app_knowledge.document_versions (document_id, created_at DESC);
 --> statement-breakpoint
@@ -190,6 +201,17 @@ CREATE TABLE IF NOT EXISTS app_knowledge.document_links (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (source_document_id, target_document_id)
 );
+--> statement-breakpoint
+-- reviewed-dynamic: gives the new table to its schema's owner (liaison_admin on a
+-- standard install, the migrating login where that login owns the schemas); no input
+-- reaches the statement. Re-runnable: an owner change to the current owner is a no-op.
+DO $$
+BEGIN
+  EXECUTE format('ALTER TABLE app_knowledge.document_links OWNER TO %I',
+    (SELECT pg_catalog.pg_get_userbyid(nspowner) FROM pg_catalog.pg_namespace
+      WHERE nspname = 'app_knowledge'));
+END
+$$;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS idx_knowledge_document_links_target
   ON app_knowledge.document_links (org_id, target_document_id);

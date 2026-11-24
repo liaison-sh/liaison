@@ -5095,7 +5095,10 @@
     "deleteTable": "Supprimer le tableau",
     "markdownSource": "Source Markdown",
     "moreTools": "Plus de mise en forme",
-    "emojiSuggestions": "Suggestions d'emoji"
+    "emojiSuggestions": "Suggestions d'emoji",
+    "remoteImage": "Image d'un autre site, non chargée",
+    "pageLink": "Lien vers une page",
+    "sourceEditor": "Texte de la page, tel qu'écrit"
   },
   "nodes": {
     "chat": {

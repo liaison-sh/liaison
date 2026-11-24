@@ -6,6 +6,7 @@ import { schemaRef } from "~/db/schema-ref"
 import {
   generateDropImmutableTriggerDdl,
   generateImmutableTriggerDdl,
+  IMMUTABLE_TRIGGER_CLASS_BRANCH,
   IMMUTABLE_TRIGGER_DELETING_BRANCH,
   IMMUTABLE_TRIGGER_NAME,
   immutableSpecFromTriggerBody,
@@ -27,11 +28,11 @@ describe("immutable table trigger DDL", () => {
     expect(stmts[0]).toContain(
       `current_setting('${ORG_PURGE_SETTING}', true) = to_jsonb(OLD)->>'org_id'`,
     )
-    // The org may go: its deletion has started, or it is a demo workspace.
+    // The org may go: its deletion has started, or its class is demo.
     expect(stmts[0]).toContain(IMMUTABLE_TRIGGER_DELETING_BRANCH)
-    expect(stmts[0]).toContain("jsonb_typeof(o.settings->'demo') = 'object'")
-    // The marker is the one the schema allows, not any object under `demo`.
-    expect(stmts[0]).toContain("o.settings->'demo'->>'variant' IN ('reserved', 'visitor')")
+    expect(stmts[0]).toContain(IMMUTABLE_TRIGGER_CLASS_BRANCH)
+    // The jsonb marker opens nothing.
+    expect(stmts[0]).not.toContain("settings")
     // The org lookup honours the worker schema prefix like every other kernel reference.
     expect(stmts[0]).toContain(`FROM "${schemaRef("kernel")}".organizations o`)
     expect(stmts[2]).toContain('BEFORE UPDATE OR DELETE ON "app_x"."legal_originals" FOR EACH ROW')
@@ -137,24 +138,24 @@ describe("writeOnceColumns: a ledger row keeps its identity, its state may advan
 describe("the org purge exception", () => {
   const schema = `dp_${Math.random().toString(36).slice(2, 8)}`
   const tag = schema.replace("_", "-")
-  const orgs: Record<
-    "demoA" | "demoB" | "plain" | "emptyMarker" | "oddVariant" | "deleting",
-    string
-  > = {
+  const orgs: Record<"demoA" | "demoB" | "plain" | "forgedMarker" | "deleting", string> = {
     deleting: "",
     demoA: "",
     demoB: "",
     plain: "",
-    emptyMarker: "",
-    oddVariant: "",
+    forgedMarker: "",
   }
   const VISITOR = `{"demo":{"variant":"visitor","expiresAt":"2000-01-01T00:00:00.000Z"}}`
 
-  async function makeOrg(key: keyof typeof orgs, settings: string): Promise<void> {
+  async function makeOrg(
+    key: keyof typeof orgs,
+    settings: string,
+    orgClass: "standard" | "demo" = "standard",
+  ): Promise<void> {
     const rows = await sql.begin(async (tx) => {
       await tx.unsafe("SET LOCAL ROLE liaison_admin")
       return tx.unsafe(
-        `INSERT INTO ${schemaRef("kernel")}.organizations (name, slug, settings) VALUES ('${key}', '${tag}-${key.toLowerCase()}', '${settings}'::jsonb) RETURNING id`,
+        `INSERT INTO ${schemaRef("kernel")}.organizations (name, slug, settings, class) VALUES ('${key}', '${tag}-${key.toLowerCase()}', '${settings}'::jsonb, '${orgClass}') RETURNING id`,
       )
     })
     orgs[key] = String((rows[0] as unknown as { id: string }).id)
@@ -182,12 +183,11 @@ describe("the org purge exception", () => {
   }
 
   beforeAll(async () => {
-    await makeOrg("demoA", VISITOR)
-    await makeOrg("demoB", VISITOR)
+    await makeOrg("demoA", VISITOR, "demo")
+    await makeOrg("demoB", VISITOR, "demo")
     await makeOrg("plain", "{}")
-    // Objects under `demo` that the marker schema refuses: hand-written, not a demo org.
-    await makeOrg("emptyMarker", `{"demo":{}}`)
-    await makeOrg("oddVariant", `{"demo":{"variant":"staging","expiresAt":null}}`)
+    // A valid, expired visitor marker written onto a customer's org.
+    await makeOrg("forgedMarker", VISITOR)
     // An ordinary org whose deletion has started (`liaison org delete`, modules/org/purge/).
     await makeOrg("deleting", "{}")
     await sql.begin(async (tx) => {
@@ -224,11 +224,11 @@ describe("the org purge exception", () => {
     expect(await rowsOf(orgs.plain)).toBe(1)
   })
 
-  test("an empty or unknown-variant demo object is not a marker, even with the role and the setting", async () => {
-    for (const org of [orgs.emptyMarker, orgs.oddVariant]) {
-      await expect(run(deleteAs("liaison_admin", org, org))).rejects.toThrow(/immutable_retention/)
-      expect(await rowsOf(org)).toBe(1)
-    }
+  test("a demo marker on a standard org opens nothing, even with the role and the setting", async () => {
+    await expect(
+      run(deleteAs("liaison_admin", orgs.forgedMarker, orgs.forgedMarker)),
+    ).rejects.toThrow(/immutable_retention/)
+    expect(await rowsOf(orgs.forgedMarker)).toBe(1)
   })
 
   test("the setting naming org A does not let org B's rows go", async () => {
@@ -283,7 +283,7 @@ describe("the org purge exception", () => {
     expect(await rowsOf(orgs.plain)).toBe(1)
   })
 
-  test("the privileged role, the setting and the demo marker together delete that org's rows", async () => {
+  test("the privileged role, the setting and the demo class together delete that org's rows", async () => {
     expect(await deleteAs("liaison_admin", orgs.demoA, orgs.demoA)).toBe(1)
     expect(await rowsOf(orgs.demoA)).toBe(0)
     expect(await rowsOf(orgs.demoB)).toBe(1)

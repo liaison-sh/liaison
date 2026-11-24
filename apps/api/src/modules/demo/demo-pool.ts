@@ -568,6 +568,8 @@ export async function createVisitorOrgShell(input: {
     slug: input.slug,
     name: input.orgName ?? DEMO_COMPANY_NAME,
     locale: input.locale,
+    // A demo org from its first row: the purge takes no org of another class.
+    class: "demo",
   })
   // MARK NEXT, before anything can act as this org: every restriction demo
   // mode applies is keyed on this marker.

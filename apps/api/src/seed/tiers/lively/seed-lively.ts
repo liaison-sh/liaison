@@ -50,6 +50,7 @@ import { seedTimelineEntries, type TimelineEntrySeed } from "~/seed/factories/ti
 import { replaceSeededDemoOrg } from "~/seed/tiers/demo/replace-demo-org"
 import type { DemoWorld } from "~/seed/world/fiction"
 import { LIVELY_WORLD } from "~/seed/world/lively"
+import { replaceSeededDemoOrg } from "../demo/replace-demo-org"
 import { type SeedDemoWorldResult, seedDemoWorld } from "../demo/seed-demo"
 import { BUGS_INBOX, SALES_INBOX, SUPPORT_INBOX, TICKET_CATEGORIES } from "../demo/support-specs"
 import { type ActivityPlan, type PlanInput, planActivity } from "./activity-plan"

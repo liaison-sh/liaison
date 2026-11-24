@@ -924,6 +924,8 @@ const SUITES: Record<string, { cmd: string[]; cwd: string; env?: Record<string, 
             "scripts/dockerfile-pins.test.ts",
             "scripts/dockerfile-cli-shim.test.ts",
             "scripts/check-desktop-no-node.test.ts",
+            // No AI co-author trailer in commits or pull requests. Spawns git in temp repos.
+            "scripts/check-no-ai-coauthor.test.ts",
             "scripts/lint-copy-dashes.repo.test.ts",
             "scripts/test-run.suites.test.ts",
             // Test files are named after behaviour, never a phase or web-NN number.

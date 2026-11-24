@@ -334,19 +334,34 @@ export function bridgeKnowledgeActorInput(ctx: {
   userId: string
   callerScopes: string[] | undefined
   inheritedActor: ActorContext
+  auditActorType?: "user" | "agent" | "system" | "mcp"
+  bridgeOptions?: { origin?: string } | undefined
+  approvalContext?: unknown
+  bridgeActingAgentId?: string | null
 }): {
   orgId: string
   userId: string
   scopes: string[]
   dimensionGrants: Record<string, string[]>
   roles: string[]
+  author?: { type: "agent"; agentId: string | null }
 } {
   const person = ctx.inheritedActor.actorType === "user" ? ctx.inheritedActor : null
+  // A write an agent makes (in a turn, through MCP, or once a person approved it) is
+  // the agent's in page history, never the person's: the same test as the review
+  // filing of agent writes, plus approvals.
+  const agentWrite =
+    ctx.auditActorType === "agent" ||
+    ctx.auditActorType === "mcp" ||
+    ctx.bridgeOptions?.origin === "in-app-agent" ||
+    ctx.bridgeOptions?.origin === "mcp" ||
+    ctx.approvalContext != null
   return {
     orgId: ctx.orgId,
     userId: ctx.userId,
     scopes: ctx.callerScopes ?? [],
     dimensionGrants: person?.dimensionGrants ?? {},
     roles: person?.roles ?? [],
+    ...(agentWrite ? { author: { type: "agent", agentId: ctx.bridgeActingAgentId ?? null } } : {}),
   }
 }

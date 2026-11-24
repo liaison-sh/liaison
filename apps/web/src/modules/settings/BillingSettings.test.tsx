@@ -84,9 +84,9 @@ function baseRoutes(url: string): { status?: number; body: unknown } | undefined
   return undefined
 }
 
-function renderPage() {
+function renderPage(locale: "en" | "fr" = "en") {
   render(() => (
-    <I18nProvider initialLocale="en">
+    <I18nProvider initialLocale={locale}>
       <Router>
         <Route
           path="*"
@@ -190,6 +190,22 @@ describe("BillingSettings", () => {
     )
     renderPage()
     expect(await screen.findByTestId("billing-preview-ends")).toBeInTheDocument()
+  })
+
+  // No VAT is collected on these prices for now, and the summary carries no VAT
+  // fact to say otherwise: the line is the price alone, in both languages.
+  it("the top-up line is the price alone, with no tax wording", async () => {
+    stubApi(baseRoutes)
+    renderPage()
+    const en = await screen.findByTestId("billing-topup-price")
+    expect(en.textContent).toBe(topUpPrice(13, SUMMARY.topUp, "en"))
+    expect(en.textContent).not.toMatch(/VAT|excl/i)
+    cleanup()
+    stubApi(baseRoutes)
+    renderPage("fr")
+    const fr = await screen.findByTestId("billing-topup-price")
+    expect(fr.textContent).toBe(topUpPrice(13, SUMMARY.topUp, "fr"))
+    expect(fr.textContent).not.toMatch(/hors taxes|\bHT\b|TVA/)
   })
 
   it("below Control's minimum the buy button is disabled", async () => {

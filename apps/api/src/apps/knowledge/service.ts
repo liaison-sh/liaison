@@ -10,14 +10,21 @@ import {
   knowledgeUpdateDocumentSchema,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import {
+  markEventPending,
+  stampEventNow,
+  updateEventIsRecent,
+} from "~/apps/knowledge/event-coalesce"
 import { shouldResetVerification } from "~/apps/knowledge/review"
-import { knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { type VersionSession, writeWithVersion } from "~/apps/knowledge/versions"
 import { extractRows, type RlsClient } from "~/db"
 import { isUuid } from "~/lib/uuid"
 import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
 import { hasScope } from "~/modules/permissions/permissions"
 import {
   actorGrantRole,
+  grantRoleFrom,
   listGrants,
   recomputeSearchAcl,
   replaceGrants,
@@ -43,6 +50,9 @@ export class KnowledgeError extends Error {
   constructor(
     public readonly code: KnowledgeErrorCode,
     message: string,
+    /** A stable name of the refusal (`details.reason` in the response), so a
+     *  client says it in its reader's language; the message stays for others. */
+    public readonly reason?: string,
   ) {
     super(message)
     this.name = "KnowledgeError"
@@ -85,6 +95,12 @@ export interface KnowledgeActor {
    */
   roles?: string[]
   includeArchived?: boolean
+  /**
+   * Who writes, for page history: absent for a person; an agent (or an approved
+   * agent action) acting for `userId` is `{ type: "agent", agentId }`. Set by the
+   * bridge (`bridgeKnowledgeActorInput`), never by a request body.
+   */
+  author?: { type: "agent" | "system"; agentId?: string | null }
 }
 
 /**
@@ -102,6 +118,7 @@ export function knowledgeActorFromContext(input: {
   dimensionGrants: Record<string, string[]>
   roles?: string[]
   includeArchived?: boolean
+  author?: KnowledgeActor["author"]
 }): KnowledgeActor {
   const raw = input.dimensionGrants ?? {}
   const expanded: Record<string, string[]> = {}
@@ -148,6 +165,7 @@ export function knowledgeActorFromContext(input: {
     dimensionGrants: expanded,
     roles: input.roles ?? [],
     includeArchived: input.includeArchived,
+    ...(input.author ? { author: input.author } : {}),
   }
 }
 
@@ -436,6 +454,19 @@ function assertCanSetDimensions(
   }
 }
 
+/**
+ * The label of a new page. `public` and `internal` need no grant, as reading
+ * them needs none, so any member can write a page; a tighter label does. As in
+ * `knowledge_documents_insert`. Re-labelling a page keeps the whole check.
+ */
+function assertCanCreateWithDimensions(
+  input: { team: string[]; sensitivity: string },
+  actor: KnowledgeActor,
+): void {
+  const open = input.sensitivity === "public" || input.sensitivity === "internal"
+  assertCanSetDimensions({ ...input, sensitivity: open ? null : input.sensitivity }, actor)
+}
+
 function validateCreateInput(input: unknown): KnowledgeCreateDocument {
   const parsed = knowledgeCreateDocumentSchema.safeParse(input)
   if (!parsed.success) validation(parsed.error.issues[0]?.message)
@@ -496,6 +527,42 @@ export async function loadDocumentShareRole(
     userId: actor.userId,
     roles: actor.roles ?? [],
   })
+}
+
+/**
+ * `loadDocumentShareRole` for every page of the org at once (the tree's pages):
+ * one read of the grants, the same rule per page. Pages with no role are absent.
+ */
+export async function loadDocumentShareRoles(
+  tx: RlsClient,
+  actor: KnowledgeActor,
+): Promise<Map<string, "viewer" | "editor">> {
+  const byDoc = new Map<
+    string,
+    Array<{ grantee_kind: string; grantee: string; role: "viewer" | "editor" }>
+  >()
+  for (const row of extractRows<{
+    resource_id: string
+    grantee_kind: string
+    grantee: string
+    role: "viewer" | "editor"
+  }>(
+    await tx.execute(drizzleSql`
+      SELECT g.resource_id, g.grantee_kind, g.grantee, g.role
+      FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = ${actor.orgId}::uuid AND g.resource_type = ${KNOWLEDGE_RESOURCE}
+    `),
+  )) {
+    const list = byDoc.get(row.resource_id)
+    if (list) list.push(row)
+    else byDoc.set(row.resource_id, [row])
+  }
+  const roles = new Map<string, "viewer" | "editor">()
+  for (const [docId, rows] of byDoc) {
+    const role = grantRoleFrom(rows, { userId: actor.userId, roles: actor.roles ?? [] })
+    if (role) roles.set(docId, role)
+  }
+  return roles
 }
 
 /**
@@ -621,7 +688,6 @@ export async function findRoutineBoundRunningDoc(
     const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
     const routineId = currentRunContext()?.routineId
     if (!routineId) return null
-    const { kernelRel } = await import("~/apps/knowledge/schema-refs")
     const promptRows = extractRows<{ prompt: string | null }>(
       await tx.execute(
         drizzleSql`SELECT prompt FROM ${kernelRel("routines")} WHERE id = ${routineId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
@@ -853,23 +919,54 @@ export async function findUniqueOrgRunningWatchDoc(
   }
 }
 
+/**
+ * The page `d` is in no live folder this reader can see. Run under row security:
+ * a folder that is someone else's, with its memberships, does not count. OFFSET 0
+ * keeps it one index lookup a page: flattened into an anti join, with statistics
+ * behind (an import, a restore), it reads every membership for every page.
+ */
+export function inNoVisibleFolder() {
+  return drizzleSql`NOT EXISTS (
+    SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
+    JOIN ${knowledgeRel("collections")} c ON c.id = m.collection_id AND c.org_id = m.org_id
+    WHERE m.org_id = d.org_id AND m.target_type = 'document' AND m.target_id = d.id
+      AND c.archived_at IS NULL
+    OFFSET 0
+  )`
+}
+
+/** The organization page `d` is the reader's own and shared with nobody. */
+export function onlyMine(actor: KnowledgeActor) {
+  return drizzleSql`(
+    d.document_scope = 'organization'
+    AND d.owner_user_id IS NOT NULL AND d.owner_user_id::text = ${actor.userId}
+    AND d.org_access = 'none'
+    AND NOT EXISTS (
+      SELECT 1 FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = d.org_id AND g.resource_type = ${KNOWLEDGE_RESOURCE} AND g.resource_id = d.id
+    )
+  )`
+}
+
 export async function listKnowledgeDocuments(
   tx: RlsClient,
   actor: KnowledgeActor,
-  opts: { limit?: number; includeArchived?: boolean; unfiled?: boolean } = {},
+  opts: {
+    limit?: number
+    includeArchived?: boolean
+    unfiled?: boolean
+    /** Only what waits for a review, however old. */
+    needsReview?: boolean
+  } = {},
 ): Promise<KnowledgeDocumentRow[]> {
   const limit = Math.max(1, Math.min(200, opts.limit ?? 50))
   const includeArchived = opts.includeArchived ?? false
-  // Unfiled = org-scope documents not in any collection. Personal-scope
-  // documents cannot belong to a collection by validation, so excluding
-  // them keeps "Unfiled" semantically about *org* knowledge that needs
-  // filing. Personal docs surface under the __personal_notes__ tree node.
+  // Unfiled is per reader: in no live folder they can see (their own private
+  // pages and personal documents are the Personal section's).
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
-        AND NOT EXISTS (
-          SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
-          WHERE m.target_id = d.id AND m.target_type = 'document'
-        )`
+        AND ${inNoVisibleFolder()}
+        AND NOT ${onlyMine(actor)}`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`
@@ -877,6 +974,7 @@ export async function listKnowledgeDocuments(
       WHERE d.org_id = ${actor.orgId}::uuid
         ${includeArchived ? drizzleSql`` : drizzleSql`AND d.archived_at IS NULL`}
         ${unfiledClause}
+        ${opts.needsReview ? drizzleSql`AND d.review_status IN ('needs_review', 'stale')` : drizzleSql``}
       ORDER BY d.updated_at DESC
       LIMIT ${limit}
     `),
@@ -998,7 +1096,7 @@ export async function createKnowledgeDocument(
     participantIds = null
     team = parsed.team ?? []
     sensitivity = parsed.sensitivity ?? "internal"
-    assertCanSetDimensions({ team, sensitivity }, actor)
+    assertCanCreateWithDimensions({ team, sensitivity }, actor)
     // Sensitivity is a POLICY INPUT that drives the org_access DEFAULT;
     // sharing (org_access + user/role shares) remains the sole enforcement
     // plane. Confidential/restricted docs default to org-invisible ('none')
@@ -1009,6 +1107,12 @@ export async function createKnowledgeDocument(
       parsed.orgAccess ??
       (sensitivity === "confidential" || sensitivity === "restricted" ? "none" : "editor")
     editScope = parsed.editScope ?? null
+  }
+
+  if (parsed.collectionIds && parsed.collectionIds.length > 0) {
+    // collections.ts imports this module.
+    const { assertCanFileIn } = await import("~/apps/knowledge/collections")
+    for (const collectionId of parsed.collectionIds) await assertCanFileIn(tx, collectionId, actor)
   }
 
   const id = randomUUID()
@@ -1104,11 +1208,25 @@ export async function createKnowledgeDocument(
   return row
 }
 
+/** How an update reaches history and events; set by routes, never by a request body. */
+export interface KnowledgeUpdateOptions {
+  /** The client's editing session (autosave route): one person's edits in it coalesce. */
+  session?: VersionSession
+  /** A restore from history: its own version, kind `restore`. */
+  restore?: boolean
+  /**
+   * An autosave (the autosave route only): identical text writes nothing, and the
+   * update event is coalesced to one a minute (event-coalesce.ts).
+   */
+  coalesceEvents?: boolean
+}
+
 export async function updateKnowledgeDocument(
   tx: RlsClient,
   input: KnowledgeUpdateDocument & { id?: string },
   actor: KnowledgeActor,
   requiredScopes: string[],
+  opts: KnowledgeUpdateOptions = {},
 ): Promise<KnowledgeDocumentRow> {
   assertExplicitRequiredScopes(requiredScopes, KNOWLEDGE_SINK)
   const parsed = validateUpdateInput(input)
@@ -1131,6 +1249,17 @@ export async function updateKnowledgeDocument(
   assertCanWriteDocumentRow(row, actor, updateShareRole)
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
+
+  // An autosave of the text already stored (an editor opened and closed, a retry
+  // whose first answer was lost) writes nothing: no revision, no version, no event.
+  if (
+    opts.coalesceEvents &&
+    (parsed.title === undefined || parsed.title === row.title) &&
+    (parsed.body === undefined || parsed.body === row.body)
+  ) {
+    return row
+  }
+  const eventOwed = opts.coalesceEvents === true && (await updateEventIsRecent(tx, row.id))
 
   if (
     parsed.ownerUserId &&
@@ -1194,10 +1323,15 @@ export async function updateKnowledgeDocument(
   if (parsed.editScope !== undefined) sets.push(drizzleSql`edit_scope = ${parsed.editScope}`)
   if (parsed.reviewDueAt !== undefined) sets.push(drizzleSql`review_due_at = ${parsed.reviewDueAt}`)
 
-  // shouldResetVerification needs the merged shape
-  const merged = { ...row, ...mapPatchForReview(parsed) }
+  // Only what this patch really changes counts: a field sent back with the value it
+  // already has (an editor re-sending the whole page, a reviewDueAt-only patch) leaves a
+  // verified page verified.
+  const changed = changedReviewFields(row, parsed, changingTeam, changingSensitivity)
   let reviewStatus: string | undefined
-  if (shouldResetVerification(row, merged)) reviewStatus = "needs_review"
+  if (shouldResetVerification(row, changed)) {
+    reviewStatus = "needs_review"
+    sets.push(drizzleSql`review_reason = 'content_changed'`)
+  }
   if (parsed.verifyNow) reviewStatus = "verified"
   if (reviewStatus !== undefined) sets.push(drizzleSql`review_status = ${reviewStatus}`)
   if (parsed.verifyNow) {
@@ -1207,6 +1341,8 @@ export async function updateKnowledgeDocument(
   sets.push(drizzleSql`updated_by = ${actor.userId}::uuid`)
   sets.push(drizzleSql`updated_at = now()`)
   sets.push(drizzleSql`revision = revision + 1`)
+  if (eventOwed) sets.push(markEventPending())
+  else sets.push(...stampEventNow())
   // D5: the writing turn's scopes join the document's tag. Union, never
   // replace: an empty assertion (a human edit) leaves an existing tag intact.
   sets.push(unionRequiredScopesSql(requiredScopes))
@@ -1227,13 +1363,34 @@ export async function updateKnowledgeDocument(
     // the second writer's UPDATE (which blocks on the first's row lock, then
     // re-evaluates its WHERE against the committed row) matches zero rows and
     // surfaces as REVISION_CONFLICT for the caller to re-read and retry.
-    const updateResult = await tx.execute(drizzleSql`
-      UPDATE ${knowledgeRel("documents")}
-      SET ${setSql}
-      WHERE id = ${parsed.id}::uuid AND org_id = ${actor.orgId}::uuid
-        AND revision = ${parsed.revision}
-      RETURNING id
-    `)
+    // The version of the text this write leaves is written by the same statement
+    // (versions.ts), so the save and its history land together or not at all.
+    const textChanges =
+      (parsed.title !== undefined && parsed.title !== row.title) ||
+      (parsed.body !== undefined && parsed.body !== row.body)
+    const agent = actor.author?.type === "agent"
+    const applied = await writeWithVersion(tx, {
+      orgId: actor.orgId,
+      documentId: parsed.id,
+      expectedRevision: parsed.revision,
+      setSql,
+      pre: {
+        title: row.title,
+        body: row.body,
+        revision: row.revision,
+        createdBy: row.createdBy,
+        updatedBy: row.updatedBy,
+        updatedAt: row.updatedAt,
+      },
+      textChanges,
+      kind: opts.restore ? "restore" : agent ? "agent" : "edit",
+      author: {
+        type: actor.author?.type ?? "user",
+        userId: actor.userId,
+        agentId: actor.author?.agentId ?? null,
+      },
+      session: opts.session,
+    })
     // ⛔ NO SILENT NO-OP (BL-277). The service-layer authz (assertCanWriteDocumentRow + the revision
     // check) passed above, so this UPDATE MUST touch exactly one row. If RLS (the UPDATE USING policy)
     // disagrees with the service authz — as it did before this fix, when the RLS policy was owner-only
@@ -1243,7 +1400,7 @@ export async function updateKnowledgeDocument(
     // routine tick's troubleshooting-doc body never persisted; the tick honestly believed it succeeded).
     // Fail LOUDLY instead so any future service-vs-RLS authz drift surfaces as a real error in the tool
     // result, never a swallowed no-op. RETURNING id makes the affected-row count deterministic.
-    if (extractRows(updateResult).length === 0) {
+    if (!applied) {
       // Zero rows now has TWO possible causes — disambiguate by re-reading the
       // revision: if it moved, this is the concurrent-writer race (the CAS
       // doing its job) → REVISION_CONFLICT so callers retry; only a still-
@@ -1268,32 +1425,42 @@ export async function updateKnowledgeDocument(
     await recomputeDocumentAcl(tx, parsed.id)
   }
 
-  await tx.queueEvent({
-    app: "knowledge",
-    entity: "document",
-    action: "update",
-    entityId: parsed.id,
-    data: { id: parsed.id },
-    actorId: actor.userId,
-    actorType: "user",
-    orgId: actor.orgId,
-  })
+  // An autosave inside the minute after the page's last event owes its event to the
+  // flush job instead (event-coalesce.ts); every other update emits now.
+  if (!eventOwed) {
+    await tx.queueEvent({
+      app: "knowledge",
+      entity: "document",
+      action: "update",
+      entityId: parsed.id,
+      data: { id: parsed.id },
+      actorId: actor.userId,
+      actorType: "user",
+      orgId: actor.orgId,
+    })
+  }
 
   const updated = await loadKnowledgeDocument(tx, parsed.id, actor)
   if (!updated) throw new KnowledgeError("NOT_FOUND", "Knowledge document missing after update")
   return updated
 }
 
-function mapPatchForReview(
+/** The reviewed fields this patch gives a value different from the row's. */
+function changedReviewFields(
+  row: KnowledgeDocumentRow,
   parsed: KnowledgeUpdateDocument & { id: string },
-): Partial<KnowledgeDocumentRow> {
-  const out: Partial<KnowledgeDocumentRow> = {}
-  if (parsed.title !== undefined) out.title = parsed.title
-  if (parsed.summary !== undefined) out.summary = parsed.summary
-  if (parsed.body !== undefined) out.body = parsed.body
-  if (parsed.ownerUserId !== undefined) out.ownerUserId = parsed.ownerUserId
-  if (parsed.team !== undefined) out.team = parsed.team
-  if (parsed.sensitivity !== undefined) out.sensitivity = parsed.sensitivity
+  changingTeam: boolean,
+  changingSensitivity: boolean,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  if (parsed.title !== undefined && parsed.title !== row.title) out.title = parsed.title
+  if (parsed.summary !== undefined && (parsed.summary ?? null) !== (row.summary ?? null))
+    out.summary = parsed.summary
+  if (parsed.body !== undefined && parsed.body !== row.body) out.body = parsed.body
+  if (parsed.ownerUserId !== undefined && parsed.ownerUserId !== row.ownerUserId)
+    out.ownerUserId = parsed.ownerUserId
+  if (changingTeam) out.team = parsed.team
+  if (changingSensitivity) out.sensitivity = parsed.sensitivity
   return out
 }
 

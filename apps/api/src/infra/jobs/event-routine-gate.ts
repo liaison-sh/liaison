@@ -95,6 +95,14 @@ const OWNER_SCOPED_FAMILIES: Record<string, EntityProbe> = {
     table: "agreements",
     preferDataKey: "agreement_id",
   },
+  // Folders: the owner of the routine must see the folder. A membership that is gone (its delete
+  // event names the page, not the row) is decided by its folder.
+  "knowledge:collection": { schema: "app_knowledge", table: "collections" },
+  "knowledge:collection_membership": {
+    schema: "app_knowledge",
+    table: "collection_memberships",
+    parents: [{ dataKey: "collectionId", schema: "app_knowledge", table: "collections" }],
+  },
   // A dashboard table's row (modules/dashboards/tables): the owner must read its table (0298).
   "kernel:dashboard_table_row": {
     schema: "kernel",

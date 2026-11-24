@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { createHash } from "node:crypto"
-import { DEMO_ORG_VARIANTS } from "@liaison/shared"
 import { schemaRef } from "~/db/schema-ref"
 import { quoteIdent } from "~/lib/sql-utils"
 
@@ -411,15 +410,22 @@ export const IMMUTABLE_TRIGGER_NAME = "kernel_immutable"
  * Transaction-local setting the org purge (`modules/org/purge/`) sets to the org it is
  * deleting. The immutability trigger honours it for a DELETE, run as `liaison_admin`, of a row
  * whose `org_id` equals the setting, in an org whose stored row is being deleted
- * (`deleting_at` set) or carries a demo marker (`settings.demo`). Any session can write a
+ * (`deleting_at` set) or is of class `demo` (`organizations.class`). Any session can write a
  * custom setting, so the setting alone grants nothing: the role and the stored org row are the
  * checks. The value keeps its first name so the trigger bodies of two releases read the same
  * setting during a deploy.
  */
 export const ORG_PURGE_SETTING = "liaison.demo_purge_org"
 
-/** Text only the current trigger body carries: the purge checks it before deleting. */
+/** The trigger body's branch for an org whose deletion has started. */
 export const IMMUTABLE_TRIGGER_DELETING_BRANCH = "o.deleting_at IS NOT NULL"
+
+/**
+ * The trigger body's branch for a demo org, and the text only the current body carries: what
+ * `ensureImmutableTriggersCurrent` checks. The bodies before it read the jsonb marker here,
+ * which one bad write to a customer's settings could forge.
+ */
+export const IMMUTABLE_TRIGGER_CLASS_BRANCH = "o.class = 'demo'"
 
 /**
  * Kernel-authored trigger for an immutable table. UPDATE may only FILL a column that is still
@@ -433,9 +439,9 @@ export const IMMUTABLE_TRIGGER_DELETING_BRANCH = "o.deleting_at IS NOT NULL"
  * (`liaison_admin`; a request's `liaison_rls` / `liaison_request` role and a SECURITY DEFINER
  * function's `liaison_definer` never match), the setting naming that row's org, and that org's
  * stored row saying it may go: either its deletion has started (`deleting_at` set, an
- * operator's `liaison org delete`), or it carries a demo marker (the demo reaper and the
- * nightly content reset of a disposable workspace): an object whose `variant` is one the
- * marker schema allows (`DEMO_ORG_VARIANTS`), so a hand-written `{"demo":{}}` is not a marker.
+ * operator's `liaison org delete`, the demo reaper), or its class is `demo` (the nightly content
+ * reset of the reserved demo workspace). The class is written when the org is created; the jsonb
+ * demo marker (`settings.demo`) opens nothing here.
  * The org lookup is schema-qualified like every other kernel reference here; a missing kernel
  * table makes the DELETE error, never pass. UPDATE is never relaxed.
  */
@@ -480,8 +486,7 @@ export function generateImmutableTriggerDdl(
     `     AND current_setting('${ORG_PURGE_SETTING}', true) = to_jsonb(OLD)->>'org_id' THEN`,
     `    IF EXISTS (SELECT 1 FROM ${quoteIdent(schemaRef("kernel"))}.organizations o WHERE o.id = (to_jsonb(OLD)->>'org_id')::uuid`,
     `               AND (${IMMUTABLE_TRIGGER_DELETING_BRANCH}`,
-    "                    OR (jsonb_typeof(o.settings->'demo') = 'object'",
-    `                        AND o.settings->'demo'->>'variant' IN (${DEMO_ORG_VARIANTS.map((v) => `'${v}'`).join(", ")})))) THEN`,
+    `                    OR ${IMMUTABLE_TRIGGER_CLASS_BRANCH})) THEN`,
     "      RETURN OLD;",
     "    END IF;",
     "  END IF;",

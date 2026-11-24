@@ -61,7 +61,7 @@
       }
     ]
   },
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -86,7 +86,12 @@
         "aclRoleIds",
         "orgWide",
         "requiredScopes",
-        "authorReads"
+        "authorReads",
+        "trashedAt",
+        "trashedBy",
+        "updateEventAt",
+        "updateEventPendingAt",
+        "linksIndexedAt"
       ],
       "fields": {
         "title": "string",
@@ -181,6 +186,13 @@
           "type": "string",
           "required": false,
           "description": "Import dedup key `<source>:<key>` (modules/imports). Column and partial unique index added by migration 0208; NULL for rows the app writes itself."
+        },
+        "trashedBy": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who moved the page to Trash. Added by migration 0310; only the app's own SQL writes it."
         }
       },
       "constraints": {
@@ -210,6 +222,40 @@
           "where": "archived_at IS NULL"
         }
       ]
+    },
+    "document_versions": {
+      "migrationOwnedColumns": ["requiredScopes"],
+      "fields": {
+        "documentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" }
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["baseline", "edit", "agent", "import", "restore", "unapplied"],
+          "description": "Page history (migration 0310 creates the table and its row security: the edit right on the page)."
+        },
+        "title": "string",
+        "body": "text",
+        "bodyMd5": "string",
+        "revision": "integer?",
+        "baseRevision": "integer?",
+        "sessionId": "uuid?",
+        "authorType": { "type": "string", "enum": ["user", "agent", "system"] },
+        "authorId": { "type": "uuid", "required": false, "userRef": true, "onErase": "anonymize" },
+        "agentId": "uuid?",
+        "startedAt": "date"
+      }
+    },
+    "document_links": {
+      "fields": {
+        "sourceDocumentId": {
+          "type": "uuid",
+          "references": { "table": "documents", "column": "id", "onDelete": "cascade" },
+          "description": "Which page links to which (migration 0310: primary key on both ids, no foreign key on the target)."
+        },
+        "targetDocumentId": "uuid"
+      }
     },
     "source_identities": {
       "fields": {
@@ -347,6 +393,7 @@
       ]
     },
     "collections": {
+      "migrationOwnedColumns": ["previousOwnerUserId", "indexDocumentId"],
       "fields": {
         "parentCollectionId": {
           "type": "uuid",
@@ -362,6 +409,13 @@
           "required": false,
           "userRef": true,
           "onErase": "anonymize"
+        },
+        "previousOwnerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who owned the folder before migration 0308 shared it. Only that migration writes it."
         },
         "maintainerUserIds": {
           "type": "json",
@@ -963,6 +1017,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "create",
       "params": {
         "type": "object",
@@ -1082,6 +1137,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "update",
       "params": {
         "type": "object",
@@ -1148,6 +1204,7 @@
       "conditionalGate": true,
       "approvalCard": { "summary": "Archive a knowledge document" },
       "approvalImpact": "internal",
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "archive",
       "params": {
         "type": "object",
@@ -1181,7 +1238,7 @@
       }
     },
     "collection_create": {
-      "description": "Create a Knowledge collection (folder).",
+      "description": "Create a Knowledge collection (folder). Shared with the organization unless `personal` is true; a subfolder is seen by whoever sees its parent.",
       "searchKeywords": ["dossier", "folder", "créer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
@@ -1204,6 +1261,10 @@
               "string",
               "null"
             ]
+          },
+          "personal": {
+            "type": "boolean",
+            "description": "True only when the user asks for a folder of their own that nobody else sees."
           }
         },
         "required": [
@@ -1246,7 +1307,7 @@
       }
     },
     "collection_delete": {
-      "description": "Archive a Knowledge collection (removes it from the active tree).",
+      "description": "Delete a Knowledge collection (folder). Its documents and subfolders move to its parent folder; documents at the top become unfiled. No document is deleted.",
       "searchKeywords": ["dossier", "folder", "supprimer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
@@ -1361,7 +1422,7 @@
             },
             "shared": {
               "type": "boolean",
-              "description": "Shared with the whole organization rather than owned by the person importing."
+              "description": "Shared with the whole organization (the default). False makes it a personal folder only the person importing sees; a subfolder is seen by whoever sees its parent."
             }
           }
         },
@@ -1639,6 +1700,8 @@
     },
     "wsHandlers": {
       "document": "handleKnowledgeDocumentWsEvent",
+      "collection": "handleKnowledgeCollectionWsEvent",
+      "collection_membership": "handleKnowledgeCollectionWsEvent",
       "synced_source": "handleSyncedSourceWsEvent"
     },
     "activityBar": {
@@ -1655,11 +1718,12 @@
   },
   "roles": {
     "member": {
-      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items",
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, and manage folders",
       "scopes": [
         "knowledge:documents:read",
         "knowledge:documents:create",
         "knowledge:documents:update",
+        "knowledge:collections:manage",
         "knowledge:links:create",
         "knowledge:sources:read",
         "knowledge:attachments:download",
@@ -1667,10 +1731,9 @@
       ]
     },
     "curator": {
-      "description": "Knowledge curator: manage collections, tags, archives, and source settings",
+      "description": "Knowledge curator: manage tags, archives, and source settings",
       "extends": "member",
       "scopes": [
-        "knowledge:collections:manage",
         "knowledge:tags:manage",
         "knowledge:documents:archive",
         "knowledge:documents:assign-owner",

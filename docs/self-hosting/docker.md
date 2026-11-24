@@ -46,7 +46,7 @@ To run Compose yourself, name the project and file: `docker compose -p liaison -
 | `objectstore` | `chrislusf/seaweedfs:4.48` | S3-compatible file storage | 1 GB |
 | `objectstore-init` | SeaweedFS | Creates the bucket once, then exits | |
 | `data-init` | `busybox` | Prepares the app's data directory, then exits | |
-| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md) | 2 GB |
+| `sandbox` | the app's image | Runs the sandboxed apps (workerd under gVisor), on its own network: [The app sandbox service](sandbox.md). Its host firewall step comes back at every boot before Docker starts ([At boot](sandbox.md#at-boot)) | 2 GB |
 | `pdf-render` | the app's image | Reads uploaded PDFs for agreements: file checks, page pictures, the signed copy of an upload. No network, no secret, no data volume, read-only, its own user | 3 GB |
 
 ### Run without the render service

@@ -442,8 +442,8 @@ export const envSchema = z
     // mail, pushes and verification codes are counted in the effect sink
     // instead of sent, and whose agent turns run on the scripted load model.
     // For load and stress boxes only; never set on a real deployment. Refused
-    // together with ENABLE_LOAD_TEST_ENDPOINT, and in production without
-    // LIAISON_DEMO_MODE.
+    // together with ENABLE_LOAD_TEST_ENDPOINT, in production without
+    // LIAISON_DEMO_MODE, and in the managed edition.
     LOAD_HARNESS_KEY: z.preprocess(unsetIfEmpty, z.string().min(32).optional()),
     // Mounts the QA/dev seed-harness routes (/api/_test/*: the seed engine factories,
     // app install-for-test, scope grants) outside NODE_ENV=test, so the qa/
@@ -454,7 +454,8 @@ export const envSchema = z
     // with it set. Off by default everywhere else.
     ENABLE_QA_SEED_ROUTES: envBoolean(false),
     // A11: the push matrix's QA inject route (/api/qa/notifications). Demo
-    // only: a non-demo production instance refuses to boot with it on.
+    // only: a non-demo production instance refuses to boot with it on, and so
+    // does a managed one.
     LIAISON_QA_ROUTES: envBoolean(false),
     // LIAISON_DEMO_MODE turns this box into the PUBLIC DEMO instance. It is a
     // product posture, not a test harness, and shares no code path with
@@ -474,7 +475,8 @@ export const envSchema = z
     //
     // Deliberately NOT fatal in production (the demo instance IS a production
     // deployment) and deliberately independent of NODE_ENV. Off by default, and
-    // when it is off none of the above exists: the routes are not mounted.
+    // when it is off none of the above exists: the routes are not mounted. A
+    // managed server (LIAISON_EDITION=managed) refuses to boot with it on.
     LIAISON_DEMO_MODE: envBoolean(false),
     // LIAISON_PRIVATE_DEMO_BOX declares a demo-mode box PRIVATE: a throwaway
     // QA box that runs the demo posture for a tester, reached only over an SSH
@@ -482,7 +484,8 @@ export const envSchema = z
     // org and give the seeded people passwords, which the public demo refuses
     // (`isPublicDemoInstance`). Declaring it is not enough: BASE_URL must also
     // be a loopback origin, so a box with a public hostname stays public
-    // whatever this says. Off by default; never set it on a public instance.
+    // whatever this says. Off by default; never set it on a public instance. A
+    // managed server refuses to boot with it on.
     LIAISON_PRIVATE_DEMO_BOX: envBoolean(false),
     // One-time secret the FIRST registration of a fresh instance must present
     // (see modules/auth/setup-token.ts). Unset: a value derived from JWT_SECRET
@@ -1200,7 +1203,9 @@ export const envSchema = z
     LIAISON_CELL_PUBLIC_ADDRESSES: z.preprocess(unsetIfEmpty, z.string().optional()),
     // A throwaway test server. Only then may an org transfer agent inject a
     // fault (`liaison org transfer agent --fail-at`): elsewhere the CLI and the
-    // agent refuse it. Never set on a server that holds real organizations.
+    // agent refuse it. Only then may a managed server boot with a demo, load
+    // harness or QA flag on (lib/managed-boot.ts). Never set on a server that
+    // holds real organizations.
     LIAISON_TEST_CELL: envBoolean(false),
     // The instance edition (lib/edition.ts). `managed` turns on the managed
     // edition and makes the server refuse to boot without the settings it needs

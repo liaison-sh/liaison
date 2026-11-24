@@ -38,6 +38,8 @@ const EXPECTED_CLOSURE: Record<string, string> = {
   "app_knowledge.collection_memberships": "direct",
   "app_knowledge.collections": "direct",
   "app_knowledge.content_cache_entries": "direct",
+  "app_knowledge.document_links": "direct",
+  "app_knowledge.document_versions": "direct",
   "app_knowledge.documents": "direct",
   "app_knowledge.source_identities": "direct",
   "app_knowledge.source_links": "direct",

@@ -78,6 +78,7 @@
     "check:runbook-sections": "bun run scripts/check-runbook-sections.ts",
     "check:docs": "bun run scripts/with-test-lock.ts --slot-only -- bun run scripts/check-docs.ts",
     "check:spdx": "bun run scripts/check-spdx.ts",
+    "check:no-ai-coauthor": "bun run scripts/check-no-ai-coauthor.ts",
     "check:grants": "bun run scripts/db-readonly-role.ts --check-sync",
     "check:tour-anchors": "bun run scripts/tour-anchors-check.ts",
     "app:create": "bun run scripts/create-app.ts",

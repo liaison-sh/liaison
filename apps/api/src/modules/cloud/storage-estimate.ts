@@ -106,6 +106,13 @@ const SOURCES: Source[] = [
     columns: ["content", "mentions", "metadata"],
   },
   { part: "knowledge", schema: "app_knowledge", table: "documents", columns: ["title", "body"] },
+  // Page history: up to 200 texts per page.
+  {
+    part: "knowledge",
+    schema: "app_knowledge",
+    table: "document_versions",
+    columns: ["title", "body"],
+  },
 ]
 
 const relOf = (s: Source) => `${schemaRef(s.schema)}.${s.table}`

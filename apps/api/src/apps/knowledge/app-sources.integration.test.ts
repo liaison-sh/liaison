@@ -38,8 +38,10 @@ import { extractRows } from "~/db"
 import { __privileged_db__ as db } from "~/db/connection"
 import { withPrivilegedDb } from "~/db/privileged"
 import { withRlsContext } from "~/db/rls"
+import { schemaRef } from "~/db/schema-ref"
 import { knowledgeSourceKindRegistry } from "~/modules/apps/app-registries"
 import { createExternalUser } from "~/modules/users/external-user"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestCompany } from "~/tests/helpers/company"
 import { createTestOrg } from "~/tests/helpers/org"
@@ -670,20 +672,30 @@ describe("an app source files its documents in folders", () => {
       orgId: orgA,
       userId: alice,
       scopes: ["knowledge:documents:create", "knowledge:collections:manage", DOC_READ],
-      // An admin's wildcard grant: any sensitivity and team.
-      dimensionGrants: { "*": ["*"] },
+      dimensionGrants: {},
     }
-    await withRlsContext({ actorType: "user", ...author }, (tx) =>
+    const mine = await withRlsContext({ actorType: "user", ...author }, (tx) =>
       createKnowledgeDocument(
         tx,
         knowledgeCreateDocumentSchema.parse({
           documentScope: "organization",
           title: "Mine",
           body: "mine",
-          collectionIds: [x.id],
         }),
         knowledgeActorFromContext(author),
         [],
+      ),
+    )
+    // Filed there before a synced folder refused it.
+    await db.execute(
+      sql.raw(
+        insertSql(`${schemaRef("app_knowledge")}.collection_memberships`, {
+          org_id: orgA,
+          collection_id: x.id,
+          target_type: "document",
+          target_id: mine.id,
+          created_by: alice,
+        }),
       ),
     )
 
@@ -705,6 +717,12 @@ describe("an app source files its documents in folders", () => {
       ["x/y", true],
     ])
     expect(await placementOf(source)).toEqual({ p3: "root" })
+    const [kept] = extractRows<{ folder: string }>(
+      await db.execute(sql`
+        SELECT collection_id::text AS folder FROM ${knowledgeRel("collection_memberships")}
+        WHERE target_id = ${mine.id}::uuid`),
+    )
+    expect(kept?.folder).toBe(x.id)
   })
 
   it("refuses a page filed in a folder the source never declared, or that nests folders in themselves", async () => {
@@ -946,6 +964,24 @@ describe("adding an app source that exists", () => {
     const again = await add({ ref: "FOLDER_B" })
     expect(again.id).toBe(first.id)
     expect(again.archivedAt).toBeNull()
+  })
+
+  it("an archived one takes back its root, which somebody took or deleted meanwhile", async () => {
+    const first = await add({ ref: "FOLDER_D" })
+    await db.execute(sql`
+      UPDATE ${knowledgeRel("synced_sources")} SET archived_at = now() WHERE id = ${first.id}::uuid
+    `)
+    await db.execute(sql`
+      UPDATE ${knowledgeRel("collections")} SET owner_user_id = ${bob}::uuid, archived_at = now()
+      WHERE id = ${first.rootCollectionId}::uuid
+    `)
+    await add({ ref: "FOLDER_D" })
+    const [root] = extractRows<{ owner: string | null; archived: boolean; name: string }>(
+      await db.execute(sql`
+        SELECT owner_user_id AS owner, archived_at IS NOT NULL AS archived, name
+        FROM ${knowledgeRel("collections")} WHERE id = ${first.rootCollectionId}::uuid`),
+    )
+    expect(root).toEqual({ owner: first.ownerUserId, archived: false, name: first.displayName })
   })
 
   it("concurrent adds of one folder make one source", async () => {

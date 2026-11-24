@@ -95,6 +95,8 @@ const NOT_WORK_CHILDREN = new Set([
   // the task, and a change to them after the import is checked in rowFacts.
   "app_projects.deals",
   "app_projects.deal_values",
+  // A page's links are derived from its body.
+  "app_knowledge.document_links",
 ])
 
 /**

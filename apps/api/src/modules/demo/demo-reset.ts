@@ -26,12 +26,14 @@
 // deployment does not gain a scheduler, a queue entry or a query.
 //
 // ── EVERY DESTRUCTIVE ENTRY POINT IS GATED, ON THE STORED ROW ──────────────
-// Nothing in this file deletes a row until `assertDestructionAllowed` has said
-// so, and it says so only when demo mode is on for THIS process AND the org
-// carries a demo marker it re-read STRAIGHT OUT OF POSTGRES (never the request
-// path cache, never a value the caller handed in). That guard sits at the head
-// of `deleteOrgRows`, which is the single statement executor both the purge and
-// the content reset go through, so there is no way to reach a DELETE around it.
+// Nothing in this file deletes a row until its guard has said so, and it says so
+// only when demo mode is on for THIS process AND the org's own row, re-read
+// STRAIGHT OUT OF POSTGRES (never the request path cache, never a value the
+// caller handed in), is of class `demo` (`organizations.class`, written when the
+// org was created). The jsonb marker alone is never enough: it can be written
+// onto any org. The guard sits at the head of `deleteOrgRows`, the single
+// statement executor both the purge and the content reset go through, so there
+// is no way to reach a DELETE around it.
 //
 // This is not theoretical tidiness. `resetDemoOrgContent` is reachable from
 // `liaison seed --tier demo --slug <anything>`, which ships inside the
@@ -40,8 +42,12 @@
 // (every DELETE is `WHERE org_id = $1::uuid` against a catalog filtered list);
 // WHICH org was.
 //
-// `purgeDemoOrg` keeps its own stricter guard on top: the marker must parse,
-// its variant must be `visitor`, and its `expiresAt` must be in the past. A
+// `purgeDemoOrg` decides under the org's row lock, in one transaction: class
+// `demo`, a marker that parses, variant `visitor`, not pooled, `expiresAt` in the
+// past, no billing row, not created by the control plane, not the operator's.
+// The same transaction sets `deleting_at`, and every row delete after it
+// re-checks the class AND that mark. So an expiry moved meanwhile is either seen
+// or comes after the decision, and a mark taken back stops the purge. A
 // malformed marker fails the parse and is refused rather than throwing. A
 // refusal is logged and the run continues. The purge is bounded
 // (`DEMO_REAP_MAX_PER_RUN` per batch, drained batch by batch within a time
@@ -78,12 +84,13 @@
 // Both the purge and the content reset clear the immutable app tables (an
 // issued invoice's legal original) like every other app table, through the one
 // narrow exception the kernel trigger grants (modules/apps/ddl.ts): it honours
-// the purge setting for a demo-marked org, which the guard below re-reads from
-// Postgres first, so no other org's legal records are touched.
+// the purge setting for an org of class `demo`, which the guard below re-reads
+// from Postgres first, so no other org's legal records are touched.
 
 import os from "node:os"
 import { type DemoOrgMarker, demoOrgMarkerSchema, isDemoOrgExpired } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
+import type { PrivilegedDb } from "~/db"
 import { getPoolGauges } from "~/db/pool-diag"
 import { withSystemDb } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
@@ -100,9 +107,15 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { reservedOwner, seedDemoOrgData } from "~/modules/demo/demo-seeder"
+import {
+  isNamedOperatorOrg,
+  notACustomerOrg,
+  type ProtectedOrgReason,
+} from "~/modules/demo/org-class"
 import { ReapPacer, type ReapPacerOptions, type ReapPressure } from "~/modules/demo/reap-pacer"
 import { forgetDemoPaymentsOutside } from "~/modules/demo/worlds/saas/payments/overlay"
 import { forwardPlayedScenarios } from "~/modules/liaison-team/lead-forwarding"
+import { announceOrgDeleting } from "~/modules/org/purge/deleting"
 import type { OrgExternalStateDeps } from "~/modules/org/purge/external"
 import { purgeOrg } from "~/modules/org/purge/purge-org"
 import {
@@ -131,10 +144,12 @@ export const DEMO_REAP_MAX_PER_RUN = 25
 export type PurgeRefusal =
   | "not-a-demo-org"
   | "malformed-marker"
+  | "not-demo-class"
   | "not-a-visitor-org"
   | "not-expired"
   | "pooled"
   | "no-such-org"
+  | ProtectedOrgReason
 
 export interface PurgeResult {
   purged: boolean
@@ -146,7 +161,13 @@ export interface PurgeResult {
 // ── THE GUARD ──────────────────────────────────────────────────────────────
 
 /** Why a destructive demo operation refused to touch an org. */
-export type DestructionRefusal = "demo-mode-off" | "no-such-org" | "not-a-demo-org"
+export type DestructionRefusal =
+  | "demo-mode-off"
+  | "no-such-org"
+  | "not-a-demo-org"
+  | "not-demo-class"
+  | "not-a-reserved-org"
+  | "not-deleting"
 
 /**
  * Thrown, never returned: a caller that asked to empty the wrong org must not
@@ -165,51 +186,75 @@ export class DemoOrgGuardError extends Error {
 
 interface StoredOrgRow {
   slug: string
+  class: string
+  deleting: boolean
   marker: DemoOrgMarker | null
   /** A marker is present but does not parse. */
   malformed: boolean
 }
 
 /**
- * The org's slug and its demo marker, read STRAIGHT OUT OF POSTGRES. Never the
- * request-path cache in demo-org.ts: a cache is a value some other code path
+ * The org's slug, class and demo marker, read STRAIGHT OUT OF POSTGRES. Never
+ * the request-path cache in demo-org.ts: a cache is a value some other code path
  * wrote, and the whole point of this read is to trust nothing but the row.
+ *
+ * `lock`: the caller's transaction, to read the row FOR UPDATE on; without it,
+ * a read of its own.
  */
-async function readStoredOrg(orgId: string): Promise<StoredOrgRow | null> {
-  const row = await withSystemDb("demo-org-guard-read", async (tx) => {
+async function readStoredOrg(orgId: string, lock?: PrivilegedDb): Promise<StoredOrgRow | null> {
+  const read = async (tx: PrivilegedDb) => {
     const result = await tx.execute(drizzleSql`
-      SELECT slug, settings->'demo' AS demo
+      SELECT slug, class, deleting_at IS NOT NULL AS deleting, settings->'demo' AS demo
       FROM ${K()}.organizations WHERE id = ${orgId}::uuid
+      ${lock ? drizzleSql`FOR UPDATE` : drizzleSql``}
     `)
     const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])
-    return rows[0] as { slug: string; demo: unknown } | undefined
-  })
+    return rows[0] as { slug: string; class: string; deleting: boolean; demo: unknown } | undefined
+  }
+  const row = lock ? await read(lock) : await withSystemDb("demo-org-guard-read", read)
   if (!row) return null
+  const org = { slug: String(row.slug), class: String(row.class), deleting: row.deleting === true }
   const raw = typeof row.demo === "string" ? JSON.parse(row.demo) : row.demo
-  if (raw === null || raw === undefined) {
-    return { slug: String(row.slug), marker: null, malformed: false }
-  }
+  if (raw === null || raw === undefined) return { ...org, marker: null, malformed: false }
   const parsed = demoOrgMarkerSchema.safeParse(raw)
-  return {
-    slug: String(row.slug),
-    marker: parsed.success ? parsed.data : null,
-    malformed: !parsed.success,
-  }
+  return { ...org, marker: parsed.success ? parsed.data : null, malformed: !parsed.success }
 }
 
 /**
- * May this process delete rows from this org? Only when demo mode is on AND the
- * org row itself carries a demo marker that parses.
+ * The org, when this process may delete rows from a demo org at all: demo mode
+ * is on, the row is of class `demo` and carries a marker that parses.
  *
  * A malformed marker counts as NOT a demo org here, deliberately: an operator's
- * hand written jsonb is not evidence that a workspace is disposable.
+ * hand written jsonb is not evidence that a workspace is disposable. Nor is a
+ * well-formed one on a `standard` org.
  */
-async function assertDestructionAllowed(orgId: string, what: string): Promise<DemoOrgMarker> {
+async function requireDemoOrg(
+  orgId: string,
+  what: string,
+): Promise<StoredOrgRow & { marker: DemoOrgMarker }> {
   if (!isDemoModeEnabled()) throw new DemoOrgGuardError("demo-mode-off", orgId, what)
   const stored = await readStoredOrg(orgId)
   if (!stored) throw new DemoOrgGuardError("no-such-org", orgId, what)
   if (!stored.marker) throw new DemoOrgGuardError("not-a-demo-org", orgId, what)
-  return stored.marker
+  if (stored.class !== "demo") throw new DemoOrgGuardError("not-demo-class", orgId, what)
+  return { ...stored, marker: stored.marker }
+}
+
+/** The content reset's guard: the RESERVED demo org, the only one a reset puts back. */
+async function assertResetAllowed(orgId: string, what: string): Promise<void> {
+  const org = await requireDemoOrg(orgId, what)
+  if (org.marker.variant !== "reserved") {
+    throw new DemoOrgGuardError("not-a-reserved-org", orgId, what)
+  }
+}
+
+/** The purge's guard at every row delete: a demo org whose deletion `claimForPurge` started. */
+async function assertPurgeAllowed(orgId: string, what: string): Promise<void> {
+  const org = await requireDemoOrg(orgId, what)
+  if (org.marker.variant !== "visitor") {
+    throw new DemoOrgGuardError("not-a-demo-org", orgId, what)
+  }
+  if (!org.deleting) throw new DemoOrgGuardError("not-deleting", orgId, what)
 }
 
 /** Every org scoped kernel table, as the catalog has it. */
@@ -599,12 +644,12 @@ export async function zeroDemoOrgPlatformCredit(orgId: string): Promise<void> {
  * by their address, so a subject a visitor rewrote stays rewritten however many
  * times the seeder runs. Emptying first and seeding after is what restores it.
  *
- * REFUSES, by throwing `DemoOrgGuardError`, unless demo mode is on and the org
- * carries a demo marker read out of Postgres. The caller is expected to call
+ * REFUSES, by throwing `DemoOrgGuardError`, unless demo mode is on and the org,
+ * read out of Postgres, is of class `demo` and the reserved one. The caller is expected to call
  * `completeDemoOrgReset` once its re-seed has come back clean.
  */
 export async function resetDemoOrgContent(orgId: string): Promise<Record<string, number>> {
-  await assertDestructionAllowed(orgId, "demo-reset-content")
+  await assertResetAllowed(orgId, "demo-reset-content")
   // Raise the flag BEFORE the first DELETE. A crash after this line leaves a
   // workspace that says it is mid reset, which is the whole point.
   await markResetInProgress(orgId)
@@ -613,7 +658,7 @@ export async function resetDemoOrgContent(orgId: string): Promise<Record<string,
     orgId,
     async (tx) => [...(await orgScopedTables(tx, "apps-only")), ...(await kernelContentTables(tx))],
     // The guard again, at the row delete itself: it cannot be routed around.
-    assertDestructionAllowed,
+    assertResetAllowed,
   )
   await zeroDemoOrgPlatformCredit(orgId)
   await sweepOrgSearchIndex(orgId, "demo-reset-content")
@@ -650,25 +695,60 @@ export async function completeDemoOrgReset(orgId: string): Promise<void> {
 }
 
 /**
- * Delete ONE expired visitor demo org, or refuse. The guard is re-evaluated
- * here against the stored row, never taken from the caller, and `deleteOrgRows`
- * re-evaluates the demo marker again on its own behalf.
+ * Decide that this org goes, and mark it deleting, in one transaction under the
+ * org's row lock: whatever moves its expiry, its marker or its billing at the
+ * same moment is either seen here or waits. The mark (`deleting_at`) is what
+ * every row delete re-checks, refuses the org's requests and drops its jobs; a
+ * purge that stopped half way is decided again by the next pass and keeps it.
+ */
+async function claimForPurge(
+  orgId: string,
+  now: Date,
+): Promise<{ slug: string } | { refusal: PurgeRefusal }> {
+  return withSystemDb("demo-reset-purge-claim", async (tx) => {
+    const stored = await readStoredOrg(orgId, tx)
+    if (!stored) return { refusal: "no-such-org" as const }
+    if (stored.malformed) return { refusal: "malformed-marker" as const }
+    if (!stored.marker) return { refusal: "not-a-demo-org" as const }
+    if (stored.class !== "demo") return { refusal: "not-demo-class" as const }
+    if (stored.marker.variant !== "visitor") return { refusal: "not-a-visitor-org" as const }
+    // An unclaimed warm-pool org (demo-pool.ts) has no visitor and no clock yet.
+    if (demoPoolStateOf(stored.marker)) return { refusal: "pooled" as const }
+    if (!isDemoOrgExpired({ settings: { demo: stored.marker } }, now)) {
+      return { refusal: "not-expired" as const }
+    }
+    if (isNamedOperatorOrg(orgId)) return { refusal: "operator-org" as const }
+    // A statement of its own, after the lock: its snapshot sees a billing row a
+    // transaction committed while this one waited for the row.
+    const result = await tx.execute(drizzleSql`
+      UPDATE ${K()}.organizations o
+         SET deleting_at = COALESCE(o.deleting_at, now())
+       WHERE o.id = ${orgId}::uuid AND o.class = 'demo'
+         AND o.settings->'demo'->>'variant' = 'visitor'
+         AND ${notACustomerOrg()}
+      RETURNING o.id
+    `)
+    const rows = Array.isArray(result) ? result : ((result as { rows?: unknown[] }).rows ?? [])
+    return rows.length > 0 ? { slug: stored.slug } : { refusal: "customer-org" as const }
+  })
+}
+
+/**
+ * Delete ONE expired visitor demo org, or refuse. Decided from the stored row
+ * under its lock (`claimForPurge`), never from the caller, and `deleteOrgRows`
+ * re-checks the class and the deleting mark on its own behalf.
  */
 export async function purgeDemoOrg(
   orgId: string,
   now: Date = new Date(),
   externalDeps: OrgExternalStateDeps = {},
 ): Promise<PurgeResult> {
-  const stored = await readStoredOrg(orgId)
-  if (!stored) return { purged: false, refusal: "no-such-org" }
-  if (stored.malformed) return { purged: false, refusal: "malformed-marker" }
-  if (!stored.marker) return { purged: false, refusal: "not-a-demo-org" }
-  if (stored.marker.variant !== "visitor") return { purged: false, refusal: "not-a-visitor-org" }
-  // An unclaimed warm-pool org (demo-pool.ts) has no visitor and no clock yet.
-  if (demoPoolStateOf(stored.marker)) return { purged: false, refusal: "pooled" }
-  if (!isDemoOrgExpired({ settings: { demo: stored.marker } }, now)) {
-    return { purged: false, refusal: "not-expired" }
+  if (!isDemoModeEnabled()) {
+    throw new DemoOrgGuardError("demo-mode-off", orgId, "demo-reset-purge")
   }
+  const claim = await claimForPurge(orgId, now)
+  if ("refusal" in claim) return { purged: false, refusal: claim.refusal }
+  await announceOrgDeleting(orgId)
 
   // The scenarios this visitor played go to the Liaison team's copy of the lead
   // while their progress still exists (queued only when that is on; never throws).
@@ -678,7 +758,7 @@ export async function purgeDemoOrg(
   // The shared org purge (modules/org/purge/): provider disconnect, every row,
   // the search documents (one filter delete), objects, Redis keys, job
   // schedulers, the org row and its runtimes in every process. Its row delete
-  // re-checks the demo guard against the stored row. No settle wait (an expired
+  // re-checks the guard against the stored row. No settle wait (an expired
   // workspace is refused by its own gate already) and no residue gate (the
   // next reap is the retry).
   // Per-step wall clock on the collected line: what an operator sizes the
@@ -696,7 +776,7 @@ export async function purgeDemoOrg(
   await forgetDemoFixtureCrm(orgId)
   const { deleted } = await purgeOrg(orgId, {
     reason: "demo-reset-purge",
-    assertAllowed: assertDestructionAllowed,
+    assertAllowed: assertPurgeAllowed,
     settle: false,
     verify: false,
     regenerateTriggers: false,
@@ -712,7 +792,7 @@ export async function purgeDemoOrg(
   await forgetPurgedDemoMarker(orgId)
   await forgetDemoPaymentsOutside(orgId)
   log.warn(
-    { orgId, slug: stored.slug, deleted, ms: Date.now() - started, stepMs },
+    { orgId, slug: claim.slug, deleted, ms: Date.now() - started, stepMs },
     "collected an expired demo workspace",
   )
   return { purged: true, deleted }
@@ -821,7 +901,7 @@ async function probeSeederFromScratch(reserved: {
   const leftover = await orgIdForSlug(slug)
   if (leftover) {
     const stored = await readStoredOrg(leftover)
-    if (stored?.marker?.variant !== "visitor") {
+    if (stored?.marker?.variant !== "visitor" || stored.class !== "demo") {
       return { ok: false, detail: `the probe slug '${slug}' is taken by a non probe org` }
     }
     await dropProbeOrg(leftover)

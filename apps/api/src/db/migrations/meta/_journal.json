@@ -2168,6 +2168,27 @@
     {
       "idx": 309,
       "version": "7",
+      "when": 1900003400001,
+      "tag": "0308_knowledge_personal_folders",
+      "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1900003401001,
+      "tag": "0309_org_class",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1900003402001,
+      "tag": "0310_knowledge_page_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 309,
+      "version": "7",
       "when": 1900003399002,
       "tag": "0308_mail_inbound_sender_index",
       "breakpoints": true

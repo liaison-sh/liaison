@@ -5098,7 +5098,10 @@
     "deleteTable": "Delete table",
     "markdownSource": "Markdown source",
     "moreTools": "More formatting",
-    "emojiSuggestions": "Emoji suggestions"
+    "emojiSuggestions": "Emoji suggestions",
+    "remoteImage": "Image from another site, not loaded",
+    "pageLink": "Page link",
+    "sourceEditor": "Page text, as written"
   },
   "nodes": {
     "chat": {

@@ -77,7 +77,6 @@ import { refreshAllAppAttention } from "~/modules/apps/attention-store"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { setOrgAppAccess, setOrgAppStatus } from "~/modules/apps/org-app-service"
 import { getOrgAppState } from "~/modules/apps/org-apps"
-import { isDemoModeEnabled } from "~/modules/demo/demo-mode"
 import { completeDemoOrgReset, resetDemoOrgContent } from "~/modules/demo/demo-reset"
 import {
   DEMO_COMPANY_NAME,
@@ -345,6 +344,15 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
   const baseTime = opts.baseTime ?? new Date()
   const failures: SeedLayerFailure[] = []
 
+  // Before any write: the content reset takes the reserved org alone, and would
+  // refuse this one after the seed had already begun.
+  if (opts.resetContent === true && opts.variant !== "reserved") {
+    throw new Error(
+      `seedDemoWorld: only the reserved demo org's content is reset; '${opts.orgSlug}' is seeded ` +
+        "as a visitor org. Seed it without --reset.",
+    )
+  }
+
   // Which world, and what this seed writes of it: everything (no needs), or a
   // visitor's picks.
   const worldId = opts.worldId ?? DEMO_DEFAULT_WORLD
@@ -376,7 +384,7 @@ async function seedDemoWorldLayers(opts: SeedDemoWorldOptions): Promise<SeedDemo
   if (off.length > 0) log(`world: turned Off the apps not picked: ${off.join(", ")}`)
 
   // `resetDemoOrgContent` REFUSES (it throws) unless demo mode is on and the
-  // org row itself carries a demo marker. It also raises an interrupted-reset
+  // org row itself is the reserved demo org's. It also raises an interrupted-reset
   // flag on the org, which stays up until every layer below has landed, so a
   // process that dies between the clear and the seed leaves a workspace that
   // says so instead of a thin one nobody can tell from a quiet one.
@@ -620,8 +628,11 @@ export async function seedScenarioStart(
 // a clear it never did, because every layer ADOPTS the row it already wrote, so
 // a subject a reviewer rewrote survived every deploy. Converging that org is the
 // whole point of re-running the seed, so the clear is the default there and
-// `--no-reset` is how you ask for a top up. A `visitor` run never clears: that
-// org belongs to somebody who is probably still looking at it.
+// `--no-reset` is how you ask for a top up. A `visitor` run never clears in
+// place: that org belongs to somebody who is probably still looking at it. A
+// `visitor` run with `--reset` on a box that is not a public demo (a private QA
+// or walk box) deletes the demo org under the slug and seeds it fresh instead
+// (`replaceSeededDemoOrg`); a public demo box refuses it.
 //
 // The reserved org's OWNER is the App Review account, and its password comes
 // from `LIAISON_DEMO_REVIEWER_PASSWORD`: `reservedOwner()` refuses when it is
@@ -705,11 +716,10 @@ export async function runSeedDemoCli(
     ? false
     : argv.includes("--reset") || variant === "reserved"
   const slug = flag(argv, "slug") ?? DEMO_RESERVED_SLUG
-  // A private box (demo mode off) has no visitors and no reaper, and the
-  // in-place content reset is a demo box's own: a visitor org it seeded before
-  // is deleted and seeded fresh instead, as the lively tier's --replace does.
-  // An org without the demo marker is refused there, before anything is deleted.
-  if (resetContent && variant === "visitor" && !isDemoModeEnabled()) {
+  // The in-place content reset is the reserved org's alone: a visitor org asked
+  // for one is replaced instead (deleted, then seeded from nothing), and only
+  // when it is a demo org and the box no public demo.
+  if (resetContent && variant === "visitor") {
     await replaceSeededDemoOrg(slug, (msg) => console.log(`[demo-seed] ${msg}`), {
       who: "demo-seed",
       tier: "demo",

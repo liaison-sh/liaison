@@ -84,6 +84,7 @@ import {
   visitorMarker,
 } from "~/modules/demo/demo-org"
 import { zeroDemoOrgPlatformCredit } from "~/modules/demo/demo-reset"
+import { orgClassOf, protectedOrgReason } from "~/modules/demo/org-class"
 import {
   pinAgentModel,
   type SeededAgent,
@@ -584,6 +585,10 @@ export function demoMarkRefusal(input: {
  * seeder's own, so it is deleted and the run makes it again from nothing.
  * Returns true when it cleared one. An org that carries the marker is a normal
  * re-seed (its stale claim is released); one without a claim is never touched.
+ *
+ * A claim alone is not enough: a real org may have taken the slug since the run
+ * died. Only an org of class `demo` (this seeder creates its orgs with it) is
+ * deleted; any other is refused, its claim kept, and an operator decides.
  */
 async function clearInterruptedOrg(
   orgSlug: string,
@@ -596,13 +601,27 @@ async function clearInterruptedOrg(
     await releaseOrgSlugClaim(orgSlug)
     return false
   }
+  if ((await orgClassOf(orgId)) !== "demo") {
+    throw new Error(
+      `seedDemoOrg: refusing to seed '${orgSlug}': an interrupted seed's claim is on the slug, but ` +
+        `the organization under it is not of class demo, so it is not deleted. If it is that ` +
+        `seed's leftover (an older release made it without a class), delete it by hand, then ` +
+        `seed again; otherwise use another slug.`,
+    )
+  }
   const { purgeOrg } = await import("~/modules/org/purge/purge-org")
   await purgeOrg(orgId, {
     reason: "seed-interrupted-org",
-    // Re-checked before every destructive step: still claimed, still unmarked.
+    // Re-checked before every destructive step: still claimed, still unmarked,
+    // of class demo, and never a customer's or the operator's org.
     assertAllowed: async (id) => {
       await invalidateDemoMarker(id)
-      if (!(await hasOrgSlugClaim(orgSlug)) || (await loadDemoMarker(id))) {
+      if (
+        !(await hasOrgSlugClaim(orgSlug)) ||
+        (await loadDemoMarker(id)) ||
+        (await orgClassOf(id)) !== "demo" ||
+        (await protectedOrgReason(id))
+      ) {
         throw new Error(`seedDemoOrg: '${orgSlug}' is no longer an interrupted seed's org`)
       }
     },
@@ -719,7 +738,9 @@ export async function seedDemoOrg(opts: SeedDemoOrgOptions): Promise<SeedDemoOrg
   // written before the admin provisioner creates the first account. An org that
   // has a person in it is an org somebody can sign into, and demo mode's
   // restrictions are all keyed on the marker.
-  const markedOrgId = target ? target.orgId : await markNewDemoOrg(configWithoutUsers, opts, log)
+  const markedOrgId = target
+    ? target.orgId
+    : await markNewDemoOrg(configWithoutUsers, opts, createdOrg, log)
 
   await provisionAdminAndRoles(configWithoutUsers, "seedDemoOrg", log)
   await provisionPeople(configWithoutUsers, userEntries ?? [], "seedDemoOrg", log)
@@ -840,9 +861,19 @@ async function readExistingOrg(
 async function markNewDemoOrg(
   configWithoutUsers: Omit<ProvisioningConfig, "users">,
   opts: SeedDemoOrgOptions,
+  createdOrg: boolean,
   log: (msg: string) => void,
 ): Promise<string> {
-  const orgShell = await provisionOrgShell(configWithoutUsers, "seedDemoOrg", log)
+  // A new org is a demo org from its first row. One that exists keeps its class:
+  // a workspace the previous release made during a rolling deploy carries the
+  // marker and no class (`liaison demo reclassify` gives it one), and its seed
+  // must not fail for it.
+  const orgShell = await provisionOrgShell(
+    configWithoutUsers,
+    "seedDemoOrg",
+    log,
+    createdOrg ? { orgClass: "demo" } : {},
+  )
 
   // THE DEMO MARKER, as early as it can possibly be written: the org row now
   // exists (the org pass created it) and not one account exists to log into it.

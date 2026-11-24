@@ -23,11 +23,11 @@ import { runConfigApply } from "~/cli/config/apply"
 import type { ProvisioningConfig } from "~/cli/config/schema"
 import { adminProvisioner } from "~/cli/provisioners/admin"
 import { emailProvisioner } from "~/cli/provisioners/email"
-import { orgProvisioner } from "~/cli/provisioners/org"
+import { orgProvisioner, orgProvisionerOf } from "~/cli/provisioners/org"
 import { rolesProvisioner } from "~/cli/provisioners/roles"
 import { usersProvisioner } from "~/cli/provisioners/users"
 import { withSystemDb } from "~/db/privileged"
-import { organizations, systemConfig } from "~/db/schema/kernel"
+import { type OrgClass, organizations, systemConfig } from "~/db/schema/kernel"
 
 export type OrgConfig = Omit<ProvisioningConfig, "users">
 export type PeopleConfig = NonNullable<ProvisioningConfig["users"]>
@@ -124,11 +124,15 @@ export async function provisionOrgShell(
   config: OrgConfig,
   who: string,
   log: (msg: string) => void,
+  opts: {
+    /** The class of an org this pass creates; an org under the slug with another class is refused. */
+    orgClass?: OrgClass
+  } = {},
 ): Promise<{ orgId: string; created: boolean }> {
   const pass = await runConfigApply({
     ...applyOptions(log),
     config,
-    registry: { org: orgProvisioner, email: emailProvisioner },
+    registry: { org: orgProvisionerOf(opts.orgClass), email: emailProvisioner },
   })
   if (pass.exitCode !== 0) {
     throw new Error(

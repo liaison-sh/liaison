@@ -205,6 +205,14 @@ export const knowledgeCollectionMembershipSchema = z
   })
   .strict()
 
+/** Move a page between folders; null is "in no folder". */
+export const knowledgeMoveDocumentSchema = z
+  .object({
+    fromCollectionId: uuidStringSchema.nullable(),
+    toCollectionId: uuidStringSchema.nullable(),
+  })
+  .strict()
+
 export const knowledgeTagSchema = z
   .object({
     name: trimmedString(64),

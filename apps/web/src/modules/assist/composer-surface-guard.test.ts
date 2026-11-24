@@ -47,6 +47,10 @@ const EXCLUDED: Record<string, { fields: number; reason: string }> = {
     reason:
       "a person outside declines on the public link page: no member session, no agent, so no member writing helpers",
   },
+  // The page editor's own parts: the page that mounts them carries the wand and the
+  // mic; a page saves itself, so there is no Save.
+  "editor/PageTextEditor.tsx": { fields: 1, reason: "the page editor; its page has the helpers" },
+  "editor/SourceEditor.tsx": { fields: 1, reason: "the page editor's source mode, same page" },
   "settings/documents/RichTextEditor.tsx": {
     fields: 1,
     reason: "document template text with {{field}} placeholders (configuration)",

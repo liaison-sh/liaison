@@ -211,6 +211,9 @@ export async function getKnowledgeDocumentBacklinks(
 
 export interface CollectionTreeNode {
   id: string
+  /** A folder, or one of the two virtual buckets. The client names a virtual
+   *  node itself, in its reader's language; `name` is the server's English. */
+  kind?: "folder" | "personal_notes" | "unfiled"
   name: string
   parentId: string | null
   /** UUID of the personal owner of this collection. Null when shared with
@@ -223,7 +226,14 @@ export interface CollectionTreeNode {
   children: CollectionTreeNode[]
   /** `syncedSourceId` is set on a document mirrored from an external synced
    *  source, so the tree can mark its provenance (T-9 cloud badge). */
-  documents: Array<{ id: string; title: string; syncedSourceId?: string | null }>
+  documents: Array<{
+    id: string
+    title: string
+    syncedSourceId?: string | null
+    /** Whether this reader may edit the page (rename, move, archive): the
+     *  server's own write check. Absent: editable (the server always sends it). */
+    canEdit?: boolean
+  }>
 }
 
 export async function getCollectionsTree(api: ApiClient): Promise<CollectionTreeNode[]> {
@@ -256,26 +266,17 @@ export async function archiveCollection(api: ApiClient, id: string): Promise<{ i
   return api.post(`/knowledge/collections/${id}/archive`)
 }
 
-export async function addDocumentToCollection(
+/**
+ * Move a page from one folder to another in one request: the server files it
+ * in the target and takes it out of the source in one transaction, so a
+ * refusal leaves it where it was. `null` on either side means no folder.
+ */
+export async function moveKnowledgeDocument(
   api: ApiClient,
-  collectionId: string,
   docId: string,
+  body: { fromCollectionId: string | null; toCollectionId: string | null },
 ): Promise<{ id: string }> {
-  return api.post(`/knowledge/collections/${collectionId}/members`, {
-    targetType: "document",
-    targetId: docId,
-  })
-}
-
-export async function removeDocumentFromCollection(
-  api: ApiClient,
-  collectionId: string,
-  docId: string,
-): Promise<{ ok: boolean }> {
-  return api.delete(`/knowledge/collections/${collectionId}/members`, {
-    targetType: "document",
-    targetId: docId,
-  })
+  return api.post(`/knowledge/documents/${docId}/move`, body)
 }
 
 // ---------------------------------------------------------------------------

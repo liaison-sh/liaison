@@ -53,6 +53,40 @@ describe("knowledge app manifest (T14)", () => {
     expect(typeof (attention as Record<string, unknown>)[handlerName]).toBe("function")
   })
 
+  it("member can manage folders, and a curator still can", () => {
+    const roles = manifest.roles as Record<string, { extends?: string; scopes: string[] }>
+    expect(roles.member.scopes).toContain("knowledge:collections:manage")
+    expect(roles.curator.extends).toBe("member")
+    // Syncing a source stays a curator's decision.
+    expect(roles.member.scopes).not.toContain("knowledge:sources:manage")
+  })
+
+  it("the export fills every column it names", async () => {
+    const row = {
+      id: "d1",
+      title: "Returns",
+      summary: "How",
+      document_scope: "organization",
+      review_status: "verified",
+      owner_user_id: "u1",
+      created_at: "2026-01-02T00:00:00.000Z",
+    }
+    const out = await handlers.exportKnowledge({ format: "json" }, {
+      db_findMany: async () => JSON.stringify([row]),
+    } as never)
+    expect(out).toEqual([
+      {
+        id: "d1",
+        title: "Returns",
+        summary: "How",
+        scope: "organization",
+        status: "verified",
+        ownerUserId: "u1",
+        createdAt: "2026-01-02T00:00:00.000Z",
+      },
+    ])
+  })
+
   it("tool handlers all map to an exported function of handlers.ts", () => {
     const tools = (manifest as { tools: Record<string, { handler: string }> }).tools
     const exports = handlers as unknown as Record<string, unknown>

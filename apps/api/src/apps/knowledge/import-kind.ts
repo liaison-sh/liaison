@@ -174,7 +174,8 @@ async function importCollection(
       name: record.name,
       description: record.description ?? null,
       parentCollectionId,
-      ...(record.shared === true ? { ownerUserId: null } : {}),
+      // Shared unless the record says otherwise (a subfolder follows its parent).
+      ownerUserId: record.shared === false ? ctx.actorUserId : null,
     },
     knowledgeActor(ctx),
   )

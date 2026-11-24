@@ -258,6 +258,13 @@ function policyComment(stmt: string, fingerprint: string, versions?: CatalogVers
   return `${stamp}:catalog=${Buffer.from(JSON.stringify(versions)).toString("base64url")}`
 }
 
+/** Whether two catalogs name the same versions of the same apps. */
+function sameVersions(a: CatalogVersions | undefined, b: CatalogVersions): boolean {
+  if (!a) return false
+  const names = Object.keys(b)
+  return Object.keys(a).length === names.length && names.every((n) => a[n] === b[n])
+}
+
 /** A stored comment's stamp and catalog versions (none in a comment written before them). */
 function parsePolicyComment(
   comment: string | null,
@@ -383,7 +390,23 @@ async function applyFilesSelectPolicyOnce(
       await db.execute(drizzleSql.raw(policyFingerprintSql(kernelSchema))),
     )
     const stored = parsePolicyComment(live?.comment ?? null)
-    if (live && stored?.stamp === policyStamp(stmt, live.fingerprint)) return "unchanged"
+    if (live && stored?.stamp === policyStamp(stmt, live.fingerprint)) {
+      // The same policy from a newer catalog: the stored versions follow, or an older release
+      // still running in a rolling deploy would not be refused on the versions it is older than.
+      if (
+        build.versions &&
+        !sameVersions(stored.versions, build.versions) &&
+        !(stored.versions && (await supersedingApp(stored.versions, build.versions)))
+      ) {
+        await db.execute(
+          drizzleSql.raw(
+            `COMMENT ON POLICY files_select ON ${quoteIdent(kernelSchema)}.files IS ` +
+              quoteLiteral(policyComment(stmt, live.fingerprint, build.versions)),
+          ),
+        )
+      }
+      return "unchanged"
+    }
     if (build.versions && stored?.versions) {
       const newer = await supersedingApp(stored.versions, build.versions)
       if (newer) {

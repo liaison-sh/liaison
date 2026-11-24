@@ -54,6 +54,10 @@ const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/modules/client-actions/mint.ts#mailFailedSql": {
     alias: `a table alias each caller passes as a literal ("g", "l", "a"); ${IDENT_FROM_CODE}`,
   },
+  "apps/api/src/apps/knowledge/collections.ts#liveSourcesOf": {
+    folder:
+      'a table alias of the calling query, typed as the literal union "up" | "c" | "tree"; no value from a request or a row',
+  },
   "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
     "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",
     's.columns.map((c) => `COALESCE(pg_column_size("${c}"), 0)`).join(" + ")':
@@ -197,6 +201,8 @@ const REVIEWED: Record<string, Record<string, string>> = {
     "policyFingerprintSql(kernelSchema)": "fingerprint query from code over the kernel schema name",
     "quoteLiteral(policyComment(stmt, after.fingerprint, build.versions))":
       "COMMENT takes no bind parameter; stamp of hex hashes plus base64url catalog versions, quoted with quoteLiteral",
+    "quoteLiteral(policyComment(stmt, live.fingerprint, build.versions))":
+      "the same comment for an unchanged policy rebuilt from a newer catalog: hex hashes plus base64url catalog versions, quoted with quoteLiteral",
   },
   "apps/api/src/infra/events/outbox-worker.ts#adminExec": {
     query: "fixed outbox statements from the same file",

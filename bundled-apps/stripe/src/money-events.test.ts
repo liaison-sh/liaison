@@ -662,6 +662,10 @@ describe("the reads invoicing calls", () => {
       charge_ids: ["ch_S1"],
     })
     expect(await read({ status: "void" })).toMatchObject({ status: "void" })
+    // The amounts are Stripe's, not the mirror's, and an invoice still open names no charge.
+    const open = await read({ status: "open", total: 24000, currency: "usd" })
+    expect(open).toMatchObject({ total_minor: "24000", currency: "usd", charge_id: null })
+    expect(open.charge_ids).toBeUndefined()
   })
 
   it("payment_payload reads one charge again with its status, its invoice and its customer, and refuses when Stripe does not answer", async () => {

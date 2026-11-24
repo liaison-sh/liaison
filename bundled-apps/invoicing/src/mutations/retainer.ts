@@ -18,6 +18,7 @@
 import { buildActivityReport } from "../activity-report"
 import { lineQuantity } from "../line-amount"
 import { formatMoneyMinor } from "../money"
+import { scheduleTermsDays } from "../payment-terms"
 import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL, recipientGaps } from "../recipient-gaps"
 import { monthOnRun, retainerScheduleOf } from "../recurring/project-retainer"
@@ -473,6 +474,8 @@ export async function retainerDraftFromReconcile(
       ...(canIssue ? { approved_by: userId, approved_at: today } : {}),
       external_refs: {
         recurring_schedule_id: scheduleId,
+        // The schedule's own due rule: the invoice is due by it, counted from its issue.
+        due_days: scheduleTermsDays(s),
         reconciliation_id: reconciliationId,
         reconciliation_revision: revision,
         retainer: refs,

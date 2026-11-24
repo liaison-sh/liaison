@@ -17,10 +17,11 @@ import { type ActivityReportLine, buildActivityReport } from "../activity-report
 import { latestIssueLine } from "../approval-cards"
 import { lineQuantity } from "../line-amount"
 import { formatMoneyMinor } from "../money"
+import { paymentTermsOf, termsText } from "../payment-terms"
 import { recipientOf } from "../recipient"
 import { RECIPIENT_GAP_REFUSAL } from "../recipient-gaps"
 import { previewTotals, unitOfBasis } from "../tools/preview-totals"
-import { getDraft } from "./db-helpers"
+import { findIssuerProfile, getDraft } from "./db-helpers"
 import { draftsCreate } from "./drafts"
 import { draftContentHash } from "./issue-handover"
 import type { MutationsCtx } from "./shared"
@@ -51,6 +52,21 @@ export async function customerLine(ctx: MutationsCtx, draftId: string): Promise<
   > | null
   const name = typeof draft?.counterparty_name === "string" ? draft.counterparty_name.trim() : ""
   return name ? [`Customer: ${name}`] : []
+}
+
+/** The card line saying when a draft's invoice will be due, its own date or its payment terms. */
+export async function dueLine(ctx: MutationsCtx, draftId: string): Promise<string[]> {
+  const draft = await getDraft(ctx.db, draftId).catch(() => null)
+  if (!draft || draft.type !== "invoice") return []
+  if (draft.due_at) return [`Due ${String(draft.due_at).slice(0, 10)}`]
+  const issuer = await findIssuerProfile(ctx.db, draft.issuer_profile_id)
+  if (!issuer) return []
+  const terms = await paymentTermsOf(ctx.db, {
+    issuer,
+    contactId: draft.counterparty_contact_id,
+    externalRefs: draft.external_refs,
+  })
+  return [`Due ${termsText(terms.days)}`]
 }
 
 export const ISSUE_APPROVAL_EXPIRY_HOURS = 720
@@ -357,6 +373,7 @@ export async function draftFromReconcile(
         lines: [
           ...(await customerLine(ctx, draftId)),
           `To pay ${formatMoneyMinor(BigInt(totals.incl), totals.currency)} incl. VAT (${formatMoneyMinor(BigInt(totals.excl), totals.currency)} excl. VAT)`,
+          ...(await dueLine(ctx, draftId)),
           latestIssueLine(monthEnd(read.period.to), today) as string,
         ],
         latest_on: monthEnd(read.period.to),

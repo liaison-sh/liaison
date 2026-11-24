@@ -60,6 +60,7 @@ import { facturxEligible, facturxInputFrom } from "./facturx/input"
 import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-date"
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
 import { documentRollup, lineAmounts } from "./money"
+import { dueOn, paymentTermsOf } from "./payment-terms"
 import { numberingSequence } from "./numbering"
 import { classify, operationLabel } from "./tax"
 
@@ -87,6 +88,8 @@ export interface IssuerProfile {
   timezone?: string | null
   /** Defaults the `vat_on_debits` flag recorded on each issued document. */
   vat_on_debits_default?: boolean | null
+  /** Days a customer has to pay, for an invoice with no due date of its own (`payment-terms.ts`). */
+  default_payment_terms_days?: number | string | null
   /** Structured seller address and e-invoicing routing (Factur-X BT-34..BT-40). */
   siret?: string | null
   routing_address?: string | null
@@ -1450,6 +1453,23 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
   const askTimezone = await timezoneAskDue(ctx, issuer)
 
+  // An invoice with no date of its own is due by the customer's terms, else the issuer's, counted
+  // from the day it is issued. One already settled owes nothing, and no other type is payable.
+  const dueAt =
+    draft.due_at ||
+    (type === "invoice" && !input.settlement
+      ? dueOn(
+          draft.issued_at,
+          (
+            await paymentTermsOf(ctx.db, {
+              issuer,
+              contactId: counterparty.contact_id,
+              externalRefs: draft.external_refs,
+            })
+          ).days,
+        )
+      : null)
+
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
   const userId = await ctx.getUserId()
@@ -1483,7 +1503,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     tax_treatment: classification.treatment,
     incoterm: draft.incoterm,
     issued_at: draft.issued_at,
-    due_at: draft.due_at,
+    due_at: dueAt,
     // Born-settled (Shopify order-paid): only payment_status/paid_at are set — status stays
     // "issued" so the invoice remains a live, shippable document.
     ...(input.settlement ? { payment_status: "paid", paid_at: input.settlement.paid_at } : {}),

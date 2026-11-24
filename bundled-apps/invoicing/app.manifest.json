@@ -324,7 +324,7 @@
       }
     ]
   },
-  "version": "0.38.10",
+  "version": "0.39.0",
   "iconName": "receipt",
   "description": "Liaison Invoicing app: invoices, quotes, proformas, purchase orders, credit notes.",
   "listing": {
@@ -1543,6 +1543,7 @@
         "note": "text?",
         "fix_suggestion": { "type": "json", "required": false },
         "approved_hash": "text?",
+        "approved_total_minor": "bigint?",
         "send_grant": "text?",
         "failure": { "type": "json", "required": false },
         "issued_number": "text?",
@@ -1813,6 +1814,7 @@
             "default": "0225",
             "required": false
           },
+          "payment_terms_days": "integer?",
           "registry_status": {
             "type": "string",
             "enum": [
@@ -6476,6 +6478,12 @@
               "non_registered_entity",
               null
             ]
+          },
+          "payment_terms_days": {
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "maximum": 999,
+            "description": "Days this customer has to pay, used for every later invoice without a due date of its own. Null: the issuer's terms."
           },
           "siren": {
             "type": [

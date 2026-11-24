@@ -806,6 +806,24 @@ describe("a retainer month's invoice", () => {
     )
   })
 
+  test("a retainer invoice is due by its schedule's own rule, counted from its issue", async () => {
+    for (const [over, days] of [
+      [{ due_rule: "days_n", due_days: 14 }, 14],
+      [{ due_rule: "on_issue" }, 0],
+      [{ due_rule: "days_30" }, 30],
+    ] as const) {
+      const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1", ...over }) })
+      h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+      const res = await draft(h, REC_OCT)
+      const said = JSON.stringify(h.approvals[0]?.summary_detail)
+      expect(said).toContain(days === 0 ? "Due on the day it is issued" : `Due ${days} days after`)
+      await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+      const doc = docs(h.db).find((d) => d.status === "issued") as Row
+      const issuedOn = Date.parse(String(doc.issued_at).slice(0, 10))
+      expect((Date.parse(String(doc.due_at).slice(0, 10)) - issuedOn) / 86_400_000).toBe(days)
+    }
+  })
+
   test("issuing a retainer draft whose card no longer reserves it is refused with no number", async () => {
     const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1" }) })
     h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))

@@ -21,6 +21,7 @@ import {
 } from "../issue"
 import { issueDateParts } from "../issue-date"
 import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
+import { paymentTermsOf, termsText } from "../payment-terms"
 import { runItemDraftRefusal } from "../recurring/run-card"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
@@ -285,6 +286,15 @@ async function issueDraftInvoice(
           orderNumber: draft.shopify_order_number ?? null,
           poNumber: draft.po_number ?? null,
           dueAt: draft.due_at ?? null,
+          dueTerms: termsText(
+            (
+              await paymentTermsOf(ctx.db, {
+                issuer,
+                contactId: counterparty.contact_id,
+                externalRefs: draft.external_refs,
+              })
+            ).days,
+          ),
           issuerName: issuer.legal_name,
           draftId: input.draft_id,
         }),
@@ -660,6 +670,10 @@ export async function prepareInvoiceCreateAndIssue(
           orderNumber: input.shopify_order_number ?? null,
           poNumber: input.po_number ?? null,
           dueAt: input.due_at ?? null,
+          dueTerms: termsText(
+            (await paymentTermsOf(ctx.db, { issuer, contactId: input.counterparty.contact_id }))
+              .days,
+          ),
           issuerName: issuer.legal_name,
         }),
       ),

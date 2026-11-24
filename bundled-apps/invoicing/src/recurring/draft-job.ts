@@ -19,6 +19,7 @@ import { civilDateOf } from "../issue-date"
 import { lineSubtotal } from "../money"
 import { raiseHeldApprovals } from "../mutations/prepaid-hold"
 import type { ErrorEnvelope } from "../mutations/shared"
+import { dueOn, scheduleTermsDays } from "../payment-terms"
 import { recipientOf } from "../recipient"
 import { type CurrentDraft, linesSignature, periodLabel, runItemFlags } from "./flags"
 import { rowIssuerHold, runItemState } from "./item-state"
@@ -61,12 +62,6 @@ function periodEnd(repeats: Repeats, start: string): string {
   const [y, m] = start.split("-").map(Number) as [number, number]
   const endMonth = repeats === "year" ? 12 : repeats === "quarter" ? m + 2 : m
   return `${String(y).padStart(4, "0")}-${String(endMonth).padStart(2, "0")}-${String(daysInMonth(y, endMonth)).padStart(2, "0")}`
-}
-
-function dueOn(s: ScheduleRow, issueOn: string): string {
-  if (s.due_rule === "on_issue") return issueOn
-  if (s.due_rule === "days_n" && typeof s.due_days === "number") return addDays(issueOn, s.due_days)
-  return addDays(issueOn, 30)
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -287,7 +282,7 @@ async function draftSchedule(
     issuer_profile_id: s.issuer_profile_id,
     currency: String(issuer.default_currency ?? "EUR"),
     incoterm: "DAP",
-    due_at: dueOn(s, issueOn),
+    due_at: dueOn(issueOn, scheduleTermsDays(s)),
     external_ref: externalRef,
     external_refs: {
       recurring_schedule_id: s.id,

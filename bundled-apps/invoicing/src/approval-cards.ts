@@ -273,6 +273,8 @@ export interface IssueCardFacts {
   latestIssueOn?: string | null
   today?: string | null
   dueAt?: string | null
+  /** Without a date of its own: what the invoice's payment terms give ("30 days after issue"). */
+  dueTerms?: string | null
   reason?: string | null
   declaredValueMinor?: unknown
   issuerName?: string | null
@@ -467,6 +469,7 @@ export function issueCard(f: IssueCardFacts): ApprovalCard {
   const due = day(f.dueAt)
   // A quote's date is how long the offer holds, not a payment due date.
   if (due) lines.push(f.type === "quote" ? `Valid until: ${due}` : `Due date: ${due}`)
+  else if (f.type === "invoice" && f.dueTerms) lines.push(`Due date: ${f.dueTerms}`)
   const issuer = text(f.issuerName, 80)
   if (issuer) lines.push(`Issued by: ${issuer}`)
   // The lines fill whatever room the facts leave.

@@ -111,6 +111,10 @@ export const FR: Record<string, string> = {
   Due: "Échéance",
   "Due date": "Date d'échéance",
   "Due date is required.": "La date d'échéance est obligatoire.",
+  "Left empty, it is due by the payment terms, counted from the issue date.":
+    "Laissée vide, l'échéance suit les conditions de paiement, à partir de la date d'émission.",
+  "by the payment terms, counted from the issue date":
+    "selon les conditions de paiement, à partir de la date d'émission",
   EU: "UE",
   Edit: "Modifier",
   "Edit draft": "Modifier le brouillon",

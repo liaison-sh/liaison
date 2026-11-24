@@ -674,6 +674,7 @@ function draftIssueSummarizer(type: string, kind: string) {
         originalNumber:
           typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
         dueAt: params.due_at ?? draft?.due_at ?? null,
+        dueTerms: typeof draft?.due_terms === "string" ? draft.due_terms : null,
         draftId: params.draft_id ?? null,
         latestIssueOn: typeof draft?.latest_issue_on === "string" ? draft.latest_issue_on : null,
         // The org's day, read by the card's read (draft_issue_preview); the sandbox clock is UTC.
@@ -796,6 +797,7 @@ function createAndIssueSummarizer(type: string, kind: string) {
       customerReference: params.customer_reference ?? null,
       issuedAt: params.issued_at ?? null,
       dueAt: params.due_at ?? null,
+      dueTerms: "by the payment terms, counted from issue",
       reason: params.reason ?? null,
       declaredValueMinor: params.declared_value_minor,
       issuerName: (issuer?.legal_name as string | undefined) ?? null,

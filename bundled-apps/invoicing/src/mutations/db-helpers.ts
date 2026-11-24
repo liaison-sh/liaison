@@ -139,6 +139,8 @@ export async function findIssuerProfile(
     prices_include_tax: !!row.prices_include_tax,
     vat_on_debits_default:
       typeof row.vat_on_debits_default === "boolean" ? row.vat_on_debits_default : null,
+    default_payment_terms_days:
+      (row.default_payment_terms_days as string | number | null | undefined) ?? null,
     siren: (row.siren as string | null) ?? null,
     siret: (row.siret as string | null) ?? null,
     routing_address: (row.routing_address as string | null) ?? null,

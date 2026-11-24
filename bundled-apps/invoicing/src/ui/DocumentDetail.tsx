@@ -1543,7 +1543,12 @@ export const DocumentDetail: Component<DocumentDetailProps> = (props) => {
                     <span class="text-text-secondary">{fmtDate(doc().issued_at)}</span>
                   </span>
                   <span>
-                    {tr("Due")} <span class="text-text-secondary">{fmtDate(doc().due_at)}</span>
+                    {tr("Due")}{" "}
+                    <span class="text-text-secondary">
+                      {doc().status === "draft" && doc().type === "invoice" && !doc().due_at
+                        ? tr("by the payment terms, counted from the issue date")
+                        : fmtDate(doc().due_at)}
+                    </span>
                   </span>
                   {/* Shopify-sourced invoices carry external_refs pointing back at
                       the originating order — link out to the real Shopify admin

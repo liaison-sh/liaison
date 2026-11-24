@@ -29,18 +29,6 @@ export const SCALE = {
   years: 3,
 } as const
 
-/** The app tables the world is written to. */
-const FILLED_APP_TABLES = [
-  ["app_mail", "conversations"],
-  ["app_mail", "messages"],
-  ["app_tickets", "tickets"],
-  ["app_tickets", "messages"],
-  ["app_projects", "tasks"],
-  ["app_projects", "deals"],
-  ["app_projects", "deal_values"],
-  ["app_calendar", "events"],
-] as const
-
 /** The kernel tables the world is written to: only their owner can ANALYZE them, so the caller does. */
 export const FILLED_KERNEL_TABLES = ["contacts", "threads"] as const
 
@@ -160,8 +148,13 @@ async function seedAfterDeals(
            LATERAL (SELECT now() - (random() * ${span}::interval) AS s) t`)
   // Every app table filled here has the planner's figures before the first timed read: without
   // them the plans wait on whenever autovacuum comes by.
-  for (const [schema, table] of FILLED_APP_TABLES)
-    await tx.execute(drizzleSql.raw(`ANALYZE ${schemaRef(schema)}.${table}`))
+  const mail = drizzleSql.raw(schemaRef("app_mail"))
+  const tickets = drizzleSql.raw(schemaRef("app_tickets"))
+  const projects = drizzleSql.raw(schemaRef("app_projects"))
+  await tx.execute(drizzleSql`ANALYZE ${mail}.conversations, ${mail}.messages,
+    ${tickets}.tickets, ${tickets}.messages,
+    ${projects}.tasks, ${projects}.deals, ${projects}.deal_values,
+    ${drizzleSql.raw(schemaRef("app_calendar"))}.events`)
   return ids
 }
 

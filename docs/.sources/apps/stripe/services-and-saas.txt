@@ -109,3 +109,4 @@ Activity timeline row for a linked customer: customer created -> bundled-apps/st
 subscription started is dated when Stripe started it -> bundled-apps/stripe/src/tools/activity.ts (activityRead) ; bundled-apps/stripe/src/mirror.ts (subscriptionRow)
 the card shown is the one the subscription bills; a new card shows -> bundled-apps/stripe/src/mirror.ts (subscriptionCardOf)
 an invoice Liaison issued shows Liaison's number and opens the Liaison invoice -> bundled-apps/stripe/src/ui/customers-model.ts (invoiceView) ; bundled-apps/stripe/src/ui/CustomerDetail.tsx (StripeCustomerDetail)
+reminders drafted from a mailbox the owner may use -> bundled-apps/stripe/app.manifest.json (routines failed-payments scopes) ; apps/api/src/apps/mail/handlers.ts (agentMailComposePreflight)

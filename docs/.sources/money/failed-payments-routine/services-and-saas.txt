@@ -5,3 +5,4 @@ scopes read-only plus mail write and tickets read -> bundled-apps/stripe/app.man
 enabledByDefault false -> bundled-apps/stripe/app.manifest.json (routines.failed-payments)
 Nothing to do yet line -> bundled-apps/stripe/src/ui/StripeHome.tsx (AttentionSection)
 reminder guard reads Stripe at send time -> bundled-apps/stripe/src/tools/send-state.ts (invoiceSendState)
+the routine reads mailboxes to draft from one its owner may use -> bundled-apps/stripe/app.manifest.json (routines failed-payments scopes)

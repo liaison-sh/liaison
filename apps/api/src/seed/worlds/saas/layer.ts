@@ -43,6 +43,7 @@ import { type PaymentsMirrorSpec, seedPaymentsMirror } from "~/seed/factories/pa
 import { actorFor, asUser, rowsOf } from "~/seed/factories/people/actors"
 import { seedCompanies } from "~/seed/factories/people/companies"
 import { resolveContacts } from "~/seed/factories/people/contacts"
+import { grantRoleDimension } from "~/seed/factories/people/role-grants"
 import { seedPipeline } from "~/seed/factories/projects/deals"
 import type { SeedDemoOrgResult } from "~/seed/tiers/demo/seed-org"
 import { STORY_TIME_ZONE, storyClock } from "~/seed/worlds/story-clock"
@@ -572,6 +573,33 @@ async function seedSaasMorningBrief(
   ctx.log("routines: the morning brief written to its thread")
 }
 
+/** The kernel role of the people who send payment reminders: finance. */
+const SAAS_SENDER_ROLES = ["finance"] as const
+
+/**
+ * The mailbox the payment reminders are drafted from: the org's shared one, which the role of the
+ * Failed payments routine's owner may use (a `mail:inbox` grant, on the role so a reset keeps it).
+ */
+async function seedSaasSendFrom(ctx: SeedContext, org: SeedDemoOrgResult): Promise<void> {
+  const [mailbox] = rowsOf<{ id: string }>(
+    await withPrivilegedDb(ctx.orgId, "seed-saas:send-from", (tx) =>
+      tx.execute(sql`
+        SELECT id::text AS id FROM ${sql.raw(schemaRef("app_mail"))}.accounts
+         WHERE org_id = ${ctx.orgId}::uuid AND owner_type = 'org'
+         ORDER BY created_at, id LIMIT 1`),
+    ),
+  )
+  if (!mailbox) return
+  await grantRoleDimension(
+    ctx.orgId,
+    org.adminUserId,
+    "mail:inbox",
+    SAAS_SENDER_ROLES.map((role) => [role, [mailbox.id]] as const),
+    "seed-saas",
+    ctx.log,
+  )
+}
+
 /** The three routines, on, each from its product template. */
 async function seedSaasRoutines(ctx: SeedContext, org: SeedDemoOrgResult): Promise<string[]> {
   // The templates live in the org's app registries, filled on first touch.
@@ -640,6 +668,7 @@ export async function seedSaasLayer(input: DemoWorldLayerInput): Promise<void> {
   await seedSaasMeetings(ctx, org, actor)
   await seedSaasMail(ctx, org)
   await seedSaasFollowups(ctx, org, dealIds, contactIds)
+  await seedSaasSendFrom(ctx, org)
   await seedSaasRoutines(ctx, org)
   await seedSaasMoney(ctx, org, actor, plan, companyIds, contactIds)
 }

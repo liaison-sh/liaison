@@ -159,7 +159,7 @@ A refund or a cancellation always waits for a person's approval: no policy appro
 
 The answer carries the sentence that is true for the link it gives, so a reminder says exactly what the link does. The link is never stored.
 
-**Payment reminders.** A reminder about a Stripe invoice is a mail with a follow-up on that invoice. Just before it is sent, Liaison reads the invoice from Stripe: if it is paid, void or uncollectible the reminder is not sent, and if Stripe cannot be reached the reminder waits. It is a service message, so it carries no unsubscribe footer. The **failed-payments** routine (every morning at 07:00, off until you turn it on) drafts these reminders for card payments Stripe no longer retries.
+**Payment reminders.** A reminder about a Stripe invoice is a mail with a follow-up on that invoice. Just before it is sent, Liaison reads the invoice from Stripe: if it is paid, void or uncollectible the reminder is not sent, and if Stripe cannot be reached the reminder waits. It is a service message, so it carries no unsubscribe footer. The **failed-payments** routine (every morning at 07:00, off until you turn it on) drafts these reminders for card payments Stripe no longer retries, from a mailbox its owner may use.
 
 Disputes have no write tool: answer them in Stripe's dashboard.
 

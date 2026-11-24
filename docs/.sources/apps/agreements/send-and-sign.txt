@@ -12,3 +12,7 @@ Daily notice and expired sends; ten-minute reconcile -> bundled-apps/agreements/
 A contact signs at the directory's address; another address is refused -> bundled-apps/agreements/src/send.ts (resolveSigners NOT_THE_CONTACTS_ADDRESS) ; apps/api/src/modules/client-actions/mint.ts (resolveInvitee)
 Read and sign opens only on the signer's turn -> apps/api/src/modules/client-actions/routes.ts (clientActionRoutes my-link not_your_turn)
 A replaced link no longer counts; signed once every current link signed; a corrected address is not tied to the contact -> apps/api/src/modules/client-actions/mint.ts (replacedSql, newLinkAfter, resolveInvitee) ; bundled-apps/agreements/src/send.ts (onClientActionDecided)
+A send is whole or nothing, read once, locked per document; the same send again makes and mails nothing; other signers refused -> apps/api/src/modules/client-actions/mint.ts (mintClientActionSend, runningSend, lockTargetLinks)
+A send cut off reads as sent from the links' event, an answer, the next call or the 10-minute job -> bundled-apps/agreements/src/send.ts (onLinksMade, onClientActionDecided, resumeInterruptedSends) ; bundled-apps/agreements/src/sent-state.ts (markSent)
+A void or a save of it waits while an answer is not recorded -> bundled-apps/agreements/src/send.ts (answerBeingRecorded, voidable) ; bundled-apps/agreements/src/agreements.ts (agreementUpdate)
+A reminder mails nobody whose link was mailed again in the last 10 minutes -> apps/api/src/modules/client-actions/mint.ts (remindClientActions REMINDED_MINUTES)

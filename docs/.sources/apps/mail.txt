@@ -183,3 +183,4 @@ Maybe delivered message, next Send confirms the resend -> packages/shared/src/i1
 A shared agent never reads a person's own mailbox; lists and searches leave it out -> apps/api/src/db/rls.ts:362 ; apps/api/src/apps/mail/app.manifest.json:265 ; apps/api/src/db/migrations/0307_mail_personal_agent_only.sql:1
 A call aimed at it is refused and names the personal agent -> apps/api/src/modules/mail/shared-agent-mailbox.ts:48 ; apps/api/src/modules/apps/execute-tool.ts:3809
 No mail scope request from a shared agent -> apps/api/src/modules/agent/tools/scope-request-tools.ts:114 ; apps/api/src/modules/scope-requests/service.ts:157
+A caller who may read no mailbox is told the access is missing -> apps/api/src/apps/mail/handlers.ts (mailboxAccessMissing)

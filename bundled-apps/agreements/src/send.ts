@@ -1009,7 +1009,8 @@ export async function onLinksMade(ctx: AgreementsCtx, event: DecidedEvent) {
     status = "sent"
   // Answers its links already hold (kept on a draft whose send was not taken for whole) count now.
   const now = status === "sent" ? { ...a, status } : a
-  if (WAITING.includes(now.status)) await recordAnswers(ctx, now, version)
+  if (event.data?.answered === true && WAITING.includes(now.status))
+    await replayRecorded(ctx, now, version, await linksOf(ctx, version.id))
   return { status }
 }
 
@@ -1091,6 +1092,8 @@ interface DecidedEvent {
     id?: string
     target?: { app?: string; type?: string; id?: string }
     decision?: string
+    /** On `links_made`: links made before and answered since, that a person sent again. */
+    answered?: boolean
   }
 }
 
@@ -1879,6 +1882,31 @@ function answerToReplay(links: readonly SigningLink[], status: string): string |
   return before.at(-1)?.id ?? null
 }
 
+/** Goes over that answer, once its signature is written. Answers whether it changed anything. */
+async function replayRecorded(
+  ctx: AgreementsCtx,
+  a: Agreement,
+  v: Version,
+  links: readonly SigningLink[],
+): Promise<boolean> {
+  const now = (await ctx.db.findOne("agreements", a.id)) as Agreement | null
+  const id = now && WAITING.includes(now.status) ? answerToReplay(links, now.status) : null
+  if (
+    !id ||
+    !(
+      await ctx.db.findMany("signature_events", {
+        where: { client_action_id: id },
+        limit: 1,
+      })
+    ).length
+  )
+    return false
+  const out = await onClientActionDecided(ctx, {
+    data: { id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
+  })
+  return out.status !== "ignored"
+}
+
 /**
  * Every answer of a version's links the app has not handled, through the event's own handler, and
  * then one it recorded when the agreement never moved on with it.
@@ -1887,10 +1915,6 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
   let handled = 0
   const recorded: string[] = []
   const links = await linksOf(ctx, v.id)
-  const decided = (id: string) =>
-    onClientActionDecided(ctx, {
-      data: { id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
-    })
   for (const l of links) {
     if (l.replaced === true) continue
     if (l.state !== "decided" && l.state !== "declined") continue
@@ -1904,16 +1928,13 @@ async function recordAnswers(ctx: AgreementsCtx, a: Agreement, v: Version): Prom
         continue
       }
     } else if (a.status === "draft") continue
-    await decided(l.id)
+    await onClientActionDecided(ctx, {
+      data: { id: l.id, target: { app: "agreements", type: TARGET_TYPE, id: v.id } },
+    })
     handled += 1
     if (l.state === "declined") break
   }
-  if (handled === 0 && recorded.length > 0) {
-    const now = (await ctx.db.findOne("agreements", a.id)) as Agreement | null
-    const again = now && WAITING.includes(now.status) ? answerToReplay(links, now.status) : null
-    if (again && recorded.includes(again) && (await decided(again)).status !== "ignored")
-      handled += 1
-  }
+  if (handled === 0 && recorded.length > 0 && (await replayRecorded(ctx, a, v, links))) handled += 1
   // Recorded by an earlier release, or by a run stopped before it noted it.
   if (recorded.some((id) => !(v.answers_recorded ?? []).includes(id)))
     await noteRecorded(ctx, v.id, recorded)

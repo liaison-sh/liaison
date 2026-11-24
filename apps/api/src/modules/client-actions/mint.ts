@@ -818,6 +818,8 @@ async function queueLinksMade(
   input: Pick<MintInput, "orgId" | "targetApp" | "targetType" | "targetId" | "visibleTo">,
   id: string,
   groupId: string,
+  /** Links made before and answered since, that a person sent again. */
+  opts: { answered?: boolean } = {},
 ): Promise<void> {
   await tx.queueEvent({
     app: "kernel",
@@ -828,6 +830,7 @@ async function queueLinksMade(
       id,
       groupId,
       target: { app: input.targetApp, type: input.targetType, id: input.targetId },
+      ...(opts.answered ? { answered: true } : {}),
       // A restricted document's send is known to its list only, like its decision.
       ...(input.visibleTo && input.visibleTo.length > 0 ? { visibleTo: input.visibleTo } : {}),
     },
@@ -894,7 +897,7 @@ export async function mintClientActionSend(input: MintSendInput): Promise<MintSe
       const groupId = before[0]?.group_id as string
       // A person sent again what had been answered: the app goes over those answers.
       if (before.some((l) => l.decision !== null))
-        await queueLinksMade(tx, input, before[0]?.id as string, groupId)
+        await queueLinksMade(tx, input, before[0]?.id as string, groupId, { answered: true })
       return { before, made: [] as Inserted[], groupId }
     }
     const sender = await readSender(tx, input.orgId, base.createdByUserId)
@@ -1439,6 +1442,13 @@ export async function revokeTargetClientActions(input: {
   byAgent?: boolean
 }): Promise<string[]> {
   return withPrivilegedDb(input.orgId, "client-action-revoke-target", async (tx) => {
+    // In signing order, as a turn and a link in another's place take them.
+    await tx.execute(sql`
+      SELECT id FROM ${K()}.client_actions
+       WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
+         AND target_type = ${input.targetType} AND target_id = ${input.targetId}
+         AND decided_at IS NULL AND revoked_at IS NULL
+       ORDER BY sign_order NULLS LAST, created_at FOR UPDATE`)
     const rows = extractRows<{ id: string }>(
       await tx.execute(sql`
         UPDATE ${K()}.client_actions
@@ -1556,7 +1566,7 @@ export async function remindClientActions(input: {
     await tx.execute(sql`
       SELECT id FROM ${K()}.client_actions
        WHERE org_id = ${input.orgId} AND target_app = ${input.targetApp}
-         AND id::text IN (${wanted}) ORDER BY id FOR UPDATE
+         AND id::text IN (${wanted}) ORDER BY sign_order NULLS LAST, created_at FOR UPDATE
     `)
     const now = await readOpen(tx)
     const mails: OwedMail[] = []

@@ -11,7 +11,7 @@ A withdrawn signer whose turn has not come waits for it -> apps/api/src/modules/
 An answer not recorded holds a void and a save -> bundled-apps/agreements/src/send.ts (answerBeingRecorded, noteRecorded)
 One change request per mail; a cut one is taken up, set aside or named -> bundled-apps/agreements/src/change-request-send.ts (answering, takeUp, alreadyOpen, halfSent)
 Late mails wait once a signer declined -> apps/api/src/modules/client-actions/mint.ts (unsentLinkSql)
-Kept signatures count once it is sent again -> apps/api/src/modules/client-actions/mint.ts (mintClientActionSend, queueLinksMade) ; bundled-apps/agreements/src/send.ts (onLinksMade, recordAnswers, answerToReplay)
+Kept signatures count once it is sent again -> apps/api/src/modules/client-actions/mint.ts (mintClientActionSend, queueLinksMade) ; bundled-apps/agreements/src/send.ts (onLinksMade, replayRecorded, answerToReplay)
 A new link after one that ran out before its turn; an address another signer of that name has -> apps/api/src/modules/client-actions/mint.ts (newLinkAfter, refuseHeldPlace)
 A link made beside a void or a save is withdrawn -> bundled-apps/agreements/src/send.ts (closedMeanwhile, onLinksMade, onAgreementClosed) ; apps/api/src/modules/apps/sandbox/bridge/client-actions.ts (ownEventHandler)
 Two signers at one address: the code mail's name, the portal's own link and copy -> apps/api/src/modules/client-actions/mail.ts (sendCodeMail) ; apps/api/src/modules/portal/decide-gate.ts (MINE) ; apps/api/src/modules/portal/views.ts (agreementsViews) ; apps/api/src/modules/portal/access.ts (removePersonRows)

@@ -3,7 +3,7 @@
 // AN APPROVAL CARD NAMES WHAT A PERSON READS. A tool with no summarizer of its own can be held for
 // a decision too (a turn that read scoped data), and its card is then made from its params: the
 // records they name by id read by their names, and a bare id never reaches the card.
-import { afterAll, beforeAll, describe, expect, it } from "bun:test"
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test"
 import { existsSync, readdirSync, readFileSync } from "node:fs"
 import { join, resolve } from "node:path"
 import {
@@ -22,6 +22,8 @@ import {
   genericApprovalSummary,
   templateApprovalSummarizer,
 } from "~/modules/apps/approval-summarizers"
+import * as referenceDisplay from "~/modules/threads/reference-display"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 
@@ -134,7 +136,7 @@ describe("the records a call names", () => {
   let closedCompany = ""
 
   const summary = (tool: string, params: unknown) =>
-    withRlsContext(w.actor, (tx) => {
+    withRlsContext({ ...w.actor, scopes: ["*"] }, (tx) => {
       const [app, name] = tool.split(":") as [string, string]
       return generateApprovalSummary(
         w.orgId,
@@ -211,6 +213,60 @@ describe("the records a call names", () => {
     expect(open.lines).toEqual(["Company: Northwind Cooperative"])
   })
 
+  it("a contact shared by name is not named either", async () => {
+    const person = crypto.randomUUID()
+    await sql.unsafe(
+      insertSql("kernel.contacts", {
+        id: person,
+        org_id: w.orgId,
+        name: "Quiet Person",
+        email: "quiet@example.com",
+        handle: `c-${person.slice(0, 8)}`,
+        org_access: "none",
+        created_by: w.userId,
+        owner_user_id: w.userId,
+      }),
+    )
+    const card = await summary("projects:link_person", { contactId: person })
+    expect(card.lines).toEqual(["Contact: a restricted record"])
+  })
+
+  it("a document closed to the organization is not named, an open one is", async () => {
+    const document = async (title: string, orgAccess: string) => {
+      const id = crypto.randomUUID()
+      await sql.unsafe(
+        insertSql("app_knowledge.documents", {
+          id,
+          org_id: w.orgId,
+          title,
+          body: "body",
+          document_scope: "organization",
+          owner_user_id: w.userId,
+          created_by: w.userId,
+          revision: 1,
+          required_scopes: "{}",
+          sensitivity: "internal",
+          org_access: orgAccess,
+        }),
+      )
+      return id
+    }
+    entityRegistry.set([w.orgId, "knowledge", "document"], {
+      labelField: "title",
+      handlePrefix: "doc",
+      tableName: "documents",
+    } as never)
+    const open = await summary("projects:attach", {
+      documentId: await document("Onboarding guide", "viewer"),
+    })
+    expect(open.lines).toEqual(["Document: Onboarding guide"])
+    const closed = await summary("projects:attach", {
+      documentId: await document("Board minutes", "none"),
+    })
+    expect(closed.lines).toEqual(["Document: a restricted record"])
+    expect(JSON.stringify(closed)).not.toContain("Board minutes")
+  })
+
   it("an id nobody can name is left out, and the caller's transaction goes on", async () => {
     const card = await summary("projects:touch_ghost", {
       ghostId: task,
@@ -222,8 +278,26 @@ describe("the records a call names", () => {
   })
 
   it("what may be one person's own is never looked up", async () => {
-    const card = await summary("mail:archive", { conversationId: OTHER_ID })
-    expect(card.lines).toEqual(["(no details to show)"])
+    const mail = { tool: "mail:archive", params: { conversationId: task } }
+    entityRegistry.set([w.orgId, "projects", "conversation"], {
+      labelField: "title",
+      handlePrefix: "x",
+      tableName: "tasks",
+    } as never)
+    // A kind of the same name in an app whose records are the organization's is read.
+    expect((await summary(mail.tool, mail.params)).lines).toEqual([
+      "Conversation: Supplier portal rebuild",
+    ])
+    entityRegistry.delete([w.orgId, "projects", "conversation"])
+    const read = spyOn(referenceDisplay, "resolveEntityLabel")
+    try {
+      expect((await summary(mail.tool, mail.params)).lines).toEqual(["(no details to show)"])
+      expect(read.mock.calls.map(([, at]) => `${at.app}:${at.entityType}`)).not.toContain(
+        "mail:conversation",
+      )
+    } finally {
+      read.mockRestore()
+    }
   })
 
   it("an approvalCard template reads names too", async () => {

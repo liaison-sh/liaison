@@ -12,6 +12,7 @@
 // card is read by every decider, and whoever asked may see more than they do.
 import { and, sql as drizzleSql, eq } from "drizzle-orm"
 import { extractRows, type RlsClient } from "~/db"
+import { withPrivilegedDb } from "~/db/privileged"
 import { companies, contacts, users } from "~/db/schema/kernel"
 import { schemaRef } from "~/db/schema-ref"
 import { isRecord } from "~/lib/guards"
@@ -116,15 +117,18 @@ function idsOf(params: unknown, key = ""): Array<{ key: string; id: string }> {
   return Object.entries(params).flatMap(([k, v]) => idsOf(v, k))
 }
 
-async function isRestricted(tx: RlsClient, orgId: string, k: Kind, id: string): Promise<boolean> {
+/** The kernel's own answer, which the requester's role may not ask for. */
+async function isRestricted(orgId: string, k: Kind, id: string): Promise<boolean> {
   const kind = `${k.app}.${k.entityType}`
   if (!RESTRICTED_ENTITY_KINDS.includes(kind)) return false
-  const [row] = extractRows<{ ids: string[] | null }>(
-    await tx.execute(
-      drizzleSql`SELECT ${drizzleSql.raw(schemaRef("kernel"))}.restricted_among(${orgId}::uuid, ${kind}, ARRAY[${id}]::text[]) AS ids`,
-    ),
-  )
-  return (row?.ids ?? []).map(String).includes(id)
+  return withPrivilegedDb(orgId, "approval-card-restricted", async (tx) => {
+    const [row] = extractRows<{ ids: string[] | null }>(
+      await tx.execute(
+        drizzleSql`SELECT ${drizzleSql.raw(schemaRef("kernel"))}.restricted_among(${orgId}::uuid, ${kind}, ARRAY[${id}]::text[]) AS ids`,
+      ),
+    )
+    return (row?.ids ?? []).map(String).includes(id)
+  })
 }
 
 async function nameOf(
@@ -153,7 +157,7 @@ async function nameOf(
   const { resolveEntityLabel } = await import("~/modules/threads/reference-display")
   const label = await resolveEntityLabel(tx, { orgId, ...k, entityId: id })
   if (label === null) return null
-  if (await isRestricted(tx, orgId, k, id)) return { ...k, name: null }
+  if (await isRestricted(orgId, k, id)) return { ...k, name: null }
   const name = label.replace(/\s+/g, " ").trim()
   // A record with no name of its own is labelled by a piece of its id.
   if (!name || name === `#${id.slice(0, 8)}`) return { ...k, name: null }

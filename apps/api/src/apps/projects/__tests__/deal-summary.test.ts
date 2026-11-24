@@ -14,6 +14,7 @@ import {
 } from "~/apps/projects/service/__tests__/deal-world"
 import { sql } from "~/db/connection"
 import { withRlsContext } from "~/db/rls"
+import { insertSql } from "~/seed/factories/org/test-rows"
 import { createTestCompany } from "~/tests/helpers/company"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
 import { summarizeDealsUpdate } from "../summarizers"
@@ -35,9 +36,15 @@ describe("the card of a deal change", () => {
     deal = await makeTask(w, pipeline.projectId, "Supplier portal")
     const client = await createTestCompany(w.orgId, "Northwind Cooperative")
     await sql`UPDATE app_projects.deals SET company_id = ${client} WHERE task_id = ${deal}`
-    await sql`INSERT INTO app_projects.deal_values (task_id, org_id, amount_minor, currency)
-              VALUES (${deal}, ${w.orgId}, 987654300, 'EUR')
-              ON CONFLICT (task_id) DO UPDATE SET amount_minor = 987654300, currency = 'EUR'`
+    await sql`DELETE FROM app_projects.deal_values WHERE task_id = ${deal}`
+    await sql.unsafe(
+      insertSql("app_projects.deal_values", {
+        task_id: deal,
+        org_id: w.orgId,
+        amount_minor: 987654300,
+        currency: "EUR",
+      }),
+    )
     const [row] = await sql<{ key: string }[]>`
       SELECT p.key || '-' || t.number AS key FROM app_projects.tasks t
         JOIN app_projects.projects p ON p.id = t.project_id WHERE t.id = ${deal}`
@@ -101,9 +108,18 @@ describe("the card of a deal change", () => {
     const set = await card({ taskId: deal, companyId: quiet })
     expect(set.lines).toEqual(["Client: a company shared by name"])
     const person = crypto.randomUUID()
-    await sql`INSERT INTO kernel.contacts (id, org_id, name, email, handle, org_access, created_by, owner_user_id)
-              VALUES (${person}, ${w.orgId}, 'Quiet Person', 'quiet@example.com',
-                      ${`c-${person.slice(0, 8)}`}, 'none', ${w.userId}, ${w.userId})`
+    await sql.unsafe(
+      insertSql("kernel.contacts", {
+        id: person,
+        org_id: w.orgId,
+        name: "Quiet Person",
+        email: "quiet@example.com",
+        handle: `c-${person.slice(0, 8)}`,
+        org_access: "none",
+        created_by: w.userId,
+        owner_user_id: w.userId,
+      }),
+    )
     expect((await card({ taskId: deal, contactId: person })).lines).toEqual([
       "Contact: a contact shared by name",
     ])

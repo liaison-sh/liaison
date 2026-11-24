@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { knowledgeMoveDocumentSchema, normalizePageRefs } from "@liaison/shared"
+import { sql } from "drizzle-orm"
 import type { Context, Hono } from "hono"
 import { z } from "zod"
 import type { AppEnv } from "~/app"
+import { MAX_RESOLVE_IDS, pageBacklinks, pickPages, readablePages } from "~/apps/knowledge/links"
 import { moveDocument } from "~/apps/knowledge/move"
 import {
+  assertCanReadDocumentRow,
   assertCanWriteDocumentRow,
   type KnowledgeActor,
   type KnowledgeDocumentRow,
@@ -14,7 +17,8 @@ import {
   updateKnowledgeDocument,
 } from "~/apps/knowledge/service"
 import { getVersion, listVersions, saveUnapplied } from "~/apps/knowledge/versions"
-import type { RlsClient } from "~/db"
+import { extractRows, type RlsClient } from "~/db"
+import { schemaRef } from "~/db/schema-ref"
 import { withRequestRls } from "~/lib/request-rls"
 import { success } from "~/lib/response"
 import { zValidator } from "~/lib/validate"
@@ -38,6 +42,9 @@ const unappliedSchema = z.object({
   baseRevision: z.number().int().nonnegative(),
   session: z.uuid().nullable().optional(),
 })
+
+const resolveSchema = z.object({ ids: z.array(z.uuid()).max(MAX_RESOLVE_IDS) })
+const pickQuerySchema = z.object({ q: z.string().max(200).optional() })
 
 const notFound = () => new KnowledgeError("NOT_FOUND", "Knowledge item not found")
 
@@ -79,7 +86,87 @@ export function autosaveOptions(query: (name: string) => string | undefined) {
   }
 }
 
+/** The page, when the actor may read it; anything else is the not-found of an unknown id. */
+async function readablePage(
+  tx: RlsClient,
+  id: string,
+  actor: KnowledgeActor,
+): Promise<KnowledgeDocumentRow> {
+  const row = await loadKnowledgeDocument(tx, id, actor)
+  if (!row) throw notFound()
+  assertCanReadDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
+  return row
+}
+
+/**
+ * The conversations that reference a page (`kernel.thread_references`, under the
+ * reader's row security, so only threads the reader can see). Private assistant chats
+ * (`agent_chat`) are never listed: they collect references for the assistant's own use.
+ */
+async function threadBacklinks(tx: RlsClient, orgId: string, id: string) {
+  const K = sql.raw(schemaRef("kernel"))
+  const rows = extractRows<{ threadId: string; title: string | null }>(
+    await tx.execute(sql`
+      SELECT tr.thread_id AS "threadId", t.title AS "title"
+        FROM ${K}.thread_references tr
+        JOIN ${K}.threads t ON t.id = tr.thread_id
+       WHERE tr.app = 'knowledge' AND tr.entity_type = 'document'
+         AND tr.entity_id = ${id} AND tr.org_id = ${orgId}::uuid
+         AND t.type <> 'agent_chat'
+       ORDER BY tr.last_visited_at DESC
+       LIMIT 100`),
+  )
+  return rows.map((r) => ({
+    kind: "thread" as const,
+    app: "kernel",
+    entityType: "thread",
+    entityId: r.threadId,
+    title: r.title ?? "Thread",
+    url: `/threads/${r.threadId}`,
+  }))
+}
+
 export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers): void {
+  // Titles of the pages a text links to, for this reader: live pages they may read only;
+  // any other id is absent from the answer (the reader then shows "Page you cannot open").
+  routes.post("/documents/resolve", zValidator("json", resolveSchema), async (c) => {
+    const actor = helpers.getActor(c)
+    const { ids } = c.req.valid("json")
+    const pages = await withRequestRls(c, (tx) => readablePages(tx, actor, ids))
+    return success(c, pages)
+  })
+
+  // The link picker: pages whose title holds `q`, that the writer may read.
+  routes.get("/documents/pick", zValidator("query", pickQuerySchema), async (c) => {
+    const actor = helpers.getActor(c)
+    const { q } = c.req.valid("query")
+    const pages = await withRequestRls(c, (tx) => pickPages(tx, actor, q ?? ""))
+    return success(c, pages)
+  })
+
+  // What links here: pages (only those the reader may read) and conversations (only
+  // those the reader can see). Never a count or a title of anything else.
+  routes.get("/documents/:id/backlinks", zValidator("param", idParamSchema), async (c) => {
+    try {
+      const actor = helpers.getActor(c)
+      const { id } = c.req.valid("param")
+      const backlinks = await withRequestRls(c, async (tx) => {
+        await readablePage(tx, id, actor)
+        const pages = (await pageBacklinks(tx, actor, id)).map((p) => ({
+          kind: "page" as const,
+          app: "knowledge",
+          entityType: "document",
+          entityId: p.id,
+          title: p.title,
+        }))
+        return [...pages, ...(await threadBacklinks(tx, actor.orgId, id))]
+      })
+      return success(c, { backlinks })
+    } catch (err) {
+      return helpers.pageNotFound(c, err)
+    }
+  })
+
   routes.post(
     "/documents/:id/move",
     zValidator("param", idParamSchema),
@@ -170,11 +257,12 @@ export function mountPageRoutes(routes: Hono<AppEnv>, helpers: PageRouteHelpers)
         const input = c.req.valid("json")
         const versionId = await withRequestRls(c, async (tx) => {
           await editablePage(tx, id, actor)
+          // Stored like any text of the page: page links without titles.
           return saveUnapplied(tx, {
             orgId: actor.orgId,
             documentId: id,
-            title: input.title,
-            body: input.body,
+            title: normalizePageRefs(input.title),
+            body: normalizePageRefs(input.body),
             baseRevision: input.baseRevision,
             session: input.session ?? null,
             authorId: actor.userId,

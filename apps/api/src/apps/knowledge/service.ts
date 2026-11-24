@@ -7,6 +7,7 @@ import {
   type KnowledgeUpdateDocument,
   knowledgeCreateDocumentSchema,
   knowledgeUpdateDocumentSchema,
+  normalizePageRefs,
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { adoptForeignFiles, adoptionFields, type FileAdoption } from "~/apps/knowledge/body-tokens"
@@ -250,8 +251,10 @@ function rowFromDb(r: DocumentDbRow): KnowledgeDocumentRow {
     id: r.id,
     orgId: r.org_id,
     title: r.title,
-    summary: r.summary,
-    body: r.body,
+    // A page link leaves the server as the bare token: a title an agent or an earlier
+    // release stored in it is never shown to a reader who may not open that page.
+    summary: r.summary === null ? null : normalizePageRefs(r.summary),
+    body: normalizePageRefs(r.body),
     documentScope: r.document_scope,
     ownerUserId: r.owner_user_id,
     participantIds: r.participant_ids,
@@ -1021,6 +1024,9 @@ export async function createKnowledgeDocument(
     )
   }
   const parsed = validateCreateInput(input)
+  // Page links are stored as the bare token, never with a title (links.ts).
+  if (parsed.body !== undefined) parsed.body = normalizePageRefs(parsed.body)
+  if (parsed.summary != null) parsed.summary = normalizePageRefs(parsed.summary)
 
   let ownerUserId: string
   let participantIds: string[] | null
@@ -1082,7 +1088,7 @@ export async function createKnowledgeDocument(
     INSERT INTO ${knowledgeRel("documents")}
       (id, org_id, title, summary, body, document_scope, owner_user_id, participant_ids,
        team, sensitivity, review_status, verified_by, verified_at, review_due_at,
-       revision, created_by, org_access, edit_scope, required_scopes)
+       revision, created_by, org_access, edit_scope, required_scopes, links_indexed_at)
     VALUES (
       ${id}::uuid,
       ${actor.orgId}::uuid,
@@ -1102,7 +1108,8 @@ export async function createKnowledgeDocument(
       ${actor.userId}::uuid,
       ${orgAccess},
       ${editScope},
-      ${textArraySql(requiredScopes)}
+      ${textArraySql(requiredScopes)},
+      now()
     )
   `)
   // acl_user_ids starts as [owner, createdBy] deduped (no shares yet on a
@@ -1116,6 +1123,8 @@ export async function createKnowledgeDocument(
       UPDATE ${knowledgeRel("documents")} SET body = ${adopted.body}
        WHERE id = ${id}::uuid AND org_id = ${actor.orgId}::uuid`)
   }
+  const { refreshDocumentLinks } = await import("~/apps/knowledge/links")
+  await refreshDocumentLinks(tx, actor.orgId, id, adopted.body)
   await tx.queueEvent({
     app: "knowledge",
     entity: "document",
@@ -1212,6 +1221,14 @@ export async function updateKnowledgeDocument(
   assertCanWriteDocumentRow(row, actor, updateShareRole)
   if (row.revision !== parsed.revision)
     throw new KnowledgeError("REVISION_CONFLICT", "Revision conflict")
+
+  // Page links are stored as the bare token, never with a title (links.ts). A page
+  // stored before that is normalised first, history included, so this write compares
+  // and records texts without titles (`row` is read that way already).
+  const links = await import("~/apps/knowledge/links")
+  await links.normaliseStoredLinksBeforeWrite(tx, actor.orgId, row.id)
+  if (parsed.body !== undefined) parsed.body = normalizePageRefs(parsed.body)
+  if (parsed.summary != null) parsed.summary = normalizePageRefs(parsed.summary)
 
   // Files of other pages the new text names become this page's own, before the text
   // is compared and written (body-tokens.ts).
@@ -1388,6 +1405,10 @@ export async function updateKnowledgeDocument(
           "document was not modified.",
       )
     }
+  }
+
+  if (parsed.body !== undefined && parsed.body !== row.body) {
+    await links.refreshDocumentLinks(tx, actor.orgId, parsed.id, parsed.body)
   }
 
   // Owner reassignment changes who is implicitly on the ACL (recomputed from

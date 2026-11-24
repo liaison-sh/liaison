@@ -40,7 +40,8 @@ const APP_DDL =
  */
 const REVIEWED: Record<string, Record<string, string>> = {
   "apps/api/src/apps/knowledge/collections.ts#liveSourcesOf": {
-    folder: 'a table alias of the calling query, typed as the literal union "up" | "c" | "tree"; no value from a request or a row',
+    folder:
+      'a table alias of the calling query, typed as the literal union "up" | "c" | "tree"; no value from a request or a row',
   },
   "apps/api/src/modules/cloud/storage-estimate.ts#measureSource": {
     "relOf(s)": "schemaRef of a table in the module's literal SOURCES list",

@@ -29,7 +29,7 @@
   },
   "app_invoicing.recurring_schedules": {
     "rows": 10,
-    "digest": "f411a118bf7048d0"
+    "digest": "f2f21a2b0b6ce69c"
   },
   "app_invoicing.stripe_streams": {
     "rows": 1,

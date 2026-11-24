@@ -288,7 +288,51 @@ export async function reactivateSyncedSource(orgId: string, id: string): Promise
       SET archived_at = NULL, last_sync_status = 'idle', updated_at = now()
       WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid
     `)
+    const rows = extractRows<SyncedSourceDbRow>(
+      await tx.execute(drizzleSql`
+        SELECT * FROM ${knowledgeRel("synced_sources")}
+        WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid
+      `),
+    )
+    if (rows[0]) await restoreRootOwner(tx, rowFromDb(rows[0]))
   })
+}
+
+/**
+ * While a source was archived anyone could manage its root like any folder.
+ * Syncing again puts it back where the source belongs: the organization's, or
+ * its owner's. Done as the folder's present owner when it has one, the only
+ * person whose request shares a personal folder (trigger collections_owner_lost,
+ * which otherwise takes it for a deleted person's).
+ */
+async function restoreRootOwner(
+  tx: PrivilegedDb,
+  source: Pick<SyncedSourceRow, "orgId" | "rootCollectionId" | "ownerUserId">,
+): Promise<void> {
+  const current = extractRows<{ owner_user_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT owner_user_id::text AS owner_user_id FROM ${knowledgeRel("collections")}
+      WHERE id = ${source.rootCollectionId}::uuid AND org_id = ${source.orgId}::uuid
+      FOR UPDATE
+    `),
+  )[0]
+  if (!current || current.owner_user_id === source.ownerUserId) return
+  const before = extractRows<{ user_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT current_setting('app.current_user_id', true) AS user_id
+    `),
+  )[0]?.user_id
+  await tx.execute(drizzleSql`
+    SELECT set_config('app.current_user_id', ${current.owner_user_id ?? ""}, true)
+  `)
+  await tx.execute(drizzleSql`
+    UPDATE ${knowledgeRel("collections")}
+    SET owner_user_id = ${source.ownerUserId}::uuid, updated_at = now()
+    WHERE id = ${source.rootCollectionId}::uuid AND org_id = ${source.orgId}::uuid
+  `)
+  await tx.execute(drizzleSql`
+    SELECT set_config('app.current_user_id', ${before ?? ""}, true)
+  `)
 }
 
 // ---------------------------------------------------------------------------
@@ -471,7 +515,10 @@ async function doCreateSyncedSource(
           RETURNING *
         `),
       )
-      if (revived[0]) return rowFromDb(revived[0])
+      if (revived[0]) {
+        await restoreRootOwner(tx, existing)
+        return rowFromDb(revived[0])
+      }
     }
   }
   const collectionId = randomUUID()

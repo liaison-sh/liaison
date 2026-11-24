@@ -10,7 +10,7 @@ import {
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { shouldResetVerification } from "~/apps/knowledge/review"
-import { knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { isUuid } from "~/lib/uuid"
 import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
@@ -609,7 +609,6 @@ export async function findRoutineBoundRunningDoc(
     const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
     const routineId = currentRunContext()?.routineId
     if (!routineId) return null
-    const { kernelRel } = await import("~/apps/knowledge/schema-refs")
     const promptRows = extractRows<{ prompt: string | null }>(
       await tx.execute(
         drizzleSql`SELECT prompt FROM ${kernelRel("routines")} WHERE id = ${routineId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
@@ -841,6 +840,32 @@ export async function findUniqueOrgRunningWatchDoc(
   }
 }
 
+/**
+ * The page `d` is in no live folder this reader can see. Run under row security:
+ * a folder that is someone else's, with its memberships, does not count.
+ */
+export function inNoVisibleFolder() {
+  return drizzleSql`NOT EXISTS (
+    SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
+    JOIN ${knowledgeRel("collections")} c ON c.id = m.collection_id AND c.org_id = m.org_id
+    WHERE m.org_id = d.org_id AND m.target_type = 'document' AND m.target_id = d.id
+      AND c.archived_at IS NULL
+  )`
+}
+
+/** The organization page `d` is the reader's own and shared with nobody. */
+export function onlyMine(actor: KnowledgeActor) {
+  return drizzleSql`(
+    d.document_scope = 'organization'
+    AND d.owner_user_id IS NOT NULL AND d.owner_user_id::text = ${actor.userId}
+    AND d.org_access = 'none'
+    AND NOT EXISTS (
+      SELECT 1 FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = d.org_id AND g.resource_type = ${KNOWLEDGE_RESOURCE} AND g.resource_id = d.id
+    )
+  )`
+}
+
 export async function listKnowledgeDocuments(
   tx: RlsClient,
   actor: KnowledgeActor,
@@ -848,16 +873,12 @@ export async function listKnowledgeDocuments(
 ): Promise<KnowledgeDocumentRow[]> {
   const limit = Math.max(1, Math.min(200, opts.limit ?? 50))
   const includeArchived = opts.includeArchived ?? false
-  // Unfiled = org-scope documents not in any collection. Personal-scope
-  // documents cannot belong to a collection by validation, so excluding
-  // them keeps "Unfiled" semantically about *org* knowledge that needs
-  // filing. Personal docs surface under the __personal_notes__ tree node.
+  // Unfiled is per reader: in no live folder they can see (their own private
+  // pages and personal documents are the Personal section's).
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
-        AND NOT EXISTS (
-          SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
-          WHERE m.target_id = d.id AND m.target_type = 'document'
-        )`
+        AND ${inNoVisibleFolder()}
+        AND NOT ${onlyMine(actor)}`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`

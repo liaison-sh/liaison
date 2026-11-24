@@ -402,13 +402,19 @@ export async function handleCaptureBusinessKnowledge(
     // find-or-create an org-shared "Business Basics" one before delegating.
     const collectionId = await withRlsContext(actor, async (tx) => {
       const { knowledgeActorFromContext } = await import("~/apps/knowledge/service")
-      const { createKnowledgeCollection, listKnowledgeCollections } = await import(
+      const { createKnowledgeCollection, isSynced, listKnowledgeCollections } = await import(
         "~/apps/knowledge/collections"
       )
       const kActor = knowledgeActorFromContext(actor)
       const existing = await listKnowledgeCollections(tx, kActor)
-      const match = existing.find((c) => c.name === "Business Basics") ?? existing[0]
-      if (match) return match.id
+      // Never a personal folder (organization knowledge would be filed where only
+      // its owner looks), never a synced one (only its sync writes there).
+      const shared = existing.filter((c) => c.ownerUserId === null)
+      for (const c of [...shared].sort(
+        (a, b) => Number(b.name === "Business Basics") - Number(a.name === "Business Basics"),
+      )) {
+        if (!(await isSynced(tx, c.id))) return c.id
+      }
       const created = await createKnowledgeCollection(
         tx,
         { name: "Business Basics", ownerUserId: null },

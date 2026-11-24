@@ -307,6 +307,8 @@ export interface KnowledgeCollectionCreateParams {
   name: string
   parentCollectionId?: string | null
   description?: string | null
+  /** A folder only the person sees; shared with the organization otherwise. */
+  personal?: boolean
 }
 
 export interface KnowledgeCollectionUpdateParams {
@@ -353,6 +355,7 @@ export async function handleKnowledgeCollectionCreate(
       name: params.name,
       parentCollectionId: params.parentCollectionId ?? null,
       description: params.description ?? null,
+      ownerUserId: params.personal === true ? deps.actor.userId : null,
     },
     deps.actor,
   )

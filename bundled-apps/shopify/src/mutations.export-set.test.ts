@@ -10,6 +10,7 @@ import { describe, expect, it } from "bun:test"
 import * as mutations from "./mutations"
 
 const EXPECTED_EXPORTS: ReadonlyArray<string> = [
+  "canonicaliseAutomaticBasicDiscount",
   "canonicaliseBasicCodeDiscount",
   "canonicaliseBasicCodeDiscountPartial",
   "canonicalizeProductInput",
@@ -26,6 +27,8 @@ const EXPECTED_EXPORTS: ReadonlyArray<string> = [
   "discounts_create_preflight",
   "discounts_delete",
   "discounts_delete_preflight",
+  "discounts_set_status",
+  "discounts_set_status_preflight",
   "discounts_update",
   "discounts_update_preflight",
   "draft_orders_complete",

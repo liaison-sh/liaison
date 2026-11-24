@@ -17,6 +17,7 @@ import {
   createSignal,
   For,
   onCleanup,
+  onMount,
   Show,
 } from "solid-js"
 import { ApiError } from "~/lib/api-error"
@@ -45,6 +46,7 @@ function formatRelative(iso: string | null, locale: string, never: string): stri
 }
 
 import { useApi } from "~/modules/shell/ApiContext"
+import Breadcrumb from "./Breadcrumb"
 import KnowledgeShareDialog from "./KnowledgeShareDialog"
 import {
   archiveKnowledgeDocument,
@@ -56,7 +58,13 @@ import {
   updateKnowledgeDocument,
   verifyKnowledgeDocument,
 } from "./knowledge-api"
-import { getPulseUpdated, isSyncedSourceArchived, loadDocuments } from "./knowledge-store"
+import {
+  getPulseUpdated,
+  isCollectionsTreeLoaded,
+  isSyncedSourceArchived,
+  loadCollectionsTree,
+  loadDocuments,
+} from "./knowledge-store"
 
 interface KnowledgeDocumentFetched {
   id: string
@@ -124,6 +132,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   }
   const renderedBody = createMemo(() => renderMarkdown(pending() ?? storedBody()))
   const [conflict, setConflict] = createSignal(false)
+  const [titleConflict, setTitleConflict] = createSignal(false)
   const [actionError, setActionError] = createSignal<string | null>(null)
   const [backlinks, setBacklinks] = createSignal<KnowledgeBacklink[]>([])
   const [_backlinksLoading, setBacklinksLoading] = createSignal(false)
@@ -134,6 +143,11 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
   const phone = () => shellTier() === "phone"
 
   let titleEl: HTMLHeadingElement | undefined
+
+  // The breadcrumb reads the folder tree; at phone width no sidebar loaded it.
+  onMount(() => {
+    if (!isCollectionsTreeLoaded()) void loadCollectionsTree(apiForSidebar)
+  })
 
   // Zero-knowledge denial / deleted doc: the fetch resolved "not-found", so
   // this tab points at an entity the user cannot see. Evict it silently —
@@ -227,6 +241,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       await archiveKnowledgeDocument(api, d.id)
       void refetch()
       void loadDocuments(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
       setMenuOpen(false)
     } catch (err) {
       setActionError(err instanceof Error ? err.message : i18n.t("knowledge.archiveFailed"))
@@ -265,13 +280,16 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     if (!d || d === "not-found" || !api || !d.canEdit) return
     const newTitle = titleEl?.textContent ?? ""
     if (!newTitle.trim() || newTitle === d.title) return
+    setTitleConflict(false)
     try {
       await updateKnowledgeDocument(api, d.id, { title: newTitle, revision: d.revision })
-      void refetch()
+      await refetch()
       void loadDocuments(apiForSidebar)
+      void loadCollectionsTree(apiForSidebar)
     } catch (err) {
-      console.error("Failed to update title:", err)
-      if (titleEl) titleEl.textContent = d.title
+      // The typed title stays where it was typed; the reader decides.
+      if (err instanceof ApiError && err.status === 409) setTitleConflict(true)
+      else setActionError(err instanceof Error ? err.message : i18n.t("knowledge.saveFailed"))
     }
   }
 
@@ -301,13 +319,14 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
     >
       <Show when={doc() && doc() !== "not-found" ? (doc() as KnowledgeDocumentFetched) : null}>
         {(d) => {
-          const document = d()
+          // The header reads the page through d(), never a copy: a Verify, a
+          // rename or a reload shows at once.
           return (
             <div
               data-testid="knowledge-document-view"
-              data-document-id={document.id}
+              data-document-id={d().id}
               // A guided tour points at a seeded document by its title.
-              data-doc-title={document.title}
+              data-doc-title={d().title}
               class="flex h-full flex-col"
             >
               {/* Header — ThreadHeader pattern */}
@@ -317,27 +336,28 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
               >
                 {/* Left: inline-editable title + badges */}
                 <div class="flex min-w-0 flex-col gap-0.5">
+                  <Breadcrumb docId={d().id} />
                   <h1
                     ref={titleEl}
                     data-testid="knowledge-doc-title"
-                    contenteditable={document.canEdit ? "true" : "false"}
+                    contenteditable={d().canEdit ? "true" : "false"}
                     class="truncate text-[15px] font-semibold text-text outline-none
                            focus:ring-1 focus:ring-accent/20 focus:rounded-sm"
                     onBlur={handleTitleBlur}
                     onKeyDown={handleTitleKeyDown}
                   >
-                    {document.title}
+                    {d().title}
                   </h1>
                   <div class="flex gap-1.5">
-                    <Show when={document.reviewStatus && document.documentScope !== "personal"}>
+                    <Show when={d().reviewStatus && d().documentScope !== "personal"}>
                       <span
                         data-testid="knowledge-doc-review-status"
                         class="rounded bg-surface-hover px-1.5 text-[11px] text-text-secondary"
                       >
-                        {document.reviewStatus}
+                        {d().reviewStatus}
                       </span>
                     </Show>
-                    <Show when={document.sensitivity ?? document.documentScope}>
+                    <Show when={d().sensitivity ?? d().documentScope}>
                       {(label) => (
                         <span
                           data-testid="knowledge-doc-scope-badge"
@@ -347,7 +367,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                         </span>
                       )}
                     </Show>
-                    <Show when={document.status === "archived"}>
+                    <Show when={d().status === "archived"}>
                       <span
                         data-testid="knowledge-doc-archived-badge"
                         class="rounded bg-surface-hover px-1.5 text-[11px] text-warning"
@@ -394,7 +414,12 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                                text-text-tertiary hover:bg-surface-hover hover:text-text-secondary"
                       >
                         <ArrowLeftRight size={12} />
-                        {backlinks().length} {backlinks().length === 1 ? "reference" : "references"}
+                        {i18n.t(
+                          backlinks().length === 1
+                            ? "knowledge.referenceCount"
+                            : "knowledge.referencesCount",
+                          { count: backlinks().length },
+                        )}
                       </FloatingPanel.Trigger>
                       <FloatingPanel.Content class="w-64 py-2">
                         <div class="px-3 pb-1 text-[11px] font-semibold uppercase tracking-[0.04em] text-text-tertiary">
@@ -426,7 +451,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       {i18n.t("knowledge.saving")}
                     </span>
                   </Show>
-                  <Show when={document.canEdit}>
+                  <Show when={d().canEdit}>
                     <button
                       type="button"
                       data-testid="knowledge-doc-edit"
@@ -475,7 +500,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       <div class="my-1 h-px bg-border-subtle" />
 
                       <Show
-                        when={document.status === "archived"}
+                        when={d().status === "archived"}
                         fallback={
                           <button
                             type="button"
@@ -506,7 +531,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
               {/* Notices about the edit sit above the scrolling text: Save is
                   often pressed far down a document, where a notice at the top
                   of the text was out of sight. */}
-              <Show when={conflict() || actionError()}>
+              <Show when={conflict() || titleConflict() || actionError()}>
                 <div
                   class={`flex shrink-0 flex-col gap-2 pt-3 ${phone() ? "px-4" : "mx-auto w-full max-w-2xl px-8"}`}
                 >
@@ -531,6 +556,30 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       </Button>
                     </div>
                   </Show>
+                  <Show when={titleConflict()}>
+                    <div
+                      data-testid="knowledge-doc-title-conflict"
+                      role="alert"
+                      class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-[12.5px] text-text"
+                    >
+                      <span class="min-w-0 flex-1">{i18n.t("knowledge.titleConflict")}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        data-testid="knowledge-doc-title-load-latest"
+                        onClick={() => {
+                          setTitleConflict(false)
+                          void refetch().then((fresh) => {
+                            if (fresh && fresh !== "not-found" && titleEl) {
+                              titleEl.textContent = fresh.title
+                            }
+                          })
+                        }}
+                      >
+                        {i18n.t("knowledge.loadTheirs")}
+                      </Button>
+                    </div>
+                  </Show>
                   <Show when={actionError()}>
                     <p data-testid="knowledge-doc-error" role="alert" class="text-xs text-danger">
                       {actionError()}
@@ -549,12 +598,10 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       "Source removed" + disabled Refresh when the upstream
                       source has been archived (e.g. someone hit Remove in
                       Settings while this tab is still open). */}
-                  <Show when={document.syncedSourceId}>
+                  <Show when={d().syncedSourceId}>
                     {(() => {
                       const sourceArchived = () =>
-                        document.syncedSourceId
-                          ? isSyncedSourceArchived(document.syncedSourceId)
-                          : false
+                        d().syncedSourceId ? isSyncedSourceArchived(d().syncedSourceId) : false
                       return (
                         <div
                           data-testid="knowledge-doc-synced-banner"
@@ -574,16 +621,14 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                           >
                             <span>
                               {i18n.t("knowledge.syncedFrom")}{" "}
-                              {document.syncedSourceApp
-                                ? appLabel(document.syncedSourceApp, i18n.t)
+                              {d().syncedSourceApp
+                                ? appLabel(d().syncedSourceApp, i18n.t)
                                 : i18n.t("knowledge.externalSource")}
-                              <Show when={document.syncedSourceName}>
-                                {(name) => <> · {name()}</>}
-                              </Show>
-                              <Show when={document.lastSyncedAt}>
+                              <Show when={d().syncedSourceName}>{(name) => <> · {name()}</>}</Show>
+                              <Show when={d().lastSyncedAt}>
                                 {i18n.t("knowledge.lastRefreshed")}
                                 {formatRelative(
-                                  document.lastSyncedAt ?? null,
+                                  d().lastSyncedAt ?? null,
                                   i18n.locale(),
                                   i18n.t("knowledge.neverSynced"),
                                 )}
@@ -595,10 +640,10 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                             data-testid="knowledge-doc-synced-refresh"
                             disabled={sourceArchived()}
                             onClick={async () => {
-                              if (!api || !document.syncedSourceId) return
+                              if (!api || !d().syncedSourceId) return
                               if (sourceArchived()) return
                               try {
-                                await runSyncedSourceNow(api, document.syncedSourceId)
+                                await runSyncedSourceNow(api, d().syncedSourceId)
                               } catch {
                                 // surface via existing actionError pathway
                                 setActionError(i18n.t("knowledge.refreshFailed"))
@@ -608,7 +653,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                           >
                             {i18n.t("kernel.common.refresh")}
                           </button>
-                          <Show when={getPulseUpdated(document.id)}>
+                          <Show when={getPulseUpdated(d().id)}>
                             <span
                               data-testid="knowledge-doc-refreshed-pill"
                               class="ml-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent"
@@ -643,7 +688,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                       value={draft() ?? ""}
                       onChange={setDraft}
                       onSubmit={() => void save()}
-                      aria-label={document.title}
+                      aria-label={d().title}
                       data-testid="knowledge-doc-body-editor"
                       editorClass="min-h-[20rem] text-[13px] leading-relaxed"
                     />
@@ -670,7 +715,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                               parent={{
                                 app: "knowledge",
                                 entityType: "document",
-                                entityId: document.id,
+                                entityId: d().id,
                               }}
                             />
                           </Show>
@@ -699,7 +744,7 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
                               parent={{
                                 app: "knowledge",
                                 entityType: "document",
-                                entityId: document.id,
+                                entityId: d().id,
                               }}
                             />
                           </Show>
@@ -711,8 +756,8 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
               </ScrollFade>
 
               <KnowledgeShareDialog
-                documentId={document.id}
-                documentTitle={document.title}
+                documentId={d().id}
+                documentTitle={d().title}
                 open={shareOpen()}
                 onOpenChange={setShareOpen}
               />

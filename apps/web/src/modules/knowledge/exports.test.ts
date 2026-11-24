@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { setAttentionApi } from "~/modules/shell/attention-store"
-import { handleKnowledgeDocumentWsEvent } from "./exports"
+import { handleKnowledgeDocumentWsEvent, resolveKnowledgeDocLabel } from "./exports"
 import { knowledgeStore, resetKnowledgeStore } from "./knowledge-store"
 
 describe("handleKnowledgeDocumentWsEvent", () => {
@@ -73,5 +73,22 @@ describe("handleKnowledgeDocumentWsEvent", () => {
   it("no-ops gracefully when no attention API is registered", async () => {
     setAttentionApi(null)
     await expect(handleKnowledgeDocumentWsEvent("create", { id: "d4" })).resolves.toBeUndefined()
+  })
+
+  it("B10: update event of a page not in the 50 newest renames its tab", async () => {
+    // The recent list (50 newest) does not hold the page; its tab still follows.
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/knowledge/home")
+          return { personal: [], recent: [], needsReview: [], sourceHealth: [] }
+        if (path === "/knowledge/documents/old1")
+          return { id: "old1", title: "Renamed long ago page", body: "" }
+        return []
+      }),
+    }
+    setAttentionApi(api as never)
+    expect(resolveKnowledgeDocLabel("old1")).toBeUndefined()
+    await handleKnowledgeDocumentWsEvent("update", { entityId: "old1" })
+    expect(resolveKnowledgeDocLabel("old1")).toBe("Renamed long ago page")
   })
 })

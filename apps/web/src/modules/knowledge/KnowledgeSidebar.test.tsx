@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { ApiError } from "~/lib/api-error"
 import { clearAuth, setTokens } from "~/modules/auth/auth-store"
+import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { ApiContext } from "~/modules/shell/ApiContext"
+import { setAttentionApi } from "~/modules/shell/attention-store"
+import { openTab, resetTabStore, tabStore } from "~/modules/shell/tab-store"
+import { resetToastStore, toasts } from "~/modules/shell/toast-store"
+import { handleKnowledgeCollectionWsEvent, handleKnowledgeDocumentWsEvent } from "./exports"
 import KnowledgeSidebar from "./KnowledgeSidebar"
-import { resetKnowledgeStore } from "./knowledge-store"
+import KnowledgeWorkspace from "./KnowledgeWorkspace"
+import {
+  knowledgeStore,
+  loadKnowledgeHome,
+  resetKnowledgeStore,
+  TREE_RELOAD_DEBOUNCE_MS,
+} from "./knowledge-store"
 
 afterEach(resetKnowledgeStore)
 
@@ -290,6 +302,229 @@ describe("KnowledgeSidebar — personal vs. org-shared folder creation", () => {
         "/knowledge/collections",
         expect.objectContaining({ ownerUserId: null, parentCollectionId: null }),
       ),
+    )
+  })
+})
+
+describe("KnowledgeSidebar — organise (K1)", () => {
+  afterEach(() => {
+    clearAuth()
+    resetToastStore()
+    setAttentionApi(null)
+    resetTabStore()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  function signIn() {
+    setTokens(
+      makeJwt({
+        userId: "me",
+        orgId: "org-1",
+        roles: [],
+        scopes: ["*"],
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      }),
+    )
+  }
+
+  function renderSidebar(api: unknown, locale: "en" | "fr" = "en") {
+    return render(() => (
+      <I18nProvider initialLocale={locale}>
+        <ApiContext.Provider value={api as never}>
+          <KnowledgeSidebar />
+        </ApiContext.Provider>
+      </I18nProvider>
+    ))
+  }
+
+  it("no console.error path: every rejected call renders a toast", async () => {
+    signIn()
+    const errors = vi.spyOn(console, "error")
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "c1",
+                name: "Policies",
+                parentId: null,
+                ownerUserId: null,
+                children: [],
+                documents: [{ id: "d1", title: "Warranty" }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(async () => {
+        throw new ApiError("Refused by the server", 403, "FORBIDDEN")
+      }),
+      patch: vi.fn(async () => {
+        throw new ApiError("Refused by the server", 403, "FORBIDDEN")
+      }),
+    }
+    renderSidebar(api)
+    // New folder.
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-shared-new-folder"))
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() => expect(toasts()).toHaveLength(1))
+    // New page in a folder.
+    fireEvent.click(await screen.findByTestId("knowledge-tree-new-page-c1"))
+    await waitFor(() => expect(toasts()).toHaveLength(2))
+    // Rename and delete a folder.
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-folder-c1"))
+    const rename = await screen.findByTestId("knowledge-tree-menu-rename")
+    rename.focus()
+    fireEvent.keyDown(rename, { key: "Enter" })
+    fireEvent.input(await screen.findByTestId("knowledge-folder-name-input"), {
+      target: { value: "Rules" },
+    })
+    fireEvent.click(screen.getByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() => expect(toasts()).toHaveLength(3))
+    fireEvent.contextMenu(screen.getByTestId("knowledge-tree-folder-c1"))
+    const del = await screen.findByTestId("knowledge-tree-menu-delete")
+    del.focus()
+    fireEvent.keyDown(del, { key: "Enter" })
+    fireEvent.click(await screen.findByTestId("knowledge-folder-dialog-confirm"))
+    await waitFor(() => expect(toasts().length).toBeGreaterThanOrEqual(3))
+    expect(toasts().every((t) => t.type === "error" && t.message === "Refused by the server")).toBe(
+      true,
+    )
+    expect(errors).not.toHaveBeenCalled()
+  })
+
+  it("B5: rename and archive of the open page update its row; a collection or membership frame reloads the tree once for a burst", async () => {
+    signIn()
+    let title = "Untitled"
+    let filed = true
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/knowledge/collections/tree")
+          return [
+            {
+              id: "c1",
+              name: "Policies",
+              parentId: null,
+              ownerUserId: null,
+              children: [],
+              documents: filed ? [{ id: "d1", title }] : [],
+            },
+          ]
+        if (path === "/knowledge/documents/d1") return { id: "d1", title, body: "", revision: 2 }
+        return []
+      }),
+      post: vi.fn(),
+    }
+    setAttentionApi(api as never)
+    renderSidebar(api)
+    fireEvent.click(await screen.findByTestId("knowledge-tree-toggle-c1"))
+    expect(screen.getByTestId("knowledge-tree-doc-d1")).toHaveTextContent("Untitled")
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // The page's own update frame (this reader renamed it in its tab).
+    title = "Warranty policy"
+    await handleKnowledgeDocumentWsEvent("update", { entityId: "d1" })
+    await vi.advanceTimersByTimeAsync(TREE_RELOAD_DEBOUNCE_MS + 10)
+    await waitFor(() =>
+      expect(screen.getByTestId("knowledge-tree-doc-d1")).toHaveTextContent("Warranty policy"),
+    )
+    // Archived: its row leaves the tree.
+    filed = false
+    await handleKnowledgeDocumentWsEvent("archive", { entityId: "d1" })
+    await vi.advanceTimersByTimeAsync(TREE_RELOAD_DEBOUNCE_MS + 10)
+    await waitFor(() => expect(screen.queryByTestId("knowledge-tree-doc-d1")).toBeNull())
+
+    // A burst of folder and membership frames: one reload.
+    const treeLoads = () =>
+      api.get.mock.calls.filter(([p]) => p === "/knowledge/collections/tree").length
+    const before = treeLoads()
+    handleKnowledgeCollectionWsEvent("create", { id: "c2" })
+    handleKnowledgeCollectionWsEvent("update", { id: "c2" })
+    handleKnowledgeCollectionWsEvent("create", { collectionId: "c2" })
+    handleKnowledgeCollectionWsEvent("delete", { collectionId: "c1" })
+    await vi.advanceTimersByTimeAsync(TREE_RELOAD_DEBOUNCE_MS + 10)
+    expect(treeLoads()).toBe(before + 1)
+  })
+
+  it("B6: Unfiled toggles off, Home returns from Unfiled and Search, from a page tab the click shows the list", async () => {
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) => {
+        if (path === "/knowledge/home")
+          return { recent: [], needsReview: [], unfiled: [], unfiledCount: 2 }
+        return []
+      }),
+      post: vi.fn(async () => ({ hits: [], sourceStatuses: [], final: true })),
+    }
+    await loadKnowledgeHome(api as never)
+    openTab({ type: "knowledge:document", entityId: "d9", label: "A page" })
+    render(() => (
+      <ApiContext.Provider value={api as never}>
+        <KnowledgeSidebar />
+        <KnowledgeWorkspace />
+      </ApiContext.Provider>
+    ))
+    // From a page tab: the click brings the list forward.
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-unfiled"))
+    const active = () => tabStore.tabs.find((t) => t.id === tabStore.activeTabId)
+    expect(active()?.type).toBe("knowledge:home")
+    expect(knowledgeStore.view).toBe("unfiled")
+    expect(screen.getByTestId("knowledge-sidebar-unfiled")).toHaveAttribute("aria-current", "page")
+    // A second click goes back to Home.
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-unfiled"))
+    expect(knowledgeStore.view).toBe("home")
+    // Home returns from Unfiled.
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-unfiled"))
+    fireEvent.click(await screen.findByTestId("knowledge-view-home"))
+    expect(knowledgeStore.view).toBe("home")
+    // Search opens from the sidebar (Enter) and Home returns from it.
+    const input = screen.getByTestId("knowledge-sidebar-search-input")
+    fireEvent.input(input, { target: { value: "warranty" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    await waitFor(() => expect(knowledgeStore.view).toBe("search"))
+    fireEvent.click(await screen.findByTestId("knowledge-view-home"))
+    expect(knowledgeStore.view).toBe("home")
+  })
+
+  it("B12: no hardcoded English (virtual nodes, New folder)", async () => {
+    signIn()
+    const api = {
+      get: vi.fn(async (path: string) =>
+        path === "/knowledge/collections/tree"
+          ? [
+              {
+                id: "__personal_notes__",
+                kind: "personal_notes",
+                name: "Personal notes",
+                parentId: null,
+                ownerUserId: "me",
+                virtual: true,
+                children: [],
+                documents: [{ id: "d1", title: "Mine" }],
+              },
+              {
+                id: "__unfiled__",
+                kind: "unfiled",
+                name: "Unfiled",
+                parentId: null,
+                ownerUserId: null,
+                virtual: true,
+                children: [],
+                documents: [{ id: "d2", title: "Loose" }],
+              },
+            ]
+          : [],
+      ),
+      post: vi.fn(),
+    }
+    renderSidebar(api, "fr")
+    expect(await screen.findByTestId("knowledge-tree-folder-__personal_notes__")).toHaveTextContent(
+      "Notes personnelles",
+    )
+    expect(screen.getByTestId("knowledge-tree-folder-__unfiled__")).toHaveTextContent("Non classés")
+    fireEvent.click(screen.getByTestId("knowledge-sidebar-shared-new-folder"))
+    expect((screen.getByTestId("knowledge-folder-name-input") as HTMLInputElement).value).toBe(
+      "Nouveau dossier",
     )
   })
 })

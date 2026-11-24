@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ApiError } from "~/lib/api-error"
 import { editorOf, setMarkdown } from "~/modules/editor/test-helpers"
+import { I18nProvider } from "~/modules/i18n/i18n-context"
 import { ApiContext } from "~/modules/shell/ApiContext"
 import KnowledgeDocumentView from "./KnowledgeDocumentView"
 import { resetKnowledgeStore } from "./knowledge-store"
@@ -273,5 +274,71 @@ describe("KnowledgeDocumentView", () => {
     expect(screen.queryByTestId("knowledge-share-dialog")).not.toBeInTheDocument()
     fireEvent.click(shareButton)
     expect(await screen.findByTestId("knowledge-share-dialog")).toBeInTheDocument()
+  })
+
+  it("B11: badge changes after Verify without reload; a title-save conflict is shown, the typed title stays", async () => {
+    let review = "needs_review"
+    const api = makeApi()
+    api.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/backlinks")) return { backlinks: [] }
+      if (path === "/knowledge/collections/tree") return []
+      return {
+        id: "doc1",
+        title: "Hello",
+        body: "# H1",
+        revision: 3,
+        reviewStatus: review,
+        documentScope: "organization",
+        sensitivity: "internal",
+        canEdit: true,
+      }
+    })
+    api.post.mockImplementation(async (path: string) => {
+      if (path.endsWith("/verify")) review = "verified"
+      return {}
+    })
+    api.patch.mockImplementation(async () => {
+      throw new ApiError("Revision conflict", 409, "CONFLICT")
+    })
+    renderView(api)
+    expect(await screen.findByTestId("knowledge-doc-review-status")).toHaveTextContent(
+      "needs_review",
+    )
+    // Verify from the actions menu: the badge follows, no reload.
+    const actions = screen.getByTestId("knowledge-doc-header").querySelectorAll("button")
+    fireEvent.click(actions[actions.length - 1])
+    fireEvent.click(await screen.findByText("Verify"))
+    await waitFor(() =>
+      expect(screen.getByTestId("knowledge-doc-review-status")).toHaveTextContent("verified"),
+    )
+    // A title saved over someone else's save: said, and the typed title stays.
+    const title = screen.getByTestId("knowledge-doc-title")
+    title.textContent = "My new title"
+    fireEvent.blur(title)
+    expect(await screen.findByTestId("knowledge-doc-title-conflict")).toBeInTheDocument()
+    expect(screen.getByTestId("knowledge-doc-title").textContent).toBe("My new title")
+  })
+
+  it("B12: the references count reads in the reader's language", async () => {
+    const api = makeApi()
+    api.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/backlinks"))
+        return {
+          backlinks: [
+            { app: "knowledge", entityType: "document", entityId: "a", title: "A" },
+            { app: "knowledge", entityType: "document", entityId: "b", title: "B" },
+          ],
+        }
+      if (path === "/knowledge/collections/tree") return []
+      return { id: "doc1", title: "Hello", body: "", revision: 1, canEdit: true }
+    })
+    render(() => (
+      <I18nProvider initialLocale="fr">
+        <ApiContext.Provider value={api as never}>
+          <KnowledgeDocumentView entityId="doc1" />
+        </ApiContext.Provider>
+      </I18nProvider>
+    ))
+    expect(await screen.findByText("2 références")).toBeInTheDocument()
   })
 })

@@ -1641,6 +1641,8 @@
     },
     "wsHandlers": {
       "document": "handleKnowledgeDocumentWsEvent",
+      "collection": "handleKnowledgeCollectionWsEvent",
+      "collection_membership": "handleKnowledgeCollectionWsEvent",
       "synced_source": "handleSyncedSourceWsEvent"
     },
     "activityBar": {

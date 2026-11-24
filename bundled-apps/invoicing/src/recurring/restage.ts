@@ -18,6 +18,7 @@ import {
   previousInvoice,
   type Row,
   type RunCtx,
+  rowAmounts,
   runDecided,
   stageRunCard,
 } from "./run-card"
@@ -177,7 +178,11 @@ export async function checkUnchangedSince(
   }
   if (sameInstant(current, given)) return
   const lines = await draftLines(ctx, String(rd.draft.id))
-  const t = draftTotals(lines)
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(rd.run.issuer_profile_id),
+  )) as Row | null
+  const t = await rowAmounts(ctx, rd.draft, lines, issuer)
   refuse(
     "draft_changed",
     `Draft ${String(rd.draft.id)} changed since you read it (${lastChangeOf(rd.draft)}), so nothing was changed. It now bills ${String(rd.draft.counterparty_name ?? "its customer")} ${t.total.toString()} minor units incl. tax, updated_at "${current ?? ""}". Read it again and pass that updated_at to write over it.`,
@@ -324,12 +329,15 @@ export async function afterRunWrite(
     }
     if (wasApproved || state !== "approved") {
       data.approved_hash = null
+      data.approved_total_minor = null
       data.send_grant = null
     }
   }
   data.state = state
   data.note = note.join(" · ") || null
   await ctx.db.update("recurring_run_items", itemId, data)
+  if (item.state === "approved" && state !== "approved")
+    await ctx.db.update("documents", String(draft.id), { approved_by: null, approved_at: null })
   // The run's card: rewritten in place while it waits, or one new card after the decision. A
   // rejected run asks again on its issue day by itself.
   let approvalId: string | null =
@@ -354,11 +362,15 @@ export async function afterRunWrite(
   }
   const { items, total } = await cardItems(ctx, String(run.id))
   const after = (await ctx.db.findOne("documents", String(draft.id))) as Row
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(run.issuer_profile_id),
+  )) as Row | null
   return {
     item_id: itemId,
     run_id: String(run.id),
     item_state: state,
-    row_total_minor: draftTotals(lines).total.toString(),
+    row_total_minor: (await rowAmounts(ctx, after, lines, issuer)).total.toString(),
     currency: String(draft.currency ?? "EUR"),
     approve_count: items.length,
     approve_total_minor: total.toString(),

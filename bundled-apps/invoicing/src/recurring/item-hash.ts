@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // The hash of what one month-end row bills. It covers the draft's customer, currency, terms, notes,
-// PO reference and lines; the row's own state, note, end date and pending "from now on" patch; and
+// PO reference, operation type, service period, lines and the amounts they charge; the row's own state, note, end date and pending "from now on" patch; and
 // the issuer's legal and bank details. Any write a person or an agent makes to a row changes it, a
 // change of the issuer's IBAN changes every row of that issuer, and a write that changes nothing
 // leaves it as it was. The card carries it per row, approval records it, and the issue step checks
 // it again before a number is taken.
 import { sha256Hex } from "../einvoicing/backfill-sha256"
 import { utf8Bytes } from "../legal-originals/bytes"
+import { plannedAmounts } from "./row-amounts"
 
 type Row = Record<string, unknown>
 
@@ -48,6 +49,7 @@ export function issuerSnapshot(issuer: Row | null | undefined): unknown[] {
     issuer.iban,
     issuer.swift_bic,
     issuer.bank_name,
+    issuer.country,
   ].map((v) => (v === undefined ? null : v))
 }
 
@@ -77,7 +79,13 @@ export function itemContentHash(item: Row, draft: Row, lines: Row[], issuer: Row
       day(draft.due_at),
       draft.notes ?? null,
       draft.po_number ?? null,
+      draft.operation_category ?? null,
+      day(draft.service_period_start),
+      day(draft.service_period_end),
     ],
+    // What issuing it would charge: a tax rule, country or VAT number that changes the amount
+    // changes the row.
+    amounts: Object.values(plannedAmounts(draft, lines, issuer)).map(String),
     lines: lines.map((l) => [
       String(l.description ?? ""),
       String(l.quantity ?? ""),

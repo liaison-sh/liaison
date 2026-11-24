@@ -362,6 +362,8 @@ export async function issueRunDraft(
     lifecycle_log: Array<Record<string, unknown>>
     einvoice_send?: "stage" | "batch" | "held"
     commit_with?: IssueBatchOp[]
+    /** The total a person approved the row at: it issues at that amount or not at all. */
+    expected_total_minor?: string | null
   },
 ): Promise<
   MutationResult<{ document_id: string; number: string; einvoicing_warning?: EinvoicingWarning }>
@@ -379,6 +381,7 @@ export async function issueRunDraft(
       ...buildIssueInputFromDraft(draft, issuer, counterparty, when),
       lifecycle_carry: input.lifecycle_log,
       ...(input.einvoice_send ? { einvoice_send: input.einvoice_send } : {}),
+      ...(input.expected_total_minor ? { expected_total_minor: input.expected_total_minor } : {}),
     },
     { externalRef: input.external_ref, commitWith: input.commit_with },
   )

@@ -1370,7 +1370,9 @@ export function runCardLines(rawItems: unknown): string[] {
   const lines: string[] = []
   if (names.length > 0) {
     const shown = names.slice(0, 5).join(", ")
-    lines.push((names.length > 5 ? `${shown} and ${names.length - 5} more` : shown).slice(0, 200))
+    const who = names.length > 5 ? `${shown} and ${names.length - 5} more` : shown
+    const count = `${items.length} invoice${items.length === 1 ? "" : "s"}`
+    lines.push(`${count}: ${who}`.slice(0, 200))
   }
   if (items.length > 0 && currency && currency !== "mixed")
     lines.push(`Total: ${moneyLine(total, currency)} incl. VAT`)

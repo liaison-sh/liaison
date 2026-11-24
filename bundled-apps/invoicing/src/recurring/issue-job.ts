@@ -217,6 +217,10 @@ export async function recurringItemIssue(
       external_ref: externalRef,
       lifecycle_log: carried,
       ...(send ? { einvoice_send: send } : {}),
+      expected_total_minor:
+        item.approved_total_minor === null || item.approved_total_minor === undefined
+          ? null
+          : String(item.approved_total_minor),
       commit_with: followers,
     })
   } catch (err) {
@@ -225,6 +229,18 @@ export async function recurringItemIssue(
     return lost
   }
   if (issued.status !== "completed") {
+    // The amount is the approved one or nothing: the row asks again, showing the new amount.
+    if (issued.status === "error" && issued.error.code === "amount_changed") {
+      await ctx.db.update("recurring_run_items", input.item_id, {
+        state: "waiting_reapproval",
+        approved_hash: null,
+        approved_total_minor: null,
+      })
+      return fail(
+        "changed_since_approval",
+        `Draft ${draftId} of item ${input.item_id}: ${issued.error.message} It waits for a new approval.`,
+      )
+    }
     if (issued.status === "error") return (await lostRace()) ?? issued
     return fail(
       "not_issued",

@@ -342,6 +342,17 @@ export interface Draft {
  */
 export type DocumentScope = "goods" | "software"
 
+/** The document would issue at another amount than the one a person approved. Nothing is written. */
+export class AmountChangedRefusal extends Error {
+  readonly error: { code: "amount_changed"; message: string }
+  constructor(approved: bigint, now: bigint) {
+    const message = `The invoice was approved at ${approved} and would issue at ${now} (minor units, VAT included), so it was not issued and no number was used.`
+    super(message)
+    this.name = "AmountChangedRefusal"
+    this.error = { code: "amount_changed", message }
+  }
+}
+
 export interface IssueInput {
   type: DocumentType
   issuer: IssuerProfile
@@ -388,6 +399,9 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** What a person approved this document to total, in minor units: it issues at that amount or
+   *  not at all (`AmountChangedRefusal`, before any number is taken). */
+  expected_total_minor?: bigint | string | null
   /** Change-log entries the issued document carries over from the draft it replaces. */
   lifecycle_carry?: Array<Record<string, unknown>>
   /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
@@ -1423,6 +1437,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
   // 3) Money rollup via D5.
   const rollup = documentRollup(snapshotLines)
+  const expected = input.expected_total_minor
+  if (expected !== undefined && expected !== null && expected !== "") {
+    if (BigInt(expected) !== rollup.grand_total_minor)
+      throw new AmountChangedRefusal(BigInt(expected), rollup.grand_total_minor)
+  }
   const fxDate = fxIssueDate(draft.issued_at)
   const fxSnapshot =
     draft.currency && draft.currency !== "EUR"

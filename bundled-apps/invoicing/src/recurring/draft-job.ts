@@ -35,6 +35,7 @@ import {
   previousInvoice,
   type Row,
   type RunCtx,
+  rowAmounts,
   runItems,
   stageRunCard,
 } from "./run-card"
@@ -399,7 +400,7 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
   )
   if (items.length === 0) return false
   let enabledBy: string | null = null
-  const hashes: Array<[string, string]> = []
+  const hashes: Array<[string, string, bigint]> = []
   for (const item of items) {
     if (item.state !== "ready") return false
     const s = (await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null
@@ -408,8 +409,9 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft) return false
     const lines = await draftLines(ctx, String(draft.id))
-    if (limit !== null && draftTotals(lines).total > limit) return false
-    hashes.push([String(item.id), await currentItemHash(ctx, item, draft)])
+    const amounts = await rowAmounts(ctx, draft, lines, issuer)
+    if (limit !== null && amounts.total > limit) return false
+    hashes.push([String(item.id), await currentItemHash(ctx, item, draft), amounts.total])
   }
   const claim = await ctx.db.updateMany("recurring_runs", {
     where: {
@@ -426,8 +428,12 @@ async function approveByItself(ctx: RunCtx, runId: string): Promise<boolean> {
     },
   })
   if (claim.count !== 1) return false
-  for (const [id, hash] of hashes)
-    await ctx.db.update("recurring_run_items", id, { state: "approved", approved_hash: hash })
+  for (const [id, hash, total] of hashes)
+    await ctx.db.update("recurring_run_items", id, {
+      state: "approved",
+      approved_hash: hash,
+      approved_total_minor: total.toString(),
+    })
   return true
 }
 

@@ -22,10 +22,11 @@ import {
   withOffLinesFrom,
   withTermsFrom,
 } from "./retainer"
+import { type RowAmounts, rowAmounts } from "./row-amounts"
 import { addDays, weekdayOf } from "./schedule"
 import { claimSchedule, writeVersion } from "./schedule-write"
 
-export { currentItemHash, itemContentHash }
+export { currentItemHash, itemContentHash, type RowAmounts, rowAmounts }
 
 export const RUN_ISSUE_TOOL = "invoicing:recurring_run_issue"
 
@@ -38,6 +39,7 @@ export interface RunApprovals {
     note?: string,
   ): Promise<unknown>
   statusOf?(approvalRequestId: string): Promise<unknown>
+  withdraw?(approvalId: string, reason?: string): Promise<unknown>
 }
 
 /** The kernel ctx a run handler or job receives. */
@@ -132,7 +134,10 @@ export async function previousInvoice(
   }
 }
 
-/** Net (before tax) and total (with each line's rate) of a draft's lines, in minor units. */
+/**
+ * Net (before tax) and total (with each line's own rate) of lines that carry one, in minor units:
+ * an issued document's. What a draft will bill is `rowAmounts`.
+ */
 export function draftTotals(lines: Row[]): { net: bigint; vat: bigint; total: bigint } {
   let net = 0n
   let vat = 0n
@@ -180,7 +185,7 @@ export async function cardItems(
     const draft = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     if (!draft) continue
     const dl = await draftLines(ctx, String(draft.id))
-    const t = draftTotals(dl)
+    const t = await rowAmounts(ctx, draft, dl, issuer)
     total += t.total
     items.push({
       item_id: String(item.id),
@@ -297,7 +302,9 @@ export async function stageRunCard(
   try {
     const approval = await ctx.requestApproval({
       tool_name: RUN_ISSUE_TOOL,
-      summary: `${again ? "Approve again: issue" : "Issue"} ${items.length} invoice${items.length === 1 ? "" : "s"} for ${String(run.period_label ?? issueOn)} on ${issueOn}`,
+      // No count: rows join and leave the card while it waits, and its title does not change. The
+      // lines under it, the panel and Approve N say how many.
+      summary: `${again ? "Approve again: the changed invoices of" : "Issue the invoices of"} ${String(run.period_label ?? issueOn)} on ${issueOn}`,
       summary_detail: {
         subtitle:
           `Numbers are taken on ${issueOn} from 08:00, never at approval. Last day: ${lastDay}.` +
@@ -357,6 +364,36 @@ function nothingReadyRefusal(runId: string, items: Row[]): ErrorEnvelope | null 
   )
 }
 
+/** The refusal of a run with nothing left to approve, in words a person reads on the card. */
+function nothingToApprove(run: Row): string {
+  const state: Record<string, string> = {
+    approved: "is already approved",
+    issuing: "is approved and issuing",
+    partial: "is approved and issued in part",
+    issued: "is issued",
+    nothing_to_issue: "closed with nothing to issue",
+  }
+  return `The month-end run for ${String(run.period_label ?? dayOf(run.issue_on))} ${state[String(run.status)] ?? `is ${String(run.status)}`}, and no row of it waits for an approval.`
+}
+
+/**
+ * A run approved another way than by the card waiting for it: that card asks for nothing any more,
+ * so it is withdrawn. A row still waiting (changed since it was shown) gets a new card from the
+ * run's job.
+ */
+async function withdrawDecidedCard(ctx: RunCtx, run: Row): Promise<void> {
+  const waiting = typeof run.approval_request_id === "string" ? run.approval_request_id : ""
+  if (waiting === "" || waiting === "staging") return
+  if (ctx.approval?.approvalRequestId === waiting || !ctx.approvals?.withdraw) return
+  try {
+    await ctx.approvals.withdraw(waiting, "The month-end run was approved without this card.")
+  } catch (err) {
+    console.warn(
+      `recurring run: the card ${waiting} of run ${String(run.id)} could not be withdrawn: ${(err as Error)?.message ?? String(err)}`,
+    )
+  }
+}
+
 /** What approving the card records: each row's hash and the approver. No number is taken. */
 export async function recurringRunIssue(
   ctx: RunCtx,
@@ -387,7 +424,7 @@ export async function recurringRunIssue(
   ) {
     return fail(
       "run_not_drafted",
-      `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve. Read it with recurring_run_get.`,
+      nothingToApprove(run),
     )
   }
   if (!reask) {
@@ -395,7 +432,8 @@ export async function recurringRunIssue(
     if (refused) return refused
   }
   const decider = ctx.approval?.approvalDeciderId ?? (await ctx.getUserId())
-  const wanted = new Map((input.items ?? []).map((i) => [i.item_id, i.content_hash]))
+  const wanted = new Map((input.items ?? []).map((i) => [i.item_id, i]))
+  const now = new Date().toISOString()
   const issuer = (await ctx.db.findOne(
     "issuer_profiles",
     String(run.issuer_profile_id),
@@ -418,7 +456,12 @@ export async function recurringRunIssue(
     const lines = await draftLines(ctx, String(draft.id))
     const hash = itemContentHash(item, draft, lines, issuer)
     const shown = wanted.get(String(item.id))
-    if (shown !== undefined && shown !== hash) {
+    const amounts = await rowAmounts(ctx, draft, lines, issuer)
+    // The card showed another content, or another amount: the row is not approved, it asks again.
+    if (
+      shown !== undefined &&
+      (shown.content_hash !== hash || String(shown.total_minor) !== amounts.total.toString())
+    ) {
       await ctx.db.update("recurring_run_items", String(item.id), {
         state: "waiting_reapproval",
         approved_hash: null,
@@ -429,16 +472,19 @@ export async function recurringRunIssue(
     if (shown === undefined && wanted.size > 0) continue
     // "From now on" reaches its schedule only now, with a person's approval, once.
     const written = await writeSchedulePatch(ctx, item)
-    const now = written
+    const fresh = written
       ? (((await ctx.db.findOne("recurring_run_items", String(item.id))) as Row | null) ?? item)
       : item
-    const signed = written ? jsonOf<Row>(now.schedule_patch, {}).lines_kept : undefined
+    const signed = written ? jsonOf<Row>(fresh.schedule_patch, {}).lines_kept : undefined
     if (typeof signed === "string") keptSigned.push(`${written} (${signed})`)
     else if (written) patched.push(written)
     await ctx.db.update("recurring_run_items", String(item.id), {
       state: "approved",
-      approved_hash: itemContentHash(now, draft, lines, issuer),
+      approved_hash: itemContentHash(fresh, draft, lines, issuer),
+      approved_total_minor: amounts.total.toString(),
     })
+    // The invoice says who approved it: whoever approved this row last.
+    await ctx.db.update("documents", String(draft.id), { approved_by: decider, approved_at: now })
     approvedIds.push(String(item.id))
     approved += 1
   }
@@ -448,10 +494,13 @@ export async function recurringRunIssue(
   await ctx.db.update(
     "recurring_runs",
     input.run_id,
-    reask
-      ? { status: run.status === "partial" ? "issuing" : run.status }
-      : { status: "approved", approved_by: decider, approved_at: new Date().toISOString() },
+    {
+      status: reask ? (run.status === "partial" ? "issuing" : run.status) : "approved",
+      // Who approved the run is whoever approved it last, the rows of a second card included.
+      ...(approved > 0 || !reask ? { approved_by: decider, approved_at: now } : {}),
+    },
   )
+  await withdrawDecidedCard(ctx, run)
   // The run is decided: its "waits for approval" and "is late" alerts end for everyone they reached.
   if (!reask && ctx.emit) {
     for (const action of ["due", "late"] as const) {
@@ -616,7 +665,12 @@ export async function recurringRunUnapprove(
       await ctx.db.update("recurring_run_items", String(item.id), {
         state: "ready",
         approved_hash: null,
+        approved_total_minor: null,
         send_grant: null,
+      })
+      await ctx.db.update("documents", String(item.document_id), {
+        approved_by: null,
+        approved_at: null,
       })
     }
   }
@@ -690,7 +744,7 @@ export async function recurringRunIssuePreflight(
     return {
       error: {
         code: "run_not_drafted",
-        message: `Run ${input.run_id} is ${String(run.status)}, so there is nothing to approve.`,
+        message: nothingToApprove(run),
       },
     }
   }

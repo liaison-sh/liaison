@@ -129,6 +129,46 @@ function endsInToolResults(params: CallOptions): boolean {
  */
 export const REPLY_CLOSING_TOOLS: ReadonlySet<string> = new Set(["kernel__suggest_next_steps"])
 
+/** A text this long that ends like a sentence is a whole answer, not a note before one. */
+const WHOLE_ANSWER_MIN_CHARS = 160
+
+interface ReplyStep {
+  text?: string
+  toolCalls?: ReadonlyArray<{ toolName: string }>
+  toolResults?: ReadonlyArray<{ output?: unknown }>
+}
+
+function closesOnly(step: ReplyStep | undefined): boolean {
+  const calls = step?.toolCalls ?? []
+  return calls.length > 0 && calls.every((c) => REPLY_CLOSING_TOOLS.has(c.toolName))
+}
+
+/**
+ * The stop condition of a reply that is written and closed: its last steps called nothing but
+ * closing tools, and what they wrote is a whole answer. Left to run, the loop asks the model for
+ * one more step after the chips, and a model with nothing left to say says its answer again. A
+ * refused call gets one more step, to be made again as the refusal asks.
+ */
+export function replyIsClosed({ steps }: { steps: ReadonlyArray<ReplyStep> }): boolean {
+  const closing: ReplyStep[] = []
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]
+    if (!step || !closesOnly(step)) break
+    closing.unshift(step)
+  }
+  const last = closing[closing.length - 1]
+  if (!last) return false
+  const refused = (last.toolResults ?? []).some(
+    (r) => (r.output as { ok?: unknown } | null | undefined)?.ok === false,
+  )
+  if (refused && closing.length < 2) return false
+  const text = closing
+    .map((s) => s.text ?? "")
+    .join("")
+    .trim()
+  return text.length >= WHOLE_ANSWER_MIN_CHARS && !/[:,;]$/.test(text)
+}
+
 type PromptPart = { type?: string; text?: unknown; toolName?: unknown }
 type PromptMessage = { role: string; content: unknown }
 

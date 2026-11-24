@@ -113,6 +113,7 @@ import {
 import { armQuietClose } from "~/modules/agent/memory/consolidation"
 import { autoRecall } from "~/modules/agent/memory/memory-recall"
 import {
+  replyIsClosed,
   stepContextInputTokens,
   withAnswerAfterTools,
 } from "~/modules/agent/providers/answer-after-tools"
@@ -1029,7 +1030,11 @@ export function runAgentStream(params: RunAgentStreamParams): ReturnType<typeof 
     system: params.system as never,
     messages: params.messages as never,
     tools: params.tools,
-    stopWhen: params.stopWhen as never,
+    // Beside the caller's limits, a whole answer closed by its next steps ends the turn, so no
+    // further step says it again (answer-after-tools.ts).
+    stopWhen: (params.stopWhen === undefined
+      ? undefined
+      : [...[params.stopWhen].flat(), replyIsClosed]) as never,
     onStepFinish: params.onStepFinish as never,
     // A demo visitor's step is settled as soon as its model call has answered,
     // before its tools run (AI SDK 7 runs them at `model-call-end`, after this

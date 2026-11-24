@@ -31,6 +31,7 @@ import { addToast } from "~/modules/shell/toast-store"
 import { Button } from "~/ui/Button"
 import {
   createPageSaver,
+  draftInHistory,
   openDrafts,
   type PageSaver,
   postDraftToHistory,
@@ -223,7 +224,14 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
       extra: [],
     }
     try {
-      opened = await openDrafts({ drafts, liveness, userId, docId: d.id, current: d })
+      opened = await openDrafts({
+        drafts,
+        liveness,
+        userId,
+        docId: d.id,
+        current: d,
+        inHistory: draftInHistory(api, userId),
+      })
     } catch {
       // No drafts store here: the page opens on its stored text.
     }
@@ -247,6 +255,9 @@ const KnowledgeDocumentView: Component<{ entityId: string }> = (props) => {
         if (next.state === "conflict" && next.theirs) void loadTheirName(next.theirs)
       },
       onSaved: saved,
+      onTitleAdopted: (title) => {
+        if (titleEl) titleEl.textContent = title
+      },
     })
     saver = s
     if (opened.restore) {

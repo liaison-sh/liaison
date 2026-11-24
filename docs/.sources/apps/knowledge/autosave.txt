@@ -16,3 +16,7 @@ One person's edits in one tab within 10 minutes form one version -> apps/api/src
 An agent's write is its own version -> apps/api/src/apps/knowledge/versions.ts (writeWithVersion)
 Synced pages have no history -> apps/api/src/apps/knowledge/page-routes.ts (editablePage)
 Anyone who may edit a page sees its history -> apps/api/src/apps/knowledge/page-routes.ts (editablePage)
+A title-only change elsewhere is taken and my text saved -> apps/web/src/modules/knowledge/autosave.ts (onTitleAdopted)
+A title over 240 characters is not saved, and the header says why -> apps/web/src/modules/knowledge/autosave.ts (MAX_TITLE_CHARS)
+Versions kept a year, at most 200, oldest first out -> apps/api/src/apps/knowledge/versions.ts (VERSIONS_PER_PAGE, VERSIONS_KEPT_DAYS)
+Each author's newest version and conflict texts are never pruned -> apps/api/src/apps/knowledge/versions.ts (pruneVersions)

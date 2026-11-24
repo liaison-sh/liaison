@@ -89,6 +89,14 @@ export const SaveState: Component<{ status: SaverStatus }> = (props) => {
         })
       case "no-access":
         return i18n.t("knowledge.autosave.reasonNoAccess")
+      case "title-too-long":
+        return i18n.t("knowledge.autosave.reasonTitleTooLong", {
+          size: (s.size ?? 0).toLocaleString(i18n.locale()),
+        })
+      case "rejected":
+        return s.message
+          ? i18n.t("knowledge.autosave.reasonRejected", { message: s.message })
+          : i18n.t("knowledge.autosave.reasonRejectedPlain")
       case "conflict":
         return i18n.t("knowledge.autosave.reasonConflict")
       default:

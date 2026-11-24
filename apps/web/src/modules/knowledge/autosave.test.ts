@@ -5,6 +5,7 @@ import { ApiError } from "~/lib/api-error"
 import { clearAuth } from "~/modules/auth/auth-store"
 import {
   createPageSaver,
+  draftInHistory,
   liveSavers,
   MAX_BODY_CHARS,
   openDrafts,
@@ -152,6 +153,9 @@ function tab(args: {
     drafts: args.drafts,
     liveness: args.liveness,
     untitled: () => "Untitled",
+    onTitleAdopted: (title) => {
+      editor.title = title
+    },
   })
   return {
     saver,
@@ -603,6 +607,139 @@ describe("createPageSaver", () => {
     u.type("drop me")
     await u.saver.destroy({ discard: true })
     expect(drafts.map.has(u.saver.key)).toBe(false)
+  })
+
+  it("a title with spaces around it saves once, as the server trims it, and erases its draft", async () => {
+    api.patch.mockImplementation(async (path: string, body: unknown) => {
+      const b = body as { title: string; body: string; revision: number }
+      server.patches.push({ path, body: b })
+      if (b.revision !== server.page.revision) throw new ApiError("Revision conflict", 409)
+      server.page = {
+        ...server.page,
+        title: b.title.trim(),
+        body: b.body,
+        revision: b.revision + 1,
+      }
+      return { ...server.page } as never
+    })
+    const t = tab({ server, api, drafts, liveness: locks })
+    t.type("notes", " Meeting notes ")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.page.title).toBe("Meeting notes")
+    expect(t.saver.status().state).toBe("saved")
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(server.patches).toHaveLength(1)
+    await flushPromises()
+    expect(drafts.map.size).toBe(0)
+  })
+
+  it("a title over 240 characters is not sent, says why, and does not retry", async () => {
+    const t = tab({ server, api, drafts, liveness: locks })
+    t.type("text", "T".repeat(241))
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(server.patches).toHaveLength(0)
+    expect(t.saver.status()).toEqual({ state: "title-too-long", size: 241 })
+    expect(t.saver.hasUnsaved()).toBe(true)
+    // Shortened: it saves.
+    t.type("text", "Short")
+    await vi.advanceTimersByTimeAsync(1_000)
+    expect(server.page.title).toBe("Short")
+    expect(t.saver.status().state).toBe("saved")
+  })
+
+  it("a refusal (400) says the server's reason and does not retry", async () => {
+    const t = tab({ server, api, drafts, liveness: locks })
+    server.failNext = () => new ApiError("Body has an invalid link", 400)
+    t.type("bad")
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(server.patches).toHaveLength(1)
+    expect(t.saver.status()).toEqual({ state: "rejected", message: "Body has an invalid link" })
+    expect(t.saver.hasUnsaved()).toBe(true)
+  })
+
+  it("a rename elsewhere (title only) while I type: the title is taken and my text saved, no conflict", async () => {
+    const t = tab({ server, api, drafts, liveness: locks })
+    server.page = { ...server.page, title: "Renamed", revision: 2 }
+    t.type("mine")
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushPromises()
+    expect(t.saver.status().state).toBe("saved")
+    expect(server.page).toMatchObject({ title: "Renamed", body: "mine", revision: 3 })
+    expect(t.editor.title).toBe("Renamed")
+  })
+
+  it("a rename elsewhere while I also changed the title is a conflict", async () => {
+    const t = tab({ server, api, drafts, liveness: locks })
+    server.page = { ...server.page, title: "Renamed", revision: 2 }
+    t.type("mine", "My title")
+    await vi.advanceTimersByTimeAsync(1_000)
+    await flushPromises()
+    expect(t.saver.status().state).toBe("conflict")
+    expect(server.page.title).toBe("Renamed")
+  })
+
+  it("an old copy whose save went through is not offered as a conflict, and is erased", async () => {
+    const mine: PageDraft = {
+      userId: "amina",
+      docId: "p1",
+      sessionId: "s1",
+      title: "Returns",
+      body: "mine, saved as the tab closed",
+      baseRevision: 1,
+      baseHash: "nope",
+      at: 1,
+      beat: 1,
+    }
+    await drafts.put(mine)
+    // Lucas edited after my save went through.
+    server.page = { ...server.page, body: "lucas", revision: 3 }
+    const history = [
+      {
+        id: "v3",
+        kind: "edit",
+        authorType: "user",
+        authorId: "lucas",
+        revision: 3,
+        title: "Returns",
+      },
+      {
+        id: "v2",
+        kind: "edit",
+        authorType: "user",
+        authorId: "amina",
+        revision: 2,
+        title: "Returns",
+      },
+    ]
+    const bodies: Record<string, string> = { v3: "lucas", v2: "mine, saved as the tab closed" }
+    api.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/versions")) return history as never
+      const id = path.split("/").at(-1)!
+      return { ...history.find((v) => v.id === id), body: bodies[id] } as never
+    })
+    const opened = await openDrafts({
+      drafts,
+      liveness: locks,
+      userId: "amina",
+      docId: "p1",
+      current: server.page,
+      inHistory: draftInHistory(api as never, "amina"),
+    })
+    expect(opened.conflict).toBeNull()
+    expect(opened.restore).toBeNull()
+    expect(drafts.map.size).toBe(0)
+
+    // A copy history does not hold is still offered.
+    await drafts.put({ ...mine, body: "never saved" })
+    const again = await openDrafts({
+      drafts,
+      liveness: locks,
+      userId: "amina",
+      docId: "p1",
+      current: server.page,
+      inHistory: draftInHistory(api as never, "amina"),
+    })
+    expect(again.conflict?.body).toBe("never saved")
   })
 
   it("a remote save is adopted while clean, and refused over unsaved text", async () => {

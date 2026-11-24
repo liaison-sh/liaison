@@ -43,6 +43,8 @@ export type SaveState =
   | "too-large"
   | "no-access"
   | "error"
+  | "title-too-long"
+  | "rejected"
 
 /** A page as the server answers it. */
 export interface SavedRow {
@@ -57,8 +59,10 @@ export interface SavedRow {
 
 export interface SaverStatus {
   state: SaveState
-  /** `too-large`: the text's length. */
+  /** `too-large`: the text's length; `title-too-long`: the title's. */
   size?: number
+  /** `rejected`: why the server refused the text. */
+  message?: string
   /** `conflict`: the text someone else saved. */
   theirs?: SavedRow
 }
@@ -66,6 +70,8 @@ export interface SaverStatus {
 export const DEBOUNCE_MS = 1_000
 export const MAX_WAIT_MS = 8_000
 export const MAX_BODY_CHARS = 1_000_000
+/** The server's limit on a title (`knowledgeDocumentBaseSchema`), after trimming. */
+export const MAX_TITLE_CHARS = 240
 /** fetch `keepalive` bodies are capped at 64 KB by browsers; this leaves room for the rest. */
 export const KEEPALIVE_MAX_BYTES = 60_000
 const RETRY_STEPS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000]
@@ -97,6 +103,11 @@ export interface PageSaverOptions {
   onStatus?: (status: SaverStatus) => void
   /** The server stored a text of this saver (the row it answered). */
   onSaved?: (row: SavedRow) => void
+  /**
+   * The page was renamed elsewhere while this view changed only its text: the view
+   * shows this title, and `read` returns it from now on.
+   */
+  onTitleAdopted?: (title: string) => void
   sessionId?: string
   /** For tests: the window whose events end the page (pagehide, visibility, online). */
   target?: Window | null
@@ -178,6 +189,11 @@ function newSessionId(): string {
   }
 }
 
+/** A title as the server stores it: trimmed, and `untitled` when nothing is left. */
+export function storedTitle(title: string, untitled: string): string {
+  return title.trim() || untitled
+}
+
 function statusOf(err: unknown): number | null {
   if (err instanceof ApiError) return err.status
   if (err instanceof TypeError) return 0
@@ -220,8 +236,9 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
     opts.onStatus?.(next)
   }
 
+  // The title exactly as the server stores it: trimmed, and "Untitled" when empty.
   const normalized = (t: PageText): PageText => ({
-    title: t.title.trim() ? t.title : opts.untitled(),
+    title: storedTitle(t.title, opts.untitled()),
     body: t.body,
   })
   const sameText = (a: PageText, b: PageText) => a.title === b.title && a.body === b.body
@@ -342,6 +359,11 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
       setStatus({ state: "too-large", size: text.body.length })
       return
     }
+    if (text.title.length > MAX_TITLE_CHARS) {
+      // The server would refuse it: nothing is sent until the title is shortened.
+      setStatus({ state: "title-too-long", size: text.title.length })
+      return
+    }
     if (sameText(text, acked)) {
       markSaved()
       return
@@ -409,6 +431,15 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
         again = true
         return
       }
+      // Only the title moved (a rename in the sidebar, or another tab), and this view
+      // did not touch the title: the new title is taken and my text saved over it.
+      if (stored.body === acked.body && sent.title === acked.title) {
+        revision = stored.revision
+        acked = { title: stored.title, body: acked.body }
+        opts.onTitleAdopted?.(stored.title)
+        again = true
+        return
+      }
       clearSaveTimers()
       setStatus({ state: "conflict", theirs: stored })
       return
@@ -425,6 +456,11 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
     if (code === 0 || code === 429 || (code !== null && code >= 500)) {
       setStatus({ state: code === 0 ? "offline" : "error" })
       scheduleRetry()
+      return
+    }
+    if (code !== null && code >= 400) {
+      // Refused for what the text is: sending it again changes nothing. The next edit tries.
+      setStatus({ state: "rejected", message: err instanceof Error ? err.message : "" })
       return
     }
     setStatus({ state: "error" })
@@ -514,7 +550,13 @@ export function createPageSaver(opts: PageSaverOptions): PageSaver {
       lastEditAt = Date.now()
       void queueDraftPut()
       if (blocked()) return
-      if (status.state === "saved" || status.state === "idle" || status.state === "too-large")
+      if (
+        status.state === "saved" ||
+        status.state === "idle" ||
+        status.state === "too-large" ||
+        status.state === "title-too-long" ||
+        status.state === "rejected"
+      )
         setStatus({ state: "dirty" })
       schedule()
     },
@@ -644,21 +686,72 @@ export async function openDrafts(args: {
   docId: string
   current: { title: string; body: string; revision: number }
   now?: number
+  /** Whether this draft's text is already in the page's history (see {@link draftInHistory}). */
+  inHistory?: (d: PageDraft) => Promise<boolean>
 }): Promise<OpenedDrafts> {
   const dead = await deadDrafts(args.drafts, args.liveness, args.userId, args.docId, args.now)
   const out: OpenedDrafts = { restore: null, conflict: null, extra: [] }
   const currentHash = textHash(args.current.title, args.current.body)
   for (const d of dead) {
-    if (d.body === args.current.body && d.title === args.current.title) {
+    if (d.body === args.current.body && d.title.trim() === args.current.title) {
+      await args.drafts.remove(draftKey(d)).catch(() => {})
+      continue
+    }
+    const onCurrent = d.baseRevision === args.current.revision || d.baseHash === currentHash
+    // Written against an older text, but saved after all (the save as the tab closed
+    // went through, after the copy was written): erased, never offered against newer text.
+    if (!onCurrent && args.inHistory && (await args.inHistory(d).catch(() => false))) {
       await args.drafts.remove(draftKey(d)).catch(() => {})
       continue
     }
     if (!out.restore && !out.conflict) {
-      if (d.baseRevision === args.current.revision || d.baseHash === currentHash) out.restore = d
+      if (onCurrent) out.restore = d
       else out.conflict = d
     } else out.extra.push(d)
   }
   return out
+}
+
+/** How many of a person's newest versions after a draft's base are compared with it. */
+const HISTORY_MATCH_LOOKUPS = 3
+
+/**
+ * Whether a draft's text is in the page's history as a save of this person made after
+ * the draft's base: the shadow copy of a save that went through as the tab closed.
+ * Any failure answers false, and the draft is offered as before.
+ */
+export function draftInHistory(api: Api, userId: string): (d: PageDraft) => Promise<boolean> {
+  return async (d) => {
+    const versions = await api.get<
+      {
+        id: string
+        kind: string
+        authorType: string
+        authorId: string | null
+        revision: number | null
+        title: string
+      }[]
+    >(`/knowledge/documents/${d.docId}/versions`, { suppressGlobalError: true })
+    const title = d.title.trim()
+    const candidates = versions
+      .filter(
+        (v) =>
+          v.kind !== "unapplied" &&
+          v.authorType === "user" &&
+          v.authorId === userId &&
+          (v.revision ?? 0) > d.baseRevision &&
+          (v.title === title || !title),
+      )
+      .slice(0, HISTORY_MATCH_LOOKUPS)
+    for (const v of candidates) {
+      const full = await api.get<{ body: string }>(
+        `/knowledge/documents/${d.docId}/versions/${v.id}`,
+        { suppressGlobalError: true },
+      )
+      if (full.body === d.body) return true
+    }
+    return false
+  }
 }
 
 /** A dead draft to Page history; erased once stored, kept if it cannot be. */
@@ -672,7 +765,7 @@ export async function postDraftToHistory(
     await api.post(
       `/knowledge/documents/${d.docId}/versions`,
       {
-        title: d.title.trim() ? d.title : untitled,
+        title: storedTitle(d.title, untitled),
         body: d.body,
         baseRevision: d.baseRevision,
         session: d.sessionId,

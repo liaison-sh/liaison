@@ -227,6 +227,31 @@ describe("the knowledge sign-out guard", () => {
     expect(drafts.map.size).toBe(0)
   })
 
+  it("this tab's own draft is posted once, by its saver, never again as a stored draft", async () => {
+    const savers = new Set<PageSaver>()
+    const t = openPage("p1", savers)
+    server.pages.set("p1", { title: "Returns", body: "theirs", revision: 2 })
+    t.type("mine")
+    await t.saver.flush()
+    expect(t.saver.status().state).toBe("conflict")
+    await t.saver.persistDraft()
+    expect(drafts.map.has(t.saver.key)).toBe(true)
+    // The saver's post fails once; a second post of the same draft would succeed.
+    let attempts = 0
+    const post = server.api.post.getMockImplementation()!
+    server.api.post.mockImplementation(async (path: string, body: unknown) => {
+      attempts += 1
+      if (attempts === 1) throw new ApiError("Unavailable", 503)
+      return post(path, body)
+    })
+    const { guard, ask } = guardWith(savers)
+    expect(await guard({ forced: false })).toBe(false)
+    expect(attempts).toBe(1)
+    expect(server.posts).toEqual([])
+    expect(ask).toHaveBeenCalledTimes(1)
+    expect(ask.mock.calls[0]![0]).toEqual([expect.objectContaining({ docId: "p1", body: "mine" })])
+  })
+
   it("a draft of a page not open is posted to its history", async () => {
     await drafts.put({
       userId: "amina",

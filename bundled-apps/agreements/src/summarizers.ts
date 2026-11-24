@@ -56,10 +56,17 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   const mode = params.mode === "accept" ? "an acceptance" : "a simple electronic signature"
   const document = pinnedDocument(params)
   const who = `${signers.length} signer${signers.length === 1 ? "" : "s"}`
+  // One person in a withdrawn signer's place, on the version already sent.
+  const inPlace = typeof params.replaces === "string"
+  const was = (params.replaced ?? {}) as { name?: unknown; email?: unknown }
+  const wasName = typeof was.name === "string" && was.name ? was.name : "a withdrawn signer"
+  const wasEmail = typeof was.email === "string" && was.email ? ` <${was.email}>` : ""
   const lines = [
     ...(document ? [`Document: ${document}`] : []),
     `Fingerprint: ${String(params.sha256 ?? "")}`,
-    `Asks: ${mode}, ${order}`,
+    inPlace
+      ? `In place of: ${wasName}${wasEmail}, withdrawn. Same version, same turn; signatures already given stand`
+      : `Asks: ${mode}, ${order}`,
     ...signers.map((x, i) => signerLine(x, i, pinnedAddresses(params))),
     ...sharedAddresses(signers, pinnedAddresses(params)).map(
       (a) => `Two signers share ${a}: each signs on their own link, with their own name and code`,
@@ -71,9 +78,11 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   if (typeof params.message === "string" && params.message) lines.push(`Message: ${params.message}`)
   return done({
     kind: "agreement_send",
-    title: document
-      ? `Send ${document} to ${who}`
-      : `Send a frozen agreement version to ${who}`,
+    title: inPlace
+      ? `Put another signer in place of ${wasName}${document ? ` on ${document}` : ""}`
+      : document
+        ? `Send ${document} to ${who}`
+        : `Send a frozen agreement version to ${who}`,
     subtitle: "Nothing is sent if the version changed since this card",
     lines,
   })

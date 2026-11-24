@@ -1685,6 +1685,69 @@ export function newLinkAfter(input: InPlaceInput & { email?: string | null }): P
   )
 }
 
+/** The withdrawals another person may sign in the place of: never a void or a newer version. */
+const REPLACEABLE: readonly (string | null)[] = ["withdrawn", "access_ended", "person_removed"]
+
+/**
+ * Another person in the place of a signer who was withdrawn: the same document and turn, their
+ * own name, link and code. The withdrawn signer's link stays in the trail, and no longer counts in
+ * the send. Refuses a signer who was not withdrawn, and anyone who already holds a link of this
+ * send that they can answer, now or at their turn.
+ */
+export function signInPlaceOf(
+  input: InPlaceInput & {
+    signer: { contactId?: string | null; email?: string | null; name?: string | null }
+    companyId?: string | null
+    message?: string | null
+  },
+): Promise<InPlaceResult> {
+  return linkInPlaceOf(
+    input,
+    (prior) => ({
+      contactId: input.signer.contactId ?? null,
+      companyId: input.companyId ?? prior.company_id,
+      email: input.signer.email ?? "",
+      name: input.signer.name ?? null,
+      message: input.message ?? null,
+    }),
+    async (tx, prior) => {
+      if (
+        prior.decision !== null ||
+        prior.revoked_at === null ||
+        !REPLACEABLE.includes(prior.revoke_reason)
+      )
+        throw new ClientActionError(
+          "SIGNER_NOT_WITHDRAWN",
+          "Only a signer whose link was withdrawn can be replaced by another person",
+          409,
+        )
+      const who = await resolveInvitee(tx, {
+        orgId: input.orgId,
+        contactId: input.signer.contactId ?? null,
+        invitedEmail: input.signer.email ?? null,
+        invitedName: input.signer.name ?? null,
+      } as MintInput)
+      const [holds] = extractRows<{ invited_name: string }>(
+        await tx.execute(sql`
+          SELECT h.invited_name FROM ${K()}.client_actions h
+           WHERE h.org_id = ${input.orgId} AND h.group_id = ${prior.group_id}
+             AND h.decided_at IS NULL AND h.revoked_at IS NULL AND h.expires_at > now()
+             AND (h.invited_email = ${who.email}
+                  OR h.contact_id = ${who.contactId}::uuid)
+             AND NOT ${replacedSql("h")}
+           LIMIT 1
+        `),
+      )
+      if (holds)
+        throw new ClientActionError(
+          "HOLDS_A_LINK",
+          `${holds.invited_name} already holds a link of this document at that address; nobody signs on two`,
+          409,
+        )
+    },
+  )
+}
+
 /** One link of a target as its app lists it: who, which turn, and where it stands. */
 export interface TargetLink {
   id: string

@@ -93,6 +93,13 @@ export interface SendParams {
   guardKey?: string
   /** The document as the card names it. */
   document?: SendDocument
+  /**
+   * On a version already sent: the signing link of the withdrawn signer the one signer named
+   * here signs in place of, in the same turn.
+   */
+  replaces?: string
+  /** Who that is, as the card says it; pinned like the document. */
+  replaced?: { name: string; email: string }
 }
 
 /** What a card that sends a document says it is. */
@@ -235,6 +242,54 @@ interface Ready {
   expires: number
   /** The uploaded file's virus scan, as it stands after the send's own scan. */
   scanState: string | null
+  /** The withdrawn signer the one signer of this send takes the place of. */
+  replaced: SigningLink | null
+}
+
+/** A link its holder can answer, now or when their turn comes. */
+const ANSWERABLE = ["open", "waiting_turn", "locked"]
+
+/**
+ * A send on the version already sent that puts another person in a withdrawn signer's place: the
+ * withdrawn signer's link, or why not.
+ */
+async function withdrawnSigner(
+  ctx: AgreementsCtx,
+  agreement: Agreement,
+  version: Version,
+  p: SendParams,
+  signers: readonly Resolved[],
+): Promise<SigningLink | ErrorEnvelope> {
+  const links = await linksOf(ctx, version.id)
+  const link = links.find((l) => l.id === p.replaces)
+  if (!WAITING.includes(agreement.status) || !link)
+    return refusal(
+      "NOT_FOUND",
+      `${agreement.number} version ${version.number} has no signer with the link ${String(p.replaces)} to replace: agreement_get lists its links. Nothing was sent.`,
+    )
+  if (link.state !== "revoked")
+    return refusal(
+      "SIGNER_NOT_WITHDRAWN",
+      `${link.invited_name} was not withdrawn from ${agreement.number} (their link is ${link.state}): withdraw it first (client_action_revoke), then send again in their place. Nothing was sent.`,
+    )
+  const [who] = signers
+  if (signers.length !== 1 || !who)
+    return refusal(
+      "ONE_SIGNER_IN_PLACE",
+      `One person signs in place of ${link.invited_name}: name exactly one signer. Nothing was sent.`,
+    )
+  // Already replaced: by the same person (asked again) the kernel answers their link, else it refuses.
+  if (link.replaced === true) return link
+  const holds = links.find(
+    (l) =>
+      l.replaced !== true && ANSWERABLE.includes(l.state) && keyOf(l.invited_email) === who.email,
+  )
+  if (holds)
+    return refusal(
+      "HOLDS_A_LINK",
+      `${holds.invited_name} already holds a signing link of ${agreement.number} at ${who.email}: nobody signs on two. Nothing was sent.`,
+    )
+  return link
 }
 
 /** The virus scan of an uploaded version, run again while it has not run. */
@@ -281,12 +336,13 @@ async function readyToSend(
     WAITING.includes(agreement.status) &&
     ctx.client_actions_record !== undefined &&
     (await linksOf(ctx, version.id)).length === 0
-  if (WAITING.includes(agreement.status) && !neverSent)
+  const inPlace = typeof p.replaces === "string"
+  if (WAITING.includes(agreement.status) && !neverSent && !inPlace)
     return refusal(
       "ALREADY_SENT",
-      `${agreement.number} version ${version.number} was already sent: its signing links were made, and nothing was sent again now. agreement_get lists them and where each stands. A new version is sent after a save and a freeze.`,
+      `${agreement.number} version ${version.number} was already sent: its signing links were made, and nothing was sent again now. agreement_get lists them and where each stands. To put someone in a withdrawn signer's place, name that signer's link in replaces. A new version is sent after a save and a freeze.`,
     )
-  if (agreement.status !== "draft" && !neverSent)
+  if (agreement.status !== "draft" && !neverSent && !inPlace)
     return refusal(
       "ALREADY_SENT",
       `${agreement.number} is ${agreement.status}. A new version is sent after a save and a freeze. Nothing was sent.`,
@@ -307,6 +363,10 @@ async function readyToSend(
     return refusal("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
   const r = await resolveSigners(ctx, p.signers)
   if (isError(r)) return r
+  const replaced = inPlace
+    ? await withdrawnSigner(ctx, agreement, version, p, r.signers)
+    : null
+  if (isError(replaced)) return replaced
   const scanState = await rescannedState(ctx, version)
   if (opts.record && scanState !== (version.scan_state ?? null))
     await ctx.db.update("agreement_versions", version.id, { scan_state: scanState })
@@ -324,6 +384,7 @@ async function readyToSend(
     order,
     expires,
     scanState,
+    replaced,
   }
 }
 
@@ -331,7 +392,9 @@ function cardLines(ready: Ready, p: SendParams): string[] {
   const lines = [
     `Agreement: ${ready.agreement.number} "${ready.agreement.title}", version ${ready.version.number}`,
     `Fingerprint: ${String(ready.version.sha256)}`,
-    `Asks: ${ready.mode === "sign" ? "a simple electronic signature" : "an acceptance"}, ${ready.order === "sequential" ? "one after the other" : "in any order"}`,
+    ready.replaced
+      ? `In place of: ${ready.replaced.invited_name} <${ready.replaced.invited_email}> (withdrawn), in the same turn`
+      : `Asks: ${ready.mode === "sign" ? "a simple electronic signature" : "an acceptance"}, ${ready.order === "sequential" ? "one after the other" : "in any order"}`,
     ...ready.signers.map(
       (s, i) => `Signer ${i + 1}: ${s.name} <${s.email}>${s.contact_id ? "" : " (not a contact)"}`,
     ),
@@ -375,12 +438,15 @@ interface MintAnswer {
  * One send's key: the version, its fingerprint and every signer's address, with the names of
  * those who share one.
  */
-export function sendGuardKey(ready: Pick<Ready, "version" | "signers">): string {
+export function sendGuardKey(
+  ready: Pick<Ready, "version" | "signers"> & { replaced?: { id: string } | null },
+): string {
   const shared = (email: string) => ready.signers.filter((x) => x.email === email).length > 1
   const signers = [
     ...new Set(ready.signers.map((x) => (shared(x.email) ? personKey(x.email, x.name) : x.email))),
   ].sort()
-  return `${ready.version.id}:${String(ready.version.sha256)}:${signers.join(",")}`
+  const inPlace = ready.replaced ? `:in-place-of:${ready.replaced.id}` : ""
+  return `${ready.version.id}:${String(ready.version.sha256)}:${signers.join(",")}${inPlace}`
 }
 
 /** The service-mail check the card pins: every signer's address, checked again when it goes. */
@@ -413,6 +479,7 @@ export async function agreementSendPreflight(
         sendGuard: Record<string, unknown>
         guardKey: string
         document: SendDocument
+        replaced?: { name: string; email: string }
       }
     }
   | { error: { code: string; message: string } }
@@ -429,6 +496,14 @@ export async function agreementSendPreflight(
         title: ready.agreement.title,
         version: ready.version.number,
       },
+      ...(ready.replaced
+        ? {
+            replaced: {
+              name: ready.replaced.invited_name,
+              email: ready.replaced.invited_email,
+            },
+          }
+        : {}),
     },
   }
 }
@@ -477,6 +552,7 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
       "LINKS_NOT_AVAILABLE",
       "This server cannot make signing links. Nothing was sent.",
     )
+  if (ready.replaced) return sendInPlace(ctx, ready, ready.replaced, p)
   // A restricted agreement's links are seen only by its list: the client actions carry it, so
   // the kernel lists them for those people alone and opens no automatic portal share.
   const visibleTo =
@@ -579,6 +655,67 @@ export async function agreementSend(ctx: AgreementsCtx, p: SendParams) {
     version: { id: version.id, number: version.number },
     client_actions,
     message: `${agreement.number} version ${version.number} was sent: ${first.map((a) => a.invited_name).join(", ")} can ${ready.mode} now${staff.length ? ` (${staff.map((a) => a.invited_name).join(", ")} in their own session, no mailed link)` : ""}${waiting.length ? `; ${waiting.map((a) => a.invited_name).join(", ")} ${waiting.length === 1 ? "gets" : "get"} a link only after the signer before them` : ""}. Nothing else was sent.${lateNote}`,
+  }
+}
+
+/** The approved send of one person in a withdrawn signer's place, on the version already out. */
+async function sendInPlace(
+  ctx: AgreementsCtx,
+  ready: Ready,
+  replaced: SigningLink,
+  p: SendParams,
+) {
+  const { agreement, version } = ready
+  const out = bridgeAnswer<{
+    status: string
+    error?: { code: string; message: string }
+    action?: {
+      id: string
+      status: string
+      invited_name: string
+      invited_email: string
+      signer_is_staff?: boolean
+      deduped?: boolean
+    }
+  }>(
+    await (ctx.client_actions_mint as (x: unknown) => Promise<unknown>)({
+      replace_signer: {
+        after: replaced.id,
+        signer: ready.signers[0],
+        company_id: agreement.company_id ?? null,
+        expires_in_days: ready.expires,
+        message: p.message ?? null,
+        ...(p.sendGuard ? { send_guard: p.sendGuard } : {}),
+      },
+    }),
+  )
+  if (out.status !== "ok" || !out.action)
+    return refusal(
+      out.error?.code ?? "SEND_FAILED",
+      `${agreement.number} version ${version.number}: ${out.error?.message ?? "no link was made"}`,
+    )
+  const who = out.action.invited_name
+  const how = out.action.deduped
+    ? "already signs in their place: nothing was made or mailed again"
+    : out.action.status === "waiting_turn"
+      ? "signs in their place: their link is mailed after the signer before them signs"
+      : out.action.signer_is_staff
+        ? "signs in their place now, in their own session, no mailed link"
+        : `signs in their place: a link went to ${out.action.invited_email}`
+  return {
+    status: "ok",
+    agreement: { id: agreement.id, number: agreement.number, status: agreement.status },
+    version: { id: version.id, number: version.number },
+    client_actions: [
+      {
+        id: out.action.id,
+        signer: who,
+        sign_order: replaced.sign_order,
+        state: out.action.status,
+        replaces: replaced.id,
+      },
+    ],
+    message: `${agreement.number} version ${version.number}: ${replaced.invited_name} was withdrawn, and ${who} ${how}. Signatures already given stand. Nothing else was sent.`,
   }
 }
 

@@ -910,6 +910,104 @@ describe("a decision whose event was lost", () => {
   })
 })
 
+describe("another person in a withdrawn signer's place", () => {
+  async function sentWith(states: Record<string, string>, opts: { agent?: string } = {}) {
+    const db = memoryDb()
+    const { id, prepared } = await frozen(db)
+    await db.update("agreements", id, { status: "sent" })
+    const ctx = ctxFor(db, opts)
+    ctx.client_actions_record = async () => ({
+      status: "ok",
+      links: Object.entries(states).map(([name, state], i) => ({
+        id: `ca-${i + 1}`,
+        invited_name: name,
+        invited_email: `${name.toLowerCase()}@signers.example`,
+        sign_order: i + 1,
+        state: state.replace("replaced", "revoked"),
+        replaced: state === "replaced",
+      })),
+    })
+    const base = { version_id: prepared.version_id, sha256: prepared.sha256, replaces: "ca-1" }
+    return { db, id, ctx, base }
+  }
+  const pat = { email: "pat@signers.example", name: "Pat Proxy" }
+  const codeOf = (x: unknown) => (x as { error?: { code: string } }).error?.code
+
+  it("an agent's send parks a card that says who is replaced; the approved one goes to the kernel as that", async () => {
+    const asked = await sentWith({ Anne: "revoked", Jean: "open" }, { agent: AGENT })
+    const params = { ...asked.base, signers: [pat] }
+    const pre = (await agreementSendPreflight(asked.ctx, params)) as {
+      pinnedParams: { replaced: unknown; guardKey: string }
+    }
+    expect(pre.pinnedParams.replaced).toEqual({ name: "Anne", email: "anne@signers.example" })
+    const parked = (await agreementSend(asked.ctx, params)) as { status: string }
+    expect(parked.status).toBe("pending_approval")
+    expect(JSON.stringify(asked.ctx.calls.approvals)).toContain("In place of: Anne")
+    expect(asked.ctx.calls.mints).toEqual([])
+    const { ctx, base, db, id } = await sentWith({ Anne: "revoked", Jean: "open" })
+    ctx.client_actions_mint = async (p) => {
+      ctx.calls.mints.push(p)
+      return {
+        status: "ok",
+        replaced_id: "ca-1",
+        action: { id: "ca-9", status: "open", invited_name: "Pat Proxy", invited_email: pat.email },
+      }
+    }
+    const pinned = (await agreementSendPreflight(ctx, { ...base, signers: [pat] })) as {
+      pinnedParams: object
+    }
+    const out = (await agreementSend(ctx, {
+      ...base,
+      signers: [pat],
+      ...pinned.pinnedParams,
+    })) as { status: string; message: string }
+    expect(out.status).toBe("ok")
+    expect(out.message).toContain("Anne was withdrawn, and Pat Proxy signs in their place")
+    expect(ctx.calls.mints).toEqual([
+      {
+        replace_signer: expect.objectContaining({
+          after: "ca-1",
+          signer: { contact_id: null, email: pat.email, name: "Pat Proxy" },
+          send_guard: expect.objectContaining({ addresses: [pat.email] }),
+        }),
+      },
+    ])
+    expect(rowOf(db, "agreements", id).status).toBe("sent")
+    // A card for a send without the replacement, or for another place, is another card.
+    const other = (await agreementSend(ctx, {
+      ...base,
+      signers: [pat],
+      ...pinned.pinnedParams,
+      replaces: "ca-2",
+    })) as { error: { code: string } }
+    expect(other.error.code).toBe("SIGNER_NOT_WITHDRAWN")
+  })
+
+  it("refuses a signer not withdrawn, a holder of a link, more than one person, and a draft", async () => {
+    const ask = async (
+      states: Record<string, string>,
+      signers: Array<{ email: string; name?: string }>,
+      over: Record<string, unknown> = {},
+    ) => {
+      const { ctx, base } = await sentWith(states)
+      return codeOf(await agreementSendPreflight(ctx, { ...base, signers, ...over }))
+    }
+    const jean = { email: "Jean@signers.example", name: "Someone" }
+    expect(await ask({ Anne: "open", Jean: "open" }, [pat])).toBe("SIGNER_NOT_WITHDRAWN")
+    expect(await ask({ Anne: "decided" }, [pat])).toBe("SIGNER_NOT_WITHDRAWN")
+    for (const state of ["open", "waiting_turn", "locked"])
+      expect(await ask({ Anne: "revoked", Jean: state }, [jean])).toBe("HOLDS_A_LINK")
+    expect(await ask({ Anne: "revoked", Jean: "replaced" }, [jean])).toBeUndefined()
+    expect(await ask({ Anne: "revoked" }, [pat, jean])).toBe("ONE_SIGNER_IN_PLACE")
+    expect(await ask({ Anne: "revoked" }, [pat], { replaces: "ca-7" })).toBe("NOT_FOUND")
+    const { ctx, base, db, id } = await sentWith({ Anne: "revoked" })
+    await db.update("agreements", id, { status: "draft" })
+    expect(codeOf(await agreementSendPreflight(ctx, { ...base, signers: [pat] }))).toBe("NOT_FOUND")
+    await db.update("agreements", id, { status: "signed" })
+    expect(codeOf(await agreementSendPreflight(ctx, { ...base, signers: [pat] }))).toBe("NOT_FOUND")
+  })
+})
+
 describe("a send cut off before the agreement left draft", () => {
   type Link = { id: string; state: string; replaced?: boolean; send_size?: number | null }
 

@@ -1913,6 +1913,10 @@
             "type": "string",
             "maxLength": 200
           },
+          "replaces": {
+            "type": "string",
+            "description": "Only on a version already sent: the client_action_id of a withdrawn signer. The one signer named here signs in their place, in the same turn."
+          },
           "sendGuard": {
             "type": "object",
             "additionalProperties": true,
@@ -1923,6 +1927,11 @@
             "description": "Set by the server; leave it out."
           },
           "document": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
+          },
+          "replaced": {
             "type": "object",
             "additionalProperties": true,
             "description": "Set by the server; leave it out."
@@ -1938,7 +1947,8 @@
       "pinnedParams": [
         "sendGuard",
         "guardKey",
-        "document"
+        "document",
+        "replaced"
       ],
       "approvalDedupeKeyParam": "guardKey"
     },

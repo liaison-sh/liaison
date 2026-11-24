@@ -18,6 +18,8 @@
  *  - `client_actions_mint({ next_turn_after })`: the next waiting signer of an
  *    already approved send, once every signer before them signed. No approval
  *    of its own: the send was approved, and the kernel checks the order.
+ *  - `client_actions_mint({ replace_signer })`: another person in the place and turn of one
+ *    withdrawn signer of a send that stands; refuses anyone who already holds a link of it.
  *  - `client_actions_record({ id })`: what a decided action recorded (read-only).
  *  - `client_actions_revoke({ target_type, target_id, reason })`: every open
  *    action of one target, in one transaction. "replaced" needs no decision (a
@@ -55,6 +57,7 @@ import {
   revokeTargetClientActions,
   type SendAction,
   signerAddresses,
+  signInPlaceOf,
 } from "~/modules/client-actions/mint"
 import { signingUnavailable } from "~/modules/client-actions/signing-state"
 import { type ClientActionKind, declaredTarget } from "~/modules/client-actions/targets"
@@ -319,6 +322,61 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
     }
   }
 
+  /** Another person in the place of a withdrawn signer of a send that stands (signInPlaceOf). */
+  async function replaceSigner(p: {
+    after?: string
+    signer?: SendSigner
+    company_id?: string | null
+    expires_in_days?: number
+    message?: string | null
+    send_guard?: unknown
+  }): Promise<string> {
+    if (typeof p.after !== "string" || !UUID.test(p.after) || !p.signer)
+      return refuse(
+        "INVALID_INPUT",
+        "replace_signer takes the withdrawn client action's id (after) and the signer.",
+      )
+    const days = p.expires_in_days ?? 14
+    if (!(EXPIRY_DAYS as readonly number[]).includes(days))
+      return refuse("INVALID_EXPIRY", "A link lasts 7, 14 or 30 days. Nothing was sent.")
+    if (!(await personDecided()))
+      return refuse(
+        "MINT_NEEDS_A_PERSON",
+        "A signer is replaced only inside a person's decision on this app's send. Nothing was sent.",
+      )
+    if (p.send_guard !== undefined) {
+      const stop = await guardStops(p.send_guard, [p.signer])
+      if (stop) return refuse(stop.code, stop.message)
+    }
+    try {
+      const r = await signInPlaceOf({
+        orgId,
+        targetApp: appName,
+        afterActionId: p.after,
+        signer: {
+          contactId: p.signer.contact_id ?? null,
+          email: p.signer.email ?? null,
+          name: p.signer.name ?? null,
+        },
+        companyId: p.company_id ?? null,
+        message: p.message ?? null,
+        expiresInDays: days as (typeof EXPIRY_DAYS)[number],
+        createdByUserId: actorUserId(),
+        createdByAgentId: bridgeActingAgentId ?? null,
+        approvedByUserId: await decidingPerson(),
+      })
+      return JSON.stringify({
+        status: "ok",
+        replaced_id: r.replacedId,
+        action: actionOut(r, null),
+      })
+    } catch (err) {
+      if (err instanceof ClientActionError)
+        return refuse(err.code, `${err.message}. Nothing was sent.`)
+      throw err
+    }
+  }
+
   async function mintSend(p: SendParams): Promise<string> {
     const target = declaredTarget(orgId, appName, p.target_type)
     if (!target)
@@ -403,10 +461,12 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
         next_turn_after?: string
         remind?: { ids?: unknown; send_guard?: unknown }
         new_link?: { after?: string; email?: string | null; expires_in_days?: number }
+        replace_signer?: Parameters<typeof replaceSigner>[0]
       }
       if (p.send) return mintSend(p.send)
       if (p.remind) return remind(p.remind)
       if (p.new_link) return newLink(p.new_link)
+      if (p.replace_signer) return replaceSigner(p.replace_signer)
       if (typeof p.next_turn_after === "string" && UUID.test(p.next_turn_after)) {
         try {
           const out = await openNextSignerTurn({
@@ -426,7 +486,7 @@ export function createClientActionsMethods(ctx: BridgeContext): Record<string, a
       }
       return refuse(
         "INVALID_INPUT",
-        "client_actions_mint takes { send }, { next_turn_after }, { remind } or { new_link }.",
+        "client_actions_mint takes { send }, { next_turn_after }, { remind }, { new_link } or { replace_signer }.",
       )
     },
 

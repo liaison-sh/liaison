@@ -614,6 +614,23 @@ describe("the send card", () => {
     expect(bare.lines.join("\n")).not.toContain("share")
   })
 
+  it("the card that puts another signer in a withdrawn one's place says who is replaced", async () => {
+    const card = await summarizeAgreementSend({
+      version_id: "v",
+      sha256: SHA,
+      signers: [{ email: "pat@example.org", name: "Pat Proxy" }],
+      replaces: "ca-1",
+      replaced: { name: "Anne Morel", email: "anne@maison-morel.example" },
+      document: { number: "AG-2027-011", title: "Mutual NDA", version: 2 },
+    })
+    expect(card.title).toBe(
+      'Put another signer in place of Anne Morel on AG-2027-011 "Mutual NDA", version 2',
+    )
+    const lines = card.lines.join("\n")
+    expect(lines).toContain("In place of: Anne Morel <anne@maison-morel.example>, withdrawn")
+    expect(lines).toContain("Signer 1: Pat Proxy <pat@example.org>")
+  })
+
   it("a signer named by contact only reads as their address, never as a contact", async () => {
     const card = await summarizeAgreementSend({
       signers: [{ contact_id: "c-1" }],

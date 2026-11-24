@@ -83,7 +83,8 @@ interface Answer {
     deduped: boolean
     mail: string | null
   }>
-  action?: { id: string; status: string; invited_name: string }
+  action?: { id: string; status: string; invited_name: string; deduped: boolean }
+  replaced_id?: string
   opened_id?: string | null
   reminded?: Array<{ id: string }>
   recently_mailed?: Array<{ id: string }>
@@ -614,6 +615,109 @@ describe("a new link in the turn of a send one after the other", () => {
     const first = out.actions?.[0]?.id ?? ""
     expect((await mint({ new_link: { after: first } })).error?.code).toBe("VERSION_CHANGED")
     expect((await state(first))?.revoked_at).toBeNull()
+  })
+})
+
+describe("another person in a withdrawn signer's place", () => {
+  const withdraw = (id: string, reason: "withdrawn" | "replaced" | "sender_voided" = "withdrawn") =>
+    revokeClientAction({ orgId: kit.w.orgId, id, reason, byUserId: kit.w.admin.userId })
+  const proxyOf = (targetId: string) => ({
+    email: `proxy-${targetId.slice(0, 8)}@signers.example`,
+    name: "Pat Proxy",
+  })
+  const place = (after: string, signer: object) => mint({ replace_signer: { after, signer } })
+
+  it("takes the same turn, group, phrase and fingerprint, and the turns go on", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(
+      sendOf(targetId, 3, { order: "sequential", required_phrase: "Bon pour accord" }),
+    )
+    const [first, second, third] = (out.actions ?? []).map((a) => a.id) as [string, string, string]
+    await mailsSettle(targetId, 1)
+    await withdraw(first)
+    const placed = await place(first, proxyOf(targetId))
+    expect(placed).toMatchObject({
+      status: "ok",
+      replaced_id: first,
+      action: { status: "open", invited_name: "Pat Proxy" },
+    })
+    expect(await mailsSettle(targetId, 2)).toBe(2)
+    const id = placed.action?.id ?? ""
+    const rows = (await sql`
+      SELECT id, group_id, sign_order, kind, target_sha256, required_phrase
+        FROM ${k("client_actions")} WHERE id IN (${first}, ${id})`) as unknown as Array<
+      Record<string, unknown>
+    >
+    const [a, b] = [rows.find((r) => r.id === first), rows.find((r) => r.id === id)]
+    expect({ ...b, id: null }).toEqual({ ...a, id: null })
+    // Asked again (its answer lost), it is the same link, and nobody is mailed.
+    expect((await place(first, proxyOf(targetId))).action).toMatchObject({ id, deduped: true })
+    // Another person in a place already taken is refused.
+    expect((await place(first, { email: "q@signers.example" })).error?.code).toBe(
+      "ALREADY_REPLACED",
+    )
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'signed'
+               WHERE id = ${id}`
+    expect((await mint({ next_turn_after: id })).opened_id).toBe(second)
+    // One who waits is withdrawn and replaced: the proxy waits too, then is asked.
+    await withdraw(third)
+    const late = await place(third, { email: `late-${targetId.slice(0, 8)}@signers.example` })
+    expect(late.action?.status).toBe("waiting_turn")
+    expect(await mailsSettle(targetId, 3)).toBe(3)
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'signed'
+               WHERE id = ${second}`
+    expect((await mint({ next_turn_after: second })).opened_id).toBe(late.action?.id)
+    expect(await mailsSettle(targetId, 4)).toBe(4)
+  })
+
+  it("refuses anyone who holds a link of the send, open or waiting, and a signer not withdrawn", async () => {
+    for (const order of ["any", "sequential"]) {
+      const targetId = crypto.randomUUID()
+      const out = await mint(sendOf(targetId, 3, { order }))
+      const [first, second, third] = (out.actions ?? []).map((a) => a.id) as [
+        string,
+        string,
+        string,
+      ]
+      const holder = signersOf(targetId, 2)[1] as { email: string; name: string }
+      expect((await place(first, proxyOf(targetId))).error?.code).toBe("SIGNER_NOT_WITHDRAWN")
+      await withdraw(first)
+      for (const name of [holder.name, "Another Name"])
+        expect((await place(first, { email: holder.email.toUpperCase(), name })).error?.code).toBe(
+          "HOLDS_A_LINK",
+        )
+      for (const reason of ["replaced", "sender_voided"] as const) {
+        const id = reason === "replaced" ? second : third
+        await withdraw(id, reason)
+        expect((await place(id, proxyOf(targetId))).error?.code).toBe("SIGNER_NOT_WITHDRAWN")
+      }
+      expect(await rowsOf(targetId)).toHaveLength(3)
+    }
+  })
+
+  it("a signer who answered is never replaced, and one who signed may sign for a withdrawn one", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 2))
+    const [first, second] = (out.actions ?? []).map((a) => a.id) as [string, string]
+    await sql`UPDATE ${k("client_actions")} SET decided_at = now(), decision = 'signed'
+               WHERE id = ${first}`
+    expect((await place(first, proxyOf(targetId))).error?.code).toBe("SIGNER_NOT_WITHDRAWN")
+    await withdraw(second)
+    const [signed] = signersOf(targetId, 1)
+    expect((await place(second, signed as object)).status).toBe("ok")
+  })
+
+  it("two proxies at the same moment: one takes the place", async () => {
+    const targetId = crypto.randomUUID()
+    const out = await mint(sendOf(targetId, 1))
+    const first = out.actions?.[0]?.id ?? ""
+    await withdraw(first)
+    const outs = await Promise.all([
+      place(first, proxyOf(targetId)),
+      place(first, { email: `other-${targetId.slice(0, 8)}@signers.example` }),
+    ])
+    expect(outs.map((o) => o.error?.code ?? "ok").sort()).toEqual(["ALREADY_REPLACED", "ok"])
+    expect(await rowsOf(targetId)).toHaveLength(2)
   })
 })
 

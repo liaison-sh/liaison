@@ -59,6 +59,8 @@ Open a deal to see the **Deal** panel above its description: **Amount**, **Compa
 
 To name a project's client, open **Edit project**, search in **Client (optional)** and pick the company; **Clear the client** removes it. Once a project has a client, its page shows a **Client** line under the header that opens the company's page. A company you cannot see reads **A company you cannot see**.
 
+When an agent's change to a deal waits for a decision, its card names the deal, its key, its client and its pipeline, and says each change in words, for example **Mark the deal won: Supplier portal**. The amount already stored on the deal is not on the card, since reading it needs `projects:deals:read`; an amount the change sets is.
+
 If you can read agreements (see [Agreements](agreements.md)), the project page also lists **Agreements**: each agreement that names the project, with its company and quote, and a deal's details say how many agreements name the deal ("1 agreement", "3 agreements"). You see only the agreements you may open, and drafts are not listed.
 
 ## Find tasks

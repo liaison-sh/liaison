@@ -7,7 +7,7 @@ import {
 import { z } from "zod"
 import { isRecord } from "~/lib/guards"
 import { appsLogger as log } from "~/lib/logger"
-import { isUuid } from "~/lib/uuid"
+import { isUuid, UUID_RE } from "~/lib/uuid"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/tool-name"
 import { type ApprovalSummarizer, approvalSummarizerRegistry } from "~/modules/apps/app-registries"
 import {
@@ -188,7 +188,7 @@ function titleDetail(toolName: string, params: unknown, names: RecordNames): str
   if (/(^|[._])(create|add)/i.test(toolShortName)) {
     for (const key of OWN_NAME_KEYS) {
       const value = params[key]
-      if (typeof value !== "string" || !value.trim() || isUuid(value)) continue
+      if (typeof value !== "string" || !value.trim() || UUID_RE.test(value.trim())) continue
       const flat = withNames(value.replace(/\s+/g, " ").trim(), names, () => "…")
       return flat.length > TITLE_DETAIL_MAX ? `${flat.slice(0, TITLE_DETAIL_MAX - 1)}…` : flat
     }

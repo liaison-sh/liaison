@@ -1,0 +1,1 @@
+A whole answer with its next steps ends the turn -> apps/api/src/modules/agent/providers/answer-after-tools.ts (replyIsClosed)

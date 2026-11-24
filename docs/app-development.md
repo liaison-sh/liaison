@@ -1145,6 +1145,13 @@ shows a generic summary of its parameters. While it still awaits a decision,
 the server stores the real one in the background, a few at a time; a decided
 request keeps the generic summary.
 
+A tool with no summarizer gets that generic summary too when a call of it is
+held for a decision. A parameter that holds an id is shown by the record's name:
+the parameter's words name the kind (`taskId`, `project_id`, `assigneeId`, or `id`
+for the record the tool acts on) and the entity's `labelField` the name, read with
+the requester's access. An id nothing names is left out. Your own summarizer's
+words are kept, with an id it prints replaced by the record's name when there is one.
+
 A summarizer is pure: it reads the call's parameters, never a record. To show
 the record a call acts on, declare `summarizerContext` on the tool:
 `{"tool": "<an ungated read tool of your app>", "params": {"<read param>":

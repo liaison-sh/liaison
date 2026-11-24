@@ -1,0 +1,1 @@
+A generic summary reads ids by the records' names and leaves out the rest -> apps/api/src/modules/apps/approval-summarizers.ts (genericApprovalSummary) ; apps/api/src/modules/apps/approval-record-names.ts (resolveRecordNames)

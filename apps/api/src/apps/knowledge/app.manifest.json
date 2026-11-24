@@ -1729,6 +1729,16 @@
         "urlPattern": "/knowledge/sources/:entityId",
         "referenceable": false
       },
+      "import": {
+        "component": "KnowledgeImportView",
+        "sidebar": "KnowledgeSidebar",
+        "label": "Import from Notion",
+        "labelKey": "knowledge.notionImport.tabLabel",
+        "icon": "KnowledgeIcon",
+        "urlPattern": "/knowledge/import",
+        "singleton": true,
+        "referenceable": false
+      },
       "synced-source-add": {
         "component": "SyncedSourceAddTab",
         "sidebar": "KnowledgeSidebar",

@@ -62,6 +62,15 @@ const KnowledgeHome: Component = () => {
     void discussWithPersonalAgent({ title: CREATE_FROM_LABEL, link: KNOWLEDGE_HOME_LINK }, api)
   }
 
+  function openNotionImport(): void {
+    openTab({
+      type: "knowledge:import",
+      entityId: "import",
+      label: i18n.t("knowledge.notionImport.tabLabel"),
+      preview: false,
+    })
+  }
+
   const recent = createMemo<RecentDoc[]>(
     () => (knowledgeStore.homeData?.recent ?? []) as RecentDoc[],
   )
@@ -105,14 +114,25 @@ const KnowledgeHome: Component = () => {
               {i18n.t("kernel.knowledgeTitle")}
             </h1>
           </Show>
-          <Button
-            data-testid="knowledge-home-create-from-cta"
-            size="sm"
-            class="shrink-0 whitespace-nowrap"
-            onClick={openCreateKnowledge}
-          >
-            {i18n.t("knowledge.createKnowledgeFrom")}
-          </Button>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              data-testid="knowledge-home-import"
+              size="sm"
+              variant="outline"
+              class="shrink-0 whitespace-nowrap"
+              onClick={openNotionImport}
+            >
+              {i18n.t("knowledge.notionImport.entry")}
+            </Button>
+            <Button
+              data-testid="knowledge-home-create-from-cta"
+              size="sm"
+              class="shrink-0 whitespace-nowrap"
+              onClick={openCreateKnowledge}
+            >
+              {i18n.t("knowledge.createKnowledgeFrom")}
+            </Button>
+          </div>
         </div>
 
         {/* Needs-review filter — only when there are items to review */}

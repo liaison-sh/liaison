@@ -68,7 +68,17 @@ const listQuery = z.object({
 
 function errorResponse(err: unknown) {
   if (err instanceof ImportError) {
-    return { body: { error: { message: err.message, code: err.code } }, status: err.status }
+    return {
+      body: {
+        error: {
+          message: err.message,
+          code: err.code,
+          // Why an upload was refused, as a word a screen can translate.
+          ...(err.reason ? { details: { reason: err.reason } } : {}),
+        },
+      },
+      status: err.status,
+    }
   }
   if (err instanceof TransformStoreError) {
     return {
@@ -139,11 +149,12 @@ export const importRoutes = new Hono<AppEnv>()
     const actor = extractRlsContext(c)
     try {
       const body = await c.req.json().catch(() => ({}))
-      const out = await previewImport(body, {
-        orgId: actor.orgId,
-        userId: actor.userId,
-        scopes: actor.scopes,
-      })
+      const out = await previewImport(
+        body,
+        { orgId: actor.orgId, userId: actor.userId, scopes: actor.scopes },
+        // A person's own preview screen lists every item that would not come across.
+        { namedLosses: true },
+      )
       return c.json({ data: out })
     } catch (err) {
       const r = errorResponse(err)

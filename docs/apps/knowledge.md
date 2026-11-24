@@ -156,6 +156,28 @@ Each search, link or read goes through your own connection to the app, so you on
 
 Use **Archive** to retire a document and **Restore** to bring it back.
 
+## Import from Notion
+
+You can bring a Notion workspace into Knowledge yourself, from a Notion export.
+
+1. In Notion, open **Settings**, then **Export all workspace content**. Choose **Markdown & CSV**, with subpages and files. Notion emails you a link to a zip.
+2. In Knowledge, click **Import from Notion** (on the Knowledge home, or at the bottom of the sidebar). It opens its own tab.
+3. Click **Choose the zip** (or drop it on the tab) and pick the zip as it is, without unzipping it. One zip, or a zip of zips, up to 1 GB.
+4. Read the preview. Nothing is created yet. It shows how many folders, pages and files the import makes, how many are already here, the storage your organization has left (for administrators), and every item that will not come across, by kind: images on other websites, embeds, links to pages not in the export, files missing from the export, pages over 1 MB, database rows past the first 200, and so on.
+5. Under **Who can see these pages**, keep **Only me** (the default), or choose **Everyone can view** or **Everyone can edit**. The choice covers the pages and their folders. Changing it checks the export again, because what is already here differs: pages only you can see are matched against your own earlier imports, shared pages against everyone's.
+6. Click **Import N pages**. You can close the tab and work elsewhere: the import keeps going, and **Import from Notion** shows where it is when you come back.
+7. Read the report: what was made, then every item that did not come across, with a search box and **Copy the list**. Items past the first 20,000 are counted, never left out of the total.
+
+A page with subpages becomes a folder with its own folder page, links between exported pages become page links, images and files become files of their page, and a database becomes a folder page holding a table of its first 200 rows, with its row pages inside. Importing the same export again creates nothing twice: every page already here is named in the preview.
+
+The import refuses, with the reason, a PDF or a web page instead of the zip, an HTML export (export again as **Markdown & CSV**), a zip with no Notion pages, a password-protected zip, a zip that expands far more than its size, and zips nested more than one level deep.
+
+### Undo a Notion import
+
+At the end of the report, click **Undo the import**, then **Remove them**. It removes the pages, folders and files the import made. A page someone changed since the import is kept, and so is the folder that holds it: the result names each page or folder kept and why.
+
+Importing needs the **Imports** permissions (`kernel:imports:run` and `kernel:imports:read`) and the right to create pages and folders; undoing needs `kernel:imports:undo`. Without them the tab says so: ask an administrator. The run also appears under **Settings › Organization › Imports**.
+
 ## Import collections and documents
 
 Collections import as the `knowledge.collection` kind and documents as the `knowledge.document` kind, each matched on its `externalRef`: one imported before is skipped, never updated. In a run with both, collections go first, so a document can be filed in a collection the same run creates (`collectionRefs`). A collection is shared with the organization unless its record says `shared: false`.

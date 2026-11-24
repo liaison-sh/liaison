@@ -246,7 +246,15 @@ describe("the folder's own page", () => {
           pages: [{ id: "d1", title: "Refund rules" }],
         })
       if (path === "/knowledge/documents/p1")
-        return { id: "p1", title: "Policies", body: "About.", revision: 1, canEdit: true }
+        return {
+          id: "p1",
+          title: "Policies",
+          body: "About.",
+          revision: 1,
+          canEdit: true,
+          documentScope: "organization",
+          status: "active",
+        }
       if (path.endsWith("/backlinks")) return { backlinks: [] }
       return []
     })

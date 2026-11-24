@@ -20,6 +20,7 @@ export const KnowledgeDocumentView = lazy(() => import("./KnowledgeDocumentView"
 export const KnowledgeLinkedSourceView = lazy(() => import("./KnowledgeLinkedSourceView"))
 export const KnowledgeFolderView = lazy(() => import("./KnowledgeFolderView"))
 export const SyncedSourceAddTab = lazy(() => import("./SyncedSourceAddTab"))
+export const KnowledgeImportView = lazy(() => import("./KnowledgeImportView"))
 // Custom block of the Knowledge settings page (manifest `settings`).
 export const SyncedSourceAdd = lazy(() =>
   import("./SyncedSourceAdd").then((m) => ({ default: m.SyncedSourceAdd })),

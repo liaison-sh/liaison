@@ -10,6 +10,7 @@ import { withPrivilegedDb } from "~/db/privileged"
 import { rebuildFilesSelectPolicy } from "~/infra/boot-phase10"
 import { ensureAppsForOrg } from "~/modules/apps/init"
 import { processImportRunJob, registerImportJobWorker } from "~/modules/imports/job"
+import { buildZip } from "~/modules/imports/parsers/__test-helpers__/zip-writer"
 import { createImportRun } from "~/modules/imports/runs"
 import { saveTransform } from "~/modules/imports/transforms/store"
 import { ensureOrg } from "~/modules/provisioning/ensure-org"
@@ -449,4 +450,45 @@ describe("the Imports view's routes: transforms, preview, start", () => {
     expect(member.status).toBe(403)
     expect(JSON.stringify(member.json)).toContain("missing scope")
   }, 60_000)
+
+  it("a person's built-in preview names every loss unclipped, and a refused upload says why in a word", async () => {
+    const hex = (n: number) => n.toString(16).padStart(32, "0")
+    const pages = Array.from({ length: 7 }, (_, i) => ({
+      name: `Page ${i} ${hex(i + 1)}.md`,
+      data: `# Page ${i}\n\n![](https://images.example.com/p${i}.png)\n`,
+    }))
+    const zipId = await uploadPrivateImportFile(
+      orgId,
+      adminId,
+      buildZip([...pages, { name: "Old export.html", data: "<html></html>" }]),
+      "Export.zip",
+    )
+    const ok = await call(adminToken, "POST", "/previews", {
+      builtin: "notion-export",
+      fileIds: [zipId],
+    })
+    expect(ok.status).toBe(200)
+    const named = (ok.json.data as { named: Record<string, unknown> }).named as {
+      losses: Array<{ what: string; where: string }>
+      entries: Record<string, number>
+    }
+    // Seven web images: the clipped report shows five, the named list all seven.
+    expect(named.losses.filter((l) => l.what.startsWith("web image")).length).toBe(7)
+    expect(named.entries).toMatchObject({ markdown: 7, html: 1 })
+
+    const lockedId = await uploadPrivateImportFile(
+      orgId,
+      adminId,
+      buildZip([{ name: `Secret ${hex(99)}.md`, data: "# Secret\n", encrypted: true }]),
+      "Locked.zip",
+    )
+    const locked = await call(adminToken, "POST", "/previews", {
+      builtin: "notion-export",
+      fileIds: [lockedId],
+    })
+    expect(locked.status).toBe(400)
+    expect((locked.json.error as { details?: { reason?: string } }).details?.reason).toBe(
+      "zip_encrypted",
+    )
+  }, 120_000)
 })

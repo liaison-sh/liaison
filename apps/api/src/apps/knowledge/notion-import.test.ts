@@ -358,6 +358,8 @@ describe("Notion export into Knowledge", () => {
     expect(lossesOf(preview.report)).toContain(
       "Onboarding: web image (https://images.example.com/skyline.png)",
     )
+    // The files the run would copy onto pages, counted (the preview copies none).
+    expect(Number(preview.report.filesToCopy)).toBeGreaterThan(0)
     expect(await countOf(labelOf(amina, "private"))).toEqual({ docs: 0, folders: 0 })
     await notion(amina, zip)
     const later = await notion(amina, zip, "private", { dryRun: true })

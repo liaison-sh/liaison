@@ -129,6 +129,126 @@ describe("WebCrypto in the QuickJS sandbox", () => {
     expect(out.uuid).not.toBe(out.other)
   })
 
+  // Bytes cross between QuickJS and the host in strings, which QuickJS cuts at a NUL.
+  describe("a zero byte anywhere is a byte like any other", () => {
+    const WITH_ZEROS = [
+      [0],
+      [0, 0, 0],
+      [0, 1, 2],
+      [1, 0, 2],
+      [1, 2, 0],
+      [97, 98, 99, 0, 101, 118],
+      [255, 0, 128, 0],
+    ]
+    const buf = (b: readonly number[]) => Buffer.from(b)
+
+    it("digest: the data's zeros count, and an answer that holds one is whole", async () => {
+      // Enough texts that every algorithm has answers with a zero first, inside and last.
+      const inputs = [
+        ...WITH_ZEROS,
+        ...Array.from({ length: 1_500 }, (_, i) => [...Buffer.from(`a${i}`)]),
+      ]
+      const out = (await run(
+        `${GUEST_HELPERS}
+        async function main(p) {
+          var r = {};
+          for (var alg of ["SHA-1", "SHA-256", "SHA-384", "SHA-512"]) {
+            r[alg] = [];
+            for (var i = 0; i < p.inputs.length; i++) r[alg].push(hexOf(await crypto.subtle.digest(alg, p.inputs[i])));
+          }
+          return r;
+        }`,
+        { inputs },
+      )) as Record<string, string[]>
+      for (const [alg, node] of [
+        ["SHA-1", "sha1"],
+        ["SHA-256", "sha256"],
+        ["SHA-384", "sha384"],
+        ["SHA-512", "sha512"],
+      ] as const) {
+        const want = inputs.map((b) => createHash(node).update(buf(b)).digest())
+        for (const at of [(d: Buffer) => d[0], (d: Buffer) => d[9], (d: Buffer) => d.at(-1)]) {
+          expect(want.some((d) => at(d) === 0)).toBe(true)
+        }
+        expect(out[alg]).toEqual(want.map((d) => d.toString("hex")))
+      }
+    })
+
+    it("HMAC: key, data and signature keep their zeros; data that differs after one does not verify", async () => {
+      const cases = WITH_ZEROS.flatMap((key) => WITH_ZEROS.map((data) => ({ key, data })))
+      const signatures = Array.from({ length: 600 }, (_, i) => [
+        ...createHmac("sha256", "k").update(`m${i}`).digest(),
+      ])
+      expect(signatures.some((b) => b.includes(0))).toBe(true)
+      const out = (await run(
+        `${GUEST_HELPERS}
+        async function main(p) {
+          var sigs = [], longer = [], other = [], exported = [];
+          for (var c of p.cases) {
+            var k = await crypto.subtle.importKey("raw", c.key, { name: "HMAC", hash: "SHA-256" }, true, ["sign", "verify"]);
+            var s = await crypto.subtle.sign("HMAC", k, c.data);
+            sigs.push(hexOf(s));
+            exported.push(hexOf(await crypto.subtle.exportKey("raw", k)) + ":" + k.algorithm.length);
+            longer.push(await crypto.subtle.verify("HMAC", k, s, c.data.concat([0, 120])));
+            other.push(await crypto.subtle.verify("HMAC", k, s.slice(0, 1).concat([0], s.slice(2)), c.data));
+          }
+          var kk = await crypto.subtle.importKey("raw", utf8("k"), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+          var ok = 0, forged = 0;
+          for (var i = 0; i < p.signatures.length; i++) {
+            if (await crypto.subtle.verify("HMAC", kk, p.signatures[i], utf8("m" + i))) ok++;
+            if (await crypto.subtle.verify("HMAC", kk, p.signatures[i], utf8("m" + i).concat([0, 101, 118]))) forged++;
+          }
+          return { sigs: sigs, exported: exported, longer: longer, other: other, ok: ok, forged: forged };
+        }`,
+        { cases, signatures },
+      )) as {
+        sigs: string[]
+        exported: string[]
+        longer: boolean[]
+        other: boolean[]
+        ok: number
+        forged: number
+      }
+      const want = cases.map((c) =>
+        createHmac("sha256", buf(c.key)).update(buf(c.data)).digest("hex"),
+      )
+      expect(out.sigs).toEqual(want)
+      expect(out.exported).toEqual(
+        cases.map((c) => `${buf(c.key).toString("hex")}:${c.key.length * 8}`),
+      )
+      expect(out.longer).not.toContain(true)
+      // The one case in 256 whose second byte is zero already is the same signature.
+      expect(out.other).toEqual(want.map((h) => h.slice(2, 4) === "00"))
+      expect({ ok: out.ok, forged: out.forged }).toEqual({ ok: signatures.length, forged: 0 })
+    })
+
+    it("a text the host hands over is whole past a NUL, and is never read as code", async () => {
+      for (const text of ["a\0b", "\0", '"\0"); throw 1; //', "\0\u2028\u2029\\` x"]) {
+        expect(
+          await run(
+            `function main(p) { return p.split("").map(function (c) { return c.charCodeAt(0); }); }`,
+            text,
+          ),
+        ).toEqual(text.split("").map((c) => c.charCodeAt(0)))
+      }
+    })
+
+    it("getRandomValues fills the whole array, zeros included", async () => {
+      const out = (await run(
+        `function main() {
+          var tails = 0, zeros = 0;
+          for (var i = 0; i < 1000; i++) {
+            var a = crypto.getRandomValues(new Array(64).fill(-1));
+            if (a.indexOf(-1) >= 0) tails++;
+            if (a.indexOf(0) >= 0) zeros++;
+          }
+          return { unfilled: tails, withZero: zeros > 0, none: crypto.getRandomValues([]).length };
+        }`,
+      )) as Record<string, unknown>
+      expect(out).toEqual({ unfilled: 0, withZero: true, none: 0 })
+    })
+  })
+
   it("rejects what WebCrypto rejects, as a rejected promise with WebCrypto's error name", async () => {
     const out = await run(
       `async function main() {
@@ -157,6 +277,9 @@ describe("WebCrypto in the QuickJS sandbox", () => {
     expect(webcryptoHostCall("nope")).toBe("0NotSupportedError\nUnknown crypto operation: nope")
     expect(webcryptoHostCall("digest", "MD5", "")).toStartWith("0NotSupportedError\n")
     expect(webcryptoHostCall("random", 65_537)).toStartWith("0QuotaExceededError\n")
+    for (const notHex of ["abc", "0g", "AB", 7]) {
+      expect(webcryptoHostCall("digest", "SHA-256", notHex)).toStartWith("0TypeError\n")
+    }
   })
 })
 

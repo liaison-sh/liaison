@@ -806,6 +806,41 @@ describe("a retainer month's invoice", () => {
     )
   })
 
+  test("a retainer invoice is due by its schedule's own rule, counted from its issue", async () => {
+    for (const [over, days] of [
+      [{ due_rule: "days_n", due_days: 14 }, 14],
+      [{ due_rule: "on_issue" }, 0],
+      [{ due_rule: "days_30" }, 30],
+    ] as const) {
+      const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1", ...over }) })
+      h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))
+      const res = await draft(h, REC_OCT)
+      const said = JSON.stringify(h.approvals[0]?.summary_detail)
+      expect(said).toContain(days === 0 ? "Due on the day it is issued" : `Due ${days} days after`)
+      await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+      const doc = docs(h.db).find((d) => d.status === "issued") as Row
+      const issuedOn = Date.parse(String(doc.issued_at).slice(0, 10))
+      expect((Date.parse(String(doc.due_at).slice(0, 10)) - issuedOn) / 86_400_000).toBe(days)
+    }
+  })
+
+  test("a draft made from an earlier state of its card is neither used again nor issued", async () => {
+    const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1" }) })
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 46))
+    const res = await draft(h, REC_OCT)
+    // The card moved on under the draft: it bills less now.
+    h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 0, { revision: 2, lines: [], state: "drafted" }))
+    const out = await invoiceIssue(h.ctx, { draft_id: res.draftId } as never)
+    expect(JSON.stringify(out)).toContain("press Undo, then Create invoice again")
+    expect(docs(h.db).some((d) => d.status === "issued")).toBe(false)
+    const again = await retainerDraftFromReconcile(h.ctx, {
+      reconciliationId: REC_OCT,
+      revision: 2,
+    })
+    expect(again).toMatchObject({ status: "error", error: { code: "draft_outdated" } })
+    expect(docs(h.db)).toHaveLength(1)
+  })
+
   test("issuing a retainer draft whose card no longer reserves it is refused with no number", async () => {
     const h = harness({ schedule: retainerSchedule({ contact_id: "contact-1" }) })
     h.cards.set(REC_OCT, card(REC_OCT, "2026-10", 40))

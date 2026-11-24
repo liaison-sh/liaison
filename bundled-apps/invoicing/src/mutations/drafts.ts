@@ -4,8 +4,10 @@
 
 import { asHandlerSummary } from "../approval-cards"
 import { type BuyerVatFacts, checkBuyerVat, consumerDeclaredAgainstEvidence } from "../buyer-vat"
+import { operationCategory } from "../einvoicing/classify-operation"
 import type { DraftLine, DraftLineInput, IssueBatchOp } from "../issue"
 import { checkIssuerGuard, type GuardCtx } from "../issuer-guard"
+import { dueOn, paymentTermsOf } from "../payment-terms"
 import { recipientOf } from "../recipient"
 import {
   type DiscardParked,
@@ -46,12 +48,12 @@ import {
   resolveIssuerProfileOrError,
   updateDraftRow,
 } from "./db-helpers"
+import { restageIssueApprovals } from "./issue-fingerprint"
 import {
   billingDraftHeaderLockedError,
   cardLinesLockedError,
   deductionLinesLockedError,
   markReconciliation,
-  restageIssueApprovals,
   withdrawIssueApprovals,
 } from "./issue-handover"
 import { liftMisplacedCountry, netLinesForIssuer, normaliseDraftLines } from "./lines"
@@ -291,7 +293,7 @@ async function runToJoin(ctx: MutationsCtx, runId: string): Promise<Row> {
       "run_not_found",
       `No month-end run ${runId}, so nothing was added. Read the runs with recurring_run_get.`,
     )
-  if (run.status === "issued" || run.status === "late" || run.status === "nothing_to_issue") {
+  if (run.status === "issued" || run.status === "nothing_to_issue") {
     refuse(
       "run_closed",
       `Month-end run ${runId} is ${String(run.status)}, so nothing was added to it. Make a separate invoice instead.`,
@@ -566,7 +568,10 @@ async function createDraft(
   const counterpartyVatId = guarded.vat
   // Lines and notes are validated BEFORE any approval is parked: a person must never approve a
   // draft whose lines or notes the insert then refuses.
-  const normalisedItems = normaliseDraftLines(input.items ?? [])
+  // A month-end run bills services: a line added to it with no kind is one.
+  const normalisedItems = normaliseDraftLines(input.items ?? []).map((l) =>
+    joining && l.line_kind === undefined ? { ...l, line_kind: "service" as const } : l,
+  )
   const draftLines =
     input.type === "credit_note"
       ? normalisedItems
@@ -693,6 +698,35 @@ async function createDraft(
   return { draft_id: draft.id, ...serializeDraftRow(draft) }
 }
 
+/** The due date and operation type of an added row whose caller gave none. */
+async function addedRowTerms(ctx: MutationsCtx, run: Row, draft: DraftRow): Promise<Row> {
+  const out: Row = {}
+  if (!draft.due_at) {
+    const issuer: { id: string; timezone?: string | null; default_payment_terms_days?: unknown } =
+      (await findIssuerProfile(ctx.db, draft.issuer_profile_id)) ?? {
+        id: draft.issuer_profile_id,
+      }
+    const terms = await paymentTermsOf(ctx.db, {
+      issuer,
+      contactId: draft.counterparty_contact_id,
+      externalRefs: draft.external_refs,
+    })
+    // Added after the issue day, it is due counted from today: it issues no earlier.
+    const zone = issuer.timezone || "UTC"
+    const today = (await ctx.time.civil({ timezone: zone })).date
+    const issueOn = dayOf(run.issue_on) as string
+    const countedFrom = today > issueOn ? today : issueOn
+    out.due_at = dueOn(countedFrom, terms.days)
+    out.external_refs = { ...(draft.external_refs ?? {}), due_counted_from: countedFrom }
+  }
+  if (!draft.operation_category) {
+    const { category } = operationCategory(draft.lines, { authoritative: false })
+    out.operation_category = category ?? "services"
+    out.operation_category_source = "explicit"
+  }
+  return out
+}
+
 /** Make a new draft a row of its run: an added row, keyed by its item, then the card follows. */
 async function joinRun(
   ctx: MutationsCtx,
@@ -707,6 +741,10 @@ async function joinRun(
     limit: 500,
   })) as Row[]
   const first = items[0]
+  const periodStart = first
+    ? dayOf(first.period_start)
+    : `${(dayOf(run.issue_on) as string).slice(0, 7)}-01`
+  const periodEnd = first ? dayOf(first.period_end) : dayOf(run.issue_on)
   const position = items.reduce((m, i) => Math.max(m, Number(i.position ?? 0)), 0) + 1
   const issueOn = dayOf(run.issue_on) as string
   const inserted = (await ctx.db.insert("recurring_run_items", {
@@ -715,18 +753,27 @@ async function joinRun(
     schedule_id: null,
     schedule_version: null,
     period_key: first ? String(first.period_key) : issueOn.slice(0, 7),
-    period_start: first ? dayOf(first.period_start) : `${issueOn.slice(0, 7)}-01`,
-    period_end: first ? dayOf(first.period_end) : issueOn,
+    period_start: periodStart,
+    period_end: periodEnd,
     document_id: draft.id,
     position,
     state: "ready",
     note: ["Added", ...(alsoBilled ? ["Also billed in this run"] : [])].join(" · "),
   })) as Row
   const itemId = String(inserted.id)
+  const terms = await addedRowTerms(ctx, run, draft)
   await ctx.db.update("documents", draft.id, {
     external_ref: `recurring:added:${itemId}`,
+    // An added row bills the run's period, is due by its customer's terms from the run's issue day,
+    // and has the operation type its lines give: what the card shows is what issues.
+    ...terms,
+    service_period_start: periodStart,
+    service_period_end: periodEnd,
     external_refs: {
-      ...(draft.external_refs ?? {}),
+      ...((terms.external_refs as Row | undefined) ?? draft.external_refs ?? {}),
+      period_key: first ? String(first.period_key) : issueOn.slice(0, 7),
+      period_start: periodStart,
+      period_end: periodEnd,
       recurring_run_item_id: itemId,
       recurring_run_id: runId,
     },
@@ -850,6 +897,42 @@ const TERMS_KEYS = [
   "currency",
   "lines",
 ]
+
+/** Every field a drafts_update patch changes. Anything else in a patch is refused by name. */
+export const PATCH_FIELDS: ReadonlySet<string> = new Set([
+  "type",
+  "lines",
+  ...TERMS_KEYS,
+  "buyer_is_consumer",
+  "counterparty_shipping_address",
+  "counterparty_shipping_name",
+  "tax_treatment",
+  "issuer_profile_id",
+  "incoterm",
+  "external_refs",
+  "notes",
+  "po_number",
+  "operation_category",
+  "project_id",
+  "billing_project_id",
+])
+
+/**
+ * A patch naming a field drafts_update does not change is refused before anything is read or
+ * written: a success would report a change that was never made. `items` is what drafts_create
+ * calls the lines.
+ */
+function refuseUnknownFields(draftId: string, patch: unknown): void {
+  const unknown = Object.keys((patch ?? {}) as object).filter((k) => !PATCH_FIELDS.has(k))
+  if (unknown.length === 0) return
+  const named = unknown.map((k) => `"${k}"`).join(", ")
+  refuse(
+    "unknown_field",
+    `The patch names ${named}, which drafts_update does not change, so draft ${draftId} was not changed at all.` +
+      (unknown.includes("items") ? ` The lines of a draft are patch.lines.` : "") +
+      ` A patch may hold: ${[...PATCH_FIELDS].join(", ")}.`,
+  )
+}
 
 const ADDRESS_KEYS = [
   "counterparty_address",
@@ -1088,6 +1171,7 @@ async function updateDraft(
   input: DraftsUpdateInput,
   mode: DraftRunMode,
 ): Promise<DraftUpdated | DraftParked | PreflightPassed | RunUpdated | RunParked> {
+  refuseUnknownFields(input.draft_id, input.patch)
   // A new buyer on an invoice draft meets the issuer guard, as a new draft does.
   const p = input.patch ?? {}
   if ("counterparty_contact_id" in p || "counterparty_email" in p) {

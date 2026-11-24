@@ -26,12 +26,8 @@ import { planTax } from "../tax-plan"
 import { creditedTotalMinor } from "./credit-coverage"
 import { resolveIssuerProfileOrError } from "./db-helpers"
 import { draftsCreate } from "./drafts"
-import {
-  customerLine,
-  ISSUE_APPROVAL_EXPIRY_HOURS,
-  issuePayloadFor,
-  monthEnd,
-} from "./from-reconcile"
+import { customerLine, dueLine, ISSUE_APPROVAL_EXPIRY_HOURS, monthEnd } from "./from-reconcile"
+import { issuePayloadFor } from "./issue-fingerprint"
 import { isUniqueViolation } from "./quote-proforma-po"
 import type { MutationsCtx } from "./shared"
 
@@ -764,12 +760,19 @@ export async function raiseIssueApproval(
     const today = latestIssueOn ? (await ctx.time.civil({ timezone: "UTC" })).date : null
     const latest = latestIssueOn ? latestIssueLine(latestIssueOn, today) : null
     // Whoever decides reads who is invoiced first: the draft's customer.
-    const shown = [...(await customerLine(ctx, draftId)), ...lines]
+    const who = [...(await customerLine(ctx, draftId)), ...lines]
+    const due = await dueLine(ctx, draftId)
+    // Room for the due date and the last issue day, keeping the amount to pay (the last line).
+    const room = 8 - due.length - (latest ? 1 : 0)
+    const shown = [
+      ...(who.length > room ? [...who.slice(0, room - 1), who[who.length - 1] as string] : who),
+      ...due,
+    ]
     const parked = await ctx.requestApproval({
       tool_name: "invoicing:invoice_issue",
       summary: `Issue ${title}`,
       summary_detail: latest
-        ? { lines: [...shown.slice(0, 7), latest], latest_on: String(latestIssueOn).slice(0, 10) }
+        ? { lines: [...shown, latest], latest_on: String(latestIssueOn).slice(0, 10) }
         : { lines: shown },
       current_payload: await issuePayloadFor(ctx, draftId),
       approve_scope: "invoicing:documents:write",

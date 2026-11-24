@@ -1783,7 +1783,7 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 (the wrong terms)
+      due_at: "2099-07-20", // NET-30 (the wrong terms)
       items: sampleDraftItems,
     })
     const r = await invoiceIssue(ctx, { draft_id })
@@ -1796,8 +1796,8 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
     // With the fingerprint of the draft the card shows, so an edited draft is refused at issue.
     expect(req.current_payload).toEqual({
       draft_id,
-      due_at: "2026-07-20",
-      draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      due_at: "2099-07-20",
+      draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/),
     })
     // Nothing issued yet.
     expect(issuedDocs(db)).toHaveLength(0)
@@ -1824,14 +1824,14 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20", // NET-30 originally on the draft
+      due_at: "2099-07-20", // NET-30 originally on the draft
       items: sampleDraftItems,
     })
-    const r = await invoiceIssue(ctx, { draft_id, due_at: "2026-08-19" }) // corrected NET-60
+    const r = await invoiceIssue(ctx, { draft_id, due_at: "2099-08-19" }) // corrected NET-60
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-08-19")
+    expect(String(issued[0]!.due_at)).toBe("2099-08-19")
   })
 
   test("re-entry WITHOUT an edited due_at issues with the draft's original terms (no accidental clear)", async () => {
@@ -1853,14 +1853,14 @@ describe("invoice.issue — editable due_at / payment terms on the pending appro
       counterparty_country: "FR",
       issuer_profile_id: "iss-1",
       currency: "EUR",
-      due_at: "2026-07-20",
+      due_at: "2099-07-20",
       items: sampleDraftItems,
     })
     const r = await invoiceIssue(ctx, { draft_id }) // no due_at override
     expect(r.status).toBe("completed")
     const issued = issuedDocs(db)
     expect(issued).toHaveLength(1)
-    expect(String(issued[0]!.due_at)).toBe("2026-07-20")
+    expect(String(issued[0]!.due_at)).toBe("2099-07-20")
   })
 })
 
@@ -5011,6 +5011,54 @@ describe("orderReissueApply", () => {
       ],
     })
     expect(result.status).toBe("completed")
+  })
+
+  test("the replacement of a paid invoice is never due; of an unpaid one it is, by the payment terms", async () => {
+    for (const paid of [true, false]) {
+      const { ctx, db } = makeCtx()
+      const original = await invoiceCreateAndIssue(ctx, {
+        operation_category: "goods",
+        counterparty: defaultCounterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        items: sampleDraftItems,
+      })
+      if (original.status !== "completed") throw new Error("unreachable")
+      const row = db.__all("documents").find((d) => d.id === original.document_id)!
+      expect(row.due_at).toBeTruthy()
+      if (paid) row.payment_status = "paid"
+      const result = await orderReissueApply(ctx, {
+        original_document_id: original.document_id,
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        billing_signature: "sig-e",
+        dedupe_key: "shop-order-11:sig-e",
+        items: [
+          {
+            description: "Widget",
+            quantity: "1",
+            unit_price_minor: 5_000,
+            product_source: null,
+            external_id: null,
+          },
+        ],
+      })
+      if (result.status !== "completed") throw new Error(JSON.stringify(result))
+      const replacement = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { replacement_document_id?: string }).replacement_document_id,
+        )
+      expect(Boolean(replacement?.due_at)).toBe(!paid)
+      const note = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { credit_note_document_id?: string }).credit_note_document_id,
+        )
+      expect(note?.due_at ?? null).toBeNull()
+    }
   })
 
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
@@ -10367,7 +10415,7 @@ describe("intra-EU business buyer guard", () => {
           ? {
               ok: true,
               noAutoApprove: true,
-              pinnedParams: { draft_hash: expect.stringMatching(/^[0-9a-f]{64}$/) },
+              pinnedParams: { draft_hash: expect.stringMatching(/^2:[0-9a-f]{64}:\d+$/) },
             }
           : { ok: true, noAutoApprove: true },
       )

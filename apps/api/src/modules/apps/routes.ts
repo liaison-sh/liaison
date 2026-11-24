@@ -124,18 +124,32 @@ function cardRefRefused(c: Context<AppEnv>, opened: OpenedToolCardRef & { ok: fa
       "This card does not offer that call with these values. Nothing ran and the card is unchanged. Use one of the card's own actions."
     return c.json({ error: { message, code: "card_action_unknown" } }, 422)
   }
-  const message = opened.card
-    ? "This card changed since it was drawn. Nothing was saved. The latest card is attached."
-    : "This card is no longer there. Nothing was saved."
+  return cardChanged(
+    c,
+    opened.card,
+    opened.cardRevision,
+    opened.card
+      ? "This card changed since it was drawn. Nothing was saved. The latest card is attached."
+      : "This card is no longer there. Nothing was saved.",
+  )
+}
+
+/** The refusal that carries the latest card. */
+function cardChanged(
+  c: Context<AppEnv>,
+  card: unknown,
+  cardRevision: number | null,
+  message = "This card changed since it was drawn. Nothing was saved. The latest card is attached.",
+) {
   return c.json(
     {
       error: {
         message,
         code: "card_changed",
-        card: opened.card,
-        cardRevision: opened.cardRevision,
+        card,
+        cardRevision,
         // The web client's error reader keeps `details` only: the latest card rides there too.
-        details: { card: opened.card, cardRevision: opened.cardRevision },
+        details: { card, cardRevision },
       },
     },
     409,
@@ -257,8 +271,22 @@ async function runAppTool(
       signal: getRequestSignal(c),
     })
   } catch (err) {
-    // The tool's own revision moved: it refused, so draw what is stored now.
+    // The tool's own revision moved: it refused. The card it answers with is drawn and kept, so the
+    // next click is on it; with none, what is stored now is drawn.
     if (cardRef && (err as { code?: unknown } | null)?.code === "card_changed") {
+      const refused = err as { message?: string; details?: { latest?: unknown } }
+      const latest = refused.details?.latest
+      if (latest && typeof latest === "object") {
+        const drawn = await replaceToolCard(cardRef, {
+          orgId,
+          actorId: c.get("userId"),
+          appName,
+          toolName,
+          result: latest,
+        })
+        if (drawn.card && (drawn.stored || drawn.why === "wider_than_message"))
+          return cardChanged(c, drawn.card, drawn.cardRevision, refused.message)
+      }
       const current = await currentToolCard(actor, orgId, appName, cardRef)
       if (!current.ok) return cardRefRefused(c, current)
     }

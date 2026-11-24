@@ -6,7 +6,7 @@
       "method": "db_findMany",
       "args": [
         "recurring_runs",
-        "{\"where\":{\"status\":{\"in\":[\"drafted\",\"approved\",\"issuing\",\"partial\"]}},\"orderBy\":{\"issue_on\":\"asc\"},\"limit\":50}"
+        "{\"where\":{\"status\":{\"in\":[\"drafted\",\"approved\",\"issuing\",\"partial\",\"late\"]}},\"orderBy\":{\"issue_on\":\"asc\"},\"limit\":200}"
       ],
       "reply": "[]"
     },

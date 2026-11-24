@@ -18,6 +18,20 @@ import { getEnabledApps } from "~/modules/apps/enabled-apps"
 import { hasScope } from "~/modules/permissions/permissions"
 import { LINE_SOURCE } from "./claims"
 import { type BudgetTask, coverageOf, liveTasks, plannedByTask } from "./coverage"
+import {
+  type BilledCard,
+  billedCards,
+  claimedTasks,
+  countedTasks,
+  coveredByCard,
+  lateClosedTasks,
+  lateMonths,
+  type MonthMinutes,
+  minutesApart,
+  monthCounts,
+  retainerFeeMinutes,
+  taskMinutes,
+} from "./late-work"
 import { linesForViewer, reconcileCardFields, reconcileCodingAgentText } from "./reconcile-card"
 import {
   amountMinor,
@@ -26,9 +40,17 @@ import {
   computeLines,
   cutText,
   defaultBill,
+  earlyNote,
   keptProofUrl,
+  LATE_GAP_LINE_NAME,
+  LATE_GAP_UNPLANNED_LINE_NAME,
+  LATE_LINE_NAME,
+  LATE_RELATED_LINE_NAME,
+  LATE_TIME_LINE_NAME,
+  LATE_UNPLANNED_LINE_NAME,
   LINE_NAME_MAX,
   type LineKind,
+  lateMonthLineName,
   lateNote,
   linesAmountMinor,
   NOT_EVERYTHING_SEEN,
@@ -87,6 +109,10 @@ interface Context {
   live: BudgetTask[]
   ownReal: Map<string, number>
   hasEntries: Set<string>
+  /** The project's cards that are on an invoice or its draft. */
+  cards: BilledCard[]
+  /** Earlier work no invoice holds, for this card. */
+  late: LateWork
   /** The period's tasks: closed in it, and on a retainer also those with time in it. */
   inPeriod: TaskRow[]
   rateMinor: number | null
@@ -229,9 +255,26 @@ async function loadContext(args: {
   )
   const ownReal = new Map<string, number>()
   const hasEntries = new Set<string>()
+  // Not this card's minutes: on a retainer, what a later month's card counted of this month; by the
+  // day or the hour, the time inside a month the retainer was invoiced for.
+  const cards = await billedCards(tx, orgId, projectId, tz)
+  const notOurs = new Map<string, number>()
+  if (retainer) {
+    for (const [id, counted] of await monthCounts(tx, {
+      orgId,
+      projectId,
+      tz,
+      from: period.from,
+      to: period.to,
+      notOfPeriod: period.from,
+    }))
+      notOurs.set(id, counted.all)
+  } else {
+    for (const [id, m] of await retainerFeeMinutes(tx, projectId, cards)) notOurs.set(id, m)
+  }
   for (const t of totals) {
     if (!liveIds.has(t.task_id)) continue
-    const m = Number(t.minutes)
+    const m = Number(t.minutes) - (notOurs.get(t.task_id) ?? 0)
     if (m > 0) ownReal.set(t.task_id, m)
     if (t.has_entries) hasEntries.add(t.task_id)
   }
@@ -255,7 +298,7 @@ async function loadContext(args: {
     currency = terms?.currency ?? null
   }
 
-  return {
+  const context: Omit<Context, "late"> = {
     project: {
       id: projectId,
       key: planning.key,
@@ -271,12 +314,14 @@ async function loadContext(args: {
     live,
     ownReal,
     hasEntries,
+    cards,
     inPeriod,
     rateMinor,
     currency,
     sourceRepos: Array.isArray(plan?.source_repos) ? plan.source_repos : [],
     changeRequests: (await getEnabledApps(orgId)).includes("agreements"),
   }
+  return { ...context, late: await lateWorkOf(tx, orgId, context) }
 }
 
 /** The asker's own proposed card for this project and period, if they have one. */
@@ -289,6 +334,84 @@ async function ownProposal(tx: Tx, orgId: string, userId: string, c: Context) {
          AND state = 'proposed'
        LIMIT 1`),
   )[0]
+}
+
+/** Work of invoiced periods that their invoices do not hold, for the card being asked. */
+interface LateWork {
+  /** Closed tasks, on a project billed by the day or the hour. */
+  closed: string[]
+  /** Closed tasks of periods billed by the day or the hour that this card cannot bill. */
+  closedElsewhere: string[]
+  /** The project's tasks on a reserved, billed or left-off claim (empty on a retainer). */
+  claimed: ReadonlySet<string>
+  /** Hours of invoiced retainer months, per task, oldest month first. */
+  months: Array<{ month: string } & MonthMinutes>
+  /** Time entered on tasks billed by their time, after their invoice. */
+  after: MonthMinutes
+  /** The tasks billed by their time on an earlier card: never billed again as their own line. */
+  billedByTime: ReadonlySet<string>
+}
+
+async function lateWorkOf(tx: Tx, orgId: string, c: Omit<Context, "late">): Promise<LateWork> {
+  const earlier = c.cards.filter((b) => b.to < c.period.from)
+  const none: LateWork = {
+    closed: [],
+    closedElsewhere: [],
+    claimed: new Set(),
+    months: [],
+    after: { offered: new Map(), leftOut: new Map() },
+    billedByTime: new Set(),
+  }
+  if (earlier.length === 0) return none
+  const projectId = c.project.id
+  const months = await lateMonths(tx, {
+    orgId,
+    projectId,
+    tz: c.tz,
+    cards: earlier,
+    archived: new Set(c.rows.filter((r) => r.archived).map((r) => r.id)),
+    notProposedFor: c.period.from,
+  })
+  const claimed = await claimedTasks(tx, { orgId, projectId, notProposedFor: c.period.from })
+  const closed = lateClosedTasks(c.cards, c.rows, claimed, c.period.from)
+  const byTask = c.basis === "daily" || c.basis === "hourly"
+  const counts = await countedTasks(tx, { orgId, projectId, notProposedFor: c.period.from })
+  const after: MonthMinutes = { offered: new Map(), leftOut: new Map() }
+  const billedByTime = new Set<string>()
+  if (counts.size > 0) {
+    // A retainer's card reads its month alone: the tasks' time of the periods billed by their tasks,
+    // less the fee's, is read here.
+    let own: ReadonlyMap<string, number> = c.ownReal
+    if (!byTask) {
+      const fee = await retainerFeeMinutes(tx, projectId, c.cards)
+      const lastTo = earlier.reduce(
+        (m, b) => (b.basis !== "retainer" && b.to > m ? b.to : m),
+        "1970-01-01",
+      )
+      own = new Map(
+        [...(await taskMinutes(tx, projectId, "1970-01-01", lastTo))].map(([id, m]) => [
+          id,
+          Math.max(0, m - (fee.get(id) ?? 0)),
+        ]),
+      )
+    }
+    const planned = plannedByTask(c.live)
+    const sinceOf = minutesApart(c.live, own, claimed)
+    const live = new Set(c.live.map((t) => t.id))
+    for (const [id, counted] of counts) {
+      if (!live.has(id) || counted.billedTo >= c.period.from || (planned.get(id) ?? 0) > 0) continue
+      billedByTime.add(id)
+      const open = sinceOf(id) - counted.all
+      if (open > 0) after.offered.set(id, open)
+      if (counted.leftOut > 0) after.leftOut.set(id, counted.leftOut)
+    }
+  }
+  if (byTask) return { closed, closedElsewhere: [], claimed, months, after, billedByTime }
+  return {
+    ...none,
+    months,
+    closedElsewhere: [...new Set([...closed, ...after.offered.keys()])],
+  }
 }
 
 // ── reconcile_facts ─────────────────────────────────────────────────────────
@@ -329,9 +452,10 @@ export async function reconcileFacts(args: {
     source_ref: string
     state: string
     document_number: string | null
+    line_id: string | null
   }>(
     await tx.execute(drizzleSql`
-      SELECT source_kind, source_ref, state, document_number
+      SELECT source_kind, source_ref, state, document_number, line_id::text AS line_id
         FROM ${projectsRel("billing_claims")}
        WHERE org_id = ${orgId}::uuid AND project_id = ${c.project.id}::uuid
          AND state IN ('reserved', 'billed', 'left_off')`),
@@ -369,16 +493,41 @@ export async function reconcileFacts(args: {
        WHERE org_id = ${orgId}::uuid AND project_id = ${c.project.id}::uuid
          AND (state = 'invoiced' OR (state = 'drafted' AND document_ref IS NOT NULL))`),
   )[0]?.end
+  const { late } = c
+  const closedLate = new Set(late.closed)
   const unbilledEarlier = lastBilled
     ? c.rows.filter(
         (r) =>
-          !r.archived &&
-          r.completed_on !== null &&
-          r.completed_on > lastBilled &&
-          r.completed_on < c.period.from &&
-          !taskClaim.has(r.id),
+          closedLate.has(r.id) ||
+          (!r.archived &&
+            r.completed_on !== null &&
+            r.completed_on > lastBilled &&
+            r.completed_on < c.period.from &&
+            !taskClaim.has(r.id)),
       )
     : []
+  // Hours of an invoiced retainer month its invoice did not count, month by month, and the time
+  // entered after its invoice on a task billed by its time.
+  const asLate = (minutesOf: ReadonlyMap<string, number>, month?: string) =>
+    [...minutesOf].flatMap(([id, minutes]) => {
+      const r = c.rows.find((x) => x.id === id)
+      return r
+        ? [
+            {
+              ...shape(r),
+              realMinutes: minutes,
+              real: worded(minutes, c.basis, c.hpd),
+              ...(month ? { workMonth: month } : { afterInvoice: true as const }),
+            },
+          ]
+        : []
+    })
+  const lateHours = [
+    ...late.months.flatMap((m) => asLate(m.offered, m.month)),
+    ...asLate(late.after.offered),
+  ]
+  const byHand = byHandNote(c)
+  const lateCount = closedLate.size + lateHours.length
 
   const inScope = c.live.filter((t) => c.inPeriod.some((r) => r.id === t.id))
   const coverage = coverageOf(
@@ -408,7 +557,7 @@ export async function reconcileFacts(args: {
     : null
 
   const latest = await ownProposal(tx, orgId, userId, c)
-  const late = c.today > c.period.to
+  const isLate = c.today > c.period.to
   const unit = c.basis === "daily" ? "day" : "hour"
   const timeboxRow = extractRows<{ minutes: number | null }>(
     await tx.execute(drizzleSql`
@@ -442,9 +591,12 @@ export async function reconcileFacts(args: {
         }
       : null,
     tasks,
-    unbilledEarlier: unbilledEarlier.map(shape),
+    unbilledEarlier: [
+      ...unbilledEarlier.filter((r) => !lateHours.some((l) => l.id === r.id)).map(shape),
+      ...lateHours,
+    ],
     leftOff: claims
-      .filter((cl) => cl.source_kind === "task" && cl.state === "left_off")
+      .filter((cl) => cl.source_kind === "task" && cl.state === "left_off" && cl.line_id !== null)
       .map((cl) => c.rows.find((r) => r.id === cl.source_ref))
       .filter((r): r is TaskRow => Boolean(r))
       .map((r) => ({ key: r.key, title: r.title })),
@@ -467,9 +619,16 @@ export async function reconcileFacts(args: {
         documentNumber: cl.document_number,
       })),
     latestProposal: latest ? { id: latest.id, revision: latest.revision } : null,
-    late,
+    late: isLate,
+    ...(c.today <= c.period.to ? { notOver: earlyNote(c.period) } : {}),
+    ...(byHand ? { billByHand: byHand } : {}),
     message:
       `${tasks.length} task${tasks.length === 1 ? "" : "s"} of ${c.project.name} closed in ${c.period.label}; real time is entered on ${coverage.withEntries} of ${coverage.total}. Nothing was saved.` +
+      (c.today <= c.period.to ? ` ${earlyNote(c.period)}` : "") +
+      (lateCount > 0
+        ? ` ${lateCount} earlier task${lateCount === 1 ? "" : "s"} (unbilledEarlier) had work done after the invoice of ${lateCount === 1 ? "its" : "their"} period: the card lists ${lateCount === 1 ? "it" : "them"} by itself, or on a line of yours that names ${lateCount === 1 ? "it" : "them"}.`
+        : "") +
+      (byHand ? ` ${byHand}` : "") +
       (quietRetainer
         ? ` A retainer month still has its invoice with no work in it: its monthly fee, less an advance already invoiced for it.`
         : ""),
@@ -674,12 +833,14 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
     real_note_minutes: number | null
     other_project_id: string | null
     other_project_key: string | null
+    work_month: string | null
   }>(
     await tx.execute(drizzleSql`
       SELECT l.id::text AS id, l.position, l.name, l.why, l.kind, l.reason,
              l.task_ids::text[] AS task_ids, l.planned_minutes, l.real_minutes,
              l.trace_estimate_minutes, l.bill_minutes, l.wording, l.real_note_minutes,
-             l.other_project_id::text AS other_project_id, op.key AS other_project_key
+             l.other_project_id::text AS other_project_id, op.key AS other_project_key,
+             l.work_month
         FROM ${projectsRel("reconciliation_lines")} l
         LEFT JOIN ${projectsRel("projects")} op
           ON op.id = l.other_project_id AND op.org_id = l.org_id AND op.archived_at IS NULL
@@ -734,6 +895,7 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
       billMinutes: l.bill_minutes,
       ...(l.other_project_id ? { otherProjectId: l.other_project_id } : {}),
       ...(l.other_project_key ? { otherProjectKey: l.other_project_key } : {}),
+      ...(l.work_month ? { workMonth: l.work_month } : {}),
       proofs: proofs
         .filter((p) => p.line_id === l.id)
         .map((p) => ({
@@ -750,17 +912,24 @@ async function readStored(tx: Tx, orgId: string, id: string): Promise<StoredShap
   }
 }
 
+/** A uuid[] literal of ids read from the database. */
+function uuidList(ids: readonly string[]): string {
+  return `{${ids.filter((id) => UUID_RE.test(id)).join(",")}}`
+}
+
 async function writeLines(tx: Tx, orgId: string, id: string, lines: StoredShape["lines"]) {
   for (const l of lines) {
     const inserted = extractRows<{ id: string }>(
       await tx.execute(drizzleSql`
         INSERT INTO ${projectsRel("reconciliation_lines")}
           (org_id, reconciliation_id, position, name, why, kind, reason, task_ids,
-           planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes, other_project_id)
+           planned_minutes, real_minutes, trace_estimate_minutes, bill_minutes, other_project_id,
+           work_month)
         VALUES (${orgId}::uuid, ${id}::uuid, ${l.position}, ${l.name}, ${l.why ?? null},
           ${l.kind}, ${l.reason ?? null},
           ${`{${l.taskIds.join(",")}}`}::uuid[], ${l.plannedMinutes}, ${l.realMinutes},
-          ${l.traceEstimateMinutes}, ${l.billMinutes}, ${l.otherProjectId ?? null}::uuid)
+          ${l.traceEstimateMinutes}, ${l.billMinutes}, ${l.otherProjectId ?? null}::uuid,
+          ${l.workMonth ?? null})
         RETURNING id::text AS id`),
     )
     const lineId = inserted[0]!.id
@@ -951,18 +1120,124 @@ export async function reconcilePropose(args: {
   const excludedIds = new Set(
     excluded.map((e) => resolve(e.taskId)?.id).filter((id): id is string => Boolean(id)),
   )
+  const { late } = c
   const unlisted = c.inPeriod
     .map((r) => r.id)
-    .filter((id) => !listed.has(id) && !excludedIds.has(id))
+    .filter((id) => !listed.has(id) && !excludedIds.has(id) && !late.billedByTime.has(id))
 
-  const computed = computeLines({
+  // Work of an invoiced period done after its invoice is on the card too: on a line that names its
+  // tasks, else on one of its own.
+  const lateClosed = late.closed.filter((id) => !listed.has(id) && !excludedIds.has(id))
+  const inPeriodIds = new Set(c.inPeriod.map((r) => r.id))
+  const plannedNow = plannedByTask(c.live)
+  // A task above or under work billed, or on this card, may already be counted in it: it is listed
+  // at 0, for a person to set.
+  const parentOf = new Map(c.rows.map((r) => [r.id, r.parent_id]))
+  const above = (id: string): string[] => {
+    const out: string[] = []
+    for (let p = parentOf.get(id); p && !out.includes(p); p = parentOf.get(p)) out.push(p)
+    return out
+  }
+  const counted = [...late.claimed, ...listed, ...inPeriodIds]
+  const aboveCounted = new Set(counted.flatMap(above))
+  const isCounted = new Set(counted)
+  const related = (id: string) => aboveCounted.has(id) || above(id).some((p) => isCounted.has(p))
+  const completedOn = new Map(c.rows.map((r) => [r.id, r.completed_on ?? ""]))
+  const inPlan = (id: string) => (plannedNow.get(id) ?? 0) > 0
+  const inGap = (id: string) => !coveredByCard(c.cards, completedOn.get(id) ?? "")
+  const lateGroups = [
+    { name: LATE_LINE_NAME, keep: (id: string) => inPlan(id) && !inGap(id) },
+    { name: LATE_UNPLANNED_LINE_NAME, keep: (id: string) => !inPlan(id) && !inGap(id) },
+    { name: LATE_GAP_LINE_NAME, keep: (id: string) => inPlan(id) && inGap(id) },
+    { name: LATE_GAP_UNPLANNED_LINE_NAME, keep: (id: string) => !inPlan(id) && inGap(id) },
+  ]
+    .map((g) => ({ name: g.name, ids: lateClosed.filter((id) => !related(id) && g.keep(id)) }))
+    .concat([{ name: LATE_RELATED_LINE_NAME, ids: lateClosed.filter(related) }])
+    .filter((g) => g.ids.length > 0)
+    .map((g) => ({
+      name: g.name,
+      taskIds: g.ids,
+      proofs: [],
+      resolvedTaskIds: g.ids,
+      proofsOut: [] as ComputedProof[],
+    }))
+  const named = new Set<string>()
+  // What a line that names a task bills of its later time: what a card left out of it comes back.
+  const withLeftOut = (m: MonthMinutes, id: string) =>
+    (m.offered.get(id) ?? 0) + (m.leftOut.get(id) ?? 0)
+  // A line of late tasks alone is their month's hours, or the time entered after their invoice;
+  // its tasks' own time of this period is this card's other lines.
+  const lateMonthOf = (ids: readonly string[]) =>
+    ids.length > 0 && ids.every((id) => !inPeriodIds.has(id))
+      ? late.months.find((m) =>
+          ids.every((id) => withLeftOut(m, id) > 0 && !named.has(`${m.month} ${id}`)),
+        )
+      : undefined
+  const isAfter = (ids: readonly string[]) =>
+    ids.length > 0 &&
+    ids.every(
+      (id) => late.billedByTime.has(id) && withLeftOut(late.after, id) > 0 && !named.has(` ${id}`),
+    )
+  const ownLines: typeof linesIn = []
+  const lateLines: Array<Omit<ComputedLine, "position">> = []
+  const lateLine = (
+    month: string | null,
+    name: string,
+    ids: string[],
+    minutesOf: (id: string) => number,
+    extra: Pick<ComputedLine, "why" | "proofs">,
+  ) => {
+    const real = ids.reduce((a, id) => a + minutesOf(id), 0)
+    for (const id of ids) named.add(`${month ?? ""} ${id}`)
+    lateLines.push({
+      name,
+      kind: "unplanned",
+      taskIds: ids,
+      plannedMinutes: null,
+      realMinutes: real,
+      traceEstimateMinutes: null,
+      billMinutes: real,
+      ...(month ? { workMonth: month } : {}),
+      ...extra,
+    })
+  }
+  for (const line of linesIn) {
+    const ids = line.resolvedTaskIds
+    const m = lateMonthOf(ids)
+    const extra = { ...(line.why ? { why: line.why } : {}), proofs: line.proofsOut }
+    if (m) lateLine(m.month, line.name, ids, (id) => withLeftOut(m, id), extra)
+    else if (isAfter(ids))
+      lateLine(null, line.name, ids, (id) => withLeftOut(late.after, id), extra)
+    else ownLines.push(line)
+  }
+  // A fixed price, or no basis at all, makes no invoice from its card: what is owed is said.
+  const billable = c.basis !== "fixed" && c.basis !== "none"
+  for (const m of billable ? late.months : []) {
+    const ids = [...m.offered.keys()].filter(
+      (id) => !named.has(`${m.month} ${id}`) && !excludedIds.has(id),
+    )
+    if (ids.length > 0)
+      lateLine(m.month, lateMonthLineName(m.month), ids, (id) => m.offered.get(id) ?? 0, {
+        proofs: [],
+      })
+  }
+  const afterIds = [...late.after.offered.keys()].filter(
+    (id) => !named.has(` ${id}`) && !excludedIds.has(id) && !listed.has(id),
+  )
+  if (afterIds.length > 0)
+    lateLine(null, LATE_TIME_LINE_NAME, afterIds, (id) => late.after.offered.get(id) ?? 0, {
+      proofs: [],
+    })
+  const computed: ComputedLine[] = computeLines({
     basis: c.basis,
     hoursPerDayMinutes: c.hpd,
     projectTasks: c.live,
     ownReal: c.ownReal,
-    lines: linesIn,
+    lines: [...ownLines, ...lateGroups],
     unlisted,
   })
+  for (const l of computed) if (l.name === LATE_RELATED_LINE_NAME) l.billMinutes = 0
+  for (const l of lateLines) computed.push({ ...l, position: computed.length })
   const shape: StoredShape = {
     lines: computed,
     // A cited meeting or document the asker cannot open is said, never shown.
@@ -1030,7 +1305,8 @@ export async function reconcilePropose(args: {
     await tx.execute(drizzleSql`
       UPDATE ${projectsRel("reconciliations")}
          SET revision = ${revision}, not_seen = ${JSON.stringify(shape.notSeen)}::jsonb,
-             excluded_count = ${shape.excludedCount}, basis = ${c.basis},
+             excluded_count = ${shape.excludedCount}, excluded_task_ids = ${uuidList([...excludedIds])}::uuid[],
+             basis = ${c.basis},
              period_end = ${c.period.to}::date,
              thread_id = coalesce(${args.threadId ?? null}::uuid, thread_id), updated_at = now()
        WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid`)
@@ -1040,11 +1316,11 @@ export async function reconcilePropose(args: {
       await tx.execute(drizzleSql`
         INSERT INTO ${projectsRel("reconciliations")}
           (org_id, project_id, period_start, period_end, basis, state, created_by, thread_id,
-           not_seen, excluded_count)
+           not_seen, excluded_count, excluded_task_ids)
         VALUES (${orgId}::uuid, ${c.project.id}::uuid, ${c.period.from}::date,
           ${c.period.to}::date, ${c.basis}, 'proposed', ${userId}::uuid,
           ${args.threadId ?? null}::uuid, ${JSON.stringify(shape.notSeen)}::jsonb,
-          ${shape.excludedCount})
+          ${shape.excludedCount}, ${uuidList([...excludedIds])}::uuid[])
         RETURNING id::text AS id`),
     )[0]!.id
     revision = 1
@@ -1114,6 +1390,7 @@ function cardData(args: {
     ...(l.reason ? { reason: l.reason } : {}),
     ...(l.tag ? { tag: l.tag } : {}),
     taskIds: l.taskIds,
+    ...(l.workMonth ? { workMonth: l.workMonth } : {}),
     ...(l.otherProjectKey ? { otherProject: l.otherProjectKey } : {}),
     plannedMinutes: l.plannedMinutes,
     realMinutes: l.realMinutes,
@@ -1145,8 +1422,13 @@ function cardData(args: {
   )
   const unplannedAtZero = shape.lines.filter((l) => l.kind === "unplanned" && l.billMinutes === 0)
   const late = c.today > c.period.to ? lateNote(c.period) : null
+  // A period still running may be invoiced, and the card says so: while it can be, and once it is.
+  const early = c.today <= c.period.to ? earlyNote(c.period) : null
   const notes: string[] = []
   if (late) notes.push(late)
+  if (early) notes.push(early)
+  const byHand = state === "proposed" ? byHandNote(c) : null
+  if (byHand) notes.push(byHand)
   if (shape.notSeen.length > 0 || coverage.total === 0) notes.push(NOT_EVERYTHING_SEEN)
   // The sum of the lines as priced one by one, as the invoice adds them up.
   const linesMinor =
@@ -1197,7 +1479,8 @@ function cardData(args: {
     coverage,
     notSeen: shape.notSeen,
     excludedCount: shape.excludedCount,
-    late,
+    late: late ?? early,
+    byHand,
   })
   const coverageText = `Real time entered on ${coverage.withEntries} of ${coverage.total} tasks`
   const amountText =
@@ -1245,7 +1528,8 @@ function cardData(args: {
     summary: state === "drafted" ? `On draft: ${draftTitle(c)}.` : null,
     undo: state === "drafted" ? ("yes" as const) : null,
     locked: state === "invoiced" ? ("yes" as const) : null,
-    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} ${STATE_SAID[state]}`,
+    ...(early ? { notOver: early } : {}),
+    message: `${c.project.name}, ${c.period.label}: ${lines.length} line${lines.length === 1 ? "" : "s"}, ${q(billMinutes)} to bill${amountText ? ` (${amountText} excluding VAT)` : ""}${unplannedAtZero.length > 0 ? `, ${unplannedAtZero.length} not in the plan left off the bill` : ""}. ${said} ${STATE_SAID[state]}${early ? ` ${early}` : ""}`,
     next:
       state !== "proposed"
         ? STATE_NEXT[state]
@@ -1253,6 +1537,37 @@ function cardData(args: {
           ? CODING_AGENT_CARD_NEXT
           : CARD_NEXT,
   }
+}
+
+/**
+ * What was done after an invoice that this card cannot bill, in words: how much, and how to bill it
+ * by hand. Null when there is none, or the card bills it itself.
+ */
+function byHandNote(c: Context): string | null {
+  const said: string[] = []
+  if (c.basis === "fixed" || c.basis === "none") {
+    for (const m of c.late.months) {
+      const minutes = [...m.offered.values()].reduce((a, b) => a + b, 0)
+      if (minutes > 0)
+        said.push(
+          `${worded(minutes, "hourly", c.hpd)} of ${m.month}, a month of the retainer, were entered after its invoice`,
+        )
+    }
+  }
+  const closed = c.late.closedElsewhere
+    .map((id) => c.rows.find((r) => r.id === id)?.title)
+    .filter((t): t is string => Boolean(t))
+  if (closed.length > 0) {
+    const names = closed
+      .slice(0, 3)
+      .map((t) => `"${cutText(t, 40)}"`)
+      .join(", ")
+    said.push(
+      `${closed.length} task${closed.length === 1 ? "" : "s"} (${names}${closed.length > 3 ? ", ..." : ""}) closed, or had time entered, after the invoice of a period billed by its tasks`,
+    )
+  }
+  if (said.length === 0) return null
+  return `Not billed by this card: ${said.join("; ")}. This project is not billed that way any more, so bill it by hand: make an invoice for it in Invoicing.`
 }
 
 /** The title invoicing gives the draft a card makes, so the card can name it. */
@@ -1264,7 +1579,8 @@ export function draftTitle(c: { project: { name: string }; period: { from: strin
 const STATE_SAID: Record<"proposed" | "drafted" | "invoiced" | "credited", string> = {
   proposed: "No invoice was created.",
   drafted: "Its invoice draft exists; it has no number until a person issues it.",
-  invoiced: "It is invoiced: its billed lines are locked, and new work waits for its own period.",
+  invoiced:
+    "It is invoiced: its billed lines are locked, and work of this period done since goes on the next card.",
   credited: "Its invoice was credited in full; that work can be billed again on a new card.",
 }
 

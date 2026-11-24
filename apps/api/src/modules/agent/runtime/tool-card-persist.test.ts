@@ -789,6 +789,35 @@ describe("replacing a stored card", () => {
     expect(stored?.cardRevision).toBeUndefined()
   })
 
+  it("a tool refusing with card_changed and its latest card draws and keeps that card, with its own words", async () => {
+    updateResult = () => ({
+      error: {
+        code: "card_changed",
+        status: 409,
+        retryable: false,
+        message: "Time changed since it was drawn",
+        details: { latest: { id: "item-1", title: "As it stands" } },
+      },
+    })
+    const seeded = await seedCard({})
+    const res = await post("cardy/tools/update", { ...editQty(1), cardRef: seeded })
+    expect(res.status).toBe(409)
+    const body = (await res.json()) as { error: Record<string, any> }
+    expect(body.error.code).toBe("card_changed")
+    expect(body.error.card.title).toBe("As it stands")
+    expect(body.error.message).toContain("Time changed since it was drawn")
+    const stored = await storedCall(seeded.messageId, seeded.toolCallId)
+    expect(stored?.card?.title).toBe("As it stands")
+    expect(stored?.cardRevision).toBe(2)
+    // The next click is on it.
+    updateResult = () => ({ id: "item-1", title: "After the click" })
+    const next = await post("cardy/tools/update", {
+      id: "item-1",
+      cardRef: { ...seeded, revision: 2 },
+    })
+    expect(next.status).toBe(200)
+  })
+
   it("a refused value leaves the stored card and answers the tool's own message", async () => {
     updateResult = () =>
       Object.assign(new Error("Quantity must be positive"), { status: 422, code: "bad_quantity" })

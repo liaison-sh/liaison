@@ -41,6 +41,8 @@ export const reconciliations = appProjects.table(
     notSeen: jsonb("not_seen").$type<unknown[]>().notNull().default([]),
     foot: jsonb("foot").$type<Record<string, unknown>>().notNull().default({}),
     excludedCount: integer("excluded_count").notNull().default(0),
+    /** The tasks left out as the client's own work; null on a card made before it was kept. */
+    excludedTaskIds: uuid("excluded_task_ids").array(),
     documentId: uuid("document_id"),
     waivedOverage: boolean("waived_overage").notNull().default(false),
     /** The exact external_ref the draft invoice got at Create; claims follow it to the invoice. */
@@ -93,6 +95,8 @@ export const reconciliationLines = appProjects.table(
     otherProjectId: uuid("other_project_id").references(() => projects.id, {
       onDelete: "set null",
     }),
+    /** The earlier retainer month its hours were worked in; null for the card's own period. */
+    workMonth: text("work_month"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -154,6 +158,8 @@ export const billingClaims = appProjects.table(
     state: text("state", { enum: BILLING_CLAIM_STATES }).notNull(),
     documentId: uuid("document_id"),
     documentNumber: text("document_number"),
+    /** The minutes of the task the card counted; null on a claim not billed by its time. */
+    countedMinutes: integer("counted_minutes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

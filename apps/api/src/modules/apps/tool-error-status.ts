@@ -158,10 +158,12 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   // Month-end run rows: a required argument is missing, the row changed under the caller, the run
   // no longer takes changes, or "from now on" has no schedule to change.
   applies_required: 400,
+  unknown_field: 400,
   ends_on_required: 400,
   if_unchanged_since_required: 400,
   draft_changed: 409,
   already_in_run: 409,
+  amount_changed: 409,
   run_closed: 409,
   schedule_issues_by_itself: 409,
   // No row of the run is ready to issue, so approving it would issue nothing: fix a row first.
@@ -223,6 +225,7 @@ export const APP_TOOL_ERROR_STATUS: Readonly<Record<string, number>> = {
   not_a_retainer: 409,
   period_on_run: 409,
   month_on_other_card: 409,
+  draft_outdated: 409,
   retainer_needs_project_money: 403,
   retainer_needs_reconcile: 409,
   // A change of a retainer's terms that does not name the version it was read at.

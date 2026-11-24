@@ -131,9 +131,11 @@ describe("Editor (Phase 17 F4)", () => {
     expect(r.warnings).toEqual([])
   })
 
-  it("validateDraft flags missing due_at", () => {
-    const r = validateDraft(validDraft({ due_at: null }))
-    expect(r.errors.find((e) => e.field === "due_at")).toBeDefined()
+  it("a quote needs its date; an invoice without one is due by its payment terms", () => {
+    const quote = validateDraft(validDraft({ type: "quote", due_at: null }))
+    expect(quote.errors.find((e) => e.field === "due_at")).toBeDefined()
+    const invoice = validateDraft(validDraft({ type: "invoice", due_at: null }))
+    expect(invoice.errors.find((e) => e.field === "due_at")).toBeUndefined()
   })
 
   // Recipient completeness. An issued document must say WHO it is addressed to, WHERE they are
@@ -263,7 +265,7 @@ describe("Editor (Phase 17 F4)", () => {
   })
 
   it("canIssue blocks when there are validation errors", () => {
-    expect(canIssue(validDraft({ due_at: null }))).toBe(false)
+    expect(canIssue(validDraft({ counterparty_name: null }))).toBe(false)
   })
 
   it("canIssue blocks when status is pending_approval", () => {

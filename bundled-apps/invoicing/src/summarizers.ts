@@ -674,6 +674,7 @@ function draftIssueSummarizer(type: string, kind: string) {
         originalNumber:
           typeof refs?.original_document_number === "string" ? refs.original_document_number : null,
         dueAt: params.due_at ?? draft?.due_at ?? null,
+        dueTerms: typeof draft?.due_terms === "string" ? draft.due_terms : null,
         draftId: params.draft_id ?? null,
         latestIssueOn: typeof draft?.latest_issue_on === "string" ? draft.latest_issue_on : null,
         // The org's day, read by the card's read (draft_issue_preview); the sandbox clock is UTC.
@@ -796,6 +797,7 @@ function createAndIssueSummarizer(type: string, kind: string) {
       customerReference: params.customer_reference ?? null,
       issuedAt: params.issued_at ?? null,
       dueAt: params.due_at ?? null,
+      dueTerms: "by the payment terms, counted from issue",
       reason: params.reason ?? null,
       declaredValueMinor: params.declared_value_minor,
       issuerName: (issuer?.legal_name as string | undefined) ?? null,
@@ -1368,7 +1370,9 @@ export function runCardLines(rawItems: unknown): string[] {
   const lines: string[] = []
   if (names.length > 0) {
     const shown = names.slice(0, 5).join(", ")
-    lines.push((names.length > 5 ? `${shown} and ${names.length - 5} more` : shown).slice(0, 200))
+    const who = names.length > 5 ? `${shown} and ${names.length - 5} more` : shown
+    const count = `${items.length} invoice${items.length === 1 ? "" : "s"}`
+    lines.push(`${count}: ${who}`.slice(0, 200))
   }
   if (items.length > 0 && currency && currency !== "mixed")
     lines.push(`Total: ${moneyLine(total, currency)} incl. VAT`)
@@ -1382,12 +1386,16 @@ export function runCardLines(rawItems: unknown): string[] {
 export function runCardSummary(
   rawItems: unknown,
   period: string | null,
+  late = false,
+  lastDay: string | null = null,
 ): { title: string; subtitle: string; lines: string[] } {
   const items = Array.isArray(rawItems) ? rawItems : []
   const lines = runCardLines(items)
   return {
-    title: `Issue ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
-    subtitle: "Numbers are taken on the issue day from 08:00, never at approval",
+    title: `${late ? "Late: issue" : "Issue"} ${items.length} invoice${items.length === 1 ? "" : "s"} for ${period ?? "a month-end run"}`,
+    subtitle: late
+      ? "The last issue day has passed: approving issues these now, dated the day they issue"
+      : `Numbers are taken on the issue day from 08:00, never at approval.${lastDay ? ` Last day: ${lastDay}.` : ""}`,
     lines: lines.length > 0 ? lines : [period ? `Month-end run for ${period}` : "Month-end run"],
   }
 }
@@ -1396,7 +1404,15 @@ export function summarizeRecurringRunIssue(
   params: Record<string, unknown>,
 ): Promise<ApprovalSummaryShape> {
   const period = typeof params.period === "string" && params.period ? params.period : null
-  return done({ kind: "recurring_run_issue", ...runCardSummary(params.items, period) })
+  return done({
+    kind: "recurring_run_issue",
+    ...runCardSummary(
+      params.items,
+      period,
+      params.late === true,
+      typeof params.last_day === "string" ? params.last_day : null,
+    ),
+  })
 }
 
 function moneyLine(v: bigint, currency: string): string {

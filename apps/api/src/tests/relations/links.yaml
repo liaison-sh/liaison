@@ -1300,3 +1300,20 @@ links:
       Dl: a sent report keeps who approved it, as the record of a person's act; the portal shows their name only while it is on file
       Dx: a sent report keeps who approved it after they leave
       Ex: the data subject export does not carry the reports a person approved yet
+
+  - name: reconcile-left-out-task
+    what: a reconcile card to the tasks left out of it as the client's own work
+    storedIn: app_projects.reconciliations.excluded_task_ids
+    columns: [app_projects.reconciliations.excluded_task_ids]
+    paths:
+      - apps/api/src/apps/projects/service/reconcile.ts
+      - apps/api/src/apps/projects/service/late-work.ts
+    visibleState: [usual]
+    whoIsTold: [nobody]
+    copiedNameAt: []
+    cells: { Rn: c, Mg: K, Dl: K, Dx: a, Pm: a, Ap: a, Mv: K, Rs: a, Dr: e, Ex: a, Mi: K, Rv: a, Aw: a }
+    open:
+      Mg: a merged task is archived and never late work; the survivor is its own task, listed when nothing billed it; no generated cell yet
+      Dl: an archived or deleted task is never late work, so its id on the card matches nothing; no generated cell yet
+      Mv: a task moved to another project leaves the card's project, so its id on the card matches nothing; no generated cell yet
+      Mi: a card made before the list was kept has only a count, and then only work closed after it is offered (tested beside the late work); no generated cell yet

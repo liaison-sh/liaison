@@ -6,7 +6,18 @@
 import type { ErrorEnvelope } from "../mutations/shared"
 import { AMOUNT_CHECK } from "./flags"
 import { updatedAtOf } from "./restage"
-import { dayOf, draftLines, draftTotals, jsonOf, type Row, type RunCtx, runItems } from "./run-card"
+import {
+  approvalStatus,
+  cardOf,
+  dayOf,
+  draftLines,
+  draftTotals,
+  jsonOf,
+  type Row,
+  type RunCtx,
+  rowAmounts,
+  runItems,
+} from "./run-card"
 
 export interface RunRow {
   item_id: string
@@ -20,6 +31,11 @@ export interface RunRow {
   total_minor: string
   currency: string
   number: string | null
+  /** The invoice's due date, operation type and service period, as it would issue. */
+  due_at: string | null
+  operation_category: string | null
+  period_start: string | null
+  period_end: string | null
   updated_at: string | null
   latest_change: Record<string, unknown> | null
   flags: string[]
@@ -48,10 +64,18 @@ function scheduleMoved(item: Row, schedule: Row | null): string[] {
     : []
 }
 
+/** A late run whose card a person rejected: nothing asks again until a row changes. */
+async function lateCardRejected(ctx: RunCtx, run: Row): Promise<boolean> {
+  const card = run.status === "late" ? cardOf(run) : null
+  return card !== null && (await approvalStatus(ctx, card)) === "denied"
+}
+
 /** A card staged for the run and not yet decided: the run still waits for it. */
 function cardWaiting(run: Row, rows: readonly { state: string }[]): boolean {
   const id = run.approval_request_id
   if (typeof id !== "string" || id === "" || id === "staging") return false
+  if (run.status === "late")
+    return rows.some((r) => r.state === "ready" || r.state === "waiting_reapproval")
   return run.status === "drafted" || rows.some((r) => r.state === "waiting_reapproval")
 }
 
@@ -85,15 +109,21 @@ export async function recurringRunGet(
       },
     }
   }
+  const issuer = run.issuer_profile_id
+    ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null)
+    : null
   const rows: RunRow[] = []
   for (const item of await runItems(ctx, String(run.id))) {
     const doc = (await ctx.db.findOne("documents", String(item.document_id))) as Row | null
     const schedule = item.schedule_id
       ? ((await ctx.db.findOne("recurring_schedules", String(item.schedule_id))) as Row | null)
       : null
-    const t = doc
-      ? draftTotals(await draftLines(ctx, String(doc.id)))
-      : { net: 0n, vat: 0n, total: 0n }
+    const lines = doc ? await draftLines(ctx, String(doc.id)) : []
+    const t = !doc
+      ? { net: 0n, vat: 0n, total: 0n }
+      : doc.status === "draft"
+        ? await rowAmounts(ctx, doc, lines, issuer)
+        : draftTotals(lines)
     const log = jsonOf<Array<Record<string, unknown>>>(doc?.lifecycle_log, [])
     rows.push({
       item_id: String(item.id),
@@ -107,6 +137,10 @@ export async function recurringRunGet(
       total_minor: t.total.toString(),
       currency: String(doc?.currency ?? "EUR"),
       number: (item.issued_number as string | null) ?? (doc?.number as string | null) ?? null,
+      due_at: dayOf(doc?.due_at),
+      operation_category: (doc?.operation_category as string | null) ?? null,
+      period_start: dayOf(doc?.service_period_start) ?? dayOf(item.period_start),
+      period_end: dayOf(doc?.service_period_end) ?? dayOf(item.period_end),
       updated_at: doc ? updatedAtOf(doc) : null,
       latest_change: log.length > 0 ? (log[log.length - 1] ?? null) : null,
       flags: [
@@ -120,9 +154,7 @@ export async function recurringRunGet(
       ...suggestionOf(item),
     })
   }
-  const issuer = run.issuer_profile_id
-    ? ((await ctx.db.findOne("issuer_profiles", String(run.issuer_profile_id))) as Row | null)
-    : null
+  const rejected = await lateCardRejected(ctx, run)
   const runOut: Row = {
     id: String(run.id),
     status: run.status,
@@ -134,6 +166,7 @@ export async function recurringRunGet(
     auto: run.auto === true,
     approval_request_id: run.approval_request_id ?? null,
     timezone: (issuer?.timezone as string | null) ?? null,
+    ...(rejected ? { card_rejected: true } : {}),
   }
   const far = rows.filter(
     (r) =>
@@ -155,7 +188,10 @@ export async function recurringRunGet(
               ", ",
             )}${far.length > 3 ? ", ..." : ""}). The "Check the amount" flag names what was billed last time: check it with a person before the card is approved.`
         : "") +
-      (cardWaiting(run, rows)
+      (rejected
+        ? " Its late card was rejected, so nothing asks again by itself: a change of a row, or a row taken out, does."
+        : "") +
+      (!rejected && cardWaiting(run, rows)
         ? ` Its card (approval ${String(run.approval_request_id)}) waits for a person, who approves or rejects it on the card; no tool approves it.`
         : ""),
   }

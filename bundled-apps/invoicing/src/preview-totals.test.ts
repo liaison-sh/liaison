@@ -69,6 +69,35 @@ describe("the card's invoice preview", () => {
     })
   })
 
+  test("hours of a retainer month told later bill at its rate on a card by the day; a month no schedule holds stops it", async () => {
+    const ctx = ctxWith()
+    const late = { ...CARD, periodFrom: "2026-11-01" }
+    const lines = [{ billMinutes: HPD }, { billMinutes: 120, workMonth: "2026-10" }]
+    const none = await previewTotals(ctx as never, { ...late, lines })
+    if ("error" in none) throw new Error(none.error.message)
+    expect(none.ready).toBe(false)
+    expect(none.missing).toContain("retainer")
+    await ctx.db.insert("recurring_schedules", {
+      id: "7a1d2c3e-0000-4000-8000-0000000000f1",
+      issuer_profile_id: ISSUER.id,
+      status: "ended",
+      lines: [{ description: "Fee", qty: 1, unit_price_minor: 450_000, vat_bp: 2000 }],
+      retainer_project_id: PROJECT,
+      retainer_minutes: 60,
+      retainer_overage_rate_minor: 12_000,
+      retainer_from: "2026-01",
+      retainer_terms: [{ from: "2026-11", off: true, retainer_minutes: 0, lines: [] }],
+    })
+    const priced = await previewTotals(ctx as never, { ...late, lines })
+    if ("error" in priced) throw new Error(priced.error.message)
+    expect(priced.missing).not.toContain("retainer")
+    // One day at 930.00, and one hour above October's one hour at 120.00.
+    expect(priced.excl).toBe(105_000)
+    const dollars = await previewTotals(ctx as never, { ...late, lines, currency: "USD" })
+    if ("error" in dollars) throw new Error(dollars.error.message)
+    expect(dollars.missing).toContain("currency")
+  })
+
   test("an org without an issuer profile is told before any draft", async () => {
     const r = await previewTotals(ctxWith({ issuer: false }) as never, CARD)
     if ("error" in r) throw new Error(r.error.message)

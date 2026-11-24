@@ -375,6 +375,18 @@ describe("the month-end draft job", () => {
     expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "drafted" })
   })
 
+  test("a run that approves itself keeps the amount of each row", async () => {
+    const h = harness("2026-11-27", {
+      schedules: [schedule("33333333-3333-4333-8333-333333333331", { issue_mode: "auto" })],
+    })
+    await recurringDraftJob(h.ctx)
+    expect(h.db.__all("recurring_runs")[0]).toMatchObject({ status: "approved", auto: true })
+    expect(h.db.__all("recurring_run_items")[0]).toMatchObject({
+      state: "approved",
+      approved_total_minor: "180000",
+    })
+  })
+
   test("a reused draft whose lines match its schedule is ready", async () => {
     const id = "33333333-3333-4333-8333-333333333331"
     const ref = `recurring:${id}:2026-11`

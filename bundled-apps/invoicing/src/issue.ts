@@ -61,6 +61,7 @@ import { DEFAULT_ZONE, issuerTimezoneUnset, type TimeSurface } from "./issue-dat
 import { hasLegalOriginal, recordLegalOriginal } from "./legal-originals/record"
 import { documentRollup, lineAmounts } from "./money"
 import { numberingSequence } from "./numbering"
+import { dueOn, paymentTermsOf } from "./payment-terms"
 import { classify, operationLabel } from "./tax"
 
 export type DocumentType = "invoice" | "quote" | "proforma" | "purchase_order" | "credit_note"
@@ -87,6 +88,8 @@ export interface IssuerProfile {
   timezone?: string | null
   /** Defaults the `vat_on_debits` flag recorded on each issued document. */
   vat_on_debits_default?: boolean | null
+  /** Days a customer has to pay, for an invoice with no due date of its own (`payment-terms.ts`). */
+  default_payment_terms_days?: number | string | null
   /** Structured seller address and e-invoicing routing (Factur-X BT-34..BT-40). */
   siret?: string | null
   routing_address?: string | null
@@ -339,6 +342,17 @@ export interface Draft {
  */
 export type DocumentScope = "goods" | "software"
 
+/** The document would issue at another amount than the one a person approved. Nothing is written. */
+export class AmountChangedRefusal extends Error {
+  readonly error: { code: "amount_changed"; message: string }
+  constructor(approved: bigint, now: bigint) {
+    const message = `The invoice was approved at ${approved} and would issue at ${now} (minor units, VAT included), so it was not issued and no number was used.`
+    super(message)
+    this.name = "AmountChangedRefusal"
+    this.error = { code: "amount_changed", message }
+  }
+}
+
 export interface IssueInput {
   type: DocumentType
   issuer: IssuerProfile
@@ -385,6 +399,11 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** What it bills was paid on the document it replaces: without a due date of its own it has none. */
+  already_paid?: boolean
+  /** What a person approved this document to total, in minor units: it issues at that amount or
+   *  not at all (`AmountChangedRefusal`, before any number is taken). */
+  expected_total_minor?: bigint | string | null
   /** Change-log entries the issued document carries over from the draft it replaces. */
   lifecycle_carry?: Array<Record<string, unknown>>
   /** "batch": issued with no person (a month-end run issuing by itself), so an e-invoice waits
@@ -1420,6 +1439,11 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
 
   // 3) Money rollup via D5.
   const rollup = documentRollup(snapshotLines)
+  const expected = input.expected_total_minor
+  if (expected !== undefined && expected !== null && expected !== "") {
+    if (BigInt(expected) !== rollup.grand_total_minor)
+      throw new AmountChangedRefusal(BigInt(expected), rollup.grand_total_minor)
+  }
   const fxDate = fxIssueDate(draft.issued_at)
   const fxSnapshot =
     draft.currency && draft.currency !== "EUR"
@@ -1449,6 +1473,29 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   })
 
   const askTimezone = await timezoneAskDue(ctx, issuer)
+
+  // An invoice with no date of its own is due by the customer's terms, else the issuer's, counted
+  // from the day it is issued. One already settled owes nothing, and no other type is payable.
+  const dueGiven =
+    draft.due_at ||
+    (type === "invoice" && !input.settlement && !input.already_paid
+      ? dueOn(
+          draft.issued_at,
+          (
+            await paymentTermsOf(ctx.db, {
+              issuer,
+              contactId: counterparty.contact_id,
+              externalRefs: draft.external_refs,
+            })
+          ).days,
+        )
+      : null)
+  // Whatever gave it, an invoice is never due before the day it is issued.
+  const issuedDay = draft.issued_at.slice(0, 10)
+  const dueAt =
+    type === "invoice" && dueGiven && String(dueGiven).slice(0, 10) < issuedDay
+      ? issuedDay
+      : dueGiven
 
   // 5) The document row, numbered by the batch.
   const nowIso = new Date().toISOString()
@@ -1483,7 +1530,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
     tax_treatment: classification.treatment,
     incoterm: draft.incoterm,
     issued_at: draft.issued_at,
-    due_at: draft.due_at,
+    due_at: dueAt,
     // Born-settled (Shopify order-paid): only payment_status/paid_at are set — status stays
     // "issued" so the invoice remains a live, shippable document.
     ...(input.settlement ? { payment_status: "paid", paid_at: input.settlement.paid_at } : {}),

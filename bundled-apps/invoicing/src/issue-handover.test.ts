@@ -12,6 +12,7 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { counterpartyIdentitySet } from "./einvoicing/identity-tools"
 import { issueTogether } from "./issue"
 import { issueDateParts } from "./issue-date"
 import {
@@ -26,7 +27,9 @@ import {
 } from "./mutations"
 import { getDraft } from "./mutations/db-helpers"
 import { invoiceIssuePreflight, issueRunDraft } from "./mutations/invoice-issue"
+import { draftAmount, issueFingerprint, restageForTerms } from "./mutations/issue-fingerprint"
 import { DRAFT_DEPENDENTS, draftContentHash, handOverDraft } from "./mutations/issue-handover"
+import { settingsIssuerProfileUpdate } from "./mutations/issuer-profiles"
 import { buildIssueInputFromDraft, counterpartyFromRow } from "./mutations/lines"
 import {
   documentsSendToCustomer,
@@ -671,21 +674,6 @@ describe("the company a draft was made for", () => {
 })
 
 describe("a draft edited while its issue card waits", () => {
-  function withPendingCard(h: Harness, draftId: string) {
-    const card = { id: crypto.randomUUID(), payload: { draft_id: draftId } as Row }
-    const restaged: Array<{ id: string; fields: Row; note?: string }> = []
-    h.ctx.approvals = {
-      pendingFor: async () => [{ id: card.id, target_id: draftId, payload: card.payload }],
-      withdraw: async () => ({ ok: true }),
-      restagePayload: async (id: string, fields: Row, note?: string) => {
-        restaged.push({ id, fields, note })
-        card.payload = { ...card.payload, ...fields }
-        return { ok: true, approval_id: id, payload_hash: "h", changed: true }
-      },
-    }
-    return { card, restaged }
-  }
-
   test("an edit redraws the waiting card with the draft's new fingerprint, and a second identical one does not", async () => {
     const h = harness()
     const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
@@ -697,7 +685,7 @@ describe("a draft edited while its issue card waits", () => {
     const edited = await getDraft(h.db, draftId)
     expect(restaged).toHaveLength(1)
     expect(restaged[0]?.id).toBe(card.id)
-    expect(restaged[0]?.fields).toEqual({ draft_hash: draftContentHash(edited!) })
+    expect(restaged[0]?.fields).toEqual({ draft_hash: await shownAt(h, edited!) })
     expect(restaged[0]?.note).toBe("The invoice draft for Northwind Publishing was edited.")
     await draftsUpdate(h.ctx, {
       draft_id: draftId,
@@ -706,7 +694,7 @@ describe("a draft edited while its issue card waits", () => {
     expect(restaged).toHaveLength(1)
   })
 
-  test("a card drawn from the draft as it was does not issue it once it changed", async () => {
+  test("an older card, with the draft's own content alone, does not issue it once it changed", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)
     const shown = draftContentHash((await getDraft(h.db, draftId))!)
@@ -724,6 +712,157 @@ describe("a draft edited while its issue card waits", () => {
   })
 })
 
+/** An issue card waiting on a draft, and what it was redrawn with. */
+function withPendingCard(h: Harness, draftId: string) {
+  const card = { id: crypto.randomUUID(), payload: { draft_id: draftId } as Row }
+  const restaged: Array<{ id: string; fields: Row; note?: string }> = []
+  h.ctx.approvals = {
+    pendingFor: async () => [{ id: card.id, target_id: draftId, payload: card.payload }],
+    withdraw: async () => ({ ok: true }),
+    restagePayload: async (id: string, fields: Row, note?: string) => {
+      restaged.push({ id, fields, note })
+      card.payload = { ...card.payload, ...fields }
+      return { ok: true, approval_id: id, payload_hash: "h", changed: true }
+    },
+  }
+  return { card, restaged }
+}
+
+/** A draft's fingerprint at the amount its own columns issue it at. */
+const shownAt = async (h: Harness, draft: NonNullable<Awaited<ReturnType<typeof getDraft>>>) =>
+  issueFingerprint({ db: h.db } as never, draft, await draftAmount({ db: h.db } as never, draft))
+
+describe("what an approver saw is what issues", () => {
+  const issueAs = (h: Harness, draftId: string, hash: string) =>
+    invoiceIssue(h.ctx, { draft_id: draftId, draft_hash: hash })
+  const shown = async (h: Harness, draftId: string) => shownAt(h, (await getDraft(h.db, draftId))!)
+
+  test("a tax country given while the card waits redraws it, and the old card issues nothing", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
+    const before = await shown(h, draftId)
+    const { restaged } = withPendingCard(h, draftId)
+    await draftsUpdate(h.ctx, {
+      draft_id: draftId,
+      patch: { external_refs: { tax_country: "FR" } },
+    } as never)
+    expect(restaged).toHaveLength(1)
+    const now = String((restaged[0]?.fields as Row | undefined)?.draft_hash)
+    expect(now).not.toBe(before)
+    // The amount the redrawn card shows is the one it would issue at, with French VAT now.
+    expect(Number(now.split(":")[2])).toBeGreaterThan(Number(before.split(":")[2]))
+    expect(await issueAs(h, draftId, before)).toMatchObject({ status: "error" })
+    expect(sequenceTotal(h.db)).toBe(0)
+  })
+
+  test("the tax country and who the buyer is are part of it at the same amount", async () => {
+    const h = harness()
+    const draft = (await getDraft(h.db, await draftWith(h, null)))!
+    const at = (external_refs: Row) =>
+      issueFingerprint({ db: h.db } as never, { ...draft, external_refs } as never, 1)
+    const seen = [
+      await at({}),
+      await at({ tax_country: "CH" }),
+      await at({ tax_country: "US" }),
+      await at({ buyer_is_consumer: true }),
+    ]
+    expect(new Set(seen).size).toBe(4)
+    expect(await at({ note: "x" })).toBe(seen[0] as string)
+  })
+
+  test("an amount other than the card's is not issued, whatever moved it", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    const hash = await shown(h, draftId)
+    const [v, content, amount] = hash.split(":")
+    const res = await issueAs(h, draftId, `${v}:${content}:${Number(amount) + 1}`)
+    expect(res).toMatchObject({ status: "error", error: { code: "amount_changed" } })
+    expect(sequenceTotal(h.db)).toBe(0)
+    expect((await issueAs(h, draftId, hash)).status).toBe("completed")
+  })
+
+  test("payment terms recorded for the customer while the card waits redraw it, and the old card issues nothing", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
+    await h.db.update("documents", draftId, { due_at: null })
+    const contact = String((await getDraft(h.db, draftId))?.counterparty_contact_id)
+    const before = await shown(h, draftId)
+    const { restaged } = withPendingCard(h, draftId)
+    const set = (days: number | null) =>
+      counterpartyIdentitySet(
+        h.ctx as never,
+        {
+          contact_id: contact,
+          source: "manual",
+          payment_terms_days: days,
+        } as never,
+      )
+    expect((await set(60)) as unknown).toMatchObject({ status: "ok" })
+    expect(restaged).toHaveLength(1)
+    expect(restaged[0]?.fields).toEqual({ draft_hash: await shown(h, draftId) })
+    expect(await shown(h, draftId)).not.toBe(before)
+    expect(await issueAs(h, draftId, before)).toMatchObject({
+      status: "error",
+      error: { code: "draft_changed" },
+    })
+    // The same terms again, and a change that moves another customer's, redraw nothing.
+    await set(60)
+    expect(restaged).toHaveLength(1)
+    const [identity] = h.db.__all("counterparty_identities").filter((r) => r.contact_id === contact)
+    await h.db.update("counterparty_identities", String(identity?.id), { payment_terms_days: 75 })
+    await restageForTerms(h.ctx as never, { contactId: crypto.randomUUID() })
+    await restageForTerms(h.ctx as never, { issuerId: crypto.randomUUID() })
+    expect(restaged).toHaveLength(1)
+    expect(sequenceTotal(h.db)).toBe(0)
+  })
+
+  test("a draft with a due date of its own is not asked again when its customer's terms change", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
+    await h.db.update("documents", draftId, { due_at: "2099-01-31" })
+    const contact = String((await getDraft(h.db, draftId))?.counterparty_contact_id)
+    const before = await shown(h, draftId)
+    const { restaged } = withPendingCard(h, draftId)
+    await counterpartyIdentitySet(
+      h.ctx as never,
+      {
+        contact_id: contact,
+        source: "manual",
+        payment_terms_days: 60,
+      } as never,
+    )
+    expect(restaged).toEqual([])
+    expect(await shown(h, draftId)).toBe(before)
+  })
+
+  test("an issuer's default terms changed while the card waits redraw it", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, `reconcile:${RECONCILIATION}:5`)
+    await h.db.update("documents", draftId, { due_at: null })
+    const draft = (await getDraft(h.db, draftId))!
+    const before = await shown(h, draftId)
+    const { restaged } = withPendingCard(h, draftId)
+    await settingsIssuerProfileUpdate(h.ctx, {
+      id: draft.issuer_profile_id,
+      default_payment_terms_days: 14,
+    })
+    expect(restaged).toHaveLength(1)
+    expect(await shown(h, draftId)).not.toBe(before)
+  })
+
+  test("a schedule's due days changed on the draft itself change what its card issues", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    await h.db.update("documents", draftId, { due_at: null, external_refs: { due_days: 30 } })
+    const before = await shown(h, draftId)
+    await h.db.update("documents", draftId, { external_refs: { due_days: 90 } })
+    expect(await issueAs(h, draftId, before)).toMatchObject({
+      status: "error",
+      error: { code: "draft_changed" },
+    })
+  })
+})
+
 describe("an issue card carries the draft's fingerprint from the moment it is made", () => {
   async function pinned(h: Harness, draftId: string): Promise<string> {
     const pre = (await invoiceIssuePreflight(h.ctx, { draft_id: draftId })) as {
@@ -737,7 +876,7 @@ describe("an issue card carries the draft's fingerprint from the moment it is ma
   test("the preflight pins the fingerprint of the draft as the card shows it", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)
-    expect(await pinned(h, draftId)).toBe(draftContentHash((await getDraft(h.db, draftId))!))
+    expect(await pinned(h, draftId)).toBe(await shownAt(h, (await getDraft(h.db, draftId))!))
   })
 
   test("a card made before any edit does not issue a draft edited through documents_update", async () => {
@@ -789,7 +928,7 @@ describe("an issue card carries the draft's fingerprint from the moment it is ma
     const { raiseIssueApproval } = await import("./mutations/billing-plan")
     await raiseIssueApproval(h.ctx, draftId, "the milestone", [])
     expect(parked).toEqual([
-      { draft_id: draftId, draft_hash: draftContentHash((await getDraft(h.db, draftId))!) },
+      { draft_id: draftId, draft_hash: await shownAt(h, (await getDraft(h.db, draftId))!) },
     ])
   })
 })

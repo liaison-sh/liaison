@@ -1668,8 +1668,9 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     reconciliationId: card.reconciliationId,
   })
   if (facts.error) return card
+  const { notStarted, ...ask } = facts
   const preview = await invoicingCall(() =>
-    ctx.executeTool("invoicing:preview_totals", JSON.stringify(facts)),
+    ctx.executeTool("invoicing:preview_totals", JSON.stringify(ask)),
   )
   if (!preview.ok) return card
   const p = preview.body
@@ -1696,13 +1697,24 @@ async function priced(card: CardResult, ctx: ProjectsCtx): Promise<CardResult> {
     const text = `Retainer: the monthly fee of ${fee} excl. VAT includes ${hoursText(retainer.includedMinutes)}; hours above it are billed at ${rate} an hour. The lines are the month's time, ${hoursText(retainer.usedMinutes)} used. The month is billed once, from this card or by its schedule in Invoicing.`
     out.cardNotes = [{ text }, ...((out.cardNotes as unknown[]) ?? [])].slice(0, 3)
   }
-  if (retainer?.billedBySchedule) {
-    // A month is billed once: its schedule's month-end run holds it.
+  if (notStarted === true) {
     out.notice = {
-      title: "Billed by its schedule",
-      text: "This month is billed by the retainer's schedule in Invoicing, so it has no Create invoice here.",
+      title: "Not started yet",
+      text: "This period has not begun, so it has no Create invoice yet.",
     }
     return out
+  }
+  if (retainer?.billedBySchedule || p.lateOnly === true) {
+    // A month is billed once: its schedule's month-end run holds it. An earlier month's later hours
+    // on the card are billed from it, alone.
+    const late = p.lateOnly === true
+    out.notice = {
+      title: late ? "Earlier hours only" : "Billed by its schedule",
+      text: late
+        ? "This month is not billed from this card. Create invoice bills only the hours of earlier months entered after their invoice."
+        : "This month is billed by the retainer's schedule in Invoicing, so it has no Create invoice here.",
+    }
+    if (!late) return out
   }
   if (p.ready === true && missing.length === 0 && card.fit !== "nothing") {
     out.createInvoice = "yes"
@@ -1775,9 +1787,9 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
         rateMinor: prep.rateMinor ?? null,
         hoursPerDayMinutes: prep.hoursPerDayMinutes ?? null,
         lines: prep.lines ?? [],
+        periodFrom: prep.periodFrom ?? null,
         ...(prep.basis === "retainer"
           ? {
-              periodFrom: prep.periodFrom ?? null,
               timeboxMinutes: prep.timeboxMinutes ?? null,
               waiveOverage: p.waiveOverage === true,
             }
@@ -1809,8 +1821,36 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
     )
   }
 
-  const reserved = await step(ctx.projects_reconcileCreate, { ...base, step: "reserve" })
+  // A month that bills no retainer, with an earlier month's later hours on its card: they are
+  // billed alone.
+  const lateOnly = preview.body.lateOnly === true
+  if (prep.basis === "retainer" && prep.hasRetainerMonth === false && !lateOnly) {
+    return refusal(
+      "no_retainer_schedule",
+      `${name} is billed by a monthly retainer, but this month has no retainer timebox from a recurring schedule, so nothing was created.`,
+      {
+        next: "Save the retainer on its recurring schedule in Invoicing, then press Create invoice again.",
+      },
+    )
+  }
+  const keyed = { ...base, ...(lateOnly ? { lateOnly: true } : {}) }
+  const reserved = await step(ctx.projects_reconcileCreate, { ...keyed, step: "reserve" })
   if (reserved.error) return reserved
+  if (reserved.moved === true) {
+    const lines = (reserved.lines ?? []) as Array<{ name: string; was: number; now: number }>
+    const said = lines
+      .slice(0, 3)
+      .map((l) => `"${l.name}" was ${hoursText(l.was)}, is ${hoursText(l.now)}`)
+      .join("; ")
+    return refusal(
+      "card_changed",
+      `Time on this card changed since it was drawn (${said}${lines.length > 3 ? "; ..." : ""}). Nothing was created; the card is brought up to date.`,
+      {
+        latest: await priced(reserved.latest as CardResult, ctx),
+        next: "Show the latest card; Create invoice is pressed on it.",
+      },
+    )
+  }
 
   // A retainer month drafts its fee and overage; any other card its billed lines.
   const draft = await invoicingCall(() =>
@@ -1821,6 +1861,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
             reconciliationId: prep.reconciliationId,
             revision: prep.revision,
             ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
+            ...(lateOnly ? { lateOnly: true } : {}),
             ...(contactId ? { contactId } : {}),
           }),
         )
@@ -1835,7 +1876,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   )
   if (!draft.ok) {
     // No draft: the reservation is given back (kept only if a document carries the key).
-    await step(ctx.projects_reconcileCreate, { ...base, step: "release" })
+    await step(ctx.projects_reconcileCreate, { ...keyed, step: "release" })
     return refusal(
       draft.code,
       `${draft.message} The card's work was released, so it can be billed again.`,
@@ -1845,7 +1886,7 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   const d = draft.body
   const documentId = String(d.draftId ?? "")
   const finished = await step(ctx.projects_reconcileCreate, {
-    ...base,
+    ...keyed,
     step: "finish",
     documentId,
     ...(p.waiveOverage === true ? { waiveOverage: true } : {}),
@@ -1856,7 +1897,10 @@ export async function reconcileCreateInvoice(params: unknown, ctx: ProjectsCtx):
   // report. A card billed by the day or the hour carries its report only. Invoicing files one
   // sheet per draft, so a second Create on the same card adds none.
   const sheet =
-    prep.basis === "retainer" && prep.datedHours === true && typeof prep.month === "string"
+    prep.basis === "retainer" &&
+    !lateOnly &&
+    prep.datedHours === true &&
+    typeof prep.month === "string"
       ? await fileMonthSheet(ctx, String(prep.projectId), prep.month, documentId)
       : null
 

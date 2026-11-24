@@ -14,6 +14,7 @@ import {
   taxCountryOf,
 } from "../issue"
 import { issueDateParts } from "../issue-date"
+import { paymentTermsOf, termsText } from "../payment-terms"
 import { documentsGet, type ReadsCtx } from "../reads"
 import type { ClassifyInput } from "../tax"
 import { planTax } from "../tax-plan"
@@ -1018,7 +1019,24 @@ export async function draftIssuePreview(
   })
   // The org's day (`UTC` reads the org's own zone), so a card's late line never reads yesterday.
   const today = (await ctx.time.civil({ timezone: "UTC" })).date
-  return { ...doc, issue_total_minor: grand.toString(), today }
+  const terms =
+    draft.type === "invoice" && !draft.due_at
+      ? termsText(
+          (
+            await paymentTermsOf(ctx.db, {
+              issuer,
+              contactId: draft.counterparty_contact_id,
+              externalRefs: draft.external_refs,
+            })
+          ).days,
+        )
+      : null
+  return {
+    ...doc,
+    issue_total_minor: grand.toString(),
+    today,
+    ...(terms ? { due_terms: terms } : {}),
+  }
 }
 
 /** STAGE-TIME preflight for `po_create_and_issue`: the same checks, before any approval exists. */

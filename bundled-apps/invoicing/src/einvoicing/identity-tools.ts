@@ -8,6 +8,8 @@
 // confirmed SIREN with another value asks for an identity confirmation instead and writes nothing
 // until it is approved. A web page is never the source of a SIREN by itself.
 import type { CrossAppExecuteTool } from "../cross-app"
+import { restageForTerms } from "../mutations/issue-fingerprint"
+import { termsDays } from "../payment-terms"
 import { isSirenConfirmed, isValidSiren, isValidSiret, sirenFromFrVat } from "./identity"
 import { readEinvoiceRowColumns } from "./issue-gate"
 import {
@@ -356,6 +358,8 @@ export interface IdentitySetInput {
   contact_id?: string | null
   document_id?: string | null
   customer_kind?: string | null
+  /** Days this customer has to pay; null goes back to the issuer's. */
+  payment_terms_days?: number | null
   siren?: string | null
   siret?: string | null
   source?: string | null
@@ -433,14 +437,23 @@ async function upsertIdentity(
   data: Row,
 ): Promise<Row> {
   const row = { ...data, changed_at: new Date() }
+  // An invoice waiting to be issued that would be due by these terms is asked about again.
+  const termsMoved =
+    "payment_terms_days" in data &&
+    (existing?.payment_terms_days ?? null) !== (data.payment_terms_days ?? null)
+  const reask = async () => {
+    if (termsMoved) await restageForTerms(ctx as never, { contactId })
+  }
   if (existing) {
     await ctx.db.update("counterparty_identities", String(existing.id), row)
+    await reask()
     return { ...existing, ...row }
   }
   const inserted = (await ctx.db.insert("counterparty_identities", {
     contact_id: contactId,
     ...row,
   })) as Row
+  await reask()
   return { contact_id: contactId, ...row, ...(inserted ?? {}) }
 }
 
@@ -488,6 +501,19 @@ export async function counterpartyIdentitySet(
     )
   }
   const notes = str(input.notes)
+  const termsGiven = input.payment_terms_days !== undefined
+  const terms = termsDays(input.payment_terms_days)
+  if (termsGiven && input.payment_terms_days !== null && terms === null)
+    return fail(
+      "invalid_input",
+      "payment_terms_days must be a whole number of days from 0 to 999, or null to use the issuer's terms. Nothing was recorded.",
+    )
+  if (termsGiven && cp.document)
+    return fail(
+      "invalid_input",
+      "Payment terms are kept on a contact. Link the draft to its contact, or set the draft's own due_at with drafts_update. Nothing was recorded.",
+    )
+  const termsData: Row = termsGiven ? { payment_terms_days: terms } : {}
 
   // No SIREN: kind / SIRET / notes / billing only. No registry decision involved.
   if (!siren) {
@@ -544,6 +570,7 @@ export async function counterpartyIdentitySet(
       ...(kind ? { customer_kind: kind } : {}),
       ...(siret ? { siret } : {}),
       ...(notes ? { notes } : {}),
+      ...termsData,
       ...(existing ? {} : { source }),
     }
     const identity = await upsertIdentity(ctx, contactId, existing, data)
@@ -666,6 +693,7 @@ export async function counterpartyIdentitySet(
       str(input.source_url) ??
       (source === "registry" && candidate ? registrySearchUrl({ siren }) : null),
     ...(notes ? { notes } : {}),
+    ...termsData,
     ...confirmation,
   })
   await emitResolved(ctx, contactId)

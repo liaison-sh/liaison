@@ -5,6 +5,7 @@
 import { readMinorAmount } from "@liaison/app-sdk"
 import { isValidSiren } from "../einvoicing/identity"
 import { checkIssuerTimezone, normalizeIssuerTimezone } from "../issue-date"
+import { restageForTerms } from "./issue-fingerprint"
 import {
   type ErrorEnvelope,
   invalidAmountError,
@@ -304,6 +305,11 @@ export async function settingsIssuerProfileUpdate(
   if (refused) return refused
   const before = (await ctx.db.findOne("issuer_profiles", id)) as Record<string, unknown> | null
   await ctx.db.update("issuer_profiles", id, data)
+  if (
+    "default_payment_terms_days" in data &&
+    !sameIssuerValue(before?.default_payment_terms_days ?? null, data.default_payment_terms_days)
+  )
+    await restageForTerms(ctx, { issuerId: id })
   await emitIssuerProfileChange(ctx, "updated", id, before, data)
   return { status: "completed", id }
 }

@@ -320,8 +320,9 @@ export function validateDraft(d: DraftDocument): ValidationResult {
     })
   }
   // Credit notes are never payable — they carry no due date, so it is not required (and the field
-  // is hidden in the UI for this type).
-  if (!d.due_at && d.type !== "credit_note") {
+  // is hidden in the UI for this type). An invoice left without one is due by its payment terms,
+  // counted from the day it is issued.
+  if (!d.due_at && d.type !== "credit_note" && d.type !== "invoice") {
     errors.push({ field: "due_at", message: tr("Due date is required.") })
   }
   // Recipient completeness. An issued document is a legal record: it must say WHO it is
@@ -1694,6 +1695,14 @@ export const Editor: Component<EditorProps> = (props) => {
                       "border-error focus:border-error focus:ring-error-glow",
                   )}
                 />
+                <Show when={draft().type === "invoice" && !draft().due_at && !ro()}>
+                  <p
+                    data-testid="editor-due-by-terms"
+                    class="mt-1 text-[11.5px] text-text-tertiary"
+                  >
+                    {tr("Left empty, it is due by the payment terms, counted from the issue date.")}
+                  </p>
+                </Show>
               </Field>
             </Show>
             <Show when={!props.compact}>

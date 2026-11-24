@@ -45,6 +45,7 @@ import { seedTaskTime } from "~/seed/factories/projects/time"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
+import { reserveClaims } from "./claims"
 import { awaitTimeFeatureSync } from "./time-feature"
 import { awaitTimeRowWrites } from "./time-rows"
 
@@ -1359,5 +1360,1506 @@ describe("issuing the card's draft", () => {
       [1, 450000],
     ])
     expect((await stateOf(card.reconciliationId))?.state).toBe("invoiced")
+  }, 120_000)
+})
+
+/** A retainer project on 40 h at 4,500.00 and 120.00 above, with its timeboxes for the months. */
+async function retainerProject(months: string[], extra: Record<string, AppCell> = {}) {
+  keys++
+  const key = `INV${keys}`
+  const made = await call<{ id: string }>("projects_createProject", {
+    name: `Maison Delorme ${key}`,
+    key,
+    companyId: delorme,
+    timeBudgets: true,
+  })
+  await awaitTimeFeatureSync(orgId)
+  await call("projects_timePlanSet", { projectId: made.id, basis: "retainer" })
+  const schedule = await retainerSchedule(made.id, "2026-01", extra)
+  for (const m of months) {
+    const last = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 0)).getUTCDate()
+    await retainerTimebox(made.id, schedule, `${m}-01`, `${m}-${last}`)
+  }
+  return { id: made.id, key, schedule }
+}
+
+/** A task of a project closed on a day, with time on given days. */
+async function closedTask(
+  projectId: string,
+  title: string,
+  closedOn: string | null,
+  time: Array<[string, number]>,
+  timebox?: string,
+): Promise<string> {
+  const task = await call<{ id: string }>("projects_createTask", {
+    projectId,
+    title,
+    statusLabel: closedOn ? "done" : "todo",
+    ...(timebox ? { timebox } : {}),
+  })
+  if (closedOn)
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = ${`${closedOn} 10:00+00`}::timestamptz WHERE id = ${task.id}::uuid`,
+    )
+  if (time.length > 0)
+    await seedTaskTime(
+      seedContext({ orgId, now: new Date() }),
+      actorOf(owner.userId, ["*"]),
+      time.map(([workDate, minutes]) => ({ taskId: task.id, projectId, workDate, minutes })),
+    )
+  return task.id
+}
+
+const draftLinesOf = (documentId: unknown) =>
+  db
+    .execute(drizzleSql`
+      SELECT description, quantity::text AS q, unit_price_minor::text AS p
+        FROM app_invoicing.document_lines
+       WHERE document_id = ${String(documentId)}::uuid ORDER BY position`)
+    .then((r) =>
+      extractRows<{ description: string; q: string; p: string }>(r).map(
+        (l) => [l.description, Number(l.q), Number(l.p)] as const,
+      ),
+    )
+
+/** Decide the issue approval of a draft as a person who can issue. */
+async function approveIssue(documentId: unknown) {
+  const pending = extractRows<{ id: string }>(
+    await db.execute(drizzleSql`
+      SELECT id::text AS id FROM kernel.approval_requests
+       WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+         AND status = 'pending' AND current_payload->>'draft_id' = ${String(documentId)}`),
+  )
+  expect(pending).toHaveLength(1)
+  return decideApproval({
+    orgId,
+    requestId: pending[0]!.id,
+    actor: actorOf(owner.userId, FINANCE),
+    decision: "approve",
+  })
+}
+
+const addTime = (projectId: string, taskId: string, time: Array<[string, number]>) =>
+  seedTaskTime(
+    seedContext({ orgId, now: new Date() }),
+    actorOf(owner.userId, ["*"]),
+    time.map(([workDate, minutes]) => ({ taskId, projectId, workDate, minutes })),
+  )
+
+const setSchedule = (id: string, patch: { terms?: unknown; status?: string }) =>
+  db.execute(drizzleSql`
+    UPDATE app_invoicing.recurring_schedules
+       SET retainer_terms = ${patch.terms === undefined ? null : JSON.stringify(patch.terms)}::jsonb,
+           status = ${patch.status ?? "active"}
+     WHERE id = ${id}::uuid`)
+
+/** The terms of a retainer turned off from a month. */
+const offFrom = (month: string) => [
+  {
+    from: month,
+    off: true,
+    retainer_minutes: 0,
+    retainer_overage_rate_minor: null,
+    covers: "period_ended",
+    lines: [{ description: "Upkeep", qty: 1, unit_price_minor: 100000, vat_bp: 2000 }],
+  },
+]
+
+const issuedOf = async (projectId: string) =>
+  (await docsOf(projectId)).filter((d) => d.status === "issued")
+
+describe("issuing a retainer month whose card bills no line", () => {
+  it("a line the biller set to 0, or left off, does not keep the month's fee from issuing", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Extra", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Extra", taskIds: [t], proofs: [] }],
+    })
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: card.reconciliationId,
+      revision: card.revision,
+      lineId: card.lines[0].lineId,
+      bill: 0,
+    })
+    expect(zeroed.error).toBeUndefined()
+    const out = await create(zeroed)
+    expect(out.error).toBeUndefined()
+    expect(await claimsOf(card.reconciliationId)).toEqual(["left_off"])
+    expect((await approveIssue(out.documentId)).status).toBe("approved")
+    const issued = await issuedOf(r.id)
+    expect(issued).toHaveLength(1)
+    expect((await draftLinesOf(issued[0]?.id)).map((l) => l.slice(1))).toEqual([[1, 450000]])
+    expect((await stateOf(card.reconciliationId))?.state).toBe("invoiced")
+  }, 120_000)
+
+  it("created, undone and created again with no line, it issues once", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Work", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const first = await create(card)
+    expect(first.error).toBeUndefined()
+    const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: card.reconciliationId,
+      revision: undone.revision ?? undone.card?.revision ?? card.revision,
+      lineId: card.lines[0].lineId,
+      bill: 0,
+    })
+    expect(zeroed.error).toBeUndefined()
+    const again = await create(zeroed)
+    expect(again.error).toBeUndefined()
+    expect((await approveIssue(again.documentId)).status).toBe("approved")
+    expect(await issuedOf(r.id)).toHaveLength(1)
+    // The month is billed: a new ask draws the same card, and Create makes nothing more.
+    const asked = await run(reconcilePropose, { project: r.key, month: "2026-10", lines: [] })
+    expect((await create(asked)).error).toBeDefined()
+    expect(await docsOf(r.id)).toHaveLength(1)
+  }, 120_000)
+
+  it("a card that bills work not reserved for it is refused with what to do, and doing it issues the month", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Work", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const out = await create(card)
+    expect(out.error).toBeUndefined()
+    await db.execute(
+      drizzleSql`UPDATE app_projects.billing_claims SET state = 'released'
+                  WHERE reconciliation_id = ${card.reconciliationId}::uuid`,
+    )
+    const refused = await approveIssue(out.documentId).then(
+      (d) => JSON.stringify(d),
+      (e) => `${String(e)} ${JSON.stringify(e, Object.getOwnPropertyNames(e as object))}`,
+    )
+    expect(refused).toContain("Undo")
+    expect(await issuedOf(r.id)).toHaveLength(0)
+    const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const again = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const redrafted = await create(again)
+    expect(redrafted.error).toBeUndefined()
+    expect((await approveIssue(redrafted.documentId)).status).toBe("approved")
+    expect(await issuedOf(r.id)).toHaveLength(1)
+  }, 120_000)
+})
+
+/** Back-date a card's draft and its claims to a day, as if the invoice had been made then. */
+async function draftedOn(card: Record<string, any>, on: string) {
+  await db.execute(
+    drizzleSql`UPDATE app_projects.reconciliations SET drafted_at = ${`${on} 09:00+00`}::timestamptz
+                WHERE id = ${card.reconciliationId}::uuid`,
+  )
+  await db.execute(
+    drizzleSql`UPDATE app_projects.billing_claims
+                  SET created_at = ${`${on} 09:00+00`}::timestamptz
+                WHERE reconciliation_id = ${card.reconciliationId}::uuid`,
+  )
+}
+
+const proposal = (key: string, month: string, lines: unknown[] = [], extra: object = {}) =>
+  run(reconcilePropose, { project: key, month, lines, ...extra })
+
+const lineOf = (name: string, ids: string[]) => ({ name, taskIds: ids, proofs: [] })
+
+/** A monthly project billed by the day, with a company. */
+async function dailyProject() {
+  keys++
+  const key = `INV${keys}`
+  const made = await call<{ id: string }>("projects_createProject", {
+    name: `Maison Delorme ${key}`,
+    key,
+    companyId: delorme,
+    timeBudgets: true,
+  })
+  await awaitTimeFeatureSync(orgId)
+  await call("projects_timePlanSet", { projectId: made.id, basis: "daily" })
+  await call("projects_billingTermsSet", { projectId: made.id, rate: 930, currency: "EUR" })
+  return { id: made.id, key }
+}
+
+describe("a period invoiced before it ends", () => {
+  it("says on the card that it is not over, and a month that has not begun is never drafted", async () => {
+    const p = await dailyProject()
+    const now = new Date()
+    const month = (n: number) =>
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + n, 1)).toISOString().slice(0, 7)
+    const t = await closedTask(p.id, "Now", now.toISOString().slice(0, 10), [], "1 day")
+    const current = await proposal(p.key, month(0), [lineOf("Now", [t])])
+    expect(current.error).toBeUndefined()
+    expect(current.message).toContain("This period is not over: it ends on")
+    expect(JSON.stringify(current.cardNotes)).toContain("goes on the next card")
+    expect(current.createInvoice).toBe("yes")
+    const made = await create(current)
+    expect(made.error).toBeUndefined()
+    expect(JSON.stringify(made.cardNotes)).toContain("This period is not over")
+    const approval = extractRows<{ s: string }>(
+      await db.execute(drizzleSql`
+        SELECT summary::text AS s FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND current_payload->>'draft_id' = ${made.documentId}`),
+    )[0]
+    expect(approval?.s).toContain("not over")
+    // A past month says nothing of the sort.
+    const past = await proposal(p.key, "2026-10", [])
+    expect(past.message).not.toContain("not over")
+    const r = await retainerProject([month(1)])
+    const next = await proposal(r.key, month(1), [])
+    expect(next.createInvoice ?? null).toBeNull()
+    expect(next.notice?.title).toBe("Not started yet")
+    expect((await create(next)).error).toMatchObject({ code: "period_not_started" })
+    expect(await docsOf(r.id)).toEqual([])
+  }, 120_000)
+
+  it("lists work closed in it afterwards on the next card, by the day, once", async () => {
+    const p = await dailyProject()
+    const a = await closedTask(p.id, "First", "2026-09-04", [["2026-09-03", HPD]], "1 day")
+    const jan = await proposal(p.key, "2026-09", [lineOf("First", [a])])
+    const made = await create(jan)
+    expect(made.error).toBeUndefined()
+    await draftedOn(jan, "2026-09-05")
+    await approveIssue(made.documentId)
+    const planned = await closedTask(p.id, "Late planned", "2026-09-20", [], "2 days")
+    const extra = await closedTask(p.id, "Late extra", "2026-09-22", [["2026-09-22", 60]])
+    const now = await closedTask(p.id, "October", "2026-10-10", [], "1 day")
+    const facts = await run(reconcileFacts, { project: p.key, month: "2026-10" })
+    expect(facts.unbilledEarlier.map((t: any) => t.id).sort()).toEqual([planned, extra].sort())
+    // Asked with the month's own line alone, the card lists the rest by itself.
+    const oct = await proposal(p.key, "2026-10", [lineOf("October", [now])])
+    expect(oct.error).toBeUndefined()
+    const byName = new Map<string, any>(oct.lines.map((l: any) => [l.name, l]))
+    expect(byName.get("Earlier work, closed after its invoice")).toMatchObject({
+      taskIds: [planned],
+      billMinutes: day(2),
+    })
+    expect(byName.get("Earlier work not in the plan, closed after its invoice")).toMatchObject({
+      taskIds: [extra],
+      billMinutes: 0,
+    })
+    // Asked again, the same card comes back.
+    expect((await proposal(p.key, "2026-10", [lineOf("October", [now])])).outcome).toBe("unchanged")
+    const oneMade = await create(oct)
+    expect(oneMade.error).toBeUndefined()
+    expect((await draftLinesOf(oneMade.documentId)).map((l) => l[1])).toEqual([1, 2])
+    await approveIssue(oneMade.documentId)
+    // Billed, or left off, it is never offered again.
+    const nov = await run(reconcileFacts, { project: p.key, month: "2026-11" })
+    expect(nov.unbilledEarlier).toEqual([])
+    const novCard = await proposal(p.key, "2026-11", [])
+    expect(novCard.lines).toEqual([])
+  }, 120_000)
+
+  it("keeps the client's own work, and what was on the period's card, off the next one", async () => {
+    const p = await dailyProject()
+    const a = await closedTask(p.id, "First", "2026-09-04", [], "1 day")
+    const own = await closedTask(p.id, "Client's own", "2026-09-04", [], "1 day")
+    // Proposed with it first, then without: what is left out is kept on the card as it stands.
+    await proposal(p.key, "2026-09", [lineOf("First", [a])])
+    const sep = await proposal(p.key, "2026-09", [lineOf("First", [a])], {
+      excluded: [{ taskId: own, reason: "client_own" }],
+    })
+    const made = await create(sep)
+    expect(made.error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    const facts = await run(reconcileFacts, { project: p.key, month: "2026-10" })
+    expect(facts.unbilledEarlier).toEqual([])
+    expect((await proposal(p.key, "2026-10", [])).lines).toEqual([])
+    // Dated back into the period after its invoice, work nobody billed is listed all the same.
+    const back = await closedTask(p.id, "Dated back", "2026-09-03", [], "1 day")
+    const again = await run(reconcileFacts, { project: p.key, month: "2026-10" })
+    expect(again.unbilledEarlier.map((t: any) => t.id)).toEqual([back])
+    // Excluded on this card, it is off it.
+    const without = await proposal(p.key, "2026-10", [], {
+      excluded: [{ taskId: back, reason: "client_own" }],
+    })
+    expect(without.lines).toEqual([])
+  }, 120_000)
+
+  it("lists at 0 a late subtask of billed work, for a person to set", async () => {
+    const p = await dailyProject()
+    const parent = await closedTask(p.id, "Whole", "2026-09-04", [], "3 days")
+    const sep = await proposal(p.key, "2026-09", [lineOf("Whole", [parent])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    const child = await call<{ id: string }>("projects_createTask", {
+      projectId: p.id,
+      title: "Part",
+      statusLabel: "done",
+      parentTaskId: parent,
+      timebox: "1 day",
+    })
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-09-20 10:00+00'::timestamptz WHERE id = ${child.id}::uuid`,
+    )
+    const oct = await proposal(p.key, "2026-10", [])
+    expect(oct.lines).toHaveLength(1)
+    expect(oct.lines[0]).toMatchObject({ taskIds: [child.id], billMinutes: 0 })
+    expect(oct.lines[0].name).toContain("part of other work")
+  }, 120_000)
+})
+
+describe("a retainer month invoiced before it ends", () => {
+  /** September invoiced on the 5th at `hours`, on a 40 h retainer. */
+  async function september(hours: number, extra: Record<string, AppCell> = {}) {
+    const r = await retainerProject(["2026-08", "2026-09", "2026-10", "2026-11"], extra)
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", hours * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect(sep.error).toBeUndefined()
+    const made = await create(sep)
+    expect(made.error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    await approveIssue(made.documentId)
+    return { ...r, a, made }
+  }
+  const late = (description: string) => description.includes("worked after its invoice")
+
+  it("bills its later hours above the retainer on the next card, as that month's, once", async () => {
+    const r = await september(47)
+    // Later in September: 10 h on the same task, 8 h on a new one closed then, 30 min entered
+    // for a day before the invoice.
+    await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+      { taskId: r.a, projectId: r.id, workDate: "2026-09-18", minutes: 600 },
+      { taskId: r.a, projectId: r.id, workDate: "2026-09-02", minutes: 30 },
+    ] as never)
+    const b = await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 480]])
+    const c = await closedTask(r.id, "October", "2026-10-08", [["2026-10-07", 600]])
+    const facts = await run(reconcileFacts, { project: r.key, month: "2026-10" })
+    expect(
+      facts.unbilledEarlier.map((t: any) => [t.id, t.realMinutes, t.workMonth]).sort(),
+    ).toEqual(
+      [
+        [r.a, 630, "2026-09"],
+        [b, 480, "2026-09"],
+      ].sort(),
+    )
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c])])
+    const lateLine = oct.lines.find((l: any) => l.workMonth === "2026-09")
+    expect(lateLine).toMatchObject({ billMinutes: 1110, realMinutes: 1110 })
+    expect(lateLine.taskIds.sort()).toEqual([r.a, b].sort())
+    expect(lateLine.name).toBe("Earlier work, September 2026, done after its invoice")
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    // October used 10 h of 40: the fee. September was at 47 of 40 already: 18.5 h at 120.00.
+    expect((await draftLinesOf(made.documentId)).map((l) => [late(l[0]), l[1], l[2]])).toEqual([
+      [false, 1, 450000],
+      [true, 18.5, 12000],
+    ])
+    await approveIssue(made.documentId)
+    const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(nov.unbilledEarlier).toEqual([])
+    expect((await proposal(r.key, "2026-11", [])).lines).toEqual([])
+  }, 120_000)
+
+  it("counts later hours inside the month's included hours first, and keeps the next month's whole", async () => {
+    const r = await september(30)
+    const b = await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 12 * 60]])
+    const c = await closedTask(r.id, "October", "2026-10-08", [["2026-10-07", 40 * 60]])
+    const oct = await proposal(r.key, "2026-10", [
+      lineOf("October", [c]),
+      lineOf("Site search, September", [b]),
+    ])
+    // A line that names only late work keeps its own words.
+    expect(oct.lines.find((l: any) => l.workMonth === "2026-09")?.name).toBe(
+      "Site search, September",
+    )
+    const made = await create(oct)
+    // October: 40 of 40. September: 30 + 12 = 42 of 40, so 2 h above.
+    expect((await draftLinesOf(made.documentId)).map((l) => [late(l[0]), l[1], l[2]])).toEqual([
+      [false, 1, 450000],
+      [true, 2, 12000],
+    ])
+  }, 120_000)
+
+  it("takes its later hours out of what it rolls into the next month", async () => {
+    const r = await september(30, { retainer_rollover: "next" })
+    const b = await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 6 * 60]])
+    const c = await closedTask(r.id, "October", "2026-10-08", [["2026-10-07", 46 * 60]])
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c]), lineOf("New", [b])])
+    const made = await create(oct)
+    // September keeps 40 - 30 - 6 = 4 h to roll; October used 46 of 40 + 4: 2 h above.
+    expect((await draftLinesOf(made.documentId)).map((l) => [late(l[0]), l[1], l[2]])).toEqual([
+      [false, 1, 450000],
+      [false, 2, 12000],
+    ])
+  }, 120_000)
+
+  it("a late line set to 0 or left off is not offered again, and an undone card gives it back", async () => {
+    const r = await september(47)
+    const b = await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 480]])
+    const oct = await proposal(r.key, "2026-10", [])
+    const line = oct.lines.find((l: any) => l.workMonth)
+    expect(line.taskIds).toEqual([b])
+    const made = await create(oct)
+    expect((await draftLinesOf(made.documentId)).length).toBe(2)
+    const undone = await run(reconcileUndo, { reconciliationId: oct.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: oct.reconciliationId,
+      revision: oct.revision,
+      lineId: line.lineId,
+      bill: 0,
+    })
+    expect(zeroed.error).toBeUndefined()
+    const again = await create(zeroed)
+    expect(again.error).toBeUndefined()
+    expect((await draftLinesOf(again.documentId)).length).toBe(1)
+    await approveIssue(again.documentId)
+    const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(nov.unbilledEarlier).toEqual([])
+  }, 120_000)
+
+  it("a month undone while the next card holds its later hours cannot bill them again", async () => {
+    const r = await retainerProject(["2026-09", "2026-10"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 47 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    await seedTaskTime(seedContext({ orgId, now: new Date() }), actorOf(owner.userId, ["*"]), [
+      { taskId: a, projectId: r.id, workDate: "2026-09-18", minutes: 600 },
+    ] as never)
+    const oct = await proposal(r.key, "2026-10", [])
+    const made = await create(oct)
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [10, 12000],
+    ])
+    // September goes back and is asked again: what October's card holds of it is not on it.
+    expect((await run(reconcileUndo, { reconciliationId: sep.reconciliationId })).undone).toBe(true)
+    const again = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect(again.lines[0].billMinutes).toBe(47 * 60)
+    const whole = await create(again)
+    expect(whole.error).toBeUndefined()
+    // 47 h of 40, and the 10 h are October's: 17 h above in all, as if told on time.
+    expect((await draftLinesOf(whole.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [7, 12000],
+    ])
+    expect((await run(reconcileUndo, { reconciliationId: whole.reconciliationId })).undone).toBe(
+      true,
+    )
+    // The later hours given back, the month bills them all.
+    expect((await run(reconcileUndo, { reconciliationId: oct.reconciliationId })).undone).toBe(true)
+    const all = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    const last = await create(all)
+    expect((await draftLinesOf(last.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [17, 12000],
+    ])
+  }, 120_000)
+
+  it("a month credited in full while a later card holds hours of it bills the rest, its included hours once", async () => {
+    const r = await september(20)
+    await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 15 * 60]])
+    const oct = await proposal(r.key, "2026-10", [])
+    expect((await create(oct)).error).toBeUndefined()
+    // September's claims go as a full credit leaves them, and its invoice with them.
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'credited'
+       WHERE project_id = ${r.id}::uuid AND period_key = '2026-09' AND source_ref = ${r.a}`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'credited'
+       WHERE project_id = ${r.id}::uuid AND period_start = '2026-09-01'`)
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.documents SET status = 'cancelled'
+       WHERE billing_project_id = ${r.id}::uuid AND external_ref = ${`retainer:${r.schedule}:2026-09`}`)
+    await addTime(r.id, r.a, [["2026-09-19", 15 * 60]])
+    const again = await proposal(r.key, "2026-09", [lineOf("Upkeep", [r.a])])
+    expect(again.lines.map((l: any) => l.billMinutes)).toContain(35 * 60)
+    const made = await create(again)
+    expect(made.error).toBeUndefined()
+    // 35 h now and 15 h on October's card: 50 of 40, so 10 above.
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [10, 12000],
+    ])
+  }, 120_000)
+
+  it("two cards offering the same later hours bill them once", async () => {
+    const r = await september(47)
+    await closedTask(r.id, "New", "2026-09-25", [["2026-09-24", 480]])
+    const oct = await proposal(r.key, "2026-10", [])
+    const other = await run(
+      reconcilePropose,
+      { project: r.key, month: "2026-11", lines: [] },
+      { userId: otherLead.userId },
+    )
+    expect(other.lines.some((l: any) => l.workMonth === "2026-09")).toBe(true)
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    const second = await create(other, { userId: otherLead.userId })
+    expect(second.error).toMatchObject({ code: "already_on" })
+    expect((await docsOf(r.id)).length).toBe(2)
+    // The month itself cannot take the hours back while the next card holds them.
+    const claims = extractRows<{ k: string; state: string }>(
+      await db.execute(drizzleSql`
+        SELECT period_key AS k, state FROM app_projects.billing_claims
+         WHERE project_id = ${r.id}::uuid AND state IN ('reserved', 'billed') ORDER BY period_key`),
+    )
+    expect(new Set(claims.map((c) => c.k))).toEqual(new Set(["2026-09"]))
+  }, 120_000)
+})
+
+describe("time entered while a card waits, or after it was claimed", () => {
+  const perHour = (l: readonly [string, number, number]) => l.slice(1)
+
+  it("a retainer card whose hours moved is refused with the card as it stands, and bills them all", async () => {
+    const r = await retainerProject(["2026-10", "2026-11"])
+    const t = await closedTask(r.id, "Upkeep", null, [["2026-10-12", 47 * 60]])
+    const card = await proposal(r.key, "2026-10", [lineOf("Upkeep", [t])])
+    await addTime(r.id, t, [
+      ["2026-10-30", 600],
+      ["2026-10-31", 120],
+    ])
+    const refused = await create(card)
+    expect(refused.error).toMatchObject({ code: "card_changed" })
+    expect(refused.error.message).toContain("47 h")
+    expect(refused.error.message).toContain("59 h")
+    expect(await docsOf(r.id)).toEqual([])
+    expect(await claimsOf(card.reconciliationId)).toEqual([])
+    const latest = refused.error.details.latest
+    expect(latest.revision).toBe(card.revision + 1)
+    expect(latest.lines[0]).toMatchObject({ billMinutes: 59 * 60, realMinutes: 59 * 60 })
+    expect(latest.createInvoice).toBe("yes")
+    // The card it was pressed on is gone; the one shown is made whole.
+    expect((await create(card)).error).toMatchObject({ code: "card_changed" })
+    const made = await create(latest)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [19, 12000],
+    ])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("an edit of a line does not make a stale card billable, and a bill a person set stays", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Upkeep", null, [["2026-10-12", 47 * 60]])
+    const u = await closedTask(r.id, "Extra", null, [["2026-10-13", 600]])
+    const card = await proposal(r.key, "2026-10", [lineOf("Upkeep", [t]), lineOf("Extra", [u])])
+    await addTime(r.id, t, [["2026-10-30", 600]])
+    await addTime(r.id, u, [["2026-10-30", 60]])
+    const edited = await run(reconcileLineUpdate, {
+      reconciliationId: card.reconciliationId,
+      revision: card.revision,
+      lineId: card.lines[1].lineId,
+      bill: "2 h",
+    })
+    expect(edited.error).toBeUndefined()
+    const refused = await create(edited)
+    expect(refused.error).toMatchObject({ code: "card_changed" })
+    expect(
+      refused.error.details.latest.lines.map((l: any) => [l.realMinutes, l.billMinutes]),
+    ).toEqual([
+      [57 * 60, 57 * 60],
+      [660, 120],
+    ])
+    const made = await create(refused.error.details.latest)
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [19, 12000],
+    ])
+  }, 120_000)
+
+  it("a late line whose hours moved is refused too, and what is entered after the draft goes on the next card", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 40 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(r.id, a, [["2026-09-04", 300]])
+    const oct = await proposal(r.key, "2026-10", [])
+    expect(oct.lines[0]).toMatchObject({ workMonth: "2026-09", billMinutes: 300 })
+    await addTime(r.id, a, [["2026-09-18", 300]])
+    const refused = await create(oct)
+    expect(refused.error).toMatchObject({ code: "card_changed" })
+    const made = await create(refused.error.details.latest)
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [10, 12000],
+    ])
+    // Dated the same day, entered after the draft: the next card's, once.
+    await addTime(r.id, a, [["2026-09-05", 120]])
+    const nov = await proposal(r.key, "2026-11", [])
+    expect(nov.lines.map((l: any) => [l.workMonth, l.billMinutes])).toEqual([["2026-09", 120]])
+    const novMade = await create(nov)
+    expect((await draftLinesOf(novMade.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [2, 12000],
+    ])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-12" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("time entered for a day before the claim, or on the day of it, on a claimed task is billed on the next card", async () => {
+    const r = await retainerProject(["2026-09", "2026-10"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-05", 40 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    await addTime(r.id, a, [["2026-09-04", 300]])
+    await db.execute(drizzleSql`
+      UPDATE app_projects.task_time SET minutes = minutes + 60
+       WHERE task_id = ${a}::uuid AND work_date = '2026-09-05'`)
+    const oct = await proposal(r.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.workMonth, l.realMinutes])).toEqual([["2026-09", 360]])
+  }, 120_000)
+
+  it("an older claim, made before its minutes were kept, counts what is dated up to its day", async () => {
+    const r = await retainerProject(["2026-09", "2026-10"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 40 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET counted_minutes = NULL
+       WHERE reconciliation_id = ${sep.reconciliationId}::uuid`)
+    await addTime(r.id, a, [
+      ["2026-09-05", 60],
+      ["2026-09-06", 300],
+    ])
+    const oct = await proposal(r.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.workMonth, l.realMinutes])).toEqual([["2026-09", 300]])
+    expect((await create(oct)).error).toBeUndefined()
+    await addTime(r.id, a, [["2026-09-07", 60]])
+    const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(nov.unbilledEarlier.map((t: any) => t.realMinutes)).toEqual([60])
+    // Two older claims of one task: the later one says the day.
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims
+         SET counted_minutes = NULL, created_at = '2026-10-15 09:00+00'::timestamptz
+       WHERE reconciliation_id = ${oct.reconciliationId}::uuid AND state = 'reserved'`)
+    const both = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(both.unbilledEarlier).toEqual([])
+  }, 120_000)
+
+  it("a line left off counts the hours it left off, and no later ones", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 600]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: sep.reconciliationId,
+      revision: sep.revision,
+      lineId: sep.lines[0].lineId,
+      bill: 0,
+    })
+    // Hours entered before Create on a line set to 0 are shown first too.
+    await addTime(r.id, a, [["2026-09-04", 60]])
+    const refused = await create(zeroed)
+    expect(refused.error).toMatchObject({ code: "card_changed" })
+    expect((await create(refused.error.details.latest)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-10" })).unbilledEarlier,
+    ).toEqual([])
+    await addTime(r.id, a, [["2026-09-20", 180]])
+    const oct = await proposal(r.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.workMonth, l.billMinutes])).toEqual([["2026-09", 180]])
+    expect((await create(oct)).error).toBeUndefined()
+    // Named by a line, what was left off is billed after all, and is left off no more.
+    const nov = await proposal(r.key, "2026-11", [lineOf("Upkeep, after all", [a])])
+    expect(nov.lines.map((l: any) => [l.workMonth, l.billMinutes])).toEqual([["2026-09", 660]])
+    expect((await create(nov)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-12" })).unbilledEarlier,
+    ).toEqual([])
+    const back = await proposal(r.key, "2026-12", [lineOf("Again", [a])])
+    expect(back.lines.filter((l: any) => l.workMonth)).toEqual([])
+  }, 120_000)
+
+  it("a card proposed again after a try that stopped before its draft is reserved as it stands", async () => {
+    const r = await retainerProject(["2026-10", "2026-11"])
+    const t = await closedTask(r.id, "Upkeep", null, [["2026-10-12", 41 * 60]])
+    const card = await proposal(r.key, "2026-10", [lineOf("Upkeep", [t])])
+    const stopped = await run(
+      reconcileCreateInvoice,
+      {
+        reconciliationId: card.reconciliationId,
+        revision: card.revision,
+      },
+      {
+        patch: {
+          executeTool: async (tool: string) => {
+            if (tool === "invoicing:retainer_draft_from_reconcile") throw new Error("gone")
+            return JSON.stringify({
+              status: "completed",
+              result: { ready: true, missing: [], excl: 1, vat: 0, incl: 1, currency: "EUR" },
+            })
+          },
+          projects_reconcileCreate: undefined,
+        },
+      },
+    ).catch((e) => ({ error: String(e) }))
+    expect(stopped.error).toBeTruthy()
+    // Its claims as that try left them.
+    await withRlsContext(actorOf(owner.userId, FINANCE), (tx) =>
+      reserveClaims(tx as never, {
+        orgId,
+        reconciliationId: card.reconciliationId,
+        documentRef: `retainer:${r.schedule}:2026-10`,
+      }),
+    )
+    const u = await closedTask(r.id, "More", null, [["2026-10-13", 300]])
+    await addTime(r.id, t, [["2026-10-30", 60]])
+    const again = await proposal(r.key, "2026-10", [lineOf("Upkeep", [t]), lineOf("More", [u])])
+    const made = await create(again)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [7, 12000],
+    ])
+    expect(await claimsOf(card.reconciliationId)).toEqual(["released", "reserved", "reserved"])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("a later line of a card proposed again after a try that stopped is reserved as it stands", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 40 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(r.id, a, [["2026-09-18", 120]])
+    const oct = await proposal(r.key, "2026-10", [])
+    await withRlsContext(actorOf(owner.userId, FINANCE), (tx) =>
+      reserveClaims(tx as never, {
+        orgId,
+        reconciliationId: oct.reconciliationId,
+        documentRef: `retainer:${r.schedule}:2026-10`,
+      }),
+    )
+    // Pressed again at once, its own claims are its own.
+    const again = await create(oct)
+    expect(again.error).toBeUndefined()
+    expect((await draftLinesOf(again.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [2, 12000],
+    ])
+    expect((await run(reconcileUndo, { reconciliationId: oct.reconciliationId })).undone).toBe(true)
+    await withRlsContext(actorOf(owner.userId, FINANCE), (tx) =>
+      reserveClaims(tx as never, {
+        orgId,
+        reconciliationId: oct.reconciliationId,
+        documentRef: `retainer:${r.schedule}:2026-10`,
+      }),
+    )
+    const b = await closedTask(r.id, "More", null, [["2026-09-19", 60]])
+    const second = await proposal(r.key, "2026-10", [
+      lineOf("Upkeep, late", [a]),
+      lineOf("More, late", [b]),
+    ])
+    expect(second.error).toBeUndefined()
+    expect(second.lines.map((l: any) => [l.workMonth, l.billMinutes])).toEqual([
+      ["2026-09", 120],
+      ["2026-09", 60],
+    ])
+    const made = await create(second)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([
+      [1, 450000],
+      [3, 12000],
+    ])
+  }, 120_000)
+
+  it("two reservations of the same later hours at once, many times over: one card holds them", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 41 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(r.id, a, [["2026-09-18", 600]])
+    const oct = await proposal(r.key, "2026-10", [])
+    const nov = await run(
+      reconcilePropose,
+      { project: r.key, month: "2026-11", lines: [] },
+      { userId: otherLead.userId },
+    )
+    const reserve = (card: Record<string, any>, userId: string, month: string) =>
+      withRlsContext(actorOf(userId, FINANCE), (tx) =>
+        reserveClaims(tx as never, {
+          orgId,
+          reconciliationId: card.reconciliationId,
+          documentRef: `retainer:${r.schedule}:${month}`,
+          revision: card.revision,
+        }),
+      ).then(
+        () => "reserved",
+        (e) => (e as { code?: string }).code ?? String(e),
+      )
+    for (let i = 0; i < 40; i++) {
+      const out = await Promise.all([
+        reserve(oct, owner.userId, "2026-10"),
+        reserve(nov, otherLead.userId, "2026-11"),
+      ])
+      const held = extractRows<{ n: number; m: number }>(
+        await db.execute(drizzleSql`
+          SELECT count(*)::int AS n, coalesce(sum(counted_minutes), 0)::int AS m
+            FROM app_projects.billing_claims
+           WHERE project_id = ${r.id}::uuid AND state = 'reserved'
+             AND starts_with(period_key, '2026-09') AND reconciliation_id <> ${sep.reconciliationId}::uuid`),
+      )[0]
+      expect([...out].sort(), `round ${i}`).toEqual(["already_on", "reserved"])
+      expect(held, `round ${i}`).toEqual({ n: 1, m: 600 })
+      await db.execute(drizzleSql`
+        UPDATE app_projects.billing_claims SET state = 'released'
+         WHERE project_id = ${r.id}::uuid AND reconciliation_id <> ${sep.reconciliationId}::uuid`)
+      await db.execute(drizzleSql`
+        UPDATE app_projects.reconciliations SET document_ref = NULL
+         WHERE project_id = ${r.id}::uuid AND state = 'proposed'`)
+    }
+  }, 180_000)
+
+  it("two people pressing Create at once on cards offering the same later hours bill them once", async () => {
+    for (let i = 0; i < 5; i++) {
+      const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+      const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 41 * 60]])
+      const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+      expect((await create(sep)).error).toBeUndefined()
+      await addTime(r.id, a, [["2026-09-18", 600]])
+      const oct = await proposal(r.key, "2026-10", [])
+      const nov = await run(
+        reconcilePropose,
+        { project: r.key, month: "2026-11", lines: [] },
+        { userId: otherLead.userId },
+      )
+      const out = await Promise.all([create(oct), create(nov, { userId: otherLead.userId })])
+      expect(out.filter((o) => o.error?.code === "already_on")).toHaveLength(1)
+      const lines = (
+        await Promise.all(out.filter((o) => !o.error).map((o) => draftLinesOf(o.documentId)))
+      ).flat()
+      expect(lines.map(perHour)).toEqual([
+        [1, 450000],
+        [10, 12000],
+      ])
+    }
+  }, 180_000)
+
+  it("by the hour with no plan, a card whose time moved is refused, and time entered after it is billed once on the next", async () => {
+    const p = await dailyProject()
+    await call("projects_timePlanSet", { projectId: p.id, basis: "hourly" })
+    const a = await closedTask(p.id, "Support", "2026-09-10", [["2026-09-09", 120]])
+    const sep = await proposal(p.key, "2026-09", [lineOf("Support", [a])])
+    expect(sep.lines[0].billMinutes).toBe(120)
+    await addTime(p.id, a, [["2026-09-10", 60]])
+    const refused = await create(sep)
+    expect(refused.error).toMatchObject({ code: "card_changed" })
+    const made = await create(refused.error.details.latest)
+    expect((await draftLinesOf(made.documentId)).map(perHour)).toEqual([[3, 93000]])
+    await approveIssue(made.documentId)
+    // Time of a billed task, entered after its invoice, for a day before it and one after.
+    await addTime(p.id, a, [
+      ["2026-09-08", 30],
+      ["2026-10-02", 60],
+    ])
+    const facts = await run(reconcileFacts, { project: p.key, month: "2026-10" })
+    expect(facts.unbilledEarlier.map((t: any) => [t.id, t.realMinutes])).toEqual([[a, 90]])
+    // Closed again in October, it is still billed only for what is new.
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-10-02 10:00+00'::timestamptz WHERE id = ${a}::uuid`,
+    )
+    const oct = await proposal(p.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.name, l.billMinutes])).toEqual([
+      ["Time entered after its invoice", 90],
+    ])
+    const octMade = await create(oct)
+    expect(octMade.error).toBeUndefined()
+    expect((await draftLinesOf(octMade.documentId)).map(perHour)).toEqual([[1.5, 93000]])
+    expect(
+      (await run(reconcileFacts, { project: p.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+    // A task billed by its plan is not: its time moves the margin.
+    const planned = await closedTask(p.id, "Planned", "2026-11-05", [["2026-11-04", 60]], "2 h")
+    const nov = await proposal(p.key, "2026-11", [lineOf("Planned", [planned])])
+    expect((await create(nov)).error).toBeUndefined()
+    await addTime(p.id, planned, [["2026-11-06", 600]])
+    expect(
+      (await run(reconcileFacts, { project: p.key, month: "2026-12" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+})
+
+describe("a retainer over four months, time told in any order", () => {
+  it("counts every minute of every invoiced month once, and bills each month's overage once", async () => {
+    let above = 0
+    for (const seed of [3, 11, 29, 47]) {
+      let x = seed
+      const rand = (n: number) => {
+        x = (x * 1664525 + 1013904223) >>> 0
+        return x % n
+      }
+      const months = ["2026-07", "2026-08", "2026-09", "2026-10"]
+      const r = await retainerProject([...months, "2026-11"])
+      const tasks = [
+        await closedTask(r.id, "One", null, []),
+        await closedTask(r.id, "Two", null, []),
+        await closedTask(r.id, "Three", null, []),
+      ]
+      const used = new Set<string>()
+      /** Some hours on a task on a free day of a month up to `upTo`. */
+      const enter = async (upTo: number) => {
+        const task = tasks[rand(tasks.length)] as string
+        const day = `${months[rand(upTo + 1)]}-${String(1 + rand(28)).padStart(2, "0")}`
+        if (used.has(`${task} ${day}`)) return
+        used.add(`${task} ${day}`)
+        await addTime(r.id, task, [[day, 60 * (4 + rand(9))]])
+      }
+      for (const [i, month] of [...months, "2026-11"].entries()) {
+        const upTo = Math.min(i, months.length - 1)
+        for (let n = rand(6) + 2; n > 0; n--) await enter(upTo)
+        let card = await proposal(r.key, month, [])
+        // Time entered while the card waits, on some months.
+        if (month !== "2026-11") for (let n = rand(3); n > 0; n--) await enter(upTo)
+        let made = await create(card)
+        for (let tries = 0; made.error?.code === "card_changed" && tries < 3; tries++) {
+          card = made.error.details.latest
+          made = await create(card)
+        }
+        expect(made.error, `seed ${seed}, ${month}`).toBeUndefined()
+        if (rand(3) === 0) {
+          // Undone and made again: the same minutes, once.
+          const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+          expect(undone.undone).toBe(true)
+          card = await proposal(r.key, month, [])
+          made = await create(card)
+          expect(made.error, `seed ${seed}, ${month} again`).toBeUndefined()
+        }
+      }
+      const entered = extractRows<{ month: string; task: string; m: number }>(
+        await db.execute(drizzleSql`
+          SELECT to_char(work_date, 'YYYY-MM') AS month, task_id::text AS task, sum(minutes)::int AS m
+            FROM app_projects.task_time WHERE project_id = ${r.id}::uuid
+           GROUP BY 1, 2 ORDER BY 1, 2`),
+      )
+      const counted = extractRows<{ month: string; task: string; m: number }>(
+        await db.execute(drizzleSql`
+          SELECT split_part(period_key, '+', 1) AS month, source_ref AS task,
+                 sum(counted_minutes)::int AS m
+            FROM app_projects.billing_claims
+           WHERE project_id = ${r.id}::uuid AND state IN ('reserved', 'billed')
+           GROUP BY 1, 2 ORDER BY 1, 2`),
+      )
+      expect(counted, `seed ${seed}`).toEqual(entered)
+      const lines = extractRows<{ q: string }>(
+        await db.execute(drizzleSql`
+          SELECT sum(l.quantity)::text AS q FROM app_invoicing.document_lines l
+            JOIN app_invoicing.documents d ON d.id = l.document_id
+           WHERE d.billing_project_id = ${r.id}::uuid AND l.unit_price_minor = 12000`),
+      )
+      const owed = months
+        .map((m) => entered.filter((e) => e.month === m).reduce((a, e) => a + e.m, 0))
+        .reduce((a, m) => a + Math.max(0, m - 2400), 0)
+      expect(Math.round(Number(lines[0]?.q ?? 0) * 60), `seed ${seed}`).toBe(owed)
+      above += owed
+    }
+    expect(above).toBeGreaterThan(0)
+  }, 300_000)
+})
+
+describe("two cards of one month", () => {
+  it("never hold the same task's month, whatever key each is drafted under", async () => {
+    const r = await retainerProject(["2026-09"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 600]])
+    const mine = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    const theirs = await run(
+      reconcilePropose,
+      { project: r.key, month: "2026-09", lines: [lineOf("Upkeep", [a])] },
+      { userId: otherLead.userId },
+    )
+    expect((await create(mine)).error).toBeUndefined()
+    const second = await withRlsContext(actorOf(otherLead.userId, FINANCE), (tx) =>
+      reserveClaims(tx as never, {
+        orgId,
+        reconciliationId: theirs.reconciliationId,
+        documentRef: "retainer:another:2026-09",
+      }),
+    ).then(
+      () => "reserved",
+      (e) => (e as { code?: string }).code,
+    )
+    expect(second).toBe("already_on")
+  }, 120_000)
+})
+
+describe("a task billed by its time whose invoice was credited", () => {
+  it("is billed whole again on a new card, whatever was left out of a card since", async () => {
+    const p = await dailyProject()
+    await call("projects_timePlanSet", { projectId: p.id, basis: "hourly" })
+    const a = await closedTask(p.id, "Support", "2026-09-10", [["2026-09-09", 120]])
+    const sep = await proposal(p.key, "2026-09", [lineOf("Support", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(p.id, a, [["2026-09-20", 60]])
+    const now = await closedTask(p.id, "October", "2026-10-10", [["2026-10-09", 60]])
+    const oct = await proposal(p.key, "2026-10", [lineOf("October", [now])], {
+      excluded: [{ taskId: a, reason: "client_own" }],
+    })
+    expect(oct.lines.map((l: any) => l.taskIds)).toEqual([[now]])
+    expect((await create(oct)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: p.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+    await db.execute(drizzleSql`
+      UPDATE app_projects.billing_claims SET state = 'credited'
+       WHERE reconciliation_id = ${sep.reconciliationId}::uuid`)
+    await db.execute(drizzleSql`
+      UPDATE app_projects.reconciliations SET state = 'credited'
+       WHERE id = ${sep.reconciliationId}::uuid`)
+    const again = await proposal(p.key, "2026-09", [lineOf("Support", [a])])
+    expect(again.lines.map((l: any) => l.billMinutes)).toEqual([180])
+    const made = await create(again)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[3, 93000]])
+  }, 120_000)
+})
+
+describe("time entered after a parent and its subtask were billed by their time", () => {
+  it("is listed once, on the task it was entered on", async () => {
+    const p = await dailyProject()
+    await call("projects_timePlanSet", { projectId: p.id, basis: "hourly" })
+    const parent = await closedTask(p.id, "Whole", "2026-09-10", [["2026-09-09", 120]])
+    const child = await call<{ id: string }>("projects_createTask", {
+      projectId: p.id,
+      title: "Part",
+      statusLabel: "done",
+      parentTaskId: parent,
+    })
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = '2026-09-11 10:00+00'::timestamptz WHERE id = ${child.id}::uuid`,
+    )
+    await addTime(p.id, child.id, [["2026-09-11", 60]])
+    const sep = await proposal(p.key, "2026-09", [lineOf("Both", [parent, child.id])])
+    expect(sep.lines[0].billMinutes).toBe(180)
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(p.id, child.id, [["2026-09-20", 60]])
+    const oct = await proposal(p.key, "2026-10", [])
+    expect(oct.lines.map((l: any) => [l.taskIds, l.billMinutes])).toEqual([[[child.id], 60]])
+    expect((await create(oct)).error).toBeUndefined()
+    await addTime(p.id, parent, [["2026-09-21", 30]])
+    const nov = await proposal(p.key, "2026-11", [])
+    expect(nov.lines.map((l: any) => [l.taskIds, l.billMinutes])).toEqual([[[parent], 30]])
+  }, 120_000)
+})
+
+describe("work left out of a card on purpose", () => {
+  it("late hours left out of a retainer card stay out, what is entered later does not, and naming the task adds them back", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11", "2026-12"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 41 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    const b = await closedTask(r.id, "Theirs", null, [["2026-09-20", 600]])
+    const oct = await proposal(r.key, "2026-10", [], {
+      excluded: [{ taskId: b, reason: "client_own" }],
+    })
+    expect(oct.lines).toEqual([])
+    expect((await create(oct)).error).toBeUndefined()
+    const facts = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(facts.unbilledEarlier).toEqual([])
+    expect(facts.leftOff).toEqual([])
+    await addTime(r.id, b, [["2026-09-21", 120]])
+    const later = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(later.unbilledEarlier.map((t: any) => [t.id, t.realMinutes])).toEqual([[b, 120]])
+    const nov = await proposal(r.key, "2026-11", [lineOf("Theirs after all", [b])])
+    expect(nov.lines.map((l: any) => [l.workMonth, l.billMinutes])).toEqual([["2026-09", 720]])
+    const made = await create(nov)
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [12, 12000],
+    ])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-12" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("the month's own card keeps the client's own work out of every later one, and an undone card forgets it", async () => {
+    const r = await retainerProject(["2026-09", "2026-10", "2026-11"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 41 * 60]])
+    const b = await closedTask(r.id, "Theirs", null, [["2026-09-04", 600]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])], {
+      excluded: [{ taskId: b, reason: "client_own" }],
+    })
+    expect((await create(sep)).error).toBeUndefined()
+    await addTime(r.id, b, [["2026-09-20", 60]])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-10" })).unbilledEarlier,
+    ).toEqual([])
+    const c = await closedTask(r.id, "Late", null, [["2026-09-22", 60]])
+    const oct = await proposal(r.key, "2026-10", [], {
+      excluded: [{ taskId: c, reason: "client_own" }],
+    })
+    expect((await create(oct)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+    expect((await run(reconcileUndo, { reconciliationId: oct.reconciliationId })).undone).toBe(true)
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier.map(
+        (t: any) => t.id,
+      ),
+    ).toEqual([c])
+  }, 120_000)
+
+  it("a closed task left out of a later card by the day stays out of the ones after it, unless a line names it", async () => {
+    const p = await dailyProject()
+    const a = await closedTask(p.id, "First", "2026-09-04", [], "1 day")
+    const sep = await proposal(p.key, "2026-09", [lineOf("First", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await draftedOn(sep, "2026-09-05")
+    const theirs = await closedTask(p.id, "Theirs", "2026-09-20", [], "2 days")
+    const now = await closedTask(p.id, "October", "2026-10-10", [], "1 day")
+    const oct = await proposal(p.key, "2026-10", [lineOf("October", [now])], {
+      excluded: [{ taskId: theirs, reason: "client_own" }],
+    })
+    expect((await create(oct)).error).toBeUndefined()
+    expect(
+      (await run(reconcileFacts, { project: p.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+    expect((await proposal(p.key, "2026-11", [])).lines).toEqual([])
+    const named = await proposal(p.key, "2026-11", [lineOf("Theirs after all", [theirs])])
+    expect(named.lines.map((l: any) => l.billMinutes)).toEqual([day(2)])
+    expect((await create(named)).error).toBeUndefined()
+  }, 120_000)
+})
+
+describe("the last month of a retainer, and a project billed another way since", () => {
+  /** September invoiced at 47 h of 40, then 18 h more told of it. */
+  async function lastMonth(months: string[] = ["2026-09"], extra: Record<string, AppCell> = {}) {
+    const r = await retainerProject(months, extra)
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 47 * 60]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    const made = await create(sep)
+    expect(made.error).toBeUndefined()
+    await approveIssue(made.documentId)
+    await addTime(r.id, a, [["2026-09-18", 18 * 60]])
+    return { ...r, a }
+  }
+
+  it("turned off from the next month, its later hours bill alone from that month's card, once", async () => {
+    const r = await lastMonth()
+    await setSchedule(r.schedule, { terms: offFrom("2026-10") })
+    const c = await closedTask(r.id, "October", "2026-10-08", [["2026-10-07", 300]])
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c])])
+    expect(oct.notice?.title).toBe("Earlier hours only")
+    expect(oct.createInvoice).toBe("yes")
+    expect(oct.tot[0]).toMatchObject({ k: "Excl. VAT" })
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[18, 12000]])
+    expect((await stateOf(oct.reconciliationId))?.document_ref).toBe(
+      `reconcile:${oct.reconciliationId}:${oct.revision}`,
+    )
+    // Only the earlier hours are claimed: October's are the schedule's.
+    const claims = extractRows<{ k: string; n: number }>(
+      await db.execute(drizzleSql`
+        SELECT period_key AS k, counted_minutes AS n FROM app_projects.billing_claims
+         WHERE reconciliation_id = ${oct.reconciliationId}::uuid AND state = 'reserved'`),
+    )
+    expect(claims).toEqual([{ k: "2026-09+2", n: 1080 }])
+    // Pressed again: the same draft. Undone and made again: one draft still.
+    expect((await create(oct)).documentId).toBe(made.documentId)
+    expect((await run(reconcileUndo, { reconciliationId: oct.reconciliationId })).undone).toBe(true)
+    const again = await create(oct)
+    expect(again.error).toBeUndefined()
+    expect((await approveIssue(again.documentId)).status).toBe("approved")
+    expect((await stateOf(oct.reconciliationId))?.state).toBe("invoiced")
+    // October's own hours are not a retainer month's later hours, on any card after.
+    await addTime(r.id, c, [["2026-10-09", 600]])
+    await closedTask(r.id, "More October", "2026-10-21", [["2026-10-20", 60]])
+    const nov = await run(reconcileFacts, { project: r.key, month: "2026-11" })
+    expect(nov.unbilledEarlier.filter((t: any) => t.workMonth)).toEqual([])
+    // More of September still goes on the next card.
+    await addTime(r.id, r.a, [["2026-09-19", 60]])
+    const novCard = await proposal(r.key, "2026-11", [])
+    const novMade = await create(novCard)
+    expect((await draftLinesOf(novMade.documentId)).map((l) => l.slice(1))).toEqual([[1, 12000]])
+  }, 180_000)
+
+  it("with its schedule ended, they bill alone too", async () => {
+    const r = await lastMonth()
+    await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
+    const oct = await proposal(r.key, "2026-10", [])
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[18, 12000]])
+  }, 120_000)
+
+  it("with a new schedule from the next month, they bill at the old one's rate and hours beside its fee", async () => {
+    const r = await lastMonth()
+    await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
+    const next = await retainerSchedule(r.id, "2026-10", {
+      retainer_minutes: 6000,
+      retainer_overage_rate_minor: 15000,
+    })
+    await retainerTimebox(r.id, next, "2026-10-01", "2026-10-31")
+    const oct = await proposal(r.key, "2026-10", [])
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [18, 12000],
+    ])
+  }, 120_000)
+
+  it("on a project billed by the hour since, they bill as the retainer's beside its own lines", async () => {
+    const r = await lastMonth()
+    await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
+    await call("projects_timePlanSet", { projectId: r.id, basis: "hourly" })
+    await call("projects_billingTermsSet", { projectId: r.id, rate: 90, currency: "EUR" })
+    // Closed in October, with time of September's fee on it: only October's is billed by the hour.
+    const c = await closedTask(r.id, "October", "2026-10-08", [
+      ["2026-09-10", 240],
+      ["2026-10-07", 120],
+    ])
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c])])
+    expect(oct.lines.map((l: any) => [l.workMonth ?? null, l.billMinutes])).toEqual([
+      [null, 120],
+      ["2026-09", 22 * 60],
+    ])
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [2, 9000],
+      [22, 12000],
+    ])
+    const doc = extractRows<{ total: string; n: number }>(
+      await db.execute(drizzleSql`
+        SELECT subtotal_minor::text AS total,
+               (external_refs->'retainer'->'late'->0->>'overage_minutes')::int AS n
+          FROM app_invoicing.documents WHERE id = ${made.documentId}::uuid`),
+    )[0]
+    expect(doc).toEqual({ total: "282000", n: 1320 })
+    await approveIssue(made.documentId)
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("on a project with a fixed price since, the card says what it cannot bill and how to", async () => {
+    const r = await lastMonth()
+    await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
+    await call("projects_timePlanSet", { projectId: r.id, basis: "fixed" })
+    const oct = await proposal(r.key, "2026-10", [])
+    const said = JSON.stringify(oct.cardNotes)
+    expect(oct.lines).toEqual([])
+    expect(said).toContain("18 h of 2026-09")
+    expect(said).toContain("bill it by hand")
+    expect(oct.createInvoice ?? null).toBeNull()
+    const facts = await run(reconcileFacts, { project: r.key, month: "2026-10" })
+    expect(facts.message).toContain("bill it by hand")
+  }, 120_000)
+
+  it("a closed task inside the fee is not billed by the day since, and hours within the fee are said to be nothing", async () => {
+    const r = await retainerProject(["2026-09"])
+    const a = await closedTask(r.id, "Upkeep", null, [["2026-09-03", 600]])
+    const sep = await proposal(r.key, "2026-09", [lineOf("Upkeep", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    const b = await closedTask(r.id, "Closed late", "2026-09-25", [["2026-09-24", 300]])
+    await setSchedule(r.schedule, { terms: offFrom("2026-10"), status: "ended" })
+    const alone = await proposal(r.key, "2026-10", [])
+    expect(alone.createInvoice ?? null).toBeNull()
+    expect((await create(alone)).error).toBeDefined()
+    expect(await docsOf(r.id)).toHaveLength(1)
+    await call("projects_timePlanSet", { projectId: r.id, basis: "daily" })
+    await call("projects_billingTermsSet", { projectId: r.id, rate: 930, currency: "EUR" })
+    const c = await closedTask(r.id, "October", "2026-10-08", [], "1 day")
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c])])
+    expect(oct.lines.map((l: any) => [l.taskIds[0], l.workMonth ?? null, l.billMinutes])).toEqual([
+      [c, null, day(1)],
+      [b, "2026-09", 300],
+    ])
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    // 10 h and 5 h of 40: nothing above the fee, and the day.
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[1, 93000]])
+    expect(
+      (await run(reconcileFacts, { project: r.key, month: "2026-11" })).unbilledEarlier,
+    ).toEqual([])
+  }, 120_000)
+
+  it("work of a period billed by the day is said on a retainer's card, which cannot bill it", async () => {
+    const p = await dailyProject()
+    const a = await closedTask(p.id, "First", "2026-09-04", [], "1 day")
+    const sep = await proposal(p.key, "2026-09", [lineOf("First", [a])])
+    expect((await create(sep)).error).toBeUndefined()
+    await closedTask(p.id, "Closed after", "2026-09-20", [], "2 days")
+    await call("projects_timePlanSet", { projectId: p.id, basis: "retainer" })
+    const schedule = await retainerSchedule(p.id, "2026-10")
+    await retainerTimebox(p.id, schedule, "2026-10-01", "2026-10-31")
+    const oct = await proposal(p.key, "2026-10", [])
+    const said = JSON.stringify(oct.cardNotes)
+    expect(said).toContain("Closed after")
+    expect(said).toContain("bill it by hand")
+    expect(oct.lines).toEqual([])
+  }, 120_000)
+
+  it("a prepaid month deducts its advance and bills the later hours of the month before, and its own later hours next", async () => {
+    const r = await lastMonth(["2026-09", "2026-10", "2026-11"], { covers: "period_ended" })
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.recurring_schedules SET covers = 'period_ahead' WHERE id = ${r.schedule}::uuid`)
+    await issuedAdvance(r.id, `F-2026-9${keys}`)
+    const c = await closedTask(r.id, "October", null, [["2026-10-07", 42 * 60]])
+    const oct = await proposal(r.key, "2026-10", [lineOf("October", [c])])
+    const made = await create(oct)
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [2, 12000],
+      [18, 12000],
+      [-1, 450000],
+    ])
+    await addTime(r.id, c, [["2026-10-20", 180]])
+    const nov = await proposal(r.key, "2026-11", [])
+    const novMade = await create(nov)
+    expect(novMade.error).toBeUndefined()
+    expect((await draftLinesOf(novMade.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [3, 12000],
+    ])
+  }, 120_000)
+
+  it("a month with no overage of its own can be made without its earlier one, which then never bills", async () => {
+    const r = await lastMonth(["2026-09", "2026-10", "2026-11"])
+    const oct = await proposal(r.key, "2026-10", [])
+    expect(oct.waiveOverage).toBe(true)
+    const made = await run(reconcileCreateInvoice, {
+      reconciliationId: oct.reconciliationId,
+      revision: oct.revision,
+      waiveOverage: true,
+    })
+    expect(made.error).toBeUndefined()
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([[1, 450000]])
+    await approveIssue(made.documentId)
+    await addTime(r.id, r.a, [["2026-09-28", 60]])
+    const nov = await proposal(r.key, "2026-11", [])
+    const novMade = await create(nov)
+    expect((await draftLinesOf(novMade.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [1, 12000],
+    ])
+  }, 120_000)
+})
+
+describe("a retainer's line of a task and its subtasks", () => {
+  it("counts each task's time once", async () => {
+    const r = await retainerProject(["2026-10"])
+    const parent = await closedTask(r.id, "Whole", null, [["2026-10-05", 20 * 60]])
+    const child = await call<{ id: string }>("projects_createTask", {
+      projectId: r.id,
+      title: "Part",
+      statusLabel: "todo",
+      parentTaskId: parent,
+    })
+    await addTime(r.id, child.id, [["2026-10-06", 30 * 60]])
+    const card = await proposal(r.key, "2026-10", [lineOf("Whole", [parent])])
+    expect(card.lines.reduce((a: number, l: any) => a + l.billMinutes, 0)).toBe(50 * 60)
+    const made = await create(card)
+    expect((await draftLinesOf(made.documentId)).map((l) => l.slice(1))).toEqual([
+      [1, 450000],
+      [10, 12000],
+    ])
+  }, 120_000)
+})
+
+describe("what the approver of a card's invoice saw is what issues", () => {
+  const cardOf = async (documentId: unknown) =>
+    extractRows<{ id: string; summary: string; payload_hash: string; hash: string }>(
+      await db.execute(drizzleSql`
+        SELECT id::text AS id, summary::text AS summary, md5(current_payload::text) AS payload_hash,
+               current_payload->>'draft_hash' AS hash
+          FROM kernel.approval_requests
+         WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+           AND status = 'pending' AND current_payload->>'draft_id' = ${String(documentId)}`),
+    )
+  const issued = async (projectId: string) =>
+    extractRows<{ total: string; due: string; on: string }>(
+      await db.execute(drizzleSql`
+        SELECT grand_total_minor::text AS total,
+               to_char(due_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS due,
+               to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS "on"
+          FROM app_invoicing.documents
+         WHERE billing_project_id = ${projectId}::uuid AND status = 'issued'`),
+    )[0]
+  const daysBetween = (a: string, b: string) =>
+    Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000)
+
+  it("a tax country given while the card waits is on the card before anyone can approve it", async () => {
+    const { projectId, card } = await october()
+    const made = await create(card)
+    const [before] = await cardOf(made.documentId)
+    expect(before?.hash).toMatch(/^2:[0-9a-f]{64}:781200$/)
+    const edit = await invoicing("drafts_update", {
+      draft_id: made.documentId,
+      patch: { external_refs: { tax_country: "CH" } },
+    })
+    expect((edit as { error?: unknown }).error).toBeUndefined()
+    const [after] = await cardOf(made.documentId)
+    expect(after?.id).toBe(before?.id as string)
+    expect(after?.payload_hash).not.toBe(before?.payload_hash)
+    expect(after?.hash).toMatch(/:651000$/)
+    expect(after?.summary).toMatch(/6.?510/)
+    expect((await approveIssue(made.documentId)).status).toBe("approved")
+    expect((await issued(projectId))?.total).toBe("651000")
+  }, 120_000)
+
+  it("a draft whose amount moved behind its card takes no number", async () => {
+    const { projectId, card } = await october()
+    const made = await create(card)
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.documents SET external_refs = '{"tax_country":"CH"}'::jsonb
+       WHERE id = ${made.documentId}::uuid`)
+    const taken = await numbersTaken()
+    await approveIssue(made.documentId).catch(() => null)
+    expect(await numbersTaken()).toBe(taken)
+    expect(await issued(projectId)).toBeUndefined()
+  }, 120_000)
+
+  it("the customer's payment terms recorded while the card waits are on the card, and what it is due by", async () => {
+    const { projectId, card } = await october()
+    const made = await create(card)
+    const [before] = await cardOf(made.documentId)
+    expect(before?.summary).toContain("30 days after issue")
+    const terms = (days: number | null) =>
+      invoicing(
+        "counterparty_identity_set",
+        { contact_id: compta, source: "manual", payment_terms_days: days },
+        ["invoicing:*"],
+      )
+    try {
+      const set = await terms(60)
+      expect((set as { error?: unknown }).error).toBeUndefined()
+      const [after] = await cardOf(made.documentId)
+      expect(after?.id).toBe(before?.id as string)
+      expect(after?.payload_hash).not.toBe(before?.payload_hash)
+      expect(after?.summary).toContain("60 days after issue")
+      expect((await approveIssue(made.documentId)).status).toBe("approved")
+      const doc = await issued(projectId)
+      expect(daysBetween(String(doc?.on), String(doc?.due))).toBe(60)
+    } finally {
+      await terms(null)
+    }
+  }, 120_000)
+
+  it("terms that moved behind its card take no number", async () => {
+    const { projectId, card } = await october()
+    const made = await create(card)
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.counterparty_identities SET payment_terms_days = 90
+       WHERE org_id = ${orgId}::uuid AND contact_id = ${compta}::uuid`)
+    const taken = await numbersTaken()
+    await approveIssue(made.documentId).catch(() => null)
+    await db.execute(drizzleSql`
+      UPDATE app_invoicing.counterparty_identities SET payment_terms_days = NULL
+       WHERE org_id = ${orgId}::uuid AND contact_id = ${compta}::uuid`)
+    expect(await numbersTaken()).toBe(taken)
+    expect(await issued(projectId)).toBeUndefined()
   }, 120_000)
 })

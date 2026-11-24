@@ -33,6 +33,7 @@ import {
   numberCell,
   type RunRow,
   rightsOf,
+  rowFacts,
   runChanges,
   type ScheduleOption,
   scheduleItems,
@@ -501,7 +502,16 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                     data-testid={`month-end-row-number-${row.item_id}`}
                     class="text-text-secondary"
                   >
-                    {numberCell(row, run()?.run.issue_on ?? null)}
+                    {numberCell(
+                      row,
+                      run()?.run.status === "late" ? null : (run()?.run.issue_on ?? null),
+                    )}
+                  </span>
+                  <span
+                    data-testid={`month-end-row-facts-${row.item_id}`}
+                    class="min-w-0 basis-full text-text-secondary"
+                  >
+                    {rowFacts(row).join(" · ")}
                   </span>
                   <span
                     data-testid={`month-end-row-notes-${row.item_id}`}
@@ -611,7 +621,11 @@ export const MonthEndRunPanel: Component<MonthEndRunPanelProps> = (props) => {
                             data-testid="month-end-row-put-back"
                             class="min-h-11 rounded border border-border px-3"
                             onClick={() =>
-                              void call("drafts_update", { draft_id: row.draft_id, put_back: true })
+                              void call("drafts_update", {
+                                draft_id: row.draft_id,
+                                put_back: true,
+                                ...(row.updated_at ? { if_unchanged_since: row.updated_at } : {}),
+                              })
                             }
                           >
                             {tr("Put back")}

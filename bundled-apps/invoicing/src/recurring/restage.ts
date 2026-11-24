@@ -9,15 +9,19 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { isComparisonFlag, linesSignature, runItemFlags } from "./flags"
 import { NEGATIVE_TOTAL, rowIssuerHold, runItemState, STATE_REASONS } from "./item-state"
 import {
+  approvalStatus,
   cardItems,
+  cardOf,
   dayOf,
   draftLines,
   draftTotals,
   findOneWhere,
   jsonOf,
+  pastLastDay,
   previousInvoice,
   type Row,
   type RunCtx,
+  rowAmounts,
   runDecided,
   stageRunCard,
 } from "./run-card"
@@ -177,7 +181,11 @@ export async function checkUnchangedSince(
   }
   if (sameInstant(current, given)) return
   const lines = await draftLines(ctx, String(rd.draft.id))
-  const t = draftTotals(lines)
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(rd.run.issuer_profile_id),
+  )) as Row | null
+  const t = await rowAmounts(ctx, rd.draft, lines, issuer)
   refuse(
     "draft_changed",
     `Draft ${String(rd.draft.id)} changed since you read it (${lastChangeOf(rd.draft)}), so nothing was changed. It now bills ${String(rd.draft.counterparty_name ?? "its customer")} ${t.total.toString()} minor units incl. tax, updated_at "${current ?? ""}". Read it again and pass that updated_at to write over it.`,
@@ -324,22 +332,39 @@ export async function afterRunWrite(
     }
     if (wasApproved || state !== "approved") {
       data.approved_hash = null
+      data.approved_total_minor = null
       data.send_grant = null
     }
   }
   data.state = state
   data.note = note.join(" · ") || null
   await ctx.db.update("recurring_run_items", itemId, data)
+  if (item.state === "approved" && state !== "approved")
+    await ctx.db.update("documents", String(draft.id), { approved_by: null, approved_at: null })
+  // A row back in a run that had closed opens it again: late past its last day, else as it was.
+  if ((run.status === "issued" || run.status === "nothing_to_issue") && state !== "left_out") {
+    run.status = (await pastLastDay(ctx, run))
+      ? "late"
+      : run.status === "issued"
+        ? "partial"
+        : "drafted"
+    await ctx.db.update("recurring_runs", String(run.id), { status: run.status })
+    if (run.status === "partial" && state === "ready") {
+      state = "waiting_reapproval"
+      await ctx.db.update("recurring_run_items", itemId, { state })
+    }
+  }
+  // A change of a late run whose card a person rejected asks them again.
+  const card = cardOf(run)
+  if (run.status === "late" && card && (await approvalStatus(ctx, card)) === "denied") {
+    run.approval_request_id = null
+    await ctx.db.update("recurring_runs", String(run.id), { approval_request_id: null })
+  }
   // The run's card: rewritten in place while it waits, or one new card after the decision. A
   // rejected run asks again on its issue day by itself.
   let approvalId: string | null =
     typeof run.approval_request_id === "string" ? run.approval_request_id : null
-  if (
-    run.status !== "rejected" &&
-    run.status !== "issued" &&
-    run.status !== "late" &&
-    run.status !== "nothing_to_issue"
-  ) {
+  if (run.status !== "rejected" && run.status !== "issued" && run.status !== "nothing_to_issue") {
     const card = await stageRunCard(ctx, String(run.id))
     const fresh = (await ctx.db.findOne("recurring_runs", String(run.id))) as Row | null
     approvalId =
@@ -354,11 +379,15 @@ export async function afterRunWrite(
   }
   const { items, total } = await cardItems(ctx, String(run.id))
   const after = (await ctx.db.findOne("documents", String(draft.id))) as Row
+  const issuer = (await ctx.db.findOne(
+    "issuer_profiles",
+    String(run.issuer_profile_id),
+  )) as Row | null
   return {
     item_id: itemId,
     run_id: String(run.id),
     item_state: state,
-    row_total_minor: draftTotals(lines).total.toString(),
+    row_total_minor: (await rowAmounts(ctx, after, lines, issuer)).total.toString(),
     currency: String(draft.currency ?? "EUR"),
     approve_count: items.length,
     approve_total_minor: total.toString(),
@@ -413,7 +442,6 @@ export async function stageRunCardAfterRemoval(
     run &&
     run.status !== "rejected" &&
     run.status !== "issued" &&
-    run.status !== "late" &&
     run.status !== "nothing_to_issue"
   ) {
     const card = await stageRunCard(ctx, runId)

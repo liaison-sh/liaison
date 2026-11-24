@@ -5,8 +5,8 @@
 // From 08:00 in the issuer's time zone on the run's issue day, and until its last issue day, the
 // job issues the approved items in order, each through `recurring_item_issue`, its own tool call
 // whose writes land in one commit: a failed item writes nothing (its number is never taken) and
-// the others keep theirs. A run past its last issue day issues nothing: it is late, and a person
-// decides.
+// the others keep theirs. A run past its last issue day issues nothing by itself: it is late, and
+// what a person approves on its late card issues then.
 //
 // The issued document is a new row (issuing a draft writes a document and deletes the draft), so
 // the item follows it. In the one commit that numbers the invoice, the draft's `external_ref`
@@ -22,6 +22,9 @@ import type { ErrorEnvelope } from "../mutations/shared"
 import { KEPT_AFTER_STOP, stoppedScheduleNote } from "./end-schedule"
 import { rowIssuerHold } from "./item-state"
 import {
+  approvalStatus,
+  approvedLateOn,
+  cardOf,
   currentItemHash,
   dayOf,
   endHold,
@@ -30,6 +33,7 @@ import {
   type RunCtx,
   runItems,
   stageRunCard,
+  termsGivenDays,
   workingDayFrom,
 } from "./run-card"
 
@@ -159,6 +163,8 @@ export async function recurringItemIssue(
     await ctx.db.update("recurring_run_items", input.item_id, {
       state: "waiting_reapproval",
       approved_hash: null,
+      approved_total_minor: null,
+      send_grant: null,
     })
     return fail(
       "changed_since_approval",
@@ -199,6 +205,8 @@ export async function recurringItemIssue(
         ]
       : []),
   ]
+  // A date the row's terms gave is counted from the day it issues; a date a person set stays.
+  const given = await termsGivenDays(ctx, run, item, draft)
   // A second call for the same item that lost the race (the period key is unique, the draft is
   // gone, so its commit fails or answers that the draft went away): the first one issued it, and
   // this one wrote nothing. It says so, with the number the winner took.
@@ -217,6 +225,11 @@ export async function recurringItemIssue(
       external_ref: externalRef,
       lifecycle_log: carried,
       ...(send ? { einvoice_send: send } : {}),
+      due_days: given?.days ?? null,
+      expected_total_minor:
+        item.approved_total_minor === null || item.approved_total_minor === undefined
+          ? null
+          : String(item.approved_total_minor),
       commit_with: followers,
     })
   } catch (err) {
@@ -225,6 +238,19 @@ export async function recurringItemIssue(
     return lost
   }
   if (issued.status !== "completed") {
+    // The amount is the approved one or nothing: the row asks again, showing the new amount.
+    if (issued.status === "error" && issued.error.code === "amount_changed") {
+      await ctx.db.update("recurring_run_items", input.item_id, {
+        state: "waiting_reapproval",
+        approved_hash: null,
+        approved_total_minor: null,
+        send_grant: null,
+      })
+      return fail(
+        "changed_since_approval",
+        `Draft ${draftId} of item ${input.item_id}: ${issued.error.message} It waits for a new approval.`,
+      )
+    }
     if (issued.status === "error") return (await lostRace()) ?? issued
     return fail(
       "not_issued",
@@ -261,7 +287,7 @@ async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
   const lastDay = dayOf(run.latest_issue_on) as string
   return {
     early: now.date < issueOn || (now.date === issueOn && now.hour < ISSUE_HOUR),
-    late: now.date > lastDay,
+    late: now.date > lastDay && approvedLateOn(run) === null,
     today: now.date,
     hour: now.hour,
   }
@@ -386,18 +412,24 @@ async function restageRejected(ctx: RunCtx, run: Row, w: RunWindow): Promise<boo
  */
 async function stageOwedCards(ctx: RunCtx): Promise<number> {
   const runs = (await ctx.db.findMany("recurring_runs", {
-    where: { status: { in: ["drafted", "approved", "issuing", "partial"] } },
+    where: { status: { in: ["drafted", "approved", "issuing", "partial", "late"] } },
     orderBy: { issue_on: "asc" },
-    limit: 50,
+    limit: 200,
   })) as Row[]
   let staged = 0
   for (const run of runs) {
     const items = await runItems(ctx, String(run.id))
-    // A card still waiting is rewritten only when its rows changed, so asking again is free.
+    const card = cardOf(run)
+    const asked = card ? await approvalStatus(ctx, card) : null
+    // A late card a person rejected is not asked again by itself. One still waiting is rewritten by
+    // the change that made it stale, so it is not priced again here.
+    if (run.status === "late" && (asked === "denied" || asked === "pending")) continue
     const owed =
-      run.status === "drafted"
-        ? items.some((i) => i.state === "ready")
-        : items.some((i) => i.state === "waiting_reapproval")
+      run.status === "late"
+        ? items.some((i) => i.state === "ready" || i.state === "waiting_reapproval")
+        : run.status === "drafted"
+          ? items.some((i) => i.state === "ready")
+          : items.some((i) => i.state === "waiting_reapproval")
     if (!owed) continue
     if ((await stageRunCard(ctx, String(run.id))).staged) staged += 1
   }

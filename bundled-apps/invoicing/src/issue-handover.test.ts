@@ -745,6 +745,15 @@ describe("a draft edited while its issue card waits", () => {
     })
   }
 
+  test("asked again for a draft made from a project, whoever could decide the first card can", async () => {
+    const h = harness()
+    const draftId = await draftWith(h, null)
+    await h.db.update("documents", draftId, { billing_project_id: crypto.randomUUID() })
+    const asked = approvedCard(h)
+    await invoiceIssue(h.ctx, { draft_id: draftId })
+    expect(asked[0]).toMatchObject({ approve_scope: "invoicing:documents:write" })
+  })
+
   test("an older card of a draft whose card waits redrawn asks nothing twice", async () => {
     const h = harness()
     const draftId = await draftWith(h, null)

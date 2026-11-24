@@ -215,6 +215,70 @@ describe("managedBootProblems", () => {
     })
   })
 
+  // A managed server's customers share it with whatever these switch on (the
+  // public demo door, the load harness, the QA inject route), so none of them
+  // may be on there. Only a declared test cell may carry them.
+  describe("flags that are unsafe beside customers", () => {
+    const FLAGS = [
+      ["LIAISON_DEMO_MODE", "true"],
+      ["LOAD_HARNESS_KEY", "k".repeat(40)],
+      ["LIAISON_QA_ROUTES", "1"],
+      ["LIAISON_PRIVATE_DEMO_BOX", "yes"],
+    ] as const
+
+    it.each(FLAGS)("refuses %s, naming it and never its value", (name, value) => {
+      const problems = managedBootProblems({ ...COMPLETE, [name]: value }, "registered")
+      expect(problems.length).toBe(1)
+      expect(problems[0]).toContain(name)
+      if (name === "LOAD_HARNESS_KEY") expect(problems[0]).not.toContain(value)
+    })
+
+    it("names each flag that is on, one problem per flag", () => {
+      const problems = managedBootProblems(
+        { ...COMPLETE, ...Object.fromEntries(FLAGS) },
+        "registered",
+      )
+      expect(problems.length).toBe(FLAGS.length)
+      for (const [name] of FLAGS) {
+        expect(problems.filter((p) => p.includes(name)).length).toBe(1)
+      }
+    })
+
+    it("a value env.ts reads as off is not refused", () => {
+      for (const off of [undefined, "", "   ", "false", "0", "no", "FALSE"]) {
+        const env = Object.fromEntries(FLAGS.map(([name]) => [name, off]))
+        expect({
+          off,
+          problems: managedBootProblems({ ...COMPLETE, ...env }, "registered"),
+        }).toEqual({ off, problems: [] })
+      }
+    })
+
+    it("a declared test cell may carry them, and only a declared one", () => {
+      const flags = Object.fromEntries(FLAGS)
+      for (const on of ["true", "1", "yes"]) {
+        expect(
+          managedBootProblems({ ...COMPLETE, ...flags, LIAISON_TEST_CELL: on }, "registered"),
+        ).toEqual([])
+      }
+      for (const off of ["", "false", "0", "maybe"]) {
+        expect(
+          managedBootProblems({ ...COMPLETE, ...flags, LIAISON_TEST_CELL: off }, "registered")
+            .length,
+        ).toBe(FLAGS.length)
+      }
+    })
+
+    it("a test cell is exempt from this check alone", () => {
+      const problems = managedBootProblems(
+        { ...COMPLETE, OPENROUTER_API_KEY: "", LIAISON_TEST_CELL: "true" },
+        "registered",
+      )
+      expect(problems.length).toBe(1)
+      expect(problems[0]).toContain("OPENROUTER_API_KEY")
+    })
+  })
+
   it("OAuth client variables are not keys: a cell with them boots", () => {
     expect(
       managedBootProblems(

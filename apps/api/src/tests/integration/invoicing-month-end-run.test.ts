@@ -672,6 +672,7 @@ describe("the month-end run on the real kernel", () => {
     ).items
 
   it("a row added by hand issues exactly what its card showed, and the run says who approved it last", async () => {
+    const second = await minimal.person(ORG, { role: "admin" })
     const fx = await draftAndApprove(1)
     setSystemTime(new Date("2026-11-27T10:00:00Z"))
     const added = await addRow(fx.runId)
@@ -682,7 +683,6 @@ describe("the month-end run on the real kernel", () => {
     const card = (await runOf(fx.issuer)).approval_request_id
     const shown = (await cardItemsOf(card)).find((i) => i.document_id === draftId)
     expect(shown?.total_minor).toBe("12000")
-    const second = await minimal.person(ORG, { role: "admin" })
     await approve(card, {
       actorType: "user",
       userId: second.id,
@@ -741,7 +741,7 @@ describe("the month-end run on the real kernel", () => {
       Row[]
     >`SELECT status, summary->>'title' AS title FROM kernel.approval_requests
        WHERE org_id = ${ORG} AND tool_name = 'invoicing:recurring_run_issue' AND current_payload->>'run_id' = ${runId}
-       ORDER BY requested_at`
+       ORDER BY created_at`
     expect(cards.map((c) => c.status)).toEqual(["cancelled", "pending"])
     expect(String(cards[1]?.title)).toStartWith("Late: the invoices of November 2026")
     const items = await itemsOf(runId)

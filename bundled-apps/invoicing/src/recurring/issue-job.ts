@@ -278,10 +278,9 @@ async function windowOf(ctx: RunCtx, run: Row): Promise<RunWindow | null> {
   const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
   const issueOn = dayOf(run.issue_on) as string
   const lastDay = dayOf(run.latest_issue_on) as string
-  const approvedLate = now.date > lastDay ? await approvedLateOn(ctx, run, issuer) : null
   return {
     early: now.date < issueOn || (now.date === issueOn && now.hour < ISSUE_HOUR),
-    late: now.date > lastDay && approvedLate === null,
+    late: now.date > lastDay && approvedLateOn(run) === null,
     today: now.date,
     hour: now.hour,
   }

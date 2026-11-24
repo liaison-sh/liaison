@@ -56,7 +56,11 @@ async function markLate(ctx: RunCtx, run: Row): Promise<void> {
     await ctx.approvals
       .withdraw(card, "The run's last issue day has passed: its late card replaces this one.")
       .catch(() => null)
-  await ctx.db.update("recurring_runs", runId, { status: "late", approval_request_id: null })
+  await ctx.db.update("recurring_runs", runId, {
+    status: "late",
+    approval_request_id: null,
+    late_approved_on: null,
+  })
 }
 
 export async function recurringLegalDateJob(
@@ -93,7 +97,7 @@ export async function recurringLegalDateJob(
     if (status === "approved" || status === "issuing" || status === "partial") {
       // Approved runs issue by themselves; only a run past its last day still owes something.
       if (now.date <= (dayOf(run.latest_issue_on) as string)) continue
-      const approvedLate = await approvedLateOn(ctx, run, issuer)
+      const approvedLate = approvedLateOn(run)
       if (approvedLate && now.date <= addDays(approvedLate, LATE_ISSUE_DAYS)) continue
       const items = await runItems(ctx, runId)
       if (items.every((i) => i.state === "issued" || i.state === "left_out")) continue

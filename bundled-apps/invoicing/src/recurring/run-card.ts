@@ -181,25 +181,26 @@ export function cardOf(run: Row): string | null {
   return typeof id === "string" && id !== "" && id !== "staging" ? id : null
 }
 
+/** Today in a run's issuer's zone, or null when its issuer is gone. */
+export async function todayOfRun(ctx: RunCtx, run: Row): Promise<string | null> {
+  const issuer = await issuerOf(ctx, String(run.issuer_profile_id))
+  if (!issuer) return null
+  return (await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })).date
+}
+
 /** Whether a run's last issue day has passed, in its issuer's zone. */
 export async function pastLastDay(ctx: RunCtx, run: Row): Promise<boolean> {
-  const issuer = await issuerOf(ctx, String(run.issuer_profile_id))
-  if (!issuer) return false
-  const now = await ctx.time.civil({ timezone: String(issuer.timezone || "UTC") })
-  return now.date > (dayOf(run.latest_issue_on) as string)
+  const today = await todayOfRun(ctx, run)
+  return today !== null && today > (dayOf(run.latest_issue_on) as string)
 }
 
 /**
- * Whether a person approved a run after its last issue day: its rows then issue when approved,
- * dated the day they issue. A run approved in time that missed its last day is late instead.
+ * The day a person approved a run after its last issue day, or null: its rows then issue when
+ * approved, dated the day they issue. A run approved in time that missed its last day is late
+ * instead.
  */
-export async function approvedLateOn(ctx: RunCtx, run: Row, issuer: Row): Promise<string | null> {
-  if (run.status !== "approved" && run.status !== "issuing") return null
-  if (!run.approved_at) return null
-  const at =
-    run.approved_at instanceof Date ? run.approved_at.toISOString() : String(run.approved_at)
-  const day = (await ctx.time.civil({ timezone: String(issuer.timezone || "UTC"), at })).date
-  return day > (dayOf(run.latest_issue_on) as string) ? day : null
+export function approvedLateOn(run: Row): string | null {
+  return run.status === "approved" || run.status === "issuing" ? dayOf(run.late_approved_on) : null
 }
 
 /**
@@ -365,8 +366,8 @@ export async function stageRunCard(
   const late = run.status === "late"
   if (late) {
     if (await closeLateRun(ctx, run)) return { approval_id: null, staged: false }
-    const zone = String((await issuerOf(ctx, String(run.issuer_profile_id)))?.timezone || "UTC")
-    await moveLateDueDates(ctx, run, (await ctx.time.civil({ timezone: zone })).date)
+    const today = await todayOfRun(ctx, run)
+    if (today) await moveLateDueDates(ctx, run, today)
   }
   const { items, needsFix } = await cardItems(ctx, runId)
   const existing = cardOf(run)
@@ -597,6 +598,8 @@ export async function recurringRunIssue(
   const issueOn = run.status === "late" ? "now" : (`on ${dayOf(run.issue_on)} from 08:00` as string)
   await ctx.db.update("recurring_runs", input.run_id, {
     status: reask ? (run.status === "partial" ? "issuing" : run.status) : "approved",
+    // Approved past its last day, a run issues then (`approvedLateOn`).
+    late_approved_on: (await pastLastDay(ctx, run)) ? await todayOfRun(ctx, run) : null,
     // Who approved the run is whoever approved it last, the rows of a second card included.
     ...(approved > 0 || !reask ? { approved_by: decider, approved_at: now } : {}),
   })
@@ -782,6 +785,7 @@ export async function recurringRunUnapprove(
     status: (await pastLastDay(ctx, run)) ? "late" : "drafted",
     approved_by: null,
     approved_at: null,
+    late_approved_on: null,
   })
   const card = await stageRunCard(ctx, input.run_id)
   return {

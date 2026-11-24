@@ -109,7 +109,6 @@ describe("a run past its last issue day", () => {
   test("whose rows were approved in time and not issued asks for them again, none issues by itself", async () => {
     const r = await run()
     await recurringRunIssue(r.h.ctx, { run_id: r.runId })
-    await r.h.db.update("recurring_runs", r.runId, { approved_at: "2026-11-27T09:00:00Z" })
     await r.at("2026-12-01", () => recurringLegalDateJob(r.h.ctx))
     expect(r.runRow().status).toBe("late")
     expect(r.items().map((i) => [i.state, i.approved_hash])).toEqual([
@@ -131,7 +130,7 @@ describe("a run past its last issue day", () => {
     const out = await recurringRunIssue(r.h.ctx, { run_id: r.runId, items })
     expect(out).toMatchObject({ status: "completed", approved: 2 })
     expect(JSON.stringify(out)).toContain("they issue now")
-    await r.h.db.update("recurring_runs", r.runId, { approved_at: "2026-12-01T09:30:00Z" })
+    expect(r.runRow().late_approved_on).toBe("2026-12-01")
     expect(r.emitted.some((e) => e.action === "late" && (e.data as Row).resolved === true)).toBe(
       true,
     )

@@ -1514,7 +1514,8 @@
         "approval_request_id": "text?",
         "approved_by": "uuid?",
         "approved_at": "date?",
-        "auto": { "type": "boolean", "default": false },
+        "late_approved_on": "day?",
+          "auto": { "type": "boolean", "default": false },
         "period_label": "text"
       },
       "constraints": { "unique": [["issuer_profile_id", "issue_on"]] },

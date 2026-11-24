@@ -412,7 +412,7 @@ export async function reconcileStillReserved(
     status: "error",
     error: {
       code: "reconcile_changed",
-      message: `${upperFirst(draftInWords(draft))} was not issued: ${why}. Nothing was numbered. Open the project's planned vs done card again and create the invoice from it.`,
+      message: `${upperFirst(draftInWords(draft))} was not issued: ${why}. Nothing was numbered. Open the project's planned vs done card, press Undo, then Create invoice again: the draft is replaced by one made from the card as it stands.`,
     },
   })
   if (!rec || !ctx.executeTool) return refused("its planned vs done card could not be read")
@@ -428,9 +428,18 @@ export async function reconcileStillReserved(
     document_ref?: unknown
     documentRef?: unknown
     claimsReserved?: unknown
+    revision?: unknown
   }
   const docRef = r.document_ref ?? r.documentRef
   if (docRef !== ref) return refused("its planned vs done card changed since the draft was made")
+  // A draft keyed by its month, not by the card's revision, issues from the card it was made from.
+  if (
+    ref.startsWith("retainer:") &&
+    rec.revision !== null &&
+    typeof r.revision === "number" &&
+    r.revision !== rec.revision
+  )
+    return refused("its planned vs done card changed since the draft was made")
   if (r.claimsReserved !== true) {
     return refused("the work it bills is no longer reserved for it")
   }

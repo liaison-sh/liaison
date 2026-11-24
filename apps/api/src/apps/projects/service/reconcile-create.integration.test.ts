@@ -1361,3 +1361,171 @@ describe("issuing the card's draft", () => {
     expect((await stateOf(card.reconciliationId))?.state).toBe("invoiced")
   }, 120_000)
 })
+
+/** A retainer project on 40 h at 4,500.00 and 120.00 above, with its timeboxes for the months. */
+async function retainerProject(months: string[], extra: Record<string, AppCell> = {}) {
+  keys++
+  const key = `INV${keys}`
+  const made = await call<{ id: string }>("projects_createProject", {
+    name: `Maison Delorme ${key}`,
+    key,
+    companyId: delorme,
+    timeBudgets: true,
+  })
+  await awaitTimeFeatureSync(orgId)
+  await call("projects_timePlanSet", { projectId: made.id, basis: "retainer" })
+  const schedule = await retainerSchedule(made.id, "2026-01", extra)
+  for (const m of months) {
+    const last = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 0)).getUTCDate()
+    await retainerTimebox(made.id, schedule, `${m}-01`, `${m}-${last}`)
+  }
+  return { id: made.id, key, schedule }
+}
+
+/** A task of a project closed on a day, with time on given days. */
+async function closedTask(
+  projectId: string,
+  title: string,
+  closedOn: string | null,
+  time: Array<[string, number]>,
+  timebox?: string,
+): Promise<string> {
+  const task = await call<{ id: string }>("projects_createTask", {
+    projectId,
+    title,
+    statusLabel: closedOn ? "done" : "todo",
+    ...(timebox ? { timebox } : {}),
+  })
+  if (closedOn)
+    await db.execute(
+      drizzleSql`UPDATE app_projects.tasks SET completed_at = ${`${closedOn} 10:00+00`}::timestamptz WHERE id = ${task.id}::uuid`,
+    )
+  if (time.length > 0)
+    await seedTaskTime(
+      seedContext({ orgId, now: new Date() }),
+      actorOf(owner.userId, ["*"]),
+      time.map(([workDate, minutes]) => ({ taskId: task.id, projectId, workDate, minutes })),
+    )
+  return task.id
+}
+
+const draftLinesOf = (documentId: unknown) =>
+  db
+    .execute(drizzleSql`
+      SELECT description, quantity::text AS q, unit_price_minor::text AS p
+        FROM app_invoicing.document_lines
+       WHERE document_id = ${String(documentId)}::uuid ORDER BY position`)
+    .then((r) =>
+      extractRows<{ description: string; q: string; p: string }>(r).map(
+        (l) => [l.description, Number(l.q), Number(l.p)] as const,
+      ),
+    )
+
+/** Decide the issue approval of a draft as a person who can issue. */
+async function approveIssue(documentId: unknown) {
+  const pending = extractRows<{ id: string }>(
+    await db.execute(drizzleSql`
+      SELECT id::text AS id FROM kernel.approval_requests
+       WHERE org_id = ${orgId}::uuid AND tool_name = 'invoicing:invoice_issue'
+         AND status = 'pending' AND current_payload->>'draft_id' = ${String(documentId)}`),
+  )
+  expect(pending).toHaveLength(1)
+  return decideApproval({
+    orgId,
+    requestId: pending[0]!.id,
+    actor: actorOf(owner.userId, FINANCE),
+    decision: "approve",
+  })
+}
+
+const issuedOf = async (projectId: string) =>
+  (await docsOf(projectId)).filter((d) => d.status === "issued")
+
+describe("issuing a retainer month whose card bills no line", () => {
+  it("a line the biller set to 0, or left off, does not keep the month's fee from issuing", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Extra", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Extra", taskIds: [t], proofs: [] }],
+    })
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: card.reconciliationId,
+      revision: card.revision,
+      lineId: card.lines[0].lineId,
+      bill: 0,
+    })
+    expect(zeroed.error).toBeUndefined()
+    const out = await create(zeroed)
+    expect(out.error).toBeUndefined()
+    expect(await claimsOf(card.reconciliationId)).toEqual(["left_off"])
+    expect((await approveIssue(out.documentId)).status).toBe("approved")
+    const issued = await issuedOf(r.id)
+    expect(issued).toHaveLength(1)
+    expect((await draftLinesOf(issued[0]?.id)).map((l) => l.slice(1))).toEqual([[1, 450000]])
+    expect((await stateOf(card.reconciliationId))?.state).toBe("invoiced")
+  }, 120_000)
+
+  it("created, undone and created again with no line, it issues once", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Work", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const first = await create(card)
+    expect(first.error).toBeUndefined()
+    const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const zeroed = await run(reconcileLineUpdate, {
+      reconciliationId: card.reconciliationId,
+      revision: undone.revision ?? undone.card?.revision ?? card.revision,
+      lineId: card.lines[0].lineId,
+      bill: 0,
+    })
+    expect(zeroed.error).toBeUndefined()
+    const again = await create(zeroed)
+    expect(again.error).toBeUndefined()
+    expect((await approveIssue(again.documentId)).status).toBe("approved")
+    expect(await issuedOf(r.id)).toHaveLength(1)
+    // The month is billed: a new ask draws the same card, and Create makes nothing more.
+    const asked = await run(reconcilePropose, { project: r.key, month: "2026-10", lines: [] })
+    expect((await create(asked)).error).toBeDefined()
+    expect(await docsOf(r.id)).toHaveLength(1)
+  }, 120_000)
+
+  it("a card that bills work not reserved for it is refused with what to do, and doing it issues the month", async () => {
+    const r = await retainerProject(["2026-10"])
+    const t = await closedTask(r.id, "Work", "2026-10-20", [["2026-10-12", 120]])
+    const card = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const out = await create(card)
+    expect(out.error).toBeUndefined()
+    await db.execute(
+      drizzleSql`UPDATE app_projects.billing_claims SET state = 'released'
+                  WHERE reconciliation_id = ${card.reconciliationId}::uuid`,
+    )
+    const refused = await approveIssue(out.documentId).then(
+      (d) => JSON.stringify(d),
+      (e) => `${String(e)} ${JSON.stringify(e, Object.getOwnPropertyNames(e as object))}`,
+    )
+    expect(refused).toContain("Undo")
+    expect(await issuedOf(r.id)).toHaveLength(0)
+    const undone = await run(reconcileUndo, { reconciliationId: card.reconciliationId })
+    expect(undone.undone).toBe(true)
+    const again = await run(reconcilePropose, {
+      project: r.key,
+      month: "2026-10",
+      lines: [{ name: "Work", taskIds: [t], proofs: [] }],
+    })
+    const redrafted = await create(again)
+    expect(redrafted.error).toBeUndefined()
+    expect((await approveIssue(redrafted.documentId)).status).toBe("approved")
+    expect(await issuedOf(r.id)).toHaveLength(1)
+  }, 120_000)
+})

@@ -370,6 +370,12 @@ export async function retainerDraftFromReconcile(
       }`,
     )
   }
+  const madeFrom = found ? refsOf(found).reconciliation_revision : null
+  if (found && found.status === "draft" && typeof madeFrom === "number" && madeFrom !== revision)
+    return refuse(
+      "draft_outdated",
+      `${title} (draft ${String(found.id)}) was made from the card as it stood at revision ${madeFrom}, so it was not used for revision ${revision}. Nothing was made. Discard that draft in Invoicing, then press Create invoice here again.`,
+    )
   if (found) {
     const totals = {
       excl: Number(found.subtotal_minor ?? 0),

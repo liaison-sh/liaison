@@ -617,17 +617,18 @@ export async function reconcileLinesRead(args: {
        WHERE l.reconciliation_id = ${r.id}::uuid AND pr.org_id = ${orgId}::uuid
        ORDER BY pr.created_at, pr.id`),
   )
-  const claims = extractRows<{ reserved: number; total: number }>(
+  const claims = extractRows<{ reserved: number; gone: number }>(
     await tx.execute(drizzleSql`
-      SELECT count(*) FILTER (WHERE state = 'reserved')::int AS reserved, count(*)::int AS total
+      SELECT count(*) FILTER (WHERE state = 'reserved')::int AS reserved,
+             count(*) FILTER (WHERE state IN ('billed', 'credited'))::int AS gone
         FROM ${projectsRel("billing_claims")}
        WHERE org_id = ${orgId}::uuid AND reconciliation_id = ${r.id}::uuid`),
-  )[0] ?? { reserved: 0, total: 0 }
+  )[0] ?? { reserved: 0, gone: 0 }
   // The work the draft bills must still be reserved for it. A retainer month's card still drafted
-  // that bills no line and never claimed anything (no time logged: its fee only) has nothing to
-  // hold. Any other card with nothing reserved does not issue.
+  // that bills no line bills its fee alone: it holds nothing, whatever it left off, set to 0 or gave
+  // back before. Any other card with nothing reserved does not issue.
   const feeOnlyRetainer =
-    basis === "retainer" && r.state === "drafted" && lines.length === 0 && claims.total === 0
+    basis === "retainer" && r.state === "drafted" && lines.length === 0 && claims.gone === 0
   const claimsReserved = claims.reserved > 0 || feeOnlyRetainer
   const per = basis === "daily" ? hpd : 60
   const unit = basis === "daily" ? "day" : "hour"

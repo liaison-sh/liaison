@@ -3816,6 +3816,7 @@ When to use: When an admin asks to set up a reusable role they will spawn repeat
     // Hot (loaded on every turn, kernel-hot-set.test.ts): a person's days off are set here,
     // and the memory tools beside it are hot too, so the record that sets them away must be
     // as close to hand as the note that would not (prompts/system.md, Memory).
+    deferLoading: false,
     description:
       "Set a person away on their days off (dates only, never a reason), end it, or name who stands in. Own: omit userId. Give on, from and to, week, or everyWeekday; say back the dates the result states, with weekdays.",
     searchKeywords: [

@@ -122,7 +122,11 @@ function resolveContentFile(configDir: string, contentFile: string): string {
   return target
 }
 
-/** Every live collection name of the org, whoever can see it (privileged, this org only). */
+/**
+ * Every live shared collection name of the org (privileged, this org only). A
+ * personal folder is its owner's alone: it neither blocks a provisioned name nor
+ * receives provisioned pages.
+ */
 async function orgCollectionNames(ctx: {
   orgId: string
   priv: <T>(reason: string, fn: (tx: PrivilegedDb) => Promise<T>) => Promise<T>
@@ -133,7 +137,7 @@ async function orgCollectionNames(ctx: {
       await ctx.priv("config-knowledge-collection-names", (tx) =>
         tx.execute(drizzleSql`
           SELECT name FROM ${knowledgeRel("collections")}
-          WHERE org_id = ${ctx.orgId}::uuid AND archived_at IS NULL`),
+          WHERE org_id = ${ctx.orgId}::uuid AND archived_at IS NULL AND owner_user_id IS NULL`),
       ),
     ).map((c) => c.name),
   )
@@ -205,6 +209,7 @@ export const knowledgeProvisioner: Provisioner<ProvisioningConfig> = {
     await ctx.rls(async (rls) => {
       const actor = actorFor(ctx)
       for (const existing of await listKnowledgeCollections(rls, actor)) {
+        if (existing.ownerUserId !== null) continue
         if (!byName.has(existing.name)) byName.set(existing.name, existing)
       }
       for (const c of kb.collections ?? []) {
@@ -213,7 +218,7 @@ export const knowledgeProvisioner: Provisioner<ProvisioningConfig> = {
           unchanged.push(`knowledge.collection.${c.name}`)
           continue
         }
-        const row = await createKnowledgeCollection(rls, { name: c.name }, actor)
+        const row = await createKnowledgeCollection(rls, { name: c.name, ownerUserId: null }, actor)
         byName.set(row.name, row)
         ctx.log(`knowledge: collection '${c.name}' created`)
         changed.push(`knowledge.collection.${c.name}`)

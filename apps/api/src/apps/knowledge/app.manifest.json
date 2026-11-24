@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -342,6 +342,7 @@
       ]
     },
     "collections": {
+      "migrationOwnedColumns": ["previousOwnerUserId"],
       "fields": {
         "parentCollectionId": {
           "type": "uuid",
@@ -357,6 +358,13 @@
           "required": false,
           "userRef": true,
           "onErase": "anonymize"
+        },
+        "previousOwnerUserId": {
+          "type": "uuid",
+          "required": false,
+          "userRef": true,
+          "onErase": "anonymize",
+          "description": "Who owned the folder before migration 0308 shared it. Only that migration writes it."
         },
         "maintainerUserIds": {
           "type": "json",
@@ -952,6 +960,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "create",
       "params": {
         "type": "object",
@@ -1069,6 +1078,7 @@
           "widget": "richtext"
         }
       ],
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "update",
       "params": {
         "type": "object",
@@ -1135,6 +1145,7 @@
       "conditionalGate": true,
       "approvalCard": { "summary": "Archive a knowledge document" },
       "approvalImpact": "internal",
+      "resourceOwner": { "host": "knowledge.page" },
       "handler": "archive",
       "params": {
         "type": "object",
@@ -1168,7 +1179,7 @@
       }
     },
     "collection_create": {
-      "description": "Create a Knowledge collection (folder).",
+      "description": "Create a Knowledge collection (folder). Shared with the organization unless `personal` is true; a subfolder is seen by whoever sees its parent.",
       "searchKeywords": ["dossier", "folder"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
@@ -1191,6 +1202,10 @@
               "string",
               "null"
             ]
+          },
+          "personal": {
+            "type": "boolean",
+            "description": "True only when the user asks for a folder of their own that nobody else sees."
           }
         },
         "required": [
@@ -1233,7 +1248,7 @@
       }
     },
     "collection_delete": {
-      "description": "Archive a Knowledge collection (removes it from the active tree).",
+      "description": "Delete a Knowledge collection (folder). Its documents and subfolders move to its parent folder; documents at the top become unfiled. No document is deleted.",
       "searchKeywords": ["dossier", "folder", "supprimer"],
       "requiredScopes": ["knowledge:collections:manage"],
       "trustBoundary": "user",
@@ -1348,7 +1363,7 @@
             },
             "shared": {
               "type": "boolean",
-              "description": "Shared with the whole organization rather than owned by the person importing."
+              "description": "Shared with the whole organization (the default). False makes it a personal folder only the person importing sees; a subfolder is seen by whoever sees its parent."
             }
           }
         },
@@ -1642,11 +1657,12 @@
   },
   "roles": {
     "member": {
-      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items",
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, and manage folders",
       "scopes": [
         "knowledge:documents:read",
         "knowledge:documents:create",
         "knowledge:documents:update",
+        "knowledge:collections:manage",
         "knowledge:links:create",
         "knowledge:sources:read",
         "knowledge:attachments:download",
@@ -1654,10 +1670,9 @@
       ]
     },
     "curator": {
-      "description": "Knowledge curator: manage collections, tags, archives, and source settings",
+      "description": "Knowledge curator: manage tags, archives, and source settings",
       "extends": "member",
       "scopes": [
-        "knowledge:collections:manage",
         "knowledge:tags:manage",
         "knowledge:documents:archive",
         "knowledge:documents:assign-owner",

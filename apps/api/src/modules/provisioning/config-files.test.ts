@@ -181,7 +181,7 @@ describe("the requester and the approver see the same plan", () => {
     await ownerCtx.rls((rls) =>
       createKnowledgeCollection(
         rls,
-        { name: "Private Shelf", ownerUserId: admin.userId },
+        { name: "Private Shelf", ownerUserId: null },
         knowledgeActorFromContext({
           orgId: admin.orgId,
           userId: admin.userId,
@@ -218,7 +218,7 @@ describe("the requester and the approver see the same plan", () => {
     await ownerCtx.rls((rls) =>
       createKnowledgeCollection(
         rls,
-        { name: "Hidden Shelf", ownerUserId: admin.userId },
+        { name: "Hidden Shelf", ownerUserId: null },
         knowledgeActorFromContext({
           orgId: admin.orgId,
           userId: admin.userId,

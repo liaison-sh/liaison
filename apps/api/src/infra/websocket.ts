@@ -124,6 +124,12 @@ const THREAD_SCOPED_ENTITIES = new Set([
 // `org_app` is an admin turning an app On/Off or changing who may use it
 // (S18–S20): it carries only the app name, status and access mode, and every
 // member's shell resyncs its manifest feed on it.
+/** `<app>:<entity>` of the frames about Knowledge folders (hasKnowledgeFolderAccess). */
+const KNOWLEDGE_FOLDER_ENTITIES = new Set([
+  "knowledge:collection",
+  "knowledge:collection_membership",
+])
+
 const ORG_WIDE_ENTITIES = new Set(["presence", "credit", "loadtest", "org_app"])
 /**
  * `kernel` entities only their `data.ownerUserId` receives (C4, D40, S18): a
@@ -1029,6 +1035,7 @@ export class WebSocketManager {
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
       if (!this.hasDashboardVisibilityAccess(client, payload)) continue
+      if (!this.hasKnowledgeFolderAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
       const out = this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload))
@@ -1146,6 +1153,7 @@ export class WebSocketManager {
       if (!this.hasOwnNodeSessionAccess(client, payload)) continue
       if (!this.hasPersonalRoutineAccess(client, payload)) continue
       if (!this.hasDashboardVisibilityAccess(client, payload)) continue
+      if (!this.hasKnowledgeFolderAccess(client, payload)) continue
       if (!this.wantsNodeSessionEvent(client, payload)) continue
       if (!this.hasDimensionAccess(client.dimensionGrants, payload)) continue
       const out = this.projectWithheldMetadata(client, this.redactSubRunSummary(client, payload))
@@ -1292,6 +1300,7 @@ export class WebSocketManager {
             this.hasOwnNodeSessionAccess(replayClient, parsed.payload) &&
             this.hasPersonalRoutineAccess(replayClient, parsed.payload) &&
             this.hasDashboardVisibilityAccess(replayClient, parsed.payload) &&
+            this.hasKnowledgeFolderAccess(replayClient, parsed.payload) &&
             this.hasDimensionAccess(dimensionGrants, parsed.payload)
           ) {
             // The buffer holds the unredacted frame, so replay redacts per member too.
@@ -1385,6 +1394,14 @@ export class WebSocketManager {
         hasScope("knowledge:documents:read", scopes) ||
         hasScope("knowledge:documents:admin", scopes)
       )
+    }
+
+    // A Knowledge folder and the pages filed in it: RLS on both tables asks
+    // `knowledge:documents:read`, and no member holds a scope named after either
+    // entity. Whose folder it is, is the visibility filter's question
+    // (`hasKnowledgeFolderAccess`).
+    if (KNOWLEDGE_FOLDER_ENTITIES.has(`${app}:${entity}`)) {
+      return hasScope("knowledge:documents:read", scopes)
     }
 
     // F2 — tickets sub-entities. The default resolver below expects a scope of
@@ -1582,6 +1599,22 @@ export class WebSocketManager {
     }
     if (data?.visibility === "org" || data?.previousVisibility === "org") return true
     return typeof data?.ownerUserId === "string" && data.ownerUserId === client.userId
+  }
+
+  /**
+   * A Knowledge folder's frames follow its row's SELECT policy: a shared folder's
+   * (`orgWide`) reach every reader, a personal one's the owner it names in
+   * `userIds`, no admin. `wasOrgWide` reaches those who saw it until this change,
+   * so they drop it. The frame carries ids only. One naming nobody (a previous
+   * release's) reaches no one (fail closed).
+   */
+  private hasKnowledgeFolderAccess(client: { userId: string }, payload: EventPayload): boolean {
+    if (!KNOWLEDGE_FOLDER_ENTITIES.has(`${payload.app}:${payload.entity}`)) return true
+    const data = payload.data as
+      | { orgWide?: unknown; wasOrgWide?: unknown; userIds?: unknown }
+      | undefined
+    if (data?.orgWide === true || data?.wasOrgWide === true) return true
+    return Array.isArray(data?.userIds) && data.userIds.includes(client.userId)
   }
 
   private hasOwnNodeSessionAccess(client: { userId: string }, payload: EventPayload): boolean {

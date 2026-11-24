@@ -103,7 +103,17 @@ export function createKnowledgeCurationMethods(ctx: BridgeContext): Record<strin
       const { knowledgeActorFromContext } = await import("~/apps/knowledge/service")
       const { createKnowledgeCollection } = await import("~/apps/knowledge/collections")
       const actor = knowledgeActorFromContext(bridgeKnowledgeActorInput(ctx))
-      return JSON.stringify(await createKnowledgeCollection(txDb as never, params as never, actor))
+      // Shared unless the agent was asked for a folder of the person's own.
+      return JSON.stringify(
+        await createKnowledgeCollection(
+          txDb as never,
+          {
+            ...(params as { name: string }),
+            ownerUserId: params.personal === true ? userId : null,
+          },
+          actor,
+        ),
+      )
     },
     knowledge_collection_update: async (paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {

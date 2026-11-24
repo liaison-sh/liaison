@@ -550,7 +550,8 @@ export async function bindExistingRunningWatchDoc(
     const rows = await withPrivilegedDb(orgId, "routine-bind-running-doc", (tx) =>
       tx.execute(
         drizzleSqlRaw`SELECT id, title FROM ${knowledgeRel("documents")}
-               WHERE org_id = ${orgId}::uuid AND document_scope = 'organization' AND archived_at IS NULL`,
+               WHERE org_id = ${orgId}::uuid AND document_scope = 'organization' AND archived_at IS NULL
+                 AND org_access IN ('viewer', 'editor')`,
       ),
     )
     const docs = (rows as unknown as { id: string; title: string }[]) ?? []

@@ -10,7 +10,7 @@ import {
 } from "@liaison/shared"
 import { sql as drizzleSql } from "drizzle-orm"
 import { shouldResetVerification } from "~/apps/knowledge/review"
-import { knowledgeRel } from "~/apps/knowledge/schema-refs"
+import { kernelRel, knowledgeRel } from "~/apps/knowledge/schema-refs"
 import { extractRows, type RlsClient } from "~/db"
 import { isUuid } from "~/lib/uuid"
 import { assertExplicitRequiredScopes } from "~/modules/agent/scopes/write-required-scopes"
@@ -424,6 +424,19 @@ function assertCanSetDimensions(
   }
 }
 
+/**
+ * The label of a new page. `public` and `internal` need no grant, as reading
+ * them needs none, so any member can write a page; a tighter label does. As in
+ * `knowledge_documents_insert`. Re-labelling a page keeps the whole check.
+ */
+function assertCanCreateWithDimensions(
+  input: { team: string[]; sensitivity: string },
+  actor: KnowledgeActor,
+): void {
+  const open = input.sensitivity === "public" || input.sensitivity === "internal"
+  assertCanSetDimensions({ ...input, sensitivity: open ? null : input.sensitivity }, actor)
+}
+
 function validateCreateInput(input: unknown): KnowledgeCreateDocument {
   const parsed = knowledgeCreateDocumentSchema.safeParse(input)
   if (!parsed.success) validation(parsed.error.issues[0]?.message)
@@ -609,7 +622,6 @@ export async function findRoutineBoundRunningDoc(
     const { currentRunContext } = await import("~/modules/agent/runtime/run-context")
     const routineId = currentRunContext()?.routineId
     if (!routineId) return null
-    const { kernelRel } = await import("~/apps/knowledge/schema-refs")
     const promptRows = extractRows<{ prompt: string | null }>(
       await tx.execute(
         drizzleSql`SELECT prompt FROM ${kernelRel("routines")} WHERE id = ${routineId}::uuid AND org_id = ${orgId}::uuid LIMIT 1`,
@@ -841,23 +853,54 @@ export async function findUniqueOrgRunningWatchDoc(
   }
 }
 
+/**
+ * The page `d` is in no live folder this reader can see. Run under row security:
+ * a folder that is someone else's, with its memberships, does not count. OFFSET 0
+ * keeps it one index lookup a page: flattened into an anti join, with statistics
+ * behind (an import, a restore), it reads every membership for every page.
+ */
+export function inNoVisibleFolder() {
+  return drizzleSql`NOT EXISTS (
+    SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
+    JOIN ${knowledgeRel("collections")} c ON c.id = m.collection_id AND c.org_id = m.org_id
+    WHERE m.org_id = d.org_id AND m.target_type = 'document' AND m.target_id = d.id
+      AND c.archived_at IS NULL
+    OFFSET 0
+  )`
+}
+
+/** The organization page `d` is the reader's own and shared with nobody. */
+export function onlyMine(actor: KnowledgeActor) {
+  return drizzleSql`(
+    d.document_scope = 'organization'
+    AND d.owner_user_id IS NOT NULL AND d.owner_user_id::text = ${actor.userId}
+    AND d.org_access = 'none'
+    AND NOT EXISTS (
+      SELECT 1 FROM ${kernelRel("resource_grants")} g
+      WHERE g.org_id = d.org_id AND g.resource_type = ${KNOWLEDGE_RESOURCE} AND g.resource_id = d.id
+    )
+  )`
+}
+
 export async function listKnowledgeDocuments(
   tx: RlsClient,
   actor: KnowledgeActor,
-  opts: { limit?: number; includeArchived?: boolean; unfiled?: boolean } = {},
+  opts: {
+    limit?: number
+    includeArchived?: boolean
+    unfiled?: boolean
+    /** Only what waits for a review, however old. */
+    needsReview?: boolean
+  } = {},
 ): Promise<KnowledgeDocumentRow[]> {
   const limit = Math.max(1, Math.min(200, opts.limit ?? 50))
   const includeArchived = opts.includeArchived ?? false
-  // Unfiled = org-scope documents not in any collection. Personal-scope
-  // documents cannot belong to a collection by validation, so excluding
-  // them keeps "Unfiled" semantically about *org* knowledge that needs
-  // filing. Personal docs surface under the __personal_notes__ tree node.
+  // Unfiled is per reader: in no live folder they can see (their own private
+  // pages and personal documents are the Personal section's).
   const unfiledClause = opts.unfiled
     ? drizzleSql`AND d.document_scope = 'organization'
-        AND NOT EXISTS (
-          SELECT 1 FROM ${knowledgeRel("collection_memberships")} m
-          WHERE m.target_id = d.id AND m.target_type = 'document'
-        )`
+        AND ${inNoVisibleFolder()}
+        AND NOT ${onlyMine(actor)}`
     : drizzleSql``
   const rows = extractRows<DocumentDbRow>(
     await tx.execute(drizzleSql`
@@ -865,6 +908,7 @@ export async function listKnowledgeDocuments(
       WHERE d.org_id = ${actor.orgId}::uuid
         ${includeArchived ? drizzleSql`` : drizzleSql`AND d.archived_at IS NULL`}
         ${unfiledClause}
+        ${opts.needsReview ? drizzleSql`AND d.review_status IN ('needs_review', 'stale')` : drizzleSql``}
       ORDER BY d.updated_at DESC
       LIMIT ${limit}
     `),
@@ -986,7 +1030,7 @@ export async function createKnowledgeDocument(
     participantIds = null
     team = parsed.team ?? []
     sensitivity = parsed.sensitivity ?? "internal"
-    assertCanSetDimensions({ team, sensitivity }, actor)
+    assertCanCreateWithDimensions({ team, sensitivity }, actor)
     // Sensitivity is a POLICY INPUT that drives the org_access DEFAULT;
     // sharing (org_access + user/role shares) remains the sole enforcement
     // plane. Confidential/restricted docs default to org-invisible ('none')
@@ -997,6 +1041,12 @@ export async function createKnowledgeDocument(
       parsed.orgAccess ??
       (sensitivity === "confidential" || sensitivity === "restricted" ? "none" : "editor")
     editScope = parsed.editScope ?? null
+  }
+
+  if (parsed.collectionIds && parsed.collectionIds.length > 0) {
+    // collections.ts imports this module.
+    const { assertCanFileIn } = await import("~/apps/knowledge/collections")
+    for (const collectionId of parsed.collectionIds) await assertCanFileIn(tx, collectionId, actor)
   }
 
   const id = randomUUID()

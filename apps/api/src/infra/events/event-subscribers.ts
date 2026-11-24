@@ -153,6 +153,11 @@ const PERMISSION_ENTITIES = new Set([
  *     but the user's raw email must NOT be retained indefinitely inside it.
  *     Redacting at ingestion keeps the event (who/when/why) without the PII.
  */
+const FOLDER_AUDIT_KEYS: Record<string, readonly string[] | undefined> = {
+  "knowledge:collection": ["id"],
+  "knowledge:collection_membership": ["collectionId", "targetType", "targetId"],
+}
+
 function stripMessageContentForAudit(event: AppEvent): unknown {
   if (isApprovalAuditEntity(event.entity)) {
     return redactApprovalAuditChanges(event.data)
@@ -171,6 +176,13 @@ function stripMessageContentForAudit(event: AppEvent): unknown {
   if (event.app === "kernel" && event.entity === "dashboard_table_row") {
     const d = (event.data ?? {}) as Record<string, unknown>
     return { tableId: d.tableId, rowId: d.rowId, changeId: d.changeId, changed: d.changed }
+  }
+  // Knowledge folders: ids only. A personal folder's name and owner are its
+  // owner's, and the audit log is read org-wide.
+  const folderKeys = FOLDER_AUDIT_KEYS[`${event.app}:${event.entity}`]
+  if (folderKeys) {
+    const d = (event.data ?? {}) as Record<string, unknown>
+    return Object.fromEntries(folderKeys.filter((k) => k in d).map((k) => [k, d[k]]))
   }
   if (event.entity !== "message" || (event.action !== "create" && event.action !== "update")) {
     return event.data

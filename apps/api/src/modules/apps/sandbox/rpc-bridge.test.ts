@@ -1968,6 +1968,9 @@ describe("createRpcBridge — period-snapshot tick knowledge_create gets the bou
       name: "Finance",
       archivedAt: null,
     } as never)
+    // An ordinary folder, not one a live sync governs (the catch-all execute
+    // mock above would otherwise read as a governing source row).
+    spyOn(collections, "isSynced").mockResolvedValue(false)
     spyOn(collections, "addCollectionMembership").mockResolvedValue({ id: "m1" } as never)
     const createSpy = spyOn(svc, "createKnowledgeDocument").mockResolvedValue({
       id: "aaaaaaaa-1111-2222-3333-444444444444",

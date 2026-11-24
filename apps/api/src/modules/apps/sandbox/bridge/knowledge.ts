@@ -205,7 +205,7 @@ export async function validateKnowledgeCreatePlacement(args: {
     roleShares: Array<{ roleId: string; role: "viewer" | "editor" }>
   } | null = null
   if (!isCrossAppConnectorCreate) {
-    const { listKnowledgeCollections, loadCollection } = await import(
+    const { isSynced, listFileableCollections, loadCollection } = await import(
       "~/apps/knowledge/collections"
     )
     const { hasScope } = await import("~/modules/permissions/permissions")
@@ -224,7 +224,7 @@ export async function validateKnowledgeCreatePlacement(args: {
       }
     }
     const describeCollections = async (): Promise<string> => {
-      const cols = await listKnowledgeCollections(txDb as never, actor)
+      const cols = await listFileableCollections(txDb as never, actor)
       return cols.length > 0
         ? `Existing collections: ${cols.map((c) => `"${c.name}" (id ${c.id})`).join(", ")}.`
         : 'No collections exist yet — create one first with collection_create (e.g. "Finance", "Support", "Engineering").'
@@ -246,6 +246,14 @@ export async function validateKnowledgeCreatePlacement(args: {
         error: {
           code: "collection_not_found",
           message: `No active collection with id ${collectionId}. ${await describeCollections()}`,
+        },
+      }
+    }
+    if (await isSynced(txDb as never, collection.id)) {
+      return {
+        error: {
+          code: "collection_synced",
+          message: `The collection "${collection.name}" is synced from another app, so nothing is filed in it here. ${await describeCollections()}`,
         },
       }
     }
@@ -624,7 +632,17 @@ export function createKnowledgeMethods(ctx: BridgeContext): Record<string, any> 
         callerApp: bridgeOptions?.callerApp,
         appName,
       })
-      return JSON.stringify("error" in guard ? { error: guard.error } : {})
+      if ("error" in guard) return JSON.stringify({ error: guard.error })
+      // Who could read the page this create makes, or the existing one it would
+      // be written into (the redirects of knowledge_create): the gate's question.
+      const { audienceOfCreate, audienceOfDocument } = await import(
+        "~/apps/knowledge/approval-audience"
+      )
+      const bound = await findRoutineBoundRunningDoc(txDb as never, orgId, actor, bridgeRoutineId)
+      const target =
+        (bound?.id ? await audienceOfDocument(txDb as never, orgId, bound.id) : null) ??
+        (await audienceOfCreate(txDb as never, actor, params))
+      return JSON.stringify({ audience: target.audience })
     },
     knowledge_create: async (paramsJson: string): Promise<string> => {
       if (appName !== "knowledge") {

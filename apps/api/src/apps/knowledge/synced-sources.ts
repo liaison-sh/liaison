@@ -288,7 +288,82 @@ export async function reactivateSyncedSource(orgId: string, id: string): Promise
       SET archived_at = NULL, last_sync_status = 'idle', updated_at = now()
       WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid
     `)
+    const rows = extractRows<SyncedSourceDbRow>(
+      await tx.execute(drizzleSql`
+        SELECT * FROM ${knowledgeRel("synced_sources")}
+        WHERE id = ${id}::uuid AND org_id = ${orgId}::uuid
+      `),
+    )
+    if (rows[0]) await restoreFolders(tx, rowFromDb(rows[0]))
   })
+}
+
+/**
+ * While a source was archived its folders were ordinary ones, which anyone could
+ * delete, move or take. Syncing again puts its root back in the tree, and gives
+ * its own folders (the root and those it made, wherever they are now) back to
+ * where the source belongs: the organization's, or its owner's. A folder a person
+ * made among them keeps its owner; when that is not the source's, it goes to the
+ * top, since the sync would lock it and its section would change.
+ */
+async function restoreFolders(
+  tx: PrivilegedDb,
+  source: Pick<
+    SyncedSourceRow,
+    "id" | "orgId" | "rootCollectionId" | "ownerUserId" | "displayName"
+  >,
+): Promise<void> {
+  const own = extractRows<{ id: string; owner_user_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT id::text AS id, owner_user_id::text AS owner_user_id
+      FROM ${knowledgeRel("collections")}
+      WHERE org_id = ${source.orgId}::uuid
+        AND (id = ${source.rootCollectionId}::uuid
+             OR starts_with(description, ${`synced:${source.id}:`}))
+      FOR UPDATE
+    `),
+  )
+  if (own.length === 0) return
+  const ids = drizzleSql.join(
+    own.map((f) => drizzleSql`${f.id}::uuid`),
+    drizzleSql`, `,
+  )
+  await tx.execute(drizzleSql`
+    UPDATE ${knowledgeRel("collections")}
+    SET parent_collection_id = NULL, updated_at = now()
+    WHERE org_id = ${source.orgId}::uuid AND parent_collection_id IN (${ids})
+      AND id NOT IN (${ids})
+      AND owner_user_id IS DISTINCT FROM ${source.ownerUserId}::uuid
+  `)
+  await tx.execute(drizzleSql`
+    UPDATE ${knowledgeRel("collections")}
+    SET archived_at = NULL, updated_at = now(),
+        name = CASE WHEN name = 'Deleted folder' THEN ${source.displayName} ELSE name END
+    WHERE id = ${source.rootCollectionId}::uuid AND archived_at IS NOT NULL
+  `)
+  // Done as each folder's present owner, the only person whose request shares a
+  // personal folder (trigger collections_owner_lost takes any other for a deleted
+  // person's).
+  const owners = new Set(own.map((f) => f.owner_user_id).filter((o) => o !== source.ownerUserId))
+  if (owners.size === 0) return
+  const before = extractRows<{ user_id: string | null }>(
+    await tx.execute(drizzleSql`
+      SELECT current_setting('app.current_user_id', true) AS user_id
+    `),
+  )[0]?.user_id
+  for (const owner of owners) {
+    await tx.execute(drizzleSql`
+      SELECT set_config('app.current_user_id', ${owner ?? ""}, true)
+    `)
+    await tx.execute(drizzleSql`
+      UPDATE ${knowledgeRel("collections")}
+      SET owner_user_id = ${source.ownerUserId}::uuid, updated_at = now()
+      WHERE id IN (${ids}) AND owner_user_id IS NOT DISTINCT FROM ${owner}::uuid
+    `)
+  }
+  await tx.execute(drizzleSql`
+    SELECT set_config('app.current_user_id', ${before ?? ""}, true)
+  `)
 }
 
 // ---------------------------------------------------------------------------
@@ -471,7 +546,10 @@ async function doCreateSyncedSource(
           RETURNING *
         `),
       )
-      if (revived[0]) return rowFromDb(revived[0])
+      if (revived[0]) {
+        await restoreFolders(tx, existing)
+        return rowFromDb(revived[0])
+      }
     }
   }
   const collectionId = randomUUID()

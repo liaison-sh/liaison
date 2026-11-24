@@ -15,7 +15,13 @@ Search matches the words a document contains. When someone asks in another langu
 2. Click **New document** in the sidebar.
 3. Give it a title and write the body. Click **Save**.
 
-The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Use **New personal folder**, **New shared folder** or **New folder** to make folders, and **Move to** to file a document. Documents in no folder are under **Unfiled**. Deleting a folder keeps the documents inside it.
+The sidebar has two trees: **Personal** for your own notes and **Shared with org** for team documents. Use **New personal folder**, **New shared folder** or **New folder** to make folders, and **Move to** to file a document. Documents in no folder you can see are under **Unfiled**.
+
+A personal folder is yours alone: nobody else sees it, admins included. It does not change who can read a document: one you share from a personal folder is under **Unfiled** for the others. A subfolder is seen by whoever sees the folder it is in. A shared folder that holds something of another person stays shared.
+
+Deleting a folder moves its documents and subfolders to the folder above it. At the top, its documents become unfiled. No document is deleted. When a person's account is erased, their personal folders are archived without their names.
+
+Moving a document, or taking it out of a folder, needs the right to edit it. A folder synced from another app is changed in that app only. You can still take one of your own documents out of it. When the sync is stopped, its folders become ordinary ones; syncing again takes them back.
 
 You can also click **Create knowledge from…** on the Knowledge home to ask your agent to write documents from material you give it.
 
@@ -88,9 +94,9 @@ Use **Archive** to retire a document and **Restore** to bring it back.
 
 ## Import collections and documents
 
-Collections import as the `knowledge.collection` kind and documents as the `knowledge.document` kind, each matched on its `externalRef`: one imported before is skipped, never updated. In a run with both, collections go first, so a document can be filed in a collection the same run creates (`collectionRefs`).
+Collections import as the `knowledge.collection` kind and documents as the `knowledge.document` kind, each matched on its `externalRef`: one imported before is skipped, never updated. In a run with both, collections go first, so a document can be filed in a collection the same run creates (`collectionRefs`). A collection is shared with the organization unless its record says `shared: false`.
 
-An imported document follows the same rules as one you write: its sensitivity sets who in the organization can open it (**Confidential** and **Restricted** documents start shared with nobody), and you can only import a sensitivity or a team you have access to. Tags are matched on their name; an existing tag is reused as it is. Attachments are copies of files you uploaded. A personal document can belong to another person (`ownerEmail`) when you can assign document owners.
+An imported document follows the same rules as one you write: its sensitivity sets who in the organization can open it (**Confidential** and **Restricted** documents start shared with nobody), and you can only import a confidential or restricted document, or a team's, if you have access to that sensitivity or team. Tags are matched on their name; an existing tag is reused as it is. Attachments are copies of files you uploaded. A personal document can belong to another person (`ownerEmail`) when you can assign document owners.
 
 Importing documents needs `knowledge:documents:create` (and `knowledge:tags:manage` to tag them), importing collections `knowledge:collections:manage`. Each import is a run you can undo from **Settings › Organization › Imports** (see [Undo an import](../admin/settings.md#undo-an-import)).
 
@@ -100,11 +106,11 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 
 | Role | Scopes |
 |---|---|
-| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
-| `curator` | `knowledge:collections:manage`, `knowledge:tags:manage`, `knowledge:documents:archive`, `knowledge:documents:assign-owner`, `knowledge:sources:manage` |
+| `member` | `knowledge:documents:read`, `knowledge:documents:create`, `knowledge:documents:update`, `knowledge:collections:manage`, `knowledge:links:create`, `knowledge:sources:read`, `knowledge:attachments:download`, `knowledge:attachments:upload` |
+| `curator` | `knowledge:tags:manage`, `knowledge:documents:archive`, `knowledge:documents:assign-owner`, `knowledge:sources:manage` |
 | `admin` | `knowledge:documents:admin`, `knowledge:cache:manage` |
 
-`knowledge:approve` decides any Knowledge approvals. Full list: [scope reference](../reference/scopes.md).
+`knowledge:approve` decides the approvals about documents the organization can read. When an agent asks to create a document for named people only, the person it acts for decides, and nobody else sees the request; if your organization requires two approvers for that tool, the request is refused. Full list: [scope reference](../reference/scopes.md).
 
 ## What agents can do
 
@@ -118,7 +124,7 @@ Knowledge ships three roles. See [roles](../admin/roles.md).
 | `update` | Update a document | `knowledge:documents:update` |
 | `verify` | Mark a document verified | `knowledge:documents:update` |
 | `archive`, `restore` | Archive or restore a document | `knowledge:documents:archive` |
-| `collection_create`, `collection_update`, `collection_delete` | Create, change or archive a folder | `knowledge:collections:manage` |
+| `collection_create`, `collection_update`, `collection_delete` | Create, change or delete a folder. A created folder is shared unless the user asks for a personal one | `knowledge:collections:manage` |
 | `add_to_collection`, `remove_from_collection` | File a document in a folder or take it out | `knowledge:collections:manage` |
 | `add_folder_source` | Import a Drive folder, a GitLab repository path or the database knowledge base, once or on a schedule | `knowledge:sources:manage` |
 | `source_link_create` | Link one remote document so Knowledge always shows its current version | `knowledge:links:create` |

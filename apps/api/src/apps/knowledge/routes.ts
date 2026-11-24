@@ -21,9 +21,11 @@ import {
   addCollectionMembership,
   archiveKnowledgeCollection,
   createKnowledgeCollection,
+  FolderScopeError,
   listKnowledgeCollections,
   listKnowledgeCollectionTree,
   removeCollectionMembership,
+  requireCollectionsScope,
   updateKnowledgeCollection,
 } from "~/apps/knowledge/collections"
 import {
@@ -33,6 +35,7 @@ import {
 } from "~/apps/knowledge/federated-search"
 import { requestForceOnOpenSync } from "~/apps/knowledge/force-on-open"
 import { searchLocalKnowledge } from "~/apps/knowledge/local-search"
+import { mountPageRoutes } from "~/apps/knowledge/page-routes"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   archiveKnowledgeDocument,
@@ -134,12 +137,31 @@ function knowledgeErrorResponse(c: KnowledgeContext, err: unknown) {
  * spec §72-76, this collapse must apply to *every* document endpoint that
  * touches a row by id (reads, writes, archive, restore, verify, backlinks).
  */
-export function zeroKnowledgeResponse(c: KnowledgeContext, err: unknown) {
+export function zeroKnowledgeResponse(
+  c: KnowledgeContext,
+  err: unknown,
+  message = "Knowledge item not found",
+) {
   if (err instanceof KnowledgeError && (err.code === "FORBIDDEN" || err.code === "NOT_FOUND")) {
-    return c.json({ error: { message: "Knowledge item not found", code: "NOT_FOUND" } }, 404)
+    return c.json({ error: { message, code: "NOT_FOUND" } }, 404)
   }
   return knowledgeErrorResponse(c, err)
 }
+
+/**
+ * A refused write by id. Missing and forbidden stay one answer, but a readable
+ * one: the person clicked something and it did not happen. Lacking the folder
+ * scope is said as such (403): it depends on no row.
+ */
+function writeRefusal(c: KnowledgeContext, err: unknown, what: "page" | "folder") {
+  if (err instanceof FolderScopeError) return knowledgeErrorResponse(c, err)
+  return zeroKnowledgeResponse(c, err, `You cannot do this on this ${what}`)
+}
+
+mountPageRoutes(knowledgeRoutes, {
+  getActor: (c) => getActor(c),
+  pageWriteRefusal: (c, err) => writeRefusal(c, err, "page"),
+})
 
 // ---------------------------------------------------------------------------
 // Documents
@@ -157,6 +179,7 @@ knowledgeRoutes.post("/documents", zValidator("json", knowledgeCreateDocumentSch
   try {
     const actor = getActor(c)
     const input = c.req.valid("json")
+    if (input.collectionIds.length > 0) requireCollectionsScope(actor)
     // A human creating a document through the Knowledge UI reads nothing
     // scoped into it: the empty array is the positive assertion (D5).
     const doc = await withRequestRls(c, (tx) => createKnowledgeDocument(tx, input, actor, []))
@@ -284,7 +307,7 @@ knowledgeRoutes.patch(
       return success(c, doc)
     } catch (err) {
       // Writes against rows the actor cannot read must also zero-knowledge.
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -296,7 +319,7 @@ knowledgeRoutes.post("/documents/:id/archive", zValidator("param", idParamSchema
     const doc = await withRequestRls(c, (tx) => archiveKnowledgeDocument(tx, id, actor))
     return success(c, doc)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "page")
   }
 })
 
@@ -307,7 +330,7 @@ knowledgeRoutes.post("/documents/:id/restore", zValidator("param", idParamSchema
     const doc = await withRequestRls(c, (tx) => restoreKnowledgeDocument(tx, id, actor))
     return success(c, doc)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "page")
   }
 })
 
@@ -330,7 +353,7 @@ knowledgeRoutes.post(
       })
       return success(c, doc)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -755,7 +778,7 @@ knowledgeRoutes.patch(
       )
       return success(c, row)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "folder")
     }
   },
 )
@@ -767,7 +790,7 @@ knowledgeRoutes.post("/collections/:id/archive", zValidator("param", idParamSche
     const row = await withRequestRls(c, (tx) => archiveKnowledgeCollection(tx, id, actor))
     return success(c, row)
   } catch (err) {
-    return zeroKnowledgeResponse(c, err)
+    return writeRefusal(c, err, "folder")
   }
 })
 
@@ -784,7 +807,7 @@ knowledgeRoutes.post(
       )
       return success(c, row, undefined, 201)
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -802,7 +825,7 @@ knowledgeRoutes.delete(
       )
       return success(c, { ok: true })
     } catch (err) {
-      return zeroKnowledgeResponse(c, err)
+      return writeRefusal(c, err, "page")
     }
   },
 )
@@ -833,13 +856,11 @@ knowledgeRoutes.get("/home", async (c) => {
     const recent = await listKnowledgeDocuments(tx, actor, { limit: 20 })
     // IC-3: needsReview is a separate query — not a filter of recent — so
     // review-needing entries that fell off the recency window still surface.
-    const needsReview = await listKnowledgeDocuments(tx, actor, { limit: 50 })
+    const needsReview = await listKnowledgeDocuments(tx, actor, { limit: 50, needsReview: true })
     const unfiled = await listKnowledgeDocuments(tx, actor, { limit: 200, unfiled: true })
     return {
       recent,
-      needsReview: needsReview.filter(
-        (d) => d.reviewStatus === "needs_review" || d.reviewStatus === "stale",
-      ),
+      needsReview,
       unfiledCount: unfiled.length,
     }
   })

@@ -92,6 +92,8 @@ async function parkForApproval(
     lines: string[]
     payload: unknown
     editable_fields?: string[]
+    /** Told to the agent beside the pending approval. */
+    note?: string
   },
 ): Promise<unknown | null> {
   if (!ctx.requestApproval) {
@@ -116,7 +118,9 @@ async function parkForApproval(
   return {
     status: "pending_approval",
     approval_id: res.approval_id,
-    note: "Organization-wide knowledge writes require a human approval. Report this as pending, never as done.",
+    note:
+      input.note ??
+      "Organization-wide knowledge writes require a human approval. Report this as pending, never as done.",
   }
 }
 
@@ -124,8 +128,8 @@ const KNOWLEDGE_EXPORT_COLUMNS: Array<[string, string]> = [
   ["id", "id"],
   ["title", "title"],
   ["summary", "summary"],
-  ["scope", "scope"],
-  ["status", "status"],
+  ["scope", "document_scope"],
+  ["status", "review_status"],
   ["ownerUserId", "owner_user_id"],
   ["createdAt", "created_at"],
 ]
@@ -241,22 +245,38 @@ export async function create(
     // structured error back to the agent instead of queueing a doomed card.
     const validation = JSON.parse(await ctx.knowledge_create_validate(JSON.stringify(p))) as {
       error?: { code: string; message: string }
+      audience?: "private" | "restricted" | "org"
     }
     if (validation.error) return { error: validation.error }
-    const parked = await parkForApproval(ctx, {
-      tool_name: "knowledge:create",
-      summary: `Create organization knowledge document: ${truncateForCard(p.title) || "(untitled)"}`,
-      lines: [
-        `Title: ${truncateForCard(p.title) || "(untitled)"}`,
-        ...(typeof p.summary === "string" && p.summary
-          ? [`Summary: ${truncateForCard(p.summary)}`]
-          : []),
-        ...(typeof p.body === "string" && p.body ? [`Body: ${truncateForCard(p.body)}`] : []),
-        "Scope: organization (visible to the whole org)",
-      ],
-      payload: p,
-      editable_fields: ["title", "body"],
-    })
+    // A page nobody but its owner will read is like a personal note: no card. One
+    // for named people parks for one decider (resourceOwner, approval-audience.ts).
+    const restricted = validation.audience === "restricted"
+    const parked =
+      validation.audience === "private"
+        ? null
+        : await parkForApproval(ctx, {
+            tool_name: "knowledge:create",
+            summary: restricted
+              ? `Create a knowledge document for named people: ${truncateForCard(p.title) || "(untitled)"}`
+              : `Create organization knowledge document: ${truncateForCard(p.title) || "(untitled)"}`,
+            lines: [
+              `Title: ${truncateForCard(p.title) || "(untitled)"}`,
+              ...(typeof p.summary === "string" && p.summary
+                ? [`Summary: ${truncateForCard(p.summary)}`]
+                : []),
+              ...(typeof p.body === "string" && p.body ? [`Body: ${truncateForCard(p.body)}`] : []),
+              restricted
+                ? "Only the people this page is shared with see it"
+                : "Scope: organization (visible to the whole org)",
+            ],
+            payload: p,
+            editable_fields: ["title", "body"],
+            ...(restricted
+              ? {
+                  note: "A page for named people waits for one person who can read it, nobody else sees the request. Report this as pending, never as done.",
+                }
+              : {}),
+          })
     if (parked !== null) return parked
   }
   return JSON.parse(await ctx.knowledge_create(JSON.stringify(p)))

@@ -124,8 +124,8 @@ const KNOWLEDGE_EXPORT_COLUMNS: Array<[string, string]> = [
   ["id", "id"],
   ["title", "title"],
   ["summary", "summary"],
-  ["scope", "scope"],
-  ["status", "status"],
+  ["scope", "document_scope"],
+  ["status", "review_status"],
   ["ownerUserId", "owner_user_id"],
   ["createdAt", "created_at"],
 ]

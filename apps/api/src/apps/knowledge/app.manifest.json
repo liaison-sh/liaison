@@ -57,7 +57,7 @@
       }
     ]
   },
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Knowledge workspace for local documents and curated source links",
   "license": "FSL-1.1-ALv2",
   "listing": {
@@ -1654,11 +1654,12 @@
   },
   "roles": {
     "member": {
-      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items",
+      "description": "Knowledge member: read, create, update, link, and attach allowed Knowledge items, and manage folders",
       "scopes": [
         "knowledge:documents:read",
         "knowledge:documents:create",
         "knowledge:documents:update",
+        "knowledge:collections:manage",
         "knowledge:links:create",
         "knowledge:sources:read",
         "knowledge:attachments:download",
@@ -1666,10 +1667,9 @@
       ]
     },
     "curator": {
-      "description": "Knowledge curator: manage collections, tags, archives, and source settings",
+      "description": "Knowledge curator: manage tags, archives, and source settings",
       "extends": "member",
       "scopes": [
-        "knowledge:collections:manage",
         "knowledge:tags:manage",
         "knowledge:documents:archive",
         "knowledge:documents:assign-owner",

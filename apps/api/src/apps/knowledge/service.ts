@@ -869,7 +869,13 @@ export function onlyMine(actor: KnowledgeActor) {
 export async function listKnowledgeDocuments(
   tx: RlsClient,
   actor: KnowledgeActor,
-  opts: { limit?: number; includeArchived?: boolean; unfiled?: boolean } = {},
+  opts: {
+    limit?: number
+    includeArchived?: boolean
+    unfiled?: boolean
+    /** Only what waits for a review, however old. */
+    needsReview?: boolean
+  } = {},
 ): Promise<KnowledgeDocumentRow[]> {
   const limit = Math.max(1, Math.min(200, opts.limit ?? 50))
   const includeArchived = opts.includeArchived ?? false
@@ -886,6 +892,7 @@ export async function listKnowledgeDocuments(
       WHERE d.org_id = ${actor.orgId}::uuid
         ${includeArchived ? drizzleSql`` : drizzleSql`AND d.archived_at IS NULL`}
         ${unfiledClause}
+        ${opts.needsReview ? drizzleSql`AND d.review_status IN ('needs_review', 'stale')` : drizzleSql``}
       ORDER BY d.updated_at DESC
       LIMIT ${limit}
     `),
@@ -1018,6 +1025,12 @@ export async function createKnowledgeDocument(
       parsed.orgAccess ??
       (sensitivity === "confidential" || sensitivity === "restricted" ? "none" : "editor")
     editScope = parsed.editScope ?? null
+  }
+
+  if (parsed.collectionIds && parsed.collectionIds.length > 0) {
+    // collections.ts imports this module.
+    const { assertCanFileIn } = await import("~/apps/knowledge/collections")
+    for (const collectionId of parsed.collectionIds) await assertCanFileIn(tx, collectionId, actor)
   }
 
   const id = randomUUID()

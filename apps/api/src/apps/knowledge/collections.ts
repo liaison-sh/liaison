@@ -4,6 +4,7 @@ import { sql as drizzleSql } from "drizzle-orm"
 import { knowledgeRel } from "~/apps/knowledge/schema-refs"
 import {
   assertCanReadDocumentRow,
+  assertCanWriteDocumentRow,
   inNoVisibleFolder,
   type KnowledgeActor,
   KnowledgeError,
@@ -29,7 +30,7 @@ export class FolderScopeError extends KnowledgeError {
   }
 }
 
-function requireCollectionsScope(actor: KnowledgeActor): void {
+export function requireCollectionsScope(actor: KnowledgeActor): void {
   if (
     !hasScope("knowledge:collections:manage", actor.scopes) &&
     !hasScope("knowledge:documents:admin", actor.scopes)
@@ -665,6 +666,27 @@ async function assertTargetReadable(
   }
 }
 
+/**
+ * Taking something out of a folder takes it away from where others look for it,
+ * so it needs the edit right (out of its last folder included). Filing asks only
+ * to read: it adds a place, removes none and gives nobody access.
+ */
+async function assertTargetEditable(
+  tx: RlsClient,
+  input: CollectionMembershipInput,
+  actor: KnowledgeActor,
+): Promise<void> {
+  if (input.targetType === "source_link") {
+    if (!hasScope("knowledge:documents:update", actor.scopes)) {
+      throw new KnowledgeError("FORBIDDEN", "Forbidden to write Knowledge source link")
+    }
+    return
+  }
+  const row = await loadKnowledgeDocument(tx, input.targetId, actor)
+  if (!row) throw new KnowledgeError("NOT_FOUND", "Knowledge item not found")
+  assertCanWriteDocumentRow(row, actor, await loadDocumentShareRole(tx, row.id, actor))
+}
+
 /** A live folder the person sees and may file into or out of. */
 export async function assertCanFileIn(
   tx: RlsClient,
@@ -734,6 +756,7 @@ export async function removeCollectionMembership(
 ): Promise<void> {
   requireCollectionsScope(actor)
   await assertCanFileIn(tx, input.collectionId, actor)
+  await assertTargetEditable(tx, input, actor)
   await tx.execute(drizzleSql`
     DELETE FROM ${knowledgeRel("collection_memberships")}
     WHERE org_id = ${actor.orgId}::uuid

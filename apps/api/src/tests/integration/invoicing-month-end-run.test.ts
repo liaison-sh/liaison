@@ -633,4 +633,141 @@ describe("the month-end run on the real kernel", () => {
     >`SELECT id FROM kernel.attention_events WHERE org_id = ${ORG} AND user_id = ${actor.userId} AND kind = 'invoicing:recurring_run.late' AND entity_id = ${fx.runId}`
     expect(late).toHaveLength(1)
   }, 180_000)
+
+  /** A row added to a run by hand, for a French private customer, with no tax rate on its line. */
+  const addRow = (runId: string, over: Row = {}) =>
+    tool("drafts_create", {
+      type: "invoice",
+      run_id: runId,
+      counterparty_contact_id: null,
+      counterparty_name: "Camille Rousseau",
+      counterparty_email: "camille@example.com",
+      counterparty_address: "3 rue des Lilas, 69001 Lyon",
+      counterparty_country: "FR",
+      customer_kind: "individual",
+      items: [{ description: "Extra hour", quantity: "1", unit_price_minor: "10000" }],
+      ...over,
+    })
+
+  const docById = async (id: unknown) =>
+    (
+      await sql<
+        Row[]
+      >`SELECT status, number, grand_total_minor::text AS total, operation_category, approved_by::text AS approved_by,
+               to_char(due_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS due, to_char(issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS issued_on,
+               service_period_start::text AS ps, service_period_end::text AS pe
+          FROM app_invoicing.documents WHERE id = ${String(id)}`
+    )[0] as Row
+
+  const approve = (requestId: unknown, by: UserContext = actor) =>
+    decideApproval({ orgId: ORG, requestId: String(requestId), actor: by, decision: "approve" })
+
+  const cardItemsOf = async (requestId: unknown) =>
+    (
+      (
+        await sql<
+          Row[]
+        >`SELECT current_payload AS p FROM kernel.approval_requests WHERE id = ${String(requestId)}`
+      )[0]?.p as { items: Array<{ document_id: string; total_minor: string }> }
+    ).items
+
+  it("a row added by hand issues exactly what its card showed, and the run says who approved it last", async () => {
+    const fx = await draftAndApprove(1)
+    setSystemTime(new Date("2026-11-27T10:00:00Z"))
+    const added = await addRow(fx.runId)
+    expect(added.error).toBeUndefined()
+    const draftId = String(added.data?.draft_id)
+    const card = (await runOf(fx.issuer)).approval_request_id
+    const shown = (await cardItemsOf(card)).find((i) => i.document_id === draftId)
+    expect(shown?.total_minor).toBe("12000")
+    const second = await minimal.person(ORG, { role: "admin" })
+    await approve(card, {
+      actorType: "user",
+      userId: second.id,
+      orgId: ORG,
+      scopes: SCOPES,
+      dimensionGrants: {},
+    })
+    expect((await runOf(fx.issuer)).approved_by).toBe(second.id)
+    setSystemTime(new Date("2026-11-30T07:30:00Z"))
+    await runJob("recurring-issue")
+    const items = await itemsOf(fx.runId)
+    expect(items.map((i) => i.state)).toEqual(["issued", "issued"])
+    expect(await docById(items[1]?.document_id)).toMatchObject({
+      status: "issued",
+      total: "12000",
+      operation_category: "services",
+      due: "2026-12-30",
+      ps: "2026-11-01",
+      pe: "2026-11-30",
+      approved_by: second.id,
+    })
+    expect(await docById(items[0]?.document_id)).toMatchObject({ approved_by: actor.userId })
+  }, 180_000)
+
+  it("a row whose amount is not the approved one takes no number and asks again, then issues at the amount shown", async () => {
+    const fx = await draftAndApprove(1)
+    const [item] = await itemsOf(fx.runId)
+    await sql`UPDATE app_invoicing.recurring_run_items SET approved_total_minor = 10000 WHERE id = ${String(item?.id)}`
+    await runJob("recurring-issue")
+    expect((await itemsOf(fx.runId)).map((i) => i.state)).toEqual(["waiting_reapproval"])
+    expect(await sequenceOf(fx.issuer)).toBe(0)
+    const card = (await runOf(fx.issuer)).approval_request_id
+    const [row] = await cardItemsOf(card)
+    expect(row?.total_minor).toBe("12000")
+    await approve(card)
+    await runJob("recurring-issue")
+    const [after] = await itemsOf(fx.runId)
+    expect(after?.state).toBe("issued")
+    expect(await docById(after?.document_id)).toMatchObject({ total: "12000" })
+    expect(await sequenceOf(fx.issuer)).toBe(1)
+  }, 180_000)
+
+  it("a late run's card issues the rows approved on it, dated that day, and a row taken out never issues", async () => {
+    const fx = await monthEnd(2)
+    setSystemTime(new Date("2026-11-27T09:00:00Z"))
+    await runJob("recurring-draft")
+    const run = await runOf(fx.issuer)
+    const runId = String(run.id)
+    setSystemTime(new Date("2026-12-03T06:00:00Z"))
+    await runJob("recurring-legal-date")
+    await runJob("recurring-legal-date")
+    const late = await runOf(fx.issuer)
+    expect(late.status).toBe("late")
+    expect(late.approval_request_id).not.toBe(run.approval_request_id)
+    const cards = await sql<
+      Row[]
+    >`SELECT status, summary->>'title' AS title FROM kernel.approval_requests
+       WHERE org_id = ${ORG} AND tool_name = 'invoicing:recurring_run_issue' AND current_payload->>'run_id' = ${runId}
+       ORDER BY requested_at`
+    expect(cards.map((c) => c.status)).toEqual(["cancelled", "pending"])
+    expect(String(cards[1]?.title)).toStartWith("Late: the invoices of November 2026")
+    const items = await itemsOf(runId)
+    const dropped = await tool("drafts_discard", {
+      draft_id: String(items[0]?.document_id),
+      applies: "this_month",
+    })
+    expect(dropped.error).toBeUndefined()
+    // Nothing issues before a person approves the late card.
+    await runJob("recurring-issue")
+    expect(await sequenceOf(fx.issuer)).toBe(0)
+    await approve(late.approval_request_id)
+    await runJob("recurring-issue")
+    await runJob("recurring-issue")
+    const after = await itemsOf(runId)
+    expect(after.map((i) => i.state)).toEqual(["left_out", "issued"])
+    expect(await sequenceOf(fx.issuer)).toBe(1)
+    expect(await docById(after[1]?.document_id)).toMatchObject({
+      issued_on: "2026-12-03",
+      due: "2027-01-02",
+    })
+    expect((await runOf(fx.issuer)).status).toBe("issued")
+    // Its period is billed: the schedule drafts December next, never November again.
+    await runJob("recurring-draft")
+    expect(
+      (await documentsOf(fx.issuer)).filter((d) => String(d.external_ref).endsWith(":2026-11")),
+    ).toHaveLength(2)
+    await runJob("recurring-legal-date")
+    expect((await runOf(fx.issuer)).status).toBe("issued")
+  }, 240_000)
 })

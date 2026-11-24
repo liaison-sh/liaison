@@ -16,7 +16,7 @@ Just before the send, Liaison reads the invoice from Stripe:
 
 ## Invoices issued by Liaison
 
-Invoicing scans every day at 06:00 for issued invoices past their due date and raises one attention item per overdue invoice, as "Overdue: <number>: <n> days past due". A reminder about such an invoice is checked at send time against the document: it stops when the invoice is paid, credited or voided.
+Invoicing scans every day at 06:00 for issued invoices past their due date and raises one attention item per overdue invoice, as "Overdue: <number>: <n> days past due". An invoice with no due date of its own gets one at issue from the customer's or the issuer's [payment terms](../apps/invoicing.md), and an invoice of zero is never overdue. A reminder about such an invoice is checked at send time against the document: it stops when the invoice is paid, credited or voided.
 
 ## Good to know
 

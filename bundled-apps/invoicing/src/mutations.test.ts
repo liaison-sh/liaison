@@ -5013,6 +5013,54 @@ describe("orderReissueApply", () => {
     expect(result.status).toBe("completed")
   })
 
+  test("the replacement of a paid invoice is never due; of an unpaid one it is, by the payment terms", async () => {
+    for (const paid of [true, false]) {
+      const { ctx, db } = makeCtx()
+      const original = await invoiceCreateAndIssue(ctx, {
+        operation_category: "goods",
+        counterparty: defaultCounterparty,
+        issuer_profile_id: "iss-1",
+        currency: "EUR",
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        items: sampleDraftItems,
+      })
+      if (original.status !== "completed") throw new Error("unreachable")
+      const row = db.__all("documents").find((d) => d.id === original.document_id)!
+      expect(row.due_at).toBeTruthy()
+      if (paid) row.payment_status = "paid"
+      const result = await orderReissueApply(ctx, {
+        original_document_id: original.document_id,
+        shopify_order_id: "shop-order-11",
+        shopify_order_number: "#1011",
+        billing_signature: "sig-e",
+        dedupe_key: "shop-order-11:sig-e",
+        items: [
+          {
+            description: "Widget",
+            quantity: "1",
+            unit_price_minor: 5_000,
+            product_source: null,
+            external_id: null,
+          },
+        ],
+      })
+      if (result.status !== "completed") throw new Error(JSON.stringify(result))
+      const replacement = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { replacement_document_id?: string }).replacement_document_id,
+        )
+      expect(Boolean(replacement?.due_at)).toBe(!paid)
+      const note = db
+        .__all("documents")
+        .find(
+          (d) => d.id === (result as { credit_note_document_id?: string }).credit_note_document_id,
+        )
+      expect(note?.due_at ?? null).toBeNull()
+    }
+  })
+
   test("reissue after a refused original books an internal cancellation and issues the replacement under a new number", async () => {
     const { ctx, db } = makeCtx()
     const original = await invoiceCreateAndIssue(ctx, {

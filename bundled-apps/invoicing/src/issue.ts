@@ -399,6 +399,8 @@ export interface IssueInput {
    *  is reserved for a value read straight off a Shopify webhook payload with no human step in
    *  between (the order-paid auto-flow). */
   po_number_source?: "shopify_sync" | "person"
+  /** What it bills was paid on the document it replaces: without a due date of its own it has none. */
+  already_paid?: boolean
   /** What a person approved this document to total, in minor units: it issues at that amount or
    *  not at all (`AmountChangedRefusal`, before any number is taken). */
   expected_total_minor?: bigint | string | null
@@ -1476,7 +1478,7 @@ export async function prepareIssue(ctx: IssueCtx, input: IssueInput): Promise<Pr
   // from the day it is issued. One already settled owes nothing, and no other type is payable.
   const dueAt =
     draft.due_at ||
-    (type === "invoice" && !input.settlement
+    (type === "invoice" && !input.settlement && !input.already_paid
       ? dueOn(
           draft.issued_at,
           (

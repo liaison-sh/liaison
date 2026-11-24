@@ -35,7 +35,7 @@ Writing the first text needs the right to manage folders and to create documents
 
 The list under the page shows the folders and documents directly inside that you can open. Someone who cannot read the folder's page still sees the list, and nothing of the page.
 
-Renaming the folder renames its page, when you can edit the page. Renaming the page renames the folder, when you can manage folders. The page stops being the folder's page when it moves to the archive or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to the archive, when the person deleting the folder can archive it.
+Renaming the folder renames its page, when you can edit the page; a verified page stays verified, as its text did not change. Renaming the page renames the folder, when you can manage folders; otherwise only the page is renamed. The page stops being the folder's page when it moves to the archive or leaves the folder; the folder then has none until someone writes in it again. Deleting the folder keeps a page that has text: it goes where the folder's documents go, to the folder above it or to **Unfiled**. An empty page goes to the archive, when the person deleting the folder can archive it.
 
 Agents read and update a folder's page like any other document.
 

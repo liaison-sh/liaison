@@ -855,6 +855,10 @@ export async function removeCollectionMembership(
   requireCollectionsScope(actor)
   const folder = await assertCanUnfile(tx, input, actor)
   await assertTargetEditable(tx, input, actor)
+  const folderPages =
+    input.targetType === "document" ? await import("~/apps/knowledge/folder-pages") : null
+  // Folder first, then the page's memberships (folder-pages.ts).
+  await folderPages?.lockFoldersOfPage(tx, actor, input.targetId, folder.id)
   await tx.execute(drizzleSql`
     DELETE FROM ${knowledgeRel("collection_memberships")}
     WHERE org_id = ${actor.orgId}::uuid
@@ -862,10 +866,7 @@ export async function removeCollectionMembership(
       AND target_type = ${input.targetType}
       AND target_id = ${input.targetId}::uuid
   `)
-  if (input.targetType === "document") {
-    const { detachFolderPage } = await import("~/apps/knowledge/folder-pages")
-    await detachFolderPage(tx, actor, input.targetId, folder.id)
-  }
+  await folderPages?.detachFolderPage(tx, actor, input.targetId, folder.id)
   await tx.queueEvent({
     app: "knowledge",
     entity: "collection_membership",

@@ -596,6 +596,24 @@ describe("change_request_send", () => {
 })
 
 describe("the send card", () => {
+  it("the send card names its document and version, and says when two signers share an address", async () => {
+    const card = await summarizeAgreementSend({
+      version_id: "v",
+      sha256: SHA,
+      signers: [
+        { email: "couple@example.org", name: "Anne" },
+        { email: "Couple@example.org", name: "Jean" },
+      ],
+      document: { number: "AG-2027-011", title: "Mutual NDA", version: 2 },
+    })
+    expect(card.title).toBe('Send AG-2027-011 "Mutual NDA", version 2 to 2 signers')
+    expect(card.lines[0]).toBe('Document: AG-2027-011 "Mutual NDA", version 2')
+    expect(card.lines.join("\n")).toContain("Two signers share couple@example.org")
+    const bare = await summarizeAgreementSend({ sha256: SHA, signers: [{ email: "a@b.example" }] })
+    expect(bare.title).toBe("Send a frozen agreement version to 1 signer")
+    expect(bare.lines.join("\n")).not.toContain("share")
+  })
+
   it("a signer named by contact only reads as their address, never as a contact", async () => {
     const card = await summarizeAgreementSend({
       signers: [{ contact_id: "c-1" }],

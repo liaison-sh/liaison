@@ -33,14 +33,37 @@ function pinnedAddresses(params: Record<string, unknown>): unknown[] {
   return Array.isArray(a) ? a : []
 }
 
+/** The document the preflight pinned, as a card names it, or null for a call without one. */
+function pinnedDocument(params: Record<string, unknown>): string | null {
+  const d = params.document as { number?: unknown; title?: unknown; version?: unknown } | undefined
+  if (typeof d?.number !== "string" || !d.number) return null
+  const title = typeof d.title === "string" && d.title ? ` "${d.title}"` : ""
+  return `${d.number}${title}${typeof d.version === "number" ? `, version ${d.version}` : ""}`
+}
+
+/** Each address more than one of these signers signs at. */
+function sharedAddresses(signers: unknown[], pinned: unknown[]): string[] {
+  const all = signers
+    .map((s, i) => (s as { email?: unknown } | null)?.email ?? pinned[i])
+    .filter((e): e is string => typeof e === "string" && e !== "")
+    .map((e) => e.trim().toLowerCase())
+  return [...new Set(all.filter((e, i) => all.indexOf(e) !== i))]
+}
+
 export function summarizeAgreementSend(params: Record<string, unknown>): Promise<Card> {
   const signers = Array.isArray(params.signers) ? params.signers : []
   const order = params.order === "any" ? "in any order" : "one after the other"
   const mode = params.mode === "accept" ? "an acceptance" : "a simple electronic signature"
+  const document = pinnedDocument(params)
+  const who = `${signers.length} signer${signers.length === 1 ? "" : "s"}`
   const lines = [
+    ...(document ? [`Document: ${document}`] : []),
     `Fingerprint: ${String(params.sha256 ?? "")}`,
     `Asks: ${mode}, ${order}`,
     ...signers.map((x, i) => signerLine(x, i, pinnedAddresses(params))),
+    ...sharedAddresses(signers, pinnedAddresses(params)).map(
+      (a) => `Two signers share ${a}: each signs on their own link, with their own name and code`,
+    ),
     `Links last ${String(params.expires_in_days ?? 14)} days`,
   ]
   if (typeof params.required_phrase === "string" && params.required_phrase)
@@ -48,7 +71,9 @@ export function summarizeAgreementSend(params: Record<string, unknown>): Promise
   if (typeof params.message === "string" && params.message) lines.push(`Message: ${params.message}`)
   return done({
     kind: "agreement_send",
-    title: `Send a frozen agreement version to ${signers.length} signer(s)`,
+    title: document
+      ? `Send ${document} to ${who}`
+      : `Send a frozen agreement version to ${who}`,
     subtitle: "Nothing is sent if the version changed since this card",
     lines,
   })

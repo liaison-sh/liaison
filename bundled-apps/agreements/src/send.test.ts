@@ -328,7 +328,11 @@ describe("sending for signature", () => {
 async function pinnedFor(db: Db, p: Parameters<typeof agreementSend>[1]) {
   const out = (await agreementSendPreflight(ctxFor(db), p)) as {
     ok: true
-    pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string }
+    pinnedParams: {
+      sendGuard: Record<string, unknown>
+      guardKey: string
+      document: Record<string, unknown>
+    }
   }
   return out.pinnedParams
 }
@@ -350,6 +354,11 @@ describe("the send check an approved send carries", () => {
       addresses: ["paul@maison-morel.example", "lea@maison-roux.example"],
       contactIds: [C1],
       refs: [],
+    })
+    expect(pin.document).toEqual({
+      number: expect.stringMatching(/^AG-/),
+      title: "Mutual NDA",
+      version: 1,
     })
     expect(pin.guardKey).toBe(
       `${prepared.version_id}:${SHA}:lea@maison-roux.example,paul@maison-morel.example`,

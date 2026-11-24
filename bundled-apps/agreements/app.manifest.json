@@ -1921,6 +1921,11 @@
           "guardKey": {
             "type": "string",
             "description": "Set by the server; leave it out."
+          },
+          "document": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Set by the server; leave it out."
           }
         },
         "required": [
@@ -1932,7 +1937,8 @@
       "preflight": "agreementSendPreflightHandler",
       "pinnedParams": [
         "sendGuard",
-        "guardKey"
+        "guardKey",
+        "document"
       ],
       "approvalDedupeKeyParam": "guardKey"
     },

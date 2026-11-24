@@ -91,6 +91,15 @@ export interface SendParams {
   /** Pinned by the card's preflight; the approved call carries them unchanged. */
   sendGuard?: Record<string, unknown>
   guardKey?: string
+  /** The document as the card names it. */
+  document?: SendDocument
+}
+
+/** What a card that sends a document says it is. */
+export interface SendDocument {
+  number: string
+  title: string
+  version: number
 }
 
 interface Resolved {
@@ -398,14 +407,29 @@ export async function agreementSendPreflight(
   ctx: AgreementsCtx,
   p: SendParams,
 ): Promise<
-  | { ok: true; pinnedParams: { sendGuard: Record<string, unknown>; guardKey: string } }
+  | {
+      ok: true
+      pinnedParams: {
+        sendGuard: Record<string, unknown>
+        guardKey: string
+        document: SendDocument
+      }
+    }
   | { error: { code: string; message: string } }
 > {
   const ready = await readyToSend(ctx, p)
   if (isError(ready)) return { error: ready.error }
   return {
     ok: true,
-    pinnedParams: { sendGuard: sendGuardOf(ready), guardKey: sendGuardKey(ready) },
+    pinnedParams: {
+      sendGuard: sendGuardOf(ready),
+      guardKey: sendGuardKey(ready),
+      document: {
+        number: ready.agreement.number,
+        title: ready.agreement.title,
+        version: ready.version.number,
+      },
+    },
   }
 }
 

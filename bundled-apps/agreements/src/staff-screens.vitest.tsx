@@ -229,6 +229,28 @@ describe("the agreement", () => {
     })
   })
 
+  it("a decline after others signed never says that nothing was signed", async () => {
+    const text = async (signed: boolean) => {
+      answers.agreement_get = () =>
+        agreement(
+          { status: "declined" },
+          {
+            signing_links: [
+              link({ client_action_id: "one", state: signed ? "decided" : "open" }),
+              link({ client_action_id: "two", state: "declined", sign_order: 2 }),
+            ],
+          },
+        )
+      const view = render(() => <AgreementDetailView entityId={ID} />)
+      const note = (await screen.findByTestId("agreement-state-declined")).textContent
+      view.unmount()
+      return note
+    }
+    expect(await text(true)).toContain("Some signers had signed.")
+    expect(await text(true)).not.toContain("Nothing was signed")
+    expect(await text(false)).toContain("Nothing was signed.")
+  })
+
   it("says the signed copy did not match, offers no repair, and lets a person withdraw it", async () => {
     answers.agreement_get = () =>
       agreement(

@@ -44,4 +44,22 @@ describe("signers' copies", () => {
     await w.db.update("agreement_versions", w.versionId, { status: "frozen" })
     expect(await copyStateOf(w.ctx, w.versionId, ACTION_A)).toBe("waiting_for_others")
   })
+
+  it("no copy is awaited once the agreement was declined, voided, ended or replaced", async () => {
+    const w = await signedWorld()
+    const version = (await w.db.findOne("agreement_versions", w.versionId)) as {
+      agreement_id: string
+    }
+    const state = () => copyStateOf(w.ctx, w.versionId, ACTION_A)
+    await w.db.update("agreement_versions", w.versionId, { status: "frozen" })
+    for (const status of ["declined", "voided", "expired"]) {
+      await w.db.update("agreements", version.agreement_id, { status })
+      expect(await state()).toBe("not_completed")
+    }
+    // A new link after a decline made without the code puts it back to waiting.
+    await w.db.update("agreements", version.agreement_id, { status: "partly_signed" })
+    expect(await state()).toBe("waiting_for_others")
+    await w.db.update("agreement_versions", w.versionId, { status: "superseded" })
+    expect(await state()).toBe("not_completed")
+  })
 })

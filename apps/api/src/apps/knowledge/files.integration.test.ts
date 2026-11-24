@@ -39,6 +39,7 @@ import {
   FileServiceError,
   moveFilesToParent,
 } from "~/modules/files/service"
+import { seedFileRow } from "~/seed/factories/files/file-row"
 import * as minimal from "~/seed/tiers/minimal"
 import { createTestOrg } from "~/tests/helpers/org"
 import { acquireTestLock, releaseTestLock } from "~/tests/route-test-setup"
@@ -144,18 +145,17 @@ async function save(who: minimal.Session, id: string, body: string): Promise<Doc
 
 /** A stored file row on a page (the bytes are never read by these tests). */
 async function fileOn(docId: string, opts: { size?: number; uploadedBy?: string } = {}) {
-  const [row] = extractRows<{ id: string }>(
-    await withPrivilegedDb(orgId, "test-file", (tx) =>
-      tx.execute(sql`
-        INSERT INTO kernel.files (org_id, app, entity_type, entity_id, filename, mime_type,
-                                  size_bytes, storage_key, uploaded_by)
-        VALUES (${orgId}::uuid, 'knowledge', 'document', ${docId}, 'diagram.png', 'image/png',
-                ${opts.size ?? 10}, ${`test/${randomUUID()}/diagram.png`},
-                ${opts.uploadedBy ?? editor.userId}::uuid)
-        RETURNING id::text AS id`),
-    ),
-  )
-  return row?.id ?? ""
+  return seedFileRow({
+    orgId,
+    app: "knowledge",
+    entityType: "document",
+    entityId: docId,
+    filename: "diagram.png",
+    mimeType: "image/png",
+    sizeBytes: opts.size ?? 10,
+    storageKey: `test/${randomUUID()}/diagram.png`,
+    uploadedBy: opts.uploadedBy ?? editor.userId,
+  })
 }
 
 async function filesOf(docId: string) {

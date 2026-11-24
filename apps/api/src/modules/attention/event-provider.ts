@@ -3,6 +3,8 @@ import type { AttentionItem, AttentionKind } from "@liaison/shared"
 import { sql } from "drizzle-orm"
 import type { RlsClient } from "~/db"
 import { schemaRef } from "~/db/schema-ref"
+import { FEED_STATUS_SQL } from "~/modules/approvals/attention"
+import { readRequestsNow } from "~/modules/approvals/attention-rows"
 import {
   externalOnlyDetail,
   getDetailExternalLink,
@@ -13,6 +15,19 @@ import { resolveReferenceMetadataFromManifests } from "~/modules/threads/referen
 const K = sql.raw(schemaRef("kernel"))
 
 const PROVIDER_ITEM_CAP = 200
+const UUID_SQL = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+/** The request a stored row names: a reminder's, or the decided one. */
+function namedRequest(r: EventRow): { id: string; reminder: boolean } | null {
+  if (r.app !== "kernel") return null
+  if (r.kind === "agent_notification") {
+    const id = (r.metadata?.routedReminder as { approvalId?: unknown } | undefined)?.approvalId
+    return typeof id === "string" ? { id, reminder: true } : null
+  }
+  return r.kind === "approval_decision" && r.entity_type === "approval_request"
+    ? { id: r.entity_id, reminder: false }
+    : null
+}
 
 interface EventRow {
   id: string
@@ -37,17 +52,55 @@ export async function getEventAttentionItems(
   orgId: string,
   userId: string,
 ): Promise<AttentionItem[]> {
-  const rows = (await tx.execute(sql`
-    SELECT id, app, entity_type, entity_id, kind, urgency, summary,
-           occurred_at, metadata
-    FROM ${K}.attention_events
-    WHERE org_id = ${orgId}
-      AND user_id = ${userId}
-      AND read_at IS NULL
-      AND email_only = false
-      AND (set_aside_until IS NULL OR set_aside_until <= now())
-    ORDER BY urgency DESC, occurred_at ASC
-    LIMIT ${PROVIDER_ITEM_CAP}`)) as unknown as EventRow[]
+  const unread = sql`
+    ae.org_id = ${orgId}
+      AND ae.user_id = ${userId}
+      AND ae.read_at IS NULL
+      AND ae.email_only = false
+      AND (ae.set_aside_until IS NULL OR ae.set_aside_until <= now())`
+  const columns = sql`ae.id, ae.app, ae.entity_type, ae.entity_id, ae.kind, ae.urgency, ae.summary,
+           ae.occurred_at, ae.metadata`
+  const order = sql`ae.urgency DESC, ae.occurred_at ASC`
+  const reminder = sql`(ae.app = 'kernel' AND ae.kind = 'agent_notification'
+      AND COALESCE(jsonb_typeof(ae.metadata->'routedReminder'->'approvalId') = 'string', false))`
+  // A reminder counts against the cap only while it is worth a row: those of requests that ended,
+  // or that are no longer this person's, are left out before it, or enough of them hide live rows.
+  // No cap of their own: at most one per request still waiting.
+  const unreadRows = (await tx.execute(sql`
+    (SELECT ${columns}
+       FROM ${K}.attention_events ae
+      WHERE ${unread} AND NOT ${reminder}
+      ORDER BY ${order}
+      LIMIT ${PROVIDER_ITEM_CAP})
+    UNION ALL
+    (SELECT ${columns}
+       FROM ${K}.attention_events ae
+       JOIN ${K}.approval_requests ar
+         ON ar.id = CASE WHEN ae.metadata->'routedReminder'->>'approvalId' ~* ${UUID_SQL}
+                         THEN (ae.metadata->'routedReminder'->>'approvalId')::uuid END
+        AND ar.org_id = ae.org_id
+      WHERE ${unread} AND ${reminder} AND ${FEED_STATUS_SQL})`)) as unknown as EventRow[]
+
+  // A row about a request follows the request: a reminder only while this reader can decide it,
+  // a decision with the name of what was decided (approvals/attention-rows.ts).
+  const requests = await readRequestsNow(
+    tx,
+    orgId,
+    userId,
+    unreadRows.flatMap((r) => namedRequest(r)?.id ?? []),
+  )
+  const isLive = (r: EventRow): boolean => {
+    const named = namedRequest(r)
+    return !named?.reminder || requests.get(named.id)?.theirs === true
+  }
+  const rows = unreadRows
+    .filter(isLive)
+    .sort(
+      (a, b) =>
+        Number(b.urgency) - Number(a.urgency) ||
+        new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime(),
+    )
+    .slice(0, PROVIDER_ITEM_CAP)
 
   // Connection template vars (e.g. the Shopify shop subdomain) are resolved once
   // per app across the batch — a single small query even when many rows share an
@@ -62,6 +115,14 @@ export async function getEventAttentionItems(
 
   const items: AttentionItem[] = []
   for (const r of rows) {
+    const named = namedRequest(r)
+    const request = named ? requests.get(named.id) : undefined
+    if (named?.reminder && request) {
+      // The app it is about: a person that app was taken from sees neither card nor reminder.
+      r.metadata = { ...(r.metadata ?? {}), toolName: request.toolName }
+    } else if (named && request?.title) {
+      r.metadata = { ...(r.metadata ?? {}), decisionTitle: request.title }
+    }
     const meta = resolveReferenceMetadataFromManifests(r.app, r.entity_type, orgId)
     const tabType = meta?.tabType ?? `${r.app}:${r.entity_type}`
     const occurredIso =

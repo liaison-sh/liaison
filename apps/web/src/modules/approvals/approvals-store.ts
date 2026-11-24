@@ -101,9 +101,24 @@ function shouldReplace(
   return statusRank(next.status) >= statusRank(existing.status)
 }
 
-function mergeRow(s: ApprovalsState, row: ApprovalRequestSummary): boolean {
-  const existing = s.byId[row.id]
-  if (!shouldReplace(existing, row)) return false
+/**
+ * A live event goes to everyone the request is for and names no record. The same card read by this
+ * person does: its own words stay while what they say has not changed.
+ */
+function keepingNames(
+  existing: ApprovalRequestSummary | undefined,
+  next: ApprovalRequestSummary,
+): ApprovalRequestSummary {
+  if (!next.summary?.namesHeld || !existing || existing.summary?.namesHeld) return next
+  return next.payloadHash && next.payloadHash === existing.payloadHash
+    ? { ...next, summary: existing.summary }
+    : next
+}
+
+function mergeRow(s: ApprovalsState, incoming: ApprovalRequestSummary): boolean {
+  const existing = s.byId[incoming.id]
+  if (!shouldReplace(existing, incoming)) return false
+  const row = keepingNames(existing, incoming)
   if (row.payloadHash && !s.reviewedPayloadHash[row.id]) {
     s.reviewedPayloadHash[row.id] = row.payloadHash
   }
@@ -170,7 +185,8 @@ const inFlightBundleLoads = new Map<string, Promise<void>>()
 
 export async function ensureLoaded(api: ApiClient, id: string): Promise<ApprovalRequestSummary> {
   const existing = approvalsStore.byId[id]
-  if (existing) {
+  // A row known from a live event alone holds no record's name: it is read for this person.
+  if (existing && !existing.summary?.namesHeld) {
     void ensureBundleLoaded(api, existing)
     return existing
   }

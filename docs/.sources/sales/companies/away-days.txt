@@ -1,0 +1,1 @@
+An away manager's next in line is told on the manager's own days -> apps/api/src/modules/attention/translator.ts (loadAccountManager) ; apps/api/src/modules/users/away.ts (nextInLineToday)

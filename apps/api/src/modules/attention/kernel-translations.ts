@@ -89,6 +89,11 @@ export interface Translation {
    *     this form an app had to find a constant payload field to compare on.
    */
   resolveWhen?: AttentionResolveWhen
+  /**
+   * The entity type of the rows `resolveWhen` clears, when they were raised by another entity's
+   * event about the same id. Default: the event's own entity.
+   */
+  resolveEntityType?: string
 }
 
 /** The Home line of `restricted_record:requests_withdrawn`, read back by the web's title. */
@@ -215,6 +220,23 @@ export const kernelTranslations: Translation[] = [
     // system stamps the requester), so it still reaches them.
     excludeActor: true,
     keepActorWhen: { op: "eq", path: "actorType", value: "system" },
+  },
+  {
+    // A request that ended needs no reminder that it waits (approvals/routed-reminders.ts): the
+    // rows its deciders hold, keyed on the request, are read with it.
+    event: "approval_request:update",
+    app: "kernel",
+    kind: "agent_notification",
+    urgency: 50,
+    summary: "",
+    when: {
+      op: "in",
+      path: "data.status",
+      values: ["approved", "denied", "expired", "cancelled", "withdrawn"],
+    },
+    recipients: { kind: "participants", path: "data.notifyUserIds" },
+    resolveWhen: { always: true },
+    resolveEntityType: "agent_notification",
   },
   // NOTE: a post-approval failure is no longer a SEPARATE attention item. The
   // failure now rides the approval summary as `lastFailure` (buildApprovalSummary,

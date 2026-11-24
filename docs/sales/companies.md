@@ -19,7 +19,7 @@ A company is visible to everyone, to some people, or only to you. The page says 
 
 ## What the company's page shows
 
-- **Account manager**: the person who looks after it, with **away until** and a date when they are away. Anyone who can edit companies changes it with **Change the account manager**. When the change needs approval, the page says **Sent for approval. The account manager changes once it is approved.** The company may also say **Relationship ended**.
+- **Account manager**: the person who looks after it, with **away until** and a date when they are away. Anyone who can edit companies changes it with **Change the account manager**. When the change needs approval, the page says **Sent for approval. The account manager changes once it is approved.** While they are away, what a client's request or message tells them also reaches the colleague next in line, on the days of their own time zone (the organization's when they set none). The company may also say **Relationship ended**.
 - **Waiting**: the approvals about this company that wait for someone, shown as on **Home**.
 - **People**: everyone linked to the company, with its **Main contact**. Eight are shown; **Show all** lists the rest. With no people yet, **Ask the agent to find people here** and **Link past mail from this domain** ask the agent to link them.
 - **Deals**: its newest open deal, with its stage and amount. Click it to open the deal. With none the page says **No open deal.**

@@ -38,6 +38,7 @@
  * correction, and the stored row drops it.
  */
 
+import { closesReply } from "~/modules/agent/providers/answer-after-tools"
 import type { TurnTimelineEntry } from "~/modules/agent/runtime/agent-service"
 import { claimsFreshAction } from "~/modules/agent/runtime/announced-action-claim"
 import { claimedCards, type ThreadCards } from "~/modules/agent/runtime/card-claim"
@@ -242,7 +243,8 @@ export function falseApprovalLookups(params: {
 
 /** What the first run of the turn did, as its stream showed it. */
 export interface ObservedRun {
-  /** The text written after the run's last tool call. */
+  /** The text written after the run's last tool call that worked: a call that closes the reply
+   * (its next steps) leaves the answer it closes in place. */
   finalText: string
   /** Every text the run wrote, before and after its tool calls. */
   allText: string
@@ -262,7 +264,22 @@ export interface Retraction {
   text: string
 }
 
-type Chunk = { type?: string; text?: string; output?: unknown; finishReason?: string }
+type Chunk = {
+  type?: string
+  text?: string
+  toolName?: string
+  output?: unknown
+  finishReason?: string
+}
+/** A call that works, rather than closing the reply with its next steps. */
+const works = (chunk: Chunk): boolean => !closesReply(chunk.toolName ?? "")
+
+/** A step that ended a reply: the model stopped, or its only calls closed the reply. */
+const endedReply = (finishReason: string | undefined, closedReply: boolean): boolean =>
+  finishReason === undefined ||
+  finishReason === "stop" ||
+  (closedReply && finishReason === "tool-calls")
+
 type StreamLike = {
   fullStream: AsyncIterable<unknown>
   responseMessages?: PromiseLike<unknown[]>
@@ -323,6 +340,7 @@ export async function* withFalseApprovalGuard(opts: {
   let sawError = false
   let lastStepCalledTool = false
   let stepCalledTool = false
+  let closedReply = false
   let lastFinishReason: string | undefined
   let heldFinish: unknown = null
 
@@ -335,6 +353,8 @@ export async function* withFalseApprovalGuard(opts: {
         allText += chunk.text ?? ""
         break
       case "tool-call":
+        closedReply = !works(chunk)
+        if (closedReply) break
         stepCalledTool = true
         finalText = ""
         break
@@ -360,7 +380,7 @@ export async function* withFalseApprovalGuard(opts: {
   const eligible =
     !sawError &&
     !lastStepCalledTool &&
-    (lastFinishReason === undefined || lastFinishReason === "stop") &&
+    endedReply(lastFinishReason, closedReply) &&
     finalText.trim().length > 0 &&
     opts.first.responseMessages !== undefined
   const verdict = eligible ? await opts.shouldCorrect({ finalText, allText, toolOutputs }) : false
@@ -389,6 +409,7 @@ export async function* withFalseApprovalGuard(opts: {
     let contFinalText = ""
     let contStepCalledTool = false
     let contLastStepCalledTool = false
+    let contClosedReply = false
     let contFinishReason: string | undefined
     let contError = false
     // Turn text streamed so far, the separator included.
@@ -404,7 +425,10 @@ export async function* withFalseApprovalGuard(opts: {
           continue
         }
         streamedLength += chunk.text?.length ?? 0
+      } else if (chunk.type === "tool-call" && !works(chunk)) {
+        contClosedReply = true
       } else if (chunk.type === "tool-call") {
+        contClosedReply = false
         calledTool = true
         contStepCalledTool = true
         contFinalText = ""
@@ -431,7 +455,7 @@ export async function* withFalseApprovalGuard(opts: {
       opts.correctAgain &&
       !contError &&
       !contLastStepCalledTool &&
-      (contFinishReason === undefined || contFinishReason === "stop") &&
+      endedReply(contFinishReason, contClosedReply) &&
       contFinalText.trim().length > 0 &&
       continuation.responseMessages !== undefined &&
       (await opts.correctAgain.shouldCorrect({ finalText: contFinalText }))

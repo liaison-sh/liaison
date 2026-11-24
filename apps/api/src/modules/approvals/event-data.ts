@@ -21,6 +21,7 @@ import { approvalPayloadHash } from "~/modules/approvals/payload-hash"
 import { readApprovalRequester } from "~/modules/approvals/requester"
 import { humanizeToolName, splitToolName } from "~/modules/approvals/tool-name"
 import { approvalEditableFieldsRegistry } from "~/modules/apps/app-registries"
+import { withoutNames } from "~/modules/apps/approval-record-names"
 import { loadEffectivePermissions } from "~/modules/permissions/permissions"
 import { sendMessage } from "~/modules/threads/message"
 
@@ -127,7 +128,8 @@ export function buildApprovalSummary(input: {
     expiresAt: new Date(r.expires_at).toISOString(),
     toolName: r.tool_name,
     approveScope: r.approve_scope,
-    summary: r.summary,
+    // A served row holds its reader's names already; an event goes to many readers and holds none.
+    summary: r.summary?.names ? { ...withoutNames(r.summary), namesHeld: true } : r.summary,
     editableFields: input.editableFields,
     currentPayload: r.current_payload,
     payloadHash: approvalPayloadHash(r.tool_name, r.current_payload),

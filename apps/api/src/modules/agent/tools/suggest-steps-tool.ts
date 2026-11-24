@@ -157,13 +157,13 @@ export async function handleSuggestNextSteps(
     return {
       ok: true,
       shown: 0,
-      message: `${NOTHING_SHOWN} This conversation holds outside text, so no chip may speak for the person here; offer the steps in your reply instead.`,
+      message: `${NOTHING_SHOWN} This conversation holds outside text, so no chip may speak for the person here. A reply already written stands as it is: never repeat it. One still to write may name the steps.`,
     }
   }
   return {
     ok: true,
     shown: steps.length,
     steps,
-    message: `${steps.length} shown under your reply. A click sends a chip's label as the person's message, or opens its tab.`,
+    message: `${steps.length} shown under your reply, which stands as it is: never repeat it. A click sends a chip's label as the person's message, or opens its tab.`,
   }
 }

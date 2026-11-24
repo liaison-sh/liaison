@@ -110,6 +110,16 @@ export const approvalSummarySchema = z
     // ("approving shares it with them"). It is also the last of `lines`, for a reader of the lines
     // alone; a card shows it on its face, never only behind its details.
     consent: z.string().max(300).optional(),
+    // The texts above that stand for a record ("a task"), each with the form that names it. Only
+    // stored: the server names a record for each reader who may read it, as it serves the card,
+    // and never sends this.
+    names: z
+      .array(z.object({ shown: z.string().max(8000), named: z.string().max(16000) }))
+      .max(60)
+      .optional(),
+    // Set where a card is sent to many readers at once (a live event): the record's name is left
+    // out, and a reader who already holds the card by its name keeps it.
+    namesHeld: z.literal(true).optional(),
   })
   .refine((s) => s.lines.length <= approvalSummaryLinesMax(s.kind), {
     path: ["lines"],

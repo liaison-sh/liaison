@@ -244,3 +244,43 @@ describe("attention row format — a routed request waiting a day", () => {
     )
   })
 })
+
+describe("attention row format — a decided request", () => {
+  const flat = (locale: "en" | "fr") => {
+    const out: Record<string, unknown> = {}
+    for (const [ns, dict] of Object.entries(dictionariesFor(locale))) {
+      for (const [k, v] of Object.entries(flatten(dict as Record<string, unknown>))) {
+        out[`${ns}.${k}`] = v
+      }
+    }
+    return (key: string, params?: Record<string, string | number | boolean>) => {
+      const raw = out[key]
+      if (typeof raw !== "string") return key
+      return params ? resolveTemplate(raw, params) : raw
+    }
+  }
+  const row = (status: string, title?: string) => ({
+    app: "kernel",
+    kind: "approval_decision",
+    summary: `Approval request-7 ${status}`,
+    ...(title ? { metadata: { decisionTitle: title } } : {}),
+  })
+
+  test("says what it was about, in the reader's language", () => {
+    const said = (status: string, locale: "en" | "fr") =>
+      kernelAttentionTitle(row(status, "Issue the invoice"), flat(locale))
+    expect(said("approved", "en")).toBe("Approved: Issue the invoice (request-7)")
+    expect(said("denied", "en")).toBe("Rejected: Issue the invoice (request-7)")
+    expect(said("expired", "en")).toBe("Expired without a decision: Issue the invoice (request-7)")
+    expect(said("approved", "fr")).toBe("Approuvée : Issue the invoice (request-7)")
+    expect(said("denied", "fr")).toBe("Refusée : Issue the invoice (request-7)")
+    expect(said("expired", "fr")).toBe("Expirée sans décision : Issue the invoice (request-7)")
+  })
+
+  test("a row that names nothing keeps its handle, in the reader's language", () => {
+    expect(kernelAttentionTitle(row("expired"), flat("en"))).toBe("Approval request-7 expired")
+    expect(kernelAttentionTitle(row("expired"), flat("fr"))).toBe("Demande request-7 expirée")
+    expect(kernelAttentionTitle(row("denied"), flat("fr"))).toBe("Demande request-7 refusée")
+    expect(kernelAttentionTitle(row("approved"), flat("fr"))).toBe("Demande request-7 approuvée")
+  })
+})

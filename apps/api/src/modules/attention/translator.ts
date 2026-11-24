@@ -6,7 +6,7 @@ import { extractRows, type PrivilegedDb } from "~/db"
 import { withPrivilegedDb, withPrivilegedReadReusingHeld } from "~/db/privileged"
 import { schemaRef } from "~/db/schema-ref"
 import { UUID_RE } from "~/lib/uuid"
-import { nextInLineOn } from "~/modules/users/away"
+import { nextInLineToday } from "~/modules/users/away"
 
 const K = sql.raw(schemaRef("kernel"))
 
@@ -133,7 +133,7 @@ export interface TranslatorDeps {
     orgId: string,
   ) => Promise<Map<string, UserPrefsSnapshot>>
   /** `resolveWhen` hit: mark matching unread rows read. Injectable for tests. */
-  resolveAttentionRows?: (event: AppEvent, kind: string) => Promise<void>
+  resolveAttentionRows?: (event: AppEvent, kind: string, entityType?: string) => Promise<void>
   recipientContext?: Partial<RecipientContext>
   /**
    * Phase 16 Task A2 — per-translation, per-event subscription narrowing.
@@ -825,14 +825,18 @@ export function resolveWhenHit(
 
 /** `resolveWhen` hit: mark every matching UNREAD row read (org-wide — resolution
  *  clears the row for all recipients, not just those the event would notify). */
-async function resolveAttentionRows(event: AppEvent, kind: string): Promise<void> {
+async function resolveAttentionRows(
+  event: AppEvent,
+  kind: string,
+  entityType: string = event.entity,
+): Promise<void> {
   await withPrivilegedDb(event.orgId, "translator:resolve-rows", async (tx: PrivilegedDb) => {
     await tx.execute(sql`
       UPDATE ${K}.attention_events
       SET read_at = now()
       WHERE org_id = ${event.orgId}
         AND app = ${event.app}
-        AND entity_type = ${event.entity}
+        AND entity_type = ${entityType}
         AND entity_id = ${event.entityId}
         AND kind = ${kind}
         AND read_at IS NULL
@@ -1158,7 +1162,11 @@ export async function processTranslationEvent(
       // that ends its order:created row's reason to exist). Clear the unread
       // row(s) instead of upserting a nonsense "0 items need you" row.
       if (t.resolveWhen && resolveWhenHit(t.resolveWhen, event)) {
-        await (deps.resolveAttentionRows ?? resolveAttentionRows)(event, t.kind)
+        await (deps.resolveAttentionRows ?? resolveAttentionRows)(
+          event,
+          t.kind,
+          ...(t.resolveEntityType ? [t.resolveEntityType] : []),
+        )
         continue
       }
       // D2 batching: resolve the CANDIDATE set first, with NO subscription
@@ -1484,15 +1492,15 @@ export function standInMark(ids: readonly string[] | null): {
 }
 
 /**
- * A company's account manager, an active member, and while they are away today the
- * colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
+ * A company's account manager, an active member, and while they are away today (their own day)
+ * the colleague next in line (modules/users/away.ts), unless the caller asked for no stand-in.
  * A company merged into another answers with the surviving company's manager: the
  * merge's audit row names the survivor (followed through a few merges in a row).
  */
 export async function loadAccountManager(
   orgId: string,
   companyId: string,
-  opts?: { standIn?: boolean },
+  opts?: { standIn?: boolean; now?: Date },
 ): Promise<string[] | null> {
   if (!UUID_RE.test(companyId)) return null
   const K = sql.raw(schemaRef("kernel"))
@@ -1524,6 +1532,6 @@ export async function loadAccountManager(
   )
   if (!row) return null
   if (opts?.standIn === false) return [row.id]
-  const next = await nextInLineOn(orgId, row.id, new Date().toISOString().slice(0, 10))
+  const next = await nextInLineToday(orgId, row.id, opts?.now)
   return next ? [row.id, next] : [row.id]
 }

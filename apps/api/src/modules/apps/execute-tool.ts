@@ -275,6 +275,7 @@ import {
   approvalEditableFieldsRegistry,
   approvalExpiryRegistry,
 } from "~/modules/apps/app-registries"
+import { withoutNames } from "~/modules/apps/approval-record-names"
 import { generateApprovalSummary } from "~/modules/apps/approval-summarizers"
 import { ingestionCallerApp } from "~/modules/apps/cross-app-ingestions"
 import { ensureAppsForOrg, getDefaultApps } from "~/modules/apps/init"
@@ -3954,6 +3955,18 @@ export function statusForToolError(code: string): number {
     case "company_has_accounts":
     case "company_has_schedules":
       return 409
+    // A deactivation refused until it says who takes the person's companies, or because it would
+    // leave no admin (kernel-bulk.ts): the same 409 as the admin route.
+    case "accounts_to_required":
+    case "last_admin":
+    // A company's account manager that cannot be: inactive, a client, or unable to read the
+    // company (contacts/companies.ts).
+    case "manager_inactive":
+    case "manager_external":
+    case "manager_cannot_see_company":
+      return 409
+    case "manager_not_found":
+      return 404
     // A person delete refused while a live recurring invoice schedule bills them
     // (contacts/service.ts): the workspace's state, not a fault.
     case "contact_has_schedules":
@@ -5813,7 +5826,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
       blocked: {
         reason: "taint_escalation",
         approvalRequestId,
-        summary,
+        summary: withoutNames(summary),
         requesterCanApprove,
         outsideText: OUTSIDE_TEXT_HOLD_NOTE,
         ...(await gatedAgentNotesFor(tool, validatedParams, {
@@ -6268,7 +6281,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
           ...(joinedTurnBundle ? { sequenced: true } : {}),
           // The row's real audience: an owner-routed approval (a personal
           // resource of the requester) is decided by the requester alone even
@@ -6337,7 +6350,7 @@ export async function executeToolCore(opts: ExecuteToolCoreOptions): Promise<Exe
         blocked: {
           reason: "gated",
           approvalRequestId,
-          summary,
+          summary: withoutNames(summary),
           requesterCanApprove,
           sequenced: true,
           ...buildSequencingOutputs(tool, approvalRequestId),

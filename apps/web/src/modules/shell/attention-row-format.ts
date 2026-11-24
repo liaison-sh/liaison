@@ -427,9 +427,18 @@ export function kernelAttentionTitle(
       return m
         ? t("kernel.attentionTitle.requestedAccess", { name: m[1] ?? "", title: m[2] ?? "" })
         : s
-    case "approval_decision":
-      m = /^Approval (\S+) (approved|rejected)$/.exec(s)
-      return m ? t(`kernel.attentionTitle.approvalDecided.${m[2]}`, { handle: m[1] ?? "" }) : s
+    case "approval_decision": {
+      m = /^Approval (\S+) (approved|rejected|denied|expired)$/.exec(s)
+      if (!m) return s
+      const word = m[2] === "denied" ? "rejected" : m[2]
+      const handle = m[1] ?? ""
+      // What it was about, read by the feed with the reader's own access
+      // (api approvals/attention-rows.ts) and never stored.
+      const title = item.metadata?.decisionTitle
+      return typeof title === "string" && title
+        ? t(`kernel.attentionTitle.approvalDecidedNamed.${word}`, { title, handle })
+        : t(`kernel.attentionTitle.approvalDecided.${word}`, { handle })
+    }
     case "client_action": {
       // Requests sent outside the org to sign, accept or approve (modules/client-actions).
       const k = "kernel.attentionTitle.clientAction"

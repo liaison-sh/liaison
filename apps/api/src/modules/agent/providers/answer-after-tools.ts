@@ -129,6 +129,67 @@ function endsInToolResults(params: CallOptions): boolean {
  */
 export const REPLY_CLOSING_TOOLS: ReadonlySet<string> = new Set(["kernel__suggest_next_steps"])
 
+/** Whether this call closes a reply rather than working for it. */
+export function closesReply(toolName: string): boolean {
+  return REPLY_CLOSING_TOOLS.has(toolName)
+}
+
+/** A text this long that ends as an answer does is a whole answer, not a note before one. */
+const WHOLE_ANSWER_MIN_CHARS = 160
+/** What may stand after the last word of a sentence: emphasis, quotes, brackets, a sign. */
+const AFTER_SENTENCE = /(?:[\s*_~`"'»”’)\]]|\p{Extended_Pictographic}|\u{FE0F}|\u{200D})+$/u
+const LIST_OR_TABLE_LINE = /^\s*(?:[-*+]\s|\d+[.)]\s|\|)/
+
+/** Ends on a sentence, a list, a table or a code block: never on a heading or an introduction. */
+function endsAsAnswer(text: string): boolean {
+  const lastLine = text.split("\n").pop() ?? ""
+  const end = text.replace(AFTER_SENTENCE, "")
+  if (/(?:[:,;：、，；…]|\.\.\.)$/.test(end)) return false
+  return (
+    /\p{Sentence_Terminal}$/u.test(end) ||
+    LIST_OR_TABLE_LINE.test(lastLine) ||
+    lastLine.trim() === "```"
+  )
+}
+
+interface ReplyStep {
+  text?: string
+  toolCalls?: ReadonlyArray<{ toolName: string }>
+  toolResults?: ReadonlyArray<{ output?: unknown }>
+}
+
+function closesOnly(step: ReplyStep | undefined): boolean {
+  const calls = step?.toolCalls ?? []
+  return calls.length > 0 && calls.every((c) => closesReply(c.toolName))
+}
+
+/**
+ * The stop condition of a reply that is written and closed: its last steps called nothing but
+ * closing tools, and what they wrote is a whole answer. Left to run, the loop asks the model for
+ * one more step after the chips, and a model with nothing left to say says its answer again. A
+ * refused call, or one its schema refused (it has no result), gets one more step, to be made again.
+ */
+export function replyIsClosed({ steps }: { steps: ReadonlyArray<ReplyStep> }): boolean {
+  const closing: ReplyStep[] = []
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i]
+    if (!step || !closesOnly(step)) break
+    closing.unshift(step)
+  }
+  const last = closing[closing.length - 1]
+  if (!last) return false
+  const results = last.toolResults ?? []
+  const refused =
+    results.length < (last.toolCalls ?? []).length ||
+    results.some((r) => (r.output as { ok?: unknown } | null | undefined)?.ok === false)
+  if (refused && closing.length < 2) return false
+  const text = closing
+    .map((s) => s.text ?? "")
+    .join("")
+    .trim()
+  return text.length >= WHOLE_ANSWER_MIN_CHARS && endsAsAnswer(text)
+}
+
 type PromptPart = { type?: string; text?: unknown; toolName?: unknown }
 type PromptMessage = { role: string; content: unknown }
 
@@ -146,9 +207,7 @@ function answeredBeforeClosing(params: CallOptions): boolean {
     if (message?.role === "tool") continue
     if (message?.role !== "assistant") break
     const parts = Array.isArray(message.content) ? (message.content as PromptPart[]) : []
-    const gathers = parts.some(
-      (p) => p.type === "tool-call" && !REPLY_CLOSING_TOOLS.has(String(p.toolName)),
-    )
+    const gathers = parts.some((p) => p.type === "tool-call" && !closesReply(String(p.toolName)))
     if (gathers) break
     if (typeof message.content === "string" && message.content.trim().length > 0) wrote = true
     if (

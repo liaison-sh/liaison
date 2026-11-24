@@ -177,6 +177,29 @@ describe("statusForToolError: every deliberate app code is a non-500", () => {
     expect(statusForToolError("NOT_FOUND")).toBe(404)
   })
 
+  it("a deactivation's refusals are 4xx: the question of who takes their companies is the caller's to answer", () => {
+    // Every code the deactivation answers with, read from its source.
+    const source = readFileSync(join(REPO, "apps/api/src/modules/apps/kernel-bulk.ts"), "utf8")
+    const codes = new Set(
+      [...source.matchAll(/\bcode(?::|\s*=)[^\n]*/g)].flatMap(([line]) =>
+        [...line.matchAll(/"([a-z]+(?:_[a-z]+)*)"/g)].map((m) => m[1] as string),
+      ),
+    )
+    for (const code of ["accounts_to_required", "last_admin", "forbidden", "not_found"]) {
+      expect(codes).toContain(code)
+    }
+    const faults = [...codes].filter((code) => statusForToolError(code) >= 500)
+    expect(faults).toEqual([])
+    // The admin route answers these two with 409: the tool answers the same.
+    expect(statusForToolError("accounts_to_required")).toBe(409)
+    expect(statusForToolError("last_admin")).toBe(409)
+    // Who takes the companies over, when that person cannot.
+    expect(statusForToolError("manager_not_found")).toBe(404)
+    for (const code of ["manager_inactive", "manager_external", "manager_cannot_see_company"]) {
+      expect({ code, status: statusForToolError(code) }).toEqual({ code, status: 409 })
+    }
+  })
+
   it("a company delete refused while accounts or a live recurring schedule hold it is 409", () => {
     expect(statusForToolError("company_has_accounts")).toBe(409)
     expect(statusForToolError("company_has_schedules")).toBe(409)

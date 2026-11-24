@@ -4127,7 +4127,13 @@
     "requestedAccess": "{{name}} demande un accès : {{title}}",
     "approvalDecided": {
       "approved": "Demande {{handle}} approuvée",
-      "rejected": "Demande {{handle}} refusée"
+      "rejected": "Demande {{handle}} refusée",
+      "expired": "Demande {{handle}} expirée"
+    },
+    "approvalDecidedNamed": {
+      "approved": "Approuvée : {{title}} ({{handle}})",
+      "rejected": "Refusée : {{title}} ({{handle}})",
+      "expired": "Expirée sans décision : {{title}} ({{handle}})"
     },
     "awayNamed": "{{name}} vous a indiqué absent {{dates}}",
     "routedReminder": "En attente d'une décision depuis plus de {{hours}} heures : {{title}}",

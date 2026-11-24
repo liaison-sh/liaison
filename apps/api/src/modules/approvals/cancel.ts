@@ -228,7 +228,10 @@ export async function reopenApprovalsForRestoredTasks(
         UPDATE ${kernelSchema}.approval_requests
            SET status = 'pending', decided_at = NULL,
                reason = metadata->>${REASON_BEFORE_KEY}::text,
+               -- Its deciders' reminder was read with the cancellation: it waits again, so they
+               -- are told again (routed-reminders.ts).
                metadata = metadata - ${REASON_BEFORE_KEY}::text
+                          - 'routedReminderAt' - 'routedReminderCheckedAt'
          WHERE org_id = ${orgId} AND status = 'cancelled'
            AND reason = ${TARGET_TASK_DELETED_REASON}
            AND expires_at > now()

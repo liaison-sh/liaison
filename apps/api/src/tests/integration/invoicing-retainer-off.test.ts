@@ -53,6 +53,7 @@ const SCOPES = [
   "invoicing:approve",
   "projects:money:write",
 ]
+const HOUR = 3_600_000
 let ORG = ""
 let THREAD = ""
 let ISSUER = ""
@@ -107,7 +108,7 @@ async function runJob(): Promise<void> {
 
 /** The hourly job, several times: a schedule behind takes one month a tick. */
 async function tick(day: string, times = 5): Promise<void> {
-  setSystemTime(new Date(`${day}T09:00:00Z`))
+  setSystemTime(new Date(Date.parse(day) + 9 * HOUR))
   for (let i = 0; i < times; i++) await runJob()
 }
 
@@ -171,7 +172,7 @@ async function stored(w: World): Promise<Row> {
   return row as Row
 }
 
-const at = (day: string) => setSystemTime(new Date(`${day}T12:00:00Z`))
+const at = (day: string) => setSystemTime(new Date(Date.parse(day) + 12 * HOUR))
 
 /** A change as a person makes it: on the version the schedule holds. */
 async function update(w: World, patch: Row): Promise<Row> {

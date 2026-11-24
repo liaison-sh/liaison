@@ -105,7 +105,16 @@ function appNameOf(toolName: string): string {
  */
 export function decidingScope(f: ApprovalAuthorityFacts): string {
   assertFacts(f)
-  return f.approveScope ?? `${appNameOf(f.toolName)}:approve`
+  return decidingScopeOfRow(f.toolName, f.approveScope)
+}
+
+/** `decidingScope` from a row's own two columns, for a caller that answers nothing about who may
+ *  see or decide it (the Home group of a card). */
+export function decidingScopeOfRow(toolName: string, approveScope: string | null): string {
+  if (approveScope === undefined) {
+    throw new Error("approval authority facts missing 'approveScope' — the caller omitted it")
+  }
+  return approveScope ?? `${appNameOf(toolName)}:approve`
 }
 
 /** Registry-level twin of `decidingScope` for TOOL DEFINITIONS (no row exists

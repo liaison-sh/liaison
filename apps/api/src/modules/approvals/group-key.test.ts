@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: FSL-1.1-ALv2
 import { describe, expect, it } from "bun:test"
+import { decidingScopeOfRow } from "@liaison/shared"
 import {
   type ApprovalGroupSource,
   approvalGroupBasis,
@@ -65,6 +66,19 @@ describe("approvalRunKey", () => {
 
   it("an unset decision scope reads as the app's approve scope", () => {
     expect(approvalRunKey(card({ approve_scope: null }), "UTC")).toBe(
+      approvalRunKey(card({ approve_scope: "invoicing:approve" }), "UTC"),
+    )
+  })
+
+  it("the audience is the scope that decides the row, never one derived here", () => {
+    // An empty stored scope is the row's own: the gate does not read it as the app's scope.
+    for (const approve_scope of [null, "", "invoicing:documents:write"]) {
+      const scope = decidingScopeOfRow("invoicing:invoice_issue", approve_scope)
+      expect(approvalRunKey(card({ approve_scope }), "UTC")).toBe(
+        `batch:${scope}||invoicing:invoice_issue|2026-11-30`,
+      )
+    }
+    expect(approvalRunKey(card({ approve_scope: "" }), "UTC")).not.toBe(
       approvalRunKey(card({ approve_scope: "invoicing:approve" }), "UTC"),
     )
   })

@@ -13,6 +13,8 @@
 // (its head stands for the bundle), and a bundle head without a run stays its own row (its steps
 // make it a different action). Pure, so the QA harness reads the same rule.
 
+import { decidingScopeOfRow } from "@liaison/shared"
+
 /** The facts of an approval row the key is made from. */
 export interface ApprovalGroupSource {
   id: string
@@ -50,8 +52,7 @@ export function approvalRunKey(r: ApprovalGroupSource, zone: string): string | n
   const run = r.metadata?.originRoutineRunId ?? r.metadata?.originRootRunId
   if (typeof run === "string" && run.length > 0) return `run:${run}`
   if (r.bundle_id !== null) return null
-  const app = r.tool_name.split(":")[0] ?? r.tool_name
-  const audience = `${r.approve_scope || `${app}:approve`}|${r.resource_owner_id ?? ""}`
+  const audience = `${decidingScopeOfRow(r.tool_name, r.approve_scope)}|${r.resource_owner_id ?? ""}`
   return `batch:${audience}|${r.tool_name}|${civilDayIn(r.created_at, zone)}`
 }
 

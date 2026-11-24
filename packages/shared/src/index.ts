@@ -33,6 +33,7 @@ export {
   canSeeInList,
   decidingScope,
   decidingScopeForToolDef,
+  decidingScopeOfRow,
   factsFromSummary,
   holdsDecidingScope,
   homePlacement,
